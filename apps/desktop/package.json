@@ -1,0 +1,35 @@
+{
+  "name": "@capsule/desktop",
+  "version": "0.1.0",
+  "description": "Capsule macOS desktop app",
+  "author": "Capsule",
+  "license": "MIT",
+  "main": "./out/main/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "node ../../scripts/dev-desktop.mjs",
+    "build": "node ../../scripts/ensure-electron.mjs && electron-vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "package:mac": "node ../../scripts/ensure-electron.mjs && electron-vite build && electron-builder --mac --arm64"
+  },
+  "dependencies": {
+    "@capsule/core": "workspace:*",
+    "@capsule/shared": "workspace:*",
+    "@capsule/ui": "workspace:*",
+    "@openclaw/gateway-client": "2026.8.1-beta.3",
+    "@openclaw/gateway-protocol": "2026.8.1-beta.3",
+    "better-sqlite3": "^12.2.0",
+    "electron": "^38.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.12",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.2",
+    "@electron/rebuild": "^4.0.1",
+    "electron-builder": "^26.0.12",
+    "electron-vite": "^4.0.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "vite": "^7.1.3"
+  }
+}

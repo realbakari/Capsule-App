@@ -1,0 +1,23 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/shared" },
+    { "path": "packages/database" },
+    { "path": "packages/projects" },
+    { "path": "packages/sessions" },
+    { "path": "packages/agents" },
+    { "path": "packages/skills" },
+    { "path": "packages/tools" },
+    { "path": "packages/runs" },
+    { "path": "packages/policies" },
+    { "path": "packages/contracts" },
+    { "path": "packages/verification" },
+    { "path": "packages/artifacts" },
+    { "path": "packages/filesystem" },
+    { "path": "packages/terminal" },
+    { "path": "packages/openclaw" },
+    { "path": "packages/buzz" },
+    { "path": "packages/core" },
+    { "path": "packages/ui" }
+  ]
+}

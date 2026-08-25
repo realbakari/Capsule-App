@@ -1,0 +1,38 @@
+{
+  "name": "capsule",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local-first macOS workspace for AI agents, built on OpenClaw.",
+  "license": "MIT",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "postinstall": "node scripts/ensure-electron.mjs && node scripts/ensure-native.mjs",
+    "dev": "pnpm --filter @capsule/desktop dev",
+    "build": "pnpm --filter @capsule/desktop build",
+    "test": "node scripts/test.mjs",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "typecheck": "tsc -b --pretty false && pnpm --filter @capsule/desktop typecheck",
+    "package:mac": "pnpm --filter @capsule/desktop package:mac"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "electron",
+      "esbuild",
+      "electron-winstaller"
+    ]
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.34.0",
+    "@types/node": "^24.3.0",
+    "eslint": "^9.34.0",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.41.0",
+    "vitest": "^3.2.4"
+  }
+}

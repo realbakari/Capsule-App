@@ -1,0 +1,19 @@
+appId: ai.capsule.desktop
+productName: Capsule
+directories:
+  output: release
+files:
+  - out/**/*
+mac:
+  category: public.app-category.developer-tools
+  target:
+    - target: dmg
+      arch: [arm64]
+    - target: zip
+      arch: [arm64]
+  artifactName: Capsule-${version}-${arch}.${ext}
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: entitlements.mac.plist
+  entitlementsInherit: entitlements.mac.plist
+npmRebuild: true
