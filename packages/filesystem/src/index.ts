@@ -4,7 +4,7 @@ import path from "node:path";
 import type { FileEntry } from "@capsule/shared";
 
 export type { FileEntry };
-export { readGitStatus } from "./git.js";
+export { checkoutBranch, readGitDiff, readGitStatus } from "./git.js";
 
 export class FilesystemAdapter {
   constructor(private readonly projectRoot?: string) {}

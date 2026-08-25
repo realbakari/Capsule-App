@@ -163,6 +163,11 @@ export interface FileEntry {
   type: "file" | "directory";
 }
 
+export interface GitChange {
+  path: string;
+  code: string;
+}
+
 export interface GitStatus {
   available: boolean;
   isRepo: boolean;
@@ -170,6 +175,8 @@ export interface GitStatus {
   dirty: boolean;
   changed: number;
   summary: string;
+  files: GitChange[];
+  branches: string[];
 }
 
 export interface ChatMessage {

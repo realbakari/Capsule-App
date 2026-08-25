@@ -1,5 +1,5 @@
 import { useWorkspace } from "../../lib/workspace";
-import { PanelLeftIcon, PanelRightIcon, StopIcon, XIcon } from "./icons";
+import { PanelLeftIcon, PanelRightIcon, PlusIcon, StopIcon, XIcon } from "./icons";
 
 const VIEW_TITLE: Record<string, string> = {
   runtimes: "Runtimes",
@@ -25,6 +25,7 @@ export function Titlebar() {
     stopRun,
     cancelHarness,
     closeHarness,
+    createTask,
   } = useWorkspace();
   const label = connected
     ? "OpenClaw connected"
@@ -60,6 +61,11 @@ export function Titlebar() {
         </div>
       </div>
       <div className="header-actions">
+        {view === "chat" && (
+          <button className="icon-btn" title="New conversation (⌘N)" onClick={() => void createTask()}>
+            <PlusIcon />
+          </button>
+        )}
         {harnessLive && (
           <span className="live-chip">
             <span className="dot on" />

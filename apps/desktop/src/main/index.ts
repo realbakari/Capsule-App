@@ -230,6 +230,12 @@ function registerIpc(): void {
   );
   handle(IPC_CHANNELS.deleteProject, (id) => requireEngine().deleteProject(String(id)));
   handle(IPC_CHANNELS.gitStatus, (projectId) => requireEngine().gitStatus(String(projectId)));
+  handle(IPC_CHANNELS.gitDiff, (projectId, relative) =>
+    requireEngine().gitDiff(String(projectId), relative ? String(relative) : undefined),
+  );
+  handle(IPC_CHANNELS.checkoutBranch, (projectId, branch) =>
+    requireEngine().checkoutBranch(String(projectId), String(branch)),
+  );
   handle(IPC_CHANNELS.openPath, async (target) => {
     const location = String(target);
     if (!location) return;

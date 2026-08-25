@@ -44,6 +44,10 @@ const api = {
     ipcRenderer.invoke(IPC_CHANNELS.updateProject, id, patch),
   deleteProject: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.deleteProject, id),
   gitStatus: (projectId: string) => ipcRenderer.invoke(IPC_CHANNELS.gitStatus, projectId),
+  gitDiff: (projectId: string, relative?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.gitDiff, projectId, relative),
+  checkoutBranch: (projectId: string, branch: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.checkoutBranch, projectId, branch),
   openPath: (target: string) => ipcRenderer.invoke(IPC_CHANNELS.openPath, target),
   pickDirectory: () => ipcRenderer.invoke(IPC_CHANNELS.pickDirectory),
   listHarnesses: () => ipcRenderer.invoke(IPC_CHANNELS.listHarnesses),

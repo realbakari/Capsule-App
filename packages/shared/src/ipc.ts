@@ -36,6 +36,8 @@ export const IPC_CHANNELS = {
   deleteProject: "capsule:deleteProject",
   pickDirectory: "capsule:pickDirectory",
   gitStatus: "capsule:gitStatus",
+  gitDiff: "capsule:gitDiff",
+  checkoutBranch: "capsule:checkoutBranch",
   openPath: "capsule:openPath",
   listHarnesses: "capsule:listHarnesses",
   doctorHarness: "capsule:doctorHarness",

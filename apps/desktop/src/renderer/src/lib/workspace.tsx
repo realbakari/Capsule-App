@@ -184,6 +184,7 @@ export interface WorkspaceValue {
   regenerateTitle: (id: string) => Promise<void>;
   setPermissionProfile: (profile: string) => Promise<void>;
   sendAndContinue: () => Promise<void>;
+  checkoutBranch: (branch: string) => Promise<void>;
 }
 
 const WorkspaceContext = createContext<WorkspaceValue | null>(null);
@@ -676,6 +677,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     await createTask();
   }
 
+  async function checkoutBranch(branch: string) {
+    if (!projectId) return;
+    try {
+      const next = await api.checkoutBranch(projectId, branch);
+      setGit(next);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+    }
+  }
+
   const steps = stepFromEvents(events);
 
   const value = useMemo<WorkspaceValue>(
@@ -777,6 +788,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       regenerateTitle,
       setPermissionProfile,
       sendAndContinue,
+      checkoutBranch,
     }),
     [
       api,

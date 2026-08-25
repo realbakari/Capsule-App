@@ -14,7 +14,7 @@ import { createTextArtifact } from "@capsule/artifacts";
 import { createBuzzAdapter } from "@capsule/buzz";
 import { buildContract } from "@capsule/contracts";
 import { CapsuleDatabase, CapsuleRepositories } from "@capsule/database";
-import { FilesystemAdapter, readGitStatus } from "@capsule/filesystem";
+import { checkoutBranch as checkoutGitBranch, FilesystemAdapter, readGitDiff, readGitStatus } from "@capsule/filesystem";
 import { MockAgentRuntime, OpenClawAdapter, defaultGatewayEndpoint } from "@capsule/openclaw";
 import { decidePolicy, DEFAULT_POLICIES, recordDecision } from "@capsule/policies";
 import { createProjectRecord } from "@capsule/projects";
@@ -505,6 +505,20 @@ export class CapsuleEngine {
 
   gitStatus(projectId: string): GitStatus {
     return readGitStatus(this.requireProject(projectId).workingDirectory);
+  }
+
+  gitDiff(projectId: string, relative?: string): string {
+    const project = this.requireProject(projectId);
+    if (!project.workingDirectory) return "";
+    return readGitDiff(project.workingDirectory, relative);
+  }
+
+  checkoutBranch(projectId: string, branch: string): GitStatus {
+    const project = this.requireProject(projectId);
+    if (!project.workingDirectory) throw new Error("Project has no working directory");
+    const result = checkoutGitBranch(project.workingDirectory, branch);
+    if (!result.ok) throw new Error(result.detail);
+    return readGitStatus(project.workingDirectory);
   }
 
   async listSkills() {

@@ -1016,7 +1016,88 @@ select:focus {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+.inspector-tabs {
+  display: flex;
+  gap: 0.15rem;
   margin-bottom: 0.75rem;
+  padding: 0.12rem;
+  border-radius: 0.5rem;
+  background: rgb(255 255 255 / 4%);
+}
+.inspector-tabs button {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 0.6875rem;
+  font-weight: 550;
+  padding: 0.28rem 0.2rem;
+  border-radius: 0.4rem;
+}
+.inspector-tabs button.active {
+  background: rgb(255 255 255 / 8%);
+  color: var(--text);
+}
+.tab-count {
+  margin-left: 0.2rem;
+  color: var(--text-faint);
+}
+.diff-view {
+  margin: 0;
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  overflow: auto;
+  max-height: 22rem;
+}
+.diff-line.add {
+  color: #8fbf88;
+  background: rgb(143 191 136 / 8%);
+}
+.diff-line.del {
+  color: #d98989;
+  background: rgb(217 137 137 / 8%);
+}
+.diff-line.hunk,
+.diff-line.file {
+  color: var(--text-faint);
+}
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  border-radius: 0.3rem;
+  background: rgb(255 255 255 / 8%);
+  color: var(--text);
+  font-size: 0.625rem;
+  font-weight: 650;
+  flex-shrink: 0;
+}
+.md-h {
+  margin: 0.55rem 0 0.25rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.md-li {
+  padding-left: 0.85rem;
+  position: relative;
+}
+.md-li::before {
+  content: "•";
+  position: absolute;
+  left: 0;
+  color: var(--text-faint);
+}
+.composer-glass.dropping::before {
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 28%);
+}
+.msg .body a {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
 }
 .inspector h4,
 .inspector-header h4 {

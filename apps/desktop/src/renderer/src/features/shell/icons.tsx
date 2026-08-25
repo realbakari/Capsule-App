@@ -180,6 +180,23 @@ export function FileIcon(props: IconProps) {
   );
 }
 
+export function DiffIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M8 7h8M8 12h5M8 17h8" />
+      <path d="M4 5v14M20 5v14" />
+    </Svg>
+  );
+}
+
+export function PaperclipIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="m21.4 11.6-8.8 8.8a5 5 0 0 1-7.1-7.1l9.2-9.2a3.2 3.2 0 0 1 4.5 4.5l-9.2 9.2a1.4 1.4 0 0 1-2-2l8.2-8.2" />
+    </Svg>
+  );
+}
+
 export function ChevronDownIcon(props: IconProps) {
   return (
     <Svg {...props}>

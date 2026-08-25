@@ -194,19 +194,33 @@ export function Sidebar() {
                 }}
                 onContextMenu={(event) => openMenu(event, "project", item.id)}
               >
+                <span className="avatar" aria-hidden>
+                  {(item.name.trim()[0] ?? "P").toUpperCase()}
+                </span>
                 <span className="truncate">{item.name}</span>
                 {item.defaultAgentId ? <span className="meta">{item.defaultAgentId}</span> : null}
               </button>
             )}
             {item.id === projectId && (
               <div className="session-list">
-                {visibleSessions.filter((session) => session.pinned).length > 0 && (
-                  <div className="session-label">Pinned</div>
-                )}
-                {visibleSessions
-                  .filter((session) => session.pinned)
-                  .map((session) => renderSession(session))}
-                {visibleSessions.filter((session) => !session.pinned).map((session) => renderSession(session))}
+                {(() => {
+                  const start = new Date();
+                  start.setHours(0, 0, 0, 0);
+                  const pinned = visibleSessions.filter((session) => session.pinned);
+                  const rest = visibleSessions.filter((session) => !session.pinned);
+                  const today = rest.filter((session) => new Date(session.updatedAt) >= start);
+                  const earlier = rest.filter((session) => new Date(session.updatedAt) < start);
+                  return (
+                    <>
+                      {pinned.length > 0 && <div className="session-label">Pinned</div>}
+                      {pinned.map((session) => renderSession(session))}
+                      {today.length > 0 && <div className="session-label">Today</div>}
+                      {today.map((session) => renderSession(session))}
+                      {earlier.length > 0 && <div className="session-label">Earlier</div>}
+                      {earlier.map((session) => renderSession(session))}
+                    </>
+                  );
+                })()}
               </div>
             )}
           </div>

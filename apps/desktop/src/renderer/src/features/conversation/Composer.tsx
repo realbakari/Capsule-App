@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { FileEntry } from "@capsule/shared";
 import { MORE_MODES, PERMISSION_OPTIONS, PRIMARY_MODES, useWorkspace } from "../../lib/workspace";
 import { MenuSelect } from "../shell/MenuSelect";
-import { ArrowUpIcon, GitBranchIcon, StopIcon } from "../shell/icons";
+import { ArrowUpIcon, GitBranchIcon, PaperclipIcon, StopIcon } from "../shell/icons";
 import { ComposerMenu, detectTrigger, type SuggestItem } from "./ComposerMenu";
 
 const SUGGESTIONS = [
@@ -55,10 +55,14 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
     api,
     projectId,
     connected,
+    setFilePicker,
+    checkoutBranch,
+    mentionFile,
   } = useWorkspace();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [menuIndex, setMenuIndex] = useState(0);
   const [files, setFiles] = useState<FileEntry[]>([]);
+  const [dropping, setDropping] = useState(false);
   const harnessLive = Boolean(session?.harnessId && session.harnessState && session.harnessState !== "closed");
   const folder = project?.workingDirectory?.split("/").filter(Boolean).pop();
   const caret = textareaRef.current?.selectionStart ?? draft.length;
@@ -175,7 +179,24 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
           ))}
         </div>
       )}
-      <div className="composer-glass">
+      <div
+        className={`composer-glass ${dropping ? "dropping" : ""}`}
+        onDragOver={(event) => {
+          event.preventDefault();
+          setDropping(true);
+        }}
+        onDragLeave={() => setDropping(false)}
+        onDrop={(event) => {
+          event.preventDefault();
+          setDropping(false);
+          const root = project?.workingDirectory?.replace(/\/$/, "");
+          Array.from(event.dataTransfer.files).forEach((file) => {
+            const absolute = (file as File & { path?: string }).path;
+            if (root && absolute?.startsWith(`${root}/`)) mentionFile(absolute.slice(root.length + 1));
+            else mentionFile(file.name);
+          });
+        }}
+      >
         <ComposerMenu
           items={items}
           index={menuIndex}
@@ -254,6 +275,9 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
         )}
         <div className="composer-row">
           <div className="chips">
+            <button className="icon-btn" title="Mention a file (⌘P)" onClick={() => setFilePicker(true)}>
+              <PaperclipIcon size={14} />
+            </button>
             <div className="seg" role="tablist" aria-label="Mode">
               {PRIMARY_MODES.map((item) => (
                 <button
@@ -308,10 +332,15 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
         <button type="button" onClick={() => void pickProjectDirectory()} title="Choose folder">
           {folder ?? "No folder"}
         </button>
-        {git?.isRepo && (
+        {git?.isRepo && git.branches.length > 0 && (
           <span className="inline-icon">
             <GitBranchIcon size={12} />
-            {git.branch}
+            <MenuSelect
+              ariaLabel="Branch"
+              value={git.branch ?? git.branches[0] ?? ""}
+              options={git.branches.map((item) => ({ id: item, label: item }))}
+              onChange={(id) => void checkoutBranch(id)}
+            />
             {git.dirty ? "*" : ""}
           </span>
         )}
