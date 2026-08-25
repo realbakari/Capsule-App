@@ -3,6 +3,7 @@ import path from "node:path";
 import {
   app,
   BrowserWindow,
+  dialog,
   ipcMain,
   Menu,
   Notification,
@@ -11,7 +12,15 @@ import {
   shell,
 } from "electron";
 import type { CapsuleEngine } from "@capsule/core";
-import { IPC_CHANNELS, IPC_EVENTS, type ApprovalRequest } from "@capsule/shared";
+import {
+  IPC_CHANNELS,
+  IPC_EVENTS,
+  type ApprovalRequest,
+  type HarnessId,
+  type HarnessOptionPatch,
+  type SpawnHarnessInput,
+  type UpdateProjectInput,
+} from "@capsule/shared";
 import { ensureSqliteAbi } from "./sqlite-abi";
 
 let mainWindow: BrowserWindow | undefined;
@@ -178,16 +187,45 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.updateSettings, (patch) => requireEngine().updateSettings(patch as never));
   handle(IPC_CHANNELS.getDiagnostics, () => requireEngine().getDiagnostics());
   handle(IPC_CHANNELS.search, (query) => requireEngine().search(String(query)));
-  handle(IPC_CHANNELS.listHarnesses, () => requireEngine().listHarnesses());
-  handle(IPC_CHANNELS.dedicateHarness, (projectId, harnessId) =>
-    requireEngine().dedicateHarness(String(projectId), harnessId as never),
+  handle(IPC_CHANNELS.updateProject, (id, patch) =>
+    requireEngine().updateProject(String(id), patch as UpdateProjectInput),
   );
-  handle(IPC_CHANNELS.spawnHarness, (projectId, harnessId, prompt) =>
-    requireEngine().spawnHarness(
-      String(projectId),
-      harnessId as never,
-      prompt ? String(prompt) : undefined,
-    ),
+  handle(IPC_CHANNELS.pickDirectory, async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ["openDirectory", "createDirectory"],
+    });
+    return result.canceled ? undefined : result.filePaths[0];
+  });
+  handle(IPC_CHANNELS.listHarnesses, () => requireEngine().listHarnesses());
+  handle(IPC_CHANNELS.doctorHarness, (harnessId) =>
+    requireEngine().doctorHarness(harnessId as HarnessId),
+  );
+  handle(IPC_CHANNELS.dedicateHarness, (projectId, harnessId) =>
+    requireEngine().dedicateHarness(String(projectId), harnessId as HarnessId),
+  );
+  handle(IPC_CHANNELS.undedicateHarness, (projectId) =>
+    requireEngine().undedicateHarness(String(projectId)),
+  );
+  handle(IPC_CHANNELS.spawnHarness, (input) =>
+    requireEngine().spawnHarness(input as SpawnHarnessInput),
+  );
+  handle(IPC_CHANNELS.cancelHarness, (sessionId) =>
+    requireEngine().cancelHarness(String(sessionId)),
+  );
+  handle(IPC_CHANNELS.steerHarness, (sessionId, instruction) =>
+    requireEngine().steerHarness(String(sessionId), String(instruction)),
+  );
+  handle(IPC_CHANNELS.closeHarness, (sessionId) =>
+    requireEngine().closeHarness(String(sessionId)),
+  );
+  handle(IPC_CHANNELS.harnessStatus, (sessionId) =>
+    requireEngine().harnessStatus(String(sessionId)),
+  );
+  handle(IPC_CHANNELS.setHarnessOption, (patch) =>
+    requireEngine().setHarnessOption(patch as HarnessOptionPatch),
+  );
+  handle(IPC_CHANNELS.listHarnessSessions, (projectId) =>
+    requireEngine().listHarnessSessions(projectId ? String(projectId) : undefined),
   );
 }
 
@@ -197,6 +235,7 @@ function bindEngineEvents(): void {
   engine.events.on("run", (run) => send(IPC_EVENTS.run, run));
   engine.events.on("run-event", (event) => send(IPC_EVENTS.run, event));
   engine.events.on("message", (message) => send(IPC_EVENTS.message, message));
+  engine.events.on("state", (payload) => send(IPC_EVENTS.state, payload));
   engine.events.on("approval", (approval: ApprovalRequest) => {
     send(IPC_EVENTS.approval, approval);
     if (approval.status === "pending") notifyApproval(approval);
@@ -225,6 +264,11 @@ function createMenu(): void {
           label: "Command Palette",
           accelerator: "CommandOrControl+K",
           click: () => send(IPC_EVENTS.state, { command: "palette" }),
+        },
+        {
+          label: "Runtimes",
+          accelerator: "CommandOrControl+Shift+R",
+          click: () => send(IPC_EVENTS.state, { command: "harness" }),
         },
         { type: "separator" },
         { role: "reload" },

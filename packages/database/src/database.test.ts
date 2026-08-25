@@ -29,6 +29,23 @@ describe("CapsuleDatabase", () => {
     expect(projects).toHaveLength(1);
     expect(projects[0]?.name).toBe("Demo");
     expect(projects[0]?.defaultSkillIds).toEqual(["coding"]);
+    repos.insertSession({
+      id: "sess_1",
+      workspaceId: "ws_1",
+      projectId: "proj_1",
+      agentId: "claude",
+      title: "Claude session",
+      mode: "code",
+      state: "active",
+      harnessId: "claude",
+      harnessState: "running",
+      acpMode: "persistent",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    const session = repos.getSession("sess_1");
+    expect(session?.harnessId).toBe("claude");
+    expect(session?.harnessState).toBe("running");
     db.close();
   });
 });

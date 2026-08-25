@@ -8,8 +8,13 @@ import {
 import { PROTOCOL_VERSION } from "@openclaw/gateway-protocol/version";
 import type { EventFrame, HelloOk } from "@openclaw/gateway-protocol/frame-guards";
 import {
+  acpDoctorCommand,
+  acpOptionCommand,
+  acpSpawnCommand,
+  acpStatusCommand,
   createId,
   nowIso,
+  parseAcpStatus,
   type Agent,
   type AgentMessage,
   type AgentRuntime,
@@ -18,6 +23,8 @@ import {
   type ChannelName,
   type ConnectionState,
   type CreateSessionInputRuntime,
+  type HarnessId,
+  type HarnessOptionKey,
   type Run,
   type RunEvent,
   type RunEventHandler,
@@ -238,60 +245,143 @@ export class OpenClawAdapter implements AgentRuntime {
   }
 
   async spawnAcpSession(input: {
-    harnessId: string;
+    harnessId: HarnessId;
     cwd?: string;
     title?: string;
     prompt?: string;
-  }): Promise<{ sessionKey: string; usedSlashCommand: boolean }> {
-    const cwd = input.cwd;
-    const agent = input.harnessId;
-    try {
+    mode?: "persistent" | "oneshot";
+    sessionKey?: string;
+    permissionProfile?: string;
+    model?: string;
+  }): Promise<{ sessionKey: string; usedSlashCommand: boolean; command: string }> {
+    const command = acpSpawnCommand(input.harnessId, {
+      cwd: input.cwd,
+      mode: input.mode ?? "persistent",
+      bind: "here",
+      label: input.title,
+    });
+    let sessionKey = input.sessionKey;
+    if (!sessionKey) {
       const created = await this.request<{
         key?: string;
         sessionKey?: string;
         id?: string;
       }>("sessions.create", {
-        label: input.title ?? agent,
-        agentId: agent,
-        runtime: "acp",
-        acp: { agent, backend: "acpx", mode: "persistent", cwd },
+        label: input.title ?? input.harnessId,
+        cwd: input.cwd,
+        message: command,
       });
-      const sessionKey = created.sessionKey ?? created.key ?? created.id;
+      sessionKey = created.sessionKey ?? created.key ?? created.id;
       if (!sessionKey) throw new Error("sessions.create did not return a session key");
-      if (input.prompt) {
-        await this.request("sessions.send", {
-          key: sessionKey,
-          sessionKey,
-          message: input.prompt,
-          idempotencyKey: createId("idemp"),
-        }).catch(() => undefined);
-      }
-      return { sessionKey, usedSlashCommand: false };
+    } else {
+      await this.sendSlash(sessionKey, command);
+    }
+    if (input.permissionProfile && input.permissionProfile !== "default") {
+      await this.sendSlash(sessionKey, acpOptionCommand("permissions", input.permissionProfile)).catch(
+        () => undefined,
+      );
+    }
+    if (input.model) {
+      await this.sendSlash(sessionKey, acpOptionCommand("model", input.model)).catch(() => undefined);
+    }
+    if (input.prompt) {
+      await this.sendSlash(sessionKey, input.prompt).catch(() => undefined);
+    }
+    return { sessionKey, usedSlashCommand: true, command };
+  }
+
+  async sendSlash(sessionKey: string, message: string): Promise<void> {
+    await this.request("sessions.send", {
+      key: sessionKey,
+      sessionKey,
+      message,
+      idempotencyKey: createId("idemp"),
+    });
+  }
+
+  async acpCommand(
+    sessionKey: string,
+    command: string,
+    options: { waitMs?: number } = {},
+  ): Promise<{ command: string; text?: string }> {
+    await this.sendSlash(sessionKey, command);
+    const text = await this.waitForReply(sessionKey, options.waitMs ?? 8_000).catch(() => undefined);
+    return { command, text };
+  }
+
+  async cancelAcp(sessionKey: string, runId?: string): Promise<void> {
+    try {
+      await this.request("sessions.abort", { key: sessionKey, sessionKey, runId });
     } catch {
-      const slash = `/acp spawn ${agent} --bind here --mode persistent${cwd ? ` --cwd ${cwd}` : ""}`;
-      const created = await this.createSession({
-        projectId: "local",
-        agentId: agent,
-        title: input.title ?? agent,
-        mode: "code",
-      });
-      const sessionKey = created.openclawSessionKey ?? created.id;
-      await this.request("sessions.send", {
+      await this.sendSlash(sessionKey, "/acp cancel");
+    }
+  }
+
+  async steerAcp(sessionKey: string, instruction: string): Promise<void> {
+    try {
+      await this.request("sessions.steer", {
         key: sessionKey,
         sessionKey,
-        message: slash,
-        idempotencyKey: createId("idemp"),
+        message: instruction,
       });
-      if (input.prompt) {
-        await this.request("sessions.send", {
-          key: sessionKey,
-          sessionKey,
-          message: input.prompt,
-          idempotencyKey: createId("idemp"),
-        }).catch(() => undefined);
-      }
-      return { sessionKey, usedSlashCommand: true };
+    } catch {
+      await this.sendSlash(sessionKey, `/acp steer ${instruction}`);
     }
+  }
+
+  async closeAcp(sessionKey: string): Promise<void> {
+    await this.sendSlash(sessionKey, "/acp close");
+  }
+
+  async doctorAcp(sessionKey: string): Promise<string> {
+    const result = await this.acpCommand(sessionKey, acpDoctorCommand(), { waitMs: 10_000 });
+    return result.text ?? "";
+  }
+
+  async statusAcp(sessionKey: string): Promise<{ text: string; parsed: ReturnType<typeof parseAcpStatus> }> {
+    const result = await this.acpCommand(sessionKey, acpStatusCommand(), { waitMs: 8_000 });
+    const text = result.text ?? "";
+    return { text, parsed: parseAcpStatus(text) };
+  }
+
+  async setAcpOption(sessionKey: string, key: HarnessOptionKey, value: string): Promise<string> {
+    const result = await this.acpCommand(sessionKey, acpOptionCommand(key, value), { waitMs: 6_000 });
+    return result.text ?? "";
+  }
+
+  async listAcpSessionKeys(): Promise<string[]> {
+    try {
+      const payload = await this.request<{ sessions?: unknown[] }>("sessions.list", {});
+      return (payload.sessions ?? [])
+        .map((row) => {
+          const record = asRecord(row);
+          return asString(record.key, asString(record.sessionKey, asString(record.id)));
+        })
+        .filter((key) => key.includes(":acp:") || key.includes("acp"));
+    } catch {
+      return [];
+    }
+  }
+
+  async waitForReply(sessionKey: string, timeoutMs: number): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const chunks: string[] = [];
+      const timer = setTimeout(() => {
+        this.emitter.off("acp-reply", onReply);
+        if (chunks.length > 0) resolve(chunks.join("\n"));
+        else reject(new Error("Timed out waiting for ACP reply"));
+      }, timeoutMs);
+      const onReply = (payload: { sessionKey?: string; text?: string; done?: boolean }) => {
+        if (payload.sessionKey && payload.sessionKey !== sessionKey) return;
+        if (payload.text) chunks.push(payload.text);
+        if (payload.done) {
+          clearTimeout(timer);
+          this.emitter.off("acp-reply", onReply);
+          resolve(chunks.join("\n"));
+        }
+      };
+      this.emitter.on("acp-reply", onReply);
+    });
   }
 
   async createSession(input: CreateSessionInputRuntime): Promise<Session> {
@@ -425,6 +515,19 @@ export class OpenClawAdapter implements AgentRuntime {
     const payload = asRecord(event.payload);
     const openclawRunId = asString(payload.runId, asString(payload.id));
     const runId = this.runSessions.get(openclawRunId) ?? openclawRunId;
+    const sessionKey = asOptionalString(payload.sessionKey) ?? asOptionalString(payload.key);
+    const text = asString(
+      payload.text,
+      asString(payload.message, asString(payload.summary, "")),
+    );
+    if (sessionKey && text) {
+      const done =
+        asString(payload.status) === "ok" ||
+        payload.phase === "end" ||
+        payload.phase === "error" ||
+        asString(payload.status) === "error";
+      this.emitter.emit("acp-reply", { sessionKey, text, done });
+    }
     if (event.event === "exec.approval.requested" || event.event === "plugin.approval.requested") {
       const approval = this.mapApproval(payload);
       this.pendingApprovals.set(approval.id, approval);

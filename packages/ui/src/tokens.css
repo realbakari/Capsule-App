@@ -1,6 +1,23 @@
 :root {
   color-scheme: dark;
-  /* Catppuccin Macchiato, same family as Buzz dark */
+  /* Catppuccin Macchiato — same family as Buzz desktop */
+  --crust: #181926;
+  --mantle: #1e2030;
+  --base: #24273a;
+  --surface-0: #363a4f;
+  --surface-1: #494d64;
+  --overlay-0: #6e738d;
+  --overlay-1: #8087a2;
+  --subtext-0: #a5adcb;
+  --subtext-1: #b8c0e0;
+  --text: #cad3f5;
+  --mauve: #c6a0f6;
+  --blue: #8aadf4;
+  --green: #a6da95;
+  --yellow: #eed49f;
+  --red: #ed8796;
+  --peach: #f5a97f;
+
   --background: 232 23.4% 18.43%;
   --foreground: 227 68.25% 87.65%;
   --card: 232 23.4% 18.43%;
@@ -16,19 +33,18 @@
   --bad: 351 74% 73%;
   --radius: 0.625rem;
   --type-rem: 1rem;
-  --font: "Inter Variable", Inter, "Avenir Next", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
-  --mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
-  --bg: hsl(var(--background));
-  --text: hsl(var(--foreground));
-  --text-muted: hsl(var(--muted-foreground));
-  --text-faint: hsl(228 20% 55%);
-  --accent: hsl(var(--primary));
-  --bg-elevated: hsl(var(--muted));
-  --bg-sidebar: hsl(var(--sidebar-background));
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, "Segoe UI", sans-serif;
+  --mono: "SF Mono", "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --bg: var(--base);
+  --text-muted: var(--subtext-0);
+  --text-faint: var(--overlay-1);
+  --accent: var(--mauve);
+  --bg-elevated: var(--surface-0);
+  --bg-sidebar: var(--mantle);
   --bg-hover: rgb(255 255 255 / 6%);
-  --bg-active: rgb(255 255 255 / 16%);
-  --border-color: hsl(var(--border));
-  --shadow: 0 18px 50px rgb(0 0 0 / 0.28);
+  --bg-active: rgb(198 160 246 / 16%);
+  --border-color: hsl(var(--border) / 0.7);
+  --shadow: 0 18px 50px rgb(0 0 0 / 0.32);
 }
 
 * { box-sizing: border-box; }
@@ -46,11 +62,21 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font);
+  font-size: 0.875rem;
+  line-height: 1.45;
   font-synthesis-weight: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+  letter-spacing: -0.011em;
 }
 button, input, textarea, select { font: inherit; color: inherit; }
 button:not(:disabled), summary, [role="button"] { cursor: pointer; }
 button:disabled { cursor: default; }
-::selection { background: hsl(var(--primary) / 0.28); }
+::selection { background: rgb(198 160 246 / 0.28); }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb {
+  background: rgb(255 255 255 / 10%);
+  border-radius: 99px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}

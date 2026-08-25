@@ -80,6 +80,8 @@ React Renderer
 
 There is no `execute(command: string)` IPC. The renderer may call things like `listProjects()`, `sendMessage()`, `getRun()`, and `resolveApproval()`.
 
+The renderer is a feature-split shell (sidebar, conversation, composer, inspector, runtimes), not a single view file. Tokens live in `@capsule/ui`. The renderer may import types from `@capsule/shared` but must not import Node APIs.
+
 ---
 
 ## 3. Package Map
@@ -104,7 +106,7 @@ packages/
   filesystem          Project-scoped file access
   terminal            Native terminal open
   openclaw            Gateway adapter + mock runtime
-  harness             Claude Code / Codex ACP catalog (not an ACP server)
+  harness             Claude Code / Codex ACP lifecycle (doctor, spawn, steer, cancel, close)
   buzz                Channel mapping only — not the Buzz protocol
   ui                  Shared tokens
 ```

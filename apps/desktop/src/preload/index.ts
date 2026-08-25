@@ -40,11 +40,24 @@ const api = {
   updateSettings: (patch: unknown) => ipcRenderer.invoke(IPC_CHANNELS.updateSettings, patch),
   getDiagnostics: () => ipcRenderer.invoke(IPC_CHANNELS.getDiagnostics),
   search: (query: string) => ipcRenderer.invoke(IPC_CHANNELS.search, query),
+  updateProject: (id: string, patch: unknown) =>
+    ipcRenderer.invoke(IPC_CHANNELS.updateProject, id, patch),
+  pickDirectory: () => ipcRenderer.invoke(IPC_CHANNELS.pickDirectory),
   listHarnesses: () => ipcRenderer.invoke(IPC_CHANNELS.listHarnesses),
+  doctorHarness: (harnessId: string) => ipcRenderer.invoke(IPC_CHANNELS.doctorHarness, harnessId),
   dedicateHarness: (projectId: string, harnessId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.dedicateHarness, projectId, harnessId),
-  spawnHarness: (projectId: string, harnessId: string, prompt?: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.spawnHarness, projectId, harnessId, prompt),
+  undedicateHarness: (projectId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.undedicateHarness, projectId),
+  spawnHarness: (input: unknown) => ipcRenderer.invoke(IPC_CHANNELS.spawnHarness, input),
+  cancelHarness: (sessionId: string) => ipcRenderer.invoke(IPC_CHANNELS.cancelHarness, sessionId),
+  steerHarness: (sessionId: string, instruction: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.steerHarness, sessionId, instruction),
+  closeHarness: (sessionId: string) => ipcRenderer.invoke(IPC_CHANNELS.closeHarness, sessionId),
+  harnessStatus: (sessionId: string) => ipcRenderer.invoke(IPC_CHANNELS.harnessStatus, sessionId),
+  setHarnessOption: (patch: unknown) => ipcRenderer.invoke(IPC_CHANNELS.setHarnessOption, patch),
+  listHarnessSessions: (projectId?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.listHarnessSessions, projectId),
   on: (channel: keyof typeof IPC_EVENTS, handler: (payload: unknown) => void) => {
     const name = IPC_EVENTS[channel];
     const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => handler(payload);

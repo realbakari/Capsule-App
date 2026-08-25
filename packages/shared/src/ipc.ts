@@ -32,9 +32,19 @@ export const IPC_CHANNELS = {
   updateSettings: "capsule:updateSettings",
   getDiagnostics: "capsule:getDiagnostics",
   search: "capsule:search",
+  updateProject: "capsule:updateProject",
+  pickDirectory: "capsule:pickDirectory",
   listHarnesses: "capsule:listHarnesses",
+  doctorHarness: "capsule:doctorHarness",
   dedicateHarness: "capsule:dedicateHarness",
+  undedicateHarness: "capsule:undedicateHarness",
   spawnHarness: "capsule:spawnHarness",
+  cancelHarness: "capsule:cancelHarness",
+  steerHarness: "capsule:steerHarness",
+  closeHarness: "capsule:closeHarness",
+  harnessStatus: "capsule:harnessStatus",
+  setHarnessOption: "capsule:setHarnessOption",
+  listHarnessSessions: "capsule:listHarnessSessions",
 } as const;
 
 export const IPC_EVENTS = {

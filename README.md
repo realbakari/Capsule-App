@@ -15,7 +15,7 @@ It is not an OpenClaw clone and not a Buzz clone.
 - An OpenClaw Gateway adapter over protocol 4
 - Capsule contracts, policies, verification, and artifacts
 - A mock runtime so the app works without OpenClaw installed
-- Dedicated Claude Code and Codex ACP harnesses (spawned through OpenClaw acpx, not reimplemented)
+- Dedicated Claude Code and Codex ACP harnesses: doctor, dedicate, spawn, steer, cancel, status, close — through OpenClaw acpx, not a local ACP server
 
 ## Architecture
 

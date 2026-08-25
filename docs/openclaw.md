@@ -25,7 +25,7 @@ Capsule identifies as `clientName: cli`, `mode: ui`, `displayName: Capsule`. The
 | Method | Why |
 |--------|-----|
 | `agents.list` | Present OpenClaw agents without duplicating the runtime |
-| `sessions.create` / `sessions.send` / `sessions.abort` | Conversations and cancellation |
+| `sessions.create` / `sessions.send` / `sessions.abort` / `sessions.steer` | Conversations, ACP slash commands, cancellation, steer |
 | `sessions.list` / `sessions.subscribe` / `sessions.messages.subscribe` | Roster + live transcript |
 | `chat.history` | Reconnect recovery |
 | `plugins.list` | Installed skills/plugins |

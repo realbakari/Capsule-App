@@ -207,4 +207,14 @@ export const MIGRATIONS: Array<{ version: number; sql: string }> = [
       CREATE INDEX IF NOT EXISTS idx_run_events_run ON run_events(run_id);
     `,
   },
+  {
+    version: 2,
+    sql: `
+      ALTER TABLE sessions ADD COLUMN harness_id TEXT;
+      ALTER TABLE sessions ADD COLUMN harness_state TEXT;
+      ALTER TABLE sessions ADD COLUMN acp_mode TEXT;
+      ALTER TABLE sessions ADD COLUMN permission_profile TEXT;
+      ALTER TABLE sessions ADD COLUMN model_override TEXT;
+    `,
+  },
 ];

@@ -138,8 +138,21 @@ export interface Session {
   mode: AgentMode;
   state: "active" | "archived";
   openclawSessionKey?: string;
+  harnessId?: import("./harness.js").HarnessId;
+  harnessState?: import("./harness.js").HarnessSessionState;
+  acpMode?: import("./harness.js").AcpMode;
+  permissionProfile?: string;
+  modelOverride?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface UpdateProjectInput {
+  name?: string;
+  description?: string;
+  workingDirectory?: string | null;
+  defaultAgentId?: string | null;
+  defaultMode?: AgentMode;
 }
 
 export interface ChatMessage {

@@ -5,6 +5,8 @@ import type {
   ChannelBinding,
   ChatMessage,
   ExecutionContract,
+  HarnessSessionState,
+  AcpMode,
   PolicyDecision,
   PolicyRule,
   Project,
@@ -14,6 +16,7 @@ import type {
   Skill,
   Workspace,
 } from "@capsule/shared";
+import { isHarnessId } from "@capsule/shared";
 import type { CapsuleDatabase } from "./database.js";
 
 function parseJson<T>(value: string | null | undefined, fallback: T): T {
@@ -23,6 +26,47 @@ function parseJson<T>(value: string | null | undefined, fallback: T): T {
   } catch {
     return fallback;
   }
+}
+
+function optional(value: string | undefined | null): string | null {
+  return value ? value : null;
+}
+
+function sessionParams(session: Session) {
+  return {
+    id: session.id,
+    workspaceId: session.workspaceId,
+    projectId: session.projectId,
+    agentId: session.agentId,
+    title: session.title,
+    mode: session.mode,
+    state: session.state,
+    openclawSessionKey: session.openclawSessionKey ?? null,
+    harnessId: optional(session.harnessId),
+    harnessState: optional(session.harnessState),
+    acpMode: optional(session.acpMode),
+    permissionProfile: optional(session.permissionProfile),
+    modelOverride: optional(session.modelOverride),
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+  };
+}
+
+function normalizeSession(row: Session): Session {
+  const harnessId = isHarnessId(row.harnessId)
+    ? row.harnessId
+    : isHarnessId(row.agentId)
+      ? row.agentId
+      : undefined;
+  return {
+    ...row,
+    harnessId,
+    harnessState: (row.harnessState || undefined) as HarnessSessionState | undefined,
+    acpMode: (row.acpMode || undefined) as AcpMode | undefined,
+    permissionProfile: row.permissionProfile || undefined,
+    modelOverride: row.modelOverride || undefined,
+    openclawSessionKey: row.openclawSessionKey || undefined,
+  };
 }
 
 export class CapsuleRepositories {
@@ -88,6 +132,9 @@ export class CapsuleRepositories {
       .all() as Array<Omit<Project, "defaultSkillIds"> & { defaultSkillIds: string }>;
     return rows.map((row) => ({
       ...row,
+      description: row.description || undefined,
+      workingDirectory: row.workingDirectory || undefined,
+      defaultAgentId: row.defaultAgentId || undefined,
       defaultSkillIds: parseJson<string[]>(row.defaultSkillIds, []),
     }));
   }
@@ -120,33 +167,27 @@ export class CapsuleRepositories {
       .prepare(
         `INSERT INTO sessions (
           id, workspace_id, project_id, agent_id, title, mode, state,
-          openclaw_session_key, created_at, updated_at
+          openclaw_session_key, harness_id, harness_state, acp_mode,
+          permission_profile, model_override, created_at, updated_at
         ) VALUES (
           @id, @workspaceId, @projectId, @agentId, @title, @mode, @state,
-          @openclawSessionKey, @createdAt, @updatedAt
+          @openclawSessionKey, @harnessId, @harnessState, @acpMode,
+          @permissionProfile, @modelOverride, @createdAt, @updatedAt
         )`,
       )
-      .run({
-        ...session,
-        openclawSessionKey: session.openclawSessionKey ?? null,
-      });
+      .run(sessionParams(session));
   }
 
   updateSession(session: Session): void {
     this.db.sqlite
       .prepare(
         `UPDATE sessions SET title = @title, agent_id = @agentId, mode = @mode, state = @state,
-         openclaw_session_key = @openclawSessionKey, updated_at = @updatedAt WHERE id = @id`,
+         openclaw_session_key = @openclawSessionKey, harness_id = @harnessId,
+         harness_state = @harnessState, acp_mode = @acpMode,
+         permission_profile = @permissionProfile, model_override = @modelOverride,
+         updated_at = @updatedAt WHERE id = @id`,
       )
-      .run({
-        id: session.id,
-        title: session.title,
-        agentId: session.agentId,
-        mode: session.mode,
-        state: session.state,
-        openclawSessionKey: session.openclawSessionKey ?? null,
-        updatedAt: session.updatedAt,
-      });
+      .run(sessionParams(session));
   }
 
   deleteSession(id: string): void {
@@ -155,18 +196,18 @@ export class CapsuleRepositories {
   }
 
   listSessions(projectId?: string): Session[] {
+    const columns = `id, workspace_id AS workspaceId, project_id AS projectId, agent_id AS agentId,
+                title, mode, state, openclaw_session_key AS openclawSessionKey,
+                harness_id AS harnessId, harness_state AS harnessState, acp_mode AS acpMode,
+                permission_profile AS permissionProfile, model_override AS modelOverride,
+                created_at AS createdAt, updated_at AS updatedAt`;
     const sql = projectId
-      ? `SELECT id, workspace_id AS workspaceId, project_id AS projectId, agent_id AS agentId,
-                title, mode, state, openclaw_session_key AS openclawSessionKey,
-                created_at AS createdAt, updated_at AS updatedAt
-         FROM sessions WHERE project_id = ? ORDER BY updated_at DESC`
-      : `SELECT id, workspace_id AS workspaceId, project_id AS projectId, agent_id AS agentId,
-                title, mode, state, openclaw_session_key AS openclawSessionKey,
-                created_at AS createdAt, updated_at AS updatedAt
-         FROM sessions ORDER BY updated_at DESC`;
-    return (projectId
-      ? this.db.sqlite.prepare(sql).all(projectId)
-      : this.db.sqlite.prepare(sql).all()) as Session[];
+      ? `SELECT ${columns} FROM sessions WHERE project_id = ? ORDER BY updated_at DESC`
+      : `SELECT ${columns} FROM sessions ORDER BY updated_at DESC`;
+    const rows = (
+      projectId ? this.db.sqlite.prepare(sql).all(projectId) : this.db.sqlite.prepare(sql).all()
+    ) as Session[];
+    return rows.map(normalizeSession);
   }
 
   getSession(id: string): Session | undefined {

@@ -50,4 +50,61 @@ describe("CapsuleEngine first user flow", () => {
     expect(engine.listRunEvents(run.id).some((event) => event.type === "contract")).toBe(true);
     await engine.stop();
   });
+
+  it("dedicates Claude and routes code work through the harness", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-harness-"));
+    const engine = new CapsuleEngine({
+      databasePath: path.join(dir, "capsule.sqlite"),
+      userDataDir: dir,
+    });
+    await engine.start();
+    const project = engine.createProject({ name: "Harness Workspace" });
+    await engine.dedicateHarness(project.id, "claude");
+    expect(engine.getProject(project.id)?.defaultAgentId).toBe("claude");
+    const session = await engine.createSession({
+      projectId: project.id,
+      title: "Implement the API",
+      mode: "code",
+    });
+    const { session: used, run } = await engine.sendMessage({
+      sessionId: session.id,
+      content: "Implement the REST handlers.",
+      mode: "code",
+    });
+    expect(used.agentId).toBe("claude");
+    expect(used.harnessId).toBe("claude");
+    expect(used.harnessState).toBe("running");
+    await waitForRun(engine, run.id);
+    const closed = await engine.closeHarness(used.id);
+    expect(closed.session.harnessState).toBe("closed");
+    await engine.undedicateHarness(project.id);
+    expect(engine.getProject(project.id)?.defaultAgentId).toBeUndefined();
+    await engine.stop();
+  });
+
+  it("spawns, steers, and reports status for a mock Codex session", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-codex-"));
+    const engine = new CapsuleEngine({
+      databasePath: path.join(dir, "capsule.sqlite"),
+      userDataDir: dir,
+    });
+    await engine.start();
+    const project = engine.createProject({ name: "Codex Workspace", workingDirectory: dir });
+    const spawned = await engine.spawnHarness({
+      projectId: project.id,
+      harnessId: "codex",
+      prompt: "List the files in this workspace.",
+    });
+    expect(spawned.session.harnessId).toBe("codex");
+    expect(spawned.session.harnessState).toBe("running");
+    const steered = await engine.steerHarness(spawned.session.id, "Focus on the failing tests.");
+    expect(steered.session.harnessState).toBe("running");
+    const status = await engine.harnessStatus(spawned.session.id);
+    expect(status.state).toBe("running");
+    expect(engine.listHarnessSessions(project.id)).toHaveLength(1);
+    const doctor = await engine.doctorHarness("codex");
+    expect(doctor.harnessId).toBe("codex");
+    expect(doctor.checks.some((check) => check.id === "cli")).toBe(true);
+    await engine.stop();
+  });
 });
