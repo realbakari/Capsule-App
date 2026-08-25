@@ -11,8 +11,16 @@ function inline(text: string): ReactNode {
     }
     const link = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(part);
     if (link?.[1] && link[2]) {
+      const href = link[2];
       return (
-        <a key={index} href={link[2]} target="_blank" rel="noreferrer">
+        <a
+          key={index}
+          href={href}
+          onClick={(event) => {
+            event.preventDefault();
+            window.open(href, "_blank", "noopener");
+          }}
+        >
           {link[1]}
         </a>
       );

@@ -70,7 +70,8 @@ export function Inspector() {
     const onKey = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       const target = event.target as HTMLElement | null;
-      if (target && target.closest("input, textarea, select")) return;
+      if (!target?.closest(".inspector")) return;
+      if (target.closest("input, textarea, select")) return;
       const match = TABS.find((item) => item.key === event.key.toLowerCase());
       if (match) {
         event.preventDefault();

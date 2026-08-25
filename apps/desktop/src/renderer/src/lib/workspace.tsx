@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -253,18 +254,35 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const activeRun = runs.find(
     (run) => run.sessionId === sessionId && ["running", "approval_required", "waiting"].includes(run.status),
   );
-  const pendingApproval = approvals.find((item) => item.status === "pending");
+  const pendingApproval = approvals.find(
+    (item) => item.status === "pending" && runs.some((run) => run.id === item.runId),
+  );
+  const loadGeneration = useRef(0);
   const connected = status?.state === "connected" && status.kind === "openclaw";
 
   const loadSession = useCallback(
     async (id: string) => {
+      const generation = ++loadGeneration.current;
       const [nextMessages, nextRuns] = await Promise.all([api.listMessages(id), api.listRuns(id)]);
-      setMessages(nextMessages);
+      if (generation !== loadGeneration.current) return;
+      setMessages((current) => {
+        const pending = current.filter(
+          (item) =>
+            item.id.startsWith("local-") &&
+            !nextMessages.some((message: ChatMessage) => message.role === item.role && message.content === item.content),
+        );
+        return [...nextMessages, ...pending];
+      });
       setRuns(nextRuns);
       const latest = nextRuns[0];
       if (latest) {
-        setEvents(await api.listRunEvents(latest.id));
-        setArtifacts(await api.listArtifacts(latest.id));
+        const [nextEvents, nextArtifacts] = await Promise.all([
+          api.listRunEvents(latest.id),
+          api.listArtifacts(latest.id),
+        ]);
+        if (generation !== loadGeneration.current) return;
+        setEvents(nextEvents);
+        setArtifacts(nextArtifacts);
       } else {
         setEvents([]);
         setArtifacts([]);
@@ -336,7 +354,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     ];
     const onKey = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey)) return;
+      const typing =
+        event.target instanceof HTMLElement &&
+        Boolean(event.target.closest("input, textarea, select, [contenteditable]"));
       const key = event.key.toLowerCase();
+      if (typing && (key === "n" || key === "b")) return;
       if (key === "k") {
         event.preventDefault();
         setPalette((open) => !open);
@@ -462,17 +484,34 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         setSessionId(created.id);
       }
       if (!currentSessionId) return;
+      const optimisticId = `local-${Date.now()}`;
+      setMessages((current) => [
+        ...current.filter((item) => !item.id.startsWith("local-")),
+        {
+          id: optimisticId,
+          sessionId: currentSessionId,
+          role: "user",
+          content,
+          createdAt: new Date().toISOString(),
+        },
+      ]);
       setDraft("");
-      await api.sendMessage({
-        sessionId: currentSessionId,
-        content,
-        agentId,
-        mode,
-        skillId,
-      });
-      setSkillId(undefined);
-      await loadSession(currentSessionId);
-      await refresh();
+      try {
+        await api.sendMessage({
+          sessionId: currentSessionId,
+          content,
+          agentId,
+          mode,
+          skillId,
+        });
+        setSkillId(undefined);
+        await loadSession(currentSessionId);
+        await refresh();
+      } catch (error) {
+        setDraft(content);
+        setMessages((current) => current.filter((item) => item.id !== optimisticId));
+        throw error;
+      }
     } catch (error) {
       setNotice(error instanceof Error ? error.message : String(error));
     } finally {

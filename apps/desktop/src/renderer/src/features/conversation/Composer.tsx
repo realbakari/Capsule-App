@@ -64,10 +64,12 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
   const [menuIndex, setMenuIndex] = useState(0);
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [dropping, setDropping] = useState(false);
+  const [caret, setCaret] = useState(0);
+  const [menuDismissed, setMenuDismissed] = useState(false);
   const harnessLive = Boolean(session?.harnessId && session.harnessState && session.harnessState !== "closed");
   const folder = project?.workingDirectory?.split("/").filter(Boolean).pop();
-  const caret = textareaRef.current?.selectionStart ?? draft.length;
   const trigger = detectTrigger(draft, caret);
+  const menuOpen = Boolean(trigger) && !menuDismissed;
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -143,21 +145,42 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
     [files],
   );
 
-  const items =
-    trigger?.kind === "slash" ? slashItems : trigger?.kind === "skill" ? skillItems : trigger?.kind === "file" ? fileItems : [];
+  const items = !menuOpen
+    ? []
+    : trigger?.kind === "slash"
+      ? slashItems
+      : trigger?.kind === "skill"
+        ? skillItems
+        : trigger?.kind === "file"
+          ? fileItems
+          : [];
 
   useEffect(() => {
     setMenuIndex(0);
+    setMenuDismissed(false);
   }, [trigger?.kind, trigger?.query]);
+
+  function syncCaret() {
+    const el = textareaRef.current;
+    if (el) setCaret(el.selectionStart);
+  }
 
   function applyItem(item: SuggestItem) {
     if (item.run) void item.run();
     if (item.insert && trigger) {
       const next = `${draft.slice(0, trigger.start)}${item.insert}${draft.slice(textareaRef.current?.selectionStart ?? draft.length)}`;
       setDraft(next);
+      setCaret(trigger.start + item.insert.length);
     } else if (trigger?.kind === "slash") {
-      setDraft(draft.slice(0, trigger.start) + draft.slice(textareaRef.current?.selectionStart ?? draft.length));
+      const next = draft.slice(0, trigger.start) + draft.slice(textareaRef.current?.selectionStart ?? draft.length);
+      setDraft(next);
+      setCaret(trigger.start);
     }
+    setMenuDismissed(true);
+  }
+
+  function composing(event: { nativeEvent: { isComposing?: boolean }; keyCode?: number }) {
+    return Boolean(event.nativeEvent.isComposing) || event.keyCode === 229;
   }
 
   const permission = session?.permissionProfile ?? "default";
@@ -213,8 +236,15 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
               ? `Continue with ${session?.harnessId === "codex" ? "Codex" : "Claude Code"}…`
               : "Ask Capsule…"
           }
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => {
+            setDraft(event.target.value);
+            setCaret(event.target.selectionStart);
+          }}
+          onClick={syncCaret}
+          onKeyUp={syncCaret}
+          onSelect={syncCaret}
           onKeyDown={(event) => {
+            if (composing(event)) return;
             if (items.length > 0) {
               if (event.key === "ArrowDown") {
                 event.preventDefault();
@@ -226,13 +256,28 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
                 setMenuIndex((current) => Math.max(0, current - 1));
                 return;
               }
-              if (event.key === "Tab" || (event.key === "Enter" && !event.metaKey && !event.ctrlKey && !event.shiftKey)) {
+              if (event.key === "Tab") {
                 event.preventDefault();
                 if (items[menuIndex]) applyItem(items[menuIndex]);
                 return;
               }
+              if (event.key === "Enter" && !event.metaKey && !event.ctrlKey && !event.shiftKey) {
+                const token = trigger ? draft.slice(trigger.start).split(/\s/)[0] : "";
+                const onlyToken = Boolean(trigger && draft.trim() === token);
+                if (trigger?.kind === "slash" && onlyToken && items[menuIndex]) {
+                  event.preventDefault();
+                  applyItem(items[menuIndex]);
+                  return;
+                }
+                if ((trigger?.kind === "file" || trigger?.kind === "skill") && items[menuIndex] && onlyToken) {
+                  event.preventDefault();
+                  applyItem(items[menuIndex]);
+                  return;
+                }
+              }
               if (event.key === "Escape") {
                 event.preventDefault();
+                setMenuDismissed(true);
                 return;
               }
             }

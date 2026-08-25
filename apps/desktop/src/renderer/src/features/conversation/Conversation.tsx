@@ -46,7 +46,8 @@ export function Conversation() {
         ref={scroller}
         onScroll={(event) => {
           const node = event.currentTarget;
-          setStick(node.scrollHeight - node.scrollTop - node.clientHeight < 80);
+          const atBottom = node.scrollHeight - node.scrollTop - node.clientHeight < 80;
+          setStick((current) => (current === atBottom ? current : atBottom));
         }}
       >
         <div className="thread">
