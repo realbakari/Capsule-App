@@ -1,10 +1,16 @@
 import { useEffect, useState } from "react";
 import type { FileEntry } from "@capsule/shared";
-import { useWorkspace } from "../../lib/workspace";
+import { useWorkspace, type InspectorTab } from "../../lib/workspace";
 import { DiffView } from "./DiffView";
-import { DiffIcon, FileIcon, GitBranchIcon, TerminalIcon, XIcon } from "./icons";
+import { CpuIcon, DiffIcon, FileIcon, GitBranchIcon, TerminalIcon, XIcon } from "./icons";
 
-type InspectorTab = "files" | "changes" | "diff" | "run";
+const TABS: Array<{ id: InspectorTab; label: string; key: string }> = [
+  { id: "files", label: "Files", key: "f" },
+  { id: "changes", label: "Changes", key: "c" },
+  { id: "diff", label: "Diff", key: "d" },
+  { id: "agents", label: "Agents", key: "a" },
+  { id: "run", label: "Run", key: "r" },
+];
 
 export function Inspector() {
   const {
@@ -14,6 +20,7 @@ export function Inspector() {
     steps,
     artifacts,
     harnesses,
+    harnessSessions,
     git,
     files,
     pickProjectDirectory,
@@ -25,13 +32,26 @@ export function Inspector() {
     checkoutBranch,
     api,
     projectId,
+    inspectorTab,
+    setInspectorTab,
+    gitCommit,
+    gitStage,
+    gitDiscard,
+    gitCreateBranch,
+    spawnHarness,
+    cancelHarness,
+    closeHarness,
+    setSessionId,
+    busy,
   } = useWorkspace();
-  const [tab, setTab] = useState<InspectorTab>("files");
   const [dir, setDir] = useState(".");
   const [listing, setListing] = useState<FileEntry[]>(files);
   const [diff, setDiff] = useState("");
   const [preview, setPreview] = useState("");
+  const [message, setMessage] = useState("");
+  const [branchName, setBranchName] = useState("");
   const dedicated = harnesses.find((item) => item.id === project?.defaultAgentId);
+  const tab = inspectorTab;
 
   useEffect(() => {
     setDir(".");
@@ -40,8 +60,26 @@ export function Inspector() {
 
   useEffect(() => {
     if (!projectId || tab !== "diff") return;
-    void api.gitDiff(projectId).then((text: string) => setDiff(text));
+    void api.gitDiff(projectId).then((text: string) => {
+      setDiff(text);
+      setPreview("");
+    });
   }, [api, git?.summary, projectId, tab]);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (target && target.closest("input, textarea, select")) return;
+      const match = TABS.find((item) => item.key === event.key.toLowerCase());
+      if (match) {
+        event.preventDefault();
+        setInspectorTab(match.id);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [setInspectorTab]);
 
   async function openDir(relative: string) {
     if (!projectId) return;
@@ -52,22 +90,20 @@ export function Inspector() {
 
   async function showFileDiff(relative: string) {
     if (!projectId) return;
-    const text = await api.gitDiff(projectId, relative);
-    setDiff(text);
-    setTab("diff");
+    setDiff(await api.gitDiff(projectId, relative));
+    setPreview("");
+    setInspectorTab("diff");
   }
 
   async function previewFile(relative: string) {
     if (!projectId) return;
     try {
-      const text = await api.readFile(projectId, relative);
-      setPreview(text.slice(0, 8000));
+      setPreview((await api.readFile(projectId, relative)).slice(0, 8000));
       setDiff("");
-      setTab("diff");
     } catch (error) {
       setPreview(error instanceof Error ? error.message : String(error));
-      setTab("diff");
     }
+    setInspectorTab("diff");
   }
 
   const parent = dir === "." ? undefined : dir.split("/").slice(0, -1).join("/") || ".";
@@ -81,22 +117,19 @@ export function Inspector() {
         </button>
       </div>
       <div className="inspector-tabs">
-        {(
-          [
-            ["files", "Files"],
-            ["changes", "Changes"],
-            ["diff", "Diff"],
-            ["run", "Run"],
-          ] as const
-        ).map(([id, label]) => (
+        {TABS.map((item) => (
           <button
-            key={id}
+            key={item.id}
             type="button"
-            className={tab === id ? "active" : ""}
-            onClick={() => setTab(id)}
+            className={tab === item.id ? "active" : ""}
+            title={`${item.label} (${item.key.toUpperCase()})`}
+            onClick={() => setInspectorTab(item.id)}
           >
-            {label}
-            {id === "changes" && git?.changed ? <span className="tab-count">{git.changed}</span> : null}
+            {item.label}
+            {item.id === "changes" && git?.changed ? <span className="tab-count">{git.changed}</span> : null}
+            {item.id === "agents" && harnessSessions.length ? (
+              <span className="tab-count">{harnessSessions.length}</span>
+            ) : null}
           </button>
         ))}
       </div>
@@ -117,6 +150,7 @@ export function Inspector() {
               <button
                 key={entry.path}
                 className="list-item"
+                title="Click to mention · double-click to preview"
                 onClick={() => {
                   if (entry.type === "directory") void openDir(entry.path);
                   else mentionFile(entry.path);
@@ -126,6 +160,10 @@ export function Inspector() {
                   else if (project?.workingDirectory) {
                     void openPath(`${project.workingDirectory.replace(/\/$/, "")}/${entry.path}`);
                   }
+                }}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  void navigator.clipboard.writeText(entry.path);
                 }}
               >
                 <FileIcon size={12} />
@@ -148,18 +186,57 @@ export function Inspector() {
                 <div className="faint">Working tree clean.</div>
               ) : (
                 git.files.map((entry) => (
-                  <button
-                    key={entry.path}
-                    className="list-item"
-                    onClick={() => void showFileDiff(entry.path)}
-                    onDoubleClick={() => mentionFile(entry.path)}
-                  >
-                    <DiffIcon size={12} />
-                    <span className="truncate">{entry.path}</span>
-                    <span className="meta">{entry.code}</span>
-                  </button>
+                  <div className="change-row" key={entry.path}>
+                    <button className="list-item" onClick={() => void showFileDiff(entry.path)}>
+                      <DiffIcon size={12} />
+                      <span className="truncate">{entry.path}</span>
+                      <span className="meta">{entry.code}</span>
+                    </button>
+                    <button className="ghost" onClick={() => void gitStage(entry.path)}>
+                      Stage
+                    </button>
+                    <button className="danger" onClick={() => gitDiscard(entry.path)}>
+                      Discard
+                    </button>
+                  </div>
                 ))
               )}
+              <form
+                className="commit-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (!message.trim()) return;
+                  void gitCommit(message).then(() => setMessage(""));
+                }}
+              >
+                <input
+                  type="text"
+                  placeholder="Commit message"
+                  value={message}
+                  onChange={(event) => setMessage(event.target.value)}
+                />
+                <button className="send" type="submit" disabled={!git.dirty || !message.trim()}>
+                  Commit
+                </button>
+              </form>
+              <form
+                className="commit-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (!branchName.trim()) return;
+                  void gitCreateBranch(branchName).then(() => setBranchName(""));
+                }}
+              >
+                <input
+                  type="text"
+                  placeholder="New branch"
+                  value={branchName}
+                  onChange={(event) => setBranchName(event.target.value)}
+                />
+                <button className="ghost" type="submit" disabled={!branchName.trim()}>
+                  Create
+                </button>
+              </form>
             </>
           ) : (
             <div className="faint">{git?.summary ?? "Set a folder to see git status."}</div>
@@ -177,6 +254,50 @@ export function Inspector() {
                 <DiffView text={artifact.content ?? ""} />
               </div>
             ))}
+        </div>
+      )}
+      {tab === "agents" && (
+        <div className="inspector-block">
+          {harnesses.map((harness) => (
+            <div className="change-row" key={harness.id}>
+              <div className="list-item" style={{ cursor: "default" }}>
+                <CpuIcon size={12} />
+                <span className="truncate">{harness.name}</span>
+                <span className="meta">{harness.readiness.replaceAll("_", " ")}</span>
+              </div>
+              <button
+                className="send"
+                disabled={!projectId || busy}
+                onClick={() => void spawnHarness(harness.id)}
+              >
+                Spawn
+              </button>
+            </div>
+          ))}
+          {harnessSessions.length === 0 ? (
+            <div className="faint">No live Claude or Codex sessions.</div>
+          ) : (
+            harnessSessions.map((item) => (
+              <div className="change-row" key={item.id}>
+                <button
+                  className={`list-item ${item.id === session?.id ? "active" : ""}`}
+                  onClick={() => {
+                    setSessionId(item.id);
+                    setView("chat");
+                  }}
+                >
+                  <span className="truncate">{item.title}</span>
+                  <span className="meta">{item.harnessState}</span>
+                </button>
+                <button className="ghost" onClick={() => void cancelHarness(item.id)}>
+                  Cancel
+                </button>
+                <button className="danger" onClick={() => void closeHarness(item.id)}>
+                  Close
+                </button>
+              </div>
+            ))
+          )}
         </div>
       )}
       {tab === "run" && (
@@ -226,12 +347,6 @@ export function Inspector() {
             ) : (
               <div className="faint">Idle</div>
             )}
-            {session?.mode && (
-              <div className="kv">
-                <span>Mode</span>
-                <span>{session.mode}</span>
-              </div>
-            )}
           </div>
           {artifacts.length > 0 && (
             <div className="inspector-block">
@@ -246,7 +361,7 @@ export function Inspector() {
           )}
         </>
       )}
-      {git?.isRepo && git.branches.length > 1 && (
+      {git?.isRepo && git.branches.length > 1 && tab !== "agents" && (
         <div className="inspector-block">
           <h4>Branches</h4>
           {git.branches.map((branch) => (

@@ -14,7 +14,17 @@ import { createTextArtifact } from "@capsule/artifacts";
 import { createBuzzAdapter } from "@capsule/buzz";
 import { buildContract } from "@capsule/contracts";
 import { CapsuleDatabase, CapsuleRepositories } from "@capsule/database";
-import { checkoutBranch as checkoutGitBranch, FilesystemAdapter, readGitDiff, readGitStatus } from "@capsule/filesystem";
+import {
+  checkoutBranch as checkoutGitBranch,
+  commitAll,
+  createBranch as createGitBranch,
+  discardFile,
+  FilesystemAdapter,
+  readGitDiff,
+  readGitStatus,
+  searchContents,
+  stageFile,
+} from "@capsule/filesystem";
 import { MockAgentRuntime, OpenClawAdapter, defaultGatewayEndpoint } from "@capsule/openclaw";
 import { decidePolicy, DEFAULT_POLICIES, recordDecision } from "@capsule/policies";
 import { createProjectRecord } from "@capsule/projects";
@@ -35,6 +45,7 @@ import {
   type CreateProjectInput,
   type CreateSessionInput,
   type DiagnosticsSnapshot,
+  type ContentHit,
   type FileEntry,
   type GitStatus,
   type HarnessControlResult,
@@ -519,6 +530,43 @@ export class CapsuleEngine {
     const result = checkoutGitBranch(project.workingDirectory, branch);
     if (!result.ok) throw new Error(result.detail);
     return readGitStatus(project.workingDirectory);
+  }
+
+  gitCommit(projectId: string, message: string): GitStatus {
+    const project = this.requireProject(projectId);
+    if (!project.workingDirectory) throw new Error("Project has no working directory");
+    const result = commitAll(project.workingDirectory, message);
+    if (!result.ok) throw new Error(result.detail);
+    return readGitStatus(project.workingDirectory);
+  }
+
+  gitStage(projectId: string, relative: string): GitStatus {
+    const project = this.requireProject(projectId);
+    if (!project.workingDirectory) throw new Error("Project has no working directory");
+    const result = stageFile(project.workingDirectory, relative);
+    if (!result.ok) throw new Error(result.detail);
+    return readGitStatus(project.workingDirectory);
+  }
+
+  gitDiscard(projectId: string, relative: string): GitStatus {
+    const project = this.requireProject(projectId);
+    if (!project.workingDirectory) throw new Error("Project has no working directory");
+    const result = discardFile(project.workingDirectory, relative);
+    if (!result.ok) throw new Error(result.detail);
+    return readGitStatus(project.workingDirectory);
+  }
+
+  gitCreateBranch(projectId: string, branch: string): GitStatus {
+    const project = this.requireProject(projectId);
+    if (!project.workingDirectory) throw new Error("Project has no working directory");
+    const result = createGitBranch(project.workingDirectory, branch);
+    if (!result.ok) throw new Error(result.detail);
+    return readGitStatus(project.workingDirectory);
+  }
+
+  searchContents(projectId: string, query: string): ContentHit[] {
+    const project = this.requireProject(projectId);
+    return searchContents(project.workingDirectory, query);
   }
 
   async listSkills() {

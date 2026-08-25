@@ -27,6 +27,7 @@ import type {
 } from "@capsule/shared";
 
 export type View = "chat" | "runtimes" | "skills" | "history" | "approvals" | "settings";
+export type InspectorTab = "files" | "changes" | "diff" | "run" | "agents";
 
 export const MODES: AgentMode[] = ["plan", "chat", "agent", "code", "research", "browser", "automation"];
 export const PRIMARY_MODES: AgentMode[] = ["plan", "chat", "code"];
@@ -185,6 +186,15 @@ export interface WorkspaceValue {
   setPermissionProfile: (profile: string) => Promise<void>;
   sendAndContinue: () => Promise<void>;
   checkoutBranch: (branch: string) => Promise<void>;
+  inspectorTab: InspectorTab;
+  setInspectorTab: (tab: InspectorTab) => void;
+  openInspector: (tab?: InspectorTab) => void;
+  contentSearch: boolean;
+  setContentSearch: (open: boolean) => void;
+  gitCommit: (message: string) => Promise<void>;
+  gitStage: (relative: string) => Promise<void>;
+  gitDiscard: (relative: string) => void;
+  gitCreateBranch: (branch: string) => Promise<void>;
 }
 
 const WorkspaceContext = createContext<WorkspaceValue | null>(null);
@@ -235,6 +245,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   );
   const [skillId, setSkillId] = useState<string>();
   const [filePicker, setFilePicker] = useState(false);
+  const [contentSearch, setContentSearch] = useState(false);
+  const [inspectorTab, setInspectorTab] = useState<InspectorTab>("files");
 
   const project = projects.find((item) => item.id === projectId);
   const session = sessions.find((item) => item.id === sessionId);
@@ -336,6 +348,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       if (key === "p") {
         event.preventDefault();
         setFilePicker((open) => !open);
+      }
+      if (key === "f" && event.shiftKey) {
+        event.preventDefault();
+        setContentSearch((open) => !open);
       }
       if (key === "n") {
         event.preventDefault();
@@ -687,6 +703,55 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  function openInspector(tab?: InspectorTab) {
+    if (tab) setInspectorTab(tab);
+    setInspectorOpen(true);
+    setView("chat");
+  }
+
+  async function gitCommit(message: string) {
+    if (!projectId) return;
+    try {
+      setGit(await api.gitCommit(projectId, message));
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function gitStage(relative: string) {
+    if (!projectId) return;
+    try {
+      setGit(await api.gitStage(projectId, relative));
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  function gitDiscard(relative: string) {
+    setConfirm({
+      title: `Discard “${relative}”?`,
+      detail: "Uncommitted edits in this file are removed.",
+      danger: true,
+      confirmLabel: "Discard",
+      onConfirm: () => {
+        void (async () => {
+          if (!projectId) return;
+          setGit(await api.gitDiscard(projectId, relative));
+          setConfirm(undefined);
+        })();
+      },
+    });
+  }
+
+  async function gitCreateBranch(branch: string) {
+    if (!projectId) return;
+    try {
+      setGit(await api.gitCreateBranch(projectId, branch));
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+    }
+  }
+
   const steps = stepFromEvents(events);
 
   const value = useMemo<WorkspaceValue>(
@@ -789,6 +854,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       setPermissionProfile,
       sendAndContinue,
       checkoutBranch,
+      inspectorTab,
+      setInspectorTab,
+      openInspector,
+      contentSearch,
+      setContentSearch,
+      gitCommit,
+      gitStage,
+      gitDiscard,
+      gitCreateBranch,
     }),
     [
       api,
@@ -834,6 +908,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       sidebarWidth,
       skillId,
       filePicker,
+      contentSearch,
+      inspectorTab,
       refresh,
       loadSession,
     ],

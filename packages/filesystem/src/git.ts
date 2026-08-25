@@ -91,3 +91,39 @@ export function readGitDiff(workingDirectory: string, relative?: string): string
   const staged = git(workingDirectory, relative ? ["diff", "--cached", "--", relative] : ["diff", "--cached"]);
   return staged.stdout.trim() ? staged.stdout : result.stderr || "";
 }
+
+export function stageFile(workingDirectory: string, relative: string): { ok: boolean; detail: string } {
+  const result = git(workingDirectory, ["add", "--", relative]);
+  if (result.ok) return { ok: true, detail: `Staged ${relative}.` };
+  return { ok: false, detail: result.stderr || "Stage failed." };
+}
+
+export function discardFile(workingDirectory: string, relative: string): { ok: boolean; detail: string } {
+  const restored = git(workingDirectory, ["restore", "--worktree", "--source=HEAD", "--", relative]);
+  if (restored.ok) return { ok: true, detail: `Restored ${relative}.` };
+  const checked = git(workingDirectory, ["checkout", "--", relative]);
+  if (checked.ok) return { ok: true, detail: `Restored ${relative}.` };
+  const target = path.join(workingDirectory, relative);
+  if (fs.existsSync(target)) {
+    fs.rmSync(target, { force: true });
+    return { ok: true, detail: `Removed ${relative}.` };
+  }
+  return { ok: false, detail: restored.stderr || checked.stderr || "Discard failed." };
+}
+
+export function commitAll(workingDirectory: string, message: string): { ok: boolean; detail: string } {
+  const text = message.trim();
+  if (!text) return { ok: false, detail: "Commit message is empty." };
+  git(workingDirectory, ["add", "-A"]);
+  const result = git(workingDirectory, ["commit", "-m", text]);
+  if (result.ok) return { ok: true, detail: result.stdout.trim() || "Committed." };
+  return { ok: false, detail: result.stderr || result.stdout.trim() || "Commit failed." };
+}
+
+export function createBranch(workingDirectory: string, branch: string): { ok: boolean; detail: string } {
+  const name = branch.trim();
+  if (!name) return { ok: false, detail: "Branch name is empty." };
+  const result = git(workingDirectory, ["checkout", "-b", name]);
+  if (result.ok) return { ok: true, detail: `Created ${name}.` };
+  return { ok: false, detail: result.stderr || "Could not create branch." };
+}

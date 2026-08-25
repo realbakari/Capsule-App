@@ -1020,11 +1020,30 @@ select:focus {
 }
 .inspector-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.15rem;
   margin-bottom: 0.75rem;
   padding: 0.12rem;
   border-radius: 0.5rem;
   background: rgb(255 255 255 / 4%);
+}
+.change-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.change-row .list-item {
+  flex: 1;
+  min-width: 0;
+}
+.commit-form {
+  display: flex;
+  gap: 0.35rem;
+  margin-top: 0.65rem;
+}
+.commit-form input {
+  flex: 1;
+  min-width: 0;
 }
 .inspector-tabs button {
   flex: 1;

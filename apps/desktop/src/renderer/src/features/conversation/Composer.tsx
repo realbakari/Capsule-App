@@ -58,6 +58,7 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
     setFilePicker,
     checkoutBranch,
     mentionFile,
+    openInspector,
   } = useWorkspace();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [menuIndex, setMenuIndex] = useState(0);
@@ -341,7 +342,11 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
               options={git.branches.map((item) => ({ id: item, label: item }))}
               onChange={(id) => void checkoutBranch(id)}
             />
-            {git.dirty ? "*" : ""}
+            {git.dirty ? (
+              <button type="button" title="Open changes" onClick={() => openInspector("changes")}>
+                *
+              </button>
+            ) : null}
           </span>
         )}
         {project?.defaultAgentId && (

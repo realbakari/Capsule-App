@@ -168,6 +168,12 @@ export interface GitChange {
   code: string;
 }
 
+export interface ContentHit {
+  path: string;
+  line: number;
+  text: string;
+}
+
 export interface GitStatus {
   available: boolean;
   isRepo: boolean;

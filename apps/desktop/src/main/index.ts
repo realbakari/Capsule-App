@@ -236,6 +236,21 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.checkoutBranch, (projectId, branch) =>
     requireEngine().checkoutBranch(String(projectId), String(branch)),
   );
+  handle(IPC_CHANNELS.gitCommit, (projectId, message) =>
+    requireEngine().gitCommit(String(projectId), String(message)),
+  );
+  handle(IPC_CHANNELS.gitStage, (projectId, relative) =>
+    requireEngine().gitStage(String(projectId), String(relative)),
+  );
+  handle(IPC_CHANNELS.gitDiscard, (projectId, relative) =>
+    requireEngine().gitDiscard(String(projectId), String(relative)),
+  );
+  handle(IPC_CHANNELS.gitCreateBranch, (projectId, branch) =>
+    requireEngine().gitCreateBranch(String(projectId), String(branch)),
+  );
+  handle(IPC_CHANNELS.searchContents, (projectId, query) =>
+    requireEngine().searchContents(String(projectId), String(query)),
+  );
   handle(IPC_CHANNELS.openPath, async (target) => {
     const location = String(target);
     if (!location) return;

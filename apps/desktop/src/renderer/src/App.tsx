@@ -4,6 +4,7 @@ import { RuntimesView } from "./features/harness/RuntimesView";
 import { ApprovalsView, HistoryView, SkillsView } from "./features/library/LibraryViews";
 import { SettingsView } from "./features/settings/SettingsView";
 import { ConfirmDialog } from "./features/shell/ConfirmDialog";
+import { ContentSearch } from "./features/shell/ContentSearch";
 import { FilePicker } from "./features/shell/FilePicker";
 import { Inspector } from "./features/shell/Inspector";
 import { Palette } from "./features/shell/Palette";
@@ -38,6 +39,7 @@ function Shell() {
       </div>
       <Palette />
       <FilePicker />
+      <ContentSearch />
       <ConfirmDialog />
     </div>
   );

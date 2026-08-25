@@ -219,7 +219,7 @@ Visual language is graphite and off-white, matching the Capsule mark. No purple 
 
 | # | Limitation | Detail |
 |---|-----------|--------|
-| 1 | Monaco / xterm / Git workspace | Phase 4. File list exists; full code workspace does not. |
+| 1 | Monaco / xterm | File tree, git changes/diff/commit, and branch checkout exist; an in-app editor and terminal do not. |
 | 2 | Execution replay UI | Events are stored; a dedicated replay viewer is not shipped. |
 | 3 | Device pairing UX | Token + loopback connect work; full Ed25519 pairing UI is incomplete. |
 | 4 | Bonjour discovery | Local TCP probe and config-file hints work; mDNS browsing is not wired. |

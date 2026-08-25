@@ -142,6 +142,10 @@ export function SettingsView() {
             <span className="mono">⌘P</span>
           </div>
           <div className="kv">
+            <span>Search in files</span>
+            <span className="mono">⇧⌘F</span>
+          </div>
+          <div className="kv">
             <span>Toggle sidebar</span>
             <span className="mono">⌘B</span>
           </div>

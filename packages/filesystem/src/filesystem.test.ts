@@ -3,7 +3,14 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { checkoutBranch, FilesystemAdapter, readGitDiff, readGitStatus } from "./index.js";
+import {
+  checkoutBranch,
+  commitAll,
+  FilesystemAdapter,
+  readGitDiff,
+  readGitStatus,
+  searchContents,
+} from "./index.js";
 
 describe("FilesystemAdapter", () => {
   it("lists project files and rejects escapes", () => {
@@ -44,5 +51,10 @@ describe("FilesystemAdapter", () => {
     spawnSync("git", ["checkout", "-b", "feature"], { cwd: root });
     const switched = checkoutBranch(root, status.branch ?? "HEAD");
     expect(switched.ok).toBe(true);
+    writeFileSync(path.join(root, "README.md"), "three\n");
+    const committed = commitAll(root, "update readme");
+    expect(committed.ok).toBe(true);
+    expect(readGitStatus(root).dirty).toBe(false);
+    expect(searchContents(root, "three").some((hit) => hit.path.includes("README"))).toBe(true);
   });
 });
