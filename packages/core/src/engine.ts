@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import path from "node:path";
 import { agentIdForMode, DEFAULT_AGENTS, excludeSystemAgents } from "@capsule/agents";
 import {
   buildDoctorReport,
@@ -32,6 +33,7 @@ import { createRunEvent, createRunRecord } from "@capsule/runs";
 import { createSessionRecord, titleFromPrompt } from "@capsule/sessions";
 import {
   acpDoctorCommand,
+  acpInstallCommand,
   createId,
   nowIso,
   type Agent,
@@ -41,6 +43,9 @@ import {
   type ApprovalRequest,
   type CapsuleSettings,
   type ChatMessage,
+  DEFAULT_CAPSULE_SETTINGS,
+  normalizeCapsuleSettings,
+  TOKEN_PRESENT_MASK,
   type ConnectionState,
   type CreateProjectInput,
   type CreateSessionInput,
@@ -66,7 +71,7 @@ import {
   type SubsystemStatus,
 } from "@capsule/shared";
 import { DEFAULT_SKILLS, skillIdForMode } from "@capsule/skills";
-import { openNativeTerminal } from "@capsule/terminal";
+import { openNativeTerminal, runInDirectory } from "@capsule/terminal";
 import { evaluateRun, verifyContract } from "@capsule/verification";
 import {
   CAPSULE_KEYCHAIN_SERVICE,
@@ -81,6 +86,8 @@ export interface CapsuleEngineOptions {
   gatewayUrl?: string;
   clientVersion?: string;
   capsuleVersion?: string;
+  /** When false, start() stays on the mock runtime and does not probe the Gateway. */
+  autoConnect?: boolean;
 }
 
 export interface EngineState {
@@ -103,21 +110,18 @@ export class CapsuleEngine {
   private settings: CapsuleSettings;
   private logs: string[] = [];
   private usingMock = true;
+  private acpBuffers = new Map<string, string>();
+  private acpUnsub?: () => void;
 
   constructor(private readonly options: CapsuleEngineOptions) {
     this.db = new CapsuleDatabase(options.databasePath);
     this.repos = new CapsuleRepositories(this.db);
     this.keychain = createKeychainAdapter(options.userDataDir);
-    this.settings = {
+    this.settings = normalizeCapsuleSettings({
+      ...DEFAULT_CAPSULE_SETTINGS,
       gatewayUrl: options.gatewayUrl ?? defaultGatewayEndpoint().url,
-      useMockWhenOffline: true,
-      launchAtLogin: false,
-      mockScenario: "successful_run",
-    };
-    this.openclaw = new OpenClawAdapter({
-      gatewayUrl: this.settings.gatewayUrl,
-      clientVersion: options.clientVersion,
     });
+    this.openclaw = this.createOpenClawAdapter();
     this.runtime = this.mock;
   }
 
@@ -125,16 +129,14 @@ export class CapsuleEngine {
     this.bootstrapWorkspace();
     this.loadSettings();
     await this.hydrateSecrets();
-    this.openclaw = new OpenClawAdapter({
-      gatewayUrl: this.settings.gatewayUrl,
-      token: this.settings.gatewayToken,
-      clientVersion: this.options.clientVersion,
-    });
+    this.openclaw = this.createOpenClawAdapter();
     await this.connectPreferredRuntime();
+    this.bindAcpReplies();
     this.log("Capsule engine started");
   }
 
   async stop(): Promise<void> {
+    this.acpUnsub?.();
     await this.runtime.disconnect().catch(() => undefined);
     this.db.close();
   }
@@ -160,16 +162,13 @@ export class CapsuleEngine {
       this.settings.gatewayUrl = url;
       this.persistSettings();
     }
-    this.openclaw = new OpenClawAdapter({
-      gatewayUrl: this.settings.gatewayUrl,
-      token: this.settings.gatewayToken,
-      clientVersion: this.options.clientVersion,
-    });
+    this.openclaw = this.createOpenClawAdapter();
     try {
       await this.openclaw.connect();
       this.runtime = this.openclaw;
       this.usingMock = false;
       await this.syncRuntimeCatalog();
+      this.bindAcpReplies();
       this.log(`Connected to OpenClaw Gateway at ${this.settings.gatewayUrl}`);
       this.events.emit("connection", await this.runtime.getStatus());
     } catch (error) {
@@ -213,6 +212,14 @@ export class CapsuleEngine {
     const harnesses = await this.listHarnesses();
     const extra = harnesses
       .filter((harness) => !base.some((agent) => agent.id === harness.id))
+      .filter(
+        (harness) =>
+          harness.id === "claude" ||
+          harness.id === "codex" ||
+          Boolean(harness.binaryPath) ||
+          harness.dedicatedProjectIds.length > 0 ||
+          harness.liveSessionIds.length > 0,
+      )
       .map((harness) =>
         harnessAgentRecord(PRESET_HARNESSES.find((preset) => preset.id === harness.id)!),
       );
@@ -220,8 +227,12 @@ export class CapsuleEngine {
   }
 
   async listHarnesses(): Promise<HarnessStatus[]> {
-    const dedicatedByHarness: Record<string, string[]> = { claude: [], codex: [] };
-    const liveByHarness: Record<string, string[]> = { claude: [], codex: [] };
+    const dedicatedByHarness: Record<string, string[]> = Object.fromEntries(
+      PRESET_HARNESSES.map((preset) => [preset.id, [] as string[]]),
+    );
+    const liveByHarness: Record<string, string[]> = Object.fromEntries(
+      PRESET_HARNESSES.map((preset) => [preset.id, [] as string[]]),
+    );
     for (const project of this.repos.listProjects()) {
       if (project.defaultAgentId && isHarnessId(project.defaultAgentId)) {
         dedicatedByHarness[project.defaultAgentId]?.push(project.id);
@@ -263,12 +274,17 @@ export class CapsuleEngine {
       try {
         const scratch = await this.openclaw.createSession({
           projectId: this.repos.listProjects()[0]?.id ?? "local",
-          agentId: harnessId,
           title: `${preset.name} doctor`,
           mode: "code",
         });
         const key = scratch.openclawSessionKey ?? scratch.id;
         gatewayOutput = await this.openclaw.doctorAcp(key);
+        if (!acpxEnabled) {
+          const install = await this.openclaw.acpCommand(key, acpInstallCommand(), { waitMs: 8_000 });
+          if (install.text) {
+            gatewayOutput = [gatewayOutput, install.text].filter(Boolean).join("\n");
+          }
+        }
       } catch (error) {
         gatewayOutput = `Gateway ${acpDoctorCommand()} failed: ${error instanceof Error ? error.message : String(error)}`;
       }
@@ -333,7 +349,12 @@ export class CapsuleEngine {
       else this.repos.insertSession(session);
       this.log(`Mock spawn for ${harnessId}; connect OpenClaw to run a real ACP session.`);
       this.events.emit("state", { command: "harness-updated" });
-      return { session, usedSlashCommand: false, detail: "Mock ACP session." };
+      return {
+        session,
+        usedSlashCommand: false,
+        detail:
+          "Mock session only. Connect the OpenClaw Gateway and enable acpx, then spawn again for a real Claude or Codex run.",
+      };
     }
 
     try {
@@ -464,9 +485,6 @@ export class CapsuleEngine {
     if (!value) throw new Error("Option value is empty");
     if (patch.key === "model") session.modelOverride = value;
     if (patch.key === "permissions") session.permissionProfile = value;
-    if (patch.key === "mode" && (value === "persistent" || value === "oneshot")) {
-      session.acpMode = value;
-    }
     if (patch.key === "cwd") {
       const project = this.requireProject(session.projectId);
       project.workingDirectory = value;
@@ -582,6 +600,7 @@ export class CapsuleEngine {
     const project = this.requireProject(input.projectId);
     const agentId = input.agentId ?? project.defaultAgentId ?? agentIdForMode(input.mode ?? project.defaultMode);
     const session = createSessionRecord(project, input, agentId);
+    session.permissionProfile = input.permissionProfile ?? this.settings.defaultPermission;
     if (!this.usingMock) {
       try {
         const remote = await this.openclaw.createSession({
@@ -714,6 +733,8 @@ export class CapsuleEngine {
       recordDecision(run.id, writeRule, project.workingDirectory ?? "(workspace)", "Default project write policy"),
     );
 
+    if (this.usingMock) this.mock.setWorkspace(project.workingDirectory);
+
     const runtimeMessage: AgentMessage = {
       ...input,
       sessionId: this.usingMock ? session.id : (session.openclawSessionKey ?? session.id),
@@ -816,22 +837,38 @@ export class CapsuleEngine {
     new FilesystemAdapter(project.workingDirectory).write(relative, content);
   }
 
-  openTerminal(projectId: string): void {
+  async openTerminal(projectId: string): Promise<void> {
     const project = this.requireProject(projectId);
-    if (!project.workingDirectory) throw new Error("Project has no working directory");
-    openNativeTerminal(project.workingDirectory);
+    if (!project.workingDirectory) throw new Error("Choose a project folder first");
+    await openNativeTerminal(project.workingDirectory);
+  }
+
+  async execInProject(projectId: string, command: string) {
+    const project = this.requireProject(projectId);
+    if (!project.workingDirectory) throw new Error("Choose a project folder first");
+    return runInDirectory(project.workingDirectory, command);
   }
 
   getSettings(): CapsuleSettings {
-    return { ...this.settings, gatewayToken: this.settings.gatewayToken ? "••••" : undefined };
+    return {
+      ...this.settings,
+      gatewayToken: this.settings.gatewayToken ? TOKEN_PRESENT_MASK : undefined,
+    };
   }
 
   async updateSettings(patch: Partial<CapsuleSettings>): Promise<CapsuleSettings> {
-    this.settings = { ...this.settings, ...patch };
-    if (patch.gatewayToken) {
-      await this.keychain.set(CAPSULE_KEYCHAIN_SERVICE, GATEWAY_TOKEN_ACCOUNT, patch.gatewayToken);
+    const { gatewayToken, ...rest } = patch;
+    this.settings = normalizeCapsuleSettings({ ...this.settings, ...rest });
+    if (gatewayToken === TOKEN_PRESENT_MASK) {
+      // Renderer round-trip of a stored token — keep the secret in Keychain.
+    } else if (gatewayToken === "") {
+      delete this.settings.gatewayToken;
+      await this.keychain.delete(CAPSULE_KEYCHAIN_SERVICE, GATEWAY_TOKEN_ACCOUNT);
+    } else if (typeof gatewayToken === "string") {
+      this.settings.gatewayToken = gatewayToken;
+      await this.keychain.set(CAPSULE_KEYCHAIN_SERVICE, GATEWAY_TOKEN_ACCOUNT, gatewayToken);
     }
-    if (patch.mockScenario) this.mock.setScenario(patch.mockScenario);
+    if (patch.mockScenario) this.mock.setScenario(this.settings.mockScenario);
     this.persistSettings();
     return this.getSettings();
   }
@@ -861,7 +898,48 @@ export class CapsuleEngine {
     };
   }
 
+  private bindAcpReplies(): void {
+    this.acpUnsub?.();
+    if (this.usingMock) return;
+    this.acpUnsub = this.openclaw.onAcpReply((payload) => this.handleAcpReply(payload));
+  }
+
+  private handleAcpReply(payload: { sessionKey?: string; text?: string; done?: boolean }): void {
+    if (!payload.sessionKey) return;
+    const session = this.repos
+      .listSessions()
+      .find((item) => item.openclawSessionKey === payload.sessionKey);
+    if (!session) return;
+    if (payload.text) {
+      const prev = this.acpBuffers.get(payload.sessionKey) ?? "";
+      this.acpBuffers.set(payload.sessionKey, `${prev}${payload.text}`);
+    }
+    if (!payload.done) return;
+    const content = (this.acpBuffers.get(payload.sessionKey) ?? payload.text ?? "").trim();
+    this.acpBuffers.delete(payload.sessionKey);
+    if (content.length < 2) return;
+    const last = this.repos.listMessages(session.id).at(-1);
+    if (last?.role === "assistant" && last.content === content) return;
+    const message: ChatMessage = {
+      id: createId("msg"),
+      sessionId: session.id,
+      role: "assistant",
+      content,
+      createdAt: nowIso(),
+    };
+    this.repos.insertMessage(message);
+    this.events.emit("message", message);
+  }
+
   private async connectPreferredRuntime(): Promise<void> {
+    if (this.options.autoConnect === false) {
+      this.mock.setScenario(this.settings.mockScenario);
+      await this.mock.connect();
+      this.runtime = this.mock;
+      this.usingMock = true;
+      await this.syncRuntimeCatalog();
+      return;
+    }
     try {
       await this.connectGateway();
     } catch (error) {
@@ -930,6 +1008,31 @@ export class CapsuleEngine {
       if (typeof event.data?.output === "string") run.result = event.data.output;
       if (typeof event.data?.error === "string") run.error = event.data.error;
       if (status === "completed") {
+        if (this.usingMock) {
+          const artifact = createTextArtifact({
+            session,
+            run,
+            title: "Mock run (Gateway offline)",
+            content: run.result ?? "",
+            kind: "report",
+          });
+          this.repos.insertArtifact(artifact);
+          if (run.result) {
+            const assistantMessage: ChatMessage = {
+              id: createId("msg"),
+              sessionId: session.id,
+              role: "assistant",
+              content: run.result,
+              runId: run.id,
+              createdAt: nowIso(),
+            };
+            this.repos.insertMessage(assistantMessage);
+            this.events.emit("message", assistantMessage);
+          }
+          this.repos.updateRun(run);
+          this.events.emit("run", run);
+          return;
+        }
         const contract = run.contractId ? this.repos.getContract(run.contractId) : undefined;
         if (contract) {
           const verification = verifyContract({
@@ -1017,7 +1120,10 @@ export class CapsuleEngine {
     const raw = this.repos.getSetting("settings");
     if (!raw) return;
     try {
-      this.settings = { ...this.settings, ...(JSON.parse(raw) as CapsuleSettings) };
+      this.settings = normalizeCapsuleSettings({
+        ...this.settings,
+        ...(JSON.parse(raw) as Partial<CapsuleSettings>),
+      });
     } catch {
       // Keep defaults if persisted settings are unreadable.
     }
@@ -1027,6 +1133,15 @@ export class CapsuleEngine {
     const stored = { ...this.settings };
     delete stored.gatewayToken;
     this.repos.setSetting("settings", JSON.stringify(stored));
+  }
+
+  private createOpenClawAdapter(): OpenClawAdapter {
+    return new OpenClawAdapter({
+      gatewayUrl: this.settings.gatewayUrl,
+      token: this.settings.gatewayToken,
+      clientVersion: this.options.clientVersion,
+      identityDir: path.join(this.options.userDataDir, "identity"),
+    });
   }
 
   private async hydrateSecrets(): Promise<void> {
@@ -1075,7 +1190,7 @@ export class CapsuleEngine {
   private requireHarnessSession(id: string): Session {
     const session = this.requireSession(id);
     if (!session.harnessId) {
-      throw new Error("This conversation is not bound to a Claude Code or Codex harness.");
+      throw new Error("This conversation is not bound to an ACP harness.");
     }
     return session;
   }

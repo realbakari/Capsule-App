@@ -7,7 +7,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from PIL import Image, ImageFilter
+from PIL import Image, ImageDraw, ImageFilter
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "assets" / "logo.png"
@@ -29,11 +29,30 @@ ICONSET_SIZES = [
 ]
 
 
+def macos_icon_mask(size: int) -> Image.Image:
+    """Squircle mask so Dock/dev icons are not a sharp square.
+
+    radius ≈ 22.37% matches Apple's continuous-corner app icon.
+    """
+    mask = Image.new("L", (size, size), 0)
+    draw = ImageDraw.Draw(mask)
+    radius = max(2, round(size * 0.2237))
+    draw.rounded_rectangle((0, 0, size - 1, size - 1), radius=radius, fill=255)
+    return mask
+
+
+def apply_macos_shape(image: Image.Image) -> Image.Image:
+    size = image.width
+    shaped = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    shaped.paste(image.convert("RGBA"), mask=macos_icon_mask(size))
+    return shaped
+
+
 def resize_app_icon(source: Image.Image, size: int) -> Image.Image:
     image = source.resize((size, size), Image.Resampling.LANCZOS)
     if size <= 64:
         image = image.filter(ImageFilter.UnsharpMask(radius=0.6, percent=120, threshold=2))
-    return image.convert("RGBA")
+    return apply_macos_shape(image.convert("RGBA"))
 
 
 def tray_template(source: Image.Image, size: int) -> Image.Image:

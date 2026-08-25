@@ -1,22 +1,32 @@
-# Claude Code and Codex harnesses
+# ACP harnesses
 
-Capsule owns the workspace: projects, conversations, runs, contracts, approvals, and artifacts. OpenClaw acpx owns the coding loop. Capsule never ships or installs Claude Code or Codex.
+Capsule owns the workspace: projects, conversations, runs, contracts, approvals, and artifacts. OpenClaw acpx owns the coding loop. Capsule never ships or installs Claude Code, Codex, or any other ACP CLI.
+
+See [OpenClaw ACP agents](https://docs.openclaw.ai/tools/acp-agents) and [setup](https://docs.openclaw.ai/tools/acp-agents-setup).
 
 ## Lifecycle Capsule implements
 
 | Action | What Capsule does |
 |--------|-------------------|
-| **Doctor** | Probe `claude` / `codex` on `PATH`, Gateway reachability, and the `acpx` plugin. When connected, send `/acp doctor`. |
-| **Dedicate** | Set the project's default coding agent to Claude or Codex. Code-mode sends route through that harness. |
-| **Spawn** | Create or bind an OpenClaw session and send `/acp spawn <id> --bind here --mode persistent --cwd <dir>`. |
-| **Work** | Follow-up prompts go to the bound ACP session. |
+| **Doctor** | Probe the CLI on `PATH`, Gateway reachability, and the `acpx` plugin. When connected, send `/acp doctor` (and `/acp install` if acpx is missing). |
+| **Dedicate** | Set the project's default coding agent. Code-mode sends route through that harness. |
+| **Spawn** | `sessions.create`, then `/acp spawn <id> --bind here --mode persistent\|oneshot --cwd <dir>`. |
+| **Work** | Follow-up prompts go to the bound ACP session. Gateway commands (`/acp`, `/status`) stay local. |
 | **Steer** | `sessions.steer` when the Gateway supports it, otherwise `/acp steer`. |
 | **Cancel** | `sessions.abort` plus `/acp cancel` for the in-flight turn. Binding stays. |
-| **Status** | `/acp status` — backend, mode, state, model, cwd. |
-| **Permissions / model / cwd** | `/acp permissions`, `/acp model`, `/acp cwd`. |
+| **Status** | `/acp status` — backend, mode, state, model, cwd, permissions, timeout. |
+| **Tune** | `/acp permissions`, `/acp model`, `/acp cwd`, `/acp timeout`, `/acp set-mode`. |
 | **Close** | `/acp close` — ends the ACP session and unbinds. Capsule keeps the conversation history. |
 
-Spawn prefers `sessions.create` with the `/acp spawn` command as the first message (valid against Gateway protocol 4). Capsule does **not** pass illegal `runtime: "acp"` fields on `sessions.create`.
+`sessions.create` does **not** accept `runtime: "acp"`. `sessions_spawn({ runtime: "acp" })` is an agent tool, not a Gateway session-create field.
+
+## Official acpx targets
+
+Claude Code and Codex are first-class in Capsule. These ids are also valid `/acp spawn` targets: `copilot`, `cursor`, `droid`, `fast-agent`, `gemini`, `iflow`, `kilocode`, `kimi`, `kiro`, `mux`, `opencode`, `openclaw`, `qoder`, `qwen`, `trae`.
+
+`pi` is registered in acpx but is not treated as a coding harness here.
+
+Codex has two OpenClaw routes. Native `/codex` is preferred when the Codex plugin is enabled. Capsule spawn of Codex is the **explicit ACP** path (`/acp spawn codex`).
 
 ## Workspace
 
@@ -25,22 +35,25 @@ Spawn prefers `sessions.create` with the `/acp spawn` command as the first messa
 - Slash commands (`/`), skills (`$`), plan vs code modes
 - Per-thread permission mode (supervised / standard / full access)
 - Approvals, run timeline, artifacts
-- Claude Code and Codex as ACP harnesses through OpenClaw
+- ACP harnesses through OpenClaw acpx
+
+ACP sessions run on the Gateway host. OpenClaw sandbox policy does not wrap them. Write/exec-heavy non-interactive runs usually need `plugins.entries.acpx.config.permissionMode=approve-all` or they fail with `PermissionPromptUnavailableError`.
 
 ## Do you need to install Claude Code in Capsule?
 
 No. Capsule **picks them up**:
 
 1. From `PATH` and common install locations on this Mac (`/opt/homebrew/bin`, `~/.local/bin`, a login shell, …).
-2. From the OpenClaw Gateway host when acpx is enabled — even if the desktop process cannot see the binary.
+2. From the OpenClaw Gateway host when acpx is enabled — even if the desktop process cannot see the binary. acpx may fetch adapters on first use.
 
 If the UI says a CLI is already detected, the remaining step is **start/connect the Gateway**, not another install.
 
 ## What Capsule does not do
 
-- Speak ACP JSON-RPC to Claude or Codex over stdio
-- Install Claude Code or Codex inside the app
-- Replace OpenClaw's native Codex plugin (`/codex bind`) — dedicated Codex in Capsule is the explicit ACP path
+- Speak ACP JSON-RPC to a harness over stdio
+- Install any coding CLI inside the app
+- Replace OpenClaw's native Codex plugin (`/codex bind`)
+- Own Discord/Telegram ACP channel bindings (those stay in Gateway config)
 
 ## Operator setup
 
@@ -48,11 +61,14 @@ If the UI says a CLI is already detected, the remaining step is **start/connect 
 # On the Gateway host
 openclaw plugins install @openclaw/acpx
 openclaw config set plugins.entries.acpx.enabled true
+# If plugins.allow is set, it must include acpx
+
+# Optional, for write/exec in non-interactive ACP sessions
+openclaw config set plugins.entries.acpx.config.permissionMode approve-all
+openclaw gateway restart
 
 # On this Mac
-# Install and authenticate Claude Code and/or the Codex CLI
+# Install and authenticate Claude Code, Codex, Gemini, …
 ```
 
 Then in Capsule: **Runtimes → Doctor / Dedicate / Spawn**. Code-mode messages on a dedicated project auto-spawn ACP if no live session exists.
-
-See [OpenClaw ACP agents](https://docs.openclaw.ai/tools/acp-agents).

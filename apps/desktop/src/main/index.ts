@@ -205,6 +205,9 @@ function registerIpc(): void {
     requireEngine().listFiles(String(projectId), relative ? String(relative) : "."),
   );
   handle(IPC_CHANNELS.openTerminal, (projectId) => requireEngine().openTerminal(String(projectId)));
+  handle(IPC_CHANNELS.execInProject, (projectId, command) =>
+    requireEngine().execInProject(String(projectId), String(command)),
+  );
   handle(IPC_CHANNELS.getStatus, () => requireEngine().getStatus());
   handle(IPC_CHANNELS.getSubsystemStatus, () => requireEngine().getSubsystemStatus());
   handle(IPC_CHANNELS.connectGateway, (url) =>
@@ -212,7 +215,11 @@ function registerIpc(): void {
   );
   handle(IPC_CHANNELS.disconnectGateway, () => requireEngine().disconnectGateway());
   handle(IPC_CHANNELS.getSettings, () => requireEngine().getSettings());
-  handle(IPC_CHANNELS.updateSettings, (patch) => requireEngine().updateSettings(patch as never));
+  handle(IPC_CHANNELS.updateSettings, async (patch) => {
+    const next = await requireEngine().updateSettings(patch as never);
+    applyLaunchAtLogin(next.launchAtLogin);
+    return next;
+  });
   handle(IPC_CHANNELS.getDiagnostics, () => requireEngine().getDiagnostics());
   handle(IPC_CHANNELS.search, (query) => requireEngine().search(String(query)));
   handle(IPC_CHANNELS.searchFiles, (projectId, query) =>
@@ -257,10 +264,29 @@ function registerIpc(): void {
     await shell.openPath(location);
   });
   handle(IPC_CHANNELS.pickDirectory, async () => {
-    const result = await dialog.showOpenDialog({
+    const win = mainWindow ?? BrowserWindow.getFocusedWindow();
+    const options: Electron.OpenDialogOptions = {
+      title: "Open folder",
+      message: "Choose the code folder Capsule should work in",
+      buttonLabel: "Open",
       properties: ["openDirectory", "createDirectory"],
-    });
+    };
+    const result = win
+      ? await dialog.showOpenDialog(win, options)
+      : await dialog.showOpenDialog(options);
     return result.canceled ? undefined : result.filePaths[0];
+  });
+  handle(IPC_CHANNELS.pickFiles, async () => {
+    const win = mainWindow ?? BrowserWindow.getFocusedWindow();
+    const options: Electron.OpenDialogOptions = {
+      title: "Open files",
+      buttonLabel: "Open",
+      properties: ["openFile", "multiSelections"],
+    };
+    const result = win
+      ? await dialog.showOpenDialog(win, options)
+      : await dialog.showOpenDialog(options);
+    return result.canceled ? [] : result.filePaths;
   });
   handle(IPC_CHANNELS.listHarnesses, () => requireEngine().listHarnesses());
   handle(IPC_CHANNELS.doctorHarness, (harnessId) =>
@@ -308,9 +334,42 @@ function bindEngineEvents(): void {
   });
 }
 
+function applyLaunchAtLogin(enabled: boolean): void {
+  try {
+    app.setLoginItemSettings({ openAtLogin: enabled });
+  } catch (error) {
+    console.warn("Launch at login failed", error);
+  }
+}
+
 function createMenu(): void {
+  const openSettings = () => send(IPC_EVENTS.state, { command: "settings" });
+  const mac = process.platform === "darwin";
   const template: Electron.MenuItemConstructorOptions[] = [
-    { role: "appMenu" },
+    ...(mac
+      ? [
+          {
+            label: app.name,
+            submenu: [
+              { role: "about" as const },
+              { type: "separator" as const },
+              {
+                label: "Settings…",
+                accelerator: "CommandOrControl+,",
+                click: openSettings,
+              },
+              { type: "separator" as const },
+              { role: "services" as const },
+              { type: "separator" as const },
+              { role: "hide" as const },
+              { role: "hideOthers" as const },
+              { role: "unhide" as const },
+              { type: "separator" as const },
+              { role: "quit" as const },
+            ],
+          },
+        ]
+      : []),
     {
       label: "File",
       submenu: [
@@ -320,10 +379,30 @@ function createMenu(): void {
           click: () => send(IPC_EVENTS.state, { command: "new-task" }),
         },
         {
-          label: "New Project",
+          label: "Open Folder…",
+          accelerator: "CommandOrControl+O",
+          click: () => send(IPC_EVENTS.state, { command: "open-folder" }),
+        },
+        {
+          label: "Open Files…",
+          accelerator: "CommandOrControl+Shift+O",
+          click: () => send(IPC_EVENTS.state, { command: "open-files" }),
+        },
+        {
+          label: "New Project from Folder…",
           accelerator: "CommandOrControl+Shift+N",
           click: () => send(IPC_EVENTS.state, { command: "new-project" }),
         },
+        ...(!mac
+          ? [
+              { type: "separator" as const },
+              {
+                label: "Settings…",
+                accelerator: "CommandOrControl+,",
+                click: openSettings,
+              },
+            ]
+          : []),
         { role: "close" },
       ],
     },
@@ -368,6 +447,7 @@ function createTray(): void {
     tray.setContextMenu(
       Menu.buildFromTemplate([
         { label: "Open Capsule", click: () => mainWindow?.show() },
+        { label: "Settings…", click: () => send(IPC_EVENTS.state, { command: "settings" }) },
         { label: "Approvals", click: () => send(IPC_EVENTS.state, { command: "approvals" }) },
         { label: "Active runs", click: () => send(IPC_EVENTS.state, { command: "runs" }) },
         { type: "separator" },
@@ -390,6 +470,7 @@ async function startEngine(): Promise<void> {
   });
   await engine.start();
   bindEngineEvents();
+  applyLaunchAtLogin(engine.getSettings().launchAtLogin);
   send(IPC_EVENTS.connection, await engine.getStatus());
 }
 

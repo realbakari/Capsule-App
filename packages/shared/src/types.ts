@@ -345,6 +345,7 @@ export interface CreateSessionInput {
   agentId?: string;
   title?: string;
   mode?: AgentMode;
+  permissionProfile?: import("./harness.js").HarnessPermissionProfile;
 }
 
 export interface AgentMessage {

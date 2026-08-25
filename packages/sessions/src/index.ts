@@ -20,6 +20,7 @@ export function createSessionRecord(
     title: input.title?.trim() || "New conversation",
     mode: input.mode ?? project.defaultMode,
     state: "active",
+    permissionProfile: input.permissionProfile,
     createdAt: timestamp,
     updatedAt: timestamp,
   };

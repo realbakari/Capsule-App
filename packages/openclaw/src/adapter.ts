@@ -1,10 +1,11 @@
 import { EventEmitter } from "node:events";
-import { GatewayClient } from "@openclaw/gateway-client";
+import { GatewayClient, GatewayClientRequestError } from "@openclaw/gateway-client";
 import {
   GATEWAY_CLIENT_CAPS,
   GATEWAY_CLIENT_IDS,
   GATEWAY_CLIENT_MODES,
 } from "@openclaw/gateway-protocol/client-info";
+import { classifyGatewayConnectFailure } from "@openclaw/gateway-protocol/connect-error-details";
 import { PROTOCOL_VERSION } from "@openclaw/gateway-protocol/version";
 import type { EventFrame, HelloOk } from "@openclaw/gateway-protocol/frame-guards";
 import {
@@ -33,7 +34,21 @@ import {
   type Skill,
   type Unsubscribe,
 } from "@capsule/shared";
-import { defaultGatewayEndpoint, parseGatewayUrl, probeTcp } from "./discovery.js";
+import { createGatewayHostDeps } from "./device-identity.js";
+import {
+  defaultGatewayEndpoint,
+  parseGatewayUrl,
+  probeTcp,
+  readLocalGatewayBootstrapToken,
+} from "./discovery.js";
+import {
+  acpCommandFailed,
+  asRecord,
+  asString,
+  compactParams,
+  extractGatewayText,
+  isGatewayTurnDone,
+} from "./events.js";
 
 const CAPSULE_SCOPES = [
   "operator.read",
@@ -53,14 +68,23 @@ export interface OpenClawAdapterOptions {
   gatewayUrl?: string;
   token?: string;
   clientVersion?: string;
+  identityDir?: string;
 }
 
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
-}
-
-function asString(value: unknown, fallback = ""): string {
-  return typeof value === "string" && value.length > 0 ? value : fallback;
+function describeConnectError(error: unknown): Error {
+  const err = error instanceof Error ? error : new Error(String(error));
+  const details = error instanceof GatewayClientRequestError ? error.details : undefined;
+  const classified = classifyGatewayConnectFailure({
+    details,
+    message: err.message,
+  });
+  const text = classified.remediation
+    ? `${classified.userMessage}\n${classified.remediation}`
+    : classified.userMessage;
+  if (!text || text === err.message) return err;
+  const wrapped = new Error(text);
+  wrapped.cause = err;
+  return wrapped;
 }
 
 function asOptionalString(value: unknown): string | undefined {
@@ -104,23 +128,27 @@ export class OpenClawAdapter implements AgentRuntime {
     }
 
     this.connectionState = "connecting";
+    const token = this.options.token ?? readLocalGatewayBootstrapToken(endpoint.host);
+    const hostDeps = createGatewayHostDeps(this.options.identityDir);
     await new Promise<void>((resolve, reject) => {
       let settled = false;
-      const fail = (error: Error) => {
+      const fail = (error: unknown) => {
         if (settled) return;
         settled = true;
-        const message = error.message || "Gateway connection failed";
-        this.connectionState = message.toLowerCase().includes("pair")
-          ? "authentication_required"
-          : "error";
+        const wrapped = describeConnectError(error);
+        const message = wrapped.message || "Gateway connection failed";
+        this.connectionState =
+          message.toLowerCase().includes("pair") || message.toLowerCase().includes("device identity")
+            ? "authentication_required"
+            : "error";
         this.lastError = message;
-        reject(error);
+        reject(wrapped);
       };
 
       this.client = new GatewayClient({
         url: endpoint.url.replace(/^http/, "ws"),
-        token: this.options.token,
-        bootstrapToken: this.options.token,
+        token,
+        bootstrapToken: token,
         clientName: GATEWAY_CLIENT_IDS.CLI,
         clientDisplayName: "Capsule",
         clientVersion: this.options.clientVersion ?? "0.1.0",
@@ -131,6 +159,7 @@ export class OpenClawAdapter implements AgentRuntime {
         caps: CAPSULE_CAPS,
         minProtocol: PROTOCOL_VERSION,
         maxProtocol: PROTOCOL_VERSION,
+        hostDeps,
         onHelloOk: (hello) => {
           this.hello = hello;
           this.connectionState = "connected";
@@ -235,8 +264,12 @@ export class OpenClawAdapter implements AgentRuntime {
       const rows = payload.plugins ?? payload.entries ?? [];
       return rows.some((row) => {
         const record = asRecord(row);
-        const id = `${asString(record.id)}${asString(record.pluginId)}${asString(record.name)}`.toLowerCase();
-        const enabled = record.enabled !== false && record.status !== "disabled";
+        const id = `${asString(record.id)}${asString(record.pluginId)}${asString(record.packageName)}${asString(record.name)}`.toLowerCase();
+        const enabled =
+          record.enabled !== false &&
+          asString(record.state, "enabled") !== "disabled" &&
+          asString(record.state) !== "not-installed" &&
+          asString(record.state) !== "error";
         return enabled && id.includes("acpx");
       });
     } catch {
@@ -262,19 +295,25 @@ export class OpenClawAdapter implements AgentRuntime {
     });
     let sessionKey = input.sessionKey;
     if (!sessionKey) {
-      const created = await this.request<{
-        key?: string;
-        sessionKey?: string;
-        id?: string;
-      }>("sessions.create", {
+      const created = await this.createGatewaySession({
         label: input.title ?? input.harnessId,
         cwd: input.cwd,
-        message: command,
       });
-      sessionKey = created.sessionKey ?? created.key ?? created.id;
-      if (!sessionKey) throw new Error("sessions.create did not return a session key");
-    } else {
-      await this.sendSlash(sessionKey, command);
+      sessionKey = created;
+    }
+    await this.subscribeSession(sessionKey);
+    const spawned = await this.acpCommand(sessionKey, command, { waitMs: 20_000 });
+    const failed = acpCommandFailed(spawned.text);
+    if (failed) throw new Error(failed);
+    if (!spawned.text?.trim()) {
+      const status = await this.statusAcp(sessionKey);
+      const statusFailed = acpCommandFailed(status.text);
+      if (statusFailed) throw new Error(statusFailed);
+      if (!status.text.trim()) {
+        throw new Error(
+          "Gateway did not confirm /acp spawn. Enable acpx (`openclaw plugins install @openclaw/acpx`) and run Doctor.",
+        );
+      }
     }
     if (input.permissionProfile && input.permissionProfile !== "default") {
       await this.sendSlash(sessionKey, acpOptionCommand("permissions", input.permissionProfile)).catch(
@@ -290,10 +329,41 @@ export class OpenClawAdapter implements AgentRuntime {
     return { sessionKey, usedSlashCommand: true, command };
   }
 
+  private async createGatewaySession(input: { label?: string; cwd?: string; agentId?: string }): Promise<string> {
+    const attempt = async (params: Record<string, unknown>) => {
+      const created = await this.request<{ key?: string; sessionKey?: string; id?: string }>(
+        "sessions.create",
+        compactParams(params),
+      );
+      const key = created.key ?? created.sessionKey ?? created.id;
+      if (!key) throw new Error("sessions.create did not return a session key");
+      return key;
+    };
+    try {
+      return await attempt({
+        label: input.label,
+        cwd: input.cwd,
+        agentId: input.agentId,
+      });
+    } catch {
+      return attempt({ label: input.label });
+    }
+  }
+
+  private async subscribeSession(sessionKey: string): Promise<void> {
+    try {
+      await this.request("sessions.messages.subscribe", {
+        key: sessionKey,
+        includeApprovals: true,
+      });
+    } catch {
+      // Older gateways may not support this subscribe method.
+    }
+  }
+
   async sendSlash(sessionKey: string, message: string): Promise<void> {
     await this.request("sessions.send", {
       key: sessionKey,
-      sessionKey,
       message,
       idempotencyKey: createId("idemp"),
     });
@@ -311,7 +381,7 @@ export class OpenClawAdapter implements AgentRuntime {
 
   async cancelAcp(sessionKey: string, runId?: string): Promise<void> {
     try {
-      await this.request("sessions.abort", { key: sessionKey, sessionKey, runId });
+      await this.request("sessions.abort", compactParams({ key: sessionKey, runId }));
     } catch {
       await this.sendSlash(sessionKey, "/acp cancel");
     }
@@ -319,11 +389,7 @@ export class OpenClawAdapter implements AgentRuntime {
 
   async steerAcp(sessionKey: string, instruction: string): Promise<void> {
     try {
-      await this.request("sessions.steer", {
-        key: sessionKey,
-        sessionKey,
-        message: instruction,
-      });
+      await this.request("sessions.steer", { key: sessionKey, message: instruction });
     } catch {
       await this.sendSlash(sessionKey, `/acp steer ${instruction}`);
     }
@@ -334,7 +400,8 @@ export class OpenClawAdapter implements AgentRuntime {
   }
 
   async doctorAcp(sessionKey: string): Promise<string> {
-    const result = await this.acpCommand(sessionKey, acpDoctorCommand(), { waitMs: 10_000 });
+    await this.subscribeSession(sessionKey);
+    const result = await this.acpCommand(sessionKey, acpDoctorCommand(), { waitMs: 12_000 });
     return result.text ?? "";
   }
 
@@ -390,11 +457,10 @@ export class OpenClawAdapter implements AgentRuntime {
       sessionKey?: string;
       id?: string;
       runStarted?: boolean;
-    }>("sessions.create", {
+    }>("sessions.create", compactParams({
       agentId: input.agentId,
       label: input.title,
-      message: undefined,
-    });
+    }));
     const key = payload.sessionKey ?? payload.key ?? payload.id ?? createId("oc");
     const timestamp = nowIso();
     return {
@@ -416,13 +482,12 @@ export class OpenClawAdapter implements AgentRuntime {
     const idempotencyKey = createId("idemp");
     const payload = await this.request<{ runId?: string; id?: string; status?: string }>(
       "sessions.send",
-      {
+      compactParams({
         key: sessionKey,
-        sessionKey,
         message: input.content,
         agentId: input.agentId,
         idempotencyKey,
-      },
+      }),
     );
     const openclawRunId = payload.runId ?? payload.id ?? createId("ocrun");
     const timestamp = nowIso();
@@ -443,7 +508,6 @@ export class OpenClawAdapter implements AgentRuntime {
     try {
       await this.request("sessions.messages.subscribe", {
         key: sessionKey,
-        sessionKey,
         includeApprovals: true,
       });
     } catch {
@@ -511,22 +575,27 @@ export class OpenClawAdapter implements AgentRuntime {
     return this.client.request<T>(method, params);
   }
 
+  onAcpReply(
+    handler: (payload: { sessionKey?: string; text?: string; done?: boolean }) => void,
+  ): Unsubscribe {
+    this.emitter.on("acp-reply", handler);
+    return () => this.emitter.off("acp-reply", handler);
+  }
+
   private handleEvent(event: EventFrame): void {
     const payload = asRecord(event.payload);
     const openclawRunId = asString(payload.runId, asString(payload.id));
     const runId = this.runSessions.get(openclawRunId) ?? openclawRunId;
     const sessionKey = asOptionalString(payload.sessionKey) ?? asOptionalString(payload.key);
-    const text = asString(
-      payload.text,
-      asString(payload.message, asString(payload.summary, "")),
-    );
+    const text = extractGatewayText(payload);
     if (sessionKey && text) {
-      const done =
-        asString(payload.status) === "ok" ||
-        payload.phase === "end" ||
-        payload.phase === "error" ||
-        asString(payload.status) === "error";
-      this.emitter.emit("acp-reply", { sessionKey, text, done });
+      this.emitter.emit("acp-reply", {
+        sessionKey,
+        text,
+        done: isGatewayTurnDone(payload),
+      });
+    } else if (sessionKey && isGatewayTurnDone(payload)) {
+      this.emitter.emit("acp-reply", { sessionKey, text: text || undefined, done: true });
     }
     if (event.event === "exec.approval.requested" || event.event === "plugin.approval.requested") {
       const approval = this.mapApproval(payload);

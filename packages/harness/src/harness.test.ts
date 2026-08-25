@@ -14,8 +14,12 @@ import {
 } from "./index.js";
 
 describe("harness catalog", () => {
-  it("ships Claude Code and Codex as first-class ACP targets", () => {
-    expect(PRESET_HARNESSES.map((item) => item.id)).toEqual(["claude", "codex"]);
+  it("ships Claude Code and Codex first, then the official acpx catalog", () => {
+    expect(PRESET_HARNESSES.map((item) => item.id).slice(0, 2)).toEqual(["claude", "codex"]);
+    expect(PRESET_HARNESSES.map((item) => item.id)).toEqual(
+      expect.arrayContaining(["claude", "codex", "gemini", "opencode", "cursor", "copilot"]),
+    );
+    expect(PRESET_HARNESSES.map((item) => item.id as string)).not.toContain("pi");
   });
 
   it("builds the OpenClaw ACP spawn command", () => {
@@ -39,6 +43,8 @@ describe("harness catalog", () => {
     expect(acpOptionCommand("cwd", "/Users/me/Work Space")).toBe(
       '/acp cwd "/Users/me/Work Space"',
     );
+    expect(acpOptionCommand("timeout", "120")).toBe("/acp timeout 120");
+    expect(acpOptionCommand("mode", "plan")).toBe("/acp set-mode plan");
   });
 
   it("asks for acpx when the Gateway is up but the plugin is not", () => {
@@ -108,10 +114,14 @@ describe("harness catalog", () => {
   });
 
   it("parses ACP status text", () => {
-    const parsed = parseAcpStatus("backend: acpx\nmode: persistent\nstate: running\nmodel: claude-opus");
+    const parsed = parseAcpStatus(
+      "backend: acpx\nmode: persistent\nstate: running\nmodel: claude-opus\npermissions: approve-all\ntimeout: 120",
+    );
     expect(parsed.backend).toBe("acpx");
     expect(parsed.mode).toBe("persistent");
     expect(parsed.state).toBe("running");
     expect(parsed.model).toBe("claude-opus");
+    expect(parsed.permissions).toBe("approve-all");
+    expect(parsed.timeout).toBe("120");
   });
 });

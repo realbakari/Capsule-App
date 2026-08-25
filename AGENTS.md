@@ -75,7 +75,7 @@ Keep files focused. Prefer a new package over growing `core` into a junk drawer.
 
 **Protocol 4.** Operator clients must send `minProtocol: 4` and `maxProtocol: 4`. Do not regress to protocol 3.
 
-**Claude Code and Codex are harnesses, not Capsule runtimes.** Implement the full ACP operator lifecycle (doctor, dedicate, spawn, steer, cancel, status, permissions/model/cwd, close) through `@capsule/harness` and `OpenClawAdapter`. Spawn with `/acp spawn` on a Gateway session — do not add a Capsule-owned ACP JSON-RPC server. Code-mode work on a dedicated project must route through the live harness session. Do not treat the `coding` mock agent as a substitute for Claude/Codex.
+**ACP harnesses are not Capsule runtimes.** Implement the OpenClaw ACP operator lifecycle (doctor, dedicate, spawn `--bind here`, steer, cancel, status, permissions/model/cwd/timeout/set-mode, close) through `@capsule/harness` and `OpenClawAdapter`. Spawn by creating a Gateway session then sending `/acp spawn <id>` — do not pass `runtime: "acp"` on `sessions.create`, and do not add a Capsule-owned ACP JSON-RPC server. Claude Code and Codex are first-class; other official acpx ids are spawnable. Code-mode work on a dedicated project must route through the live harness session. Do not treat the `coding` mock agent as a substitute.
 
 **IPC is a closed allowlist.** Adding a renderer capability means adding a named channel in `@capsule/shared` and a handler in `apps/desktop/src/main`. Never expose a generic shell.
 

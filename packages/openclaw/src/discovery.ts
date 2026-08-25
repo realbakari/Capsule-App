@@ -20,14 +20,38 @@ export function parseGatewayUrl(url: string): { host: string; port: number } {
   return { host: parsed.hostname || DEFAULT_GATEWAY_HOST, port };
 }
 
-export function readOpenClawGatewayHint(): GatewayEndpoint | undefined {
-  const configPath = path.join(os.homedir(), ".openclaw", "openclaw.json");
+function openClawConfigPath(): string {
+  return path.join(os.homedir(), ".openclaw", "openclaw.json");
+}
+
+function readOpenClawConfig(): {
+  gateway?: {
+    port?: number;
+    bind?: string;
+    remote?: { url?: string };
+    auth?: { token?: string };
+  };
+} | undefined {
+  const configPath = openClawConfigPath();
   if (!fs.existsSync(configPath)) return undefined;
   try {
-    const raw = fs.readFileSync(configPath, "utf8");
-    const json = JSON.parse(raw) as {
-      gateway?: { port?: number; bind?: string; remote?: { url?: string } };
+    return JSON.parse(fs.readFileSync(configPath, "utf8")) as {
+      gateway?: {
+        port?: number;
+        bind?: string;
+        remote?: { url?: string };
+        auth?: { token?: string };
+      };
     };
+  } catch {
+    return undefined;
+  }
+}
+
+export function readOpenClawGatewayHint(): GatewayEndpoint | undefined {
+  const json = readOpenClawConfig();
+  if (!json) return undefined;
+  try {
     if (json.gateway?.remote?.url) {
       const parsed = parseGatewayUrl(json.gateway.remote.url);
       return {
@@ -47,6 +71,17 @@ export function readOpenClawGatewayHint(): GatewayEndpoint | undefined {
   } catch {
     return undefined;
   }
+}
+
+function isLoopbackHost(host: string): boolean {
+  return host === "127.0.0.1" || host === "localhost" || host === "::1";
+}
+
+/** Shared Gateway token from the local OpenClaw config. Used only for loopback. */
+export function readLocalGatewayBootstrapToken(host: string): string | undefined {
+  if (!isLoopbackHost(host)) return undefined;
+  const token = readOpenClawConfig()?.gateway?.auth?.token?.trim();
+  return token && token.length > 0 ? token : undefined;
 }
 
 export function defaultGatewayEndpoint(overrideUrl?: string): GatewayEndpoint {

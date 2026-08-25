@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { MockAgentRuntime } from "./mock.js";
 
@@ -33,7 +36,28 @@ describe("MockAgentRuntime", () => {
     });
     const completed = await waitFor(runtime, run.id, "lifecycle");
     expect(run.status).toBe("running");
-    expect(completed.message.length).toBeGreaterThan(0);
+    expect(String(completed.data?.output ?? completed.message)).toContain("Mock runtime");
+    expect(String(completed.data?.output ?? "")).not.toContain("src/index.ts");
+  });
+
+  it("lists real files from the project folder instead of inventing them", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-mock-ws-"));
+    mkdirSync(path.join(dir, "lib"));
+    writeFileSync(path.join(dir, "README.md"), "# hello\n");
+    writeFileSync(path.join(dir, "lib", "main.ts"), "export {}\n");
+    const runtime = new MockAgentRuntime();
+    runtime.setWorkspace(dir);
+    await runtime.connect();
+    const session = await runtime.createSession({ projectId: "proj_1" });
+    const run = await runtime.sendMessage({
+      sessionId: session.id,
+      content: "Review this repo.",
+    });
+    const completed = await waitFor(runtime, run.id, "lifecycle");
+    const output = String(completed.data?.output ?? "");
+    expect(output).toContain(dir);
+    expect(output).toContain("README.md");
+    expect(output).not.toContain("src/index.ts");
   });
 
   it("emits an approval request for [approval] prompts", async () => {

@@ -14,7 +14,7 @@ Capsule sits above OpenClaw. OpenClaw runs agents, tools, skills, sessions, and 
 - An OpenClaw Gateway adapter over protocol 4
 - Capsule contracts, policies, verification, and artifacts
 - A mock runtime so the app works without OpenClaw installed
-- Dedicated Claude Code and Codex ACP harnesses: doctor, dedicate, spawn, steer, cancel, status, close — through OpenClaw acpx, not a local ACP server
+- ACP harnesses through OpenClaw acpx (`/acp spawn`, doctor, dedicate, steer, cancel, status, permissions/model/cwd/timeout, close) — Claude Code and Codex first, plus the official acpx catalog. Not a local ACP server.
 
 ## Architecture
 

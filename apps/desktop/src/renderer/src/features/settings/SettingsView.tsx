@@ -1,10 +1,34 @@
-import { useWorkspace } from "../../lib/workspace";
+import { useEffect, useState, type ReactNode } from "react";
+import type { CapsuleSettings, MockScenario } from "@capsule/shared";
+import { MODES, PERMISSION_OPTIONS, useWorkspace } from "../../lib/workspace";
+
+type SettingsTab = "general" | "gateway" | "projects" | "shortcuts" | "diagnostics";
+
+const TABS: Array<{ id: SettingsTab; label: string }> = [
+  { id: "general", label: "General" },
+  { id: "gateway", label: "Gateway" },
+  { id: "projects", label: "Projects" },
+  { id: "shortcuts", label: "Shortcuts" },
+  { id: "diagnostics", label: "Diagnostics" },
+];
+
+const SCENARIO_LABELS: Record<MockScenario, string> = {
+  successful_run: "Successful run",
+  failed_run: "Failed run",
+  approval_required: "Approval required",
+  verification_failure: "Verification failure",
+  multi_agent: "Multi-agent",
+  long_running: "Long running",
+  disconnected_gateway: "Disconnected gateway",
+  buzz_message: "Channel message",
+  tool_failure: "Tool failure",
+};
 
 export function SettingsView() {
   const {
     status,
     subsystems,
-    harnesses,
+    harnesses: harnessList,
     api,
     newProjectName,
     setNewProjectName,
@@ -18,153 +42,490 @@ export function SettingsView() {
     deleteProject,
     setProjectId,
     setView,
+    settings,
+    updateSettings,
+    agents,
+    connected,
   } = useWorkspace();
+  const [tab, setTab] = useState<SettingsTab>("general");
+  const [url, setUrl] = useState(settings?.gatewayUrl ?? "");
+  const [token, setToken] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+
+  useEffect(() => {
+    if (settings?.gatewayUrl) setUrl(settings.gatewayUrl);
+  }, [settings?.gatewayUrl]);
+
+  async function patch(next: Partial<CapsuleSettings>) {
+    setError(undefined);
+    try {
+      await updateSettings(next);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }
+  }
+
+  async function connect() {
+    setBusy(true);
+    setError(undefined);
+    try {
+      const next: Partial<CapsuleSettings> = { gatewayUrl: url.trim() };
+      if (token.trim()) next.gatewayToken = token.trim();
+      await updateSettings(next);
+      setToken("");
+      await api.connectGateway(url.trim() || undefined);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function disconnect() {
+    setBusy(true);
+    setError(undefined);
+    try {
+      await api.disconnectGateway();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!settings) {
+    return (
+      <section className="panel">
+        <div className="panel-inner settings-page">
+          <div className="panel-header">
+            <p>Loading settings…</p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  const tokenSaved = Boolean(settings.gatewayToken);
+  const sendOnEnter = settings.composerSendKey !== "cmd-enter";
+  const mock = status?.kind === "mock";
 
   return (
     <section className="panel">
-      <div className="panel-inner">
-      <div className="panel-header">
-        <p>Gateway connection, projects, and diagnostics.</p>
-      </div>
-      <div className="card">
-        <h3>OpenClaw</h3>
-        <p className="muted">
-          Capsule connects to the OpenClaw Gateway as an operator client (protocol{" "}
-          {status?.protocol ?? 4}). Claude Code and Codex are spawned there — they are not installed
-          in this app.
-        </p>
-        <div className="grid-2">
-          <div>
-            <div className="faint">Gateway</div>
-            <div>
-              {status?.gatewayHost}:{status?.gatewayPort}
-            </div>
-          </div>
-          <div>
-            <div className="faint">Agents / sessions / runs</div>
-            <div>
-              {status?.agentCount ?? 0} / {status?.sessionCount ?? 0} / {status?.activeRunCount ?? 0}
-            </div>
+      <div className="panel-inner settings-page">
+        <div className="panel-header">
+          <p>Gateway, defaults, projects, and diagnostics for this Mac.</p>
+        </div>
+        <div className="settings">
+          <nav className="settings-nav" aria-label="Settings">
+            {TABS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={tab === item.id ? "active" : ""}
+                onClick={() => setTab(item.id)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </nav>
+          <div className="settings-body">
+            {tab === "general" && (
+              <div className="card">
+                <h3>General</h3>
+                <SettingRow
+                  label="Launch at login"
+                  hint="Open Capsule when you sign in to this Mac."
+                >
+                  <Switch
+                    checked={settings.launchAtLogin}
+                    label="Launch at login"
+                    onChange={(value) => void patch({ launchAtLogin: value })}
+                  />
+                </SettingRow>
+                <SettingRow
+                  label="Send key"
+                  hint={
+                    sendOnEnter
+                      ? "Enter sends. Shift+Enter inserts a new line. ⌘Enter starts another thread."
+                      : "⌘Enter sends. Enter inserts a new line. ⌘⇧Enter starts another thread."
+                  }
+                >
+                  <select
+                    className="field-select"
+                    value={settings.composerSendKey}
+                    onChange={(event) =>
+                      void patch({
+                        composerSendKey: event.target.value as CapsuleSettings["composerSendKey"],
+                      })
+                    }
+                  >
+                    <option value="enter">Enter to send</option>
+                    <option value="cmd-enter">⌘Enter to send</option>
+                  </select>
+                </SettingRow>
+                <SettingRow label="Default mode" hint="Used for new conversations.">
+                  <select
+                    className="field-select"
+                    value={settings.defaultMode}
+                    onChange={(event) =>
+                      void patch({ defaultMode: event.target.value as CapsuleSettings["defaultMode"] })
+                    }
+                  >
+                    {MODES.map((item) => (
+                      <option key={item} value={item}>
+                        {item}
+                      </option>
+                    ))}
+                  </select>
+                </SettingRow>
+                <SettingRow
+                  label="Default permission"
+                  hint="How new conversations treat commands and file changes."
+                >
+                  <select
+                    className="field-select"
+                    value={settings.defaultPermission}
+                    onChange={(event) =>
+                      void patch({
+                        defaultPermission: event.target
+                          .value as CapsuleSettings["defaultPermission"],
+                      })
+                    }
+                  >
+                    {PERMISSION_OPTIONS.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
+                </SettingRow>
+                <SettingRow label="Default agent" hint="Pre-selected when you start a new thread.">
+                  <select
+                    className="field-select"
+                    value={settings.defaultAgentId ?? "general"}
+                    onChange={(event) => void patch({ defaultAgentId: event.target.value })}
+                  >
+                    {agents.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name}
+                      </option>
+                    ))}
+                  </select>
+                </SettingRow>
+              </div>
+            )}
+
+            {tab === "gateway" && (
+              <>
+                <div className="card">
+                  <h3>OpenClaw Gateway</h3>
+                  <p className="muted">
+                    Capsule is an operator client (protocol {status?.protocol ?? 4}). It signs a
+                    device identity on connect. Claude Code and Codex are spawned on the Gateway —
+                    they are not installed in this app.
+                  </p>
+                  <label className="field">
+                    <span>URL</span>
+                    <input
+                      type="text"
+                      value={url}
+                      placeholder="ws://127.0.0.1:18789"
+                      autoComplete="off"
+                      spellCheck={false}
+                      onChange={(event) => setUrl(event.target.value)}
+                      onBlur={() => {
+                        const next = url.trim();
+                        if (next && next !== settings.gatewayUrl) void patch({ gatewayUrl: next });
+                      }}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Operator token</span>
+                    <input
+                      type="password"
+                      value={token}
+                      placeholder={tokenSaved ? "Stored in Keychain" : "Optional on loopback"}
+                      autoComplete="off"
+                      onChange={(event) => setToken(event.target.value)}
+                    />
+                  </label>
+                  {tokenSaved && (
+                    <div className="setting-inline">
+                      <span className="faint">A token is saved in the Keychain.</span>
+                      <button
+                        className="ghost"
+                        type="button"
+                        onClick={() => void patch({ gatewayToken: "" })}
+                      >
+                        Clear token
+                      </button>
+                    </div>
+                  )}
+                  <div className="grid-2" style={{ marginTop: "0.75rem" }}>
+                    <div>
+                      <div className="faint">Status</div>
+                      <div>
+                        {connected
+                          ? "Connected"
+                          : mock
+                            ? "Gateway offline · mock runtime"
+                            : (status?.state ?? "Disconnected")}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="faint">Host</div>
+                      <div className="mono">
+                        {status?.gatewayHost}:{status?.gatewayPort}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="faint">Agents / sessions / runs</div>
+                      <div>
+                        {status?.agentCount ?? 0} / {status?.sessionCount ?? 0} /{" "}
+                        {status?.activeRunCount ?? 0}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="faint">Gateway version</div>
+                      <div>{status?.openclawVersion ?? "—"}</div>
+                    </div>
+                  </div>
+                  {error && <div className="notice">{error}</div>}
+                  <div className="actions">
+                    <button className="send" disabled={busy} onClick={() => void connect()}>
+                      {busy ? "Connecting…" : "Save & Connect"}
+                    </button>
+                    <button className="ghost" disabled={busy} onClick={() => void disconnect()}>
+                      Disconnect
+                    </button>
+                  </div>
+                </div>
+                <div className="card">
+                  <h3>Offline</h3>
+                  <SettingRow
+                    label="Use mock when offline"
+                    hint="Keep the workspace usable if the Gateway is not running."
+                  >
+                    <Switch
+                      checked={settings.useMockWhenOffline}
+                      label="Use mock when offline"
+                      onChange={(value) => void patch({ useMockWhenOffline: value })}
+                    />
+                  </SettingRow>
+                  {settings.useMockWhenOffline && (
+                    <SettingRow label="Mock scenario" hint="What the local fallback runtime simulates.">
+                      <select
+                        className="field-select"
+                        value={settings.mockScenario}
+                        onChange={(event) =>
+                          void patch({ mockScenario: event.target.value as MockScenario })
+                        }
+                      >
+                        {(Object.keys(SCENARIO_LABELS) as MockScenario[]).map((item) => (
+                          <option key={item} value={item}>
+                            {SCENARIO_LABELS[item]}
+                          </option>
+                        ))}
+                      </select>
+                    </SettingRow>
+                  )}
+                </div>
+                <div className="card">
+                  <h3>ACP harnesses</h3>
+                  <p className="muted">
+                    Spawned with <span className="mono">/acp spawn</span> through OpenClaw acpx.
+                    Capsule will not install a second copy. Open Harnesses for the full catalog.
+                  </p>
+                  {(harnessList ?? [])
+                    .filter(
+                      (harness) =>
+                        harness.id === "claude" ||
+                        harness.id === "codex" ||
+                        Boolean(harness.binaryPath) ||
+                        harness.readiness === "dedicated" ||
+                        harness.readiness === "running",
+                    )
+                    .map((harness) => (
+                    <div className="row" key={harness.id} style={{ marginBottom: 8 }}>
+                      <div>
+                        <b>{harness.name}</b>
+                        <div className="faint">{harness.detail}</div>
+                      </div>
+                      <span className={`readiness ${harness.readiness}`}>
+                        {harness.readiness.replaceAll("_", " ")}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {tab === "projects" && (
+              <div className="card">
+                <h3>Projects</h3>
+                <p className="muted">
+                  Right-click a project in the sidebar to rename or delete it. Deleting removes Capsule
+                  history, not the folder on disk.
+                </p>
+                {projects.map((item) => (
+                  <div className="row" key={item.id} style={{ marginBottom: 8 }}>
+                    <button
+                      className="list-item"
+                      onClick={() => {
+                        setProjectId(item.id);
+                        setView("chat");
+                      }}
+                    >
+                      {item.name}
+                      <span className="meta">{item.workingDirectory ?? "no folder"}</span>
+                    </button>
+                    <button className="danger" onClick={() => deleteProject(item.id)}>
+                      Delete
+                    </button>
+                  </div>
+                ))}
+                <div className="row">
+                  <input
+                    type="text"
+                    placeholder="Project name"
+                    value={newProjectName}
+                    onChange={(event) => setNewProjectName(event.target.value)}
+                  />
+                  <button className="chip" onClick={() => void createProject()}>
+                    Create
+                  </button>
+                  <button className="ghost" onClick={() => void createProjectFromFolder()}>
+                    From folder
+                  </button>
+                </div>
+                <div className="actions">
+                  <div className="mono">{project?.workingDirectory ?? "No working directory"}</div>
+                  <button className="ghost" onClick={() => void pickProjectDirectory()}>
+                    Choose folder
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {tab === "shortcuts" && (
+              <div className="card">
+                <h3>Shortcuts</h3>
+                <div className="kv-list">
+                  <div className="kv">
+                    <span>Settings</span>
+                    <span className="mono">⌘,</span>
+                  </div>
+                  <div className="kv">
+                    <span>Command palette</span>
+                    <span className="mono">⌘K</span>
+                  </div>
+                  <div className="kv">
+                    <span>New conversation</span>
+                    <span className="mono">⌘N</span>
+                  </div>
+                  <div className="kv">
+                    <span>Open folder</span>
+                    <span className="mono">⌘O</span>
+                  </div>
+                  <div className="kv">
+                    <span>Open files</span>
+                    <span className="mono">⇧⌘O</span>
+                  </div>
+                  <div className="kv">
+                    <span>Search files</span>
+                    <span className="mono">⌘P</span>
+                  </div>
+                  <div className="kv">
+                    <span>Search in files</span>
+                    <span className="mono">⇧⌘F</span>
+                  </div>
+                  <div className="kv">
+                    <span>Toggle sidebar</span>
+                    <span className="mono">⌘B</span>
+                  </div>
+                  <div className="kv">
+                    <span>Toggle inspector</span>
+                    <span className="mono">⌘\</span>
+                  </div>
+                  <div className="kv">
+                    <span>Send</span>
+                    <span className="mono">{sendOnEnter ? "Enter" : "⌘Enter"}</span>
+                  </div>
+                  <div className="kv">
+                    <span>Send and start another</span>
+                    <span className="mono">{sendOnEnter ? "⌘Enter" : "⌘⇧Enter"}</span>
+                  </div>
+                </div>
+                <p className="muted" style={{ marginTop: "0.75rem" }}>
+                  In the composer, type <span className="mono">/</span> for commands,{" "}
+                  <span className="mono">@</span> to mention a file, or <span className="mono">$</span>{" "}
+                  to attach a skill.
+                </p>
+              </div>
+            )}
+
+            {tab === "diagnostics" && (
+              <div className="card">
+                <h3>Diagnostics</h3>
+                <div className="muted">
+                  Capsule core {subsystems?.capsuleCore} · Gateway {subsystems?.openclawGateway} ·
+                  Channel {subsystems?.buzz} · Database {subsystems?.database} · Keychain{" "}
+                  {subsystems?.keychain}
+                </div>
+                <div className="actions">
+                  <button className="chip" onClick={() => void exportDiagnostics()}>
+                    Export sanitized diagnostics
+                  </button>
+                </div>
+                {diagnostics && <pre className="mono">{diagnostics}</pre>}
+              </div>
+            )}
           </div>
         </div>
-        <div className="actions">
-          <button className="send" onClick={() => void api.connectGateway()}>
-            Connect
-          </button>
-          <button className="ghost" onClick={() => void api.disconnectGateway()}>
-            Disconnect
-          </button>
-        </div>
-      </div>
-      <div className="card">
-        <h3>Claude Code · Codex</h3>
-        <p className="muted">Detected on this Mac or via the Gateway. Capsule will not install a second copy.</p>
-        {harnesses.map((harness) => (
-          <div className="row" key={harness.id} style={{ marginBottom: 8 }}>
-            <div>
-              <b>{harness.name}</b>
-              <div className="faint">{harness.detail}</div>
-            </div>
-            <span className={`readiness ${harness.readiness}`}>
-              {harness.readiness.replaceAll("_", " ")}
-            </span>
-          </div>
-        ))}
-      </div>
-      <div className="card">
-        <h3>Projects</h3>
-        <p className="muted">
-          Right-click a project in the sidebar to rename or delete it. Deleting removes Capsule
-          history, not the folder on disk.
-        </p>
-        {projects.map((item) => (
-          <div className="row" key={item.id} style={{ marginBottom: 8 }}>
-            <button
-              className="list-item"
-              onClick={() => {
-                setProjectId(item.id);
-                setView("chat");
-              }}
-            >
-              {item.name}
-              <span className="meta">{item.workingDirectory ?? "no folder"}</span>
-            </button>
-            <button className="danger" onClick={() => deleteProject(item.id)}>
-              Delete
-            </button>
-          </div>
-        ))}
-        <div className="row">
-          <input
-            type="text"
-            placeholder="Project name"
-            value={newProjectName}
-            onChange={(event) => setNewProjectName(event.target.value)}
-          />
-          <button className="chip" onClick={() => void createProject()}>
-            Create
-          </button>
-          <button className="ghost" onClick={() => void createProjectFromFolder()}>
-            From folder
-          </button>
-        </div>
-        <div className="actions">
-          <div className="mono">{project?.workingDirectory ?? "No working directory"}</div>
-          <button className="ghost" onClick={() => void pickProjectDirectory()}>
-            Choose folder
-          </button>
-        </div>
-      </div>
-      <div className="card">
-        <h3>Diagnostics</h3>
-        <div className="muted">
-          Capsule core {subsystems?.capsuleCore} · Gateway {subsystems?.openclawGateway} · Channel{" "}
-          {subsystems?.buzz} · Database {subsystems?.database} · Keychain {subsystems?.keychain}
-        </div>
-        <button className="chip" onClick={() => void exportDiagnostics()}>
-          Export sanitized diagnostics
-        </button>
-        {diagnostics && <pre className="mono">{diagnostics}</pre>}
-      </div>
-      <div className="card">
-        <h3>Shortcuts</h3>
-        <div className="kv-list">
-          <div className="kv">
-            <span>Command palette</span>
-            <span className="mono">⌘K</span>
-          </div>
-          <div className="kv">
-            <span>New conversation</span>
-            <span className="mono">⌘N</span>
-          </div>
-          <div className="kv">
-            <span>Search files</span>
-            <span className="mono">⌘P</span>
-          </div>
-          <div className="kv">
-            <span>Search in files</span>
-            <span className="mono">⇧⌘F</span>
-          </div>
-          <div className="kv">
-            <span>Toggle sidebar</span>
-            <span className="mono">⌘B</span>
-          </div>
-          <div className="kv">
-            <span>Toggle inspector</span>
-            <span className="mono">⌘\\</span>
-          </div>
-          <div className="kv">
-            <span>Send and start another</span>
-            <span className="mono">⌘Enter</span>
-          </div>
-        </div>
-        <p className="muted" style={{ marginTop: "0.75rem" }}>
-          In the composer, type <span className="mono">/</span> for commands,{" "}
-          <span className="mono">@</span> to mention a file, or <span className="mono">$</span> to
-          attach a skill.
-        </p>
-      </div>
       </div>
     </section>
+  );
+}
+
+function SettingRow({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="setting">
+      <div className="setting-copy">
+        <div>{label}</div>
+        {hint ? <p>{hint}</p> : null}
+      </div>
+      <div className="setting-control">{children}</div>
+    </div>
+  );
+}
+
+function Switch({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: (value: boolean) => void;
+  label: string;
+}) {
+  return (
+    <label className="switch">
+      <input
+        type="checkbox"
+        checked={checked}
+        aria-label={label}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <span />
+    </label>
   );
 }

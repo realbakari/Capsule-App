@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type Context,
   type ReactNode,
 } from "react";
 import type {
@@ -13,6 +14,7 @@ import type {
   AgentMode,
   ApprovalRequest,
   Artifact,
+  CapsuleSettings,
   ChatMessage,
   FileEntry,
   GitStatus,
@@ -28,7 +30,7 @@ import type {
 } from "@capsule/shared";
 
 export type View = "chat" | "runtimes" | "skills" | "history" | "approvals" | "settings";
-export type InspectorTab = "files" | "changes" | "diff" | "run" | "agents";
+export type InspectorTab = "files" | "changes" | "diff" | "run" | "agents" | "term";
 
 export const MODES: AgentMode[] = ["plan", "chat", "agent", "code", "research", "browser", "automation"];
 export const PRIMARY_MODES: AgentMode[] = ["plan", "chat", "code"];
@@ -150,6 +152,7 @@ export interface WorkspaceValue {
   confirm?: ConfirmState;
   setConfirm: (value?: ConfirmState) => void;
   pickProjectDirectory: () => Promise<void>;
+  pickFilesToMention: () => Promise<void>;
   createProjectFromFolder: () => Promise<void>;
   renameProject: (id: string, name: string) => Promise<void>;
   deleteProject: (id: string) => void;
@@ -157,9 +160,15 @@ export interface WorkspaceValue {
   deleteSession: (id: string) => void;
   archiveSession: (id: string) => Promise<void>;
   openTerminal: () => Promise<void>;
+  execInProject: (command: string) => Promise<{ stdout: string; stderr: string; code: number }>;
+  projectRuns: Run[];
   openPath: (target: string) => Promise<void>;
   mentionFile: (relative: string) => void;
-  spawnHarness: (harnessId: string, prompt?: string) => Promise<void>;
+  spawnHarness: (
+    harnessId: string,
+    prompt?: string,
+    options?: { mode?: "persistent" | "oneshot" },
+  ) => Promise<void>;
   dedicateHarness: (harnessId: string) => Promise<void>;
   undedicateHarness: () => Promise<void>;
   doctorHarness: (harnessId: string) => Promise<void>;
@@ -167,7 +176,10 @@ export interface WorkspaceValue {
   steerHarness: () => Promise<void>;
   closeHarness: (id?: string) => Promise<void>;
   refreshHarnessStatus: (id?: string) => Promise<void>;
-  setHarnessOption: (key: "model" | "permissions" | "cwd" | "mode", value: string) => Promise<void>;
+  setHarnessOption: (
+    key: "model" | "permissions" | "cwd" | "mode" | "timeout",
+    value: string,
+  ) => Promise<void>;
   exportDiagnostics: () => Promise<void>;
   sidebarCollapsed: boolean;
   inspectorOpen: boolean;
@@ -196,9 +208,16 @@ export interface WorkspaceValue {
   gitStage: (relative: string) => Promise<void>;
   gitDiscard: (relative: string) => void;
   gitCreateBranch: (branch: string) => Promise<void>;
+  settings?: CapsuleSettings;
+  updateSettings: (patch: Partial<CapsuleSettings>) => Promise<CapsuleSettings>;
 }
 
-const WorkspaceContext = createContext<WorkspaceValue | null>(null);
+const workspaceContextSlot = globalThis as typeof globalThis & {
+  __capsuleWorkspaceContext?: Context<WorkspaceValue | null>;
+};
+const WorkspaceContext =
+  workspaceContextSlot.__capsuleWorkspaceContext ?? createContext<WorkspaceValue | null>(null);
+workspaceContextSlot.__capsuleWorkspaceContext = WorkspaceContext;
 
 export function useWorkspace(): WorkspaceValue {
   const value = useContext(WorkspaceContext);
@@ -248,6 +267,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [filePicker, setFilePicker] = useState(false);
   const [contentSearch, setContentSearch] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("files");
+  const [projectRuns, setProjectRuns] = useState<Run[]>([]);
+  const [settings, setSettings] = useState<CapsuleSettings>();
+  const settingsDefaultsApplied = useRef(false);
 
   const project = projects.find((item) => item.id === projectId);
   const session = sessions.find((item) => item.id === sessionId);
@@ -274,6 +296,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         return [...nextMessages, ...pending];
       });
       setRuns(nextRuns);
+      setProjectRuns((current) => {
+        const others = current.filter((item) => item.sessionId !== id);
+        return [...nextRuns, ...others];
+      });
       const latest = nextRuns[0];
       if (latest) {
         const [nextEvents, nextArtifacts] = await Promise.all([
@@ -293,8 +319,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     try {
-      const [nextProjects, nextAgents, nextSkills, nextStatus, nextSub, nextApprovals, nextHarnesses] =
-        await Promise.all([
+      const [
+        nextProjects,
+        nextAgents,
+        nextSkills,
+        nextStatus,
+        nextSub,
+        nextApprovals,
+        nextHarnesses,
+        nextSettings,
+      ] = await Promise.all([
           api.listProjects(),
           api.listAgents(),
           api.listSkills(),
@@ -302,6 +336,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           api.getSubsystemStatus(),
           api.listApprovals("pending"),
           api.listHarnesses(),
+          api.getSettings(),
         ]);
       setProjects(nextProjects);
       setAgents(nextAgents);
@@ -310,6 +345,18 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       setSubsystems(nextSub);
       setApprovals(nextApprovals);
       setHarnesses(nextHarnesses);
+      setSettings(nextSettings as CapsuleSettings);
+      if (!settingsDefaultsApplied.current && nextSettings) {
+        const loaded = nextSettings as CapsuleSettings;
+        settingsDefaultsApplied.current = true;
+        setMode(loaded.defaultMode);
+        if (
+          loaded.defaultAgentId &&
+          nextAgents.some((item: Agent) => item.id === loaded.defaultAgentId)
+        ) {
+          setAgentId(loaded.defaultAgentId);
+        }
+      }
       const selectedProject = projectId ?? nextProjects[0]?.id;
       if (selectedProject && selectedProject !== projectId) setProjectId(selectedProject);
       if (selectedProject) {
@@ -347,6 +394,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         if (command === "runs") setView("history");
         if (command === "harness") setView("runtimes");
         if (command === "new-project") void createProjectFromFolder();
+        if (command === "open-folder") void pickProjectDirectory();
+        if (command === "open-files") void pickFilesToMention();
+        if (command === "settings") {
+          setPalette(false);
+          setView("settings");
+        }
         if (command === "harness" || command === "harness-updated" || command === "projects-updated") {
           void refresh();
         }
@@ -371,6 +424,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         event.preventDefault();
         setFilePicker((open) => !open);
       }
+      if (key === "o") {
+        event.preventDefault();
+        if (event.shiftKey) void pickFilesToMention();
+        else void pickProjectDirectory();
+      }
       if (key === "f" && event.shiftKey) {
         event.preventDefault();
         setContentSearch((open) => !open);
@@ -378,6 +436,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       if (key === "n") {
         event.preventDefault();
         void createTask();
+      }
+      if (key === ",") {
+        event.preventDefault();
+        setPalette(false);
+        setView("settings");
       }
       if (event.key === "\\") {
         event.preventDefault();
@@ -427,8 +490,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     if (!projectId) {
       setGit(undefined);
       setFiles([]);
+      setProjectRuns([]);
       return;
     }
+    void api
+      .listRuns()
+      .then((items: Run[]) => setProjectRuns(items.filter((item) => item.projectId === projectId)))
+      .catch(() => setProjectRuns([]));
     void api.gitStatus(projectId).then(setGit).catch(() => setGit(undefined));
     void api
       .listFiles(projectId)
@@ -453,6 +521,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       projectId: targetProject,
       agentId,
       mode,
+      permissionProfile: settings?.defaultPermission,
       title: "New conversation",
     });
     setSessionId(created.id);
@@ -478,6 +547,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           projectId: currentProjectId,
           agentId,
           mode,
+          permissionProfile: settings?.defaultPermission,
           title: "New conversation",
         });
         currentSessionId = created.id;
@@ -527,28 +597,82 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     await refresh();
   }
 
+  function folderName(directory: string): string {
+    return directory.split("/").filter(Boolean).pop() || "Project";
+  }
+
   async function pickProjectDirectory() {
-    if (!projectId) return;
-    const directory = await api.pickDirectory();
-    if (!directory) return;
-    await api.updateProject(projectId, { workingDirectory: directory });
-    await refresh();
+    try {
+      const directory = await api.pickDirectory();
+      if (!directory) return;
+      const name = folderName(directory);
+      const target = projectId ?? projects[0]?.id;
+      if (!target) {
+        const created = await api.createProject({ name, workingDirectory: directory });
+        setProjectId(created.id);
+      } else {
+        const current = projects.find((item) => item.id === target);
+        await api.updateProject(target, {
+          workingDirectory: directory,
+          ...(!current?.workingDirectory && current?.name === "Inbox" ? { name } : {}),
+        });
+      }
+      setView("chat");
+      setNotice(undefined);
+      await refresh();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function pickFilesToMention() {
+    try {
+      const paths = (await api.pickFiles()) as string[] | undefined;
+      if (!paths?.length) return;
+      const first = paths[0];
+      if (!first) return;
+      let root = project?.workingDirectory;
+      if (!root) {
+        const parent = first.split("/").slice(0, -1).join("/") || "/";
+        const target = projectId ?? projects[0]?.id;
+        if (!target) {
+          const created = await api.createProject({
+            name: folderName(parent),
+            workingDirectory: parent,
+          });
+          setProjectId(created.id);
+        } else {
+          await api.updateProject(target, { workingDirectory: parent });
+        }
+        root = parent;
+        await refresh();
+      }
+      const prefix = `${root.replace(/\/$/, "")}/`;
+      for (const absolute of paths) {
+        mentionFile(absolute.startsWith(prefix) ? absolute.slice(prefix.length) : (absolute.split("/").pop() ?? absolute));
+      }
+      setView("chat");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+    }
   }
 
   async function createProjectFromFolder() {
-    const directory = await api.pickDirectory();
-    const name =
-      newProjectName.trim() ||
-      directory?.split("/").filter(Boolean).pop() ||
-      "New project";
-    const created = await api.createProject({
-      name,
-      workingDirectory: directory,
-    });
-    setNewProjectName("");
-    setProjectId(created.id);
-    setView("chat");
-    await refresh();
+    try {
+      const directory = await api.pickDirectory();
+      if (!directory) return;
+      const name = newProjectName.trim() || folderName(directory);
+      const created = await api.createProject({
+        name,
+        workingDirectory: directory,
+      });
+      setNewProjectName("");
+      setProjectId(created.id);
+      setView("chat");
+      await refresh();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+    }
   }
 
   async function renameProject(id: string, name: string) {
@@ -609,7 +733,26 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   async function openTerminal() {
     if (!projectId) return;
-    await api.openTerminal(projectId);
+    try {
+      if (!project?.workingDirectory) {
+        const directory = await api.pickDirectory();
+        if (!directory) return;
+        await api.updateProject(projectId, { workingDirectory: directory });
+        await refresh();
+      }
+      await api.openTerminal(projectId);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function execInProject(command: string) {
+    if (!projectId) throw new Error("No project selected");
+    return (await api.execInProject(projectId, command)) as {
+      stdout: string;
+      stderr: string;
+      code: number;
+    };
   }
 
   async function openPath(target: string) {
@@ -621,7 +764,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setMode((current) => (current === "chat" ? "code" : current));
   }
 
-  async function spawnHarness(harnessId: string, prompt?: string) {
+  async function spawnHarness(
+    harnessId: string,
+    prompt?: string,
+    options?: { mode?: "persistent" | "oneshot" },
+  ) {
     if (!projectId) return;
     setBusy(true);
     setNotice(undefined);
@@ -631,11 +778,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         harnessId,
         prompt,
         cwd: project?.workingDirectory,
+        mode: options?.mode ?? "persistent",
       });
       setSessionId(result.session.id);
       setAgentId(harnessId);
       setMode("code");
       setView("chat");
+      if (result.usedSlashCommand === false && result.detail) setNotice(result.detail);
       await refresh();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : String(error));
@@ -659,8 +808,18 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }
 
   async function doctorHarness(harnessId: string) {
-    const report = await api.doctorHarness(harnessId);
-    setDoctors((current) => ({ ...current, [harnessId]: report }));
+    try {
+      const report = await api.doctorHarness(harnessId);
+      setDoctors((current) => ({ ...current, [harnessId]: report }));
+      if (!report.ready) {
+        setNotice(
+          report.gatewayOutput ||
+            report.checks.find((item: { ok: boolean; detail: string }) => !item.ok)?.detail,
+        );
+      }
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+    }
   }
 
   async function cancelHarness(id?: string) {
@@ -694,7 +853,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     await refresh();
   }
 
-  async function setHarnessOption(key: "model" | "permissions" | "cwd" | "mode", value: string) {
+  async function setHarnessOption(
+    key: "model" | "permissions" | "cwd" | "mode" | "timeout",
+    value: string,
+  ) {
     if (!sessionId) return;
     await api.setHarnessOption({ sessionId, key, value });
     await refresh();
@@ -746,6 +908,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     if (tab) setInspectorTab(tab);
     setInspectorOpen(true);
     setView("chat");
+  }
+
+  async function updateSettings(patch: Partial<CapsuleSettings>) {
+    const next = (await api.updateSettings(patch)) as CapsuleSettings;
+    setSettings(next);
+    if (patch.defaultMode) setMode(patch.defaultMode);
+    if (patch.defaultAgentId) setAgentId(patch.defaultAgentId);
+    return next;
   }
 
   async function gitCommit(message: string) {
@@ -856,6 +1026,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       send,
       createProject,
       pickProjectDirectory,
+      pickFilesToMention,
       createProjectFromFolder,
       renameProject,
       deleteProject,
@@ -863,6 +1034,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       deleteSession,
       archiveSession,
       openTerminal,
+      execInProject,
+      projectRuns,
       openPath,
       mentionFile,
       spawnHarness,
@@ -902,6 +1075,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       gitStage,
       gitDiscard,
       gitCreateBranch,
+      settings,
+      updateSettings,
     }),
     [
       api,
@@ -949,6 +1124,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       filePicker,
       contentSearch,
       inspectorTab,
+      projectRuns,
+      settings,
       refresh,
       loadSession,
     ],

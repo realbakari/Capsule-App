@@ -19,6 +19,7 @@ import {
   type Skill,
   type Unsubscribe,
 } from "@capsule/shared";
+import { FilesystemAdapter } from "@capsule/filesystem";
 import { DEFAULT_GATEWAY_HOST, DEFAULT_GATEWAY_PORT, DEFAULT_GATEWAY_URL } from "./discovery.js";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -32,10 +33,15 @@ export class MockAgentRuntime implements AgentRuntime {
   private skills: Skill[] = DEFAULT_SKILLS.map((skill) => ({ ...skill }));
   private readonly sessions = new Map<string, Session>();
   private readonly approvals = new Map<string, ApprovalRequest>();
+  private workspace?: string;
 
   setScenario(scenario: MockScenario): void {
     this.scenario = scenario;
     if (scenario === "disconnected_gateway") this.connected = false;
+  }
+
+  setWorkspace(directory?: string): void {
+    this.workspace = directory;
   }
 
   async connect(): Promise<void> {
@@ -236,16 +242,35 @@ export class MockAgentRuntime implements AgentRuntime {
     }
     const output =
       scenario === "buzz_message"
-        ? "Handled an inbound Buzz room message and traced it to this Capsule run."
-        : [
-            "I inspected the request and completed the work.",
-            "",
-            "Files:",
-            "- src/index.ts",
-            "",
-            "Next step: review the artifact and continue the conversation.",
-          ].join("\n");
+        ? "Handled an inbound channel message and traced it to this Capsule run."
+        : this.describeMockReply();
     await this.finishSuccess(run.id, output, scenario === "verification_failure");
+  }
+
+  private describeMockReply(): string {
+    const listing = this.listWorkspace();
+    return [
+      "Mock runtime — OpenClaw Gateway is offline.",
+      "Nothing was edited. This is not Claude Code or Codex.",
+      "",
+      listing,
+      "",
+      "Connect the Gateway, enable acpx, open a folder with ⌘O, then spawn a harness to work in this repo.",
+    ].join("\n");
+  }
+
+  private listWorkspace(): string {
+    if (!this.workspace) {
+      return "No project folder is open, so Capsule is not reading any files.";
+    }
+    const entries = new FilesystemAdapter(this.workspace).search("", 20);
+    if (entries.length === 0) {
+      return `Project folder: ${this.workspace}\nThe folder is empty or unreadable from Capsule.`;
+    }
+    const lines = entries
+      .slice(0, 16)
+      .map((entry) => `- ${entry.path}${entry.type === "directory" ? "/" : ""}`);
+    return [`Project folder: ${this.workspace}`, "Files Capsule can see:", ...lines].join("\n");
   }
 
   private async finishSuccess(

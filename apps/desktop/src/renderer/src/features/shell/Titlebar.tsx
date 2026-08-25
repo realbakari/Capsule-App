@@ -2,7 +2,7 @@ import { useWorkspace } from "../../lib/workspace";
 import { PanelLeftIcon, PanelRightIcon, PlusIcon, StopIcon, XIcon } from "./icons";
 
 const VIEW_TITLE: Record<string, string> = {
-  runtimes: "Runtimes",
+  runtimes: "ACP harnesses",
   skills: "Skills",
   history: "History",
   approvals: "Approvals",

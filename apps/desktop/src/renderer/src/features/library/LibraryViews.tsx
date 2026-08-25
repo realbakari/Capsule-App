@@ -1,23 +1,32 @@
 import { useWorkspace } from "../../lib/workspace";
 
 export function SkillsView() {
-  const { skills } = useWorkspace();
+  const { skills, skillId, setSkillId, setView } = useWorkspace();
   return (
     <section className="panel">
       <div className="panel-inner">
       <div className="panel-header">
-        <p>Installed capabilities Capsule can attach to a run.</p>
+        <p>Installed capabilities. Click one to attach it to the composer as $skill.</p>
       </div>
+      {skills.length === 0 && <p className="muted">No skills loaded yet.</p>}
       {skills.map((item) => (
-        <div className="card" key={item.id}>
+        <button
+          className={`card ${skillId === item.id ? "active" : ""}`}
+          key={item.id}
+          type="button"
+          onClick={() => {
+            setSkillId(item.id);
+            setView("chat");
+          }}
+        >
           <div className="row">
             <div>
               <b>{item.name}</b>
               <div className="muted">{item.description}</div>
             </div>
-            <span className="muted">{item.status}</span>
+            <span className="muted">{skillId === item.id ? "attached" : item.status}</span>
           </div>
-        </div>
+        </button>
       ))}
       </div>
     </section>
@@ -25,32 +34,39 @@ export function SkillsView() {
 }
 
 export function HistoryView() {
-  const { runs, setSessionId, setView } = useWorkspace();
+  const { projectRuns, sessions, setSessionId, setView } = useWorkspace();
+  const items = [...projectRuns].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
   return (
     <section className="panel">
       <div className="panel-inner">
       <div className="panel-header">
         <p>Runs in the current project.</p>
       </div>
-      {runs.length === 0 && <p className="muted">No runs yet.</p>}
-      {runs.map((item) => (
-        <button
-          className="card"
-          key={item.id}
-          onClick={() => {
-            setSessionId(item.sessionId);
-            setView("chat");
-          }}
-        >
-          <div className="row">
-            <div>
-              <b>{item.prompt.slice(0, 80)}</b>
-              <div className="muted">{item.status}</div>
+      {items.length === 0 && <p className="muted">No runs yet. Send a message to start one.</p>}
+      {items.map((item) => {
+        const session = sessions.find((entry) => entry.id === item.sessionId);
+        return (
+          <button
+            className="card"
+            key={item.id}
+            onClick={() => {
+              setSessionId(item.sessionId);
+              setView("chat");
+            }}
+          >
+            <div className="row">
+              <div>
+                <b>{(item.prompt ?? "Run").slice(0, 80)}</b>
+                <div className="muted">
+                  {item.status}
+                  {session?.title ? ` · ${session.title}` : ""}
+                </div>
+              </div>
+              <span className="faint">{item.createdAt?.slice(11, 19) ?? ""}</span>
             </div>
-            <span className="faint">{item.createdAt.slice(11, 19)}</span>
-          </div>
-        </button>
-      ))}
+          </button>
+        );
+      })}
       </div>
     </section>
   );

@@ -1,8 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FileEntry } from "@capsule/shared";
-import { MORE_MODES, PERMISSION_OPTIONS, PRIMARY_MODES, useWorkspace } from "../../lib/workspace";
+import { searchProjectFiles } from "../../lib/bridge";
+import {
+  MORE_MODES,
+  PERMISSION_OPTIONS,
+  PRIMARY_MODES,
+  useWorkspace,
+  type View,
+} from "../../lib/workspace";
 import { MenuSelect } from "../shell/MenuSelect";
-import { ArrowUpIcon, GitBranchIcon, PaperclipIcon, StopIcon } from "../shell/icons";
+import { ArrowUpIcon, GitBranchIcon, PaperclipIcon, StopIcon, TerminalIcon } from "../shell/icons";
 import { ComposerMenu, detectTrigger, type SuggestItem } from "./ComposerMenu";
 
 const SUGGESTIONS = [
@@ -23,7 +30,47 @@ const SUGGESTIONS = [
   },
 ];
 
+function slashCommands(input: {
+  harnesses: Array<{ id: string; name: string }>;
+  query: string;
+  createTask: () => void;
+  setMode: (mode: "plan" | "chat" | "code") => void;
+  spawnHarness: (id: string) => void;
+  toggleInspector: () => void;
+  openTerminal: () => void;
+  openInspector: (tab?: "term") => void;
+  pickProjectDirectory: () => void;
+  setView: (view: View) => void;
+}): SuggestItem[] {
+  const targets =
+    input.harnesses.length > 0
+      ? input.harnesses
+      : [
+          { id: "claude", name: "Claude Code" },
+          { id: "codex", name: "Codex" },
+        ];
+  return [
+    { id: "new", label: "/new", detail: "New conversation", run: () => input.createTask() },
+    { id: "plan", label: "/plan", detail: "Plan mode", run: () => input.setMode("plan") },
+    { id: "chat", label: "/chat", detail: "Chat mode", run: () => input.setMode("chat") },
+    { id: "code", label: "/code", detail: "Code mode", run: () => input.setMode("code") },
+    ...targets.map((harness) => ({
+      id: `spawn-${harness.id}`,
+      label: `/${harness.id}`,
+      detail: `Spawn ${harness.name}`,
+      run: () => input.spawnHarness(harness.id),
+    })),
+    { id: "inspect", label: "/inspect", detail: "Toggle inspector", run: () => input.toggleInspector() },
+    { id: "open", label: "/open", detail: "Open a code folder", run: () => input.pickProjectDirectory() },
+    { id: "term", label: "/term", detail: "Project terminal", run: () => input.openInspector("term") },
+    { id: "runtimes", label: "/runtimes", detail: "Open harnesses", run: () => input.setView("runtimes") },
+    { id: "approvals", label: "/approvals", detail: "Open approvals", run: () => input.setView("approvals") },
+    { id: "settings", label: "/settings", detail: "Open settings", run: () => input.setView("settings") },
+  ].filter((item) => item.label.includes(input.query || "___"));
+}
+
 export function Composer({ showSuggestions = false }: { showSuggestions?: boolean }) {
+  const workspace = useWorkspace();
   const {
     draft,
     setDraft,
@@ -59,7 +106,10 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
     checkoutBranch,
     mentionFile,
     openInspector,
-  } = useWorkspace();
+    openTerminal,
+    settings,
+  } = workspace;
+  const harnesses = workspace.harnesses ?? [];
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [menuIndex, setMenuIndex] = useState(0);
   const [files, setFiles] = useState<FileEntry[]>([]);
@@ -83,34 +133,37 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
       setFiles([]);
       return;
     }
-    void api.searchFiles(projectId, trigger.query).then((entries: FileEntry[]) => setFiles(entries));
-  }, [api, projectId, trigger?.kind, trigger?.query]);
+    void searchProjectFiles(projectId, trigger.query)
+      .then((entries) => setFiles(entries))
+      .catch(() => setFiles([]));
+  }, [projectId, trigger?.kind, trigger?.query]);
 
   const slashItems = useMemo<SuggestItem[]>(
     () =>
-      [
-        { id: "new", label: "/new", detail: "New conversation", run: () => createTask() },
-        { id: "plan", label: "/plan", detail: "Plan mode", run: () => setMode("plan") },
-        { id: "chat", label: "/chat", detail: "Chat mode", run: () => setMode("chat") },
-        { id: "code", label: "/code", detail: "Code mode", run: () => setMode("code") },
-        {
-          id: "claude",
-          label: "/claude",
-          detail: "Spawn Claude Code",
-          run: () => spawnHarness("claude"),
-        },
-        { id: "codex", label: "/codex", detail: "Spawn Codex", run: () => spawnHarness("codex") },
-        { id: "inspect", label: "/inspect", detail: "Toggle inspector", run: () => toggleInspector() },
-        { id: "runtimes", label: "/runtimes", detail: "Open runtimes", run: () => setView("runtimes") },
-        {
-          id: "approvals",
-          label: "/approvals",
-          detail: "Open approvals",
-          run: () => setView("approvals"),
-        },
-        { id: "settings", label: "/settings", detail: "Open settings", run: () => setView("settings") },
-      ].filter((item) => item.label.includes(trigger?.kind === "slash" ? trigger.query : "___")),
-    [createTask, setMode, setView, spawnHarness, toggleInspector, trigger],
+      slashCommands({
+        harnesses,
+        query: trigger?.kind === "slash" ? trigger.query : "___",
+        createTask,
+        setMode,
+        spawnHarness,
+        toggleInspector,
+        openTerminal: () => void openTerminal(),
+        openInspector,
+        pickProjectDirectory,
+        setView,
+      }),
+    [
+      createTask,
+      harnesses,
+      openInspector,
+      openTerminal,
+      pickProjectDirectory,
+      setMode,
+      setView,
+      spawnHarness,
+      toggleInspector,
+      trigger,
+    ],
   );
 
   const skillItems = useMemo<SuggestItem[]>(
@@ -183,7 +236,8 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
     return Boolean(event.nativeEvent.isComposing) || event.keyCode === 229;
   }
 
-  const permission = session?.permissionProfile ?? "default";
+  const permission = session?.permissionProfile ?? settings?.defaultPermission ?? "default";
+  const sendOnEnter = settings?.composerSendKey !== "cmd-enter";
 
   return (
     <div className="composer">
@@ -232,9 +286,11 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
           rows={1}
           value={draft}
           placeholder={
-            harnessLive
-              ? `Continue with ${session?.harnessId === "codex" ? "Codex" : "Claude Code"}…`
-              : "Ask Capsule…"
+            !connected
+              ? "Gateway offline — replies are mock and will not edit files"
+              : harnessLive
+                ? `Continue with ${session?.harnessId === "codex" ? "Codex" : "Claude Code"}…`
+                : "Ask Capsule…"
           }
           onChange={(event) => {
             setDraft(event.target.value);
@@ -283,10 +339,12 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
             }
             if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
               event.preventDefault();
-              void sendAndContinue();
+              if (event.shiftKey || sendOnEnter) void sendAndContinue();
+              else void send();
               return;
             }
             if (event.key === "Enter" && !event.shiftKey) {
+              if (!sendOnEnter) return;
               event.preventDefault();
               void send();
             }
@@ -366,7 +424,11 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
             <button
               className="send-btn"
               disabled={busy || !draft.trim()}
-              title="Send · ⌘Enter starts another thread"
+              title={
+                sendOnEnter
+                  ? "Send · Enter · ⌘Enter starts another thread"
+                  : "Send · ⌘Enter · ⌘⇧Enter starts another thread"
+              }
               onClick={() => void send()}
             >
               <ArrowUpIcon size={14} />
@@ -375,8 +437,19 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
         </div>
       </div>
       <div className="composer-context">
-        <button type="button" onClick={() => void pickProjectDirectory()} title="Choose folder">
-          {folder ?? "No folder"}
+        <button
+          type="button"
+          className={!folder ? "missing" : ""}
+          onClick={() => void pickProjectDirectory()}
+          title="Open folder (⌘O)"
+        >
+          {folder ?? "Open folder"}
+        </button>
+        <button type="button" onClick={() => void openTerminal()} title="Open Terminal in this folder">
+          <span className="inline-icon">
+            <TerminalIcon size={12} />
+            Terminal
+          </span>
         </button>
         {git?.isRepo && git.branches.length > 0 && (
           <span className="inline-icon">
@@ -395,7 +468,9 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
           </span>
         )}
         {project?.defaultAgentId && (
-          <span>{project.defaultAgentId === "codex" ? "Codex" : "Claude Code"}</span>
+          <span>
+            {harnesses.find((item) => item.id === project.defaultAgentId)?.name ?? project.defaultAgentId}
+          </span>
         )}
         {!connected && <span>Gateway offline</span>}
         <span className="faint">/  @  $</span>

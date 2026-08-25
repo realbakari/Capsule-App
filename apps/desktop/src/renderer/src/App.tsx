@@ -11,6 +11,7 @@ import { Palette } from "./features/shell/Palette";
 import { Sidebar } from "./features/shell/Sidebar";
 import { Splash } from "./features/shell/Splash";
 import { Titlebar } from "./features/shell/Titlebar";
+import { ViewErrorBoundary } from "./features/shell/ErrorBoundary";
 import { WorkspaceProvider, useWorkspace } from "./lib/workspace";
 
 const BOOT_SPLASH_MS = 1100;
@@ -28,18 +29,30 @@ function Shell() {
       <div className="workspace">
         <Titlebar />
         <div className="workspace-body">
-          {view === "chat" && <Conversation />}
-          {view === "runtimes" && <RuntimesView />}
-          {view === "skills" && <SkillsView />}
-          {view === "history" && <HistoryView />}
-          {view === "approvals" && <ApprovalsView />}
-          {view === "settings" && <SettingsView />}
-          {view === "chat" && inspectorOpen && <Inspector />}
+          <ViewErrorBoundary key={view} label={view === "chat" ? "Conversation" : "This view"}>
+            {view === "chat" && <Conversation />}
+            {view === "runtimes" && <RuntimesView />}
+            {view === "skills" && <SkillsView />}
+            {view === "history" && <HistoryView />}
+            {view === "approvals" && <ApprovalsView />}
+            {view === "settings" && <SettingsView />}
+          </ViewErrorBoundary>
+          {view === "chat" && inspectorOpen && (
+            <ViewErrorBoundary label="Inspector">
+              <Inspector />
+            </ViewErrorBoundary>
+          )}
         </div>
       </div>
-      <Palette />
-      <FilePicker />
-      <ContentSearch />
+      <ViewErrorBoundary compact label="Command palette">
+        <Palette />
+      </ViewErrorBoundary>
+      <ViewErrorBoundary compact label="File picker">
+        <FilePicker />
+      </ViewErrorBoundary>
+      <ViewErrorBoundary compact label="Search">
+        <ContentSearch />
+      </ViewErrorBoundary>
       <ConfirmDialog />
     </div>
   );

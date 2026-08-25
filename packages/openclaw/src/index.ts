@@ -5,7 +5,10 @@ export {
   defaultGatewayEndpoint,
   parseGatewayUrl,
   probeTcp,
+  readLocalGatewayBootstrapToken,
   readOpenClawGatewayHint,
 } from "./discovery.js";
 export { OpenClawAdapter, type OpenClawAdapterOptions } from "./adapter.js";
+export { createGatewayHostDeps, loadOrCreateDeviceIdentity } from "./device-identity.js";
+export { acpCommandFailed, extractGatewayText, isGatewayTurnDone } from "./events.js";
 export { MockAgentRuntime } from "./mock.js";

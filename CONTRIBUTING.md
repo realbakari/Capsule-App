@@ -38,7 +38,7 @@ node scripts/ensure-native.mjs
 
 Without a Gateway, Capsule uses the mock runtime. Settings → Connect attaches to a real Gateway.
 
-Desktop icons are derived from `assets/logo.png`. Do not edit that file to change the Dock, tray, or `.icns` — regenerate instead:
+Desktop icons are derived from `assets/logo.png` and given a macOS squircle mask. Do not edit that file to change the Dock, tray, or `.icns` — regenerate instead:
 
 ```bash
 pnpm icons

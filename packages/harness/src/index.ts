@@ -14,23 +14,30 @@ import {
 } from "@capsule/shared";
 
 export {
+  ACP_HARNESS_IDS,
   ACP_MODES,
   HARNESS_PERMISSION_PROFILES,
+  PRIMARY_HARNESS_IDS,
   PRESET_HARNESSES,
   acpCancelCommand,
   acpCloseCommand,
   acpCwdCommand,
   acpDoctorCommand,
+  acpInstallCommand,
   acpModelCommand,
   acpOptionCommand,
   acpPermissionsCommand,
+  acpResetOptionsCommand,
   acpSessionsCommand,
+  acpSetCommand,
   acpSetModeCommand,
   acpSpawnCommand,
   acpStatusCommand,
   acpSteerCommand,
+  acpTimeoutCommand,
   isAcpSessionKey,
   isHarnessId,
+  isPrimaryHarness,
   parseAcpStatus,
   quoteAcpArg,
 } from "@capsule/shared";
@@ -45,6 +52,9 @@ export function extraBinDirs(): string[] {
     path.join(home, ".local", "bin"),
     path.join(home, ".claude", "bin"),
     path.join(home, ".codex", "bin"),
+    path.join(home, ".cursor", "bin"),
+    path.join(home, ".gemini", "bin"),
+    path.join(home, ".local", "share", "fnm", "current", "bin"),
     path.join(home, ".npm-global", "bin"),
     path.join(home, ".nvm", "current", "bin"),
   ];
@@ -193,8 +203,8 @@ export function localDoctorChecks(input: {
       label: "ACP (acpx)",
       ok: input.acpxEnabled,
       detail: input.acpxEnabled
-        ? "acpx is enabled."
-        : "openclaw plugins install @openclaw/acpx",
+        ? "acpx is enabled. ACP runs on the Gateway host, not inside the OpenClaw sandbox."
+        : "openclaw plugins install @openclaw/acpx && openclaw config set plugins.entries.acpx.enabled true. If plugins.allow is set, it must include acpx.",
     },
   ];
 }

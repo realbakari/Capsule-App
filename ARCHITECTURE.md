@@ -125,9 +125,9 @@ Current upstream (as of 2026.8):
 | Transport | WebSocket, JSON text frames |
 | Default bind | `127.0.0.1:18789` |
 | Wire version | Protocol **4** (`minProtocol` / `maxProtocol` = 4) |
-| Handshake | `connect.challenge` then `connect` |
+| Handshake | `connect.challenge` then signed Ed25519 `connect` |
 | Client role | `operator` |
-| Scopes | `operator.read`, `operator.write`, `operator.approvals` |
+| Scopes | `operator.read`, `operator.write`, `operator.approvals`, `operator.admin` |
 | Capabilities | `tool-events`, `approvals`, `exec-approvals`, `session-scoped-events`, `agent-kind` |
 | Packages | `@openclaw/gateway-client@beta`, `@openclaw/gateway-protocol@beta` |
 | Plugin boundary | `openclaw/plugin-sdk/*` capability registration |
@@ -142,9 +142,9 @@ Discovery order: configured URL → `~/.openclaw/openclaw.json` port → `127.0.
 
 If the Gateway is down, Capsule falls back to `MockAgentRuntime` so projects and conversations still work.
 
-### Dedicated coding harnesses (Claude Code, Codex)
+### Dedicated coding harnesses (ACP via acpx)
 
-Capsule does not own ACP. It asks the Gateway to spawn Claude Code or Codex via acpx:
+Capsule does not own ACP. It is an operator client for OpenClaw acpx:
 
 ```
 Capsule UI  →  dedicate / spawn
@@ -153,12 +153,14 @@ Capsule UI  →  dedicate / spawn
                  ↓
            @openclaw/acpx
                  ↓
-        Claude Code ACP  or  Codex ACP
+        Claude Code, Codex, Gemini, Cursor, …
 ```
 
-OpenClaw ACP target ids are `claude` and `codex` (`/acp spawn <id>` or `sessions.create` with `runtime: "acp"`). Capsule probes local CLIs (`claude`, `codex`), checks whether the Gateway has `acpx` enabled, and can dedicate either harness as a project's default coding agent.
+Operator spawn creates a Gateway session, then sends `/acp spawn <id> --bind here --mode persistent|oneshot --cwd <dir>`. That is the chat command path from [ACP agents](https://docs.openclaw.ai/tools/acp-agents). `sessions_spawn({ runtime: "acp" })` is an agent tool, not a `sessions.create` field — Gateway protocol 4 rejects `runtime` on `sessions.create`.
 
-Capsule does not speak ACP over stdio itself and does not embed Claude or Codex. Install the CLIs on the Mac and `openclaw plugins install @openclaw/acpx` on the Gateway.
+Claude Code and Codex are first-class. Other official acpx ids (Copilot, Cursor, Droid, Gemini, OpenCode, …) are spawnable from Runtimes. Codex ACP is the explicit fallback; native `/codex` stays on the Gateway when that plugin is enabled.
+
+ACP harnesses run on the Gateway host, not inside the OpenClaw sandbox. Capsule does not speak ACP JSON-RPC over stdio and does not install the CLIs.
 
 ---
 
@@ -203,7 +205,7 @@ Capsule shows source metadata (channel, room, thread, sender) and links it to a 
 
 SQLite holds workspaces, projects, sessions, messages, agents, skills, runs, events, contracts, policies, approvals, artifacts, and channel bindings.
 
-Secrets never go in SQLite or the renderer. Gateway tokens live in macOS Keychain. Tests may use a `0600` file under the user-data directory.
+Secrets never go in SQLite or the renderer. Gateway tokens live in macOS Keychain. Capsule's Ed25519 device identity and issued device tokens live as `0600` files under the user-data `identity/` directory. Tests may use a `0600` file store instead of Keychain.
 
 ---
 
@@ -221,7 +223,7 @@ Visual language is graphite and off-white, matching the Capsule mark. No purple 
 |---|-----------|--------|
 | 1 | Monaco / xterm | File tree, git changes/diff/commit, and branch checkout exist; an in-app editor and terminal do not. |
 | 2 | Execution replay UI | Events are stored; a dedicated replay viewer is not shipped. |
-| 3 | Device pairing UX | Token + loopback connect work; full Ed25519 pairing UI is incomplete. |
+| 3 | Remote pairing UI | Loopback auto-approves Capsule's persisted Ed25519 identity; remote/non-local pairing still needs `openclaw devices approve`. |
 | 4 | Bonjour discovery | Local TCP probe and config-file hints work; mDNS browsing is not wired. |
 | 5 | Channel-to-run live ingest | Channel status is listed; inbound channel messages are not a live Capsule inbox yet. |
 | 6 | Notarization / auto-update | Packaging targets `Capsule.app` / `.dmg` for Apple Silicon; signing is prepared, not configured. |

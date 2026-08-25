@@ -32,6 +32,8 @@ const api = {
   listFiles: (projectId: string, relative?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.listFiles, projectId, relative),
   openTerminal: (projectId: string) => ipcRenderer.invoke(IPC_CHANNELS.openTerminal, projectId),
+  execInProject: (projectId: string, command: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.execInProject, projectId, command),
   getStatus: () => ipcRenderer.invoke(IPC_CHANNELS.getStatus),
   getSubsystemStatus: () => ipcRenderer.invoke(IPC_CHANNELS.getSubsystemStatus),
   connectGateway: (url?: string) => ipcRenderer.invoke(IPC_CHANNELS.connectGateway, url),
@@ -60,6 +62,7 @@ const api = {
     ipcRenderer.invoke(IPC_CHANNELS.searchContents, projectId, query),
   openPath: (target: string) => ipcRenderer.invoke(IPC_CHANNELS.openPath, target),
   pickDirectory: () => ipcRenderer.invoke(IPC_CHANNELS.pickDirectory),
+  pickFiles: () => ipcRenderer.invoke(IPC_CHANNELS.pickFiles),
   listHarnesses: () => ipcRenderer.invoke(IPC_CHANNELS.listHarnesses),
   doctorHarness: (harnessId: string) => ipcRenderer.invoke(IPC_CHANNELS.doctorHarness, harnessId),
   dedicateHarness: (projectId: string, harnessId: string) =>

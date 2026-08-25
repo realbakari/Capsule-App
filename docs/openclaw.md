@@ -15,10 +15,10 @@ Pin the **beta** dist-tag until OpenClaw publishes a non-reserved `latest`:
 
 1. Connect WebSocket to `ws://127.0.0.1:18789` (or configured URL).
 2. Wait for `connect.challenge` (`nonce`, integer `ts`).
-3. Send `connect` with `minProtocol: 4`, `maxProtocol: 4`, `role: "operator"`.
+3. Persist an Ed25519 device identity, sign the challenge-bound payload (`signedAt` = challenge `ts`), and send `connect` with `minProtocol: 4`, `maxProtocol: 4`, `role: "operator"`, plus the shared Gateway token on loopback.
 4. Persist `hello-ok.auth.deviceToken` when issued. Never log it.
 
-Capsule identifies as `clientName: cli`, `mode: ui`, `displayName: Capsule`. The Gateway's client-id registry is closed; unknown ids are rejected.
+Capsule identifies as `clientName: cli`, `mode: ui`, `displayName: Capsule`. The Gateway's client-id registry is closed; unknown ids are rejected. Device keys live under the app user-data `identity/` directory (`0600`), not SQLite. Loopback pairing is usually auto-approved; otherwise run `openclaw devices approve <requestId>`.
 
 ## Methods Capsule uses
 

@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FileEntry } from "@capsule/shared";
+import { searchProjectFiles } from "../../lib/bridge";
 import { useWorkspace } from "../../lib/workspace";
 
 export function FilePicker() {
-  const { filePicker, setFilePicker, projectId, mentionFile, api } = useWorkspace();
+  const { filePicker, setFilePicker, projectId, project, mentionFile, pickProjectDirectory, pickFilesToMention } =
+    useWorkspace();
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
   const [files, setFiles] = useState<FileEntry[]>([]);
@@ -13,11 +15,13 @@ export function FilePicker() {
       setFiles([]);
       return;
     }
-    void api.searchFiles(projectId, query).then((entries: FileEntry[]) => {
-      setFiles(entries);
-      setIndex(0);
-    });
-  }, [api, filePicker, projectId, query]);
+    void searchProjectFiles(projectId, query)
+      .then((entries) => {
+        setFiles(entries);
+        setIndex(0);
+      })
+      .catch(() => setFiles([]));
+  }, [filePicker, projectId, query]);
 
   const items = useMemo(() => files.slice(0, 40), [files]);
 
@@ -56,7 +60,34 @@ export function FilePicker() {
             }
           }}
         />
-        {items.length === 0 && <div className="sidebar-empty">No files</div>}
+        {!project?.workingDirectory && (
+          <div className="sidebar-empty">
+            <p>Open a code folder first, then search files.</p>
+            <div className="actions" style={{ marginTop: 8 }}>
+              <button
+                className="send"
+                type="button"
+                onClick={() => {
+                  setFilePicker(false);
+                  void pickProjectDirectory();
+                }}
+              >
+                Open folder
+              </button>
+              <button
+                className="chip"
+                type="button"
+                onClick={() => {
+                  setFilePicker(false);
+                  void pickFilesToMention();
+                }}
+              >
+                Open files
+              </button>
+            </div>
+          </div>
+        )}
+        {project?.workingDirectory && items.length === 0 && <div className="sidebar-empty">No files</div>}
         {items.map((item, itemIndex) => (
           <button
             key={item.path}

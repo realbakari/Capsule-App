@@ -8,6 +8,7 @@ const TABS: Array<{ id: InspectorTab; label: string; key: string }> = [
   { id: "files", label: "Files", key: "f" },
   { id: "changes", label: "Changes", key: "c" },
   { id: "diff", label: "Diff", key: "d" },
+  { id: "term", label: "Term", key: "t" },
   { id: "agents", label: "Agents", key: "a" },
   { id: "run", label: "Run", key: "r" },
 ];
@@ -19,12 +20,13 @@ export function Inspector() {
     activeRun,
     steps,
     artifacts,
-    harnesses,
+    harnesses: harnessList,
     harnessSessions,
     git,
     files,
     pickProjectDirectory,
     openTerminal,
+    execInProject,
     openPath,
     mentionFile,
     setView,
@@ -50,6 +52,10 @@ export function Inspector() {
   const [preview, setPreview] = useState("");
   const [message, setMessage] = useState("");
   const [branchName, setBranchName] = useState("");
+  const [termCmd, setTermCmd] = useState("");
+  const [termOut, setTermOut] = useState("");
+  const [termBusy, setTermBusy] = useState(false);
+  const harnesses = harnessList ?? [];
   const dedicated = harnesses.find((item) => item.id === project?.defaultAgentId);
   const tab = inspectorTab;
 
@@ -257,6 +263,55 @@ export function Inspector() {
             ))}
         </div>
       )}
+      {tab === "term" && (
+        <div className="inspector-block">
+          <h4>Terminal</h4>
+          <p className="faint">
+            Runs in the project folder. Open Terminal.app for a full shell.
+          </p>
+          <div className="actions" style={{ marginTop: 8 }}>
+            <button className="chip" disabled={!projectId} onClick={() => void openTerminal()}>
+              <span className="inline-icon">
+                <TerminalIcon size={12} />
+                Open Terminal
+              </span>
+            </button>
+          </div>
+          <pre className="mono term-out">{termOut || "$"}</pre>
+          <form
+            className="term-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const command = termCmd.trim();
+              if (!command || termBusy) return;
+              setTermBusy(true);
+              setTermOut((current) => `${current && current !== "$" ? `${current}\n` : ""}$ ${command}\n`);
+              void execInProject(command)
+                .then((result) => {
+                  const body = `${result.stdout}${result.stderr}`.trim();
+                  setTermOut((current) => `${current}${body ? `${body}\n` : ""}exit ${result.code}`);
+                })
+                .catch((error) => {
+                  setTermOut((current) => `${current}${error instanceof Error ? error.message : String(error)}`);
+                })
+                .finally(() => setTermBusy(false));
+              setTermCmd("");
+            }}
+          >
+            <span className="faint">$</span>
+            <input
+              type="text"
+              value={termCmd}
+              placeholder={project?.workingDirectory ? "git status" : "Choose a folder first"}
+              disabled={!projectId || termBusy}
+              onChange={(event) => setTermCmd(event.target.value)}
+            />
+            <button className="chip" disabled={!termCmd.trim() || termBusy} type="submit">
+              Run
+            </button>
+          </form>
+        </div>
+      )}
       {tab === "agents" && (
         <div className="inspector-block">
           {harnesses.map((harness) => (
@@ -276,7 +331,7 @@ export function Inspector() {
             </div>
           ))}
           {harnessSessions.length === 0 ? (
-            <div className="faint">No live Claude or Codex sessions.</div>
+            <div className="faint">No live ACP sessions.</div>
           ) : (
             harnessSessions.map((item) => (
               <div className="change-row" key={item.id}>
@@ -313,7 +368,7 @@ export function Inspector() {
               <button className="ghost" onClick={() => void pickProjectDirectory()}>
                 Choose folder
               </button>
-              <button className="ghost" disabled={!project?.workingDirectory} onClick={() => void openTerminal()}>
+              <button className="ghost" disabled={!projectId} onClick={() => void openTerminal()}>
                 <span className="inline-icon">
                   <TerminalIcon size={12} />
                   Terminal
@@ -330,7 +385,7 @@ export function Inspector() {
               </div>
             ) : (
               <button className="ghost" onClick={() => setView("runtimes")}>
-                Dedicate Claude or Codex
+                Dedicate an ACP harness
               </button>
             )}
           </div>

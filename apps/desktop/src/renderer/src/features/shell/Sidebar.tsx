@@ -14,7 +14,7 @@ import {
 } from "./icons";
 
 const LIBRARY: Array<{ id: View; label: string; icon: typeof CpuIcon }> = [
-  { id: "runtimes", label: "Runtimes", icon: CpuIcon },
+  { id: "runtimes", label: "Harnesses", icon: CpuIcon },
   { id: "skills", label: "Skills", icon: SparkIcon },
   { id: "history", label: "History", icon: HistoryIcon },
   { id: "approvals", label: "Approvals", icon: ShieldIcon },

@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@capsule/agents": "workspace:*",
+    "@capsule/filesystem": "workspace:*",
     "@capsule/shared": "workspace:*",
     "@capsule/skills": "workspace:*",
     "@openclaw/gateway-client": "2026.8.1-beta.3",

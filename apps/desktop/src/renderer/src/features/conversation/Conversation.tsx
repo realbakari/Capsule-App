@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { CopyIcon } from "../shell/icons";
 import { useWorkspace } from "../../lib/workspace";
+import { GatewayBanner } from "../shell/GatewayBanner";
+import { ViewErrorBoundary } from "../shell/ErrorBoundary";
 import { Composer } from "./Composer";
 import { MessageBody } from "./MessageBody";
 
@@ -27,7 +29,17 @@ export function Conversation() {
     statusText,
     createTask,
     createProjectFromFolder,
+    pickProjectDirectory,
+    setDraft,
+    setMode,
+    connected,
   } = useWorkspace();
+
+  const emptyPrompts = [
+    { label: "Review this repo", mode: "code" as const, text: "Review the working directory and summarize the main risks." },
+    { label: "Plan a change", mode: "plan" as const, text: "Help me plan the next change for this project." },
+    { label: "Research options", mode: "research" as const, text: "Research options for this problem and cite sources." },
+  ];
   const scroller = useRef<HTMLDivElement>(null);
   const [stick, setStick] = useState(true);
 
@@ -41,6 +53,9 @@ export function Conversation() {
     <section className="main page-content">
       {notice && <div className="notice">{notice}</div>}
       {statusText && <div className="notice status">{statusText}</div>}
+      {!connected && (
+        <GatewayBanner inset />
+      )}
       <div
         className="conversation"
         ref={scroller}
@@ -55,22 +70,44 @@ export function Conversation() {
             <div className="empty-thread">
               <h1>
                 {!project
-                  ? "Create a project to start"
-                  : session
-                    ? "What should we work on?"
-                    : "Pick a thread to continue"}
+                  ? "Open a folder to start"
+                  : !project.workingDirectory
+                    ? "Choose a code folder"
+                    : session
+                      ? "What should we work on?"
+                      : "Pick a thread to continue"}
               </h1>
               <p>
-                {!project
-                  ? "Open a folder, then start a conversation."
+                {!project || !project.workingDirectory
+                  ? "Capsule works against a folder on disk. Open one to search files, run git, and spawn coding harnesses."
                   : session
                     ? "Ask for a change, a review, or research."
                     : "Select an existing conversation or start a new one."}
               </p>
-              {!project && (
+              {project && session && (
+                <div className="empty-prompts">
+                  {emptyPrompts.map((item) => (
+                    <button
+                      key={item.label}
+                      className="chip"
+                      type="button"
+                      onClick={() => {
+                        setMode(item.mode);
+                        setDraft(item.text);
+                      }}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {(!project || !project.workingDirectory) && (
                 <div className="actions">
-                  <button className="send" onClick={() => void createProjectFromFolder()}>
-                    New project
+                  <button className="send" onClick={() => void pickProjectDirectory()}>
+                    Open folder
+                  </button>
+                  <button className="chip" onClick={() => void createProjectFromFolder()}>
+                    New project from folder
                   </button>
                 </div>
               )}
@@ -187,7 +224,9 @@ export function Conversation() {
           Latest
         </button>
       )}
-      <Composer showSuggestions={messages.length === 0 && Boolean(session)} />
+      <ViewErrorBoundary compact label="Composer">
+        <Composer showSuggestions={false} />
+      </ViewErrorBoundary>
     </section>
   );
 }

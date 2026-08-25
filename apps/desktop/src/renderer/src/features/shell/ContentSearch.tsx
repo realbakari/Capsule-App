@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import type { ContentHit } from "@capsule/shared";
+import { searchProjectContents } from "../../lib/bridge";
 import { useWorkspace } from "../../lib/workspace";
 
 export function ContentSearch() {
-  const { contentSearch, setContentSearch, projectId, mentionFile, api, openInspector } = useWorkspace();
+  const { contentSearch, setContentSearch, projectId, mentionFile, openInspector } = useWorkspace();
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
   const [hits, setHits] = useState<ContentHit[]>([]);
@@ -14,13 +15,15 @@ export function ContentSearch() {
       return;
     }
     const timer = window.setTimeout(() => {
-      void api.searchContents(projectId, query).then((rows: ContentHit[]) => {
-        setHits(rows);
-        setIndex(0);
-      });
+      void searchProjectContents(projectId, query)
+        .then((rows) => {
+          setHits(rows);
+          setIndex(0);
+        })
+        .catch(() => setHits([]));
     }, 120);
     return () => window.clearTimeout(timer);
-  }, [api, contentSearch, projectId, query]);
+  }, [contentSearch, projectId, query]);
 
   function pick(hit: ContentHit) {
     mentionFile(hit.path);

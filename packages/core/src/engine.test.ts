@@ -25,6 +25,7 @@ describe("CapsuleEngine first user flow", () => {
     const engine = new CapsuleEngine({
       databasePath: path.join(dir, "capsule.sqlite"),
       userDataDir: dir,
+      autoConnect: false,
     });
     await engine.start();
     const project = engine.createProject({ name: "API Workspace", defaultMode: "code" });
@@ -56,6 +57,7 @@ describe("CapsuleEngine first user flow", () => {
     const engine = new CapsuleEngine({
       databasePath: path.join(dir, "capsule.sqlite"),
       userDataDir: dir,
+      autoConnect: false,
     });
     await engine.start();
     const project = engine.createProject({ name: "Harness Workspace" });
@@ -87,6 +89,7 @@ describe("CapsuleEngine first user flow", () => {
     const engine = new CapsuleEngine({
       databasePath: path.join(dir, "capsule.sqlite"),
       userDataDir: dir,
+      autoConnect: false,
     });
     await engine.start();
     const project = engine.createProject({ name: "Codex Workspace", workingDirectory: dir });
@@ -113,6 +116,7 @@ describe("CapsuleEngine first user flow", () => {
     const engine = new CapsuleEngine({
       databasePath: path.join(dir, "capsule.sqlite"),
       userDataDir: dir,
+      autoConnect: false,
     });
     await engine.start();
     const keep = engine.listProjects()[0];
@@ -134,6 +138,7 @@ describe("CapsuleEngine first user flow", () => {
     const engine = new CapsuleEngine({
       databasePath: path.join(dir, "capsule.sqlite"),
       userDataDir: dir,
+      autoConnect: false,
     });
     await engine.start();
     const project = engine.createProject({ name: "Search Workspace", workingDirectory: dir });
@@ -152,5 +157,53 @@ describe("CapsuleEngine first user flow", () => {
     await engine.setPermissionProfile(session.id, "strict");
     expect(engine.listSessions(project.id)[0]?.permissionProfile).toBe("strict");
     await engine.stop();
+  });
+
+  it("persists settings minus the gateway token and applies conversation defaults", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-settings-"));
+    const engine = new CapsuleEngine({
+      databasePath: path.join(dir, "capsule.sqlite"),
+      userDataDir: dir,
+      autoConnect: false,
+    });
+    await engine.start();
+    const saved = await engine.updateSettings({
+      gatewayUrl: "ws://127.0.0.1:19999",
+      gatewayToken: "operator-secret",
+      composerSendKey: "cmd-enter",
+      defaultMode: "code",
+      defaultPermission: "strict",
+      launchAtLogin: true,
+      useMockWhenOffline: false,
+    });
+    expect(saved.gatewayToken).toBe("••••");
+    expect(saved.composerSendKey).toBe("cmd-enter");
+    expect(saved.defaultMode).toBe("code");
+    expect(saved.launchAtLogin).toBe(true);
+    const masked = await engine.updateSettings({ gatewayToken: "••••" });
+    expect(masked.gatewayToken).toBe("••••");
+    const project = engine.listProjects()[0];
+    expect(project).toBeDefined();
+    const session = await engine.createSession({ projectId: project!.id, title: "Defaults" });
+    expect(session.permissionProfile).toBe("strict");
+    await engine.stop();
+
+    const reloaded = new CapsuleEngine({
+      databasePath: path.join(dir, "capsule.sqlite"),
+      userDataDir: dir,
+      autoConnect: false,
+    });
+    await reloaded.start();
+    const loaded = reloaded.getSettings();
+    expect(loaded.gatewayUrl).toBe("ws://127.0.0.1:19999");
+    expect(loaded.gatewayToken).toBe("••••");
+    expect(loaded.composerSendKey).toBe("cmd-enter");
+    expect(loaded.defaultMode).toBe("code");
+    expect(loaded.defaultPermission).toBe("strict");
+    expect(loaded.launchAtLogin).toBe(true);
+    expect(loaded.useMockWhenOffline).toBe(false);
+    const cleared = await reloaded.updateSettings({ gatewayToken: "" });
+    expect(cleared.gatewayToken).toBeUndefined();
+    await reloaded.stop();
   });
 });
