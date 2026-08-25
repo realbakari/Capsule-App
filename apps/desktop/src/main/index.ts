@@ -89,8 +89,8 @@ function createWindow(): BrowserWindow {
     minHeight: 640,
     title: "Capsule",
     titleBarStyle: "hiddenInset",
-    trafficLightPosition: { x: 16, y: 16 },
-    backgroundColor: "#0c0c0c",
+    trafficLightPosition: { x: 16, y: 18 },
+    backgroundColor: "#0a0a0a",
     show: true,
     icon: loadIcon("icon.png"),
     webPreferences: {

@@ -24,7 +24,6 @@ export function SettingsView() {
     <section className="panel">
       <div className="panel-inner">
       <div className="panel-header">
-        <h2>Settings</h2>
         <p>Gateway connection, projects, and diagnostics.</p>
       </div>
       <div className="card">

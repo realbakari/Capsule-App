@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FileEntry } from "@capsule/shared";
 import { MORE_MODES, PERMISSION_OPTIONS, PRIMARY_MODES, useWorkspace } from "../../lib/workspace";
+import { MenuSelect } from "../shell/MenuSelect";
 import { ArrowUpIcon, GitBranchIcon, StopIcon } from "../shell/icons";
 import { ComposerMenu, detectTrigger, type SuggestItem } from "./ComposerMenu";
 
@@ -53,6 +54,7 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
     setPermissionProfile,
     api,
     projectId,
+    connected,
   } = useWorkspace();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [menuIndex, setMenuIndex] = useState(0);
@@ -186,8 +188,8 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
           value={draft}
           placeholder={
             harnessLive
-              ? `Continue with ${session?.harnessId === "codex" ? "Codex" : "Claude Code"}…  /  @  $`
-              : "Ask Capsule…    / commands   @ files   $ skills"
+              ? `Continue with ${session?.harnessId === "codex" ? "Codex" : "Claude Code"}…`
+              : "Ask Capsule…"
           }
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
@@ -266,48 +268,25 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
                 </button>
               ))}
             </div>
-            <select
-              className="select-quiet"
-              aria-label="More modes"
+            <MenuSelect
+              ariaLabel="More modes"
+              placeholder="More"
               value={MORE_MODES.includes(mode) ? mode : ""}
-              onChange={(event) => {
-                const next = event.target.value;
-                if (next) setMode(next as typeof mode);
-              }}
-            >
-              <option value="" disabled>
-                More
-              </option>
-              {MORE_MODES.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-            <select
-              className="select-quiet"
-              aria-label="Permission mode"
+              options={MORE_MODES.map((item) => ({ id: item, label: item }))}
+              onChange={(id) => setMode(id as typeof mode)}
+            />
+            <MenuSelect
+              ariaLabel="Permission mode"
               value={permission}
-              onChange={(event) => void setPermissionProfile(event.target.value)}
-            >
-              {PERMISSION_OPTIONS.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-            <select
-              className="select-quiet"
-              aria-label="Agent"
+              options={PERMISSION_OPTIONS.map((item) => ({ id: item.id, label: item.label }))}
+              onChange={(id) => void setPermissionProfile(id)}
+            />
+            <MenuSelect
+              ariaLabel="Agent"
               value={agentId}
-              onChange={(event) => setAgentId(event.target.value)}
-            >
-              {agents.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
+              options={agents.map((item) => ({ id: item.id, label: item.name }))}
+              onChange={setAgentId}
+            />
           </div>
           {activeRun ? (
             <button className="send-btn stop" title="Stop" onClick={() => void stopRun()}>
@@ -339,6 +318,8 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
         {project?.defaultAgentId && (
           <span>{project.defaultAgentId === "codex" ? "Codex" : "Claude Code"}</span>
         )}
+        {!connected && <span>Gateway offline</span>}
+        <span className="faint">/  @  $</span>
       </div>
     </div>
   );

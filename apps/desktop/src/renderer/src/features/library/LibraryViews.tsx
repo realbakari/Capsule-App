@@ -6,7 +6,6 @@ export function SkillsView() {
     <section className="panel">
       <div className="panel-inner">
       <div className="panel-header">
-        <h2>Skills</h2>
         <p>Installed capabilities Capsule can attach to a run.</p>
       </div>
       {skills.map((item) => (
@@ -31,7 +30,6 @@ export function HistoryView() {
     <section className="panel">
       <div className="panel-inner">
       <div className="panel-header">
-        <h2>History</h2>
         <p>Runs in the current project.</p>
       </div>
       {runs.length === 0 && <p className="muted">No runs yet.</p>}
@@ -64,7 +62,6 @@ export function ApprovalsView() {
     <section className="panel">
       <div className="panel-inner">
       <div className="panel-header">
-        <h2>Approvals</h2>
         <p>Host execution and policy gates waiting on you.</p>
       </div>
       {approvals.length === 0 && <p className="muted">No pending approvals.</p>}

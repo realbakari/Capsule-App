@@ -106,7 +106,7 @@ export function Sidebar() {
         onContextMenu={(event) => openMenu(event, "session", session.id)}
       >
         {session.pinned ? <PinIcon size={12} /> : null}
-        {session.title}
+        <span className="truncate">{session.title}</span>
         {session.harnessId ? <span className="meta">{session.harnessId}</span> : null}
       </button>
     );
@@ -139,7 +139,7 @@ export function Sidebar() {
       <div className="sidebar-header">
         <div className="brand">
           <img className="mark" src="./icon.png" alt="" width={20} height={20} />
-          Capsule
+          <span className="truncate">Capsule</span>
         </div>
         <span className="grow" />
         <button className="icon-btn" title="Hide sidebar (⌘B)" onClick={toggleSidebar}>
@@ -161,7 +161,7 @@ export function Sidebar() {
       <label className="sidebar-search">
         <SearchIcon size={13} />
         <input
-          type="search"
+          type="text"
           placeholder="Search"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
@@ -194,16 +194,14 @@ export function Sidebar() {
                 }}
                 onContextMenu={(event) => openMenu(event, "project", item.id)}
               >
-                {item.name}
+                <span className="truncate">{item.name}</span>
                 {item.defaultAgentId ? <span className="meta">{item.defaultAgentId}</span> : null}
               </button>
             )}
             {item.id === projectId && (
               <div className="session-list">
                 {visibleSessions.filter((session) => session.pinned).length > 0 && (
-                  <div className="nav-label" style={{ paddingLeft: "0.5rem" }}>
-                    Pinned
-                  </div>
+                  <div className="session-label">Pinned</div>
                 )}
                 {visibleSessions
                   .filter((session) => session.pinned)
@@ -244,7 +242,13 @@ export function Sidebar() {
         title="Drag to resize"
       />
       {menu && (
-        <div className="context-menu" style={{ left: menu.x, top: menu.y }}>
+        <div
+          className="context-menu"
+          style={{
+            left: Math.min(menu.x, window.innerWidth - 188),
+            top: Math.min(menu.y, window.innerHeight - 220),
+          }}
+        >
           {menu.kind === "project" ? (
             <>
               <button

@@ -35,10 +35,8 @@ export function RuntimesView() {
     <section className="panel">
       <div className="panel-inner">
       <div className="panel-header">
-        <h2>Runtimes</h2>
         <p>
-          Capsule does not install Claude Code or Codex. If they are already on this Mac or the
-          OpenClaw Gateway host, they are picked up automatically.
+          If Claude Code or Codex is already on this Mac or the Gateway host, Capsule picks it up.
         </p>
       </div>
       <GatewayBanner />
