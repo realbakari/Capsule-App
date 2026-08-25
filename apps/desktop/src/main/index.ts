@@ -24,6 +24,19 @@ function userDataDir(): string {
   return dir;
 }
 
+function preloadPath(): string {
+  const candidates = [
+    path.join(__dirname, "../preload/index.cjs"),
+    path.join(__dirname, "../preload/index.js"),
+    path.join(__dirname, "../preload/index.mjs"),
+  ];
+  const found = candidates.find((candidate) => existsSync(candidate));
+  if (!found) {
+    throw new Error(`Preload script missing. Looked in ${candidates.join(", ")}`);
+  }
+  return found;
+}
+
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
     width: 1280,
@@ -34,25 +47,41 @@ function createWindow(): BrowserWindow {
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 16, y: 16 },
     backgroundColor: "#24273a",
-    show: false,
+    show: true,
     webPreferences: {
-      preload: existsSync(path.join(__dirname, "../preload/index.mjs"))
-        ? path.join(__dirname, "../preload/index.mjs")
-        : path.join(__dirname, "../preload/index.js"),
+      preload: preloadPath(),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true,
+      sandbox: false,
     },
   });
 
-  window.on("ready-to-show", () => window.show());
+  window.webContents.on("did-fail-load", (_event, code, description, url) => {
+    console.error(`Renderer failed to load (${code}) ${description} ${url}`);
+  });
+  window.webContents.on("render-process-gone", (_event, details) => {
+    console.error("Renderer process gone", details);
+  });
+  window.webContents.on("console-message", (_event, ...payload) => {
+    console.error("[renderer]", ...payload);
+  });
+
+  if (!app.isPackaged) {
+    try {
+      window.webContents.openDevTools({ mode: "detach" });
+    } catch (error) {
+      console.warn("DevTools failed to open", error);
+    }
+  }
+
   window.webContents.setWindowOpenHandler((details) => {
     void shell.openExternal(details.url);
     return { action: "deny" };
   });
 
-  if (process.env.ELECTRON_RENDERER_URL) {
-    void window.loadURL(process.env.ELECTRON_RENDERER_URL);
+  const rendererURL = process.env.ELECTRON_RENDERER_URL;
+  if (rendererURL) {
+    void window.loadURL(rendererURL);
   } else {
     void window.loadFile(path.join(__dirname, "../renderer/index.html"));
   }
@@ -78,7 +107,14 @@ function registerIpc(): void {
   };
 
   const handle = (channel: string, fn: (...args: unknown[]) => unknown) => {
-    ipcMain.handle(channel, async (_event, ...args) => fn(...args));
+    ipcMain.handle(channel, async (_event, ...args) => {
+      try {
+        return await fn(...args);
+      } catch (error) {
+        console.error(`IPC ${channel} failed`, error);
+        throw error;
+      }
+    });
   };
 
   handle(IPC_CHANNELS.listProjects, () => requireEngine().listProjects());
@@ -203,40 +239,51 @@ function createMenu(): void {
 }
 
 function createTray(): void {
-  const image = nativeImage.createEmpty();
-  tray = new Tray(image);
-  tray.setTitle("Capsule");
-  tray.setToolTip("Capsule");
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      { label: "Open Capsule", click: () => mainWindow?.show() },
-      { label: "Approvals", click: () => send(IPC_EVENTS.state, { command: "approvals" }) },
-      { label: "Active runs", click: () => send(IPC_EVENTS.state, { command: "runs" }) },
-      { type: "separator" },
-      { label: "Quit", click: () => app.quit() },
-    ]),
-  );
+  try {
+    const image = nativeImage.createFromDataURL(
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAKCAYAAACNMs+9AAAAHElEQVQoU2P8z8BQz0AEYBxVSFGFowaNGjWIOAAA8x8G7Q7nV0wAAAAASUVORK5CYII=",
+    );
+    tray = new Tray(image);
+    tray.setTitle("Capsule");
+    tray.setToolTip("Capsule");
+    tray.setContextMenu(
+      Menu.buildFromTemplate([
+        { label: "Open Capsule", click: () => mainWindow?.show() },
+        { label: "Approvals", click: () => send(IPC_EVENTS.state, { command: "approvals" }) },
+        { label: "Active runs", click: () => send(IPC_EVENTS.state, { command: "runs" }) },
+        { type: "separator" },
+        { label: "Quit", click: () => app.quit() },
+      ]),
+    );
+  } catch (error) {
+    console.warn("Menu bar extra failed", error);
+  }
+}
+
+async function startEngine(): Promise<void> {
+  await ensureSqliteAbi();
+  const { CapsuleEngine } = await import("@capsule/core");
+  engine = new CapsuleEngine({
+    databasePath: path.join(userDataDir(), "capsule.sqlite"),
+    userDataDir: userDataDir(),
+    capsuleVersion: app.getVersion(),
+    clientVersion: app.getVersion(),
+  });
+  await engine.start();
+  bindEngineEvents();
+  send(IPC_EVENTS.connection, await engine.getStatus());
 }
 
 app.whenReady().then(async () => {
-  try {
-    await ensureSqliteAbi();
-    const { CapsuleEngine } = await import("@capsule/core");
-    engine = new CapsuleEngine({
-      databasePath: path.join(userDataDir(), "capsule.sqlite"),
-      userDataDir: userDataDir(),
-      capsuleVersion: app.getVersion(),
-      clientVersion: app.getVersion(),
-    });
-    await engine.start();
-  } catch (error) {
-    console.error("Capsule engine failed to start", error);
-  }
   registerIpc();
-  bindEngineEvents();
   createMenu();
   createTray();
   mainWindow = createWindow();
+  try {
+    await startEngine();
+  } catch (error) {
+    console.error("Capsule engine failed to start", error);
+  }
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {

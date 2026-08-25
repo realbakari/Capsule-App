@@ -77,29 +77,33 @@ export default function App() {
   const pendingApproval = approvals.find((item) => item.status === "pending");
 
   const refresh = useCallback(async () => {
-    const [nextProjects, nextAgents, nextSkills, nextStatus, nextSub, nextApprovals, nextHarnesses] =
-      await Promise.all([
-        api.listProjects(),
-        api.listAgents(),
-        api.listSkills(),
-        api.getStatus(),
-        api.getSubsystemStatus(),
-        api.listApprovals("pending"),
-        api.listHarnesses(),
-      ]);
-    setProjects(nextProjects);
-    setAgents(nextAgents);
-    setSkills(nextSkills);
-    setStatus(nextStatus);
-    setSubsystems(nextSub);
-    setApprovals(nextApprovals);
-    setHarnesses(nextHarnesses);
-    const selectedProject = projectId ?? nextProjects[0]?.id;
-    if (selectedProject && selectedProject !== projectId) setProjectId(selectedProject);
-    if (selectedProject) {
-      const nextSessions = await api.listSessions(selectedProject);
-      setSessions(nextSessions);
-      if (!sessionId && nextSessions[0]) setSessionId(nextSessions[0].id);
+    try {
+      const [nextProjects, nextAgents, nextSkills, nextStatus, nextSub, nextApprovals, nextHarnesses] =
+        await Promise.all([
+          api.listProjects(),
+          api.listAgents(),
+          api.listSkills(),
+          api.getStatus(),
+          api.getSubsystemStatus(),
+          api.listApprovals("pending"),
+          api.listHarnesses(),
+        ]);
+      setProjects(nextProjects);
+      setAgents(nextAgents);
+      setSkills(nextSkills);
+      setStatus(nextStatus);
+      setSubsystems(nextSub);
+      setApprovals(nextApprovals);
+      setHarnesses(nextHarnesses);
+      const selectedProject = projectId ?? nextProjects[0]?.id;
+      if (selectedProject && selectedProject !== projectId) setProjectId(selectedProject);
+      if (selectedProject) {
+        const nextSessions = await api.listSessions(selectedProject);
+        setSessions(nextSessions);
+        if (!sessionId && nextSessions[0]) setSessionId(nextSessions[0].id);
+      }
+    } catch (error) {
+      console.error("Failed to load Capsule state", error);
     }
   }, [api, projectId, sessionId]);
 

@@ -37,6 +37,14 @@ export default defineConfig({
         exclude: ["@capsule/shared"],
       }),
     ],
+    build: {
+      rollupOptions: {
+        output: {
+          format: "cjs",
+          entryFileNames: "[name].cjs",
+        },
+      },
+    },
   },
   renderer: {
     resolve: {
