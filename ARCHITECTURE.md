@@ -211,9 +211,9 @@ Secrets never go in SQLite or the renderer. Gateway tokens live in macOS Keychai
 
 ## 8. Desktop UI
 
-The desktop shell is inspired by Buzz's conversation workspace: a quiet sidebar of places to work, a message timeline, and a composer dock. Capsule's default view is still “I'm working on it…”, not an enterprise compliance dashboard.
+The desktop shell uses T3 Code's compact geometry: 52px topbar, collapsible resizable sidebar, centered 48rem chat column, 22px glass composer dock, segmented modes, status as a dot, inspector closed until asked. Capsule's default view is still “I'm working on it…”, not an enterprise compliance dashboard.
 
-Visual language is graphite and off-white, matching the Capsule mark. No purple accent. System type, rem-based sizing, muted sidebar labels. Capsule remains a distinct product.
+Visual language is graphite and off-white, matching the Capsule mark. No purple accent. System type, rem-based sizing, muted sidebar labels. Capsule remains a distinct product — this is layout density, not a T3 or Buzz clone.
 
 ---
 

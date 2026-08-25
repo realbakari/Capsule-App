@@ -1,16 +1,34 @@
 :root {
   color-scheme: dark;
+
+  /* Compact geometry — same roles as T3 Code, Capsule graphite pigment. */
+  --workspace-topbar-height: 52px;
+  --workspace-traffic-inset: 90px;
+  --workspace-titlebar-control-size: 1.75rem;
+  --sidebar-width: 16.5rem;
+  --sidebar-min-width: 13.75rem;
+  --sidebar-max-width: 22rem;
+  --inspector-width: 17.5rem;
+  --chat-max: 48rem;
+  --control-radius: 0.5rem;
+  --composer-radius: 22px;
+  --glass-blur: 16px;
+  --glass-opacity: 80%;
+  --glass-saturation: 1.08;
+  --sidebar-content-inset: 0.5rem;
+  --app-scrollbar-width: 6px;
+
   /* Graphite, matching the Capsule mark — not purple */
-  --crust: #070707;
-  --mantle: #101010;
-  --base: #0c0c0c;
-  --surface-0: #171717;
-  --surface-1: #222222;
+  --crust: #000000;
+  --mantle: #000000;
+  --base: #0a0a0a;
+  --surface-0: #111111;
+  --surface-1: #191919;
   --overlay-0: #6f6f6a;
   --overlay-1: #8c8c86;
-  --subtext-0: #a8a8a2;
+  --subtext-0: #a3a3a3;
   --subtext-1: #d0d0ca;
-  --text: #f3f3ee;
+  --text: #f1f3f7;
   --accent: #f3f3ee;
   --accent-fg: #111111;
   --blue: #b0b0aa;
@@ -18,32 +36,33 @@
   --yellow: #d6c37a;
   --red: #d98989;
 
-  --background: 0 0% 4.7%;
-  --foreground: 60 14% 94%;
-  --card: 0 0% 9%;
-  --primary: 60 14% 94%;
+  --background: 0 0% 3.9%;
+  --foreground: 60 14% 95%;
+  --card: 0 0% 6.7%;
+  --primary: 60 14% 95%;
   --primary-foreground: 0 0% 7%;
   --muted: 0 0% 9%;
-  --muted-foreground: 50 4% 65%;
-  --border: 0 0% 16%;
-  --sidebar-background: 0 0% 6.3%;
-  --sidebar-foreground: 60 14% 94%;
+  --muted-foreground: 0 0% 64%;
+  --border: 0 0% 100% / 0.08;
+  --sidebar-background: 0 0% 0%;
+  --sidebar-foreground: 60 14% 95%;
   --good: 112 28% 64%;
   --warn: 44 52% 66%;
   --bad: 0 45% 69%;
   --radius: 0.5rem;
   --type-rem: 1rem;
-  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
-  --mono: "SF Mono", ui-monospace, Menlo, monospace;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  --mono: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
   --bg: var(--base);
   --text-muted: var(--subtext-0);
   --text-faint: var(--overlay-1);
   --bg-elevated: var(--surface-0);
   --bg-sidebar: var(--mantle);
-  --bg-hover: rgb(255 255 255 / 5%);
+  --bg-hover: rgb(255 255 255 / 6%);
   --bg-active: rgb(255 255 255 / 9%);
   --border-color: rgb(255 255 255 / 8%);
-  --shadow: 0 18px 50px rgb(0 0 0 / 0.45);
+  --shadow: 0 24px 64px -24px rgb(0 0 0 / 0.7);
+  --glass: color-mix(in srgb, var(--surface-0) var(--glass-opacity), transparent);
 }
 
 * { box-sizing: border-box; }
@@ -72,10 +91,11 @@ button, input, textarea, select { font: inherit; color: inherit; }
 button:not(:disabled), summary, [role="button"] { cursor: pointer; }
 button:disabled { cursor: default; }
 ::selection { background: rgb(255 255 255 / 0.16); }
-::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar { width: var(--app-scrollbar-width); height: var(--app-scrollbar-width); }
 ::-webkit-scrollbar-thumb {
   background: rgb(255 255 255 / 10%);
   border-radius: 99px;
-  border: 2px solid transparent;
-  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(255 255 255 / 16%);
 }

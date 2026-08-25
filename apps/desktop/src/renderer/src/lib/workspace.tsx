@@ -29,6 +29,32 @@ import type {
 export type View = "chat" | "runtimes" | "skills" | "history" | "approvals" | "settings";
 
 export const MODES: AgentMode[] = ["plan", "chat", "agent", "code", "research", "browser", "automation"];
+export const PRIMARY_MODES: AgentMode[] = ["plan", "chat", "code"];
+export const MORE_MODES: AgentMode[] = ["agent", "research", "browser", "automation"];
+
+const SIDEBAR_WIDTH_KEY = "capsule.sidebarWidth";
+const SIDEBAR_COLLAPSED_KEY = "capsule.sidebarCollapsed";
+const INSPECTOR_OPEN_KEY = "capsule.inspectorOpen";
+const DEFAULT_SIDEBAR_WIDTH = 264;
+
+function storedFlag(key: string, fallback = false): boolean {
+  try {
+    const value = localStorage.getItem(key);
+    if (value == null) return fallback;
+    return value === "1";
+  } catch {
+    return fallback;
+  }
+}
+
+function storedNumber(key: string, fallback: number): number {
+  try {
+    const value = Number(localStorage.getItem(key));
+    return Number.isFinite(value) && value > 0 ? value : fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 export interface ConfirmState {
   title: string;
@@ -136,6 +162,15 @@ export interface WorkspaceValue {
   refreshHarnessStatus: (id?: string) => Promise<void>;
   setHarnessOption: (key: "model" | "permissions" | "cwd" | "mode", value: string) => Promise<void>;
   exportDiagnostics: () => Promise<void>;
+  sidebarCollapsed: boolean;
+  inspectorOpen: boolean;
+  sidebarWidth: number;
+  setSidebarCollapsed: (value: boolean) => void;
+  setInspectorOpen: (value: boolean) => void;
+  setSidebarWidth: (value: number) => void;
+  toggleSidebar: () => void;
+  toggleInspector: () => void;
+  stopRun: () => Promise<void>;
 }
 
 const WorkspaceContext = createContext<WorkspaceValue | null>(null);
@@ -179,6 +214,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [git, setGit] = useState<GitStatus>();
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [confirm, setConfirm] = useState<ConfirmState>();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => storedFlag(SIDEBAR_COLLAPSED_KEY));
+  const [inspectorOpen, setInspectorOpen] = useState(() => storedFlag(INSPECTOR_OPEN_KEY));
+  const [sidebarWidth, setSidebarWidthState] = useState(() =>
+    Math.min(352, Math.max(220, storedNumber(SIDEBAR_WIDTH_KEY, DEFAULT_SIDEBAR_WIDTH))),
+  );
 
   const project = projects.find((item) => item.id === projectId);
   const session = sessions.find((item) => item.id === sessionId);
@@ -267,9 +307,19 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       }),
     ];
     const onKey = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+      if (!(event.metaKey || event.ctrlKey)) return;
+      const key = event.key.toLowerCase();
+      if (key === "k") {
         event.preventDefault();
         setPalette((open) => !open);
+      }
+      if (key === "b") {
+        event.preventDefault();
+        setSidebarCollapsed((open) => !open);
+      }
+      if (event.key === "\\") {
+        event.preventDefault();
+        setInspectorOpen((open) => !open);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -282,6 +332,34 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (sessionId) void loadSession(sessionId);
   }, [sessionId, loadSession]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_COLLAPSED_KEY, sidebarCollapsed ? "1" : "0");
+    } catch {
+      /* ignore quota */
+    }
+  }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(INSPECTOR_OPEN_KEY, inspectorOpen ? "1" : "0");
+    } catch {
+      /* ignore quota */
+    }
+  }, [inspectorOpen]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth));
+    } catch {
+      /* ignore quota */
+    }
+  }, [sidebarWidth]);
+
+  function setSidebarWidth(value: number) {
+    setSidebarWidthState(Math.min(352, Math.max(220, Math.round(value))));
+  }
 
   useEffect(() => {
     if (!projectId) {
@@ -546,6 +624,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setDiagnostics(JSON.stringify(snapshot, null, 2));
   }
 
+  async function stopRun() {
+    if (!activeRun) return;
+    await api.stopRun(activeRun.id);
+    await refresh();
+  }
+
   const steps = stepFromEvents(events);
 
   const value = useMemo<WorkspaceValue>(
@@ -630,6 +714,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       refreshHarnessStatus,
       setHarnessOption,
       exportDiagnostics,
+      sidebarCollapsed,
+      inspectorOpen,
+      sidebarWidth,
+      setSidebarCollapsed,
+      setInspectorOpen,
+      setSidebarWidth,
+      toggleSidebar: () => setSidebarCollapsed((value) => !value),
+      toggleInspector: () => setInspectorOpen((value) => !value),
+      stopRun,
     }),
     [
       api,
@@ -670,6 +763,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       git,
       files,
       confirm,
+      sidebarCollapsed,
+      inspectorOpen,
+      sidebarWidth,
       refresh,
       loadSession,
     ],

@@ -1,24 +1,7 @@
 import { GatewayBanner } from "../shell/GatewayBanner";
+import { CopyIcon } from "../shell/icons";
 import { useWorkspace } from "../../lib/workspace";
 import { Composer } from "./Composer";
-
-const SUGGESTIONS = [
-  {
-    label: "Review this repo",
-    mode: "code" as const,
-    text: "Review the working directory and summarize the main risks.",
-  },
-  {
-    label: "Plan a change",
-    mode: "agent" as const,
-    text: "Help me plan the next change for this project.",
-  },
-  {
-    label: "Research options",
-    mode: "research" as const,
-    text: "Research options for this problem and cite sources.",
-  },
-];
 
 export function Conversation() {
   const {
@@ -34,76 +17,51 @@ export function Conversation() {
     pendingApproval,
     api,
     notice,
-    setMode,
-    setDraft,
-    cancelHarness,
-    closeHarness,
-    refreshHarnessStatus,
     statusText,
+    createTask,
+    createProjectFromFolder,
   } = useWorkspace();
-  const harnessLive = Boolean(session?.harnessId && session.harnessState && session.harnessState !== "closed");
 
   return (
-    <section className="main">
-      <div className="conversation-header">
-        <div className="title">
-          <b>{project?.name ?? "Inbox"}</b>
-          {session ? ` · ${session.title}` : ""}
-        </div>
-        <div className="header-actions">
-          {activeRun && (
-            <button className="ghost" onClick={() => void api.stopRun(activeRun.id)}>
-              Stop run
-            </button>
-          )}
-        </div>
-      </div>
-      {harnessLive && (
-        <div className="harness-bar">
-          <span className="badge">{session?.harnessId === "codex" ? "Codex" : "Claude Code"}</span>
-          <span>{session?.harnessState}</span>
-          {session?.acpMode && <span className="faint">{session.acpMode}</span>}
-          <span className="grow" />
-          <button className="ghost" onClick={() => void refreshHarnessStatus()}>
-            Status
-          </button>
-          <button className="ghost" onClick={() => void cancelHarness()}>
-            Cancel
-          </button>
-          <button className="danger" onClick={() => void closeHarness()}>
-            Close
-          </button>
-        </div>
-      )}
-      {statusText && (
-        <div className="harness-bar">
-          <span className="mono">{statusText}</span>
-        </div>
-      )}
+    <section className="main page-content">
       <GatewayBanner inset />
       {notice && <div className="notice">{notice}</div>}
+      {statusText && (
+        <div className="notice status">
+          {statusText}
+        </div>
+      )}
       <div className="conversation">
         {messages.length === 0 ? (
-          <div className="hero">
-            <h1>What should Capsule work on?</h1>
+          <div className="empty-thread">
+            <h1>
+              {!project
+                ? "Create a project to start"
+                : session
+                  ? "What should we work on?"
+                  : "Pick a thread to continue"}
+            </h1>
             <p>
-              Ask for a change, a review, or research. If Claude Code or Codex is already on this
-              Mac, Capsule picks it up — you do not install it here.
+              {!project
+                ? "Open a folder as a project, then start a conversation. Claude Code and Codex are detected on this Mac — Capsule does not install them."
+                : session
+                  ? "Ask for a change, a review, or research. If Claude Code or Codex is already on this Mac, Capsule picks it up."
+                  : "Select an existing conversation or start a new one."}
             </p>
-            <div className="suggestions">
-              {SUGGESTIONS.map((item) => (
-                <button
-                  key={item.label}
-                  className="chip"
-                  onClick={() => {
-                    setMode(item.mode);
-                    setDraft(item.text);
-                  }}
-                >
-                  {item.label}
+            {!project && (
+              <div className="actions">
+                <button className="send" onClick={() => void createProjectFromFolder()}>
+                  New project
                 </button>
-              ))}
-            </div>
+              </div>
+            )}
+            {project && !session && (
+              <div className="actions">
+                <button className="send" onClick={() => void createTask()}>
+                  New conversation
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           messages.map((message) => (
@@ -113,12 +71,15 @@ export function Conversation() {
                   ? "You"
                   : agents.find((item) => item.id === (session?.agentId ?? agentId))?.name ?? "Agent"}
                 <span className="when">{message.createdAt.slice(11, 16)}</span>
-                <button
-                  className="ghost"
-                  onClick={() => void navigator.clipboard.writeText(message.content)}
-                >
-                  Copy
-                </button>
+                <span className="msg-actions">
+                  <button
+                    className="icon-btn"
+                    title="Copy"
+                    onClick={() => void navigator.clipboard.writeText(message.content)}
+                  >
+                    <CopyIcon size={13} />
+                  </button>
+                </span>
               </div>
               <div className="body">{message.content}</div>
             </div>
@@ -196,7 +157,7 @@ export function Conversation() {
           </div>
         )}
       </div>
-      <Composer />
+      <Composer showSuggestions={messages.length === 0 && Boolean(session)} />
     </section>
   );
 }

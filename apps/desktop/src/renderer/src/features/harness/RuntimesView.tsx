@@ -33,6 +33,7 @@ export function RuntimesView() {
 
   return (
     <section className="panel">
+      <div className="panel-inner">
       <div className="panel-header">
         <h2>Runtimes</h2>
         <p>
@@ -164,6 +165,7 @@ export function RuntimesView() {
           </div>
         );
       })}
+      </div>
     </section>
   );
 }

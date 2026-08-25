@@ -5,7 +5,7 @@ import "./styles.css";
 
 function BootFailure({ title, detail }: { title: string; detail: string }) {
   return (
-    <div style={{ padding: 32, fontFamily: "Inter, sans-serif", color: "#cad3f5" }}>
+    <div style={{ padding: 32, fontFamily: "-apple-system, BlinkMacSystemFont, sans-serif", color: "#f1f3f7" }}>
       <h1>{title}</h1>
       <pre style={{ whiteSpace: "pre-wrap" }}>{detail}</pre>
     </div>

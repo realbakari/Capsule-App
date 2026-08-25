@@ -83,7 +83,7 @@ Keep files focused. Prefer a new package over growing `core` into a junk drawer.
 
 ## Desktop UI
 
-Layout: sidebar, conversation, composer dock, inspector. Theme: graphite and off-white matching the Capsule mark — no purple/mauve accent. Capsule is still Capsule — do not copy Buzz's Nostr identity, huddles, or channel protocol into this app.
+Layout: collapsible sidebar, 52px page header, centered conversation, glass composer dock, optional inspector. Geometry follows T3 Code's density; pigment stays Capsule graphite and off-white — no purple/mauve. Do not copy T3 internals, or Buzz's Nostr identity, huddles, or channel protocol.
 
 Use rem for readable text. Keep the default conversation free of policy matrices.
 

@@ -4,6 +4,7 @@ export function SkillsView() {
   const { skills } = useWorkspace();
   return (
     <section className="panel">
+      <div className="panel-inner">
       <div className="panel-header">
         <h2>Skills</h2>
         <p>Installed capabilities Capsule can attach to a run.</p>
@@ -19,6 +20,7 @@ export function SkillsView() {
           </div>
         </div>
       ))}
+      </div>
     </section>
   );
 }
@@ -27,6 +29,7 @@ export function HistoryView() {
   const { runs, setSessionId, setView } = useWorkspace();
   return (
     <section className="panel">
+      <div className="panel-inner">
       <div className="panel-header">
         <h2>History</h2>
         <p>Runs in the current project.</p>
@@ -50,6 +53,7 @@ export function HistoryView() {
           </div>
         </button>
       ))}
+      </div>
     </section>
   );
 }
@@ -58,6 +62,7 @@ export function ApprovalsView() {
   const { approvals, api } = useWorkspace();
   return (
     <section className="panel">
+      <div className="panel-inner">
       <div className="panel-header">
         <h2>Approvals</h2>
         <p>Host execution and policy gates waiting on you.</p>
@@ -80,6 +85,7 @@ export function ApprovalsView() {
           )}
         </div>
       ))}
+      </div>
     </section>
   );
 }

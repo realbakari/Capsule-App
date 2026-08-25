@@ -1,4 +1,5 @@
 import { useWorkspace } from "../../lib/workspace";
+import { TerminalIcon, XIcon } from "./icons";
 
 export function Inspector() {
   const {
@@ -16,11 +17,18 @@ export function Inspector() {
     openPath,
     mentionFile,
     setView,
+    toggleInspector,
   } = useWorkspace();
   const dedicated = harnesses.find((item) => item.id === project?.defaultAgentId);
 
   return (
     <aside className="inspector">
+      <div className="inspector-header">
+        <h4>Context</h4>
+        <button className="icon-btn" title="Close inspector" onClick={toggleInspector}>
+          <XIcon size={14} />
+        </button>
+      </div>
       <div className="inspector-block">
         <h4>Project</h4>
         <div className="kv">
@@ -40,7 +48,10 @@ export function Inspector() {
             Choose folder
           </button>
           <button className="ghost" disabled={!project?.workingDirectory} onClick={() => void openTerminal()}>
-            Terminal
+            <span className="inline-icon">
+              <TerminalIcon size={12} />
+              Terminal
+            </span>
           </button>
         </div>
       </div>
@@ -64,7 +75,7 @@ export function Inspector() {
       <div className="inspector-block">
         <h4>Files</h4>
         {files.length === 0 ? (
-          <div className="faint">Choose a project folder to browse files, like Codex and Claude Code.</div>
+          <div className="faint">Choose a project folder to browse files.</div>
         ) : (
           files.slice(0, 24).map((entry) => (
             <button

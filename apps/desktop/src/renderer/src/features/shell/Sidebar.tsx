@@ -1,12 +1,22 @@
-import { useState, type MouseEvent } from "react";
+import { useMemo, useState, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { useWorkspace, type View } from "../../lib/workspace";
+import {
+  CpuIcon,
+  FolderPlusIcon,
+  HistoryIcon,
+  PanelLeftIcon,
+  PlusIcon,
+  SearchIcon,
+  SettingsIcon,
+  ShieldIcon,
+  SparkIcon,
+} from "./icons";
 
-const LIBRARY: Array<{ id: View; label: string }> = [
-  { id: "runtimes", label: "Runtimes" },
-  { id: "skills", label: "Skills" },
-  { id: "history", label: "History" },
-  { id: "approvals", label: "Approvals" },
-  { id: "settings", label: "Settings" },
+const LIBRARY: Array<{ id: View; label: string; icon: typeof CpuIcon }> = [
+  { id: "runtimes", label: "Runtimes", icon: CpuIcon },
+  { id: "skills", label: "Skills", icon: SparkIcon },
+  { id: "history", label: "History", icon: HistoryIcon },
+  { id: "approvals", label: "Approvals", icon: ShieldIcon },
 ];
 
 interface MenuState {
@@ -35,10 +45,29 @@ export function Sidebar() {
     renameSession,
     deleteSession,
     archiveSession,
+    toggleSidebar,
+    sidebarWidth,
+    setSidebarWidth,
   } = useWorkspace();
   const [menu, setMenu] = useState<MenuState>();
   const [editing, setEditing] = useState<{ kind: "project" | "session"; id: string; value: string }>();
+  const [query, setQuery] = useState("");
   const activeSessions = sessions.filter((item) => item.state === "active");
+  const filteredProjects = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return projects;
+    return projects.filter(
+      (item) =>
+        item.name.toLowerCase().includes(needle) ||
+        (item.id === projectId &&
+          activeSessions.some((session) => session.title.toLowerCase().includes(needle))),
+    );
+  }, [activeSessions, projectId, projects, query]);
+  const visibleSessions = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return activeSessions;
+    return activeSessions.filter((item) => item.title.toLowerCase().includes(needle));
+  }, [activeSessions, query]);
 
   function openMenu(event: MouseEvent, kind: MenuState["kind"], id: string) {
     event.preventDefault();
@@ -53,17 +82,58 @@ export function Sidebar() {
     setEditing(undefined);
   }
 
+  function startResize(event: ReactPointerEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const origin = event.clientX;
+    const start = sidebarWidth;
+    const move = (next: PointerEvent) => {
+      setSidebarWidth(start + next.clientX - origin);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
+
   return (
     <aside className="sidebar" data-testid="app-sidebar" onClick={() => setMenu(undefined)}>
-      <button className="new-task" onClick={() => void createTask()}>
-        New task
-      </button>
-      <button className="ghost" style={{ width: "100%", marginBottom: "0.75rem" }} onClick={() => void createProjectFromFolder()}>
-        New project
-      </button>
+      <div className="sidebar-header">
+        <div className="brand">
+          <img className="mark" src="./icon.png" alt="" width={20} height={20} />
+          Capsule
+        </div>
+        <span className="grow" />
+        <button className="icon-btn" title="Hide sidebar (⌘B)" onClick={toggleSidebar}>
+          <PanelLeftIcon />
+        </button>
+      </div>
+      <div className="sidebar-tools">
+        <button className="sidebar-cta" onClick={() => void createTask()}>
+          <PlusIcon size={14} />
+          New conversation
+        </button>
+        <button className="sidebar-text-btn" onClick={() => void createProjectFromFolder()}>
+          <span className="inline-icon">
+            <FolderPlusIcon size={13} />
+            New project
+          </span>
+        </button>
+      </div>
+      <label className="sidebar-search">
+        <SearchIcon size={13} />
+        <input
+          type="search"
+          placeholder="Search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+      </label>
       <div className="sidebar-scroll">
         <div className="nav-label">Projects</div>
-        {projects.map((item) => (
+        {filteredProjects.length === 0 && <div className="sidebar-empty">No projects</div>}
+        {filteredProjects.map((item) => (
           <div key={item.id}>
             {editing?.kind === "project" && editing.id === item.id ? (
               <input
@@ -93,7 +163,7 @@ export function Sidebar() {
             )}
             {item.id === projectId && (
               <div className="session-list">
-                {activeSessions.map((session) =>
+                {visibleSessions.map((session) =>
                   editing?.kind === "session" && editing.id === session.id ? (
                     <input
                       key={session.id}
@@ -127,22 +197,35 @@ export function Sidebar() {
           </div>
         ))}
         <div className="nav-label">Library</div>
-        {LIBRARY.map((item) => (
-          <button
-            key={item.id}
-            className={`nav-item ${view === item.id ? "active" : ""}`}
-            onClick={() => setView(item.id)}
-          >
-            {item.label}
-          </button>
-        ))}
+        {LIBRARY.map((item) => {
+          const Icon = item.icon;
+          return (
+            <button
+              key={item.id}
+              className={`nav-item ${view === item.id ? "active" : ""}`}
+              onClick={() => setView(item.id)}
+            >
+              <Icon size={14} />
+              {item.label}
+            </button>
+          );
+        })}
       </div>
       <div className="sidebar-footer">
         <button className="list-item" onClick={() => setView("settings")}>
-          <span className={`dot ${connected ? "on" : status?.state === "connecting" ? "warn" : "off"}`} />
-          {connected ? "OpenClaw connected" : "Gateway offline"}
+          <SettingsIcon size={14} />
+          Settings
+          <span className="meta">
+            <span className={`dot ${connected ? "on" : status?.state === "connecting" ? "warn" : "off"}`} />
+          </span>
         </button>
       </div>
+      <div
+        className="sidebar-rail"
+        onPointerDown={startResize}
+        onDoubleClick={() => setSidebarWidth(264)}
+        title="Drag to resize"
+      />
       {menu && (
         <div className="context-menu" style={{ left: menu.x, top: menu.y }}>
           {menu.kind === "project" ? (

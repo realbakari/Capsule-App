@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { Conversation } from "./features/conversation/Conversation";
 import { RuntimesView } from "./features/harness/RuntimesView";
 import { ApprovalsView, HistoryView, SkillsView } from "./features/library/LibraryViews";
@@ -15,19 +15,25 @@ const BOOT_SPLASH_MS = 1100;
 const BOOT_FADE_MS = 200;
 
 function Shell() {
-  const { view } = useWorkspace();
+  const { view, inspectorOpen, sidebarCollapsed, sidebarWidth } = useWorkspace();
+  const style = { "--sidebar-width": `${sidebarWidth}px` } as CSSProperties;
   return (
-    <div className="app">
-      <Titlebar />
-      <div className={`shell ${view === "chat" ? "" : "no-inspector"}`}>
-        <Sidebar />
-        {view === "chat" && <Conversation />}
-        {view === "runtimes" && <RuntimesView />}
-        {view === "skills" && <SkillsView />}
-        {view === "history" && <HistoryView />}
-        {view === "approvals" && <ApprovalsView />}
-        {view === "settings" && <SettingsView />}
-        {view === "chat" && <Inspector />}
+    <div
+      className={`app ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}
+      style={style}
+    >
+      <Sidebar />
+      <div className="workspace">
+        <Titlebar />
+        <div className="workspace-body">
+          {view === "chat" && <Conversation />}
+          {view === "runtimes" && <RuntimesView />}
+          {view === "skills" && <SkillsView />}
+          {view === "history" && <HistoryView />}
+          {view === "approvals" && <ApprovalsView />}
+          {view === "settings" && <SettingsView />}
+          {view === "chat" && inspectorOpen && <Inspector />}
+        </div>
       </div>
       <Palette />
       <ConfirmDialog />

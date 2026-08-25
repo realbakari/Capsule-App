@@ -4,7 +4,7 @@ export function ConfirmDialog() {
   const { confirm, setConfirm } = useWorkspace();
   if (!confirm) return null;
   return (
-    <div className="palette-backdrop" onClick={() => setConfirm(undefined)}>
+    <div className="palette-backdrop center" onClick={() => setConfirm(undefined)}>
       <div className="dialog" onClick={(event) => event.stopPropagation()}>
         <h3>{confirm.title}</h3>
         <p>{confirm.detail}</p>
