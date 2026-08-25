@@ -10,8 +10,9 @@ import {
   nativeImage,
   shell,
 } from "electron";
-import { CapsuleEngine } from "@capsule/core";
+import type { CapsuleEngine } from "@capsule/core";
 import { IPC_CHANNELS, IPC_EVENTS, type ApprovalRequest } from "@capsule/shared";
+import { ensureSqliteAbi } from "./sqlite-abi";
 
 let mainWindow: BrowserWindow | undefined;
 let tray: Tray | undefined;
@@ -141,6 +142,17 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.updateSettings, (patch) => requireEngine().updateSettings(patch as never));
   handle(IPC_CHANNELS.getDiagnostics, () => requireEngine().getDiagnostics());
   handle(IPC_CHANNELS.search, (query) => requireEngine().search(String(query)));
+  handle(IPC_CHANNELS.listHarnesses, () => requireEngine().listHarnesses());
+  handle(IPC_CHANNELS.dedicateHarness, (projectId, harnessId) =>
+    requireEngine().dedicateHarness(String(projectId), harnessId as never),
+  );
+  handle(IPC_CHANNELS.spawnHarness, (projectId, harnessId, prompt) =>
+    requireEngine().spawnHarness(
+      String(projectId),
+      harnessId as never,
+      prompt ? String(prompt) : undefined,
+    ),
+  );
 }
 
 function bindEngineEvents(): void {
@@ -208,6 +220,8 @@ function createTray(): void {
 
 app.whenReady().then(async () => {
   try {
+    await ensureSqliteAbi();
+    const { CapsuleEngine } = await import("@capsule/core");
     engine = new CapsuleEngine({
       databasePath: path.join(userDataDir(), "capsule.sqlite"),
       userDataDir: userDataDir(),

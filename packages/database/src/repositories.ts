@@ -96,6 +96,25 @@ export class CapsuleRepositories {
     return this.listProjects().find((project) => project.id === id);
   }
 
+  updateProject(project: Project): void {
+    this.db.sqlite
+      .prepare(
+        `UPDATE projects SET name = @name, description = @description, working_directory = @workingDirectory,
+         default_agent_id = @defaultAgentId, default_skill_ids = @defaultSkillIds, default_mode = @defaultMode,
+         updated_at = @updatedAt WHERE id = @id`,
+      )
+      .run({
+        id: project.id,
+        name: project.name,
+        description: project.description ?? null,
+        workingDirectory: project.workingDirectory ?? null,
+        defaultAgentId: project.defaultAgentId ?? null,
+        defaultSkillIds: JSON.stringify(project.defaultSkillIds),
+        defaultMode: project.defaultMode,
+        updatedAt: project.updatedAt,
+      });
+  }
+
   insertSession(session: Session): void {
     this.db.sqlite
       .prepare(

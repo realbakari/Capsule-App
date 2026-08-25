@@ -1,5 +1,10 @@
 import { EventEmitter } from "node:events";
 import { agentIdForMode, DEFAULT_AGENTS, excludeSystemAgents } from "@capsule/agents";
+import {
+  harnessAgentRecord,
+  PRESET_HARNESSES,
+  probeHarnesses,
+} from "@capsule/harness";
 import { createTextArtifact } from "@capsule/artifacts";
 import { createBuzzAdapter } from "@capsule/buzz";
 import { buildContract } from "@capsule/contracts";
@@ -24,6 +29,9 @@ import {
   type CreateProjectInput,
   type CreateSessionInput,
   type DiagnosticsSnapshot,
+  type HarnessId,
+  type HarnessStatus,
+  isHarnessId,
   type Project,
   type Run,
   type RunEvent,
@@ -174,7 +182,79 @@ export class CapsuleEngine {
 
   async listAgents(): Promise<Agent[]> {
     const stored = this.repos.listAgents();
-    return excludeSystemAgents(stored.length > 0 ? stored : DEFAULT_AGENTS);
+    const base = excludeSystemAgents(stored.length > 0 ? stored : DEFAULT_AGENTS);
+    const harnesses = await this.listHarnesses();
+    const extra = harnesses
+      .filter((harness) => !base.some((agent) => agent.id === harness.id))
+      .map((harness) =>
+        harnessAgentRecord(PRESET_HARNESSES.find((preset) => preset.id === harness.id)!),
+      );
+    return [...base, ...extra];
+  }
+
+  async listHarnesses(): Promise<HarnessStatus[]> {
+    const dedicatedByHarness: Record<string, string[]> = { claude: [], codex: [] };
+    for (const project of this.repos.listProjects()) {
+      if (project.defaultAgentId && isHarnessId(project.defaultAgentId)) {
+        dedicatedByHarness[project.defaultAgentId]?.push(project.id);
+      }
+    }
+    let acpxEnabled = false;
+    if (!this.usingMock) {
+      acpxEnabled = await this.openclaw.hasAcpxPlugin().catch(() => false);
+    }
+    return probeHarnesses({
+      gatewayConnected: !this.usingMock,
+      acpxEnabled,
+      dedicatedByHarness,
+    });
+  }
+
+  async dedicateHarness(projectId: string, harnessId: HarnessId): Promise<Project> {
+    const project = this.requireProject(projectId);
+    const preset = PRESET_HARNESSES.find((item) => item.id === harnessId);
+    if (!preset) throw new Error(`Unknown harness: ${harnessId}`);
+    this.repos.upsertAgent(harnessAgentRecord(preset));
+    project.defaultAgentId = harnessId;
+    project.defaultMode = "code";
+    project.updatedAt = nowIso();
+    this.repos.updateProject(project);
+    this.log(`Dedicated ${preset.name} to project ${project.name}`);
+    return project;
+  }
+
+  async spawnHarness(
+    projectId: string,
+    harnessId: HarnessId,
+    prompt?: string,
+  ): Promise<{ session: Session; usedSlashCommand?: boolean }> {
+    const project = await this.dedicateHarness(projectId, harnessId);
+    const title = `${PRESET_HARNESSES.find((item) => item.id === harnessId)?.name} · ${project.name}`;
+    if (this.usingMock) {
+      const session = await this.createSession({
+        projectId: project.id,
+        agentId: harnessId,
+        mode: "code",
+        title,
+      });
+      this.log(`Mock spawn for ${harnessId}; connect OpenClaw to run a real ACP session.`);
+      return { session };
+    }
+    const spawned = await this.openclaw.spawnAcpSession({
+      harnessId,
+      cwd: project.workingDirectory,
+      title,
+      prompt,
+    });
+    const session = createSessionRecord(
+      project,
+      { projectId: project.id, agentId: harnessId, mode: "code", title },
+      harnessId,
+    );
+    session.openclawSessionKey = spawned.sessionKey;
+    this.repos.insertSession(session);
+    this.log(`Spawned OpenClaw ACP session for ${harnessId} (${spawned.sessionKey})`);
+    return { session, usedSlashCommand: spawned.usedSlashCommand };
   }
 
   async listSkills() {

@@ -104,6 +104,7 @@ packages/
   filesystem          Project-scoped file access
   terminal            Native terminal open
   openclaw            Gateway adapter + mock runtime
+  harness             Claude Code / Codex ACP catalog (not an ACP server)
   buzz                Channel mapping only — not the Buzz protocol
   ui                  Shared tokens
 ```
@@ -138,6 +139,24 @@ Frame shapes:
 Discovery order: configured URL → `~/.openclaw/openclaw.json` port → `127.0.0.1:18789`. Remote Gateways are a URL change, not a redesign.
 
 If the Gateway is down, Capsule falls back to `MockAgentRuntime` so projects and conversations still work.
+
+### Dedicated coding harnesses (Claude Code, Codex)
+
+Buzz runs Goose, Claude Code, and Codex as ACP subprocesses behind `buzz-acp`. Capsule does the same job without owning ACP:
+
+```
+Capsule UI  →  dedicate / spawn
+                 ↓
+           OpenClaw Gateway
+                 ↓
+           @openclaw/acpx
+                 ↓
+        Claude Code ACP  or  Codex ACP
+```
+
+OpenClaw ACP target ids are `claude` and `codex` (`/acp spawn <id>` or `sessions.create` with `runtime: "acp"`). Capsule probes local CLIs (`claude`, `codex`), checks whether the Gateway has `acpx` enabled, and can dedicate either harness as a project's default coding agent.
+
+Capsule does not speak ACP over stdio itself and does not embed Claude or Codex. Install the CLIs on the Mac and `openclaw plugins install @openclaw/acpx` on the Gateway.
 
 ---
 

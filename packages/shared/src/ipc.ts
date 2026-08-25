@@ -32,6 +32,9 @@ export const IPC_CHANNELS = {
   updateSettings: "capsule:updateSettings",
   getDiagnostics: "capsule:getDiagnostics",
   search: "capsule:search",
+  listHarnesses: "capsule:listHarnesses",
+  dedicateHarness: "capsule:dedicateHarness",
+  spawnHarness: "capsule:spawnHarness",
 } as const;
 
 export const IPC_EVENTS = {

@@ -5,6 +5,7 @@ import type {
   ApprovalRequest,
   Artifact,
   ChatMessage,
+  HarnessStatus,
   Project,
   Run,
   RunEvent,
@@ -68,6 +69,7 @@ export default function App() {
   const [paletteQuery, setPaletteQuery] = useState("");
   const [newProjectName, setNewProjectName] = useState("");
   const [diagnostics, setDiagnostics] = useState<string>("");
+  const [harnesses, setHarnesses] = useState<HarnessStatus[]>([]);
 
   const project = projects.find((item) => item.id === projectId);
   const session = sessions.find((item) => item.id === sessionId);
@@ -75,20 +77,23 @@ export default function App() {
   const pendingApproval = approvals.find((item) => item.status === "pending");
 
   const refresh = useCallback(async () => {
-    const [nextProjects, nextAgents, nextSkills, nextStatus, nextSub, nextApprovals] = await Promise.all([
-      api.listProjects(),
-      api.listAgents(),
-      api.listSkills(),
-      api.getStatus(),
-      api.getSubsystemStatus(),
-      api.listApprovals("pending"),
-    ]);
+    const [nextProjects, nextAgents, nextSkills, nextStatus, nextSub, nextApprovals, nextHarnesses] =
+      await Promise.all([
+        api.listProjects(),
+        api.listAgents(),
+        api.listSkills(),
+        api.getStatus(),
+        api.getSubsystemStatus(),
+        api.listApprovals("pending"),
+        api.listHarnesses(),
+      ]);
     setProjects(nextProjects);
     setAgents(nextAgents);
     setSkills(nextSkills);
     setStatus(nextStatus);
     setSubsystems(nextSub);
     setApprovals(nextApprovals);
+    setHarnesses(nextHarnesses);
     const selectedProject = projectId ?? nextProjects[0]?.id;
     if (selectedProject && selectedProject !== projectId) setProjectId(selectedProject);
     if (selectedProject) {
@@ -210,6 +215,7 @@ export default function App() {
         { id: "chat", label: "Open conversation", run: () => setView("chat") },
         { id: "projects", label: "Open project", run: () => setView("chat") },
         { id: "agents", label: "Switch agent", run: () => setView("agents") },
+        { id: "harness", label: "Open Claude / Codex harnesses", run: () => setView("agents") },
         { id: "skills", label: "Open skills", run: () => setView("skills") },
         { id: "runs", label: "Open active runs", run: () => setView("history") },
         { id: "approvals", label: "Open approvals", run: () => setView("approvals") },
@@ -274,6 +280,9 @@ export default function App() {
             </button>
           ))}
           <div className="nav-label">Library</div>
+          <button className={`nav-item ${view === "agents" ? "active" : ""}`} onClick={() => setView("agents")}>
+            Runtimes
+          </button>
           <button className={`nav-item ${view === "skills" ? "active" : ""}`} onClick={() => setView("skills")}>
             Skills
           </button>
@@ -419,18 +428,71 @@ export default function App() {
           </section>
         ) : (
           <section className="panel">
-            {view === "agents" &&
-              agents.map((item) => (
-                <div className="card" key={item.id}>
-                  <div className="row">
-                    <div>
-                      <b>{item.name}</b>
-                      <div className="muted">{item.description}</div>
-                    </div>
-                    <span className="muted">{item.status}</span>
-                  </div>
+            {view === "agents" && (
+              <>
+                <div className="card">
+                  <h3>Dedicated harnesses</h3>
+                  <p className="muted">
+                    Claude Code and Codex run as ACP sessions through OpenClaw (acpx), the same
+                    model Buzz uses: Capsule owns the workspace, the harness owns the coding loop.
+                  </p>
                 </div>
-              ))}
+                {harnesses.map((harness) => (
+                  <div className="card" key={harness.id}>
+                    <div className="row">
+                      <div>
+                        <b>{harness.name}</b>
+                        <div className="muted">{harness.description}</div>
+                        <div className="faint">{harness.detail}</div>
+                        {harness.binaryPath && <div className="mono">{harness.binaryPath}</div>}
+                      </div>
+                      <span className="muted">{harness.readiness.replaceAll("_", " ")}</span>
+                    </div>
+                    <div className="actions">
+                      <button
+                        className="chip"
+                        disabled={!projectId}
+                        onClick={async () => {
+                          if (!projectId) return;
+                          await api.dedicateHarness(projectId, harness.id);
+                          setAgentId(harness.id);
+                          setMode("code");
+                          await refresh();
+                        }}
+                      >
+                        Dedicate to project
+                      </button>
+                      <button
+                        className="send"
+                        disabled={!projectId || harness.readiness === "missing_cli"}
+                        onClick={async () => {
+                          if (!projectId) return;
+                          const result = await api.spawnHarness(projectId, harness.id);
+                          setSessionId(result.session.id);
+                          setAgentId(harness.id);
+                          setMode("code");
+                          setView("chat");
+                          await refresh();
+                        }}
+                      >
+                        Spawn session
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {agents.map((item) => (
+                  <div className="card" key={item.id}>
+                    <div className="row">
+                      <div>
+                        <b>{item.name}</b>
+                        <div className="muted">{item.description}</div>
+                      </div>
+                      <span className="muted">{item.status}</span>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
             {view === "skills" &&
               skills.map((item) => (
                 <div className="card" key={item.id}>
@@ -495,6 +557,22 @@ export default function App() {
                       Disconnect
                     </button>
                   </div>
+                </div>
+                <div className="card">
+                  <h3>Claude Code · Codex</h3>
+                  <p className="muted">
+                    First-class ACP runtimes. Capsule does not reimplement Claude or Codex; it
+                    spawns them through OpenClaw acpx the way Buzz spawns ACP subprocesses.
+                  </p>
+                  {harnesses.map((harness) => (
+                    <div className="row" key={harness.id} style={{ marginBottom: 8 }}>
+                      <div>
+                        <b>{harness.name}</b>
+                        <div className="faint">{harness.detail}</div>
+                      </div>
+                      <span className="muted">{harness.readiness.replaceAll("_", " ")}</span>
+                    </div>
+                  ))}
                 </div>
                 <div className="card">
                   <h3>Create project</h3>

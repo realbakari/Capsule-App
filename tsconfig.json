@@ -16,6 +16,7 @@
     { "path": "packages/filesystem" },
     { "path": "packages/terminal" },
     { "path": "packages/openclaw" },
+    { "path": "packages/harness" },
     { "path": "packages/buzz" },
     { "path": "packages/core" },
     { "path": "packages/ui" }

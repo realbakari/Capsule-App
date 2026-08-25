@@ -1,3 +1,4 @@
+export * from "./harness.js";
 export * from "./ids.js";
 export * from "./ipc.js";
 export * from "./runtime.js";

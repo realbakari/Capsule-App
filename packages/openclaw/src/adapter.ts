@@ -28,7 +28,12 @@ import {
 } from "@capsule/shared";
 import { defaultGatewayEndpoint, parseGatewayUrl, probeTcp } from "./discovery.js";
 
-const CAPSULE_SCOPES = ["operator.read", "operator.write", "operator.approvals"];
+const CAPSULE_SCOPES = [
+  "operator.read",
+  "operator.write",
+  "operator.approvals",
+  "operator.admin",
+];
 const CAPSULE_CAPS = [
   GATEWAY_CLIENT_CAPS.TOOL_EVENTS,
   GATEWAY_CLIENT_CAPS.APPROVALS,
@@ -211,6 +216,81 @@ export class OpenClawAdapter implements AgentRuntime {
       return (payload.channels ?? []).map((row) => this.mapChannelBinding(row));
     } catch {
       return [];
+    }
+  }
+
+  async hasAcpxPlugin(): Promise<boolean> {
+    try {
+      const payload = await this.request<{ plugins?: unknown[]; entries?: unknown[] }>(
+        "plugins.list",
+        {},
+      );
+      const rows = payload.plugins ?? payload.entries ?? [];
+      return rows.some((row) => {
+        const record = asRecord(row);
+        const id = `${asString(record.id)}${asString(record.pluginId)}${asString(record.name)}`.toLowerCase();
+        const enabled = record.enabled !== false && record.status !== "disabled";
+        return enabled && id.includes("acpx");
+      });
+    } catch {
+      return false;
+    }
+  }
+
+  async spawnAcpSession(input: {
+    harnessId: string;
+    cwd?: string;
+    title?: string;
+    prompt?: string;
+  }): Promise<{ sessionKey: string; usedSlashCommand: boolean }> {
+    const cwd = input.cwd;
+    const agent = input.harnessId;
+    try {
+      const created = await this.request<{
+        key?: string;
+        sessionKey?: string;
+        id?: string;
+      }>("sessions.create", {
+        label: input.title ?? agent,
+        agentId: agent,
+        runtime: "acp",
+        acp: { agent, backend: "acpx", mode: "persistent", cwd },
+      });
+      const sessionKey = created.sessionKey ?? created.key ?? created.id;
+      if (!sessionKey) throw new Error("sessions.create did not return a session key");
+      if (input.prompt) {
+        await this.request("sessions.send", {
+          key: sessionKey,
+          sessionKey,
+          message: input.prompt,
+          idempotencyKey: createId("idemp"),
+        }).catch(() => undefined);
+      }
+      return { sessionKey, usedSlashCommand: false };
+    } catch {
+      const slash = `/acp spawn ${agent} --bind here --mode persistent${cwd ? ` --cwd ${cwd}` : ""}`;
+      const created = await this.createSession({
+        projectId: "local",
+        agentId: agent,
+        title: input.title ?? agent,
+        mode: "code",
+      });
+      const sessionKey = created.openclawSessionKey ?? created.id;
+      await this.request("sessions.send", {
+        key: sessionKey,
+        sessionKey,
+        message: slash,
+        idempotencyKey: createId("idemp"),
+      });
+      if (input.prompt) {
+        await this.request("sessions.send", {
+          key: sessionKey,
+          sessionKey,
+          message: input.prompt,
+          idempotencyKey: createId("idemp"),
+        }).catch(() => undefined);
+      }
+      return { sessionKey, usedSlashCommand: true };
     }
   }
 

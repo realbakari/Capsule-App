@@ -23,6 +23,7 @@ export default defineConfig({
           "@capsule/filesystem",
           "@capsule/terminal",
           "@capsule/openclaw",
+          "@capsule/harness",
           "@capsule/buzz",
           "@capsule/ui",
         ],

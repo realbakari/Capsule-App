@@ -12,6 +12,7 @@
     "@capsule/contracts": "workspace:*",
     "@capsule/database": "workspace:*",
     "@capsule/filesystem": "workspace:*",
+    "@capsule/harness": "workspace:*",
     "@capsule/openclaw": "workspace:*",
     "@capsule/policies": "workspace:*",
     "@capsule/projects": "workspace:*",

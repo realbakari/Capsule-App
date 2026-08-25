@@ -40,6 +40,11 @@ const api = {
   updateSettings: (patch: unknown) => ipcRenderer.invoke(IPC_CHANNELS.updateSettings, patch),
   getDiagnostics: () => ipcRenderer.invoke(IPC_CHANNELS.getDiagnostics),
   search: (query: string) => ipcRenderer.invoke(IPC_CHANNELS.search, query),
+  listHarnesses: () => ipcRenderer.invoke(IPC_CHANNELS.listHarnesses),
+  dedicateHarness: (projectId: string, harnessId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.dedicateHarness, projectId, harnessId),
+  spawnHarness: (projectId: string, harnessId: string, prompt?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.spawnHarness, projectId, harnessId, prompt),
   on: (channel: keyof typeof IPC_EVENTS, handler: (payload: unknown) => void) => {
     const name = IPC_EVENTS[channel];
     const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => handler(payload);

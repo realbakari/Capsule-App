@@ -123,6 +123,9 @@ importers:
       '@capsule/filesystem':
         specifier: workspace:*
         version: link:../filesystem
+      '@capsule/harness':
+        specifier: workspace:*
+        version: link:../harness
       '@capsule/openclaw':
         specifier: workspace:*
         version: link:../openclaw
@@ -165,6 +168,12 @@ importers:
         version: 7.6.13
 
   packages/filesystem:
+    dependencies:
+      '@capsule/shared':
+        specifier: workspace:*
+        version: link:../shared
+
+  packages/harness:
     dependencies:
       '@capsule/shared':
         specifier: workspace:*
