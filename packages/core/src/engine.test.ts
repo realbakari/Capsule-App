@@ -107,4 +107,25 @@ describe("CapsuleEngine first user flow", () => {
     expect(doctor.checks.some((check) => check.id === "cli")).toBe(true);
     await engine.stop();
   });
+
+  it("renames and deletes a project, cascading sessions", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-delete-"));
+    const engine = new CapsuleEngine({
+      databasePath: path.join(dir, "capsule.sqlite"),
+      userDataDir: dir,
+    });
+    await engine.start();
+    const keep = engine.listProjects()[0];
+    const project = engine.createProject({ name: "Throwaway", workingDirectory: dir });
+    const session = await engine.createSession({ projectId: project.id, title: "Temp" });
+    engine.updateProject(project.id, { name: "Renamed" });
+    expect(engine.getProject(project.id)?.name).toBe("Renamed");
+    engine.deleteProject(project.id);
+    expect(engine.getProject(project.id)).toBeUndefined();
+    expect(engine.listSessions().some((item) => item.id === session.id)).toBe(false);
+    expect(engine.listProjects().some((item) => item.id === keep?.id || item.name === "Inbox")).toBe(
+      true,
+    );
+    await engine.stop();
+  });
 });

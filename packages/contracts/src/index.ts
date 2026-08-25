@@ -26,6 +26,15 @@ export function buildContract(input: {
     },
   ];
 
+  if (input.mode === "plan") {
+    required.push({
+      id: "produce-plan",
+      description: "Produce a concrete plan with files to touch and verification steps. Do not edit files yet.",
+      kind: "output_contains" as const,
+      value: "plan",
+    });
+  }
+
   if (input.mode === "code") {
     required.push({
       id: "describe-changes",

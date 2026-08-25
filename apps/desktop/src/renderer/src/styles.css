@@ -532,3 +532,38 @@ input[type="text"]:focus, textarea.field:focus, select:focus {
 .readiness.ready, .readiness.dedicated { color: var(--subtext-1); }
 .readiness.running { color: var(--green); }
 .readiness.missing_cli, .readiness.missing_acpx, .readiness.gateway_offline { color: var(--yellow); }
+
+.context-menu {
+  position: fixed;
+  z-index: 30;
+  min-width: 11.5rem;
+  padding: 0.3rem;
+  background: var(--surface-0);
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  box-shadow: var(--shadow);
+}
+.context-menu button {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding: 0.4rem 0.55rem;
+  border-radius: 0.3rem;
+  color: var(--text);
+  font-size: 0.8125rem;
+}
+.context-menu button:hover { background: var(--bg-hover); }
+.context-menu .danger-item { color: var(--red); }
+
+.dialog {
+  width: min(26rem, calc(100vw - 2.5rem));
+  background: var(--mantle);
+  border: 1px solid var(--border-color);
+  border-radius: 0.75rem;
+  box-shadow: var(--shadow);
+  padding: 1.1rem 1.15rem 1rem;
+}
+.dialog h3 { margin: 0 0 0.4rem; font-size: 1rem; }
+.dialog p { margin: 0 0 0.9rem; color: var(--text-muted); font-size: 0.8125rem; }

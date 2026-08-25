@@ -3,6 +3,7 @@ import { Conversation } from "./features/conversation/Conversation";
 import { RuntimesView } from "./features/harness/RuntimesView";
 import { ApprovalsView, HistoryView, SkillsView } from "./features/library/LibraryViews";
 import { SettingsView } from "./features/settings/SettingsView";
+import { ConfirmDialog } from "./features/shell/ConfirmDialog";
 import { Inspector } from "./features/shell/Inspector";
 import { Palette } from "./features/shell/Palette";
 import { Sidebar } from "./features/shell/Sidebar";
@@ -29,6 +30,7 @@ function Shell() {
         {view === "chat" && <Inspector />}
       </div>
       <Palette />
+      <ConfirmDialog />
     </div>
   );
 }

@@ -61,6 +61,7 @@ export const DEFAULT_SKILLS: Skill[] = [
 const MODE_SKILL: Record<AgentMode, string | undefined> = {
   chat: undefined,
   agent: undefined,
+  plan: "coding",
   code: "coding",
   research: "research",
   browser: "browser",

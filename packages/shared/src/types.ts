@@ -10,6 +10,7 @@ export type RuntimeKind = "openclaw" | "mock";
 export type AgentMode =
   | "chat"
   | "agent"
+  | "plan"
   | "code"
   | "research"
   | "browser"
@@ -153,6 +154,21 @@ export interface UpdateProjectInput {
   workingDirectory?: string | null;
   defaultAgentId?: string | null;
   defaultMode?: AgentMode;
+}
+
+export interface FileEntry {
+  name: string;
+  path: string;
+  type: "file" | "directory";
+}
+
+export interface GitStatus {
+  available: boolean;
+  isRepo: boolean;
+  branch?: string;
+  dirty: boolean;
+  changed: number;
+  summary: string;
 }
 
 export interface ChatMessage {

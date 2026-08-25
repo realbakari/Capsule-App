@@ -191,8 +191,30 @@ export class CapsuleRepositories {
   }
 
   deleteSession(id: string): void {
+    const runIds = (
+      this.db.sqlite.prepare("SELECT id FROM runs WHERE session_id = ?").all(id) as Array<{ id: string }>
+    ).map((row) => row.id);
+    this.deleteRuns(runIds);
     this.db.sqlite.prepare("DELETE FROM messages WHERE session_id = ?").run(id);
+    this.db.sqlite.prepare("DELETE FROM artifacts WHERE session_id = ?").run(id);
     this.db.sqlite.prepare("DELETE FROM sessions WHERE id = ?").run(id);
+  }
+
+  deleteProject(id: string): void {
+    const sessions = this.listSessions(id);
+    for (const session of sessions) this.deleteSession(session.id);
+    this.db.sqlite.prepare("DELETE FROM projects WHERE id = ?").run(id);
+  }
+
+  private deleteRuns(runIds: string[]): void {
+    for (const runId of runIds) {
+      this.db.sqlite.prepare("DELETE FROM run_events WHERE run_id = ?").run(runId);
+      this.db.sqlite.prepare("DELETE FROM artifacts WHERE run_id = ?").run(runId);
+      this.db.sqlite.prepare("DELETE FROM approvals WHERE run_id = ?").run(runId);
+      this.db.sqlite.prepare("DELETE FROM policy_decisions WHERE run_id = ?").run(runId);
+      this.db.sqlite.prepare("DELETE FROM contracts WHERE run_id = ?").run(runId);
+      this.db.sqlite.prepare("DELETE FROM runs WHERE id = ?").run(runId);
+    }
   }
 
   listSessions(projectId?: string): Session[] {

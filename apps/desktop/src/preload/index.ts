@@ -42,6 +42,9 @@ const api = {
   search: (query: string) => ipcRenderer.invoke(IPC_CHANNELS.search, query),
   updateProject: (id: string, patch: unknown) =>
     ipcRenderer.invoke(IPC_CHANNELS.updateProject, id, patch),
+  deleteProject: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.deleteProject, id),
+  gitStatus: (projectId: string) => ipcRenderer.invoke(IPC_CHANNELS.gitStatus, projectId),
+  openPath: (target: string) => ipcRenderer.invoke(IPC_CHANNELS.openPath, target),
   pickDirectory: () => ipcRenderer.invoke(IPC_CHANNELS.pickDirectory),
   listHarnesses: () => ipcRenderer.invoke(IPC_CHANNELS.listHarnesses),
   doctorHarness: (harnessId: string) => ipcRenderer.invoke(IPC_CHANNELS.doctorHarness, harnessId),

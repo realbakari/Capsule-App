@@ -1,11 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 
-export interface FileEntry {
-  name: string;
-  path: string;
-  type: "file" | "directory";
-}
+import type { FileEntry } from "@capsule/shared";
+
+export type { FileEntry };
+export { readGitStatus } from "./git.js";
 
 export class FilesystemAdapter {
   constructor(private readonly projectRoot?: string) {}

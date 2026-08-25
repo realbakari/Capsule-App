@@ -14,7 +14,7 @@ import { createTextArtifact } from "@capsule/artifacts";
 import { createBuzzAdapter } from "@capsule/buzz";
 import { buildContract } from "@capsule/contracts";
 import { CapsuleDatabase, CapsuleRepositories } from "@capsule/database";
-import { FilesystemAdapter } from "@capsule/filesystem";
+import { FilesystemAdapter, readGitStatus } from "@capsule/filesystem";
 import { MockAgentRuntime, OpenClawAdapter, defaultGatewayEndpoint } from "@capsule/openclaw";
 import { decidePolicy, DEFAULT_POLICIES, recordDecision } from "@capsule/policies";
 import { createProjectRecord } from "@capsule/projects";
@@ -35,6 +35,7 @@ import {
   type CreateProjectInput,
   type CreateSessionInput,
   type DiagnosticsSnapshot,
+  type GitStatus,
   type HarnessControlResult,
   type HarnessDoctorReport,
   type HarnessId,
@@ -488,6 +489,19 @@ export class CapsuleEngine {
     project.updatedAt = nowIso();
     this.repos.updateProject(project);
     return project;
+  }
+
+  deleteProject(id: string): void {
+    this.requireProject(id);
+    this.repos.deleteProject(id);
+    if (this.repos.listProjects().length === 0) {
+      this.createProject({ name: "Inbox", description: "Default workspace for new tasks." });
+    }
+    this.events.emit("state", { command: "projects-updated" });
+  }
+
+  gitStatus(projectId: string): GitStatus {
+    return readGitStatus(this.requireProject(projectId).workingDirectory);
   }
 
   async listSkills() {
@@ -993,6 +1007,7 @@ export class CapsuleEngine {
 
 export function inferMode(prompt: string, current?: AgentMode): AgentMode {
   const lower = prompt.toLowerCase();
+  if (/\b(plan|design the approach|write a plan)\b/.test(lower)) return "plan";
   if (/\b(code|implement|refactor|test|git|typescript|python|api)\b/.test(lower)) return "code";
   if (/\b(research|search|sources|summarize the web)\b/.test(lower)) return "research";
   if (/\b(browser|web page|navigate|scrape)\b/.test(lower)) return "browser";

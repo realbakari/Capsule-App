@@ -58,6 +58,7 @@ export const DEFAULT_AGENTS: Agent[] = [
 const MODE_AGENT: Record<AgentMode, string> = {
   chat: "general",
   agent: "general",
+  plan: "coding",
   code: "coding",
   research: "research",
   browser: "browser",

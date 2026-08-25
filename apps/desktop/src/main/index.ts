@@ -218,6 +218,13 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.updateProject, (id, patch) =>
     requireEngine().updateProject(String(id), patch as UpdateProjectInput),
   );
+  handle(IPC_CHANNELS.deleteProject, (id) => requireEngine().deleteProject(String(id)));
+  handle(IPC_CHANNELS.gitStatus, (projectId) => requireEngine().gitStatus(String(projectId)));
+  handle(IPC_CHANNELS.openPath, async (target) => {
+    const location = String(target);
+    if (!location) return;
+    await shell.openPath(location);
+  });
   handle(IPC_CHANNELS.pickDirectory, async () => {
     const result = await dialog.showOpenDialog({
       properties: ["openDirectory", "createDirectory"],
@@ -280,6 +287,11 @@ function createMenu(): void {
           label: "New Task",
           accelerator: "CommandOrControl+N",
           click: () => send(IPC_EVENTS.state, { command: "new-task" }),
+        },
+        {
+          label: "New Project",
+          accelerator: "CommandOrControl+Shift+N",
+          click: () => send(IPC_EVENTS.state, { command: "new-project" }),
         },
         { role: "close" },
       ],

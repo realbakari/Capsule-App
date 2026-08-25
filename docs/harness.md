@@ -20,6 +20,18 @@ Capsule owns the workspace: projects, conversations, runs, contracts, approvals,
 
 Spawn prefers `sessions.create` with the `/acp spawn` command as the first message (valid against Gateway protocol 4). Capsule does **not** pass illegal `runtime: "acp"` fields on `sessions.create`.
 
+## Workspace features Capsule implements (inspired by Buzz / Codex / Claude Code)
+
+Capsule is not a Buzz clone, not Codex, and not Claude Code. It takes the **workspace** pieces those products get right:
+
+- Projects and threads with rename, archive, and delete
+- Folder as the coding cwd, git branch/dirty status, file mention (`@path`)
+- Plan vs code modes
+- Approvals, run timeline, artifacts/diffs
+- Claude Code and Codex as ACP harnesses through OpenClaw
+
+It does **not** implement Buzz channels/huddles/Nostr, Codex cloud worktrees, or Claude Code’s IDE/Slack/GitHub surfaces.
+
 ## Do you need to install Claude Code in Capsule?
 
 No. Capsule never ships or installs Claude Code or Codex. It **picks them up**:

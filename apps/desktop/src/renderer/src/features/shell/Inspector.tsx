@@ -1,15 +1,30 @@
 import { useWorkspace } from "../../lib/workspace";
 
 export function Inspector() {
-  const { project, session, status, activeRun, steps, artifacts, harnesses } = useWorkspace();
+  const {
+    project,
+    session,
+    status,
+    activeRun,
+    steps,
+    artifacts,
+    harnesses,
+    git,
+    files,
+    pickProjectDirectory,
+    openTerminal,
+    openPath,
+    mentionFile,
+    setView,
+  } = useWorkspace();
   const dedicated = harnesses.find((item) => item.id === project?.defaultAgentId);
 
   return (
     <aside className="inspector">
       <div className="inspector-block">
-        <h4>Workspace</h4>
+        <h4>Project</h4>
         <div className="kv">
-          <span>Project</span>
+          <span>Name</span>
           <span>{project?.name ?? "—"}</span>
         </div>
         <div className="kv">
@@ -17,9 +32,57 @@ export function Inspector() {
           <span>{session?.mode ?? project?.defaultMode ?? "chat"}</span>
         </div>
         <div className="kv">
-          <span>Directory</span>
+          <span>Folder</span>
           <span className="mono">{project?.workingDirectory ?? "not set"}</span>
         </div>
+        <div className="actions" style={{ marginTop: 8 }}>
+          <button className="ghost" onClick={() => void pickProjectDirectory()}>
+            Choose folder
+          </button>
+          <button className="ghost" disabled={!project?.workingDirectory} onClick={() => void openTerminal()}>
+            Terminal
+          </button>
+        </div>
+      </div>
+      <div className="inspector-block">
+        <h4>Git</h4>
+        {git?.isRepo ? (
+          <>
+            <div className="kv">
+              <span>Branch</span>
+              <span>{git.branch}</span>
+            </div>
+            <div className="kv">
+              <span>Status</span>
+              <span>{git.dirty ? `${git.changed} changed` : "clean"}</span>
+            </div>
+          </>
+        ) : (
+          <div className="faint">{git?.summary ?? "Set a folder to see git status."}</div>
+        )}
+      </div>
+      <div className="inspector-block">
+        <h4>Files</h4>
+        {files.length === 0 ? (
+          <div className="faint">Choose a project folder to browse files, like Codex and Claude Code.</div>
+        ) : (
+          files.slice(0, 24).map((entry) => (
+            <button
+              key={entry.path}
+              className="list-item"
+              title="Click to mention, double-click to open"
+              onClick={() => mentionFile(entry.path)}
+              onDoubleClick={() => {
+                if (project?.workingDirectory) {
+                  void openPath(`${project.workingDirectory.replace(/\/$/, "")}/${entry.path}`);
+                }
+              }}
+            >
+              {entry.name}
+              <span className="meta">{entry.type === "directory" ? "dir" : ""}</span>
+            </button>
+          ))
+        )}
       </div>
       <div className="inspector-block">
         <h4>Harness</h4>
@@ -33,15 +96,11 @@ export function Inspector() {
               <span>State</span>
               <span>{session?.harnessState ?? dedicated.readiness.replaceAll("_", " ")}</span>
             </div>
-            {session?.openclawSessionKey && (
-              <div className="kv">
-                <span>ACP</span>
-                <span className="mono">{session.openclawSessionKey}</span>
-              </div>
-            )}
           </>
         ) : (
-          <div className="faint">No Claude or Codex dedication. Open Runtimes to bind one.</div>
+          <button className="ghost" onClick={() => setView("runtimes")}>
+            Dedicate Claude or Codex
+          </button>
         )}
       </div>
       <div className="inspector-block">
@@ -67,14 +126,10 @@ export function Inspector() {
             {status?.gatewayHost}:{status?.gatewayPort}
           </span>
         </div>
-        <div className="kv">
-          <span>Kind</span>
-          <span>{status?.kind ?? "—"}</span>
-        </div>
       </div>
       {artifacts.length > 0 && (
         <div className="inspector-block">
-          <h4>Artifacts</h4>
+          <h4>Diffs / artifacts</h4>
           {artifacts.map((artifact) => (
             <div key={artifact.id} className="kv">
               <span>{artifact.title}</span>

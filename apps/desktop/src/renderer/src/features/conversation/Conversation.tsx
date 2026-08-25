@@ -113,6 +113,12 @@ export function Conversation() {
                   ? "You"
                   : agents.find((item) => item.id === (session?.agentId ?? agentId))?.name ?? "Agent"}
                 <span className="when">{message.createdAt.slice(11, 16)}</span>
+                <button
+                  className="ghost"
+                  onClick={() => void navigator.clipboard.writeText(message.content)}
+                >
+                  Copy
+                </button>
               </div>
               <div className="body">{message.content}</div>
             </div>
@@ -180,6 +186,11 @@ export function Conversation() {
               <div className="card" key={artifact.id}>
                 <b>{artifact.title}</b>
                 <div className="muted">{artifact.kind}</div>
+                {artifact.content && (
+                  <pre className="mono" style={{ whiteSpace: "pre-wrap", marginTop: 8 }}>
+                    {artifact.content.slice(0, 4000)}
+                  </pre>
+                )}
               </div>
             ))}
           </div>

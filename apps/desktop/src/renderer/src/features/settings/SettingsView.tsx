@@ -9,10 +9,15 @@ export function SettingsView() {
     newProjectName,
     setNewProjectName,
     createProject,
+    createProjectFromFolder,
     diagnostics,
     exportDiagnostics,
     pickProjectDirectory,
     project,
+    projects,
+    deleteProject,
+    setProjectId,
+    setView,
   } = useWorkspace();
 
   return (
@@ -67,7 +72,28 @@ export function SettingsView() {
         ))}
       </div>
       <div className="card">
-        <h3>Create project</h3>
+        <h3>Projects</h3>
+        <p className="muted">
+          Right-click a project in the sidebar to rename or delete it. Deleting removes Capsule
+          history, not the folder on disk.
+        </p>
+        {projects.map((item) => (
+          <div className="row" key={item.id} style={{ marginBottom: 8 }}>
+            <button
+              className="list-item"
+              onClick={() => {
+                setProjectId(item.id);
+                setView("chat");
+              }}
+            >
+              {item.name}
+              <span className="meta">{item.workingDirectory ?? "no folder"}</span>
+            </button>
+            <button className="danger" onClick={() => deleteProject(item.id)}>
+              Delete
+            </button>
+          </div>
+        ))}
         <div className="row">
           <input
             type="text"
@@ -77,6 +103,9 @@ export function SettingsView() {
           />
           <button className="chip" onClick={() => void createProject()}>
             Create
+          </button>
+          <button className="ghost" onClick={() => void createProjectFromFolder()}>
+            From folder
           </button>
         </div>
         <div className="actions">

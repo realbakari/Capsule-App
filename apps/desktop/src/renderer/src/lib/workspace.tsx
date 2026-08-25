@@ -13,6 +13,8 @@ import type {
   ApprovalRequest,
   Artifact,
   ChatMessage,
+  FileEntry,
+  GitStatus,
   HarnessDoctorReport,
   HarnessStatus,
   Project,
@@ -26,7 +28,15 @@ import type {
 
 export type View = "chat" | "runtimes" | "skills" | "history" | "approvals" | "settings";
 
-export const MODES: AgentMode[] = ["chat", "agent", "code", "research", "browser", "automation"];
+export const MODES: AgentMode[] = ["plan", "chat", "agent", "code", "research", "browser", "automation"];
+
+export interface ConfirmState {
+  title: string;
+  detail: string;
+  danger?: boolean;
+  confirmLabel?: string;
+  onConfirm: () => void;
+}
 
 export function stepFromEvents(events: RunEvent[]): Array<{ id: string; label: string; status: string }> {
   const labels = [
@@ -102,7 +112,20 @@ export interface WorkspaceValue {
   createTask: () => Promise<void>;
   send: () => Promise<void>;
   createProject: () => Promise<void>;
+  git?: GitStatus;
+  files: FileEntry[];
+  confirm?: ConfirmState;
+  setConfirm: (value?: ConfirmState) => void;
   pickProjectDirectory: () => Promise<void>;
+  createProjectFromFolder: () => Promise<void>;
+  renameProject: (id: string, name: string) => Promise<void>;
+  deleteProject: (id: string) => void;
+  renameSession: (id: string, title: string) => Promise<void>;
+  deleteSession: (id: string) => void;
+  archiveSession: (id: string) => Promise<void>;
+  openTerminal: () => Promise<void>;
+  openPath: (target: string) => Promise<void>;
+  mentionFile: (relative: string) => void;
   spawnHarness: (harnessId: string, prompt?: string) => Promise<void>;
   dedicateHarness: (harnessId: string) => Promise<void>;
   undedicateHarness: () => Promise<void>;
@@ -153,6 +176,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [notice, setNotice] = useState<string>();
   const [steerDraft, setSteerDraft] = useState("");
   const [statusText, setStatusText] = useState<string>();
+  const [git, setGit] = useState<GitStatus>();
+  const [files, setFiles] = useState<FileEntry[]>([]);
+  const [confirm, setConfirm] = useState<ConfirmState>();
 
   const project = projects.find((item) => item.id === projectId);
   const session = sessions.find((item) => item.id === sessionId);
@@ -234,7 +260,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         if (command === "approvals") setView("approvals");
         if (command === "runs") setView("history");
         if (command === "harness") setView("runtimes");
-        if (command === "harness" || command === "harness-updated") void refresh();
+        if (command === "new-project") void createProjectFromFolder();
+        if (command === "harness" || command === "harness-updated" || command === "projects-updated") {
+          void refresh();
+        }
       }),
     ];
     const onKey = (event: KeyboardEvent) => {
@@ -253,6 +282,29 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (sessionId) void loadSession(sessionId);
   }, [sessionId, loadSession]);
+
+  useEffect(() => {
+    if (!projectId) {
+      setGit(undefined);
+      setFiles([]);
+      return;
+    }
+    void api.gitStatus(projectId).then(setGit).catch(() => setGit(undefined));
+    void api
+      .listFiles(projectId)
+      .then((entries: FileEntry[]) =>
+        setFiles(
+          entries.filter(
+            (entry) =>
+              !entry.name.startsWith(".") &&
+              entry.name !== "node_modules" &&
+              entry.name !== "dist" &&
+              entry.name !== "out",
+          ),
+        ),
+      )
+      .catch(() => setFiles([]));
+  }, [api, projectId, project?.workingDirectory]);
 
   async function createTask() {
     const targetProject = projectId ?? projects[0]?.id;
@@ -322,6 +374,92 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     if (!directory) return;
     await api.updateProject(projectId, { workingDirectory: directory });
     await refresh();
+  }
+
+  async function createProjectFromFolder() {
+    const directory = await api.pickDirectory();
+    const name =
+      newProjectName.trim() ||
+      directory?.split("/").filter(Boolean).pop() ||
+      "New project";
+    const created = await api.createProject({
+      name,
+      workingDirectory: directory,
+    });
+    setNewProjectName("");
+    setProjectId(created.id);
+    setView("chat");
+    await refresh();
+  }
+
+  async function renameProject(id: string, name: string) {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    await api.updateProject(id, { name: trimmed });
+    await refresh();
+  }
+
+  function deleteProject(id: string) {
+    const target = projects.find((item) => item.id === id);
+    setConfirm({
+      title: `Delete “${target?.name ?? "project"}”?`,
+      detail: "Conversations, runs, and artifacts in this project are removed. The folder on disk is not deleted.",
+      danger: true,
+      confirmLabel: "Delete project",
+      onConfirm: () => {
+        void (async () => {
+          await api.deleteProject(id);
+          if (projectId === id) setProjectId(undefined);
+          setConfirm(undefined);
+          await refresh();
+        })();
+      },
+    });
+  }
+
+  async function renameSession(id: string, title: string) {
+    const trimmed = title.trim();
+    if (!trimmed) return;
+    await api.renameSession(id, trimmed);
+    await refresh();
+  }
+
+  function deleteSession(id: string) {
+    const target = sessions.find((item) => item.id === id);
+    setConfirm({
+      title: `Delete “${target?.title ?? "conversation"}”?`,
+      detail: "Messages and runs in this conversation are removed.",
+      danger: true,
+      confirmLabel: "Delete",
+      onConfirm: () => {
+        void (async () => {
+          await api.deleteSession(id);
+          if (sessionId === id) setSessionId(undefined);
+          setConfirm(undefined);
+          await refresh();
+        })();
+      },
+    });
+  }
+
+  async function archiveSession(id: string) {
+    await api.archiveSession(id);
+    if (sessionId === id) setSessionId(undefined);
+    await refresh();
+  }
+
+  async function openTerminal() {
+    if (!projectId) return;
+    await api.openTerminal(projectId);
+  }
+
+  async function openPath(target: string) {
+    await api.openPath(target);
+  }
+
+  function mentionFile(relative: string) {
+    setDraft((current) => `${current}${current && !current.endsWith(" ") ? " " : ""}@${relative} `);
+    setMode((current) => (current === "chat" ? "code" : current));
   }
 
   async function spawnHarness(harnessId: string, prompt?: string) {
@@ -448,6 +586,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       pendingApproval,
       connected,
       steps,
+      git,
+      files,
+      confirm,
+      setConfirm,
       setProjectId: (id: string) => {
         setProjectId(id);
         void api.listSessions(id).then((next) => {
@@ -469,6 +611,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       send,
       createProject,
       pickProjectDirectory,
+      createProjectFromFolder,
+      renameProject,
+      deleteProject,
+      renameSession,
+      deleteSession,
+      archiveSession,
+      openTerminal,
+      openPath,
+      mentionFile,
       spawnHarness,
       dedicateHarness,
       undedicateHarness,
@@ -516,6 +667,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       pendingApproval,
       connected,
       steps,
+      git,
+      files,
+      confirm,
       refresh,
       loadSession,
     ],
