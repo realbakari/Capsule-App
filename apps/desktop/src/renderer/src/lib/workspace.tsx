@@ -31,6 +31,11 @@ export type View = "chat" | "runtimes" | "skills" | "history" | "approvals" | "s
 export const MODES: AgentMode[] = ["plan", "chat", "agent", "code", "research", "browser", "automation"];
 export const PRIMARY_MODES: AgentMode[] = ["plan", "chat", "code"];
 export const MORE_MODES: AgentMode[] = ["agent", "research", "browser", "automation"];
+export const PERMISSION_OPTIONS = [
+  { id: "strict", label: "Supervised" },
+  { id: "default", label: "Standard" },
+  { id: "approve-all", label: "Full access" },
+] as const;
 
 const SIDEBAR_WIDTH_KEY = "capsule.sidebarWidth";
 const SIDEBAR_COLLAPSED_KEY = "capsule.sidebarCollapsed";
@@ -171,6 +176,14 @@ export interface WorkspaceValue {
   toggleSidebar: () => void;
   toggleInspector: () => void;
   stopRun: () => Promise<void>;
+  skillId?: string;
+  setSkillId: (id?: string) => void;
+  filePicker: boolean;
+  setFilePicker: (open: boolean) => void;
+  pinSession: (id: string, pinned: boolean) => Promise<void>;
+  regenerateTitle: (id: string) => Promise<void>;
+  setPermissionProfile: (profile: string) => Promise<void>;
+  sendAndContinue: () => Promise<void>;
 }
 
 const WorkspaceContext = createContext<WorkspaceValue | null>(null);
@@ -219,6 +232,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [sidebarWidth, setSidebarWidthState] = useState(() =>
     Math.min(352, Math.max(220, storedNumber(SIDEBAR_WIDTH_KEY, DEFAULT_SIDEBAR_WIDTH))),
   );
+  const [skillId, setSkillId] = useState<string>();
+  const [filePicker, setFilePicker] = useState(false);
 
   const project = projects.find((item) => item.id === projectId);
   const session = sessions.find((item) => item.id === sessionId);
@@ -316,6 +331,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       if (key === "b") {
         event.preventDefault();
         setSidebarCollapsed((open) => !open);
+      }
+      if (key === "p") {
+        event.preventDefault();
+        setFilePicker((open) => !open);
+      }
+      if (key === "n") {
+        event.preventDefault();
+        void createTask();
       }
       if (event.key === "\\") {
         event.preventDefault();
@@ -428,7 +451,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         content,
         agentId,
         mode,
+        skillId,
       });
+      setSkillId(undefined);
       await loadSession(currentSessionId);
       await refresh();
     } catch (error) {
@@ -630,6 +655,27 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     await refresh();
   }
 
+  async function pinSession(id: string, pinned: boolean) {
+    await api.pinSession(id, pinned);
+    await refresh();
+  }
+
+  async function regenerateTitle(id: string) {
+    await api.regenerateTitle(id);
+    await refresh();
+  }
+
+  async function setPermissionProfile(profile: string) {
+    if (!sessionId) return;
+    await api.setPermissionProfile(sessionId, profile);
+    await refresh();
+  }
+
+  async function sendAndContinue() {
+    await send();
+    await createTask();
+  }
+
   const steps = stepFromEvents(events);
 
   const value = useMemo<WorkspaceValue>(
@@ -723,6 +769,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       toggleSidebar: () => setSidebarCollapsed((value) => !value),
       toggleInspector: () => setInspectorOpen((value) => !value),
       stopRun,
+      skillId,
+      setSkillId,
+      filePicker,
+      setFilePicker,
+      pinSession,
+      regenerateTitle,
+      setPermissionProfile,
+      sendAndContinue,
     }),
     [
       api,
@@ -766,6 +820,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       sidebarCollapsed,
       inspectorOpen,
       sidebarWidth,
+      skillId,
+      filePicker,
       refresh,
       loadSession,
     ],

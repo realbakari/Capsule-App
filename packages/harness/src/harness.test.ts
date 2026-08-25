@@ -18,7 +18,7 @@ describe("harness catalog", () => {
     expect(PRESET_HARNESSES.map((item) => item.id)).toEqual(["claude", "codex"]);
   });
 
-  it("builds the OpenClaw ACP spawn command Buzz-style", () => {
+  it("builds the OpenClaw ACP spawn command", () => {
     expect(acpSpawnCommand("claude", { cwd: "/repo" })).toBe(
       "/acp spawn claude --bind here --mode persistent --cwd /repo",
     );

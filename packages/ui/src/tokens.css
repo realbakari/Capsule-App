@@ -1,7 +1,7 @@
 :root {
   color-scheme: dark;
 
-  /* Compact geometry — same roles as T3 Code, Capsule graphite pigment. */
+  /* Compact workspace geometry. Graphite pigment matching the Capsule mark. */
   --workspace-topbar-height: 52px;
   --workspace-traffic-inset: 90px;
   --workspace-titlebar-control-size: 1.75rem;

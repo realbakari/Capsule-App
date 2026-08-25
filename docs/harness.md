@@ -1,8 +1,6 @@
 # Claude Code and Codex harnesses
 
-Buzz's desktop treats Claude Code and Codex as first-class ACP runtimes. Capsule mirrors that product idea on OpenClaw instead of copying Buzz's stdio `buzz-acp` harness.
-
-Capsule owns the workspace: projects, conversations, runs, contracts, approvals, and artifacts. OpenClaw acpx owns the coding loop.
+Capsule owns the workspace: projects, conversations, runs, contracts, approvals, and artifacts. OpenClaw acpx owns the coding loop. Capsule never ships or installs Claude Code or Codex.
 
 ## Lifecycle Capsule implements
 
@@ -20,21 +18,18 @@ Capsule owns the workspace: projects, conversations, runs, contracts, approvals,
 
 Spawn prefers `sessions.create` with the `/acp spawn` command as the first message (valid against Gateway protocol 4). Capsule does **not** pass illegal `runtime: "acp"` fields on `sessions.create`.
 
-## Workspace features Capsule implements (inspired by Buzz / Codex / Claude Code)
+## Workspace
 
-Capsule is not a Buzz clone, not Codex, and not Claude Code. It takes the **workspace** pieces those products get right:
-
-- Projects and threads with rename, archive, and delete
+- Projects and threads with rename, archive, pin, and delete
 - Folder as the coding cwd, git branch/dirty status, file mention (`@path`)
-- Plan vs code modes
-- Approvals, run timeline, artifacts/diffs
+- Slash commands (`/`), skills (`$`), plan vs code modes
+- Per-thread permission mode (supervised / standard / full access)
+- Approvals, run timeline, artifacts
 - Claude Code and Codex as ACP harnesses through OpenClaw
-
-It does **not** implement Buzz channels/huddles/Nostr, Codex cloud worktrees, or Claude Code’s IDE/Slack/GitHub surfaces.
 
 ## Do you need to install Claude Code in Capsule?
 
-No. Capsule never ships or installs Claude Code or Codex. It **picks them up**:
+No. Capsule **picks them up**:
 
 1. From `PATH` and common install locations on this Mac (`/opt/homebrew/bin`, `~/.local/bin`, a login shell, …).
 2. From the OpenClaw Gateway host when acpx is enabled — even if the desktop process cannot see the binary.
@@ -44,7 +39,6 @@ If the UI says a CLI is already detected, the remaining step is **start/connect 
 ## What Capsule does not do
 
 - Speak ACP JSON-RPC to Claude or Codex over stdio
-- Ship `buzz-acp`
 - Install Claude Code or Codex inside the app
 - Replace OpenClaw's native Codex plugin (`/codex bind`) — dedicated Codex in Capsule is the explicit ACP path
 
@@ -61,4 +55,4 @@ openclaw config set plugins.entries.acpx.enabled true
 
 Then in Capsule: **Runtimes → Doctor / Dedicate / Spawn**. Code-mode messages on a dedicated project auto-spawn ACP if no live session exists.
 
-See [OpenClaw ACP agents](https://docs.openclaw.ai/tools/acp-agents) and [Buzz ACP](https://github.com/block/buzz/blob/main/ARCHITECTURE.md).
+See [OpenClaw ACP agents](https://docs.openclaw.ai/tools/acp-agents).

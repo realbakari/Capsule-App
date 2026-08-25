@@ -1,6 +1,8 @@
-import { useEffect, useRef } from "react";
-import { MORE_MODES, PRIMARY_MODES, useWorkspace } from "../../lib/workspace";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { FileEntry } from "@capsule/shared";
+import { MORE_MODES, PERMISSION_OPTIONS, PRIMARY_MODES, useWorkspace } from "../../lib/workspace";
 import { ArrowUpIcon, GitBranchIcon, StopIcon } from "../shell/icons";
+import { ComposerMenu, detectTrigger, type SuggestItem } from "./ComposerMenu";
 
 const SUGGESTIONS = [
   {
@@ -25,12 +27,14 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
     draft,
     setDraft,
     send,
+    sendAndContinue,
     busy,
     mode,
     setMode,
     agentId,
     setAgentId,
     agents,
+    skills,
     session,
     project,
     git,
@@ -40,10 +44,23 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
     pickProjectDirectory,
     activeRun,
     stopRun,
+    spawnHarness,
+    createTask,
+    setView,
+    toggleInspector,
+    setSkillId,
+    skillId,
+    setPermissionProfile,
+    api,
+    projectId,
   } = useWorkspace();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [menuIndex, setMenuIndex] = useState(0);
+  const [files, setFiles] = useState<FileEntry[]>([]);
   const harnessLive = Boolean(session?.harnessId && session.harnessState && session.harnessState !== "closed");
   const folder = project?.workingDirectory?.split("/").filter(Boolean).pop();
+  const caret = textareaRef.current?.selectionStart ?? draft.length;
+  const trigger = detectTrigger(draft, caret);
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -51,6 +68,92 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 176)}px`;
   }, [draft]);
+
+  useEffect(() => {
+    if (trigger?.kind !== "file" || !projectId) {
+      setFiles([]);
+      return;
+    }
+    void api.searchFiles(projectId, trigger.query).then((entries: FileEntry[]) => setFiles(entries));
+  }, [api, projectId, trigger?.kind, trigger?.query]);
+
+  const slashItems = useMemo<SuggestItem[]>(
+    () =>
+      [
+        { id: "new", label: "/new", detail: "New conversation", run: () => createTask() },
+        { id: "plan", label: "/plan", detail: "Plan mode", run: () => setMode("plan") },
+        { id: "chat", label: "/chat", detail: "Chat mode", run: () => setMode("chat") },
+        { id: "code", label: "/code", detail: "Code mode", run: () => setMode("code") },
+        {
+          id: "claude",
+          label: "/claude",
+          detail: "Spawn Claude Code",
+          run: () => spawnHarness("claude"),
+        },
+        { id: "codex", label: "/codex", detail: "Spawn Codex", run: () => spawnHarness("codex") },
+        { id: "inspect", label: "/inspect", detail: "Toggle inspector", run: () => toggleInspector() },
+        { id: "runtimes", label: "/runtimes", detail: "Open runtimes", run: () => setView("runtimes") },
+        {
+          id: "approvals",
+          label: "/approvals",
+          detail: "Open approvals",
+          run: () => setView("approvals"),
+        },
+        { id: "settings", label: "/settings", detail: "Open settings", run: () => setView("settings") },
+      ].filter((item) => item.label.includes(trigger?.kind === "slash" ? trigger.query : "___")),
+    [createTask, setMode, setView, spawnHarness, toggleInspector, trigger],
+  );
+
+  const skillItems = useMemo<SuggestItem[]>(
+    () =>
+      skills
+        .filter((item) => {
+          if (trigger?.kind !== "skill") return false;
+          const needle = trigger.query.toLowerCase();
+          return (
+            item.name.toLowerCase().includes(needle) ||
+            item.id.toLowerCase().includes(needle)
+          );
+        })
+        .slice(0, 12)
+        .map((item) => ({
+          id: item.id,
+          label: `$${item.name}`,
+          detail: item.source,
+          insert: `$${item.name} `,
+          run: () => setSkillId(item.id),
+        })),
+    [setSkillId, skills, trigger],
+  );
+
+  const fileItems = useMemo<SuggestItem[]>(
+    () =>
+      files.slice(0, 12).map((item) => ({
+        id: item.path,
+        label: item.path,
+        insert: `@${item.path} `,
+      })),
+    [files],
+  );
+
+  const items =
+    trigger?.kind === "slash" ? slashItems : trigger?.kind === "skill" ? skillItems : trigger?.kind === "file" ? fileItems : [];
+
+  useEffect(() => {
+    setMenuIndex(0);
+  }, [trigger?.kind, trigger?.query]);
+
+  function applyItem(item: SuggestItem) {
+    if (item.run) void item.run();
+    if (item.insert && trigger) {
+      const next = `${draft.slice(0, trigger.start)}${item.insert}${draft.slice(textareaRef.current?.selectionStart ?? draft.length)}`;
+      setDraft(next);
+    } else if (trigger?.kind === "slash") {
+      setDraft(draft.slice(0, trigger.start) + draft.slice(textareaRef.current?.selectionStart ?? draft.length));
+    }
+  }
+
+  const permission = session?.permissionProfile ?? "default";
 
   return (
     <div className="composer">
@@ -71,23 +174,63 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
         </div>
       )}
       <div className="composer-glass">
+        <ComposerMenu
+          items={items}
+          index={menuIndex}
+          onHover={setMenuIndex}
+          onPick={applyItem}
+        />
         <textarea
           ref={textareaRef}
           rows={1}
           value={draft}
           placeholder={
             harnessLive
-              ? `Continue with ${session?.harnessId === "codex" ? "Codex" : "Claude Code"}…`
-              : "Ask Capsule to work on something…"
+              ? `Continue with ${session?.harnessId === "codex" ? "Codex" : "Claude Code"}…  /  @  $`
+              : "Ask Capsule…    / commands   @ files   $ skills"
           }
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
+            if (items.length > 0) {
+              if (event.key === "ArrowDown") {
+                event.preventDefault();
+                setMenuIndex((current) => Math.min(items.length - 1, current + 1));
+                return;
+              }
+              if (event.key === "ArrowUp") {
+                event.preventDefault();
+                setMenuIndex((current) => Math.max(0, current - 1));
+                return;
+              }
+              if (event.key === "Tab" || (event.key === "Enter" && !event.metaKey && !event.ctrlKey && !event.shiftKey)) {
+                event.preventDefault();
+                if (items[menuIndex]) applyItem(items[menuIndex]);
+                return;
+              }
+              if (event.key === "Escape") {
+                event.preventDefault();
+                return;
+              }
+            }
+            if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+              event.preventDefault();
+              void sendAndContinue();
+              return;
+            }
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault();
               void send();
             }
           }}
         />
+        {skillId && (
+          <div className="steer-row">
+            <span className="chip">Skill {skills.find((item) => item.id === skillId)?.name ?? skillId}</span>
+            <button className="chip" onClick={() => setSkillId(undefined)}>
+              Clear
+            </button>
+          </div>
+        )}
         {harnessLive && (
           <div className="steer-row">
             <input
@@ -143,6 +286,18 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
             </select>
             <select
               className="select-quiet"
+              aria-label="Permission mode"
+              value={permission}
+              onChange={(event) => void setPermissionProfile(event.target.value)}
+            >
+              {PERMISSION_OPTIONS.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+            <select
+              className="select-quiet"
               aria-label="Agent"
               value={agentId}
               onChange={(event) => setAgentId(event.target.value)}
@@ -162,7 +317,7 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
             <button
               className="send-btn"
               disabled={busy || !draft.trim()}
-              title="Send"
+              title="Send · ⌘Enter starts another thread"
               onClick={() => void send()}
             >
               <ArrowUpIcon size={14} />

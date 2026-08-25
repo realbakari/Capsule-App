@@ -61,6 +61,12 @@ const api = {
   setHarnessOption: (patch: unknown) => ipcRenderer.invoke(IPC_CHANNELS.setHarnessOption, patch),
   listHarnessSessions: (projectId?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.listHarnessSessions, projectId),
+  pinSession: (id: string, pinned: boolean) => ipcRenderer.invoke(IPC_CHANNELS.pinSession, id, pinned),
+  searchFiles: (projectId: string, query?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.searchFiles, projectId, query),
+  regenerateTitle: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.regenerateTitle, id),
+  setPermissionProfile: (id: string, profile: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.setPermissionProfile, id, profile),
   on: (channel: keyof typeof IPC_EVENTS, handler: (payload: unknown) => void) => {
     const name = IPC_EVENTS[channel];
     const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => handler(payload);

@@ -12,6 +12,12 @@ export type AcpMode = "persistent" | "oneshot";
 
 export type HarnessPermissionProfile = "default" | "strict" | "approve-all";
 
+export const PERMISSION_PROFILES: Array<{ id: HarnessPermissionProfile; label: string; detail: string }> = [
+  { id: "strict", label: "Supervised", detail: "Ask before commands and file changes" },
+  { id: "default", label: "Standard", detail: "Routine work proceeds; risky actions still ask" },
+  { id: "approve-all", label: "Full access", detail: "Commands and edits without prompts" },
+];
+
 export type HarnessSessionState =
   | "idle"
   | "spawning"

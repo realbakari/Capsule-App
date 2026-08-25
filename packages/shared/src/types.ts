@@ -144,6 +144,7 @@ export interface Session {
   acpMode?: import("./harness.js").AcpMode;
   permissionProfile?: string;
   modelOverride?: string;
+  pinned?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -340,6 +341,20 @@ export interface AgentMessage {
   skillId?: string;
   mode?: AgentMode;
   attachments?: Array<{ name: string; path: string }>;
+}
+
+export interface SearchResults {
+  projects: Project[];
+  sessions: Session[];
+  runs: Run[];
+  messages: Array<{
+    id: string;
+    sessionId: string;
+    projectId: string;
+    sessionTitle: string;
+    role: ChatMessage["role"];
+    excerpt: string;
+  }>;
 }
 
 export interface DiagnosticsSnapshot {

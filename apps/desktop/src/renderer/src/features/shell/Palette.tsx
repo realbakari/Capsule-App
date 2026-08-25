@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import type { SearchResults } from "@capsule/shared";
 import { useWorkspace } from "../../lib/workspace";
 
 export function Palette() {
@@ -17,6 +18,15 @@ export function Palette() {
     setSessionId,
   } = useWorkspace();
   const [index, setIndex] = useState(0);
+  const [hits, setHits] = useState<SearchResults>();
+
+  useEffect(() => {
+    if (!palette || paletteQuery.trim().length < 2) {
+      setHits(undefined);
+      return;
+    }
+    void api.search(paletteQuery).then((result: SearchResults) => setHits(result));
+  }, [api, palette, paletteQuery]);
 
   const commands = useMemo(() => {
     const query = paletteQuery.toLowerCase();
@@ -52,11 +62,22 @@ export function Palette() {
           setView("chat");
         },
       }));
-    return query ? [...actions, ...projectHits, ...sessionHits] : actions;
+    const messageHits =
+      hits?.messages.map((item) => ({
+        id: `msg-${item.id}`,
+        label: `Message · ${item.sessionTitle} — ${item.excerpt}`,
+        run: () => {
+          setProjectId(item.projectId);
+          setSessionId(item.sessionId);
+          setView("chat");
+        },
+      })) ?? [];
+    return query ? [...actions, ...projectHits, ...sessionHits, ...messageHits] : actions;
   }, [
     api,
     createProjectFromFolder,
     createTask,
+    hits,
     paletteQuery,
     projects,
     sessions,

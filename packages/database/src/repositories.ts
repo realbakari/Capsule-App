@@ -47,6 +47,7 @@ function sessionParams(session: Session) {
     acpMode: optional(session.acpMode),
     permissionProfile: optional(session.permissionProfile),
     modelOverride: optional(session.modelOverride),
+    pinned: session.pinned ? 1 : 0,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
   };
@@ -65,6 +66,7 @@ function normalizeSession(row: Session): Session {
     acpMode: (row.acpMode || undefined) as AcpMode | undefined,
     permissionProfile: row.permissionProfile || undefined,
     modelOverride: row.modelOverride || undefined,
+    pinned: Boolean(row.pinned),
     openclawSessionKey: row.openclawSessionKey || undefined,
   };
 }
@@ -168,11 +170,11 @@ export class CapsuleRepositories {
         `INSERT INTO sessions (
           id, workspace_id, project_id, agent_id, title, mode, state,
           openclaw_session_key, harness_id, harness_state, acp_mode,
-          permission_profile, model_override, created_at, updated_at
+          permission_profile, model_override, pinned, created_at, updated_at
         ) VALUES (
           @id, @workspaceId, @projectId, @agentId, @title, @mode, @state,
           @openclawSessionKey, @harnessId, @harnessState, @acpMode,
-          @permissionProfile, @modelOverride, @createdAt, @updatedAt
+          @permissionProfile, @modelOverride, @pinned, @createdAt, @updatedAt
         )`,
       )
       .run(sessionParams(session));
@@ -185,7 +187,7 @@ export class CapsuleRepositories {
          openclaw_session_key = @openclawSessionKey, harness_id = @harnessId,
          harness_state = @harnessState, acp_mode = @acpMode,
          permission_profile = @permissionProfile, model_override = @modelOverride,
-         updated_at = @updatedAt WHERE id = @id`,
+         pinned = @pinned, updated_at = @updatedAt WHERE id = @id`,
       )
       .run(sessionParams(session));
   }
@@ -222,10 +224,10 @@ export class CapsuleRepositories {
                 title, mode, state, openclaw_session_key AS openclawSessionKey,
                 harness_id AS harnessId, harness_state AS harnessState, acp_mode AS acpMode,
                 permission_profile AS permissionProfile, model_override AS modelOverride,
-                created_at AS createdAt, updated_at AS updatedAt`;
+                pinned, created_at AS createdAt, updated_at AS updatedAt`;
     const sql = projectId
-      ? `SELECT ${columns} FROM sessions WHERE project_id = ? ORDER BY updated_at DESC`
-      : `SELECT ${columns} FROM sessions ORDER BY updated_at DESC`;
+      ? `SELECT ${columns} FROM sessions WHERE project_id = ? ORDER BY pinned DESC, updated_at DESC`
+      : `SELECT ${columns} FROM sessions ORDER BY pinned DESC, updated_at DESC`;
     const rows = (
       projectId ? this.db.sqlite.prepare(sql).all(projectId) : this.db.sqlite.prepare(sql).all()
     ) as Session[];
@@ -252,6 +254,47 @@ export class CapsuleRepositories {
          FROM messages WHERE session_id = ? ORDER BY created_at ASC`,
       )
       .all(sessionId) as ChatMessage[];
+  }
+
+  searchMessages(needle: string, limit = 20): Array<{
+    id: string;
+    sessionId: string;
+    projectId: string;
+    sessionTitle: string;
+    role: ChatMessage["role"];
+    excerpt: string;
+  }> {
+    const rows = this.db.sqlite
+      .prepare(
+        `SELECT m.id AS id, m.session_id AS sessionId, m.role AS role, m.content AS content,
+                s.project_id AS projectId, s.title AS sessionTitle
+         FROM messages m
+         JOIN sessions s ON s.id = m.session_id
+         WHERE instr(lower(m.content), ?) > 0
+         ORDER BY m.created_at DESC
+         LIMIT ?`,
+      )
+      .all(needle, limit) as Array<{
+      id: string;
+      sessionId: string;
+      role: ChatMessage["role"];
+      content: string;
+      projectId: string;
+      sessionTitle: string;
+    }>;
+    return rows.map((row) => {
+      const index = row.content.toLowerCase().indexOf(needle);
+      const start = Math.max(0, index - 24);
+      const excerpt = `${start > 0 ? "…" : ""}${row.content.slice(start, start + 80).replace(/\s+/g, " ")}`;
+      return {
+        id: row.id,
+        sessionId: row.sessionId,
+        projectId: row.projectId,
+        sessionTitle: row.sessionTitle,
+        role: row.role,
+        excerpt,
+      };
+    });
   }
 
   upsertAgent(agent: Agent): void {

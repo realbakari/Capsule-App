@@ -1,7 +1,9 @@
+import { useEffect, useRef, useState } from "react";
 import { GatewayBanner } from "../shell/GatewayBanner";
 import { CopyIcon } from "../shell/icons";
 import { useWorkspace } from "../../lib/workspace";
 import { Composer } from "./Composer";
+import { MessageBody } from "./MessageBody";
 
 export function Conversation() {
   const {
@@ -21,6 +23,14 @@ export function Conversation() {
     createTask,
     createProjectFromFolder,
   } = useWorkspace();
+  const scroller = useRef<HTMLDivElement>(null);
+  const [stick, setStick] = useState(true);
+
+  useEffect(() => {
+    if (!stick) return;
+    const node = scroller.current;
+    if (node) node.scrollTop = node.scrollHeight;
+  }, [messages, activeRun, stick]);
 
   return (
     <section className="main page-content">
@@ -31,7 +41,14 @@ export function Conversation() {
           {statusText}
         </div>
       )}
-      <div className="conversation">
+      <div
+        className="conversation"
+        ref={scroller}
+        onScroll={(event) => {
+          const node = event.currentTarget;
+          setStick(node.scrollHeight - node.scrollTop - node.clientHeight < 80);
+        }}
+      >
         {messages.length === 0 ? (
           <div className="empty-thread">
             <h1>
@@ -81,7 +98,7 @@ export function Conversation() {
                   </button>
                 </span>
               </div>
-              <div className="body">{message.content}</div>
+              <MessageBody content={message.content} />
             </div>
           ))
         )}
@@ -157,6 +174,18 @@ export function Conversation() {
           </div>
         )}
       </div>
+      {!stick && messages.length > 0 && (
+        <button
+          className="jump-latest"
+          onClick={() => {
+            setStick(true);
+            const node = scroller.current;
+            if (node) node.scrollTop = node.scrollHeight;
+          }}
+        >
+          Latest
+        </button>
+      )}
       <Composer showSuggestions={messages.length === 0 && Boolean(session)} />
     </section>
   );

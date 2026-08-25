@@ -217,4 +217,10 @@ export const MIGRATIONS: Array<{ version: number; sql: string }> = [
       ALTER TABLE sessions ADD COLUMN model_override TEXT;
     `,
   },
+  {
+    version: 3,
+    sql: `
+      ALTER TABLE sessions ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
+    `,
+  },
 ];

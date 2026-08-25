@@ -5,6 +5,7 @@ import {
   FolderPlusIcon,
   HistoryIcon,
   PanelLeftIcon,
+  PinIcon,
   PlusIcon,
   SearchIcon,
   SettingsIcon,
@@ -48,6 +49,8 @@ export function Sidebar() {
     toggleSidebar,
     sidebarWidth,
     setSidebarWidth,
+    pinSession,
+    regenerateTitle,
   } = useWorkspace();
   const [menu, setMenu] = useState<MenuState>();
   const [editing, setEditing] = useState<{ kind: "project" | "session"; id: string; value: string }>();
@@ -73,6 +76,40 @@ export function Sidebar() {
     event.preventDefault();
     event.stopPropagation();
     setMenu({ x: event.clientX, y: event.clientY, kind, id });
+  }
+
+  function renderSession(session: (typeof sessions)[number]) {
+    if (editing?.kind === "session" && editing.id === session.id) {
+      return (
+        <input
+          key={session.id}
+          autoFocus
+          type="text"
+          value={editing.value}
+          onChange={(event) => setEditing({ ...editing, value: event.target.value })}
+          onBlur={() => void commitEdit()}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") void commitEdit();
+            if (event.key === "Escape") setEditing(undefined);
+          }}
+        />
+      );
+    }
+    return (
+      <button
+        key={session.id}
+        className={`list-item ${session.id === sessionId ? "active" : ""}`}
+        onClick={() => {
+          setSessionId(session.id);
+          setView("chat");
+        }}
+        onContextMenu={(event) => openMenu(event, "session", session.id)}
+      >
+        {session.pinned ? <PinIcon size={12} /> : null}
+        {session.title}
+        {session.harnessId ? <span className="meta">{session.harnessId}</span> : null}
+      </button>
+    );
   }
 
   async function commitEdit() {
@@ -163,35 +200,15 @@ export function Sidebar() {
             )}
             {item.id === projectId && (
               <div className="session-list">
-                {visibleSessions.map((session) =>
-                  editing?.kind === "session" && editing.id === session.id ? (
-                    <input
-                      key={session.id}
-                      autoFocus
-                      type="text"
-                      value={editing.value}
-                      onChange={(event) => setEditing({ ...editing, value: event.target.value })}
-                      onBlur={() => void commitEdit()}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") void commitEdit();
-                        if (event.key === "Escape") setEditing(undefined);
-                      }}
-                    />
-                  ) : (
-                    <button
-                      key={session.id}
-                      className={`list-item ${session.id === sessionId ? "active" : ""}`}
-                      onClick={() => {
-                        setSessionId(session.id);
-                        setView("chat");
-                      }}
-                      onContextMenu={(event) => openMenu(event, "session", session.id)}
-                    >
-                      {session.title}
-                      {session.harnessId ? <span className="meta">{session.harnessId}</span> : null}
-                    </button>
-                  ),
+                {visibleSessions.filter((session) => session.pinned).length > 0 && (
+                  <div className="nav-label" style={{ paddingLeft: "0.5rem" }}>
+                    Pinned
+                  </div>
                 )}
+                {visibleSessions
+                  .filter((session) => session.pinned)
+                  .map((session) => renderSession(session))}
+                {visibleSessions.filter((session) => !session.pinned).map((session) => renderSession(session))}
               </div>
             )}
           </div>
@@ -268,6 +285,23 @@ export function Sidebar() {
                 }}
               >
                 Rename
+              </button>
+              <button
+                onClick={() => {
+                  const session = sessions.find((item) => item.id === menu.id);
+                  void pinSession(menu.id, !session?.pinned);
+                  setMenu(undefined);
+                }}
+              >
+                {sessions.find((item) => item.id === menu.id)?.pinned ? "Unpin" : "Pin"}
+              </button>
+              <button
+                onClick={() => {
+                  void regenerateTitle(menu.id);
+                  setMenu(undefined);
+                }}
+              >
+                Generate title
               </button>
               <button
                 onClick={() => {

@@ -425,6 +425,22 @@
   white-space: pre-wrap;
   font-size: 0.9375rem;
 }
+.msg .body code {
+  font-family: var(--mono);
+  font-size: 0.85em;
+  background: rgb(255 255 255 / 7%);
+  padding: 0.05rem 0.3rem;
+  border-radius: 0.25rem;
+}
+.msg-code {
+  margin: 0.55rem 0;
+  padding: 0.7rem 0.8rem;
+  background: rgb(255 255 255 / 4%);
+  border-radius: 0.6rem;
+  overflow: auto;
+  font-size: 0.8125rem;
+  white-space: pre;
+}
 .msg.user {
   margin-left: auto;
   margin-right: auto;
@@ -482,6 +498,24 @@
   gap: 0.25rem;
 }
 
+.jump-latest {
+  align-self: center;
+  z-index: 2;
+  margin: 0 0 0.35rem;
+  border: 1px solid var(--border-color);
+  background: color-mix(in srgb, var(--surface-0) 88%, transparent);
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur));
+  border-radius: 999px;
+  padding: 0.22rem 0.7rem;
+  color: var(--subtext-1);
+  font-size: 0.75rem;
+}
+.jump-latest:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
 .composer {
   position: relative;
   padding: 0 1.25rem 1.05rem;
@@ -516,6 +550,44 @@
   border-radius: var(--composer-radius);
   padding: 0.7rem 0.8rem 0.55rem;
   box-shadow: 0 12px 28px -18px rgb(0 0 0 / 55%);
+}
+.suggest-menu {
+  position: absolute;
+  left: 0.55rem;
+  right: 0.55rem;
+  bottom: calc(100% - 0.35rem);
+  z-index: 5;
+  padding: 0.3rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgb(255 255 255 / 10%);
+  background: color-mix(in srgb, var(--surface-0) 92%, transparent);
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur));
+  box-shadow: var(--shadow);
+  max-height: 14rem;
+  overflow: auto;
+}
+.suggest-menu button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding: 0.4rem 0.5rem;
+  border-radius: 0.45rem;
+  color: var(--text);
+  font-size: 0.8125rem;
+}
+.suggest-menu button .meta {
+  color: var(--text-faint);
+  font-size: 0.6875rem;
+}
+.suggest-menu button:hover,
+.suggest-menu button.active {
+  background: var(--bg-hover);
 }
 .composer-glass::before {
   content: "";
@@ -905,6 +977,17 @@ select:focus {
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 9.5rem;
+}
+.kv-list .kv {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.8125rem;
+  padding: 0.28rem 0;
+  color: var(--subtext-0);
+}
+.kv-list .kv span:last-child {
+  color: var(--text);
 }
 
 .check {

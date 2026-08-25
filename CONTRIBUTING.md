@@ -4,7 +4,7 @@ Thanks for wanting to help. Capsule is a local-first macOS workspace for AI agen
 
 ## Before you open a PR
 
-Read [ARCHITECTURE.md](ARCHITECTURE.md). Capsule should not grow an agent runtime, and it should not grow a Buzz clone.
+Read [ARCHITECTURE.md](ARCHITECTURE.md). Capsule should not grow an agent runtime or a messaging protocol.
 
 For anything beyond a small fix, say what problem you are solving and which package owns the change.
 

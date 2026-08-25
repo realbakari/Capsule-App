@@ -29,7 +29,7 @@ Capsule identifies as `clientName: cli`, `mode: ui`, `displayName: Capsule`. The
 | `sessions.list` / `sessions.subscribe` / `sessions.messages.subscribe` | Roster + live transcript |
 | `chat.history` | Reconnect recovery |
 | `plugins.list` | Installed skills/plugins |
-| `channels.status` | Buzz and other channels |
+| `channels.status` | Gateway messaging channels |
 | `exec.approval.list` / `exec.approval.resolve` | Host exec approvals |
 | `artifacts.download` | Transcript-backed files |
 
@@ -39,7 +39,7 @@ Advertise `tool-events` or live tool streaming never arrives (the handshake stil
 
 - Import `openclaw/src/**`
 - Embed or fork the Gateway
-- Speak Buzz/Nostr/Telegram itself
+- Speak messaging-channel protocols itself
 - Treat `hello-ok.features.methods` as a complete method dump
 
 ## Discovery
@@ -50,6 +50,6 @@ Advertise `tool-events` or live tool streaming never arrives (the handshake stil
 
 Bonjour (`_openclaw-gw._tcp`) is documented by OpenClaw and not yet consumed.
 
-## Buzz
+## Channels
 
-Install and configure Buzz on the Gateway (`openclaw plugins install @openclaw/buzz`). Capsule lists it via `channels.status` and traces Channel message → OpenClaw session → Capsule run. Private keys stay on the Gateway.
+Install channel plugins on the Gateway. Capsule lists them via `channels.status` and traces channel message → OpenClaw session → Capsule run. Private keys stay on the Gateway.

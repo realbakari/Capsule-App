@@ -10,7 +10,7 @@ Capsule is a **workspace**, not a runtime.
 
 - Do not rebuild OpenClaw agent loops, model providers, sessions, tool execution, channel protocols, plugin runtime, or scheduling unless Capsule needs a thin abstraction around them.
 - Do not import OpenClaw `src/**`. Use `@openclaw/gateway-client`, `@openclaw/gateway-protocol`, and documented plugin SDK paths.
-- Do not implement the Buzz protocol. Buzz is an OpenClaw channel. Capsule maps channel → session → run.
+- Do not implement messaging-channel protocols. Those stay on the Gateway. Capsule maps channel → session → run.
 - Do not put Dzaleka, Mentors Outreach, or other personal project names in product copy, fixtures, or docs. Capsule is a generic developer product.
 - The default UI must stay simple. Governance details belong behind an expansion, not on the home screen.
 
@@ -83,9 +83,9 @@ Keep files focused. Prefer a new package over growing `core` into a junk drawer.
 
 ## Desktop UI
 
-Layout: collapsible sidebar, 52px page header, centered conversation, glass composer dock, optional inspector. Geometry follows T3 Code's density; pigment stays Capsule graphite and off-white — no purple/mauve. Do not copy T3 internals, or Buzz's Nostr identity, huddles, or channel protocol.
+Layout: collapsible sidebar, 52px page header, centered conversation, glass composer dock, optional inspector. Graphite and off-white matching the Capsule mark — no purple. Slash commands, file mentions, skills, and permission modes belong in the composer. Keep the default conversation free of policy matrices.
 
-Use rem for readable text. Keep the default conversation free of policy matrices.
+Use rem for readable text.
 
 ---
 
@@ -96,4 +96,4 @@ Use rem for readable text. Keep the default conversation free of policy matrices
 - [docs/openclaw.md](docs/openclaw.md)
 - [OpenClaw Gateway protocol](https://docs.openclaw.ai/gateway/protocol)
 - [Building a Gateway client](https://docs.openclaw.ai/gateway/clients)
-- [Buzz architecture](https://github.com/block/buzz/blob/main/ARCHITECTURE.md) (channel inspiration only)
+

@@ -128,4 +128,29 @@ describe("CapsuleEngine first user flow", () => {
     );
     await engine.stop();
   });
+
+  it("pins a thread, regenerates its title, and searches files and messages", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-pin-"));
+    const engine = new CapsuleEngine({
+      databasePath: path.join(dir, "capsule.sqlite"),
+      userDataDir: dir,
+    });
+    await engine.start();
+    const project = engine.createProject({ name: "Search Workspace", workingDirectory: dir });
+    const session = await engine.createSession({ projectId: project.id, title: "New conversation" });
+    await engine.sendMessage({
+      sessionId: session.id,
+      content: "Please review the renderer shell.",
+      mode: "chat",
+    });
+    const pinned = engine.pinSession(session.id, true);
+    expect(pinned.pinned).toBe(true);
+    const titled = engine.regenerateTitle(session.id);
+    expect(titled.title.toLowerCase()).toContain("review");
+    expect(engine.search("renderer").messages.length).toBeGreaterThan(0);
+    expect(engine.searchFiles(project.id, "sqlite").length).toBeGreaterThanOrEqual(0);
+    await engine.setPermissionProfile(session.id, "strict");
+    expect(engine.listSessions(project.id)[0]?.permissionProfile).toBe("strict");
+    await engine.stop();
+  });
 });

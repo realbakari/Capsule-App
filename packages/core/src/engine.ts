@@ -35,10 +35,12 @@ import {
   type CreateProjectInput,
   type CreateSessionInput,
   type DiagnosticsSnapshot,
+  type FileEntry,
   type GitStatus,
   type HarnessControlResult,
   type HarnessDoctorReport,
   type HarnessId,
+  type HarnessPermissionProfile,
   type HarnessLiveStatus,
   type HarnessOptionPatch,
   type HarnessStatus,
@@ -46,6 +48,7 @@ import {
   type UpdateProjectInput,
   isHarnessId,
   type Project,
+  type SearchResults,
   type Run,
   type RunEvent,
   type Session,
@@ -553,6 +556,34 @@ export class CapsuleEngine {
     this.repos.deleteSession(id);
   }
 
+  pinSession(id: string, pinned: boolean): Session {
+    const session = this.requireSession(id);
+    session.pinned = pinned;
+    session.updatedAt = nowIso();
+    this.repos.updateSession(session);
+    return session;
+  }
+
+  regenerateTitle(id: string): Session {
+    const session = this.requireSession(id);
+    const first = this.repos.listMessages(id).find((message) => message.role === "user");
+    session.title = titleFromPrompt(first?.content ?? session.title);
+    session.updatedAt = nowIso();
+    this.repos.updateSession(session);
+    return session;
+  }
+
+  async setPermissionProfile(sessionId: string, profile: HarnessPermissionProfile): Promise<Session> {
+    const session = this.requireSession(sessionId);
+    session.permissionProfile = profile;
+    session.updatedAt = nowIso();
+    this.repos.updateSession(session);
+    if (!this.usingMock && session.openclawSessionKey && isLiveHarnessState(session.harnessState)) {
+      await this.openclaw.setAcpOption(session.openclawSessionKey, "permissions", profile);
+    }
+    return session;
+  }
+
   listMessages(sessionId: string): ChatMessage[] {
     return this.repos.listMessages(sessionId);
   }
@@ -701,6 +732,11 @@ export class CapsuleEngine {
     return new FilesystemAdapter(project.workingDirectory).list(relative);
   }
 
+  searchFiles(projectId: string, query = ""): FileEntry[] {
+    const project = this.requireProject(projectId);
+    return new FilesystemAdapter(project.workingDirectory).search(query);
+  }
+
   readFile(projectId: string, relative: string): string {
     const project = this.requireProject(projectId);
     const decision = decidePolicy(this.repos.listPolicies(), "filesystem", "read");
@@ -752,13 +788,14 @@ export class CapsuleEngine {
     };
   }
 
-  search(query: string) {
+  search(query: string): SearchResults {
     const needle = query.trim().toLowerCase();
-    if (!needle) return { projects: [], sessions: [], runs: [] };
+    if (!needle) return { projects: [], sessions: [], runs: [], messages: [] };
     return {
       projects: this.listProjects().filter((project) => project.name.toLowerCase().includes(needle)),
       sessions: this.listSessions().filter((session) => session.title.toLowerCase().includes(needle)),
       runs: this.listRuns().filter((run) => run.prompt.toLowerCase().includes(needle)),
+      messages: this.repos.searchMessages(needle),
     };
   }
 

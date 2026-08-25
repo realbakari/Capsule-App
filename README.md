@@ -4,13 +4,12 @@ A local-first macOS workspace for AI agents.
 
 Capsule sits above OpenClaw. OpenClaw runs agents, tools, skills, sessions, and channels. Capsule provides the workspace: projects, conversations, runs, contracts, verification, approvals, and artifacts.
 
-It is not an OpenClaw clone and not a Buzz clone.
-
 [Architecture](ARCHITECTURE.md) · [Agents](AGENTS.md) · [Contributing](CONTRIBUTING.md) · [OpenClaw notes](docs/openclaw.md)
 
 ## What you get
 
 - Chat, projects, agents, skills, and run history
+- Composer slash commands (`/`), file mentions (`@`), skills (`$`), and permission modes
 - A simple default view, with execution details on demand
 - An OpenClaw Gateway adapter over protocol 4
 - Capsule contracts, policies, verification, and artifacts
@@ -20,10 +19,10 @@ It is not an OpenClaw clone and not a Buzz clone.
 ## Architecture
 
 ```
-Capsule UI → Capsule Core → Adapters → OpenClaw Gateway / channels (Buzz, …)
+Capsule UI → Capsule Core → Adapters → OpenClaw Gateway / channels
 ```
 
-The Gateway is the control plane. Capsule never imports OpenClaw internals. Buzz is a channel plugin on that Gateway, not a protocol Capsule implements.
+The Gateway is the control plane. Capsule never imports OpenClaw internals. Messaging plugins live on the Gateway; Capsule maps them to sessions and runs.
 
 ## Commands
 

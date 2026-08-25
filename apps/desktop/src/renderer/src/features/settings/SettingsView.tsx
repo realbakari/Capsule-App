@@ -119,13 +119,47 @@ export function SettingsView() {
       <div className="card">
         <h3>Diagnostics</h3>
         <div className="muted">
-          Capsule core {subsystems?.capsuleCore} · Gateway {subsystems?.openclawGateway} · Buzz{" "}
+          Capsule core {subsystems?.capsuleCore} · Gateway {subsystems?.openclawGateway} · Channel{" "}
           {subsystems?.buzz} · Database {subsystems?.database} · Keychain {subsystems?.keychain}
         </div>
         <button className="chip" onClick={() => void exportDiagnostics()}>
           Export sanitized diagnostics
         </button>
         {diagnostics && <pre className="mono">{diagnostics}</pre>}
+      </div>
+      <div className="card">
+        <h3>Shortcuts</h3>
+        <div className="kv-list">
+          <div className="kv">
+            <span>Command palette</span>
+            <span className="mono">⌘K</span>
+          </div>
+          <div className="kv">
+            <span>New conversation</span>
+            <span className="mono">⌘N</span>
+          </div>
+          <div className="kv">
+            <span>Search files</span>
+            <span className="mono">⌘P</span>
+          </div>
+          <div className="kv">
+            <span>Toggle sidebar</span>
+            <span className="mono">⌘B</span>
+          </div>
+          <div className="kv">
+            <span>Toggle inspector</span>
+            <span className="mono">⌘\\</span>
+          </div>
+          <div className="kv">
+            <span>Send and start another</span>
+            <span className="mono">⌘Enter</span>
+          </div>
+        </div>
+        <p className="muted" style={{ marginTop: "0.75rem" }}>
+          In the composer, type <span className="mono">/</span> for commands,{" "}
+          <span className="mono">@</span> to mention a file, or <span className="mono">$</span> to
+          attach a skill.
+        </p>
       </div>
       </div>
     </section>

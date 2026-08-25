@@ -2,11 +2,11 @@
 
 ## 1. Executive Summary
 
-Capsule is a local-first macOS workspace for AI agents. It is not an OpenClaw clone and not a Buzz clone.
+Capsule is a local-first macOS workspace for AI agents.
 
 OpenClaw owns agent execution. Capsule owns the workspace: projects, conversations, runs, contracts, verification, policies, approvals, artifacts, and a native-feeling desktop UI.
 
-The OpenClaw Gateway is the single source of truth for sessions, routing, and channel connections. Capsule connects to it as an operator client over WebSocket. Buzz and other messaging surfaces reach Capsule only as OpenClaw channels — Capsule never speaks those protocols itself.
+The OpenClaw Gateway is the single source of truth for sessions, routing, and channel connections. Capsule connects to it as an operator client over WebSocket. Messaging surfaces reach Capsule only as Gateway channels — Capsule never speaks those protocols itself.
 
 Capsule is a TypeScript pnpm workspace, licensed MIT.
 
@@ -45,7 +45,7 @@ Capsule is a TypeScript pnpm workspace, licensed MIT.
                       │
               Browser · Shell · Filesystem
                       │
-              External channels (Buzz, Telegram, …)
+              External channels (Telegram, Discord, …)
 ```
 
 **Key architectural principle:** The Gateway is the control plane. Capsule never imports OpenClaw internals (`src/**`). Integration uses `@openclaw/gateway-client`, `@openclaw/gateway-protocol`, and documented plugin SDK surfaces.
@@ -107,7 +107,7 @@ packages/
   terminal            Native terminal open
   openclaw            Gateway adapter + mock runtime
   harness             Claude Code / Codex ACP lifecycle (doctor, spawn, steer, cancel, close)
-  buzz                Channel mapping only — not the Buzz protocol
+  buzz                Gateway channel mapping
   ui                  Shared tokens
 ```
 
@@ -144,7 +144,7 @@ If the Gateway is down, Capsule falls back to `MockAgentRuntime` so projects and
 
 ### Dedicated coding harnesses (Claude Code, Codex)
 
-Buzz runs Goose, Claude Code, and Codex as ACP subprocesses behind `buzz-acp`. Capsule does the same job without owning ACP:
+Capsule does not own ACP. It asks the Gateway to spawn Claude Code or Codex via acpx:
 
 ```
 Capsule UI  →  dedicate / spawn
@@ -185,19 +185,17 @@ Default UI shows simple progress. Expanding a run shows agent, skill, session, t
 
 ## 6. Channels
 
-Buzz is an official OpenClaw channel plugin (`@openclaw/buzz`). Architecture:
+Gateway channel plugins (messaging rooms, Telegram, Discord, Slack, WhatsApp, and others) reach Capsule the same way:
 
 ```
-Buzz room
-  → OpenClaw Buzz plugin
+Channel room
+  → OpenClaw channel plugin
   → OpenClaw Gateway
   → Agent
   → Capsule run
 ```
 
-Capsule shows source metadata (channel, room, thread, sender) and links it to a Capsule run. It does not implement Buzz's Nostr protocol, identity, or authentication.
-
-The same mapping applies to Telegram, Discord, Slack, WhatsApp, and other Gateway channels. Buzz is not a special case in Capsule's type system.
+Capsule shows source metadata (channel, room, thread, sender) and links it to a Capsule run. It does not speak those channel protocols, hold their identities, or store their private keys.
 
 ---
 
@@ -211,9 +209,9 @@ Secrets never go in SQLite or the renderer. Gateway tokens live in macOS Keychai
 
 ## 8. Desktop UI
 
-The desktop shell uses T3 Code's compact geometry: 52px topbar, collapsible resizable sidebar, centered 48rem chat column, 22px glass composer dock, segmented modes, status as a dot, inspector closed until asked. Capsule's default view is still “I'm working on it…”, not an enterprise compliance dashboard.
+The desktop shell is a compact agent workspace: 52px topbar, collapsible resizable sidebar, centered 48rem chat column, 22px glass composer dock, segmented modes, status as a dot, inspector closed until asked. Composer supports slash commands, `@` file mentions, `$` skills, and a per-thread permission mode. Capsule's default view is still “I'm working on it…”, not an enterprise compliance dashboard.
 
-Visual language is graphite and off-white, matching the Capsule mark. No purple accent. System type, rem-based sizing, muted sidebar labels. Capsule remains a distinct product — this is layout density, not a T3 or Buzz clone.
+Visual language is graphite and off-white, matching the Capsule mark. No purple accent. System type, rem-based sizing, muted sidebar labels.
 
 ---
 
@@ -225,7 +223,7 @@ Visual language is graphite and off-white, matching the Capsule mark. No purple 
 | 2 | Execution replay UI | Events are stored; a dedicated replay viewer is not shipped. |
 | 3 | Device pairing UX | Token + loopback connect work; full Ed25519 pairing UI is incomplete. |
 | 4 | Bonjour discovery | Local TCP probe and config-file hints work; mDNS browsing is not wired. |
-| 5 | Channel-to-run live ingest | Channel status is listed; inbound Buzz messages are not a live Capsule inbox yet. |
+| 5 | Channel-to-run live ingest | Channel status is listed; inbound channel messages are not a live Capsule inbox yet. |
 | 6 | Notarization / auto-update | Packaging targets `Capsule.app` / `.dmg` for Apple Silicon; signing is prepared, not configured. |
 | 7 | Dual Node/Electron native ABI | `better-sqlite3` is rebuilt for Electron. `pnpm test` runs Vitest under Electron so SQLite loads. |
 

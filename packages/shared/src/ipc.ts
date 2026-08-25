@@ -48,6 +48,10 @@ export const IPC_CHANNELS = {
   harnessStatus: "capsule:harnessStatus",
   setHarnessOption: "capsule:setHarnessOption",
   listHarnessSessions: "capsule:listHarnessSessions",
+  pinSession: "capsule:pinSession",
+  searchFiles: "capsule:searchFiles",
+  regenerateTitle: "capsule:regenerateTitle",
+  setPermissionProfile: "capsule:setPermissionProfile",
 } as const;
 
 export const IPC_EVENTS = {

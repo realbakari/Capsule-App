@@ -215,6 +215,16 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.updateSettings, (patch) => requireEngine().updateSettings(patch as never));
   handle(IPC_CHANNELS.getDiagnostics, () => requireEngine().getDiagnostics());
   handle(IPC_CHANNELS.search, (query) => requireEngine().search(String(query)));
+  handle(IPC_CHANNELS.searchFiles, (projectId, query) =>
+    requireEngine().searchFiles(String(projectId), query ? String(query) : ""),
+  );
+  handle(IPC_CHANNELS.pinSession, (id, pinned) =>
+    requireEngine().pinSession(String(id), Boolean(pinned)),
+  );
+  handle(IPC_CHANNELS.regenerateTitle, (id) => requireEngine().regenerateTitle(String(id)));
+  handle(IPC_CHANNELS.setPermissionProfile, (id, profile) =>
+    requireEngine().setPermissionProfile(String(id), profile as never),
+  );
   handle(IPC_CHANNELS.updateProject, (id, patch) =>
     requireEngine().updateProject(String(id), patch as UpdateProjectInput),
   );
