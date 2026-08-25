@@ -11,7 +11,7 @@ export function Titlebar() {
   return (
     <header className="titlebar">
       <div className="brand">
-        <span className="mark" />
+        <img className="mark" src="./icon.png" alt="" width={20} height={20} />
         Capsule
       </div>
       <button className="status-pill" onClick={() => setView("settings")}>

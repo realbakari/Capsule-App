@@ -2,9 +2,11 @@ appId: ai.capsule.desktop
 productName: Capsule
 directories:
   output: release
+  buildResources: build
 files:
   - out/**/*
 mac:
+  icon: icon.icns
   category: public.app-category.developer-tools
   target:
     - target: dmg

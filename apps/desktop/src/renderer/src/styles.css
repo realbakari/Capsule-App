@@ -28,11 +28,11 @@
   letter-spacing: -0.02em;
 }
 .mark {
-  width: 1.125rem;
-  height: 0.625rem;
-  border-radius: 999px;
-  background: var(--mauve);
-  box-shadow: 0 0 0 3px rgb(198 160 246 / 0.16);
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 0.28rem;
+  object-fit: cover;
+  background: #111;
 }
 
 .status-pill {
@@ -500,11 +500,11 @@ input[type="text"]:focus, textarea.field:focus, select:focus {
 }
 .splash.fading { opacity: 0; pointer-events: none; }
 .splash-mark {
-  width: 2.75rem;
-  height: 1.35rem;
-  border-radius: 999px;
-  background: var(--mauve);
-  box-shadow: 0 0 0 10px rgb(198 160 246 / 0.12), 0 20px 50px rgb(198 160 246 / 0.18);
+  width: 5.5rem;
+  height: 5.5rem;
+  border-radius: 1.15rem;
+  object-fit: cover;
+  box-shadow: 0 18px 50px rgb(0 0 0 / 0.4);
 }
 .splash p {
   position: absolute;

@@ -33,6 +33,22 @@ function userDataDir(): string {
   return dir;
 }
 
+function resolveAsset(file: string): string | undefined {
+  const candidates = [
+    path.join(__dirname, "../../build", file),
+    path.join(process.resourcesPath, file),
+    path.join(app.getAppPath(), "build", file),
+  ];
+  return candidates.find((candidate) => existsSync(candidate));
+}
+
+function loadIcon(file: string): Electron.NativeImage | undefined {
+  const location = resolveAsset(file);
+  if (!location) return undefined;
+  const image = nativeImage.createFromPath(location);
+  return image.isEmpty() ? undefined : image;
+}
+
 function preloadPath(): string {
   const candidates = [
     path.join(__dirname, "../preload/index.cjs"),
@@ -46,6 +62,12 @@ function preloadPath(): string {
   return found;
 }
 
+function applyDockIcon(): void {
+  if (process.platform !== "darwin" || !app.dock) return;
+  const icon = loadIcon("icon.png");
+  if (icon) app.dock.setIcon(icon);
+}
+
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
     width: 1280,
@@ -57,6 +79,7 @@ function createWindow(): BrowserWindow {
     trafficLightPosition: { x: 16, y: 16 },
     backgroundColor: "#24273a",
     show: true,
+    icon: loadIcon("icon.png"),
     webPreferences: {
       preload: preloadPath(),
       contextIsolation: true,
@@ -74,14 +97,6 @@ function createWindow(): BrowserWindow {
   window.webContents.on("console-message", (_event, ...payload) => {
     console.error("[renderer]", ...payload);
   });
-
-  if (!app.isPackaged) {
-    try {
-      window.webContents.openDevTools({ mode: "detach" });
-    } catch (error) {
-      console.warn("DevTools failed to open", error);
-    }
-  }
 
   window.webContents.setWindowOpenHandler((details) => {
     void shell.openExternal(details.url);
@@ -284,11 +299,15 @@ function createMenu(): void {
 
 function createTray(): void {
   try {
-    const image = nativeImage.createFromDataURL(
-      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAKCAYAAACNMs+9AAAAHElEQVQoU2P8z8BQz0AEYBxVSFGFowaNGjWIOAAA8x8G7Q7nV0wAAAAASUVORK5CYII=",
-    );
+    const image =
+      loadIcon("trayTemplate@2x.png") ??
+      loadIcon("trayTemplate.png") ??
+      loadIcon("icon.png") ??
+      nativeImage.createEmpty();
+    if (process.platform === "darwin" && !image.isEmpty()) {
+      image.setTemplateImage(true);
+    }
     tray = new Tray(image);
-    tray.setTitle("Capsule");
     tray.setToolTip("Capsule");
     tray.setContextMenu(
       Menu.buildFromTemplate([
@@ -319,6 +338,8 @@ async function startEngine(): Promise<void> {
 }
 
 app.whenReady().then(async () => {
+  app.setName("Capsule");
+  applyDockIcon();
   registerIpc();
   createMenu();
   createTray();
