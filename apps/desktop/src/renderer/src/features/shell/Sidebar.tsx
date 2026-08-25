@@ -76,7 +76,7 @@ export function Sidebar() {
       <div className="sidebar-footer">
         <button className="list-item" onClick={() => setView("settings")}>
           <span className={`dot ${connected ? "on" : status?.state === "connecting" ? "warn" : "off"}`} />
-          {connected ? "OpenClaw connected" : status?.kind === "mock" ? "Local mock" : "Gateway offline"}
+          {connected ? "OpenClaw connected" : "Gateway offline"}
         </button>
       </div>
     </aside>

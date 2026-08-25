@@ -1,6 +1,11 @@
+import { GatewayBanner } from "../shell/GatewayBanner";
 import { useWorkspace } from "../../lib/workspace";
 
 const PERMISSION_PROFILES = ["default", "strict", "approve-all"] as const;
+
+function canSpawn(readiness: string): boolean {
+  return readiness === "ready" || readiness === "dedicated" || readiness === "running";
+}
 
 export function RuntimesView() {
   const {
@@ -22,17 +27,20 @@ export function RuntimesView() {
     closeHarness,
     cancelHarness,
     refreshHarnessStatus,
+    connected,
+    api,
   } = useWorkspace();
 
   return (
     <section className="panel">
       <div className="panel-header">
-        <h2>Harnesses</h2>
+        <h2>Runtimes</h2>
         <p>
-          Claude Code and Codex run as ACP sessions through OpenClaw acpx. Capsule owns the
-          workspace, approvals, and run history. The harness owns the coding loop.
+          Capsule does not install Claude Code or Codex. If they are already on this Mac or the
+          OpenClaw Gateway host, they are picked up automatically.
         </p>
       </div>
+      <GatewayBanner />
       <div className="card">
         <h3>Project workspace</h3>
         <p className="muted">ACP spawn uses this directory as <span className="mono">--cwd</span>.</p>
@@ -90,9 +98,14 @@ export function RuntimesView() {
                   Remove
                 </button>
               )}
+              {!connected && (
+                <button className="chip" onClick={() => void api.connectGateway()}>
+                  Connect Gateway
+                </button>
+              )}
               <button
                 className="send"
-                disabled={!projectId || busy || harness.readiness === "missing_cli"}
+                disabled={!projectId || busy || !canSpawn(harness.readiness)}
                 onClick={() => void spawnHarness(harness.id)}
               >
                 Spawn session

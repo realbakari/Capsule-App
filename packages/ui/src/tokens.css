@@ -1,50 +1,49 @@
 :root {
   color-scheme: dark;
-  /* Catppuccin Macchiato — same family as Buzz desktop */
-  --crust: #181926;
-  --mantle: #1e2030;
-  --base: #24273a;
-  --surface-0: #363a4f;
-  --surface-1: #494d64;
-  --overlay-0: #6e738d;
-  --overlay-1: #8087a2;
-  --subtext-0: #a5adcb;
-  --subtext-1: #b8c0e0;
-  --text: #cad3f5;
-  --mauve: #c6a0f6;
-  --blue: #8aadf4;
-  --green: #a6da95;
-  --yellow: #eed49f;
-  --red: #ed8796;
-  --peach: #f5a97f;
+  /* Graphite, matching the Capsule mark — not purple */
+  --crust: #070707;
+  --mantle: #101010;
+  --base: #0c0c0c;
+  --surface-0: #171717;
+  --surface-1: #222222;
+  --overlay-0: #6f6f6a;
+  --overlay-1: #8c8c86;
+  --subtext-0: #a8a8a2;
+  --subtext-1: #d0d0ca;
+  --text: #f3f3ee;
+  --accent: #f3f3ee;
+  --accent-fg: #111111;
+  --blue: #b0b0aa;
+  --green: #8fbf88;
+  --yellow: #d6c37a;
+  --red: #d98989;
 
-  --background: 232 23.4% 18.43%;
-  --foreground: 227 68.25% 87.65%;
-  --card: 232 23.4% 18.43%;
-  --primary: 267 82.69% 79.61%;
-  --primary-foreground: 232 23.4% 18.43%;
-  --muted: 230 18.8% 26.08%;
-  --muted-foreground: 228 25% 68%;
-  --border: 231 15.61% 33.92%;
-  --sidebar-background: 234 22.75% 17.25%;
-  --sidebar-foreground: 227 68.25% 87.65%;
-  --good: 115 54% 76%;
-  --warn: 40 70% 78%;
-  --bad: 351 74% 73%;
-  --radius: 0.625rem;
+  --background: 0 0% 4.7%;
+  --foreground: 60 14% 94%;
+  --card: 0 0% 9%;
+  --primary: 60 14% 94%;
+  --primary-foreground: 0 0% 7%;
+  --muted: 0 0% 9%;
+  --muted-foreground: 50 4% 65%;
+  --border: 0 0% 16%;
+  --sidebar-background: 0 0% 6.3%;
+  --sidebar-foreground: 60 14% 94%;
+  --good: 112 28% 64%;
+  --warn: 44 52% 66%;
+  --bad: 0 45% 69%;
+  --radius: 0.5rem;
   --type-rem: 1rem;
-  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, "Segoe UI", sans-serif;
-  --mono: "SF Mono", "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  --mono: "SF Mono", ui-monospace, Menlo, monospace;
   --bg: var(--base);
   --text-muted: var(--subtext-0);
   --text-faint: var(--overlay-1);
-  --accent: var(--mauve);
   --bg-elevated: var(--surface-0);
   --bg-sidebar: var(--mantle);
-  --bg-hover: rgb(255 255 255 / 6%);
-  --bg-active: rgb(198 160 246 / 16%);
-  --border-color: hsl(var(--border) / 0.7);
-  --shadow: 0 18px 50px rgb(0 0 0 / 0.32);
+  --bg-hover: rgb(255 255 255 / 5%);
+  --bg-active: rgb(255 255 255 / 9%);
+  --border-color: rgb(255 255 255 / 8%);
+  --shadow: 0 18px 50px rgb(0 0 0 / 0.45);
 }
 
 * { box-sizing: border-box; }
@@ -72,7 +71,7 @@ body {
 button, input, textarea, select { font: inherit; color: inherit; }
 button:not(:disabled), summary, [role="button"] { cursor: pointer; }
 button:disabled { cursor: default; }
-::selection { background: rgb(198 160 246 / 0.28); }
+::selection { background: rgb(255 255 255 / 0.16); }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb {
   background: rgb(255 255 255 / 10%);

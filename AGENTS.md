@@ -83,7 +83,7 @@ Keep files focused. Prefer a new package over growing `core` into a junk drawer.
 
 ## Desktop UI
 
-Layout inspiration is Buzz: sidebar of workspaces, conversation timeline, composer dock. Theme inspiration is Catppuccin Macchiato (mauve accent), rem-based type, muted sidebar labels. Capsule is still Capsule — do not copy Buzz's Nostr identity, huddles, or channel protocol into this app.
+Layout: sidebar, conversation, composer dock, inspector. Theme: graphite and off-white matching the Capsule mark — no purple/mauve accent. Capsule is still Capsule — do not copy Buzz's Nostr identity, huddles, or channel protocol into this app.
 
 Use rem for readable text. Keep the default conversation free of policy matrices.
 

@@ -24,8 +24,9 @@ export function SettingsView() {
       <div className="card">
         <h3>OpenClaw</h3>
         <p className="muted">
-          Capsule connects as an operator client to the Gateway WebSocket control plane (protocol{" "}
-          {status?.protocol ?? 4}).
+          Capsule connects to the OpenClaw Gateway as an operator client (protocol{" "}
+          {status?.protocol ?? 4}). Claude Code and Codex are spawned there — they are not installed
+          in this app.
         </p>
         <div className="grid-2">
           <div>
@@ -52,10 +53,7 @@ export function SettingsView() {
       </div>
       <div className="card">
         <h3>Claude Code · Codex</h3>
-        <p className="muted">
-          First-class ACP runtimes. Capsule does not reimplement Claude or Codex; it spawns them
-          through OpenClaw acpx.
-        </p>
+        <p className="muted">Detected on this Mac or via the Gateway. Capsule will not install a second copy.</p>
         {harnesses.map((harness) => (
           <div className="row" key={harness.id} style={{ marginBottom: 8 }}>
             <div>

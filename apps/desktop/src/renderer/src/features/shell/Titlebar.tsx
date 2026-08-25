@@ -2,12 +2,11 @@ import { useWorkspace } from "../../lib/workspace";
 
 export function Titlebar() {
   const { connected, status, setView } = useWorkspace();
-  const label =
-    status?.state === "connected"
-      ? status.kind === "mock"
-        ? "Local mock"
-        : "Connected"
-      : (status?.state ?? "Disconnected");
+  const label = connected
+    ? "Connected"
+    : status?.kind === "mock"
+      ? "Gateway offline"
+      : (status?.state ?? "Offline");
   return (
     <header className="titlebar">
       <div className="brand">

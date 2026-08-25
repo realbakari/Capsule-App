@@ -27,6 +27,19 @@ let mainWindow: BrowserWindow | undefined;
 let tray: Tray | undefined;
 let engine: CapsuleEngine | undefined;
 
+function augmentPath(): void {
+  const extras = [
+    "/opt/homebrew/bin",
+    "/opt/homebrew/sbin",
+    "/usr/local/bin",
+    path.join(app.getPath("home"), ".local", "bin"),
+    path.join(app.getPath("home"), ".claude", "bin"),
+    path.join(app.getPath("home"), ".codex", "bin"),
+  ].filter((dir) => existsSync(dir));
+  const current = process.env.PATH ?? "";
+  process.env.PATH = [...extras, current].join(path.delimiter);
+}
+
 function userDataDir(): string {
   const dir = path.join(app.getPath("userData"), "state");
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
@@ -77,7 +90,7 @@ function createWindow(): BrowserWindow {
     title: "Capsule",
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 16, y: 16 },
-    backgroundColor: "#24273a",
+    backgroundColor: "#0c0c0c",
     show: true,
     icon: loadIcon("icon.png"),
     webPreferences: {
@@ -339,6 +352,7 @@ async function startEngine(): Promise<void> {
 
 app.whenReady().then(async () => {
   app.setName("Capsule");
+  augmentPath();
   applyDockIcon();
   registerIpc();
   createMenu();

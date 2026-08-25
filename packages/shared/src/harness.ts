@@ -122,7 +122,8 @@ export const PRESET_HARNESSES: HarnessPreset[] = [
       "Anthropic Claude Code through OpenClaw ACP (acpx). Capsule owns the workspace; Claude owns the coding loop.",
     openclawAgentId: "claude",
     binaries: ["claude"],
-    installHint: "Install Claude Code and authenticate on this Mac, then enable @openclaw/acpx on the Gateway.",
+    installHint:
+      "Capsule does not install Claude Code. Authenticate it on the OpenClaw Gateway host; Capsule picks it up from PATH or the Gateway.",
     installUrl: "https://docs.anthropic.com/en/docs/claude-code",
   },
   {
@@ -132,7 +133,8 @@ export const PRESET_HARNESSES: HarnessPreset[] = [
       "OpenAI Codex through explicit ACP. Native /codex is preferred on the Gateway when that plugin is enabled; Capsule uses ACP when you dedicate Codex here.",
     openclawAgentId: "codex",
     binaries: ["codex"],
-    installHint: "Install the Codex CLI and authenticate on this Mac, then enable @openclaw/acpx on the Gateway.",
+    installHint:
+      "Capsule does not install Codex. Authenticate the Codex CLI on the OpenClaw Gateway host; Capsule picks it up from PATH or the Gateway.",
     installUrl: "https://github.com/openai/codex",
   },
 ];

@@ -20,10 +20,20 @@ Capsule owns the workspace: projects, conversations, runs, contracts, approvals,
 
 Spawn prefers `sessions.create` with the `/acp spawn` command as the first message (valid against Gateway protocol 4). Capsule does **not** pass illegal `runtime: "acp"` fields on `sessions.create`.
 
+## Do you need to install Claude Code in Capsule?
+
+No. Capsule never ships or installs Claude Code or Codex. It **picks them up**:
+
+1. From `PATH` and common install locations on this Mac (`/opt/homebrew/bin`, `~/.local/bin`, a login shell, …).
+2. From the OpenClaw Gateway host when acpx is enabled — even if the desktop process cannot see the binary.
+
+If the UI says a CLI is already detected, the remaining step is **start/connect the Gateway**, not another install.
+
 ## What Capsule does not do
 
 - Speak ACP JSON-RPC to Claude or Codex over stdio
 - Ship `buzz-acp`
+- Install Claude Code or Codex inside the app
 - Replace OpenClaw's native Codex plugin (`/codex bind`) — dedicated Codex in Capsule is the explicit ACP path
 
 ## Operator setup

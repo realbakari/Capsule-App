@@ -213,7 +213,7 @@ Secrets never go in SQLite or the renderer. Gateway tokens live in macOS Keychai
 
 The desktop shell is inspired by Buzz's conversation workspace: a quiet sidebar of places to work, a message timeline, and a composer dock. Capsule's default view is still “I'm working on it…”, not an enterprise compliance dashboard.
 
-Visual language borrows Buzz's Catppuccin Macchiato dark surface and mauve accent, Inter-style system type, rem-based sizing, and muted sidebar labels. Capsule remains a distinct product.
+Visual language is graphite and off-white, matching the Capsule mark. No purple accent. System type, rem-based sizing, muted sidebar labels. Capsule remains a distinct product.
 
 ---
 

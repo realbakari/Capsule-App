@@ -41,7 +41,7 @@ describe("harness catalog", () => {
     );
   });
 
-  it("asks for acpx when the CLI is present but the plugin is not", () => {
+  it("asks for acpx when the Gateway is up but the plugin is not", () => {
     const claude = PRESET_HARNESSES[0]!;
     const result = describeReadiness({
       preset: claude,
@@ -52,6 +52,35 @@ describe("harness catalog", () => {
       live: false,
     });
     expect(result.readiness).toBe("missing_acpx");
+  });
+
+  it("does not ask to install Claude Code when the Gateway can spawn it", () => {
+    const claude = PRESET_HARNESSES[0]!;
+    const result = describeReadiness({
+      preset: claude,
+      binaryPath: undefined,
+      gatewayConnected: true,
+      acpxEnabled: true,
+      dedicated: false,
+      live: false,
+    });
+    expect(result.readiness).toBe("ready");
+    expect(result.detail.toLowerCase()).not.toContain("install claude");
+  });
+
+  it("reports a detected CLI when the Gateway is offline instead of asking to reinstall", () => {
+    const claude = PRESET_HARNESSES[0]!;
+    const result = describeReadiness({
+      preset: claude,
+      binaryPath: "/opt/homebrew/bin/claude",
+      gatewayConnected: false,
+      acpxEnabled: false,
+      dedicated: false,
+      live: false,
+    });
+    expect(result.readiness).toBe("gateway_offline");
+    expect(result.detail).toContain("/opt/homebrew/bin/claude");
+    expect(result.detail.toLowerCase()).not.toContain("install claude code");
   });
 
   it("distinguishes dedicated from a live ACP session", () => {

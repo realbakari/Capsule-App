@@ -1,3 +1,4 @@
+import { GatewayBanner } from "../shell/GatewayBanner";
 import { useWorkspace } from "../../lib/workspace";
 import { Composer } from "./Composer";
 
@@ -79,14 +80,15 @@ export function Conversation() {
           <span className="mono">{statusText}</span>
         </div>
       )}
+      <GatewayBanner inset />
       {notice && <div className="notice">{notice}</div>}
       <div className="conversation">
         {messages.length === 0 ? (
           <div className="hero">
             <h1>What should Capsule work on?</h1>
             <p>
-              Ask for a change, a review, or research. Capsule routes the work, records the run, and
-              keeps the project context. Dedicate Claude Code or Codex to send code work through ACP.
+              Ask for a change, a review, or research. If Claude Code or Codex is already on this
+              Mac, Capsule picks it up — you do not install it here.
             </p>
             <div className="suggestions">
               {SUGGESTIONS.map((item) => (
