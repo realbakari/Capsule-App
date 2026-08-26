@@ -1,7 +1,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { OpenClawAdapter } from "./adapter.js";
 import { DEFAULT_GATEWAY_HOST, DEFAULT_GATEWAY_PORT, probeTcp } from "./discovery.js";
 
@@ -17,6 +17,129 @@ describe("OpenClawAdapter live connect", () => {
     const status = await adapter.getStatus();
     expect(status.state).toBe("connected");
     expect(status.error).toBeUndefined();
+    expect(await adapter.hasAcpxPlugin()).toBe(true);
+    const key = await adapter.ensureOperatorSession({
+      requestedAgentId: "general",
+      label: `capsule-agent-map-${Date.now()}`,
+    });
+    expect(key.startsWith("agent:main:") || key === "main").toBe(true);
     await adapter.disconnect();
+  });
+});
+
+describe("OpenClawAdapter ACP lifecycle", () => {
+  function replyToControl(adapter: OpenClawAdapter, text: string) {
+    const emitter = (adapter as unknown as { emitter: { emit: (...args: unknown[]) => boolean } }).emitter;
+    return vi.spyOn(adapter, "sendSlash").mockImplementation(async (sessionKey) => {
+      emitter.emit("acp-reply", { sessionKey, text, done: true });
+    });
+  }
+
+  it("subscribes for a control reply before sending a fast slash command", async () => {
+    const adapter = new OpenClawAdapter();
+    const send = replyToControl(adapter, "ACP session closed");
+
+    await expect(adapter.closeAcp("agent:main:acp:closed")).resolves.toBeUndefined();
+    expect(send).toHaveBeenCalledWith("agent:main:acp:closed", "/acp close");
+  });
+
+  it("spawns an unbound ACP session and returns the acpx session key", async () => {
+    const adapter = new OpenClawAdapter();
+    const send = replyToControl(
+      adapter,
+      "✅ Spawned ACP session agent:claude:acp:abc-def (persistent, backend acpx). Session is unbound.",
+    );
+    (adapter as unknown as { createGatewaySession: () => Promise<string> }).createGatewaySession = async () =>
+      "agent:main:dashboard:parent";
+    (adapter as unknown as { subscribeSession: () => Promise<void> }).subscribeSession = async () => undefined;
+
+    const spawned = await adapter.spawnAcpSession({ harnessId: "claude", title: "Work" });
+    expect(spawned.sessionKey).toBe("agent:claude:acp:abc-def");
+    expect(send).toHaveBeenCalledWith(
+      "agent:main:dashboard:parent",
+      "/acp spawn claude --bind off --mode persistent --label Work",
+    );
+    expect(send).toHaveBeenCalledWith("agent:claude:acp:abc-def", "/acp permissions approve-all");
+  });
+
+  it("maps Standard/Full to approve-all and Supervised to deny-all", async () => {
+    const adapter = new OpenClawAdapter();
+    const send = replyToControl(
+      adapter,
+      "✅ Spawned ACP session agent:claude:acp:abc-def (persistent, backend acpx). Session is unbound.",
+    );
+    (adapter as unknown as { createGatewaySession: () => Promise<string> }).createGatewaySession = async () =>
+      "agent:main:dashboard:parent";
+    (adapter as unknown as { subscribeSession: () => Promise<void> }).subscribeSession = async () => undefined;
+    const ensure = vi
+      .spyOn(adapter, "ensureAcpxPermissionMode")
+      .mockResolvedValue({ already: true, applied: false });
+
+    await adapter.spawnAcpSession({ harnessId: "claude", permissionProfile: "default" });
+    expect(ensure).toHaveBeenCalledWith("approve-all");
+    expect(send).toHaveBeenCalledWith("agent:claude:acp:abc-def", "/acp permissions approve-all");
+
+    send.mockClear();
+    ensure.mockClear();
+    await adapter.spawnAcpSession({ harnessId: "claude", permissionProfile: "approve-all" });
+    expect(ensure).toHaveBeenCalledWith("approve-all");
+
+    send.mockClear();
+    ensure.mockClear();
+    await adapter.spawnAcpSession({ harnessId: "claude", permissionProfile: "strict" });
+    expect(ensure).toHaveBeenCalledWith("deny-all");
+    expect(send).toHaveBeenCalledWith("agent:claude:acp:abc-def", "/acp permissions deny-all");
+  });
+
+  it("does not treat a bind-here failure as a successful Claude spawn", async () => {
+    const adapter = new OpenClawAdapter();
+    replyToControl(adapter, "⚠️ Conversation bindings are unavailable for webchat.");
+    (adapter as unknown as { createGatewaySession: () => Promise<string> }).createGatewaySession = async () =>
+      "agent:main:dashboard:parent";
+    (adapter as unknown as { subscribeSession: () => Promise<void> }).subscribeSession = async () => undefined;
+
+    await expect(adapter.spawnAcpSession({ harnessId: "claude" })).rejects.toThrow(/bindings are unavailable/i);
+  });
+
+  it("always cancels the ACP turn after aborting the Gateway run", async () => {
+    const adapter = new OpenClawAdapter();
+    const request = vi.fn().mockResolvedValue({});
+    (adapter as unknown as { client: { request: typeof request } }).client = { request };
+    const send = replyToControl(adapter, "ACP turn cancelled");
+
+    await adapter.cancelAcp("agent:main:acp:cancel", "gateway-run");
+
+    expect(request).toHaveBeenCalledWith("sessions.abort", {
+      key: "agent:main:acp:cancel",
+      runId: "gateway-run",
+    });
+    expect(send).toHaveBeenCalledWith("agent:main:acp:cancel", "/acp cancel");
+  });
+
+  it("maps session/request_permission onto Capsule approvals", () => {
+    const adapter = new OpenClawAdapter();
+    const seen: Array<{ type: string; data?: Record<string, unknown> }> = [];
+    adapter.subscribeToRun("run-1", (event) => seen.push(event));
+    (
+      adapter as unknown as { sessionRuns: Map<string, string> }
+    ).sessionRuns.set("agent:claude:acp:abc", "run-1");
+    (
+      adapter as unknown as {
+        handleEvent: (event: { event: string; payload: Record<string, unknown> }) => void;
+      }
+    ).handleEvent({
+      event: "agent",
+      payload: {
+        method: "session/request_permission",
+        sessionKey: "agent:claude:acp:abc",
+        requestId: "req-9",
+        params: { toolCall: { kind: "edit", title: "src/index.ts" } },
+      },
+    });
+    expect(seen[0]?.type).toBe("approval.requested");
+    const approval = seen[0]?.data?.approval as { id: string; action: string; runId: string };
+    expect(approval.id).toBe("req-9");
+    expect(approval.runId).toBe("run-1");
+    expect(approval.action).toMatch(/edit/i);
   });
 });

@@ -11,9 +11,12 @@ import type { EventFrame, HelloOk } from "@openclaw/gateway-protocol/frame-guard
 import {
   acpDoctorCommand,
   acpOptionCommand,
+  acpxPermissionMode,
   acpSpawnCommand,
   acpStatusCommand,
   createId,
+  gatewaySessionLabel,
+  isAcpSessionKey,
   nowIso,
   parseAcpStatus,
   type Agent,
@@ -25,6 +28,7 @@ import {
   type ConnectionState,
   type CreateSessionInputRuntime,
   type HarnessId,
+  type HarnessPermissionProfile,
   type HarnessOptionKey,
   type Run,
   type RunEvent,
@@ -34,6 +38,12 @@ import {
   type Skill,
   type Unsubscribe,
 } from "@capsule/shared";
+import {
+  pickGatewayAgentId,
+  resolveGatewayAgentMap,
+  sessionKeyIsConfigured,
+  type GatewayAgentMap,
+} from "./agent-map.js";
 import { createGatewayHostDeps } from "./device-identity.js";
 import {
   defaultGatewayEndpoint,
@@ -42,11 +52,24 @@ import {
   readLocalGatewayBootstrapToken,
 } from "./discovery.js";
 import {
+  acpxPermissionPatch,
+  isAcpPermissionRequestEvent,
+  readAcpPermissionRequest,
+  readAcpxHarnessPolicy,
+  resolveAcpxEnabled,
+  type AcpxHarnessPolicy,
+} from "./plugins.js";
+import {
   acpCommandFailed,
   asRecord,
   asString,
+  classifyAgentStream,
   compactParams,
+  explainAcpFailure,
+  extractAcpSessionKey,
   extractGatewayText,
+  isAssistantProse,
+  isGatewayAgentFailure,
   isGatewayTurnDone,
 } from "./events.js";
 
@@ -110,10 +133,21 @@ export class OpenClawAdapter implements AgentRuntime {
   private lastError: string | undefined;
   private readonly emitter = new EventEmitter();
   private readonly runSessions = new Map<string, string>();
+  /** Last Capsule run for a Gateway session key — used when an approval has no runId. */
+  private readonly sessionRuns = new Map<string, string>();
   private readonly pendingApprovals = new Map<string, ApprovalRequest>();
+  /**
+   * Slash-command replies are useful to the control call that requested them,
+   * but they are not agent output and must not be added to a conversation.
+   *
+   * The entry is installed before sending the command so a fast Gateway reply
+   * cannot win the race with the reply listener.
+   */
+  private readonly pendingAcpControls = new Map<string, number>();
   private cachedAgents: Agent[] = [];
   private cachedSessionCount = 0;
   private activeRunCount = 0;
+  private agentMap: GatewayAgentMap = { defaultId: "main", configuredIds: ["main"] };
 
   constructor(private readonly options: OpenClawAdapterOptions = {}) {}
 
@@ -183,6 +217,7 @@ export class OpenClawAdapter implements AgentRuntime {
     });
 
     try {
+      await this.refreshAgentMap();
       await this.refreshSnapshot();
     } catch {
       // Snapshot refresh is best-effort after a successful hello-ok.
@@ -229,7 +264,23 @@ export class OpenClawAdapter implements AgentRuntime {
       {},
     );
     const rows = payload.agents ?? payload.entries ?? [];
-    this.cachedAgents = rows.map((row) => this.mapAgent(row));
+    const mapped = rows.map((row) => this.mapAgent(row));
+    this.cachedAgents = mapped.filter((agent) => this.agentMap.configuredIds.includes(agent.id));
+    if (!this.cachedAgents.some((agent) => agent.id === this.agentMap.defaultId)) {
+      this.cachedAgents.unshift({
+        id: this.agentMap.defaultId,
+        name: "Main",
+        description: "OpenClaw default agent",
+        runtime: "openclaw",
+        model: "default",
+        skills: [],
+        tools: [],
+        permissions: {},
+        status: "idle",
+        kind: "agent",
+        recentRunIds: [],
+      });
+    }
     return this.cachedAgents;
   }
 
@@ -256,25 +307,66 @@ export class OpenClawAdapter implements AgentRuntime {
   }
 
   async hasAcpxPlugin(): Promise<boolean> {
+    const [health, config, pluginsList] = await Promise.all([
+      this.request("health", {}).catch(() => undefined),
+      this.request("config.get", {}).catch(() => undefined),
+      this.request("plugins.list", {}).catch(() => undefined),
+    ]);
+    return resolveAcpxEnabled({ health, config, pluginsList });
+  }
+
+  async readAcpxHarnessPolicy(): Promise<AcpxHarnessPolicy> {
+    const config = await this.request("config.get", {}).catch(() => undefined);
+    return readAcpxHarnessPolicy(config);
+  }
+
+  /**
+   * Plugin config is the real acpx switch. Standard/Full → approve-all,
+   * Supervised → deny-all. A Gateway restart may still be required for
+   * already-running acpx workers.
+   */
+  async ensureAcpxPermissionMode(mode: "approve-all" | "deny-all"): Promise<{
+    already: boolean;
+    applied: boolean;
+    error?: string;
+  }> {
+    let policy: AcpxHarnessPolicy = {};
     try {
-      const payload = await this.request<{ plugins?: unknown[]; entries?: unknown[] }>(
-        "plugins.list",
-        {},
-      );
-      const rows = payload.plugins ?? payload.entries ?? [];
-      return rows.some((row) => {
-        const record = asRecord(row);
-        const id = `${asString(record.id)}${asString(record.pluginId)}${asString(record.packageName)}${asString(record.name)}`.toLowerCase();
-        const enabled =
-          record.enabled !== false &&
-          asString(record.state, "enabled") !== "disabled" &&
-          asString(record.state) !== "not-installed" &&
-          asString(record.state) !== "error";
-        return enabled && id.includes("acpx");
-      });
-    } catch {
-      return false;
+      policy = await this.readAcpxHarnessPolicy();
+    } catch (error) {
+      return { already: false, applied: false, error: error instanceof Error ? error.message : String(error) };
     }
+    if (policy.permissionMode === mode) return { already: true, applied: false };
+    const pluginId = policy.pluginId ?? "acpx";
+    const patch = acpxPermissionPatch(pluginId, mode);
+    const path = `plugins.entries.${pluginId}.config.permissionMode`;
+    const attempts: Array<{ method: string; params: unknown }> = [
+      { method: "config.patch", params: patch },
+      { method: "config.patch", params: { patch } },
+      { method: "config.set", params: { path, value: mode } },
+      { method: "config.set", params: { key: path, value: mode } },
+    ];
+    let lastError: string | undefined;
+    for (const attempt of attempts) {
+      try {
+        await this.request(attempt.method, attempt.params);
+        const nip = `plugins.entries.${pluginId}.config.nonInteractivePermissions`;
+        await this.request("config.set", { path: nip, value: "deny" }).catch(() => undefined);
+        await this.request("config.set", { key: nip, value: "deny" }).catch(() => undefined);
+        return { already: false, applied: true };
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : String(error);
+      }
+    }
+    return { already: false, applied: false, error: lastError };
+  }
+
+  async ensureAcpxHeadlessWrites(): Promise<{
+    already: boolean;
+    applied: boolean;
+    error?: string;
+  }> {
+    return this.ensureAcpxPermissionMode("approve-all");
   }
 
   async spawnAcpSession(input: {
@@ -287,46 +379,73 @@ export class OpenClawAdapter implements AgentRuntime {
     permissionProfile?: string;
     model?: string;
   }): Promise<{ sessionKey: string; usedSlashCommand: boolean; command: string }> {
+    let parentKey = input.sessionKey;
+    if (!parentKey || parentKey.startsWith("mock:") || isAcpSessionKey(parentKey)) {
+      parentKey = await this.createGatewaySession({
+        // The carrier session's label is a unique key on the Gateway, and a
+        // conversation title is not unique. Key it to the harness session.
+        label: gatewaySessionLabel(input.title ?? input.harnessId, input.sessionKey ?? input.harnessId),
+        cwd: input.cwd,
+      });
+    }
+    await this.subscribeSession(parentKey);
+    const mapped = acpxPermissionMode(input.permissionProfile);
+    await this.ensureAcpxPermissionMode(mapped).catch(() => undefined);
+    const spawned = await this.spawnAcpOnParent(parentKey, input);
+    const acpKey = extractAcpSessionKey(spawned.text);
+    if (!acpKey) {
+      throw new Error(
+        spawned.text?.trim() ||
+          `OpenClaw did not start ${input.harnessId} through acpx. Capsule will not send this to the default Gateway agent.`,
+      );
+    }
+    await this.subscribeSession(acpKey);
+    // Always send a mode: leaving it unset is what left acpx on the setting
+    // that kills a turn as soon as the agent wants to write or run something.
+    await this.setAcpOption(acpKey, "permissions", mapped);
+    if (input.model) {
+      await this.setAcpOption(acpKey, "model", input.model);
+    }
+    if (input.prompt) {
+      await this.sendSlash(acpKey, input.prompt);
+    }
+    return { sessionKey: acpKey, usedSlashCommand: true, command: spawned.command };
+  }
+
+  private async spawnAcpOnParent(
+    parentKey: string,
+    input: {
+      harnessId: HarnessId;
+      cwd?: string;
+      title?: string;
+      mode?: "persistent" | "oneshot";
+    },
+  ): Promise<{ command: string; text?: string }> {
     const command = acpSpawnCommand(input.harnessId, {
       cwd: input.cwd,
       mode: input.mode ?? "persistent",
-      bind: "here",
+      bind: "off",
       label: input.title,
     });
-    let sessionKey = input.sessionKey;
-    if (!sessionKey) {
-      const created = await this.createGatewaySession({
-        label: input.title ?? input.harnessId,
-        cwd: input.cwd,
-      });
-      sessionKey = created;
-    }
-    await this.subscribeSession(sessionKey);
-    const spawned = await this.acpCommand(sessionKey, command, { waitMs: 20_000 });
+    const spawned = await this.acpCommand(parentKey, command, { waitMs: 20_000 });
     const failed = acpCommandFailed(spawned.text);
     if (failed) throw new Error(failed);
-    if (!spawned.text?.trim()) {
-      const status = await this.statusAcp(sessionKey);
-      const statusFailed = acpCommandFailed(status.text);
-      if (statusFailed) throw new Error(statusFailed);
-      if (!status.text.trim()) {
-        throw new Error(
-          "Gateway did not confirm /acp spawn. Enable acpx (`openclaw plugins install @openclaw/acpx`) and run Doctor.",
-        );
-      }
-    }
-    if (input.permissionProfile && input.permissionProfile !== "default") {
-      await this.sendSlash(sessionKey, acpOptionCommand("permissions", input.permissionProfile)).catch(
-        () => undefined,
-      );
-    }
-    if (input.model) {
-      await this.sendSlash(sessionKey, acpOptionCommand("model", input.model)).catch(() => undefined);
-    }
-    if (input.prompt) {
-      await this.sendSlash(sessionKey, input.prompt).catch(() => undefined);
-    }
-    return { sessionKey, usedSlashCommand: true, command };
+    return spawned;
+  }
+
+  async ensureOperatorSession(input: {
+    sessionKey?: string;
+    label?: string;
+    cwd?: string;
+    requestedAgentId?: string;
+  }): Promise<string> {
+    if (input.sessionKey && isAcpSessionKey(input.sessionKey)) return input.sessionKey;
+    if (sessionKeyIsConfigured(input.sessionKey, this.agentMap)) return input.sessionKey!;
+    return this.createGatewaySession({
+      label: input.label,
+      cwd: input.cwd,
+      agentId: pickGatewayAgentId(input.requestedAgentId, this.agentMap),
+    });
   }
 
   private async createGatewaySession(input: { label?: string; cwd?: string; agentId?: string }): Promise<string> {
@@ -339,14 +458,19 @@ export class OpenClawAdapter implements AgentRuntime {
       if (!key) throw new Error("sessions.create did not return a session key");
       return key;
     };
+    const agentId = pickGatewayAgentId(input.agentId, this.agentMap);
     try {
       return await attempt({
         label: input.label,
         cwd: input.cwd,
-        agentId: input.agentId,
+        agentId,
       });
-    } catch {
-      return attempt({ label: input.label });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (/label already in use/i.test(message)) {
+        return attempt({ agentId, cwd: input.cwd });
+      }
+      return attempt({ label: input.label, agentId: this.agentMap.defaultId });
     }
   }
 
@@ -374,16 +498,40 @@ export class OpenClawAdapter implements AgentRuntime {
     command: string,
     options: { waitMs?: number } = {},
   ): Promise<{ command: string; text?: string }> {
-    await this.sendSlash(sessionKey, command);
-    const text = await this.waitForReply(sessionKey, options.waitMs ?? 8_000).catch(() => undefined);
-    return { command, text };
+    this.beginAcpControl(sessionKey);
+    const reply = this.waitForReply(sessionKey, options.waitMs ?? 8_000);
+    try {
+      await this.sendSlash(sessionKey, command);
+      const text = await reply;
+      const failed = acpCommandFailed(text);
+      if (failed) throw new Error(failed);
+      return { command, text };
+    } catch (error) {
+      // If sessions.send itself failed, the waiter still needs to clean up its
+      // listener and timer, but it must not turn the send error into an
+      // unhandled rejection.
+      void reply.catch(() => undefined);
+      throw error;
+    } finally {
+      this.endAcpControl(sessionKey);
+    }
   }
 
   async cancelAcp(sessionKey: string, runId?: string): Promise<void> {
+    let abortError: unknown;
     try {
       await this.request("sessions.abort", compactParams({ key: sessionKey, runId }));
-    } catch {
-      await this.sendSlash(sessionKey, "/acp cancel");
+    } catch (error) {
+      abortError = error;
+    }
+    try {
+      // sessions.abort stops the Gateway run. The ACP harness has its own
+      // in-flight prompt, so it must always receive its lifecycle cancel too.
+      await this.acpCommand(sessionKey, "/acp cancel", { waitMs: 12_000 });
+    } catch (cancelError) {
+      const abortDetail = abortError instanceof Error ? ` Gateway abort also failed: ${abortError.message}` : "";
+      const detail = cancelError instanceof Error ? cancelError.message : String(cancelError);
+      throw new Error(`ACP cancellation was not confirmed: ${detail}.${abortDetail}`);
     }
   }
 
@@ -396,7 +544,7 @@ export class OpenClawAdapter implements AgentRuntime {
   }
 
   async closeAcp(sessionKey: string): Promise<void> {
-    await this.sendSlash(sessionKey, "/acp close");
+    await this.acpCommand(sessionKey, "/acp close", { waitMs: 12_000 });
   }
 
   async doctorAcp(sessionKey: string): Promise<string> {
@@ -452,14 +600,15 @@ export class OpenClawAdapter implements AgentRuntime {
   }
 
   async createSession(input: CreateSessionInputRuntime): Promise<Session> {
+    const label = gatewaySessionLabel(input.title, input.projectId);
     const payload = await this.request<{
       key?: string;
       sessionKey?: string;
       id?: string;
       runStarted?: boolean;
     }>("sessions.create", compactParams({
-      agentId: input.agentId,
-      label: input.title,
+      agentId: pickGatewayAgentId(input.agentId, this.agentMap),
+      label,
     }));
     const key = payload.sessionKey ?? payload.key ?? payload.id ?? createId("oc");
     const timestamp = nowIso();
@@ -478,14 +627,16 @@ export class OpenClawAdapter implements AgentRuntime {
   }
 
   async sendMessage(input: AgentMessage): Promise<Run> {
-    const sessionKey = input.sessionId;
+    const sessionKey = await this.ensureOperatorSession({
+      sessionKey: input.sessionId,
+      requestedAgentId: input.agentId,
+    });
     const idempotencyKey = createId("idemp");
     const payload = await this.request<{ runId?: string; id?: string; status?: string }>(
       "sessions.send",
       compactParams({
         key: sessionKey,
         message: input.content,
-        agentId: input.agentId,
         idempotencyKey,
       }),
     );
@@ -504,6 +655,7 @@ export class OpenClawAdapter implements AgentRuntime {
       updatedAt: timestamp,
     };
     this.runSessions.set(openclawRunId, run.id);
+    this.sessionRuns.set(sessionKey, run.id);
     this.activeRunCount += 1;
     try {
       await this.request("sessions.messages.subscribe", {
@@ -535,12 +687,35 @@ export class OpenClawAdapter implements AgentRuntime {
     approvalId: string,
     decision: "approved_once" | "approved_session" | "denied",
   ): Promise<void> {
-    await this.request("exec.approval.resolve", {
-      id: approvalId,
-      decision:
-        decision === "denied" ? "deny" : decision === "approved_session" ? "allow-always" : "allow-once",
-    });
-    this.pendingApprovals.delete(approvalId);
+    const mapped =
+      decision === "denied" ? "deny" : decision === "approved_session" ? "allow-always" : "allow-once";
+    const outcome =
+      decision === "denied" ? "reject_once" : decision === "approved_session" ? "allow_always" : "allow_once";
+    const hyphen =
+      decision === "denied" ? "reject-once" : decision === "approved_session" ? "allow-always" : "allow-once";
+    const attempts: Array<{ method: string; params: Record<string, unknown> }> = [
+      { method: "exec.approval.resolve", params: { id: approvalId, decision: mapped } },
+      { method: "approvals.resolve", params: { id: approvalId, decision: mapped } },
+      {
+        method: "session.permission.resolve",
+        params: { id: approvalId, requestId: approvalId, outcome },
+      },
+      {
+        method: "session.permission.resolve",
+        params: { requestId: approvalId, outcome: hyphen },
+      },
+    ];
+    let lastError: unknown;
+    for (const attempt of attempts) {
+      try {
+        await this.request(attempt.method, attempt.params);
+        this.pendingApprovals.delete(approvalId);
+        return;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error(String(lastError ?? "approval resolve failed"));
   }
 
   async listApprovals(): Promise<ApprovalRequest[]> {
@@ -552,8 +727,18 @@ export class OpenClawAdapter implements AgentRuntime {
     }
   }
 
+  private async refreshAgentMap(): Promise<void> {
+    const [agentsList, config, status] = await Promise.all([
+      this.request("agents.list", {}).catch(() => undefined),
+      this.request("config.get", {}).catch(() => undefined),
+      this.request("status", {}).catch(() => undefined),
+    ]);
+    this.agentMap = resolveGatewayAgentMap({ agentsList, config, status });
+  }
+
   private async refreshSnapshot(): Promise<void> {
     try {
+      await this.refreshAgentMap();
       this.cachedAgents = await this.listAgents();
     } catch {
       this.cachedAgents = [];
@@ -576,7 +761,7 @@ export class OpenClawAdapter implements AgentRuntime {
   }
 
   onAcpReply(
-    handler: (payload: { sessionKey?: string; text?: string; done?: boolean }) => void,
+    handler: (payload: { sessionKey?: string; text?: string; done?: boolean; control?: boolean }) => void,
   ): Unsubscribe {
     this.emitter.on("acp-reply", handler);
     return () => this.emitter.off("acp-reply", handler);
@@ -584,53 +769,96 @@ export class OpenClawAdapter implements AgentRuntime {
 
   private handleEvent(event: EventFrame): void {
     const payload = asRecord(event.payload);
-    const openclawRunId = asString(payload.runId, asString(payload.id));
-    const runId = this.runSessions.get(openclawRunId) ?? openclawRunId;
     const sessionKey = asOptionalString(payload.sessionKey) ?? asOptionalString(payload.key);
+    const openclawRunId = asString(payload.runId);
+    const payloadId = asString(payload.id);
+    const runId =
+      (openclawRunId ? this.runSessions.get(openclawRunId) : undefined) ??
+      (payloadId ? this.runSessions.get(payloadId) : undefined) ??
+      (sessionKey ? this.sessionRuns.get(sessionKey) : undefined) ??
+      (openclawRunId || payloadId);
     const text = extractGatewayText(payload);
+    const control = sessionKey ? this.pendingAcpControls.has(sessionKey) : false;
     if (sessionKey && text) {
       this.emitter.emit("acp-reply", {
         sessionKey,
         text,
         done: isGatewayTurnDone(payload),
+        control,
       });
     } else if (sessionKey && isGatewayTurnDone(payload)) {
-      this.emitter.emit("acp-reply", { sessionKey, text: text || undefined, done: true });
+      this.emitter.emit("acp-reply", {
+        sessionKey,
+        text: text || undefined,
+        done: true,
+        control,
+      });
     }
-    if (event.event === "exec.approval.requested" || event.event === "plugin.approval.requested") {
-      const approval = this.mapApproval(payload);
+    if (
+      event.event === "exec.approval.requested" ||
+      event.event === "plugin.approval.requested" ||
+      isAcpPermissionRequestEvent(event.event, payload)
+    ) {
+      const approval = this.mapApproval(payload, runId, sessionKey);
       this.pendingApprovals.set(approval.id, approval);
-      this.emit(runId || approval.runId, "approval.requested", "Approval required", {
+      this.emit(approval.runId || runId, "approval.requested", "Approval required", {
         approval,
         status: "approval_required",
       });
       return;
     }
+    const agentText = text || asString(payload.summary, asString(payload.errorMessage));
+    if (runId && isGatewayAgentFailure(agentText)) {
+      this.activeRunCount = Math.max(0, this.activeRunCount - 1);
+      const explained = explainAcpFailure(agentText) ?? agentText;
+      this.emit(runId, "lifecycle", explained, { status: "failed", error: explained });
+      return;
+    }
     if (event.event === "agent") {
       const stream = asString(payload.stream, asString(payload.phase, "lifecycle"));
-      const text = asString(
-        payload.text,
-        asString(payload.message, asString(payload.summary, stream)),
-      );
       const status = asString(payload.status);
-      if (status === "ok" || payload.phase === "end") {
+      if (status === "ok" || payload.phase === "end" || isGatewayTurnDone(payload)) {
         this.activeRunCount = Math.max(0, this.activeRunCount - 1);
-        this.emit(runId, "lifecycle", text || "Run completed", {
+        this.emit(runId, "lifecycle", agentText || "Run completed", {
           status: "completed",
-          output: text,
+          output: agentText,
         });
         return;
       }
       if (status === "error" || payload.phase === "error") {
         this.activeRunCount = Math.max(0, this.activeRunCount - 1);
-        this.emit(runId, "lifecycle", text || "Run failed", {
+        this.emit(runId, "lifecycle", agentText || "Run failed", {
           status: "failed",
-          error: text,
+          error: agentText,
         });
         return;
       }
-      this.emit(runId, stream.startsWith("tool") ? "tool" : "assistant", text, payload);
+      const kind = classifyAgentStream(stream);
+      // "assistant" is the only type the engine folds into run.result, so
+      // reasoning, plan text and command output must not use it.
+      this.emit(runId, isAssistantProse(kind) ? "assistant" : kind, agentText, {
+        ...payload,
+        streamKind: kind,
+      });
+      return;
     }
+    if (runId && isGatewayTurnDone(payload)) {
+      this.activeRunCount = Math.max(0, this.activeRunCount - 1);
+      this.emit(runId, "lifecycle", agentText || "Run completed", {
+        status: "completed",
+        output: agentText,
+      });
+    }
+  }
+
+  private beginAcpControl(sessionKey: string): void {
+    this.pendingAcpControls.set(sessionKey, (this.pendingAcpControls.get(sessionKey) ?? 0) + 1);
+  }
+
+  private endAcpControl(sessionKey: string): void {
+    const pending = this.pendingAcpControls.get(sessionKey) ?? 0;
+    if (pending <= 1) this.pendingAcpControls.delete(sessionKey);
+    else this.pendingAcpControls.set(sessionKey, pending - 1);
   }
 
   private emit(runId: string, type: string, message: string, data?: Record<string, unknown>): void {
@@ -695,16 +923,27 @@ export class OpenClawAdapter implements AgentRuntime {
     };
   }
 
-  private mapApproval(row: unknown): ApprovalRequest {
+  private mapApproval(row: unknown, fallbackRunId = "", fallbackSessionKey?: string): ApprovalRequest {
     const record = asRecord(row);
+    const fields = readAcpPermissionRequest(record);
+    const tool = fields.tool ?? asString(record.tool);
+    const runId =
+      fields.runId ||
+      fallbackRunId ||
+      (fields.sessionKey ? this.sessionRuns.get(fields.sessionKey) : undefined) ||
+      (fallbackSessionKey ? this.sessionRuns.get(fallbackSessionKey) : undefined) ||
+      "";
     return {
-      id: asString(record.id, createId("apr")),
-      runId: asString(record.runId, ""),
-      agentId: asString(record.agentId, "main"),
+      id: fields.id ?? asString(record.id, createId("apr")),
+      runId,
+      agentId: fields.agentId ?? asString(record.agentId, "main"),
       agentName: asString(record.agentName, "Agent"),
-      action: asString(record.action, asString(record.command, "Execute")),
-      target: asString(record.target, asString(record.command, "")),
-      reason: asString(record.reason, "OpenClaw requested host execution approval."),
+      action: fields.action ?? asString(record.action, asString(record.command, tool || "Execute")),
+      target: asString(record.target, asString(record.command, fields.title ?? "")),
+      reason: asString(
+        record.reason,
+        tool ? `ACP asked to ${tool}.` : "OpenClaw requested host execution approval.",
+      ),
       status: "pending",
       createdAt: nowIso(),
     };

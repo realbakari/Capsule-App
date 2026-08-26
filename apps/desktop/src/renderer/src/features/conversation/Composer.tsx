@@ -1,3 +1,4 @@
+import { harnessDisplayName } from "../../lib/harness";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FileEntry } from "@capsule/shared";
 import { searchProjectFiles } from "../../lib/bridge";
@@ -289,7 +290,7 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
             !connected
               ? "Gateway offline — replies are mock and will not edit files"
               : harnessLive
-                ? `Continue with ${session?.harnessId === "codex" ? "Codex" : "Claude Code"}…`
+                ? `Continue with ${harnessDisplayName(harnesses, session?.harnessId)}…`
                 : "Ask Capsule…"
           }
           onChange={(event) => {
@@ -379,7 +380,7 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
         )}
         <div className="composer-row">
           <div className="chips">
-            <button className="icon-btn" title="Mention a file (⌘P)" onClick={() => setFilePicker(true)}>
+            <button className="icon-btn" title="Mention a file (⌘P)" aria-label="Mention a file (⌘P)" onClick={() => setFilePicker(true)}>
               <PaperclipIcon size={14} />
             </button>
             <div className="seg" role="tablist" aria-label="Mode">
@@ -417,8 +418,8 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
             />
           </div>
           {activeRun ? (
-            <button className="send-btn stop" title="Stop" onClick={() => void stopRun()}>
-              <StopIcon size={12} />
+            <button className="send-btn stop" title="Stop" aria-label="Stop" onClick={() => void stopRun()}>
+              <StopIcon size={16} />
             </button>
           ) : (
             <button
@@ -461,7 +462,7 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
               onChange={(id) => void checkoutBranch(id)}
             />
             {git.dirty ? (
-              <button type="button" title="Open changes" onClick={() => openInspector("changes")}>
+              <button type="button" title="Open changes" aria-label="Open changes" onClick={() => openInspector("changes")}>
                 *
               </button>
             ) : null}

@@ -34,8 +34,10 @@ export function SkillsView() {
 }
 
 export function HistoryView() {
-  const { projectRuns, sessions, setSessionId, setView } = useWorkspace();
-  const items = [...projectRuns].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  const { projectRuns, sessions, projectId, setSessionId, setView } = useWorkspace();
+  const items = [...projectRuns]
+    .filter((item) => item.projectId === projectId)
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
   return (
     <section className="panel">
       <div className="panel-inner">

@@ -1,7 +1,17 @@
+import os from "node:os";
 import { contextBridge, ipcRenderer } from "electron";
-import { IPC_CHANNELS, IPC_EVENTS } from "@capsule/shared";
+import {
+  IPC_CHANNELS,
+  IPC_EVENTS,
+  type FileReadResult,
+  type MessagePage,
+  type PopupMenuRequest,
+} from "@capsule/shared";
 
 const api = {
+  /* Resolved once at preload time so path display can abbreviate the home
+     directory without an IPC round trip on every render. */
+  homeDir: os.homedir(),
   listProjects: () => ipcRenderer.invoke(IPC_CHANNELS.listProjects),
   createProject: (input: unknown) => ipcRenderer.invoke(IPC_CHANNELS.createProject, input),
   getProject: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.getProject, id),
@@ -14,6 +24,10 @@ const api = {
   archiveSession: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.archiveSession, id),
   deleteSession: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.deleteSession, id),
   listMessages: (sessionId: string) => ipcRenderer.invoke(IPC_CHANNELS.listMessages, sessionId),
+  listMessagePage: (
+    sessionId: string,
+    options?: { limit?: number; before?: { createdAt: string; id: string } },
+  ): Promise<MessagePage> => ipcRenderer.invoke(IPC_CHANNELS.listMessagePage, sessionId, options),
   sendMessage: (input: unknown) => ipcRenderer.invoke(IPC_CHANNELS.sendMessage, input),
   startRun: (input: unknown) => ipcRenderer.invoke(IPC_CHANNELS.startRun, input),
   stopRun: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.stopRun, id),
@@ -27,8 +41,14 @@ const api = {
     ipcRenderer.invoke(IPC_CHANNELS.resolveApproval, id, decision),
   readFile: (projectId: string, relative: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.readFile, projectId, relative),
-  writeFile: (projectId: string, relative: string, content: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.writeFile, projectId, relative, content),
+  readFileVersioned: (projectId: string, relative: string): Promise<FileReadResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.readFileVersioned, projectId, relative),
+  writeFile: (
+    projectId: string,
+    relative: string,
+    content: string,
+    options?: { origin?: "user" | "agent"; expectedRevision?: string },
+  ) => ipcRenderer.invoke(IPC_CHANNELS.writeFile, projectId, relative, content, options),
   listFiles: (projectId: string, relative?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.listFiles, projectId, relative),
   openTerminal: (projectId: string) => ipcRenderer.invoke(IPC_CHANNELS.openTerminal, projectId),
@@ -58,6 +78,13 @@ const api = {
     ipcRenderer.invoke(IPC_CHANNELS.gitDiscard, projectId, relative),
   gitCreateBranch: (projectId: string, branch: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.gitCreateBranch, projectId, branch),
+  gitPush: (projectId: string) => ipcRenderer.invoke(IPC_CHANNELS.gitPush, projectId),
+  gitCreatePullRequest: (
+    projectId: string,
+    input?: { title?: string; body?: string; sessionId?: string },
+  ) => ipcRenderer.invoke(IPC_CHANNELS.gitCreatePullRequest, projectId, input),
+  gitMergePullRequest: (projectId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.gitMergePullRequest, projectId),
   searchContents: (projectId: string, query: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.searchContents, projectId, query),
   openPath: (target: string) => ipcRenderer.invoke(IPC_CHANNELS.openPath, target),
@@ -84,6 +111,8 @@ const api = {
   regenerateTitle: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.regenerateTitle, id),
   setPermissionProfile: (id: string, profile: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.setPermissionProfile, id, profile),
+  showContextMenu: (request: PopupMenuRequest): Promise<string | null> =>
+    ipcRenderer.invoke(IPC_CHANNELS.showContextMenu, request),
   on: (channel: keyof typeof IPC_EVENTS, handler: (payload: unknown) => void) => {
     const name = IPC_EVENTS[channel];
     const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => handler(payload);

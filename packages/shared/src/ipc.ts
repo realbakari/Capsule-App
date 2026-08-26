@@ -10,6 +10,7 @@ export const IPC_CHANNELS = {
   archiveSession: "capsule:archiveSession",
   deleteSession: "capsule:deleteSession",
   listMessages: "capsule:listMessages",
+  listMessagePage: "capsule:listMessagePage",
   sendMessage: "capsule:sendMessage",
   startRun: "capsule:startRun",
   stopRun: "capsule:stopRun",
@@ -21,6 +22,7 @@ export const IPC_CHANNELS = {
   listApprovals: "capsule:listApprovals",
   resolveApproval: "capsule:resolveApproval",
   readFile: "capsule:readFile",
+  readFileVersioned: "capsule:readFileVersioned",
   writeFile: "capsule:writeFile",
   listFiles: "capsule:listFiles",
   openTerminal: "capsule:openTerminal",
@@ -44,6 +46,9 @@ export const IPC_CHANNELS = {
   gitStage: "capsule:gitStage",
   gitDiscard: "capsule:gitDiscard",
   gitCreateBranch: "capsule:gitCreateBranch",
+  gitPush: "capsule:gitPush",
+  gitCreatePullRequest: "capsule:gitCreatePullRequest",
+  gitMergePullRequest: "capsule:gitMergePullRequest",
   searchContents: "capsule:searchContents",
   openPath: "capsule:openPath",
   listHarnesses: "capsule:listHarnesses",
@@ -61,6 +66,7 @@ export const IPC_CHANNELS = {
   searchFiles: "capsule:searchFiles",
   regenerateTitle: "capsule:regenerateTitle",
   setPermissionProfile: "capsule:setPermissionProfile",
+  showContextMenu: "capsule:showContextMenu",
 } as const;
 
 export const IPC_EVENTS = {

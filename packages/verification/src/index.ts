@@ -23,18 +23,26 @@ export function verifyContract(input: {
       };
     }
     if (requirement.kind === "output_contains" && requirement.value) {
+      // A substring grep over the agent's prose is a hint, not a verdict. A
+      // correct, useful answer that happens not to contain the keyword used to
+      // mark the whole run failed.
       const passed = input.output.toLowerCase().includes(requirement.value.toLowerCase());
       return {
         requirementId: requirement.id,
         description: requirement.description,
         passed,
+        advisory: true,
         detail: passed ? "Output contains required signal" : `Missing “${requirement.value}”`,
       };
     }
     if (requirement.kind === "files_exist" && requirement.value && input.workingDirectory) {
-      const target = path.resolve(input.workingDirectory, requirement.value);
-      const passed =
-        target.startsWith(path.resolve(input.workingDirectory)) && fs.existsSync(target);
+      const root = path.resolve(input.workingDirectory);
+      const target = path.resolve(root, requirement.value);
+      // Same containment rule as FilesystemAdapter: a raw prefix test also
+      // matches siblings that merely start with the root's name.
+      const relative = path.relative(root, target);
+      const inside = !relative.startsWith("..") && !path.isAbsolute(relative);
+      const passed = inside && fs.existsSync(target);
       return {
         requirementId: requirement.id,
         description: requirement.description,
@@ -50,7 +58,9 @@ export function verifyContract(input: {
     };
   });
 
-  const passed = checks.every((check) => check.passed);
+  // Only objective checks decide the verdict; advisory ones are reported.
+  const decisive = checks.filter((check) => !check.advisory);
+  const passed = decisive.every((check) => check.passed);
   return {
     id: createId("ver"),
     runId: input.contract.runId ?? "",

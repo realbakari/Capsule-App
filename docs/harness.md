@@ -10,7 +10,7 @@ See [OpenClaw ACP agents](https://docs.openclaw.ai/tools/acp-agents) and [setup]
 |--------|-------------------|
 | **Doctor** | Probe the CLI on `PATH`, Gateway reachability, and the `acpx` plugin. When connected, send `/acp doctor` (and `/acp install` if acpx is missing). |
 | **Dedicate** | Set the project's default coding agent. Code-mode sends route through that harness. |
-| **Spawn** | `sessions.create`, then `/acp spawn <id> --bind here --mode persistent\|oneshot --cwd <dir>`. |
+| **Spawn** | `sessions.create`, then `/acp spawn <id> --bind off --mode persistent\|oneshot --cwd <dir>`. Follow-ups go to the returned `agent:<id>:acp:<uuid>` session. `--bind here` is for messaging channels, not the Capsule operator socket. |
 | **Work** | Follow-up prompts go to the bound ACP session. Gateway commands (`/acp`, `/status`) stay local. |
 | **Steer** | `sessions.steer` when the Gateway supports it, otherwise `/acp steer`. |
 | **Cancel** | `sessions.abort` plus `/acp cancel` for the in-flight turn. Binding stays. |
@@ -37,7 +37,11 @@ Codex has two OpenClaw routes. Native `/codex` is preferred when the Codex plugi
 - Approvals, run timeline, artifacts
 - ACP harnesses through OpenClaw acpx
 
-ACP sessions run on the Gateway host. OpenClaw sandbox policy does not wrap them. Write/exec-heavy non-interactive runs usually need `plugins.entries.acpx.config.permissionMode=approve-all` or they fail with `PermissionPromptUnavailableError`.
+ACP sessions run on the Gateway host. OpenClaw sandbox policy does not wrap them. There is no TTY, so Capsule never pretends to ask:
+
+- **Standard / Full access** → `plugins.entries.acpx.config.permissionMode=approve-all` (and `/acp permissions approve-all` on the session). Coding harnesses cannot write or fetch without this.
+- **Supervised** → `deny-all`. Tools that would need a prompt are refused.
+- If OpenClaw later forwards `session/request_permission` on the operator socket, Capsule maps it to Approvals. Until that exists, plugin config is the real switch. Old ACP workers keep the flags they started with — restart the Gateway after changing them.
 
 ## Do you need to install Claude Code in Capsule?
 
@@ -63,8 +67,9 @@ openclaw plugins install @openclaw/acpx
 openclaw config set plugins.entries.acpx.enabled true
 # If plugins.allow is set, it must include acpx
 
-# Optional, for write/exec in non-interactive ACP sessions
+# Required for write/exec/network in non-interactive ACP sessions
 openclaw config set plugins.entries.acpx.config.permissionMode approve-all
+openclaw config set plugins.entries.acpx.config.nonInteractivePermissions deny
 openclaw gateway restart
 
 # On this Mac

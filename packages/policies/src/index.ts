@@ -4,6 +4,8 @@ import {
   type PolicyDecision,
   type PolicyDecisionKind,
   type PolicyRule,
+  type SandboxMode,
+  type WebAccess,
 } from "@capsule/shared";
 
 export const DEFAULT_POLICIES: PolicyRule[] = [
@@ -43,6 +45,28 @@ export const DEFAULT_POLICIES: PolicyRule[] = [
     decision: "allow",
   },
 ];
+
+export function policiesFromSettings(input: {
+  webAccess: WebAccess;
+  sandbox: SandboxMode;
+}): PolicyRule[] {
+  return [
+    {
+      id: "net-https",
+      scope: "workspace",
+      resource: "network",
+      action: "https",
+      decision: input.webAccess === "off" ? "block" : input.webAccess === "ask" ? "approval" : "allow",
+    },
+    {
+      id: "term-exec",
+      scope: "workspace",
+      resource: "terminal",
+      action: "execute",
+      decision: input.sandbox === "off" ? "allow" : input.sandbox === "strict" ? "block" : "approval",
+    },
+  ];
+}
 
 export function decidePolicy(
   rules: PolicyRule[],

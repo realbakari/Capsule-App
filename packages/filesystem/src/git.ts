@@ -59,7 +59,9 @@ export function readGitStatus(workingDirectory?: string): GitStatus {
     git(workingDirectory, ["rev-parse", "--abbrev-ref", "HEAD"]).stdout.trim() ||
     "HEAD";
   const porcelain = git(workingDirectory, ["status", "--porcelain"]).stdout;
-  const files = parsePorcelain(porcelain);
+  const files = applyLineStats(workingDirectory, parsePorcelain(porcelain));
+  const added = sumStat(files, "added");
+  const removed = sumStat(files, "removed");
   const branches = git(workingDirectory, ["branch", "--format=%(refname:short)"])
     .stdout.split(/\r?\n/)
     .map((item) => item.trim())
@@ -73,7 +75,46 @@ export function readGitStatus(workingDirectory?: string): GitStatus {
     summary: files.length > 0 ? `${branch} · ${files.length} changed` : `${branch} · clean`,
     files,
     branches,
+    ...(added === undefined ? {} : { added }),
+    ...(removed === undefined ? {} : { removed }),
   };
+}
+
+/*
+ * `git status --porcelain` says which files changed but not by how much.
+ * A single `--numstat` covering both staged and unstaged work is one extra
+ * process for the whole tree, rather than a diff per file.
+ */
+function applyLineStats(workingDirectory: string, files: GitChange[]): GitChange[] {
+  if (files.length === 0) return files;
+  const stats = new Map<string, { added: number; removed: number }>();
+  for (const args of [["diff", "--numstat"], ["diff", "--numstat", "--cached"]]) {
+    const out = git(workingDirectory, args);
+    if (!out.ok) continue;
+    for (const line of out.stdout.split(/\r?\n/)) {
+      const match = /^(\d+|-)\t(\d+|-)\t(.+)$/.exec(line.trim());
+      if (!match) continue;
+      const [, addedRaw, removedRaw, rawPath] = match;
+      // "-" marks a binary file: countable lines do not apply.
+      if (addedRaw === "-" || removedRaw === "-") continue;
+      const key = rawPath!.trim();
+      const prev = stats.get(key) ?? { added: 0, removed: 0 };
+      stats.set(key, {
+        added: prev.added + Number(addedRaw),
+        removed: prev.removed + Number(removedRaw),
+      });
+    }
+  }
+  return files.map((file) => {
+    const stat = stats.get(file.path);
+    return stat ? { ...file, added: stat.added, removed: stat.removed } : file;
+  });
+}
+
+function sumStat(files: GitChange[], key: "added" | "removed"): number | undefined {
+  const counted = files.filter((file) => typeof file[key] === "number");
+  if (counted.length === 0) return undefined;
+  return counted.reduce((total, file) => total + (file[key] ?? 0), 0);
 }
 
 export function checkoutBranch(workingDirectory: string, branch: string): { ok: boolean; detail: string } {

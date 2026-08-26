@@ -24,6 +24,9 @@ describe("harness catalog", () => {
 
   it("builds the OpenClaw ACP spawn command", () => {
     expect(acpSpawnCommand("claude", { cwd: "/repo" })).toBe(
+      "/acp spawn claude --bind off --mode persistent --cwd /repo",
+    );
+    expect(acpSpawnCommand("claude", { cwd: "/repo", bind: "here" })).toBe(
       "/acp spawn claude --bind here --mode persistent --cwd /repo",
     );
   });
@@ -37,6 +40,8 @@ describe("harness catalog", () => {
     expect(acpStatusCommand()).toBe("/acp status");
     expect(acpDoctorCommand()).toBe("/acp doctor");
     expect(acpOptionCommand("permissions", "approve-all")).toBe("/acp permissions approve-all");
+    expect(acpOptionCommand("permissions", "default")).toBe("/acp permissions approve-all");
+    expect(acpOptionCommand("permissions", "strict")).toBe("/acp permissions deny-all");
     expect(acpOptionCommand("model", "anthropic/claude-opus-4-6")).toBe(
       "/acp model anthropic/claude-opus-4-6",
     );

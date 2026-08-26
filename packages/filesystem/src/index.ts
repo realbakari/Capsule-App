@@ -13,15 +13,36 @@ export {
   readGitStatus,
   stageFile,
 } from "./git.js";
+export {
+  createPullRequest,
+  createPullRequestArgs,
+  enrichGitStatus,
+  ghAvailable,
+  lastCommitSubject,
+  mergePullRequest,
+  mergePullRequestArgs,
+  pushArgs,
+  pushCurrentBranch,
+  viewPullRequest,
+} from "./github.js";
 export { searchContents } from "./search.js";
 
 export class FilesystemAdapter {
   constructor(private readonly projectRoot?: string) {}
 
   resolve(target: string): string {
-    const root = this.projectRoot ? path.resolve(this.projectRoot) : undefined;
-    const resolved = path.resolve(root ?? process.cwd(), target);
-    if (root && !resolved.startsWith(root)) {
+    // Without a project root there is nothing to contain paths against, and
+    // falling back to process.cwd() silently sandboxed the adapter to whatever
+    // directory the app happened to launch from. Refuse instead.
+    if (!this.projectRoot) {
+      throw new Error("Project has no working directory");
+    }
+    const root = path.resolve(this.projectRoot);
+    const resolved = path.resolve(root, target);
+    // A raw string prefix test also matches siblings that merely start with the
+    // root's name (`/x/app` vs `/x/app-private`). Compare on path segments.
+    const relative = path.relative(root, resolved);
+    if (relative.startsWith("..") || path.isAbsolute(relative)) {
       throw new Error("Path is outside the project working directory");
     }
     return resolved;

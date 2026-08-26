@@ -17,7 +17,6 @@ export function Palette() {
     projects,
     sessions,
     setProjectId,
-    setSessionId,
   } = useWorkspace();
   const [index, setIndex] = useState(0);
   const [hits, setHits] = useState<SearchResults>();
@@ -61,8 +60,7 @@ export function Palette() {
         id: `session-${item.id}`,
         label: `Thread · ${item.title}`,
         run: () => {
-          setProjectId(item.projectId);
-          setSessionId(item.id);
+          setProjectId(item.projectId, item.id);
           setView("chat");
         },
       }));
@@ -71,8 +69,7 @@ export function Palette() {
         id: `msg-${item.id}`,
         label: `Message · ${item.sessionTitle} — ${item.excerpt}`,
         run: () => {
-          setProjectId(item.projectId);
-          setSessionId(item.sessionId);
+          setProjectId(item.projectId, item.sessionId);
           setView("chat");
         },
       })) ?? [];
@@ -88,7 +85,6 @@ export function Palette() {
     projects,
     sessions,
     setProjectId,
-    setSessionId,
     setView,
   ]);
 

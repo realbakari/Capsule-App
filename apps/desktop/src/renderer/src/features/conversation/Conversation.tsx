@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CopyIcon } from "../shell/icons";
 import { useWorkspace } from "../../lib/workspace";
 import { GatewayBanner } from "../shell/GatewayBanner";
 import { ViewErrorBoundary } from "../shell/ErrorBoundary";
 import { Composer } from "./Composer";
+import { foldedTurnIds, foldedTurnLabel, turnsFromMessages } from "../../lib/turns";
+import { ChangedFilesCard } from "./ChangedFilesCard";
 import { MessageBody } from "./MessageBody";
 
 function formatTime(iso: string): string {
@@ -12,17 +14,23 @@ function formatTime(iso: string): string {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+/** Newest turns that never fold. */
+const KEEP_EXPANDED_TURNS = 3;
+
 export function Conversation() {
   const {
     project,
     session,
     messages,
+    git,
+    hasOlderMessages,
+    loadingOlder,
+    loadOlderMessages,
     agents,
     agentId,
     activeRun,
     steps,
     events,
-    artifacts,
     pendingApproval,
     api,
     notice,
@@ -33,7 +41,17 @@ export function Conversation() {
     setDraft,
     setMode,
     connected,
+    settings,
   } = useWorkspace();
+
+  /* Older exchanges fold to one row so a long thread stays skimmable; the
+     newest few always stay open, and anything you open stays open. */
+  const [openedTurns, setOpenedTurns] = useState<ReadonlySet<string>>(() => new Set());
+  const turns = useMemo(() => turnsFromMessages(messages), [messages]);
+  const folded = useMemo(
+    () => foldedTurnIds(turns, KEEP_EXPANDED_TURNS, openedTurns),
+    [turns, openedTurns],
+  );
 
   const emptyPrompts = [
     { label: "Review this repo", mode: "code" as const, text: "Review the working directory and summarize the main risks." },
@@ -120,17 +138,41 @@ export function Conversation() {
               )}
             </div>
           ) : (
-            messages.map((message) => (
+            <>
+              {hasOlderMessages && (
+                <div className="load-older">
+                  <button className="ghost" disabled={loadingOlder} onClick={() => void loadOlderMessages()}>
+                    {loadingOlder ? "Loading…" : "Load older messages"}
+                  </button>
+                </div>
+              )}
+              {turns.map((turn) =>
+                folded.has(turn.id) ? (
+                  <button
+                    className="turn-fold"
+                    key={turn.id}
+                    onClick={() =>
+                      setOpenedTurns((current) => new Set(current).add(turn.id))
+                    }
+                  >
+                    <span className="turn-fold-count">
+                      {turn.messages.length} messages
+                    </span>
+                    <span className="turn-fold-label">{foldedTurnLabel(turn)}</span>
+                  </button>
+                ) : (
+                  turn.messages.map((message) => (
               <div className={`msg ${message.role}`} key={message.id}>
+                {/* No author label: a right-aligned bubble already says "you",
+                    and the reply is the timeline — naming it "Agent" on every
+                    turn is chrome. Timestamp and copy appear on hover. */}
                 <div className="who">
-                  {message.role === "user"
-                    ? "You"
-                    : agents.find((item) => item.id === (session?.agentId ?? agentId))?.name ?? "Agent"}
+                  {message.kind === "steer" && <span className="tag">Steer</span>}
                   <span className="when">{formatTime(message.createdAt)}</span>
                   <span className="msg-actions">
                     <button
                       className="icon-btn"
-                      title="Copy"
+                      title="Copy" aria-label="Copy"
                       onClick={() => void navigator.clipboard.writeText(message.content)}
                     >
                       <CopyIcon size={13} />
@@ -139,29 +181,67 @@ export function Conversation() {
                 </div>
                 <MessageBody content={message.content} />
               </div>
-            ))
+                  ))
+                ),
+              )}
+              {/* The turn's outcome on disk, under the reply. Not a second copy
+                  of the reply — the diff itself lives in the side panel. */}
+              {git && session && <ChangedFilesCard git={git} />}
+            </>
           )}
           {activeRun && (
             <div className="msg">
               <div className="who">Working on your task</div>
               <div className="progress">
                 {steps.map((step) => (
-                  <div className={`step ${step.status}`} key={step.id}>
-                    <span className="glyph">
-                      {step.status === "complete" ? "✓" : step.status === "active" ? "●" : "○"}
-                    </span>
-                    {step.label}
+                  <div key={step.id}>
+                    <div className={`step ${step.status}`}>
+                      <span className="glyph">
+                        {step.status === "complete" ? "✓" : step.status === "error" ? "✕" : "●"}
+                      </span>
+                      <span className="step-label">{step.label}</span>
+                      {step.detail && <span className="step-detail">{step.detail}</span>}
+                    </div>
+                    {/* The row shows the latest fragment; the agent's whole
+                        thought is here for anyone who wants it. */}
+                    {step.id === "thinking" && step.body && (
+                      <details className="thinking">
+                        <summary>Show full reasoning</summary>
+                        <div className="thinking-body">{step.body}</div>
+                      </details>
+                    )}
                   </div>
                 ))}
               </div>
               <details className="advanced">
                 <summary>Execution details</summary>
                 <div className="event-log">
-                  {events.map((event) => (
-                    <div key={event.id}>
-                      {formatTime(event.timestamp)} {event.message}
-                    </div>
-                  ))}
+                  {/* Many frames carry a kind but no text (a tool call with no
+                      output, a lifecycle tick). Rendering those produced rows
+                      that were just a bare timestamp. */}
+                  {events
+                    .filter((event) => {
+                      if (!event.message?.trim()) return false;
+                      /* request / route / skill / contract are Capsule's own
+                         bookkeeping, not anything the agent did. Listing them
+                         made the log read like progress while saying nothing. */
+                      if (!event.data?.streamKind) return false;
+                      if (settings?.reasoningSummary !== "hidden") return true;
+                      const kind = String(event.data.streamKind).toLowerCase();
+                      return !kind.startsWith("think") && !kind.startsWith("reason");
+                    })
+                    .map((event) => (
+                      <div key={event.id}>
+                        <span className="event-time">{formatTime(event.timestamp)}</span>
+                        <span className="event-kind">
+                          {String(event.data?.streamKind ?? event.type)}
+                        </span>
+                        <span className="event-text">{event.message.trim()}</span>
+                      </div>
+                    ))}
+                  {events.every((event) => !event.message?.trim()) && (
+                    <div className="faint">No output yet.</div>
+                  )}
                 </div>
               </details>
             </div>
@@ -196,20 +276,7 @@ export function Conversation() {
               </div>
             </div>
           )}
-          {artifacts.length > 0 && !activeRun && (
-            <div className="msg">
-              <div className="who">Artifacts</div>
-              {artifacts.map((artifact) => (
-                <div className="card" key={artifact.id}>
-                  <b>{artifact.title}</b>
-                  <div className="muted">{artifact.kind}</div>
-                  {artifact.content && (
-                    <pre className="mono artifact-preview">{artifact.content.slice(0, 4000)}</pre>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
+
         </div>
       </div>
       {!stick && messages.length > 0 && (

@@ -1,4 +1,4 @@
-import type { ContentHit, FileEntry } from "@capsule/shared";
+import type { ContentHit, FileEntry, PopupMenuItem, PopupMenuRequest } from "@capsule/shared";
 
 type CapsuleApi = typeof window.capsule;
 
@@ -34,4 +34,31 @@ export async function searchProjectContents(projectId: string, query: string): P
     return (await capsule.searchContents(projectId, query)) as ContentHit[];
   }
   return [];
+}
+
+/** Preload does not hot-reload; missing showContextMenu falls back to the in-app menu. */
+export async function showNativeContextMenu(
+  items: PopupMenuItem[],
+  position: { x: number; y: number },
+): Promise<string | null | "unavailable"> {
+  const capsule = api() as CapsuleApi & Record<string, unknown>;
+  if (!isFn(capsule.showContextMenu)) return "unavailable";
+  const request: PopupMenuRequest = {
+    items: items.map((item) => ({
+      id: item.id,
+      label: item.label,
+      enabled: item.enabled,
+      destructive: item.destructive,
+      separatorBefore: item.separatorBefore,
+      children: item.children,
+    })),
+    x: position.x,
+    y: position.y,
+  };
+  try {
+    const picked = await capsule.showContextMenu(request);
+    return typeof picked === "string" ? picked : null;
+  } catch {
+    return "unavailable";
+  }
 }

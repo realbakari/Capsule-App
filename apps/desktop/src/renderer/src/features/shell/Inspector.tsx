@@ -1,5 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FileEntry } from "@capsule/shared";
+import { FileSaveCoordinator, isConflictError } from "../../lib/file-save";
+import { formatProjectRoot } from "../../lib/paths";
 import { useWorkspace, type InspectorTab } from "../../lib/workspace";
 import { DiffView } from "./DiffView";
 import { CpuIcon, DiffIcon, FileIcon, GitBranchIcon, TerminalIcon, XIcon } from "./icons";
@@ -40,6 +42,10 @@ export function Inspector() {
     gitStage,
     gitDiscard,
     gitCreateBranch,
+    gitPush,
+    gitCreatePullRequest,
+    gitMergePullRequest,
+    settings,
     spawnHarness,
     cancelHarness,
     closeHarness,
@@ -50,6 +56,42 @@ export function Inspector() {
   const [listing, setListing] = useState<FileEntry[]>(files);
   const [diff, setDiff] = useState("");
   const [preview, setPreview] = useState("");
+  /* Which file the preview pane is editing, when it is editable at all. */
+  const [editing, setEditing] = useState<{ path: string; truncated: boolean; revision: string }>();
+  const [saveState, setSaveState] = useState<
+    "idle" | "saving" | "saved" | "error" | "truncated" | "conflict"
+  >("idle");
+  const saverRef = useRef<FileSaveCoordinator | undefined>(undefined);
+  /* The revision the open buffer is based on; a save is refused if disk moved. */
+  const revisionRef = useRef<string | undefined>(undefined);
+
+  // One coordinator per open file; switching files flushes the previous one so
+  // no keystroke is left behind.
+  useEffect(() => {
+    const previous = saverRef.current;
+    previous?.dispose();
+    revisionRef.current = editing?.revision;
+    if (!editing || !projectId) {
+      saverRef.current = undefined;
+      return;
+    }
+    const path = editing.path;
+    saverRef.current = new FileSaveCoordinator({
+      debounceMs: 600,
+      persist: async (contents) => {
+        setSaveState("saving");
+        const written = await api.writeFile(projectId, path, contents, {
+          origin: "user",
+          expectedRevision: revisionRef.current,
+        });
+        // The write became the new base for the next comparison.
+        revisionRef.current = written?.revision;
+      },
+      onSaved: () => setSaveState("saved"),
+      onError: (error) => setSaveState(isConflictError(error) ? "conflict" : "error"),
+    });
+    return () => saverRef.current?.dispose();
+  }, [api, editing, projectId]);
   const [message, setMessage] = useState("");
   const [branchName, setBranchName] = useState("");
   const [termCmd, setTermCmd] = useState("");
@@ -102,13 +144,30 @@ export function Inspector() {
     setInspectorTab("diff");
   }
 
+  const PREVIEW_LIMIT = 8_000;
+
   async function previewFile(relative: string) {
     if (!projectId) return;
     try {
-      setPreview((await api.readFile(projectId, relative)).slice(0, 8000));
+      /*
+       * The revision is the token a later save sends back, so the engine can
+       * tell "nothing else touched this" from "the agent rewrote it while you
+       * were typing". A capped preview is never editable — saving a prefix
+       * would delete the rest.
+       */
+      const opened = await api.readFileVersioned(projectId, relative);
+      setPreview(opened.contents);
+      setEditing(
+        opened.truncated
+          ? undefined
+          : { path: relative, truncated: false, revision: opened.revision },
+      );
+      setSaveState(opened.truncated ? "truncated" : "idle");
       setDiff("");
     } catch (error) {
       setPreview(error instanceof Error ? error.message : String(error));
+      setEditing(undefined);
+      setSaveState("idle");
     }
     setInspectorTab("diff");
   }
@@ -119,7 +178,7 @@ export function Inspector() {
     <aside className="inspector">
       <div className="inspector-header">
         <h4>Context</h4>
-        <button className="icon-btn" title="Close inspector" onClick={toggleInspector}>
+        <button className="icon-btn" title="Close inspector" aria-label="Close inspector" onClick={toggleInspector}>
           <XIcon size={14} />
         </button>
       </div>
@@ -129,7 +188,7 @@ export function Inspector() {
             key={item.id}
             type="button"
             className={tab === item.id ? "active" : ""}
-            title={`${item.label} (${item.key.toUpperCase()})`}
+            title={`${item.label} (${item.key.toUpperCase()})`} aria-label={`${item.label} (${item.key.toUpperCase()})`}
             onClick={() => setInspectorTab(item.id)}
           >
             {item.label}
@@ -157,7 +216,7 @@ export function Inspector() {
               <button
                 key={entry.path}
                 className="list-item"
-                title="Click to mention · double-click to preview"
+                title="Click to mention · double-click to preview" aria-label="Click to mention · double-click to preview"
                 onClick={() => {
                   if (entry.type === "directory") void openDir(entry.path);
                   else mentionFile(entry.path);
@@ -236,7 +295,7 @@ export function Inspector() {
               >
                 <input
                   type="text"
-                  placeholder="New branch"
+                  placeholder={settings?.branchPrefix ? `${settings.branchPrefix}/name` : "New branch"}
                   value={branchName}
                   onChange={(event) => setBranchName(event.target.value)}
                 />
@@ -244,6 +303,53 @@ export function Inspector() {
                   Create
                 </button>
               </form>
+              <div className="git-actions">
+                <button className="ghost" type="button" onClick={() => void gitPush()}>
+                  Push
+                </button>
+                {git.pullRequest && git.pullRequest.state === "OPEN" ? (
+                  <button className="ghost" type="button" onClick={() => void gitMergePullRequest()}>
+                    Merge
+                  </button>
+                ) : (
+                  <button
+                    className="ghost"
+                    type="button"
+                    disabled={git.ghAvailable === false}
+                    title={
+                      git.ghAvailable === false
+                        ? "Install and sign in to the GitHub CLI (gh) to open pull requests."
+                        : undefined
+                    }
+                    onClick={() => void gitCreatePullRequest()}
+                  >
+                    {settings?.prDraft ? "Draft PR" : "Pull request"}
+                  </button>
+                )}
+              </div>
+              {git.pullRequest ? (
+                <div className="kv">
+                  <span>
+                    PR #{git.pullRequest.number}
+                    {git.pullRequest.isDraft ? " · draft" : ""}
+                    {git.pullRequest.checks && git.pullRequest.checks !== "none"
+                      ? ` · ${git.pullRequest.checks}`
+                      : ""}
+                  </span>
+                  <button
+                    className="ghost"
+                    type="button"
+                    onClick={() => {
+                      const url = git.pullRequest?.url;
+                      if (url) void window.capsule.openPath(url);
+                    }}
+                  >
+                    Open
+                  </button>
+                </div>
+              ) : git.ghAvailable === false ? (
+                <div className="faint">Install GitHub CLI (gh) to open pull requests from Capsule.</div>
+              ) : null}
             </>
           ) : (
             <div className="faint">{git?.summary ?? "Set a folder to see git status."}</div>
@@ -252,7 +358,75 @@ export function Inspector() {
       )}
       {tab === "diff" && (
         <div className="inspector-block">
-          {preview && !diff ? <pre className="mono artifact-preview">{preview}</pre> : <DiffView text={diff} />}
+          {preview && !diff ? (
+            editing ? (
+              <div className="file-editor">
+                <div className="file-editor-bar">
+                  <span className="truncate mono">{editing.path}</span>
+                  <span className={`save-state ${saveState}`}>
+                    {saveState === "saving"
+                      ? "Saving…"
+                      : saveState === "saved"
+                        ? "Saved"
+                        : saveState === "error"
+                          ? "Save failed"
+                          : ""}
+                  </span>
+                </div>
+                {/*
+                 * The agent writes straight to disk over ACP, so the file can
+                 * move under an open editor. Neither side's work is discarded
+                 * automatically — the choice is explicit.
+                 */}
+                {saveState === "conflict" && (
+                  <div className="file-conflict">
+                    <span>
+                      This file changed on disk since you opened it — probably the agent.
+                    </span>
+                    <span className="actions">
+                      <button
+                        className="chip"
+                        onClick={() => void previewFile(editing.path)}
+                      >
+                        Discard mine, reload
+                      </button>
+                      <button
+                        className="danger"
+                        onClick={() => {
+                          // Deliberately drop the base revision: the next write
+                          // skips the check and takes this buffer as the truth.
+                          revisionRef.current = undefined;
+                          void saverRef.current?.flush();
+                        }}
+                      >
+                        Keep mine, overwrite
+                      </button>
+                    </span>
+                  </div>
+                )}
+                <textarea
+                  className="mono file-editor-area"
+                  spellCheck={false}
+                  value={preview}
+                  onChange={(event) => {
+                    setPreview(event.target.value);
+                    saverRef.current?.change(event.target.value);
+                  }}
+                />
+              </div>
+            ) : (
+              <>
+                {saveState === "truncated" && (
+                  <div className="faint file-editor-note">
+                    Read-only: this file is larger than the preview limit.
+                  </div>
+                )}
+                <pre className="mono artifact-preview">{preview}</pre>
+              </>
+            )
+          ) : (
+            <DiffView text={diff} />
+          )}
           {artifacts
             .filter((item) => item.kind === "patch" && item.content)
             .map((artifact) => (
@@ -362,7 +536,11 @@ export function Inspector() {
             <h4>Project</h4>
             <div className="kv">
               <span>Folder</span>
-              <span className="mono">{project?.workingDirectory ?? "not set"}</span>
+              <span className="mono">
+                {formatProjectRoot(session?.workingDirectory ?? project?.workingDirectory, {
+                  home: window.capsule.homeDir,
+                })}
+              </span>
             </div>
             <div className="actions" style={{ marginTop: 8 }}>
               <button className="ghost" onClick={() => void pickProjectDirectory()}>
@@ -404,17 +582,7 @@ export function Inspector() {
               <div className="faint">Idle</div>
             )}
           </div>
-          {artifacts.length > 0 && (
-            <div className="inspector-block">
-              <h4>Artifacts</h4>
-              {artifacts.map((artifact) => (
-                <div key={artifact.id} className="kv">
-                  <span>{artifact.title}</span>
-                  <span className="faint">{artifact.kind}</span>
-                </div>
-              ))}
-            </div>
-          )}
+
         </>
       )}
       {git?.isRepo && git.branches.length > 1 && tab !== "agents" && (

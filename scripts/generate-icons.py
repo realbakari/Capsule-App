@@ -29,6 +29,13 @@ ICONSET_SIZES = [
 ]
 
 
+# Apple's macOS app-icon grid: the rounded body occupies 824 of a 1024 canvas,
+# centred, with the remainder transparent. An icon drawn edge to edge renders
+# noticeably larger than every neighbour in the Dock — measured against shipping
+# apps, Cursor sits at 80.3%, Claude 84.6%, Notes and Mail 87.5%.
+ICON_BODY_RATIO = 824 / 1024
+
+
 def macos_icon_mask(size: int) -> Image.Image:
     """Squircle mask so Dock/dev icons are not a sharp square.
 
@@ -42,10 +49,20 @@ def macos_icon_mask(size: int) -> Image.Image:
 
 
 def apply_macos_shape(image: Image.Image) -> Image.Image:
-    size = image.width
-    shaped = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    shaped.paste(image.convert("RGBA"), mask=macos_icon_mask(size))
-    return shaped
+    """Shape the art, then inset it on a transparent canvas of the full size.
+
+    The mask is applied at the body size so the corner radius stays correct
+    relative to the visible icon rather than to the padded canvas.
+    """
+    canvas = image.width
+    body = max(1, round(canvas * ICON_BODY_RATIO))
+    art = image.convert("RGBA").resize((body, body), Image.Resampling.LANCZOS)
+    shaped = Image.new("RGBA", (body, body), (0, 0, 0, 0))
+    shaped.paste(art, mask=macos_icon_mask(body))
+    out = Image.new("RGBA", (canvas, canvas), (0, 0, 0, 0))
+    offset = (canvas - body) // 2
+    out.paste(shaped, (offset, offset))
+    return out
 
 
 def resize_app_icon(source: Image.Image, size: int) -> Image.Image:

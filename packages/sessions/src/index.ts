@@ -21,6 +21,7 @@ export function createSessionRecord(
     mode: input.mode ?? project.defaultMode,
     state: "active",
     permissionProfile: input.permissionProfile,
+    workingDirectory: input.workingDirectory,
     createdAt: timestamp,
     updatedAt: timestamp,
   };

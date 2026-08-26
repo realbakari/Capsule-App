@@ -2,6 +2,9 @@ import {
   createId,
   type AgentMode,
   type ExecutionContract,
+  type OutputDetail,
+  type SandboxMode,
+  type WebAccess,
 } from "@capsule/shared";
 
 export function buildContract(input: {
@@ -9,6 +12,9 @@ export function buildContract(input: {
   prompt: string;
   workingDirectory?: string;
   runId?: string;
+  outputDetail?: OutputDetail;
+  webAccess?: WebAccess;
+  sandbox?: SandboxMode;
 }): ExecutionContract {
   const required = [];
   const forbidden = [
@@ -50,12 +56,46 @@ export function buildContract(input: {
     });
   }
 
-  if (input.mode === "research") {
+  if (input.mode === "research" && input.webAccess !== "off") {
     required.push({
       id: "include-sources",
       description: "Include sources for claims gathered from the web.",
       kind: "output_contains" as const,
       value: "source",
+    });
+  }
+
+  if (input.outputDetail === "verbose") {
+    required.push({
+      id: "verbose-detail",
+      description: "Include files touched, commands run, and how to verify.",
+      kind: "custom" as const,
+    });
+  }
+
+  if (input.outputDetail === "concise") {
+    required.push({
+      id: "stay-concise",
+      description: "Keep the reply short. Do not restate the request.",
+      kind: "custom" as const,
+    });
+  }
+
+  if (input.webAccess === "off") {
+    forbidden.push({
+      id: "no-web",
+      description: "Do not use web search or fetch URLs.",
+      kind: "action" as const,
+      value: "web",
+    });
+  }
+
+  if (input.sandbox === "strict") {
+    forbidden.push({
+      id: "no-shell",
+      description: "Do not run shell commands.",
+      kind: "action" as const,
+      value: "terminal",
     });
   }
 

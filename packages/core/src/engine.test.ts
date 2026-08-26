@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -20,7 +20,7 @@ async function waitForRun(engine: CapsuleEngine, runId: string): Promise<void> {
 }
 
 describe("CapsuleEngine first user flow", () => {
-  it("creates a project, conversation, run, verification, and artifact", async () => {
+  it("creates a project, conversation, run, and contract event", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "capsule-engine-"));
     const engine = new CapsuleEngine({
       databasePath: path.join(dir, "capsule.sqlite"),
@@ -47,7 +47,7 @@ describe("CapsuleEngine first user flow", () => {
     expect(engine.listMessages(session.id).some((message) => message.role === "assistant")).toBe(
       true,
     );
-    expect(engine.listArtifacts(run.id).length).toBeGreaterThan(0);
+    expect(engine.listArtifacts(run.id)).toEqual([]);
     expect(engine.listRunEvents(run.id).some((event) => event.type === "contract")).toBe(true);
     await engine.stop();
   });
@@ -67,10 +67,12 @@ describe("CapsuleEngine first user flow", () => {
       projectId: project.id,
       title: "Implement the API",
       mode: "code",
+      agentId: "general",
     });
     const { session: used, run } = await engine.sendMessage({
       sessionId: session.id,
       content: "Implement the REST handlers.",
+      agentId: "general",
       mode: "code",
     });
     expect(used.agentId).toBe("claude");
@@ -79,8 +81,40 @@ describe("CapsuleEngine first user flow", () => {
     await waitForRun(engine, run.id);
     const closed = await engine.closeHarness(used.id);
     expect(closed.session.harnessState).toBe("closed");
+    expect(engine.listHarnessSessions(project.id)).toHaveLength(0);
     await engine.undedicateHarness(project.id);
     expect(engine.getProject(project.id)?.defaultAgentId).toBeUndefined();
+    await engine.stop();
+  });
+
+  it("does not offer bootstrap mock agents after a live Gateway connects", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-live-agents-"));
+    const engine = new CapsuleEngine({
+      databasePath: path.join(dir, "capsule.sqlite"),
+      userDataDir: dir,
+      autoConnect: false,
+    });
+    await engine.start();
+    engine.repos.upsertAgent({
+      id: "main",
+      name: "Main",
+      description: "Gateway default",
+      runtime: "openclaw",
+      model: "default",
+      skills: [],
+      tools: [],
+      permissions: {},
+      status: "idle",
+      kind: "agent",
+      recentRunIds: [],
+    });
+    (engine as unknown as { usingMock: boolean }).usingMock = false;
+
+    const agents = await engine.listAgents();
+
+    expect(agents.map((agent) => agent.id)).toContain("main");
+    expect(agents.map((agent) => agent.id)).not.toContain("general");
+    expect(agents.map((agent) => agent.id)).not.toContain("coding");
     await engine.stop();
   });
 
@@ -100,11 +134,18 @@ describe("CapsuleEngine first user flow", () => {
     });
     expect(spawned.session.harnessId).toBe("codex");
     expect(spawned.session.harnessState).toBe("running");
+    expect(spawned.session.permissionProfile).toBe("default");
     const steered = await engine.steerHarness(spawned.session.id, "Focus on the failing tests.");
     expect(steered.session.harnessState).toBe("running");
     const status = await engine.harnessStatus(spawned.session.id);
     expect(status.state).toBe("running");
     expect(engine.listHarnessSessions(project.id)).toHaveLength(1);
+    const updated = await engine.setHarnessOption({
+      sessionId: spawned.session.id,
+      key: "model",
+      value: "gpt-5.6-terra",
+    });
+    expect(updated.session.modelOverride).toBe("gpt-5.6-terra");
     const doctor = await engine.doctorHarness("codex");
     expect(doctor.harnessId).toBe("codex");
     expect(doctor.checks.some((check) => check.id === "cli")).toBe(true);
@@ -186,6 +227,8 @@ describe("CapsuleEngine first user flow", () => {
     expect(project).toBeDefined();
     const session = await engine.createSession({ projectId: project!.id, title: "Defaults" });
     expect(session.permissionProfile).toBe("strict");
+    const spawned = await engine.spawnHarness({ projectId: project!.id, harnessId: "codex" });
+    expect(spawned.session.permissionProfile).toBe("strict");
     await engine.stop();
 
     const reloaded = new CapsuleEngine({
@@ -202,8 +245,201 @@ describe("CapsuleEngine first user flow", () => {
     expect(loaded.defaultPermission).toBe("strict");
     expect(loaded.launchAtLogin).toBe(true);
     expect(loaded.useMockWhenOffline).toBe(false);
+    expect(loaded.appearanceTheme).toBe("dark");
+    expect(loaded.appearanceDark.accent).toBe("#339CFF");
+    expect(loaded.appearanceLight.background).toBe("#FFFFFF");
+    expect(loaded.notifyRunComplete).toBe(true);
+    expect(loaded.webAccess).toBe("on");
+    expect(loaded.sandbox).toBe("ask");
+    const withConfig = await reloaded.updateSettings({
+      webAccess: "off",
+      sandbox: "strict",
+      notifyRunComplete: false,
+      branchPrefix: "capsule",
+    });
+    expect(withConfig.webAccess).toBe("off");
+    expect(withConfig.sandbox).toBe("strict");
+    expect(withConfig.notifyRunComplete).toBe(false);
+    expect(reloaded.repos.listPolicies().find((rule) => rule.id === "net-https")?.decision).toBe(
+      "block",
+    );
     const cleared = await reloaded.updateSettings({ gatewayToken: "" });
     expect(cleared.gatewayToken).toBeUndefined();
     await reloaded.stop();
+  });
+});
+
+describe("projectless Inbox folder", () => {
+  it("gives Inbox a task folder and each thread its own dated directory", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-inbox-"));
+    const engine = new CapsuleEngine({
+      databasePath: path.join(dir, "capsule.sqlite"),
+      userDataDir: dir,
+      autoConnect: false,
+    });
+    await engine.start();
+    const inbox = engine.listProjects().find((project) => project.name === "Inbox");
+    expect(inbox?.workingDirectory).toBe(path.join(dir, "tasks"));
+    const session = await engine.createSession({
+      projectId: inbox!.id,
+      title: "Plan a change",
+      mode: "chat",
+    });
+    expect(session.workingDirectory).toContain(`${path.sep}tasks${path.sep}`);
+    expect(session.workingDirectory).toContain("plan-a-change");
+    const moved = await engine.updateSettings({ projectlessFolder: path.join(dir, "loose") });
+    expect(moved.projectlessFolder).toBe(path.join(dir, "loose"));
+    expect(engine.getProject(inbox!.id)?.workingDirectory).toBe(path.join(dir, "loose"));
+    await engine.stop();
+  });
+});
+
+describe("failed runs are not contract-verified", () => {
+  it("keeps the runtime's own error and emits no verification artifact", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-failrun-"));
+    const engine = new CapsuleEngine({
+      databasePath: path.join(dir, "capsule.sqlite"),
+      userDataDir: dir,
+      autoConnect: false,
+    });
+    await engine.start();
+    const project = engine.createProject({ name: "Verify", defaultMode: "chat" });
+    const session = await engine.createSession({
+      projectId: project.id,
+      title: "New conversation",
+      mode: "chat",
+      agentId: "general",
+    });
+    const { run } = await engine.sendMessage({
+      sessionId: session.id,
+      content: "[fail] break the turn",
+      agentId: "general",
+      mode: "chat",
+    });
+    await waitForRun(engine, run.id);
+
+    const settled = engine.getRun(run.id);
+    expect(settled?.status).toBe("failed");
+    // The runtime's own cause must survive rather than being replaced by a
+    // generic contract verdict — that is what hid "Authentication required".
+    expect(settled?.error).toBeTruthy();
+    expect(settled?.error).not.toBe("Verification failed");
+    expect(engine.listArtifacts(run.id).some((a) => a.title === "Verification report")).toBe(false);
+    await engine.stop();
+  });
+});
+
+describe("inactive session archive", () => {
+  it("archives idle threads past the cutoff and keeps pinned work", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-archive-"));
+    const engine = new CapsuleEngine({
+      databasePath: path.join(dir, "capsule.sqlite"),
+      userDataDir: dir,
+      autoConnect: false,
+    });
+    await engine.start();
+    const project = engine.createProject({ name: "Archive", defaultMode: "chat" });
+    const idle = await engine.createSession({
+      projectId: project.id,
+      title: "Old thread",
+      mode: "chat",
+    });
+    const pinned = await engine.createSession({
+      projectId: project.id,
+      title: "Keep me",
+      mode: "chat",
+    });
+    const kept = engine.pinSession(pinned.id, true);
+    const stale = new Date(Date.now() - 2 * 86_400_000).toISOString();
+    idle.updatedAt = stale;
+    kept.updatedAt = stale;
+    engine.repos.updateSession(idle);
+    engine.repos.updateSession(kept);
+    await engine.updateSettings({ archiveInactiveAfter: "1d" });
+    const sessions = engine.listSessions(project.id);
+    expect(sessions.find((item) => item.id === idle.id)?.state).toBe("archived");
+    expect(sessions.find((item) => item.id === kept.id)?.state).toBe("active");
+    await engine.stop();
+  });
+});
+
+describe("concurrent edits to a project file", () => {
+  async function withEngine(fn: (engine: CapsuleEngine, projectId: string, dir: string) => Promise<void>) {
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-conflict-"));
+    const work = path.join(dir, "work");
+    mkdirSync(work, { recursive: true });
+    const engine = new CapsuleEngine({
+      databasePath: path.join(dir, "capsule.sqlite"),
+      userDataDir: dir,
+      autoConnect: false,
+    });
+    await engine.start();
+    const project = engine.createProject({ name: "Conflict", workingDirectory: work });
+    try {
+      await fn(engine, project.id, work);
+    } finally {
+      await engine.stop();
+    }
+  }
+
+  it("writes when the file has not changed since it was read", async () => {
+    await withEngine(async (engine, projectId, work) => {
+      writeFileSync(path.join(work, "notes.md"), "original\n");
+      const opened = engine.readFileVersioned(projectId, "notes.md");
+      engine.writeFile(projectId, "notes.md", "edited\n", {
+        origin: "user",
+        expectedRevision: opened.revision,
+      });
+      expect(readFileSync(path.join(work, "notes.md"), "utf8")).toBe("edited\n");
+    });
+  });
+
+  it("refuses to clobber a file the agent rewrote while it was open", async () => {
+    await withEngine(async (engine, projectId, work) => {
+      const file = path.join(work, "notes.md");
+      writeFileSync(file, "original\n");
+      const opened = engine.readFileVersioned(projectId, "notes.md");
+      // The agent writes straight to disk over ACP while the editor is open.
+      writeFileSync(file, "written by the agent\n");
+      expect(() =>
+        engine.writeFile(projectId, "notes.md", "my edit\n", {
+          origin: "user",
+          expectedRevision: opened.revision,
+        }),
+      ).toThrow(/FILE_CHANGED_ON_DISK/);
+      // The agent's work must survive the refusal.
+      expect(readFileSync(file, "utf8")).toBe("written by the agent\n");
+    });
+  });
+
+  it("still writes when no revision is supplied", async () => {
+    await withEngine(async (engine, projectId, work) => {
+      writeFileSync(path.join(work, "notes.md"), "original\n");
+      engine.writeFile(projectId, "notes.md", "forced\n", { origin: "user" });
+      expect(readFileSync(path.join(work, "notes.md"), "utf8")).toBe("forced\n");
+    });
+  });
+
+  it("creates a new file even though it has no prior revision", async () => {
+    await withEngine(async (engine, projectId, work) => {
+      engine.writeFile(projectId, "fresh.md", "new\n", {
+        origin: "user",
+        expectedRevision: "0:0",
+      });
+      expect(readFileSync(path.join(work, "fresh.md"), "utf8")).toBe("new\n");
+    });
+  });
+
+  it("reports truncation without letting it corrupt the revision", async () => {
+    await withEngine(async (engine, projectId, work) => {
+      const long = "x".repeat(50);
+      writeFileSync(path.join(work, "big.txt"), long);
+      const opened = engine.readFileVersioned(projectId, "big.txt", 10);
+      expect(opened.truncated).toBe(true);
+      expect(opened.contents).toHaveLength(10);
+      // The revision must describe the whole file, or a reload would look
+      // like an external change.
+      expect(opened.revision).toBe(engine.readFileVersioned(projectId, "big.txt").revision);
+    });
   });
 });

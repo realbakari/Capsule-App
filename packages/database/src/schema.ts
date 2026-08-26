@@ -223,4 +223,22 @@ export const MIGRATIONS: Array<{ version: number; sql: string }> = [
       ALTER TABLE sessions ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
     `,
   },
+  {
+    version: 4,
+    sql: `
+      ALTER TABLE messages ADD COLUMN kind TEXT;
+
+      -- Steers used to be recorded by prefixing the content with 'Steer: '.
+      -- Lift that marker into the column once, here, so the renderer never has
+      -- to infer intent from message text.
+      UPDATE messages SET kind = 'steer', content = substr(content, 8)
+       WHERE role = 'user' AND content LIKE 'Steer: %';
+    `,
+  },
+  {
+    version: 5,
+    sql: `
+      ALTER TABLE sessions ADD COLUMN working_directory TEXT;
+    `,
+  },
 ];

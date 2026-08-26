@@ -9,6 +9,8 @@ import {
   Notification,
   Tray,
   nativeImage,
+  nativeTheme,
+  powerSaveBlocker,
   shell,
 } from "electron";
 import type { CapsuleEngine } from "@capsule/core";
@@ -16,16 +18,21 @@ import {
   IPC_CHANNELS,
   IPC_EVENTS,
   type ApprovalRequest,
+  type CapsuleSettings,
   type HarnessId,
   type HarnessOptionPatch,
+  type PopupMenuRequest,
+  type Run,
   type SpawnHarnessInput,
   type UpdateProjectInput,
 } from "@capsule/shared";
+import { popupContextMenu } from "./popup-menu";
 import { ensureSqliteAbi } from "./sqlite-abi";
 
 let mainWindow: BrowserWindow | undefined;
 let tray: Tray | undefined;
 let engine: CapsuleEngine | undefined;
+let awakeBlocker: number | undefined;
 
 function augmentPath(): void {
   const extras = [
@@ -129,12 +136,81 @@ function send(channel: string, payload: unknown): void {
   mainWindow?.webContents.send(channel, payload);
 }
 
-function notifyApproval(approval: ApprovalRequest): void {
+function windowFocused(): boolean {
+  return Boolean(mainWindow?.isFocused());
+}
+
+function bounceDock(): void {
+  if (process.platform !== "darwin" || !app.dock || windowFocused()) return;
+  app.dock.bounce("informational");
+}
+
+function notifyDesktop(title: string, body: string): void {
   if (!Notification.isSupported()) return;
-  new Notification({
-    title: "Approval required",
-    body: `${approval.agentName} wants to ${approval.action} ${approval.target}`,
-  }).show();
+  new Notification({ title, body }).show();
+}
+
+function notifyApproval(approval: ApprovalRequest): void {
+  const settings = engine?.getSettings();
+  if (settings && !settings.notifyApprovals) return;
+  notifyDesktop(
+    "Approval required",
+    `${approval.agentName} wants to ${approval.action} ${approval.target}`,
+  );
+  if (settings?.bounceDockOnAttention) bounceDock();
+}
+
+function notifyRunSettled(run: Run): void {
+  if (!["completed", "failed", "cancelled"].includes(run.status)) return;
+  const settings = engine?.getSettings();
+  if (!settings?.notifyRunComplete) return;
+  if (windowFocused()) return;
+  const title =
+    run.status === "completed" ? "Response complete" : run.status === "failed" ? "Run failed" : "Run cancelled";
+  notifyDesktop(title, (run.prompt ?? "Task").slice(0, 140));
+  if (settings.bounceDockOnAttention) bounceDock();
+}
+
+function desktopHasWork(): boolean {
+  if (!engine) return false;
+  const liveRun = engine
+    .listRuns()
+    .some((run) => ["running", "waiting", "approval_required"].includes(run.status));
+  if (liveRun) return true;
+  return engine
+    .listSessions()
+    .some(
+      (session) =>
+        session.harnessState === "spawning" ||
+        session.harnessState === "running" ||
+        session.harnessState === "waiting",
+    );
+}
+
+function applyKeepAwake(settings?: CapsuleSettings): void {
+  const enabled = Boolean(settings?.keepAwakeWhileRunning && desktopHasWork());
+  if (enabled && awakeBlocker == null) {
+    awakeBlocker = powerSaveBlocker.start("prevent-app-suspension");
+  } else if (!enabled && awakeBlocker != null) {
+    powerSaveBlocker.stop(awakeBlocker);
+    awakeBlocker = undefined;
+  }
+}
+
+function applyMenuBar(settings?: CapsuleSettings): void {
+  const show = settings?.showMenuBarExtra !== false;
+  if (show && !tray) createTray();
+  if (!show && tray) {
+    tray.destroy();
+    tray = undefined;
+  }
+}
+
+function applyDesktopSettings(settings?: CapsuleSettings): void {
+  applyLaunchAtLogin(Boolean(settings?.launchAtLogin));
+  applyNativeTheme(settings?.appearanceTheme);
+  applyMenuBar(settings);
+  applyKeepAwake(settings);
 }
 
 function registerIpc(): void {
@@ -173,6 +249,12 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.archiveSession, (id) => requireEngine().archiveSession(String(id)));
   handle(IPC_CHANNELS.deleteSession, (id) => requireEngine().deleteSession(String(id)));
   handle(IPC_CHANNELS.listMessages, (sessionId) => requireEngine().listMessages(String(sessionId)));
+  handle(IPC_CHANNELS.listMessagePage, (sessionId, options) =>
+    requireEngine().listMessagePage(
+      String(sessionId),
+      options as { limit?: number; before?: { createdAt: string; id: string } } | undefined,
+    ),
+  );
   handle(IPC_CHANNELS.sendMessage, (input) =>
     requireEngine().sendMessage(input as Parameters<CapsuleEngine["sendMessage"]>[0]),
   );
@@ -198,8 +280,19 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.readFile, (projectId, relative) =>
     requireEngine().readFile(String(projectId), String(relative)),
   );
-  handle(IPC_CHANNELS.writeFile, (projectId, relative, content) =>
-    requireEngine().writeFile(String(projectId), String(relative), String(content)),
+  handle(IPC_CHANNELS.readFileVersioned, (projectId, relative) =>
+    requireEngine().readFileVersioned(String(projectId), String(relative)),
+  );
+  handle(IPC_CHANNELS.writeFile, (projectId, relative, content, options) =>
+    requireEngine().writeFile(String(projectId), String(relative), String(content), {
+      // Only the renderer's own editor calls this channel, and reaching it
+      // required a person typing into the file.
+      origin: (options as { origin?: "user" | "agent" } | undefined)?.origin ?? "user",
+      ...(() => {
+        const revision = (options as { expectedRevision?: string } | undefined)?.expectedRevision;
+        return revision === undefined ? {} : { expectedRevision: revision };
+      })(),
+    }),
   );
   handle(IPC_CHANNELS.listFiles, (projectId, relative) =>
     requireEngine().listFiles(String(projectId), relative ? String(relative) : "."),
@@ -217,7 +310,7 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.getSettings, () => requireEngine().getSettings());
   handle(IPC_CHANNELS.updateSettings, async (patch) => {
     const next = await requireEngine().updateSettings(patch as never);
-    applyLaunchAtLogin(next.launchAtLogin);
+    applyDesktopSettings(next);
     return next;
   });
   handle(IPC_CHANNELS.getDiagnostics, () => requireEngine().getDiagnostics());
@@ -255,12 +348,26 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.gitCreateBranch, (projectId, branch) =>
     requireEngine().gitCreateBranch(String(projectId), String(branch)),
   );
+  handle(IPC_CHANNELS.gitPush, (projectId) => requireEngine().gitPush(String(projectId)));
+  handle(IPC_CHANNELS.gitCreatePullRequest, (projectId, input) =>
+    requireEngine().gitCreatePullRequest(
+      String(projectId),
+      input as { title?: string; body?: string; sessionId?: string } | undefined,
+    ),
+  );
+  handle(IPC_CHANNELS.gitMergePullRequest, (projectId) =>
+    requireEngine().gitMergePullRequest(String(projectId)),
+  );
   handle(IPC_CHANNELS.searchContents, (projectId, query) =>
     requireEngine().searchContents(String(projectId), String(query)),
   );
   handle(IPC_CHANNELS.openPath, async (target) => {
     const location = String(target);
     if (!location) return;
+    if (/^https?:\/\//i.test(location)) {
+      await shell.openExternal(location);
+      return;
+    }
     await shell.openPath(location);
   });
   handle(IPC_CHANNELS.pickDirectory, async () => {
@@ -319,12 +426,25 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.listHarnessSessions, (projectId) =>
     requireEngine().listHarnessSessions(projectId ? String(projectId) : undefined),
   );
+
+  ipcMain.handle(IPC_CHANNELS.showContextMenu, async (event, payload: PopupMenuRequest) => {
+    try {
+      return await popupContextMenu(event, payload);
+    } catch (error) {
+      console.error(`IPC ${IPC_CHANNELS.showContextMenu} failed`, error);
+      throw error;
+    }
+  });
 }
 
 function bindEngineEvents(): void {
   if (!engine) return;
   engine.events.on("connection", (status) => send(IPC_EVENTS.connection, status));
-  engine.events.on("run", (run) => send(IPC_EVENTS.run, run));
+  engine.events.on("run", (run: Run) => {
+    send(IPC_EVENTS.run, run);
+    notifyRunSettled(run);
+    applyKeepAwake(engine?.getSettings());
+  });
   engine.events.on("run-event", (event) => send(IPC_EVENTS.run, event));
   engine.events.on("message", (message) => send(IPC_EVENTS.message, message));
   engine.events.on("state", (payload) => send(IPC_EVENTS.state, payload));
@@ -334,7 +454,12 @@ function bindEngineEvents(): void {
   });
 }
 
+function applyNativeTheme(theme: "system" | "dark" | "light" | undefined): void {
+  nativeTheme.themeSource = theme === "light" || theme === "dark" ? theme : "system";
+}
+
 function applyLaunchAtLogin(enabled: boolean): void {
+  if (!app.isPackaged) return;
   try {
     app.setLoginItemSettings({ openAtLogin: enabled });
   } catch (error) {
@@ -433,6 +558,7 @@ function createMenu(): void {
 }
 
 function createTray(): void {
+  if (tray) return;
   try {
     const image =
       loadIcon("trayTemplate@2x.png") ??
@@ -470,7 +596,7 @@ async function startEngine(): Promise<void> {
   });
   await engine.start();
   bindEngineEvents();
-  applyLaunchAtLogin(engine.getSettings().launchAtLogin);
+  applyDesktopSettings(engine.getSettings());
   send(IPC_EVENTS.connection, await engine.getStatus());
 }
 
@@ -502,5 +628,6 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
+  applyKeepAwake(undefined);
   void engine?.stop();
 });

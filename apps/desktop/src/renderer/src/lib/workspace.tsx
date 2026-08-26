@@ -1,3 +1,5 @@
+import { applyAppearance } from "./appearance";
+import { activityFromEvents, type RunActivity } from "./activity";
 import {
   createContext,
   useCallback,
@@ -19,6 +21,7 @@ import type {
   FileEntry,
   GitStatus,
   HarnessDoctorReport,
+  HarnessPermissionProfile,
   HarnessStatus,
   Project,
   Run,
@@ -73,29 +76,6 @@ export interface ConfirmState {
   onConfirm: () => void;
 }
 
-export function stepFromEvents(events: RunEvent[]): Array<{ id: string; label: string; status: string }> {
-  const labels = [
-    { id: "understand", label: "Understanding request" },
-    { id: "route", label: "Selecting agent" },
-    { id: "skill", label: "Loading skill" },
-    { id: "tools", label: "Running tools" },
-    { id: "verify", label: "Verifying result" },
-  ];
-  const seen = new Set(events.map((event) => String(event.data?.step ?? event.type)));
-  const activeIndex = labels.findIndex((step) => !events.some((event) => String(event.data?.step) === step.id));
-  return labels.map((step, index) => ({
-    ...step,
-    status:
-      seen.has(step.id) && (activeIndex === -1 || index < activeIndex)
-        ? "complete"
-        : index === activeIndex || (activeIndex === -1 && index === labels.length - 1)
-          ? seen.has(step.id) || activeIndex === -1
-            ? "complete"
-            : "active"
-          : "pending",
-  }));
-}
-
 export interface WorkspaceValue {
   api: typeof window.capsule;
   view: View;
@@ -107,6 +87,9 @@ export interface WorkspaceValue {
   agents: Agent[];
   skills: Skill[];
   messages: ChatMessage[];
+  hasOlderMessages: boolean;
+  loadingOlder: boolean;
+  loadOlderMessages: () => Promise<void>;
   runs: Run[];
   events: RunEvent[];
   artifacts: Artifact[];
@@ -132,8 +115,8 @@ export interface WorkspaceValue {
   activeRun?: Run;
   pendingApproval?: ApprovalRequest;
   connected: boolean;
-  steps: Array<{ id: string; label: string; status: string }>;
-  setProjectId: (id: string) => void;
+  steps: RunActivity[];
+  setProjectId: (id: string, nextSessionId?: string) => void;
   setSessionId: (id?: string) => void;
   setAgentId: (id: string) => void;
   setMode: (mode: AgentMode) => void;
@@ -208,6 +191,9 @@ export interface WorkspaceValue {
   gitStage: (relative: string) => Promise<void>;
   gitDiscard: (relative: string) => void;
   gitCreateBranch: (branch: string) => Promise<void>;
+  gitPush: () => Promise<void>;
+  gitCreatePullRequest: (input?: { title?: string; body?: string }) => Promise<void>;
+  gitMergePullRequest: () => Promise<void>;
   settings?: CapsuleSettings;
   updateSettings: (patch: Partial<CapsuleSettings>) => Promise<CapsuleSettings>;
 }
@@ -225,6 +211,9 @@ export function useWorkspace(): WorkspaceValue {
   return value;
 }
 
+/** Messages fetched per page; older pages load on demand. */
+const MESSAGE_PAGE_SIZE = 60;
+
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const api = window.capsule;
   const [view, setView] = useState<View>("chat");
@@ -235,6 +224,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [hasOlderMessages, setHasOlderMessages] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [runs, setRuns] = useState<Run[]>([]);
   const [events, setEvents] = useState<RunEvent[]>([]);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
@@ -285,7 +276,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const loadSession = useCallback(
     async (id: string) => {
       const generation = ++loadGeneration.current;
-      const [nextMessages, nextRuns] = await Promise.all([api.listMessages(id), api.listRuns(id)]);
+      // Only the most recent page. Loading an entire conversation on every
+      // streamed chunk made a long thread quadratic to render.
+      const [page, nextRuns] = await Promise.all([
+        api.listMessagePage(id, { limit: MESSAGE_PAGE_SIZE }),
+        api.listRuns(id),
+      ]);
+      const nextMessages = page.messages;
       if (generation !== loadGeneration.current) return;
       setMessages((current) => {
         const pending = current.filter(
@@ -295,6 +292,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         );
         return [...nextMessages, ...pending];
       });
+      setHasOlderMessages(page.hasMore);
       setRuns(nextRuns);
       setProjectRuns((current) => {
         const others = current.filter((item) => item.sessionId !== id);
@@ -316,6 +314,26 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     },
     [api],
   );
+
+  const loadOlderMessages = useCallback(async () => {
+    if (!sessionId || loadingOlder) return;
+    const oldest = messages.find((item) => !item.id.startsWith("local-"));
+    if (!oldest) return;
+    setLoadingOlder(true);
+    try {
+      const page = await api.listMessagePage(sessionId, {
+        limit: MESSAGE_PAGE_SIZE,
+        before: { createdAt: oldest.createdAt, id: oldest.id },
+      });
+      setMessages((current) => {
+        const known = new Set(current.map((item) => item.id));
+        return [...page.messages.filter((item) => !known.has(item.id)), ...current];
+      });
+      setHasOlderMessages(page.hasMore);
+    } finally {
+      setLoadingOlder(false);
+    }
+  }, [api, sessionId, messages, loadingOlder]);
 
   const refresh = useCallback(async () => {
     try {
@@ -346,40 +364,64 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       setApprovals(nextApprovals);
       setHarnesses(nextHarnesses);
       setSettings(nextSettings as CapsuleSettings);
+      applyAppearance(nextSettings as CapsuleSettings);
       if (!settingsDefaultsApplied.current && nextSettings) {
         const loaded = nextSettings as CapsuleSettings;
         settingsDefaultsApplied.current = true;
         setMode(loaded.defaultMode);
-        if (
-          loaded.defaultAgentId &&
-          nextAgents.some((item: Agent) => item.id === loaded.defaultAgentId)
-        ) {
-          setAgentId(loaded.defaultAgentId);
-        }
+        const defaultAgent =
+          loaded.defaultAgentId && nextAgents.some((item: Agent) => item.id === loaded.defaultAgentId)
+            ? loaded.defaultAgentId
+            : nextAgents[0]?.id;
+        if (defaultAgent) setAgentId(defaultAgent);
+      } else if (!nextAgents.some((item: Agent) => item.id === agentId)) {
+        // The stored choice can be a mock-only agent from an offline session.
+        // Never keep it selected once the live Gateway reports its real catalog.
+        const fallbackAgent = nextAgents[0]?.id;
+        if (fallbackAgent) setAgentId(fallbackAgent);
       }
       const selectedProject = projectId ?? nextProjects[0]?.id;
-      if (selectedProject && selectedProject !== projectId) setProjectId(selectedProject);
-      if (selectedProject) {
-        const [nextSessions, nextHarnessSessions] = await Promise.all([
-          api.listSessions(selectedProject),
-          api.listHarnessSessions(selectedProject),
-        ]);
-        setSessions(nextSessions);
-        setHarnessSessions(nextHarnessSessions);
-        if (!sessionId && nextSessions[0]) setSessionId(nextSessions[0].id);
+      if (selectedProject && selectedProject !== projectId) {
+        applyProjectDefaults(nextProjects.find((item: Project) => item.id === selectedProject), nextHarnesses);
+        setProjectId(selectedProject);
+      }
+      const [nextSessions, nextHarnessSessions, nextRuns] = await Promise.all([
+        api.listSessions(),
+        selectedProject ? api.listHarnessSessions(selectedProject) : Promise.resolve([]),
+        api.listRuns(),
+      ]);
+      setSessions(nextSessions);
+      setHarnessSessions(nextHarnessSessions);
+      setProjectRuns(nextRuns);
+      if (!sessionId) {
+        const first = nextSessions.find(
+          (item: Session) => item.projectId === selectedProject && item.state === "active",
+        );
+        if (first) setSessionId(first.id);
       }
     } catch (error) {
       console.error("Failed to load Capsule state", error);
       setNotice(error instanceof Error ? error.message : String(error));
     }
-  }, [api, projectId, sessionId]);
+  }, [agentId, api, projectId, sessionId]);
 
   useEffect(() => {
     void refresh();
     const off = [
       api.on("connection", () => void refresh()),
-      api.on("message", () => {
-        if (sessionId) void loadSession(sessionId);
+      api.on("message", (incoming) => {
+        const message = incoming as ChatMessage;
+        if (!sessionId || message?.sessionId !== sessionId) return;
+        // Append the frame we were handed rather than re-reading the whole
+        // conversation; a full reload per chunk is what made this quadratic.
+        setMessages((current) => {
+          if (current.some((item) => item.id === message.id)) return current;
+          const withoutOptimistic = current.filter(
+            (item) =>
+              !(item.id.startsWith("local-") && item.role === message.role && item.content === message.content),
+          );
+          return [...withoutOptimistic, message];
+        });
       }),
       api.on("run", () => {
         if (sessionId) void loadSession(sessionId);
@@ -400,8 +442,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           setPalette(false);
           setView("settings");
         }
-        if (command === "harness" || command === "harness-updated" || command === "projects-updated") {
+        if (
+          command === "harness" ||
+          command === "harness-updated" ||
+          command === "projects-updated" ||
+          command === "sessions-updated"
+        ) {
           void refresh();
+        }
+        if (command === "git-updated" && projectId) {
+          void api.gitStatus(projectId).then(setGit).catch(() => undefined);
         }
       }),
     ];
@@ -411,7 +461,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         event.target instanceof HTMLElement &&
         Boolean(event.target.closest("input, textarea, select, [contenteditable]"));
       const key = event.key.toLowerCase();
-      if (typing && (key === "n" || key === "b")) return;
+      if (typing && key === "n") return;
       if (key === "k") {
         event.preventDefault();
         setPalette((open) => !open);
@@ -447,12 +497,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         setInspectorOpen((open) => !open);
       }
     };
-    window.addEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey, true);
     return () => {
       off.forEach((fn) => fn());
-      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keydown", onKey, true);
     };
-  }, [api, loadSession, refresh, sessionId]);
+  }, [api, loadSession, projectId, refresh, sessionId]);
 
   useEffect(() => {
     if (sessionId) void loadSession(sessionId);
@@ -486,17 +536,27 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setSidebarWidthState(Math.min(352, Math.max(220, Math.round(value))));
   }
 
+  function applyProjectDefaults(nextProject: Project | undefined, nextHarnesses = harnesses) {
+    if (!nextProject) return;
+    const dedicatedHarness = nextHarnesses.some((item) => item.id === nextProject.defaultAgentId);
+    if (dedicatedHarness && nextProject.defaultAgentId) {
+      setAgentId(nextProject.defaultAgentId);
+      setMode("code");
+      return;
+    }
+    if (nextProject.defaultAgentId && agents.some((item) => item.id === nextProject.defaultAgentId)) {
+      setAgentId(nextProject.defaultAgentId);
+    }
+    setMode(nextProject.defaultMode);
+  }
+
   useEffect(() => {
     if (!projectId) {
       setGit(undefined);
       setFiles([]);
-      setProjectRuns([]);
       return;
     }
-    void api
-      .listRuns()
-      .then((items: Run[]) => setProjectRuns(items.filter((item) => item.projectId === projectId)))
-      .catch(() => setProjectRuns([]));
+    void api.listRuns().then(setProjectRuns).catch(() => undefined);
     void api.gitStatus(projectId).then(setGit).catch(() => setGit(undefined));
     void api
       .listFiles(projectId)
@@ -607,15 +667,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       if (!directory) return;
       const name = folderName(directory);
       const target = projectId ?? projects[0]?.id;
-      if (!target) {
+      const current = projects.find((item) => item.id === target);
+      if (!target || current?.name === "Inbox") {
         const created = await api.createProject({ name, workingDirectory: directory });
         setProjectId(created.id);
       } else {
-        const current = projects.find((item) => item.id === target);
-        await api.updateProject(target, {
-          workingDirectory: directory,
-          ...(!current?.workingDirectory && current?.name === "Inbox" ? { name } : {}),
-        });
+        await api.updateProject(target, { workingDirectory: directory });
       }
       setView("chat");
       setNotice(undefined);
@@ -779,6 +836,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         prompt,
         cwd: project?.workingDirectory,
         mode: options?.mode ?? "persistent",
+        permissionProfile:
+          session?.permissionProfile === "strict" ||
+          session?.permissionProfile === "approve-all" ||
+          session?.permissionProfile === "default"
+            ? (session.permissionProfile as HarnessPermissionProfile)
+            : settings?.defaultPermission,
       });
       setSessionId(result.session.id);
       setAgentId(harnessId);
@@ -913,6 +976,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   async function updateSettings(patch: Partial<CapsuleSettings>) {
     const next = (await api.updateSettings(patch)) as CapsuleSettings;
     setSettings(next);
+    applyAppearance(next);
     if (patch.defaultMode) setMode(patch.defaultMode);
     if (patch.defaultAgentId) setAgentId(patch.defaultAgentId);
     return next;
@@ -961,7 +1025,41 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const steps = stepFromEvents(events);
+  async function gitPush() {
+    if (!projectId) return;
+    try {
+      setGit(await api.gitPush(projectId));
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function gitCreatePullRequest(input?: { title?: string; body?: string }) {
+    if (!projectId) return;
+    try {
+      setGit(
+        await api.gitCreatePullRequest(projectId, {
+          ...input,
+          sessionId,
+        }),
+      );
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function gitMergePullRequest() {
+    if (!projectId) return;
+    try {
+      setGit(await api.gitMergePullRequest(projectId));
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  const steps = activityFromEvents(events, Boolean(activeRun && activeRun.status !== "running"), {
+    reasoning: settings?.reasoningSummary,
+  });
 
   const value = useMemo<WorkspaceValue>(
     () => ({
@@ -975,6 +1073,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       agents,
       skills,
       messages,
+      hasOlderMessages,
+      loadingOlder,
+      loadOlderMessages,
       runs,
       events,
       artifacts,
@@ -1005,12 +1106,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       files,
       confirm,
       setConfirm,
-      setProjectId: (id: string) => {
+      setProjectId: (id: string, nextSessionId?: string) => {
+        applyProjectDefaults(projects.find((item) => item.id === id));
         setProjectId(id);
-        void api.listSessions(id).then((next) => {
-          setSessions(next);
-          setSessionId(next[0]?.id);
-        });
+        if (nextSessionId) {
+          setSessionId(nextSessionId);
+          return;
+        }
+        if (sessions.find((item) => item.id === sessionId)?.projectId === id) return;
+        const first = sessions.find((item) => item.projectId === id && item.state === "active");
+        setSessionId(first?.id);
       },
       setSessionId,
       setAgentId,
@@ -1075,6 +1180,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       gitStage,
       gitDiscard,
       gitCreateBranch,
+      gitPush,
+      gitCreatePullRequest,
+      gitMergePullRequest,
       settings,
       updateSettings,
     }),

@@ -1,9 +1,9 @@
+import { isFeaturedHarness } from "../../lib/harness";
 import { useState } from "react";
-import type { AcpMode, HarnessStatus } from "@capsule/shared";
+import { PERMISSION_PROFILES, type AcpMode, type HarnessStatus } from "@capsule/shared";
 import { GatewayBanner } from "../shell/GatewayBanner";
+import { formatProjectRoot } from "../../lib/paths";
 import { useWorkspace } from "../../lib/workspace";
-
-const PERMISSION_PROFILES = ["default", "strict", "approve-all"] as const;
 
 function canSpawn(readiness: string): boolean {
   return readiness !== "gateway_offline";
@@ -42,8 +42,8 @@ export function RuntimesView() {
   const [spawnMode, setSpawnMode] = useState<AcpMode>("persistent");
   const [showAll, setShowAll] = useState(false);
   const harnesses = harnessList ?? [];
-  const primary = harnesses.filter((item) => item.id === "claude" || item.id === "codex");
-  const others = harnesses.filter((item) => item.id !== "claude" && item.id !== "codex");
+  const primary = harnesses.filter(isFeaturedHarness);
+  const others = harnesses.filter((item) => !isFeaturedHarness(item));
   const blockReason = spawnBlockReason(connected, projectId, project?.workingDirectory);
   const extra = showAll
     ? others
@@ -62,10 +62,11 @@ export function RuntimesView() {
         <p>
           ACP harnesses run through OpenClaw acpx on the Gateway host — not inside Capsule, and not
           inside the OpenClaw sandbox. Spawn uses{" "}
-          <span className="mono">/acp spawn &lt;id&gt; --bind here --mode {spawnMode}</span>
-          {project?.workingDirectory ? " with this folder as cwd." : "."} Codex ACP is the explicit
-          fallback; native <span className="mono">/codex</span> stays on the Gateway when that plugin
-          is enabled.
+          <span className="mono">/acp spawn &lt;id&gt; --bind off --mode {spawnMode}</span>
+          {project?.workingDirectory ? " with this folder as cwd." : "."} Standard and Full access set
+          Gateway <span className="mono">approve-all</span>; Supervised refuses tools instead of
+          asking. Codex ACP is the explicit fallback; native <span className="mono">/codex</span>{" "}
+          stays on the Gateway when that plugin is enabled.
         </p>
       </div>
       <GatewayBanner />
@@ -77,7 +78,12 @@ export function RuntimesView() {
           The path must exist on the Gateway host.
         </p>
         <div className="row">
-          <div className="mono">{project?.workingDirectory ?? "No working directory"}</div>
+          <div className="mono">
+            {formatProjectRoot(project?.workingDirectory, {
+              home: window.capsule.homeDir,
+              fallback: "No working directory",
+            })}
+          </div>
           <button className="chip" disabled={!projectId} onClick={() => void pickProjectDirectory()}>
             Choose folder
           </button>
@@ -195,7 +201,7 @@ function HarnessCard({
   harness: HarnessStatus;
   doctor?: { checks: Array<{ id: string; label: string; ok: boolean; detail: string }>; gatewayOutput?: string };
   dedicated: boolean;
-  live: Array<{ id: string; title: string; harnessState?: string }>;
+  live: Array<{ id: string; title: string; harnessState?: string; permissionProfile?: string }>;
   canSpawnNow: boolean;
   sessionId?: string;
   connected: boolean;
@@ -285,14 +291,16 @@ function HarnessCard({
           {sessionId && live.some((item) => item.id === sessionId) && (
             <div className="actions">
               <select
-                defaultValue="default"
+                value={
+                  live.find((item) => item.id === sessionId)?.permissionProfile ?? "default"
+                }
                 onChange={(event) => {
                   if (event.target.value) onOption("permissions", event.target.value);
                 }}
               >
                 {PERMISSION_PROFILES.map((profile) => (
-                  <option key={profile} value={profile}>
-                    /acp permissions {profile}
+                  <option key={profile.id} value={profile.id}>
+                    {profile.label}
                   </option>
                 ))}
               </select>

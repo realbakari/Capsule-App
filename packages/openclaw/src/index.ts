@@ -10,5 +10,19 @@ export {
 } from "./discovery.js";
 export { OpenClawAdapter, type OpenClawAdapterOptions } from "./adapter.js";
 export { createGatewayHostDeps, loadOrCreateDeviceIdentity } from "./device-identity.js";
-export { acpCommandFailed, extractGatewayText, isGatewayTurnDone } from "./events.js";
+export {
+  acpCommandFailed,
+  extractAcpSessionKey,
+  extractGatewayText,
+  isGatewayTurnDone,
+} from "./events.js";
+export {
+  acpxModeIsNonFatal,
+  acpxPolicyAllowsHeadlessWrites,
+  isAcpPermissionRequestEvent,
+  readAcpPermissionRequest,
+  readAcpxHarnessPolicy,
+  resolveAcpxEnabled,
+} from "./plugins.js";
+export { pickGatewayAgentId, resolveGatewayAgentMap } from "./agent-map.js";
 export { MockAgentRuntime } from "./mock.js";

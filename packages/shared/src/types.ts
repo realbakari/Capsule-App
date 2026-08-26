@@ -145,6 +145,8 @@ export interface Session {
   permissionProfile?: string;
   modelOverride?: string;
   pinned?: boolean;
+  /** Per-thread cwd for Inbox / projectless tasks. Project repos leave this unset. */
+  workingDirectory?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -166,12 +168,28 @@ export interface FileEntry {
 export interface GitChange {
   path: string;
   code: string;
+  /** Lines added, from `git diff --numstat`. Absent for binary or untracked files. */
+  added?: number;
+  /** Lines removed. Absent for binary or untracked files. */
+  removed?: number;
 }
 
 export interface ContentHit {
   path: string;
   line: number;
   text: string;
+}
+
+export interface GitPullRequest {
+  number: number;
+  url: string;
+  title: string;
+  isDraft: boolean;
+  state: string;
+  mergeState?: string;
+  reviewDecision?: string;
+  checks?: "pending" | "success" | "failure" | "none";
+  checksSummary?: string;
 }
 
 export interface GitStatus {
@@ -183,6 +201,13 @@ export interface GitStatus {
   summary: string;
   files: GitChange[];
   branches: string[];
+  ghAvailable?: boolean;
+  ahead?: number;
+  behind?: number;
+  /** Totals across `files`, for a one-line "+12 −3" summary. */
+  added?: number;
+  removed?: number;
+  pullRequest?: GitPullRequest;
 }
 
 export interface ChatMessage {
@@ -190,8 +215,18 @@ export interface ChatMessage {
   sessionId: string;
   role: "user" | "assistant" | "system";
   content: string;
+  /** Set when the turn is something other than a plain message, e.g. a steer
+   *  sent into an in-flight run. Carries intent the content should not. */
+  kind?: "steer";
   runId?: string;
   createdAt: string;
+}
+
+/** One page of a conversation, oldest-first, with a cursor for the page before it. */
+export interface MessagePage {
+  messages: ChatMessage[];
+  /** True when older messages exist before `messages[0]`. */
+  hasMore: boolean;
 }
 
 export interface ContractRequirement {
@@ -290,6 +325,12 @@ export interface VerificationResult {
     description: string;
     passed: boolean;
     detail?: string;
+    /**
+     * Advisory checks are guidance to the agent, not testable postconditions —
+     * a prose keyword match cannot decide whether a turn succeeded. They are
+     * reported but never fail the run.
+     */
+    advisory?: boolean;
   }>;
   createdAt: string;
 }
@@ -346,6 +387,7 @@ export interface CreateSessionInput {
   title?: string;
   mode?: AgentMode;
   permissionProfile?: import("./harness.js").HarnessPermissionProfile;
+  workingDirectory?: string;
 }
 
 export interface AgentMessage {

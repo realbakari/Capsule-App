@@ -25,19 +25,48 @@ export const PRIMARY_HARNESS_IDS: HarnessId[] = ["claude", "codex"];
 export type HarnessReadiness =
   | "ready"
   | "missing_cli"
+  | "needs_login"
   | "missing_acpx"
   | "gateway_offline"
   | "dedicated"
   | "running";
 
+/**
+ * Result of asking a harness CLI whether it is signed in. Capsule never sees
+ * the credentials themselves — only the CLI's own verdict.
+ */
+export type HarnessLoginState = "logged_in" | "logged_out" | "config_invalid" | "unknown";
+
 export type AcpMode = "persistent" | "oneshot";
 
 export type HarnessPermissionProfile = "default" | "strict" | "approve-all";
 
+/*
+ * An ACP session has no channel to ask a question through: acpx throws
+ * PermissionPromptUnavailableError the moment a tool needs approval and no
+ * terminal is attached. Its own modes are ranked deny-all(0) <
+ * approve-reads(1) < approve-all(2), and only the two ends are non-fatal —
+ * approve-reads still falls through to the prompt for writes and commands.
+ *
+ * So "ask me" cannot be honoured here, and the labels say what actually
+ * happens rather than what we would prefer.
+ */
 export const PERMISSION_PROFILES: Array<{ id: HarnessPermissionProfile; label: string; detail: string }> = [
-  { id: "strict", label: "Supervised", detail: "Ask before commands and file changes" },
-  { id: "default", label: "Standard", detail: "Routine work proceeds; risky actions still ask" },
-  { id: "approve-all", label: "Full access", detail: "Commands and edits without prompts" },
+  {
+    id: "strict",
+    label: "Supervised",
+    detail: "Refuse tools that would need a prompt. ACP cannot show a dialog, so it never asks.",
+  },
+  {
+    id: "default",
+    label: "Standard",
+    detail: "Gateway approve-all: read, write, shell, and network without a TTY prompt.",
+  },
+  {
+    id: "approve-all",
+    label: "Full access",
+    detail: "Same as Standard for ACP: approve-all. Use when you want that spelled out.",
+  },
 ];
 
 export type HarnessSessionState =
@@ -59,6 +88,33 @@ export interface HarnessPreset {
   binaries: string[];
   installHint: string;
   installUrl: string;
+  /**
+   * The CLI the ACP adapter drives, when they differ. `binaries` names the
+   * adapter entrypoints Capsule looks for; this names the tool behind it, which
+   * is what the user actually installs and signs into.
+   */
+  underlyingCli?: string;
+  /** Where the harness keeps its own configuration, for Doctor and diagnostics. */
+  configFilePath?: string;
+  /**
+   * Shown in the main Runtimes list rather than behind "Other ACP targets".
+   * A property of the harness, not something a component should decide by
+   * comparing ids.
+   */
+  featured?: boolean;
+  /**
+   * True when the harness is bound to a single inference provider and offers no
+   * provider choice (Claude Code is Anthropic-only).
+   */
+  providerLocked?: boolean;
+  /**
+   * Subcommand that reports sign-in state, e.g. `claude auth status`. Exit 0
+   * means signed in. Only set for harnesses whose CLI offers such a check;
+   * without it Capsule cannot tell logged-out from ready and does not guess.
+   */
+  loginProbeArgs?: string[];
+  /** What the user has to run when the probe says logged out. */
+  loginHint?: string;
 }
 
 export interface HarnessDoctorCheck {
@@ -82,6 +138,7 @@ export interface HarnessStatus extends HarnessPreset {
   dedicatedProjectIds: string[];
   liveSessionIds: string[];
   detail: string;
+  loginState?: HarnessLoginState;
 }
 
 export interface SpawnHarnessInput {
@@ -152,8 +209,25 @@ function preset(
   binaries: string[],
   installHint: string,
   installUrl: string,
+  login?: { probeArgs: string[]; hint: string },
+  capabilities?: {
+    underlyingCli?: string;
+    configFilePath?: string;
+    providerLocked?: boolean;
+    featured?: boolean;
+  },
 ): HarnessPreset {
-  return { id, name, description, openclawAgentId: id, binaries, installHint, installUrl };
+  return {
+    id,
+    name,
+    description,
+    openclawAgentId: id,
+    binaries,
+    installHint,
+    installUrl,
+    ...(login ? { loginProbeArgs: login.probeArgs, loginHint: login.hint } : {}),
+    ...capabilities,
+  };
 }
 
 export const PRESET_HARNESSES: HarnessPreset[] = [
@@ -164,6 +238,13 @@ export const PRESET_HARNESSES: HarnessPreset[] = [
     ["claude"],
     "Authenticate Claude Code on the OpenClaw Gateway host. Capsule does not install it.",
     "https://claude.ai/code",
+    { probeArgs: ["auth", "status"], hint: "Run `claude` and complete sign-in" },
+    {
+      underlyingCli: "claude",
+      configFilePath: "~/.claude/settings.json",
+      providerLocked: true,
+      featured: true,
+    },
   ),
   preset(
     "codex",
@@ -172,6 +253,8 @@ export const PRESET_HARNESSES: HarnessPreset[] = [
     ["codex"],
     "Authenticate the Codex CLI on the Gateway host. Native /codex is a different route from /acp spawn codex.",
     "https://developers.openai.com/codex/cli",
+    { probeArgs: ["login", "status"], hint: "Run `codex login`" },
+    { underlyingCli: "codex", configFilePath: "~/.codex/config.toml", featured: true },
   ),
   preset(
     "copilot",
@@ -318,15 +401,49 @@ export function quoteAcpArg(value: string): string {
   return `"${value.replace(/(["\\$])/g, "\\$1")}"`;
 }
 
+/*
+ * acpx tokenizes slash-command arguments with a bare whitespace split and has
+ * no quote handling at all:
+ *
+ *   const tokens = normalized.slice(COMMAND.length).trim().split(/\s+/)
+ *
+ * So quoting an option value does not protect it — the quote characters simply
+ * survive into the tokens and the value still splits. `--label "Claude Code"`
+ * parses as label=`"Claude` followed by a stray positional `Code`. Any value
+ * passed through a slash command must therefore be a single whitespace-free
+ * token.
+ */
+
+/** Reduces a label to one acpx-safe token. */
+export function acpLabelToken(value: string): string {
+  const token = value
+    .normalize("NFKD")
+    .replace(/[^\w.-]+/g, "-")
+    .replace(/^[-.]+|[-.]+$/g, "")
+    .slice(0, 60)
+    .replace(/-+$/g, "");
+  return token || "capsule";
+}
+
 export function acpSpawnCommand(
   id: HarnessId,
   options: { cwd?: string; mode?: AcpMode; bind?: "here" | "off"; label?: string } = {},
 ): string {
-  const bind = options.bind ?? "here";
+  const bind = options.bind ?? "off";
   const mode = options.mode ?? "persistent";
   const parts = [`/acp spawn ${id}`, `--bind ${bind}`, `--mode ${mode}`];
-  if (options.cwd) parts.push(`--cwd ${quoteAcpArg(options.cwd)}`);
-  if (options.label) parts.push(`--label ${quoteAcpArg(options.label)}`);
+  if (options.cwd) {
+    // A path cannot be slugified without breaking it, and acpx cannot receive
+    // a value containing whitespace. Fail with the actual reason rather than
+    // emitting a command that mis-parses into a confusing usage error.
+    if (/\s/.test(options.cwd)) {
+      throw new Error(
+        `The working directory contains a space, which the Gateway's /acp spawn parser cannot accept: ${options.cwd}. Move the project to a path without spaces, or set a different working directory.`,
+      );
+    }
+    parts.push(`--cwd ${options.cwd}`);
+  }
+  if (options.label) parts.push(`--label ${acpLabelToken(options.label)}`);
   return parts.join(" ");
 }
 
@@ -360,7 +477,8 @@ export function acpModelCommand(model: string): string {
 }
 
 export function acpPermissionsCommand(profile: string): string {
-  return `/acp permissions ${quoteAcpArg(profile)}`;
+  const mapped = acpxPermissionMode(profile as HarnessPermissionProfile);
+  return `/acp permissions ${quoteAcpArg(mapped)}`;
 }
 
 export function acpCwdCommand(cwd: string): string {
@@ -414,4 +532,48 @@ export function parseAcpStatus(text: string): AcpStatusSnapshot {
 
 export function isAcpSessionKey(key: string | undefined): boolean {
   return Boolean(key && (key.includes(":acp:") || key.startsWith("acp:")));
+}
+
+/**
+ * The Gateway treats a session `label` as a unique key, but a conversation
+ * title is not unique — every new thread starts life as "New conversation", so
+ * the second one is rejected with "label already in use". Suffix the title with
+ * a short slice of the owning id: unique per conversation, stable across
+ * renames, and still readable in `openclaw sessions list`.
+ */
+export function gatewaySessionLabel(title: string | undefined, id: string): string {
+  const base = title?.trim() || "Conversation";
+  return `${base} (${id.slice(-6)})`;
+}
+
+/**
+ * The display name for a harness id. Components must not branch on the id —
+ * `harnessId === "codex" ? "Codex" : "Claude Code"` silently mislabels every
+ * other ACP target as Claude Code.
+ */
+export function harnessDisplayName(id: string | undefined, fallback = "Agent"): string {
+  if (!id) return fallback;
+  return PRESET_HARNESSES.find((preset) => preset.id === id)?.name ?? fallback;
+}
+
+/** Harnesses surfaced in the main Runtimes list. */
+export function isFeaturedHarness(harness: { featured?: boolean }): boolean {
+  return harness.featured === true;
+}
+
+/**
+ * Capsule's profile expressed in acpx's own vocabulary.
+ *
+ * acpx accepts only `approve-all | approve-reads | deny-all`, so "strict" was
+ * never a value it understood — it was sent verbatim and ignored. And leaving
+ * the profile unset left acpx on the mode that kills the turn outright, which
+ * is what produced "Permission prompt unavailable in non-interactive mode".
+ */
+export function acpxPermissionMode(
+  profile: string | undefined,
+): "approve-all" | "deny-all" {
+  // approve-reads is deliberately unused: it still throws on the first write
+  // or command, which is the failure this mapping exists to remove.
+  if (profile === "strict" || profile === "deny-all") return "deny-all";
+  return "approve-all";
 }

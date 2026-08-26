@@ -5,6 +5,11 @@
   --workspace-topbar-height: 52px;
   --workspace-traffic-inset: 90px;
   --workspace-titlebar-control-size: 1.75rem;
+  --workspace-titlebar-control-gap: 0.35rem;
+  --workspace-titlebar-content-left: calc(
+    var(--workspace-traffic-inset) + var(--workspace-titlebar-control-size) +
+      var(--workspace-titlebar-control-gap)
+  );
   --sidebar-width: 16.5rem;
   --sidebar-min-width: 13.75rem;
   --sidebar-max-width: 22rem;
@@ -50,6 +55,18 @@
   --warn: 44 52% 66%;
   --bad: 0 45% 69%;
   --radius: 0.5rem;
+  --border-strong: rgb(255 255 255 / 14%);
+
+  /* Keyboard focus. Offsetting the ring keeps it legible against the
+     element's own background instead of blending into the border. */
+  --ring: var(--accent, #f3f3ee);
+  --ring-width: 2px;
+  --ring-offset: 2px;
+
+  /* Motion: feedback -> state change, with a confident deceleration. */
+  --motion-instant: 120ms;
+  --motion-fast: 180ms;
+  --motion-ease: cubic-bezier(0.25, 1, 0.5, 1);
   --type-rem: 1rem;
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
   --mono: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
@@ -63,6 +80,79 @@
   --border-color: rgb(255 255 255 / 8%);
   --shadow: 0 24px 64px -24px rgb(0 0 0 / 0.7);
   --glass: color-mix(in srgb, var(--surface-0) var(--glass-opacity), transparent);
+}
+
+html[data-theme="light"],
+html[data-theme="system"] {
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-theme="system"] {
+    color-scheme: dark;
+  }
+}
+
+html[data-theme="light"] {
+  --crust: #e8e8e4;
+  --mantle: #ecece8;
+  --base: #f4f4f1;
+  --surface-0: #ffffff;
+  --surface-1: #f0f0ec;
+  --overlay-0: #6a6a66;
+  --overlay-1: #7d7d78;
+  --subtext-0: #5c5c58;
+  --subtext-1: #3a3a36;
+  --text: #161614;
+  --accent: #1a1a18;
+  --accent-fg: #f4f4f1;
+  --blue: #4a5a66;
+  --green: #3d6b3a;
+  --yellow: #8a7018;
+  --red: #a04848;
+  --bg: var(--base);
+  --text-muted: var(--subtext-0);
+  --text-faint: var(--overlay-1);
+  --bg-elevated: var(--surface-0);
+  --bg-sidebar: #ecece8;
+  --bg-hover: rgb(0 0 0 / 5%);
+  --bg-active: rgb(0 0 0 / 8%);
+  --border-color: rgb(0 0 0 / 8%);
+  --border-strong: rgb(0 0 0 / 14%);
+  --shadow: 0 24px 64px -24px rgb(0 0 0 / 0.18);
+  --glass: color-mix(in srgb, var(--surface-0) 86%, transparent);
+}
+
+@media (prefers-color-scheme: light) {
+  html[data-theme="system"] {
+    --crust: #e8e8e4;
+    --mantle: #ecece8;
+    --base: #f4f4f1;
+    --surface-0: #ffffff;
+    --surface-1: #f0f0ec;
+    --overlay-0: #6a6a66;
+    --overlay-1: #7d7d78;
+    --subtext-0: #5c5c58;
+    --subtext-1: #3a3a36;
+    --text: #161614;
+    --accent: #1a1a18;
+    --accent-fg: #f4f4f1;
+    --blue: #4a5a66;
+    --green: #3d6b3a;
+    --yellow: #8a7018;
+    --red: #a04848;
+    --bg: var(--base);
+    --text-muted: var(--subtext-0);
+    --text-faint: var(--overlay-1);
+    --bg-elevated: var(--surface-0);
+    --bg-sidebar: #ecece8;
+    --bg-hover: rgb(0 0 0 / 5%);
+    --bg-active: rgb(0 0 0 / 8%);
+    --border-color: rgb(0 0 0 / 8%);
+    --border-strong: rgb(0 0 0 / 14%);
+    --shadow: 0 24px 64px -24px rgb(0 0 0 / 0.18);
+    --glass: color-mix(in srgb, var(--surface-0) 86%, transparent);
+  }
 }
 
 * { box-sizing: border-box; }
@@ -88,8 +178,34 @@ body {
   letter-spacing: -0.011em;
 }
 button, input, textarea, select { font: inherit; color: inherit; }
-button:not(:disabled), summary, [role="button"] { cursor: pointer; }
-button:disabled { cursor: default; }
+button:not(:disabled),
+a[href],
+summary,
+[role="button"]:not([aria-disabled="true"]),
+[role="menuitem"]:not([aria-disabled="true"]),
+[role="option"]:not([aria-disabled="true"]),
+[role="tab"]:not([aria-disabled="true"]) {
+  cursor: pointer;
+}
+button:disabled, [aria-disabled="true"] { cursor: default; }
+
+/* Baseline keyboard focus for everything that does not opt out. Pointer
+   interaction never triggers this — :focus-visible only matches when the
+   engine decides a focus ring is warranted. Capsule is palette-driven
+   (Cmd+K, Tab through the sidebar), so this is load-bearing, not polish. */
+:focus-visible {
+  outline: var(--ring-width) solid var(--ring);
+  outline-offset: var(--ring-offset);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}
 ::selection { background: rgb(255 255 255 / 0.16); }
 ::-webkit-scrollbar { width: var(--app-scrollbar-width); height: var(--app-scrollbar-width); }
 ::-webkit-scrollbar-thumb {

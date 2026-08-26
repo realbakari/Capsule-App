@@ -48,6 +48,7 @@ function sessionParams(session: Session) {
     permissionProfile: optional(session.permissionProfile),
     modelOverride: optional(session.modelOverride),
     pinned: session.pinned ? 1 : 0,
+    workingDirectory: session.workingDirectory ?? null,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
   };
@@ -68,6 +69,7 @@ function normalizeSession(row: Session): Session {
     modelOverride: row.modelOverride || undefined,
     pinned: Boolean(row.pinned),
     openclawSessionKey: row.openclawSessionKey || undefined,
+    workingDirectory: row.workingDirectory || undefined,
   };
 }
 
@@ -170,11 +172,11 @@ export class CapsuleRepositories {
         `INSERT INTO sessions (
           id, workspace_id, project_id, agent_id, title, mode, state,
           openclaw_session_key, harness_id, harness_state, acp_mode,
-          permission_profile, model_override, pinned, created_at, updated_at
+          permission_profile, model_override, pinned, working_directory, created_at, updated_at
         ) VALUES (
           @id, @workspaceId, @projectId, @agentId, @title, @mode, @state,
           @openclawSessionKey, @harnessId, @harnessState, @acpMode,
-          @permissionProfile, @modelOverride, @pinned, @createdAt, @updatedAt
+          @permissionProfile, @modelOverride, @pinned, @workingDirectory, @createdAt, @updatedAt
         )`,
       )
       .run(sessionParams(session));
@@ -187,7 +189,7 @@ export class CapsuleRepositories {
          openclaw_session_key = @openclawSessionKey, harness_id = @harnessId,
          harness_state = @harnessState, acp_mode = @acpMode,
          permission_profile = @permissionProfile, model_override = @modelOverride,
-         pinned = @pinned, updated_at = @updatedAt WHERE id = @id`,
+         pinned = @pinned, working_directory = @workingDirectory, updated_at = @updatedAt WHERE id = @id`,
       )
       .run(sessionParams(session));
   }
@@ -224,7 +226,7 @@ export class CapsuleRepositories {
                 title, mode, state, openclaw_session_key AS openclawSessionKey,
                 harness_id AS harnessId, harness_state AS harnessState, acp_mode AS acpMode,
                 permission_profile AS permissionProfile, model_override AS modelOverride,
-                pinned, created_at AS createdAt, updated_at AS updatedAt`;
+                pinned, working_directory AS workingDirectory, created_at AS createdAt, updated_at AS updatedAt`;
     const sql = projectId
       ? `SELECT ${columns} FROM sessions WHERE project_id = ? ORDER BY pinned DESC, updated_at DESC`
       : `SELECT ${columns} FROM sessions ORDER BY pinned DESC, updated_at DESC`;
@@ -241,19 +243,50 @@ export class CapsuleRepositories {
   insertMessage(message: ChatMessage): void {
     this.db.sqlite
       .prepare(
-        `INSERT INTO messages (id, session_id, role, content, run_id, created_at)
-         VALUES (@id, @sessionId, @role, @content, @runId, @createdAt)`,
+        `INSERT INTO messages (id, session_id, role, content, kind, run_id, created_at)
+         VALUES (@id, @sessionId, @role, @content, @kind, @runId, @createdAt)`,
       )
-      .run({ ...message, runId: message.runId ?? null });
+      .run({ ...message, kind: message.kind ?? null, runId: message.runId ?? null });
   }
 
   listMessages(sessionId: string): ChatMessage[] {
     return this.db.sqlite
       .prepare(
-        `SELECT id, session_id AS sessionId, role, content, run_id AS runId, created_at AS createdAt
+        `SELECT id, session_id AS sessionId, role, content, kind, run_id AS runId, created_at AS createdAt
          FROM messages WHERE session_id = ? ORDER BY created_at ASC`,
       )
       .all(sessionId) as ChatMessage[];
+  }
+
+  /*
+   * Keyset pagination over (created_at, id). OFFSET would re-scan the whole
+   * conversation for every page, and created_at alone is not unique — two
+   * messages written in the same millisecond would make a cursor skip or
+   * repeat rows. The id breaks that tie.
+   */
+  listMessagesBefore(
+    sessionId: string,
+    limit: number,
+    before?: { createdAt: string; id: string },
+  ): ChatMessage[] {
+    const columns = `id, session_id AS sessionId, role, content, kind, run_id AS runId, created_at AS createdAt`;
+    const rows = before
+      ? (this.db.sqlite
+          .prepare(
+            `SELECT ${columns} FROM messages
+             WHERE session_id = @sessionId
+               AND (created_at < @createdAt OR (created_at = @createdAt AND id < @id))
+             ORDER BY created_at DESC, id DESC LIMIT @limit`,
+          )
+          .all({ sessionId, createdAt: before.createdAt, id: before.id, limit }) as ChatMessage[])
+      : (this.db.sqlite
+          .prepare(
+            `SELECT ${columns} FROM messages WHERE session_id = @sessionId
+             ORDER BY created_at DESC, id DESC LIMIT @limit`,
+          )
+          .all({ sessionId, limit }) as ChatMessage[]);
+    // Query is newest-first so LIMIT takes the right end; callers want reading order.
+    return rows.reverse();
   }
 
   searchMessages(needle: string, limit = 20): Array<{
@@ -521,10 +554,20 @@ export class CapsuleRepositories {
   }
 
   insertPolicy(rule: PolicyRule): void {
+    this.upsertPolicy(rule);
+  }
+
+  upsertPolicy(rule: PolicyRule): void {
     this.db.sqlite
       .prepare(
         `INSERT INTO policies (id, scope, scope_id, resource, action, decision)
-         VALUES (@id, @scope, @scopeId, @resource, @action, @decision)`,
+         VALUES (@id, @scope, @scopeId, @resource, @action, @decision)
+         ON CONFLICT(id) DO UPDATE SET
+           scope = excluded.scope,
+           scope_id = excluded.scope_id,
+           resource = excluded.resource,
+           action = excluded.action,
+           decision = excluded.decision`,
       )
       .run({ ...rule, scopeId: rule.scopeId ?? null });
   }

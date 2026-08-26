@@ -12,4 +12,16 @@ describe("buildContract", () => {
     const contract = buildContract({ mode: "research", prompt: "Summarize the protocol" });
     expect(contract.required.some((item) => item.value === "source")).toBe(true);
   });
+
+  it("forbids web and shell when those settings are off or strict", () => {
+    const contract = buildContract({
+      mode: "research",
+      prompt: "Summarize the protocol",
+      webAccess: "off",
+      sandbox: "strict",
+    });
+    expect(contract.required.some((item) => item.value === "source")).toBe(false);
+    expect(contract.forbidden.some((item) => item.value === "web")).toBe(true);
+    expect(contract.forbidden.some((item) => item.value === "terminal")).toBe(true);
+  });
 });

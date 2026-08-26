@@ -64,6 +64,15 @@ const ACP_FAIL = [
   "unknown command",
   "failed to spawn",
   "harness command not found",
+  "requires operator.admin",
+  "conversation bindings are unavailable",
+  "binding requires a channel context",
+  "bind here requires",
+  "could not initialize acp",
+  "acp spawn failed",
+  "no api key found",
+  "missing-provider-auth",
+  "agent failed before reply",
 ];
 
 export function acpCommandFailed(text: string | undefined): string | undefined {
@@ -71,4 +80,112 @@ export function acpCommandFailed(text: string | undefined): string | undefined {
   const lower = text.toLowerCase();
   if (ACP_FAIL.some((needle) => lower.includes(needle))) return text.trim();
   return undefined;
+}
+
+export function extractAcpSessionKey(text: string | undefined): string | undefined {
+  if (!text) return undefined;
+  const match = text.match(/agent:[a-z0-9_-]+:acp:[a-z0-9-]+/i);
+  return match?.[0];
+}
+
+export function isGatewayAgentFailure(text: string | undefined): boolean {
+  return Boolean(acpCommandFailed(text));
+}
+
+/*
+ * The Gateway tags every agent frame with a `stream` naming what kind of
+ * content it carries — the flattened form of ACP's session/update kinds
+ * (agent_thought_chunk, tool_call, plan, …). Capsule used to collapse all of
+ * them to "tool" or "assistant", which meant reasoning, plan text and stderr
+ * were concatenated into the assistant's reply and the UI had nothing real to
+ * show while a turn was in flight.
+ *
+ * The kinds below mirror T3 Code's RuntimeContentStreamKind: keep reasoning
+ * separate from prose, and keep tool/command/patch output separate from both.
+ */
+export type AgentStreamKind =
+  | "thinking"
+  | "message"
+  | "plan"
+  | "tool"
+  | "command"
+  | "patch"
+  | "error"
+  | "lifecycle";
+
+const STREAM_KINDS: Record<string, AgentStreamKind> = {
+  thought: "thinking",
+  thinking: "thinking",
+  reasoning: "thinking",
+  plan: "plan",
+  tool: "tool",
+  tool_call: "tool",
+  tool_call_update: "tool",
+  item: "tool",
+  command_output: "command",
+  stdout: "command",
+  stderr: "command",
+  output: "command",
+  patch: "patch",
+  diff: "patch",
+  error: "error",
+  lifecycle: "lifecycle",
+  compaction: "lifecycle",
+  approval: "lifecycle",
+  assistant: "message",
+  acp: "message",
+};
+
+/**
+ * Maps a Gateway `stream` value to the kind Capsule reasons about. Unknown
+ * streams fall back to "message", preserving the previous behaviour for
+ * anything this table does not yet name.
+ */
+export function classifyAgentStream(stream: string | undefined): AgentStreamKind {
+  const key = (stream ?? "").trim().toLowerCase();
+  if (!key) return "message";
+  if (STREAM_KINDS[key]) return STREAM_KINDS[key];
+  // `tool`-prefixed variants the Gateway may add later.
+  if (key.startsWith("tool")) return "tool";
+  if (key.startsWith("reason") || key.startsWith("think")) return "thinking";
+  return "message";
+}
+
+/** Only prose belongs in the assistant's reply; everything else is activity. */
+export function isAssistantProse(kind: AgentStreamKind): boolean {
+  return kind === "message";
+}
+
+/*
+ * ACP surfaces protocol-level failures as raw text ("ACP_TURN_FAILED:
+ * Permission prompt unavailable in non-interactive mode"). Those name the
+ * mechanism, not the thing the user can do about it. Rewrite the ones we
+ * understand into an instruction, and leave anything else untouched.
+ */
+const ACP_ERROR_GUIDANCE: Array<{ match: RegExp; guidance: string }> = [
+  {
+    match: /permission prompt unavailable in non-interactive mode/i,
+    guidance:
+      "ACP has no permission dialog. Writes, shell, and network need the Gateway plugin on approve-all, then a new spawn (old sessions keep the old flags).\n\nopenclaw config set plugins.entries.acpx.config.permissionMode approve-all\nopenclaw config set plugins.entries.acpx.config.nonInteractivePermissions deny\nopenclaw gateway restart\n\nThen Runtimes → Spawn again. In Capsule, Standard/Full access already maps to approve-all; Supervised refuses tools instead of asking.",
+  },
+  {
+    match: /authentication required|please run \/login/i,
+    guidance:
+      "The harness CLI is not signed in on the Gateway host. Sign in to it, then run Doctor.",
+  },
+  {
+    match: /no api key found for provider/i,
+    guidance:
+      "The turn was answered by the Gateway's own agent instead of your harness, and that agent has no provider credentials. Dedicate a harness to this project so the work routes through ACP.",
+  },
+];
+
+/** Returns actionable guidance for a known ACP failure, else the original text. */
+export function explainAcpFailure(text: string | undefined): string | undefined {
+  const message = text?.trim();
+  if (!message) return undefined;
+  for (const entry of ACP_ERROR_GUIDANCE) {
+    if (entry.match.test(message)) return `${message.split("\n")[0]}\n\n${entry.guidance}`;
+  }
+  return message;
 }

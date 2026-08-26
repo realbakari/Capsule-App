@@ -3,15 +3,18 @@ import path from "node:path";
 import { agentIdForMode, DEFAULT_AGENTS, excludeSystemAgents } from "@capsule/agents";
 import {
   buildDoctorReport,
+  clearBinaryCache,
+  clearLoginCache,
   harnessAgentRecord,
   isLiveHarnessState,
   localDoctorChecks,
   PRESET_HARNESSES,
+  probeLoginState,
   presetFor,
   probeHarnesses,
   whichBinary,
 } from "@capsule/harness";
-import { createTextArtifact } from "@capsule/artifacts";
+
 import { createBuzzAdapter } from "@capsule/buzz";
 import { buildContract } from "@capsule/contracts";
 import { CapsuleDatabase, CapsuleRepositories } from "@capsule/database";
@@ -19,22 +22,40 @@ import {
   checkoutBranch as checkoutGitBranch,
   commitAll,
   createBranch as createGitBranch,
+  createPullRequest as openPullRequest,
   discardFile,
+  enrichGitStatus,
   FilesystemAdapter,
+  lastCommitSubject,
+  mergePullRequest as mergeGithubPullRequest,
+  pushCurrentBranch,
   readGitDiff,
   readGitStatus,
   searchContents,
   stageFile,
+  viewPullRequest,
 } from "@capsule/filesystem";
-import { MockAgentRuntime, OpenClawAdapter, defaultGatewayEndpoint } from "@capsule/openclaw";
-import { decidePolicy, DEFAULT_POLICIES, recordDecision } from "@capsule/policies";
+import {
+  MockAgentRuntime,
+  OpenClawAdapter,
+  acpCommandFailed,
+  acpxModeIsNonFatal,
+  defaultGatewayEndpoint,
+} from "@capsule/openclaw";
+import { decidePolicy, DEFAULT_POLICIES, policiesFromSettings, recordDecision } from "@capsule/policies";
 import { createProjectRecord } from "@capsule/projects";
 import { createRunEvent, createRunRecord } from "@capsule/runs";
 import { createSessionRecord, titleFromPrompt } from "@capsule/sessions";
 import {
   acpDoctorCommand,
   acpInstallCommand,
+  FILE_CHANGED_ON_DISK,
+  fileContentRevision,
+  type FileReadResult,
+  acpxPermissionMode,
   createId,
+  gatewaySessionLabel,
+  isAcpSessionKey,
   nowIso,
   type Agent,
   type AgentMessage,
@@ -43,8 +64,13 @@ import {
   type ApprovalRequest,
   type CapsuleSettings,
   type ChatMessage,
+  applyAgentInstructionHints,
+  applyBranchPrefix,
+  ARCHIVE_INACTIVE_MS,
   DEFAULT_CAPSULE_SETTINGS,
   normalizeCapsuleSettings,
+  pullRequestWatchEnabled,
+  shouldArchiveInactiveSession,
   TOKEN_PRESENT_MASK,
   type ConnectionState,
   type CreateProjectInput,
@@ -63,6 +89,7 @@ import {
   type SpawnHarnessInput,
   type UpdateProjectInput,
   isHarnessId,
+  type MessagePage,
   type Project,
   type SearchResults,
   type Run,
@@ -72,13 +99,20 @@ import {
 } from "@capsule/shared";
 import { DEFAULT_SKILLS, skillIdForMode } from "@capsule/skills";
 import { openNativeTerminal, runInDirectory } from "@capsule/terminal";
-import { evaluateRun, verifyContract } from "@capsule/verification";
+import { verifyContract } from "@capsule/verification";
 import {
   CAPSULE_KEYCHAIN_SERVICE,
   GATEWAY_TOKEN_ACCOUNT,
   createKeychainAdapter,
   type KeychainAdapter,
 } from "./keychain.js";
+import {
+  INBOX_PROJECT_NAME,
+  allocateThreadFolder,
+  defaultProjectlessFolder,
+  ensureProjectlessFolder,
+  isInboxProject,
+} from "./projectless.js";
 
 export interface CapsuleEngineOptions {
   databasePath: string;
@@ -109,9 +143,13 @@ export class CapsuleEngine {
   private openclaw: OpenClawAdapter;
   private settings: CapsuleSettings;
   private logs: string[] = [];
+  private stopped = false;
   private usingMock = true;
   private acpBuffers = new Map<string, string>();
   private acpUnsub?: () => void;
+  private prWatchers = new Map<string, ReturnType<typeof setInterval>>();
+  private prFixFingerprints = new Map<string, string>();
+  private prWatchSessions = new Map<string, string>();
 
   constructor(private readonly options: CapsuleEngineOptions) {
     this.db = new CapsuleDatabase(options.databasePath);
@@ -128,6 +166,10 @@ export class CapsuleEngine {
   async start(): Promise<void> {
     this.bootstrapWorkspace();
     this.loadSettings();
+    this.bindInboxToProjectless();
+    this.applyWorkspacePolicies();
+    this.failStaleRuns();
+    this.archiveInactiveSessions();
     await this.hydrateSecrets();
     this.openclaw = this.createOpenClawAdapter();
     await this.connectPreferredRuntime();
@@ -136,6 +178,13 @@ export class CapsuleEngine {
   }
 
   async stop(): Promise<void> {
+    // Runtime subscriptions can outlive stop() — a cancelled or failed turn
+    // keeps draining queued events — and every handler writes to the database.
+    // Mark the engine stopped before closing so late events are dropped rather
+    // than throwing "The database connection is not open" from a detached
+    // promise, which surfaces as an unhandled rejection with no run to blame.
+    this.stopped = true;
+    this.stopAllPrWatch();
     this.acpUnsub?.();
     await this.runtime.disconnect().catch(() => undefined);
     this.db.close();
@@ -198,6 +247,9 @@ export class CapsuleEngine {
 
   createProject(input: CreateProjectInput): Project {
     const project = createProjectRecord(this.workspaceId, input);
+    if (isInboxProject(project) && !project.workingDirectory) {
+      project.workingDirectory = ensureProjectlessFolder(this.projectlessRoot());
+    }
     this.repos.insertProject(project);
     return project;
   }
@@ -208,7 +260,16 @@ export class CapsuleEngine {
 
   async listAgents(): Promise<Agent[]> {
     const stored = this.repos.listAgents();
-    const base = excludeSystemAgents(stored.length > 0 ? stored : DEFAULT_AGENTS);
+    // Bootstrap agents are only a mock-runtime fallback. Once connected, showing
+    // a stale `general`/`coding` mock record lets the renderer select an agent
+    // that the Gateway cannot actually run, which then silently falls back to
+    // the Gateway main agent.
+    const runtimeAgents = this.usingMock
+      ? stored.length > 0
+        ? stored
+        : DEFAULT_AGENTS
+      : stored.filter((agent) => agent.runtime === "openclaw");
+    const base = excludeSystemAgents(runtimeAgents);
     const harnesses = await this.listHarnesses();
     const extra = harnesses
       .filter((harness) => !base.some((agent) => agent.id === harness.id))
@@ -263,11 +324,35 @@ export class CapsuleEngine {
     if (!this.usingMock) {
       acpxEnabled = await this.openclaw.hasAcpxPlugin().catch(() => false);
     }
+    // Explicit environment re-check: drop cached lookups so a CLI installed —
+    // or signed into — since launch is picked up.
+    clearBinaryCache();
+    clearLoginCache();
+    const binaryPath = whichBinary(preset.binaries);
+    let acpxPermissionModeValue: string | undefined;
+    let acpxPolicyKnown = false;
+    if (!this.usingMock && acpxEnabled) {
+      try {
+        let policy = await this.openclaw.readAcpxHarnessPolicy();
+        acpxPolicyKnown = true;
+        // Fix the fatal default (approve-reads). Leave deny-all alone — that is Supervised.
+        if (!acpxModeIsNonFatal(policy.permissionMode)) {
+          await this.openclaw.ensureAcpxHeadlessWrites().catch(() => undefined);
+          policy = await this.openclaw.readAcpxHarnessPolicy();
+        }
+        acpxPermissionModeValue = policy.permissionMode;
+      } catch {
+        acpxPolicyKnown = false;
+      }
+    }
     const checks = localDoctorChecks({
       preset,
-      binaryPath: whichBinary(preset.binaries),
+      binaryPath,
       gatewayConnected: !this.usingMock,
       acpxEnabled,
+      loginState: this.usingMock ? undefined : probeLoginState(preset, binaryPath),
+      acpxPermissionMode: acpxPermissionModeValue,
+      acpxPolicyKnown,
     });
     let gatewayOutput: string | undefined;
     if (!this.usingMock) {
@@ -325,20 +410,49 @@ export class CapsuleEngine {
     const { projectId, harnessId } = input;
     const project = await this.dedicateHarness(projectId, harnessId);
     const preset = presetFor(harnessId)!;
-    const cwd = input.cwd ?? project.workingDirectory;
+    /*
+     * Refuse before spawning rather than letting the turn die mid-flight with
+     * an opaque ACP "Authentication required". Only a definite verdict blocks:
+     * an unrunnable probe returns "unknown" and must not gate a working
+     * harness.
+     */
+    if (!this.usingMock) {
+      const loginState = probeLoginState(preset, whichBinary(preset.binaries));
+      if (loginState === "logged_out") {
+        throw new Error(
+          `${preset.name} is installed but not signed in. ${preset.loginHint ?? "Sign in to its CLI"} on the Gateway host, then run Doctor.`,
+        );
+      }
+      if (loginState === "config_invalid") {
+        throw new Error(
+          `${preset.name}'s CLI config could not be read. Fix it, then run Doctor.`,
+        );
+      }
+    }
+    if (input.sessionId && this.requireSession(input.sessionId).projectId !== project.id) {
+      throw new Error("Harness session must belong to the selected project.");
+    }
     const title = input.sessionId
       ? this.requireSession(input.sessionId).title
       : `${preset.name} · ${project.name}`;
     const session = input.sessionId
       ? this.requireSession(input.sessionId)
       : createSessionRecord(project, { projectId: project.id, agentId: harnessId, mode: "code", title }, harnessId);
+    if (!session.workingDirectory && isInboxProject(project)) {
+      session.workingDirectory = allocateThreadFolder(
+        ensureProjectlessFolder(this.projectlessRoot()),
+        title,
+      );
+    }
+    const cwd = input.cwd ?? session.workingDirectory ?? project.workingDirectory;
 
     session.agentId = harnessId;
     session.mode = "code";
     session.harnessId = harnessId;
     session.harnessState = "spawning";
     session.acpMode = input.mode ?? "persistent";
-    session.permissionProfile = input.permissionProfile;
+    const permissionProfile = input.permissionProfile ?? this.settings.defaultPermission;
+    session.permissionProfile = permissionProfile;
     session.modelOverride = input.model;
     session.updatedAt = nowIso();
 
@@ -365,7 +479,7 @@ export class CapsuleEngine {
         prompt: input.prompt,
         mode: input.mode ?? "persistent",
         sessionKey: session.openclawSessionKey,
-        permissionProfile: input.permissionProfile,
+        permissionProfile,
         model: input.model,
       });
       session.openclawSessionKey = spawned.sessionKey;
@@ -390,13 +504,27 @@ export class CapsuleEngine {
 
   async cancelHarness(sessionId: string): Promise<HarnessControlResult> {
     const session = this.requireHarnessSession(sessionId);
+    // Cancelling a closed session used to write back "waiting", which
+    // isLiveHarnessState counts as live — resurrecting a dead ACP session in
+    // listHarnesses and in the conversation's harness bar.
+    if (!isLiveHarnessState(session.harnessState)) {
+      return { session, command: "/acp cancel", detail: "No in-flight turn to cancel." };
+    }
     const run = this.listRuns(session.id).find((item) =>
       ["running", "waiting", "approval_required"].includes(item.status),
     );
     if (this.usingMock) {
       if (run) await this.stopRun(run.id);
     } else if (session.openclawSessionKey) {
-      await this.openclaw.cancelAcp(session.openclawSessionKey, run?.openclawRunId);
+      try {
+        await this.openclaw.cancelAcp(session.openclawSessionKey, run?.openclawRunId);
+      } catch (error) {
+        session.harnessState = "error";
+        session.updatedAt = nowIso();
+        this.repos.updateSession(session);
+        this.events.emit("state", { command: "harness-updated" });
+        throw error;
+      }
       if (run) {
         run.status = "cancelled";
         run.updatedAt = nowIso();
@@ -423,7 +551,8 @@ export class CapsuleEngine {
       id: createId("msg"),
       sessionId: session.id,
       role: "user",
-      content: `Steer: ${text}`,
+      content: text,
+      kind: "steer",
       createdAt: nowIso(),
     };
     this.repos.insertMessage(userMessage);
@@ -438,13 +567,20 @@ export class CapsuleEngine {
   async closeHarness(sessionId: string): Promise<HarnessControlResult> {
     const session = this.requireHarnessSession(sessionId);
     if (!this.usingMock && session.openclawSessionKey) {
-      await this.openclaw.closeAcp(session.openclawSessionKey).catch((error) => {
-        this.log(`ACP close failed: ${String(error)}`);
-      });
+      try {
+        await this.openclaw.closeAcp(session.openclawSessionKey);
+      } catch (error) {
+        session.harnessState = "error";
+        session.updatedAt = nowIso();
+        this.repos.updateSession(session);
+        this.events.emit("state", { command: "harness-updated" });
+        throw error;
+      }
     }
     session.harnessState = "closed";
     session.updatedAt = nowIso();
     this.repos.updateSession(session);
+    if (session.openclawSessionKey) this.acpBuffers.delete(session.openclawSessionKey);
     this.log(`Closed harness session ${session.id}`);
     this.events.emit("state", { command: "harness-updated" });
     return { session, command: "/acp close", detail: "ACP session closed." };
@@ -464,8 +600,17 @@ export class CapsuleEngine {
       };
     }
     const result = await this.openclaw.statusAcp(session.openclawSessionKey);
-    if (result.parsed.state === "running" || result.parsed.state === "idle") {
-      session.harnessState = result.parsed.state === "idle" ? "waiting" : "running";
+    const statusState = result.parsed.state?.toLowerCase();
+    if (statusState === "running" || statusState === "idle" || statusState === "waiting") {
+      session.harnessState = statusState === "running" ? "running" : "waiting";
+      session.updatedAt = nowIso();
+      this.repos.updateSession(session);
+    } else if (statusState === "closed" || statusState === "stopped") {
+      session.harnessState = "closed";
+      session.updatedAt = nowIso();
+      this.repos.updateSession(session);
+    } else if (statusState === "error" || statusState === "failed") {
+      session.harnessState = "error";
       session.updatedAt = nowIso();
       this.repos.updateSession(session);
     }
@@ -483,6 +628,15 @@ export class CapsuleEngine {
     const session = this.requireHarnessSession(patch.sessionId);
     const value = patch.value.trim();
     if (!value) throw new Error("Option value is empty");
+    let statusText: string | undefined;
+    if (!this.usingMock && session.openclawSessionKey) {
+      if (patch.key === "permissions") {
+        await this.openclaw
+          .ensureAcpxPermissionMode(acpxPermissionMode(value))
+          .catch(() => undefined);
+      }
+      statusText = await this.openclaw.setAcpOption(session.openclawSessionKey, patch.key, value);
+    }
     if (patch.key === "model") session.modelOverride = value;
     if (patch.key === "permissions") session.permissionProfile = value;
     if (patch.key === "cwd") {
@@ -490,10 +644,6 @@ export class CapsuleEngine {
       project.workingDirectory = value;
       project.updatedAt = nowIso();
       this.repos.updateProject(project);
-    }
-    let statusText: string | undefined;
-    if (!this.usingMock && session.openclawSessionKey) {
-      statusText = await this.openclaw.setAcpOption(session.openclawSessionKey, patch.key, value);
     }
     session.updatedAt = nowIso();
     this.repos.updateSession(session);
@@ -504,7 +654,10 @@ export class CapsuleEngine {
   listHarnessSessions(projectId?: string): Session[] {
     return this.repos
       .listSessions(projectId)
-      .filter((session) => Boolean(session.harnessId) && session.state === "active");
+      .filter(
+        (session) =>
+          Boolean(session.harnessId) && session.state === "active" && isLiveHarnessState(session.harnessState),
+      );
   }
 
   updateProject(id: string, patch: UpdateProjectInput): Project {
@@ -527,13 +680,26 @@ export class CapsuleEngine {
     this.requireProject(id);
     this.repos.deleteProject(id);
     if (this.repos.listProjects().length === 0) {
-      this.createProject({ name: "Inbox", description: "Default workspace for new tasks." });
+      this.createProject({
+        name: INBOX_PROJECT_NAME,
+        description: "Tasks started outside a project.",
+      });
     }
     this.events.emit("state", { command: "projects-updated" });
   }
 
   gitStatus(projectId: string): GitStatus {
-    return readGitStatus(this.requireProject(projectId).workingDirectory);
+    const project = this.requireProject(projectId);
+    const status = enrichGitStatus(
+      readGitStatus(project.workingDirectory),
+      project.workingDirectory,
+    );
+    if (status.pullRequest && pullRequestWatchEnabled(this.settings)) {
+      this.schedulePrWatch(projectId);
+    } else if (!status.pullRequest) {
+      this.stopPrWatch(projectId);
+    }
+    return status;
   }
 
   gitDiff(projectId: string, relative?: string): string {
@@ -555,7 +721,7 @@ export class CapsuleEngine {
     if (!project.workingDirectory) throw new Error("Project has no working directory");
     const result = commitAll(project.workingDirectory, message);
     if (!result.ok) throw new Error(result.detail);
-    return readGitStatus(project.workingDirectory);
+    return this.gitStatus(projectId);
   }
 
   gitStage(projectId: string, relative: string): GitStatus {
@@ -577,9 +743,69 @@ export class CapsuleEngine {
   gitCreateBranch(projectId: string, branch: string): GitStatus {
     const project = this.requireProject(projectId);
     if (!project.workingDirectory) throw new Error("Project has no working directory");
-    const result = createGitBranch(project.workingDirectory, branch);
+    const result = createGitBranch(
+      project.workingDirectory,
+      applyBranchPrefix(this.settings.branchPrefix, branch),
+    );
     if (!result.ok) throw new Error(result.detail);
-    return readGitStatus(project.workingDirectory);
+    return this.gitStatus(projectId);
+  }
+
+  gitPush(projectId: string): GitStatus {
+    const project = this.requireProject(projectId);
+    if (!project.workingDirectory) throw new Error("Project has no working directory");
+    const result = pushCurrentBranch(project.workingDirectory, this.settings.gitForceWithLease);
+    if (!result.ok) throw new Error(result.detail);
+    this.log(result.detail);
+    return this.gitStatus(projectId);
+  }
+
+  async gitCreatePullRequest(
+    projectId: string,
+    input?: { title?: string; body?: string; sessionId?: string },
+  ): Promise<GitStatus> {
+    const project = this.requireProject(projectId);
+    if (!project.workingDirectory) throw new Error("Project has no working directory");
+    const pushed = pushCurrentBranch(project.workingDirectory, this.settings.gitForceWithLease);
+    if (!pushed.ok) throw new Error(pushed.detail);
+    const branch = readGitStatus(project.workingDirectory).branch ?? "HEAD";
+    const title =
+      input?.title?.trim() ||
+      lastCommitSubject(project.workingDirectory) ||
+      branch.replace(/^.*\//, "").replace(/[-_]/g, " ");
+    const body =
+      [input?.body?.trim(), this.settings.prInstructions].filter(Boolean).join("\n\n") || title;
+    const opened = openPullRequest(project.workingDirectory, {
+      title,
+      body,
+      draft: this.settings.prDraft,
+    });
+    if (!opened.ok) throw new Error(opened.detail);
+    this.log(opened.detail);
+    if (input?.sessionId) this.prWatchSessions.set(projectId, input.sessionId);
+    if (this.settings.prAutoMerge) {
+      const queued = mergeGithubPullRequest(
+        project.workingDirectory,
+        this.settings.prMergeMethod,
+        true,
+      );
+      this.log(queued.detail);
+    }
+    if (pullRequestWatchEnabled(this.settings)) this.schedulePrWatch(projectId, input?.sessionId);
+    return this.gitStatus(projectId);
+  }
+
+  gitMergePullRequest(projectId: string): GitStatus {
+    const project = this.requireProject(projectId);
+    if (!project.workingDirectory) throw new Error("Project has no working directory");
+    const result = mergeGithubPullRequest(
+      project.workingDirectory,
+      this.settings.prMergeMethod,
+      this.settings.prAutoMerge,
+    );
+    if (!result.ok) throw new Error(result.detail);
+    this.log(result.detail);
+    return this.gitStatus(projectId);
   }
 
   searchContents(projectId: string, query: string): ContentHit[] {
@@ -601,6 +827,12 @@ export class CapsuleEngine {
     const agentId = input.agentId ?? project.defaultAgentId ?? agentIdForMode(input.mode ?? project.defaultMode);
     const session = createSessionRecord(project, input, agentId);
     session.permissionProfile = input.permissionProfile ?? this.settings.defaultPermission;
+    if (isInboxProject(project) && !session.workingDirectory) {
+      session.workingDirectory = allocateThreadFolder(
+        ensureProjectlessFolder(this.projectlessRoot()),
+        session.title,
+      );
+    }
     if (!this.usingMock) {
       try {
         const remote = await this.openclaw.createSession({
@@ -660,6 +892,7 @@ export class CapsuleEngine {
     session.updatedAt = nowIso();
     this.repos.updateSession(session);
     if (!this.usingMock && session.openclawSessionKey && isLiveHarnessState(session.harnessState)) {
+      await this.openclaw.ensureAcpxPermissionMode(acpxPermissionMode(profile)).catch(() => undefined);
       await this.openclaw.setAcpOption(session.openclawSessionKey, "permissions", profile);
     }
     return session;
@@ -669,6 +902,21 @@ export class CapsuleEngine {
     return this.repos.listMessages(sessionId);
   }
 
+  /**
+   * One page of a conversation, newest page first. Fetching limit+1 tells us
+   * whether an older page exists without a second COUNT over the table.
+   */
+  listMessagePage(
+    sessionId: string,
+    options?: { limit?: number; before?: { createdAt: string; id: string } },
+  ): MessagePage {
+    const limit = Math.min(Math.max(options?.limit ?? 60, 1), 500);
+    const rows = this.repos.listMessagesBefore(sessionId, limit + 1, options?.before);
+    const hasMore = rows.length > limit;
+    // The extra row is the oldest one; drop it from the front.
+    return { messages: hasMore ? rows.slice(1) : rows, hasMore };
+  }
+
   async sendMessage(input: AgentMessage): Promise<{ session: Session; run: Run; userMessage: ChatMessage }> {
     let session = this.requireSession(input.sessionId);
     const project = this.requireProject(session.projectId);
@@ -676,6 +924,11 @@ export class CapsuleEngine {
     const harnessId = this.resolveHarnessId(session, project, input.agentId, mode);
     if (harnessId) {
       session = await this.ensureHarnessSession(session, harnessId);
+      if (!this.usingMock && !isAcpSessionKey(session.openclawSessionKey)) {
+        throw new Error(
+          `${harnessId} did not start through acpx. Capsule will not send this to OpenClaw's default agent (that path needs that agent's provider auth, not ${harnessId}).`,
+        );
+      }
     }
     const agentId = harnessId ?? input.agentId ?? session.agentId ?? agentIdForMode(mode);
     const skillId = input.skillId ?? skillIdForMode(mode);
@@ -710,8 +963,11 @@ export class CapsuleEngine {
     const contract = buildContract({
       mode,
       prompt: input.content,
-      workingDirectory: project.workingDirectory,
+      workingDirectory: this.cwdFor(session, project),
       runId: run.id,
+      outputDetail: this.settings.outputDetail,
+      webAccess: this.settings.webAccess,
+      sandbox: this.settings.sandbox,
     });
     this.repos.insertContract(contract);
     run.contractId = contract.id;
@@ -733,17 +989,40 @@ export class CapsuleEngine {
       recordDecision(run.id, writeRule, project.workingDirectory ?? "(workspace)", "Default project write policy"),
     );
 
-    if (this.usingMock) this.mock.setWorkspace(project.workingDirectory);
+    if (this.usingMock) this.mock.setWorkspace(this.cwdFor(session, project));
+
+    if (!this.usingMock && !harnessId) {
+      session.openclawSessionKey = await this.openclaw.ensureOperatorSession({
+        sessionKey: session.openclawSessionKey,
+        label: gatewaySessionLabel(session.title, session.id),
+        requestedAgentId: agentId,
+      });
+      this.repos.updateSession(session);
+    }
 
     const runtimeMessage: AgentMessage = {
       ...input,
+      content: applyAgentInstructionHints(input.content, this.settings),
       sessionId: this.usingMock ? session.id : (session.openclawSessionKey ?? session.id),
-      agentId,
+      agentId: this.usingMock ? agentId : undefined,
       skillId,
       mode,
     };
 
-    const runtimeRun = await this.runtime.sendMessage(runtimeMessage);
+    let runtimeRun: Run;
+    try {
+      runtimeRun = await this.runtime.sendMessage(runtimeMessage);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      run.status = "failed";
+      run.error = message;
+      run.updatedAt = nowIso();
+      run.completedAt = nowIso();
+      this.repos.updateRun(run);
+      this.appendEvent(run.id, "lifecycle", message, { status: "failed", error: message });
+      this.events.emit("run", run);
+      throw new Error(message);
+    }
     run.openclawRunId = runtimeRun.openclawRunId ?? runtimeRun.id;
     this.repos.updateRun(run);
 
@@ -812,6 +1091,8 @@ export class CapsuleEngine {
 
   listFiles(projectId: string, relative = ".") {
     const project = this.requireProject(projectId);
+    const decision = decidePolicy(this.repos.listPolicies(), "filesystem", "read");
+    if (decision.decision === "block") throw new Error("Filesystem read is blocked by policy");
     return new FilesystemAdapter(project.workingDirectory).list(relative);
   }
 
@@ -827,14 +1108,69 @@ export class CapsuleEngine {
     return new FilesystemAdapter(project.workingDirectory).read(relative);
   }
 
-  writeFile(projectId: string, relative: string, content: string): void {
+  /*
+   * The filesystem write policy defaults to "approval", and this used to throw
+   * on that — which made every write unreachable rather than asking anyone.
+   * The policy is there to gate the *agent*: a person editing a file in
+   * Capsule's own editor has already consented by typing and saving it, so a
+   * user-originated write satisfies the approval requirement. "block" still
+   * blocks both, and an agent write on "approval" still refuses, because
+   * nothing has actually asked the user yet.
+   */
+  /**
+   * Read for editing: the revision is the token the editor sends back on save,
+   * so a write can tell "nothing else touched this" from "the agent rewrote it
+   * while you were typing".
+   */
+  readFileVersioned(projectId: string, relative: string, previewLimit = 8_000): FileReadResult {
+    const contents = this.readFile(projectId, relative);
+    return {
+      // The revision always describes the file on disk, never the truncated
+      // prefix — otherwise a reload would look like an external change.
+      revision: fileContentRevision(contents),
+      truncated: contents.length > previewLimit,
+      contents: contents.slice(0, previewLimit),
+    };
+  }
+
+  writeFile(
+    projectId: string,
+    relative: string,
+    content: string,
+    options?: { origin?: "user" | "agent"; expectedRevision?: string },
+  ): { revision: string } {
     const project = this.requireProject(projectId);
+    const origin = options?.origin ?? "agent";
     const decision = decidePolicy(this.repos.listPolicies(), "filesystem", "write");
     if (decision.decision === "block") throw new Error("Filesystem write is blocked by policy");
-    if (decision.decision === "approval") {
+    if (decision.decision === "approval" && origin !== "user") {
       throw new Error("Filesystem write requires approval");
     }
-    new FilesystemAdapter(project.workingDirectory).write(relative, content);
+    const adapter = new FilesystemAdapter(project.workingDirectory);
+    /*
+     * Optimistic concurrency. The editor sends the revision it loaded; if the
+     * bytes on disk no longer match it, something else — almost always the
+     * agent writing over ACP — changed the file since. Refuse rather than
+     * overwrite, and let the caller decide.
+     */
+    if (options?.expectedRevision !== undefined) {
+      let current: string | undefined;
+      try {
+        current = adapter.read(relative);
+      } catch {
+        // A file that no longer reads (deleted, or newly created by this very
+        // write) cannot be compared; fall through and write it.
+        current = undefined;
+      }
+      if (current !== undefined && fileContentRevision(current) !== options.expectedRevision) {
+        throw new Error(FILE_CHANGED_ON_DISK);
+      }
+    }
+    adapter.write(relative, content);
+    if (origin === "user") this.log(`Edited ${relative}`);
+    // Hand back the new base revision so the caller can keep editing without
+    // re-reading the file.
+    return { revision: fileContentRevision(content) };
   }
 
   async openTerminal(projectId: string): Promise<void> {
@@ -846,6 +1182,9 @@ export class CapsuleEngine {
   async execInProject(projectId: string, command: string) {
     const project = this.requireProject(projectId);
     if (!project.workingDirectory) throw new Error("Choose a project folder first");
+    if (this.settings.sandbox === "strict") {
+      throw new Error("Strict sandbox blocks project terminal commands.");
+    }
     return runInDirectory(project.workingDirectory, command);
   }
 
@@ -869,6 +1208,16 @@ export class CapsuleEngine {
       await this.keychain.set(CAPSULE_KEYCHAIN_SERVICE, GATEWAY_TOKEN_ACCOUNT, gatewayToken);
     }
     if (patch.mockScenario) this.mock.setScenario(this.settings.mockScenario);
+    if (patch.projectlessFolder !== undefined) this.bindInboxToProjectless();
+    if (
+      patch.webAccess !== undefined ||
+      patch.sandbox !== undefined ||
+      patch.defaultPermission !== undefined
+    ) {
+      this.applyWorkspacePolicies();
+    }
+    if (patch.archiveInactiveAfter !== undefined) this.archiveInactiveSessions();
+    if (!pullRequestWatchEnabled(this.settings)) this.stopAllPrWatch();
     this.persistSettings();
     return this.getSettings();
   }
@@ -904,8 +1253,14 @@ export class CapsuleEngine {
     this.acpUnsub = this.openclaw.onAcpReply((payload) => this.handleAcpReply(payload));
   }
 
-  private handleAcpReply(payload: { sessionKey?: string; text?: string; done?: boolean }): void {
+  private handleAcpReply(payload: {
+    sessionKey?: string;
+    text?: string;
+    done?: boolean;
+    control?: boolean;
+  }): void {
     if (!payload.sessionKey) return;
+    if (payload.control) return;
     const session = this.repos
       .listSessions()
       .find((item) => item.openclawSessionKey === payload.sessionKey);
@@ -929,6 +1284,23 @@ export class CapsuleEngine {
     };
     this.repos.insertMessage(message);
     this.events.emit("message", message);
+    const failed = acpCommandFailed(content);
+    if (!failed) return;
+    const running = this.repos
+      .listRuns(session.id)
+      .find((run) => ["running", "waiting"].includes(run.status));
+    if (!running) return;
+    running.status = "failed";
+    running.error = failed;
+    running.result = content;
+    running.updatedAt = nowIso();
+    running.completedAt = nowIso();
+    this.repos.updateRun(running);
+    this.appendEvent(running.id, "lifecycle", failed, {
+      status: "failed",
+      error: failed,
+    });
+    this.events.emit("run", running);
   }
 
   private async connectPreferredRuntime(): Promise<void> {
@@ -953,8 +1325,12 @@ export class CapsuleEngine {
   }
 
   private async syncRuntimeCatalog(): Promise<void> {
-    const agents = await this.runtime.listAgents().catch(() => DEFAULT_AGENTS);
-    for (const agent of agents.length > 0 ? agents : DEFAULT_AGENTS) {
+    const agents = await this.runtime.listAgents().catch(() => [] as Agent[]);
+    // Do not relabel mock fallbacks as live OpenClaw agents when the Gateway
+    // cannot list its configured agents. They must remain unavailable until
+    // the Gateway reports a real, configured target.
+    const availableAgents = agents.length > 0 ? agents : this.usingMock ? DEFAULT_AGENTS : [];
+    for (const agent of availableAgents) {
       this.repos.upsertAgent({
         ...agent,
         runtime: this.usingMock ? "mock" : "openclaw",
@@ -975,6 +1351,10 @@ export class CapsuleEngine {
     event: RunEvent,
     stop: () => void,
   ): Promise<void> {
+    if (this.stopped) {
+      stop();
+      return;
+    }
     const mapped: RunEvent = {
       ...event,
       runId: run.id,
@@ -1007,16 +1387,20 @@ export class CapsuleEngine {
       run.completedAt = nowIso();
       if (typeof event.data?.output === "string") run.result = event.data.output;
       if (typeof event.data?.error === "string") run.error = event.data.error;
+      /*
+       * A finished turn leaves the ACP session alive but idle. Nothing used to
+       * write the session out of "running", so the sidebar kept showing
+       * "Working" for threads whose last run had completed hours earlier.
+       * "waiting" keeps the harness live without claiming work is in flight.
+       */
+      if (isLiveHarnessState(session.harnessState) && session.harnessState !== "waiting") {
+        session.harnessState = "waiting";
+        session.updatedAt = nowIso();
+        this.repos.updateSession(session);
+        this.events.emit("state", { command: "harness-updated" });
+      }
       if (status === "completed") {
         if (this.usingMock) {
-          const artifact = createTextArtifact({
-            session,
-            run,
-            title: "Mock run (Gateway offline)",
-            content: run.result ?? "",
-            kind: "report",
-          });
-          this.repos.insertArtifact(artifact);
           if (run.result) {
             const assistantMessage: ChatMessage = {
               id: createId("msg"),
@@ -1033,7 +1417,19 @@ export class CapsuleEngine {
           this.events.emit("run", run);
           return;
         }
-        const contract = run.contractId ? this.repos.getContract(run.contractId) : undefined;
+        /*
+         * Only a run that actually finished can be judged against its
+         * contract. A failed or cancelled run has no output to verify, so
+         * verifying it produced a "Verification failed" artifact and — worse —
+         * overwrote the real cause (an ACP "Authentication required", a
+         * cancellation) with a generic contract verdict. Neither Buzz nor T3
+         * Code has a synthetic verification step; T3 reports a turn's own
+         * `state` plus `errorMessage`, which is what the run already carries.
+         */
+        const contract =
+          status === "completed" && run.contractId
+            ? this.repos.getContract(run.contractId)
+            : undefined;
         if (contract) {
           const verification = verifyContract({
             contract,
@@ -1041,21 +1437,6 @@ export class CapsuleEngine {
             workingDirectory: this.getProject(run.projectId)?.workingDirectory,
             forceFail: Boolean(event.data?.forceVerifyFail),
           });
-          const evaluation = evaluateRun(run.result ?? "", verification);
-          const artifact = createTextArtifact({
-            session,
-            run,
-            title: verification.passed ? "Run result" : "Verification report",
-            content: [
-              `# ${verification.summary}`,
-              "",
-              evaluation.summary,
-              "",
-              run.result ?? "",
-            ].join("\n"),
-            kind: verification.passed ? "report" : "report",
-          });
-          this.repos.insertArtifact(artifact);
           if (!verification.passed) {
             run.status = "failed";
             run.error = verification.summary;
@@ -1065,16 +1446,19 @@ export class CapsuleEngine {
           });
         }
         if (run.result) {
-          const assistantMessage: ChatMessage = {
-            id: createId("msg"),
-            sessionId: session.id,
-            role: "assistant",
-            content: run.result,
-            runId: run.id,
-            createdAt: nowIso(),
-          };
-          this.repos.insertMessage(assistantMessage);
-          this.events.emit("message", assistantMessage);
+          const last = this.repos.listMessages(session.id).at(-1);
+          if (!(last?.role === "assistant" && last.content === run.result)) {
+            const assistantMessage: ChatMessage = {
+              id: createId("msg"),
+              sessionId: session.id,
+              role: "assistant",
+              content: run.result,
+              runId: run.id,
+              createdAt: nowIso(),
+            };
+            this.repos.insertMessage(assistantMessage);
+            this.events.emit("message", assistantMessage);
+          }
         }
       }
       this.repos.updateRun(run);
@@ -1093,12 +1477,54 @@ export class CapsuleEngine {
     this.events.emit("run-event", event);
   }
 
+  private projectlessRoot(): string {
+    if (this.settings.projectlessFolder?.trim()) return this.settings.projectlessFolder.trim();
+    if (process.env.VITEST) return path.join(this.options.userDataDir, "tasks");
+    return defaultProjectlessFolder();
+  }
+
+  private cwdFor(session: Session, project: Project): string | undefined {
+    return session.workingDirectory || project.workingDirectory;
+  }
+
+  private bindInboxToProjectless(): void {
+    const root = ensureProjectlessFolder(this.projectlessRoot());
+    const inbox = this.repos.listProjects().find((project) => isInboxProject(project));
+    if (!inbox) {
+      this.createProject({
+        name: INBOX_PROJECT_NAME,
+        description: "Tasks started outside a project.",
+        workingDirectory: root,
+      });
+      return;
+    }
+    if (inbox.workingDirectory === root) return;
+    inbox.workingDirectory = root;
+    inbox.description = inbox.description || "Tasks started outside a project.";
+    inbox.updatedAt = nowIso();
+    this.repos.updateProject(inbox);
+  }
+
+  private failStaleRuns(): void {
+    for (const run of this.repos.listRuns()) {
+      if (!["running", "waiting", "queued"].includes(run.status)) continue;
+      run.status = "failed";
+      run.error = run.error ?? "Interrupted when Capsule last quit.";
+      run.updatedAt = nowIso();
+      run.completedAt = nowIso();
+      this.repos.updateRun(run);
+    }
+  }
+
   private bootstrapWorkspace(): void {
     const existing = this.repos.listWorkspaces()[0];
     if (existing) {
       this.workspaceId = existing.id;
       if (this.repos.listProjects().length === 0) {
-        this.createProject({ name: "Inbox", description: "Default workspace for new tasks." });
+        this.createProject({
+          name: INBOX_PROJECT_NAME,
+          description: "Tasks started outside a project.",
+        });
       }
       return;
     }
@@ -1110,7 +1536,10 @@ export class CapsuleEngine {
       createdAt: timestamp,
       updatedAt: timestamp,
     });
-    this.createProject({ name: "Inbox", description: "Default workspace for new tasks." });
+    this.createProject({
+      name: INBOX_PROJECT_NAME,
+      description: "Tasks started outside a project.",
+    });
     for (const agent of DEFAULT_AGENTS) this.repos.upsertAgent(agent);
     for (const skill of DEFAULT_SKILLS) this.repos.upsertSkill(skill);
     for (const rule of DEFAULT_POLICIES) this.repos.insertPolicy(rule);
@@ -1129,10 +1558,144 @@ export class CapsuleEngine {
     }
   }
 
+  private schedulePrWatch(projectId: string, sessionId?: string): void {
+    if (sessionId) this.prWatchSessions.set(projectId, sessionId);
+    if (!pullRequestWatchEnabled(this.settings)) {
+      this.stopPrWatch(projectId);
+      return;
+    }
+    if (this.prWatchers.has(projectId)) return;
+    const timer = setInterval(() => {
+      void this.tickPrWatch(projectId);
+    }, 45_000);
+    this.prWatchers.set(projectId, timer);
+    void this.tickPrWatch(projectId);
+  }
+
+  private stopPrWatch(projectId: string): void {
+    const timer = this.prWatchers.get(projectId);
+    if (timer) clearInterval(timer);
+    this.prWatchers.delete(projectId);
+  }
+
+  private stopAllPrWatch(): void {
+    for (const id of [...this.prWatchers.keys()]) this.stopPrWatch(id);
+  }
+
+  private async tickPrWatch(projectId: string): Promise<void> {
+    if (this.stopped) {
+      this.stopPrWatch(projectId);
+      return;
+    }
+    const project = this.repos.getProject(projectId);
+    if (!project?.workingDirectory) {
+      this.stopPrWatch(projectId);
+      return;
+    }
+    const pullRequest = viewPullRequest(project.workingDirectory);
+    if (!pullRequest || pullRequest.state === "MERGED" || pullRequest.state === "CLOSED") {
+      this.events.emit("state", { command: "git-updated" });
+      if (!this.settings.prWatchUntilMerged || !pullRequest || pullRequest.state !== "OPEN") {
+        this.stopPrWatch(projectId);
+      }
+      return;
+    }
+    if (this.settings.prWatchAndFix && pullRequest.checks === "failure") {
+      const fingerprint = `${pullRequest.number}:${pullRequest.checksSummary ?? "failed"}`;
+      if (this.prFixFingerprints.get(projectId) !== fingerprint) {
+        const sent = await this.requestPrFix(projectId, pullRequest.url, pullRequest.number, pullRequest.checksSummary);
+        if (sent) this.prFixFingerprints.set(projectId, fingerprint);
+      }
+    }
+    if (
+      this.settings.prAutoMerge &&
+      pullRequest.checks !== "failure" &&
+      pullRequest.checks !== "pending"
+    ) {
+      mergeGithubPullRequest(project.workingDirectory, this.settings.prMergeMethod, false);
+    }
+    this.events.emit("state", { command: "git-updated" });
+  }
+
+  private async requestPrFix(
+    projectId: string,
+    url: string,
+    number: number,
+    summary?: string,
+  ): Promise<boolean> {
+    let sessionId = this.prWatchSessions.get(projectId);
+    if (!sessionId || this.settings.prReviewDelivery === "new-chat") {
+      const session = await this.createSession({
+        projectId,
+        title: `PR #${number} checks`,
+        mode: "code",
+      });
+      sessionId = session.id;
+      this.prWatchSessions.set(projectId, sessionId);
+    }
+    const busy = this.listRuns(sessionId).some((run) =>
+      ["running", "waiting", "approval_required"].includes(run.status),
+    );
+    if (busy) return false;
+    const prompt = [
+      `The pull request #${number} (${url}) failed checks${summary ? `: ${summary}` : "."}`,
+      "",
+      "Fix the failures in this repository, then push. Do not merge.",
+    ].join("\n");
+    await this.sendMessage({ sessionId, content: prompt, mode: "code" });
+    this.events.emit("state", { command: "sessions-updated" });
+    return true;
+  }
+
   private persistSettings(): void {
     const stored = { ...this.settings };
     delete stored.gatewayToken;
     this.repos.setSetting("settings", JSON.stringify(stored));
+  }
+
+  private applyWorkspacePolicies(): void {
+    for (const rule of policiesFromSettings({
+      webAccess: this.settings.webAccess,
+      sandbox: this.settings.sandbox,
+    })) {
+      this.repos.upsertPolicy(rule);
+    }
+  }
+
+  private archiveInactiveSessions(): void {
+    const cutoffMs = ARCHIVE_INACTIVE_MS[this.settings.archiveInactiveAfter];
+    if (cutoffMs == null) return;
+    const now = Date.now();
+    const activeRunIds = new Set(
+      this.repos
+        .listRuns()
+        .filter((run) => ["running", "waiting", "approval_required"].includes(run.status))
+        .map((run) => run.sessionId),
+    );
+    let archived = 0;
+    for (const session of this.repos.listSessions()) {
+      if (
+        !shouldArchiveInactiveSession({
+          state: session.state,
+          pinned: session.pinned,
+          updatedAt: session.updatedAt,
+          liveHarness: isLiveHarnessState(session.harnessState),
+          hasActiveRun: activeRunIds.has(session.id),
+          cutoffMs,
+          now,
+        })
+      ) {
+        continue;
+      }
+      session.state = "archived";
+      session.updatedAt = nowIso();
+      this.repos.updateSession(session);
+      archived += 1;
+    }
+    if (archived > 0) {
+      this.log(`Archived ${archived} inactive session${archived === 1 ? "" : "s"}`);
+      this.events.emit("state", { command: "sessions-updated" });
+    }
   }
 
   private createOpenClawAdapter(): OpenClawAdapter {

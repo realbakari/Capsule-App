@@ -1,11 +1,25 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { isFeaturedHarness } from "../../lib/harness";
+import { useEffect, useState } from "react";
 import type { CapsuleSettings, MockScenario } from "@capsule/shared";
-import { MODES, PERMISSION_OPTIONS, useWorkspace } from "../../lib/workspace";
+import { AppearanceSettings } from "./AppearanceSettings";
+import { ConfigurationSettings } from "./ConfigurationSettings";
+import { SettingRow, Switch } from "./controls";
+import { formatProjectRoot } from "../../lib/paths";
+import { MODES, useWorkspace } from "../../lib/workspace";
 
-type SettingsTab = "general" | "gateway" | "projects" | "shortcuts" | "diagnostics";
+type SettingsTab =
+  | "general"
+  | "appearance"
+  | "configuration"
+  | "gateway"
+  | "projects"
+  | "shortcuts"
+  | "diagnostics";
 
 const TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: "general", label: "General" },
+  { id: "appearance", label: "Appearance" },
+  { id: "configuration", label: "Configuration" },
   { id: "gateway", label: "Gateway" },
   { id: "projects", label: "Projects" },
   { id: "shortcuts", label: "Shortcuts" },
@@ -114,7 +128,7 @@ export function SettingsView() {
     <section className="panel">
       <div className="panel-inner settings-page">
         <div className="panel-header">
-          <p>Gateway, defaults, projects, and diagnostics for this Mac.</p>
+          <p>Gateway, appearance, agent defaults, and diagnostics for this Mac.</p>
         </div>
         <div className="settings">
           <nav className="settings-nav" aria-label="Settings">
@@ -135,7 +149,7 @@ export function SettingsView() {
                 <h3>General</h3>
                 <SettingRow
                   label="Launch at login"
-                  hint="Open Capsule when you sign in to this Mac."
+                  hint="Open Capsule when you sign in to this Mac. Requires the packaged app."
                 >
                   <Switch
                     checked={settings.launchAtLogin}
@@ -179,27 +193,6 @@ export function SettingsView() {
                     ))}
                   </select>
                 </SettingRow>
-                <SettingRow
-                  label="Default permission"
-                  hint="How new conversations treat commands and file changes."
-                >
-                  <select
-                    className="field-select"
-                    value={settings.defaultPermission}
-                    onChange={(event) =>
-                      void patch({
-                        defaultPermission: event.target
-                          .value as CapsuleSettings["defaultPermission"],
-                      })
-                    }
-                  >
-                    {PERMISSION_OPTIONS.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.label}
-                      </option>
-                    ))}
-                  </select>
-                </SettingRow>
                 <SettingRow label="Default agent" hint="Pre-selected when you start a new thread.">
                   <select
                     className="field-select"
@@ -214,6 +207,14 @@ export function SettingsView() {
                   </select>
                 </SettingRow>
               </div>
+            )}
+
+            {tab === "appearance" && (
+              <AppearanceSettings settings={settings} onPatch={(next) => void patch(next)} />
+            )}
+
+            {tab === "configuration" && (
+              <ConfigurationSettings settings={settings} onPatch={(next) => void patch(next)} />
             )}
 
             {tab === "gateway" && (
@@ -340,8 +341,7 @@ export function SettingsView() {
                   {(harnessList ?? [])
                     .filter(
                       (harness) =>
-                        harness.id === "claude" ||
-                        harness.id === "codex" ||
+                        isFeaturedHarness(harness) ||
                         Boolean(harness.binaryPath) ||
                         harness.readiness === "dedicated" ||
                         harness.readiness === "running",
@@ -365,9 +365,57 @@ export function SettingsView() {
               <div className="card">
                 <h3>Projects</h3>
                 <p className="muted">
-                  Right-click a project in the sidebar to rename or delete it. Deleting removes Capsule
-                  history, not the folder on disk.
+                  Inbox is for tasks started outside a repo. Open a folder (⌘O) to make a project.
+                  Deleting a project removes Capsule history, not the folder on disk.
                 </p>
+                <SettingRow
+                  label="Tasks without a project"
+                  hint="Default folder for Inbox threads. Each conversation gets a dated subfolder."
+                >
+                  <div className="setting-stack">
+                    <div className="mono setting-path">
+                      {formatProjectRoot(settings.projectlessFolder, {
+                        home: window.capsule.homeDir,
+                        fallback: `${window.capsule.homeDir}/Documents/Capsule`,
+                      })}
+                    </div>
+                    <div className="actions" style={{ marginTop: 0 }}>
+                      <button
+                        className="ghost"
+                        type="button"
+                        onClick={() => {
+                          void (async () => {
+                            const directory = await api.pickDirectory();
+                            if (directory) await patch({ projectlessFolder: directory });
+                          })();
+                        }}
+                      >
+                        Choose folder
+                      </button>
+                      <button
+                        className="ghost"
+                        type="button"
+                        onClick={() =>
+                          void api.openPath(
+                            settings.projectlessFolder ||
+                              `${window.capsule.homeDir}/Documents/Capsule`,
+                          )
+                        }
+                      >
+                        Show in Finder
+                      </button>
+                      {settings.projectlessFolder && (
+                        <button
+                          className="ghost"
+                          type="button"
+                          onClick={() => void patch({ projectlessFolder: "" })}
+                        >
+                          Use default
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </SettingRow>
                 {projects.map((item) => (
                   <div className="row" key={item.id} style={{ marginBottom: 8 }}>
                     <button
@@ -378,7 +426,12 @@ export function SettingsView() {
                       }}
                     >
                       {item.name}
-                      <span className="meta">{item.workingDirectory ?? "no folder"}</span>
+                      <span className="meta">
+                        {formatProjectRoot(item.workingDirectory, {
+                          home: window.capsule.homeDir,
+                          fallback: "no folder",
+                        })}
+                      </span>
                     </button>
                     <button className="danger" onClick={() => deleteProject(item.id)}>
                       Delete
@@ -400,7 +453,12 @@ export function SettingsView() {
                   </button>
                 </div>
                 <div className="actions">
-                  <div className="mono">{project?.workingDirectory ?? "No working directory"}</div>
+                  <div className="mono">
+                    {formatProjectRoot(project?.workingDirectory, {
+                      home: window.capsule.homeDir,
+                      fallback: "No working directory",
+                    })}
+                  </div>
                   <button className="ghost" onClick={() => void pickProjectDirectory()}>
                     Choose folder
                   </button>
@@ -485,47 +543,5 @@ export function SettingsView() {
         </div>
       </div>
     </section>
-  );
-}
-
-function SettingRow({
-  label,
-  hint,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="setting">
-      <div className="setting-copy">
-        <div>{label}</div>
-        {hint ? <p>{hint}</p> : null}
-      </div>
-      <div className="setting-control">{children}</div>
-    </div>
-  );
-}
-
-function Switch({
-  checked,
-  onChange,
-  label,
-}: {
-  checked: boolean;
-  onChange: (value: boolean) => void;
-  label: string;
-}) {
-  return (
-    <label className="switch">
-      <input
-        type="checkbox"
-        checked={checked}
-        aria-label={label}
-        onChange={(event) => onChange(event.target.checked)}
-      />
-      <span />
-    </label>
   );
 }

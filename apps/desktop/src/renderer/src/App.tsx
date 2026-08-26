@@ -12,13 +12,15 @@ import { Sidebar } from "./features/shell/Sidebar";
 import { Splash } from "./features/shell/Splash";
 import { Titlebar } from "./features/shell/Titlebar";
 import { ViewErrorBoundary } from "./features/shell/ErrorBoundary";
+import { useSidebarSwipe } from "./lib/useSidebarSwipe";
 import { WorkspaceProvider, useWorkspace } from "./lib/workspace";
 
 const BOOT_SPLASH_MS = 1100;
 const BOOT_FADE_MS = 200;
 
 function Shell() {
-  const { view, inspectorOpen, sidebarCollapsed, sidebarWidth } = useWorkspace();
+  const { view, inspectorOpen, sidebarCollapsed, sidebarWidth, setSidebarCollapsed } = useWorkspace();
+  useSidebarSwipe(sidebarCollapsed, setSidebarCollapsed);
   const style = { "--sidebar-width": `${sidebarWidth}px` } as CSSProperties;
   return (
     <div
@@ -26,6 +28,7 @@ function Shell() {
       style={style}
     >
       <Sidebar />
+      <div className="sidebar-swipe-edge" aria-hidden />
       <div className="workspace">
         <Titlebar />
         <div className="workspace-body">
