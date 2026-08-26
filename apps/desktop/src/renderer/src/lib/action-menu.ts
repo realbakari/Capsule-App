@@ -20,7 +20,14 @@ export type SessionActionId =
   | "copy-path"
   | "archive"
   | "delete";
-export type ProjectActionId = "rename" | "new-conversation" | "open-folder" | "copy-path" | "delete";
+export type ProjectActionId =
+  | "rename"
+  | "new-conversation"
+  | "change-folder"
+  | "add-folder"
+  | "open-folder"
+  | "copy-path"
+  | "delete";
 
 export interface ActionMenuItem extends PopupMenuItem {
   icon?: ActionMenuIcon;
@@ -91,11 +98,17 @@ export function buildProjectActionMenuItems(state: {
     { id: "rename", label: "Rename", icon: "pencil", enabled: state.canRename },
     { id: "new-conversation", label: "New conversation", icon: "plus" },
     {
+      id: "change-folder",
+      label: state.hasFolder ? "Change folder" : "Attach folder",
+      icon: "folder",
+      separatorBefore: true,
+    },
+    { id: "add-folder", label: "Add folder", icon: "folder" },
+    {
       id: "open-folder",
-      label: "Open folder",
+      label: "Show in Finder",
       icon: "folder",
       enabled: state.hasFolder,
-      separatorBefore: true,
     },
     { id: "copy-path", label: "Copy path", icon: "copy", enabled: state.hasFolder },
     {

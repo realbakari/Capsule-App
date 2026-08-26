@@ -277,11 +277,27 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.resolveApproval, (id, decision) =>
     requireEngine().resolveApproval(String(id), decision as never),
   );
-  handle(IPC_CHANNELS.readFile, (projectId, relative) =>
-    requireEngine().readFile(String(projectId), String(relative)),
+  handle(IPC_CHANNELS.readFile, (projectId, relative, root) =>
+    requireEngine().readFile(
+      String(projectId),
+      String(relative),
+      root ? String(root) : undefined,
+    ),
   );
-  handle(IPC_CHANNELS.readFileVersioned, (projectId, relative) =>
-    requireEngine().readFileVersioned(String(projectId), String(relative)),
+  handle(IPC_CHANNELS.readFileVersioned, (projectId, relative, root) =>
+    requireEngine().readFileVersioned(
+      String(projectId),
+      String(relative),
+      8_000,
+      root ? String(root) : undefined,
+    ),
+  );
+  handle(IPC_CHANNELS.previewFile, (projectId, relative, root) =>
+    requireEngine().previewFile(
+      String(projectId),
+      String(relative),
+      root ? String(root) : undefined,
+    ),
   );
   handle(IPC_CHANNELS.writeFile, (projectId, relative, content, options) =>
     requireEngine().writeFile(String(projectId), String(relative), String(content), {
@@ -292,10 +308,18 @@ function registerIpc(): void {
         const revision = (options as { expectedRevision?: string } | undefined)?.expectedRevision;
         return revision === undefined ? {} : { expectedRevision: revision };
       })(),
+      ...(() => {
+        const root = (options as { root?: string } | undefined)?.root;
+        return root ? { root } : {};
+      })(),
     }),
   );
-  handle(IPC_CHANNELS.listFiles, (projectId, relative) =>
-    requireEngine().listFiles(String(projectId), relative ? String(relative) : "."),
+  handle(IPC_CHANNELS.listFiles, (projectId, relative, root) =>
+    requireEngine().listFiles(
+      String(projectId),
+      relative ? String(relative) : ".",
+      root ? String(root) : undefined,
+    ),
   );
   handle(IPC_CHANNELS.openTerminal, (projectId) => requireEngine().openTerminal(String(projectId)));
   handle(IPC_CHANNELS.execInProject, (projectId, command) =>
@@ -315,8 +339,12 @@ function registerIpc(): void {
   });
   handle(IPC_CHANNELS.getDiagnostics, () => requireEngine().getDiagnostics());
   handle(IPC_CHANNELS.search, (query) => requireEngine().search(String(query)));
-  handle(IPC_CHANNELS.searchFiles, (projectId, query) =>
-    requireEngine().searchFiles(String(projectId), query ? String(query) : ""),
+  handle(IPC_CHANNELS.searchFiles, (projectId, query, root) =>
+    requireEngine().searchFiles(
+      String(projectId),
+      query ? String(query) : "",
+      root ? String(root) : undefined,
+    ),
   );
   handle(IPC_CHANNELS.pinSession, (id, pinned) =>
     requireEngine().pinSession(String(id), Boolean(pinned)),

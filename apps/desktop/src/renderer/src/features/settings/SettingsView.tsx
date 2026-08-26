@@ -365,8 +365,10 @@ export function SettingsView() {
               <div className="card">
                 <h3>Projects</h3>
                 <p className="muted">
-                  Inbox is for tasks started outside a repo. Open a folder (⌘O) to make a project.
-                  Deleting a project removes Capsule history, not the folder on disk.
+                  Inbox is for tasks started outside a repo. ⌘O attaches or changes this project’s
+                  folder; New project from folder creates another. Extra folders stay readable
+                  while git and new chats use the primary. Deleting a project removes Capsule
+                  history, not the folder on disk.
                 </p>
                 <SettingRow
                   label="Tasks without a project"
@@ -431,6 +433,7 @@ export function SettingsView() {
                           home: window.capsule.homeDir,
                           fallback: "no folder",
                         })}
+                        {item.extraFolders?.length ? ` +${item.extraFolders.length}` : ""}
                       </span>
                     </button>
                     <button className="danger" onClick={() => deleteProject(item.id)}>
@@ -505,6 +508,18 @@ export function SettingsView() {
                   <div className="kv">
                     <span>Toggle inspector</span>
                     <span className="mono">⌘\</span>
+                  </div>
+                  <div className="kv">
+                    <span>Inspector review</span>
+                    <span className="mono">⌃⇧G</span>
+                  </div>
+                  <div className="kv">
+                    <span>Inspector terminal</span>
+                    <span className="mono">⌃`</span>
+                  </div>
+                  <div className="kv">
+                    <span>Inspector side chat</span>
+                    <span className="mono">⌥⌘S</span>
                   </div>
                   <div className="kv">
                     <span>Send</span>

@@ -11,6 +11,20 @@ export function compactParams(params: Record<string, unknown>): Record<string, u
 }
 
 export function extractGatewayText(payload: Record<string, unknown>): string {
+  /*
+   * ACP runtime frames nest their content one level down:
+   *
+   *   { stream: "acp", data: { phase: "runtime_event", eventType: "tool_call",
+   *                            text: "Edit (pending)", title: "Edit", … } }
+   *
+   * Reading only the top level dropped every one of them, which is why the
+   * execution log filled with hundreds of empty rows.
+   */
+  const nested = asRecord(payload.data);
+  if (Object.keys(nested).length > 0) {
+    const nestedText = asString(nested.text, asString(nested.title));
+    if (nestedText) return nestedText;
+  }
   const delta = asString(payload.deltaText);
   if (delta) return delta;
   const text = asString(payload.text);
@@ -188,4 +202,27 @@ export function explainAcpFailure(text: string | undefined): string | undefined 
     if (entry.match.test(message)) return `${message.split("\n")[0]}\n\n${entry.guidance}`;
   }
   return message;
+}
+
+/**
+ * The kind of an ACP runtime frame, read from its nested `eventType` rather
+ * than the outer `stream` (which is always "acp" and says nothing).
+ *
+ * `text_delta` frames carry no text at all — they are a "still typing" tick,
+ * and the reply itself arrives on the acp-reply path — so they are lifecycle,
+ * not content. Telemetry (`status`: usage/session/command updates) is likewise
+ * not something the agent did.
+ */
+export function classifyRuntimeEvent(payload: Record<string, unknown>): AgentStreamKind | undefined {
+  const nested = asRecord(payload.data);
+  const eventType = asString(nested.eventType).toLowerCase();
+  if (!eventType) return undefined;
+  if (eventType === "tool_call") return "tool";
+  if (eventType === "error") return "error";
+  if (eventType === "text_delta" || eventType === "status" || eventType === "done") {
+    return "lifecycle";
+  }
+  if (eventType.startsWith("think") || eventType.startsWith("reason")) return "thinking";
+  if (eventType.startsWith("plan")) return "plan";
+  return undefined;
 }

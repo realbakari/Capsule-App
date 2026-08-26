@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { acpLabelToken, acpSpawnCommand, acpxPermissionMode, HARNESS_PERMISSION_PROFILES } from "./harness.js";
+import { acpLabelToken, acpOptionCommand, acpSpawnCommand, acpxPermissionMode, HARNESS_PERMISSION_PROFILES } from "./harness.js";
 
 /*
  * acpx parses slash-command arguments with `.trim().split(/\s+/)` and no quote
@@ -117,5 +117,41 @@ describe("acp permissions command", () => {
     expect(acpOptionCommand("permissions", "default")).toBe("/acp permissions approve-all");
     expect(acpOptionCommand("permissions", "approve-all")).toBe("/acp permissions approve-all");
     expect(acpOptionCommand("permissions", "strict")).toBe("/acp permissions deny-all");
+  });
+});
+
+describe("acp option commands name their target session", () => {
+  /*
+   * Gateway usage: /acp permissions <profile> [session-key|session-id|label].
+   * Without the target the command only affects the session it was sent to —
+   * and an ACP-bound session hands it to the agent as text instead, so it does
+   * nothing at all.
+   */
+  const ACP_KEY = "agent:claude:acp:e73d79a3-5265-436d-9184-e28c72e36d53";
+
+  it("appends the target to every option command", () => {
+    expect(acpOptionCommand("permissions", "default", ACP_KEY)).toBe(
+      `/acp permissions approve-all ${ACP_KEY}`,
+    );
+    expect(acpOptionCommand("model", "opus", ACP_KEY)).toBe(`/acp model opus ${ACP_KEY}`);
+    expect(acpOptionCommand("timeout", "30", ACP_KEY)).toBe(`/acp timeout 30 ${ACP_KEY}`);
+  });
+
+  it("omits the target when none is given", () => {
+    expect(acpOptionCommand("permissions", "default")).toBe("/acp permissions approve-all");
+  });
+
+  it("keeps every token whitespace-free so acpx can parse it", () => {
+    const tokens = acpOptionCommand("permissions", "strict", ACP_KEY)
+      .slice("/acp".length)
+      .trim()
+      .split(/\s+/);
+    expect(tokens).toEqual(["permissions", "deny-all", ACP_KEY]);
+  });
+
+  it("translates the profile rather than passing Capsule's name through", () => {
+    // "strict" is not a mode acpx understands.
+    expect(acpOptionCommand("permissions", "strict", ACP_KEY)).toContain("deny-all");
+    expect(acpOptionCommand("permissions", "strict", ACP_KEY)).not.toContain("strict");
   });
 });

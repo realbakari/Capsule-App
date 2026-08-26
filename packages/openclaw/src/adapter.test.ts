@@ -59,7 +59,13 @@ describe("OpenClawAdapter ACP lifecycle", () => {
       "agent:main:dashboard:parent",
       "/acp spawn claude --bind off --mode persistent --label Work",
     );
-    expect(send).toHaveBeenCalledWith("agent:claude:acp:abc-def", "/acp permissions approve-all");
+    // Option commands are Gateway slash commands: they go to a plain Gateway
+    // session and name the ACP session as the target. Sent *into* the ACP
+    // session (untargeted) the Gateway parser never sees them.
+    expect(send).toHaveBeenCalledWith(
+      "agent:main:dashboard:parent",
+      "/acp permissions approve-all agent:claude:acp:abc-def",
+    );
   });
 
   it("maps Standard/Full to approve-all and Supervised to deny-all", async () => {
@@ -77,7 +83,13 @@ describe("OpenClawAdapter ACP lifecycle", () => {
 
     await adapter.spawnAcpSession({ harnessId: "claude", permissionProfile: "default" });
     expect(ensure).toHaveBeenCalledWith("approve-all");
-    expect(send).toHaveBeenCalledWith("agent:claude:acp:abc-def", "/acp permissions approve-all");
+    // Option commands are Gateway slash commands: they go to a plain Gateway
+    // session and name the ACP session as the target. Sent *into* the ACP
+    // session (untargeted) the Gateway parser never sees them.
+    expect(send).toHaveBeenCalledWith(
+      "agent:main:dashboard:parent",
+      "/acp permissions approve-all agent:claude:acp:abc-def",
+    );
 
     send.mockClear();
     ensure.mockClear();
@@ -88,7 +100,10 @@ describe("OpenClawAdapter ACP lifecycle", () => {
     ensure.mockClear();
     await adapter.spawnAcpSession({ harnessId: "claude", permissionProfile: "strict" });
     expect(ensure).toHaveBeenCalledWith("deny-all");
-    expect(send).toHaveBeenCalledWith("agent:claude:acp:abc-def", "/acp permissions deny-all");
+    expect(send).toHaveBeenCalledWith(
+      "agent:main:dashboard:parent",
+      "/acp permissions deny-all agent:claude:acp:abc-def",
+    );
   });
 
   it("does not treat a bind-here failure as a successful Claude spawn", async () => {

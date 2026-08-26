@@ -81,6 +81,8 @@ export function Sidebar() {
     setProjectId,
     createTask,
     createProjectFromFolder,
+    pickProjectDirectory,
+    addProjectFolder,
     connected,
     status,
     renameProject,
@@ -141,6 +143,16 @@ export function Sidebar() {
       if (action === "new-conversation") {
         setProjectId(id);
         void createTask();
+        return;
+      }
+      if (action === "change-folder") {
+        setProjectId(id);
+        void pickProjectDirectory(id);
+        return;
+      }
+      if (action === "add-folder") {
+        setProjectId(id);
+        void addProjectFolder(id);
         return;
       }
       if (action === "open-folder" && project?.workingDirectory) {

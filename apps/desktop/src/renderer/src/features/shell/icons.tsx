@@ -298,3 +298,62 @@ export function PinOffIcon(props: IconProps) {
     </Svg>
   );
 }
+
+export function GlobeIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="10" />
+      <line x1="2" y1="12" x2="22" y2="12" />
+      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+    </Svg>
+  );
+}
+
+export function MessageSquarePlusIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+      <line x1="12" y1="8" x2="12" y2="14" />
+      <line x1="9" y1="11" x2="15" y2="11" />
+    </Svg>
+  );
+}
+
+export function MaximizeIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <polyline points="15 3 21 3 21 9" />
+      <polyline points="9 21 3 21 3 15" />
+      <line x1="21" y1="3" x2="14" y2="10" />
+      <line x1="3" y1="21" x2="10" y2="14" />
+    </Svg>
+  );
+}
+
+export function MinimizeIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <polyline points="4 14 10 14 10 20" />
+      <polyline points="20 10 14 10 14 4" />
+      <line x1="14" y1="10" x2="21" y2="3" />
+      <line x1="3" y1="21" x2="10" y2="14" />
+    </Svg>
+  );
+}
+
+export function ColumnsIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M12 3v18" />
+    </Svg>
+  );
+}
+
+export function CheckIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <polyline points="20 6 9 17 4 12" />
+    </Svg>
+  );
+}

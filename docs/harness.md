@@ -76,4 +76,6 @@ openclaw gateway restart
 # Install and authenticate Claude Code, Codex, Gemini, …
 ```
 
-Then in Capsule: **Runtimes → Doctor / Dedicate / Spawn**. Code-mode messages on a dedicated project auto-spawn ACP if no live session exists.
+Then in Capsule: **Runtimes → Doctor / Dedicate / Spawn**, or Inspector **Side chat**. Code-mode messages on a dedicated project auto-spawn ACP if no live session exists.
+
+Desktop chrome (inspector, folders, shortcuts) is specified in [desktop.md](desktop.md).

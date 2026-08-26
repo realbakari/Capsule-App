@@ -11,6 +11,7 @@ export function createProjectRecord(
     name: input.name.trim() || "Untitled project",
     description: input.description,
     workingDirectory: input.workingDirectory,
+    extraFolders: [],
     defaultAgentId: input.defaultAgentId,
     defaultSkillIds: [],
     defaultMode: input.defaultMode ?? "chat",

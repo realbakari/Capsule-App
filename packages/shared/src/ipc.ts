@@ -23,6 +23,7 @@ export const IPC_CHANNELS = {
   resolveApproval: "capsule:resolveApproval",
   readFile: "capsule:readFile",
   readFileVersioned: "capsule:readFileVersioned",
+  previewFile: "capsule:previewFile",
   writeFile: "capsule:writeFile",
   listFiles: "capsule:listFiles",
   openTerminal: "capsule:openTerminal",

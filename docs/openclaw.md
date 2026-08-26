@@ -28,7 +28,7 @@ Capsule identifies as `clientName: cli`, `mode: ui`, `displayName: Capsule`. The
 | `sessions.create` / `sessions.send` / `sessions.abort` / `sessions.steer` | Conversations, ACP slash commands, cancellation, steer |
 | `sessions.list` / `sessions.subscribe` / `sessions.messages.subscribe` | Roster + live transcript |
 | `chat.history` | Reconnect recovery |
-| `plugins.list` | Installed skills/plugins |
+| `config.get` / `health` | acpx enablement and `permissionMode`. Do not rely on `plugins.list` — some Gateway builds reject it. |
 | `channels.status` | Gateway messaging channels |
 | `exec.approval.list` / `exec.approval.resolve` | Host exec approvals |
 | `artifacts.download` | Transcript-backed files |

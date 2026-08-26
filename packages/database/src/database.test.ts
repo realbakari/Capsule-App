@@ -29,6 +29,14 @@ describe("CapsuleDatabase", () => {
     expect(projects).toHaveLength(1);
     expect(projects[0]?.name).toBe("Demo");
     expect(projects[0]?.defaultSkillIds).toEqual(["coding"]);
+    repos.updateProject({
+      ...projects[0]!,
+      workingDirectory: "/tmp/app",
+      extraFolders: ["/tmp/docs"],
+      updatedAt: "2026-01-01T00:00:01.000Z",
+    });
+    expect(repos.getProject("proj_1")?.workingDirectory).toBe("/tmp/app");
+    expect(repos.getProject("proj_1")?.extraFolders).toEqual(["/tmp/docs"]);
     repos.insertSession({
       id: "sess_1",
       workspaceId: "ws_1",

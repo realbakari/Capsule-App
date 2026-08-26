@@ -60,6 +60,7 @@ Before finishing a change:
 2. `pnpm typecheck`
 3. `pnpm lint`
 4. For UI changes, `pnpm build` and exercise the first user flow (create project → conversation → send → run → artifact).
+5. Product-facing changes update [ARCHITECTURE.md](ARCHITECTURE.md) and [docs/desktop.md](docs/desktop.md). ACP or Gateway behavior also updates [docs/harness.md](docs/harness.md) / [docs/openclaw.md](docs/openclaw.md). Do not ship a feature the docs do not describe.
 
 Keep files focused. Prefer a new package over growing `core` into a junk drawer. Prefer extending the OpenClaw adapter over scattering Gateway RPC calls.
 
@@ -75,7 +76,7 @@ Keep files focused. Prefer a new package over growing `core` into a junk drawer.
 
 **Protocol 4.** Operator clients must send `minProtocol: 4` and `maxProtocol: 4`. Do not regress to protocol 3.
 
-**ACP harnesses are not Capsule runtimes.** Implement the OpenClaw ACP operator lifecycle (doctor, dedicate, spawn `--bind here`, steer, cancel, status, permissions/model/cwd/timeout/set-mode, close) through `@capsule/harness` and `OpenClawAdapter`. Spawn by creating a Gateway session then sending `/acp spawn <id>` — do not pass `runtime: "acp"` on `sessions.create`, and do not add a Capsule-owned ACP JSON-RPC server. Claude Code and Codex are first-class; other official acpx ids are spawnable. Code-mode work on a dedicated project must route through the live harness session. Do not treat the `coding` mock agent as a substitute.
+**ACP harnesses are not Capsule runtimes.** Implement the OpenClaw ACP operator lifecycle (doctor, dedicate, spawn `--bind off`, steer, cancel, status, permissions/model/cwd/timeout/set-mode, close) through `@capsule/harness` and `OpenClawAdapter`. Spawn by creating a Gateway session then sending `/acp spawn <id> --bind off` — `--bind here` is for messaging channels, not Capsule’s operator socket. Do not pass `runtime: "acp"` on `sessions.create`, and do not add a Capsule-owned ACP JSON-RPC server. Claude Code and Codex are first-class; other official acpx ids are spawnable. Code-mode work on a dedicated project must route through the live harness session. Do not treat the `coding` mock agent as a substitute.
 
 **IPC is a closed allowlist.** Adding a renderer capability means adding a named channel in `@capsule/shared` and a handler in `apps/desktop/src/main`. Never expose a generic shell.
 
@@ -83,7 +84,11 @@ Keep files focused. Prefer a new package over growing `core` into a junk drawer.
 
 ## Desktop UI
 
-Layout: collapsible sidebar, 52px page header, centered conversation, glass composer dock, optional inspector. Graphite and off-white matching the Capsule mark — no purple. Slash commands, file mentions, skills, and permission modes belong in the composer. Keep the default conversation free of policy matrices.
+Layout: collapsible sidebar, 52px titlebar (no app mark), centered conversation, glass composer dock, optional inspector. Graphite and off-white matching the Capsule mark — no purple. Slash commands, file mentions, skills, and permission modes belong in the composer. Keep the default conversation free of policy matrices.
+
+The inspector is Launch / Review / Terminal / Browser / Files / Side chat. Files is an in-place expandable tree plus preview (images and code). Terminal is a command runner, not a PTY. Do not reintroduce a current-directory `dir` stack that navigates into folders.
+
+The product spec is [docs/desktop.md](docs/desktop.md). If the UI and that file disagree, fix both in the same change.
 
 Use rem for readable text.
 
@@ -93,6 +98,8 @@ Use rem for readable text.
 
 - [ARCHITECTURE.md](ARCHITECTURE.md)
 - [CONTRIBUTING.md](CONTRIBUTING.md)
+- [docs/desktop.md](docs/desktop.md)
+- [docs/harness.md](docs/harness.md)
 - [docs/openclaw.md](docs/openclaw.md)
 - [OpenClaw Gateway protocol](https://docs.openclaw.ai/gateway/protocol)
 - [Building a Gateway client](https://docs.openclaw.ai/gateway/clients)

@@ -51,6 +51,8 @@ describe("buildProjectActionMenuItems", () => {
     expect(items.find((item) => item.id === "copy-path")?.enabled).toBe(false);
     expect(items.find((item) => item.id === "delete")?.enabled).toBe(false);
     expect(items.find((item) => item.id === "new-conversation")?.enabled).not.toBe(false);
+    expect(items.find((item) => item.id === "change-folder")?.enabled).not.toBe(false);
+    expect(items.find((item) => item.id === "add-folder")?.enabled).not.toBe(false);
   });
 
   it("enables folder actions when a path exists", () => {
@@ -72,7 +74,11 @@ describe("menu keyboard helpers", () => {
       canRename: false,
     });
     const selectable = selectableMenuItems(items);
-    expect(selectable.map((item) => item.id)).toEqual(["new-conversation"]);
+    expect(selectable.map((item) => item.id)).toEqual([
+      "new-conversation",
+      "change-folder",
+      "add-folder",
+    ]);
     expect(nextSelectableIndex(items, undefined, 1)).toBe(0);
   });
 

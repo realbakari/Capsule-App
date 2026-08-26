@@ -4,17 +4,18 @@ A local-first macOS workspace for AI agents.
 
 Capsule sits above OpenClaw. OpenClaw runs agents, tools, skills, sessions, and channels. Capsule provides the workspace: projects, conversations, runs, contracts, verification, approvals, and artifacts.
 
-[Architecture](ARCHITECTURE.md) · [Agents](AGENTS.md) · [Contributing](CONTRIBUTING.md) · [OpenClaw notes](docs/openclaw.md)
+[Architecture](ARCHITECTURE.md) · [Desktop spec](docs/desktop.md) · [Harnesses](docs/harness.md) · [Agents](AGENTS.md) · [Contributing](CONTRIBUTING.md) · [OpenClaw notes](docs/openclaw.md)
 
 ## What you get
 
-- Chat, projects, agents, skills, and run history
+- Chat, projects, Inbox (projectless tasks), agents, skills, and run history
 - Composer slash commands (`/`), file mentions (`@`), skills (`$`), and permission modes
+- A primary project folder plus optional extra folders; Files tree and image/code preview in the inspector
 - A simple default view, with execution details on demand
 - An OpenClaw Gateway adapter over protocol 4
 - Capsule contracts, policies, verification, and artifacts
 - A mock runtime so the app works without OpenClaw installed
-- ACP harnesses through OpenClaw acpx (`/acp spawn`, doctor, dedicate, steer, cancel, status, permissions/model/cwd/timeout, close) — Claude Code and Codex first, plus the official acpx catalog. Not a local ACP server.
+- ACP harnesses through OpenClaw acpx (`/acp spawn --bind off`, doctor, dedicate, steer, cancel, status, permissions/model/cwd/timeout, close) — Claude Code and Codex first, plus the official acpx catalog. Not a local ACP server.
 
 ## Architecture
 

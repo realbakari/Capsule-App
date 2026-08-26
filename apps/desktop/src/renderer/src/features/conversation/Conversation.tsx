@@ -59,6 +59,9 @@ export function Conversation() {
     { label: "Research options", mode: "research" as const, text: "Research options for this problem and cite sources." },
   ];
   const scroller = useRef<HTMLDivElement>(null);
+  /* Track the message count at mount time so entrance animations only fire for
+     messages that arrive after the initial load, not the whole history. */
+  const initialCountRef = useRef(messages.length);
   const [stick, setStick] = useState(true);
 
   useEffect(() => {
@@ -88,19 +91,19 @@ export function Conversation() {
             <div className="empty-thread">
               <h1>
                 {!project
-                  ? "Open a folder to start"
-                  : !project.workingDirectory
-                    ? "Choose a code folder"
-                    : session
-                      ? "What should we work on?"
-                      : "Pick a thread to continue"}
+                  ? "What should we work on?"
+                  : session
+                    ? "What should we work on?"
+                    : "Pick a thread to continue"}
               </h1>
               <p>
-                {!project || !project.workingDirectory
-                  ? "Capsule works against a folder on disk. Open one to search files, run git, and spawn coding harnesses."
-                  : session
-                    ? "Ask for a change, a review, or research."
-                    : "Select an existing conversation or start a new one."}
+                {!project || !session
+                  ? "Start a conversation, or attach a folder when the work needs a repo."
+                  : !project.workingDirectory && project.name === "Inbox"
+                    ? "This chat isn't bound to a repo. Attach a folder or start a project from one."
+                    : !project.workingDirectory
+                      ? "Attach a folder so Capsule can search files, run git, and spawn coding harnesses."
+                      : "Ask for a change, a review, or research."}
               </p>
               {project && session && (
                 <div className="empty-prompts">
@@ -122,7 +125,7 @@ export function Conversation() {
               {(!project || !project.workingDirectory) && (
                 <div className="actions">
                   <button className="send" onClick={() => void pickProjectDirectory()}>
-                    Open folder
+                    Attach folder
                   </button>
                   <button className="chip" onClick={() => void createProjectFromFolder()}>
                     New project from folder
@@ -146,6 +149,12 @@ export function Conversation() {
                   </button>
                 </div>
               )}
+              {loadingOlder && (
+                <div className="skeleton-thread-loading" style={{ padding: "0.5rem 0 1rem", display: "grid", gap: "0.5rem" }}>
+                  <div className="skeleton skeleton-line short" />
+                  <div className="skeleton skeleton-line medium" />
+                </div>
+              )}
               {turns.map((turn) =>
                 folded.has(turn.id) ? (
                   <button
@@ -161,8 +170,12 @@ export function Conversation() {
                     <span className="turn-fold-label">{foldedTurnLabel(turn)}</span>
                   </button>
                 ) : (
-                  turn.messages.map((message) => (
-              <div className={`msg ${message.role}`} key={message.id}>
+                  turn.messages.map((message, messageIndex) => {
+              const turnIndex = turns.indexOf(turn);
+              const globalIndex = turns.slice(0, turnIndex).reduce((sum, t) => sum + t.messages.length, 0) + messageIndex;
+              const isNew = globalIndex >= initialCountRef.current;
+              return (
+              <div className={`msg ${message.role}${isNew ? " motion-enter-conversation" : ""}`} key={message.id}>
                 {/* No author label: a right-aligned bubble already says "you",
                     and the reply is the timeline — naming it "Agent" on every
                     turn is chrome. Timestamp and copy appear on hover. */}
@@ -181,7 +194,8 @@ export function Conversation() {
                 </div>
                 <MessageBody content={message.content} />
               </div>
-                  ))
+                  );
+                })
                 ),
               )}
               {/* The turn's outcome on disk, under the reply. Not a second copy
@@ -191,7 +205,10 @@ export function Conversation() {
           )}
           {activeRun && (
             <div className="msg">
-              <div className="who">Working on your task</div>
+              <div className="who shimmer-text">
+                Working on your task
+                <span className="shimmer-overlay" aria-hidden>Working on your task</span>
+              </div>
               <div className="progress">
                 {steps.map((step) => (
                   <div key={step.id}>
@@ -200,7 +217,14 @@ export function Conversation() {
                         {step.status === "complete" ? "✓" : step.status === "error" ? "✕" : "●"}
                       </span>
                       <span className="step-label">{step.label}</span>
-                      {step.detail && <span className="step-detail">{step.detail}</span>}
+                      {step.detail && (
+                        <span className={`step-detail${step.status === "active" ? " shimmer-text" : ""}`}>
+                          {step.detail}
+                          {step.status === "active" && (
+                            <span className="shimmer-overlay" aria-hidden>{step.detail}</span>
+                          )}
+                        </span>
+                      )}
                     </div>
                     {/* The row shows the latest fragment; the agent's whole
                         thought is here for anyone who wants it. */}

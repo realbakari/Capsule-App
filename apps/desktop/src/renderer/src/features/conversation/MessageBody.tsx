@@ -1,4 +1,6 @@
-import { Fragment, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
+import { CopyIcon } from "../shell/icons";
+import { highlight } from "../../lib/highlight";
 
 function inline(text: string): ReactNode {
   const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/g);
@@ -57,19 +59,56 @@ function block(text: string, key: number): ReactNode {
   });
 }
 
+/*
+ * Capturing the fence language splits the content into a repeating triple:
+ * prose, language, code. Keeping the language lets the block label itself, and
+ * a fenced block is the one thing in a reply people most often want to lift
+ * out — so it gets its own copy control rather than only the whole-message one.
+ */
+function CodeBlock({ code, language }: { code: string; language?: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="msg-code-wrap">
+      <div className="msg-code-bar">
+        <span className="msg-code-lang">{language || "code"}</span>
+        <button
+          className="icon-btn"
+          title="Copy code"
+          aria-label="Copy code"
+          onClick={() => {
+            void navigator.clipboard.writeText(code).then(() => {
+              setCopied(true);
+              window.setTimeout(() => setCopied(false), 1_200);
+            });
+          }}
+        >
+          {copied ? "Copied" : <CopyIcon size={13} />}
+        </button>
+      </div>
+      <pre className="msg-code mono">{highlight(code, language)}</pre>
+    </div>
+  );
+}
+
 export function MessageBody({ content }: { content: string }) {
-  const chunks = content.split(/```(?:\w+)?\n?/);
+  const chunks = content.split(/```(\w+)?\n?/);
   return (
     <div className="body">
-      {chunks.map((chunk, index) =>
-        index % 2 === 1 ? (
-          <pre className="msg-code mono" key={index}>
-            {chunk.replace(/\n$/, "")}
-          </pre>
-        ) : (
-          <Fragment key={index}>{block(chunk, index)}</Fragment>
-        ),
-      )}
+      {chunks.map((chunk, index) => {
+        // 0 = prose, 1 = language, 2 = code, repeating.
+        const slot = index % 3;
+        if (slot === 1) return null;
+        if (slot === 2) {
+          return (
+            <CodeBlock
+              key={index}
+              code={chunk.replace(/\n$/, "")}
+              language={chunks[index - 1] ?? undefined}
+            />
+          );
+        }
+        return <Fragment key={index}>{block(chunk, index)}</Fragment>;
+      })}
     </div>
   );
 }

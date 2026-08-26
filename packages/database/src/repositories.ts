@@ -109,10 +109,10 @@ export class CapsuleRepositories {
     this.db.sqlite
       .prepare(
         `INSERT INTO projects (
-          id, workspace_id, name, description, working_directory, default_agent_id,
+          id, workspace_id, name, description, working_directory, extra_folders, default_agent_id,
           default_skill_ids, default_mode, created_at, updated_at
         ) VALUES (
-          @id, @workspaceId, @name, @description, @workingDirectory, @defaultAgentId,
+          @id, @workspaceId, @name, @description, @workingDirectory, @extraFolders, @defaultAgentId,
           @defaultSkillIds, @defaultMode, @createdAt, @updatedAt
         )`,
       )
@@ -120,6 +120,7 @@ export class CapsuleRepositories {
         ...project,
         description: project.description ?? null,
         workingDirectory: project.workingDirectory ?? null,
+        extraFolders: JSON.stringify(project.extraFolders ?? []),
         defaultAgentId: project.defaultAgentId ?? null,
         defaultSkillIds: JSON.stringify(project.defaultSkillIds),
       });
@@ -129,18 +130,25 @@ export class CapsuleRepositories {
     const rows = this.db.sqlite
       .prepare(
         `SELECT id, workspace_id AS workspaceId, name, description, working_directory AS workingDirectory,
-                default_agent_id AS defaultAgentId, default_skill_ids AS defaultSkillIds,
-                default_mode AS defaultMode, created_at AS createdAt, updated_at AS updatedAt
+                extra_folders AS extraFolders, default_agent_id AS defaultAgentId,
+                default_skill_ids AS defaultSkillIds, default_mode AS defaultMode,
+                created_at AS createdAt, updated_at AS updatedAt
          FROM projects ORDER BY updated_at DESC`,
       )
-      .all() as Array<Omit<Project, "defaultSkillIds"> & { defaultSkillIds: string }>;
-    return rows.map((row) => ({
-      ...row,
-      description: row.description || undefined,
-      workingDirectory: row.workingDirectory || undefined,
-      defaultAgentId: row.defaultAgentId || undefined,
-      defaultSkillIds: parseJson<string[]>(row.defaultSkillIds, []),
-    }));
+      .all() as Array<
+      Omit<Project, "defaultSkillIds" | "extraFolders"> & { defaultSkillIds: string; extraFolders: string }
+    >;
+    return rows.map((row) => {
+      const extraFolders = parseJson<string[]>(row.extraFolders, []);
+      return {
+        ...row,
+        description: row.description || undefined,
+        workingDirectory: row.workingDirectory || undefined,
+        extraFolders: extraFolders.length > 0 ? extraFolders : undefined,
+        defaultAgentId: row.defaultAgentId || undefined,
+        defaultSkillIds: parseJson<string[]>(row.defaultSkillIds, []),
+      };
+    });
   }
 
   getProject(id: string): Project | undefined {
@@ -151,7 +159,8 @@ export class CapsuleRepositories {
     this.db.sqlite
       .prepare(
         `UPDATE projects SET name = @name, description = @description, working_directory = @workingDirectory,
-         default_agent_id = @defaultAgentId, default_skill_ids = @defaultSkillIds, default_mode = @defaultMode,
+         extra_folders = @extraFolders, default_agent_id = @defaultAgentId,
+         default_skill_ids = @defaultSkillIds, default_mode = @defaultMode,
          updated_at = @updatedAt WHERE id = @id`,
       )
       .run({
@@ -159,6 +168,7 @@ export class CapsuleRepositories {
         name: project.name,
         description: project.description ?? null,
         workingDirectory: project.workingDirectory ?? null,
+        extraFolders: JSON.stringify(project.extraFolders ?? []),
         defaultAgentId: project.defaultAgentId ?? null,
         defaultSkillIds: JSON.stringify(project.defaultSkillIds),
         defaultMode: project.defaultMode,

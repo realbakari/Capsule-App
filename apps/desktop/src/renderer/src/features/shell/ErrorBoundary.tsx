@@ -1,13 +1,26 @@
-import { Component, type ErrorInfo, type ReactNode } from "react";
+import { Component, isValidElement, type ErrorInfo, type ReactNode } from "react";
 
 interface Props {
   children: ReactNode;
   label?: string;
   compact?: boolean;
+  /** Change this after a shell rewrite so a stuck error panel remounts. */
+  resetKey?: string | number;
 }
 
 interface State {
   error?: Error;
+}
+
+function sameElementType(left: ReactNode, right: ReactNode): boolean {
+  const a = Array.isArray(left) ? left : [left];
+  const b = Array.isArray(right) ? right : [right];
+  if (a.length !== b.length) return false;
+  return a.every((item, index) => {
+    const other = b[index];
+    if (isValidElement(item) && isValidElement(other)) return item.type === other.type;
+    return true;
+  });
 }
 
 export class ViewErrorBoundary extends Component<Props, State> {
@@ -22,7 +35,14 @@ export class ViewErrorBoundary extends Component<Props, State> {
   }
 
   override componentDidUpdate(prev: Props): void {
-    if (prev.label !== this.props.label && this.state.error) {
+    if (!this.state.error) return;
+    if (prev.label !== this.props.label || prev.resetKey !== this.props.resetKey) {
+      this.setState({ error: undefined });
+      return;
+    }
+    // Fast Refresh replaces the child function; retry instead of keeping a
+    // stale ReferenceError on screen (the Inspector `dir` crash).
+    if (!sameElementType(prev.children, this.props.children)) {
       this.setState({ error: undefined });
     }
   }

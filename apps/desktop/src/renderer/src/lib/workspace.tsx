@@ -11,29 +11,41 @@ import {
   type Context,
   type ReactNode,
 } from "react";
-import type {
-  Agent,
-  AgentMode,
-  ApprovalRequest,
-  Artifact,
-  CapsuleSettings,
-  ChatMessage,
-  FileEntry,
-  GitStatus,
-  HarnessDoctorReport,
-  HarnessPermissionProfile,
-  HarnessStatus,
-  Project,
-  Run,
-  RunEvent,
-  RuntimeStatus,
-  Session,
-  Skill,
-  SubsystemStatus,
+import {
+  addFolderToProject,
+  makePrimaryFolder as promoteProjectFolder,
+  removeFolderFromProject,
+  type Agent,
+  type AgentMode,
+  type ApprovalRequest,
+  type Artifact,
+  type CapsuleSettings,
+  type ChatMessage,
+  type FileEntry,
+  type GitStatus,
+  type HarnessDoctorReport,
+  type HarnessPermissionProfile,
+  type HarnessStatus,
+  type Project,
+  type Run,
+  type RunEvent,
+  type RuntimeStatus,
+  type Session,
+  type Skill,
+  type SubsystemStatus,
 } from "@capsule/shared";
 
 export type View = "chat" | "runtimes" | "skills" | "history" | "approvals" | "settings";
-export type InspectorTab = "files" | "changes" | "diff" | "run" | "agents" | "term";
+export type InspectorTab =
+  | "launcher"
+  | "files"
+  | "preview"
+  | "changes"
+  | "diff"
+  | "run"
+  | "agents"
+  | "term"
+  | "browser";
 
 export const MODES: AgentMode[] = ["plan", "chat", "agent", "code", "research", "browser", "automation"];
 export const PRIMARY_MODES: AgentMode[] = ["plan", "chat", "code"];
@@ -134,9 +146,12 @@ export interface WorkspaceValue {
   files: FileEntry[];
   confirm?: ConfirmState;
   setConfirm: (value?: ConfirmState) => void;
-  pickProjectDirectory: () => Promise<void>;
+  pickProjectDirectory: (id?: string) => Promise<void>;
   pickFilesToMention: () => Promise<void>;
   createProjectFromFolder: () => Promise<void>;
+  addProjectFolder: (projectId?: string) => Promise<void>;
+  removeProjectFolder: (path: string, projectId?: string) => Promise<void>;
+  makePrimaryFolder: (path: string, projectId?: string) => Promise<void>;
   renameProject: (id: string, name: string) => Promise<void>;
   deleteProject: (id: string) => void;
   renameSession: (id: string, title: string) => Promise<void>;
@@ -257,7 +272,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [skillId, setSkillId] = useState<string>();
   const [filePicker, setFilePicker] = useState(false);
   const [contentSearch, setContentSearch] = useState(false);
-  const [inspectorTab, setInspectorTab] = useState<InspectorTab>("files");
+  const [inspectorTab, setInspectorTab] = useState<InspectorTab>("launcher");
   const [projectRuns, setProjectRuns] = useState<Run[]>([]);
   const [settings, setSettings] = useState<CapsuleSettings>();
   const settingsDefaultsApplied = useRef(false);
@@ -661,12 +676,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     return directory.split("/").filter(Boolean).pop() || "Project";
   }
 
-  async function pickProjectDirectory() {
+  async function pickProjectDirectory(id = projectId) {
     try {
       const directory = await api.pickDirectory();
       if (!directory) return;
       const name = folderName(directory);
-      const target = projectId ?? projects[0]?.id;
+      const target = id ?? projects[0]?.id;
       const current = projects.find((item) => item.id === target);
       if (!target || current?.name === "Inbox") {
         const created = await api.createProject({ name, workingDirectory: directory });
@@ -730,6 +745,53 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       setNotice(error instanceof Error ? error.message : String(error));
     }
+  }
+
+  async function applyFolderPatch(
+    targetId: string,
+    patch: { workingDirectory?: string; extraFolders: string[] },
+  ) {
+    await api.updateProject(targetId, {
+      workingDirectory: patch.workingDirectory ?? null,
+      extraFolders: patch.extraFolders,
+    });
+    await refresh();
+  }
+
+  async function addProjectFolder(id = projectId) {
+    try {
+      const directory = await api.pickDirectory();
+      if (!directory || !id) return;
+      const current = projects.find((item) => item.id === id);
+      if (!current || current.name === "Inbox") {
+        const created = await api.createProject({
+          name: folderName(directory),
+          workingDirectory: directory,
+        });
+        setProjectId(created.id);
+        await refresh();
+        setView("chat");
+        return;
+      }
+      await applyFolderPatch(id, addFolderToProject(current, directory));
+      setView("chat");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function removeProjectFolder(path: string, id = projectId) {
+    if (!id) return;
+    const current = projects.find((item) => item.id === id);
+    if (!current) return;
+    await applyFolderPatch(id, removeFolderFromProject(current, path));
+  }
+
+  async function makePrimaryFolder(path: string, id = projectId) {
+    if (!id) return;
+    const current = projects.find((item) => item.id === id);
+    if (!current) return;
+    await applyFolderPatch(id, promoteProjectFolder(current, path));
   }
 
   async function renameProject(id: string, name: string) {
@@ -1133,6 +1195,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       pickProjectDirectory,
       pickFilesToMention,
       createProjectFromFolder,
+      addProjectFolder,
+      removeProjectFolder,
+      makePrimaryFolder,
       renameProject,
       deleteProject,
       renameSession,

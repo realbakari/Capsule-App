@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer } from "electron";
 import {
   IPC_CHANNELS,
   IPC_EVENTS,
+  type FilePreview,
   type FileReadResult,
   type MessagePage,
   type PopupMenuRequest,
@@ -39,18 +40,20 @@ const api = {
   listApprovals: (status?: string) => ipcRenderer.invoke(IPC_CHANNELS.listApprovals, status),
   resolveApproval: (id: string, decision: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.resolveApproval, id, decision),
-  readFile: (projectId: string, relative: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.readFile, projectId, relative),
-  readFileVersioned: (projectId: string, relative: string): Promise<FileReadResult> =>
-    ipcRenderer.invoke(IPC_CHANNELS.readFileVersioned, projectId, relative),
+  readFile: (projectId: string, relative: string, root?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.readFile, projectId, relative, root),
+  readFileVersioned: (projectId: string, relative: string, root?: string): Promise<FileReadResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.readFileVersioned, projectId, relative, root),
+  previewFile: (projectId: string, relative: string, root?: string): Promise<FilePreview> =>
+    ipcRenderer.invoke(IPC_CHANNELS.previewFile, projectId, relative, root),
   writeFile: (
     projectId: string,
     relative: string,
     content: string,
-    options?: { origin?: "user" | "agent"; expectedRevision?: string },
+    options?: { origin?: "user" | "agent"; expectedRevision?: string; root?: string },
   ) => ipcRenderer.invoke(IPC_CHANNELS.writeFile, projectId, relative, content, options),
-  listFiles: (projectId: string, relative?: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.listFiles, projectId, relative),
+  listFiles: (projectId: string, relative?: string, root?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.listFiles, projectId, relative, root),
   openTerminal: (projectId: string) => ipcRenderer.invoke(IPC_CHANNELS.openTerminal, projectId),
   execInProject: (projectId: string, command: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.execInProject, projectId, command),
@@ -106,8 +109,8 @@ const api = {
   listHarnessSessions: (projectId?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.listHarnessSessions, projectId),
   pinSession: (id: string, pinned: boolean) => ipcRenderer.invoke(IPC_CHANNELS.pinSession, id, pinned),
-  searchFiles: (projectId: string, query?: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.searchFiles, projectId, query),
+  searchFiles: (projectId: string, query?: string, root?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.searchFiles, projectId, query, root),
   regenerateTitle: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.regenerateTitle, id),
   setPermissionProfile: (id: string, profile: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.setPermissionProfile, id, profile),

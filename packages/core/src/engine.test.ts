@@ -165,6 +165,18 @@ describe("CapsuleEngine first user flow", () => {
     const session = await engine.createSession({ projectId: project.id, title: "Temp" });
     engine.updateProject(project.id, { name: "Renamed" });
     expect(engine.getProject(project.id)?.name).toBe("Renamed");
+    const extra = path.join(dir, "docs");
+    mkdirSync(extra);
+    writeFileSync(path.join(extra, "notes.md"), "extra folder notes\n");
+    engine.updateProject(project.id, { extraFolders: [extra] });
+    expect(engine.getProject(project.id)?.extraFolders).toEqual([extra]);
+    expect(engine.listFiles(project.id, ".", extra).some((entry) => entry.name === "notes.md")).toBe(
+      true,
+    );
+    expect(
+      engine.searchFiles(project.id, "notes", extra).some((entry) => entry.name === "notes.md"),
+    ).toBe(true);
+    expect(() => engine.listFiles(project.id, ".", "/not-attached")).toThrow(/not attached/i);
     engine.deleteProject(project.id);
     expect(engine.getProject(project.id)).toBeUndefined();
     expect(engine.listSessions().some((item) => item.id === session.id)).toBe(false);
@@ -440,6 +452,23 @@ describe("concurrent edits to a project file", () => {
       // The revision must describe the whole file, or a reload would look
       // like an external change.
       expect(opened.revision).toBe(engine.readFileVersioned(projectId, "big.txt").revision);
+    });
+  });
+
+  it("previews source as text and images as data URLs", async () => {
+    await withEngine(async (engine, projectId, work) => {
+      writeFileSync(path.join(work, "app.ts"), "export const n = 1;\n");
+      writeFileSync(
+        path.join(work, "logo.png"),
+        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]),
+      );
+      const code = engine.previewFile(projectId, "app.ts");
+      expect(code.kind).toBe("text");
+      expect(code.language).toBe("ts");
+      expect(code.contents).toContain("export const n");
+      const image = engine.previewFile(projectId, "logo.png");
+      expect(image.kind).toBe("image");
+      expect(image.dataUrl).toMatch(/^data:image\/png;base64,/);
     });
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyAgentStream, isAssistantProse } from "./events.js";
+import { classifyAgentStream, classifyRuntimeEvent, extractGatewayText, isAssistantProse } from "./events.js";
 
 describe("classifyAgentStream", () => {
   it("keeps reasoning separate from prose", () => {
@@ -46,5 +46,53 @@ describe("isAssistantProse", () => {
     for (const kind of ["thinking", "plan", "tool", "command", "patch", "error"] as const) {
       expect(isAssistantProse(kind)).toBe(false);
     }
+  });
+});
+
+describe("ACP runtime frames", () => {
+  /*
+   * Real frames from a live session. The outer stream is always "acp"; the
+   * kind and the text both live one level down, which is why the execution log
+   * filled with hundreds of empty rows.
+   */
+  const toolCall = {
+    stream: "acp",
+    data: {
+      phase: "runtime_event", eventType: "tool_call", tag: "tool_call",
+      text: "Edit (pending)", title: "Edit", status: "pending",
+    },
+  };
+  const usage = {
+    stream: "acp",
+    data: { phase: "runtime_event", eventType: "status", tag: "usage_update", text: "usage updated: 80025/200000" },
+  };
+  const textDelta = { stream: "acp", data: { phase: "runtime_event", eventType: "text_delta", stream: "output" } };
+
+  it("pulls text out of the nested payload", () => {
+    expect(extractGatewayText(toolCall)).toBe("Edit (pending)");
+    expect(extractGatewayText(usage)).toBe("usage updated: 80025/200000");
+  });
+
+  it("falls back to the title when a frame has no text", () => {
+    expect(extractGatewayText({ stream: "acp", data: { eventType: "tool_call", title: "Edit" } })).toBe("Edit");
+  });
+
+  it("classifies by nested eventType, not the outer stream", () => {
+    expect(classifyRuntimeEvent(toolCall)).toBe("tool");
+    expect(classifyRuntimeEvent({ stream: "acp", data: { eventType: "error" } })).toBe("error");
+  });
+
+  it("treats telemetry and typing ticks as lifecycle, not activity", () => {
+    // text_delta carries no text at all — the reply arrives on another path.
+    expect(classifyRuntimeEvent(textDelta)).toBe("lifecycle");
+    expect(classifyRuntimeEvent(usage)).toBe("lifecycle");
+  });
+
+  it("returns undefined for a non-runtime frame so the outer stream decides", () => {
+    expect(classifyRuntimeEvent({ stream: "assistant" })).toBeUndefined();
+  });
+
+  it("leaves top-level frames working as before", () => {
+    expect(extractGatewayText({ text: "plain" })).toBe("plain");
   });
 });

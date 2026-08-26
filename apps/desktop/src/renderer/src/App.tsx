@@ -6,7 +6,7 @@ import { SettingsView } from "./features/settings/SettingsView";
 import { ConfirmDialog } from "./features/shell/ConfirmDialog";
 import { ContentSearch } from "./features/shell/ContentSearch";
 import { FilePicker } from "./features/shell/FilePicker";
-import { Inspector } from "./features/shell/Inspector";
+import { Inspector, INSPECTOR_REVISION } from "./features/shell/Inspector";
 import { Palette } from "./features/shell/Palette";
 import { Sidebar } from "./features/shell/Sidebar";
 import { Splash } from "./features/shell/Splash";
@@ -41,7 +41,7 @@ function Shell() {
             {view === "settings" && <SettingsView />}
           </ViewErrorBoundary>
           {view === "chat" && inspectorOpen && (
-            <ViewErrorBoundary label="Inspector">
+            <ViewErrorBoundary label="Inspector" resetKey={INSPECTOR_REVISION}>
               <Inspector />
             </ViewErrorBoundary>
           )}

@@ -241,4 +241,10 @@ export const MIGRATIONS: Array<{ version: number; sql: string }> = [
       ALTER TABLE sessions ADD COLUMN working_directory TEXT;
     `,
   },
+  {
+    version: 6,
+    sql: `
+      ALTER TABLE projects ADD COLUMN extra_folders TEXT NOT NULL DEFAULT '[]';
+    `,
+  },
 ];

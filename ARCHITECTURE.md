@@ -156,7 +156,7 @@ Capsule UI  →  dedicate / spawn
         Claude Code, Codex, Gemini, Cursor, …
 ```
 
-Operator spawn creates a Gateway session, then sends `/acp spawn <id> --bind here --mode persistent|oneshot --cwd <dir>`. That is the chat command path from [ACP agents](https://docs.openclaw.ai/tools/acp-agents). `sessions_spawn({ runtime: "acp" })` is an agent tool, not a `sessions.create` field — Gateway protocol 4 rejects `runtime` on `sessions.create`.
+Operator spawn creates a Gateway session, then sends `/acp spawn <id> --bind off --mode persistent|oneshot --cwd <dir>`. That is the operator path from [ACP agents](https://docs.openclaw.ai/tools/acp-agents). `--bind here` is for messaging channels, not Capsule’s operator socket. `sessions_spawn({ runtime: "acp" })` is an agent tool, not a `sessions.create` field — Gateway protocol 4 rejects `runtime` on `sessions.create`.
 
 Claude Code and Codex are first-class. Other official acpx ids (Copilot, Cursor, Droid, Gemini, OpenCode, …) are spawnable from Runtimes. Codex ACP is the explicit fallback; native `/codex` stays on the Gateway when that plugin is enabled.
 
@@ -211,9 +211,16 @@ Secrets never go in SQLite or the renderer. Gateway tokens live in macOS Keychai
 
 ## 8. Desktop UI
 
-The desktop shell is a compact agent workspace: 52px topbar, collapsible resizable sidebar, centered 48rem chat column, 22px glass composer dock, segmented modes, status as a dot, inspector closed until asked. Composer supports slash commands, `@` file mentions, `$` skills, and a per-thread permission mode. Capsule's default view is still “I'm working on it…”, not an enterprise compliance dashboard.
+The desktop shell is a compact agent workspace. Details and shortcuts live in [docs/desktop.md](docs/desktop.md) — update that file in the same change as the UI.
 
-Visual language is graphite and off-white, matching the Capsule mark. No purple accent. System type, rem-based sizing, muted sidebar labels.
+- 52px titlebar (Electron drag region, **no app mark**). Hide-sidebar control is a no-drag child next to the traffic lights (`⌘B`). Two-finger swipe hides the sidebar; a left-edge swipe shows it.
+- Collapsible resizable sidebar: project/thread **name only** (no folder paths), portaled `···` menu, native right-click menu.
+- Centered chat column, glass composer (`/`, `@`, `$`, permission, folder basename chip). Transcript is turns, not an Artifacts / run-result dump.
+- Inspector closed until asked (`⌘\`). Tools: Launch, Review (git), Terminal (command runner, not PTY), Browser (`openExternal`), Files (expandable tree + image/code preview), Side chat (ACP sessions).
+- Inbox is the projectless container (`~/Documents/Capsule`). A project has a primary folder plus optional extra folders (`extra_folders`, schema v6).
+- Settings: General, Appearance, Configuration (including git/PR), Gateway, Projects, Shortcuts, Diagnostics.
+
+Visual language is graphite and off-white, matching the Capsule mark. No purple accent. System type, rem-based sizing, muted sidebar labels. Capsule's default view is still “I'm working on it…”, not an enterprise compliance dashboard.
 
 ---
 
@@ -221,7 +228,7 @@ Visual language is graphite and off-white, matching the Capsule mark. No purple 
 
 | # | Limitation | Detail |
 |---|-----------|--------|
-| 1 | Monaco / xterm | File tree, git changes/diff/commit, and branch checkout exist; an in-app editor and terminal do not. |
+| 1 | Monaco / xterm PTY | Inspector Files has a preview + inline text editor (not Monaco). Terminal is `execInProject` plus Terminal.app, not an interactive PTY. Browser opens system URLs; there is no embedded webview. |
 | 2 | Execution replay UI | Events are stored; a dedicated replay viewer is not shipped. |
 | 3 | Remote pairing UI | Loopback auto-approves Capsule's persisted Ed25519 identity; remote/non-local pairing still needs `openclaw devices approve`. |
 | 4 | Bonjour discovery | Local TCP probe and config-file hints work; mDNS browsing is not wired. |
@@ -236,4 +243,6 @@ Visual language is graphite and off-white, matching the Capsule mark. No purple 
 - [README.md](README.md) — product overview and commands
 - [AGENTS.md](AGENTS.md) — conventions for AI contributors
 - [CONTRIBUTING.md](CONTRIBUTING.md) — setup and PR expectations
+- [docs/desktop.md](docs/desktop.md) — desktop product spec (keep in lockstep with the UI)
+- [docs/harness.md](docs/harness.md) — ACP harness lifecycle and permissions
 - [docs/openclaw.md](docs/openclaw.md) — Gateway protocol notes for implementers

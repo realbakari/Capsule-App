@@ -9,8 +9,9 @@ import {
   useWorkspace,
   type View,
 } from "../../lib/workspace";
+import { formatProjectRoot, projectFolderName } from "../../lib/paths";
 import { MenuSelect } from "../shell/MenuSelect";
-import { ArrowUpIcon, GitBranchIcon, PaperclipIcon, StopIcon, TerminalIcon } from "../shell/icons";
+import { ArrowUpIcon, FolderIcon, GitBranchIcon, PaperclipIcon, StopIcon, TerminalIcon } from "../shell/icons";
 import { ComposerMenu, detectTrigger, type SuggestItem } from "./ComposerMenu";
 
 const SUGGESTIONS = [
@@ -118,7 +119,8 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
   const [caret, setCaret] = useState(0);
   const [menuDismissed, setMenuDismissed] = useState(false);
   const harnessLive = Boolean(session?.harnessId && session.harnessState && session.harnessState !== "closed");
-  const folder = project?.workingDirectory?.split("/").filter(Boolean).pop();
+  const folderPath = session?.workingDirectory || project?.workingDirectory;
+  const folder = projectFolderName(folderPath);
   const trigger = detectTrigger(draft, caret);
   const menuOpen = Boolean(trigger) && !menuDismissed;
 
@@ -241,7 +243,7 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
   const sendOnEnter = settings?.composerSendKey !== "cmd-enter";
 
   return (
-    <div className="composer">
+    <div className={`composer composer-dock composer-overlay-corner-masks${busy ? " composer-dock--with-activity" : ""}`}>
       {showSuggestions && (
         <div className="suggestions">
           {SUGGESTIONS.map((item) => (
@@ -442,9 +444,14 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
           type="button"
           className={!folder ? "missing" : ""}
           onClick={() => void pickProjectDirectory()}
-          title="Open folder (⌘O)"
+          title={
+            folderPath
+              ? formatProjectRoot(folderPath, { home: window.capsule.homeDir })
+              : "Attach a folder (⌘O)"
+          }
         >
-          {folder ?? "Open folder"}
+          <FolderIcon size={12} />
+          {folder ?? "No folder"}
         </button>
         <button type="button" onClick={() => void openTerminal()} title="Open Terminal in this folder">
           <span className="inline-icon">
@@ -476,6 +483,15 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
         {!connected && <span>Gateway offline</span>}
         <span className="faint">/  @  $</span>
       </div>
+      {busy && (
+        <div className="composer-dock-activity" aria-live="polite">
+          <span className="dot on live" />
+          <span className="shimmer-text">
+            Agent working…
+            <span className="shimmer-overlay" aria-hidden>Agent working…</span>
+          </span>
+        </div>
+      )}
     </div>
   );
 }

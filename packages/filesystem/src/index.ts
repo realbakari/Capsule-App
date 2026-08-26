@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import type { FileEntry } from "@capsule/shared";
+import { readPreviewFile } from "./preview.js";
 
 export type { FileEntry };
 export {
@@ -25,6 +26,7 @@ export {
   pushCurrentBranch,
   viewPullRequest,
 } from "./github.js";
+export { previewFromBytes, readPreviewFile } from "./preview.js";
 export { searchContents } from "./search.js";
 
 export class FilesystemAdapter {
@@ -100,6 +102,10 @@ export class FilesystemAdapter {
       throw new Error("File is too large to preview");
     }
     return fs.readFileSync(file, "utf8");
+  }
+
+  preview(relative: string) {
+    return readPreviewFile(this.resolve(relative), relative.replaceAll("\\", "/"));
   }
 
   write(relative: string, content: string): void {

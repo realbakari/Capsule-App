@@ -472,25 +472,40 @@ export function acpSessionsCommand(): string {
   return "/acp sessions";
 }
 
-export function acpModelCommand(model: string): string {
-  return `/acp model ${quoteAcpArg(model)}`;
+/*
+ * Every /acp option command takes an optional session target:
+ *
+ *   /acp permissions <profile> [session-key|session-id|session-label]
+ *
+ * Omitting it only works when the command is sent to the session it should
+ * affect *and* that session still reaches the Gateway's slash parser. An
+ * ACP-bound session does not — a message sent there goes to the agent — so an
+ * untargeted option command sent into an ACP session is silently inert. Always
+ * name the target and send option commands to a plain Gateway session.
+ */
+function withTarget(command: string, target?: string): string {
+  return target ? `${command} ${quoteAcpArg(target)}` : command;
 }
 
-export function acpPermissionsCommand(profile: string): string {
+export function acpModelCommand(model: string, target?: string): string {
+  return withTarget(`/acp model ${quoteAcpArg(model)}`, target);
+}
+
+export function acpPermissionsCommand(profile: string, target?: string): string {
   const mapped = acpxPermissionMode(profile as HarnessPermissionProfile);
-  return `/acp permissions ${quoteAcpArg(mapped)}`;
+  return withTarget(`/acp permissions ${quoteAcpArg(mapped)}`, target);
 }
 
-export function acpCwdCommand(cwd: string): string {
-  return `/acp cwd ${quoteAcpArg(cwd)}`;
+export function acpCwdCommand(cwd: string, target?: string): string {
+  return withTarget(`/acp cwd ${quoteAcpArg(cwd)}`, target);
 }
 
-export function acpSetModeCommand(mode: string): string {
-  return `/acp set-mode ${quoteAcpArg(mode)}`;
+export function acpSetModeCommand(mode: string, target?: string): string {
+  return withTarget(`/acp set-mode ${quoteAcpArg(mode)}`, target);
 }
 
-export function acpTimeoutCommand(seconds: string | number): string {
-  return `/acp timeout ${seconds}`;
+export function acpTimeoutCommand(seconds: string | number, target?: string): string {
+  return withTarget(`/acp timeout ${seconds}`, target);
 }
 
 export function acpSetCommand(key: string, value: string): string {
@@ -505,12 +520,16 @@ export function acpInstallCommand(): string {
   return "/acp install";
 }
 
-export function acpOptionCommand(key: HarnessOptionKey, value: string): string {
-  if (key === "model") return acpModelCommand(value);
-  if (key === "permissions") return acpPermissionsCommand(value);
-  if (key === "cwd") return acpCwdCommand(value);
-  if (key === "timeout") return acpTimeoutCommand(value);
-  return acpSetModeCommand(value);
+export function acpOptionCommand(
+  key: HarnessOptionKey,
+  value: string,
+  target?: string,
+): string {
+  if (key === "model") return acpModelCommand(value, target);
+  if (key === "permissions") return acpPermissionsCommand(value, target);
+  if (key === "cwd") return acpCwdCommand(value, target);
+  if (key === "timeout") return acpTimeoutCommand(value, target);
+  return acpSetModeCommand(value, target);
 }
 
 export function parseAcpStatus(text: string): AcpStatusSnapshot {

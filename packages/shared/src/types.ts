@@ -1,3 +1,5 @@
+import type { HarnessPermissionProfile } from "./harness.js";
+
 export type ConnectionState =
   | "connected"
   | "connecting"
@@ -122,7 +124,10 @@ export interface Project {
   workspaceId: string;
   name: string;
   description?: string;
+  /** Primary folder: cwd, git, AGENTS.md, and new chats. */
   workingDirectory?: string;
+  /** Extra folders the agent and Files panel can read; git stays on the primary. */
+  extraFolders?: string[];
   defaultAgentId?: string;
   defaultSkillIds: string[];
   defaultMode: AgentMode;
@@ -155,6 +160,7 @@ export interface UpdateProjectInput {
   name?: string;
   description?: string;
   workingDirectory?: string | null;
+  extraFolders?: string[];
   defaultAgentId?: string | null;
   defaultMode?: AgentMode;
 }
@@ -397,6 +403,11 @@ export interface AgentMessage {
   skillId?: string;
   mode?: AgentMode;
   attachments?: Array<{ name: string; path: string }>;
+  /**
+   * The conversation's permission profile, carried per turn so the runtime can
+   * (re)apply it to a session that was created before the profile changed.
+   */
+  permissionProfile?: HarnessPermissionProfile;
 }
 
 export interface SearchResults {

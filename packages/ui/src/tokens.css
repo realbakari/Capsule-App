@@ -13,7 +13,9 @@
   --sidebar-width: 16.5rem;
   --sidebar-min-width: 13.75rem;
   --sidebar-max-width: 22rem;
-  --inspector-width: 17.5rem;
+  --inspector-width: 32rem;
+  --inspector-min-width: 22rem;
+  --inspector-max-width: 60rem;
   --chat-max: 48rem;
   --control-radius: 0.5rem;
   --composer-radius: 22px;
@@ -63,11 +65,28 @@
   --ring-width: 2px;
   --ring-offset: 2px;
 
-  /* Motion: feedback -> state change, with a confident deceleration. */
+  /* Motion: feedback → state change → composed arrival. */
   --motion-instant: 120ms;
   --motion-fast: 180ms;
+  --motion-standard: 240ms;
+  --motion-arrival: 500ms;
   --motion-ease: cubic-bezier(0.25, 1, 0.5, 1);
-  --type-rem: 1rem;
+  --motion-ease-arrival: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-distance-arrival: 0.75rem;
+  --motion-blur-arrival: 2px;
+
+  /* Typography scale. --type-scale is the user font-size preference knob;
+     Cmd+/- zoom scales the root font-size (every rem), while this nudges
+     only the type tokens so text resizes without moving layout. */
+  --type-scale: 1;
+  --type-rem: calc(1rem * var(--type-scale));
+  --text-xs: calc(var(--type-rem) * 0.75);
+  --text-sm: calc(var(--type-rem) * 0.875);
+  --text-base: var(--type-rem);
+  --text-lg: calc(var(--type-rem) * 1.125);
+  --text-xl: calc(var(--type-rem) * 1.25);
+  --text-message: var(--transcript-size, calc(var(--type-rem) * 0.9375));
+
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
   --mono: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
   --bg: var(--base);
@@ -80,6 +99,13 @@
   --border-color: rgb(255 255 255 / 8%);
   --shadow: 0 24px 64px -24px rgb(0 0 0 / 0.7);
   --glass: color-mix(in srgb, var(--surface-0) var(--glass-opacity), transparent);
+
+  /* Sidebar: optional gradient (graphite depth, not color) and active row
+     treatment. Components read these semantically. */
+  --sidebar-gradient-top: #0d0d0d;
+  --sidebar-gradient-bottom: #050505;
+  --sidebar-row-active-surface: rgb(255 255 255 / 16%);
+  --sidebar-row-subtle-active-surface: rgb(255 255 255 / 9%);
 }
 
 html[data-theme="light"],
@@ -121,6 +147,10 @@ html[data-theme="light"] {
   --border-strong: rgb(0 0 0 / 14%);
   --shadow: 0 24px 64px -24px rgb(0 0 0 / 0.18);
   --glass: color-mix(in srgb, var(--surface-0) 86%, transparent);
+  --sidebar-gradient-top: #f0f0ec;
+  --sidebar-gradient-bottom: #e6e6e2;
+  --sidebar-row-active-surface: rgb(0 0 0 / 12%);
+  --sidebar-row-subtle-active-surface: rgb(0 0 0 / 7%);
 }
 
 @media (prefers-color-scheme: light) {
@@ -152,6 +182,10 @@ html[data-theme="light"] {
     --border-strong: rgb(0 0 0 / 14%);
     --shadow: 0 24px 64px -24px rgb(0 0 0 / 0.18);
     --glass: color-mix(in srgb, var(--surface-0) 86%, transparent);
+    --sidebar-gradient-top: #f0f0ec;
+    --sidebar-gradient-bottom: #e6e6e2;
+    --sidebar-row-active-surface: rgb(0 0 0 / 12%);
+    --sidebar-row-subtle-active-surface: rgb(0 0 0 / 7%);
   }
 }
 
@@ -207,11 +241,26 @@ button:disabled, [aria-disabled="true"] { cursor: default; }
   }
 }
 ::selection { background: rgb(255 255 255 / 0.16); }
+
+/* Scrollbars: auto-fading thumbs — transparent at rest, visible on interaction. */
 ::-webkit-scrollbar { width: var(--app-scrollbar-width); height: var(--app-scrollbar-width); }
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: rgb(255 255 255 / 10%);
+  background: rgb(255 255 255 / 0%);
   border-radius: 99px;
+  transition: background 200ms ease;
 }
+*:hover > ::-webkit-scrollbar-thumb,
 ::-webkit-scrollbar-thumb:hover {
-  background: rgb(255 255 255 / 16%);
+  background: rgb(255 255 255 / 12%);
+}
+::-webkit-scrollbar-thumb:active {
+  background: rgb(255 255 255 / 20%);
+}
+html[data-theme="light"] ::-webkit-scrollbar-thumb:hover,
+html[data-theme="light"] *:hover > ::-webkit-scrollbar-thumb {
+  background: rgb(0 0 0 / 10%);
+}
+html[data-theme="light"] ::-webkit-scrollbar-thumb:active {
+  background: rgb(0 0 0 / 18%);
 }

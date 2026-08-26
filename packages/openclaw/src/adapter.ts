@@ -64,6 +64,7 @@ import {
   asRecord,
   asString,
   classifyAgentStream,
+  classifyRuntimeEvent,
   compactParams,
   explainAcpFailure,
   extractAcpSessionKey,
@@ -448,6 +449,32 @@ export class OpenClawAdapter implements AgentRuntime {
     });
   }
 
+  /*
+   * The permission mode used to be sent only at spawn, so a session created
+   * before the mode was correct kept the old one forever — ensureHarnessSession
+   * reuses a live session rather than respawning it. Applying it once per
+   * process for each session key repairs those without forcing anyone to close
+   * and recreate a conversation.
+   */
+  private readonly permissionModeApplied = new Set<string>();
+
+  private async ensureAcpPermissionMode(
+    sessionKey: string,
+    profile: HarnessPermissionProfile | undefined,
+  ): Promise<void> {
+    if (!isAcpSessionKey(sessionKey)) return;
+    const mode = acpxPermissionMode(profile);
+    const stamp = `${sessionKey}:${mode}`;
+    if (this.permissionModeApplied.has(stamp)) return;
+    try {
+      await this.setAcpOption(sessionKey, "permissions", mode);
+      this.permissionModeApplied.add(stamp);
+    } catch {
+      // A gateway that does not accept the option should not block the turn;
+      // the spawn path still sets it for newly created sessions.
+    }
+  }
+
   private async createGatewaySession(input: { label?: string; cwd?: string; agentId?: string }): Promise<string> {
     const attempt = async (params: Record<string, unknown>) => {
       const created = await this.request<{ key?: string; sessionKey?: string; id?: string }>(
@@ -559,9 +586,29 @@ export class OpenClawAdapter implements AgentRuntime {
     return { text, parsed: parseAcpStatus(text) };
   }
 
+  /*
+   * Option commands are Gateway slash commands, not agent prompts. Sending one
+   * into an ACP-bound session hands it to the agent as text and the Gateway's
+   * parser never sees it — which is why `/acp permissions` was silently inert.
+   * Route it through a plain Gateway session and name the ACP session as the
+   * target instead.
+   */
   async setAcpOption(sessionKey: string, key: HarnessOptionKey, value: string): Promise<string> {
-    const result = await this.acpCommand(sessionKey, acpOptionCommand(key, value), { waitMs: 6_000 });
+    const acpTarget = isAcpSessionKey(sessionKey) ? sessionKey : undefined;
+    const controlKey = acpTarget ? await this.controlSessionKey() : sessionKey;
+    const result = await this.acpCommand(controlKey, acpOptionCommand(key, value, acpTarget), {
+      waitMs: 6_000,
+    });
     return result.text ?? "";
+  }
+
+  /** A plain Gateway session kept for issuing ACP control commands. */
+  private controlKey?: string;
+
+  private async controlSessionKey(): Promise<string> {
+    if (this.controlKey) return this.controlKey;
+    this.controlKey = await this.createGatewaySession({ label: "capsule-acp-control" });
+    return this.controlKey;
   }
 
   async listAcpSessionKeys(): Promise<string[]> {
@@ -631,6 +678,7 @@ export class OpenClawAdapter implements AgentRuntime {
       sessionKey: input.sessionId,
       requestedAgentId: input.agentId,
     });
+    await this.ensureAcpPermissionMode(sessionKey, input.permissionProfile);
     const idempotencyKey = createId("idemp");
     const payload = await this.request<{ runId?: string; id?: string; status?: string }>(
       "sessions.send",
@@ -777,7 +825,19 @@ export class OpenClawAdapter implements AgentRuntime {
       (payloadId ? this.runSessions.get(payloadId) : undefined) ??
       (sessionKey ? this.sessionRuns.get(sessionKey) : undefined) ??
       (openclawRunId || payloadId);
-    const text = extractGatewayText(payload);
+    /*
+     * The reply is prose only. ACP runtime frames also carry text — "usage
+     * updated: 87690/200000", "tool call (completed)" — and once that text was
+     * being read out of the nested payload it started being concatenated into
+     * the agent's answer. Activity frames still become run events; they just
+     * must not contribute to the reply body.
+     */
+    const runtimeKind = classifyRuntimeEvent(payload);
+    const isProseFrame = runtimeKind === undefined || runtimeKind === "message";
+    // frameText is every frame's own text, for the activity log. text is the
+    // subset that belongs in the agent's answer.
+    const frameText = extractGatewayText(payload);
+    const text = isProseFrame ? frameText : "";
     const control = sessionKey ? this.pendingAcpControls.has(sessionKey) : false;
     if (sessionKey && text) {
       this.emitter.emit("acp-reply", {
@@ -807,7 +867,9 @@ export class OpenClawAdapter implements AgentRuntime {
       });
       return;
     }
-    const agentText = text || asString(payload.summary, asString(payload.errorMessage));
+    // Run events describe what happened, so they keep the frame's own text
+    // even when it is activity rather than prose.
+    const agentText = frameText || asString(payload.summary, asString(payload.errorMessage));
     if (runId && isGatewayAgentFailure(agentText)) {
       this.activeRunCount = Math.max(0, this.activeRunCount - 1);
       const explained = explainAcpFailure(agentText) ?? agentText;
@@ -833,7 +895,9 @@ export class OpenClawAdapter implements AgentRuntime {
         });
         return;
       }
-      const kind = classifyAgentStream(stream);
+      // An ACP runtime frame's real kind lives in its nested eventType; the
+      // outer stream is always "acp".
+      const kind = classifyRuntimeEvent(payload) ?? classifyAgentStream(stream);
       // "assistant" is the only type the engine folds into run.result, so
       // reasoning, plan text and command output must not use it.
       this.emit(runId, isAssistantProse(kind) ? "assistant" : kind, agentText, {

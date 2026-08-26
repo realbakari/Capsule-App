@@ -51,9 +51,12 @@ import {
   acpInstallCommand,
   FILE_CHANGED_ON_DISK,
   fileContentRevision,
+  type FilePreview,
   type FileReadResult,
   acpxPermissionMode,
   createId,
+  normalizeFolderPath,
+  projectFolderList,
   gatewaySessionLabel,
   isAcpSessionKey,
   nowIso,
@@ -667,6 +670,9 @@ export class CapsuleEngine {
     if (patch.workingDirectory !== undefined) {
       project.workingDirectory = patch.workingDirectory ?? undefined;
     }
+    if (patch.extraFolders !== undefined) {
+      project.extraFolders = patch.extraFolders.length > 0 ? patch.extraFolders : undefined;
+    }
     if (patch.defaultAgentId !== undefined) {
       project.defaultAgentId = patch.defaultAgentId ?? undefined;
     }
@@ -1002,6 +1008,11 @@ export class CapsuleEngine {
 
     const runtimeMessage: AgentMessage = {
       ...input,
+      // Carried per turn so a session spawned before the profile changed still
+      // gets the right mode applied.
+      ...(session.permissionProfile
+        ? { permissionProfile: session.permissionProfile as HarnessPermissionProfile }
+        : {}),
       content: applyAgentInstructionHints(input.content, this.settings),
       sessionId: this.usingMock ? session.id : (session.openclawSessionKey ?? session.id),
       agentId: this.usingMock ? agentId : undefined,
@@ -1089,23 +1100,31 @@ export class CapsuleEngine {
     this.events.emit("approval", approval);
   }
 
-  listFiles(projectId: string, relative = ".") {
+  listFiles(projectId: string, relative = ".", root?: string) {
     const project = this.requireProject(projectId);
     const decision = decidePolicy(this.repos.listPolicies(), "filesystem", "read");
     if (decision.decision === "block") throw new Error("Filesystem read is blocked by policy");
-    return new FilesystemAdapter(project.workingDirectory).list(relative);
+    return new FilesystemAdapter(this.resolveProjectFolder(project, root)).list(relative);
   }
 
-  searchFiles(projectId: string, query = ""): FileEntry[] {
-    const project = this.requireProject(projectId);
-    return new FilesystemAdapter(project.workingDirectory).search(query);
-  }
-
-  readFile(projectId: string, relative: string): string {
+  previewFile(projectId: string, relative: string, root?: string): FilePreview {
     const project = this.requireProject(projectId);
     const decision = decidePolicy(this.repos.listPolicies(), "filesystem", "read");
     if (decision.decision === "block") throw new Error("Filesystem read is blocked by policy");
-    return new FilesystemAdapter(project.workingDirectory).read(relative);
+    return new FilesystemAdapter(this.resolveProjectFolder(project, root)).preview(relative);
+  }
+
+  searchFiles(projectId: string, query = "", root?: string): FileEntry[] {
+    const project = this.requireProject(projectId);
+    const folder = this.resolveProjectFolder(project, root);
+    return new FilesystemAdapter(folder).search(query);
+  }
+
+  readFile(projectId: string, relative: string, root?: string): string {
+    const project = this.requireProject(projectId);
+    const decision = decidePolicy(this.repos.listPolicies(), "filesystem", "read");
+    if (decision.decision === "block") throw new Error("Filesystem read is blocked by policy");
+    return new FilesystemAdapter(this.resolveProjectFolder(project, root)).read(relative);
   }
 
   /*
@@ -1122,8 +1141,13 @@ export class CapsuleEngine {
    * so a write can tell "nothing else touched this" from "the agent rewrote it
    * while you were typing".
    */
-  readFileVersioned(projectId: string, relative: string, previewLimit = 8_000): FileReadResult {
-    const contents = this.readFile(projectId, relative);
+  readFileVersioned(
+    projectId: string,
+    relative: string,
+    previewLimit = 8_000,
+    root?: string,
+  ): FileReadResult {
+    const contents = this.readFile(projectId, relative, root);
     return {
       // The revision always describes the file on disk, never the truncated
       // prefix — otherwise a reload would look like an external change.
@@ -1137,7 +1161,7 @@ export class CapsuleEngine {
     projectId: string,
     relative: string,
     content: string,
-    options?: { origin?: "user" | "agent"; expectedRevision?: string },
+    options?: { origin?: "user" | "agent"; expectedRevision?: string; root?: string },
   ): { revision: string } {
     const project = this.requireProject(projectId);
     const origin = options?.origin ?? "agent";
@@ -1146,7 +1170,7 @@ export class CapsuleEngine {
     if (decision.decision === "approval" && origin !== "user") {
       throw new Error("Filesystem write requires approval");
     }
-    const adapter = new FilesystemAdapter(project.workingDirectory);
+    const adapter = new FilesystemAdapter(this.resolveProjectFolder(project, options?.root));
     /*
      * Optimistic concurrency. The editor sends the revision it loaded; if the
      * bytes on disk no longer match it, something else — almost always the
@@ -1422,9 +1446,8 @@ export class CapsuleEngine {
          * contract. A failed or cancelled run has no output to verify, so
          * verifying it produced a "Verification failed" artifact and — worse —
          * overwrote the real cause (an ACP "Authentication required", a
-         * cancellation) with a generic contract verdict. Neither Buzz nor T3
-         * Code has a synthetic verification step; T3 reports a turn's own
-         * `state` plus `errorMessage`, which is what the run already carries.
+         * cancellation) with a generic contract verdict. The run already
+         * carries its own status and error.
          */
         const contract =
           status === "completed" && run.contractId
@@ -1762,6 +1785,18 @@ export class CapsuleEngine {
     const project = this.repos.getProject(id);
     if (!project) throw new Error("Project not found");
     return project;
+  }
+
+  private resolveProjectFolder(project: Project, root?: string): string {
+    const folders = projectFolderList(project);
+    if (root?.trim()) {
+      const needle = normalizeFolderPath(root.trim()).toLowerCase();
+      const match = folders.find((item) => item.toLowerCase() === needle);
+      if (!match) throw new Error("That folder is not attached to this project.");
+      return match;
+    }
+    if (!project.workingDirectory) throw new Error("Project has no working directory");
+    return project.workingDirectory;
   }
 
   private requireSession(id: string): Session {
