@@ -117,6 +117,12 @@ export const DEFAULT_CAPSULE_SETTINGS: CapsuleSettings = {
 export interface CapsuleSettings {
   gatewayUrl: string;
   gatewayToken?: string;
+  /**
+   * Vercel OIDC token for the skills.sh API. Every skills.sh endpoint answers
+   * 401 without one, so the directory reads GitHub unless this is set.
+   * Stored in the Keychain like gatewayToken; masked on the way out.
+   */
+  skillsShToken?: string;
   useMockWhenOffline: boolean;
   launchAtLogin: boolean;
   mockScenario: MockScenario;

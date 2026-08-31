@@ -33,8 +33,7 @@ import {
   type Session,
   type Skill,
   type SkillPack,
-  type SkillsShSearchResult,
-  type SkillsShSkillDetail,
+  type SkillCatalogPage,
   type SubsystemStatus,
 } from "@capsule/shared";
 
@@ -216,8 +215,8 @@ export interface WorkspaceValue {
   installSkill: (skill: Skill) => Promise<Skill>;
   installSkillPack: (packId: string) => Promise<SkillPack>;
   uninstallSkill: (skillId: string) => Promise<void>;
-  searchSkillsSh: (query: string) => Promise<SkillsShSearchResult[]>;
-  fetchSkillDetail: (source: string, slug: string) => Promise<SkillsShSkillDetail | undefined>;
+  searchSkillCatalog: (query: string, refresh?: boolean) => Promise<SkillCatalogPage>;
+  fetchSkillDetail: (id: string) => Promise<string | undefined>;
   aboutOpen: boolean;
   setAboutOpen: (open: boolean) => void;
   settings?: CapsuleSettings;
@@ -1163,16 +1162,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     [api, refresh],
   );
 
-  const searchSkillsSh = useCallback(
-    async (query: string) => {
-      return (await api.searchSkillsSh(query)) as SkillsShSearchResult[];
+  const searchSkillCatalog = useCallback(
+    async (query: string, refresh?: boolean) => {
+      return (await api.searchSkillCatalog(query, refresh)) as SkillCatalogPage;
     },
     [api],
   );
 
   const fetchSkillDetail = useCallback(
-    async (source: string, slug: string) => {
-      return (await api.fetchSkillDetail(source, slug)) as SkillsShSkillDetail | undefined;
+    async (id: string) => {
+      return (await api.fetchSkillDetail(id)) as string | undefined;
     },
     [api],
   );
@@ -1196,7 +1195,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       installSkill,
       installSkillPack,
       uninstallSkill,
-      searchSkillsSh,
+      searchSkillCatalog,
       fetchSkillDetail,
       aboutOpen,
       setAboutOpen,

@@ -10,11 +10,15 @@ import { PACKED_SKILLS } from "./packs.js";
  *   GET /api/v1/skills/curated      – Official first-party curated set
  *   GET /api/v1/skills/:source/:skill – Detail with files (SKILL.md etc.)
  *
- * All responses are JSON. Authentication via Vercel OIDC is optional for
- * read endpoints but required for rate-limit elevation (600 req/min per
- * team/project). Capsule calls these without auth for now (public reads).
+ * All responses are JSON. Authentication is NOT optional: every endpoint above
+ * answers 401 `authentication_required` without a Vercel OIDC token, and that
+ * token is minted per-request for code running inside a Vercel deployment. A
+ * desktop app on a user's machine cannot obtain one, so these calls only
+ * succeed when a host supplies a token explicitly.
  *
- * Falls back to bundled packed skills when offline or on API errors.
+ * The skill directory therefore reads from GitHub instead — see
+ * `SkillCatalogClient` in ./github.ts. This client is kept for a host that does
+ * have a token; its offline fallback returns bundled packed skills.
  */
 export class SkillsShClient {
   private baseUrl = "https://skills.sh/api/v1";
@@ -22,6 +26,14 @@ export class SkillsShClient {
 
   constructor(options?: { token?: string }) {
     this.token = options?.token ?? (typeof process !== "undefined" ? process.env.VERCEL_OIDC_TOKEN : undefined);
+  }
+
+  setToken(token: string | undefined): void {
+    this.token = token;
+  }
+
+  hasToken(): boolean {
+    return Boolean(this.token);
   }
 
   private getHeaders(): Record<string, string> {
@@ -37,6 +49,49 @@ export class SkillsShClient {
    * Endpoint: GET /api/v1/skills/search?q={query}&limit={limit}&owner={owner}
    * Response: { data: V1Skill[], query, searchType: "fuzzy"|"semantic", count, durationMs }
    */
+  /**
+   * Search skills.sh. Unlike the fallback path below, this reports failure:
+   * a 401 means the token is missing or rejected, and the caller needs to say
+   * so rather than show a shorter list with no explanation.
+   */
+  async searchStrict(query: string, limit = 50, owner?: string): Promise<SkillsShSearchResult[]> {
+    if (!this.token) throw new Error("No skills.sh token configured");
+    const trimmed = query.trim();
+    let url = `${this.baseUrl}/skills/search?q=${encodeURIComponent(trimmed)}&limit=${limit}`;
+    if (owner) url += `&owner=${encodeURIComponent(owner)}`;
+    const res = await fetch(url, { headers: this.getHeaders(), signal: AbortSignal.timeout(8000) });
+    if (res.status === 401) {
+      throw new Error(
+        "skills.sh rejected the token (401). It expects a Vercel OIDC token, which expires roughly every 12 hours.",
+      );
+    }
+    if (res.status === 429) throw new Error("skills.sh rate limit reached (429)");
+    if (!res.ok) throw new Error(`skills.sh responded ${res.status}`);
+    const json = (await res.json()) as { data?: SkillsShSearchResult[] };
+    return Array.isArray(json.data) ? json.data : [];
+  }
+
+  /** Leaderboard, reporting failure the same way as searchStrict. */
+  async leaderboardStrict(
+    view: "all-time" | "trending" | "hot" = "all-time",
+    perPage = 50,
+  ): Promise<SkillsShSearchResult[]> {
+    if (!this.token) throw new Error("No skills.sh token configured");
+    const res = await fetch(`${this.baseUrl}/skills?view=${view}&page=0&per_page=${perPage}`, {
+      headers: this.getHeaders(),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (res.status === 401) {
+      throw new Error(
+        "skills.sh rejected the token (401). It expects a Vercel OIDC token, which expires roughly every 12 hours.",
+      );
+    }
+    if (res.status === 429) throw new Error("skills.sh rate limit reached (429)");
+    if (!res.ok) throw new Error(`skills.sh responded ${res.status}`);
+    const json = (await res.json()) as { data?: SkillsShSearchResult[] };
+    return Array.isArray(json.data) ? json.data : [];
+  }
+
   async search(query: string, limit = 50, owner?: string): Promise<SkillsShSearchResult[]> {
     const trimmed = query.trim();
     if (!trimmed || trimmed.length < 2) return [];
@@ -72,7 +127,7 @@ export class SkillsShClient {
       slug: s.id,
       name: s.name,
       source: s.source,
-      installs: s.installs ?? 1000,
+      installs: s.installs,
       sourceType: "github",
       installUrl: s.url ?? `https://skills.sh/${s.source}/${s.id}`,
       url: s.url ?? `https://skills.sh/${s.source}/${s.id}`,
@@ -116,7 +171,7 @@ export class SkillsShClient {
         slug: s.id,
         name: s.name,
         source: s.source,
-        installs: s.installs ?? 1000,
+        installs: s.installs,
         sourceType: "github",
         installUrl: null,
         url: `https://skills.sh/${s.source}/${s.id}`,
@@ -185,7 +240,7 @@ export class SkillsShClient {
         id: local.id,
         source: local.source,
         slug: local.id,
-        installs: local.installs ?? 1000,
+        installs: local.installs,
         files: local.content ? [{ path: "SKILL.md", contents: local.content }] : undefined,
       };
     }

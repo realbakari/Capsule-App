@@ -10,8 +10,8 @@
     var(--workspace-traffic-inset) + var(--workspace-titlebar-control-size) +
       var(--workspace-titlebar-control-gap)
   );
-  --sidebar-width: 16.5rem;
-  --sidebar-min-width: 13.75rem;
+  --sidebar-width: 18rem;
+  --sidebar-min-width: 15rem;
   --sidebar-max-width: 22rem;
   --inspector-width: 32rem;
   --inspector-min-width: 22rem;

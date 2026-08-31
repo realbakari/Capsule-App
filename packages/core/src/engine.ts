@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { agentIdForMode, DEFAULT_AGENTS, excludeSystemAgents } from "@capsule/agents";
 import {
@@ -100,16 +101,23 @@ import {
   type Session,
   type Skill,
   type SkillPack,
-  type SkillsShSearchResult,
-  type SkillsShSkillDetail,
+  type SkillCatalogEntry,
+  type SkillCatalogPage,
   type SubsystemStatus,
 } from "@capsule/shared";
-import { DEFAULT_SKILLS, DEFAULT_SKILL_PACKS, SkillsShClient, skillIdForMode } from "@capsule/skills";
+import {
+  DEFAULT_SKILLS,
+  DEFAULT_SKILL_PACKS,
+  SkillCatalogClient,
+  SkillsShClient,
+  skillIdForMode,
+} from "@capsule/skills";
 import { openNativeTerminal, runInDirectory } from "@capsule/terminal";
 import { verifyContract } from "@capsule/verification";
 import {
   CAPSULE_KEYCHAIN_SERVICE,
   GATEWAY_TOKEN_ACCOUNT,
+  SKILLS_SH_TOKEN_ACCOUNT,
   createKeychainAdapter,
   type KeychainAdapter,
 } from "./keychain.js";
@@ -157,10 +165,32 @@ export class CapsuleEngine {
   private prWatchers = new Map<string, ReturnType<typeof setInterval>>();
   private prFixFingerprints = new Map<string, string>();
   private prWatchSessions = new Map<string, string>();
-  private skillsClient = new SkillsShClient();
+  private skillsClient: SkillCatalogClient;
+  private skillsShClient = new SkillsShClient();
 
   constructor(private readonly options: CapsuleEngineOptions) {
     this.db = new CapsuleDatabase(options.databasePath);
+    // The GitHub catalog is cached on disk: unauthenticated GitHub allows 60
+    // requests an hour for the whole machine, so refetching on every launch
+    // (and on every dev restart) is what empties the directory.
+    const cachePath = path.join(options.userDataDir, "skill-catalog.json");
+    this.skillsClient = new SkillCatalogClient(undefined, undefined, undefined, {
+      read: () => {
+        try {
+          return JSON.parse(readFileSync(cachePath, "utf8")) as SkillCatalogPage;
+        } catch {
+          return undefined;
+        }
+      },
+      write: (page) => {
+        try {
+          mkdirSync(path.dirname(cachePath), { recursive: true });
+          writeFileSync(cachePath, JSON.stringify(page));
+        } catch {
+          // A cache we cannot write is a slower directory, not a failure.
+        }
+      },
+    });
     this.repos = new CapsuleRepositories(this.db);
     this.keychain = createKeychainAdapter(options.userDataDir);
     this.settings = normalizeCapsuleSettings({
@@ -868,12 +898,49 @@ export class CapsuleEngine {
     }
   }
 
-  async searchSkillsSh(query: string): Promise<SkillsShSearchResult[]> {
-    return this.skillsClient.search(query);
+  /**
+   * Browse or filter the live skill catalog. An empty query returns everything
+   * that was fetched; failures are carried on the page rather than swallowed,
+   * so the directory can say why it is short.
+   */
+  async searchSkillCatalog(query: string, refresh = false): Promise<SkillCatalogPage> {
+    const base = await this.skillsClient.search(query, refresh);
+    const connected = this.skillsShClient.hasToken();
+    const page: SkillCatalogPage = { ...base, skillsShConnected: connected };
+    if (!connected) return page;
+
+    // With a token configured, skills.sh results are merged in ahead of the
+    // GitHub ones — it reports install counts, which GitHub cannot. A failure
+    // there is added to the page's errors so the directory can say the token
+    // was rejected instead of silently showing the GitHub list alone.
+    try {
+      const trimmed = query.trim();
+      const results = trimmed
+        ? await this.skillsShClient.searchStrict(trimmed)
+        : await this.skillsShClient.leaderboardStrict();
+      const mapped: SkillCatalogEntry[] = results.map((result) => ({
+        id: `${result.source}/${result.slug || result.id}`,
+        name: result.name || result.slug,
+        source: result.source,
+        url: result.url,
+        description: result.description,
+        installs: result.installs,
+        origin: "skills.sh",
+      }));
+      const seen = new Set(mapped.map((entry) => entry.id));
+      return {
+        ...page,
+        entries: [...mapped, ...page.entries.filter((entry) => !seen.has(entry.id))],
+      };
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      return { ...page, errors: [...page.errors, reason] };
+    }
   }
 
-  async fetchSkillDetail(source: string, slug: string): Promise<SkillsShSkillDetail | undefined> {
-    return this.skillsClient.getSkillDetail(source, slug);
+  /** Read a catalog skill's SKILL.md. Undefined when it could not be fetched. */
+  async fetchSkillDetail(id: string): Promise<string | undefined> {
+    return this.skillsClient.readSkillDoc(id);
   }
 
   listSessions(projectId?: string): Session[] {
@@ -1276,11 +1343,12 @@ export class CapsuleEngine {
     return {
       ...this.settings,
       gatewayToken: this.settings.gatewayToken ? TOKEN_PRESENT_MASK : undefined,
+      skillsShToken: this.settings.skillsShToken ? TOKEN_PRESENT_MASK : undefined,
     };
   }
 
   async updateSettings(patch: Partial<CapsuleSettings>): Promise<CapsuleSettings> {
-    const { gatewayToken, ...rest } = patch;
+    const { gatewayToken, skillsShToken, ...rest } = patch;
     this.settings = normalizeCapsuleSettings({ ...this.settings, ...rest });
     if (gatewayToken === TOKEN_PRESENT_MASK) {
       // Renderer round-trip of a stored token — keep the secret in Keychain.
@@ -1290,6 +1358,17 @@ export class CapsuleEngine {
     } else if (typeof gatewayToken === "string") {
       this.settings.gatewayToken = gatewayToken;
       await this.keychain.set(CAPSULE_KEYCHAIN_SERVICE, GATEWAY_TOKEN_ACCOUNT, gatewayToken);
+    }
+    if (skillsShToken === TOKEN_PRESENT_MASK) {
+      // Renderer round-trip of the stored token — leave the secret alone.
+    } else if (skillsShToken === "") {
+      delete this.settings.skillsShToken;
+      this.skillsShClient.setToken(undefined);
+      await this.keychain.delete(CAPSULE_KEYCHAIN_SERVICE, SKILLS_SH_TOKEN_ACCOUNT);
+    } else if (typeof skillsShToken === "string") {
+      this.settings.skillsShToken = skillsShToken;
+      this.skillsShClient.setToken(skillsShToken);
+      await this.keychain.set(CAPSULE_KEYCHAIN_SERVICE, SKILLS_SH_TOKEN_ACCOUNT, skillsShToken);
     }
     if (patch.mockScenario) this.mock.setScenario(this.settings.mockScenario);
     if (patch.projectlessFolder !== undefined) this.bindInboxToProjectless();
@@ -1800,6 +1879,16 @@ export class CapsuleEngine {
     if (token) this.settings.gatewayToken = token;
     if (process.env.OPENCLAW_GATEWAY_TOKEN) {
       this.settings.gatewayToken = process.env.OPENCLAW_GATEWAY_TOKEN;
+    }
+
+    // skills.sh: the Keychain entry wins, then the ambient Vercel token that
+    // `vercel env pull` leaves in the environment.
+    const skillsToken =
+      (await this.keychain.get(CAPSULE_KEYCHAIN_SERVICE, SKILLS_SH_TOKEN_ACCOUNT)) ||
+      process.env.VERCEL_OIDC_TOKEN;
+    if (skillsToken) {
+      this.settings.skillsShToken = skillsToken;
+      this.skillsShClient.setToken(skillsToken);
     }
   }
 

@@ -495,11 +495,11 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.uninstallSkill, (skillId) =>
     requireEngine().uninstallSkill(String(skillId)),
   );
-  handle(IPC_CHANNELS.searchSkillsSh, (query) =>
-    requireEngine().searchSkillsSh(String(query)),
+  handle(IPC_CHANNELS.searchSkillCatalog, (query, refresh) =>
+    requireEngine().searchSkillCatalog(String(query), Boolean(refresh)),
   );
-  handle(IPC_CHANNELS.fetchSkillDetail, (source, slug) =>
-    requireEngine().fetchSkillDetail(String(source), String(slug)),
+  handle(IPC_CHANNELS.fetchSkillDetail, (id) =>
+    requireEngine().fetchSkillDetail(String(id)),
   );
 
   ipcMain.handle(IPC_CHANNELS.showContextMenu, async (event, payload: PopupMenuRequest) => {

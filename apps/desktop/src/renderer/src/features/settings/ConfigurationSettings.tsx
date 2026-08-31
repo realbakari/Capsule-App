@@ -245,6 +245,69 @@ export function ConfigurationSettings({
       </div>
 
       <div className="card">
+        <h3>Harness credentials</h3>
+        <p className="muted">
+          Capsule connects to a Gateway that is already running; the Gateway is what launches
+          Claude Code and Codex. Their credentials therefore come from the Gateway&rsquo;s
+          environment, and Capsule has nowhere to put an API key that would reach them. Both CLIs
+          also work with the subscription login you already have — a key is only needed to bill
+          through the API instead.
+        </p>
+        <div className="setting-copy">
+          <p>
+            Codex reads <span className="mono">CODEX_API_KEY</span> or{" "}
+            <span className="mono">OPENAI_API_KEY</span>; Claude Code reads{" "}
+            <span className="mono">ANTHROPIC_API_KEY</span>. Set them where the Gateway starts:
+          </p>
+          <pre className="mono settings-snippet">
+            OPENAI_API_KEY=… ANTHROPIC_API_KEY=… openclaw gateway run
+          </pre>
+          <p>
+            A Gateway installed as a service does not inherit your shell, so exporting a variable in
+            a terminal will not reach it — it sources its own generated env file, which OpenClaw
+            asks you not to hand-edit while the service is installed.
+          </p>
+        </div>
+      </div>
+
+      <div className="card">
+        <h3>Skill catalog</h3>
+        <p className="muted">
+          The directory reads skills straight from their GitHub repositories, which needs no
+          account. skills.sh is optional and adds install counts.
+        </p>
+        <SettingRow
+          label="skills.sh token"
+          hint="Every skills.sh endpoint returns 401 without a Vercel OIDC token, and that token expires roughly every 12 hours. Leave this empty to browse GitHub only."
+        >
+          <input
+            className="field-select"
+            type="password"
+            autoComplete="off"
+            spellCheck={false}
+            key={settings.skillsShToken ?? ""}
+            defaultValue=""
+            placeholder={settings.skillsShToken ? "Stored in Keychain" : "Optional"}
+            onBlur={(event) => {
+              const next = event.target.value.trim();
+              if (next) onPatch({ skillsShToken: next });
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") event.currentTarget.blur();
+            }}
+          />
+        </SettingRow>
+        {settings.skillsShToken && (
+          <div className="setting-inline">
+            <span className="faint">A skills.sh token is saved in the Keychain.</span>
+            <button type="button" className="ghost" onClick={() => onPatch({ skillsShToken: "" })}>
+              Clear token
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="card">
         <h3>Git</h3>
         <p className="muted">
           Local git plus the GitHub CLI (<span className="mono">gh</span>) when it is installed and

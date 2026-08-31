@@ -1,85 +1,34 @@
 import { useState, useMemo, useEffect } from "react";
-import type { Skill, SkillPack, SkillsShSearchResult } from "@capsule/shared";
+import type { Skill, SkillPack, SkillCatalogEntry } from "@capsule/shared";
 import { useWorkspace } from "../../lib/workspace";
 import { SearchIcon, XIcon, SparkIcon, CopyIcon, CheckIcon, ShieldIcon, GlobeIcon } from "../shell/icons";
 
 type TabFilter = "all" | "packs" | "installed" | "directory";
 
+/** Compact a count for a badge: 12480 -> "12.5k". */
+function compactCount(value: number): string {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1000) return `${(value / 1000).toFixed(1)}k`;
+  return String(value);
+}
+
 /**
- * Curated community skills matching the skills.sh V1Skill API shape.
- * id format: "{source}/{slug}" — source is "{owner}/{repo}", slug is skill name.
- * These are shown in the "Browse skills.sh" tab before the user searches.
- * Install count values are representative of real skills.sh leaderboard data.
- * See https://skills.sh/docs/api for the full V1Skill schema.
+ * Build an installable Skill from a catalog entry. Fields the catalog does not
+ * carry are left off rather than filled with a plausible-looking default.
  */
-const CURATED_COMMUNITY_SKILLS: SkillsShSearchResult[] = [
-  {
-    id: "vercel-labs/skills/find-skills",
-    slug: "find-skills",
-    name: "find-skills",
-    source: "vercel-labs/skills",
-    installs: 24531,
-    sourceType: "github",
-    installUrl: "https://github.com/vercel-labs/skills",
-    url: "https://skills.sh/vercel-labs/skills/find-skills",
-    description: "Search and discover agent skills across the open skills ecosystem. The meta-skill that helps agents find and install other skills.",
-  },
-  {
-    id: "supabase/supabase/Supabase",
-    slug: "Supabase",
-    name: "Supabase",
-    source: "supabase/supabase",
-    installs: 12084,
-    sourceType: "github",
-    installUrl: "https://github.com/supabase/supabase",
-    url: "https://skills.sh/supabase/supabase/Supabase",
-    description: "Build with Supabase — PostgreSQL, Auth, Storage, Realtime, Edge Functions, and Row Level Security.",
-  },
-  {
-    id: "expo/skills/react-native",
-    slug: "react-native",
-    name: "React Native",
-    source: "expo/skills",
-    installs: 3842,
-    sourceType: "github",
-    installUrl: "https://github.com/expo/skills",
-    url: "https://skills.sh/expo/skills/react-native",
-    description: "Build cross-platform mobile apps with React Native and Expo — navigation, native modules, and EAS builds.",
-  },
-  {
-    id: "mintlify.com/mintlify",
-    slug: "mintlify",
-    name: "Mintlify",
-    source: "mintlify.com",
-    installs: 8240,
-    sourceType: "well-known",
-    installUrl: null,
-    url: "https://skills.sh/mintlify.com/mintlify",
-    description: "Generate and maintain beautiful API documentation with Mintlify. MDX pages, OpenAPI specs, and custom components.",
-  },
-  {
-    id: "vercel-labs/skills/next-js-development",
-    slug: "next-js-development",
-    name: "Next.js Development",
-    source: "vercel-labs/skills",
-    installs: 18920,
-    sourceType: "github",
-    installUrl: "https://github.com/vercel-labs/skills",
-    url: "https://skills.sh/vercel-labs/skills/next-js-development",
-    description: "Build Next.js applications with App Router, Server Components, server actions, and streaming best practices.",
-  },
-  {
-    id: "vercel-labs/skills/vercel-ai-sdk",
-    slug: "vercel-ai-sdk",
-    name: "Vercel AI SDK",
-    source: "vercel-labs/skills",
-    installs: 14300,
-    sourceType: "github",
-    installUrl: "https://github.com/vercel-labs/skills",
-    url: "https://skills.sh/vercel-labs/skills/vercel-ai-sdk",
-    description: "Integrate LLMs with the Vercel AI SDK — streaming, tool calling, structured output, and multi-step agents.",
-  },
-];
+function skillFromCatalog(entry: SkillCatalogEntry, status: Skill["status"]): Skill {
+  return {
+    id: entry.id,
+    name: entry.name,
+    description: entry.description ?? "",
+    source: entry.source,
+    status,
+    requirements: [],
+    permissions: { filesystem: "approval" },
+    url: entry.url,
+    tags: ["github"],
+  };
+}
 
 export function SkillsDirectory() {
   const {
@@ -91,7 +40,7 @@ export function SkillsDirectory() {
     installSkill,
     installSkillPack,
     uninstallSkill,
-    searchSkillsSh,
+    searchSkillCatalog,
     fetchSkillDetail,
   } = useWorkspace();
 
@@ -102,33 +51,51 @@ export function SkillsDirectory() {
   const [inspectPack, setInspectPack] = useState<SkillPack | null>(null);
   const [inspectContent, setInspectContent] = useState<string | null>(null);
   const [inspectModalTab, setInspectModalTab] = useState<"instructions" | "permissions" | "cli">("instructions");
-  const [directoryResults, setDirectoryResults] = useState<SkillsShSearchResult[]>([]);
+  const [directoryResults, setDirectoryResults] = useState<SkillCatalogEntry[]>([]);
   const [searching, setSearching] = useState(false);
+  const [directoryError, setDirectoryError] = useState<string | null>(null);
+  const [directoryPartial, setDirectoryPartial] = useState<string[]>([]);
+  const [directoryLoaded, setDirectoryLoaded] = useState(false);
+  const [skillsShConnected, setSkillsShConnected] = useState(false);
+  const [refreshToken, setRefreshToken] = useState(0);
+  const [fetchedAt, setFetchedAt] = useState<number | null>(null);
   const [importNotice, setImportNotice] = useState<string | null>(null);
   const [copiedCmd, setCopiedCmd] = useState<string | null>(null);
 
-  // Live search skills.sh directory
+  // The catalog is fetched live: GitHub always, plus skills.sh when a token is
+  // configured. An empty query browses everything; typing filters what was
+  // fetched. Bumping refreshToken forces a refetch past the cache.
   useEffect(() => {
     if (tab !== "directory") return;
-    const trimmed = search.trim();
-    if (!trimmed) {
-      setDirectoryResults(CURATED_COMMUNITY_SKILLS);
-      setSearching(false);
-      return;
-    }
+    let cancelled = false;
     setSearching(true);
     const timer = setTimeout(async () => {
       try {
-        const res = await searchSkillsSh(trimmed);
-        setDirectoryResults(res);
-      } catch {
+        const page = await searchSkillCatalog(search.trim(), refreshToken > 0);
+        if (cancelled) return;
+        setDirectoryResults(page.entries);
+        setDirectoryPartial(page.errors);
+        setSkillsShConnected(Boolean(page.skillsShConnected));
+        setFetchedAt(page.fetchedAt);
+        setDirectoryError(null);
+      } catch (error) {
+        if (cancelled) return;
         setDirectoryResults([]);
+        setDirectoryError(error instanceof Error ? error.message : String(error));
       } finally {
-        setSearching(false);
+        if (!cancelled) {
+          setSearching(false);
+          setDirectoryLoaded(true);
+        }
       }
-    }, 250);
-    return () => clearTimeout(timer);
-  }, [search, tab, searchSkillsSh]);
+    }, directoryLoaded ? 120 : 0);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // directoryLoaded only tunes the debounce; re-running on it would refetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, tab, searchSkillCatalog, refreshToken]);
 
   // Inspect skill detail content
   useEffect(() => {
@@ -141,9 +108,15 @@ export function SkillsDirectory() {
       setInspectContent(inspectSkill.content);
       return;
     }
-    void fetchSkillDetail(inspectSkill.source, inspectSkill.id).then((detail) => {
-      const file = detail?.files?.find((f) => f.path.toLowerCase().includes("skill.md"));
-      setInspectContent(file?.contents ?? inspectSkill.content ?? "# No procedural guide provided.");
+    const catalogId = inspectSkill.url?.startsWith("https://github.com/")
+      ? `${inspectSkill.source}/${inspectSkill.id}`
+      : undefined;
+    if (!catalogId) {
+      setInspectContent(inspectSkill.content ?? null);
+      return;
+    }
+    void fetchSkillDetail(catalogId).then((doc) => {
+      setInspectContent(doc ?? inspectSkill.content ?? null);
     });
   }, [inspectSkill, fetchSkillDetail]);
 
@@ -216,26 +189,17 @@ export function SkillsDirectory() {
       return;
     }
 
-    // Otherwise search or install skill
-    const searchRes = await searchSkillsSh(trimmed);
-    if (searchRes.length > 0) {
-      const first = searchRes[0]!;
-      await installSkill({
-        id: first.slug || first.id,
-        name: first.name,
-        version: "1.0.0",
-        description: first.description || `Community skill from ${first.source}`,
-        source: first.source,
-        status: "installed",
-        requirements: [],
-        permissions: { filesystem: "approval" },
-        validation: "passed",
-        installs: first.installs,
-        url: first.url,
-      });
-      setImportNotice(`Installed skill: ${first.name}`);
-      setTimeout(() => setImportNotice(null), 3000);
+    // Otherwise resolve it against the live catalog.
+    const page = await searchSkillCatalog(trimmed);
+    const first = page.entries[0];
+    if (!first) {
+      setImportNotice(`Nothing in the catalog matches "${trimmed}".`);
+      setTimeout(() => setImportNotice(null), 4000);
+      return;
     }
+    await installSkill(skillFromCatalog(first, "installed"));
+    setImportNotice(`Installed skill: ${first.name}`);
+    setTimeout(() => setImportNotice(null), 3000);
   }
 
   return (
@@ -245,20 +209,20 @@ export function SkillsDirectory() {
         <div className="skills-header-text">
           <div className="skills-title-row">
             <h2>Skills Directory</h2>
-            <div className="skills-stats-badge">
-              <SparkIcon size={14} className="skills-spark-icon" />
-              <span>8,420+ Skills in Catalog</span>
-            </div>
+            {tab === "directory" && directoryLoaded && !directoryError && (
+              <div className="skills-stats-badge">
+                <SparkIcon size={14} className="skills-spark-icon" />
+                <span>
+                  {directoryResults.length} {directoryResults.length === 1 ? "skill" : "skills"}
+                  {search.trim() ? " matching" : " from GitHub"}
+                </span>
+              </div>
+            )}
           </div>
           <p>
-            Agent capabilities & packed skills from{" "}
-            <a
-              href="https://skills.sh"
-              target="_blank"
-              rel="noreferrer"
-              className="skills-link"
-            >
-              skills.sh
+            Bundled packs plus a live catalog read from the skill repositories on{" "}
+            <a href="https://github.com/topics/agent-skills" target="_blank" rel="noreferrer" className="skills-link">
+              GitHub
             </a>
             . Inspect instructions before installing, or attach with <code className="mono">$skill</code> in the composer.
           </p>
@@ -270,7 +234,7 @@ export function SkillsDirectory() {
           <input
             type="text"
             className="skills-search-input"
-            placeholder="Search skills, packs, or paste skills.sh URL / npx command…"
+            placeholder="Search skills and packs…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => {
@@ -334,7 +298,7 @@ export function SkillsDirectory() {
             setSelectedTag(null);
           }}
         >
-          Browse skills.sh
+          Browse GitHub
         </button>
       </div>
 
@@ -536,85 +500,129 @@ export function SkillsDirectory() {
         </div>
       )}
 
-      {/* Directory Tab (Live Search / Browse skills.sh) */}
+      {/* Directory tab — live from the source repositories on GitHub. */}
       {tab === "directory" && (
-        <div className="skills-grid">
-          {searching && <div className="skills-loading">Querying skills.sh catalog…</div>}
-          {!searching && directoryResults.length === 0 && (
-            <div className="skills-empty">
-              {search
-                ? `No results from skills.sh for "${search}".`
-                : "Type in the search bar above to query the skills.sh registry."}
+        <>
+          <div className="skills-source-bar">
+            <span className="skills-source-state">
+              <span
+                className={`skills-source-dot ${skillsShConnected ? "on" : "off"}`}
+                aria-hidden
+              />
+              {skillsShConnected
+                ? "GitHub + skills.sh"
+                : "GitHub only — add a skills.sh token in Settings for install counts"}
+              {fetchedAt ? (
+                <span className="faint">
+                  {" · fetched "}
+                  {new Date(fetchedAt).toLocaleTimeString([], {
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}
+                </span>
+              ) : null}
+            </span>
+            <button
+              type="button"
+              className="ghost"
+              disabled={searching}
+              onClick={() => setRefreshToken((value) => value + 1)}
+            >
+              {searching ? "Refreshing…" : "Refresh"}
+            </button>
+          </div>
+          {directoryPartial.length > 0 && (
+            <div className="skills-notice skills-notice-warn">
+              Some sources did not load: {directoryPartial.join("; ")}
             </div>
           )}
-          {directoryResults.map((result) => {
-            const isInstalled = skills.some((s) => s.id === result.slug || s.id === result.id);
-            return (
-              <div className="skill-card" key={result.id}>
-                <div className="skill-card-body">
-                  <div className="skill-card-top">
-                    <div>
-                      <h3 className="skill-name">{result.name}</h3>
-                      <span className="skill-pack-tag">{result.source}</span>
-                    </div>
-                    <span className="skill-installs">
-                      {result.installs >= 1000000
-                        ? `${(result.installs / 1000000).toFixed(1)}M`
-                        : `${(result.installs / 1000).toFixed(0)}k`}{" "}
-                      runs
-                    </span>
-                  </div>
-                  <p className="skill-desc">
-                    {result.description || `Community skill from ${result.source}`}
-                  </p>
-                </div>
-                <div className="skill-card-actions">
-                  <button
-                    type="button"
-                    className="ghost"
-                    onClick={() => {
-                      setInspectSkill({
-                        id: result.slug || result.id,
-                        name: result.name,
-                        version: "1.0.0",
-                        description: result.description ?? "",
-                        source: result.source,
-                        status: isInstalled ? "installed" : "available",
-                        requirements: [],
-                        permissions: { filesystem: "approval" },
-                        installs: result.installs,
-                        url: result.url,
-                      });
-                    }}
-                  >
-                    View Details
-                  </button>
-                  <button
-                    type="button"
-                    className={`chip ${isInstalled ? "installed" : "send"}`}
-                    onClick={() =>
-                      void installSkill({
-                        id: result.slug || result.id,
-                        name: result.name,
-                        version: "1.0.0",
-                        description: result.description || `Community skill from ${result.source}`,
-                        source: result.source,
-                        status: "installed",
-                        requirements: [],
-                        permissions: { filesystem: "approval" },
-                        validation: "passed",
-                        installs: result.installs,
-                        url: result.url,
-                      })
-                    }
-                  >
-                    {isInstalled ? "Installed" : "Install Skill"}
-                  </button>
-                </div>
+          <div className="skills-grid">
+            {searching && directoryResults.length === 0 && (
+              <div className="skills-loading">Loading skills from GitHub…</div>
+            )}
+            {!searching && directoryError && (
+              <div className="skills-empty">
+                <p>Could not reach GitHub: {directoryError}</p>
+                <button type="button" className="ghost" onClick={() => setSearch((q) => q)}>
+                  Retry
+                </button>
               </div>
-            );
-          })}
-        </div>
+            )}
+            {!searching && !directoryError && directoryResults.length === 0 && (
+              <div className="skills-empty">
+                {search.trim()
+                  ? `No catalog skill matches "${search.trim()}".`
+                  : "No skills were returned."}
+              </div>
+            )}
+            {directoryResults.map((result) => {
+              const isInstalled = skills.some((s) => s.id === result.id);
+              return (
+                <div className="skill-card" key={result.id}>
+                  <div className="skill-card-body">
+                    <div className="skill-card-top">
+                      <div>
+                        <h3 className="skill-name">{result.name}</h3>
+                        <a
+                          className="skill-pack-tag skill-source-link"
+                          href={result.url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {result.source}
+                        </a>
+                      </div>
+                      {/* Each metric is a real number from whichever source
+                          returned it: installs from skills.sh, stars from the
+                          GitHub repo record. A source that reports neither
+                          shows nothing rather than a placeholder. */}
+                      {typeof result.installs === "number" ? (
+                        <span
+                          className="skill-installs"
+                          title={`${result.installs.toLocaleString()} installs reported by skills.sh`}
+                        >
+                          {compactCount(result.installs)} installs
+                        </span>
+                      ) : typeof result.stars === "number" ? (
+                        <span
+                          className="skill-installs"
+                          title={`${result.stars.toLocaleString()} stars on ${result.source}`}
+                        >
+                          {compactCount(result.stars)} ★
+                        </span>
+                      ) : null}
+                    </div>
+                    {result.description ? (
+                      <p className="skill-desc">{result.description}</p>
+                    ) : (
+                      <p className="skill-desc skill-desc-missing">No description in SKILL.md.</p>
+                    )}
+                  </div>
+                  <div className="skill-card-actions">
+                    <button
+                      type="button"
+                      className="ghost"
+                      onClick={() =>
+                        setInspectSkill(
+                          skillFromCatalog(result, isInstalled ? "installed" : "available"),
+                        )
+                      }
+                    >
+                      View Details
+                    </button>
+                    <button
+                      type="button"
+                      className={`chip ${isInstalled ? "installed" : "send"}`}
+                      onClick={() => void installSkill(skillFromCatalog(result, "installed"))}
+                    >
+                      {isInstalled ? "Installed" : "Install Skill"}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
       )}
 
       {/* Skill Inspect / Detail Modal */}
@@ -638,15 +646,8 @@ export function SkillsDirectory() {
                 <div className="skill-modal-meta">
                   <span>Source: {inspectSkill.source}</span>
                   {inspectSkill.packName && <span> · Pack: {inspectSkill.packName}</span>}
-                  {inspectSkill.installs && (
-                    <span>
-                      {" "}
-                      ·{" "}
-                      {inspectSkill.installs >= 1000000
-                        ? `${(inspectSkill.installs / 1000000).toFixed(2)}M`
-                        : `${(inspectSkill.installs / 1000).toFixed(0)}k`}{" "}
-                      all-time runs
-                    </span>
+                  {typeof inspectSkill.installs === "number" && (
+                    <span> · {inspectSkill.installs.toLocaleString()} installs</span>
                   )}
                 </div>
               </div>
@@ -688,7 +689,7 @@ export function SkillsDirectory() {
                 <div className="skill-inspect-content">
                   <p className="skill-modal-desc">{inspectSkill.description}</p>
                   <pre className="mono skill-markdown-pre">
-                    {inspectContent ?? "Loading skill procedural instructions…"}
+                    {inspectContent ?? "SKILL.md could not be loaded for this skill."}
                   </pre>
                 </div>
               )}
@@ -749,7 +750,7 @@ export function SkillsDirectory() {
                   rel="noreferrer"
                   className="skills-link"
                 >
-                  View on skills.sh ↗
+                  {inspectSkill.url.startsWith("https://github.com/") ? "View on GitHub ↗" : "View source ↗"}
                 </a>
               )}
               <div className="skill-inspect-actions">

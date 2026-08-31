@@ -72,7 +72,7 @@ export const IPC_CHANNELS = {
   installSkill: "capsule:installSkill",
   installSkillPack: "capsule:installSkillPack",
   uninstallSkill: "capsule:uninstallSkill",
-  searchSkillsSh: "capsule:searchSkillsSh",
+  searchSkillCatalog: "capsule:searchSkillCatalog",
   fetchSkillDetail: "capsule:fetchSkillDetail",
 } as const;
 

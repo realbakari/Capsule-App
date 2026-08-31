@@ -46,3 +46,4 @@ export function createKeychainAdapter(userDataDir?: string): KeychainAdapter {
 
 export const CAPSULE_KEYCHAIN_SERVICE = "ai.capsule.desktop";
 export const GATEWAY_TOKEN_ACCOUNT = "openclaw.gateway.token";
+export const SKILLS_SH_TOKEN_ACCOUNT = "skills.sh.token";

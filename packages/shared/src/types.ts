@@ -103,7 +103,8 @@ export interface Agent {
 export interface Skill {
   id: string;
   name: string;
-  version: string;
+  /** Absent when the source does not declare one — do not synthesise "1.0.0". */
+  version?: string;
   description: string;
   source: string;
   status: "installed" | "disabled" | "invalid" | "available";
@@ -133,12 +134,42 @@ export interface SkillPack {
   createdAt?: string;
 }
 
+/** One skill in the live catalog, as read from its source repository. */
+export interface SkillCatalogEntry {
+  id: string;
+  name: string;
+  /** "owner/repo" the skill lives in. */
+  source: string;
+  url: string;
+  description?: string;
+  /** Stars on the source repository. Absent when the fetch did not return it. */
+  stars?: number;
+  /** Install count, when the source reports one (skills.sh does; GitHub does not). */
+  installs?: number;
+  /** Where this entry came from, so the card can say. */
+  origin?: "github" | "skills.sh";
+  /** Path to SKILL.md inside the repo. */
+  docPath?: string;
+  /** Branch the paths above resolve against. */
+  ref?: string;
+}
+
+export interface SkillCatalogPage {
+  entries: SkillCatalogEntry[];
+  /** Per-source failures, so a partial catalog can say what is missing. */
+  errors: string[];
+  fetchedAt: number;
+  /** Whether a skills.sh token was configured for this fetch. */
+  skillsShConnected?: boolean;
+}
+
 export interface SkillsShSearchResult {
   id: string;
   slug: string;
   name: string;
   source: string;
-  installs: number;
+  /** Absent when the source does not report one. Never substitute a guess. */
+  installs?: number;
   sourceType: string;
   installUrl?: string | null;
   url: string;
@@ -149,7 +180,7 @@ export interface SkillsShSkillDetail {
   id: string;
   source: string;
   slug: string;
-  installs: number;
+  installs?: number;
   hash?: string | null;
   files?: Array<{ path: string; contents: string }> | null;
 }

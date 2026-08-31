@@ -48,7 +48,10 @@ export function AppearanceSettings({
     <div className="appearance-page">
       <div className="card">
         <h3>Appearance</h3>
-        <p className="muted">Theme, color, type, and sidebar glass — stored per Light and Dark.</p>
+        <p className="muted">
+          Theme, transcript sizing, and the code font. Colors, contrast, and the
+          translucent sidebar are set separately for Light and Dark below.
+        </p>
         <div className="theme-picker" role="radiogroup" aria-label="Theme">
           {THEMES.map((item) => (
             <ThemeCard

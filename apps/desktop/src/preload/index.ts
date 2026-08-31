@@ -22,9 +22,9 @@ const api = {
   installSkill: (skill: unknown) => ipcRenderer.invoke(IPC_CHANNELS.installSkill, skill),
   installSkillPack: (packId: string) => ipcRenderer.invoke(IPC_CHANNELS.installSkillPack, packId),
   uninstallSkill: (skillId: string) => ipcRenderer.invoke(IPC_CHANNELS.uninstallSkill, skillId),
-  searchSkillsSh: (query: string) => ipcRenderer.invoke(IPC_CHANNELS.searchSkillsSh, query),
-  fetchSkillDetail: (source: string, slug: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.fetchSkillDetail, source, slug),
+  searchSkillCatalog: (query: string, refresh?: boolean) =>
+    ipcRenderer.invoke(IPC_CHANNELS.searchSkillCatalog, query, refresh),
+  fetchSkillDetail: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.fetchSkillDetail, id),
   listSessions: (projectId?: string) => ipcRenderer.invoke(IPC_CHANNELS.listSessions, projectId),
   createSession: (input: unknown) => ipcRenderer.invoke(IPC_CHANNELS.createSession, input),
   renameSession: (id: string, title: string) =>
