@@ -98,9 +98,13 @@ import {
   type Run,
   type RunEvent,
   type Session,
+  type Skill,
+  type SkillPack,
+  type SkillsShSearchResult,
+  type SkillsShSkillDetail,
   type SubsystemStatus,
 } from "@capsule/shared";
-import { DEFAULT_SKILLS, skillIdForMode } from "@capsule/skills";
+import { DEFAULT_SKILLS, DEFAULT_SKILL_PACKS, SkillsShClient, skillIdForMode } from "@capsule/skills";
 import { openNativeTerminal, runInDirectory } from "@capsule/terminal";
 import { verifyContract } from "@capsule/verification";
 import {
@@ -153,6 +157,7 @@ export class CapsuleEngine {
   private prWatchers = new Map<string, ReturnType<typeof setInterval>>();
   private prFixFingerprints = new Map<string, string>();
   private prWatchSessions = new Map<string, string>();
+  private skillsClient = new SkillsShClient();
 
   constructor(private readonly options: CapsuleEngineOptions) {
     this.db = new CapsuleDatabase(options.databasePath);
@@ -819,9 +824,56 @@ export class CapsuleEngine {
     return searchContents(project.workingDirectory, query);
   }
 
-  async listSkills() {
+  async listSkills(): Promise<Skill[]> {
     const stored = this.repos.listSkills();
     return stored.length > 0 ? stored : DEFAULT_SKILLS;
+  }
+
+  listSkillPacks(): SkillPack[] {
+    const stored = this.repos.listSkillPacks();
+    return stored.length > 0 ? stored : DEFAULT_SKILL_PACKS;
+  }
+
+  installSkill(skill: Skill): Skill {
+    const normalized: Skill = {
+      ...skill,
+      status: "installed",
+      requirements: skill.requirements ?? [],
+      permissions: skill.permissions ?? { filesystem: "approval" },
+      validation: "passed",
+    };
+    this.repos.upsertSkill(normalized);
+    this.events.emit("state", { command: "skills-updated" });
+    return normalized;
+  }
+
+  installSkillPack(packId: string): SkillPack {
+    const defaultPack = DEFAULT_SKILL_PACKS.find((p) => p.id === packId);
+    if (!defaultPack) {
+      throw new Error(`Unknown skill pack: ${packId}`);
+    }
+    this.repos.upsertSkillPack(defaultPack);
+    for (const skill of DEFAULT_SKILLS.filter((s) => s.packId === packId)) {
+      this.repos.upsertSkill({ ...skill, status: "installed" });
+    }
+    this.events.emit("state", { command: "skills-updated" });
+    return defaultPack;
+  }
+
+  uninstallSkill(skillId: string): void {
+    const existing = this.repos.getSkill(skillId);
+    if (existing) {
+      this.repos.upsertSkill({ ...existing, status: "available" });
+      this.events.emit("state", { command: "skills-updated" });
+    }
+  }
+
+  async searchSkillsSh(query: string): Promise<SkillsShSearchResult[]> {
+    return this.skillsClient.search(query);
+  }
+
+  async fetchSkillDetail(source: string, slug: string): Promise<SkillsShSkillDetail | undefined> {
+    return this.skillsClient.getSkillDetail(source, slug);
   }
 
   listSessions(projectId?: string): Session[] {
@@ -1006,6 +1058,14 @@ export class CapsuleEngine {
       this.repos.updateSession(session);
     }
 
+    let skillInstruction = "";
+    if (skillId) {
+      const activeSkill = this.repos.getSkill(skillId) ?? DEFAULT_SKILLS.find((s) => s.id === skillId);
+      if (activeSkill?.content) {
+        skillInstruction = `\n\n[Active Skill: ${activeSkill.name}]\n${activeSkill.content}`;
+      }
+    }
+
     const runtimeMessage: AgentMessage = {
       ...input,
       // Carried per turn so a session spawned before the profile changed still
@@ -1013,7 +1073,7 @@ export class CapsuleEngine {
       ...(session.permissionProfile
         ? { permissionProfile: session.permissionProfile as HarnessPermissionProfile }
         : {}),
-      content: applyAgentInstructionHints(input.content, this.settings),
+      content: applyAgentInstructionHints(input.content + skillInstruction, this.settings),
       sessionId: this.usingMock ? session.id : (session.openclawSessionKey ?? session.id),
       agentId: this.usingMock ? agentId : undefined,
       skillId,
@@ -1549,6 +1609,10 @@ export class CapsuleEngine {
           description: "Tasks started outside a project.",
         });
       }
+      if (this.repos.listSkillPacks().length === 0) {
+        for (const pack of DEFAULT_SKILL_PACKS) this.repos.upsertSkillPack(pack);
+        for (const skill of DEFAULT_SKILLS) this.repos.upsertSkill(skill);
+      }
       return;
     }
     const timestamp = nowIso();
@@ -1564,6 +1628,7 @@ export class CapsuleEngine {
       description: "Tasks started outside a project.",
     });
     for (const agent of DEFAULT_AGENTS) this.repos.upsertAgent(agent);
+    for (const pack of DEFAULT_SKILL_PACKS) this.repos.upsertSkillPack(pack);
     for (const skill of DEFAULT_SKILLS) this.repos.upsertSkill(skill);
     for (const rule of DEFAULT_POLICIES) this.repos.insertPolicy(rule);
   }

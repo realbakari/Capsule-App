@@ -1,33 +1,11 @@
 import { useWorkspace } from "../../lib/workspace";
+import { SkillsDirectory } from "./SkillsDirectory";
 
 export function SkillsView() {
-  const { skills, skillId, setSkillId, setView } = useWorkspace();
   return (
-    <section className="panel">
+    <section className="panel skills-panel">
       <div className="panel-inner">
-      <div className="panel-header">
-        <p>Installed capabilities. Click one to attach it to the composer as $skill.</p>
-      </div>
-      {skills.length === 0 && <p className="muted">No skills loaded yet.</p>}
-      {skills.map((item) => (
-        <button
-          className={`card ${skillId === item.id ? "active" : ""}`}
-          key={item.id}
-          type="button"
-          onClick={() => {
-            setSkillId(item.id);
-            setView("chat");
-          }}
-        >
-          <div className="row">
-            <div>
-              <b>{item.name}</b>
-              <div className="muted">{item.description}</div>
-            </div>
-            <span className="muted">{skillId === item.id ? "attached" : item.status}</span>
-          </div>
-        </button>
-      ))}
+        <SkillsDirectory />
       </div>
     </section>
   );

@@ -17,6 +17,7 @@ export function Palette() {
     projects,
     sessions,
     setProjectId,
+    setAboutOpen,
   } = useWorkspace();
   const [index, setIndex] = useState(0);
   const [hits, setHits] = useState<SearchResults>();
@@ -37,12 +38,13 @@ export function Palette() {
       { id: "open-folder", label: "Open folder", run: () => pickProjectDirectory() },
       { id: "open-files", label: "Open files", run: () => pickFilesToMention() },
       { id: "chat", label: "Open conversation", run: () => setView("chat") },
+      { id: "skills", label: "Open skills & packs", run: () => setView("skills") },
       { id: "harness", label: "Open ACP harnesses", run: () => setView("runtimes") },
-      { id: "skills", label: "Open skills", run: () => setView("skills") },
       { id: "runs", label: "Open active runs", run: () => setView("history") },
       { id: "approvals", label: "Open approvals", run: () => setView("approvals") },
       { id: "connect", label: "Connect OpenClaw", run: () => api.connectGateway() },
       { id: "settings", label: "Open settings", run: () => setView("settings") },
+      { id: "about", label: "About Capsule", run: () => setAboutOpen(true) },
     ].filter((command) => command.label.toLowerCase().includes(query));
     const projectHits = projects
       .filter((item) => item.name.toLowerCase().includes(query))

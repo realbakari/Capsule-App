@@ -177,14 +177,16 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
           const needle = trigger.query.toLowerCase();
           return (
             item.name.toLowerCase().includes(needle) ||
-            item.id.toLowerCase().includes(needle)
+            item.id.toLowerCase().includes(needle) ||
+            item.packName?.toLowerCase().includes(needle) ||
+            item.description?.toLowerCase().includes(needle)
           );
         })
         .slice(0, 12)
         .map((item) => ({
           id: item.id,
           label: `$${item.name}`,
-          detail: item.source,
+          detail: item.packName ? `${item.packName} · ${item.source}` : item.source,
           insert: `$${item.name} `,
           run: () => setSkillId(item.id),
         })),

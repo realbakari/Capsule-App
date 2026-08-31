@@ -14,6 +14,7 @@ import type {
   RunEvent,
   Session,
   Skill,
+  SkillPack,
   Workspace,
 } from "@capsule/shared";
 import { isHarnessId } from "@capsule/shared";
@@ -402,9 +403,11 @@ export class CapsuleRepositories {
     this.db.sqlite
       .prepare(
         `INSERT INTO skills (
-          id, name, version, description, source, status, requirements, permissions, validation
+          id, name, version, description, source, status, requirements, permissions, validation,
+          pack_id, pack_name, content, installs, tags, author, url
         ) VALUES (
-          @id, @name, @version, @description, @source, @status, @requirements, @permissions, @validation
+          @id, @name, @version, @description, @source, @status, @requirements, @permissions, @validation,
+          @packId, @packName, @content, @installs, @tags, @author, @url
         ) ON CONFLICT(id) DO UPDATE SET
           name = excluded.name,
           version = excluded.version,
@@ -413,33 +416,107 @@ export class CapsuleRepositories {
           status = excluded.status,
           requirements = excluded.requirements,
           permissions = excluded.permissions,
-          validation = excluded.validation`,
+          validation = excluded.validation,
+          pack_id = excluded.pack_id,
+          pack_name = excluded.pack_name,
+          content = excluded.content,
+          installs = excluded.installs,
+          tags = excluded.tags,
+          author = excluded.author,
+          url = excluded.url`,
       )
       .run({
         ...skill,
         requirements: JSON.stringify(skill.requirements),
         permissions: JSON.stringify(skill.permissions),
         validation: skill.validation ?? null,
+        packId: skill.packId ?? null,
+        packName: skill.packName ?? null,
+        content: skill.content ?? null,
+        installs: skill.installs ?? null,
+        tags: JSON.stringify(skill.tags ?? []),
+        author: skill.author ?? null,
+        url: skill.url ?? null,
       });
   }
 
   listSkills(): Skill[] {
     const rows = this.db.sqlite
       .prepare(
-        `SELECT id, name, version, description, source, status, requirements, permissions, validation
+        `SELECT id, name, version, description, source, status, requirements, permissions, validation,
+                pack_id AS packId, pack_name AS packName, content, installs, tags, author, url
          FROM skills ORDER BY name`,
       )
       .all() as Array<
-      Omit<Skill, "requirements" | "permissions"> & {
+      Omit<Skill, "requirements" | "permissions" | "tags"> & {
         requirements: string;
         permissions: string;
+        tags: string;
       }
     >;
     return rows.map((row) => ({
       ...row,
       requirements: parseJson<string[]>(row.requirements, []),
       permissions: parseJson(row.permissions, {}),
+      tags: parseJson<string[]>(row.tags, []),
     }));
+  }
+
+  getSkill(id: string): Skill | undefined {
+    return this.listSkills().find((skill) => skill.id === id);
+  }
+
+  deleteSkill(id: string): void {
+    this.db.sqlite.prepare(`DELETE FROM skills WHERE id = ?`).run(id);
+  }
+
+  upsertSkillPack(pack: SkillPack): void {
+    this.db.sqlite
+      .prepare(
+        `INSERT INTO skill_packs (
+          id, name, description, author, url, install_command, tags, skill_count, created_at
+        ) VALUES (
+          @id, @name, @description, @author, @url, @installCommand, @tags, @skillCount, @createdAt
+        ) ON CONFLICT(id) DO UPDATE SET
+          name = excluded.name,
+          description = excluded.description,
+          author = excluded.author,
+          url = excluded.url,
+          install_command = excluded.install_command,
+          tags = excluded.tags,
+          skill_count = excluded.skill_count`,
+      )
+      .run({
+        ...pack,
+        author: pack.author ?? null,
+        url: pack.url ?? null,
+        installCommand: pack.installCommand ?? null,
+        tags: JSON.stringify(pack.tags ?? []),
+        skillCount: pack.skillCount ?? 0,
+        createdAt: pack.createdAt ?? new Date().toISOString(),
+      });
+  }
+
+  listSkillPacks(): SkillPack[] {
+    const rows = this.db.sqlite
+      .prepare(
+        `SELECT id, name, description, author, url, install_command AS installCommand, tags,
+                skill_count AS skillCount, created_at AS createdAt
+         FROM skill_packs ORDER BY name`,
+      )
+      .all() as Array<Omit<SkillPack, "tags"> & { tags: string }>;
+    return rows.map((row) => ({
+      ...row,
+      tags: parseJson<string[]>(row.tags, []),
+    }));
+  }
+
+  getSkillPack(id: string): SkillPack | undefined {
+    return this.listSkillPacks().find((pack) => pack.id === id);
+  }
+
+  deleteSkillPack(id: string): void {
+    this.db.sqlite.prepare(`DELETE FROM skill_packs WHERE id = ?`).run(id);
   }
 
   insertRun(run: Run): void {

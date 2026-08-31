@@ -1,6 +1,7 @@
 import { Fragment, useState, type ReactNode } from "react";
 import { CopyIcon } from "../shell/icons";
 import { highlight } from "../../lib/highlight";
+import { splitFences } from "../../lib/fences";
 
 function inline(text: string): ReactNode {
   const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/g);
@@ -91,24 +92,15 @@ function CodeBlock({ code, language }: { code: string; language?: string }) {
 }
 
 export function MessageBody({ content }: { content: string }) {
-  const chunks = content.split(/```(\w+)?\n?/);
   return (
     <div className="body">
-      {chunks.map((chunk, index) => {
-        // 0 = prose, 1 = language, 2 = code, repeating.
-        const slot = index % 3;
-        if (slot === 1) return null;
-        if (slot === 2) {
-          return (
-            <CodeBlock
-              key={index}
-              code={chunk.replace(/\n$/, "")}
-              language={chunks[index - 1] ?? undefined}
-            />
-          );
-        }
-        return <Fragment key={index}>{block(chunk, index)}</Fragment>;
-      })}
+      {splitFences(content).map((segment, index) =>
+        segment.kind === "code" ? (
+          <CodeBlock key={index} code={segment.text} language={segment.language} />
+        ) : (
+          <Fragment key={index}>{block(segment.text, index)}</Fragment>
+        ),
+      )}
     </div>
   );
 }

@@ -98,6 +98,15 @@ A panel crash is isolated by `ViewErrorBoundary`. Retry remounts the panel. Fast
 | Projects | Create, delete, attach primary folder |
 | Shortcuts | The table below |
 | Diagnostics | Subsystem versions, export |
+| About | App icon squircle, version 0.1.0, copyright, and copy version info |
+
+---
+
+## Skills Directory
+
+- **Packed Skills & Packs**: Pre-bundled skills and packs across Web & React, Backend & Database, Testing & Quality, Agent Workflows, and Design & UI.
+- **skills.sh Ecosystem**: Interoperable with the `skills.sh` open agent capability registry. Search, inspect `SKILL.md` procedural markdown instructions, install individual skills or full packs (`https://skills.sh/p/<pack-id>`), or copy `npx skills add` CLI commands.
+- **Composer Attachment**: Type `$skill` in the composer to attach procedural guidance directly to any run. Active skills inject their procedural instructions into prompt context.
 
 Permissions are Capsule-native and mapped onto Gateway acpx (see [harness.md](harness.md)):
 

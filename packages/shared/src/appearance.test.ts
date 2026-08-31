@@ -20,23 +20,23 @@ describe("appearance palettes", () => {
   it("mixes colors and picks readable ink", () => {
     expect(mixHex("#000000", "#FFFFFF", 0.5)).toBe("#808080");
     expect(isDarkColor("#181818")).toBe(true);
-    expect(inkOn("#339CFF")).toBe("#FFFFFF");
+    expect(inkOn("#F3F3EE")).toBe("#111111");
     expect(inkOn("#1A1C1F")).toBe("#FFFFFF");
     expect(inkOn("#FFFFFF")).toBe("#111111");
   });
 
-  it("emits CSS variables for a Codex-like dark palette", () => {
+  it("emits CSS variables for a dark palette", () => {
     const vars = appearanceCssVars(
       normalizeAppearancePalette(
         {
-          accent: "#339CFF",
+          accent: "#F3F3EE",
           background: "#181818",
           foreground: "#FFFFFF",
           contrast: 45,
           translucentSidebar: true,
         },
         {
-          accent: "#339CFF",
+          accent: "#F3F3EE",
           background: "#181818",
           foreground: "#FFFFFF",
           contrast: 45,
@@ -46,7 +46,7 @@ describe("appearance palettes", () => {
         },
       ),
     );
-    expect(vars["--accent"]).toBe("#339CFF");
+    expect(vars["--accent"]).toBe("#F3F3EE");
     expect(vars["--bg"]).toBe("#181818");
     expect(vars["--text"]).toBe("#FFFFFF");
     expect(vars["--sidebar-filter"]).toContain("blur");

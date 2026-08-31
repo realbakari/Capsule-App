@@ -41,7 +41,7 @@ export function Titlebar() {
       ? session?.title && session.title !== "New conversation"
         ? session.title
         : (project?.name ?? "Inbox")
-      : (VIEW_TITLE[view] ?? "Capsule");
+      : (VIEW_TITLE[view] ?? "");
 
   return (
     <header className={`page-header ${sidebarCollapsed ? "with-traffic" : ""}`}>
@@ -67,12 +67,12 @@ export function Titlebar() {
         {harnessLive && (
           <span className="live-chip">
             <span className="dot on live" title={`${harnessName} is running`} />
-            {harnessName}
+            <span>{harnessName}</span>
             <button title="Cancel turn" aria-label="Cancel turn" onClick={() => void cancelHarness()}>
-              <StopIcon size={13} />
+              <StopIcon size={10} />
             </button>
             <button title="Close harness" aria-label="Close harness" onClick={() => void closeHarness()}>
-              <XIcon size={12} />
+              <XIcon size={10} />
             </button>
           </span>
         )}

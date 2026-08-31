@@ -247,4 +247,28 @@ export const MIGRATIONS: Array<{ version: number; sql: string }> = [
       ALTER TABLE projects ADD COLUMN extra_folders TEXT NOT NULL DEFAULT '[]';
     `,
   },
+  {
+    version: 7,
+    sql: `
+      ALTER TABLE skills ADD COLUMN pack_id TEXT;
+      ALTER TABLE skills ADD COLUMN pack_name TEXT;
+      ALTER TABLE skills ADD COLUMN content TEXT;
+      ALTER TABLE skills ADD COLUMN installs INTEGER;
+      ALTER TABLE skills ADD COLUMN tags TEXT NOT NULL DEFAULT '[]';
+      ALTER TABLE skills ADD COLUMN author TEXT;
+      ALTER TABLE skills ADD COLUMN url TEXT;
+
+      CREATE TABLE IF NOT EXISTS skill_packs (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        author TEXT,
+        url TEXT,
+        install_command TEXT,
+        tags TEXT NOT NULL DEFAULT '[]',
+        skill_count INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+      );
+    `,
+  },
 ];

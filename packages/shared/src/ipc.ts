@@ -68,6 +68,12 @@ export const IPC_CHANNELS = {
   regenerateTitle: "capsule:regenerateTitle",
   setPermissionProfile: "capsule:setPermissionProfile",
   showContextMenu: "capsule:showContextMenu",
+  listSkillPacks: "capsule:listSkillPacks",
+  installSkill: "capsule:installSkill",
+  installSkillPack: "capsule:installSkillPack",
+  uninstallSkill: "capsule:uninstallSkill",
+  searchSkillsSh: "capsule:searchSkillsSh",
+  fetchSkillDetail: "capsule:fetchSkillDetail",
 } as const;
 
 export const IPC_EVENTS = {

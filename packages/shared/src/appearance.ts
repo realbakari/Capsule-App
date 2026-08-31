@@ -13,7 +13,7 @@ export interface AppearancePalette {
 }
 
 export const DEFAULT_LIGHT_PALETTE: AppearancePalette = {
-  accent: "#339CFF",
+  accent: "#1A1A18",
   background: "#FFFFFF",
   foreground: "#1A1C1F",
   contrast: 45,
@@ -23,7 +23,7 @@ export const DEFAULT_LIGHT_PALETTE: AppearancePalette = {
 };
 
 export const DEFAULT_DARK_PALETTE: AppearancePalette = {
-  accent: "#339CFF",
+  accent: "#F3F3EE",
   background: "#181818",
   foreground: "#FFFFFF",
   contrast: 45,

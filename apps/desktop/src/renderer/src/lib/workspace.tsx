@@ -32,6 +32,9 @@ import {
   type RuntimeStatus,
   type Session,
   type Skill,
+  type SkillPack,
+  type SkillsShSearchResult,
+  type SkillsShSkillDetail,
   type SubsystemStatus,
 } from "@capsule/shared";
 
@@ -209,6 +212,14 @@ export interface WorkspaceValue {
   gitPush: () => Promise<void>;
   gitCreatePullRequest: (input?: { title?: string; body?: string }) => Promise<void>;
   gitMergePullRequest: () => Promise<void>;
+  skillPacks: SkillPack[];
+  installSkill: (skill: Skill) => Promise<Skill>;
+  installSkillPack: (packId: string) => Promise<SkillPack>;
+  uninstallSkill: (skillId: string) => Promise<void>;
+  searchSkillsSh: (query: string) => Promise<SkillsShSearchResult[]>;
+  fetchSkillDetail: (source: string, slug: string) => Promise<SkillsShSkillDetail | undefined>;
+  aboutOpen: boolean;
+  setAboutOpen: (open: boolean) => void;
   settings?: CapsuleSettings;
   updateSettings: (patch: Partial<CapsuleSettings>) => Promise<CapsuleSettings>;
 }
@@ -238,6 +249,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
+  const [skillPacks, setSkillPacks] = useState<SkillPack[]>([]);
+  const [aboutOpen, setAboutOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [hasOlderMessages, setHasOlderMessages] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -356,6 +369,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         nextProjects,
         nextAgents,
         nextSkills,
+        nextSkillPacks,
         nextStatus,
         nextSub,
         nextApprovals,
@@ -365,6 +379,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           api.listProjects(),
           api.listAgents(),
           api.listSkills(),
+          api.listSkillPacks(),
           api.getStatus(),
           api.getSubsystemStatus(),
           api.listApprovals("pending"),
@@ -374,6 +389,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       setProjects(nextProjects);
       setAgents(nextAgents);
       setSkills(nextSkills);
+      setSkillPacks(nextSkillPacks);
       setStatus(nextStatus);
       setSubsystems(nextSub);
       setApprovals(nextApprovals);
@@ -447,6 +463,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         const command = (payload as { command?: string }).command;
         if (command === "palette") setPalette(true);
         if (command === "new-task") void createTask();
+        if (command === "skills") setView("skills");
+        if (command === "about") setAboutOpen(true);
         if (command === "approvals") setView("approvals");
         if (command === "runs") setView("history");
         if (command === "harness") setView("runtimes");
@@ -1119,6 +1137,46 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const installSkill = useCallback(
+    async (skill: Skill) => {
+      const result = (await api.installSkill(skill)) as Skill;
+      await refresh();
+      return result;
+    },
+    [api, refresh],
+  );
+
+  const installSkillPack = useCallback(
+    async (packId: string) => {
+      const result = (await api.installSkillPack(packId)) as SkillPack;
+      await refresh();
+      return result;
+    },
+    [api, refresh],
+  );
+
+  const uninstallSkill = useCallback(
+    async (skillId: string) => {
+      await api.uninstallSkill(skillId);
+      await refresh();
+    },
+    [api, refresh],
+  );
+
+  const searchSkillsSh = useCallback(
+    async (query: string) => {
+      return (await api.searchSkillsSh(query)) as SkillsShSearchResult[];
+    },
+    [api],
+  );
+
+  const fetchSkillDetail = useCallback(
+    async (source: string, slug: string) => {
+      return (await api.fetchSkillDetail(source, slug)) as SkillsShSkillDetail | undefined;
+    },
+    [api],
+  );
+
   const steps = activityFromEvents(events, Boolean(activeRun && activeRun.status !== "running"), {
     reasoning: settings?.reasoningSummary,
   });
@@ -1134,6 +1192,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       sessions,
       agents,
       skills,
+      skillPacks,
+      installSkill,
+      installSkillPack,
+      uninstallSkill,
+      searchSkillsSh,
+      fetchSkillDetail,
+      aboutOpen,
+      setAboutOpen,
       messages,
       hasOlderMessages,
       loadingOlder,

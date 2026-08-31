@@ -258,7 +258,7 @@ describe("CapsuleEngine first user flow", () => {
     expect(loaded.launchAtLogin).toBe(true);
     expect(loaded.useMockWhenOffline).toBe(false);
     expect(loaded.appearanceTheme).toBe("dark");
-    expect(loaded.appearanceDark.accent).toBe("#339CFF");
+    expect(loaded.appearanceDark.accent).toBe("#F3F3EE");
     expect(loaded.appearanceLight.background).toBe("#FFFFFF");
     expect(loaded.notifyRunComplete).toBe(true);
     expect(loaded.webAccess).toBe("on");

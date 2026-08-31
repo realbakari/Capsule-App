@@ -386,9 +386,6 @@ export function Sidebar() {
     <aside className="sidebar" data-testid="app-sidebar">
       <div className="sidebar-header">
         <SidebarToggle />
-        <div className="brand">
-          <span className="truncate">Capsule</span>
-        </div>
       </div>
       <div className="sidebar-toolbar">
         <label className="sidebar-search">

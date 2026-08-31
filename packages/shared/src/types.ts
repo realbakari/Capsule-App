@@ -110,6 +110,48 @@ export interface Skill {
   requirements: string[];
   permissions: Record<string, PolicyDecisionKind>;
   validation?: "passed" | "failed" | "unvalidated";
+  packId?: string;
+  packName?: string;
+  content?: string;
+  installs?: number;
+  tags?: string[];
+  author?: string;
+  url?: string;
+  files?: Array<{ path: string; contents: string }>;
+}
+
+export interface SkillPack {
+  id: string;
+  name: string;
+  description: string;
+  author?: string;
+  url?: string;
+  installCommand?: string;
+  tags?: string[];
+  skillCount: number;
+  skills?: Skill[];
+  createdAt?: string;
+}
+
+export interface SkillsShSearchResult {
+  id: string;
+  slug: string;
+  name: string;
+  source: string;
+  installs: number;
+  sourceType: string;
+  installUrl?: string | null;
+  url: string;
+  description?: string;
+}
+
+export interface SkillsShSkillDetail {
+  id: string;
+  source: string;
+  slug: string;
+  installs: number;
+  hash?: string | null;
+  files?: Array<{ path: string; contents: string }> | null;
 }
 
 export interface Workspace {

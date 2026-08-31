@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
-import type {
-  AppearanceCodeFont,
-  AppearancePalette,
-  AppearanceTheme,
-  AppearanceUiFont,
-  CapsuleSettings,
-  TranscriptSize,
-  TranscriptWidth,
+import {
+  appearanceCssVars,
+  type AppearanceCodeFont,
+  type AppearancePalette,
+  type AppearanceTheme,
+  type AppearanceUiFont,
+  type CapsuleSettings,
+  type TranscriptSize,
+  type TranscriptWidth,
 } from "@capsule/shared";
 import { SettingRow } from "./controls";
 
@@ -172,16 +173,17 @@ function ThemeCard({
 }
 
 function MiniChrome({ palette }: { palette: AppearancePalette }) {
+  const vars = appearanceCssVars(palette);
   return (
     <span
       className="theme-mini"
       style={{
-        background: palette.background,
-        color: palette.foreground,
+        background: vars["--bg"],
+        color: vars["--text"],
         ["--preview-accent" as string]: palette.accent,
       }}
     >
-      <span className="theme-mini-sidebar" style={{ background: palette.accent }} />
+      <span className="theme-mini-sidebar" style={{ background: vars["--bg-sidebar"] }} />
       <span className="theme-mini-body">
         <span className="theme-mini-line" />
         <span className="theme-mini-line short" />
@@ -337,7 +339,7 @@ function ColorField({
       <div className="setting-control color-control">
         <input
           type="color"
-          value={/^#[0-9a-fA-F]{6}$/.test(value) ? value : "#339CFF"}
+          value={/^#[0-9a-fA-F]{6}$/.test(value) ? value : "#F3F3EE"}
           aria-label={label}
           onChange={(event) => {
             setDraft(event.target.value.toUpperCase());

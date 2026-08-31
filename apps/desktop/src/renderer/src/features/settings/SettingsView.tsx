@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import type { CapsuleSettings, MockScenario } from "@capsule/shared";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { ConfigurationSettings } from "./ConfigurationSettings";
+import { AboutCard } from "./AboutModal";
 import { SettingRow, Switch } from "./controls";
 import { formatProjectRoot } from "../../lib/paths";
 import { MODES, useWorkspace } from "../../lib/workspace";
@@ -14,7 +15,8 @@ type SettingsTab =
   | "gateway"
   | "projects"
   | "shortcuts"
-  | "diagnostics";
+  | "diagnostics"
+  | "about";
 
 const TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: "general", label: "General" },
@@ -24,6 +26,7 @@ const TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: "projects", label: "Projects" },
   { id: "shortcuts", label: "Shortcuts" },
   { id: "diagnostics", label: "Diagnostics" },
+  { id: "about", label: "About" },
 ];
 
 const SCENARIO_LABELS: Record<MockScenario, string> = {
@@ -472,63 +475,35 @@ export function SettingsView() {
             {tab === "shortcuts" && (
               <div className="card">
                 <h3>Shortcuts</h3>
-                <div className="kv-list">
-                  <div className="kv">
-                    <span>Settings</span>
-                    <span className="mono">⌘,</span>
-                  </div>
-                  <div className="kv">
-                    <span>Command palette</span>
-                    <span className="mono">⌘K</span>
-                  </div>
-                  <div className="kv">
-                    <span>New conversation</span>
-                    <span className="mono">⌘N</span>
-                  </div>
-                  <div className="kv">
-                    <span>Open folder</span>
-                    <span className="mono">⌘O</span>
-                  </div>
-                  <div className="kv">
-                    <span>Open files</span>
-                    <span className="mono">⇧⌘O</span>
-                  </div>
-                  <div className="kv">
-                    <span>Search files</span>
-                    <span className="mono">⌘P</span>
-                  </div>
-                  <div className="kv">
-                    <span>Search in files</span>
-                    <span className="mono">⇧⌘F</span>
-                  </div>
-                  <div className="kv">
-                    <span>Toggle sidebar</span>
-                    <span className="mono">⌘B</span>
-                  </div>
-                  <div className="kv">
-                    <span>Toggle inspector</span>
-                    <span className="mono">⌘\</span>
-                  </div>
-                  <div className="kv">
-                    <span>Inspector review</span>
-                    <span className="mono">⌃⇧G</span>
-                  </div>
-                  <div className="kv">
-                    <span>Inspector terminal</span>
-                    <span className="mono">⌃`</span>
-                  </div>
-                  <div className="kv">
-                    <span>Inspector side chat</span>
-                    <span className="mono">⌥⌘S</span>
-                  </div>
-                  <div className="kv">
-                    <span>Send</span>
-                    <span className="mono">{sendOnEnter ? "Enter" : "⌘Enter"}</span>
-                  </div>
-                  <div className="kv">
-                    <span>Send and start another</span>
-                    <span className="mono">{sendOnEnter ? "⌘Enter" : "⌘⇧Enter"}</span>
-                  </div>
+                <div className="shortcuts-list">
+                  {[
+                    { label: "Settings", keys: ["⌘", ","] },
+                    { label: "Command palette", keys: ["⌘", "K"] },
+                    { label: "New conversation", keys: ["⌘", "N"] },
+                    { label: "Open folder", keys: ["⌘", "O"] },
+                    { label: "Open files", keys: ["⇧", "⌘", "O"] },
+                    { label: "Search files", keys: ["⌘", "P"] },
+                    { label: "Search in files", keys: ["⇧", "⌘", "F"] },
+                    { label: "Toggle sidebar", keys: ["⌘", "B"] },
+                    { label: "Toggle inspector", keys: ["⌘", "\\"] },
+                    { label: "Inspector review", keys: ["⌃", "⇧", "G"] },
+                    { label: "Inspector terminal", keys: ["⌃", "`"] },
+                    { label: "Inspector side chat", keys: ["⌥", "⌘", "S"] },
+                    { label: "Send", keys: sendOnEnter ? ["Enter"] : ["⌘", "Enter"] },
+                    {
+                      label: "Send and start another",
+                      keys: sendOnEnter ? ["⌘", "Enter"] : ["⌘", "⇧", "Enter"],
+                    },
+                  ].map((item) => (
+                    <div className="shortcut-row" key={item.label}>
+                      <span className="shortcut-label">{item.label}</span>
+                      <span className="shortcut-keys">
+                        {item.keys.map((key, index) => (
+                          <kbd key={index}>{key}</kbd>
+                        ))}
+                      </span>
+                    </div>
+                  ))}
                 </div>
                 <p className="muted" style={{ marginTop: "0.75rem" }}>
                   In the composer, type <span className="mono">/</span> for commands,{" "}
@@ -552,6 +527,12 @@ export function SettingsView() {
                   </button>
                 </div>
                 {diagnostics && <pre className="mono">{diagnostics}</pre>}
+              </div>
+            )}
+
+            {tab === "about" && (
+              <div className="card about-settings-wrapper">
+                <AboutCard />
               </div>
             )}
           </div>

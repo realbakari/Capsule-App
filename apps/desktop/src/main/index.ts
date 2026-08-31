@@ -454,6 +454,22 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.listHarnessSessions, (projectId) =>
     requireEngine().listHarnessSessions(projectId ? String(projectId) : undefined),
   );
+  handle(IPC_CHANNELS.listSkillPacks, () => requireEngine().listSkillPacks());
+  handle(IPC_CHANNELS.installSkill, (skill) =>
+    requireEngine().installSkill(skill as Parameters<CapsuleEngine["installSkill"]>[0]),
+  );
+  handle(IPC_CHANNELS.installSkillPack, (packId) =>
+    requireEngine().installSkillPack(String(packId)),
+  );
+  handle(IPC_CHANNELS.uninstallSkill, (skillId) =>
+    requireEngine().uninstallSkill(String(skillId)),
+  );
+  handle(IPC_CHANNELS.searchSkillsSh, (query) =>
+    requireEngine().searchSkillsSh(String(query)),
+  );
+  handle(IPC_CHANNELS.fetchSkillDetail, (source, slug) =>
+    requireEngine().fetchSkillDetail(String(source), String(slug)),
+  );
 
   ipcMain.handle(IPC_CHANNELS.showContextMenu, async (event, payload: PopupMenuRequest) => {
     try {
@@ -497,6 +513,7 @@ function applyLaunchAtLogin(enabled: boolean): void {
 
 function createMenu(): void {
   const openSettings = () => send(IPC_EVENTS.state, { command: "settings" });
+  const openAbout = () => send(IPC_EVENTS.state, { command: "about" });
   const mac = process.platform === "darwin";
   const template: Electron.MenuItemConstructorOptions[] = [
     ...(mac
@@ -504,7 +521,10 @@ function createMenu(): void {
           {
             label: app.name,
             submenu: [
-              { role: "about" as const },
+              {
+                label: "About Capsule",
+                click: openAbout,
+              },
               { type: "separator" as const },
               {
                 label: "Settings…",
@@ -569,6 +589,11 @@ function createMenu(): void {
           click: () => send(IPC_EVENTS.state, { command: "palette" }),
         },
         {
+          label: "Skills & Packs",
+          accelerator: "CommandOrControl+Shift+S",
+          click: () => send(IPC_EVENTS.state, { command: "skills" }),
+        },
+        {
           label: "Runtimes",
           accelerator: "CommandOrControl+Shift+R",
           click: () => send(IPC_EVENTS.state, { command: "harness" }),
@@ -581,6 +606,19 @@ function createMenu(): void {
       ],
     },
     { role: "windowMenu" },
+    {
+      role: "help",
+      submenu: [
+        {
+          label: "About Capsule",
+          click: openAbout,
+        },
+        {
+          label: "Explore skills.sh",
+          click: () => void shell.openExternal("https://skills.sh"),
+        },
+      ],
+    },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
@@ -601,7 +639,9 @@ function createTray(): void {
     tray.setContextMenu(
       Menu.buildFromTemplate([
         { label: "Open Capsule", click: () => mainWindow?.show() },
+        { label: "About Capsule", click: () => send(IPC_EVENTS.state, { command: "about" }) },
         { label: "Settings…", click: () => send(IPC_EVENTS.state, { command: "settings" }) },
+        { label: "Skills & Packs", click: () => send(IPC_EVENTS.state, { command: "skills" }) },
         { label: "Approvals", click: () => send(IPC_EVENTS.state, { command: "approvals" }) },
         { label: "Active runs", click: () => send(IPC_EVENTS.state, { command: "runs" }) },
         { type: "separator" },

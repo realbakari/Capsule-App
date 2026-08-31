@@ -11,6 +11,7 @@ import { Palette } from "./features/shell/Palette";
 import { Sidebar } from "./features/shell/Sidebar";
 import { Splash } from "./features/shell/Splash";
 import { Titlebar } from "./features/shell/Titlebar";
+import { AboutModal } from "./features/settings/AboutModal";
 import { ViewErrorBoundary } from "./features/shell/ErrorBoundary";
 import { useSidebarSwipe } from "./lib/useSidebarSwipe";
 import { WorkspaceProvider, useWorkspace } from "./lib/workspace";
@@ -19,7 +20,7 @@ const BOOT_SPLASH_MS = 1100;
 const BOOT_FADE_MS = 200;
 
 function Shell() {
-  const { view, inspectorOpen, sidebarCollapsed, sidebarWidth, setSidebarCollapsed } = useWorkspace();
+  const { view, inspectorOpen, sidebarCollapsed, sidebarWidth, setSidebarCollapsed, aboutOpen, setAboutOpen } = useWorkspace();
   useSidebarSwipe(sidebarCollapsed, setSidebarCollapsed);
   const style = { "--sidebar-width": `${sidebarWidth}px` } as CSSProperties;
   return (
@@ -57,6 +58,7 @@ function Shell() {
         <ContentSearch />
       </ViewErrorBoundary>
       <ConfirmDialog />
+      <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} />
     </div>
   );
 }
