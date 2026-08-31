@@ -10,6 +10,12 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const desktop = path.join(root, "apps/desktop");
+
+if (process.env.VERCEL) {
+  console.log("Running in Vercel CI environment; skipping desktop native module verification probe");
+  process.exit(0);
+}
+
 const requireFromDesktop = createRequire(path.join(desktop, "package.json"));
 const electronDir = path.dirname(requireFromDesktop.resolve("electron/package.json"));
 const electronVersion = requireFromDesktop("electron/package.json").version;
