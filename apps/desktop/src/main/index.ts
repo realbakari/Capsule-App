@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import {
   app,
@@ -34,7 +34,38 @@ let tray: Tray | undefined;
 let engine: CapsuleEngine | undefined;
 let awakeBlocker: number | undefined;
 
+function loadLocalEnv(): void {
+  const candidates = [
+    path.join(process.cwd(), ".env.local"),
+    path.join(process.cwd(), ".env"),
+    path.join(path.resolve(__dirname, "../../.."), ".env.local"),
+    path.join(path.resolve(__dirname, "../../.."), ".env"),
+  ];
+  for (const file of candidates) {
+    if (existsSync(file)) {
+      try {
+        const lines = readFileSync(file, "utf8").split("\n");
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith("#")) continue;
+          const eq = trimmed.indexOf("=");
+          if (eq > 0) {
+            const key = trimmed.slice(0, eq).trim();
+            const val = trimmed.slice(eq + 1).trim().replace(/^["']|["']$/g, "");
+            if (key && !(key in process.env)) {
+              process.env[key] = val;
+            }
+          }
+        }
+      } catch {
+        // ignore read errors
+      }
+    }
+  }
+}
+
 function augmentPath(): void {
+  loadLocalEnv();
   const extras = [
     "/opt/homebrew/bin",
     "/opt/homebrew/sbin",
