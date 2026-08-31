@@ -184,6 +184,9 @@ importers:
       '@capsule/agents':
         specifier: workspace:*
         version: link:../agents
+      '@capsule/filesystem':
+        specifier: workspace:*
+        version: link:../filesystem
       '@capsule/shared':
         specifier: workspace:*
         version: link:../shared
