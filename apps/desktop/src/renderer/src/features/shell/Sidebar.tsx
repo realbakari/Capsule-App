@@ -33,6 +33,7 @@ import {
   MoreHorizontalIcon,
   PinIcon,
   PlusIcon,
+  ChartIcon,
   SearchIcon,
   SettingsIcon,
   ShieldIcon,
@@ -47,6 +48,7 @@ const LIBRARY: Array<{ id: View; label: string; icon: typeof CpuIcon }> = [
   { id: "skills", label: "Skills", icon: SparkIcon },
   { id: "history", label: "History", icon: HistoryIcon },
   { id: "approvals", label: "Approvals", icon: ShieldIcon },
+  { id: "usage", label: "Usage", icon: ChartIcon },
 ];
 
 interface MenuState {

@@ -4977,3 +4977,86 @@ button.shortcut-keys.capturing {
   color: var(--text-faint);
   font-variant-numeric: tabular-nums;
 }
+
+/* Usage view. */
+.usage-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.usage-headline {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin: 0.5rem 0 1rem;
+}
+.usage-total {
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.usage-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 5rem;
+  margin-bottom: 1.25rem;
+  padding: 0 0.1rem;
+  border-bottom: 1px solid var(--border-color);
+}
+.usage-bar {
+  flex: 1 1 0;
+  min-width: 2px;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+.usage-bar-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 1px 1px 0 0;
+  background: var(--accent);
+  transform-origin: bottom center;
+}
+.usage-breakdown h4 {
+  margin: 1rem 0 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--subtext-1);
+}
+.usage-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 3rem 5rem;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.28rem 0;
+  font-size: 0.8125rem;
+  border-bottom: 1px solid var(--border-color);
+}
+.usage-row:last-child {
+  border-bottom: 0;
+}
+.usage-share,
+.usage-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-faint);
+}
+.usage-value {
+  color: var(--subtext-0);
+}
+
+/* A menu option that explains itself. */
+.menu-option-label {
+  display: block;
+}
+.menu-option-detail {
+  display: block;
+  margin-top: 0.1rem;
+  font-size: 0.6875rem;
+  line-height: 1.35;
+  color: var(--text-faint);
+  white-space: normal;
+}

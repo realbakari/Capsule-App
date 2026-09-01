@@ -365,7 +365,7 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
             </button>
           </div>
         )}
-        {harnessLive && (
+        {harnessLive && busy && (
           <div className="steer-row">
             <input
               type="text"
@@ -413,9 +413,30 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
             <MenuSelect
               ariaLabel="Permission mode"
               value={permission}
-              options={PERMISSION_OPTIONS.map((item) => ({ id: item.id, label: item.label }))}
+              options={PERMISSION_OPTIONS.map((item) => ({
+                id: item.id,
+                label: item.label,
+                detail: item.detail,
+              }))}
               onChange={(id) => void setPermissionProfile(id)}
             />
+            {/* Read from the harness's own "usage updated: n/limit" frames.
+                It sits with the controls that shape a turn rather than in the
+                strip below the box, which is reference, not state. */}
+            {contextUsage && (
+              <span
+                className={`context-meter context-meter--${contextTone(contextUsage.fraction)}`}
+                title={`Context window: ${contextUsage.used.toLocaleString()} of ${contextUsage.limit.toLocaleString()} tokens`}
+              >
+                <span className="context-meter-track" aria-hidden>
+                  <span
+                    className="context-meter-fill"
+                    style={{ transform: `scaleX(${contextUsage.fraction})` }}
+                  />
+                </span>
+                {formatTokens(contextUsage.used)}/{formatTokens(contextUsage.limit)}
+              </span>
+            )}
             <MenuSelect
               ariaLabel="Agent"
               value={agentId}
@@ -479,28 +500,7 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
             ) : null}
           </span>
         )}
-        {project?.defaultAgentId && (
-          <span>
-            {harnesses.find((item) => item.id === project.defaultAgentId)?.name ?? project.defaultAgentId}
-          </span>
-        )}
         {!connected && <span>Gateway offline</span>}
-        {/* The harness reports this; before, it was shown as raw activity
-            text ("usage updated: 87690/200000") or not at all. */}
-        {contextUsage && (
-          <span
-            className={`context-meter context-meter--${contextTone(contextUsage.fraction)}`}
-            title={`Context window: ${contextUsage.used.toLocaleString()} of ${contextUsage.limit.toLocaleString()} tokens`}
-          >
-            <span className="context-meter-track" aria-hidden>
-              <span
-                className="context-meter-fill"
-                style={{ transform: `scaleX(${contextUsage.fraction})` }}
-              />
-            </span>
-            {formatTokens(contextUsage.used)}/{formatTokens(contextUsage.limit)}
-          </span>
-        )}
         <span className="faint">/  @  $</span>
       </div>
       {busy && (

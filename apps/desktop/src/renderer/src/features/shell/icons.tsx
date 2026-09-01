@@ -357,3 +357,14 @@ export function CheckIcon(props: IconProps) {
     </Svg>
   );
 }
+
+export function ChartIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M3 3v18h18" />
+      <path d="M7 15v3" />
+      <path d="M12 9v9" />
+      <path d="M17 5v13" />
+    </Svg>
+  );
+}

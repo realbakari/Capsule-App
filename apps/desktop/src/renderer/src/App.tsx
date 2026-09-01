@@ -2,6 +2,7 @@ import { useEffect, useState, type CSSProperties } from "react";
 import { Conversation } from "./features/conversation/Conversation";
 import { RuntimesView } from "./features/harness/RuntimesView";
 import { ApprovalsView, HistoryView, SkillsView } from "./features/library/LibraryViews";
+import { UsageView } from "./features/library/UsageView";
 import { SettingsView } from "./features/settings/SettingsView";
 import { ConfirmDialog } from "./features/shell/ConfirmDialog";
 import { ContentSearch } from "./features/shell/ContentSearch";
@@ -37,6 +38,7 @@ function Shell() {
             {view === "chat" && <Conversation />}
             {view === "runtimes" && <RuntimesView />}
             {view === "skills" && <SkillsView />}
+            {view === "usage" && <UsageView />}
             {view === "history" && <HistoryView />}
             {view === "approvals" && <ApprovalsView />}
             {view === "settings" && <SettingsView />}

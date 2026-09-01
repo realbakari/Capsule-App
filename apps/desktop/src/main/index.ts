@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import {
   id,
+  num,
   optBool,
   optStr,
   parseArgs,
@@ -531,6 +532,9 @@ function registerIpc(): void {
   );
   handleArgs(IPC_CHANNELS.resetSettingsSection, [id], (section: string) =>
     requireEngine().resetSettingsSection(section),
+  );
+  handleArgs(IPC_CHANNELS.usageSummary, [num], (days: number) =>
+    requireEngine().usageSummary(days),
   );
   handleArgs(IPC_CHANNELS.turnDiff, [id], (runId: string) => requireEngine().turnDiff(runId));
   handleArgs(IPC_CHANNELS.restoreTurn, [id], (runId: string) =>

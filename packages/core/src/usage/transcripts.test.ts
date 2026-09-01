@@ -35,7 +35,6 @@ const codexLine = (usage: Record<string, unknown> = {}) =>
     type: "event_msg",
     payload: {
       info: {
-        model: "gpt-5.6",
         last_token_usage: {
           input_tokens: 13334,
           cached_input_tokens: 9600,
@@ -158,5 +157,29 @@ describe("totals arithmetic", () => {
     const a = { input: 1, cachedInput: 2, cacheWrite: 3, output: 4, reasoning: 5 };
     expect(addTotals(a, a)).toEqual({ input: 2, cachedInput: 4, cacheWrite: 6, output: 8, reasoning: 10 });
     expect(totalTokens(a)).toBe(15);
+  });
+});
+
+describe("Codex model, which is not on the usage line", () => {
+  it("carries the model forward from the turn_context that declared it", () => {
+    const state = { };
+    const context = JSON.stringify({ type: "turn_context", payload: { model: "gpt-5.6-sol" } });
+    expect(parseCodexLine(context, "s", state)).toBeUndefined(); // no usage on it
+    expect(parseCodexLine(codexLine(), "s", state)!.model).toBe("gpt-5.6-sol");
+  });
+
+  it("falls back to a generic name rather than mislabelling", () => {
+    const line = JSON.stringify({
+      payload: { info: { last_token_usage: { input_tokens: 5, output_tokens: 2 } } },
+    });
+    expect(parseCodexLine(line, "s", {})!.model).toBe("codex");
+  });
+
+  it("updates when the model changes mid-session", () => {
+    const state = {};
+    parseCodexLine(JSON.stringify({ payload: { model: "gpt-5.6-sol" } }), "s", state);
+    expect(parseCodexLine(codexLine(), "s", state)!.model).toBe("gpt-5.6-sol");
+    parseCodexLine(JSON.stringify({ payload: { model: "gpt-5.6-terra" } }), "s", state);
+    expect(parseCodexLine(codexLine(), "s", state)!.model).toBe("gpt-5.6-terra");
   });
 });

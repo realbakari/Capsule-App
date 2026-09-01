@@ -26,6 +26,7 @@ const api = {
     ipcRenderer.invoke(IPC_CHANNELS.searchSkillCatalog, query, refresh),
   resetSettingsSection: (section: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.resetSettingsSection, section),
+  usageSummary: (days: number) => ipcRenderer.invoke(IPC_CHANNELS.usageSummary, days),
   turnDiff: (runId: string) => ipcRenderer.invoke(IPC_CHANNELS.turnDiff, runId),
   restoreTurn: (runId: string) => ipcRenderer.invoke(IPC_CHANNELS.restoreTurn, runId),
   fetchSkillDetail: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.fetchSkillDetail, id),

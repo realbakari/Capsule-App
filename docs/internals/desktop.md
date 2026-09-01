@@ -80,6 +80,16 @@ A panel crash is isolated by `ViewErrorBoundary`. Retry remounts the panel. Fast
 
 ## Chat
 
+The composer is one box: the prompt, then a single row of the controls that
+shape a turn — mode, permission, harness, and the context meter. The strip
+below it is reference (folder, branch, terminal), not state. The steer field
+appears only while a turn is running, which is the only time it means
+anything. Permission options carry a line saying what each one does, because
+"Supervised" does not say that it refuses rather than asks.
+
+Usage lives in its own view, read from the CLIs' transcripts. It reports
+tokens only — prices are not in the transcripts.
+
 A folded turn shows how long it took beside its message count. Activity rows
 that failed render as an error in both the transcript and the inspector.
 

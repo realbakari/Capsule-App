@@ -41,7 +41,14 @@ import type { SettingsSectionId } from "../features/settings/settings-search";
 import { commandForEvent, parseChord, type Keymap } from "./keybindings";
 import { latestContextUsage, type ContextUsage } from "./context-window";
 
-export type View = "chat" | "runtimes" | "skills" | "history" | "approvals" | "settings";
+export type View =
+  | "chat"
+  | "runtimes"
+  | "skills"
+  | "history"
+  | "approvals"
+  | "usage"
+  | "settings";
 export type InspectorTab =
   | "launcher"
   | "files"
@@ -56,10 +63,27 @@ export type InspectorTab =
 export const MODES: AgentMode[] = ["plan", "chat", "agent", "code", "research", "browser", "automation"];
 export const PRIMARY_MODES: AgentMode[] = ["plan", "chat", "code"];
 export const MORE_MODES: AgentMode[] = ["agent", "research", "browser", "automation"];
+/*
+ * The detail lines matter more than the labels here. These map onto acpx
+ * permission modes, which cannot show a dialog, so "Supervised" refuses a tool
+ * rather than asking about it — behaviour nobody would guess from the name.
+ */
 export const PERMISSION_OPTIONS = [
-  { id: "strict", label: "Supervised" },
-  { id: "default", label: "Standard" },
-  { id: "approve-all", label: "Full access" },
+  {
+    id: "strict",
+    label: "Supervised",
+    detail: "Refuses commands and file writes. It cannot ask, so it declines.",
+  },
+  {
+    id: "default",
+    label: "Standard",
+    detail: "Reads, writes and runs commands inside the project folder.",
+  },
+  {
+    id: "approve-all",
+    label: "Full access",
+    detail: "Everything Standard allows, with no approval step at all.",
+  },
 ] as const;
 
 const SIDEBAR_WIDTH_KEY = "capsule.sidebarWidth";

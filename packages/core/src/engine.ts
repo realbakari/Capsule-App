@@ -18,6 +18,7 @@ import {
 
 import { createBuzzAdapter } from "@capsule/buzz";
 import { buildContract } from "@capsule/contracts";
+import { readUsageSummary, sinceDaysAgo, type UsageSummary } from "./usage/index.js";
 import { CapsuleDatabase, CapsuleRepositories } from "@capsule/database";
 import {
   captureCheckpoint,
@@ -1930,6 +1931,14 @@ export class CapsuleEngine {
     } catch {
       // A checkpoint is a convenience; losing one is not worth losing the turn.
     }
+  }
+
+  /**
+   * Token accounting for the last `days` days, read from the CLIs' own
+   * transcripts. Nothing is recorded for this; see usage/transcripts.
+   */
+  usageSummary(days: number): UsageSummary {
+    return readUsageSummary(sinceDaysAgo(days));
   }
 
   /** The patch a single turn produced, from its checkpoint back to the previous one. */

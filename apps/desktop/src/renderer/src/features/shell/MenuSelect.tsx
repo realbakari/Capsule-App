@@ -4,6 +4,12 @@ import { createPortal } from "react-dom";
 export interface MenuOption {
   id: string;
   label: string;
+  /**
+   * One line saying what the option does. Permission modes in particular are
+   * unguessable from their names alone — "Supervised" and "Full access" do not
+   * say what either will refuse.
+   */
+  detail?: string;
 }
 
 export function MenuSelect({
@@ -94,7 +100,8 @@ export function MenuSelect({
                   setOpen(false);
                 }}
               >
-                {item.label}
+                <span className="menu-option-label">{item.label}</span>
+                {item.detail && <span className="menu-option-detail">{item.detail}</span>}
               </button>
             ))}
           </div>,

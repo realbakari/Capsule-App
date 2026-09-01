@@ -138,7 +138,20 @@ export function parseClaudeLine(line: string): UsageRecord | undefined {
  * summed: adding the running total on every line multiplies a session's usage
  * by roughly the number of turns in it.
  */
-export function parseCodexLine(line: string, sessionId = ""): UsageRecord | undefined {
+export interface CodexScanState {
+  /** Model from the most recent turn_context line. */
+  model?: string;
+}
+
+export function newCodexScanState(): CodexScanState {
+  return {};
+}
+
+export function parseCodexLine(
+  line: string,
+  sessionId = "",
+  state: CodexScanState = {},
+): UsageRecord | undefined {
   let value: unknown;
   try {
     value = JSON.parse(line);
@@ -148,6 +161,17 @@ export function parseCodexLine(line: string, sessionId = ""): UsageRecord | unde
   const row = asRecord(value);
   if (!row) return undefined;
   const payload = asRecord(row.payload);
+
+  /*
+   * Codex names its model on `turn_context` lines, not on the usage line, so a
+   * stateless parser can only report "codex" — useless in a per-model
+   * breakdown. Scanning in order and carrying the last model forward gives the
+   * usage rows their real name.
+   */
+  if (payload && typeof payload.model === "string" && payload.model) {
+    state.model = payload.model;
+  }
+
   const info = payload ? asRecord(payload.info) : undefined;
   const usage = info ? asRecord(info.last_token_usage) : undefined;
   if (!usage) return undefined;
@@ -177,6 +201,7 @@ export function parseCodexLine(line: string, sessionId = ""): UsageRecord | unde
   const model =
     (typeof info?.model === "string" && info.model) ||
     (typeof payload?.model === "string" && payload.model) ||
+    state.model ||
     "codex";
 
   return {
