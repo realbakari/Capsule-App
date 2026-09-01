@@ -31,11 +31,11 @@
   --base: #0a0a0a;
   --surface-0: #111111;
   --surface-1: #191919;
-  --overlay-0: #6f6f6a;
-  --overlay-1: #8c8c86;
-  --subtext-0: #a3a3a3;
-  --subtext-1: #d0d0ca;
-  --text: #f1f3f7;
+  --overlay-0: #5f5f5f;
+  --overlay-1: #7d7d7d;
+  --subtext-0: #949494;
+  --subtext-1: #bdbdbd;
+  --text: #f2f2f2;
   --accent: #f3f3ee;
   --accent-fg: #111111;
   --blue: #b0b0aa;
@@ -92,14 +92,11 @@
   --bg: var(--base);
   --text-muted: var(--subtext-0);
   --text-faint: var(--overlay-1);
-  --bg-elevated: var(--surface-0);
+  --bg-elevated: var(--surface-1);
   --bg-sidebar: var(--mantle);
   --bg-hover: rgb(255 255 255 / 6%);
   --bg-active: rgb(255 255 255 / 9%);
   --border-color: rgb(255 255 255 / 8%);
-  /* A rim on a raised surface, brighter than a border on a flat one. Elevation
-     reads as surface + shadow + ring together; any one alone looks flat. */
-  --ring-elevated: rgb(255 255 255 / 14%);
   --shadow-raised: 0 8px 24px -12px rgb(0 0 0 / 0.55);
   --shadow: 0 24px 64px -24px rgb(0 0 0 / 0.7);
   --glass: color-mix(in srgb, var(--surface-0) var(--glass-opacity), transparent);
@@ -145,7 +142,6 @@ html[data-theme="light"] {
   --text-faint: var(--overlay-1);
   --bg-elevated: var(--surface-0);
   --bg-sidebar: #ecece8;
-  --ring-elevated: rgb(0 0 0 / 10%);
   --shadow-raised: 0 8px 24px -12px rgb(0 0 0 / 0.12);
   --bg-hover: rgb(0 0 0 / 5%);
   --bg-active: rgb(0 0 0 / 8%);

@@ -5668,7 +5668,7 @@ button.shortcut-keys.capturing {
      because it reads as light catching a raised edge. */
   background: var(--surface-0);
   box-shadow:
-    0 0 0 1px var(--ring-elevated),
+    0 0 0 1px var(--border-strong),
     var(--shadow);
 }
 .site-shot-frame .app {
@@ -5718,7 +5718,7 @@ button.shortcut-keys.capturing {
   overflow: hidden;
   text-align: left;
   box-shadow:
-    0 0 0 1px var(--ring-elevated),
+    0 0 0 1px var(--border-strong),
     var(--shadow-raised);
 }
 .site-harness-grid li {
@@ -5783,7 +5783,7 @@ button.shortcut-keys.capturing {
   border-radius: 0.6rem;
   background: var(--surface-0);
   box-shadow:
-    0 0 0 1px var(--ring-elevated),
+    0 0 0 1px var(--border-strong),
     var(--shadow-raised);
   text-align: left;
 }
