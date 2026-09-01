@@ -731,6 +731,11 @@ export function Inspector() {
                     className="chip"
                     type="button"
                     disabled={git?.ghAvailable === false}
+                    title={
+                      git?.ghAvailable === false
+                        ? "The GitHub CLI (gh) is not installed or not signed in."
+                        : undefined
+                    }
                     onClick={() => void gitCreatePullRequest()}
                   >
                     {settings?.prDraft ? "Draft PR" : "Pull request"}
@@ -777,7 +782,18 @@ export function Inspector() {
                   value={message}
                   onChange={(event) => setMessage(event.target.value)}
                 />
-                <button className="send" type="submit" disabled={!git?.dirty || !message.trim()}>
+                <button
+                  className="send"
+                  type="submit"
+                  disabled={!git?.dirty || !message.trim()}
+                  title={
+                    !git?.dirty
+                      ? "Nothing to commit — the working tree is clean."
+                      : !message.trim()
+                        ? "Write a commit message first."
+                        : undefined
+                  }
+                >
                   Commit
                 </button>
               </form>
@@ -812,6 +828,7 @@ export function Inspector() {
                 className="chip"
                 type="button"
                 disabled={!projectId}
+                title={!projectId ? "Open a project first — there is no folder to run in." : undefined}
                 onClick={() => void openTerminal()}
               >
                 Open Terminal.app
@@ -923,6 +940,13 @@ export function Inspector() {
                   <button
                     className="send"
                     disabled={!projectId || busy}
+                    title={
+                      !projectId
+                        ? "Open a project first — a harness spawns into its folder."
+                        : busy
+                          ? "Waiting for the current request to finish."
+                          : undefined
+                    }
                     onClick={() => void spawnHarness(harness.id)}
                   >
                     Spawn

@@ -6,7 +6,7 @@
  *
  * FNV-1a: not cryptographic, and it does not need to be. It only has to change
  * when the bytes change. The length prefix makes a collision need both the same
- * hash and the same length. Same construction as T3 Code's fileContentRevision.
+ * hash and the same length.
  */
 export function fileContentRevision(contents: string): string {
   let hash = 2_166_136_261;

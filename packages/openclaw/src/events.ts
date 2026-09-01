@@ -114,8 +114,8 @@ export function isGatewayAgentFailure(text: string | undefined): boolean {
  * were concatenated into the assistant's reply and the UI had nothing real to
  * show while a turn was in flight.
  *
- * The kinds below mirror T3 Code's RuntimeContentStreamKind: keep reasoning
- * separate from prose, and keep tool/command/patch output separate from both.
+ * The kinds below keep reasoning separate from prose, and keep tool, command
+ * and patch output separate from both.
  */
 export type AgentStreamKind =
   | "thinking"

@@ -434,6 +434,8 @@ export interface Run {
   result?: string;
   error?: string;
   openclawRunId?: string;
+  /** Hidden Git ref capturing the worktree when this turn finished. */
+  checkpointRef?: string;
   createdAt: string;
   updatedAt: string;
   completedAt?: string;

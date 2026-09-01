@@ -6,9 +6,8 @@
  * ("/Users/realbak…") throws away the basename — the only part that identifies
  * the project — and keeps the part that never varies.
  *
- * The workspace-relative formatter is ported from T3 Code's
- * apps/web/src/filePathDisplay.ts, which renders paths against the workspace
- * basename rather than its full path.
+ * The workspace-relative formatter therefore renders a path against the
+ * workspace basename rather than against its full path.
  */
 
 function normalizeSeparators(path: string): string {

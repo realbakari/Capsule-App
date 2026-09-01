@@ -38,11 +38,10 @@ function kindFromEventType(type: string): string {
 }
 
 /*
- * Work is summarised, not transcribed. T3 Code collapses a run of tool frames
- * into one counted line — `Read 4 files`, `Ran 3 commands` — rather than
- * listing every call; its `toolGroupActionLabel` is the model here. A phase
- * therefore carries how many frames it absorbed, and the label is derived from
- * that count rather than being a fixed string.
+ * Work is summarised, not transcribed: a run of tool frames collapses into one
+ * counted line — `Read 4 files`, `Ran 3 commands` — rather than listing every
+ * call. A phase therefore carries how many frames it absorbed, and the label is
+ * derived from that count rather than being a fixed string.
  */
 type WorkAction = "read" | "changed" | "ran" | "used";
 

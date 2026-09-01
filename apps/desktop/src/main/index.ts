@@ -495,6 +495,8 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.uninstallSkill, (skillId) =>
     requireEngine().uninstallSkill(String(skillId)),
   );
+  handle(IPC_CHANNELS.turnDiff, (runId) => requireEngine().turnDiff(String(runId)));
+  handle(IPC_CHANNELS.restoreTurn, (runId) => requireEngine().restoreTurn(String(runId)));
   handle(IPC_CHANNELS.searchSkillCatalog, (query, refresh) =>
     requireEngine().searchSkillCatalog(String(query), Boolean(refresh)),
   );

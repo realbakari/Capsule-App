@@ -84,8 +84,8 @@ export function AppearanceSettings({
           </select>
         </SettingRow>
         {/*
-          * A live sample, the way T3 Code previews its typography. These read
-          * the same custom properties the transcript does (--text-message,
+          * A live sample. These read the same custom properties the
+          * transcript itself does (--text-message,
           * --mono, --chat-max), so they are the real result of the setting
           * rather than a mock-up that can drift from it.
           */}

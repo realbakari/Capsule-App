@@ -20,10 +20,14 @@ import { createBuzzAdapter } from "@capsule/buzz";
 import { buildContract } from "@capsule/contracts";
 import { CapsuleDatabase, CapsuleRepositories } from "@capsule/database";
 import {
+  captureCheckpoint,
   checkoutBranch as checkoutGitBranch,
+  checkpointNumstat,
+  checkpointRef,
   commitAll,
   createBranch as createGitBranch,
   createPullRequest as openPullRequest,
+  diffCheckpoints,
   discardFile,
   enrichGitStatus,
   FilesystemAdapter,
@@ -32,6 +36,7 @@ import {
   pushCurrentBranch,
   readGitDiff,
   readGitStatus,
+  restoreCheckpoint,
   searchContents,
   stageFile,
   viewPullRequest,
@@ -1550,6 +1555,7 @@ export class CapsuleEngine {
       run.completedAt = nowIso();
       if (typeof event.data?.output === "string") run.result = event.data.output;
       if (typeof event.data?.error === "string") run.error = event.data.error;
+      this.captureTurnCheckpoint(run, session);
       /*
        * A finished turn leaves the ACP session alive but idle. Nothing used to
        * write the session out of "running", so the sidebar kept showing
@@ -1872,6 +1878,63 @@ export class CapsuleEngine {
       clientVersion: this.options.clientVersion,
       identityDir: path.join(this.options.userDataDir, "identity"),
     });
+  }
+
+  /**
+   * Capture the worktree as this turn ends.
+   *
+   * The changed-files card diffs the working tree against HEAD, which mixes the
+   * agent's edits with the user's own and cannot be scoped to a turn. Two
+   * consecutive checkpoints bound exactly what one turn changed, and restoring
+   * one puts the worktree back.
+   *
+   * Best effort by design: a repository-less project, or a git invocation that
+   * fails, must not fail the turn that just succeeded.
+   */
+  private captureTurnCheckpoint(run: Run, session: Session): void {
+    const cwd = session.workingDirectory ?? this.repos.getProject(session.projectId)?.workingDirectory;
+    if (!cwd) return;
+    try {
+      const turn = this.repos.listRuns(session.id).length;
+      const ref = checkpointRef(session.id, turn);
+      const result = captureCheckpoint(cwd, ref);
+      if (!result.ok) return;
+      run.checkpointRef = ref;
+      this.repos.updateRun(run);
+    } catch {
+      // A checkpoint is a convenience; losing one is not worth losing the turn.
+    }
+  }
+
+  /** The patch a single turn produced, from its checkpoint back to the previous one. */
+  turnDiff(runId: string): { patch: string; files: Array<{ path: string; added: number; removed: number }> } {
+    const run = this.repos.getRun(runId);
+    if (!run?.checkpointRef) return { patch: "", files: [] };
+    const session = this.repos.getSession(run.sessionId);
+    const project = session ? this.repos.getProject(session.projectId) : undefined;
+    const cwd = session?.workingDirectory ?? project?.workingDirectory;
+    if (!cwd) return { patch: "", files: [] };
+    const previous = this.repos
+      .listRuns(run.sessionId)
+      .filter((candidate) => candidate.checkpointRef && candidate.createdAt < run.createdAt)
+      .at(-1)?.checkpointRef;
+    return {
+      patch: diffCheckpoints(cwd, run.checkpointRef, previous),
+      files: checkpointNumstat(cwd, run.checkpointRef, previous),
+    };
+  }
+
+  /** Put the worktree back to how a turn left it. */
+  restoreTurn(runId: string): { ok: boolean; detail: string } {
+    const run = this.repos.getRun(runId);
+    if (!run?.checkpointRef) return { ok: false, detail: "That turn has no checkpoint." };
+    const session = this.repos.getSession(run.sessionId);
+    const project = session ? this.repos.getProject(session.projectId) : undefined;
+    const cwd = session?.workingDirectory ?? project?.workingDirectory;
+    if (!cwd) return { ok: false, detail: "That turn has no working directory." };
+    const result = restoreCheckpoint(cwd, run.checkpointRef);
+    if (result.ok) this.events.emit("state", { command: "files-updated" });
+    return result;
   }
 
   private async hydrateSecrets(): Promise<void> {

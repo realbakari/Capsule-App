@@ -3,8 +3,8 @@ import type { ChatMessage } from "@capsule/shared";
 /*
  * A turn is one exchange: a user message plus everything that answered it,
  * up to the next user message. Grouping the flat message list this way is what
- * lets old exchanges fold — T3 Code's timeline folds by turn rather than by
- * message, so an expensive turn collapses to one row instead of a dozen.
+ * lets old exchanges fold: folding by turn rather than by message collapses an
+ * expensive turn to one row instead of a dozen.
  */
 export interface Turn {
   /** Stable across renders: the first message's id anchors the turn. */

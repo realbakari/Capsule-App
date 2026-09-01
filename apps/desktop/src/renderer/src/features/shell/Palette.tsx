@@ -127,16 +127,35 @@ export function Palette() {
             }
           }}
         />
-        {commands.map((command, commandIndex) => (
-          <button
-            key={command.id}
-            className={commandIndex === index ? "active" : ""}
-            onMouseEnter={() => setIndex(commandIndex)}
-            onClick={() => run(command)}
-          >
-            {command.label}
-          </button>
-        ))}
+        <div className="palette-list">
+          {commands.length === 0 && (
+            <p className="palette-empty">No command matches that.</p>
+          )}
+          {commands.map((command, commandIndex) => (
+            <button
+              key={command.id}
+              className={commandIndex === index ? "active" : ""}
+              onMouseEnter={() => setIndex(commandIndex)}
+              onClick={() => run(command)}
+            >
+              {command.label}
+            </button>
+          ))}
+        </div>
+        {/* The palette is keyboard-first, but nothing said so. These are the
+            keys the handler above already implements. */}
+        <div className="palette-hints" aria-hidden>
+          <span>
+            <kbd>↑</kbd>
+            <kbd>↓</kbd> Navigate
+          </span>
+          <span>
+            <kbd>Enter</kbd> Select
+          </span>
+          <span>
+            <kbd>Esc</kbd> Close
+          </span>
+        </div>
       </div>
     </div>
   );

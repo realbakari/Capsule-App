@@ -10,8 +10,7 @@ export function isConflictError(error: unknown): boolean {
 }
 
 /*
- * Debounced write-back for the file editor, ported from T3 Code's
- * `fileSaveCoordinator`.
+ * Debounced write-back for the file editor.
  *
  * The subtlety is not the debounce — it is what happens to edits made *while*
  * a save is in flight. A naive "save on idle" either drops them or races two

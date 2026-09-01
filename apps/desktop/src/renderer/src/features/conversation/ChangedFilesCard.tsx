@@ -19,8 +19,8 @@ function statusLabel(code: string): string {
 
 /**
  * The outcome of a turn that touched the tree: which files moved and by how
- * much — not the contents. Following T3 Code, the diff itself belongs in the
- * side panel, so this stays a summary you can skim without leaving the thread.
+ * much — not the contents. The diff itself belongs in the side panel, so this
+ * stays a summary you can skim without leaving the thread.
  */
 /*
  * A path is read basename-first: `workspace.tsx` is the answer, and the
@@ -35,8 +35,38 @@ function splitPath(path: string): { dir: string; name: string } {
 }
 
 export function ChangedFilesCard({ git }: { git: GitStatus }) {
-  const { api, projectId, setConfirm, setInspectorOpen, setInspectorTab } = useWorkspace();
+  const { api, projectId, runs, setConfirm, setInspectorOpen, setInspectorTab } = useWorkspace();
   const [expanded, setExpanded] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+
+  /*
+   * The most recent finished turn that captured a checkpoint. Restoring puts
+   * the worktree back to how that turn left it, which is the way out of an
+   * edit the agent made and the user did not want.
+   */
+  const restorable = [...runs]
+    .reverse()
+    .find((run) => run.checkpointRef && run.status !== "running");
+
+  async function restoreTurn() {
+    if (!restorable) return;
+    setConfirm({
+      title: "Restore this turn?",
+      // Says what is lost, because it is not recoverable through this button.
+      detail:
+        "Files in the project folder go back to how this turn left them. Anything changed since — by the agent or by you — is discarded.",
+      confirmLabel: "Restore",
+      danger: true,
+      onConfirm: async () => {
+        setRestoring(true);
+        try {
+          await api.restoreTurn(restorable.id);
+        } finally {
+          setRestoring(false);
+        }
+      },
+    });
+  }
 
   if (!git.isRepo || git.files.length === 0) return null;
   const shown = expanded ? git.files : git.files.slice(0, COLLAPSED_LIMIT);
@@ -104,6 +134,19 @@ export function ChangedFilesCard({ git }: { git: GitStatus }) {
           </li>
         ))}
       </ul>
+      {restorable && (
+        <div className="changed-files-actions">
+          <button
+            type="button"
+            className="ghost"
+            disabled={restoring}
+            onClick={() => void restoreTurn()}
+            title="Put the project folder back to how this turn left it"
+          >
+            {restoring ? "Restoring…" : "Restore this turn"}
+          </button>
+        </div>
+      )}
       {hidden > 0 && (
         <button className="changed-files-more" onClick={() => setExpanded(true)}>
           Show {hidden} more

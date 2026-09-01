@@ -26,6 +26,16 @@ export {
   pushCurrentBranch,
   viewPullRequest,
 } from "./github.js";
+export {
+  captureCheckpoint,
+  checkpointNumstat,
+  checkpointRef,
+  deleteCheckpoints,
+  diffCheckpoints,
+  hasCheckpoint,
+  isGitRepository,
+  restoreCheckpoint,
+} from "./checkpoints.js";
 export { previewFromBytes, readPreviewFile } from "./preview.js";
 export { searchContents } from "./search.js";
 

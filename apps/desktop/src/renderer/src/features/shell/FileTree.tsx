@@ -1,9 +1,9 @@
 import type { FileEntry, GitChange } from "@capsule/shared";
 import { folderBasename } from "@capsule/shared";
+import { fileKind } from "../../lib/file-kind";
 import {
   ChevronDownIcon,
   ChevronRightIcon,
-  FileIcon,
   FolderIcon,
   SearchIcon,
   XIcon,
@@ -19,6 +19,17 @@ const HIDDEN_TREE_NAMES = new Set([
   "build",
   "Pods",
 ]);
+
+
+/** File-type mark for a tree row. See lib/file-kind for why it is a label. */
+function FileMark({ name }: { name: string }) {
+  const kind = fileKind(name.split("/").pop() ?? name);
+  return (
+    <span className="codex-tree-icon codex-file-mark" style={{ color: `var(${kind.tone})` }} aria-hidden>
+      {kind.label}
+    </span>
+  );
+}
 
 export function sortTreeEntries(entries: FileEntry[]): FileEntry[] {
   return [...entries]
@@ -123,9 +134,7 @@ function TreeEntries({
             onClick={() => onPreviewFile(entry.path)}
           >
             <span className="codex-tree-chevron" aria-hidden />
-            <span className="codex-tree-icon">
-              <FileIcon size={13} />
-            </span>
+            <FileMark name={entry.name} />
             <span className="codex-tree-name truncate">{entry.name}</span>
             {gitMark ? (
               <span className="codex-git-badge" title="Changed in the working tree">
@@ -227,9 +236,7 @@ export function FileTreePane({
                 onClick={() => onPreviewFile(entry.path)}
               >
                 <span className="codex-tree-chevron" aria-hidden />
-                <span className="codex-tree-icon">
-                  <FileIcon size={13} />
-                </span>
+                <FileMark name={entry.path} />
                 <span className="codex-tree-name truncate">{entry.path}</span>
               </button>
             ))

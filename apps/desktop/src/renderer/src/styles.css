@@ -4710,9 +4710,8 @@ label.field input {
   background: var(--text-faint);
 }
 
-/* Landing: the harnesses Capsule drives, with the CLI it spawns.
-   T3 Code puts this grid on its "Bring your own sub" section, and it says the
-   premise faster than a paragraph does. */
+/* Landing: the harnesses Capsule drives, with the CLI it spawns. A grid says
+   the bring-your-own-subscription premise faster than a paragraph does. */
 .landing-harnesses {
   width: 100%;
   margin-top: 1.1rem;
@@ -4818,4 +4817,63 @@ label.field input {
 }
 .width-preview-column span:last-child {
   width: 62%;
+}
+
+/* File-type mark in the tree. A short label reads at this size where a
+   detailed glyph does not; the colour carries the family. */
+.codex-file-mark {
+  font-family: var(--mono);
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.palette-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+}
+.palette-empty {
+  margin: 0;
+  padding: 0.75rem 0.7rem;
+  font-size: 0.8125rem;
+  color: var(--text-faint);
+}
+.palette-hints {
+  display: flex;
+  gap: 0.85rem;
+  align-items: center;
+  padding: 0.45rem 0.7rem;
+  border-top: 1px solid var(--border-color);
+  font-size: 0.6875rem;
+  color: var(--text-faint);
+}
+.palette-hints span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.palette-hints kbd {
+  font-family: var(--mono);
+  font-size: 0.625rem;
+  line-height: 1;
+  padding: 0.2rem 0.3rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.25rem;
+  background: var(--bg-hover);
+  color: var(--subtext-1);
+}
+
+.changed-files-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.3rem 0.5rem 0.45rem;
+  border-top: 1px solid var(--border-color);
+}
+.changed-files-actions .ghost {
+  font-size: 0.6875rem;
 }
