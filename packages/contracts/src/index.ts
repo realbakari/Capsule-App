@@ -1,3 +1,5 @@
+export * from "./ipc-args.js";
+
 import {
   createId,
   type AgentMode,

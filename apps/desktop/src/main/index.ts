@@ -1,4 +1,12 @@
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import {
+  id,
+  optBool,
+  optStr,
+  parseArgs,
+  str,
+  type ArgParser,
+} from "@capsule/contracts";
 import path from "node:path";
 import {
   app,
@@ -261,25 +269,49 @@ function registerIpc(): void {
     });
   };
 
+  /**
+   * `handle` with the arguments checked first.
+   *
+   * The untyped form coerced whatever arrived — `String(id)` turns undefined
+   * into the string "undefined", which then reads as a real id and fails much
+   * later as an empty result. These reject at the boundary instead, naming the
+   * channel and the position, so a renderer bug is reported where it happened.
+   */
+  const handleArgs = (
+    channel: string,
+    parsers: ReadonlyArray<ArgParser<unknown>>,
+    fn: (...args: never[]) => unknown,
+  ) => {
+    handle(channel, (...args) => fn(...(parseArgs(channel, parsers, args) as never[])));
+  };
+
   handle(IPC_CHANNELS.listProjects, () => requireEngine().listProjects());
   handle(IPC_CHANNELS.createProject, (input) =>
     requireEngine().createProject(input as Parameters<CapsuleEngine["createProject"]>[0]),
   );
-  handle(IPC_CHANNELS.getProject, (id) => requireEngine().getProject(String(id)));
+  handleArgs(IPC_CHANNELS.getProject, [id], (projectId: string) =>
+    requireEngine().getProject(projectId),
+  );
   handle(IPC_CHANNELS.listAgents, () => requireEngine().listAgents());
   handle(IPC_CHANNELS.listSkills, () => requireEngine().listSkills());
-  handle(IPC_CHANNELS.listSessions, (projectId) =>
-    requireEngine().listSessions(projectId ? String(projectId) : undefined),
+  handleArgs(IPC_CHANNELS.listSessions, [optStr], (projectId: string | undefined) =>
+    requireEngine().listSessions(projectId),
   );
   handle(IPC_CHANNELS.createSession, (input) =>
     requireEngine().createSession(input as Parameters<CapsuleEngine["createSession"]>[0]),
   );
-  handle(IPC_CHANNELS.renameSession, (id, title) =>
-    requireEngine().renameSession(String(id), String(title)),
+  handleArgs(IPC_CHANNELS.renameSession, [id, str], (sessionId: string, title: string) =>
+    requireEngine().renameSession(sessionId, title),
   );
-  handle(IPC_CHANNELS.archiveSession, (id) => requireEngine().archiveSession(String(id)));
-  handle(IPC_CHANNELS.deleteSession, (id) => requireEngine().deleteSession(String(id)));
-  handle(IPC_CHANNELS.listMessages, (sessionId) => requireEngine().listMessages(String(sessionId)));
+  handleArgs(IPC_CHANNELS.archiveSession, [id], (sessionId: string) =>
+    requireEngine().archiveSession(sessionId),
+  );
+  handleArgs(IPC_CHANNELS.deleteSession, [id], (sessionId: string) =>
+    requireEngine().deleteSession(sessionId),
+  );
+  handleArgs(IPC_CHANNELS.listMessages, [id], (sessionId: string) =>
+    requireEngine().listMessages(sessionId),
+  );
   handle(IPC_CHANNELS.listMessagePage, (sessionId, options) =>
     requireEngine().listMessagePage(
       String(sessionId),
@@ -292,15 +324,17 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.startRun, (input) =>
     requireEngine().sendMessage(input as Parameters<CapsuleEngine["sendMessage"]>[0]),
   );
-  handle(IPC_CHANNELS.stopRun, (id) => requireEngine().stopRun(String(id)));
-  handle(IPC_CHANNELS.getRun, (id) => requireEngine().getRun(String(id)));
-  handle(IPC_CHANNELS.listRuns, (sessionId) =>
-    requireEngine().listRuns(sessionId ? String(sessionId) : undefined),
+  handleArgs(IPC_CHANNELS.stopRun, [id], (runId: string) => requireEngine().stopRun(runId));
+  handleArgs(IPC_CHANNELS.getRun, [id], (runId: string) => requireEngine().getRun(runId));
+  handleArgs(IPC_CHANNELS.listRuns, [optStr], (sessionId: string | undefined) =>
+    requireEngine().listRuns(sessionId),
   );
-  handle(IPC_CHANNELS.listRunEvents, (runId) => requireEngine().listRunEvents(String(runId)));
-  handle(IPC_CHANNELS.verifyRun, (runId) => requireEngine().verifyRun(String(runId)));
-  handle(IPC_CHANNELS.listArtifacts, (runId) =>
-    requireEngine().listArtifacts(runId ? String(runId) : undefined),
+  handleArgs(IPC_CHANNELS.listRunEvents, [id], (runId: string) =>
+    requireEngine().listRunEvents(runId),
+  );
+  handleArgs(IPC_CHANNELS.verifyRun, [id], (runId: string) => requireEngine().verifyRun(runId));
+  handleArgs(IPC_CHANNELS.listArtifacts, [optStr], (runId: string | undefined) =>
+    requireEngine().listArtifacts(runId),
   );
   handle(IPC_CHANNELS.listApprovals, (status) =>
     requireEngine().listApprovals(status as never),
@@ -495,16 +529,18 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.uninstallSkill, (skillId) =>
     requireEngine().uninstallSkill(String(skillId)),
   );
-  handle(IPC_CHANNELS.resetSettingsSection, (section) =>
-    requireEngine().resetSettingsSection(String(section)),
+  handleArgs(IPC_CHANNELS.resetSettingsSection, [id], (section: string) =>
+    requireEngine().resetSettingsSection(section),
   );
-  handle(IPC_CHANNELS.turnDiff, (runId) => requireEngine().turnDiff(String(runId)));
-  handle(IPC_CHANNELS.restoreTurn, (runId) => requireEngine().restoreTurn(String(runId)));
-  handle(IPC_CHANNELS.searchSkillCatalog, (query, refresh) =>
-    requireEngine().searchSkillCatalog(String(query), Boolean(refresh)),
+  handleArgs(IPC_CHANNELS.turnDiff, [id], (runId: string) => requireEngine().turnDiff(runId));
+  handleArgs(IPC_CHANNELS.restoreTurn, [id], (runId: string) =>
+    requireEngine().restoreTurn(runId),
   );
-  handle(IPC_CHANNELS.fetchSkillDetail, (id) =>
-    requireEngine().fetchSkillDetail(String(id)),
+  handleArgs(IPC_CHANNELS.searchSkillCatalog, [str, optBool], (query: string, refresh: boolean) =>
+    requireEngine().searchSkillCatalog(query, refresh),
+  );
+  handleArgs(IPC_CHANNELS.fetchSkillDetail, [id], (skillId: string) =>
+    requireEngine().fetchSkillDetail(skillId),
   );
 
   ipcMain.handle(IPC_CHANNELS.showContextMenu, async (event, payload: PopupMenuRequest) => {

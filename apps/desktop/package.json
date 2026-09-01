@@ -13,6 +13,7 @@
     "package:mac": "node ../../scripts/ensure-electron.mjs && electron-vite build && electron-builder --mac --arm64"
   },
   "dependencies": {
+    "@capsule/contracts": "workspace:*",
     "@capsule/core": "workspace:*",
     "@capsule/shared": "workspace:*",
     "@capsule/ui": "workspace:*",

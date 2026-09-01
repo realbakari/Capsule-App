@@ -29,6 +29,9 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@capsule/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@capsule/core':
         specifier: workspace:*
         version: link:../../packages/core
