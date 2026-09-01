@@ -12,6 +12,7 @@ import {
   turnPreview,
   turnsFromMessages,
 } from "../../lib/turns";
+import { RunSummary } from "./RunSummary";
 import { ChangedFilesCard } from "./ChangedFilesCard";
 import { MessageBody } from "./MessageBody";
 
@@ -296,11 +297,7 @@ export function Conversation() {
             </>
           )}
           {activeRun && (
-            <div className="msg">
-              {/* Elapsed time, not just a spinner. A turn can run for minutes;
-                  "working" alone gives no way to tell a slow one from a stuck
-                  one. The sidebar already counted this and the transcript did
-                  not. */}
+            <div className="msg active-run-msg">
               <div className="who">
                 <span className="shimmer-text">
                   Working
@@ -308,47 +305,45 @@ export function Conversation() {
                 </span>
                 {activeRun.createdAt && <RunElapsed startedAt={activeRun.createdAt} />}
               </div>
-              <div className="progress">
-                {steps.map((step) => (
-                  <div key={step.id}>
-                    <div className={`step ${step.status}`}>
-                      <span className="glyph">
-                        {step.status === "error" ? "✕" : step.status === "complete" ? "✓" : "●"}
-                      </span>
-                      <StepIcon id={step.id} />
-                      <span className="step-label">{step.label}</span>
-                      {step.detail && (
-                        <span className={`step-detail${step.status === "active" ? " shimmer-text" : ""}`}>
-                          {step.detail}
-                          {step.status === "active" && (
-                            <span className="shimmer-overlay" aria-hidden>{step.detail}</span>
-                          )}
+              <RunSummary
+                toolCount={steps.filter((s) => s.id !== "thinking").length}
+                commandCount={steps.filter((s) => s.id.includes("ran") || s.label.includes("Ran")).length}
+                isComplete={false}
+              >
+                <div className="progress">
+                  {steps.map((step) => (
+                    <div key={step.id}>
+                      <div className={`step ${step.status}`}>
+                        <span className="glyph">
+                          {step.status === "error" ? "✕" : step.status === "complete" ? "✓" : "●"}
                         </span>
+                        <StepIcon id={step.id} />
+                        <span className="step-label">{step.label}</span>
+                        {step.detail && (
+                          <span className={`step-detail${step.status === "active" ? " shimmer-text" : ""}`}>
+                            {step.detail}
+                            {step.status === "active" && (
+                              <span className="shimmer-overlay" aria-hidden>{step.detail}</span>
+                            )}
+                          </span>
+                        )}
+                      </div>
+                      {step.id === "thinking" && step.body && (
+                        <details className="thinking">
+                          <summary>Show full reasoning</summary>
+                          <div className="thinking-body">{step.body}</div>
+                        </details>
                       )}
                     </div>
-                    {/* The row shows the latest fragment; the agent's whole
-                        thought is here for anyone who wants it. */}
-                    {step.id === "thinking" && step.body && (
-                      <details className="thinking">
-                        <summary>Show full reasoning</summary>
-                        <div className="thinking-body">{step.body}</div>
-                      </details>
-                    )}
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              </RunSummary>
               <details className="advanced">
                 <summary>Execution details</summary>
                 <div className="event-log">
-                  {/* Many frames carry a kind but no text (a tool call with no
-                      output, a lifecycle tick). Rendering those produced rows
-                      that were just a bare timestamp. */}
                   {events
                     .filter((event) => {
                       if (!event.message?.trim()) return false;
-                      /* request / route / skill / contract are Capsule's own
-                         bookkeeping, not anything the agent did. Listing them
-                         made the log read like progress while saying nothing. */
                       if (!event.data?.streamKind) return false;
                       if (settings?.reasoningSummary !== "hidden") return true;
                       const kind = String(event.data.streamKind).toLowerCase();

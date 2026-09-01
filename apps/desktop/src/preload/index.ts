@@ -27,6 +27,7 @@ const api = {
   resetSettingsSection: (section: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.resetSettingsSection, section),
   checkForUpdates: () => ipcRenderer.invoke(IPC_CHANNELS.checkForUpdates),
+  processMetrics: () => ipcRenderer.invoke(IPC_CHANNELS.processMetrics),
   usageSummary: (days: number) => ipcRenderer.invoke(IPC_CHANNELS.usageSummary, days),
   turnDiff: (runId: string) => ipcRenderer.invoke(IPC_CHANNELS.turnDiff, runId),
   restoreTurn: (runId: string) => ipcRenderer.invoke(IPC_CHANNELS.restoreTurn, runId),

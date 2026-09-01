@@ -585,6 +585,25 @@ function registerIpc(): void {
     requireEngine().resetSettingsSection(section),
   );
   handle(IPC_CHANNELS.checkForUpdates, () => checkForUpdates());
+  /*
+   * Electron's own accounting for this app's process tree. It costs nothing to
+   * collect and needs no native code — which is also its limit: disk
+   * throughput, thermal state and CPU speed limits are not exposed here, so
+   * they are absent rather than guessed at.
+   */
+  handle(IPC_CHANNELS.processMetrics, () => {
+    const now = Date.now();
+    return app.getAppMetrics().map((metric) => ({
+      pid: metric.pid,
+      type: metric.type,
+      cpuPercent: metric.cpu?.percentCPUUsage ?? 0,
+      memoryBytes: (metric.memory?.workingSetSize ?? 0) * 1024,
+      // creationTime is epoch ms; a process that did not report one gets no
+      // uptime rather than one measured from zero.
+      uptimeMs: metric.creationTime ? now - metric.creationTime : undefined,
+      name: metric.serviceName ?? metric.name,
+    }));
+  });
   handleArgs(IPC_CHANNELS.usageSummary, [num], (days: number) =>
     requireEngine().usageSummary(days),
   );

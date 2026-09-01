@@ -1,7 +1,16 @@
+import { useState, useRef, useEffect } from "react";
 import { harnessDisplayName } from "../../lib/harness";
 import { useWorkspace } from "../../lib/workspace";
 import { SidebarToggle } from "./SidebarControl";
-import { PanelRightIcon, PlusIcon, StopIcon, XIcon } from "./icons";
+import {
+  FolderIcon,
+  GitBranchIcon,
+  PanelRightIcon,
+  PlusIcon,
+  StopIcon,
+  TerminalIcon,
+  XIcon,
+} from "./icons";
 
 const VIEW_TITLE: Record<string, string> = {
   runtimes: "ACP harnesses",
@@ -20,6 +29,10 @@ export function Titlebar() {
     view,
     project,
     session,
+    git,
+    api,
+    openTerminal,
+    openInspector,
     sidebarCollapsed,
     inspectorOpen,
     toggleInspector,
@@ -29,6 +42,23 @@ export function Titlebar() {
     closeHarness,
     createTask,
   } = useWorkspace();
+
+  const [openMenu, setOpenMenu] = useState(false);
+  const openMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (openMenuRef.current && !openMenuRef.current.contains(event.target as Node)) {
+        setOpenMenu(false);
+      }
+    }
+    if (openMenu) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+    return undefined;
+  }, [openMenu]);
+
   const label = connected
     ? "OpenClaw connected"
     : status?.kind === "mock"
@@ -36,34 +66,93 @@ export function Titlebar() {
       : (status?.state ?? "Offline");
   const harnessLive = Boolean(session?.harnessId && session.harnessState && session.harnessState !== "closed");
   const harnessName = harnessDisplayName(harnesses, session?.harnessId);
-  const title =
-    view === "chat"
-      ? session?.title && session.title !== "New conversation"
-        ? session.title
-        : (project?.name ?? "Inbox")
-      : (VIEW_TITLE[view] ?? "");
+
+  const projectName = project?.name ?? "Inbox";
+  const sessionTitle = session?.title && session.title !== "New conversation" ? session.title : "General Conversation";
 
   return (
     <header className={`page-header ${sidebarCollapsed ? "with-traffic" : ""}`}>
       {sidebarCollapsed ? <SidebarToggle /> : null}
       <div className="header-actions header-lead">
-        <div className="page-title">
-          {view === "chat" && project?.name && session?.title && session.title !== "New conversation" ? (
-            <>
-              <b>{project.name}</b>
-              {` · ${title}`}
-            </>
+        <div className="page-title breadcrumb-title">
+          {view === "chat" ? (
+            <div className="topbar-breadcrumb">
+              <span className="breadcrumb-segment project-segment">
+                <FolderIcon size={13} className="breadcrumb-icon" />
+                <span>{projectName}</span>
+              </span>
+              <span className="breadcrumb-separator">/</span>
+              <span className="breadcrumb-segment session-segment">
+                <span>{sessionTitle}</span>
+              </span>
+            </div>
           ) : (
-            <b>{title}</b>
+            <b>{VIEW_TITLE[view] ?? ""}</b>
           )}
         </div>
       </div>
+
       <div className="header-actions">
+        {/* Workspace Quick Actions */}
+        {view === "chat" && project?.workingDirectory && (
+          <div className="topbar-project-actions">
+            {/* Open in Finder/Terminal Menu */}
+            <div className="topbar-menu-anchor" ref={openMenuRef}>
+              <button
+                type="button"
+                className="topbar-chip-btn"
+                onClick={() => setOpenMenu((prev) => !prev)}
+                title="Open project folder"
+              >
+                <FolderIcon size={12} />
+                <span>Open ▾</span>
+              </button>
+              {openMenu && (
+                <div className="topbar-dropdown-menu">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpenMenu(false);
+                      if (project.workingDirectory) void api.openPath?.(project.workingDirectory);
+                    }}
+                  >
+                    Reveal in Finder
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpenMenu(false);
+                      void openTerminal();
+                    }}
+                  >
+                    Open in Terminal
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Git Branch Badge */}
+            {git?.isRepo && (
+              <button
+                type="button"
+                className="topbar-chip-btn git-chip"
+                onClick={() => openInspector("changes")}
+                title={`Git branch: ${git.branch ?? "HEAD"}${git.dirty ? " (uncommitted changes)" : ""}`}
+              >
+                <GitBranchIcon size={12} />
+                <span>{git.branch ?? "main"}</span>
+                {git.dirty && <span className="git-dirty-indicator">•</span>}
+              </button>
+            )}
+          </div>
+        )}
+
         {view === "chat" && (
           <button className="icon-btn" title="New conversation (⌘N)" aria-label="New conversation (⌘N)" onClick={() => void createTask()}>
-            <PlusIcon />
+            <PlusIcon size={14} />
           </button>
         )}
+
         {harnessLive && (
           <span className="live-chip">
             <span className="dot on live" title={`${harnessName} is running`} />
@@ -76,20 +165,24 @@ export function Titlebar() {
             </button>
           </span>
         )}
+
         {activeRun && (
           <button className="icon-btn" title="Stop run" aria-label="Stop run" onClick={() => void stopRun()}>
-            <StopIcon />
+            <StopIcon size={14} />
           </button>
         )}
+
         {view === "chat" && (
           <button
             className={`icon-btn ${inspectorOpen ? "active" : ""}`}
-            title="Toggle inspector (⌘\\)" aria-label="Toggle inspector (⌘\\)"
+            title="Toggle inspector (⌘\\)"
+            aria-label="Toggle inspector (⌘\\)"
             onClick={toggleInspector}
           >
-            <PanelRightIcon />
+            <PanelRightIcon size={14} />
           </button>
         )}
+
         <button
           className="status-dot-btn"
           title={label}

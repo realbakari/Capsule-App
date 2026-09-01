@@ -8,7 +8,7 @@ import type {
   SandboxMode,
   WebAccess,
 } from "@capsule/shared";
-import { PERMISSION_OPTIONS } from "../../lib/workspace";
+import { PERMISSION_OPTIONS, useWorkspace } from "../../lib/workspace";
 import { SettingRow, Switch } from "./controls";
 
 const WEB_OPTIONS: Array<{ id: WebAccess; label: string }> = [
@@ -474,3 +474,62 @@ export function GitCard({ settings, onPatch }: SectionProps) {
     </div>
   );
 }
+
+export function HarnessProvidersCard() {
+  const { harnesses, doctors, doctorHarness, connected } = useWorkspace();
+
+  return (
+    <div className="card">
+      <h3>Installed ACP harnesses & providers</h3>
+      <p className="muted">
+        Detected AI coding agent harnesses managed through OpenClaw ACP protocol. Run health diagnostics
+        to verify Gateway process binding and CLI binary readiness.
+      </p>
+      <div className="harness-providers-grid">
+        {(harnesses ?? []).map((harness) => {
+          const doctorResult = doctors[harness.id];
+          const allOk = doctorResult?.checks.every((c) => c.ok);
+          return (
+            <div key={harness.id} className="harness-provider-card">
+              <div className="harness-provider-header">
+                <div className="harness-provider-title">
+                  <b>{harness.name}</b>
+                  <span className="harness-id-badge">{harness.id}</span>
+                </div>
+                <span className={`readiness ${harness.readiness}`}>
+                  {harness.readiness.replaceAll("_", " ")}
+                </span>
+              </div>
+              <p className="harness-provider-detail">{harness.detail}</p>
+              {harness.binaryPath && (
+                <div className="harness-provider-path mono truncate" title={harness.binaryPath}>
+                  {harness.binaryPath}
+                </div>
+              )}
+              {doctorResult && (
+                <div className={`harness-doctor-summary ${allOk ? "passed" : "failed"}`}>
+                  <span>{allOk ? "✓ Health checks passed" : "⚠ Issues detected"}</span>
+                  <span className="doctor-checks-count">
+                    ({doctorResult.checks.filter((c) => c.ok).length}/{doctorResult.checks.length})
+                  </span>
+                </div>
+              )}
+              <div className="harness-provider-actions">
+                <button
+                  type="button"
+                  className="ghost"
+                  disabled={!connected}
+                  onClick={() => void doctorHarness(harness.id)}
+                  title="Run doctor health check"
+                >
+                  Run Doctor
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+

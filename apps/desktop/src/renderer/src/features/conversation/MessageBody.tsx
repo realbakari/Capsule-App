@@ -3,12 +3,46 @@ import { CopyIcon } from "../shell/icons";
 import { highlight } from "../../lib/highlight";
 import { splitFences } from "../../lib/fences";
 import { parseTable } from "../../lib/tables";
+import { useWorkspace } from "../../lib/workspace";
 
-function inline(text: string): ReactNode {
+/**
+ * Heuristic: does the text inside backticks look like a file path?
+ * Must have a recognised extension OR contain a `/` that isn't a URL or flag.
+ */
+const FILE_EXT_RE =
+  /\.(ts|tsx|js|jsx|json|css|html|md|py|rs|go|yml|yaml|toml|sh|mjs|cjs|sql|svg|txt)$/i;
+
+function isFilePath(value: string): boolean {
+  if (value.length < 3 || value.length > 120) return false;
+  if (value.includes(" ") || value.includes("\n")) return false;
+  if (value.startsWith("-") || value.startsWith("http")) return false;
+  if (FILE_EXT_RE.test(value)) return true;
+  return value.includes("/") && /\w/.test(value[0] ?? "");
+}
+
+function inline(text: string, onOpenFile?: (path: string) => void): ReactNode {
   const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/g);
   return parts.map((part, index) => {
     if (part.startsWith("`") && part.endsWith("`") && part.length >= 2) {
-      return <code key={index}>{part.slice(1, -1)}</code>;
+      const inner = part.slice(1, -1);
+      // File paths: render as inline code that is clickable (cursor changes on
+      // hover, like T3 Code) — no icon, no border, no button chrome.
+      if (isFilePath(inner) && onOpenFile) {
+        return (
+          <code
+            key={index}
+            className="file-mention"
+            role="button"
+            tabIndex={0}
+            onClick={() => onOpenFile(inner)}
+            onKeyDown={(e) => { if (e.key === "Enter") onOpenFile(inner); }}
+            title={inner}
+          >
+            {inner}
+          </code>
+        );
+      }
+      return <code key={index}>{inner}</code>;
     }
     if (part.startsWith("**") && part.endsWith("**") && part.length >= 4) {
       return <strong key={index}>{part.slice(2, -2)}</strong>;
@@ -33,15 +67,13 @@ function inline(text: string): ReactNode {
   });
 }
 
-function block(text: string, key: number): ReactNode {
+function block(text: string, key: number, onOpenFile?: (path: string) => void): ReactNode {
   const lines = text.split("\n");
   const out: ReactNode[] = [];
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index] ?? "";
 
-    // Tables first: their rows would otherwise each be read as prose and
-    // rendered as a line of pipes.
     const table = parseTable(lines, index);
     if (table) {
       out.push(
@@ -51,7 +83,7 @@ function block(text: string, key: number): ReactNode {
               <tr>
                 {table.table.headers.map((header, column) => (
                   <th key={column} style={{ textAlign: table.table.align[column] ?? "left" }}>
-                    {inline(header)}
+                    {inline(header, onOpenFile)}
                   </th>
                 ))}
               </tr>
@@ -61,7 +93,7 @@ function block(text: string, key: number): ReactNode {
                 <tr key={rowIndex}>
                   {row.map((cell, column) => (
                     <td key={column} style={{ textAlign: table.table.align[column] ?? "left" }}>
-                      {inline(cell)}
+                      {inline(cell, onOpenFile)}
                     </td>
                   ))}
                 </tr>
@@ -74,41 +106,47 @@ function block(text: string, key: number): ReactNode {
       continue;
     }
 
-    out.push(<Fragment key={`${key}-${index}`}>{lineNode(line, `${key}-${index}`)}</Fragment>);
+    // Headings
+    const heading = /^(#{1,3})\s+(.*)$/.exec(line);
+    if (heading?.[1] && heading[2]) {
+      const Tag = heading[1].length === 1 ? "h3" : "h4";
+      out.push(
+        <Tag key={`${key}-${index}`} className="md-h">
+          {inline(heading[2], onOpenFile)}
+        </Tag>,
+      );
+      continue;
+    }
+
+    // Unordered list
+    if (/^\s*[-*]\s+/.test(line)) {
+      out.push(
+        <div key={`${key}-${index}`} className="md-li">
+          {inline(line.replace(/^\s*[-*]\s+/, ""), onOpenFile)}
+        </div>,
+      );
+      continue;
+    }
+
+    // Ordered list
+    const num = /^\s*(\d+)\.\s+(.*)$/.exec(line);
+    if (num?.[1] && num[2]) {
+      out.push(
+        <div key={`${key}-${index}`} className="md-li-num">
+          <span className="md-num">{num[1]}.</span>
+          <span>{inline(num[2], onOpenFile)}</span>
+        </div>,
+      );
+      continue;
+    }
+
+    // Plain prose
+    out.push(<Fragment key={`${key}-${index}`}>{inline(line, onOpenFile)}</Fragment>);
     if (index < lines.length - 1) out.push(<Fragment key={`${key}-${index}-nl`}>{"\n"}</Fragment>);
   }
   return out;
 }
 
-function lineNode(line: string, key: string): ReactNode {
-  return [line].map((value, index) => {
-    void index;
-    const heading = /^(#{1,3})\s+(.*)$/.exec(value);
-    if (heading?.[1] && heading[2]) {
-      const Tag = heading[1].length === 1 ? "h3" : "h4";
-      return (
-        <Tag key={key} className="md-h">
-          {inline(heading[2])}
-        </Tag>
-      );
-    }
-    if (/^\s*[-*]\s+/.test(value)) {
-      return (
-        <div key={key} className="md-li">
-          {inline(value.replace(/^\s*[-*]\s+/, ""))}
-        </div>
-      );
-    }
-    return <Fragment key={key}>{inline(value)}</Fragment>;
-  });
-}
-
-/*
- * Capturing the fence language splits the content into a repeating triple:
- * prose, language, code. Keeping the language lets the block label itself, and
- * a fenced block is the one thing in a reply people most often want to lift
- * out — so it gets its own copy control rather than only the whole-message one.
- */
 function CodeBlock({ code, language }: { code: string; language?: string }) {
   const [copied, setCopied] = useState(false);
   return (
@@ -135,13 +173,19 @@ function CodeBlock({ code, language }: { code: string; language?: string }) {
 }
 
 export function MessageBody({ content }: { content: string }) {
+  const { openInspector } = useWorkspace();
+
+  function handleOpenFile(_path: string) {
+    openInspector("files");
+  }
+
   return (
     <div className="body">
       {splitFences(content).map((segment, index) =>
         segment.kind === "code" ? (
           <CodeBlock key={index} code={segment.text} language={segment.language} />
         ) : (
-          <Fragment key={index}>{block(segment.text, index)}</Fragment>
+          <Fragment key={index}>{block(segment.text, index, handleOpenFile)}</Fragment>
         ),
       )}
     </div>

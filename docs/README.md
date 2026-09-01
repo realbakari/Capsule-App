@@ -12,6 +12,7 @@ need the shipped-product voice.
 - [Restoring a turn](./user/checkpoints.md)
 - [Providers and credentials](./user/providers.md)
 - [Updating](./user/updating.md)
+- [Diagnostics](./user/diagnostics.md)
 
 ## Working on Capsule
 

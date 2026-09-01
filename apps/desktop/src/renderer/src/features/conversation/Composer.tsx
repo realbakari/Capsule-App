@@ -1,4 +1,5 @@
-import { contextTone, formatTokens } from "../../lib/context-window";
+import { contextTone } from "../../lib/context-window";
+import { ContextWindowMeter } from "./ContextWindowMeter";
 import { harnessDisplayName } from "../../lib/harness";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FileEntry } from "@capsule/shared";
@@ -420,23 +421,6 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
               }))}
               onChange={(id) => void setPermissionProfile(id)}
             />
-            {/* Read from the harness's own "usage updated: n/limit" frames.
-                It sits with the controls that shape a turn rather than in the
-                strip below the box, which is reference, not state. */}
-            {contextUsage && (
-              <span
-                className={`context-meter context-meter--${contextTone(contextUsage.fraction)}`}
-                title={`Context window: ${contextUsage.used.toLocaleString()} of ${contextUsage.limit.toLocaleString()} tokens`}
-              >
-                <span className="context-meter-track" aria-hidden>
-                  <span
-                    className="context-meter-fill"
-                    style={{ transform: `scaleX(${contextUsage.fraction})` }}
-                  />
-                </span>
-                {formatTokens(contextUsage.used)}/{formatTokens(contextUsage.limit)}
-              </span>
-            )}
             <MenuSelect
               ariaLabel="Agent"
               value={agentId}
@@ -444,24 +428,38 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
               onChange={setAgentId}
             />
           </div>
-          {activeRun ? (
-            <button className="send-btn stop" title="Stop" aria-label="Stop" onClick={() => void stopRun()}>
-              <StopIcon size={16} />
-            </button>
-          ) : (
-            <button
-              className="send-btn"
-              disabled={busy || !draft.trim()}
-              title={
-                sendOnEnter
-                  ? "Send · Enter · ⌘Enter starts another thread"
-                  : "Send · ⌘Enter · ⌘⇧Enter starts another thread"
-              }
-              onClick={() => void send()}
-            >
-              <ArrowUpIcon size={14} />
-            </button>
-          )}
+          <div className="composer-actions-right">
+            {contextUsage && (
+              <ContextWindowMeter
+                used={contextUsage.used}
+                limit={contextUsage.limit}
+                fraction={contextUsage.fraction}
+                tone={contextTone(contextUsage.fraction)}
+                size={22}
+                onCompact={() => {
+                  setDraft("/compact");
+                }}
+              />
+            )}
+            {activeRun ? (
+              <button className="send-btn stop" title="Stop" aria-label="Stop" onClick={() => void stopRun()}>
+                <StopIcon size={16} />
+              </button>
+            ) : (
+              <button
+                className="send-btn"
+                disabled={busy || !draft.trim()}
+                title={
+                  sendOnEnter
+                    ? "Send · Enter · ⌘Enter starts another thread"
+                    : "Send · ⌘Enter · ⌘⇧Enter starts another thread"
+                }
+                onClick={() => void send()}
+              >
+                <ArrowUpIcon size={14} />
+              </button>
+            )}
+          </div>
         </div>
       </div>
       <div className="composer-context">

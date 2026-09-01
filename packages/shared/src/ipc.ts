@@ -75,6 +75,7 @@ export const IPC_CHANNELS = {
   searchSkillCatalog: "capsule:searchSkillCatalog",
   resetSettingsSection: "capsule:resetSettingsSection",
   checkForUpdates: "capsule:checkForUpdates",
+  processMetrics: "capsule:processMetrics",
   usageSummary: "capsule:usageSummary",
   turnDiff: "capsule:turnDiff",
   restoreTurn: "capsule:restoreTurn",

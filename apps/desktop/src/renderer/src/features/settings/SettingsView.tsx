@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import type { CapsuleSettings, MockScenario } from "@capsule/shared";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { KeybindingsSettings } from "./KeybindingsSettings";
+import { ProcessMonitor } from "./ProcessMonitor";
 import {
   SETTINGS_SECTION_LABELS,
   SECTIONS_WITH_DEFAULTS,
@@ -13,6 +14,7 @@ import {
   DesktopCard,
   GitCard,
   HarnessCredentialsCard,
+  HarnessProvidersCard,
   NotificationsCard,
   SessionsCard,
   SkillCatalogCard,
@@ -255,6 +257,7 @@ export function SettingsView() {
                     </select>
                   </SettingRow>
                 </div>
+                <HarnessProvidersCard />
                 <AgentDefaultsCard settings={settings} onPatch={(next) => void patch(next)} />
                 <HarnessCredentialsCard settings={settings} onPatch={(next) => void patch(next)} />
               </div>
@@ -529,6 +532,8 @@ export function SettingsView() {
             )}
 
             {tab === "diagnostics" && (
+              <div className="appearance-page">
+                <ProcessMonitor />
               <div className="card">
                 <h3>Diagnostics</h3>
                 <div className="muted">
@@ -542,6 +547,7 @@ export function SettingsView() {
                   </button>
                 </div>
                 {diagnostics && <pre className="mono">{diagnostics}</pre>}
+              </div>
               </div>
             )}
 

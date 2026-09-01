@@ -150,7 +150,7 @@ result names the section it lives in.
 | Source control | Branch prefix, force-with-lease, draft PRs, merge method, review delivery, watch-and-fix, auto-merge, commit / PR instructions |
 | Skills | skills.sh token for the catalog |
 | Shortcuts | Editable key bindings — see below |
-| Diagnostics | Subsystem versions, export |
+| Diagnostics | Process monitor, subsystem versions, export |
 | About | App icon squircle, version, copyright, copy version info |
 
 ---

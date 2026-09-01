@@ -426,12 +426,14 @@
   opacity: 0;
   z-index: 1;
 }
-/* The menu overlays the row's trailing edge on hover, so the status/timestamp
-   steps aside for it — you are aiming at the menu, not reading the time. */
 .project-row:hover .thread-meta,
 .thread-row:hover .thread-meta,
 .project-row:focus-within .thread-meta,
-.thread-row:focus-within .thread-meta {
+.thread-row:focus-within .thread-meta,
+.project-row[data-menu-open] .thread-meta,
+.thread-row[data-menu-open] .thread-meta,
+.project-row:has(.thread-more[aria-expanded="true"]) .thread-meta,
+.thread-row:has(.thread-more[aria-expanded="true"]) .thread-meta {
   opacity: 0;
 }
 .thread-meta {
@@ -1045,8 +1047,8 @@
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  border: 1px solid rgb(255 255 255 / 8%);
-  box-shadow: inset 0 1px rgb(255 255 255 / 4%);
+  border: 1px solid var(--border-color);
+  box-shadow: inset 0 1px var(--bg-hover);
 }
 .composer textarea {
   position: relative;
@@ -1087,7 +1089,7 @@
   align-items: center;
   padding: 0.12rem;
   border-radius: 999px;
-  background: rgb(255 255 255 / 5%);
+  background: var(--bg-hover);
 }
 .seg button {
   border: 0;
@@ -1100,7 +1102,7 @@
   text-transform: capitalize;
 }
 .seg button.active {
-  background: rgb(255 255 255 / 10%);
+  background: var(--bg-active);
   color: var(--text);
 }
 
@@ -1114,7 +1116,7 @@
   gap: 0.3rem;
   height: 1.6rem;
   border: 0;
-  background: rgb(255 255 255 / 5%);
+  background: var(--bg-hover);
   color: var(--text-muted);
   font-size: 0.75rem;
   font-weight: 550;
@@ -1142,14 +1144,14 @@
 .menu-select-trigger:hover,
 .menu-select-trigger[aria-expanded="true"] {
   color: var(--text);
-  background: rgb(255 255 255 / 10%);
+  background: var(--bg-active);
 }
 .menu-select-pop {
   position: fixed;
   z-index: 10000;
   padding: 0.3rem;
   border-radius: 0.7rem;
-  border: 1px solid rgb(255 255 255 / 12%);
+  border: 1px solid var(--border-color);
   background: color-mix(in srgb, var(--surface-0) 96%, transparent);
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
@@ -2805,9 +2807,13 @@ select:focus,
   padding: 0.75rem 0;
   border-top: 1px solid var(--border-color);
 }
+.card > .setting:first-child,
 .setting:first-of-type {
   border-top: 0;
   padding-top: 0.15rem;
+}
+.theme-picker + .setting {
+  margin-top: 0.5rem;
 }
 .setting-copy {
   font-size: 0.8125rem;
@@ -2870,6 +2876,7 @@ select:focus,
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.55rem;
   margin-top: 0.7rem;
+  margin-bottom: 0.5rem;
 }
 .theme-card {
   display: grid;
@@ -4423,6 +4430,428 @@ label.field input {
   gap: 0.5rem;
 }
 
+/* ==========================================================================
+   Topbar Breadcrumb & Workspace Quick Actions
+   ========================================================================== */
+
+.topbar-breadcrumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+}
+
+.breadcrumb-segment {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.breadcrumb-segment.project-segment {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.breadcrumb-segment.session-segment {
+  color: var(--text-muted);
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.breadcrumb-icon {
+  color: var(--text-muted);
+  opacity: 0.8;
+}
+
+.breadcrumb-separator {
+  color: var(--border-color, rgba(255, 255, 255, 0.15));
+  font-weight: 300;
+  user-select: none;
+}
+
+.topbar-project-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-right: 0.25rem;
+}
+
+.topbar-chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-color);
+  border-radius: 0.375rem;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.topbar-chip-btn:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.topbar-chip-btn.git-chip {
+  color: var(--text-muted);
+}
+
+.topbar-chip-btn.git-chip:hover {
+  color: var(--text);
+}
+
+.git-dirty-indicator {
+  color: #ff9f0a;
+  font-size: 0.875rem;
+  line-height: 0;
+  margin-left: -0.1rem;
+}
+
+.topbar-menu-anchor {
+  position: relative;
+}
+
+.topbar-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  background: var(--bg-sidebar, #16171a);
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  padding: 0.25rem;
+  z-index: 1000;
+  min-width: 140px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.topbar-dropdown-menu button {
+  background: transparent;
+  border: none;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.75rem;
+  text-align: left;
+  color: var(--text);
+  border-radius: 0.35rem;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.topbar-dropdown-menu button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* ==========================================================================
+   ContextWindowMeter (Ring + Popover Card)
+   ========================================================================== */
+
+.composer-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.context-meter-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.context-meter-ring {
+  background: none;
+  border: none;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 50%;
+  transition: opacity 0.15s ease;
+}
+
+.context-meter-ring:hover {
+  opacity: 0.85;
+}
+
+/* Popover card anchored above the ring */
+.context-card {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  right: 0;
+  width: 264px;
+  background: var(--bg-sidebar, #16171a);
+  border: 1px solid var(--border-color);
+  border-radius: 0.625rem;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+  padding: 0.75rem 0.875rem;
+  z-index: 500;
+  animation: contextCardIn 0.12s ease;
+}
+
+@keyframes contextCardIn {
+  from { opacity: 0; transform: translateY(3px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.context-card-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.context-card-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.context-card-stat {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+
+.context-card-track {
+  width: 100%;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 9999px;
+  overflow: hidden;
+  margin-bottom: 0.75rem;
+}
+
+.context-card-fill {
+  height: 100%;
+  border-radius: 9999px;
+  transition: width 0.3s ease;
+}
+
+.context-card-action {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.625rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-color);
+  border-radius: 0.375rem;
+  color: var(--text);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.context-card-action:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+/* ==========================================================================
+   RunSummary Accordion
+   ========================================================================== */
+
+.run-summary-card {
+  margin: 0.5rem 0;
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  background: rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+  transition: border-color 0.15s ease;
+}
+
+.run-summary-card:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.run-summary-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-family: inherit;
+  transition: color 0.15s ease;
+}
+
+.run-summary-header:hover {
+  color: var(--text);
+}
+
+.run-summary-lead {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.run-summary-icon {
+  color: var(--text-muted);
+}
+
+.run-summary-label {
+  font-weight: 500;
+  color: var(--text);
+}
+
+.run-summary-duration {
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+}
+
+.run-summary-done-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: rgba(48, 209, 88, 0.12);
+  color: var(--green, #30d158);
+}
+
+.run-summary-chevron {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+}
+
+.run-summary-chevron.open {
+  transform: rotate(180deg);
+}
+
+.run-summary-body {
+  padding: 0.5rem 0.75rem 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* ==========================================================================
+   File Mentions (Clickable Inline Code)
+   T3 Code style: identical to regular inline code, pointer cursor on hover.
+   ========================================================================== */
+
+.file-mention {
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.file-mention:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--text-muted);
+  text-underline-offset: 2px;
+}
+
+/* ==========================================================================
+   Harness Provider Cards (Settings → Agents)
+   ========================================================================== */
+
+.harness-providers-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+@media (min-width: 640px) {
+  .harness-providers-grid {
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  }
+}
+
+.harness-provider-card {
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  padding: 0.875rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  transition: border-color 0.15s ease;
+}
+
+.harness-provider-card:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.harness-provider-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.harness-provider-title {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+
+.harness-id-badge {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+
+.harness-provider-detail {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin: 0;
+}
+
+.harness-provider-path {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 0.15rem 0.35rem;
+  border-radius: 0.25rem;
+}
+
+.harness-doctor-summary {
+  font-size: 0.6875rem;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.4rem;
+  border-radius: 0.25rem;
+}
+
+.harness-doctor-summary.passed {
+  color: var(--green, #30d158);
+  background: rgba(48, 209, 88, 0.08);
+}
+
+.harness-doctor-summary.failed {
+  color: var(--amber, #ff9f0a);
+  background: rgba(255, 159, 10, 0.08);
+}
+
+.doctor-checks-count {
+  opacity: 0.7;
+}
+
+.harness-provider-actions {
+  margin-top: auto;
+  padding-top: 0.15rem;
+}
+
 /* Landing card pieces reused from the old full-page layout. */
 .landing-brand-name {
   font-size: 1.125rem;
@@ -5402,4 +5831,12 @@ button.shortcut-keys.capturing {
 }
 .md-table code {
   white-space: nowrap;
+}
+
+.process-table td:first-child {
+  min-width: 12rem;
+}
+.process-sampled {
+  margin-top: 0.6rem;
+  font-size: 0.6875rem;
 }
