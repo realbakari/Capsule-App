@@ -1,3 +1,4 @@
+import { contextTone, formatTokens } from "../../lib/context-window";
 import { harnessDisplayName } from "../../lib/harness";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FileEntry } from "@capsule/shared";
@@ -73,6 +74,7 @@ function slashCommands(input: {
 
 export function Composer({ showSuggestions = false }: { showSuggestions?: boolean }) {
   const workspace = useWorkspace();
+  const { contextUsage } = workspace;
   const {
     draft,
     setDraft,
@@ -483,6 +485,22 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
           </span>
         )}
         {!connected && <span>Gateway offline</span>}
+        {/* The harness reports this; before, it was shown as raw activity
+            text ("usage updated: 87690/200000") or not at all. */}
+        {contextUsage && (
+          <span
+            className={`context-meter context-meter--${contextTone(contextUsage.fraction)}`}
+            title={`Context window: ${contextUsage.used.toLocaleString()} of ${contextUsage.limit.toLocaleString()} tokens`}
+          >
+            <span className="context-meter-track" aria-hidden>
+              <span
+                className="context-meter-fill"
+                style={{ transform: `scaleX(${contextUsage.fraction})` }}
+              />
+            </span>
+            {formatTokens(contextUsage.used)}/{formatTokens(contextUsage.limit)}
+          </span>
+        )}
         <span className="faint">/  @  $</span>
       </div>
       {busy && (

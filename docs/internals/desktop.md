@@ -80,6 +80,11 @@ A panel crash is isolated by `ViewErrorBoundary`. Retry remounts the panel. Fast
 
 ## Chat
 
+The composer footer shows how full the harness's context window is, read from
+the `usage updated: <used>/<limit>` status frames the harness already sends.
+It warns at 75% and turns critical at 90%; below that a meter people learn to
+ignore is worse than none.
+
 Each finished turn captures the worktree as a hidden Git ref under
 `refs/capsule/checkpoints/<session>/turn/<n>`, so the changed-files card can
 offer **Restore this turn**: the project folder goes back to how that turn left

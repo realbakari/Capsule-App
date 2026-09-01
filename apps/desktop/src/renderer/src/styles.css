@@ -4934,3 +4934,37 @@ button.shortcut-keys.capturing {
   font-size: 0.75rem;
   color: var(--red);
 }
+
+/* Context-window meter in the composer footer. The fill is animated with
+   transform only: a width transition on a bar that updates every few seconds
+   repaints continuously and shows up as GPU load on a high-refresh display. */
+.context-meter {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-faint);
+}
+.context-meter-track {
+  display: block;
+  width: 2.5rem;
+  height: 0.25rem;
+  border-radius: 0.125rem;
+  background: var(--bg-active);
+  overflow: hidden;
+}
+.context-meter-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: currentColor;
+  transform-origin: left center;
+  transition: transform 240ms ease;
+}
+.context-meter--warn {
+  color: var(--yellow);
+}
+.context-meter--critical {
+  color: var(--red);
+}

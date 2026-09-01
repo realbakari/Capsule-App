@@ -39,6 +39,7 @@ import {
 
 import type { SettingsSectionId } from "../features/settings/settings-search";
 import { commandForEvent, parseChord, type Keymap } from "./keybindings";
+import { latestContextUsage, type ContextUsage } from "./context-window";
 
 export type View = "chat" | "runtimes" | "skills" | "history" | "approvals" | "settings";
 export type InspectorTab =
@@ -139,6 +140,8 @@ export interface WorkspaceValue {
   pendingApproval?: ApprovalRequest;
   connected: boolean;
   steps: RunActivity[];
+  /** How full the harness's context window is, when it has said. */
+  contextUsage?: ContextUsage;
   setProjectId: (id: string, nextSessionId?: string) => void;
   setSessionId: (id?: string) => void;
   setAgentId: (id: string) => void;
@@ -1191,6 +1194,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     [api],
   );
 
+  // The harness reports this as activity text; nothing else parses it.
+  const contextUsage = useMemo(
+    () => latestContextUsage(events.map((event) => event.message)),
+    [events],
+  );
+
   const steps = activityFromEvents(events, Boolean(activeRun && activeRun.status !== "running"), {
     reasoning: settings?.reasoningSummary,
   });
@@ -1247,6 +1256,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       pendingApproval,
       connected,
       steps,
+      contextUsage,
       git,
       files,
       confirm,
