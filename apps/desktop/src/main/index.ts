@@ -1,4 +1,7 @@
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
+
+/** Where releases are published. */
+const UPDATE_REPO = "realbakari/Capsule-App";
 import {
   id,
   num,
@@ -25,6 +28,8 @@ import {
 import type { CapsuleEngine } from "@capsule/core";
 import {
   IPC_CHANNELS,
+  isNewerRelease,
+  type UpdateCheck,
   IPC_EVENTS,
   type ApprovalRequest,
   type CapsuleSettings,
@@ -126,6 +131,52 @@ function applyDockIcon(): void {
   if (process.platform !== "darwin" || !app.dock) return;
   const icon = loadIcon("icon.png");
   if (icon) app.dock.setIcon(icon);
+}
+
+
+/**
+ * Ask GitHub whether a newer release has been published.
+ *
+ * A manual check, not an auto-updater: installing an update in place needs the
+ * build to be signed and notarised with the same identity as the running app,
+ * and this project has no signing identity configured, so an updater would
+ * download something macOS then refuses to launch. This reports honestly and
+ * sends the user to the release page.
+ */
+async function checkForUpdates(): Promise<UpdateCheck> {
+  const current = app.getVersion();
+  try {
+    const response = await fetch(`https://api.github.com/repos/${UPDATE_REPO}/releases/latest`, {
+      headers: { Accept: "application/vnd.github+json", "User-Agent": "capsule-desktop" },
+      signal: AbortSignal.timeout(8000),
+    });
+    // 404 is the honest answer for both "no releases yet" and "the repository
+    // is not visible", and from here those are the same thing: there is
+    // nothing this user can download.
+    if (response.status === 404) {
+      return { state: "no-releases", current };
+    }
+    if (!response.ok) {
+      return { state: "unreachable", current, detail: `GitHub responded ${response.status}` };
+    }
+    const release = (await response.json()) as { tag_name?: string; html_url?: string };
+    const tag = typeof release.tag_name === "string" ? release.tag_name : "";
+    if (!tag) return { state: "no-releases", current };
+    return isNewerRelease(tag, current)
+      ? {
+          state: "update-available",
+          current,
+          latest: tag,
+          url: release.html_url ?? `https://github.com/${UPDATE_REPO}/releases/latest`,
+        }
+      : { state: "up-to-date", current, latest: tag };
+  } catch (error) {
+    return {
+      state: "unreachable",
+      current,
+      detail: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 function createWindow(): BrowserWindow {
@@ -533,6 +584,7 @@ function registerIpc(): void {
   handleArgs(IPC_CHANNELS.resetSettingsSection, [id], (section: string) =>
     requireEngine().resetSettingsSection(section),
   );
+  handle(IPC_CHANNELS.checkForUpdates, () => checkForUpdates());
   handleArgs(IPC_CHANNELS.usageSummary, [num], (days: number) =>
     requireEngine().usageSummary(days),
   );

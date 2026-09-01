@@ -11,6 +11,7 @@ need the shipped-product voice.
 - [Skills](./user/skills.md)
 - [Restoring a turn](./user/checkpoints.md)
 - [Providers and credentials](./user/providers.md)
+- [Updating](./user/updating.md)
 
 ## Working on Capsule
 

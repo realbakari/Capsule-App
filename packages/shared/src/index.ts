@@ -3,6 +3,7 @@ export * from "./context-menu.js";
 export * from "./folders.js";
 export * from "./harness.js";
 export * from "./preview.js";
+export * from "./version.js";
 export * from "./ids.js";
 export * from "./ipc.js";
 export * from "./revision.js";

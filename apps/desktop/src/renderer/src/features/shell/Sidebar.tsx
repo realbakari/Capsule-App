@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
-import type { Session } from "@capsule/shared";
+import type { Session, UpdateCheck } from "@capsule/shared";
 import {
   buildProjectActionMenuItems,
   buildSessionActionMenuItems,
@@ -34,6 +34,7 @@ import {
   PinIcon,
   PlusIcon,
   ChartIcon,
+  RefreshIcon,
   SearchIcon,
   SettingsIcon,
   ShieldIcon,
@@ -80,6 +81,7 @@ export function Sidebar() {
     sessions,
     projectId,
     sessionId,
+    api,
     view,
     setView,
     settingsTab,
@@ -108,6 +110,38 @@ export function Sidebar() {
   const [editing, setEditing] = useState<{ kind: "project" | "session"; id: string; value: string }>();
   const [query, setQuery] = useState("");
   const [settingsQuery, setSettingsQuery] = useState("");
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updateResult, setUpdateResult] = useState<UpdateCheck | null>(null);
+
+  /*
+   * A manual check. Installing an update in place needs a signed, notarised
+   * build, which this project does not produce, so this reports what is
+   * published and opens the release page rather than pretending to install.
+   */
+  const updateLabel = checkingUpdate
+    ? "Checking…"
+    : updateResult?.state === "update-available"
+      ? `Version ${updateResult.latest} is available — click to open it`
+      : updateResult?.state === "up-to-date"
+        ? `Up to date (${updateResult.current})`
+        : updateResult?.state === "no-releases"
+          ? "No releases have been published yet"
+          : updateResult?.state === "unreachable"
+            ? `Could not check: ${updateResult.detail ?? "unreachable"}`
+            : "Check for updates";
+
+  async function runUpdateCheck() {
+    if (updateResult?.state === "update-available" && updateResult.url) {
+      window.open(updateResult.url, "_blank", "noreferrer");
+      return;
+    }
+    setCheckingUpdate(true);
+    try {
+      setUpdateResult((await api.checkForUpdates()) as UpdateCheck);
+    } finally {
+      setCheckingUpdate(false);
+    }
+  }
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [restLimit, setRestLimit] = useState<Record<string, number>>({});
   const pendingApprovals = approvals.filter((item) => item.status === "pending").length;
@@ -684,6 +718,16 @@ export function Sidebar() {
             <SettingsIcon size={15} />
           </button>
           <span className="grow" />
+          <button
+            type="button"
+            className="icon-btn"
+            title={updateLabel}
+            aria-label="Check for updates"
+            disabled={checkingUpdate}
+            onClick={() => void runUpdateCheck()}
+          >
+            <RefreshIcon size={14} />
+          </button>
           <span
             className={`dot ${connected ? "on" : status?.state === "connecting" ? "warn live" : "off"}`}
             title={connected ? "OpenClaw connected" : status?.state === "connecting" ? "Connecting" : "Offline"}
