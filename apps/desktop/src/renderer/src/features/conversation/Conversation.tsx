@@ -48,6 +48,26 @@ export function Conversation() {
      newest few always stay open, and anything you open stays open. */
   const [openedTurns, setOpenedTurns] = useState<ReadonlySet<string>>(() => new Set());
   const turns = useMemo(() => turnsFromMessages(messages), [messages]);
+
+  /*
+   * Where each turn starts in the flat message list, so a row can tell whether
+   * it arrived after the thread was opened.
+   *
+   * This used to be computed per message, inside the render loop, as
+   * `turns.indexOf(turn)` followed by `turns.slice(0, turnIndex).reduce(...)`
+   * — a linear scan and a fresh array allocation for every message on every
+   * render, and renders happen on every streamed token. One pass over the
+   * turns replaces O(messages x turns) with O(turns).
+   */
+  const turnOffsets = useMemo(() => {
+    const offsets = new Map<string, number>();
+    let total = 0;
+    for (const turn of turns) {
+      offsets.set(turn.id, total);
+      total += turn.messages.length;
+    }
+    return offsets;
+  }, [turns]);
   const folded = useMemo(
     () => foldedTurnIds(turns, KEEP_EXPANDED_TURNS, openedTurns),
     [turns, openedTurns],
@@ -171,8 +191,7 @@ export function Conversation() {
                   </button>
                 ) : (
                   turn.messages.map((message, messageIndex) => {
-              const turnIndex = turns.indexOf(turn);
-              const globalIndex = turns.slice(0, turnIndex).reduce((sum, t) => sum + t.messages.length, 0) + messageIndex;
+              const globalIndex = (turnOffsets.get(turn.id) ?? 0) + messageIndex;
               const isNew = globalIndex >= initialCountRef.current;
               return (
               <div className={`msg ${message.role}${isNew ? " motion-enter-conversation" : ""}`} key={message.id}>

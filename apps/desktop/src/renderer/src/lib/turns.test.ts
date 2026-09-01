@@ -86,3 +86,55 @@ describe("foldedTurnLabel", () => {
     expect(foldedTurnLabel(turn!)).toBe("Earlier turn");
   });
 });
+
+describe("turn offsets", () => {
+  /**
+   * Mirrors the offset map Conversation builds. The point of the test is the
+   * contract that map has to honour: the flat index of a message must be its
+   * turn's offset plus its position, which is what tells a row whether it
+   * arrived after the thread was opened.
+   */
+  function offsetsFor(turns: ReturnType<typeof turnsFromMessages>) {
+    const offsets = new Map<string, number>();
+    let total = 0;
+    for (const turn of turns) {
+      offsets.set(turn.id, total);
+      total += turn.messages.length;
+    }
+    return offsets;
+  }
+
+  it("gives every message the index it has in the flat list", () => {
+    const messages = [
+      msg("m1", "user", "a"),
+      msg("m2", "assistant", "b"),
+      msg("m3", "user", "c"),
+      msg("m4", "assistant", "d"),
+      msg("m5", "assistant", "e"),
+    ];
+    const turns = turnsFromMessages(messages);
+    const offsets = offsetsFor(turns);
+
+    const flat: string[] = [];
+    for (const turn of turns) {
+      turn.messages.forEach((message, index) => {
+        flat[(offsets.get(turn.id) ?? 0) + index] = message.id;
+      });
+    }
+    expect(flat).toEqual(["m1", "m2", "m3", "m4", "m5"]);
+  });
+
+  it("covers every message exactly once", () => {
+    const messages = Array.from({ length: 20 }, (_, index) =>
+      msg(`m${index}`, index % 3 === 0 ? "user" : "assistant", "x"),
+    );
+    const turns = turnsFromMessages(messages);
+    const offsets = offsetsFor(turns);
+    const seen = new Set<number>();
+    for (const turn of turns) {
+      turn.messages.forEach((_, index) => seen.add((offsets.get(turn.id) ?? 0) + index));
+    }
+    expect(seen.size).toBe(messages.length);
+    expect(Math.max(...seen)).toBe(messages.length - 1);
+  });
+});
