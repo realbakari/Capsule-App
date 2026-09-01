@@ -1850,18 +1850,30 @@ select:focus,
 .codex-launcher {
   flex: 1;
   display: flex;
+  /* Column, not row: this centred a single child before the heading existed,
+     and adding one turned it into a sibling sitting beside the cards. */
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   padding: 2rem 1.5rem;
   min-height: 0;
   overflow-y: auto;
+  container-type: inline-size;
 }
+/* Two across where the panel allows it. A single column of full-width cards
+   reads as a menu; a grid reads as a choice, and each card is short. */
 .codex-launcher-cards {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.5rem;
   width: 100%;
-  max-width: 21.5rem;
+  max-width: 34rem;
+}
+@container (max-width: 30rem) {
+  .codex-launcher-cards {
+    grid-template-columns: minmax(0, 1fr);
+    max-width: 21.5rem;
+  }
 }
 .codex-launcher-card {
   display: flex;
@@ -5284,8 +5296,11 @@ button.shortcut-keys.capturing {
 }
 .codex-launcher-card {
   display: grid;
-  gap: 0.3rem;
+  gap: 0.25rem;
+  align-items: start;
+  justify-content: stretch;
   text-align: left;
+  padding: 0.7rem 0.85rem;
 }
 .codex-launcher-lead {
   display: flex;
