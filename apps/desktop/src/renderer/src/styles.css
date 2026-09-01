@@ -5265,3 +5265,45 @@ button.shortcut-keys.capturing {
 .skills-search-bar {
   max-width: 26rem;
 }
+
+/* Surface chooser in the inspector. */
+.codex-launcher-head {
+  text-align: center;
+  margin-bottom: 1rem;
+}
+.codex-launcher-head h3 {
+  margin: 0 0 0.2rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.codex-launcher-head p {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-faint);
+}
+.codex-launcher-card {
+  display: grid;
+  gap: 0.3rem;
+  text-align: left;
+}
+.codex-launcher-lead {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+.codex-launcher-card .codex-launcher-kbd {
+  margin-left: auto;
+}
+.codex-launcher-detail {
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  color: var(--text-faint);
+}
+.codex-launcher-card:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+.codex-launcher-card:disabled:hover {
+  background: inherit;
+}

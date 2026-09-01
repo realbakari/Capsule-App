@@ -52,6 +52,59 @@ interface OpenTabItem {
   subTitle?: string;
 }
 
+/**
+ * The surfaces this panel can show, with what each one opens and the condition
+ * that stops it. `blockedBy` returns the reason rather than a boolean, so the
+ * card can say it — a greyed control that does not explain itself just looks
+ * broken.
+ */
+export const SURFACES: Array<{
+  tool: InspectorTool;
+  label: string;
+  detail: string;
+  icon: typeof DiffIcon;
+  blockedBy: (state: {
+    projectId?: string;
+    git?: { isRepo?: boolean; dirty?: boolean };
+  }) => string | undefined;
+}> = [
+  {
+    tool: "review",
+    label: "Review",
+    detail: "Changed files and their diff.",
+    icon: DiffIcon,
+    blockedBy: ({ git }) => (git?.isRepo ? undefined : "Available for Git repositories."),
+  },
+  {
+    tool: "terminal",
+    label: "Terminal",
+    detail: "Run a command in the project folder.",
+    icon: TerminalIcon,
+    blockedBy: ({ projectId }) => (projectId ? undefined : "Open a project first."),
+  },
+  {
+    tool: "files",
+    label: "Files",
+    detail: "Browse and edit workspace files.",
+    icon: FolderIcon,
+    blockedBy: ({ projectId }) => (projectId ? undefined : "Open a project first."),
+  },
+  {
+    tool: "browser",
+    label: "Browser",
+    detail: "Open a local app or URL.",
+    icon: GlobeIcon,
+    blockedBy: () => undefined,
+  },
+  {
+    tool: "chat",
+    label: "Side chat",
+    detail: "Ask without interrupting the thread.",
+    icon: MessageSquarePlusIcon,
+    blockedBy: () => undefined,
+  },
+];
+
 const TOOL_SHORTCUTS: Record<InspectorTool, string> = {
   launcher: "",
   review: "⌃⇧G",
@@ -555,80 +608,42 @@ export function Inspector() {
       <div className="codex-inspector-content">
         {activeTool === "launcher" && (
           <div className="codex-launcher">
+            {/*
+              * A chooser, not a bare grid of buttons. Each surface says what it
+              * opens, and one that cannot open says why instead of being a
+              * button that does nothing when clicked — a disabled control with
+              * no reason is a dead end.
+              */}
+            <div className="codex-launcher-head">
+              <h3>Open a surface</h3>
+              <p>Choose what to show in this panel.</p>
+            </div>
             <div className="codex-launcher-cards">
-              <button
-                type="button"
-                className="codex-launcher-card squish-click"
-                onClick={() => selectTool("review")}
-              >
-                <span className="codex-launcher-lead">
-                  <span className="codex-launcher-icon">
-                    <DiffIcon size={16} />
-                  </span>
-                  <span className="codex-launcher-label">Review</span>
-                </span>
-                {TOOL_SHORTCUTS.review ? (
-                  <kbd className="codex-launcher-kbd">{TOOL_SHORTCUTS.review}</kbd>
-                ) : null}
-              </button>
-
-              <button
-                type="button"
-                className="codex-launcher-card squish-click"
-                onClick={() => selectTool("terminal")}
-              >
-                <span className="codex-launcher-lead">
-                  <span className="codex-launcher-icon">
-                    <TerminalIcon size={16} />
-                  </span>
-                  <span className="codex-launcher-label">Terminal</span>
-                </span>
-                {TOOL_SHORTCUTS.terminal ? (
-                  <kbd className="codex-launcher-kbd">{TOOL_SHORTCUTS.terminal}</kbd>
-                ) : null}
-              </button>
-
-              <button
-                type="button"
-                className="codex-launcher-card squish-click"
-                onClick={() => selectTool("browser")}
-              >
-                <span className="codex-launcher-lead">
-                  <span className="codex-launcher-icon">
-                    <GlobeIcon size={16} />
-                  </span>
-                  <span className="codex-launcher-label">Browser</span>
-                </span>
-              </button>
-
-              <button
-                type="button"
-                className="codex-launcher-card squish-click"
-                onClick={() => selectTool("files")}
-              >
-                <span className="codex-launcher-lead">
-                  <span className="codex-launcher-icon">
-                    <FolderIcon size={16} />
-                  </span>
-                  <span className="codex-launcher-label">Files</span>
-                </span>
-              </button>
-
-              <button
-                type="button"
-                className="codex-launcher-card squish-click"
-                onClick={() => selectTool("chat")}
-              >
-                <span className="codex-launcher-lead">
-                  <span className="codex-launcher-icon">
-                    <MessageSquarePlusIcon size={16} />
-                  </span>
-                  <span className="codex-launcher-label">Side chat</span>
-                </span>
-                {TOOL_SHORTCUTS.chat ? (
-                  <kbd className="codex-launcher-kbd">{TOOL_SHORTCUTS.chat}</kbd>
-                ) : null}
-              </button>
+              {SURFACES.map((surface) => {
+                const Icon = surface.icon;
+                const blocked = surface.blockedBy({ projectId, git });
+                return (
+                  <button
+                    key={surface.tool}
+                    type="button"
+                    className="codex-launcher-card squish-click"
+                    disabled={Boolean(blocked)}
+                    title={blocked ?? `Open ${surface.label}`}
+                    onClick={() => selectTool(surface.tool)}
+                  >
+                    <span className="codex-launcher-lead">
+                      <span className="codex-launcher-icon">
+                        <Icon size={16} />
+                      </span>
+                      <span className="codex-launcher-label">{surface.label}</span>
+                      {TOOL_SHORTCUTS[surface.tool] ? (
+                        <kbd className="codex-launcher-kbd">{TOOL_SHORTCUTS[surface.tool]}</kbd>
+                      ) : null}
+                    </span>
+                    <span className="codex-launcher-detail">{blocked ?? surface.detail}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}

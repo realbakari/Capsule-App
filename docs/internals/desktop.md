@@ -54,6 +54,12 @@ Helpers: `projectFolderList`, `addFolderToProject`, `removeFolderFromProject`, `
 
 ## Inspector
 
+Opening the panel with no surface chosen shows the chooser: Review, Terminal,
+Files, Browser and Side chat, each with what it opens and its shortcut. A
+surface that cannot open is disabled and says why — "Available for Git
+repositories", "Open a project first" — rather than being a control that does
+nothing when clicked.
+
 Tools: **Launch**, **Review**, **Terminal**, **Browser**, **Files**, **Side chat**.
 
 - `+` opens Launch. Tabs are not nested buttons. Maximize, tree toggle, and close live in the chrome.
