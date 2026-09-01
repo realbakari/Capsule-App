@@ -68,8 +68,13 @@ export function PanelRightIcon(props: IconProps) {
 export function SettingsIcon(props: IconProps) {
   return (
     <Svg {...props}>
-      <circle cx="12" cy="12" r="3" />
-      <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+      {/* Settings: sliders. A gear at 15px turns to mush once its teeth are
+          smaller than the stroke, and the ring-and-rays gear this replaced was
+          the same shape as the skills sparkle. */}
+      <path d="M4 7h9M17 7h3M4 12h3M11 12h9M4 17h9M17 17h3" />
+      <circle cx="15" cy="7" r="2" />
+      <circle cx="9" cy="12" r="2" />
+      <circle cx="15" cy="17" r="2" />
     </Svg>
   );
 }
@@ -130,8 +135,11 @@ export function CpuIcon(props: IconProps) {
 export function SparkIcon(props: IconProps) {
   return (
     <Svg {...props}>
-      <path d="M12 3v4M12 17v4M5 12H3M21 12h-2M7.2 7.2 5.8 5.8M18.2 18.2l-1.4-1.4M7.2 16.8 5.8 18.2M18.2 5.8l-1.4 1.4" />
-      <circle cx="12" cy="12" r="3" />
+      {/* Skills: a sparkle. It used to be a ring with eight rays, which is
+          the same drawing as the settings icon two places along in the same
+          rail — at 15px they were indistinguishable. */}
+      <path d="M12 3l1.8 4.9L18.7 9.7l-4.9 1.8L12 16.4l-1.8-4.9L5.3 9.7l4.9-1.8z" />
+      <path d="M18.5 15.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z" />
     </Svg>
   );
 }

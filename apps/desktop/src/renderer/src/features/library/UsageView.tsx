@@ -46,6 +46,20 @@ function sum(totals: Record<string, number>): number {
   return Object.values(totals).reduce((acc, value) => acc + value, 0);
 }
 
+/**
+ * A share, never rounded to "0%" for something that did happen. A model that
+ * used a tenth of a percent of the tokens is not the same as one that used
+ * none, and the table sorts by size, so those rows sit together at the bottom
+ * where the distinction is exactly what is being read.
+ */
+function share(value: number, total: number): string {
+  if (total <= 0 || value <= 0) return "0%";
+  const percent = (value / total) * 100;
+  if (percent < 0.1) return "<0.1%";
+  if (percent < 1) return `${percent.toFixed(1)}%`;
+  return `${Math.round(percent)}%`;
+}
+
 export function UsageView() {
   const { api } = useWorkspace();
   const [days, setDays] = useState(30);
@@ -85,7 +99,7 @@ export function UsageView() {
 
   return (
     <section className="panel">
-      <div className="panel-inner settings-page">
+      <div className="panel-inner usage-page">
         <div className="settings-crumbbar">
           <p className="settings-breadcrumb">
             Usage <span aria-hidden>/</span> last {WINDOWS.find((w) => w.days === days)?.label}
@@ -125,74 +139,110 @@ export function UsageView() {
 
           {summary && total > 0 && (
             <>
-              <div className="usage-headline">
-                <span className="usage-total">{compact(total)}</span>
-                <span className="muted">
-                  tokens · {summary.requests.toLocaleString()} requests ·{" "}
-                  {summary.sessions.toLocaleString()} sessions
-                </span>
+              <div className="usage-top">
+                <div className="usage-figure">
+                  <span className="usage-total">{compact(total)}</span>
+                  <span className="usage-figure-sub">
+                    {summary.requests.toLocaleString()} requests · {summary.sessions.toLocaleString()}{" "}
+                    sessions
+                  </span>
+                  <div className="usage-providers">
+                    {summary.byProvider.map((bucket) => {
+                      const value = sum(bucket.totals);
+                      return (
+                        <div className="usage-provider" key={bucket.key}>
+                          <span className="usage-provider-head">
+                            <span
+                              className={`usage-dot usage-dot--${bucket.key}`}
+                              aria-hidden
+                            />
+                            <span className="truncate">
+                              {PROVIDER_LABELS[bucket.key] ?? bucket.key}
+                            </span>
+                            <span className="usage-provider-value">{compact(value)}</span>
+                          </span>
+                          <span className="usage-provider-sub">
+                            {share(value, total)} of tokens · {bucket.requests.toLocaleString()}{" "}
+                            requests
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="usage-chart-block">
+                  <h4>Tokens per day</h4>
+                  <div className="usage-chart-frame">
+                    {/* An axis label, because a bar chart without a scale is a
+                        decoration: the tallest bar could be a thousand tokens
+                        or a billion and it would look the same. */}
+                    <span className="usage-axis-max">{compact(peak)}</span>
+                    <div className="usage-chart" role="img" aria-label="Tokens per day">
+                      {summary.byDay.map((bucket) => {
+                        const value = sum(bucket.totals);
+                        return (
+                          <span
+                            key={bucket.key}
+                            className="usage-bar"
+                            title={`${bucket.key}: ${value.toLocaleString()} tokens`}
+                          >
+                            <span
+                              className="usage-bar-fill"
+                              style={{ transform: `scaleY(${Math.max(value / peak, 0.012)})` }}
+                            />
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="usage-axis-x">
+                    <span>{summary.byDay[0]?.key ?? ""}</span>
+                    <span>{summary.byDay.at(-1)?.key ?? ""}</span>
+                  </div>
+                </div>
               </div>
 
-              <div className="usage-chart" role="img" aria-label="Tokens per day">
-                {summary.byDay.map((bucket) => {
-                  const value = sum(bucket.totals);
-                  return (
-                    <span
-                      key={bucket.key}
-                      className="usage-bar"
-                      title={`${bucket.key}: ${value.toLocaleString()} tokens`}
-                    >
-                      <span
-                        className="usage-bar-fill"
-                        style={{ transform: `scaleY(${value / peak})` }}
-                      />
-                    </span>
-                  );
-                })}
-              </div>
-
-              <div className="usage-breakdown">
-                <h4>By provider</h4>
-                {summary.byProvider.map((bucket) => (
-                  <div className="usage-row" key={bucket.key}>
-                    <span className="truncate">{PROVIDER_LABELS[bucket.key] ?? bucket.key}</span>
-                    <span className="usage-share">
-                      {Math.round((sum(bucket.totals) / total) * 100)}%
-                    </span>
-                    <span className="usage-value">{compact(sum(bucket.totals))}</span>
-                  </div>
-                ))}
-
-                <h4>By model</h4>
-                {summary.byModel.slice(0, 12).map((bucket) => (
-                  <div className="usage-row" key={bucket.key}>
-                    <span className="truncate">{bucket.key}</span>
-                    <span className="usage-share">
-                      {Math.round((sum(bucket.totals) / total) * 100)}%
-                    </span>
-                    <span className="usage-value">{compact(sum(bucket.totals))}</span>
-                  </div>
-                ))}
-
-                <h4>Where the tokens went</h4>
+              <h4 className="usage-section">Totals</h4>
+              <div className="usage-totals">
                 {(
                   [
-                    ["Cached input", "cachedInput"],
-                    ["Fresh input", "input"],
-                    ["Cache writes", "cacheWrite"],
-                    ["Output", "output"],
-                    ["Reasoning", "reasoning"],
+                    ["Processed", total],
+                    ["Cached input", summary.totals.cachedInput ?? 0],
+                    ["Fresh input", summary.totals.input ?? 0],
+                    ["Cache writes", summary.totals.cacheWrite ?? 0],
+                    ["Output", summary.totals.output ?? 0],
+                    ["Reasoning", summary.totals.reasoning ?? 0],
                   ] as const
-                ).map(([label, key]) => (
-                  <div className="usage-row" key={key}>
-                    <span className="truncate">{label}</span>
-                    <span className="usage-share">
-                      {Math.round(((summary.totals[key] ?? 0) / total) * 100)}%
-                    </span>
-                    <span className="usage-value">{compact(summary.totals[key] ?? 0)}</span>
+                ).map(([label, value]) => (
+                  <div className="usage-figure-cell" key={label}>
+                    <span className="usage-cell-label">{label}</span>
+                    <span className="usage-cell-value">{compact(value)}</span>
                   </div>
                 ))}
               </div>
+
+              <h4 className="usage-section">By model</h4>
+              <table className="usage-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Model</th>
+                    <th scope="col" className="numeric">Share</th>
+                    <th scope="col" className="numeric">Requests</th>
+                    <th scope="col" className="numeric">Tokens</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {summary.byModel.slice(0, 15).map((bucket) => (
+                    <tr key={bucket.key}>
+                      <td className="truncate">{bucket.key}</td>
+                      <td className="numeric">{share(sum(bucket.totals), total)}</td>
+                      <td className="numeric">{bucket.requests.toLocaleString()}</td>
+                      <td className="numeric">{compact(sum(bucket.totals))}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </>
           )}
         </div>
