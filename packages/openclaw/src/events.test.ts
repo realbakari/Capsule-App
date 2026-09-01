@@ -6,6 +6,7 @@ import {
   extractAcpSessionKey,
   extractGatewayText,
   isGatewayTurnDone,
+  isAcpFailureText,
   isRuntimeFrame,
 } from "./events.js";
 
@@ -110,5 +111,28 @@ describe("runtime frames must never become reply prose", () => {
     expect(extractGatewayText(runtimeFrame("status", "usage updated: 87690/200000"))).toBe(
       "usage updated: 87690/200000",
     );
+  });
+});
+
+describe("isAcpFailureText", () => {
+  it("recognises the failure that was being stored as the agent's reply", () => {
+    // Verbatim from a transcript where it appeared ten times as role=assistant.
+    expect(
+      isAcpFailureText(
+        "AcpRuntimeError [ACP_TURN_FAILED]: Internal error: You've hit your session limit",
+      ),
+    ).toBe(true);
+  });
+
+  it("recognises the bare protocol codes", () => {
+    expect(isAcpFailureText("ACP_TURN_FAILED: permission prompt unavailable")).toBe(true);
+    expect(isAcpFailureText("[ACP_SESSION_CLOSED] session ended")).toBe(true);
+  });
+
+  it("leaves the agent's own prose alone", () => {
+    expect(isAcpFailureText("I hit an error running the tests; here is why.")).toBe(false);
+    expect(isAcpFailureText("The ACP adapter is configured correctly.")).toBe(false);
+    expect(isAcpFailureText("")).toBe(false);
+    expect(isAcpFailureText(undefined)).toBe(false);
   });
 });

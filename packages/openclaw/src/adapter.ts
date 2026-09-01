@@ -67,6 +67,7 @@ import {
   classifyRuntimeEvent,
   compactParams,
   explainAcpFailure,
+  isAcpFailureText,
   extractAcpSessionKey,
   extractGatewayText,
   isRuntimeFrame,
@@ -852,7 +853,9 @@ export class OpenClawAdapter implements AgentRuntime {
     // frameText is every frame's own text, for the activity log. text is the
     // subset that belongs in the agent's answer.
     const frameText = extractGatewayText(payload);
-    const text = isProseFrame ? frameText : "";
+    // A protocol failure is not the agent speaking, however prose-shaped its
+    // frame is. It reaches the user through the error path instead.
+    const text = isProseFrame && !isAcpFailureText(frameText) ? frameText : "";
     const control = sessionKey ? this.pendingAcpControls.has(sessionKey) : false;
     if (sessionKey && text) {
       this.emitter.emit("acp-reply", {

@@ -195,6 +195,25 @@ const ACP_ERROR_GUIDANCE: Array<{ match: RegExp; guidance: string }> = [
 ];
 
 /** Returns actionable guidance for a known ACP failure, else the original text. */
+/**
+ * Whether a frame's text is an ACP protocol failure rather than the agent's
+ * answer.
+ *
+ * These arrive as ordinary text frames — no runtime_event phase, no eventType —
+ * so the prose gate let them through and they were stored as assistant
+ * messages. A real transcript ended up with ten copies of
+ * "AcpRuntimeError [ACP_TURN_FAILED]: Internal error: You've hit your session
+ * limit", spoken as though the agent had said it.
+ *
+ * The failure still reaches the user, through the error path that runs it
+ * past explainAcpFailure first; it just is not the reply.
+ */
+export function isAcpFailureText(text: string | undefined): boolean {
+  const message = text?.trim();
+  if (!message) return false;
+  return /^(acp\w*error\b|\[?ACP_[A-Z_]+\]?)|\bACP_TURN_FAILED\b/i.test(message);
+}
+
 export function explainAcpFailure(text: string | undefined): string | undefined {
   const message = text?.trim();
   if (!message) return undefined;
