@@ -28,6 +28,7 @@ import {
   commitAll,
   createBranch as createGitBranch,
   createPullRequest as openPullRequest,
+  detectSourceControlTools,
   diffCheckpoints,
   discardFile,
   enrichGitStatus,
@@ -38,6 +39,7 @@ import {
   readGitDiff,
   readGitStatus,
   restoreCheckpoint,
+  type ToolStatus,
   searchContents,
   stageFile,
   viewPullRequest,
@@ -943,6 +945,11 @@ export class CapsuleEngine {
       const reason = error instanceof Error ? error.message : String(error);
       return { ...page, errors: [...page.errors, reason] };
     }
+  }
+
+  /** Which source-control tools are on this machine, and what to do about gaps. */
+  sourceControlTools(): ToolStatus[] {
+    return detectSourceControlTools();
   }
 
   /** Read a catalog skill's SKILL.md. Undefined when it could not be fetched. */

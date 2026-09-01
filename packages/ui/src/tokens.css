@@ -97,6 +97,10 @@
   --bg-hover: rgb(255 255 255 / 6%);
   --bg-active: rgb(255 255 255 / 9%);
   --border-color: rgb(255 255 255 / 8%);
+  /* A rim on a raised surface, brighter than a border on a flat one. Elevation
+     reads as surface + shadow + ring together; any one alone looks flat. */
+  --ring-elevated: rgb(255 255 255 / 14%);
+  --shadow-raised: 0 8px 24px -12px rgb(0 0 0 / 0.55);
   --shadow: 0 24px 64px -24px rgb(0 0 0 / 0.7);
   --glass: color-mix(in srgb, var(--surface-0) var(--glass-opacity), transparent);
 
@@ -141,6 +145,8 @@ html[data-theme="light"] {
   --text-faint: var(--overlay-1);
   --bg-elevated: var(--surface-0);
   --bg-sidebar: #ecece8;
+  --ring-elevated: rgb(0 0 0 / 10%);
+  --shadow-raised: 0 8px 24px -12px rgb(0 0 0 / 0.12);
   --bg-hover: rgb(0 0 0 / 5%);
   --bg-active: rgb(0 0 0 / 8%);
   --border-color: rgb(0 0 0 / 8%);

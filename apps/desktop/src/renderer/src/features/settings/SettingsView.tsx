@@ -4,6 +4,7 @@ import type { CapsuleSettings, MockScenario } from "@capsule/shared";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { KeybindingsSettings } from "./KeybindingsSettings";
 import { ProcessMonitor } from "./ProcessMonitor";
+import { SourceControlTools } from "./SourceControlTools";
 import {
   SETTINGS_SECTION_LABELS,
   SECTIONS_WITH_DEFAULTS,
@@ -265,6 +266,7 @@ export function SettingsView() {
 
             {tab === "sourceControl" && (
               <div className="appearance-page">
+                <SourceControlTools />
                 <GitCard settings={settings} onPatch={(next) => void patch(next)} />
               </div>
             )}

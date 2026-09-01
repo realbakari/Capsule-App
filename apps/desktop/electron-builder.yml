@@ -19,3 +19,21 @@ mac:
   entitlements: entitlements.mac.plist
   entitlementsInherit: entitlements.mac.plist
 npmRebuild: true
+
+# The window Finder opens for the .dmg. Icon positions here and the arrow in
+# scripts/generate-dmg-background.py are drawn against the same coordinates —
+# move one and move the other.
+dmg:
+  background: build/dmg-background.png
+  window:
+    width: 540
+    height: 380
+  iconSize: 96
+  contents:
+    - x: 150
+      y: 200
+      type: file
+    - x: 390
+      y: 200
+      type: link
+      path: /Applications

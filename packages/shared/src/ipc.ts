@@ -77,6 +77,7 @@ export const IPC_CHANNELS = {
   checkForUpdates: "capsule:checkForUpdates",
   processMetrics: "capsule:processMetrics",
   hostState: "capsule:hostState",
+  sourceControlTools: "capsule:sourceControlTools",
   usageSummary: "capsule:usageSummary",
   turnDiff: "capsule:turnDiff",
   restoreTurn: "capsule:restoreTurn",

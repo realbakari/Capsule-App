@@ -29,6 +29,7 @@ const api = {
   checkForUpdates: () => ipcRenderer.invoke(IPC_CHANNELS.checkForUpdates),
   processMetrics: () => ipcRenderer.invoke(IPC_CHANNELS.processMetrics),
   hostState: () => ipcRenderer.invoke(IPC_CHANNELS.hostState),
+  sourceControlTools: () => ipcRenderer.invoke(IPC_CHANNELS.sourceControlTools),
   usageSummary: (days: number) => ipcRenderer.invoke(IPC_CHANNELS.usageSummary, days),
   turnDiff: (runId: string) => ipcRenderer.invoke(IPC_CHANNELS.turnDiff, runId),
   restoreTurn: (runId: string) => ipcRenderer.invoke(IPC_CHANNELS.restoreTurn, runId),

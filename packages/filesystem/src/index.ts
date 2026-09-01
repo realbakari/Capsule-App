@@ -36,6 +36,7 @@ export {
   isGitRepository,
   restoreCheckpoint,
 } from "./checkpoints.js";
+export { detectSourceControlTools, type ToolStatus } from "./tooling.js";
 export { previewFromBytes, readPreviewFile } from "./preview.js";
 export { searchContents } from "./search.js";
 

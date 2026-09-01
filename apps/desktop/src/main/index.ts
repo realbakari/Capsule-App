@@ -598,6 +598,7 @@ function registerIpc(): void {
    * serious thermal state is throttling, and a slow agent turn is the symptom
    * rather than the cause.
    */
+  handle(IPC_CHANNELS.sourceControlTools, () => requireEngine().sourceControlTools());
   handle(IPC_CHANNELS.hostState, () => {
     const idleSeconds = powerMonitor.getSystemIdleTime();
     return {

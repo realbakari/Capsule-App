@@ -5595,7 +5595,7 @@ button.shortcut-keys.capturing {
 .site-hero-mark {
   border-radius: 1.1rem;
   margin-bottom: 1.75rem;
-  box-shadow: 0 12px 32px rgb(0 0 0 / 45%);
+  box-shadow: var(--shadow);
 }
 .site-hero h1 {
   margin: 0 0 1.15rem;
@@ -5662,10 +5662,14 @@ button.shortcut-keys.capturing {
   position: relative;
   isolation: isolate;
   height: 36rem;
-  border: 1px solid var(--border-color);
   border-radius: 0.9rem;
   overflow: hidden;
-  box-shadow: 0 32px 80px rgb(0 0 0 / 55%);
+  /* Surface, shadow and rim together. The ring is brighter than a border
+     because it reads as light catching a raised edge. */
+  background: var(--surface-0);
+  box-shadow:
+    0 0 0 1px var(--ring-elevated),
+    var(--shadow);
 }
 .site-shot-frame .app {
   height: 100%;
@@ -5710,10 +5714,12 @@ button.shortcut-keys.capturing {
   padding: 0;
   list-style: none;
   background: var(--border-color);
-  border: 1px solid var(--border-color);
   border-radius: 0.7rem;
   overflow: hidden;
   text-align: left;
+  box-shadow:
+    0 0 0 1px var(--ring-elevated),
+    var(--shadow-raised);
 }
 .site-harness-grid li {
   display: flex;
@@ -5721,7 +5727,7 @@ button.shortcut-keys.capturing {
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.8rem 1rem;
-  background: var(--base);
+  background: var(--surface-0);
   font-size: 0.875rem;
 }
 .site-harness-grid code {
@@ -5774,9 +5780,11 @@ button.shortcut-keys.capturing {
   gap: 0.5rem;
   margin: 2rem auto 0;
   padding: 0.7rem 0.85rem;
-  border: 1px solid var(--border-color);
   border-radius: 0.6rem;
-  background: var(--bg-hover);
+  background: var(--surface-0);
+  box-shadow:
+    0 0 0 1px var(--ring-elevated),
+    var(--shadow-raised);
   text-align: left;
 }
 .site-clone code {
@@ -5828,4 +5836,58 @@ button.shortcut-keys.capturing {
   .site-section {
     padding-top: 4rem;
   }
+}
+
+/* Detected source-control tooling. */
+.tool-row {
+  display: flex;
+  gap: 0.6rem;
+  padding: 0.7rem 0;
+  border-bottom: 1px solid var(--border-color);
+}
+.tool-row:last-child {
+  border-bottom: 0;
+}
+.tool-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  margin-top: 0.42rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--text-faint);
+}
+.tool-dot.on {
+  background: var(--green);
+}
+.tool-body {
+  min-width: 0;
+}
+.tool-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+.tool-name {
+  font-size: 0.875rem;
+  color: var(--text);
+}
+.tool-version {
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  color: var(--text-faint);
+}
+.tool-account {
+  font-size: 0.75rem;
+  color: var(--text-faint);
+}
+.tool-guidance {
+  margin: 0.2rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--text-faint);
+}
+.tool-guidance code,
+.tool-row code {
+  font-family: var(--mono);
 }
