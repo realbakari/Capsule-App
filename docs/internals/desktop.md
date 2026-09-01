@@ -96,7 +96,14 @@ anything. Permission options carry a line saying what each one does, because
 Usage lives in its own view, read from the CLIs' transcripts. It reports
 tokens only — prices are not in the transcripts.
 
-A folded turn shows how long it took beside its message count. Activity rows
+A running turn shows elapsed time, not just that it is running: a turn can go
+for minutes and "working" alone gives no way to tell a slow one from a stuck
+one. Activity rows carry an icon for the kind of work — command, read, edit,
+reasoning — so a list can be skimmed without reading every label.
+
+A folded turn shows how long it took beside its message count, and hovering it
+previews the prompt and the start of the answer, so it can be identified
+without unfolding. Activity rows
 that failed render as an error in both the transcript and the inspector.
 
 The composer footer shows how full the harness's context window is, read from

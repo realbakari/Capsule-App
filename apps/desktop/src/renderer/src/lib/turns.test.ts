@@ -5,6 +5,7 @@ import {
   foldedTurnLabel,
   formatDuration,
   turnDurationMs,
+  turnPreview,
   turnsFromMessages,
 } from "./turns.js";
 
@@ -194,5 +195,41 @@ describe("turnDurationMs and formatDuration", () => {
     expect(formatDuration(60_000)).toBe("1m");
     expect(formatDuration(3_600_000)).toBe("1h");
     expect(formatDuration(3_900_000)).toBe("1h 5m");
+  });
+});
+
+describe("turnPreview", () => {
+  it("returns the prompt and the first assistant reply", () => {
+    const turn = turnsFromMessages([
+      msg("m1", "user", "review the folder files"),
+      msg("m2", "assistant", "I read 12 files and the tests pass."),
+      msg("m3", "assistant", "Anything else?"),
+    ])[0]!;
+    const preview = turnPreview(turn);
+    expect(preview.prompt).toBe("review the folder files");
+    expect(preview.reply).toBe("I read 12 files and the tests pass.");
+  });
+
+  it("clips long text with an ellipsis rather than cutting mid-flow", () => {
+    const long = "x".repeat(400);
+    const turn = turnsFromMessages([msg("m1", "user", long), msg("m2", "assistant", long)])[0]!;
+    const preview = turnPreview(turn, 20);
+    expect(preview.prompt).toHaveLength(21);
+    expect(preview.prompt?.endsWith("…")).toBe(true);
+  });
+
+  it("skips an empty assistant message to find real text", () => {
+    const turn = turnsFromMessages([
+      msg("m1", "user", "go"),
+      msg("m2", "assistant", "   "),
+      msg("m3", "assistant", "Done."),
+    ])[0]!;
+    expect(turnPreview(turn).reply).toBe("Done.");
+  });
+
+  it("says nothing rather than empty strings when a turn has no reply yet", () => {
+    const turn = turnsFromMessages([msg("m1", "user", "go")])[0]!;
+    expect(turnPreview(turn).reply).toBeUndefined();
+    expect(turnPreview(turn).prompt).toBe("go");
   });
 });

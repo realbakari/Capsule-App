@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CopyIcon } from "../shell/icons";
+import { CopyIcon, DiffIcon, FileIcon, SparkIcon, TerminalIcon } from "../shell/icons";
 import { useWorkspace } from "../../lib/workspace";
 import { GatewayBanner } from "../shell/GatewayBanner";
 import { ViewErrorBoundary } from "../shell/ErrorBoundary";
@@ -9,6 +9,7 @@ import {
   foldedTurnLabel,
   formatDuration,
   turnDurationMs,
+  turnPreview,
   turnsFromMessages,
 } from "../../lib/turns";
 import { ChangedFilesCard } from "./ChangedFilesCard";
@@ -22,6 +23,50 @@ function formatTime(iso: string): string {
 
 /** Newest turns that never fold. */
 const KEEP_EXPANDED_TURNS = 3;
+
+
+/**
+ * Elapsed time for the running turn, ticking once a second.
+ *
+ * The interval is cleared with the component: a timer left running behind a
+ * closed thread repaints the whole transcript every second for nothing.
+ */
+function RunElapsed({ startedAt }: { startedAt: string }) {
+  const startedMs = Date.parse(startedAt);
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (Number.isNaN(startedMs)) return;
+    const id = window.setInterval(() => setTick((value) => value + 1), 1_000);
+    return () => window.clearInterval(id);
+  }, [startedMs]);
+  if (Number.isNaN(startedMs)) return null;
+  return <span className="run-elapsed">for {formatDuration(Date.now() - startedMs)}</span>;
+}
+
+/**
+ * What kind of work a row is, at a glance. The status glyph says whether it
+ * finished; this says what it was, so a list of rows can be skimmed without
+ * reading every label.
+ */
+function StepIcon({ id }: { id: string }) {
+  const action = id.startsWith("work:") ? id.slice(5) : id;
+  const Icon =
+    action === "ran"
+      ? TerminalIcon
+      : action === "read"
+        ? FileIcon
+        : action === "changed"
+          ? DiffIcon
+          : action === "thinking"
+            ? SparkIcon
+            : undefined;
+  if (!Icon) return null;
+  return (
+    <span className="step-icon" aria-hidden>
+      <Icon size={12} />
+    </span>
+  );
+}
 
 export function Conversation() {
   const {
@@ -194,6 +239,22 @@ export function Conversation() {
                       {turn.messages.length} messages
                     </span>
                     <span className="turn-fold-label">{foldedTurnLabel(turn)}</span>
+                    {/* Hover shows the prompt and the start of the answer, so a
+                        folded turn can be identified without unfolding it. */}
+                    {(() => {
+                      const preview = turnPreview(turn);
+                      if (!preview.prompt && !preview.reply) return null;
+                      return (
+                        <span className="turn-fold-preview" role="tooltip">
+                          {preview.prompt && (
+                            <span className="turn-fold-preview-prompt">{preview.prompt}</span>
+                          )}
+                          {preview.reply && (
+                            <span className="turn-fold-preview-reply">{preview.reply}</span>
+                          )}
+                        </span>
+                      );
+                    })()}
                     {(() => {
                       const elapsed = turnDurationMs(turn);
                       return elapsed ? (
@@ -236,17 +297,25 @@ export function Conversation() {
           )}
           {activeRun && (
             <div className="msg">
-              <div className="who shimmer-text">
-                Working on your task
-                <span className="shimmer-overlay" aria-hidden>Working on your task</span>
+              {/* Elapsed time, not just a spinner. A turn can run for minutes;
+                  "working" alone gives no way to tell a slow one from a stuck
+                  one. The sidebar already counted this and the transcript did
+                  not. */}
+              <div className="who">
+                <span className="shimmer-text">
+                  Working
+                  <span className="shimmer-overlay" aria-hidden>Working</span>
+                </span>
+                {activeRun.createdAt && <RunElapsed startedAt={activeRun.createdAt} />}
               </div>
               <div className="progress">
                 {steps.map((step) => (
                   <div key={step.id}>
                     <div className={`step ${step.status}`}>
                       <span className="glyph">
-                        {step.status === "complete" ? "✓" : step.status === "error" ? "✕" : "●"}
+                        {step.status === "error" ? "✕" : step.status === "complete" ? "✓" : "●"}
                       </span>
+                      <StepIcon id={step.id} />
                       <span className="step-label">{step.label}</span>
                       {step.detail && (
                         <span className={`step-detail${step.status === "active" ? " shimmer-text" : ""}`}>

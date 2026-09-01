@@ -3163,6 +3163,7 @@ label.field input {
 
 /* A folded turn: one row standing in for a whole exchange. */
 .turn-fold {
+  position: relative;
   display: flex;
   align-items: baseline;
   gap: 0.6rem;
@@ -5321,4 +5322,54 @@ button.shortcut-keys.capturing {
 }
 .codex-launcher-card:disabled:hover {
   background: inherit;
+}
+
+/* Running turn: elapsed time beside the label. */
+.run-elapsed {
+  margin-left: 0.4rem;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+/* Kind-of-work icon on an activity row. */
+.step-icon {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 0.3rem;
+  color: var(--text-faint);
+}
+.step.error .step-icon {
+  color: var(--red);
+}
+
+/* Hover preview on a folded turn. */
+.turn-fold-preview {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 0.3rem);
+  z-index: 20;
+  display: none;
+  flex-direction: column;
+  gap: 0.3rem;
+  width: min(24rem, 80vw);
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--control-radius);
+  background: var(--base);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 35%);
+  text-align: left;
+  white-space: normal;
+  pointer-events: none;
+}
+.turn-fold:hover .turn-fold-preview,
+.turn-fold:focus-visible .turn-fold-preview {
+  display: flex;
+}
+.turn-fold-preview-prompt {
+  font-size: 0.75rem;
+  color: var(--text);
+}
+.turn-fold-preview-reply {
+  font-size: 0.6875rem;
+  line-height: 1.45;
+  color: var(--text-faint);
 }

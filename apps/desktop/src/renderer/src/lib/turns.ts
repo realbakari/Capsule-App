@@ -95,3 +95,20 @@ export function formatDuration(ms: number): string {
   const restMinutes = minutes % 60;
   return restMinutes === 0 ? `${hours}h` : `${hours}h ${restMinutes}m`;
 }
+
+/**
+ * Prompt and the start of its answer, for the hover preview on a folded turn.
+ *
+ * A folded turn shows its prompt and a message count, which says how big it was
+ * but nothing about how it went. The preview answers "was this the one where it
+ * fixed the tests" without unfolding.
+ */
+export function turnPreview(turn: Turn, limit = 180): { prompt?: string; reply?: string } {
+  const prompt = turn.prompt?.content.trim();
+  const reply = turn.messages
+    .find((message) => message.role === "assistant" && message.content.trim())
+    ?.content.trim();
+  const clip = (text: string | undefined) =>
+    text ? (text.length > limit ? `${text.slice(0, limit).trimEnd()}…` : text) : undefined;
+  return { prompt: clip(prompt), reply: clip(reply) };
+}
