@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { ChatMessage } from "@capsule/shared";
-import { foldedTurnIds, foldedTurnLabel, turnsFromMessages } from "./turns.js";
+import {
+  foldedTurnIds,
+  foldedTurnLabel,
+  formatDuration,
+  turnDurationMs,
+  turnsFromMessages,
+} from "./turns.js";
 
 const msg = (
   id: string,
@@ -136,5 +142,57 @@ describe("turn offsets", () => {
     }
     expect(seen.size).toBe(messages.length);
     expect(Math.max(...seen)).toBe(messages.length - 1);
+  });
+});
+
+describe("turnDurationMs and formatDuration", () => {
+  const at = (id: string, role: ChatMessage["role"], iso: string): ChatMessage => ({
+    ...msg(id, role, "x"),
+    createdAt: iso,
+  });
+
+  it("measures from the prompt to the last message", () => {
+    const turn = turnsFromMessages([
+      at("m1", "user", "2026-09-01T10:00:00.000Z"),
+      at("m2", "assistant", "2026-09-01T10:04:15.000Z"),
+    ])[0]!;
+    expect(turnDurationMs(turn)).toBe(255_000);
+    expect(formatDuration(turnDurationMs(turn)!)).toBe("4m 15s");
+  });
+
+  it("says nothing for a turn that never ran", () => {
+    const turn = turnsFromMessages([at("m1", "user", "2026-09-01T10:00:00.000Z")])[0]!;
+    expect(turnDurationMs(turn)).toBeUndefined();
+  });
+
+  it("says nothing under a second, rather than showing 0s", () => {
+    const turn = turnsFromMessages([
+      at("m1", "user", "2026-09-01T10:00:00.000Z"),
+      at("m2", "assistant", "2026-09-01T10:00:00.400Z"),
+    ])[0]!;
+    expect(turnDurationMs(turn)).toBeUndefined();
+  });
+
+  it("ignores a clock that ran backwards", () => {
+    const turn = turnsFromMessages([
+      at("m1", "user", "2026-09-01T10:05:00.000Z"),
+      at("m2", "assistant", "2026-09-01T10:00:00.000Z"),
+    ])[0]!;
+    expect(turnDurationMs(turn)).toBeUndefined();
+  });
+
+  it("ignores an unparseable timestamp", () => {
+    const turn = turnsFromMessages([
+      at("m1", "user", "not a date"),
+      at("m2", "assistant", "2026-09-01T10:00:00.000Z"),
+    ])[0]!;
+    expect(turnDurationMs(turn)).toBeUndefined();
+  });
+
+  it("formats coarsely at every scale", () => {
+    expect(formatDuration(5_000)).toBe("5s");
+    expect(formatDuration(60_000)).toBe("1m");
+    expect(formatDuration(3_600_000)).toBe("1h");
+    expect(formatDuration(3_900_000)).toBe("1h 5m");
   });
 });

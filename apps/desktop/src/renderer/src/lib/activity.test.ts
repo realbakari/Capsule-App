@@ -106,6 +106,34 @@ describe("activityFromEvents without stream kinds", () => {
     expect(phases.map((p) => p.label)).toEqual(["Read 1 file", "Writing a reply"]);
   });
 
+  it("marks the group as failed when a tool call fails", () => {
+    // A `.failed` frame closes the call the previous frame opened, exactly as
+    // `.completed` does — but it must not be discarded the same way, or a tool
+    // that failed is shown as "Read 1 file", complete, with nothing wrong.
+    const phases = activityFromEvents(
+      [
+        typed("tool.started", "read_file missing.css", "1"),
+        typed("tool.failed", "ENOENT: no such file", "2"),
+      ],
+      true,
+    );
+    expect(phases).toHaveLength(1);
+    expect(phases[0]!.status).toBe("error");
+  });
+
+  it("keeps a failure visible once the run has moved on", () => {
+    const phases = activityFromEvents(
+      [
+        typed("tool.started", "read_file missing.css", "1"),
+        typed("tool.failed", "ENOENT", "2"),
+        typed("tool.started", "read_file ok.css", "3"),
+        typed("tool.completed", "done", "4"),
+      ],
+      true,
+    );
+    expect(phases.some((phase) => phase.status === "error")).toBe(true);
+  });
+
   it("still ignores chrome events", () => {
     const phases = activityFromEvents(
       [typed("lifecycle", "Run started", "1"), typed("approval.requested", "x", "2"), typed("contract", "y", "3")],

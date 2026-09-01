@@ -80,6 +80,9 @@ A panel crash is isolated by `ViewErrorBoundary`. Retry remounts the panel. Fast
 
 ## Chat
 
+A folded turn shows how long it took beside its message count. Activity rows
+that failed render as an error in both the transcript and the inspector.
+
 The composer footer shows how full the harness's context window is, read from
 the `usage updated: <used>/<limit>` status frames the harness already sends.
 It warns at 75% and turns critical at 90%; below that a meter people learn to

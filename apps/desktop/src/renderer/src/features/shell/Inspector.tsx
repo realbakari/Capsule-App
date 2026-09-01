@@ -986,10 +986,21 @@ export function Inspector() {
                 <h4>Run Activity</h4>
                 {steps.map((step) => (
                   <div className={`step ${step.status}`} key={step.id}>
+                    {/* Error first: the fallback arm rendered a failed step as
+                        a pending circle, so a failure read as "not started". */}
                     <span className="glyph">
-                      {step.status === "complete" ? "✓" : step.status === "active" ? "●" : "○"}
+                      {step.status === "error"
+                        ? "✕"
+                        : step.status === "complete"
+                          ? "✓"
+                          : step.status === "active"
+                            ? "●"
+                            : "○"}
                     </span>
-                    {step.label}
+                    <span className="truncate">{step.label}</span>
+                    {step.detail && step.status === "error" && (
+                      <span className="step-detail">{step.detail}</span>
+                    )}
                   </div>
                 ))}
               </div>

@@ -4968,3 +4968,12 @@ button.shortcut-keys.capturing {
 .context-meter--critical {
   color: var(--red);
 }
+
+/* How long a folded turn took, next to its message count. */
+.turn-fold-duration {
+  margin-left: auto;
+  padding-left: 0.5rem;
+  font-size: 0.6875rem;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}

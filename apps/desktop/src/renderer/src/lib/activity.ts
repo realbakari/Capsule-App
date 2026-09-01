@@ -102,12 +102,24 @@ export function activityFromEvents(
     const kind = String(event.data?.streamKind ?? "") || kindFromEventType(event.type);
     if (!kind || kind === "lifecycle") continue;
     if (kind === "thinking" && reasoning === "hidden") continue;
-    // `tool.completed` / `tool.failed` report the end of the call the previous
-    // frame started; they are not a second piece of work. Fold them into the
-    // open group instead of opening a "Used 1 tool" row beside it.
-    const isCompletionFrame = /\.(completed|failed|done)$/.test(event.type.trim().toLowerCase());
+    /*
+     * `tool.completed` / `tool.failed` report the end of the call the previous
+     * frame started; they are not a second piece of work, so they fold into the
+     * open group instead of opening a "Used 1 tool" row beside it.
+     *
+     * A failure has to leave a mark on the way in, though. Folding it away
+     * silently left a tool that failed reading as "Read 1 file", complete, with
+     * nothing anywhere to say it had not worked.
+     */
+    const type = event.type.trim().toLowerCase();
+    const isCompletionFrame = /\.(completed|failed|done)$/.test(type);
     const openWork = phases.at(-1);
     if (isCompletionFrame && openWork?.id.startsWith("work:")) {
+      if (/\.failed$/.test(type)) {
+        openWork.status = "error";
+        const reason = event.message?.trim().split("\n")[0]?.slice(0, 120);
+        if (reason) openWork.detail = reason;
+      }
       continue;
     }
     const action = workAction(kind, event.message);

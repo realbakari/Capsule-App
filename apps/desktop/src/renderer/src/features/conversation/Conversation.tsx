@@ -4,7 +4,13 @@ import { useWorkspace } from "../../lib/workspace";
 import { GatewayBanner } from "../shell/GatewayBanner";
 import { ViewErrorBoundary } from "../shell/ErrorBoundary";
 import { Composer } from "./Composer";
-import { foldedTurnIds, foldedTurnLabel, turnsFromMessages } from "../../lib/turns";
+import {
+  foldedTurnIds,
+  foldedTurnLabel,
+  formatDuration,
+  turnDurationMs,
+  turnsFromMessages,
+} from "../../lib/turns";
 import { ChangedFilesCard } from "./ChangedFilesCard";
 import { MessageBody } from "./MessageBody";
 
@@ -188,6 +194,12 @@ export function Conversation() {
                       {turn.messages.length} messages
                     </span>
                     <span className="turn-fold-label">{foldedTurnLabel(turn)}</span>
+                    {(() => {
+                      const elapsed = turnDurationMs(turn);
+                      return elapsed ? (
+                        <span className="turn-fold-duration">{formatDuration(elapsed)}</span>
+                      ) : null;
+                    })()}
                   </button>
                 ) : (
                   turn.messages.map((message, messageIndex) => {

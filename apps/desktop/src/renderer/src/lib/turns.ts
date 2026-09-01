@@ -62,3 +62,36 @@ export function foldedTurnLabel(turn: Turn, limit = 80): string {
   if (!text) return "Earlier turn";
   return text.length > limit ? `${text.slice(0, limit - 1)}…` : text;
 }
+
+/**
+ * How long a turn took, from its prompt to its last message.
+ *
+ * Only meaningful for a turn that actually ran: a single-message turn has no
+ * elapsed time, and a clock that reads "0s" on every user message is noise.
+ * Returns undefined rather than zero so the caller renders nothing.
+ */
+export function turnDurationMs(turn: Turn): number | undefined {
+  if (turn.messages.length < 2) return undefined;
+  const first = turn.messages[0];
+  const last = turn.messages.at(-1);
+  if (!first || !last) return undefined;
+  const start = Date.parse(first.createdAt);
+  const end = Date.parse(last.createdAt);
+  if (Number.isNaN(start) || Number.isNaN(end)) return undefined;
+  const elapsed = end - start;
+  // Under a second is not worth a label, and a clock that ran backwards is a
+  // clock change rather than a duration.
+  return elapsed >= 1000 ? elapsed : undefined;
+}
+
+/** "4m 15s" — coarse on purpose; nobody needs a turn timed to the millisecond. */
+export function formatDuration(ms: number): string {
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  if (minutes < 60) return rest === 0 ? `${minutes}m` : `${minutes}m ${rest}s`;
+  const hours = Math.floor(minutes / 60);
+  const restMinutes = minutes % 60;
+  return restMinutes === 0 ? `${hours}h` : `${hours}h ${restMinutes}m`;
+}
