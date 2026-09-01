@@ -69,6 +69,7 @@ import {
   explainAcpFailure,
   extractAcpSessionKey,
   extractGatewayText,
+  isRuntimeFrame,
   isAssistantProse,
   isGatewayAgentFailure,
   isGatewayTurnDone,
@@ -833,7 +834,11 @@ export class OpenClawAdapter implements AgentRuntime {
      * must not contribute to the reply body.
      */
     const runtimeKind = classifyRuntimeEvent(payload);
-    const isProseFrame = runtimeKind === undefined || runtimeKind === "message";
+    // A runtime frame is telemetry whether or not its eventType is one we
+    // recognise. Treating "unrecognised" as prose is what let "usage updated:
+    // 87690/200000" and "tool call (completed):" into the agent's reply.
+    const isProseFrame =
+      !isRuntimeFrame(payload) && (runtimeKind === undefined || runtimeKind === "message");
     // frameText is every frame's own text, for the activity log. text is the
     // subset that belongs in the agent's answer.
     const frameText = extractGatewayText(payload);

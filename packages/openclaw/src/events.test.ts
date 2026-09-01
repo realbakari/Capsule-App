@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { acpCommandFailed, compactParams, explainAcpFailure, extractAcpSessionKey, extractGatewayText, isGatewayTurnDone } from "./events.js";
+import {
+  acpCommandFailed,
+  compactParams,
+  explainAcpFailure,
+  extractAcpSessionKey,
+  extractGatewayText,
+  isGatewayTurnDone,
+  isRuntimeFrame,
+} from "./events.js";
 
 describe("gateway chat extraction", () => {
   it("reads ChatEvent deltaText and final message content", () => {
@@ -69,5 +77,38 @@ describe("explainAcpFailure", () => {
   it("returns undefined for empty input", () => {
     expect(explainAcpFailure("   ")).toBeUndefined();
     expect(explainAcpFailure(undefined)).toBeUndefined();
+  });
+});
+
+describe("runtime frames must never become reply prose", () => {
+  // Shapes taken verbatim from a session record that leaked into a reply.
+  const runtimeFrame = (eventType: string | undefined, text: string) => ({
+    agentId: "claude",
+    data: { phase: "runtime_event", ...(eventType ? { eventType } : {}), text },
+  });
+
+  it("recognises a runtime frame by its phase, not only its eventType", () => {
+    // The leak came from frames whose eventType was missing or unrecognised:
+    // classifyRuntimeEvent returned undefined and undefined meant "prose".
+    expect(isRuntimeFrame(runtimeFrame(undefined, "usage updated: 87690/200000"))).toBe(true);
+    expect(isRuntimeFrame(runtimeFrame("something_new", "tool call (completed):"))).toBe(true);
+    expect(isRuntimeFrame(runtimeFrame("status", "session updated"))).toBe(true);
+  });
+
+  it("leaves a plain gateway message alone", () => {
+    expect(isRuntimeFrame({ text: "Here is the change you asked for." })).toBe(false);
+    expect(isRuntimeFrame({ message: { content: "Done." } })).toBe(false);
+    expect(isRuntimeFrame({})).toBe(false);
+  });
+
+  it("does not mistake a data payload that is not a runtime frame", () => {
+    expect(isRuntimeFrame({ data: { text: "Here is the change." } })).toBe(false);
+  });
+
+  it("still extracts runtime text for the activity log", () => {
+    // Excluded from the reply, but the execution log still needs to show it.
+    expect(extractGatewayText(runtimeFrame("status", "usage updated: 87690/200000"))).toBe(
+      "usage updated: 87690/200000",
+    );
   });
 });

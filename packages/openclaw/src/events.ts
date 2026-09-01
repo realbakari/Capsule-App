@@ -213,6 +213,26 @@ export function explainAcpFailure(text: string | undefined): string | undefined 
  * not content. Telemetry (`status`: usage/session/command updates) is likewise
  * not something the agent did.
  */
+/**
+ * Whether a frame is ACP runtime telemetry rather than the agent's answer.
+ *
+ * classifyRuntimeEvent returns undefined for two very different things: a
+ * frame that is not a runtime frame at all, and a runtime frame whose
+ * eventType we do not recognise. The reply path treated both as prose, so any
+ * unrecognised runtime frame was concatenated into the agent's answer — which
+ * is how a reply ended up reading
+ * "usage updated: 87690/200000usage updated: 87690/200000tool calltool call".
+ *
+ * `phase: "runtime_event"` is the positive evidence, present on every such
+ * frame whether or not its eventType is one we know. A frame carrying data but
+ * no runtime marker is an ordinary message and stays prose.
+ */
+export function isRuntimeFrame(payload: Record<string, unknown>): boolean {
+  const nested = asRecord(payload.data);
+  if (asString(nested.phase) === "runtime_event") return true;
+  return asString(nested.eventType).length > 0;
+}
+
 export function classifyRuntimeEvent(payload: Record<string, unknown>): AgentStreamKind | undefined {
   const nested = asRecord(payload.data);
   const eventType = asString(nested.eventType).toLowerCase();
