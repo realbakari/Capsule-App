@@ -68,7 +68,10 @@ export function Titlebar() {
   const harnessName = harnessDisplayName(harnesses, session?.harnessId);
 
   const projectName = project?.name ?? "Inbox";
-  const sessionTitle = session?.title && session.title !== "New conversation" ? session.title : "General Conversation";
+  // Whatever the thread is actually called. Substituting a nicer-sounding
+  // title here made the titlebar disagree with the sidebar, which still showed
+  // the real one.
+  const sessionTitle = session?.title ?? "";
 
   return (
     <header className={`page-header ${sidebarCollapsed ? "with-traffic" : ""}`}>

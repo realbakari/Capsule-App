@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect } from "react";
 import { formatTokens } from "../../lib/context-window";
-import { MinimizeIcon } from "../shell/icons";
 
 interface ContextWindowMeterProps {
   used: number;
@@ -8,7 +7,6 @@ interface ContextWindowMeterProps {
   fraction: number;
   tone?: "normal" | "warn" | "critical";
   size?: number;
-  onCompact?: () => void;
 }
 
 export function ContextWindowMeter({
@@ -17,7 +15,6 @@ export function ContextWindowMeter({
   fraction,
   tone = "normal",
   size = 20,
-  onCompact,
 }: ContextWindowMeterProps) {
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -29,12 +26,14 @@ export function ContextWindowMeter({
   const offset = circumference - clamped * circumference;
   const pct = (clamped * 100).toFixed(1);
 
+  /*
+   * The caller decides this. Re-deriving it here from different thresholds
+   * meant a reading the caller called normal could still paint amber, and
+   * --amber is not a token this app defines, so the fallback hex bypassed the
+   * theme entirely.
+   */
   const stroke =
-    tone === "critical" || clamped > 0.85
-      ? "var(--red, #ff453a)"
-      : tone === "warn" || clamped > 0.65
-        ? "var(--amber, #ff9f0a)"
-        : "var(--text-muted)";
+    tone === "critical" ? "var(--red)" : tone === "warn" ? "var(--yellow)" : "var(--text-faint)";
 
   // Close popover on outside click.
   useEffect(() => {
@@ -42,8 +41,15 @@ export function ContextWindowMeter({
     function onDown(e: MouseEvent) {
       if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) setOpen(false);
     }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
     document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
   }, [open]);
 
   const usedLabel = formatTokens(used).toLowerCase();
@@ -101,12 +107,6 @@ export function ContextWindowMeter({
             />
           </div>
 
-          {onCompact && (
-            <button type="button" className="context-card-action" onClick={() => { setOpen(false); onCompact(); }}>
-              <MinimizeIcon size={13} />
-              <span>Compact context</span>
-            </button>
-          )}
         </div>
       )}
     </div>

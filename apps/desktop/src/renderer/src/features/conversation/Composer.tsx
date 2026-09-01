@@ -436,9 +436,6 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
                 fraction={contextUsage.fraction}
                 tone={contextTone(contextUsage.fraction)}
                 size={22}
-                onCompact={() => {
-                  setDraft("/compact");
-                }}
               />
             )}
             {activeRun ? (

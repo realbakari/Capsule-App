@@ -4745,7 +4745,7 @@ label.field input {
 
 /* ==========================================================================
    File Mentions (Clickable Inline Code)
-   T3 Code style: identical to regular inline code, pointer cursor on hover.
+   Identical to regular inline code, with a pointer cursor on hover.
    ========================================================================== */
 
 .file-mention {
@@ -4763,94 +4763,21 @@ label.field input {
    Harness Provider Cards (Settings → Agents)
    ========================================================================== */
 
-.harness-providers-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 0.75rem;
-  margin-top: 0.75rem;
-}
 
 @media (min-width: 640px) {
-  .harness-providers-grid {
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  }
 }
 
-.harness-provider-card {
-  background: rgba(0, 0, 0, 0.18);
-  border: 1px solid var(--border-color);
-  border-radius: 0.5rem;
-  padding: 0.875rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  transition: border-color 0.15s ease;
-}
 
-.harness-provider-card:hover {
-  border-color: rgba(255, 255, 255, 0.12);
-}
 
-.harness-provider-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
 
-.harness-provider-title {
-  display: flex;
-  align-items: baseline;
-  gap: 0.4rem;
-}
 
-.harness-id-badge {
-  font-size: 0.6875rem;
-  color: var(--text-muted);
-  font-family: var(--font-mono, ui-monospace, monospace);
-}
 
-.harness-provider-detail {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  line-height: 1.4;
-  margin: 0;
-}
 
-.harness-provider-path {
-  font-size: 0.6875rem;
-  color: var(--text-muted);
-  background: rgba(255, 255, 255, 0.04);
-  padding: 0.15rem 0.35rem;
-  border-radius: 0.25rem;
-}
 
-.harness-doctor-summary {
-  font-size: 0.6875rem;
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0.2rem 0.4rem;
-  border-radius: 0.25rem;
-}
 
-.harness-doctor-summary.passed {
-  color: var(--green, #30d158);
-  background: rgba(48, 209, 88, 0.08);
-}
 
-.harness-doctor-summary.failed {
-  color: var(--amber, #ff9f0a);
-  background: rgba(255, 159, 10, 0.08);
-}
 
-.doctor-checks-count {
-  opacity: 0.7;
-}
 
-.harness-provider-actions {
-  margin-top: auto;
-  padding-top: 0.15rem;
-}
 
 /* Landing card pieces reused from the old full-page layout. */
 .landing-brand-name {

@@ -123,9 +123,12 @@ export function UsageView() {
 
         <div className="card">
           <h3>Tokens</h3>
+          {/* One line. Where the numbers come from is in the docs; what a
+              reader needs here is that it includes work done outside Capsule,
+              because that is the surprising part. */}
           <p className="muted">
-            Read from the transcripts Claude Code and Codex already write, so sessions run outside
-            Capsule are counted too. Cost is not shown: prices are not in the transcripts.
+            Includes sessions run outside Capsule. Tokens only — prices are not in the
+            transcripts.
           </p>
 
           {loading && !summary && <p className="muted">Reading transcripts…</p>}

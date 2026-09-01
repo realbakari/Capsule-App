@@ -2,31 +2,17 @@ import { useState } from "react";
 import { ChevronDownIcon, TerminalIcon, CheckIcon } from "../shell/icons";
 
 interface RunSummaryProps {
-  toolCount: number;
-  commandCount?: number;
+  /** Pre-computed by summariseWork, which owns the counting rules. */
+  label: string;
   duration?: string;
   isComplete?: boolean;
   children?: React.ReactNode;
 }
 
-export function RunSummary({
-  toolCount,
-  commandCount = 0,
-  duration,
-  isComplete = true,
-  children,
-}: RunSummaryProps) {
+export function RunSummary({ label, duration, isComplete = true, children }: RunSummaryProps) {
   const [expanded, setExpanded] = useState(false);
 
-  const totalActions = toolCount + commandCount;
-  if (totalActions === 0 && !duration) return null;
-
-  const label =
-    commandCount > 0 && toolCount > 0
-      ? `Ran ${commandCount} command${commandCount === 1 ? "" : "s"} and used ${toolCount} tool${toolCount === 1 ? "" : "s"}`
-      : toolCount > 0
-        ? `Used ${toolCount} tool${toolCount === 1 ? "" : "s"}`
-        : `Ran ${commandCount} command${commandCount === 1 ? "" : "s"}`;
+  if (!label && !duration) return null;
 
   return (
     <div className={`run-summary-card ${expanded ? "expanded" : ""}`}>

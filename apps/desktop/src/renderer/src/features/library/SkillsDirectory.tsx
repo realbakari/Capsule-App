@@ -257,11 +257,11 @@ export function SkillsDirectory() {
             )}
           </div>
           <p>
-            Bundled packs plus a live catalog read from the skill repositories on{" "}
+            Bundled packs, plus skills from{" "}
             <a href="https://github.com/topics/agent-skills" target="_blank" rel="noreferrer" className="skills-link">
               GitHub
             </a>
-            . Inspect instructions before installing, or attach with <code className="mono">$skill</code> in the composer.
+            . Attach one with <code className="mono">$</code> in the composer.
           </p>
         </div>
 

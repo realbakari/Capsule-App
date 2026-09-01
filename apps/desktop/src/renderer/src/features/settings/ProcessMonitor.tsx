@@ -62,11 +62,9 @@ export function ProcessMonitor() {
   return (
     <div className="card">
       <h3>Process monitor</h3>
-      <p className="muted">
-        Capsule&rsquo;s own processes, sampled every {SAMPLE_MS / 1000} seconds while this panel is
-        open. These are the figures Electron reports for this app; per-process disk throughput
-        and a host-wide process list would need a native sampler Capsule does not ship.
-      </p>
+      {/* The scope note that used to live here explained an implementation
+          constraint to someone who came to see numbers. It is in the docs. */}
+      <p className="muted">Capsule&rsquo;s own processes, refreshed every {SAMPLE_MS / 1000} seconds.</p>
 
       {host && (
         <div className={`host-state host-state--${hostConcern(host)}`}>

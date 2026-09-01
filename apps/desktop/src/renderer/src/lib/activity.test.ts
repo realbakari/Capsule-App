@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RunEvent } from "@capsule/shared";
-import { activityFromEvents } from "./activity.js";
+import { activityFromEvents, summariseWork } from "./activity.js";
 
 const event = (streamKind: string, message: string, id: string): RunEvent => ({
   id,
@@ -234,5 +234,53 @@ describe("full reasoning is kept, not truncated", () => {
       true,
     );
     expect(phases.every((p) => p.body === undefined)).toBe(true);
+  });
+});
+
+describe("summariseWork", () => {
+  const phase = (id: string, count: number, label = "x") => ({
+    id,
+    label,
+    count,
+    status: "complete" as const,
+  });
+
+  it("counts actions, not rows", () => {
+    // "Read 12 files" is one phase carrying count 12. Counting phases reports
+    // 1 where 12 happened.
+    const summary = summariseWork([phase("work:ran", 16), phase("work:read", 12)]);
+    expect(summary).toMatchObject({ commands: 16, tools: 12 });
+    expect(summary.label).toBe("Ran 16 commands and used 12 tools");
+  });
+
+  it("does not count a command as a tool as well", () => {
+    const summary = summariseWork([phase("work:ran", 3)]);
+    expect(summary.commands).toBe(3);
+    expect(summary.tools).toBe(0);
+    expect(summary.label).toBe("Ran 3 commands");
+  });
+
+  it("ignores reasoning, which is not work the user asked about", () => {
+    const summary = summariseWork([phase("thinking", 40), phase("work:read", 2)]);
+    expect(summary.tools).toBe(2);
+    expect(summary.label).toBe("Used 2 tools");
+  });
+
+  it("reads the id, not the display label", () => {
+    // A phase retitled to something containing "Ran" must not become a command.
+    const summary = summariseWork([phase("work:read", 5, "Ran out of files to read")]);
+    expect(summary.commands).toBe(0);
+    expect(summary.tools).toBe(5);
+  });
+
+  it("uses singular forms for one", () => {
+    expect(summariseWork([phase("work:ran", 1), phase("work:read", 1)]).label).toBe(
+      "Ran 1 command and used 1 tool",
+    );
+  });
+
+  it("returns an empty label when nothing happened, so the caller can hide it", () => {
+    expect(summariseWork([]).label).toBe("");
+    expect(summariseWork([phase("thinking", 9)]).label).toBe("");
   });
 });

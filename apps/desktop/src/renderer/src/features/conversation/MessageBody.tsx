@@ -26,7 +26,7 @@ function inline(text: string, onOpenFile?: (path: string) => void): ReactNode {
     if (part.startsWith("`") && part.endsWith("`") && part.length >= 2) {
       const inner = part.slice(1, -1);
       // File paths: render as inline code that is clickable (cursor changes on
-      // hover, like T3 Code) — no icon, no border, no button chrome.
+      // hover) — no icon, no border, no button chrome.
       if (isFilePath(inner) && onOpenFile) {
         return (
           <code

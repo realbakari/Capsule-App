@@ -161,3 +161,44 @@ export function activityFromEvents(
           : "active",
   }));
 }
+
+export interface WorkSummary {
+  /** Shell commands the agent ran. */
+  commands: number;
+  /** Other tool calls: reads, edits, everything that is not a command. */
+  tools: number;
+  label: string;
+}
+
+/**
+ * Totals for a turn's work, from the phases the activity log already folded.
+ *
+ * Two things make this easy to get wrong, and both did. A phase is a *group* —
+ * "Read 12 files" is one row carrying `count: 12` — so counting rows reports 1
+ * where 12 happened. And a command phase is still a phase, so a filter of
+ * "everything that is not thinking" counts it as a tool as well as a command.
+ * Commands and tools are disjoint here, and both read `count`.
+ */
+export function summariseWork(phases: readonly RunActivity[]): WorkSummary {
+  let commands = 0;
+  let tools = 0;
+  for (const phase of phases) {
+    if (phase.id === "thinking") continue;
+    // The id carries the action; the label is display text and can be retitled
+    // or translated without anyone remembering this depends on it.
+    if (phase.id === "work:ran") commands += phase.count;
+    else tools += phase.count;
+  }
+
+  const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
+  const label =
+    commands > 0 && tools > 0
+      ? `Ran ${plural(commands, "command")} and used ${plural(tools, "tool")}`
+      : commands > 0
+        ? `Ran ${plural(commands, "command")}`
+        : tools > 0
+          ? `Used ${plural(tools, "tool")}`
+          : "";
+
+  return { commands, tools, label };
+}

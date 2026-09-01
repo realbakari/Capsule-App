@@ -13,6 +13,7 @@ import {
   turnsFromMessages,
 } from "../../lib/turns";
 import { RunSummary } from "./RunSummary";
+import { summariseWork } from "../../lib/activity";
 import { ChangedFilesCard } from "./ChangedFilesCard";
 import { MessageBody } from "./MessageBody";
 
@@ -305,11 +306,7 @@ export function Conversation() {
                 </span>
                 {activeRun.createdAt && <RunElapsed startedAt={activeRun.createdAt} />}
               </div>
-              <RunSummary
-                toolCount={steps.filter((s) => s.id !== "thinking").length}
-                commandCount={steps.filter((s) => s.id.includes("ran") || s.label.includes("Ran")).length}
-                isComplete={false}
-              >
+              <RunSummary label={summariseWork(steps).label} isComplete={false}>
                 <div className="progress">
                   {steps.map((step) => (
                     <div key={step.id}>

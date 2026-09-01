@@ -475,59 +475,29 @@ export function GitCard({ settings, onPatch }: SectionProps) {
   );
 }
 
+/*
+ * A pointer, not a second list. Runtimes already renders every harness with
+ * its readiness, binary path and doctor button; rendering them again here gave
+ * two places to change and two chances for them to disagree, which is how the
+ * failed-step glyph and the duplicated harness name went wrong earlier.
+ */
 export function HarnessProvidersCard() {
-  const { harnesses, doctors, doctorHarness, connected } = useWorkspace();
+  const { harnesses, setView } = useWorkspace();
+  const ready = (harnesses ?? []).filter((harness) => harness.readiness === "ready").length;
+  const total = (harnesses ?? []).length;
 
   return (
     <div className="card">
-      <h3>Installed ACP harnesses & providers</h3>
+      <h3>Harnesses</h3>
       <p className="muted">
-        Detected AI coding agent harnesses managed through OpenClaw ACP protocol. Run health diagnostics
-        to verify Gateway process binding and CLI binary readiness.
+        {total === 0
+          ? "No harnesses detected."
+          : `${ready} of ${total} ready.`}
       </p>
-      <div className="harness-providers-grid">
-        {(harnesses ?? []).map((harness) => {
-          const doctorResult = doctors[harness.id];
-          const allOk = doctorResult?.checks.every((c) => c.ok);
-          return (
-            <div key={harness.id} className="harness-provider-card">
-              <div className="harness-provider-header">
-                <div className="harness-provider-title">
-                  <b>{harness.name}</b>
-                  <span className="harness-id-badge">{harness.id}</span>
-                </div>
-                <span className={`readiness ${harness.readiness}`}>
-                  {harness.readiness.replaceAll("_", " ")}
-                </span>
-              </div>
-              <p className="harness-provider-detail">{harness.detail}</p>
-              {harness.binaryPath && (
-                <div className="harness-provider-path mono truncate" title={harness.binaryPath}>
-                  {harness.binaryPath}
-                </div>
-              )}
-              {doctorResult && (
-                <div className={`harness-doctor-summary ${allOk ? "passed" : "failed"}`}>
-                  <span>{allOk ? "✓ Health checks passed" : "⚠ Issues detected"}</span>
-                  <span className="doctor-checks-count">
-                    ({doctorResult.checks.filter((c) => c.ok).length}/{doctorResult.checks.length})
-                  </span>
-                </div>
-              )}
-              <div className="harness-provider-actions">
-                <button
-                  type="button"
-                  className="ghost"
-                  disabled={!connected}
-                  onClick={() => void doctorHarness(harness.id)}
-                  title="Run doctor health check"
-                >
-                  Run Doctor
-                </button>
-              </div>
-            </div>
-          );
-        })}
+      <div className="actions">
+        <button type="button" className="chip" onClick={() => setView("runtimes")}>
+          Open Runtimes
+        </button>
       </div>
     </div>
   );
