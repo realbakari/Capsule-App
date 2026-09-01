@@ -522,12 +522,28 @@ export function Sidebar() {
           <PlusIcon size={16} />
         </button>
       </div>
-      <button className="sidebar-text-btn" onClick={() => void createProjectFromFolder()}>
-        <span className="inline-icon">
-          <FolderPlusIcon size={13} />
-          New project
+      {/* A scope row rather than a full-width button: the label says what the
+          list below is showing, and the action that adds to it sits at its
+          end, where the tree's own controls already are. */}
+      <div className="sidebar-scope">
+        <span className="sidebar-scope-label">
+          <FolderIcon size={13} />
+          {projects.length === 0
+            ? "No projects"
+            : projects.length === 1
+              ? projects[0]!.name
+              : `All projects`}
         </span>
-      </button>
+        <button
+          type="button"
+          className="icon-btn"
+          title="Add project from folder"
+          aria-label="Add project from folder"
+          onClick={() => void createProjectFromFolder()}
+        >
+          <FolderPlusIcon size={13} />
+        </button>
+      </div>
       <div className="sidebar-scroll">
         {filteredProjects.length === 0 && <div className="sidebar-empty">No projects</div>}
         {filteredProjects.map((item) => {

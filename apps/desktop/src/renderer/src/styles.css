@@ -140,14 +140,21 @@
 .sidebar-search {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.5rem;
   flex: 1;
   min-width: 0;
   margin: 0;
-  padding: 0.32rem 0.5rem;
-  border: 1px solid var(--border-color);
+  /* No box at rest. A bordered, filled field competes with the rows below it
+     for weight, and the sidebar is a list first — the field only needs to look
+     like a field once someone is typing in it. */
+  padding: 0.32rem 0.4rem;
+  border: 1px solid transparent;
   border-radius: var(--control-radius);
   color: var(--text-faint);
+  background: transparent;
+}
+.sidebar-search:focus-within {
+  border-color: var(--border-color);
   background: var(--bg-hover);
 }
 .sidebar-search svg {
@@ -5059,4 +5066,28 @@ button.shortcut-keys.capturing {
   line-height: 1.35;
   color: var(--text-faint);
   white-space: normal;
+}
+
+/* Scope row above the project tree. */
+.sidebar-scope {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  padding: 0.1rem var(--sidebar-content-inset) 0.35rem;
+}
+.sidebar-scope-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  font-size: 0.8125rem;
+  color: var(--subtext-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sidebar-scope-label svg {
+  flex-shrink: 0;
+  color: var(--text-faint);
 }
