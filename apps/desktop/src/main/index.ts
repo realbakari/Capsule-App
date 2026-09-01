@@ -22,6 +22,7 @@ import {
   Tray,
   nativeImage,
   nativeTheme,
+  powerMonitor,
   powerSaveBlocker,
   shell,
 } from "electron";
@@ -587,10 +588,27 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.checkForUpdates, () => checkForUpdates());
   /*
    * Electron's own accounting for this app's process tree. It costs nothing to
-   * collect and needs no native code — which is also its limit: disk
-   * throughput, thermal state and CPU speed limits are not exposed here, so
-   * they are absent rather than guessed at.
+   * collect and needs no native code — which is also its limit: per-process
+   * disk throughput and a host-wide process scan are not exposed here, so they
+   * are absent rather than guessed at.
    */
+  /*
+   * Host conditions, all from Electron's powerMonitor. Worth reporting next to
+   * the process table because they explain it: a machine on battery in a
+   * serious thermal state is throttling, and a slow agent turn is the symptom
+   * rather than the cause.
+   */
+  handle(IPC_CHANNELS.hostState, () => {
+    const idleSeconds = powerMonitor.getSystemIdleTime();
+    return {
+      onBattery: powerMonitor.isOnBatteryPower(),
+      // 60s is the threshold for "idle"; below it the user is still here.
+      idleState: powerMonitor.getSystemIdleState(60),
+      idleSeconds,
+      thermalState: powerMonitor.getCurrentThermalState(),
+    };
+  });
+
   handle(IPC_CHANNELS.processMetrics, () => {
     const now = Date.now();
     return app.getAppMetrics().map((metric) => ({

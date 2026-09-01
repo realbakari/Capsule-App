@@ -6,6 +6,9 @@ import {
   processLabel,
   sortByCost,
   totals,
+  hostConcern,
+  idleLabel,
+  type HostState,
   type ProcessMetric,
 } from "./process-metrics.js";
 
@@ -123,5 +126,37 @@ describe("sortByCost", () => {
     const input = [metric({ pid: 1, cpuPercent: 1 }), metric({ pid: 2, cpuPercent: 9 })];
     sortByCost(input);
     expect(input.map((m) => m.pid)).toEqual([1, 2]);
+  });
+});
+
+describe("host state", () => {
+  const host = (over: Partial<HostState> = {}): HostState => ({
+    onBattery: false,
+    idleState: "active",
+    idleSeconds: 0,
+    thermalState: "nominal",
+    ...over,
+  });
+
+  it("warns only when the machine is actually throttling", () => {
+    expect(hostConcern(host({ thermalState: "serious" }))).toBe("warn");
+    expect(hostConcern(host({ thermalState: "critical" }))).toBe("warn");
+    expect(hostConcern(host({ thermalState: "fair" }))).toBe("none");
+    expect(hostConcern(host())).toBe("none");
+  });
+
+  it("notices battery, because it slows the agent in a way that looks like the app", () => {
+    expect(hostConcern(host({ onBattery: true }))).toBe("notice");
+  });
+
+  it("ranks throttling above battery when both are true", () => {
+    expect(hostConcern(host({ onBattery: true, thermalState: "critical" }))).toBe("warn");
+  });
+
+  it("labels idle with how long, and names locked and unknown", () => {
+    expect(idleLabel(host())).toBe("Active");
+    expect(idleLabel(host({ idleState: "idle", idleSeconds: 120 }))).toBe("Idle · 2m");
+    expect(idleLabel(host({ idleState: "locked" }))).toBe("Locked");
+    expect(idleLabel(host({ idleState: "unknown" }))).toBe("Unknown");
   });
 });

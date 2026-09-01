@@ -5,8 +5,11 @@ import {
   formatCpu,
   formatUptime,
   processLabel,
+  hostConcern,
+  idleLabel,
   sortByCost,
   totals,
+  type HostState,
   type ProcessMetric,
 } from "../../lib/process-metrics";
 
@@ -25,14 +28,19 @@ export function ProcessMonitor() {
   const [metrics, setMetrics] = useState<ProcessMetric[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sampledAt, setSampledAt] = useState<number | null>(null);
+  const [host, setHost] = useState<HostState | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     async function sample() {
       try {
-        const next = (await api.processMetrics()) as ProcessMetric[];
+        const [next, hostNext] = await Promise.all([
+          api.processMetrics() as Promise<ProcessMetric[]>,
+          api.hostState() as Promise<HostState>,
+        ]);
         if (cancelled) return;
         setMetrics(next);
+        setHost(hostNext);
         setSampledAt(Date.now());
         setError(null);
       } catch (caught) {
@@ -56,9 +64,24 @@ export function ProcessMonitor() {
       <h3>Process monitor</h3>
       <p className="muted">
         Capsule&rsquo;s own processes, sampled every {SAMPLE_MS / 1000} seconds while this panel is
-        open. These are the figures Electron reports for this app; disk throughput and thermal
-        state need a native sampler Capsule does not ship.
+        open. These are the figures Electron reports for this app; per-process disk throughput
+        and a host-wide process list would need a native sampler Capsule does not ship.
       </p>
+
+      {host && (
+        <div className={`host-state host-state--${hostConcern(host)}`}>
+          <span>
+            <span className="usage-cell-label">Power</span>{" "}
+            {host.onBattery ? "Battery" : "Plugged in"}
+          </span>
+          <span>
+            <span className="usage-cell-label">Thermal</span> {host.thermalState}
+          </span>
+          <span>
+            <span className="usage-cell-label">Session</span> {idleLabel(host)}
+          </span>
+        </div>
+      )}
 
       {error && <p className="settings-keybind-error">Could not read metrics: {error}</p>}
       {!metrics && !error && <p className="muted">Sampling…</p>}

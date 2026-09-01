@@ -88,3 +88,30 @@ export function sortByCost(metrics: readonly ProcessMetric[]): ProcessMetric[] {
     (a, b) => b.cpuPercent - a.cpuPercent || b.memoryBytes - a.memoryBytes || a.pid - b.pid,
   );
 }
+
+export interface HostState {
+  onBattery: boolean;
+  idleState: "active" | "idle" | "locked" | "unknown";
+  idleSeconds: number;
+  thermalState: "unknown" | "nominal" | "fair" | "serious" | "critical";
+}
+
+/**
+ * Whether a host condition is worth drawing attention to.
+ *
+ * Only two are: a machine that is throttling, and one running on battery,
+ * because both slow the agent down in ways that look like the app being slow.
+ * Everything else is context, not a warning.
+ */
+export function hostConcern(state: HostState): "none" | "notice" | "warn" {
+  if (state.thermalState === "serious" || state.thermalState === "critical") return "warn";
+  if (state.onBattery) return "notice";
+  return "none";
+}
+
+export function idleLabel(state: HostState): string {
+  if (state.idleState === "locked") return "Locked";
+  if (state.idleState === "unknown") return "Unknown";
+  if (state.idleState === "idle") return `Idle · ${formatUptime(state.idleSeconds * 1000)}`;
+  return "Active";
+}

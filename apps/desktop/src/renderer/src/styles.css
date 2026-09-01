@@ -5840,3 +5840,26 @@ button.shortcut-keys.capturing {
   margin-top: 0.6rem;
   font-size: 0.6875rem;
 }
+
+/* Host conditions above the process table: they explain it. */
+.host-state {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1.25rem;
+  margin: 0.75rem 0 1rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--control-radius);
+  font-size: 0.75rem;
+  color: var(--subtext-0);
+}
+.host-state .usage-cell-label {
+  margin-right: 0.2rem;
+}
+.host-state--notice {
+  border-color: color-mix(in srgb, var(--yellow) 35%, var(--border-color));
+}
+.host-state--warn {
+  border-color: color-mix(in srgb, var(--red) 45%, var(--border-color));
+  color: var(--red);
+}
