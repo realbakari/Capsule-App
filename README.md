@@ -4,7 +4,7 @@ A local-first macOS workspace for AI agents.
 
 Capsule sits above OpenClaw. OpenClaw runs agents, tools, skills, sessions, and channels. Capsule provides the workspace: projects, conversations, runs, contracts, verification, approvals, and artifacts.
 
-[Architecture](ARCHITECTURE.md) · [Desktop spec](docs/desktop.md) · [Harnesses](docs/harness.md) · [Agents](AGENTS.md) · [Contributing](CONTRIBUTING.md) · [OpenClaw notes](docs/openclaw.md)
+[Architecture](ARCHITECTURE.md) · [Desktop spec](docs/internals/desktop.md) · [Harnesses](docs/internals/harness.md) · [Agents](AGENTS.md) · [Contributing](CONTRIBUTING.md) · [OpenClaw notes](docs/internals/openclaw.md)
 
 ## What you get
 

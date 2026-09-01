@@ -1,6 +1,6 @@
 # Desktop product spec
 
-Keep this file in lockstep with the app. If you change a user-visible flow, update the matching section here in the same change. Architecture lives in [ARCHITECTURE.md](../ARCHITECTURE.md). ACP harnesses live in [harness.md](harness.md).
+Keep this file in lockstep with the app. If you change a user-visible flow, update the matching section here in the same change. Architecture lives in [ARCHITECTURE.md](../../ARCHITECTURE.md). ACP harnesses live in [harness.md](harness.md).
 
 Capsule is a workspace, not a clone of any other agent product. Quality bars elsewhere are allowed; product copy, comments, and docs must not name those products.
 
@@ -80,6 +80,13 @@ A panel crash is isolated by `ViewErrorBoundary`. Retry remounts the panel. Fast
 
 ## Chat
 
+Each finished turn captures the worktree as a hidden Git ref under
+`refs/capsule/checkpoints/<session>/turn/<n>`, so the changed-files card can
+offer **Restore this turn**: the project folder goes back to how that turn left
+it. Capture uses a throwaway index, so a half-staged change is untouched, and
+writes a parentless commit that appears in no branch and no `git log`.
+
+
 - Timeline of turns: user on the right, assistant markdown full-width, collapsed tool rows, a changed-files card that opens Review.
 - Do not dump Artifacts or a second “run result” copy of the assistant reply.
 - Composer: `/` commands, `@` file mentions, `$` skills, permission profile, folder chip, Terminal.app.
@@ -89,24 +96,37 @@ A panel crash is isolated by `ViewErrorBoundary`. Retry remounts the panel. Fast
 
 ## Settings
 
-| Tab | Owns |
-|-----|------|
-| General | Send key, default mode, mock scenario |
-| Appearance | System / Light / Dark, per-theme accent / background / foreground, UI and code fonts, translucent sidebar, contrast, transcript size / width |
-| Configuration | Default permission, sandbox, web access, output detail, reasoning, notifications, desktop, sessions, browser, git/PR (branch prefix, merge method, force-with-lease, draft PRs, review delivery, watch-and-fix, auto-merge, commit/PR instructions) |
+Settings takes over the sidebar: the section list, a search box, and Back.
+The panel shows one section with a `Settings / <Section>` breadcrumb and, for
+sections that own settings, a **Restore defaults** control that resets only
+that section. Keychain-backed tokens are never reset by it.
+
+Searching the sidebar matches a setting's title or the words someone would
+type instead — "dark" finds Theme, "squash" finds Merge method — and each
+result names the section it lives in.
+
+| Section | Owns |
+|---------|------|
+| General | Launch at login, send key, menu bar extra, keep awake, notifications, session archiving |
+| Appearance | System / Light / Dark, per-theme accent / background / foreground, UI and code fonts, translucent sidebar, contrast, transcript size / width, with live type previews |
+| Agents | Default mode and agent, approval policy, sandbox, web access, output detail, reasoning, harness credentials |
 | Gateway | URL, connect / disconnect, token in Keychain |
 | Projects | Create, delete, attach primary folder |
-| Shortcuts | The table below |
+| Source control | Branch prefix, force-with-lease, draft PRs, merge method, review delivery, watch-and-fix, auto-merge, commit / PR instructions |
+| Skills | skills.sh token for the catalog |
+| Shortcuts | Editable key bindings — see below |
 | Diagnostics | Subsystem versions, export |
-| About | App icon squircle, version 0.1.0, copyright, and copy version info |
+| About | App icon squircle, version, copyright, copy version info |
 
 ---
 
 ## Skills Directory
 
-- **Packed Skills & Packs**: Pre-bundled skills and packs across Web & React, Backend & Database, Testing & Quality, Agent Workflows, and Design & UI.
-- **skills.sh Ecosystem**: Interoperable with the `skills.sh` open agent capability registry. Search, inspect `SKILL.md` procedural markdown instructions, install individual skills or full packs (`https://skills.sh/p/<pack-id>`), or copy `npx skills add` CLI commands.
-- **Composer Attachment**: Type `$skill` in the composer to attach procedural guidance directly to any run. Active skills inject their procedural instructions into prompt context.
+- **Packed skills and packs**: pre-bundled skills across Web & React, Backend & Database, Testing & Quality, Agent Workflows, and Design & UI.
+- **Browse GitHub**: the directory reads a live catalog from the skill repositories on GitHub — names from the repository listing, descriptions from `SKILL.md` frontmatter. No account is needed. The catalog is cached on disk because unauthenticated GitHub allows 60 requests an hour for the whole machine; a failed refetch serves the last good page with the reason attached rather than an empty list. Refresh forces a refetch.
+- **skills.sh**: optional. Every skills.sh endpoint answers 401 without a Vercel OIDC token, so the catalog reads GitHub unless a token is set in Settings → Skills. With one, skills.sh results merge in ahead of the GitHub ones and carry install counts.
+- **Installing** fetches the skill's `SKILL.md` and stores it. A skill without that text is refused rather than saved, because a turn injects the active skill as `[Active Skill: name]` followed by its content — a skill stored without content attaches and contributes nothing.
+- **Composer attachment**: type `$skill` in the composer to attach procedural guidance to a run.
 
 Permissions are Capsule-native and mapped onto Gateway acpx (see [harness.md](harness.md)):
 
@@ -118,18 +138,25 @@ Permissions are Capsule-native and mapped onto Gateway acpx (see [harness.md](ha
 
 ## Global shortcuts
 
-| Action | Keys |
-|--------|------|
-| Settings | `⌘,` |
-| Command palette | `⌘K` |
-| New conversation | `⌘N` |
-| Open / attach folder | `⌘O` |
-| Mention files from disk | `⇧⌘O` |
-| Search files to mention | `⌘P` |
-| Search in files | `⇧⌘F` |
-| Toggle sidebar | `⌘B` |
-| Toggle inspector | `⌘\` |
-| Send | Enter or `⌘Enter` per Settings |
+Shortcuts are declared once, in `apps/desktop/src/renderer/src/lib/keybindings.ts`,
+which is both the handler's dispatch table and the Settings list. Renderer
+commands can be rebound in Settings → Shortcuts by pressing the keys; a rebind
+that would take another command's keys is refused. Commands marked *menu* are
+declared by the application menu in the main process, which receives the key
+before the web contents does, so they are shown but not editable.
+
+| Action | Keys | |
+|--------|------|---|
+| Settings | `⌘,` | menu |
+| Command palette | `⌘K` | menu |
+| New conversation | `⌘N` | menu |
+| Open / attach folder | `⌘O` | menu |
+| Mention files from disk | `⇧⌘O` | menu |
+| Search files to mention | `⌘P` | rebindable |
+| Search in files | `⇧⌘F` | rebindable |
+| Toggle sidebar | `⌘B` | rebindable |
+| Toggle inspector | `⌘\` | rebindable |
+| Send | Enter or `⌘Enter` per Settings | |
 
 ---
 

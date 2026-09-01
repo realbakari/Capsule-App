@@ -63,7 +63,7 @@ pnpm package:mac
 
 ## Pull requests
 
-One logical change. New behavior has tests. User-facing UI includes a short description of the flow you exercised. Architecture or protocol changes update `ARCHITECTURE.md` and `docs/openclaw.md`. User-visible desktop behavior updates `docs/desktop.md`. ACP / harness behavior updates `docs/harness.md`. Do not ship a feature the docs do not describe — that is how the product drifts.
+One logical change. New behavior has tests. User-facing UI includes a short description of the flow you exercised. Architecture or protocol changes update `ARCHITECTURE.md` and `docs/internals/openclaw.md`. User-visible desktop behavior updates `docs/internals/desktop.md`. ACP / harness behavior updates `docs/internals/harness.md`. Do not ship a feature the docs do not describe — that is how the product drifts.
 
 ## License
 

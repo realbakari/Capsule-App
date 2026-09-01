@@ -60,7 +60,14 @@ Before finishing a change:
 2. `pnpm typecheck`
 3. `pnpm lint`
 4. For UI changes, `pnpm build` and exercise the first user flow (create project → conversation → send → run → artifact).
-5. Product-facing changes update [ARCHITECTURE.md](ARCHITECTURE.md) and [docs/desktop.md](docs/desktop.md). ACP or Gateway behavior also updates [docs/harness.md](docs/harness.md) / [docs/openclaw.md](docs/openclaw.md). Do not ship a feature the docs do not describe.
+5. Docs split by audience, and a change updates the half it touches. Behavior a
+   user would notice goes in `docs/user/`, in shipped-product voice with no repo
+   tooling or source paths. Architecture and contributor-facing decisions go in
+   `docs/internals/`; anything the UI shows also goes in
+   [docs/internals/desktop.md](docs/internals/desktop.md), and ACP or Gateway
+   behavior in [docs/internals/harness.md](docs/internals/harness.md) /
+   [docs/internals/openclaw.md](docs/internals/openclaw.md). Do not ship a
+   feature the docs do not describe. The index is [docs/README.md](docs/README.md).
 
 Keep files focused. Prefer a new package over growing `core` into a junk drawer. Prefer extending the OpenClaw adapter over scattering Gateway RPC calls.
 
@@ -88,7 +95,7 @@ Layout: collapsible sidebar, 52px titlebar (no app mark), centered conversation,
 
 The inspector is Launch / Review / Terminal / Browser / Files / Side chat. Files is an in-place expandable tree plus preview (images and code). Terminal is a command runner, not a PTY. Do not reintroduce a current-directory `dir` stack that navigates into folders.
 
-The product spec is [docs/desktop.md](docs/desktop.md). If the UI and that file disagree, fix both in the same change.
+The product spec is [docs/internals/desktop.md](docs/internals/desktop.md). If the UI and that file disagree, fix both in the same change.
 
 Use rem for readable text.
 
@@ -98,9 +105,9 @@ Use rem for readable text.
 
 - [ARCHITECTURE.md](ARCHITECTURE.md)
 - [CONTRIBUTING.md](CONTRIBUTING.md)
-- [docs/desktop.md](docs/desktop.md)
-- [docs/harness.md](docs/harness.md)
-- [docs/openclaw.md](docs/openclaw.md)
+- [docs/internals/desktop.md](docs/internals/desktop.md)
+- [docs/internals/harness.md](docs/internals/harness.md)
+- [docs/internals/openclaw.md](docs/internals/openclaw.md)
 - [OpenClaw Gateway protocol](https://docs.openclaw.ai/gateway/protocol)
 - [Building a Gateway client](https://docs.openclaw.ai/gateway/clients)
 

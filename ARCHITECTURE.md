@@ -211,7 +211,7 @@ Secrets never go in SQLite or the renderer. Gateway tokens live in macOS Keychai
 
 ## 8. Desktop UI
 
-The desktop shell is a compact agent workspace. Details and shortcuts live in [docs/desktop.md](docs/desktop.md) — update that file in the same change as the UI.
+The desktop shell is a compact agent workspace. Details and shortcuts live in [docs/internals/desktop.md](docs/internals/desktop.md) — update that file in the same change as the UI.
 
 - 52px titlebar (Electron drag region, **no app mark**). Hide-sidebar control is a no-drag child next to the traffic lights (`⌘B`). Two-finger swipe hides the sidebar; a left-edge swipe shows it.
 - Collapsible resizable sidebar: project/thread **name only** (no folder paths), portaled `···` menu, native right-click menu.
@@ -243,6 +243,6 @@ Visual language is graphite and off-white, matching the Capsule mark. No purple 
 - [README.md](README.md) — product overview and commands
 - [AGENTS.md](AGENTS.md) — conventions for AI contributors
 - [CONTRIBUTING.md](CONTRIBUTING.md) — setup and PR expectations
-- [docs/desktop.md](docs/desktop.md) — desktop product spec (keep in lockstep with the UI)
-- [docs/harness.md](docs/harness.md) — ACP harness lifecycle and permissions
-- [docs/openclaw.md](docs/openclaw.md) — Gateway protocol notes for implementers
+- [docs/internals/desktop.md](docs/internals/desktop.md) — desktop product spec (keep in lockstep with the UI)
+- [docs/internals/harness.md](docs/internals/harness.md) — ACP harness lifecycle and permissions
+- [docs/internals/openclaw.md](docs/internals/openclaw.md) — Gateway protocol notes for implementers

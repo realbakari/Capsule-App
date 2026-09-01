@@ -1,6 +1,6 @@
 # OpenClaw notes for Capsule
 
-Capsule talks to OpenClaw only through the public Gateway. This page is the implementer cheat-sheet. The product boundary is in [ARCHITECTURE.md](../ARCHITECTURE.md).
+Capsule talks to OpenClaw only through the public Gateway. This page is the implementer cheat-sheet. The product boundary is in [ARCHITECTURE.md](../../ARCHITECTURE.md).
 
 ## Packages
 
