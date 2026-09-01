@@ -37,6 +37,8 @@ import {
   type SubsystemStatus,
 } from "@capsule/shared";
 
+import type { SettingsSectionId } from "../features/settings/settings-search";
+
 export type View = "chat" | "runtimes" | "skills" | "history" | "approvals" | "settings";
 export type InspectorTab =
   | "launcher"
@@ -94,6 +96,10 @@ export interface WorkspaceValue {
   api: typeof window.capsule;
   view: View;
   setView: (view: View) => void;
+  /** Which settings section is open. Lives here because the sidebar renders
+      the settings nav while the panel renders the section's body. */
+  settingsTab: SettingsSectionId;
+  setSettingsTab: (tab: SettingsSectionId) => void;
   status?: RuntimeStatus;
   subsystems?: SubsystemStatus;
   projects: Project[];
@@ -242,6 +248,7 @@ const MESSAGE_PAGE_SIZE = 60;
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const api = window.capsule;
   const [view, setView] = useState<View>("chat");
+  const [settingsTab, setSettingsTab] = useState<SettingsSectionId>("general");
   const [status, setStatus] = useState<RuntimeStatus>();
   const [subsystems, setSubsystems] = useState<SubsystemStatus>();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -1185,6 +1192,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       api,
       view,
       setView,
+      settingsTab,
+      setSettingsTab,
       status,
       subsystems,
       projects,

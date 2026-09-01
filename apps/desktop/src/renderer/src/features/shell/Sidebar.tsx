@@ -19,6 +19,8 @@ import {
   splitProjectThreads,
   type SidebarThreadKind,
 } from "../../lib/sidebar";
+import { SETTINGS_TABS } from "../settings/SettingsView";
+import { searchSettings } from "../settings/settings-search";
 import { useWorkspace, type View } from "../../lib/workspace";
 import { ActionMenu } from "./ActionMenu";
 import { SidebarToggle } from "./SidebarControl";
@@ -78,6 +80,8 @@ export function Sidebar() {
     sessionId,
     view,
     setView,
+    settingsTab,
+    setSettingsTab,
     setProjectId,
     createTask,
     createProjectFromFolder,
@@ -101,6 +105,7 @@ export function Sidebar() {
   const [menu, setMenu] = useState<MenuState>();
   const [editing, setEditing] = useState<{ kind: "project" | "session"; id: string; value: string }>();
   const [query, setQuery] = useState("");
+  const [settingsQuery, setSettingsQuery] = useState("");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [restLimit, setRestLimit] = useState<Record<string, number>>({});
   const pendingApprovals = approvals.filter((item) => item.status === "pending").length;
@@ -382,6 +387,95 @@ export function Sidebar() {
     );
   }
 
+  /*
+   * Settings takes over the sidebar rather than opening a second nav column
+   * inside the panel. Ten sections is more than anyone keeps in their head, so
+   * the nav doubles as a way in by name, and a result names the section it
+   * lives in — knowing where a setting is is half the answer.
+   */
+  if (view === "settings") {
+    const results = searchSettings(settingsQuery);
+    const searching = settingsQuery.trim().length >= 2;
+    return (
+      <aside className="sidebar" data-testid="app-sidebar">
+        <div className="sidebar-header">
+          <SidebarToggle />
+        </div>
+        <div className="sidebar-toolbar">
+          <label className="sidebar-search">
+            <SearchIcon size={14} />
+            <input
+              type="search"
+              placeholder="Search settings"
+              aria-label="Search settings"
+              value={settingsQuery}
+              onChange={(event) => setSettingsQuery(event.target.value)}
+            />
+            {settingsQuery ? (
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Clear search"
+                onClick={() => setSettingsQuery("")}
+              >
+                <XIcon size={12} />
+              </button>
+            ) : null}
+          </label>
+        </div>
+        <div className="sidebar-scroll">
+          <nav className="settings-nav" aria-label="Settings sections">
+            {searching ? (
+              results.length === 0 ? (
+                <p className="sidebar-empty">No setting matches that.</p>
+              ) : (
+                results.map((result) => (
+                  <button
+                    key={`${result.section}:${result.title}`}
+                    type="button"
+                    className="settings-result"
+                    onClick={() => {
+                      setSettingsTab(result.section);
+                      setSettingsQuery("");
+                    }}
+                  >
+                    <span className="truncate">{result.title}</span>
+                    <span className="settings-result-section">{result.sectionLabel}</span>
+                  </button>
+                ))
+              )
+            ) : (
+              SETTINGS_TABS.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={settingsTab === item.id ? "active" : ""}
+                  onClick={() => setSettingsTab(item.id)}
+                >
+                  {item.label}
+                </button>
+              ))
+            )}
+          </nav>
+        </div>
+        <div className="sidebar-footer">
+          <button
+            type="button"
+            className="sidebar-text-btn"
+            onClick={() => setView("chat")}
+          >
+            <span className="inline-icon">
+              <span className="rotate-180" aria-hidden>
+                <ChevronRightIcon size={13} />
+              </span>
+              Back
+            </span>
+          </button>
+        </div>
+      </aside>
+    );
+  }
+
   return (
     <aside className="sidebar" data-testid="app-sidebar">
       <div className="sidebar-header">
@@ -561,9 +655,10 @@ export function Sidebar() {
               </button>
             );
           })}
+          {/* Never shows active: opening Settings replaces this whole sidebar. */}
           <button
             type="button"
-            className={`icon-btn ${view === "settings" ? "active" : ""}`}
+            className="icon-btn"
             title="Settings"
             aria-label="Settings"
             onClick={() => setView("settings")}

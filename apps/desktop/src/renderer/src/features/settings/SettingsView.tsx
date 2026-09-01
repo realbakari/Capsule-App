@@ -2,28 +2,35 @@ import { isFeaturedHarness } from "../../lib/harness";
 import { useEffect, useState } from "react";
 import type { CapsuleSettings, MockScenario } from "@capsule/shared";
 import { AppearanceSettings } from "./AppearanceSettings";
-import { ConfigurationSettings } from "./ConfigurationSettings";
+import { SETTINGS_SECTION_LABELS, type SettingsSectionId } from "./settings-search";
+import {
+  AgentDefaultsCard,
+  DesktopCard,
+  GitCard,
+  HarnessCredentialsCard,
+  NotificationsCard,
+  SessionsCard,
+  SkillCatalogCard,
+} from "./ConfigurationSettings";
 import { AboutCard } from "./AboutModal";
 import { SettingRow, Switch } from "./controls";
 import { formatProjectRoot } from "../../lib/paths";
 import { MODES, useWorkspace } from "../../lib/workspace";
 
-type SettingsTab =
-  | "general"
-  | "appearance"
-  | "configuration"
-  | "gateway"
-  | "projects"
-  | "shortcuts"
-  | "diagnostics"
-  | "about";
-
-const TABS: Array<{ id: SettingsTab; label: string }> = [
+/*
+ * Sections a user can name before they open them. The old list had a
+ * "Configuration" tab holding seven unrelated cards while "General" held four
+ * settings that overlapped them — "Default agent" in one, "Agent defaults" in
+ * the other. Each card now sits under the heading someone would look in.
+ */
+export const SETTINGS_TABS: Array<{ id: SettingsSectionId; label: string }> = [
   { id: "general", label: "General" },
   { id: "appearance", label: "Appearance" },
-  { id: "configuration", label: "Configuration" },
+  { id: "agents", label: "Agents" },
   { id: "gateway", label: "Gateway" },
   { id: "projects", label: "Projects" },
+  { id: "sourceControl", label: "Source control" },
+  { id: "skills", label: "Skills" },
   { id: "shortcuts", label: "Shortcuts" },
   { id: "diagnostics", label: "Diagnostics" },
   { id: "about", label: "About" },
@@ -63,8 +70,9 @@ export function SettingsView() {
     updateSettings,
     agents,
     connected,
+    settingsTab: tab,
   } = useWorkspace();
-  const [tab, setTab] = useState<SettingsTab>("general");
+
   const [url, setUrl] = useState(settings?.gatewayUrl ?? "");
   const [token, setToken] = useState("");
   const [busy, setBusy] = useState(false);
@@ -134,19 +142,10 @@ export function SettingsView() {
           <p>Gateway, appearance, agent defaults, and diagnostics for this Mac.</p>
         </div>
         <div className="settings">
-          <nav className="settings-nav" aria-label="Settings">
-            {TABS.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className={tab === item.id ? "active" : ""}
-                onClick={() => setTab(item.id)}
-              >
-                {item.label}
-              </button>
-            ))}
-          </nav>
           <div className="settings-body">
+            <p className="settings-breadcrumb">
+              Settings <span aria-hidden>/</span> {SETTINGS_SECTION_LABELS[tab]}
+            </p>
             {tab === "general" && (
               <div className="card">
                 <h3>General</h3>
@@ -181,34 +180,13 @@ export function SettingsView() {
                     <option value="cmd-enter">⌘Enter to send</option>
                   </select>
                 </SettingRow>
-                <SettingRow label="Default mode" hint="Used for new conversations.">
-                  <select
-                    className="field-select"
-                    value={settings.defaultMode}
-                    onChange={(event) =>
-                      void patch({ defaultMode: event.target.value as CapsuleSettings["defaultMode"] })
-                    }
-                  >
-                    {MODES.map((item) => (
-                      <option key={item} value={item}>
-                        {item}
-                      </option>
-                    ))}
-                  </select>
-                </SettingRow>
-                <SettingRow label="Default agent" hint="Pre-selected when you start a new thread.">
-                  <select
-                    className="field-select"
-                    value={settings.defaultAgentId ?? "general"}
-                    onChange={(event) => void patch({ defaultAgentId: event.target.value })}
-                  >
-                    {agents.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </select>
-                </SettingRow>
+              </div>
+            )}
+            {tab === "general" && (
+              <div className="appearance-page">
+                <DesktopCard settings={settings} onPatch={(next) => void patch(next)} />
+                <NotificationsCard settings={settings} onPatch={(next) => void patch(next)} />
+                <SessionsCard settings={settings} onPatch={(next) => void patch(next)} />
               </div>
             )}
 
@@ -216,8 +194,56 @@ export function SettingsView() {
               <AppearanceSettings settings={settings} onPatch={(next) => void patch(next)} />
             )}
 
-            {tab === "configuration" && (
-              <ConfigurationSettings settings={settings} onPatch={(next) => void patch(next)} />
+            {tab === "agents" && (
+              <div className="appearance-page">
+                <div className="card">
+                  <h3>New conversations</h3>
+                  <SettingRow label="Default mode" hint="Used for new conversations.">
+                    <select
+                      className="field-select"
+                      value={settings.defaultMode}
+                      onChange={(event) =>
+                        void patch({
+                          defaultMode: event.target.value as CapsuleSettings["defaultMode"],
+                        })
+                      }
+                    >
+                      {MODES.map((item) => (
+                        <option key={item} value={item}>
+                          {item}
+                        </option>
+                      ))}
+                    </select>
+                  </SettingRow>
+                  <SettingRow label="Default agent" hint="Pre-selected when you start a new thread.">
+                    <select
+                      className="field-select"
+                      value={settings.defaultAgentId ?? "general"}
+                      onChange={(event) => void patch({ defaultAgentId: event.target.value })}
+                    >
+                      {agents.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.name}
+                        </option>
+                      ))}
+                    </select>
+                  </SettingRow>
+                </div>
+                <AgentDefaultsCard settings={settings} onPatch={(next) => void patch(next)} />
+                <HarnessCredentialsCard settings={settings} onPatch={(next) => void patch(next)} />
+              </div>
+            )}
+
+            {tab === "sourceControl" && (
+              <div className="appearance-page">
+                <GitCard settings={settings} onPatch={(next) => void patch(next)} />
+              </div>
+            )}
+
+            {tab === "skills" && (
+              <div className="appearance-page">
+                <SkillCatalogCard settings={settings} onPatch={(next) => void patch(next)} />
+              </div>
             )}
 
             {tab === "gateway" && (

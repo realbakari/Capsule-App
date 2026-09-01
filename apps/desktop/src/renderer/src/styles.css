@@ -2769,31 +2769,7 @@ select:focus,
   width: min(56rem, 100%);
 }
 .settings {
-  display: grid;
-  grid-template-columns: 10.5rem minmax(0, 1fr);
-  gap: 1.25rem;
-  align-items: start;
-}
-.settings-nav {
-  display: flex;
-  flex-direction: column;
-  gap: 0.12rem;
-  position: sticky;
-  top: 0;
-}
-.settings-nav button {
-  text-align: left;
-  border: 0;
-  background: transparent;
-  color: var(--text-muted);
-  padding: 0.4rem 0.55rem;
-  border-radius: var(--control-radius);
-  font-size: 0.8125rem;
-}
-.settings-nav button:hover,
-.settings-nav button.active {
-  background: var(--bg-hover);
-  color: var(--text);
+  display: block;
 }
 .settings-body .card h3 {
   margin-bottom: 0.55rem;
@@ -3047,16 +3023,6 @@ label.field input {
   outline-offset: 2px;
 }
 
-@media (max-width: 720px) {
-  .settings {
-    grid-template-columns: 1fr;
-  }
-  .settings-nav {
-    flex-direction: row;
-    flex-wrap: wrap;
-    position: static;
-  }
-}
 
 /* Changed-files card: the turn's outcome on disk, summarised. */
 .changed-files {
@@ -4876,4 +4842,53 @@ label.field input {
 }
 .changed-files-actions .ghost {
   font-size: 0.6875rem;
+}
+
+/* Settings nav, hosted in the sidebar. */
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.15rem 0 0.5rem;
+}
+.settings-nav button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.34rem 0.45rem;
+  border: 0;
+  border-radius: var(--control-radius);
+  background: transparent;
+  color: var(--subtext-1);
+  font-size: 0.8125rem;
+  text-align: left;
+  cursor: pointer;
+}
+.settings-nav button:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.settings-nav button.active {
+  background: var(--bg-active);
+  color: var(--text);
+  font-weight: 550;
+}
+.settings-result-section {
+  flex-shrink: 0;
+  font-size: 0.625rem;
+  color: var(--text-faint);
+}
+.settings-breadcrumb {
+  margin: 0 0 0.75rem;
+  font-size: 0.75rem;
+  color: var(--text-faint);
+}
+.settings-breadcrumb span {
+  padding: 0 0.3rem;
+}
+.rotate-180 {
+  display: inline-flex;
+  transform: rotate(180deg);
 }
