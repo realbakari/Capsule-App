@@ -384,9 +384,19 @@ export class OpenClawAdapter implements AgentRuntime {
     let parentKey = input.sessionKey;
     if (!parentKey || parentKey.startsWith("mock:") || isAcpSessionKey(parentKey)) {
       parentKey = await this.createGatewaySession({
-        // The carrier session's label is a unique key on the Gateway, and a
-        // conversation title is not unique. Key it to the harness session.
-        label: gatewaySessionLabel(input.title ?? input.harnessId, input.sessionKey ?? input.harnessId),
+        /*
+         * The carrier label is a unique key on the Gateway and a conversation
+         * title is not, so gatewaySessionLabel suffixes it with an id. That id
+         * used to fall back to the harness id when no session key was given —
+         * which is the same string for every conversation on that harness, so
+         * every new thread asked for "New conversation (claude)" and the
+         * second one was rejected with "label already in use". We are creating
+         * a fresh carrier here, so a fresh id is the right suffix.
+         */
+        label: gatewaySessionLabel(
+          input.title ?? input.harnessId,
+          input.sessionKey ?? createId(input.harnessId),
+        ),
         cwd: input.cwd,
       });
     }
