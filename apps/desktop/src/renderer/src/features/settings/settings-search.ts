@@ -122,3 +122,19 @@ export function searchSettings(query: string, limit = 8): SettingsSearchResult[]
     .slice(0, limit)
     .map(({ item }) => ({ ...item, sectionLabel: SETTINGS_SECTION_LABELS[item.section] }));
 }
+
+/**
+ * Sections whose settings can be reset. Mirrors the non-empty entries of
+ * SETTINGS_SECTION_KEYS in @capsule/shared, which the engine owns: the renderer
+ * only sends a section id, so the key list itself stays in one place.
+ * Sections absent here own no settings, and the reset control hides rather than
+ * offering an action that would do nothing.
+ */
+export const SECTIONS_WITH_DEFAULTS: ReadonlySet<SettingsSectionId> = new Set([
+  "general",
+  "appearance",
+  "agents",
+  "gateway",
+  "projects",
+  "sourceControl",
+]);

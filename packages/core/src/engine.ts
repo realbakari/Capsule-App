@@ -80,6 +80,7 @@ import {
   normalizeCapsuleSettings,
   pullRequestWatchEnabled,
   shouldArchiveInactiveSession,
+  SETTINGS_SECTION_KEYS,
   TOKEN_PRESENT_MASK,
   type ConnectionState,
   type CreateProjectInput,
@@ -1350,6 +1351,31 @@ export class CapsuleEngine {
       gatewayToken: this.settings.gatewayToken ? TOKEN_PRESENT_MASK : undefined,
       skillsShToken: this.settings.skillsShToken ? TOKEN_PRESENT_MASK : undefined,
     };
+  }
+
+  /**
+   * Reset one section's settings to their defaults.
+   *
+   * Scoped rather than wholesale: someone restoring Appearance has not asked to
+   * lose their gateway URL. Optional keys are deleted rather than written, so a
+   * setting with no default (a custom font, a branch prefix) goes back to
+   * absent instead of to an empty string that later reads as "set to nothing".
+   * Secrets are not in any section's list and are never touched here.
+   */
+  async resetSettingsSection(section: string): Promise<CapsuleSettings> {
+    const keys = SETTINGS_SECTION_KEYS[section];
+    if (!keys || keys.length === 0) return this.getSettings();
+
+    const next: Record<string, unknown> = { ...this.settings };
+    for (const key of keys) {
+      const fallback = (DEFAULT_CAPSULE_SETTINGS as unknown as Record<string, unknown>)[key];
+      if (fallback === undefined) delete next[key];
+      else next[key] = fallback;
+    }
+    this.settings = normalizeCapsuleSettings(next as Partial<CapsuleSettings>);
+    this.persistSettings();
+    this.events.emit("state", { command: "settings-updated" });
+    return this.getSettings();
   }
 
   async updateSettings(patch: Partial<CapsuleSettings>): Promise<CapsuleSettings> {

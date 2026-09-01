@@ -2,7 +2,12 @@ import { isFeaturedHarness } from "../../lib/harness";
 import { useEffect, useState } from "react";
 import type { CapsuleSettings, MockScenario } from "@capsule/shared";
 import { AppearanceSettings } from "./AppearanceSettings";
-import { SETTINGS_SECTION_LABELS, type SettingsSectionId } from "./settings-search";
+import { KeybindingsSettings } from "./KeybindingsSettings";
+import {
+  SETTINGS_SECTION_LABELS,
+  SECTIONS_WITH_DEFAULTS,
+  type SettingsSectionId,
+} from "./settings-search";
 import {
   AgentDefaultsCard,
   DesktopCard,
@@ -71,6 +76,8 @@ export function SettingsView() {
     agents,
     connected,
     settingsTab: tab,
+    setConfirm,
+    resetSettingsSection: resetSection,
   } = useWorkspace();
 
   const [url, setUrl] = useState(settings?.gatewayUrl ?? "");
@@ -143,9 +150,28 @@ export function SettingsView() {
         </div>
         <div className="settings">
           <div className="settings-body">
-            <p className="settings-breadcrumb">
-              Settings <span aria-hidden>/</span> {SETTINGS_SECTION_LABELS[tab]}
-            </p>
+            <div className="settings-crumbbar">
+              <p className="settings-breadcrumb">
+                Settings <span aria-hidden>/</span> {SETTINGS_SECTION_LABELS[tab]}
+              </p>
+              {SECTIONS_WITH_DEFAULTS.has(tab) && (
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() =>
+                    setConfirm({
+                      title: `Restore ${SETTINGS_SECTION_LABELS[tab]} defaults?`,
+                      detail: `Every setting in ${SETTINGS_SECTION_LABELS[tab]} goes back to its default. Other sections, and any saved tokens, are left alone.`,
+                      confirmLabel: "Restore defaults",
+                      danger: true,
+                      onConfirm: () => void resetSection(tab),
+                    })
+                  }
+                >
+                  Restore defaults
+                </button>
+              )}
+            </div>
             {tab === "general" && (
               <div className="card">
                 <h3>General</h3>
@@ -499,44 +525,7 @@ export function SettingsView() {
             )}
 
             {tab === "shortcuts" && (
-              <div className="card">
-                <h3>Shortcuts</h3>
-                <div className="shortcuts-list">
-                  {[
-                    { label: "Settings", keys: ["⌘", ","] },
-                    { label: "Command palette", keys: ["⌘", "K"] },
-                    { label: "New conversation", keys: ["⌘", "N"] },
-                    { label: "Open folder", keys: ["⌘", "O"] },
-                    { label: "Open files", keys: ["⇧", "⌘", "O"] },
-                    { label: "Search files", keys: ["⌘", "P"] },
-                    { label: "Search in files", keys: ["⇧", "⌘", "F"] },
-                    { label: "Toggle sidebar", keys: ["⌘", "B"] },
-                    { label: "Toggle inspector", keys: ["⌘", "\\"] },
-                    { label: "Inspector review", keys: ["⌃", "⇧", "G"] },
-                    { label: "Inspector terminal", keys: ["⌃", "`"] },
-                    { label: "Inspector side chat", keys: ["⌥", "⌘", "S"] },
-                    { label: "Send", keys: sendOnEnter ? ["Enter"] : ["⌘", "Enter"] },
-                    {
-                      label: "Send and start another",
-                      keys: sendOnEnter ? ["⌘", "Enter"] : ["⌘", "⇧", "Enter"],
-                    },
-                  ].map((item) => (
-                    <div className="shortcut-row" key={item.label}>
-                      <span className="shortcut-label">{item.label}</span>
-                      <span className="shortcut-keys">
-                        {item.keys.map((key, index) => (
-                          <kbd key={index}>{key}</kbd>
-                        ))}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-                <p className="muted" style={{ marginTop: "0.75rem" }}>
-                  In the composer, type <span className="mono">/</span> for commands,{" "}
-                  <span className="mono">@</span> to mention a file, or <span className="mono">$</span>{" "}
-                  to attach a skill.
-                </p>
-              </div>
+              <KeybindingsSettings settings={settings} onPatch={(next) => void patch(next)} />
             )}
 
             {tab === "diagnostics" && (

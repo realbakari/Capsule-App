@@ -114,6 +114,65 @@ export const DEFAULT_CAPSULE_SETTINGS: CapsuleSettings = {
   prWatchUntilMerged: false,
 };
 
+/**
+ * Which settings each section owns, so "Restore defaults" can reset exactly
+ * what is on screen instead of the whole file.
+ *
+ * Two deliberate omissions. Secrets (gatewayToken, skillsShToken) are held in
+ * the Keychain and are never reset by this path: a reset is an undo for a
+ * preference, not a way to silently sign someone out. And projects, shortcuts,
+ * diagnostics and about own no settings at all, so they get an empty list and
+ * the button hides rather than offering a reset that would do nothing.
+ */
+export const SETTINGS_SECTION_KEYS: Record<string, ReadonlyArray<keyof CapsuleSettings>> = {
+  general: [
+    "launchAtLogin",
+    "composerSendKey",
+    "showMenuBarExtra",
+    "keepAwakeWhileRunning",
+    "notifyRunComplete",
+    "notifyApprovals",
+    "bounceDockOnAttention",
+    "autoClassifySessions",
+    "archiveInactiveAfter",
+  ],
+  appearance: [
+    "appearanceTheme",
+    "appearanceLight",
+    "appearanceDark",
+    "transcriptSize",
+    "transcriptWidth",
+    "customCodeFont",
+  ],
+  agents: [
+    "defaultMode",
+    "defaultAgentId",
+    "defaultPermission",
+    "webAccess",
+    "sandbox",
+    "outputDetail",
+    "reasoningSummary",
+  ],
+  gateway: ["gatewayUrl", "useMockWhenOffline", "mockScenario"],
+  projects: ["projectlessFolder"],
+  sourceControl: [
+    "branchPrefix",
+    "gitForceWithLease",
+    "prDraft",
+    "prMergeMethod",
+    "prReviewDelivery",
+    "prWatchAndFix",
+    "prAutoMerge",
+    "prWatchUntilMerged",
+    "commitInstructions",
+    "prInstructions",
+  ],
+  skills: [],
+  shortcuts: [],
+  diagnostics: [],
+  about: [],
+};
+
 export interface CapsuleSettings {
   gatewayUrl: string;
   gatewayToken?: string;
@@ -161,6 +220,12 @@ export interface CapsuleSettings {
   prWatchUntilMerged: boolean;
   commitInstructions?: string;
   prInstructions?: string;
+  /**
+   * Rebound keyboard shortcuts, as command id -> chord ("meta+shift+f").
+   * Only commands the renderer owns appear here; menu accelerators are
+   * declared by the application menu in the main process.
+   */
+  keybindings?: Record<string, string>;
 }
 
 const AGENT_MODES: AgentMode[] = [

@@ -24,6 +24,8 @@ const api = {
   uninstallSkill: (skillId: string) => ipcRenderer.invoke(IPC_CHANNELS.uninstallSkill, skillId),
   searchSkillCatalog: (query: string, refresh?: boolean) =>
     ipcRenderer.invoke(IPC_CHANNELS.searchSkillCatalog, query, refresh),
+  resetSettingsSection: (section: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.resetSettingsSection, section),
   turnDiff: (runId: string) => ipcRenderer.invoke(IPC_CHANNELS.turnDiff, runId),
   restoreTurn: (runId: string) => ipcRenderer.invoke(IPC_CHANNELS.restoreTurn, runId),
   fetchSkillDetail: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.fetchSkillDetail, id),

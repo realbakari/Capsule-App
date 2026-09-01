@@ -38,6 +38,7 @@ import {
 } from "@capsule/shared";
 
 import type { SettingsSectionId } from "../features/settings/settings-search";
+import { commandForEvent, parseChord, type Keymap } from "./keybindings";
 
 export type View = "chat" | "runtimes" | "skills" | "history" | "approvals" | "settings";
 export type InspectorTab =
@@ -100,6 +101,8 @@ export interface WorkspaceValue {
       the settings nav while the panel renders the section's body. */
   settingsTab: SettingsSectionId;
   setSettingsTab: (tab: SettingsSectionId) => void;
+  /** Reset one settings section to its defaults. */
+  resetSettingsSection: (section: string) => Promise<void>;
   status?: RuntimeStatus;
   subsystems?: SubsystemStatus;
   projects: Project[];
@@ -295,6 +298,18 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [projectRuns, setProjectRuns] = useState<Run[]>([]);
   const [settings, setSettings] = useState<CapsuleSettings>();
   const settingsDefaultsApplied = useRef(false);
+  const keymap = useMemo<Keymap>(() => {
+    const stored = settings?.keybindings ?? {};
+    const map: Keymap = {};
+    for (const [id, value] of Object.entries(stored)) {
+      const chord = parseChord(value);
+      // A stored chord that no longer parses falls back to the default rather
+      // than leaving the command unreachable.
+      if (chord) map[id] = chord;
+    }
+    return map;
+  }, [settings?.keybindings]);
+
 
   const project = projects.find((item) => item.id === projectId);
   const session = sessions.find((item) => item.id === sessionId);
@@ -495,45 +510,30 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       }),
     ];
     const onKey = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey)) return;
       const typing =
         event.target instanceof HTMLElement &&
         Boolean(event.target.closest("input, textarea, select, [contenteditable]"));
-      const key = event.key.toLowerCase();
-      if (typing && key === "n") return;
-      if (key === "k") {
-        event.preventDefault();
-        setPalette((open) => !open);
-      }
-      if (key === "b") {
-        event.preventDefault();
-        setSidebarCollapsed((open) => !open);
-      }
-      if (key === "p") {
-        event.preventDefault();
-        setFilePicker((open) => !open);
-      }
-      if (key === "o") {
-        event.preventDefault();
-        if (event.shiftKey) void pickFilesToMention();
-        else void pickProjectDirectory();
-      }
-      if (key === "f" && event.shiftKey) {
-        event.preventDefault();
-        setContentSearch((open) => !open);
-      }
-      if (key === "n") {
-        event.preventDefault();
-        void createTask();
-      }
-      if (key === ",") {
-        event.preventDefault();
-        setPalette(false);
-        setView("settings");
-      }
-      if (event.key === "\\") {
-        event.preventDefault();
-        setInspectorOpen((open) => !open);
+
+      const command = commandForEvent(event, keymap);
+      if (!command) return;
+      // Typing a letter into a field must stay typing, even when the same
+      // letter is a shortcut somewhere else.
+      if (typing && !event.metaKey && !event.ctrlKey) return;
+
+      event.preventDefault();
+      switch (command.id) {
+        case "search-files":
+          setFilePicker((open) => !open);
+          break;
+        case "search-in-files":
+          setContentSearch((open) => !open);
+          break;
+        case "toggle-sidebar":
+          setSidebarCollapsed((open) => !open);
+          break;
+        case "toggle-inspector":
+          setInspectorOpen((open) => !open);
+          break;
       }
     };
     window.addEventListener("keydown", onKey, true);
@@ -1169,6 +1169,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     [api, refresh],
   );
 
+  const resetSettingsSection = useCallback(
+    async (section: string) => {
+      await api.resetSettingsSection(section);
+      await refresh();
+    },
+    [api, refresh],
+  );
+
   const searchSkillCatalog = useCallback(
     async (query: string, refresh?: boolean) => {
       return (await api.searchSkillCatalog(query, refresh)) as SkillCatalogPage;
@@ -1194,6 +1202,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       setView,
       settingsTab,
       setSettingsTab,
+      resetSettingsSection,
       status,
       subsystems,
       projects,

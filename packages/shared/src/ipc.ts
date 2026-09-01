@@ -73,6 +73,7 @@ export const IPC_CHANNELS = {
   installSkillPack: "capsule:installSkillPack",
   uninstallSkill: "capsule:uninstallSkill",
   searchSkillCatalog: "capsule:searchSkillCatalog",
+  resetSettingsSection: "capsule:resetSettingsSection",
   turnDiff: "capsule:turnDiff",
   restoreTurn: "capsule:restoreTurn",
   fetchSkillDetail: "capsule:fetchSkillDetail",
