@@ -62,18 +62,8 @@ export function LandingPage({ demo = true }: { demo?: boolean }) {
       </header>
 
       <section className="site-hero">
-        <div className="site-harness-marks" aria-hidden>
-          {HARNESSES.slice(0, 5).map((harness) => (
-            <span key={harness.cli} className="site-harness-mark mono">
-              {harness.cli}
-            </span>
-          ))}
-        </div>
-        <h1>
-          A desktop workspace for the
-          <br />
-          coding agents you already run.
-        </h1>
+        <img className="site-hero-mark" src="./icon.png" alt="" width={72} height={72} />
+        <h1>A desktop workspace for the coding agents you already run.</h1>
         <p className="site-lede">
           Capsule drives Claude Code, Codex and other ACP harnesses from one window — projects,
           conversations, diffs and approvals, on your own machine.
@@ -101,10 +91,11 @@ export function LandingPage({ demo = true }: { demo?: boolean }) {
       )}
 
       <section className="site-section">
-        <h2>Bring your own subscription</h2>
+        <p className="site-eyebrow">Your subscription</p>
+        <h2>No keys. No quota of ours.</h2>
         <p className="site-lede">
-          Capsule does not resell tokens or ask for an API key. It drives the CLIs already
-          installed and signed in on your machine.
+          Capsule drives the CLIs already installed and signed in on your machine. It never resells
+          tokens and never asks for an API key.
         </p>
         <ul className="site-harness-grid">
           {HARNESSES.map((harness) => (
@@ -125,7 +116,8 @@ export function LandingPage({ demo = true }: { demo?: boolean }) {
       </section>
 
       <section className="site-section">
-        <h2>What it needs</h2>
+        <p className="site-eyebrow">Requirements</p>
+        <h2>Three things, all local.</h2>
         <div className="site-needs">
           <div>
             <h3>A running OpenClaw Gateway</h3>
@@ -151,10 +143,9 @@ export function LandingPage({ demo = true }: { demo?: boolean }) {
       </section>
 
       <section className="site-section site-close">
+        <p className="site-eyebrow">Open source</p>
         <h2>Run it from source today.</h2>
-        <p className="site-lede">
-          It is a pnpm workspace and an Electron app. Clone it, install, and it opens.
-        </p>
+        <p className="site-lede">A pnpm workspace and an Electron app. Clone, install, open.</p>
         <div className="site-clone">
           <code className="mono">{CLONE_COMMAND}</code>
           <button

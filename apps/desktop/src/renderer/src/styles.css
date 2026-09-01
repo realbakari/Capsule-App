@@ -5535,28 +5535,33 @@ button.shortcut-keys.capturing {
 }
 
 /* ---------------------------------------------------------------------------
-   Public site. A scrolling page rather than the app with a card over it.
-   Everything here is scoped under .site so it cannot leak into the app, which
-   renders inside it as the product shot.
+   Public site. Scoped under .site so nothing leaks into the app, which renders
+   inside it as the product shot.
    --------------------------------------------------------------------------- */
 .site {
   /* height, not min-height. The app sets overflow:hidden on html and body —
-     correct for a desktop shell that must not scroll — so the document cannot
-     scroll and .site has to be the scroll container itself. With min-height it
-     simply grew past the viewport and everything below the hero became
-     unreachable. */
+     right for a desktop shell that must not scroll — so the document cannot
+     scroll and .site has to be the scroll container itself. */
   height: 100vh;
   overflow-y: auto;
   background: var(--base);
   color: var(--text);
+  --site-gutter: 1.5rem;
+  --site-measure: 44rem;
 }
+
 .site-bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1rem 1.5rem;
-  max-width: 68rem;
-  margin: 0 auto;
+  padding: 0.9rem var(--site-gutter);
+  background: color-mix(in srgb, var(--base) 82%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid transparent;
 }
 .site-mark {
   display: inline-flex;
@@ -5564,6 +5569,7 @@ button.shortcut-keys.capturing {
   gap: 0.5rem;
   font-weight: 600;
   font-size: 0.9375rem;
+  letter-spacing: -0.01em;
 }
 .site-mark img {
   border-radius: 0.35rem;
@@ -5577,37 +5583,36 @@ button.shortcut-keys.capturing {
   color: var(--text);
 }
 
+/* Hero. The depth comes from one soft wash behind the mark, not from a
+   gradient on every surface. */
 .site-hero {
-  max-width: 46rem;
+  position: relative;
+  max-width: var(--site-measure);
   margin: 0 auto;
-  padding: 4.5rem 1.5rem 3rem;
+  padding: 5rem var(--site-gutter) 3.5rem;
   text-align: center;
 }
-.site-harness-marks {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.4rem;
-  margin-bottom: 2rem;
-}
-.site-harness-mark {
-  padding: 0.25rem 0.55rem;
-  border: 1px solid var(--border-color);
-  border-radius: 999px;
-  font-size: 0.6875rem;
-  color: var(--text-faint);
+.site-hero-mark {
+  border-radius: 1.1rem;
+  margin-bottom: 1.75rem;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 45%);
 }
 .site-hero h1 {
-  margin: 0 0 1.1rem;
-  font-size: clamp(2rem, 5.5vw, 3.25rem);
+  margin: 0 0 1.15rem;
+  /* Keeps the last word off a line of its own without a hard break, which
+     fought the wrap at this measure. */
+  text-wrap: balance;
+  max-width: 22ch;
+  margin-inline: auto;
+  font-size: clamp(2rem, 4.8vw, 3.1rem);
   line-height: 1.08;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
   font-weight: 600;
 }
 .site-lede {
   margin: 0 auto;
-  max-width: 38rem;
-  font-size: 1rem;
+  max-width: 34rem;
+  font-size: 1.0625rem;
   line-height: 1.6;
   color: var(--subtext-1);
 }
@@ -5616,28 +5621,30 @@ button.shortcut-keys.capturing {
   flex-wrap: wrap;
   justify-content: center;
   gap: 0.6rem;
-  margin: 1.8rem 0 0.8rem;
+  margin: 2rem 0 0.9rem;
 }
 .site-btn-primary,
 .site-btn-ghost {
   display: inline-flex;
   align-items: center;
-  padding: 0.6rem 1.15rem;
-  border-radius: 0.55rem;
+  padding: 0.65rem 1.3rem;
+  border-radius: 0.6rem;
   font-size: 0.875rem;
   font-weight: 550;
   text-decoration: none;
+  transition: transform var(--motion-instant) var(--motion-ease);
 }
 .site-btn-primary {
   background: var(--text);
   color: var(--base);
 }
+.site-btn-primary:hover,
+.site-btn-ghost:hover {
+  transform: translateY(-1px);
+}
 .site-btn-ghost {
   border: 1px solid var(--border-color);
   color: var(--text);
-}
-.site-btn-ghost:hover {
-  background: var(--bg-hover);
 }
 .site-note {
   margin: 0;
@@ -5645,52 +5652,66 @@ button.shortcut-keys.capturing {
   color: var(--text-faint);
 }
 
-/* The app renders inside this frame. Fixed height and its own stacking
-   context, so the shell's absolutely-positioned parts stay inside it. */
+/* Product shot. Wider than the reading column, because it is the evidence. */
 .site-shot {
-  max-width: 68rem;
-  margin: 1.5rem auto 0;
-  padding: 0 1.5rem;
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 0 var(--site-gutter);
 }
 .site-shot-frame {
   position: relative;
   isolation: isolate;
-  height: 34rem;
+  height: 36rem;
   border: 1px solid var(--border-color);
-  border-radius: 0.75rem;
+  border-radius: 0.9rem;
   overflow: hidden;
-  box-shadow: 0 24px 60px rgb(0 0 0 / 35%);
+  box-shadow: 0 32px 80px rgb(0 0 0 / 55%);
 }
 .site-shot-frame .app {
   height: 100%;
 }
 .site-shot-note {
-  margin-top: 0.75rem;
+  margin-top: 0.85rem;
   text-align: center;
 }
 
+/* Sections. One alignment: the eyebrow, heading and lede are centred, and the
+   content beneath them is left-aligned inside a column of the same width.
+   The first pass mixed the two and read as a wireframe. */
 .site-section {
-  max-width: 46rem;
+  max-width: var(--site-measure);
   margin: 0 auto;
-  padding: 4.5rem 1.5rem 0;
+  padding: 6rem var(--site-gutter) 0;
   text-align: center;
+}
+/* The palette has no vivid hue by design, so the eyebrow earns its place
+   through size, weight and tracking rather than a colour invented for it. */
+.site-eyebrow {
+  margin: 0 0 0.7rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-faint);
 }
 .site-section h2 {
   margin: 0 0 0.9rem;
-  font-size: clamp(1.5rem, 3.5vw, 2rem);
-  letter-spacing: -0.015em;
+  font-size: clamp(1.6rem, 3.5vw, 2.1rem);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
   font-weight: 600;
 }
+
 .site-harness-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1px;
-  margin: 2rem 0 1.5rem;
+  margin: 2.25rem 0 1.5rem;
   padding: 0;
   list-style: none;
   background: var(--border-color);
   border: 1px solid var(--border-color);
-  border-radius: 0.6rem;
+  border-radius: 0.7rem;
   overflow: hidden;
   text-align: left;
 }
@@ -5699,7 +5720,7 @@ button.shortcut-keys.capturing {
   align-items: baseline;
   justify-content: space-between;
   gap: 0.75rem;
-  padding: 0.75rem 0.95rem;
+  padding: 0.8rem 1rem;
   background: var(--base);
   font-size: 0.875rem;
 }
@@ -5710,7 +5731,7 @@ button.shortcut-keys.capturing {
 }
 .site-points {
   display: grid;
-  gap: 0.55rem;
+  gap: 0.6rem;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -5719,46 +5740,42 @@ button.shortcut-keys.capturing {
 .site-points li {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.55rem;
   font-size: 0.8125rem;
   color: var(--subtext-1);
 }
 .site-points svg {
   flex-shrink: 0;
-  color: var(--green, #6aa84f);
+  color: var(--green);
 }
 
 .site-needs {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
-  gap: 1.5rem;
-  margin-top: 2rem;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 1.75rem 2rem;
+  margin-top: 2.5rem;
   text-align: left;
 }
 .site-needs h3 {
-  margin: 0 0 0.35rem;
+  margin: 0 0 0.4rem;
   font-size: 0.9375rem;
   font-weight: 600;
 }
 .site-needs p {
   margin: 0;
   font-size: 0.8125rem;
-  line-height: 1.55;
+  line-height: 1.6;
   color: var(--text-faint);
 }
 
-.site-close {
-  padding-bottom: 1rem;
-}
 .site-clone {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin: 1.75rem auto 0;
-  max-width: 40rem;
-  padding: 0.6rem 0.75rem;
+  margin: 2rem auto 0;
+  padding: 0.7rem 0.85rem;
   border: 1px solid var(--border-color);
-  border-radius: 0.55rem;
+  border-radius: 0.6rem;
   background: var(--bg-hover);
   text-align: left;
 }
@@ -5786,9 +5803,9 @@ button.shortcut-keys.capturing {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  max-width: 68rem;
-  margin: 4.5rem auto 0;
-  padding: 1.5rem;
+  max-width: 72rem;
+  margin: 6rem auto 0;
+  padding: 1.5rem var(--site-gutter) 2.5rem;
   border-top: 1px solid var(--border-color);
   font-size: 0.75rem;
   color: var(--text-faint);
@@ -5806,6 +5823,9 @@ button.shortcut-keys.capturing {
     grid-template-columns: minmax(0, 1fr);
   }
   .site-hero {
-    padding-top: 3rem;
+    padding-top: 3.5rem;
+  }
+  .site-section {
+    padding-top: 4rem;
   }
 }
