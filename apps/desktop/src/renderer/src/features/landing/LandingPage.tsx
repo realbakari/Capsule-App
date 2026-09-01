@@ -6,6 +6,25 @@ const CLONE_COMMAND =
   "git clone https://github.com/realbakari/Capsule-App.git && cd Capsule-App && pnpm install && pnpm dev";
 
 /*
+ * The harnesses Capsule drives, with the CLI it actually spawns through acpx.
+ * Mirrored from PRESET_HARNESSES rather than imported: the shared barrel
+ * reaches node:crypto, which cannot bundle for a browser context. Keep the
+ * commands in step with packages/shared/src/harness.ts.
+ *
+ * One column, one meaning — the executable Capsule looks for. An earlier pass
+ * put a sign-in command in the rows that had one and the binary in the rest,
+ * which read as though `claude` and `codex login` were the same kind of thing.
+ */
+const HARNESSES: Array<{ name: string; cli: string }> = [
+  { name: "Claude Code", cli: "claude" },
+  { name: "Codex", cli: "codex" },
+  { name: "Cursor", cli: "cursor-agent" },
+  { name: "OpenCode", cli: "opencode" },
+  { name: "Gemini CLI", cli: "gemini" },
+  { name: "GitHub Copilot", cli: "copilot" },
+];
+
+/*
  * The web URL renders the real application over a read-only demo bridge, with
  * a small teaser card on top; "Get started" opens the panel below.
  *
@@ -71,6 +90,21 @@ export function LandingPage({ standalone = false }: { standalone?: boolean }) {
         </a>
       </p>
 
+      <div className="landing-harnesses">
+        <p className="landing-harnesses-lede">
+          Bring your own subscription. Capsule drives these CLIs where they are already installed
+          and signed in — it never resells tokens and never asks for an API key.
+        </p>
+        <ul>
+          {HARNESSES.map((harness) => (
+            <li key={harness.cli}>
+              <span className="landing-harness-name">{harness.name}</span>
+              <code>{harness.cli}</code>
+            </li>
+          ))}
+        </ul>
+      </div>
+
       <button className="landing-modal-link" onClick={() => setShowSource((value) => !value)}>
         {showSource ? "Hide source instructions" : "Run from source ›"}
       </button>
@@ -96,9 +130,8 @@ export function LandingPage({ standalone = false }: { standalone?: boolean }) {
         <details>
           <summary>What Capsule needs to run</summary>
           <p>
-            A running OpenClaw Gateway with the acpx plugin, and Claude Code or Codex installed and
-            signed in on that host. Capsule drives those CLIs — it does not install or authenticate
-            them, and it never asks for an API key of its own.
+            A running OpenClaw Gateway with the acpx plugin, and at least one of the CLIs above
+            installed and signed in on that host. Capsule does not install or authenticate them.
           </p>
         </details>
         <details>

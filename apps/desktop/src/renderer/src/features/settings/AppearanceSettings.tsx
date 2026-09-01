@@ -83,6 +83,20 @@ export function AppearanceSettings({
             ))}
           </select>
         </SettingRow>
+        {/*
+          * A live sample, the way T3 Code previews its typography. These read
+          * the same custom properties the transcript does (--text-message,
+          * --mono, --chat-max), so they are the real result of the setting
+          * rather than a mock-up that can drift from it.
+          */}
+        <div className="type-preview" aria-hidden>
+          <p className="type-preview-prose">
+            The agent edited three files and left the tests passing.
+          </p>
+          <pre className="type-preview-code">
+            <code>{"export function formatUser(user: User) {\n  return `${user.name} <${user.email}>`; // 0O 1lI\n}"}</code>
+          </pre>
+        </div>
         <SettingRow
           label="Transcript width"
           hint="Maximum width of the transcript and composer columns."
@@ -101,6 +115,15 @@ export function AppearanceSettings({
             ))}
           </select>
         </SettingRow>
+        {/* Driven by --chat-max, the transcript's own column width, so the
+            options stay in true proportion to one another. */}
+        <div className="width-preview" aria-hidden>
+          <div className="width-preview-column">
+            <span />
+            <span />
+            <span />
+          </div>
+        </div>
         <SettingRow
           label="Custom code font"
           hint="Optional monospace family for code and the terminal, e.g. JetBrains Mono."

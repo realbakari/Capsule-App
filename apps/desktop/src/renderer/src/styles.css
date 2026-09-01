@@ -4709,3 +4709,113 @@ label.field input {
 .skills-source-dot.off {
   background: var(--text-faint);
 }
+
+/* Landing: the harnesses Capsule drives, with the CLI it spawns.
+   T3 Code puts this grid on its "Bring your own sub" section, and it says the
+   premise faster than a paragraph does. */
+.landing-harnesses {
+  width: 100%;
+  margin-top: 1.1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--border-color);
+  text-align: left;
+}
+.landing-harnesses-lede {
+  margin: 0 0 0.7rem;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--subtext-1);
+}
+.landing-harnesses ul {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: var(--border-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--control-radius);
+  overflow: hidden;
+}
+.landing-harnesses li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.45rem 0.6rem;
+  background: var(--base);
+  min-width: 0;
+}
+.landing-harness-name {
+  font-size: 0.8125rem;
+  color: var(--text);
+  white-space: nowrap;
+}
+.landing-harnesses code {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (max-width: 460px) {
+  .landing-harnesses ul {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Live typography samples in Appearance. */
+.type-preview {
+  margin: 0.15rem 0 0.9rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--control-radius);
+  background: var(--base);
+}
+.type-preview-prose {
+  margin: 0 0 0.55rem;
+  font-size: var(--text-message);
+  line-height: 1.55;
+  color: var(--text);
+}
+.type-preview-code {
+  margin: 0;
+  padding: 0.5rem 0.6rem;
+  border-radius: var(--control-radius);
+  background: var(--bg-hover);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--subtext-0);
+  overflow-x: auto;
+  white-space: pre;
+}
+.width-preview {
+  margin: 0.15rem 0 0.9rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--control-radius);
+  background: var(--base);
+}
+.width-preview-column {
+  /* Scaled, not literal. The three widths are 40/48/60rem and the settings
+     column is narrower than two of them, so at full size Default and Wide both
+     clip to 100% and look identical. One constant factor keeps the options
+     distinct and in order; in a very narrow column the widest still clamps. */
+  width: calc(var(--chat-max) * 0.6);
+  max-width: 100%;
+  margin: 0 auto;
+  display: grid;
+  gap: 0.3rem;
+}
+.width-preview-column span {
+  display: block;
+  height: 0.4rem;
+  border-radius: 0.2rem;
+  background: var(--bg-hover);
+}
+.width-preview-column span:last-child {
+  width: 62%;
+}
