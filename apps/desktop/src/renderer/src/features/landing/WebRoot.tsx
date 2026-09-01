@@ -1,12 +1,10 @@
 import { useEffect, useState } from "react";
-import App from "../../App";
 import { LandingPage } from "./LandingPage";
 
 /*
- * The web URL shows the real application over a demo bridge — but only where
- * there is room for it. Capsule's shell is a three-column desktop layout; on a
- * phone it collapses into something that misrepresents the product rather than
- * demonstrating it. Below the breakpoint the landing stands alone.
+ * The demo shot embeds the real app, and Capsule's shell is a three-column
+ * desktop layout — on a phone it collapses into something that misrepresents
+ * the product. Below the breakpoint the page renders without it.
  */
 const WIDE = "(min-width: 900px)";
 
@@ -22,11 +20,5 @@ export function WebRoot() {
     return () => query.removeEventListener("change", onChange);
   }, []);
 
-  if (!wide) return <LandingPage standalone />;
-  return (
-    <>
-      <App />
-      <LandingPage />
-    </>
-  );
+  return <LandingPage demo={wide} />;
 }

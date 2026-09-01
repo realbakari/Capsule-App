@@ -4780,226 +4780,19 @@ label.field input {
 
 
 /* Landing card pieces reused from the old full-page layout. */
-.landing-brand-name {
-  font-size: 1.125rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: var(--accent);
-}
-.landing-btn-primary {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1.5rem;
-  font-size: 0.9375rem;
-  font-weight: 600;
-  background: var(--accent);
-  color: var(--base);
-  border-radius: 0.5rem;
-  text-decoration: none;
-  transition: transform 0.15s ease, opacity 0.15s ease;
-}
-.landing-btn-primary:hover {
-  transform: translateY(-1px);
-  opacity: 0.95;
-}
-.landing-btn-secondary {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1.5rem;
-  font-size: 0.9375rem;
-  font-weight: 600;
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--accent);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 0.5rem;
-  text-decoration: none;
-  transition: background 0.15s ease;
-}
-.landing-btn-secondary:hover {
-  background: var(--border-color);
-}
 /* Landing: the app mark, and the two plain paragraphs that replaced the
    feature-card grid. Colours come from tokens so the page follows the same
    theme as the app rather than carrying its own hardcoded palette. */
-.landing-mark {
-  border-radius: 0.3rem;
-  object-fit: contain;
-}
 
 
 /* ── Web landing ───────────────────────────────────────────────────────────
    A teaser card over the running app, and a modal behind one click. The app
    itself is the pitch, so the persistent overlay stays as small as it can be
    and never covers the composer. */
-.landing-card {
-  position: fixed;
-  /* Top-right, below the titlebar. Bottom-right sat on the composer toolbar,
-     and covering the controls a visitor might try is worse than covering
-     transcript. */
-  right: 1.25rem;
-  top: 3.5rem;
-  z-index: 60;
-  display: flex;
-  align-items: center;
-  gap: 0.7rem;
-  max-width: min(26rem, calc(100vw - 2.5rem));
-  padding: 0.7rem 0.8rem;
-  border: 1px solid var(--border-strong);
-  border-radius: 0.85rem;
-  background: var(--surface-0);
-  box-shadow: var(--shadow);
-}
-.landing-mark { border-radius: 0.3rem; object-fit: contain; flex-shrink: 0; }
-.landing-card-text { min-width: 0; }
-.landing-card-text p {
-  margin: 0.1rem 0 0;
-  color: var(--text-muted);
-  font-size: 0.75rem;
-  line-height: 1.35;
-}
-.landing-brand-name { font-size: 0.8125rem; font-weight: 600; color: var(--text); }
 
-.landing-modal-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 70;
-  display: grid;
-  place-items: center;
-  padding: 1.5rem;
-  background: rgb(0 0 0 / 0.6);
-}
-.landing-modal {
-  position: relative;
-  width: min(26rem, 100%);
-  max-height: calc(100vh - 3rem);
-  overflow: auto;
-  padding: 1.75rem 1.5rem 1.25rem;
-  border: 1px solid var(--border-strong);
-  border-radius: 1rem;
-  background: var(--surface-0);
-  box-shadow: var(--shadow);
-  text-align: center;
-}
-.landing-modal-close {
-  position: absolute;
-  top: 0.6rem;
-  right: 0.7rem;
-  border: 0;
-  background: transparent;
-  color: var(--text-faint);
-  font-size: 1.1rem;
-  line-height: 1;
-}
-.landing-modal-close:hover { color: var(--text); }
-.landing-modal-mark { border-radius: 0.9rem; object-fit: contain; }
-.landing-modal h2 {
-  margin: 0.7rem 0 0.25rem;
-  font-size: 1.125rem;
-  letter-spacing: -0.02em;
-}
-.landing-modal-tagline {
-  margin: 0 0 1.1rem;
-  color: var(--text-muted);
-  font-size: 0.8125rem;
-  line-height: 1.5;
-}
-.landing-btn-primary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 2rem;
-  padding: 0 0.9rem;
-  border: 0;
-  border-radius: 0.45rem;
-  background: var(--accent);
-  color: var(--accent-fg);
-  font-size: 0.8125rem;
-  font-weight: 600;
-  white-space: nowrap;
-  flex-shrink: 0;
-  text-decoration: none;
-}
-.landing-btn-primary:hover { background: var(--subtext-1); }
-.landing-modal-cta { width: 100%; height: 2.35rem; }
-.landing-modal-sub {
-  margin: 0.55rem 0 0;
-  color: var(--text-faint);
-  font-size: 0.6875rem;
-}
-.landing-modal-sub a { color: var(--subtext-0); }
-.landing-modal-link {
-  margin-top: 0.85rem;
-  border: 0;
-  background: transparent;
-  color: var(--subtext-0);
-  font-size: 0.75rem;
-}
-.landing-modal-link:hover { color: var(--text); }
-.landing-install-bar {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.6rem;
-  margin-top: 0.6rem;
-  padding: 0.55rem 0.7rem;
-  border: 1px solid var(--border-color);
-  border-radius: 0.5rem;
-  background: var(--base);
-  text-align: left;
-}
-.landing-install-prefix { color: var(--overlay-1); font-family: var(--mono); font-size: 0.75rem; }
-.landing-install-code {
-  flex: 1;
-  min-width: 0;
-  font-family: var(--mono);
-  font-size: 0.6875rem;
-  line-height: 1.5;
-  color: var(--subtext-1);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-.landing-copy-btn {
-  flex-shrink: 0;
-  border: 0;
-  background: transparent;
-  color: var(--text-faint);
-}
-.landing-copy-btn:hover { color: var(--text); }
-.landing-modal-rows {
-  margin-top: 1.1rem;
-  border-top: 1px solid var(--border-color);
-  text-align: left;
-}
-.landing-modal-rows details { border-bottom: 1px solid var(--border-color); }
-.landing-modal-rows summary {
-  cursor: pointer;
-  padding: 0.6rem 0.1rem;
-  color: var(--subtext-1);
-  font-size: 0.75rem;
-}
-.landing-modal-rows summary:hover { color: var(--text); }
-.landing-modal-rows p {
-  margin: 0 0 0.7rem;
-  padding: 0 0.1rem;
-  color: var(--text-muted);
-  font-size: 0.75rem;
-  line-height: 1.5;
-}
 
 /* Narrow viewports get the panel as the page: the desktop shell has no
    meaningful phone layout, and showing a broken one sells nothing. */
-.landing-standalone {
-  min-height: 100%;
-  display: grid;
-  place-items: center;
-  padding: 1.5rem;
-  background: var(--base);
-}
-.landing-standalone .landing-modal {
-  box-shadow: none;
-  max-height: none;
-}
 
 .skills-notice-warn {
   border-color: color-mix(in srgb, var(--yellow) 40%, transparent);
@@ -5058,57 +4851,7 @@ label.field input {
 
 /* Landing: the harnesses Capsule drives, with the CLI it spawns. A grid says
    the bring-your-own-subscription premise faster than a paragraph does. */
-.landing-harnesses {
-  width: 100%;
-  margin-top: 1.1rem;
-  padding-top: 0.9rem;
-  border-top: 1px solid var(--border-color);
-  text-align: left;
-}
-.landing-harnesses-lede {
-  margin: 0 0 0.7rem;
-  font-size: 0.8125rem;
-  line-height: 1.5;
-  color: var(--subtext-1);
-}
-.landing-harnesses ul {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  background: var(--border-color);
-  border: 1px solid var(--border-color);
-  border-radius: var(--control-radius);
-  overflow: hidden;
-}
-.landing-harnesses li {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.45rem 0.6rem;
-  background: var(--base);
-  min-width: 0;
-}
-.landing-harness-name {
-  font-size: 0.8125rem;
-  color: var(--text);
-  white-space: nowrap;
-}
-.landing-harnesses code {
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  color: var(--text-faint);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 @media (max-width: 460px) {
-  .landing-harnesses ul {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 
 /* Live typography samples in Appearance. */
@@ -5789,4 +5532,280 @@ button.shortcut-keys.capturing {
 .host-state--warn {
   border-color: color-mix(in srgb, var(--red) 45%, var(--border-color));
   color: var(--red);
+}
+
+/* ---------------------------------------------------------------------------
+   Public site. A scrolling page rather than the app with a card over it.
+   Everything here is scoped under .site so it cannot leak into the app, which
+   renders inside it as the product shot.
+   --------------------------------------------------------------------------- */
+.site {
+  /* height, not min-height. The app sets overflow:hidden on html and body —
+     correct for a desktop shell that must not scroll — so the document cannot
+     scroll and .site has to be the scroll container itself. With min-height it
+     simply grew past the viewport and everything below the hero became
+     unreachable. */
+  height: 100vh;
+  overflow-y: auto;
+  background: var(--base);
+  color: var(--text);
+}
+.site-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  max-width: 68rem;
+  margin: 0 auto;
+}
+.site-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  font-size: 0.9375rem;
+}
+.site-mark img {
+  border-radius: 0.35rem;
+}
+.site-bar-link {
+  font-size: 0.8125rem;
+  color: var(--text-faint);
+  text-decoration: none;
+}
+.site-bar-link:hover {
+  color: var(--text);
+}
+
+.site-hero {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 4.5rem 1.5rem 3rem;
+  text-align: center;
+}
+.site-harness-marks {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.4rem;
+  margin-bottom: 2rem;
+}
+.site-harness-mark {
+  padding: 0.25rem 0.55rem;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  color: var(--text-faint);
+}
+.site-hero h1 {
+  margin: 0 0 1.1rem;
+  font-size: clamp(2rem, 5.5vw, 3.25rem);
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+}
+.site-lede {
+  margin: 0 auto;
+  max-width: 38rem;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--subtext-1);
+}
+.site-cta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.6rem;
+  margin: 1.8rem 0 0.8rem;
+}
+.site-btn-primary,
+.site-btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.6rem 1.15rem;
+  border-radius: 0.55rem;
+  font-size: 0.875rem;
+  font-weight: 550;
+  text-decoration: none;
+}
+.site-btn-primary {
+  background: var(--text);
+  color: var(--base);
+}
+.site-btn-ghost {
+  border: 1px solid var(--border-color);
+  color: var(--text);
+}
+.site-btn-ghost:hover {
+  background: var(--bg-hover);
+}
+.site-note {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-faint);
+}
+
+/* The app renders inside this frame. Fixed height and its own stacking
+   context, so the shell's absolutely-positioned parts stay inside it. */
+.site-shot {
+  max-width: 68rem;
+  margin: 1.5rem auto 0;
+  padding: 0 1.5rem;
+}
+.site-shot-frame {
+  position: relative;
+  isolation: isolate;
+  height: 34rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.75rem;
+  overflow: hidden;
+  box-shadow: 0 24px 60px rgb(0 0 0 / 35%);
+}
+.site-shot-frame .app {
+  height: 100%;
+}
+.site-shot-note {
+  margin-top: 0.75rem;
+  text-align: center;
+}
+
+.site-section {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 4.5rem 1.5rem 0;
+  text-align: center;
+}
+.site-section h2 {
+  margin: 0 0 0.9rem;
+  font-size: clamp(1.5rem, 3.5vw, 2rem);
+  letter-spacing: -0.015em;
+  font-weight: 600;
+}
+.site-harness-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin: 2rem 0 1.5rem;
+  padding: 0;
+  list-style: none;
+  background: var(--border-color);
+  border: 1px solid var(--border-color);
+  border-radius: 0.6rem;
+  overflow: hidden;
+  text-align: left;
+}
+.site-harness-grid li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 0.95rem;
+  background: var(--base);
+  font-size: 0.875rem;
+}
+.site-harness-grid code {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--text-faint);
+}
+.site-points {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+}
+.site-points li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--subtext-1);
+}
+.site-points svg {
+  flex-shrink: 0;
+  color: var(--green, #6aa84f);
+}
+
+.site-needs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 1.5rem;
+  margin-top: 2rem;
+  text-align: left;
+}
+.site-needs h3 {
+  margin: 0 0 0.35rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+.site-needs p {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--text-faint);
+}
+
+.site-close {
+  padding-bottom: 1rem;
+}
+.site-clone {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 1.75rem auto 0;
+  max-width: 40rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.55rem;
+  background: var(--bg-hover);
+  text-align: left;
+}
+.site-clone code {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  color: var(--subtext-0);
+}
+.site-copy {
+  flex-shrink: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  padding: 0.25rem;
+}
+.site-copy:hover {
+  color: var(--text);
+}
+
+.site-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 68rem;
+  margin: 4.5rem auto 0;
+  padding: 1.5rem;
+  border-top: 1px solid var(--border-color);
+  font-size: 0.75rem;
+  color: var(--text-faint);
+}
+.site-footer a {
+  color: var(--text-faint);
+  text-decoration: none;
+}
+.site-footer a:hover {
+  color: var(--text);
+}
+
+@media (max-width: 640px) {
+  .site-harness-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .site-hero {
+    padding-top: 3rem;
+  }
 }

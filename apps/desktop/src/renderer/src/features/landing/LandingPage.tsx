@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import App from "../../App";
 import { CheckIcon, CopyIcon } from "../shell/icons";
 
 const REPO = "https://github.com/realbakari/Capsule-App";
@@ -6,14 +7,10 @@ const CLONE_COMMAND =
   "git clone https://github.com/realbakari/Capsule-App.git && cd Capsule-App && pnpm install && pnpm dev";
 
 /*
- * The harnesses Capsule drives, with the CLI it actually spawns through acpx.
- * Mirrored from PRESET_HARNESSES rather than imported: the shared barrel
- * reaches node:crypto, which cannot bundle for a browser context. Keep the
- * commands in step with packages/shared/src/harness.ts.
- *
- * One column, one meaning — the executable Capsule looks for. An earlier pass
- * put a sign-in command in the rows that had one and the binary in the rest,
- * which read as though `claude` and `codex login` were the same kind of thing.
+ * The harnesses Capsule drives, with the CLI it spawns through acpx. Mirrored
+ * from PRESET_HARNESSES rather than imported: the shared barrel reaches
+ * node:crypto, which cannot bundle for a browser context. Keep these in step
+ * with packages/shared/src/harness.ts.
  */
 const HARNESSES: Array<{ name: string; cli: string }> = [
   { name: "Claude Code", cli: "claude" },
@@ -24,27 +21,23 @@ const HARNESSES: Array<{ name: string; cli: string }> = [
   { name: "GitHub Copilot", cli: "copilot" },
 ];
 
-/*
- * The web URL renders the real application over a read-only demo bridge, with
- * a small teaser card on top; "Get started" opens the panel below.
- *
- * `standalone` is the narrow-viewport form. Capsule's shell is a three-column
- * desktop layout, so on a phone the demo misrepresents the product rather than
- * showing it — there, the panel is the whole page and nothing sits behind it.
- */
-export function LandingPage({ standalone = false }: { standalone?: boolean }) {
-  const [open, setOpen] = useState(standalone);
-  const [showSource, setShowSource] = useState(false);
-  const [copied, setCopied] = useState(false);
+const POINTS = [
+  "No keys resold. Your subscription, your quota.",
+  "Every project stays on your machine.",
+  "Switch harness per conversation.",
+];
 
-  useEffect(() => {
-    if (!open || standalone) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, standalone]);
+/**
+ * The public page: a scrolling site rather than the app with a card over it.
+ *
+ * `demo` renders the real application as the product shot. It runs on a
+ * read-only bridge — no gateway, no agent, nothing written to disk — which is
+ * why it can sit on a public page at all. It is off below the breakpoint,
+ * because Capsule's three-column shell collapses on a phone into something
+ * that misrepresents the product rather than showing it.
+ */
+export function LandingPage({ demo = true }: { demo?: boolean }) {
+  const [copied, setCopied] = useState(false);
 
   async function copyCommand() {
     try {
@@ -56,67 +49,117 @@ export function LandingPage({ standalone = false }: { standalone?: boolean }) {
     }
   }
 
-  const panel = (
-    <div className="landing-modal" role="dialog" aria-modal="true" aria-label="Get Capsule">
-      {!standalone && (
-        <button
-          className="landing-modal-close"
-          onClick={() => setOpen(false)}
-          title="Close"
-          aria-label="Close"
-        >
-          ×
-        </button>
+  return (
+    <div className="site">
+      <header className="site-bar">
+        <span className="site-mark">
+          <img src="./icon.png" alt="" width={22} height={22} />
+          Capsule
+        </span>
+        <a href={REPO} target="_blank" rel="noreferrer" className="site-bar-link">
+          Source
+        </a>
+      </header>
+
+      <section className="site-hero">
+        <div className="site-harness-marks" aria-hidden>
+          {HARNESSES.slice(0, 5).map((harness) => (
+            <span key={harness.cli} className="site-harness-mark mono">
+              {harness.cli}
+            </span>
+          ))}
+        </div>
+        <h1>
+          A desktop workspace for the
+          <br />
+          coding agents you already run.
+        </h1>
+        <p className="site-lede">
+          Capsule drives Claude Code, Codex and other ACP harnesses from one window — projects,
+          conversations, diffs and approvals, on your own machine.
+        </p>
+        <div className="site-cta">
+          <a className="site-btn-primary" href={`${REPO}/releases`} target="_blank" rel="noreferrer">
+            Download for macOS
+          </a>
+          <a className="site-btn-ghost" href={REPO} target="_blank" rel="noreferrer">
+            Read the source ↗
+          </a>
+        </div>
+        <p className="site-note">Apple Silicon and Intel · macOS 13+</p>
+      </section>
+
+      {demo && (
+        <section className="site-shot" aria-label="Capsule running on sample data">
+          <div className="site-shot-frame">
+            <App />
+          </div>
+          <p className="site-note site-shot-note">
+            The real interface on sample data. Nothing here reaches a gateway or your disk.
+          </p>
+        </section>
       )}
 
-      <img src="./icon.png" alt="" width={56} height={56} className="landing-modal-mark" />
-      <h2>Capsule</h2>
-      <p className="landing-modal-tagline">
-        Run Claude Code and Codex from a desktop workspace, on your own machine.
-      </p>
-
-      <a
-        className="landing-btn-primary landing-modal-cta"
-        href={`${REPO}/releases`}
-        target="_blank"
-        rel="noreferrer"
-      >
-        Download for macOS
-      </a>
-      <p className="landing-modal-sub">
-        Apple Silicon and Intel · macOS 13+ ·{" "}
-        <a href={REPO} target="_blank" rel="noreferrer">
-          Source on GitHub
-        </a>
-      </p>
-
-      <div className="landing-harnesses">
-        <p className="landing-harnesses-lede">
-          Bring your own subscription. Capsule drives these CLIs where they are already installed
-          and signed in — it never resells tokens and never asks for an API key.
+      <section className="site-section">
+        <h2>Bring your own subscription</h2>
+        <p className="site-lede">
+          Capsule does not resell tokens or ask for an API key. It drives the CLIs already
+          installed and signed in on your machine.
         </p>
-        <ul>
+        <ul className="site-harness-grid">
           {HARNESSES.map((harness) => (
             <li key={harness.cli}>
-              <span className="landing-harness-name">{harness.name}</span>
+              <span>{harness.name}</span>
               <code>{harness.cli}</code>
             </li>
           ))}
         </ul>
-      </div>
+        <ul className="site-points">
+          {POINTS.map((point) => (
+            <li key={point}>
+              <CheckIcon size={14} />
+              {point}
+            </li>
+          ))}
+        </ul>
+      </section>
 
-      <button className="landing-modal-link" onClick={() => setShowSource((value) => !value)}>
-        {showSource ? "Hide source instructions" : "Run from source ›"}
-      </button>
-      {showSource && (
-        <div className="landing-install-bar">
-          <span className="landing-install-prefix" aria-hidden>
-            $
-          </span>
-          <code className="landing-install-code">{CLONE_COMMAND}</code>
+      <section className="site-section">
+        <h2>What it needs</h2>
+        <div className="site-needs">
+          <div>
+            <h3>A running OpenClaw Gateway</h3>
+            <p>
+              With the acpx plugin enabled. Capsule talks to it over a local WebSocket; it does not
+              install or authenticate anything itself.
+            </p>
+          </div>
+          <div>
+            <h3>At least one harness</h3>
+            <p>
+              Any of the CLIs above, installed and signed in on the machine running the Gateway.
+            </p>
+          </div>
+          <div>
+            <h3>Nothing else</h3>
+            <p>
+              Projects, conversations, runs and approvals live in a SQLite file on your machine.
+              There is no account and no server of ours.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section className="site-section site-close">
+        <h2>Run it from source today.</h2>
+        <p className="site-lede">
+          It is a pnpm workspace and an Electron app. Clone it, install, and it opens.
+        </p>
+        <div className="site-clone">
+          <code className="mono">{CLONE_COMMAND}</code>
           <button
             type="button"
-            className="landing-copy-btn"
+            className="site-copy"
             onClick={() => void copyCommand()}
             title="Copy command"
             aria-label="Copy command"
@@ -124,63 +167,14 @@ export function LandingPage({ standalone = false }: { standalone?: boolean }) {
             {copied ? <CheckIcon size={15} /> : <CopyIcon size={15} />}
           </button>
         </div>
-      )}
+      </section>
 
-      <div className="landing-modal-rows">
-        <details>
-          <summary>What Capsule needs to run</summary>
-          <p>
-            A running OpenClaw Gateway with the acpx plugin, and at least one of the CLIs above
-            installed and signed in on that host. Capsule does not install or authenticate them.
-          </p>
-        </details>
-        <details>
-          <summary>Where your data lives</summary>
-          <p>
-            Projects, conversations, runs and approvals are kept in a local SQLite database on your
-            machine. Capsule reads and edits files inside the project folder you choose, and nowhere
-            else.
-          </p>
-        </details>
-        {!standalone && (
-          <details>
-            <summary>About this page</summary>
-            <p>
-              You are looking at the real interface running on sample data — no gateway, no agent,
-              nothing written to disk.
-            </p>
-          </details>
-        )}
-      </div>
+      <footer className="site-footer">
+        <span>Capsule</span>
+        <a href={REPO} target="_blank" rel="noreferrer">
+          GitHub
+        </a>
+      </footer>
     </div>
-  );
-
-  if (standalone) return <div className="landing-standalone">{panel}</div>;
-
-  return (
-    <>
-      <aside className="landing-card" aria-label="About Capsule">
-        <img src="./icon.png" alt="" width={20} height={20} className="landing-mark" />
-        <div className="landing-card-text">
-          <span className="landing-brand-name">Capsule</span>
-          <p>A desktop workspace for the coding agents you already run.</p>
-        </div>
-        <button className="landing-btn-primary" onClick={() => setOpen(true)}>
-          Get started
-        </button>
-      </aside>
-
-      {open && (
-        <div
-          className="landing-modal-backdrop"
-          role="presentation"
-          onClick={(event) => {
-            if (event.target === event.currentTarget) setOpen(false);
-          }}
-        >
-          {panel}
-        </div>
-      )}
-    </>
   );
 }
