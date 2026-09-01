@@ -96,6 +96,10 @@ anything. Permission options carry a line saying what each one does, because
 Usage lives in its own view, read from the CLIs' transcripts. It reports
 tokens only — prices are not in the transcripts.
 
+Replies render fenced code, headings, bullets, links, inline code and
+GitHub-style pipe tables. A wide table scrolls inside the message rather than
+widening the transcript column.
+
 A running turn shows elapsed time, not just that it is running: a turn can go
 for minutes and "working" alone gives no way to tell a slow one from a stuck
 one. Activity rows carry an icon for the kind of work — command, read, edit,

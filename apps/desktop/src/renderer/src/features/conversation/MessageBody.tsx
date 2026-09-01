@@ -2,6 +2,7 @@ import { Fragment, useState, type ReactNode } from "react";
 import { CopyIcon } from "../shell/icons";
 import { highlight } from "../../lib/highlight";
 import { splitFences } from "../../lib/fences";
+import { parseTable } from "../../lib/tables";
 
 function inline(text: string): ReactNode {
   const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/g);
@@ -34,29 +35,71 @@ function inline(text: string): ReactNode {
 
 function block(text: string, key: number): ReactNode {
   const lines = text.split("\n");
-  return lines.map((line, index) => {
-    const heading = /^(#{1,3})\s+(.*)$/.exec(line);
+  const out: ReactNode[] = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? "";
+
+    // Tables first: their rows would otherwise each be read as prose and
+    // rendered as a line of pipes.
+    const table = parseTable(lines, index);
+    if (table) {
+      out.push(
+        <div className="md-table-wrap" key={`${key}-${index}-table`}>
+          <table className="md-table">
+            <thead>
+              <tr>
+                {table.table.headers.map((header, column) => (
+                  <th key={column} style={{ textAlign: table.table.align[column] ?? "left" }}>
+                    {inline(header)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {table.table.rows.map((row, rowIndex) => (
+                <tr key={rowIndex}>
+                  {row.map((cell, column) => (
+                    <td key={column} style={{ textAlign: table.table.align[column] ?? "left" }}>
+                      {inline(cell)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>,
+      );
+      index += table.consumed - 1;
+      continue;
+    }
+
+    out.push(<Fragment key={`${key}-${index}`}>{lineNode(line, `${key}-${index}`)}</Fragment>);
+    if (index < lines.length - 1) out.push(<Fragment key={`${key}-${index}-nl`}>{"\n"}</Fragment>);
+  }
+  return out;
+}
+
+function lineNode(line: string, key: string): ReactNode {
+  return [line].map((value, index) => {
+    void index;
+    const heading = /^(#{1,3})\s+(.*)$/.exec(value);
     if (heading?.[1] && heading[2]) {
       const Tag = heading[1].length === 1 ? "h3" : "h4";
       return (
-        <Tag key={`${key}-${index}`} className="md-h">
+        <Tag key={key} className="md-h">
           {inline(heading[2])}
         </Tag>
       );
     }
-    if (/^\s*[-*]\s+/.test(line)) {
+    if (/^\s*[-*]\s+/.test(value)) {
       return (
-        <div key={`${key}-${index}`} className="md-li">
-          {inline(line.replace(/^\s*[-*]\s+/, ""))}
+        <div key={key} className="md-li">
+          {inline(value.replace(/^\s*[-*]\s+/, ""))}
         </div>
       );
     }
-    return (
-      <Fragment key={`${key}-${index}`}>
-        {inline(line)}
-        {index < lines.length - 1 ? "\n" : null}
-      </Fragment>
-    );
+    return <Fragment key={key}>{inline(value)}</Fragment>;
   });
 }
 

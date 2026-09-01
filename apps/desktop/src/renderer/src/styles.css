@@ -5373,3 +5373,33 @@ button.shortcut-keys.capturing {
   line-height: 1.45;
   color: var(--text-faint);
 }
+
+/* Markdown tables in a reply. Wide ones scroll inside the message rather than
+   widening the transcript column. */
+.md-table-wrap {
+  overflow-x: auto;
+  margin: 0.6rem 0;
+}
+.md-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.9375em;
+}
+.md-table th {
+  padding: 0.35rem 0.7rem 0.35rem 0;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--subtext-1);
+  font-weight: 550;
+  white-space: nowrap;
+}
+.md-table td {
+  padding: 0.4rem 0.7rem 0.4rem 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 55%, transparent);
+  vertical-align: top;
+}
+.md-table tr:last-child td {
+  border-bottom: 0;
+}
+.md-table code {
+  white-space: nowrap;
+}
