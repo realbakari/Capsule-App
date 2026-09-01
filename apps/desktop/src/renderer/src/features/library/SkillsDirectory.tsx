@@ -15,8 +15,18 @@ function compactCount(value: number): string {
 /**
  * Build an installable Skill from a catalog entry. Fields the catalog does not
  * carry are left off rather than filled with a plausible-looking default.
+ *
+ * `content` is what actually does the work: a turn injects the active skill as
+ * `[Active Skill: name]` followed by this text, so a skill stored without it is
+ * inert — it appears installed, attaches to a conversation, and contributes
+ * nothing. Catalog entries therefore have to carry their SKILL.md, which the
+ * installer below fetches before saving.
  */
-function skillFromCatalog(entry: SkillCatalogEntry, status: Skill["status"]): Skill {
+function skillFromCatalog(
+  entry: SkillCatalogEntry,
+  status: Skill["status"],
+  content?: string,
+): Skill {
   return {
     id: entry.id,
     name: entry.name,
@@ -27,6 +37,7 @@ function skillFromCatalog(entry: SkillCatalogEntry, status: Skill["status"]): Sk
     permissions: { filesystem: "approval" },
     url: entry.url,
     tags: ["github"],
+    ...(content ? { content } : {}),
   };
 }
 
@@ -61,6 +72,7 @@ export function SkillsDirectory() {
   const [fetchedAt, setFetchedAt] = useState<number | null>(null);
   const [importNotice, setImportNotice] = useState<string | null>(null);
   const [copiedCmd, setCopiedCmd] = useState<string | null>(null);
+  const [installing, setInstalling] = useState<string | null>(null);
 
   // The catalog is fetched live: GitHub always, plus skills.sh when a token is
   // configured. An empty query browses everything; typing filters what was
@@ -160,6 +172,28 @@ export function SkillsDirectory() {
     });
   }, [skillPacks, search, selectedTag]);
 
+  /**
+   * Install a catalog skill, fetching its SKILL.md first. Without the document
+   * the skill has nothing to inject; refusing to save it is better than saving
+   * something that silently does nothing.
+   */
+  async function installFromCatalog(entry: SkillCatalogEntry) {
+    setInstalling(entry.id);
+    try {
+      const doc = await fetchSkillDetail(entry.id);
+      if (!doc) {
+        setImportNotice(`Could not read SKILL.md for ${entry.name}; nothing was installed.`);
+        setTimeout(() => setImportNotice(null), 5000);
+        return;
+      }
+      await installSkill(skillFromCatalog(entry, "installed", doc));
+      setImportNotice(`Installed ${entry.name}.`);
+      setTimeout(() => setImportNotice(null), 3000);
+    } finally {
+      setInstalling(null);
+    }
+  }
+
   async function handleCopyText(text: string) {
     try {
       await navigator.clipboard.writeText(text);
@@ -197,9 +231,7 @@ export function SkillsDirectory() {
       setTimeout(() => setImportNotice(null), 4000);
       return;
     }
-    await installSkill(skillFromCatalog(first, "installed"));
-    setImportNotice(`Installed skill: ${first.name}`);
-    setTimeout(() => setImportNotice(null), 3000);
+    await installFromCatalog(first);
   }
 
   return (
@@ -613,9 +645,14 @@ export function SkillsDirectory() {
                     <button
                       type="button"
                       className={`chip ${isInstalled ? "installed" : "send"}`}
-                      onClick={() => void installSkill(skillFromCatalog(result, "installed"))}
+                      disabled={installing === result.id}
+                      onClick={() => void installFromCatalog(result)}
                     >
-                      {isInstalled ? "Installed" : "Install Skill"}
+                      {installing === result.id
+                        ? "Installing…"
+                        : isInstalled
+                          ? "Installed"
+                          : "Install Skill"}
                     </button>
                   </div>
                 </div>
