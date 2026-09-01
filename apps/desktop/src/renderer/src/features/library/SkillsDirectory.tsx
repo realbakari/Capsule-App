@@ -5,6 +5,9 @@ import { SearchIcon, XIcon, SparkIcon, CopyIcon, CheckIcon, ShieldIcon, GlobeIco
 
 type TabFilter = "all" | "packs" | "installed" | "directory";
 
+/** Tags shown before "N more". One row on a normal window. */
+const TAG_PREVIEW = 8;
+
 /** Compact a count for a badge: 12480 -> "12.5k". */
 function compactCount(value: number): string {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
@@ -72,6 +75,7 @@ export function SkillsDirectory() {
   const [fetchedAt, setFetchedAt] = useState<number | null>(null);
   const [importNotice, setImportNotice] = useState<string | null>(null);
   const [copiedCmd, setCopiedCmd] = useState<string | null>(null);
+  const [showAllTags, setShowAllTags] = useState(false);
   const [installing, setInstalling] = useState<string | null>(null);
 
   // The catalog is fetched live: GitHub always, plus skills.sh when a token is
@@ -132,14 +136,15 @@ export function SkillsDirectory() {
     });
   }, [inspectSkill, fetchSkillDetail]);
 
-  const allTags = useMemo(() => {
-    const set = new Set<string>();
+  /** Tags with how many skills carry them, most-used first. */
+  const rankedTags = useMemo(() => {
+    const counts = new Map<string, number>();
     for (const skill of skills) {
-      if (skill.tags) {
-        for (const t of skill.tags) set.add(t);
-      }
+      for (const tag of skill.tags ?? []) counts.set(tag, (counts.get(tag) ?? 0) + 1);
     }
-    return Array.from(set);
+    return [...counts.entries()]
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
   }, [skills]);
 
   const filteredSkills = useMemo(() => {
@@ -334,26 +339,42 @@ export function SkillsDirectory() {
         </button>
       </div>
 
-      {/* Tag Filters (for All and Installed) */}
-      {(tab === "all" || tab === "installed") && allTags.length > 0 && (
+      {/*
+        * Tags used to render as one chip per tag — 57 of them, six rows deep,
+        * filling the screen before a single skill appeared. Ranking by how many
+        * skills carry a tag puts the ones that actually partition the list
+        * first, and the rest stay one click away.
+        */}
+      {(tab === "all" || tab === "installed") && rankedTags.length > 0 && (
         <div className="skills-tag-filters">
           <button
             type="button"
             className={`tag-chip ${selectedTag === null ? "active" : ""}`}
             onClick={() => setSelectedTag(null)}
           >
-            All Categories
+            All
           </button>
-          {allTags.map((tag) => (
+          {(showAllTags ? rankedTags : rankedTags.slice(0, TAG_PREVIEW)).map((tag) => (
             <button
-              key={tag}
+              key={tag.name}
               type="button"
-              className={`tag-chip ${selectedTag === tag ? "active" : ""}`}
-              onClick={() => setSelectedTag(selectedTag === tag ? null : tag)}
+              className={`tag-chip ${selectedTag === tag.name ? "active" : ""}`}
+              title={`${tag.count} ${tag.count === 1 ? "skill" : "skills"}`}
+              onClick={() => setSelectedTag(selectedTag === tag.name ? null : tag.name)}
             >
-              #{tag}
+              {tag.name}
+              <span className="tag-count">{tag.count}</span>
             </button>
           ))}
+          {rankedTags.length > TAG_PREVIEW && (
+            <button
+              type="button"
+              className="tag-chip tag-more"
+              onClick={() => setShowAllTags((value) => !value)}
+            >
+              {showAllTags ? "Show fewer" : `${rankedTags.length - TAG_PREVIEW} more`}
+            </button>
+          )}
         </div>
       )}
 
@@ -361,7 +382,13 @@ export function SkillsDirectory() {
       {tab === "packs" && (
         <div className="packs-grid">
           {filteredPacks.length === 0 && (
-            <div className="skills-empty">No skill packs found matching &ldquo;{search}&rdquo;.</div>
+            <div className="skills-empty">
+              {search.trim()
+                ? `No skill pack matches "${search.trim()}".`
+                : selectedTag
+                  ? `No skill pack is tagged ${selectedTag}.`
+                  : "No skill packs are bundled."}
+            </div>
           )}
           {filteredPacks.map((pack) => {
             const packSkills = skills.filter((s) => s.packId === pack.id);
@@ -442,7 +469,15 @@ export function SkillsDirectory() {
       {(tab === "all" || tab === "installed") && (
         <div className="skills-grid">
           {filteredSkills.length === 0 && (
-            <div className="skills-empty">No skills found matching &ldquo;{search}&rdquo;.</div>
+            <div className="skills-empty">
+              {search.trim()
+                ? `No skill matches "${search.trim()}".`
+                : selectedTag
+                  ? `No skill is tagged ${selectedTag}.`
+                  : tab === "installed"
+                    ? "Nothing installed yet. Browse GitHub to add a skill."
+                    : "No skills are available."}
+            </div>
           )}
           {filteredSkills.map((skill) => {
             const isAttached = skillId === skill.id;

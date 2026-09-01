@@ -5208,3 +5208,60 @@ button.shortcut-keys.capturing {
 .panel-inner.usage-page {
   width: min(72rem, 100%);
 }
+
+/* Skills tag filters. Ranked and capped, so this is one row rather than six. */
+.skills-tag-filters .tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.tag-chip .tag-count {
+  font-size: 0.625rem;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.tag-chip.active .tag-count {
+  color: inherit;
+  opacity: 0.7;
+}
+.tag-chip.tag-more {
+  color: var(--text-faint);
+}
+
+/* Card actions. Two solid accent buttons per card, repeated down a grid, made
+   the page read as a wall of blue; the destination is the skill, not the
+   button. The primary action keeps the accent as a text colour and a hairline,
+   and only the attached state fills. */
+.skill-card-actions .chip.send {
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  color: var(--accent);
+  font-weight: 550;
+}
+.skill-card-actions .chip.send:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.skill-card-actions .chip.active-attached {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border: 1px solid transparent;
+}
+.skill-card-actions .chip.installed {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-faint);
+}
+
+/* The page header was a title, two lines of prose and a full-width field
+   before any skill. */
+.skills-header h2 {
+  font-size: 1.125rem;
+  margin: 0;
+}
+.skills-header p {
+  font-size: 0.8125rem;
+  max-width: 46rem;
+}
+.skills-search-bar {
+  max-width: 26rem;
+}
