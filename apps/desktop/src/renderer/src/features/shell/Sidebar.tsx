@@ -432,6 +432,9 @@ export function Sidebar() {
         tabIndex={0}
         data-thread-item
         data-menu-open={menu?.kind === "session" && menu.id === session.id ? "true" : undefined}
+        /* The row is a button made of divs, so it has no name of its own —
+           every conversation in the sidebar read as an unnamed control. */
+        aria-label={session.title}
         className={`thread-row ${active ? "active" : ""} ${recede ? "recede" : ""}`}
         draggable={Boolean(session.pinned)}
         onDragStart={(event) => {
@@ -722,6 +725,7 @@ export function Sidebar() {
                   tabIndex={0}
                   className={`project-row ${item.id === projectId ? "active" : ""}`}
                   data-menu-open={menu?.kind === "project" && menu.id === item.id ? "true" : undefined}
+                  aria-label={item.name}
                   onClick={() => openProject(item.id)}
                   onDoubleClick={() => setEditing({ kind: "project", id: item.id, value: item.name })}
                   onKeyDown={(event) => {

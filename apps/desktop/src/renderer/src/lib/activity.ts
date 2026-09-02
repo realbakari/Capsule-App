@@ -71,6 +71,41 @@ function workLabel(action: WorkAction, count: number): string {
   }
 }
 
+/**
+ * The readable part of a frame's text.
+ *
+ * Harnesses narrate their own plumbing: "Read File (pending)", "tool call
+ * (completed): ```console …", a fenced block where a filename was expected.
+ * Printed verbatim under a row that already says "Read 1 file", that is noise
+ * at best and a contradiction at worst — a completed row is not pending.
+ */
+export function cleanActivityDetail(message: string | undefined): string | undefined {
+  let text = (message ?? "").trim().split("\n")[0]?.trim() ?? "";
+  if (!text) return undefined;
+  // "tool call (completed): …", "tool call: …"
+  text = text.replace(/^tool[_\s-]?call\s*(\([a-z]+\))?\s*:\s*/iu, "");
+  // A fence, with or without a language, wherever it starts.
+  text = text.replace(/```+\s*[a-z0-9]*\s*/giu, " ");
+  // The status a frame carries about itself; the row's own glyph says this.
+  text = text.replace(/\s*\((pending|completed|running|failed|done)\)\s*/giu, " ");
+  text = text.replace(/\s+/gu, " ").trim();
+  if (!text || text.length < 2) return undefined;
+  // 120 is the width these rows were already cut to; a row is one line.
+  return text.slice(0, 120);
+}
+
+/**
+ * Whether a detail is worth printing beside a label that already says it.
+ * "Read 1 file · Read File" is the row twice; the second half is the tool's
+ * own name, not what it was pointed at.
+ */
+export function detailAddsSomething(label: string, detail: string | undefined): boolean {
+  if (!detail) return false;
+  const simplify = (value: string) => value.toLowerCase().replace(/[^a-z]+/gu, "");
+  const plain = simplify(detail);
+  return plain.length > 0 && !simplify(label).includes(plain);
+}
+
 export interface RunActivity {
   id: string;
   label: string;
@@ -117,7 +152,7 @@ export function activityFromEvents(
     if (isCompletionFrame && openWork?.id.startsWith("work:")) {
       if (/\.failed$/.test(type)) {
         openWork.status = "error";
-        const reason = event.message?.trim().split("\n")[0]?.slice(0, 120);
+        const reason = cleanActivityDetail(event.message);
         if (reason) openWork.detail = reason;
       }
       continue;
@@ -129,7 +164,7 @@ export function activityFromEvents(
     const detail =
       kind === "thinking" && reasoning === "collapsed"
         ? undefined
-        : event.message?.trim().split("\n")[0]?.slice(0, 120) || undefined;
+        : cleanActivityDetail(event.message);
     // Reasoning streams in fragments; keep every one so the full thought is
     // readable rather than only its first 120 characters.
     const chunk = kind === "thinking" ? event.message?.trim() : undefined;
@@ -137,15 +172,17 @@ export function activityFromEvents(
     if (last && last.id === groupId) {
       last.count += 1;
       if (action) last.label = workLabel(action, last.count);
-      // Keep the most recent line for this phase rather than appending a row.
-      if (detail) last.detail = detail;
+      // Keep the most recent line for this phase rather than appending a row,
+      // and only when it says more than the label does.
+      if (detail && detailAddsSomething(last.label, detail)) last.detail = detail;
       if (chunk) last.body = last.body ? `${last.body}\n${chunk}` : chunk;
       continue;
     }
+    const label = action ? workLabel(action, 1) : (ACTIVITY_LABELS[kind] ?? ACTIVITY_LABELS.lifecycle!);
     phases.push({
       id: groupId,
-      label: action ? workLabel(action, 1) : (ACTIVITY_LABELS[kind] ?? ACTIVITY_LABELS.lifecycle!),
-      ...(detail ? { detail } : {}),
+      label,
+      ...(detailAddsSomething(label, detail) ? { detail } : {}),
       ...(chunk ? { body: chunk } : {}),
       count: 1,
       status: kind === "error" ? "error" : "active",

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { RunEvent } from "@capsule/shared";
-import { activityFromEvents, summariseWork } from "./activity.js";
+import {
+  activityFromEvents,
+  cleanActivityDetail,
+  detailAddsSomething,
+  summariseWork,
+} from "./activity.js";
 
 const event = (streamKind: string, message: string, id: string): RunEvent => ({
   id,
@@ -282,5 +287,56 @@ describe("summariseWork", () => {
   it("returns an empty label when nothing happened, so the caller can hide it", () => {
     expect(summariseWork([]).label).toBe("");
     expect(summariseWork([phase("thinking", 9)]).label).toBe("");
+  });
+});
+
+describe("cleanActivityDetail", () => {
+  it("drops the status a frame carries about itself", () => {
+    // The row's own glyph says whether it finished; a completed row that reads
+    // "pending" contradicts it.
+    expect(cleanActivityDetail("Read File (pending)")).toBe("Read File");
+    expect(cleanActivityDetail("Terminal (pending)")).toBe("Terminal");
+  });
+
+  it("unwraps a tool-call envelope", () => {
+    expect(cleanActivityDetail("tool call (completed): ```console commit 5b7d72a")).toBe(
+      "commit 5b7d72a",
+    );
+    expect(cleanActivityDetail("tool_call: read_file src/app.ts")).toBe("read_file src/app.ts");
+  });
+
+  it("keeps the command someone would want to read", () => {
+    expect(cleanActivityDetail('grep -n "composerTargetKey" apps/web')).toBe(
+      'grep -n "composerTargetKey" apps/web',
+    );
+  });
+
+  it("says nothing rather than something empty", () => {
+    expect(cleanActivityDetail(undefined)).toBeUndefined();
+    expect(cleanActivityDetail("   ")).toBeUndefined();
+    expect(cleanActivityDetail("```")).toBeUndefined();
+    expect(cleanActivityDetail("(completed)")).toBeUndefined();
+  });
+
+  it("takes the first line only, and bounds it", () => {
+    expect(cleanActivityDetail("first line\nsecond line")).toBe("first line");
+    expect(cleanActivityDetail("x".repeat(400))?.length).toBe(120);
+  });
+});
+
+describe("detailAddsSomething", () => {
+  it("drops a detail that only repeats the label", () => {
+    // "Read 1 file · Read File" is the same row printed twice.
+    expect(detailAddsSomething("Read 1 file", "Read File")).toBe(false);
+    expect(detailAddsSomething("Ran 3 commands", "command")).toBe(false);
+  });
+
+  it("keeps one that names what was touched", () => {
+    expect(detailAddsSomething("Read 1 file", "Read src/app.ts (10 - 40)")).toBe(true);
+    expect(detailAddsSomething("Ran 1 command", "grep -n foo src")).toBe(true);
+  });
+
+  it("has nothing to keep when there is no detail", () => {
+    expect(detailAddsSomething("Read 1 file", undefined)).toBe(false);
   });
 });
