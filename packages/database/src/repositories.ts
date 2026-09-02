@@ -572,10 +572,10 @@ export class CapsuleRepositories {
       .prepare(
         `INSERT INTO runs (
           id, session_id, project_id, agent_id, skill_id, contract_id, status, prompt, result,
-          error, openclaw_run_id, created_at, updated_at, completed_at
+          error, openclaw_run_id, checkpoint_ref, created_at, updated_at, completed_at
         ) VALUES (
           @id, @sessionId, @projectId, @agentId, @skillId, @contractId, @status, @prompt, @result,
-          @error, @openclawRunId, @createdAt, @updatedAt, @completedAt
+          @error, @openclawRunId, @checkpointRef, @createdAt, @updatedAt, @completedAt
         )`,
       )
       .run({
@@ -585,6 +585,7 @@ export class CapsuleRepositories {
         result: run.result ?? null,
         error: run.error ?? null,
         openclawRunId: run.openclawRunId ?? null,
+        checkpointRef: run.checkpointRef ?? null,
         completedAt: run.completedAt ?? null,
       });
   }
@@ -593,7 +594,8 @@ export class CapsuleRepositories {
     this.db.sqlite
       .prepare(
         `UPDATE runs SET status = @status, result = @result, error = @error,
-         openclaw_run_id = @openclawRunId, updated_at = @updatedAt, completed_at = @completedAt,
+         openclaw_run_id = @openclawRunId, checkpoint_ref = @checkpointRef,
+         updated_at = @updatedAt, completed_at = @completedAt,
          contract_id = @contractId WHERE id = @id`,
       )
       .run({
@@ -602,6 +604,7 @@ export class CapsuleRepositories {
         result: run.result ?? null,
         error: run.error ?? null,
         openclawRunId: run.openclawRunId ?? null,
+        checkpointRef: run.checkpointRef ?? null,
         updatedAt: run.updatedAt,
         completedAt: run.completedAt ?? null,
         contractId: run.contractId ?? null,
@@ -616,11 +619,13 @@ export class CapsuleRepositories {
     const sql = sessionId
       ? `SELECT id, session_id AS sessionId, project_id AS projectId, agent_id AS agentId,
                 skill_id AS skillId, contract_id AS contractId, status, prompt, result, error,
-                openclaw_run_id AS openclawRunId, created_at AS createdAt, updated_at AS updatedAt,
+                openclaw_run_id AS openclawRunId, checkpoint_ref AS checkpointRef,
+                created_at AS createdAt, updated_at AS updatedAt,
                 completed_at AS completedAt FROM runs WHERE session_id = ? ORDER BY created_at DESC`
       : `SELECT id, session_id AS sessionId, project_id AS projectId, agent_id AS agentId,
                 skill_id AS skillId, contract_id AS contractId, status, prompt, result, error,
-                openclaw_run_id AS openclawRunId, created_at AS createdAt, updated_at AS updatedAt,
+                openclaw_run_id AS openclawRunId, checkpoint_ref AS checkpointRef,
+                created_at AS createdAt, updated_at AS updatedAt,
                 completed_at AS completedAt FROM runs ORDER BY created_at DESC`;
     return (sessionId
       ? this.db.sqlite.prepare(sql).all(sessionId)

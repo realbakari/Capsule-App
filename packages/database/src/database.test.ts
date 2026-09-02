@@ -162,3 +162,51 @@ describe("message pagination", () => {
     db.close();
   });
 });
+
+describe("a run's checkpoint", () => {
+  it("survives being read back", () => {
+    // It used to be set on the object and never written to a column, so
+    // "what changed in this turn" and "restore this turn" always found
+    // nothing — the capture ran on every turn for an answer no one could read.
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-run-checkpoint-"));
+    const db = new CapsuleDatabase(path.join(dir, "capsule.sqlite"));
+    const repos = new CapsuleRepositories(db);
+    const now = new Date().toISOString();
+    repos.insertWorkspace({ id: "ws_1", name: "Local", createdAt: now, updatedAt: now });
+    repos.insertProject({
+      id: "p1",
+      workspaceId: "ws_1",
+      name: "P",
+      defaultSkillIds: [],
+      defaultMode: "chat",
+      createdAt: now,
+      updatedAt: now,
+    } as never);
+    repos.insertSession({
+      id: "s1",
+      workspaceId: "ws_1",
+      projectId: "p1",
+      title: "T",
+      mode: "chat",
+      agentId: "general",
+      state: "active",
+      createdAt: now,
+      updatedAt: now,
+    } as never);
+    const run = {
+      id: "r1",
+      sessionId: "s1",
+      projectId: "p1",
+      agentId: "general",
+      status: "completed",
+      prompt: "hi",
+      createdAt: now,
+      updatedAt: now,
+    };
+    repos.insertRun(run as never);
+    expect(repos.getRun("r1")?.checkpointRef).toBeFalsy();
+
+    repos.updateRun({ ...run, checkpointRef: "refs/capsule/checkpoints/s1/turn/1" } as never);
+    expect(repos.getRun("r1")?.checkpointRef).toBe("refs/capsule/checkpoints/s1/turn/1");
+  });
+});

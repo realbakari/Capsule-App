@@ -21,9 +21,28 @@ function run(
   };
 }
 
+/*
+ * Whether `gh` exists, asked once.
+ *
+ * enrichGitStatus runs on every git refresh and this spawned a process each
+ * time to ask a question whose answer is fixed for the life of the app.
+ */
+let ghPresent: boolean | undefined;
+
+const pullRequestCache = new Map<string, { value?: GitPullRequest; at: number }>();
+
 export function ghAvailable(): boolean {
-  const result = spawnSync("gh", ["--version"], { encoding: "utf8", timeout: 1500 });
-  return result.status === 0;
+  if (ghPresent === undefined) {
+    const result = spawnSync("gh", ["--version"], { encoding: "utf8", timeout: 1500 });
+    ghPresent = result.status === 0;
+  }
+  return ghPresent;
+}
+
+/** Forgets the cached answer, for a Doctor run that re-checks the environment. */
+export function clearGhCache(): void {
+  ghPresent = undefined;
+  pullRequestCache.clear();
 }
 
 export function pushArgs(forceWithLease: boolean): string[] {
@@ -320,6 +339,49 @@ export function viewPullRequest(cwd: string): GitPullRequest | undefined {
   }
 }
 
+/*
+ * The pull request for a checkout, as last known.
+ *
+ * `gh pr view` asks GitHub over the network and takes about a second on a busy
+ * repository. enrichGitStatus is called on every git refresh, and it ran that
+ * synchronously — so every refresh blocked the Electron main process, and with
+ * it every other IPC call, on a network round trip. The answer is served from
+ * the last reading and refreshed behind it.
+ */
+const PR_CACHE_TTL_MS = 30_000;
+
+const pullRequestInFlight = new Set<string>();
+let onPullRequestSettled: (() => void) | undefined;
+
+/** Called when a background lookup changes the answer, so the UI can catch up. */
+export function setPullRequestListener(listener: (() => void) | undefined): void {
+  onPullRequestSettled = listener;
+}
+
+function cachedPullRequest(cwd: string): GitPullRequest | undefined {
+  const cached = pullRequestCache.get(cwd);
+  if (cached && Date.now() - cached.at < PR_CACHE_TTL_MS) return cached.value;
+  if (!pullRequestInFlight.has(cwd)) {
+    pullRequestInFlight.add(cwd);
+    // setImmediate, not a worker: the spawn itself is what has to leave the
+    // current tick. The call still blocks, but nothing is waiting on it.
+    setImmediate(() => {
+      let next: GitPullRequest | undefined;
+      try {
+        next = viewPullRequest(cwd);
+      } finally {
+        pullRequestInFlight.delete(cwd);
+      }
+      const previous = pullRequestCache.get(cwd)?.value;
+      pullRequestCache.set(cwd, { value: next, at: Date.now() });
+      if (previous?.number !== next?.number || previous?.state !== next?.state) {
+        onPullRequestSettled?.();
+      }
+    });
+  }
+  return cached?.value;
+}
+
 export function enrichGitStatus(status: GitStatus, cwd?: string): GitStatus {
   if (!status.isRepo || !cwd) return { ...status, ghAvailable: false };
   const available = ghAvailable();
@@ -330,7 +392,7 @@ export function enrichGitStatus(status: GitStatus, cwd?: string): GitStatus {
     ghAvailable: available,
     ahead: ahead.ok ? Number.parseInt(ahead.stdout.trim(), 10) || 0 : undefined,
     behind: behind.ok ? Number.parseInt(behind.stdout.trim(), 10) || 0 : undefined,
-    pullRequest: available ? viewPullRequest(cwd) : undefined,
+    pullRequest: available ? cachedPullRequest(cwd) : undefined,
   };
 }
 

@@ -35,7 +35,9 @@ import {
   detectSourceControlTools,
   diffCheckpoints,
   discardFile,
+  clearGhCache,
   enrichGitStatus,
+  setPullRequestListener,
   FilesystemAdapter,
   initializeRepository,
   lastCommitSubject,
@@ -256,6 +258,9 @@ export class CapsuleEngine {
     setLoginStateListener(() => {
       if (!this.stopped) this.events.emit("state", { command: "harness-updated" });
     });
+    setPullRequestListener(() => {
+      if (!this.stopped) this.events.emit("state", { command: "git-updated" });
+    });
     this.bootstrapWorkspace();
     this.loadSettings();
     this.bindInboxToProjectless();
@@ -277,6 +282,7 @@ export class CapsuleEngine {
     // promise, which surfaces as an unhandled rejection with no run to blame.
     this.stopped = true;
     setLoginStateListener(undefined);
+    setPullRequestListener(undefined);
     this.stopAllPrWatch();
     for (const process of this.actionProcesses.values()) process.stop();
     this.actionProcesses.clear();
@@ -459,6 +465,7 @@ export class CapsuleEngine {
     // or signed into — since launch is picked up.
     clearBinaryCache();
     clearLoginCache();
+    clearGhCache();
     this.forgetAcpxState();
     const acpxEnabled = await this.acpxEnabled();
     const binaryPath = whichBinary(preset.binaries);
@@ -2389,16 +2396,28 @@ export class CapsuleEngine {
   private captureTurnCheckpoint(run: Run, session: Session): void {
     const cwd = session.workingDirectory ?? this.repos.getProject(session.projectId)?.workingDirectory;
     if (!cwd) return;
-    try {
-      const turn = this.repos.listRuns(session.id).length;
-      const ref = checkpointRef(session.id, turn);
-      const result = captureCheckpoint(cwd, ref);
-      if (!result.ok) return;
-      run.checkpointRef = ref;
-      this.repos.updateRun(run);
-    } catch {
-      // A checkpoint is a convenience; losing one is not worth losing the turn.
-    }
+    const turn = this.repos.listRuns(session.id).length;
+    const ref = checkpointRef(session.id, turn);
+    /*
+     * Off this tick. `git add -A` against a fresh index reads the whole
+     * worktree — three seconds on a large repository — and it ran inline at
+     * the end of every turn, freezing the window and every queued IPC call
+     * for that long just as the answer arrived.
+     */
+    setImmediate(() => {
+      if (this.stopped) return;
+      try {
+        const result = captureCheckpoint(cwd, ref);
+        if (!result.ok) return;
+        const stored = this.repos.getRun(run.id);
+        if (!stored) return;
+        stored.checkpointRef = ref;
+        this.repos.updateRun(stored);
+        this.events.emit("run", stored);
+      } catch {
+        // A checkpoint is a convenience; losing one is not worth a crash.
+      }
+    });
   }
 
   /**

@@ -770,3 +770,45 @@ describe("one harness listing per tick", () => {
     await engine.stop();
   });
 });
+
+describe("the turn checkpoint", () => {
+  it("is scheduled after the turn rather than run inside it", async () => {
+    // `git add -A` against a fresh index reads the whole worktree — three
+    // seconds on a large repository — and it used to run inline as a turn
+    // finished, freezing the window just as the answer arrived.
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-checkpoint-"));
+    const repo = path.join(dir, "repo");
+    mkdirSync(repo, { recursive: true });
+    execFileSync("git", ["init", "-q"], { cwd: repo });
+    execFileSync("git", ["config", "user.email", "t@example.com"], { cwd: repo });
+    execFileSync("git", ["config", "user.name", "T"], { cwd: repo });
+    writeFileSync(path.join(repo, "README.md"), "hello\n");
+
+    const engine = new CapsuleEngine({
+      databasePath: path.join(dir, "capsule.sqlite"),
+      userDataDir: dir,
+      autoConnect: false,
+    });
+    await engine.start();
+    const project = engine.createProject({ name: "Repo", workingDirectory: repo });
+    const session = await engine.createSession({
+      projectId: project.id,
+      title: "Turn",
+      mode: "chat",
+      agentId: "general",
+    });
+    const { run } = await engine.sendMessage({ sessionId: session.id, content: "hi" });
+    await waitForRun(engine, run.id);
+
+    const capture = (engine as unknown as {
+      captureTurnCheckpoint: (run: unknown, session: unknown) => void;
+    }).captureTurnCheckpoint.bind(engine);
+    const stored = engine.getRun(run.id)!;
+    capture(stored, session);
+    expect(engine.getRun(run.id)?.checkpointRef).toBeFalsy();
+
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    expect(engine.getRun(run.id)?.checkpointRef).toMatch(/^refs\/capsule\/checkpoints\//);
+    await engine.stop();
+  });
+});

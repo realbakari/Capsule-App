@@ -294,4 +294,14 @@ export const MIGRATIONS: Array<{ version: number; sql: string }> = [
       ALTER TABLE projects ADD COLUMN default_workspace_mode TEXT;
     `,
   },
+  {
+    version: 11,
+    sql: `
+      -- The git ref holding what the worktree looked like when this turn
+      -- finished. It was captured on every turn and then dropped on the floor:
+      -- nothing wrote it down, so "what changed in this turn" and "restore
+      -- this turn" had nothing to read.
+      ALTER TABLE runs ADD COLUMN checkpoint_ref TEXT;
+    `,
+  },
 ];

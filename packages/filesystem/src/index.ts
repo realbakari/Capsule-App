@@ -28,10 +28,12 @@ export {
   stageFile,
 } from "./git.js";
 export {
+  clearGhCache,
   createPullRequest,
   createPullRequestArgs,
   enrichGitStatus,
   ghAvailable,
+  setPullRequestListener,
   lastCommitSubject,
   listPullRequests,
   parsePullRequestDetail,
