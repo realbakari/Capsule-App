@@ -10,7 +10,8 @@ import {
   isLiveHarnessState,
   localDoctorChecks,
   PRESET_HARNESSES,
-  probeLoginState,
+  probeLoginStateNow,
+  setLoginStateListener,
   presetFor,
   probeHarnesses,
   whichBinary,
@@ -249,6 +250,12 @@ export class CapsuleEngine {
   }
 
   async start(): Promise<void> {
+    // A background sign-in probe that lands with a different answer has to
+    // reach the UI, or the harness list stays wrong until something else
+    // happens to refresh it.
+    setLoginStateListener(() => {
+      if (!this.stopped) this.events.emit("state", { command: "harness-updated" });
+    });
     this.bootstrapWorkspace();
     this.loadSettings();
     this.bindInboxToProjectless();
@@ -269,6 +276,7 @@ export class CapsuleEngine {
     // than throwing "The database connection is not open" from a detached
     // promise, which surfaces as an unhandled rejection with no run to blame.
     this.stopped = true;
+    setLoginStateListener(undefined);
     this.stopAllPrWatch();
     for (const process of this.actionProcesses.values()) process.stop();
     this.actionProcesses.clear();
@@ -373,7 +381,51 @@ export class CapsuleEngine {
     return [...base, ...extra];
   }
 
+  /*
+   * One listing per tick, however many callers ask.
+   *
+   * A refresh asks for the agent list and the harness list together, and the
+   * agent list is derived from the harness list — so every refresh probed all
+   * nineteen presets and asked the Gateway about acpx twice over, for one
+   * answer.
+   */
+  private harnessListingInFlight: Promise<HarnessStatus[]> | undefined;
+
+  /*
+   * Whether acpx is installed, remembered for a while.
+   *
+   * Asking costs three Gateway round trips — health, the whole config, and the
+   * plugin list — and the config read validates every plugin's schema. The
+   * answer changes when someone installs a plugin, not between two frames of a
+   * streaming turn, and Capsule clears this itself when it writes that config.
+   */
+  private acpxEnabledCache: { value: boolean; at: number } | undefined;
+
+  private static readonly ACPX_CACHE_TTL_MS = 30_000;
+
+  private async acpxEnabled(): Promise<boolean> {
+    if (this.usingMock) return false;
+    const cached = this.acpxEnabledCache;
+    if (cached && Date.now() - cached.at < CapsuleEngine.ACPX_CACHE_TTL_MS) return cached.value;
+    const value = await this.openclaw.hasAcpxPlugin().catch(() => false);
+    this.acpxEnabledCache = { value, at: Date.now() };
+    return value;
+  }
+
+  private forgetAcpxState(): void {
+    this.acpxEnabledCache = undefined;
+  }
+
   async listHarnesses(): Promise<HarnessStatus[]> {
+    if (this.harnessListingInFlight) return this.harnessListingInFlight;
+    const listing = this.readHarnesses().finally(() => {
+      this.harnessListingInFlight = undefined;
+    });
+    this.harnessListingInFlight = listing;
+    return listing;
+  }
+
+  private async readHarnesses(): Promise<HarnessStatus[]> {
     const dedicatedByHarness: Record<string, string[]> = Object.fromEntries(
       PRESET_HARNESSES.map((preset) => [preset.id, [] as string[]]),
     );
@@ -391,10 +443,7 @@ export class CapsuleEngine {
         liveByHarness[harnessId]?.push(session.id);
       }
     }
-    let acpxEnabled = false;
-    if (!this.usingMock) {
-      acpxEnabled = await this.openclaw.hasAcpxPlugin().catch(() => false);
-    }
+    const acpxEnabled = await this.acpxEnabled();
     return probeHarnesses({
       gatewayConnected: !this.usingMock,
       acpxEnabled,
@@ -406,14 +455,12 @@ export class CapsuleEngine {
   async doctorHarness(harnessId: HarnessId): Promise<HarnessDoctorReport> {
     const preset = presetFor(harnessId);
     if (!preset) throw new Error(`Unknown harness: ${harnessId}`);
-    let acpxEnabled = false;
-    if (!this.usingMock) {
-      acpxEnabled = await this.openclaw.hasAcpxPlugin().catch(() => false);
-    }
     // Explicit environment re-check: drop cached lookups so a CLI installed —
     // or signed into — since launch is picked up.
     clearBinaryCache();
     clearLoginCache();
+    this.forgetAcpxState();
+    const acpxEnabled = await this.acpxEnabled();
     const binaryPath = whichBinary(preset.binaries);
     let acpxPermissionModeValue: string | undefined;
     let acpxPolicyKnown = false;
@@ -446,7 +493,7 @@ export class CapsuleEngine {
       binaryPath,
       gatewayConnected: !this.usingMock,
       acpxEnabled,
-      loginState: this.usingMock ? undefined : probeLoginState(preset, binaryPath),
+      loginState: this.usingMock ? undefined : probeLoginStateNow(preset, binaryPath),
       acpxPermissionMode: acpxPermissionModeValue,
       acpxPolicyKnown,
       acpxAgentConfigured,
@@ -520,13 +567,14 @@ export class CapsuleEngine {
           preset.openclawAgentId,
           preset.acpxCommand,
         );
+        if (configured.applied) this.forgetAcpxState();
         if (!configured.already && !configured.applied) {
           throw new Error(
             `Could not register ${preset.name}'s ACP command with OpenClaw: ${configured.error ?? "Gateway rejected the acpx agent configuration."}`,
           );
         }
       }
-      const loginState = probeLoginState(preset, whichBinary(preset.binaries));
+      const loginState = probeLoginStateNow(preset, whichBinary(preset.binaries));
       if (loginState === "logged_out") {
         throw new Error(
           `${preset.name} is installed but not signed in. ${preset.loginHint ?? "Sign in to its CLI"} on the Gateway host, then run Doctor.`,
@@ -1878,6 +1926,8 @@ export class CapsuleEngine {
    * invented replies that looked exactly like real ones.
    */
   private async connectPreferredRuntime(): Promise<void> {
+    // A new connection may be a different Gateway with different plugins.
+    this.forgetAcpxState();
     if (this.options.autoConnect === false) {
       await this.mock.connect();
       this.runtime = this.mock;

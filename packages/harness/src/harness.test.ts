@@ -10,6 +10,7 @@ import {
   describeReadiness,
   isLiveHarnessState,
   parseAcpStatus,
+  probeLoginState,
   PRESET_HARNESSES,
 } from "./index.js";
 
@@ -174,5 +175,24 @@ describe("harness catalog", () => {
         { modelId: "grok-fast", name: "Grok Fast" },
       ],
     });
+  });
+});
+
+describe("listing never waits for a sign-in probe", () => {
+  it("answers from the cache and leaves the spawn to the background", () => {
+    // The regression: `claude auth status` and `codex login status` ran inside
+    // the listing, so once a minute a refresh blocked the main process — and
+    // every other IPC call behind it — for over a second.
+    const preset = PRESET_HARNESSES.find((item) => item.id === "claude")!;
+    expect(preset.loginProbeArgs).toBeDefined();
+    const started = Date.now();
+    probeLoginState(preset, "/nonexistent/claude");
+    expect(Date.now() - started).toBeLessThan(50);
+    // And the blocking variant is a different function, kept for the gate.
+  });
+
+  it("says nothing at all for a harness with no probe to run", () => {
+    const preset = PRESET_HARNESSES.find((item) => item.id === "gemini-flash")!;
+    expect(probeLoginState(preset, "/usr/bin/gemini")).toBeUndefined();
   });
 });

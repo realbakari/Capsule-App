@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -202,12 +202,15 @@ export function clearLoginCache(): void {
 }
 
 /**
- * Runs a preset's login probe, cached briefly. probeHarnesses runs on every
- * refresh, and refresh fires on every connection/run/approval event, so an
- * uncached spawn here would be the same main-process stall that whichBinary
- * used to cause.
+ * Runs a preset's login probe and waits for the answer.
+ *
+ * Only for the moment a wrong answer costs something: the gate before a spawn,
+ * and Doctor. Listing harnesses must not call this — see `probeLoginState`.
  */
-export function probeLoginState(preset: HarnessPreset, binaryPath?: string): HarnessLoginState | undefined {
+export function probeLoginStateNow(
+  preset: HarnessPreset,
+  binaryPath?: string,
+): HarnessLoginState | undefined {
   if (!preset.loginProbeArgs || !binaryPath) return undefined;
   const key = `${preset.id}:${binaryPath}`;
   const cached = loginStateCache.get(key);
@@ -231,6 +234,63 @@ export function probeLoginState(preset: HarnessPreset, binaryPath?: string): Har
   }
   loginStateCache.set(key, { state, at: Date.now() });
   return state;
+}
+
+const inFlightProbes = new Set<string>();
+let onLoginStateSettled: (() => void) | undefined;
+
+/** Called when a background probe changes an answer, so the UI can catch up. */
+export function setLoginStateListener(listener: (() => void) | undefined): void {
+  onLoginStateSettled = listener;
+}
+
+function refreshLoginStateInBackground(preset: HarnessPreset, binaryPath: string, key: string): void {
+  if (inFlightProbes.has(key)) return;
+  inFlightProbes.add(key);
+  const previous = loginStateCache.get(key)?.state;
+  const child = spawn(binaryPath, preset.loginProbeArgs ?? [], { stdio: ["ignore", "pipe", "pipe"] });
+  let stdout = "";
+  let stderr = "";
+  let settled = false;
+  const timer = setTimeout(() => child.kill(), LOGIN_PROBE_TIMEOUT_MS);
+  child.stdout?.on("data", (chunk: Buffer) => {
+    stdout += chunk.toString();
+  });
+  child.stderr?.on("data", (chunk: Buffer) => {
+    stderr += chunk.toString();
+  });
+  const finish = (state: HarnessLoginState) => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(timer);
+    inFlightProbes.delete(key);
+    loginStateCache.set(key, { state, at: Date.now() });
+    if (state !== previous) onLoginStateSettled?.();
+  };
+  child.on("error", () => finish("unknown"));
+  child.on("close", (code) => {
+    finish(classifyLoginProbe({ ok: code === 0, stdout, stderr, spawnFailed: code === null }));
+  });
+}
+
+/**
+ * A preset's sign-in state as last known, never waiting for the answer.
+ *
+ * probeHarnesses runs on every refresh and refresh fires on every
+ * connection/run/approval event, so this used to spawn `claude auth status`
+ * and `codex login status` once a minute and block the Electron main process
+ * — and with it every other IPC call — for over a second while they answered.
+ * The probe now runs in the background and the listener re-renders when it
+ * lands; a caller that must have the real answer asks `probeLoginStateNow`.
+ */
+export function probeLoginState(preset: HarnessPreset, binaryPath?: string): HarnessLoginState | undefined {
+  if (!preset.loginProbeArgs || !binaryPath) return undefined;
+  const key = `${preset.id}:${binaryPath}`;
+  const cached = loginStateCache.get(key);
+  if (cached && Date.now() - cached.at < LOGIN_CACHE_TTL_MS) return cached.state;
+  if (process.env.VITEST) return cached?.state;
+  refreshLoginStateInBackground(preset, binaryPath, key);
+  return cached?.state;
 }
 
 export function describeReadiness(input: {

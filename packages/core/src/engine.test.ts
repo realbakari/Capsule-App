@@ -747,3 +747,26 @@ describe("concurrent edits to a project file", () => {
     });
   });
 });
+
+describe("one harness listing per tick", () => {
+  it("does not probe twice when the agent list and the harness list are asked together", async () => {
+    // A refresh asks for both, and the agent list is derived from the harness
+    // list — so every refresh paid for the probe twice over.
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-harness-listing-"));
+    const engine = new CapsuleEngine({
+      databasePath: path.join(dir, "capsule.sqlite"),
+      userDataDir: dir,
+      autoConnect: false,
+    });
+    await engine.start();
+    let readings = 0;
+    const original = (engine as unknown as { readHarnesses: () => Promise<unknown> }).readHarnesses;
+    (engine as unknown as { readHarnesses: () => Promise<unknown> }).readHarnesses = async function counted() {
+      readings += 1;
+      return original.call(engine);
+    };
+    await Promise.all([engine.listAgents(), engine.listHarnesses()]);
+    expect(readings).toBe(1);
+    await engine.stop();
+  });
+});
