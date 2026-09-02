@@ -249,7 +249,7 @@ function terminalTheme(): Record<string, string> {
   const styles = getComputedStyle(document.documentElement);
   const read = (name: string, fallback: string) => styles.getPropertyValue(name).trim() || fallback;
   return {
-    background: read("--surface-0", "#141414"),
+    background: "#00000000",
     foreground: read("--text", "#f2f2f2"),
     cursor: read("--text", "#f2f2f2"),
     selectionBackground: read("--bg-active", "#2a2a2a"),

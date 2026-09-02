@@ -43,6 +43,7 @@ import {
 
 import type { SettingsSectionId } from "../features/settings/settings-search";
 import { commandForEvent, parseChord, type Keymap } from "./keybindings";
+import { formatUserError } from "./errors";
 import { latestContextUsage, type ContextUsage } from "./context-window";
 import { harnessPreflightReason } from "./harness-preflight";
 import {
@@ -174,6 +175,7 @@ export interface WorkspaceValue {
   newProjectName: string;
   diagnostics: string;
   notice?: string;
+  setNotice: (value: string | undefined) => void;
   steerDraft: string;
   statusText?: string;
   project?: Project;
@@ -570,7 +572,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("Failed to load Capsule state", error);
-      setNotice(error instanceof Error ? error.message : String(error));
+      setNotice(formatUserError(error));
     }
   }, [agentId, api, projectId, sessionId]);
 
@@ -850,7 +852,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         throw error;
       }
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(error));
+      setNotice(formatUserError(error));
     } finally {
       setBusy(false);
     }
@@ -885,7 +887,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       setNotice(undefined);
       await refresh();
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(error));
+      setNotice(formatUserError(error));
     }
   }
 
@@ -917,7 +919,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       }
       setView("chat");
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(error));
+      setNotice(formatUserError(error));
     }
   }
 
@@ -937,7 +939,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       });
       setNotice(undefined);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(error));
+      setNotice(formatUserError(error));
     }
   }
 
@@ -1009,7 +1011,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       setView("chat");
       await refresh();
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(error));
+      setNotice(formatUserError(error));
     }
   }
 
@@ -1022,7 +1024,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       setView("chat");
       await refresh();
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(error));
+      setNotice(formatUserError(error));
       throw error;
     }
   }
@@ -1056,7 +1058,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       await applyFolderPatch(id, addFolderToProject(current, directory));
       setView("chat");
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(error));
+      setNotice(formatUserError(error));
     }
   }
 
@@ -1141,7 +1143,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       }
       await api.openTerminal(projectId, sessionId);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(error));
+      setNotice(formatUserError(error));
     }
   }
 
@@ -1161,7 +1163,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       setGit(next);
       setNotice("Git initialized. Create the first commit before using worktree conversations.");
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(error));
+      setNotice(formatUserError(error));
     }
   }
 
@@ -1172,7 +1174,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       setNotice(undefined);
       await refresh();
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(error));
+      setNotice(formatUserError(error));
     }
   }
 
@@ -1186,7 +1188,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       await refresh();
     } catch (error) {
       setWorkspaceModeState(previous);
-      setNotice(error instanceof Error ? error.message : String(error));
+      setNotice(formatUserError(error));
     }
   }
 
@@ -1228,7 +1230,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       if (result.usedSlashCommand === false && result.detail) setNotice(result.detail);
       await refresh();
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(error));
+      setNotice(formatUserError(error));
     } finally {
       setBusy(false);
     }
@@ -1259,7 +1261,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         );
       }
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(error));
+      setNotice(formatUserError(error));
     }
   }
 
@@ -1346,7 +1348,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       const next = await api.checkoutBranch(projectId, branch, sessionId);
       setGit(next);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(error));
+      setNotice(formatUserError(error));
     }
   }
 
@@ -1371,7 +1373,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     try {
       setGit(await api.gitCommit(projectId, message, sessionId));
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(error));
+      setNotice(formatUserError(error));
     }
   }
 
@@ -1380,7 +1382,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     try {
       setGit(await api.gitStage(projectId, relative, sessionId));
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(error));
+      setNotice(formatUserError(error));
     }
   }
 
@@ -1405,7 +1407,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     try {
       setGit(await api.gitCreateBranch(projectId, branch, sessionId));
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(error));
+      setNotice(formatUserError(error));
     }
   }
 
@@ -1414,7 +1416,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     try {
       setGit(await api.gitPush(projectId, sessionId));
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(error));
+      setNotice(formatUserError(error));
     }
   }
 
@@ -1428,7 +1430,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         }),
       );
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(error));
+      setNotice(formatUserError(error));
     }
   }
 
@@ -1437,7 +1439,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     try {
       setGit(await api.gitMergePullRequest(projectId, sessionId));
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(error));
+      setNotice(formatUserError(error));
     }
   }
 
@@ -1546,6 +1548,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       newProjectName,
       diagnostics,
       notice,
+      setNotice,
       steerDraft,
       statusText,
       project,
@@ -1689,6 +1692,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       newProjectName,
       diagnostics,
       notice,
+      setNotice,
       steerDraft,
       statusText,
       project,

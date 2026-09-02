@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChatMessage } from "@capsule/shared";
-import { CopyIcon, DiffIcon, FileIcon, SparkIcon, TerminalIcon } from "../shell/icons";
+import { CopyIcon, DiffIcon, FileIcon, SparkIcon, TerminalIcon, XIcon } from "../shell/icons";
 import { useWorkspace } from "../../lib/workspace";
 import { GatewayBanner } from "../shell/GatewayBanner";
 import { ViewErrorBoundary } from "../shell/ErrorBoundary";
@@ -173,6 +173,7 @@ export function Conversation() {
     pendingApproval,
     api,
     notice,
+    setNotice,
     statusText,
     createTask,
     createProjectFromFolder,
@@ -244,7 +245,20 @@ export function Conversation() {
 
   return (
     <section className={`main page-content${messages.length === 0 ? " conversation-empty" : ""}`}>
-      {notice && <div className="notice">{notice}</div>}
+      {notice && (
+        <div className="notice notice-dismissable" role="status">
+          <span>{notice}</span>
+          <button
+            type="button"
+            className="icon-btn"
+            title="Dismiss"
+            aria-label="Dismiss"
+            onClick={() => setNotice(undefined)}
+          >
+            <XIcon size={12} />
+          </button>
+        </div>
+      )}
       {statusText && <div className="notice status">{statusText}</div>}
       {!connected && (
         <GatewayBanner inset />

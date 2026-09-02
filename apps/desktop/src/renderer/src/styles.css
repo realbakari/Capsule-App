@@ -162,8 +162,10 @@
   gap: 0.5rem;
   flex: 1;
   min-width: 0;
+  height: 1.875rem;
+  box-sizing: border-box;
   margin: 0;
-  padding: 0.35rem 0.3rem;
+  padding: 0 0.4rem;
   border: 1px solid transparent;
   border-radius: 0.4rem;
   color: var(--text-faint);
@@ -182,8 +184,13 @@
   flex-shrink: 0;
 }
 .search-clear {
-  width: 1.25rem;
-  height: 1.25rem;
+  width: 1.25rem !important;
+  height: 1.25rem !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
 }
 .sidebar-search input,
 .sidebar-search input[type="search"] {
@@ -1816,9 +1823,9 @@ select:focus,
 .palette-backdrop {
   position: fixed;
   inset: 0;
-  background: color-mix(in srgb, var(--bg, #000) 64%, transparent);
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
+  background: rgba(0, 0, 0, 0.45);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
   display: grid;
   place-items: start center;
   padding-top: 16vh;
@@ -1829,11 +1836,11 @@ select:focus,
   padding-top: 0;
 }
 .palette {
-  width: min(32rem, calc(100vw - 2.5rem));
-  background: var(--surface-0, #141416);
-  border: 1px solid var(--border-color);
-  border-radius: 0.625rem;
-  box-shadow: var(--shadow);
+  width: min(32rem, calc(100vw - 2rem));
+  background: #161619;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.75rem;
+  box-shadow: 0 20px 48px -10px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.08);
   overflow: hidden;
 }
 .palette input {
@@ -3183,11 +3190,11 @@ select:focus,
 }
 
 .dialog {
-  width: min(28rem, calc(100vw - 2.5rem));
-  background: var(--surface-0, #101012);
+  width: min(32rem, calc(100vw - 2rem));
+  background: #161619;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 0.75rem;
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.08), 0 24px 72px -20px rgba(0, 0, 0, 0.9);
+  box-shadow: 0 20px 48px -10px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.08);
   padding: 1.35rem 1.45rem 1.25rem;
 }
 .dialog-header {
@@ -3239,7 +3246,7 @@ select:focus,
 .clone-repository-dialog {
   display: grid;
   gap: 0.95rem;
-  width: min(30rem, calc(100vw - 2.5rem));
+  width: min(32rem, calc(100vw - 2rem));
 }
 .clone-repository-dialog h3,
 .clone-repository-dialog > p { margin: 0; }
@@ -3256,7 +3263,7 @@ select:focus,
   font-size: 0.75rem;
 }
 .clone-repository-dialog input[type="text"] {
-  background: #08080a;
+  background: #0d0d0f;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 0.375rem;
   padding: 0.55rem 0.75rem;
@@ -3274,8 +3281,8 @@ select:focus,
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: #0d0d0f;
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 0.375rem;
   padding: 0.55rem 0.75rem;
   min-width: 0;
@@ -3309,7 +3316,7 @@ select:focus,
   margin-top: 0.5rem;
 }
 .dialog .actions button.ghost {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.08);
   color: var(--text, #ffffff);
   border-radius: 0.375rem;
@@ -3317,10 +3324,11 @@ select:focus,
   font-size: 0.8125rem;
   font-weight: 500;
   cursor: pointer;
-  transition: background 120ms ease;
+  transition: background 120ms ease, border-color 120ms ease;
 }
 .dialog .actions button.ghost:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.12);
 }
 .dialog .actions button.send {
   background: #3b82f6;
@@ -7385,7 +7393,7 @@ details.card > summary {
   min-height: 0;
   flex-shrink: 0;
   border-top: 1px solid var(--border-color);
-  background: var(--surface-0);
+  background: var(--base);
 }
 .terminal-dock-rail {
   position: absolute;
@@ -7402,6 +7410,7 @@ details.card > summary {
   gap: 0.2rem;
   padding: 0.25rem 0.4rem;
   border-bottom: 1px solid var(--border-color);
+  background: var(--bg-sidebar);
   flex-shrink: 0;
 }
 .terminal-tab {
@@ -7462,6 +7471,7 @@ details.card > summary {
   flex: 1;
   min-height: 0;
   padding: 0.35rem 0.5rem 0.5rem;
+  background: var(--base);
 }
 .terminal-pane {
   position: absolute;
@@ -7469,10 +7479,13 @@ details.card > summary {
   /* Hidden rather than unmounted: disposing an xterm loses the scrollback and
      kills whatever is running in it. */
   visibility: hidden;
+  background: transparent;
 }
 .terminal-pane.active {
   visibility: visible;
 }
+.terminal-pane .xterm,
+.terminal-pane .xterm-screen,
 .terminal-pane .xterm-viewport {
   background: transparent !important;
   scrollbar-width: thin;

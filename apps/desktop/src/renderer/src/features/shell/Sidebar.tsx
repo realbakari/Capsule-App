@@ -526,7 +526,7 @@ export function Sidebar() {
             {settingsQuery ? (
               <button
                 type="button"
-                className="icon-btn"
+                className="icon-btn search-clear"
                 aria-label="Clear search"
                 onClick={() => setSettingsQuery("")}
               >
