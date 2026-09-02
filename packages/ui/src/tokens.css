@@ -17,7 +17,7 @@
   --inspector-min-width: 22rem;
   --inspector-max-width: 60rem;
   --chat-max: 48rem;
-  --control-radius: 0.5rem;
+  --control-radius: 0.375rem;
   --composer-radius: 22px;
   --glass-blur: 16px;
   --glass-opacity: 80%;
@@ -66,14 +66,14 @@
   --ring-offset: 2px;
 
   /* Motion: feedback → state change → composed arrival. */
-  --motion-instant: 120ms;
-  --motion-fast: 180ms;
-  --motion-standard: 240ms;
-  --motion-arrival: 500ms;
-  --motion-ease: cubic-bezier(0.25, 1, 0.5, 1);
+  --motion-instant: 100ms;
+  --motion-fast: 140ms;
+  --motion-standard: 180ms;
+  --motion-arrival: 120ms;
+  --motion-ease: cubic-bezier(0.16, 1, 0.3, 1);
   --motion-ease-arrival: cubic-bezier(0.16, 1, 0.3, 1);
-  --motion-distance-arrival: 0.75rem;
-  --motion-blur-arrival: 2px;
+  --motion-distance-arrival: 0.25rem;
+  --motion-blur-arrival: 0px;
 
   /* Typography scale. --type-scale is the user font-size preference knob;
      Cmd+/- zoom scales the root font-size (every rem), while this nudges
