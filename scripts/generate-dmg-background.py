@@ -1,45 +1,39 @@
 #!/usr/bin/env python3
 """Draw the DMG installer background.
 
-The window Finder opens for a .dmg is the first thing anyone sees of Capsule,
-and by default it is a bare grey rectangle. This paints Capsule's own dark
-surface with the same hierarchy the app uses — a letterspaced eyebrow over a
-heading — plus the arrow that says what to do with the two icons Finder places
-on top.
-
-electron-builder draws the app icon and the Applications alias itself; their
-positions are set in electron-builder.yml and the arrow here is drawn to sit
-between them. Change one and change the other.
+A clean, polished dark canvas matching Capsule's desktop aesthetic:
+- Unified deep graphite background
+- Clean centered header with crisp native macOS typography
+- Sleek vector connector arrow between Capsule and Applications
+- High-DPI @2x support for Retina displays
 """
 from __future__ import annotations
 
 from pathlib import Path
-
 from PIL import Image, ImageDraw, ImageFont
 
 WIDTH, HEIGHT = 540, 380
-# Must match dmg.contents in electron-builder.yml.
-APP_X, APP_Y = 150, 200
-LINK_X, LINK_Y = 390, 200
-# Finder centres the icon on APP_Y and writes its label underneath, so the
-# band has to clear both.
+# Must match dmg.contents in electron-builder.yml
+APP_X, APP_Y = 145, 195
+LINK_X, LINK_Y = 395, 195
 ICON_SIZE = 96
 
-BACKGROUND = (13, 13, 13)
-PANEL = (20, 20, 20)
-HAIRLINE = (44, 44, 44)
-TEXT = (236, 236, 231)
-FAINT = (122, 122, 118)
+BACKGROUND = (13, 13, 16)
+ARROW_COLOR = (90, 90, 100)
+ARROW_HEAD = (180, 180, 190)
+TEXT_PRIMARY = (245, 245, 248)
+TEXT_MUTED = (142, 142, 147)
 
-FONT_DIRS = [
-    "/System/Library/Fonts/SFCompact.ttf",
+FONT_PATHS = [
+    "/System/Library/Fonts/SFNS.ttf",
     "/System/Library/Fonts/HelveticaNeue.ttc",
-    "/System/Library/Fonts/Supplemental/Arial.ttf",
+    "/System/Library/Fonts/Helvetica.ttc",
+    "/System/Library/Fonts/SFCompact.ttf",
 ]
 
 
 def load_font(size: int, index: int = 0) -> ImageFont.FreeTypeFont:
-    for path in FONT_DIRS:
+    for path in FONT_PATHS:
         if Path(path).exists():
             try:
                 return ImageFont.truetype(path, size, index=index)
@@ -50,46 +44,58 @@ def load_font(size: int, index: int = 0) -> ImageFont.FreeTypeFont:
 
 def draw(scale: int) -> Image.Image:
     width, height = WIDTH * scale, HEIGHT * scale
-    image = Image.new("RGB", (width, height), BACKGROUND)
+    image = Image.new("RGBA", (width, height), BACKGROUND + (255,))
     canvas = ImageDraw.Draw(image)
 
-    # A slightly lighter band behind the icons, so the two drop targets read as
-    # a single row rather than floating in the dark.
-    band_top, band_bottom = 138 * scale, 278 * scale
-    canvas.rectangle([0, band_top, width, band_bottom], fill=PANEL)
-    canvas.line([(0, band_top), (width, band_top)], fill=HAIRLINE, width=scale)
-    canvas.line([(0, band_bottom), (width, band_bottom)], fill=HAIRLINE, width=scale)
+    # Centered Header Typography
+    title_font = load_font(20 * scale)
+    subtitle_font = load_font(13 * scale)
 
-    eyebrow = load_font(9 * scale)
-    heading = load_font(23 * scale)
-    caption = load_font(11 * scale)
+    title_text = "Install Capsule"
+    subtitle_text = "Drag Capsule to Applications to install"
 
-    # Eyebrow over heading, the same hierarchy the app and the site use.
-    canvas.text((36 * scale, 40 * scale), "C A P S U L E", font=eyebrow, fill=FAINT)
-    canvas.text((36 * scale, 58 * scale), "Install", font=heading, fill=TEXT)
-
-    # Dashed arrow between the two icon positions, clear of both.
-    y = APP_Y * scale
-    start = (APP_X + 52) * scale
-    end = (LINK_X - 52) * scale
-    dash, gap = 6 * scale, 5 * scale
-    x = start
-    while x < end - dash:
-        canvas.line([(x, y), (min(x + dash, end - dash), y)], fill=HAIRLINE, width=max(1, scale))
-        x += dash + gap
-    head = 5 * scale
-    canvas.polygon(
-        [(end, y), (end - head, y - head), (end - head, y + head)],
-        fill=HAIRLINE,
-    )
-
+    t_bbox = title_font.getbbox(title_text)
+    t_width = t_bbox[2] - t_bbox[0]
     canvas.text(
-        (36 * scale, 300 * scale),
-        "Drag Capsule to Applications, then open it from there.",
-        font=caption,
-        fill=FAINT,
+        ((width - t_width) // 2, 42 * scale),
+        title_text,
+        font=title_font,
+        fill=TEXT_PRIMARY,
     )
-    return image
+
+    s_bbox = subtitle_font.getbbox(subtitle_text)
+    s_width = s_bbox[2] - s_bbox[0]
+    canvas.text(
+        ((width - s_width) // 2, 70 * scale),
+        subtitle_text,
+        font=subtitle_font,
+        fill=TEXT_MUTED,
+    )
+
+    # Sleek Arrow between the two icons
+    y = APP_Y * scale
+    start_x = (APP_X + 58) * scale
+    end_x = (LINK_X - 58) * scale
+    line_width = max(2, int(2.5 * scale))
+
+    # Connector line
+    canvas.line([(start_x, y), (end_x - 6 * scale, y)], fill=ARROW_COLOR, width=line_width)
+
+    # Modern Chevron Arrowhead
+    head_len = 9 * scale
+    head_h = 7 * scale
+    arrow_points = [
+        (end_x, y),
+        (end_x - head_len, y - head_h),
+        (end_x - head_len + 3 * scale, y),
+        (end_x - head_len, y + head_h),
+    ]
+    canvas.polygon(arrow_points, fill=ARROW_HEAD)
+
+    # Convert to RGB for output
+    final_image = Image.new("RGB", (width, height), BACKGROUND)
+    final_image.paste(image, (0, 0), image)
+    return final_image
 
 
 def main() -> None:
@@ -102,3 +108,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

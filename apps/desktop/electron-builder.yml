@@ -35,10 +35,10 @@ dmg:
     height: 380
   iconSize: 96
   contents:
-    - x: 150
-      y: 200
+    - x: 145
+      y: 195
       type: file
-    - x: 390
-      y: 200
+    - x: 395
+      y: 195
       type: link
       path: /Applications
