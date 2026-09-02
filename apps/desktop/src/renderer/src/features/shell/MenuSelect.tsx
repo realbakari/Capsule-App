@@ -1,5 +1,7 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+
+import { ChevronDownIcon } from "./icons";
 
 export interface MenuOption {
   id: string;
@@ -10,6 +12,8 @@ export interface MenuOption {
    * say what either will refuse.
    */
   detail?: string;
+  /** A glyph for the row, so a list of agents is scannable by mark. */
+  icon?: ReactNode;
 }
 
 export function MenuSelect({
@@ -18,12 +22,15 @@ export function MenuSelect({
   onChange,
   ariaLabel,
   placeholder,
+  icon,
 }: {
   value: string;
   options: MenuOption[];
   onChange: (id: string) => void;
   ariaLabel: string;
   placeholder?: string;
+  /** A glyph in front of the label, for rows where the word alone is ambiguous. */
+  icon?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
@@ -77,7 +84,9 @@ export function MenuSelect({
         aria-expanded={open}
         onClick={() => setOpen((currentOpen) => !currentOpen)}
       >
+        {icon}
         <span>{current?.label ?? placeholder ?? "Select"}</span>
+        <ChevronDownIcon size={12} />
       </button>
       {open &&
         createPortal(
@@ -100,8 +109,11 @@ export function MenuSelect({
                   setOpen(false);
                 }}
               >
-                <span className="menu-option-label">{item.label}</span>
-                {item.detail && <span className="menu-option-detail">{item.detail}</span>}
+                {item.icon}
+                <span className="menu-option-text">
+                  <span className="menu-option-label">{item.label}</span>
+                  {item.detail && <span className="menu-option-detail">{item.detail}</span>}
+                </span>
               </button>
             ))}
           </div>,

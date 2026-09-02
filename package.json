@@ -18,7 +18,8 @@
     "lint": "eslint .",
     "typecheck": "tsc -b --pretty false && pnpm --filter @capsule/desktop typecheck",
     "package:mac": "pnpm --filter @capsule/desktop package:mac",
-    "icons": "python3 scripts/generate-icons.py"
+    "icons": "python3 scripts/generate-icons.py",
+    "icons:providers": "node scripts/generate-provider-icons.mjs"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -32,6 +33,7 @@
     "@eslint/js": "^9.34.0",
     "@types/node": "^24.3.0",
     "eslint": "^9.34.0",
+    "simple-icons": "^16.29.0",
     "typescript": "^5.9.2",
     "typescript-eslint": "^8.41.0",
     "vitest": "^3.2.4"
