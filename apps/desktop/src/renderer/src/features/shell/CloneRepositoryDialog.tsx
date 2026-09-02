@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { useWorkspace } from "../../lib/workspace";
 import { formatProjectRoot } from "../../lib/paths";
 
@@ -10,8 +11,8 @@ export function CloneRepositoryDialog({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
 
-  return (
-    <div className="palette-backdrop center" onClick={onClose}>
+  const modal = (
+    <div className="palette-backdrop center" onClick={onClose} role="dialog" aria-modal="true">
       <form
         className="dialog clone-repository-dialog"
         onClick={(event) => event.stopPropagation()}
@@ -54,7 +55,7 @@ export function CloneRepositoryDialog({ onClose }: { onClose: () => void }) {
         <div className="clone-destination">
           <span>
             {parentDirectory
-              ? formatProjectRoot(parentDirectory, { home: window.capsule.homeDir })
+              ? formatProjectRoot(parentDirectory, { home: window.capsule?.homeDir })
               : "Choose where the repository folder will be created."}
           </span>
           <button
@@ -81,5 +82,7 @@ export function CloneRepositoryDialog({ onClose }: { onClose: () => void }) {
       </form>
     </div>
   );
+
+  return typeof document !== "undefined" ? createPortal(modal, document.body) : modal;
 }
 
