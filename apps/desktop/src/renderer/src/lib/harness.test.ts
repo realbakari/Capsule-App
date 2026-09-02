@@ -46,7 +46,7 @@ describe("harnessReadinessLabel", () => {
 describe("agentSwitchNotice", () => {
   it("says the running session closes before the new agent starts", () => {
     expect(agentSwitchNotice({ fromName: "Claude Code", toName: "Codex", live: true })).toBe(
-      "Sending closes the Claude Code session and starts Codex for this thread.",
+      "Sending closes the Claude Code session and starts Codex.",
     );
   });
 

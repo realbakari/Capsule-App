@@ -82,5 +82,5 @@ export function agentSwitchNotice(input: {
   if (!input.live || !input.fromName || !input.toName || input.fromName === input.toName) {
     return undefined;
   }
-  return `Sending closes the ${input.fromName} session and starts ${input.toName} for this thread.`;
+  return `Sending closes the ${input.fromName} session and starts ${input.toName}.`;
 }

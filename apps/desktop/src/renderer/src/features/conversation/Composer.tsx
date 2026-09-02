@@ -467,11 +467,6 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
             </button>
           </div>
         )}
-        {switchNotice && !sendBlockReason && (
-          <div className="composer-preflight" role="status">
-            <span>{switchNotice}</span>
-          </div>
-        )}
         {harnessLive && busy && (
           <div className="steer-row">
             <input
@@ -593,6 +588,11 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
             )}
           </div>
         </div>
+        {switchNotice && !sendBlockReason && (
+          <p className="composer-switch-note" role="status">
+            {switchNotice}
+          </p>
+        )}
       </div>
       <div className="composer-context">
         <button
