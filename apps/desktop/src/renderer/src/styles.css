@@ -7657,3 +7657,27 @@ details.card > summary {
 .thread-hydrating {
   min-height: 1px;
 }
+
+/* An empty sidebar asks for the one thing it needs, in the middle of the space
+   it would otherwise leave blank. */
+.sidebar-onboarding {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 2.5rem 1rem;
+  text-align: center;
+}
+.sidebar-onboarding p {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 0.8125rem;
+}
+.sidebar-loading {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.5rem var(--sidebar-content-inset);
+}
+.sidebar-loading .skeleton-line {
+  height: 0.9rem;
+}

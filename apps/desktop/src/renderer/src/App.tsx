@@ -1,4 +1,4 @@
-import { type CSSProperties } from "react";
+import { useEffect, type CSSProperties } from "react";
 import { Conversation } from "./features/conversation/Conversation";
 import { ProjectView } from "./features/project/ProjectView";
 import { RuntimesView } from "./features/harness/RuntimesView";
@@ -18,9 +18,33 @@ import { useSidebarSwipe } from "./lib/useSidebarSwipe";
 import { WorkspaceProvider, useWorkspace } from "./lib/workspace";
 
 function Shell() {
-  const { view, inspectorOpen, sidebarCollapsed, sidebarWidth, setSidebarCollapsed, aboutOpen, setAboutOpen } = useWorkspace();
+  const {
+    view,
+    inspectorOpen,
+    ready,
+    sidebarCollapsed,
+    sidebarWidth,
+    setSidebarCollapsed,
+    aboutOpen,
+    setAboutOpen,
+  } = useWorkspace();
   useSidebarSwipe(sidebarCollapsed, setSidebarCollapsed);
   const style = { "--sidebar-width": `${sidebarWidth}px` } as CSSProperties;
+
+  /*
+   * The window is hidden until this fires. Waiting for the first paint alone
+   * revealed the workspace before it had any projects or conversations in it,
+   * so the app appeared with an empty sidebar and a blank thread and filled in
+   * afterwards. Two frames after the first render that has data: React has
+   * committed and the browser has drawn it.
+   */
+  useEffect(() => {
+    if (!ready) return;
+    const frame = requestAnimationFrame(() => {
+      requestAnimationFrame(() => void window.capsule.rendererReady?.());
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [ready]);
   return (
     <div
       className={`app ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}

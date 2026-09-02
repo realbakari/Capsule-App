@@ -39,14 +39,10 @@ createRoot(root).render(
 );
 
 /*
- * The window stays hidden until this runs. Two frames: the first is React
- * committing the tree, the second is the browser having painted it — telling
- * the main process any earlier shows the empty document again.
+ * The main process keeps the window hidden until the app says it is ready,
+ * which App does once the first load has landed. On the web there is no
+ * window to reveal.
  */
-if (isDesktop) {
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      void window.capsule.rendererReady?.();
-    });
-  });
+if (!isDesktop) {
+  // Nothing to signal: the browser is already showing the page.
 }

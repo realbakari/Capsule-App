@@ -116,6 +116,7 @@ export function Sidebar() {
     projectRuns,
     approvals,
     openPath,
+    ready,
   } = useWorkspace();
   const [menu, setMenu] = useState<MenuState>();
   const [editing, setEditing] = useState<{ kind: "project" | "session"; id: string; value: string }>();
@@ -640,11 +641,12 @@ export function Sidebar() {
       </div>
       {/* A scope row rather than a full-width button: the label says what the
           list below is showing, and the action that adds to it sits at its
-          end, where the tree's own controls already are. */}
+          end, where the tree's own controls already are. With nothing to scope
+          it says nothing — the prompt below is the whole story then. */}
       <div className={`sidebar-scope${projects.length === 0 ? " empty" : ""}`}>
         <span className="sidebar-scope-label">
-          {projects.length === 0
-            ? "No projects"
+          {!ready || projects.length === 0
+            ? ""
             : projects.length === 1
               ? projects[0]!.name
               : "All projects"}
@@ -671,10 +673,23 @@ export function Sidebar() {
         </div>
       </div>
       <div className="sidebar-scroll">
-        {/* The scope row above already says there are none. When a search is
-            what emptied the list, say that instead of repeating it. */}
-        {filteredProjects.length === 0 && needle ? (
+        {/* Loading, empty and "your search found nothing" are three different
+            things, and a bare label in the corner said none of them. */}
+        {!ready ? (
+          <div className="sidebar-loading" aria-label="Loading projects">
+            <span className="skeleton skeleton-line medium" />
+            <span className="skeleton skeleton-line short" />
+            <span className="skeleton skeleton-line medium" />
+          </div>
+        ) : filteredProjects.length === 0 && needle ? (
           <div className="sidebar-empty">No project matches “{needle}”.</div>
+        ) : projects.length === 0 ? (
+          <div className="sidebar-onboarding">
+            <p>No projects yet</p>
+            <button type="button" className="chip" onClick={() => void createProjectFromFolder()}>
+              <PlusIcon size={12} /> Add project
+            </button>
+          </div>
         ) : null}
         {filteredProjects.map((item) => {
           const threads = sessionsFor(item.id);
