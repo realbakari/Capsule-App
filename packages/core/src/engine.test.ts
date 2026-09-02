@@ -1,4 +1,5 @@
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -84,6 +85,49 @@ describe("CapsuleEngine first user flow", () => {
     expect(engine.listHarnessSessions(project.id)).toHaveLength(0);
     await engine.undedicateHarness(project.id);
     expect(engine.getProject(project.id)?.defaultAgentId).toBeUndefined();
+    await engine.stop();
+  });
+
+  it("starts the new agent's session when a live thread switches harness", async () => {
+    /*
+     * The prompt used to go to whichever session was already running while the
+     * thread relabelled itself as the agent you picked — the composer said
+     * Codex and Claude answered.
+     */
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-switch-"));
+    const engine = new CapsuleEngine({
+      databasePath: path.join(dir, "capsule.sqlite"),
+      userDataDir: dir,
+      autoConnect: false,
+    });
+    await engine.start();
+    const project = engine.createProject({ name: "Switch Workspace" });
+    const session = await engine.createSession({
+      projectId: project.id,
+      title: "Port the parser",
+      mode: "code",
+      agentId: "claude",
+    });
+    const first = await engine.sendMessage({
+      sessionId: session.id,
+      content: "Start on the parser.",
+      agentId: "claude",
+      mode: "code",
+    });
+    expect(first.session.harnessId).toBe("claude");
+    await waitForRun(engine, first.run.id);
+    const firstKey = first.session.openclawSessionKey;
+
+    const second = await engine.sendMessage({
+      sessionId: session.id,
+      content: "Keep going.",
+      agentId: "codex",
+      mode: "code",
+    });
+    expect(second.session.harnessId).toBe("codex");
+    expect(second.session.harnessState).toBe("running");
+    expect(second.session.openclawSessionKey).not.toBe(firstKey);
+    await waitForRun(engine, second.run.id);
     await engine.stop();
   });
 
@@ -203,12 +247,54 @@ describe("CapsuleEngine first user flow", () => {
     });
     const pinned = engine.pinSession(session.id, true);
     expect(pinned.pinned).toBe(true);
+    const second = await engine.createSession({ projectId: project.id, title: "Second pinned task" });
+    engine.pinSession(second.id, true);
+    engine.reorderPinnedSessions(project.id, [second.id, session.id]);
+    expect(engine.listSessions(project.id).filter((item) => item.pinned).map((item) => item.id)).toEqual([
+      second.id,
+      session.id,
+    ]);
+    expect(() => engine.reorderPinnedSessions(project.id, [session.id])).toThrow(/stale/i);
     const titled = engine.regenerateTitle(session.id);
     expect(titled.title.toLowerCase()).toContain("review");
     expect(engine.search("renderer").messages.length).toBeGreaterThan(0);
     expect(engine.searchFiles(project.id, "sqlite").length).toBeGreaterThanOrEqual(0);
     await engine.setPermissionProfile(session.id, "strict");
-    expect(engine.listSessions(project.id)[0]?.permissionProfile).toBe("strict");
+    expect(engine.listSessions(project.id).find((item) => item.id === session.id)?.permissionProfile).toBe(
+      "strict",
+    );
+    await engine.stop();
+  });
+
+  it("persists selected file attachments and accepts an attachment-only turn", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-attachments-"));
+    const attachmentPath = path.join(dir, "brief.md");
+    writeFileSync(attachmentPath, "Review the API boundaries.\n");
+    const engine = new CapsuleEngine({
+      databasePath: path.join(dir, "capsule.sqlite"),
+      userDataDir: dir,
+      autoConnect: false,
+    });
+    await engine.start();
+    const project = engine.createProject({ name: "Attachment Workspace", workingDirectory: dir });
+    const session = await engine.createSession({ projectId: project.id, title: "New conversation" });
+
+    const validated = engine.validateAttachments([{ name: "brief.md", path: attachmentPath }]);
+    const sent = await engine.sendMessage({
+      sessionId: session.id,
+      content: "",
+      mode: "chat",
+      attachments: validated,
+    });
+
+    expect(sent.userMessage.attachments).toEqual(validated);
+    expect(engine.listMessages(session.id)[0]?.attachments).toEqual(validated);
+    expect(engine.listSessions(project.id).find((item) => item.id === session.id)?.title).toContain(
+      "brief.md",
+    );
+    expect(() =>
+      engine.validateAttachments([{ name: "missing.txt", path: path.join(dir, "missing.txt") }]),
+    ).toThrow(/not found/i);
     await engine.stop();
   });
 
@@ -302,6 +388,57 @@ describe("projectless Inbox folder", () => {
     const moved = await engine.updateSettings({ projectlessFolder: path.join(dir, "loose") });
     expect(moved.projectlessFolder).toBe(path.join(dir, "loose"));
     expect(engine.getProject(inbox!.id)?.workingDirectory).toBe(path.join(dir, "loose"));
+    await engine.stop();
+  });
+});
+
+describe("project workspace tools", () => {
+  it("creates a thread worktree and runs saved actions inside it", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-project-tools-"));
+    const repository = path.join(dir, "repository");
+    mkdirSync(repository);
+    const git = (...args: string[]) =>
+      execFileSync("git", args, { cwd: repository, encoding: "utf8" });
+    git("init");
+    git("config", "user.email", "capsule@example.test");
+    git("config", "user.name", "Capsule Test");
+    writeFileSync(path.join(repository, "README.md"), "base\n");
+    git("add", "README.md");
+    git("commit", "-m", "initial");
+
+    const engine = new CapsuleEngine({
+      databasePath: path.join(dir, "capsule.sqlite"),
+      userDataDir: dir,
+      autoConnect: false,
+    });
+    await engine.start();
+    const project = engine.createProject({ name: "Tools", workingDirectory: repository });
+    engine.updateProject(project.id, {
+      actions: [{ id: "where", name: "Where", command: "pwd" }],
+    });
+    const session = await engine.createSession({
+      projectId: project.id,
+      title: "Isolated task",
+      workspaceMode: "worktree",
+    });
+    expect(session.workspaceMode).toBe("worktree");
+    expect(session.workingDirectory).not.toBe(repository);
+    expect(session.worktreeBranch).toMatch(/^capsule\//);
+    expect(engine.gitStatus(project.id, session.id).isRepo).toBe(true);
+
+    engine.runProjectAction(project.id, "where", session.id);
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      const run = engine.listProjectActionRuns(project.id, session.id)[0];
+      if (run && run.status !== "running") break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    const action = engine.listProjectActionRuns(project.id, session.id)[0];
+    expect(action?.status).toBe("completed");
+    expect(action?.output).toContain(session.workingDirectory);
+
+    const worktree = session.workingDirectory!;
+    engine.deleteSession(session.id);
+    expect(() => readFileSync(path.join(worktree, "README.md"))).toThrow();
     await engine.stop();
   });
 });

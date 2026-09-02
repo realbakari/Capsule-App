@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   SETTINGS_SEARCH_ITEMS,
@@ -24,7 +25,11 @@ describe("searchSettings", () => {
   it("finds a setting by a word that is not in its title", () => {
     // Someone looking for "dark" will not type "Theme".
     expect(searchSettings("dark").map((r) => r.title)).toContain("Theme");
-    expect(searchSettings("squash").map((r) => r.title)).toContain("Merge method");
+    // The row is called "Pull request merge method" in the panel; the point
+    // is that "squash" finds it without typing any of those words.
+    expect(searchSettings("squash").map((r) => r.title)).toContain(
+      "Pull request merge method",
+    );
   });
 
   it("is case insensitive", () => {
@@ -61,5 +66,41 @@ describe("the catalog itself", () => {
       expect(seen.has(key), `duplicate ${key}`).toBe(false);
       seen.add(key);
     }
+  });
+});
+
+describe("the catalog against the panels", () => {
+  /*
+   * The catalog is only useful if a result leads somewhere. Written from
+   * memory rather than from the panels, twelve of its thirty-nine titles named
+   * rows that do not exist — searching "Web access" jumped to a section whose
+   * row is called "Web search" — so the result looked broken rather than
+   * helpful. This reads the panels so that cannot happen again.
+   */
+  const panelSource = [
+    "SettingsView.tsx",
+    "ConfigurationSettings.tsx",
+    "AppearanceSettings.tsx",
+    "KeybindingsSettings.tsx",
+    "SourceControlTools.tsx",
+    "ProcessMonitor.tsx",
+  ]
+    .map((name) => {
+      const path = new URL(`./${name}`, import.meta.url);
+      try {
+        return readFileSync(path, "utf8");
+      } catch {
+        return "";
+      }
+    })
+    .join("\n");
+
+  it("reads the panel sources", () => {
+    expect(panelSource.length).toBeGreaterThan(1000);
+  });
+
+  it("names a row that actually exists for every searchable setting", () => {
+    const missing = SETTINGS_SEARCH_ITEMS.filter((item) => !panelSource.includes(item.title));
+    expect(missing.map((item) => `${item.section}: ${item.title}`)).toEqual([]);
   });
 });

@@ -1,19 +1,25 @@
 import { contextTone } from "../../lib/context-window";
 import { ContextWindowMeter } from "./ContextWindowMeter";
-import { harnessDisplayName } from "../../lib/harness";
+import { agentPickerDetail, agentSwitchNotice, harnessDisplayName } from "../../lib/harness";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FileEntry } from "@capsule/shared";
 import { searchProjectFiles } from "../../lib/bridge";
-import {
-  MORE_MODES,
-  PERMISSION_OPTIONS,
-  PRIMARY_MODES,
-  useWorkspace,
-  type View,
-} from "../../lib/workspace";
+import { MODES, PERMISSION_OPTIONS, useWorkspace, type View } from "../../lib/workspace";
 import { formatProjectRoot, projectFolderName } from "../../lib/paths";
+import { AgentGlyph } from "../shell/AgentGlyph";
 import { MenuSelect } from "../shell/MenuSelect";
-import { ArrowUpIcon, FolderIcon, GitBranchIcon, PaperclipIcon, StopIcon, TerminalIcon } from "../shell/icons";
+import {
+  ArrowUpIcon,
+  BookmarkIcon,
+  FileIcon,
+  FolderIcon,
+  GitBranchIcon,
+  PaperclipIcon,
+  ShieldIcon,
+  StopIcon,
+  TerminalIcon,
+  XIcon,
+} from "../shell/icons";
 import { ComposerMenu, detectTrigger, type SuggestItem } from "./ComposerMenu";
 
 const SUGGESTIONS = [
@@ -107,12 +113,23 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
     api,
     projectId,
     connected,
-    setFilePicker,
     checkoutBranch,
-    mentionFile,
     openInspector,
-    openTerminal,
+    terminalOpen,
+    setTerminalOpen,
     settings,
+    sendBlockReason,
+    doctorHarness,
+    workspaceMode,
+    setWorkspaceMode,
+    attachments,
+    promptStashes,
+    pickAttachments,
+    attachFiles,
+    removeAttachment,
+    stashCurrentPrompt,
+    restorePromptStash,
+    deletePromptStash,
   } = workspace;
   const harnesses = workspace.harnesses ?? [];
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -121,7 +138,17 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
   const [dropping, setDropping] = useState(false);
   const [caret, setCaret] = useState(0);
   const [menuDismissed, setMenuDismissed] = useState(false);
+  const [stashOpen, setStashOpen] = useState(false);
   const harnessLive = Boolean(session?.harnessId && session.harnessState && session.harnessState !== "closed");
+  const liveHarnessId = harnessLive ? session?.harnessId : undefined;
+  /* Undefined until the agent list has arrived: a tile for "Agent" is a mark
+     for a name nobody picked. */
+  const selectedAgentName = agents.find((item) => item.id === agentId)?.name;
+  const switchNotice = agentSwitchNotice({
+    fromName: liveHarnessId ? harnessDisplayName(harnesses, liveHarnessId) : undefined,
+    toName: selectedAgentName,
+    live: harnessLive,
+  });
   const folderPath = session?.workingDirectory || project?.workingDirectory;
   const folder = projectFolderName(folderPath);
   const trigger = detectTrigger(draft, caret);
@@ -139,10 +166,10 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
       setFiles([]);
       return;
     }
-    void searchProjectFiles(projectId, trigger.query)
+    void searchProjectFiles(projectId, trigger.query, folderPath)
       .then((entries) => setFiles(entries))
       .catch(() => setFiles([]));
-  }, [projectId, trigger?.kind, trigger?.query]);
+  }, [folderPath, projectId, trigger?.kind, trigger?.query]);
 
   const slashItems = useMemo<SuggestItem[]>(
     () =>
@@ -153,7 +180,7 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
         setMode,
         spawnHarness,
         toggleInspector,
-        openTerminal: () => void openTerminal(),
+        openTerminal: () => setTerminalOpen(true),
         openInspector,
         pickProjectDirectory,
         setView,
@@ -162,8 +189,8 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
       createTask,
       harnesses,
       openInspector,
-      openTerminal,
       pickProjectDirectory,
+      setTerminalOpen,
       setMode,
       setView,
       spawnHarness,
@@ -246,6 +273,7 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
 
   const permission = session?.permissionProfile ?? settings?.defaultPermission ?? "default";
   const sendOnEnter = settings?.composerSendKey !== "cmd-enter";
+  const selectedHarness = harnesses.find((item) => item.id === agentId);
 
   return (
     <div className={`composer composer-dock composer-overlay-corner-masks${busy ? " composer-dock--with-activity" : ""}`}>
@@ -275,12 +303,10 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
         onDrop={(event) => {
           event.preventDefault();
           setDropping(false);
-          const root = project?.workingDirectory?.replace(/\/$/, "");
-          Array.from(event.dataTransfer.files).forEach((file) => {
-            const absolute = (file as File & { path?: string }).path;
-            if (root && absolute?.startsWith(`${root}/`)) mentionFile(absolute.slice(root.length + 1));
-            else mentionFile(file.name);
-          });
+          const paths = Array.from(event.dataTransfer.files)
+            .map((file) => (file as File & { path?: string }).path)
+            .filter((filePath): filePath is string => Boolean(filePath));
+          if (paths.length > 0) void attachFiles(paths);
         }}
       >
         <ComposerMenu
@@ -309,6 +335,16 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
           onSelect={syncCaret}
           onKeyDown={(event) => {
             if (composing(event)) return;
+            if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+              event.preventDefault();
+              if (draft.trim() || attachments.length > 0) {
+                stashCurrentPrompt();
+                setStashOpen(false);
+              } else {
+                setStashOpen((value) => !value);
+              }
+              return;
+            }
             if (items.length > 0) {
               if (event.key === "ArrowDown") {
                 event.preventDefault();
@@ -358,12 +394,82 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
             }
           }}
         />
+        {attachments.length > 0 && (
+          <div className="composer-attachments" aria-label="Attached files">
+            {attachments.map((attachment) => (
+              <span className="composer-attachment" key={attachment.path} title={attachment.path}>
+                <FileIcon size={12} />
+                <span>{attachment.name}</span>
+                <button
+                  type="button"
+                  aria-label={`Remove ${attachment.name}`}
+                  onClick={() => removeAttachment(attachment.path)}
+                >
+                  <XIcon size={10} />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+        {stashOpen && (
+          <div className="composer-stash" role="dialog" aria-label="Stashed prompts">
+            <div className="composer-stash-head">
+              <span>Stashed prompts</span>
+              <small>{promptStashes.length}</small>
+            </div>
+            {promptStashes.length === 0 ? (
+              <p>Nothing stashed yet. Write a prompt and press ⌘S.</p>
+            ) : (
+              promptStashes.map((entry) => (
+                <div className="composer-stash-entry" key={entry.id}>
+                  <button
+                    type="button"
+                    className="composer-stash-restore"
+                    onClick={() => {
+                      restorePromptStash(entry.id);
+                      setStashOpen(false);
+                    }}
+                  >
+                    <span>{entry.prompt.trim().replace(/\s+/g, " ") || `${entry.attachments.length} attached files`}</span>
+                    <small>{entry.attachments.length ? `${entry.attachments.length} files` : "Prompt"}</small>
+                  </button>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    aria-label="Delete stashed prompt"
+                    onClick={() => deletePromptStash(entry.id)}
+                  >
+                    <XIcon size={11} />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        )}
         {skillId && (
           <div className="steer-row">
             <span className="chip">Skill {skills.find((item) => item.id === skillId)?.name ?? skillId}</span>
             <button className="chip" onClick={() => setSkillId(undefined)}>
               Clear
             </button>
+          </div>
+        )}
+        {sendBlockReason && (
+          <div className="composer-preflight" role="status">
+            <span>{sendBlockReason}</span>
+            {selectedHarness ? (
+              <button className="ghost" type="button" onClick={() => void doctorHarness(selectedHarness.id)}>
+                Run Doctor
+              </button>
+            ) : null}
+            <button className="ghost" type="button" onClick={() => setView("runtimes")}>
+              Open Harnesses
+            </button>
+          </div>
+        )}
+        {switchNotice && !sendBlockReason && (
+          <div className="composer-preflight" role="status">
+            <span>{switchNotice}</span>
           </div>
         )}
         {harnessLive && busy && (
@@ -386,33 +492,17 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
           </div>
         )}
         <div className="composer-row">
-          <div className="chips">
-            <button className="icon-btn" title="Mention a file (⌘P)" aria-label="Mention a file (⌘P)" onClick={() => setFilePicker(true)}>
-              <PaperclipIcon size={14} />
-            </button>
-            <div className="seg" role="tablist" aria-label="Mode">
-              {PRIMARY_MODES.map((item) => (
-                <button
-                  key={item}
-                  type="button"
-                  role="tab"
-                  aria-selected={mode === item}
-                  className={mode === item ? "active" : ""}
-                  onClick={() => setMode(item)}
-                >
-                  {item}
-                </button>
-              ))}
-            </div>
+          <div className="composer-controls">
             <MenuSelect
-              ariaLabel="More modes"
-              placeholder="More"
-              value={MORE_MODES.includes(mode) ? mode : ""}
-              options={MORE_MODES.map((item) => ({ id: item, label: item }))}
+              ariaLabel="Mode"
+              value={mode}
+              options={MODES.map((item) => ({ id: item, label: item }))}
               onChange={(id) => setMode(id as typeof mode)}
             />
+            <span className="composer-controls-divider" aria-hidden />
             <MenuSelect
               ariaLabel="Permission mode"
+              icon={<ShieldIcon size={13} />}
               value={permission}
               options={PERMISSION_OPTIONS.map((item) => ({
                 id: item.id,
@@ -421,14 +511,59 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
               }))}
               onChange={(id) => void setPermissionProfile(id)}
             />
+            <span className="composer-controls-divider" aria-hidden />
             <MenuSelect
               ariaLabel="Agent"
+              icon={selectedAgentName ? <AgentGlyph id={agentId} name={selectedAgentName} /> : undefined}
               value={agentId}
-              options={agents.map((item) => ({ id: item.id, label: item.name }))}
+              options={agents.map((item) => {
+                const harness = harnesses.find((candidate) => candidate.id === item.id);
+                return {
+                  id: item.id,
+                  label: item.name,
+                  detail: agentPickerDetail({
+                    harness,
+                    description: item.description,
+                    live: liveHarnessId === item.id,
+                  }),
+                  icon: <AgentGlyph id={item.id} name={item.name} />,
+                };
+              })}
               onChange={setAgentId}
             />
+            {git?.isRepo && (
+              <>
+                <span className="composer-controls-divider" aria-hidden />
+                <MenuSelect
+                  ariaLabel="Conversation workspace"
+                  icon={<GitBranchIcon size={13} />}
+                  value={workspaceMode}
+                  options={[
+                    { id: "local", label: "Local", detail: "Share the current checkout." },
+                    {
+                      id: "worktree",
+                      label: "Worktree",
+                      detail: "Use an isolated branch and folder for this conversation.",
+                    },
+                  ]}
+                  onChange={(id) => void setWorkspaceMode(id as "local" | "worktree")}
+                />
+              </>
+            )}
           </div>
           <div className="composer-actions-right">
+            <button className="icon-btn" title="Attach files" aria-label="Attach files" onClick={() => void pickAttachments()}>
+              <PaperclipIcon size={14} />
+            </button>
+            <button
+              className={`icon-btn composer-stash-button${stashOpen ? " active" : ""}`}
+              title={draft.trim() || attachments.length ? "Stash prompt (⌘S)" : "Open prompt stash (⌘S)"}
+              aria-label="Prompt stash"
+              onClick={() => setStashOpen((value) => !value)}
+            >
+              <BookmarkIcon size={13} />
+              {promptStashes.length > 0 ? <span>{promptStashes.length}</span> : null}
+            </button>
             {contextUsage && (
               <ContextWindowMeter
                 used={contextUsage.used}
@@ -445,11 +580,11 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
             ) : (
               <button
                 className="send-btn"
-                disabled={busy || !draft.trim()}
+                disabled={busy || (!draft.trim() && attachments.length === 0) || Boolean(sendBlockReason)}
                 title={
-                  sendOnEnter
+                  sendBlockReason || (sendOnEnter
                     ? "Send · Enter · ⌘Enter starts another thread"
-                    : "Send · ⌘Enter · ⌘⇧Enter starts another thread"
+                    : "Send · ⌘Enter · ⌘⇧Enter starts another thread")
                 }
                 onClick={() => void send()}
               >
@@ -473,7 +608,14 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
           <FolderIcon size={12} />
           {folder ?? "No folder"}
         </button>
-        <button type="button" onClick={() => void openTerminal()} title="Open Terminal in this folder">
+        {/* The panel inside Capsule, not Terminal.app: the shell people want is
+            the one already pointed at this conversation's folder. */}
+        <button
+          type="button"
+          className={terminalOpen ? "active" : ""}
+          onClick={() => setTerminalOpen(!terminalOpen)}
+          title="Terminal (⌘J)"
+        >
           <span className="inline-icon">
             <TerminalIcon size={12} />
             Terminal
@@ -495,8 +637,10 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
             ) : null}
           </span>
         )}
+        {session?.workspaceMode === "worktree" && session.worktreeBranch && (
+          <span className="workspace-mode-label">Isolated · {session.worktreeBranch}</span>
+        )}
         {!connected && <span>Gateway offline</span>}
-        <span className="faint">/  @  $</span>
       </div>
       {busy && (
         <div className="composer-dock-activity" aria-live="polite">

@@ -35,7 +35,7 @@ function splitPath(path: string): { dir: string; name: string } {
 }
 
 export function ChangedFilesCard({ git }: { git: GitStatus }) {
-  const { api, projectId, runs, setConfirm, setInspectorOpen, setInspectorTab } = useWorkspace();
+  const { api, gitDiscard, runs, setConfirm, setInspectorOpen, setInspectorTab } = useWorkspace();
   const [expanded, setExpanded] = useState(false);
   const [restoring, setRestoring] = useState(false);
 
@@ -123,7 +123,7 @@ export function ChangedFilesCard({ git }: { git: GitStatus }) {
                   danger: true,
                   confirmLabel: "Discard",
                   onConfirm: () => {
-                    if (projectId) void api.gitDiscard(projectId, file.path);
+                    void gitDiscard(file.path);
                     setConfirm(undefined);
                   },
                 })

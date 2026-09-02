@@ -21,11 +21,14 @@ import { buildContract } from "@capsule/contracts";
 import { readUsageSummary, sinceDaysAgo, type UsageSummary } from "./usage/index.js";
 import { CapsuleDatabase, CapsuleRepositories } from "@capsule/database";
 import {
+  attachmentPromptBlock,
   captureCheckpoint,
   checkoutBranch as checkoutGitBranch,
   checkpointNumstat,
   checkpointRef,
+  cloneRepository as cloneGitRepository,
   commitAll,
+  createWorktree,
   createBranch as createGitBranch,
   createPullRequest as openPullRequest,
   detectSourceControlTools,
@@ -33,15 +36,22 @@ import {
   discardFile,
   enrichGitStatus,
   FilesystemAdapter,
+  initializeRepository,
   lastCommitSubject,
+  listLocalServers as discoverLocalServers,
+  listPullRequests as discoverPullRequests,
   mergePullRequest as mergeGithubPullRequest,
   pushCurrentBranch,
   readGitDiff,
   readGitStatus,
+  readProjectIconDataUrl,
+  resolveProjectIconPath,
+  removeWorktree,
   restoreCheckpoint,
   type ToolStatus,
   searchContents,
   stageFile,
+  validateMessageAttachments,
   viewPullRequest,
 } from "@capsule/filesystem";
 import {
@@ -86,12 +96,14 @@ import {
   SETTINGS_SECTION_KEYS,
   TOKEN_PRESENT_MASK,
   type ConnectionState,
+  type CloneRepositoryInput,
   type CreateProjectInput,
   type CreateSessionInput,
   type DiagnosticsSnapshot,
   type ContentHit,
   type FileEntry,
   type GitStatus,
+  type GitPullRequest,
   type HarnessControlResult,
   type HarnessDoctorReport,
   type HarnessId,
@@ -99,11 +111,14 @@ import {
   type HarnessLiveStatus,
   type HarnessOptionPatch,
   type HarnessStatus,
+  type LocalServer,
+  type MessageAttachment,
   type SpawnHarnessInput,
   type UpdateProjectInput,
   isHarnessId,
   type MessagePage,
   type Project,
+  type ProjectActionRun,
   type SearchResults,
   type Run,
   type RunEvent,
@@ -113,6 +128,7 @@ import {
   type SkillCatalogEntry,
   type SkillCatalogPage,
   type SubsystemStatus,
+  type WorkspaceMode,
 } from "@capsule/shared";
 import {
   DEFAULT_SKILLS,
@@ -121,7 +137,12 @@ import {
   SkillsShClient,
   skillIdForMode,
 } from "@capsule/skills";
-import { openNativeTerminal, runInDirectory } from "@capsule/terminal";
+import {
+  openNativeTerminal,
+  runInDirectory,
+  startInDirectory,
+  type ManagedCommand,
+} from "@capsule/terminal";
 import { verifyContract } from "@capsule/verification";
 import {
   CAPSULE_KEYCHAIN_SERVICE,
@@ -174,6 +195,8 @@ export class CapsuleEngine {
   private prWatchers = new Map<string, ReturnType<typeof setInterval>>();
   private prFixFingerprints = new Map<string, string>();
   private prWatchSessions = new Map<string, string>();
+  private actionProcesses = new Map<string, ManagedCommand>();
+  private actionRuns = new Map<string, ProjectActionRun>();
   private skillsClient: SkillCatalogClient;
   private skillsShClient = new SkillsShClient();
 
@@ -232,6 +255,8 @@ export class CapsuleEngine {
     // promise, which surfaces as an unhandled rejection with no run to blame.
     this.stopped = true;
     this.stopAllPrWatch();
+    for (const process of this.actionProcesses.values()) process.stop();
+    this.actionProcesses.clear();
     this.acpUnsub?.();
     await this.runtime.disconnect().catch(() => undefined);
     this.db.close();
@@ -289,7 +314,7 @@ export class CapsuleEngine {
   }
 
   listProjects(): Project[] {
-    return this.repos.listProjects();
+    return this.repos.listProjects().map((project) => this.withProjectIcon(project));
   }
 
   createProject(input: CreateProjectInput): Project {
@@ -301,8 +326,17 @@ export class CapsuleEngine {
     return project;
   }
 
+  async cloneRepository(input: CloneRepositoryInput): Promise<Project> {
+    const result = await cloneGitRepository(input.parentDirectory, input.url, input.name);
+    if (!result.ok || !result.path || !result.name) throw new Error(result.detail);
+    const project = this.createProject({ name: result.name, workingDirectory: result.path });
+    this.events.emit("state", { command: "projects-updated" });
+    return this.withProjectIcon(project);
+  }
+
   getProject(id: string): Project | undefined {
-    return this.repos.getProject(id);
+    const project = this.repos.getProject(id);
+    return project ? this.withProjectIcon(project) : undefined;
   }
 
   async listAgents(): Promise<Agent[]> {
@@ -484,14 +518,32 @@ export class CapsuleEngine {
       : `${preset.name} · ${project.name}`;
     const session = input.sessionId
       ? this.requireSession(input.sessionId)
-      : createSessionRecord(project, { projectId: project.id, agentId: harnessId, mode: "code", title }, harnessId);
+      : createSessionRecord(
+          project,
+          {
+            projectId: project.id,
+            agentId: harnessId,
+            mode: "code",
+            title,
+            workspaceMode:
+              !isInboxProject(project) &&
+              this.settings.defaultWorkspaceMode === "worktree" &&
+              readGitStatus(project.workingDirectory).isRepo
+                ? "worktree"
+                : "local",
+          },
+          harnessId,
+        );
     if (!session.workingDirectory && isInboxProject(project)) {
       session.workingDirectory = allocateThreadFolder(
         ensureProjectlessFolder(this.projectlessRoot()),
         title,
       );
     }
-    const cwd = input.cwd ?? session.workingDirectory ?? project.workingDirectory;
+    if (!input.sessionId && session.workspaceMode === "worktree") {
+      this.attachSessionWorktree(session, project);
+    }
+    const cwd = session.workingDirectory ?? input.cwd ?? project.workingDirectory;
 
     session.agentId = harnessId;
     session.mode = "code";
@@ -717,6 +769,27 @@ export class CapsuleEngine {
     if (patch.extraFolders !== undefined) {
       project.extraFolders = patch.extraFolders.length > 0 ? patch.extraFolders : undefined;
     }
+    if (patch.actions !== undefined) {
+      project.actions = patch.actions
+        .map((action) => ({
+          id: action.id.trim().slice(0, 80),
+          name: action.name.trim().slice(0, 60),
+          command: action.command.trim().slice(0, 2_000),
+          ...(action.previewUrl?.trim()
+            ? { previewUrl: action.previewUrl.trim().slice(0, 500) }
+            : {}),
+        }))
+        .filter((action) => action.id && action.name && action.command)
+        .slice(0, 24);
+      if (project.actions.length === 0) project.actions = undefined;
+    }
+    if (patch.iconPath !== undefined) {
+      const requested = patch.iconPath?.trim();
+      if (requested && !resolveProjectIconPath(project.workingDirectory, requested)) {
+        throw new Error("Choose an SVG, PNG, ICO, JPEG, GIF, AVIF, or WebP image under 2 MB.");
+      }
+      project.iconPath = requested || undefined;
+    }
     if (patch.defaultAgentId !== undefined) {
       project.defaultAgentId = patch.defaultAgentId ?? undefined;
     }
@@ -727,7 +800,13 @@ export class CapsuleEngine {
   }
 
   deleteProject(id: string): void {
-    this.requireProject(id);
+    const project = this.requireProject(id);
+    for (const run of this.listProjectActionRuns(id)) {
+      if (run.status === "running") this.stopProjectAction(id, run.actionId, run.sessionId);
+    }
+    for (const session of this.repos.listSessions(id)) {
+      this.cleanupSessionWorktree(session, project);
+    }
     this.repos.deleteProject(id);
     if (this.repos.listProjects().length === 0) {
       this.createProject({
@@ -738,11 +817,12 @@ export class CapsuleEngine {
     this.events.emit("state", { command: "projects-updated" });
   }
 
-  gitStatus(projectId: string): GitStatus {
+  gitStatus(projectId: string, sessionId?: string): GitStatus {
     const project = this.requireProject(projectId);
+    const cwd = this.workingDirectoryFor(project, sessionId);
     const status = enrichGitStatus(
-      readGitStatus(project.workingDirectory),
-      project.workingDirectory,
+      readGitStatus(cwd),
+      cwd,
     );
     if (status.pullRequest && pullRequestWatchEnabled(this.settings)) {
       this.schedulePrWatch(projectId);
@@ -752,62 +832,76 @@ export class CapsuleEngine {
     return status;
   }
 
-  gitDiff(projectId: string, relative?: string): string {
+  listPullRequests(projectId: string, sessionId?: string): GitPullRequest[] {
     const project = this.requireProject(projectId);
-    if (!project.workingDirectory) return "";
-    return readGitDiff(project.workingDirectory, relative);
+    const cwd = this.workingDirectoryFor(project, sessionId);
+    if (!cwd || !readGitStatus(cwd).isRepo) return [];
+    return discoverPullRequests(cwd);
   }
 
-  checkoutBranch(projectId: string, branch: string): GitStatus {
+  gitDiff(projectId: string, relative?: string, sessionId?: string): string {
     const project = this.requireProject(projectId);
-    if (!project.workingDirectory) throw new Error("Project has no working directory");
-    const result = checkoutGitBranch(project.workingDirectory, branch);
+    const cwd = this.workingDirectoryFor(project, sessionId);
+    if (!cwd) return "";
+    return readGitDiff(cwd, relative);
+  }
+
+  checkoutBranch(projectId: string, branch: string, sessionId?: string): GitStatus {
+    const project = this.requireProject(projectId);
+    const cwd = this.workingDirectoryFor(project, sessionId);
+    if (!cwd) throw new Error("Project has no working directory");
+    const result = checkoutGitBranch(cwd, branch);
     if (!result.ok) throw new Error(result.detail);
-    return readGitStatus(project.workingDirectory);
+    return readGitStatus(cwd);
   }
 
-  gitCommit(projectId: string, message: string): GitStatus {
+  gitCommit(projectId: string, message: string, sessionId?: string): GitStatus {
     const project = this.requireProject(projectId);
-    if (!project.workingDirectory) throw new Error("Project has no working directory");
-    const result = commitAll(project.workingDirectory, message);
+    const cwd = this.workingDirectoryFor(project, sessionId);
+    if (!cwd) throw new Error("Project has no working directory");
+    const result = commitAll(cwd, message);
     if (!result.ok) throw new Error(result.detail);
-    return this.gitStatus(projectId);
+    return this.gitStatus(projectId, sessionId);
   }
 
-  gitStage(projectId: string, relative: string): GitStatus {
+  gitStage(projectId: string, relative: string, sessionId?: string): GitStatus {
     const project = this.requireProject(projectId);
-    if (!project.workingDirectory) throw new Error("Project has no working directory");
-    const result = stageFile(project.workingDirectory, relative);
+    const cwd = this.workingDirectoryFor(project, sessionId);
+    if (!cwd) throw new Error("Project has no working directory");
+    const result = stageFile(cwd, relative);
     if (!result.ok) throw new Error(result.detail);
-    return readGitStatus(project.workingDirectory);
+    return readGitStatus(cwd);
   }
 
-  gitDiscard(projectId: string, relative: string): GitStatus {
+  gitDiscard(projectId: string, relative: string, sessionId?: string): GitStatus {
     const project = this.requireProject(projectId);
-    if (!project.workingDirectory) throw new Error("Project has no working directory");
-    const result = discardFile(project.workingDirectory, relative);
+    const cwd = this.workingDirectoryFor(project, sessionId);
+    if (!cwd) throw new Error("Project has no working directory");
+    const result = discardFile(cwd, relative);
     if (!result.ok) throw new Error(result.detail);
-    return readGitStatus(project.workingDirectory);
+    return readGitStatus(cwd);
   }
 
-  gitCreateBranch(projectId: string, branch: string): GitStatus {
+  gitCreateBranch(projectId: string, branch: string, sessionId?: string): GitStatus {
     const project = this.requireProject(projectId);
-    if (!project.workingDirectory) throw new Error("Project has no working directory");
+    const cwd = this.workingDirectoryFor(project, sessionId);
+    if (!cwd) throw new Error("Project has no working directory");
     const result = createGitBranch(
-      project.workingDirectory,
+      cwd,
       applyBranchPrefix(this.settings.branchPrefix, branch),
     );
     if (!result.ok) throw new Error(result.detail);
-    return this.gitStatus(projectId);
+    return this.gitStatus(projectId, sessionId);
   }
 
-  gitPush(projectId: string): GitStatus {
+  gitPush(projectId: string, sessionId?: string): GitStatus {
     const project = this.requireProject(projectId);
-    if (!project.workingDirectory) throw new Error("Project has no working directory");
-    const result = pushCurrentBranch(project.workingDirectory, this.settings.gitForceWithLease);
+    const cwd = this.workingDirectoryFor(project, sessionId);
+    if (!cwd) throw new Error("Project has no working directory");
+    const result = pushCurrentBranch(cwd, this.settings.gitForceWithLease);
     if (!result.ok) throw new Error(result.detail);
     this.log(result.detail);
-    return this.gitStatus(projectId);
+    return this.gitStatus(projectId, sessionId);
   }
 
   async gitCreatePullRequest(
@@ -815,17 +909,18 @@ export class CapsuleEngine {
     input?: { title?: string; body?: string; sessionId?: string },
   ): Promise<GitStatus> {
     const project = this.requireProject(projectId);
-    if (!project.workingDirectory) throw new Error("Project has no working directory");
-    const pushed = pushCurrentBranch(project.workingDirectory, this.settings.gitForceWithLease);
+    const cwd = this.workingDirectoryFor(project, input?.sessionId);
+    if (!cwd) throw new Error("Project has no working directory");
+    const pushed = pushCurrentBranch(cwd, this.settings.gitForceWithLease);
     if (!pushed.ok) throw new Error(pushed.detail);
-    const branch = readGitStatus(project.workingDirectory).branch ?? "HEAD";
+    const branch = readGitStatus(cwd).branch ?? "HEAD";
     const title =
       input?.title?.trim() ||
-      lastCommitSubject(project.workingDirectory) ||
+      lastCommitSubject(cwd) ||
       branch.replace(/^.*\//, "").replace(/[-_]/g, " ");
     const body =
       [input?.body?.trim(), this.settings.prInstructions].filter(Boolean).join("\n\n") || title;
-    const opened = openPullRequest(project.workingDirectory, {
+    const opened = openPullRequest(cwd, {
       title,
       body,
       draft: this.settings.prDraft,
@@ -835,27 +930,42 @@ export class CapsuleEngine {
     if (input?.sessionId) this.prWatchSessions.set(projectId, input.sessionId);
     if (this.settings.prAutoMerge) {
       const queued = mergeGithubPullRequest(
-        project.workingDirectory,
+        cwd,
         this.settings.prMergeMethod,
         true,
       );
       this.log(queued.detail);
     }
     if (pullRequestWatchEnabled(this.settings)) this.schedulePrWatch(projectId, input?.sessionId);
-    return this.gitStatus(projectId);
+    return this.gitStatus(projectId, input?.sessionId);
   }
 
-  gitMergePullRequest(projectId: string): GitStatus {
+  gitMergePullRequest(projectId: string, sessionId?: string): GitStatus {
     const project = this.requireProject(projectId);
-    if (!project.workingDirectory) throw new Error("Project has no working directory");
+    const cwd = this.workingDirectoryFor(project, sessionId);
+    if (!cwd) throw new Error("Project has no working directory");
     const result = mergeGithubPullRequest(
-      project.workingDirectory,
+      cwd,
       this.settings.prMergeMethod,
       this.settings.prAutoMerge,
     );
     if (!result.ok) throw new Error(result.detail);
     this.log(result.detail);
+    return this.gitStatus(projectId, sessionId);
+  }
+
+  gitInit(projectId: string): GitStatus {
+    const project = this.requireProject(projectId);
+    if (!project.workingDirectory) throw new Error("Choose a project folder first");
+    const result = initializeRepository(project.workingDirectory);
+    if (!result.ok) throw new Error(result.detail);
+    this.log(result.detail);
+    this.events.emit("state", { command: "git-updated" });
     return this.gitStatus(projectId);
+  }
+
+  async localServers(): Promise<LocalServer[]> {
+    return discoverLocalServers();
   }
 
   searchContents(projectId: string, query: string): ContentHit[] {
@@ -964,7 +1074,14 @@ export class CapsuleEngine {
   async createSession(input: CreateSessionInput): Promise<Session> {
     const project = this.requireProject(input.projectId);
     const agentId = input.agentId ?? project.defaultAgentId ?? agentIdForMode(input.mode ?? project.defaultMode);
-    const session = createSessionRecord(project, input, agentId);
+    const requestedWorkspaceMode = input.workspaceMode ?? this.settings.defaultWorkspaceMode;
+    const workspaceMode =
+      !isInboxProject(project) &&
+      requestedWorkspaceMode === "worktree" &&
+      readGitStatus(project.workingDirectory).isRepo
+        ? "worktree"
+        : "local";
+    const session = createSessionRecord(project, { ...input, workspaceMode }, agentId);
     session.permissionProfile = input.permissionProfile ?? this.settings.defaultPermission;
     if (isInboxProject(project) && !session.workingDirectory) {
       session.workingDirectory = allocateThreadFolder(
@@ -972,12 +1089,16 @@ export class CapsuleEngine {
         session.title,
       );
     }
+    if (session.workspaceMode === "worktree") {
+      this.attachSessionWorktree(session, project);
+    }
     if (!this.usingMock) {
       try {
         const remote = await this.openclaw.createSession({
           ...input,
           projectId: project.id,
           agentId,
+          workingDirectory: session.workingDirectory ?? project.workingDirectory,
         });
         session.openclawSessionKey = remote.openclawSessionKey;
       } catch (error) {
@@ -1005,15 +1126,79 @@ export class CapsuleEngine {
   }
 
   deleteSession(id: string): void {
+    const session = this.requireSession(id);
+    const project = this.requireProject(session.projectId);
+    for (const run of this.listProjectActionRuns(project.id, id)) {
+      if (run.status === "running") this.stopProjectAction(project.id, run.actionId, id);
+    }
+    this.cleanupSessionWorktree(session, project);
     this.repos.deleteSession(id);
+  }
+
+  setSessionWorkspaceMode(id: string, mode: WorkspaceMode): Session {
+    const session = this.requireSession(id);
+    const project = this.requireProject(session.projectId);
+    if (isInboxProject(project)) throw new Error("Inbox conversations already use isolated folders.");
+    if (session.workspaceMode === mode) return session;
+    if (
+      this.repos.listMessages(id).length > 0 ||
+      this.repos.listRuns(id).length > 0 ||
+      isLiveHarnessState(session.harnessState)
+    ) {
+      throw new Error("Workspace mode can only change before the conversation starts.");
+    }
+    if (mode === "worktree") {
+      session.workspaceMode = "worktree";
+      this.attachSessionWorktree(session, project);
+    } else {
+      const cleanup = this.cleanupSessionWorktree(session, project);
+      if (!cleanup) throw new Error("The worktree has changes and cannot be switched to Local.");
+      session.workspaceMode = "local";
+      session.workingDirectory = undefined;
+      session.worktreeBranch = undefined;
+    }
+    session.updatedAt = nowIso();
+    this.repos.updateSession(session);
+    this.events.emit("state", { command: "sessions-updated" });
+    return session;
   }
 
   pinSession(id: string, pinned: boolean): Session {
     const session = this.requireSession(id);
     session.pinned = pinned;
+    if (pinned) {
+      const pinnedSessions = this.repos
+        .listSessions(session.projectId)
+        .filter((item) => item.pinned && item.id !== id);
+      session.pinOrder = pinnedSessions.reduce((max, item) => Math.max(max, item.pinOrder ?? -1), -1) + 1;
+    } else {
+      session.pinOrder = undefined;
+    }
     session.updatedAt = nowIso();
     this.repos.updateSession(session);
     return session;
+  }
+
+  reorderPinnedSessions(projectId: string, orderedIds: string[]): Session[] {
+    const pinned = this.repos.listSessions(projectId).filter((session) => session.pinned);
+    const expected = new Set(pinned.map((session) => session.id));
+    if (orderedIds.length !== expected.size || orderedIds.some((id) => !expected.has(id))) {
+      throw new Error("Pinned conversation order is stale. Refresh and try again.");
+    }
+    orderedIds.forEach((id, pinOrder) => {
+      const session = pinned.find((item) => item.id === id);
+      if (!session) return;
+      session.pinOrder = pinOrder;
+      session.updatedAt = nowIso();
+      this.repos.updateSession(session);
+    });
+    return this.repos.listSessions(projectId).filter((session) => session.pinned);
+  }
+
+  validateAttachments(
+    attachments: ReadonlyArray<Pick<MessageAttachment, "name" | "path">>,
+  ): MessageAttachment[] {
+    return validateMessageAttachments(attachments);
   }
 
   regenerateTitle(id: string): Session {
@@ -1059,6 +1244,12 @@ export class CapsuleEngine {
   async sendMessage(input: AgentMessage): Promise<{ session: Session; run: Run; userMessage: ChatMessage }> {
     let session = this.requireSession(input.sessionId);
     const project = this.requireProject(session.projectId);
+    const attachments = validateMessageAttachments(input.attachments ?? []);
+    if (!input.content.trim() && attachments.length === 0) {
+      throw new Error("Write a message or attach a file first.");
+    }
+    const prompt = input.content.trim() || `Review the attached file${attachments.length === 1 ? "" : "s"}.`;
+    const runtimePrompt = `${prompt}${attachmentPromptBlock(attachments)}`;
     const mode = input.mode ?? session.mode;
     const harnessId = this.resolveHarnessId(session, project, input.agentId, mode);
     if (harnessId) {
@@ -1072,7 +1263,7 @@ export class CapsuleEngine {
     const agentId = harnessId ?? input.agentId ?? session.agentId ?? agentIdForMode(mode);
     const skillId = input.skillId ?? skillIdForMode(mode);
     if (session.title === "New conversation") {
-      session.title = titleFromPrompt(input.content);
+      session.title = titleFromPrompt(input.content.trim() || attachments[0]?.name || "New conversation");
     }
     session.agentId = agentId;
     session.mode = mode;
@@ -1084,6 +1275,7 @@ export class CapsuleEngine {
       sessionId: session.id,
       role: "user",
       content: input.content,
+      attachments: attachments.length > 0 ? attachments : undefined,
       createdAt: nowIso(),
     };
     this.repos.insertMessage(userMessage);
@@ -1094,14 +1286,14 @@ export class CapsuleEngine {
       projectId: project.id,
       agentId,
       skillId,
-      prompt: input.content,
+      prompt,
     });
     run.status = "running";
     this.repos.insertRun(run);
 
     const contract = buildContract({
       mode,
-      prompt: input.content,
+      prompt: runtimePrompt,
       workingDirectory: this.cwdFor(session, project),
       runId: run.id,
       outputDetail: this.settings.outputDetail,
@@ -1154,7 +1346,8 @@ export class CapsuleEngine {
       ...(session.permissionProfile
         ? { permissionProfile: session.permissionProfile as HarnessPermissionProfile }
         : {}),
-      content: applyAgentInstructionHints(input.content + skillInstruction, this.settings),
+      content: applyAgentInstructionHints(runtimePrompt + skillInstruction, this.settings),
+      attachments,
       sessionId: this.usingMock ? session.id : (session.openclawSessionKey ?? session.id),
       agentId: this.usingMock ? agentId : undefined,
       skillId,
@@ -1338,19 +1531,87 @@ export class CapsuleEngine {
     return { revision: fileContentRevision(content) };
   }
 
-  async openTerminal(projectId: string): Promise<void> {
+  async openTerminal(projectId: string, sessionId?: string): Promise<void> {
     const project = this.requireProject(projectId);
-    if (!project.workingDirectory) throw new Error("Choose a project folder first");
-    await openNativeTerminal(project.workingDirectory);
+    const cwd = this.workingDirectoryFor(project, sessionId);
+    if (!cwd) throw new Error("Choose a project folder first");
+    await openNativeTerminal(cwd);
   }
 
-  async execInProject(projectId: string, command: string) {
+  async execInProject(projectId: string, command: string, sessionId?: string) {
     const project = this.requireProject(projectId);
-    if (!project.workingDirectory) throw new Error("Choose a project folder first");
+    const cwd = this.workingDirectoryFor(project, sessionId);
+    if (!cwd) throw new Error("Choose a project folder first");
     if (this.settings.sandbox === "strict") {
       throw new Error("Strict sandbox blocks project terminal commands.");
     }
-    return runInDirectory(project.workingDirectory, command);
+    return runInDirectory(cwd, command);
+  }
+
+  runProjectAction(projectId: string, actionId: string, sessionId?: string): ProjectActionRun {
+    const project = this.requireProject(projectId);
+    const action = project.actions?.find((candidate) => candidate.id === actionId);
+    if (!action) throw new Error("Project action not found.");
+    if (this.settings.sandbox === "strict") {
+      throw new Error("Strict sandbox blocks project actions.");
+    }
+    const cwd = this.workingDirectoryFor(project, sessionId);
+    if (!cwd) throw new Error("Choose a project folder first");
+    const key = this.projectActionKey(projectId, actionId, sessionId);
+    const existing = this.actionRuns.get(key);
+    if (existing?.status === "running") return existing;
+    const run: ProjectActionRun = {
+      projectId,
+      actionId,
+      ...(sessionId ? { sessionId } : {}),
+      status: "running",
+      output: "",
+      startedAt: nowIso(),
+    };
+    this.actionRuns.set(key, run);
+    const process = startInDirectory(cwd, action.command, {
+      onOutput: (text) => {
+        run.output = `${run.output}${text}`.slice(-20_000);
+        this.events.emit("state", { command: "project-actions-updated" });
+      },
+      onError: (error) => {
+        run.status = "failed";
+        run.output = `${run.output}\n${error.message}`.trim().slice(-20_000);
+        run.completedAt = nowIso();
+        this.actionProcesses.delete(key);
+        this.events.emit("state", { command: "project-actions-updated" });
+      },
+      onExit: (code, signal) => {
+        if (run.status === "running") run.status = code === 0 ? "completed" : "failed";
+        if (code !== null) run.output = `${run.output}\nexit ${code}`.trim().slice(-20_000);
+        else if (signal) run.output = `${run.output}\n${signal}`.trim().slice(-20_000);
+        run.completedAt = nowIso();
+        this.actionProcesses.delete(key);
+        this.events.emit("state", { command: "project-actions-updated" });
+      },
+    });
+    run.pid = process.pid;
+    this.actionProcesses.set(key, process);
+    this.log(`Started project action ${action.name} in ${cwd}`);
+    return run;
+  }
+
+  stopProjectAction(projectId: string, actionId: string, sessionId?: string): ProjectActionRun {
+    const key = this.projectActionKey(projectId, actionId, sessionId);
+    const run = this.actionRuns.get(key);
+    if (!run) throw new Error("Project action is not running.");
+    run.status = "stopped";
+    run.completedAt = nowIso();
+    this.actionProcesses.get(key)?.stop();
+    this.actionProcesses.delete(key);
+    this.events.emit("state", { command: "project-actions-updated" });
+    return run;
+  }
+
+  listProjectActionRuns(projectId: string, sessionId?: string): ProjectActionRun[] {
+    return [...this.actionRuns.values()].filter(
+      (run) => run.projectId === projectId && (!sessionId || run.sessionId === sessionId),
+    );
   }
 
   getSettings(): CapsuleSettings {
@@ -2012,14 +2273,39 @@ export class CapsuleEngine {
 
   private async ensureHarnessSession(session: Session, harnessId: HarnessId): Promise<Session> {
     const current = this.requireSession(session.id);
-    if (isLiveHarnessState(current.harnessState) && (this.usingMock || current.openclawSessionKey)) {
+    const live = isLiveHarnessState(current.harnessState) && (this.usingMock || current.openclawSessionKey);
+    if (live && current.harnessId === harnessId) {
       return current;
+    }
+    /*
+     * Switching the agent on a live thread used to reuse whatever session was
+     * already running: the prompt went to the old harness while the thread
+     * relabelled itself as the new one, so the picker said Codex and Claude
+     * answered. Close the old session before starting the new agent's.
+     */
+    if (live && current.harnessId && current.harnessId !== harnessId) {
+      try {
+        await this.closeHarness(current.id);
+      } catch (error) {
+        this.log(
+          `Could not close the ${current.harnessId} session before switching to ${harnessId}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+      // The key names the session we just closed. Leaving it behind would
+      // point the new agent's turn at a dead session if the spawn failed.
+      const closed = this.requireSession(session.id);
+      closed.openclawSessionKey = undefined;
+      closed.harnessState = "closed";
+      closed.updatedAt = nowIso();
+      this.repos.updateSession(closed);
     }
     const result = await this.spawnHarness({
       projectId: current.projectId,
       harnessId,
       sessionId: current.id,
-      cwd: this.requireProject(current.projectId).workingDirectory,
+      cwd: current.workingDirectory ?? this.requireProject(current.projectId).workingDirectory,
       mode: current.acpMode ?? "persistent",
       permissionProfile:
         current.permissionProfile === "strict" ||
@@ -2032,6 +2318,35 @@ export class CapsuleEngine {
     return this.requireSession(result.session.id);
   }
 
+  private attachSessionWorktree(session: Session, project: Project): void {
+    if (!project.workingDirectory) throw new Error("Choose a project folder before using a worktree.");
+    const slug = session.title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 36) || "conversation";
+    const suffix = session.id.replace(/[^a-zA-Z0-9]/g, "").slice(-8).toLowerCase();
+    const branch = applyBranchPrefix(this.settings.branchPrefix ?? "capsule", `${slug}-${suffix}`);
+    const destination = path.join(this.options.userDataDir, "worktrees", project.id, session.id);
+    const result = createWorktree(project.workingDirectory, destination, branch);
+    if (!result.ok || !result.path || !result.branch) throw new Error(result.detail);
+    session.workingDirectory = result.path;
+    session.worktreeBranch = result.branch;
+    session.workspaceMode = "worktree";
+    this.log(`Created worktree ${result.branch} for ${session.title}`);
+  }
+
+  private cleanupSessionWorktree(session: Session, project: Project): boolean {
+    if (session.workspaceMode !== "worktree" || !session.workingDirectory) return true;
+    if (!project.workingDirectory) {
+      this.log(`Kept worktree ${session.workingDirectory}; project folder is unavailable.`);
+      return false;
+    }
+    const result = removeWorktree(project.workingDirectory, session.workingDirectory);
+    this.log(result.detail);
+    return result.ok;
+  }
+
   private requireHarnessSession(id: string): Session {
     const session = this.requireSession(id);
     if (!session.harnessId) {
@@ -2040,14 +2355,38 @@ export class CapsuleEngine {
     return session;
   }
 
+  private withProjectIcon(project: Project): Project {
+    const iconDataUrl = readProjectIconDataUrl(project.workingDirectory, project.iconPath);
+    return iconDataUrl ? { ...project, iconDataUrl } : project;
+  }
+
   private requireProject(id: string): Project {
     const project = this.repos.getProject(id);
     if (!project) throw new Error("Project not found");
     return project;
   }
 
+  private workingDirectoryFor(project: Project, sessionId?: string): string | undefined {
+    if (!sessionId) return project.workingDirectory;
+    const session = this.repos.getSession(sessionId);
+    if (!session || session.projectId !== project.id) {
+      throw new Error("Conversation does not belong to this project.");
+    }
+    return session.workingDirectory ?? project.workingDirectory;
+  }
+
+  private projectActionKey(projectId: string, actionId: string, sessionId?: string): string {
+    return `${projectId}:${sessionId ?? "project"}:${actionId}`;
+  }
+
   private resolveProjectFolder(project: Project, root?: string): string {
-    const folders = projectFolderList(project);
+    const folders = [
+      ...projectFolderList(project),
+      ...this.repos
+        .listSessions(project.id)
+        .map((session) => session.workingDirectory)
+        .filter((folder): folder is string => Boolean(folder)),
+    ];
     if (root?.trim()) {
       const needle = normalizeFolderPath(root.trim()).toLowerCase();
       const match = folders.find((item) => item.toLowerCase() === needle);

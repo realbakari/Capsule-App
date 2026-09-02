@@ -20,13 +20,16 @@ import {
   type ApprovalRequest,
   type Artifact,
   type CapsuleSettings,
+  type CloneRepositoryInput,
   type ChatMessage,
   type FileEntry,
   type GitStatus,
   type HarnessDoctorReport,
   type HarnessPermissionProfile,
   type HarnessStatus,
+  type MessageAttachment,
   type Project,
+  type ProjectAction,
   type Run,
   type RunEvent,
   type RuntimeStatus,
@@ -35,11 +38,22 @@ import {
   type SkillPack,
   type SkillCatalogPage,
   type SubsystemStatus,
+  type WorkspaceMode,
 } from "@capsule/shared";
 
 import type { SettingsSectionId } from "../features/settings/settings-search";
 import { commandForEvent, parseChord, type Keymap } from "./keybindings";
 import { latestContextUsage, type ContextUsage } from "./context-window";
+import { harnessPreflightReason } from "./harness-preflight";
+import {
+  promptDraftKey,
+  readPromptDraft,
+  readPromptStash,
+  stashPrompt,
+  writePromptDraft,
+  writePromptStash,
+  type PromptStashEntry,
+} from "./prompt-stash";
 
 export type View =
   | "chat"
@@ -89,6 +103,7 @@ export const PERMISSION_OPTIONS = [
 const SIDEBAR_WIDTH_KEY = "capsule.sidebarWidth";
 const SIDEBAR_COLLAPSED_KEY = "capsule.sidebarCollapsed";
 const INSPECTOR_OPEN_KEY = "capsule.inspectorOpen";
+const TERMINAL_OPEN_KEY = "capsule.terminalOpen";
 const DEFAULT_SIDEBAR_WIDTH = 264;
 
 function storedFlag(key: string, fallback = false): boolean {
@@ -150,7 +165,10 @@ export interface WorkspaceValue {
   agentId: string;
   mode: AgentMode;
   draft: string;
+  attachments: MessageAttachment[];
+  promptStashes: PromptStashEntry[];
   busy: boolean;
+  sendBlockReason?: string;
   palette: boolean;
   paletteQuery: string;
   newProjectName: string;
@@ -171,6 +189,12 @@ export interface WorkspaceValue {
   setAgentId: (id: string) => void;
   setMode: (mode: AgentMode) => void;
   setDraft: (value: string) => void;
+  pickAttachments: () => Promise<void>;
+  attachFiles: (paths: string[]) => Promise<void>;
+  removeAttachment: (path: string) => void;
+  stashCurrentPrompt: () => void;
+  restorePromptStash: (id: string) => void;
+  deletePromptStash: (id: string) => void;
   setPalette: (open: boolean) => void;
   setPaletteQuery: (value: string) => void;
   setNewProjectName: (value: string) => void;
@@ -187,6 +211,7 @@ export interface WorkspaceValue {
   pickProjectDirectory: (id?: string) => Promise<void>;
   pickFilesToMention: () => Promise<void>;
   createProjectFromFolder: () => Promise<void>;
+  cloneRepository: (input: CloneRepositoryInput) => Promise<void>;
   addProjectFolder: (projectId?: string) => Promise<void>;
   removeProjectFolder: (path: string, projectId?: string) => Promise<void>;
   makePrimaryFolder: (path: string, projectId?: string) => Promise<void>;
@@ -197,6 +222,12 @@ export interface WorkspaceValue {
   archiveSession: (id: string) => Promise<void>;
   openTerminal: () => Promise<void>;
   execInProject: (command: string) => Promise<{ stdout: string; stderr: string; code: number }>;
+  initializeGit: () => Promise<void>;
+  saveProjectActions: (actions: ProjectAction[]) => Promise<void>;
+  workspaceMode: WorkspaceMode;
+  setWorkspaceMode: (mode: WorkspaceMode) => Promise<void>;
+  browserUrl: string;
+  setBrowserUrl: (url: string) => void;
   projectRuns: Run[];
   openPath: (target: string) => Promise<void>;
   mentionFile: (relative: string) => void;
@@ -219,6 +250,8 @@ export interface WorkspaceValue {
   exportDiagnostics: () => Promise<void>;
   sidebarCollapsed: boolean;
   inspectorOpen: boolean;
+  terminalOpen: boolean;
+  setTerminalOpen: (value: boolean) => void;
   sidebarWidth: number;
   setSidebarCollapsed: (value: boolean) => void;
   setInspectorOpen: (value: boolean) => void;
@@ -231,6 +264,7 @@ export interface WorkspaceValue {
   filePicker: boolean;
   setFilePicker: (open: boolean) => void;
   pinSession: (id: string, pinned: boolean) => Promise<void>;
+  reorderPinnedSessions: (projectId: string, orderedIds: string[]) => Promise<void>;
   regenerateTitle: (id: string) => Promise<void>;
   setPermissionProfile: (profile: string) => Promise<void>;
   sendAndContinue: () => Promise<void>;
@@ -299,6 +333,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [agentId, setAgentId] = useState<string>("general");
   const [mode, setMode] = useState<AgentMode>("chat");
   const [draft, setDraft] = useState("");
+  const [attachments, setAttachments] = useState<MessageAttachment[]>([]);
+  const [promptStashes, setPromptStashes] = useState<PromptStashEntry[]>(() => {
+    try {
+      return readPromptStash(localStorage);
+    } catch {
+      return [];
+    }
+  });
   const [busy, setBusy] = useState(false);
   const [palette, setPalette] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
@@ -315,6 +357,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [confirm, setConfirm] = useState<ConfirmState>();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => storedFlag(SIDEBAR_COLLAPSED_KEY));
   const [inspectorOpen, setInspectorOpen] = useState(() => storedFlag(INSPECTOR_OPEN_KEY));
+  const [terminalOpen, setTerminalOpen] = useState(() => storedFlag(TERMINAL_OPEN_KEY));
   const [sidebarWidth, setSidebarWidthState] = useState(() =>
     Math.min(352, Math.max(220, storedNumber(SIDEBAR_WIDTH_KEY, DEFAULT_SIDEBAR_WIDTH))),
   );
@@ -324,6 +367,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("launcher");
   const [projectRuns, setProjectRuns] = useState<Run[]>([]);
   const [settings, setSettings] = useState<CapsuleSettings>();
+  const [workspaceMode, setWorkspaceModeState] = useState<WorkspaceMode>("local");
+  const [browserUrl, setBrowserUrl] = useState("http://localhost:3000");
+  const skipDraftSave = useRef(true);
   const settingsDefaultsApplied = useRef(false);
   /*
    * macOS hides the window controls in fullscreen, so the inset reserved for
@@ -356,6 +402,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   const project = projects.find((item) => item.id === projectId);
   const session = sessions.find((item) => item.id === sessionId);
+  const currentDraftKey = promptDraftKey(projectId, sessionId);
   const activeRun = runs.find(
     (run) => run.sessionId === sessionId && ["running", "approval_required", "waiting"].includes(run.status),
   );
@@ -364,6 +411,32 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   );
   const loadGeneration = useRef(0);
   const connected = status?.state === "connected" && status.kind === "openclaw";
+  const selectedHarness = harnesses.find((item) => item.id === agentId);
+  const harnessLive = Boolean(
+    session?.harnessId && session.harnessState && session.harnessState !== "closed",
+  );
+  const sendBlockReason = harnessPreflightReason({
+    harness: mode === "code" ? selectedHarness : undefined,
+    connected,
+    folder: session?.workingDirectory ?? project?.workingDirectory,
+    live: harnessLive,
+  });
+
+  /*
+   * The agent control names the agent this thread talks to, so it follows the
+   * thread. It used to hold one selection for the whole app: opening a thread
+   * that had been running on another agent still showed the last one picked.
+   * Only on a thread change — after that the choice is the user's.
+   */
+  const threadAgentSynced = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!sessionId || threadAgentSynced.current === sessionId) return;
+    const current = sessions.find((item) => item.id === sessionId);
+    if (!current) return;
+    threadAgentSynced.current = sessionId;
+    const threadAgent = current.harnessId ?? current.agentId;
+    if (threadAgent && agents.some((item) => item.id === threadAgent)) setAgentId(threadAgent);
+  }, [agents, sessionId, sessions]);
 
   const loadSession = useCallback(
     async (id: string) => {
@@ -464,6 +537,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         const loaded = nextSettings as CapsuleSettings;
         settingsDefaultsApplied.current = true;
         setMode(loaded.defaultMode);
+        setWorkspaceModeState(loaded.defaultWorkspaceMode);
         const defaultAgent =
           loaded.defaultAgentId && nextAgents.some((item: Agent) => item.id === loaded.defaultAgentId)
             ? loaded.defaultAgentId
@@ -548,7 +622,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           void refresh();
         }
         if (command === "git-updated" && projectId) {
-          void api.gitStatus(projectId).then(setGit).catch(() => undefined);
+          void api.gitStatus(projectId, sessionId).then(setGit).catch(() => undefined);
         }
       }),
     ];
@@ -577,6 +651,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         case "toggle-inspector":
           setInspectorOpen((open) => !open);
           break;
+        case "toggle-terminal":
+          setTerminalOpen((open) => !open);
+          break;
       }
     };
     window.addEventListener("keydown", onKey, true);
@@ -589,6 +666,34 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (sessionId) void loadSession(sessionId);
   }, [sessionId, loadSession]);
+
+  useEffect(() => {
+    if (session?.workspaceMode) setWorkspaceModeState(session.workspaceMode);
+  }, [session?.id, session?.workspaceMode]);
+
+  useEffect(() => {
+    skipDraftSave.current = true;
+    try {
+      const saved = readPromptDraft(localStorage, currentDraftKey);
+      setDraft(saved.prompt);
+      setAttachments(saved.attachments);
+    } catch {
+      setDraft("");
+      setAttachments([]);
+    }
+  }, [currentDraftKey]);
+
+  useEffect(() => {
+    if (skipDraftSave.current) {
+      skipDraftSave.current = false;
+      return;
+    }
+    try {
+      writePromptDraft(localStorage, currentDraftKey, { prompt: draft, attachments });
+    } catch {
+      // Draft persistence is a convenience; storage policy must not break chat.
+    }
+  }, [attachments, currentDraftKey, draft]);
 
   useEffect(() => {
     try {
@@ -605,6 +710,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       /* ignore quota */
     }
   }, [inspectorOpen]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(TERMINAL_OPEN_KEY, terminalOpen ? "1" : "0");
+    } catch {
+      /* ignore quota */
+    }
+  }, [terminalOpen]);
 
   useEffect(() => {
     try {
@@ -639,7 +752,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       return;
     }
     void api.listRuns().then(setProjectRuns).catch(() => undefined);
-    void api.gitStatus(projectId).then(setGit).catch(() => setGit(undefined));
+    void api.gitStatus(projectId, sessionId).then(setGit).catch(() => setGit(undefined));
     void api
       .listFiles(projectId)
       .then((entries: FileEntry[]) =>
@@ -654,7 +767,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         ),
       )
       .catch(() => setFiles([]));
-  }, [api, projectId, project?.workingDirectory]);
+  }, [api, projectId, project?.workingDirectory, sessionId, session?.workingDirectory]);
 
   async function createTask() {
     const targetProject = projectId ?? projects[0]?.id;
@@ -664,6 +777,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       agentId,
       mode,
       permissionProfile: settings?.defaultPermission,
+      workspaceMode: git?.isRepo ? (settings?.defaultWorkspaceMode ?? "local") : "local",
       title: "New conversation",
     });
     setSessionId(created.id);
@@ -673,7 +787,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   async function send() {
     const content = draft.trim();
-    if (!content || busy) return;
+    const filesToSend = attachments;
+    if ((!content && filesToSend.length === 0) || busy) return;
+    if (sendBlockReason) {
+      setNotice(sendBlockReason);
+      return;
+    }
     setBusy(true);
     setNotice(undefined);
     try {
@@ -690,6 +809,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           agentId,
           mode,
           permissionProfile: settings?.defaultPermission,
+          workspaceMode: git?.isRepo ? workspaceMode : "local",
           title: "New conversation",
         });
         currentSessionId = created.id;
@@ -704,10 +824,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           sessionId: currentSessionId,
           role: "user",
           content,
+          attachments: filesToSend.length > 0 ? filesToSend : undefined,
           createdAt: new Date().toISOString(),
         },
       ]);
       setDraft("");
+      setAttachments([]);
       try {
         await api.sendMessage({
           sessionId: currentSessionId,
@@ -715,12 +837,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           agentId,
           mode,
           skillId,
+          attachments: filesToSend,
         });
         setSkillId(undefined);
         await loadSession(currentSessionId);
         await refresh();
       } catch (error) {
         setDraft(content);
+        setAttachments(filesToSend);
         setMessages((current) => current.filter((item) => item.id !== optimisticId));
         throw error;
       }
@@ -796,6 +920,80 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  async function attachFiles(paths: string[]) {
+    try {
+      if (!paths?.length) return;
+      const validated = await api.validateAttachments(
+        paths.map((filePath) => ({
+          name: filePath.split("/").filter(Boolean).pop() ?? filePath,
+          path: filePath,
+        })),
+      );
+      setAttachments((current) => {
+        const byPath = new Map(current.map((item) => [item.path, item]));
+        for (const item of validated) byPath.set(item.path, item);
+        return [...byPath.values()].slice(0, 8);
+      });
+      setNotice(undefined);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function pickAttachments() {
+    const paths = (await api.pickFiles()) as string[] | undefined;
+    if (paths?.length) await attachFiles(paths);
+  }
+
+  function removeAttachment(filePath: string) {
+    setAttachments((current) => current.filter((item) => item.path !== filePath));
+  }
+
+  function stashCurrentPrompt() {
+    try {
+      const next = stashPrompt(localStorage, promptStashes, {
+        prompt: draft,
+        attachments,
+        projectId,
+      });
+      if (next === promptStashes) {
+        if (draft.trim() || attachments.length > 0) setNotice("Could not save the prompt stash.");
+        return;
+      }
+      setPromptStashes(next);
+      setDraft("");
+      setAttachments([]);
+      setNotice("Prompt stashed. Press ⌘S with an empty composer to open the stash.");
+    } catch {
+      setNotice("Could not save the prompt stash.");
+    }
+  }
+
+  function restorePromptStash(id: string) {
+    const entry = promptStashes.find((item) => item.id === id);
+    if (!entry) return;
+    const next = promptStashes.filter((item) => item.id !== id);
+    try {
+      writePromptStash(localStorage, next);
+    } catch {
+      // Keep the in-memory restore useful even if persistence is unavailable.
+    }
+    setPromptStashes(next);
+    setDraft(entry.prompt);
+    setAttachments(entry.attachments);
+    setNotice(undefined);
+  }
+
+  function deletePromptStash(id: string) {
+    const next = promptStashes.filter((item) => item.id !== id);
+    try {
+      writePromptStash(localStorage, next);
+    } catch {
+      // The current session can still remove it even when storage is blocked.
+    }
+    setPromptStashes(next);
+  }
+
   async function createProjectFromFolder() {
     try {
       const directory = await api.pickDirectory();
@@ -811,6 +1009,20 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       await refresh();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function cloneRepository(input: CloneRepositoryInput) {
+    setNotice(undefined);
+    try {
+      const created = (await api.cloneRepository(input)) as Project;
+      setProjectId(created.id);
+      setSessionId(undefined);
+      setView("chat");
+      await refresh();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+      throw error;
     }
   }
 
@@ -926,7 +1138,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         await api.updateProject(projectId, { workingDirectory: directory });
         await refresh();
       }
-      await api.openTerminal(projectId);
+      await api.openTerminal(projectId, sessionId);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : String(error));
     }
@@ -934,11 +1146,47 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   async function execInProject(command: string) {
     if (!projectId) throw new Error("No project selected");
-    return (await api.execInProject(projectId, command)) as {
+    return (await api.execInProject(projectId, command, sessionId)) as {
       stdout: string;
       stderr: string;
       code: number;
     };
+  }
+
+  async function initializeGit() {
+    if (!projectId) return;
+    try {
+      const next = await api.gitInit(projectId);
+      setGit(next);
+      setNotice("Git initialized. Create the first commit before using worktree conversations.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function saveProjectActions(actions: ProjectAction[]) {
+    if (!projectId) return;
+    try {
+      await api.updateProject(projectId, { actions });
+      setNotice(undefined);
+      await refresh();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function setWorkspaceMode(mode: WorkspaceMode) {
+    const previous = workspaceMode;
+    setWorkspaceModeState(mode);
+    if (!sessionId) return;
+    try {
+      await api.setSessionWorkspaceMode(sessionId, mode);
+      setNotice(undefined);
+      await refresh();
+    } catch (error) {
+      setWorkspaceModeState(previous);
+      setNotice(error instanceof Error ? error.message : String(error));
+    }
   }
 
   async function openPath(target: string) {
@@ -963,7 +1211,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         projectId,
         harnessId,
         prompt,
-        cwd: project?.workingDirectory,
+        cwd: session?.workingDirectory ?? project?.workingDirectory,
         mode: options?.mode ?? "persistent",
         permissionProfile:
           session?.permissionProfile === "strict" ||
@@ -1070,6 +1318,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     await refresh();
   }
 
+  async function reorderPinnedSessions(targetProjectId: string, orderedIds: string[]) {
+    await api.reorderPinnedSessions(targetProjectId, orderedIds);
+    await refresh();
+  }
+
   async function regenerateTitle(id: string) {
     await api.regenerateTitle(id);
     await refresh();
@@ -1089,7 +1342,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   async function checkoutBranch(branch: string) {
     if (!projectId) return;
     try {
-      const next = await api.checkoutBranch(projectId, branch);
+      const next = await api.checkoutBranch(projectId, branch, sessionId);
       setGit(next);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : String(error));
@@ -1108,13 +1361,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     applyAppearance(next);
     if (patch.defaultMode) setMode(patch.defaultMode);
     if (patch.defaultAgentId) setAgentId(patch.defaultAgentId);
+    if (patch.defaultWorkspaceMode) setWorkspaceModeState(patch.defaultWorkspaceMode);
     return next;
   }
 
   async function gitCommit(message: string) {
     if (!projectId) return;
     try {
-      setGit(await api.gitCommit(projectId, message));
+      setGit(await api.gitCommit(projectId, message, sessionId));
     } catch (error) {
       setNotice(error instanceof Error ? error.message : String(error));
     }
@@ -1123,7 +1377,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   async function gitStage(relative: string) {
     if (!projectId) return;
     try {
-      setGit(await api.gitStage(projectId, relative));
+      setGit(await api.gitStage(projectId, relative, sessionId));
     } catch (error) {
       setNotice(error instanceof Error ? error.message : String(error));
     }
@@ -1138,7 +1392,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       onConfirm: () => {
         void (async () => {
           if (!projectId) return;
-          setGit(await api.gitDiscard(projectId, relative));
+          setGit(await api.gitDiscard(projectId, relative, sessionId));
           setConfirm(undefined);
         })();
       },
@@ -1148,7 +1402,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   async function gitCreateBranch(branch: string) {
     if (!projectId) return;
     try {
-      setGit(await api.gitCreateBranch(projectId, branch));
+      setGit(await api.gitCreateBranch(projectId, branch, sessionId));
     } catch (error) {
       setNotice(error instanceof Error ? error.message : String(error));
     }
@@ -1157,7 +1411,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   async function gitPush() {
     if (!projectId) return;
     try {
-      setGit(await api.gitPush(projectId));
+      setGit(await api.gitPush(projectId, sessionId));
     } catch (error) {
       setNotice(error instanceof Error ? error.message : String(error));
     }
@@ -1180,7 +1434,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   async function gitMergePullRequest() {
     if (!projectId) return;
     try {
-      setGit(await api.gitMergePullRequest(projectId));
+      setGit(await api.gitMergePullRequest(projectId, sessionId));
     } catch (error) {
       setNotice(error instanceof Error ? error.message : String(error));
     }
@@ -1282,7 +1536,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       agentId,
       mode,
       draft,
+      attachments,
+      promptStashes,
       busy,
+      sendBlockReason,
       palette,
       paletteQuery,
       newProjectName,
@@ -1316,6 +1573,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       setAgentId,
       setMode,
       setDraft,
+      pickAttachments,
+      attachFiles,
+      removeAttachment,
+      stashCurrentPrompt,
+      restorePromptStash,
+      deletePromptStash,
       setPalette,
       setPaletteQuery,
       setNewProjectName,
@@ -1328,6 +1591,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       pickProjectDirectory,
       pickFilesToMention,
       createProjectFromFolder,
+      cloneRepository,
       addProjectFolder,
       removeProjectFolder,
       makePrimaryFolder,
@@ -1338,6 +1602,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       archiveSession,
       openTerminal,
       execInProject,
+      initializeGit,
+      saveProjectActions,
+      workspaceMode,
+      setWorkspaceMode,
+      browserUrl,
+      setBrowserUrl,
       projectRuns,
       openPath,
       mentionFile,
@@ -1353,6 +1623,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       exportDiagnostics,
       sidebarCollapsed,
       inspectorOpen,
+      terminalOpen,
+      setTerminalOpen,
       sidebarWidth,
       setSidebarCollapsed,
       setInspectorOpen,
@@ -1365,6 +1637,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       filePicker,
       setFilePicker,
       pinSession,
+      reorderPinnedSessions,
       regenerateTitle,
       setPermissionProfile,
       sendAndContinue,
@@ -1406,7 +1679,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       agentId,
       mode,
       draft,
+      attachments,
+      promptStashes,
       busy,
+      sendBlockReason,
       palette,
       paletteQuery,
       newProjectName,
@@ -1432,6 +1708,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       inspectorTab,
       projectRuns,
       settings,
+      workspaceMode,
+      browserUrl,
       refresh,
       loadSession,
     ],

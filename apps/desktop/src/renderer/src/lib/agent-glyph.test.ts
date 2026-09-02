@@ -24,14 +24,13 @@ describe("agentInitials", () => {
 
 describe("providerMark", () => {
   it("draws a mark for the providers that have one", () => {
-    expect(providerMark("claude")?.path).toBeTruthy();
-    expect(providerMark("Gemini")?.path).toBeTruthy();
+    expect(providerMark("claude")?.paths.length).toBeGreaterThan(0);
+    expect(providerMark("Codex")?.paths.length).toBeGreaterThan(0);
   });
 
   it("leaves the rest on the monogram tile", () => {
-    // Nobody publishes a mark for these, and inventing one would name the
-    // wrong product.
-    expect(providerMark("codex")).toBeUndefined();
+    // The set has no mark for these, and inventing one would name the wrong
+    // product.
     expect(providerMark("openclaw")).toBeUndefined();
     expect(providerMark(undefined)).toBeUndefined();
   });
@@ -42,9 +41,8 @@ describe("agentAccent", () => {
     expect(agentAccent("claude")).toBe("#d97757");
   });
 
-  it("drops one that does not", () => {
-    // Registered #000000, which would be an invisible mark.
-    expect(providerMark("cursor")?.hex).toBe("#000000");
+  it("leaves a mark with no brand colour on the row's own colour", () => {
+    expect(providerMark("cursor")?.hex).toBeUndefined();
     expect(agentAccent("cursor")).toBeUndefined();
   });
 

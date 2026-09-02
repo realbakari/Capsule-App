@@ -12,6 +12,7 @@ export function createProjectRecord(
     description: input.description,
     workingDirectory: input.workingDirectory,
     extraFolders: [],
+    actions: [],
     defaultAgentId: input.defaultAgentId,
     defaultSkillIds: [],
     defaultMode: input.defaultMode ?? "chat",

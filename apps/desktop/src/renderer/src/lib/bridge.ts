@@ -11,13 +11,17 @@ function isFn(value: unknown): value is (...args: never[]) => unknown {
 }
 
 /** Preload does not hot-reload; never call missing bridge methods directly. */
-export async function searchProjectFiles(projectId: string, query = ""): Promise<FileEntry[]> {
+export async function searchProjectFiles(
+  projectId: string,
+  query = "",
+  root?: string,
+): Promise<FileEntry[]> {
   const capsule = api() as CapsuleApi & Record<string, unknown>;
   if (isFn(capsule.searchFiles)) {
-    return (await capsule.searchFiles(projectId, query)) as FileEntry[];
+    return (await capsule.searchFiles(projectId, query, root)) as FileEntry[];
   }
   if (isFn(capsule.listFiles)) {
-    const entries = (await capsule.listFiles(projectId)) as FileEntry[];
+    const entries = (await capsule.listFiles(projectId, undefined, root)) as FileEntry[];
     const needle = query.trim().toLowerCase();
     if (!needle) return entries;
     return entries.filter(

@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import type { FileEntry, FilePreview } from "@capsule/shared";
+import type { FileEntry, FilePreview, GitPullRequest, LocalServer } from "@capsule/shared";
 import { folderBasename, projectFolderList } from "@capsule/shared";
 import { FileSaveCoordinator, isConflictError } from "../../lib/file-save";
+import { sameListing } from "../../lib/file-listing";
 import { formatProjectRoot } from "../../lib/paths";
 import { useWorkspace } from "../../lib/workspace";
 import { DiffView } from "./DiffView";
+import { EmbeddedBrowser } from "./EmbeddedBrowser";
 import { FilePreviewView } from "./FilePreview";
 import { FileTreePane, sortTreeEntries } from "./FileTree";
 import {
@@ -24,7 +26,7 @@ import {
 } from "./icons";
 
 /** Bump when the inspector shell changes so a stuck error panel remounts. */
-export const INSPECTOR_REVISION = 2;
+export const INSPECTOR_REVISION = 3;
 
 type InspectorTool = "launcher" | "review" | "terminal" | "browser" | "files" | "chat";
 
@@ -149,6 +151,8 @@ export function Inspector() {
     closeHarness,
     setSessionId,
     busy,
+    browserUrl,
+    setBrowserUrl,
   } = useWorkspace();
 
   const [panelWidth, setPanelWidth] = useState<number>(() => {
@@ -185,7 +189,10 @@ export function Inspector() {
   const saverRef = useRef<FileSaveCoordinator | undefined>(undefined);
   const revisionRef = useRef<string | undefined>(undefined);
 
-  const [browserUrl, setBrowserUrl] = useState("http://localhost:3000");
+  const [localServers, setLocalServers] = useState<LocalServer[]>([]);
+  const [serversLoading, setServersLoading] = useState(false);
+  const [pullRequests, setPullRequests] = useState<GitPullRequest[]>([]);
+  const [pullRequestsLoading, setPullRequestsLoading] = useState(false);
 
   const [termCmd, setTermCmd] = useState("");
   const [termOut, setTermOut] = useState("");
@@ -196,11 +203,15 @@ export function Inspector() {
   const harnesses = harnessList ?? [];
   const dedicated = harnesses.find((item) => item.id === project?.defaultAgentId);
 
-  const folderRoots = projectFolderList(project ?? {});
+  const projectRoots = projectFolderList(project ?? {});
+  const folderRoots =
+    session?.workingDirectory && session.workingDirectory !== project?.workingDirectory
+      ? [session.workingDirectory, ...projectRoots.filter((root) => root !== project?.workingDirectory)]
+      : projectRoots;
   const activeRoot =
-    (fileRoot &&
-      folderRoots.find((root) => root.toLowerCase() === fileRoot.toLowerCase())) ||
-    project?.workingDirectory;
+    (fileRoot && folderRoots.find((root) => root.toLowerCase() === fileRoot.toLowerCase())) ||
+    (session?.workingDirectory ?? project?.workingDirectory);
+  const conversationRoot = session?.workingDirectory ?? project?.workingDirectory;
 
   useEffect(() => {
     const previous = saverRef.current;
@@ -228,15 +239,62 @@ export function Inspector() {
     return () => saverRef.current?.dispose();
   }, [api, editing, fileRoot, projectId]);
 
+  /*
+   * Only when the conversation moves. This used to depend on `files`, which
+   * changes on every workspace refresh — and a refresh happens on every
+   * message an agent streams — so browsing a second project folder lasted
+   * until the next frame arrived and snapped the tree back to the root.
+   */
   useEffect(() => {
-    setFileRoot(project?.workingDirectory);
-    setListing(files);
-  }, [files, project?.workingDirectory, projectId]);
+    setFileRoot(session?.workingDirectory ?? project?.workingDirectory);
+  }, [project?.workingDirectory, projectId, session?.workingDirectory]);
 
   useEffect(() => {
     setExpanded(new Set());
     setChildrenByDir({});
-  }, [projectId, project?.workingDirectory]);
+  }, [projectId, project?.workingDirectory, session?.workingDirectory]);
+
+  useEffect(() => {
+    if (activeTool !== "browser") return undefined;
+    let disposed = false;
+    const refreshServers = () => {
+      setServersLoading(true);
+      void api
+        .listLocalServers()
+        .then((servers) => {
+          if (!disposed) setLocalServers(servers as LocalServer[]);
+        })
+        .finally(() => {
+          if (!disposed) setServersLoading(false);
+        });
+    };
+    refreshServers();
+    const timer = window.setInterval(refreshServers, 5_000);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [activeTool, api]);
+
+  useEffect(() => {
+    if (activeTool !== "review" || !projectId || !git?.isRepo) {
+      setPullRequests([]);
+      return;
+    }
+    let disposed = false;
+    setPullRequestsLoading(true);
+    void api
+      .listPullRequests(projectId, session?.id)
+      .then((items) => {
+        if (!disposed) setPullRequests(items as GitPullRequest[]);
+      })
+      .finally(() => {
+        if (!disposed) setPullRequestsLoading(false);
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [activeTool, api, git?.branch, git?.isRepo, projectId, session?.id]);
 
   useEffect(() => {
     setPreviewDoc(undefined);
@@ -247,17 +305,19 @@ export function Inspector() {
 
   useEffect(() => {
     if (!projectId || !activeRoot) {
-      setListing(files);
+      setListing((current) => (sameListing(current, files) ? current : files));
       return;
     }
     let ignore = false;
     api
       .listFiles(projectId, undefined, activeRoot)
+      // An unchanged listing keeps the array it already had: replacing it with
+      // an equal copy rebuilds the tree and flashes the rows on every frame.
       .then((entries) => {
-        if (!ignore) setListing(entries);
+        if (!ignore) setListing((current) => (sameListing(current, entries) ? current : entries));
       })
       .catch(() => {
-        if (!ignore) setListing([]);
+        if (!ignore) setListing((current) => (current.length === 0 ? current : []));
       });
     return () => {
       ignore = true;
@@ -443,7 +503,7 @@ export function Inspector() {
   async function showFileDiff(relative: string) {
     if (!projectId) return;
     try {
-      const text = await api.gitDiff(projectId, relative);
+      const text = await api.gitDiff(projectId, relative, session?.id);
       setDiff(text || "(no differences)");
     } catch {
       setDiff("Failed to load diff.");
@@ -581,8 +641,8 @@ export function Inspector() {
               <span>Terminal</span>
               <span className="codex-breadcrumb-sep">·</span>
               <span className="mono truncate">
-                {project?.workingDirectory
-                  ? formatProjectRoot(project.workingDirectory, { home: window.capsule.homeDir })
+                {conversationRoot
+                  ? formatProjectRoot(conversationRoot, { home: window.capsule.homeDir })
                   : "local"}
               </span>
             </>
@@ -663,7 +723,7 @@ export function Inspector() {
                   }}
                   onMention={() => {
                     const prefix =
-                      activeRoot && activeRoot !== project?.workingDirectory
+                      activeRoot && activeRoot !== conversationRoot
                         ? `${folderBasename(activeRoot)}/`
                         : "";
                     mentionFile(`${prefix}${previewDoc.path}`);
@@ -757,6 +817,35 @@ export function Inspector() {
                   </button>
                 )}
               </div>
+            </div>
+
+            <div className="codex-pr-list">
+              <div className="codex-pr-list-head">
+                <h4>Open pull requests ({pullRequests.length})</h4>
+                {pullRequestsLoading ? <span className="faint">Refreshing…</span> : null}
+              </div>
+              {!pullRequestsLoading && pullRequests.length === 0 ? (
+                <p className="faint">No open pull requests were found for this repository.</p>
+              ) : null}
+              {pullRequests.map((pullRequest) => (
+                <button
+                  type="button"
+                  className="codex-pr-row"
+                  key={pullRequest.number}
+                  onClick={() => void openPath(pullRequest.url)}
+                >
+                  <span className="codex-pr-number">#{pullRequest.number}</span>
+                  <span className="codex-pr-copy">
+                    <b>{pullRequest.title}</b>
+                    <small>
+                      {[pullRequest.author, pullRequest.headRefName].filter(Boolean).join(" · ") || "Open pull request"}
+                    </small>
+                  </span>
+                  <span className={`codex-pr-checks ${pullRequest.checks ?? "none"}`}>
+                    {pullRequest.isDraft ? "Draft" : pullRequest.checks ?? "Open"}
+                  </span>
+                </button>
+              ))}
             </div>
 
             <div className="codex-review-files">
@@ -886,59 +975,13 @@ export function Inspector() {
         )}
 
         {activeTool === "browser" && (
-          <div className="codex-browser-pane">
-            <div className="codex-browser-nav">
-              <input
-                type="text"
-                className="codex-browser-input"
-                value={browserUrl}
-                onChange={(e) => setBrowserUrl(e.target.value)}
-                placeholder="https://..."
-              />
-              <button
-                type="button"
-                className="chip"
-                onClick={() => void openPath(browserUrl)}
-              >
-                Open in Browser
-              </button>
-            </div>
-            <div className="codex-browser-links">
-              <h4>Quick Links</h4>
-              <div className="actions" style={{ flexDirection: "column", alignItems: "flex-start", gap: 6 }}>
-                <button
-                  type="button"
-                  className="ghost"
-                  onClick={() => {
-                    setBrowserUrl("http://localhost:3000");
-                    void openPath("http://localhost:3000");
-                  }}
-                >
-                  Localhost (3000)
-                </button>
-                <button
-                  type="button"
-                  className="ghost"
-                  onClick={() => {
-                    setBrowserUrl("http://localhost:5173");
-                    void openPath("http://localhost:5173");
-                  }}
-                >
-                  Vite Dev Server (5173)
-                </button>
-                <button
-                  type="button"
-                  className="ghost"
-                  onClick={() => {
-                    setBrowserUrl("https://docs.openclaw.ai");
-                    void openPath("https://docs.openclaw.ai");
-                  }}
-                >
-                  OpenClaw Documentation
-                </button>
-              </div>
-            </div>
-          </div>
+          <EmbeddedBrowser
+            address={browserUrl}
+            onAddressChange={setBrowserUrl}
+            localServers={localServers}
+            serversLoading={serversLoading}
+            onOpenExternal={(url) => void openPath(url)}
+          />
         )}
 
         {activeTool === "chat" && (

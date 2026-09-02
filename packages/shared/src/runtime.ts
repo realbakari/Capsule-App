@@ -59,6 +59,7 @@ export type ArchiveInactiveAfter = "never" | "1d" | "7d" | "30d";
 export type SessionClassification = "blocked" | "done";
 export type PrMergeMethod = "merge" | "squash" | "rebase";
 export type PrReviewDelivery = "current" | "new-chat";
+export type DefaultWorkspaceMode = "local" | "worktree";
 
 export const TOKEN_PRESENT_MASK = "••••";
 
@@ -88,6 +89,7 @@ export const DEFAULT_CAPSULE_SETTINGS: CapsuleSettings = {
   mockScenario: "successful_run",
   composerSendKey: "enter",
   defaultMode: "chat",
+  defaultWorkspaceMode: "local",
   defaultPermission: "default",
   appearanceTheme: "dark",
   appearanceLight: DEFAULT_LIGHT_PALETTE,
@@ -146,6 +148,7 @@ export const SETTINGS_SECTION_KEYS: Record<string, ReadonlyArray<keyof CapsuleSe
   ],
   agents: [
     "defaultMode",
+    "defaultWorkspaceMode",
     "defaultAgentId",
     "defaultPermission",
     "webAccess",
@@ -187,6 +190,8 @@ export interface CapsuleSettings {
   mockScenario: MockScenario;
   composerSendKey: ComposerSendKey;
   defaultMode: AgentMode;
+  /** Default isolation for conversations created inside Git projects. */
+  defaultWorkspaceMode: DefaultWorkspaceMode;
   defaultPermission: HarnessPermissionProfile;
   defaultAgentId?: string;
   /** Root folder for Inbox / tasks started without opening a project. */
@@ -237,6 +242,7 @@ const AGENT_MODES: AgentMode[] = [
   "browser",
   "automation",
 ];
+const WORKSPACE_MODES: DefaultWorkspaceMode[] = ["local", "worktree"];
 const SEND_KEYS: ComposerSendKey[] = ["enter", "cmd-enter"];
 const THEMES: AppearanceTheme[] = ["system", "dark", "light"];
 const PERMISSIONS: HarnessPermissionProfile[] = ["default", "strict", "approve-all"];
@@ -397,6 +403,11 @@ export function normalizeCapsuleSettings(input: Partial<CapsuleSettings> = {}): 
       DEFAULT_CAPSULE_SETTINGS.composerSendKey,
     ),
     defaultMode: pick(input.defaultMode, AGENT_MODES, DEFAULT_CAPSULE_SETTINGS.defaultMode),
+    defaultWorkspaceMode: pick(
+      input.defaultWorkspaceMode,
+      WORKSPACE_MODES,
+      DEFAULT_CAPSULE_SETTINGS.defaultWorkspaceMode,
+    ),
     defaultPermission: pick(
       input.defaultPermission,
       PERMISSIONS,

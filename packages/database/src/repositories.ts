@@ -49,7 +49,10 @@ function sessionParams(session: Session) {
     permissionProfile: optional(session.permissionProfile),
     modelOverride: optional(session.modelOverride),
     pinned: session.pinned ? 1 : 0,
+    pinOrder: session.pinOrder ?? null,
     workingDirectory: session.workingDirectory ?? null,
+    workspaceMode: session.workspaceMode ?? "local",
+    worktreeBranch: session.worktreeBranch ?? null,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
   };
@@ -69,8 +72,11 @@ function normalizeSession(row: Session): Session {
     permissionProfile: row.permissionProfile || undefined,
     modelOverride: row.modelOverride || undefined,
     pinned: Boolean(row.pinned),
+    pinOrder: typeof row.pinOrder === "number" ? row.pinOrder : undefined,
     openclawSessionKey: row.openclawSessionKey || undefined,
     workingDirectory: row.workingDirectory || undefined,
+    workspaceMode: row.workspaceMode === "worktree" ? "worktree" : "local",
+    worktreeBranch: row.worktreeBranch || undefined,
   };
 }
 
@@ -110,10 +116,10 @@ export class CapsuleRepositories {
     this.db.sqlite
       .prepare(
         `INSERT INTO projects (
-          id, workspace_id, name, description, working_directory, extra_folders, default_agent_id,
+          id, workspace_id, name, description, working_directory, extra_folders, project_actions, icon_path, default_agent_id,
           default_skill_ids, default_mode, created_at, updated_at
         ) VALUES (
-          @id, @workspaceId, @name, @description, @workingDirectory, @extraFolders, @defaultAgentId,
+          @id, @workspaceId, @name, @description, @workingDirectory, @extraFolders, @actions, @iconPath, @defaultAgentId,
           @defaultSkillIds, @defaultMode, @createdAt, @updatedAt
         )`,
       )
@@ -122,6 +128,8 @@ export class CapsuleRepositories {
         description: project.description ?? null,
         workingDirectory: project.workingDirectory ?? null,
         extraFolders: JSON.stringify(project.extraFolders ?? []),
+        actions: JSON.stringify(project.actions ?? []),
+        iconPath: project.iconPath ?? null,
         defaultAgentId: project.defaultAgentId ?? null,
         defaultSkillIds: JSON.stringify(project.defaultSkillIds),
       });
@@ -131,21 +139,29 @@ export class CapsuleRepositories {
     const rows = this.db.sqlite
       .prepare(
         `SELECT id, workspace_id AS workspaceId, name, description, working_directory AS workingDirectory,
-                extra_folders AS extraFolders, default_agent_id AS defaultAgentId,
+                extra_folders AS extraFolders, project_actions AS actions, icon_path AS iconPath,
+                default_agent_id AS defaultAgentId,
                 default_skill_ids AS defaultSkillIds, default_mode AS defaultMode,
                 created_at AS createdAt, updated_at AS updatedAt
          FROM projects ORDER BY updated_at DESC`,
       )
       .all() as Array<
-      Omit<Project, "defaultSkillIds" | "extraFolders"> & { defaultSkillIds: string; extraFolders: string }
+      Omit<Project, "defaultSkillIds" | "extraFolders" | "actions"> & {
+        defaultSkillIds: string;
+        extraFolders: string;
+        actions: string;
+      }
     >;
     return rows.map((row) => {
       const extraFolders = parseJson<string[]>(row.extraFolders, []);
+      const actions = parseJson<Project["actions"]>(row.actions, []);
       return {
         ...row,
         description: row.description || undefined,
         workingDirectory: row.workingDirectory || undefined,
         extraFolders: extraFolders.length > 0 ? extraFolders : undefined,
+        actions: actions && actions.length > 0 ? actions : undefined,
+        iconPath: row.iconPath || undefined,
         defaultAgentId: row.defaultAgentId || undefined,
         defaultSkillIds: parseJson<string[]>(row.defaultSkillIds, []),
       };
@@ -160,7 +176,8 @@ export class CapsuleRepositories {
     this.db.sqlite
       .prepare(
         `UPDATE projects SET name = @name, description = @description, working_directory = @workingDirectory,
-         extra_folders = @extraFolders, default_agent_id = @defaultAgentId,
+         extra_folders = @extraFolders, project_actions = @actions, icon_path = @iconPath,
+         default_agent_id = @defaultAgentId,
          default_skill_ids = @defaultSkillIds, default_mode = @defaultMode,
          updated_at = @updatedAt WHERE id = @id`,
       )
@@ -170,6 +187,8 @@ export class CapsuleRepositories {
         description: project.description ?? null,
         workingDirectory: project.workingDirectory ?? null,
         extraFolders: JSON.stringify(project.extraFolders ?? []),
+        actions: JSON.stringify(project.actions ?? []),
+        iconPath: project.iconPath ?? null,
         defaultAgentId: project.defaultAgentId ?? null,
         defaultSkillIds: JSON.stringify(project.defaultSkillIds),
         defaultMode: project.defaultMode,
@@ -183,11 +202,13 @@ export class CapsuleRepositories {
         `INSERT INTO sessions (
           id, workspace_id, project_id, agent_id, title, mode, state,
           openclaw_session_key, harness_id, harness_state, acp_mode,
-          permission_profile, model_override, pinned, working_directory, created_at, updated_at
+          permission_profile, model_override, pinned, pin_order, working_directory, workspace_mode,
+          worktree_branch, created_at, updated_at
         ) VALUES (
           @id, @workspaceId, @projectId, @agentId, @title, @mode, @state,
           @openclawSessionKey, @harnessId, @harnessState, @acpMode,
-          @permissionProfile, @modelOverride, @pinned, @workingDirectory, @createdAt, @updatedAt
+          @permissionProfile, @modelOverride, @pinned, @pinOrder, @workingDirectory, @workspaceMode,
+          @worktreeBranch, @createdAt, @updatedAt
         )`,
       )
       .run(sessionParams(session));
@@ -200,7 +221,8 @@ export class CapsuleRepositories {
          openclaw_session_key = @openclawSessionKey, harness_id = @harnessId,
          harness_state = @harnessState, acp_mode = @acpMode,
          permission_profile = @permissionProfile, model_override = @modelOverride,
-         pinned = @pinned, working_directory = @workingDirectory, updated_at = @updatedAt WHERE id = @id`,
+         pinned = @pinned, pin_order = @pinOrder, working_directory = @workingDirectory, workspace_mode = @workspaceMode,
+         worktree_branch = @worktreeBranch, updated_at = @updatedAt WHERE id = @id`,
       )
       .run(sessionParams(session));
   }
@@ -237,10 +259,13 @@ export class CapsuleRepositories {
                 title, mode, state, openclaw_session_key AS openclawSessionKey,
                 harness_id AS harnessId, harness_state AS harnessState, acp_mode AS acpMode,
                 permission_profile AS permissionProfile, model_override AS modelOverride,
-                pinned, working_directory AS workingDirectory, created_at AS createdAt, updated_at AS updatedAt`;
+                pinned, pin_order AS pinOrder, working_directory AS workingDirectory, workspace_mode AS workspaceMode,
+                worktree_branch AS worktreeBranch, created_at AS createdAt, updated_at AS updatedAt`;
     const sql = projectId
-      ? `SELECT ${columns} FROM sessions WHERE project_id = ? ORDER BY pinned DESC, updated_at DESC`
-      : `SELECT ${columns} FROM sessions ORDER BY pinned DESC, updated_at DESC`;
+      ? `SELECT ${columns} FROM sessions WHERE project_id = ?
+         ORDER BY pinned DESC, COALESCE(pin_order, 2147483647) ASC, updated_at DESC`
+      : `SELECT ${columns} FROM sessions
+         ORDER BY pinned DESC, COALESCE(pin_order, 2147483647) ASC, updated_at DESC`;
     const rows = (
       projectId ? this.db.sqlite.prepare(sql).all(projectId) : this.db.sqlite.prepare(sql).all()
     ) as Session[];
@@ -254,19 +279,29 @@ export class CapsuleRepositories {
   insertMessage(message: ChatMessage): void {
     this.db.sqlite
       .prepare(
-        `INSERT INTO messages (id, session_id, role, content, kind, run_id, created_at)
-         VALUES (@id, @sessionId, @role, @content, @kind, @runId, @createdAt)`,
+        `INSERT INTO messages (id, session_id, role, content, attachments, kind, run_id, created_at)
+         VALUES (@id, @sessionId, @role, @content, @attachments, @kind, @runId, @createdAt)`,
       )
-      .run({ ...message, kind: message.kind ?? null, runId: message.runId ?? null });
+      .run({
+        ...message,
+        attachments: JSON.stringify(message.attachments ?? []),
+        kind: message.kind ?? null,
+        runId: message.runId ?? null,
+      });
   }
 
   listMessages(sessionId: string): ChatMessage[] {
-    return this.db.sqlite
+    const rows = this.db.sqlite
       .prepare(
-        `SELECT id, session_id AS sessionId, role, content, kind, run_id AS runId, created_at AS createdAt
+        `SELECT id, session_id AS sessionId, role, content, attachments, kind,
+                run_id AS runId, created_at AS createdAt
          FROM messages WHERE session_id = ? ORDER BY created_at ASC`,
       )
-      .all(sessionId) as ChatMessage[];
+      .all(sessionId) as Array<Omit<ChatMessage, "attachments"> & { attachments: string }>;
+    return rows.map((row) => {
+      const attachments = parseJson<NonNullable<ChatMessage["attachments"]>>(row.attachments, []);
+      return { ...row, attachments: attachments.length > 0 ? attachments : undefined };
+    });
   }
 
   /*
@@ -280,7 +315,8 @@ export class CapsuleRepositories {
     limit: number,
     before?: { createdAt: string; id: string },
   ): ChatMessage[] {
-    const columns = `id, session_id AS sessionId, role, content, kind, run_id AS runId, created_at AS createdAt`;
+    const columns = `id, session_id AS sessionId, role, content, attachments, kind,
+                     run_id AS runId, created_at AS createdAt`;
     const rows = before
       ? (this.db.sqlite
           .prepare(
@@ -289,15 +325,22 @@ export class CapsuleRepositories {
                AND (created_at < @createdAt OR (created_at = @createdAt AND id < @id))
              ORDER BY created_at DESC, id DESC LIMIT @limit`,
           )
-          .all({ sessionId, createdAt: before.createdAt, id: before.id, limit }) as ChatMessage[])
+          .all({ sessionId, createdAt: before.createdAt, id: before.id, limit }) as Array<
+          Omit<ChatMessage, "attachments"> & { attachments: string }
+        >)
       : (this.db.sqlite
           .prepare(
             `SELECT ${columns} FROM messages WHERE session_id = @sessionId
              ORDER BY created_at DESC, id DESC LIMIT @limit`,
           )
-          .all({ sessionId, limit }) as ChatMessage[]);
+          .all({ sessionId, limit }) as Array<
+          Omit<ChatMessage, "attachments"> & { attachments: string }
+        >);
     // Query is newest-first so LIMIT takes the right end; callers want reading order.
-    return rows.reverse();
+    return rows.reverse().map((row) => {
+      const attachments = parseJson<NonNullable<ChatMessage["attachments"]>>(row.attachments, []);
+      return { ...row, attachments: attachments.length > 0 ? attachments : undefined };
+    });
   }
 
   searchMessages(needle: string, limit = 20): Array<{

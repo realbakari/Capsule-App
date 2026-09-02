@@ -22,6 +22,7 @@ export function createSessionRecord(
     state: "active",
     permissionProfile: input.permissionProfile,
     workingDirectory: input.workingDirectory,
+    workspaceMode: input.workspaceMode ?? "local",
     createdAt: timestamp,
     updatedAt: timestamp,
   };

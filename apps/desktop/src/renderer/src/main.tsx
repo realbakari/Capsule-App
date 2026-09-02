@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import { createDemoBridge } from "./features/landing/demoBridge";
 import { WebRoot } from "./features/landing/WebRoot";
+import "@xterm/xterm/css/xterm.css";
 import "./styles.css";
 
 const root = document.getElementById("root");

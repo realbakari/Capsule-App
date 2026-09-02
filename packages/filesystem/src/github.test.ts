@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createPullRequestArgs, mergePullRequestArgs, pushArgs } from "./github.js";
+import { createPullRequestArgs, mergePullRequestArgs, parsePullRequestList, pushArgs } from "./github.js";
 
 describe("git and pull request args", () => {
   it("pushes with lease only when asked", () => {
@@ -17,5 +17,23 @@ describe("git and pull request args", () => {
     expect(mergePullRequestArgs("squash", false)).toEqual(["pr", "merge", "--squash"]);
     expect(mergePullRequestArgs("rebase", true)).toEqual(["pr", "merge", "--rebase", "--auto"]);
     expect(mergePullRequestArgs("merge", true)).toEqual(["pr", "merge", "--merge", "--auto"]);
+  });
+
+  it("normalizes pull request list rows", () => {
+    expect(
+      parsePullRequestList(
+        JSON.stringify([
+          {
+            number: 42,
+            url: "https://github.com/example/repo/pull/42",
+            title: "Ship it",
+            state: "OPEN",
+            author: { login: "octocat" },
+            headRefName: "feature/ship",
+            statusCheckRollup: [{ state: "SUCCESS" }],
+          },
+        ]),
+      )[0],
+    ).toMatchObject({ number: 42, title: "Ship it", author: "octocat", checks: "success" });
   });
 });

@@ -81,6 +81,7 @@ export function SettingsView() {
     settingsTab: tab,
     setConfirm,
     resetSettingsSection: resetSection,
+    refresh,
   } = useWorkspace();
 
   const [url, setUrl] = useState(settings?.gatewayUrl ?? "");
@@ -255,6 +256,23 @@ export function SettingsView() {
                           {item.name}
                         </option>
                       ))}
+                    </select>
+                  </SettingRow>
+                  <SettingRow
+                    label="Conversation workspace"
+                    hint="Local shares the checkout. Worktree creates an isolated branch and folder for each Git conversation."
+                  >
+                    <select
+                      className="field-select"
+                      value={settings.defaultWorkspaceMode}
+                      onChange={(event) =>
+                        void patch({
+                          defaultWorkspaceMode: event.target.value as CapsuleSettings["defaultWorkspaceMode"],
+                        })
+                      }
+                    >
+                      <option value="local">Local</option>
+                      <option value="worktree">New worktree</option>
                     </select>
                   </SettingRow>
                 </div>
@@ -479,7 +497,10 @@ export function SettingsView() {
                   </div>
                 </SettingRow>
                 {projects.map((item) => (
-                  <div className="row" key={item.id} style={{ marginBottom: 8 }}>
+                  <div className="row project-settings-row" key={item.id} style={{ marginBottom: 8 }}>
+                    <span className="project-settings-icon">
+                      {item.iconDataUrl ? <img src={item.iconDataUrl} alt="" /> : item.name.slice(0, 1).toUpperCase()}
+                    </span>
                     <button
                       className="list-item"
                       onClick={() => {
@@ -496,6 +517,36 @@ export function SettingsView() {
                         {item.extraFolders?.length ? ` +${item.extraFolders.length}` : ""}
                       </span>
                     </button>
+                    {item.name !== "Inbox" ? (
+                      <>
+                        <button
+                          className="ghost"
+                          type="button"
+                          onClick={() => {
+                            void (async () => {
+                              const paths = (await api.pickFiles()) as string[] | undefined;
+                              const iconPath = paths?.[0];
+                              if (!iconPath) return;
+                              await api.updateProject(item.id, { iconPath });
+                              await refresh();
+                            })();
+                          }}
+                        >
+                          Choose icon
+                        </button>
+                        {item.iconPath ? (
+                          <button
+                            className="ghost"
+                            type="button"
+                            onClick={() => {
+                              void api.updateProject(item.id, { iconPath: null }).then(() => refresh());
+                            }}
+                          >
+                            Automatic
+                          </button>
+                        ) : null}
+                      </>
+                    ) : null}
                     <button className="danger" onClick={() => deleteProject(item.id)}>
                       Delete
                     </button>

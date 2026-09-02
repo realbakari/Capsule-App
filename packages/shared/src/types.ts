@@ -20,6 +20,8 @@ export type AgentMode =
 
 export type AgentStatus = "idle" | "running" | "offline" | "error";
 
+export type WorkspaceMode = "local" | "worktree";
+
 export type AgentKind = "agent" | "system";
 
 export type RunStatus =
@@ -201,6 +203,12 @@ export interface Project {
   workingDirectory?: string;
   /** Extra folders the agent and Files panel can read; git stays on the primary. */
   extraFolders?: string[];
+  /** Saved, project-scoped commands exposed in the titlebar. */
+  actions?: ProjectAction[];
+  /** Saved image path. When absent, Capsule probes common project icon paths. */
+  iconPath?: string;
+  /** Resolved image payload returned to the renderer; never stored in SQLite. */
+  iconDataUrl?: string;
   defaultAgentId?: string;
   defaultSkillIds: string[];
   defaultMode: AgentMode;
@@ -223,8 +231,14 @@ export interface Session {
   permissionProfile?: string;
   modelOverride?: string;
   pinned?: boolean;
+  /** Stable ordering among pinned conversations; lower values appear first. */
+  pinOrder?: number;
   /** Per-thread cwd for Inbox / projectless tasks. Project repos leave this unset. */
   workingDirectory?: string;
+  /** Whether the conversation shares the project checkout or owns a Git worktree. */
+  workspaceMode?: WorkspaceMode;
+  /** Branch created for a worktree conversation. */
+  worktreeBranch?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -234,6 +248,8 @@ export interface UpdateProjectInput {
   description?: string;
   workingDirectory?: string | null;
   extraFolders?: string[];
+  actions?: ProjectAction[];
+  iconPath?: string | null;
   defaultAgentId?: string | null;
   defaultMode?: AgentMode;
 }
@@ -242,6 +258,34 @@ export interface FileEntry {
   name: string;
   path: string;
   type: "file" | "directory";
+}
+
+export interface ProjectAction {
+  id: string;
+  name: string;
+  command: string;
+  /** Optional local URL selected in the Browser panel after the action starts. */
+  previewUrl?: string;
+}
+
+export interface ProjectActionRun {
+  projectId: string;
+  actionId: string;
+  sessionId?: string;
+  status: "running" | "completed" | "failed" | "stopped";
+  pid?: number;
+  output: string;
+  startedAt: string;
+  completedAt?: string;
+}
+
+export interface LocalServer {
+  port: number;
+  command: string;
+  pid: number;
+  url: string;
+  title?: string;
+  protocol: "http" | "https";
 }
 
 export interface GitChange {
@@ -269,6 +313,9 @@ export interface GitPullRequest {
   reviewDecision?: string;
   checks?: "pending" | "success" | "failure" | "none";
   checksSummary?: string;
+  author?: string;
+  headRefName?: string;
+  updatedAt?: string;
 }
 
 export interface GitStatus {
@@ -289,11 +336,19 @@ export interface GitStatus {
   pullRequest?: GitPullRequest;
 }
 
+export interface MessageAttachment {
+  name: string;
+  path: string;
+  size: number;
+  mimeType?: string;
+}
+
 export interface ChatMessage {
   id: string;
   sessionId: string;
   role: "user" | "assistant" | "system";
   content: string;
+  attachments?: MessageAttachment[];
   /** Set when the turn is something other than a plain message, e.g. a steer
    *  sent into an in-flight run. Carries intent the content should not. */
   kind?: "steer";
@@ -462,6 +517,12 @@ export interface CreateProjectInput {
   defaultMode?: AgentMode;
 }
 
+export interface CloneRepositoryInput {
+  url: string;
+  parentDirectory: string;
+  name?: string;
+}
+
 export interface CreateSessionInput {
   projectId: string;
   agentId?: string;
@@ -469,6 +530,7 @@ export interface CreateSessionInput {
   mode?: AgentMode;
   permissionProfile?: import("./harness.js").HarnessPermissionProfile;
   workingDirectory?: string;
+  workspaceMode?: WorkspaceMode;
 }
 
 export interface AgentMessage {
@@ -477,7 +539,7 @@ export interface AgentMessage {
   agentId?: string;
   skillId?: string;
   mode?: AgentMode;
-  attachments?: Array<{ name: string; path: string }>;
+  attachments?: MessageAttachment[];
   /**
    * The conversation's permission profile, carried per turn so the runtime can
    * (re)apply it to a session that was created before the profile changed.
@@ -511,3 +573,20 @@ export interface DiagnosticsSnapshot {
 }
 
 export type Unsubscribe = () => void;
+
+/** One shell running in Capsule's terminal panel. */
+export interface TerminalHandle {
+  id: string;
+  pid: number;
+  cwd: string;
+}
+
+export interface TerminalDataEvent {
+  id: string;
+  data: string;
+}
+
+export interface TerminalExitEvent {
+  id: string;
+  code: number;
+}

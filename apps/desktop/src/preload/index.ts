@@ -15,6 +15,7 @@ const api = {
   homeDir: os.homedir(),
   listProjects: () => ipcRenderer.invoke(IPC_CHANNELS.listProjects),
   createProject: (input: unknown) => ipcRenderer.invoke(IPC_CHANNELS.createProject, input),
+  cloneRepository: (input: unknown) => ipcRenderer.invoke(IPC_CHANNELS.cloneRepository, input),
   getProject: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.getProject, id),
   listAgents: () => ipcRenderer.invoke(IPC_CHANNELS.listAgents),
   listSkills: () => ipcRenderer.invoke(IPC_CHANNELS.listSkills),
@@ -36,6 +37,8 @@ const api = {
   fetchSkillDetail: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.fetchSkillDetail, id),
   listSessions: (projectId?: string) => ipcRenderer.invoke(IPC_CHANNELS.listSessions, projectId),
   createSession: (input: unknown) => ipcRenderer.invoke(IPC_CHANNELS.createSession, input),
+  setSessionWorkspaceMode: (id: string, mode: "local" | "worktree") =>
+    ipcRenderer.invoke(IPC_CHANNELS.setSessionWorkspaceMode, id, mode),
   renameSession: (id: string, title: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.renameSession, id, title),
   archiveSession: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.archiveSession, id),
@@ -70,9 +73,23 @@ const api = {
   ) => ipcRenderer.invoke(IPC_CHANNELS.writeFile, projectId, relative, content, options),
   listFiles: (projectId: string, relative?: string, root?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.listFiles, projectId, relative, root),
-  openTerminal: (projectId: string) => ipcRenderer.invoke(IPC_CHANNELS.openTerminal, projectId),
-  execInProject: (projectId: string, command: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.execInProject, projectId, command),
+  openTerminal: (projectId: string, sessionId?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.openTerminal, projectId, sessionId),
+  execInProject: (projectId: string, command: string, sessionId?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.execInProject, projectId, command, sessionId),
+  terminalStart: (input: { cwd: string; cols?: number; rows?: number }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.terminalStart, input),
+  terminalInput: (id: string, data: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.terminalInput, id, data),
+  terminalResize: (id: string, cols: number, rows: number) =>
+    ipcRenderer.invoke(IPC_CHANNELS.terminalResize, id, cols, rows),
+  terminalStop: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.terminalStop, id),
+  runProjectAction: (projectId: string, actionId: string, sessionId?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.runProjectAction, projectId, actionId, sessionId),
+  stopProjectAction: (projectId: string, actionId: string, sessionId?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.stopProjectAction, projectId, actionId, sessionId),
+  listProjectActionRuns: (projectId: string, sessionId?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.listProjectActionRuns, projectId, sessionId),
   getStatus: () => ipcRenderer.invoke(IPC_CHANNELS.getStatus),
   getSubsystemStatus: () => ipcRenderer.invoke(IPC_CHANNELS.getSubsystemStatus),
   connectGateway: (url?: string) => ipcRenderer.invoke(IPC_CHANNELS.connectGateway, url),
@@ -84,31 +101,39 @@ const api = {
   updateProject: (id: string, patch: unknown) =>
     ipcRenderer.invoke(IPC_CHANNELS.updateProject, id, patch),
   deleteProject: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.deleteProject, id),
-  gitStatus: (projectId: string) => ipcRenderer.invoke(IPC_CHANNELS.gitStatus, projectId),
-  gitDiff: (projectId: string, relative?: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.gitDiff, projectId, relative),
-  checkoutBranch: (projectId: string, branch: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.checkoutBranch, projectId, branch),
-  gitCommit: (projectId: string, message: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.gitCommit, projectId, message),
-  gitStage: (projectId: string, relative: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.gitStage, projectId, relative),
-  gitDiscard: (projectId: string, relative: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.gitDiscard, projectId, relative),
-  gitCreateBranch: (projectId: string, branch: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.gitCreateBranch, projectId, branch),
-  gitPush: (projectId: string) => ipcRenderer.invoke(IPC_CHANNELS.gitPush, projectId),
+  gitStatus: (projectId: string, sessionId?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.gitStatus, projectId, sessionId),
+  listPullRequests: (projectId: string, sessionId?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.listPullRequests, projectId, sessionId),
+  gitInit: (projectId: string) => ipcRenderer.invoke(IPC_CHANNELS.gitInit, projectId),
+  gitDiff: (projectId: string, relative?: string, sessionId?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.gitDiff, projectId, relative, sessionId),
+  checkoutBranch: (projectId: string, branch: string, sessionId?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.checkoutBranch, projectId, branch, sessionId),
+  gitCommit: (projectId: string, message: string, sessionId?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.gitCommit, projectId, message, sessionId),
+  gitStage: (projectId: string, relative: string, sessionId?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.gitStage, projectId, relative, sessionId),
+  gitDiscard: (projectId: string, relative: string, sessionId?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.gitDiscard, projectId, relative, sessionId),
+  gitCreateBranch: (projectId: string, branch: string, sessionId?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.gitCreateBranch, projectId, branch, sessionId),
+  gitPush: (projectId: string, sessionId?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.gitPush, projectId, sessionId),
   gitCreatePullRequest: (
     projectId: string,
     input?: { title?: string; body?: string; sessionId?: string },
   ) => ipcRenderer.invoke(IPC_CHANNELS.gitCreatePullRequest, projectId, input),
-  gitMergePullRequest: (projectId: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.gitMergePullRequest, projectId),
+  gitMergePullRequest: (projectId: string, sessionId?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.gitMergePullRequest, projectId, sessionId),
   searchContents: (projectId: string, query: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.searchContents, projectId, query),
+  listLocalServers: () => ipcRenderer.invoke(IPC_CHANNELS.listLocalServers),
   openPath: (target: string) => ipcRenderer.invoke(IPC_CHANNELS.openPath, target),
   pickDirectory: () => ipcRenderer.invoke(IPC_CHANNELS.pickDirectory),
   pickFiles: () => ipcRenderer.invoke(IPC_CHANNELS.pickFiles),
+  validateAttachments: (attachments: Array<{ name: string; path: string }>) =>
+    ipcRenderer.invoke(IPC_CHANNELS.validateAttachments, attachments),
   listHarnesses: () => ipcRenderer.invoke(IPC_CHANNELS.listHarnesses),
   doctorHarness: (harnessId: string) => ipcRenderer.invoke(IPC_CHANNELS.doctorHarness, harnessId),
   dedicateHarness: (projectId: string, harnessId: string) =>
@@ -125,6 +150,8 @@ const api = {
   listHarnessSessions: (projectId?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.listHarnessSessions, projectId),
   pinSession: (id: string, pinned: boolean) => ipcRenderer.invoke(IPC_CHANNELS.pinSession, id, pinned),
+  reorderPinnedSessions: (projectId: string, orderedIds: string[]) =>
+    ipcRenderer.invoke(IPC_CHANNELS.reorderPinnedSessions, projectId, orderedIds),
   searchFiles: (projectId: string, query?: string, root?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.searchFiles, projectId, query, root),
   regenerateTitle: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.regenerateTitle, id),

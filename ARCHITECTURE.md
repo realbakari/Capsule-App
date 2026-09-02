@@ -156,7 +156,7 @@ Capsule UI  →  dedicate / spawn
         Claude Code, Codex, Gemini, Cursor, …
 ```
 
-Operator spawn creates a Gateway session, then sends `/acp spawn <id> --bind off --mode persistent|oneshot --cwd <dir>`. That is the operator path from [ACP agents](https://docs.openclaw.ai/tools/acp-agents). `--bind here` is for messaging channels, not Capsule’s operator socket. `sessions_spawn({ runtime: "acp" })` is an agent tool, not a `sessions.create` field — Gateway protocol 4 rejects `runtime` on `sessions.create`.
+Operator spawn creates a Gateway session, then sends `/acp spawn <id> --bind off --mode persistent|oneshot --cwd <dir>`. The cwd is the conversation's Git worktree when isolation is enabled, otherwise the project folder. That is the operator path from [ACP agents](https://docs.openclaw.ai/tools/acp-agents). `--bind here` is for messaging channels, not Capsule’s operator socket. `sessions_spawn({ runtime: "acp" })` is an agent tool, not a `sessions.create` field — Gateway protocol 4 rejects `runtime` on `sessions.create`.
 
 Claude Code and Codex are first-class. Other official acpx ids (Copilot, Cursor, Droid, Gemini, OpenCode, …) are spawnable from Runtimes. Codex ACP is the explicit fallback; native `/codex` stays on the Gateway when that plugin is enabled.
 
@@ -203,7 +203,13 @@ Capsule shows source metadata (channel, room, thread, sender) and links it to a 
 
 ## 7. Persistence and Secrets
 
-SQLite holds workspaces, projects, sessions, messages, agents, skills, runs, events, contracts, policies, approvals, artifacts, and channel bindings.
+SQLite holds workspaces, projects (including saved project actions and custom
+icon paths), sessions (including local/worktree cwd selection and pinned
+ordering), messages (including validated local-file attachment metadata),
+agents, skills, runs, events, contracts, policies, approvals, artifacts, and
+channel bindings. Unsent drafts and prompt stashes are renderer-local
+preferences, not Gateway sessions. Live project-action processes and their
+bounded output are intentionally in memory; they stop with the app.
 
 Secrets never go in SQLite or the renderer. Gateway tokens live in macOS Keychain. Capsule's Ed25519 device identity and issued device tokens live as `0600` files under the user-data `identity/` directory. Tests may use a `0600` file store instead of Keychain.
 
@@ -214,11 +220,17 @@ Secrets never go in SQLite or the renderer. Gateway tokens live in macOS Keychai
 The desktop shell is a compact agent workspace. Details and shortcuts live in [docs/internals/desktop.md](docs/internals/desktop.md) — update that file in the same change as the UI.
 
 - 52px titlebar (Electron drag region, **no app mark**). Hide-sidebar control is a no-drag child next to the traffic lights (`⌘B`). Two-finger swipe hides the sidebar; a left-edge swipe shows it.
-- Collapsible resizable sidebar: project/thread **name only** (no folder paths), portaled `···` menu, native right-click menu.
-- Centered chat column, glass composer (`/`, `@`, `$`, permission, folder basename chip). Transcript is turns, not an Artifacts / run-result dump.
-- Inspector closed until asked (`⌘\`). Tools: Launch, Review (git), Terminal (command runner, not PTY), Browser (`openExternal`), Files (expandable tree + image/code preview), Side chat (ACP sessions).
-- Inbox is the projectless container (`~/Documents/Capsule`). A project has a primary folder plus optional extra folders (`extra_folders`, schema v6).
-- Settings: General, Appearance, Configuration (including git/PR), Gateway, Projects, Shortcuts, Diagnostics.
+- Collapsible resizable sidebar: project/thread **name only** (no folder paths), discovered/custom project icons, ordered pinned threads, portaled `···` menu, native right-click menu.
+- Centered chat column, glass composer (local-file attachments, durable drafts,
+  prompt stash, `/`, `@`, `$`, permission, folder basename chip). Transcript is
+  turns, not an Artifacts / run-result dump.
+- Inspector closed until asked (`⌘\`). Tools: Launch, Review (git), Terminal
+  (command runner, not PTY), Browser (validated local-server discovery plus a
+  sandboxed HTTP(S)-only Electron guest), Files (expandable tree + image/code
+  preview), Side chat (ACP sessions).
+- Inbox is the projectless container (`~/Documents/Capsule`). A project has a primary folder plus optional extra folders (`extra_folders`, schema v6). Git projects may give a conversation its own `git worktree`; all conversation I/O resolves against that cwd.
+- The titlebar owns contextual project actions: saved commands, Open, Initialize Git, and branch state.
+- Settings: General, Appearance, Agents, Gateway, Projects, Source control, Skills, Shortcuts, Diagnostics, About.
 
 Visual language is graphite and off-white, matching the Capsule mark. No purple accent. System type, rem-based sizing, muted sidebar labels. Capsule's default view is still “I'm working on it…”, not an enterprise compliance dashboard.
 

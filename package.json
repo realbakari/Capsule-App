@@ -25,15 +25,16 @@
     "onlyBuiltDependencies": [
       "better-sqlite3",
       "electron",
+      "electron-winstaller",
       "esbuild",
-      "electron-winstaller"
+      "node-pty"
     ]
   },
   "devDependencies": {
     "@eslint/js": "^9.34.0",
+    "@lobehub/icons-static-svg": "^1.94.0",
     "@types/node": "^24.3.0",
     "eslint": "^9.34.0",
-    "simple-icons": "^16.29.0",
     "typescript": "^5.9.2",
     "typescript-eslint": "^8.41.0",
     "vitest": "^3.2.4"

@@ -5,6 +5,7 @@ import {
   foldedTurnLabel,
   formatDuration,
   turnDurationMs,
+  reconcileTurns,
   turnPreview,
   turnsFromMessages,
 } from "./turns.js";
@@ -231,5 +232,33 @@ describe("turnPreview", () => {
     const turn = turnsFromMessages([msg("m1", "user", "go")])[0]!;
     expect(turnPreview(turn).reply).toBeUndefined();
     expect(turnPreview(turn).prompt).toBe("go");
+  });
+});
+
+describe("reconcileTurns", () => {
+  const user = (id: string): ChatMessage =>
+    ({ id, sessionId: "s", role: "user", content: id, createdAt: "2026-01-01T00:00:00.000Z" }) as ChatMessage;
+  const reply = (id: string): ChatMessage =>
+    ({ id, sessionId: "s", role: "assistant", content: id, createdAt: "2026-01-01T00:00:01.000Z" }) as ChatMessage;
+
+  it("keeps the previous array when nothing moved", () => {
+    const messages = [user("a"), reply("b")];
+    const first = turnsFromMessages(messages);
+    expect(reconcileTurns(first, turnsFromMessages(messages))).toBe(first);
+  });
+
+  it("keeps the untouched turns when a frame lands on the last one", () => {
+    const opening = [user("a"), reply("b")];
+    const first = turnsFromMessages([...opening, user("c")]);
+    const next = reconcileTurns(first, turnsFromMessages([...opening, user("c"), reply("d")]));
+    expect(next).not.toBe(first);
+    expect(next[0]).toBe(first[0]);
+    expect(next[1]).not.toBe(first[1]);
+  });
+
+  it("does not reuse a turn whose messages changed", () => {
+    const first = turnsFromMessages([user("a")]);
+    const next = reconcileTurns(first, turnsFromMessages([user("a"), reply("b")]));
+    expect(next[0]).not.toBe(first[0]);
   });
 });

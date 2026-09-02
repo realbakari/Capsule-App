@@ -5,6 +5,11 @@ directories:
   buildResources: build
 files:
   - out/**/*
+# Native modules load a .node binary by path, which cannot be read from inside
+# the asar archive.
+asarUnpack:
+  - "**/node_modules/better-sqlite3/**"
+  - "**/node_modules/node-pty/**"
 mac:
   icon: icon.icns
   category: public.app-category.developer-tools

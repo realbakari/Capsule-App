@@ -47,12 +47,12 @@ export const SETTINGS_SECTION_LABELS: Record<SettingsSectionId, string> = {
 export const SETTINGS_SEARCH_ITEMS: SettingsSearchItem[] = [
   { title: "Launch at login", section: "general", keywords: ["startup", "boot", "open"] },
   { title: "Send key", section: "general", keywords: ["enter", "composer", "submit"] },
-  { title: "Menu bar extra", section: "general", keywords: ["tray", "status bar"] },
-  { title: "Keep awake while running", section: "general", keywords: ["sleep", "power"] },
-  { title: "Run complete", section: "general", keywords: ["notification", "alert"] },
+  { title: "Menu bar", section: "general", keywords: ["tray", "status bar", "extra"] },
+  { title: "Keep computer awake", section: "general", keywords: ["sleep", "power", "running"] },
+  { title: "Response completions", section: "general", keywords: ["notification", "alert", "run complete"] },
   { title: "Approvals", section: "general", keywords: ["notification", "permission"] },
   { title: "Bounce the Dock", section: "general", keywords: ["notification", "attention"] },
-  { title: "Classify conversations", section: "general", keywords: ["title", "auto"] },
+  { title: "Classify session states", section: "general", keywords: ["title", "auto", "conversations"] },
   { title: "Archive inactive", section: "general", keywords: ["cleanup", "old threads"] },
 
   { title: "Theme", section: "appearance", keywords: ["dark", "light", "system"] },
@@ -65,30 +65,31 @@ export const SETTINGS_SEARCH_ITEMS: SettingsSearchItem[] = [
 
   { title: "Default mode", section: "agents", keywords: ["new conversation"] },
   { title: "Default agent", section: "agents", keywords: ["harness", "new thread"] },
+  { title: "Conversation workspace", section: "agents", keywords: ["worktree", "isolation", "local"] },
   { title: "Approval policy", section: "agents", keywords: ["permission", "access", "sandbox"] },
-  { title: "Web access", section: "agents", keywords: ["internet", "fetch"] },
+  { title: "Web search", section: "agents", keywords: ["internet", "fetch", "web access"] },
   { title: "Sandbox", section: "agents", keywords: ["filesystem", "safety"] },
   { title: "Output detail", section: "agents", keywords: ["verbose", "concise"] },
   { title: "Reasoning summary", section: "agents", keywords: ["thinking", "chain of thought"] },
   { title: "skills.sh token", section: "agents", keywords: ["api key", "credential"] },
 
-  { title: "Gateway URL", section: "gateway", keywords: ["openclaw", "websocket", "connect"] },
+  { title: "URL", section: "gateway", keywords: ["openclaw", "websocket", "connect", "gateway"] },
   { title: "Operator token", section: "gateway", keywords: ["auth", "credential", "keychain"] },
 
-  { title: "Inbox folder", section: "projects", keywords: ["projectless", "default folder"] },
+  { title: "Tasks without a project", section: "projects", keywords: ["inbox", "projectless", "default folder"] },
 
   { title: "Branch prefix", section: "sourceControl", keywords: ["git", "naming"] },
-  { title: "Force with lease", section: "sourceControl", keywords: ["push", "git"] },
-  { title: "Draft pull requests", section: "sourceControl", keywords: ["pr", "github"] },
-  { title: "Merge method", section: "sourceControl", keywords: ["squash", "rebase", "pr"] },
+  { title: "Always force push", section: "sourceControl", keywords: ["push", "git", "force with lease"] },
+  { title: "Create draft pull requests", section: "sourceControl", keywords: ["pr", "github", "draft"] },
+  { title: "Pull request merge method", section: "sourceControl", keywords: ["squash", "rebase", "pr"] },
   { title: "Review delivery", section: "sourceControl", keywords: ["pr", "chat"] },
   { title: "Commit instructions", section: "sourceControl", keywords: ["message", "template"] },
   { title: "Pull request instructions", section: "sourceControl", keywords: ["pr", "template"] },
 
   { title: "skills.sh token", section: "skills", keywords: ["catalog", "install counts"] },
 
-  { title: "Keyboard shortcuts", section: "shortcuts", keywords: ["keys", "bindings"] },
-  { title: "Diagnostics export", section: "diagnostics", keywords: ["logs", "support"] },
+  { title: "Shortcuts", section: "shortcuts", keywords: ["keys", "bindings", "keyboard"] },
+  { title: "Diagnostics", section: "diagnostics", keywords: ["logs", "support", "export"] },
   { title: "Version", section: "about", keywords: ["build", "release"] },
 ];
 

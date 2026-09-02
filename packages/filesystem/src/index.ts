@@ -6,9 +6,22 @@ import { readPreviewFile } from "./preview.js";
 
 export type { FileEntry };
 export {
+  cloneRepository,
+  cloneRepositoryArgs,
+  repositoryNameFromUrl,
+  type CloneRepositoryResult,
+} from "./clone.js";
+export {
+  attachmentPromptBlock,
+  MAX_MESSAGE_ATTACHMENT_BYTES,
+  MAX_MESSAGE_ATTACHMENTS,
+  validateMessageAttachments,
+} from "./attachments.js";
+export {
   checkoutBranch,
   commitAll,
   createBranch,
+  initializeRepository,
   discardFile,
   readGitDiff,
   readGitStatus,
@@ -20,10 +33,12 @@ export {
   enrichGitStatus,
   ghAvailable,
   lastCommitSubject,
+  listPullRequests,
   mergePullRequest,
   mergePullRequestArgs,
   pushArgs,
   pushCurrentBranch,
+  parsePullRequestList,
   viewPullRequest,
 } from "./github.js";
 export {
@@ -37,6 +52,20 @@ export {
   restoreCheckpoint,
 } from "./checkpoints.js";
 export { detectSourceControlTools, type ToolStatus } from "./tooling.js";
+export {
+  listListeningPorts,
+  listLocalServers,
+  parseLsofPorts,
+  parsePageTitle,
+  probeLocalServer,
+  type ListeningPort,
+} from "./ports.js";
+export { createWorktree, removeWorktree, type WorktreeResult } from "./worktrees.js";
+export {
+  isSupportedProjectIcon,
+  readProjectIconDataUrl,
+  resolveProjectIconPath,
+} from "./project-icons.js";
 export { previewFromBytes, readPreviewFile } from "./preview.js";
 export { searchContents } from "./search.js";
 

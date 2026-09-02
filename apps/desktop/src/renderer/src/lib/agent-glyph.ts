@@ -30,8 +30,7 @@ export function providerMark(id: string | undefined): ProviderMark | undefined {
 }
 
 /*
- * Several marks are registered black, which is invisible on Capsule's
- * surface. A brand colour is only worth using while it still reads, so
+ * A brand colour is only worth using while it still reads on this surface, so
  * anything darker than this takes the surrounding text colour instead.
  */
 const MIN_RELATIVE_LUMINANCE = 0.12;
@@ -48,7 +47,7 @@ export function relativeLuminance(hex: string): number {
  * because the product has no mark or because its brand colour would vanish.
  */
 export function agentAccent(id: string | undefined): string | undefined {
-  const mark = providerMark(id);
-  if (!mark) return undefined;
-  return relativeLuminance(mark.hex) >= MIN_RELATIVE_LUMINANCE ? mark.hex : undefined;
+  const hex = providerMark(id)?.hex;
+  if (!hex) return undefined;
+  return relativeLuminance(hex) >= MIN_RELATIVE_LUMINANCE ? hex : undefined;
 }

@@ -10,7 +10,7 @@ See [OpenClaw ACP agents](https://docs.openclaw.ai/tools/acp-agents) and [setup]
 |--------|-------------------|
 | **Doctor** | Probe the CLI on `PATH`, Gateway reachability, and the `acpx` plugin. When connected, send `/acp doctor` (and `/acp install` if acpx is missing). |
 | **Dedicate** | Set the project's default coding agent. Code-mode sends route through that harness. |
-| **Spawn** | `sessions.create`, then `/acp spawn <id> --bind off --mode persistent\|oneshot --cwd <dir>`. Follow-ups go to the returned `agent:<id>:acp:<uuid>` session. `--bind here` is for messaging channels, not the Capsule operator socket. |
+| **Spawn** | `sessions.create`, then `/acp spawn <id> --bind off --mode persistent\|oneshot --cwd <dir>`. `<dir>` is the conversation worktree when one exists, otherwise the project folder. Follow-ups go to the returned `agent:<id>:acp:<uuid>` session. `--bind here` is for messaging channels, not the Capsule operator socket. |
 | **Work** | Follow-up prompts go to the bound ACP session. Gateway commands (`/acp`, `/status`) stay local. |
 | **Steer** | `sessions.steer` when the Gateway supports it, otherwise `/acp steer`. |
 | **Cancel** | `sessions.abort` plus `/acp cancel` for the in-flight turn. Binding stays. |
@@ -32,6 +32,7 @@ Codex has two OpenClaw routes. Native `/codex` is preferred when the Codex plugi
 
 - Projects and threads with rename, archive, pin, and delete
 - Folder as the coding cwd, git branch/dirty status, file mention (`@path`)
+- Optional per-conversation Git worktree isolation; ACP always receives the resolved thread cwd
 - Slash commands (`/`), skills (`$`), plan vs code modes
 - Per-thread permission mode (supervised / standard / full access)
 - Approvals, run timeline, artifacts
@@ -76,6 +77,6 @@ openclaw gateway restart
 # Install and authenticate Claude Code, Codex, Gemini, …
 ```
 
-Then in Capsule: **Runtimes → Doctor / Dedicate / Spawn**, or Inspector **Side chat**. Code-mode messages on a dedicated project auto-spawn ACP if no live session exists.
+Then in Capsule: **Runtimes → Doctor / Dedicate / Spawn**, or Inspector **Side chat**. Code-mode messages on a dedicated project auto-spawn ACP if no live session exists. The composer also blocks a known-unready harness before send and links directly to Doctor.
 
 Desktop chrome (inspector, folders, shortcuts) is specified in [desktop.md](desktop.md).

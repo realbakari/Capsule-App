@@ -2,9 +2,11 @@ import { useState, useRef, useEffect } from "react";
 import { harnessDisplayName } from "../../lib/harness";
 import { useWorkspace } from "../../lib/workspace";
 import { SidebarToggle } from "./SidebarControl";
+import { ProjectActionsControl } from "./ProjectActionsControl";
 import {
   FolderIcon,
   GitBranchIcon,
+  PanelBottomIcon,
   PanelRightIcon,
   PlusIcon,
   StopIcon,
@@ -36,12 +38,16 @@ export function Titlebar() {
     sidebarCollapsed,
     inspectorOpen,
     toggleInspector,
+    terminalOpen,
+    setTerminalOpen,
     activeRun,
     stopRun,
     cancelHarness,
     closeHarness,
     createTask,
+    initializeGit,
   } = useWorkspace();
+  const terminalCwd = session?.workingDirectory ?? project?.workingDirectory;
 
   const [openMenu, setOpenMenu] = useState(false);
   const openMenuRef = useRef<HTMLDivElement>(null);
@@ -99,6 +105,7 @@ export function Titlebar() {
         {/* Workspace Quick Actions */}
         {view === "chat" && project?.workingDirectory && (
           <div className="topbar-project-actions">
+            <ProjectActionsControl />
             {/* Open in Finder/Terminal Menu */}
             <div className="topbar-menu-anchor" ref={openMenuRef}>
               <button
@@ -147,6 +154,17 @@ export function Titlebar() {
                 {git.dirty && <span className="git-dirty-indicator">•</span>}
               </button>
             )}
+            {git?.available && !git.isRepo && (
+              <button
+                type="button"
+                className="topbar-chip-btn"
+                onClick={() => void initializeGit()}
+                title="Initialize a Git repository in this folder"
+              >
+                <GitBranchIcon size={12} />
+                <span>Initialize Git</span>
+              </button>
+            )}
           </div>
         )}
 
@@ -172,6 +190,20 @@ export function Titlebar() {
         {activeRun && (
           <button className="icon-btn" title="Stop run" aria-label="Stop run" onClick={() => void stopRun()}>
             <StopIcon size={14} />
+          </button>
+        )}
+
+        {view === "chat" && (
+          <button
+            className={`icon-btn ${terminalOpen ? "active" : ""}`}
+            /* A shell needs a folder to open in, so the control says why it is
+               unavailable instead of toggling nothing. */
+            disabled={!terminalCwd}
+            title={terminalCwd ? "Toggle terminal (⌘J)" : "Open a folder to use the terminal"}
+            aria-label="Toggle terminal (⌘J)"
+            onClick={() => setTerminalOpen(!terminalOpen)}
+          >
+            <PanelBottomIcon size={14} />
           </button>
         )}
 

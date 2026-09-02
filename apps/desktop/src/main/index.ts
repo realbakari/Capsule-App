@@ -41,6 +41,7 @@ import {
   type SpawnHarnessInput,
   type UpdateProjectInput,
 } from "@capsule/shared";
+import { startPty, type PtySession } from "@capsule/terminal";
 import { popupContextMenu } from "./popup-menu";
 import { ensureSqliteAbi } from "./sqlite-abi";
 
@@ -197,7 +198,45 @@ function createWindow(): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      webviewTag: true,
     },
+  });
+
+  window.webContents.on("will-attach-webview", (event, webPreferences, params) => {
+    if (!params.src) {
+      event.preventDefault();
+      return;
+    }
+    let protocol: string;
+    try {
+      protocol = new URL(params.src).protocol;
+    } catch {
+      event.preventDefault();
+      return;
+    }
+    if (protocol !== "http:" && protocol !== "https:") {
+      event.preventDefault();
+      return;
+    }
+    delete webPreferences.preload;
+    webPreferences.nodeIntegration = false;
+    webPreferences.contextIsolation = true;
+    webPreferences.sandbox = true;
+  });
+
+  window.webContents.on("did-attach-webview", (_event, contents) => {
+    contents.setWindowOpenHandler((details) => {
+      void shell.openExternal(details.url);
+      return { action: "deny" };
+    });
+    contents.on("will-navigate", (event, url) => {
+      try {
+        const protocol = new URL(url).protocol;
+        if (protocol !== "http:" && protocol !== "https:") event.preventDefault();
+      } catch {
+        event.preventDefault();
+      }
+    });
   });
 
   window.webContents.on("did-fail-load", (_event, code, description, url) => {
@@ -238,6 +277,21 @@ function createWindow(): BrowserWindow {
  */
 function reportFullscreen(): void {
   send(IPC_EVENTS.fullscreen, Boolean(mainWindow?.isFullScreen()));
+}
+
+/*
+ * The shells behind the terminal panel. The renderer cannot hold a pty, so the
+ * main process owns them and forwards their output by id.
+ */
+const terminals = new Map<string, PtySession>();
+
+function stopTerminal(id: string): void {
+  terminals.get(id)?.kill();
+  terminals.delete(id);
+}
+
+function stopAllTerminals(): void {
+  for (const id of [...terminals.keys()]) stopTerminal(id);
 }
 
 function send(channel: string, payload: unknown): void {
@@ -358,6 +412,9 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.createProject, (input) =>
     requireEngine().createProject(input as Parameters<CapsuleEngine["createProject"]>[0]),
   );
+  handle(IPC_CHANNELS.cloneRepository, (input) =>
+    requireEngine().cloneRepository(input as Parameters<CapsuleEngine["cloneRepository"]>[0]),
+  );
   handleArgs(IPC_CHANNELS.getProject, [id], (projectId: string) =>
     requireEngine().getProject(projectId),
   );
@@ -368,6 +425,9 @@ function registerIpc(): void {
   );
   handle(IPC_CHANNELS.createSession, (input) =>
     requireEngine().createSession(input as Parameters<CapsuleEngine["createSession"]>[0]),
+  );
+  handle(IPC_CHANNELS.setSessionWorkspaceMode, (sessionId, mode) =>
+    requireEngine().setSessionWorkspaceMode(String(sessionId), mode === "worktree" ? "worktree" : "local"),
   );
   handleArgs(IPC_CHANNELS.renameSession, [id, str], (sessionId: string, title: string) =>
     requireEngine().renameSession(sessionId, title),
@@ -455,9 +515,64 @@ function registerIpc(): void {
       root ? String(root) : undefined,
     ),
   );
-  handle(IPC_CHANNELS.openTerminal, (projectId) => requireEngine().openTerminal(String(projectId)));
-  handle(IPC_CHANNELS.execInProject, (projectId, command) =>
-    requireEngine().execInProject(String(projectId), String(command)),
+  handle(IPC_CHANNELS.openTerminal, (projectId, sessionId) =>
+    requireEngine().openTerminal(String(projectId), sessionId ? String(sessionId) : undefined),
+  );
+  handle(IPC_CHANNELS.terminalStart, (input) => {
+    const request = input as { cwd?: string; cols?: number; rows?: number };
+    const cwd = String(request.cwd ?? "");
+    const id = `term_${Math.random().toString(36).slice(2, 10)}`;
+    const session = startPty(
+      { cwd, cols: request.cols, rows: request.rows },
+      {
+        onData: (data) => send(IPC_EVENTS.terminalData, { id, data }),
+        onExit: (code) => {
+          terminals.delete(id);
+          send(IPC_EVENTS.terminalExit, { id, code });
+        },
+      },
+    );
+    terminals.set(id, session);
+    return { id, pid: session.pid, cwd };
+  });
+  handle(IPC_CHANNELS.terminalInput, (id, data) => {
+    terminals.get(String(id))?.write(String(data));
+    return true;
+  });
+  handle(IPC_CHANNELS.terminalResize, (id, cols, rows) => {
+    terminals.get(String(id))?.resize(Number(cols), Number(rows));
+    return true;
+  });
+  handle(IPC_CHANNELS.terminalStop, (id) => {
+    stopTerminal(String(id));
+    return true;
+  });
+  handle(IPC_CHANNELS.execInProject, (projectId, command, sessionId) =>
+    requireEngine().execInProject(
+      String(projectId),
+      String(command),
+      sessionId ? String(sessionId) : undefined,
+    ),
+  );
+  handle(IPC_CHANNELS.runProjectAction, (projectId, actionId, sessionId) =>
+    requireEngine().runProjectAction(
+      String(projectId),
+      String(actionId),
+      sessionId ? String(sessionId) : undefined,
+    ),
+  );
+  handle(IPC_CHANNELS.stopProjectAction, (projectId, actionId, sessionId) =>
+    requireEngine().stopProjectAction(
+      String(projectId),
+      String(actionId),
+      sessionId ? String(sessionId) : undefined,
+    ),
+  );
+  handle(IPC_CHANNELS.listProjectActionRuns, (projectId, sessionId) =>
+    requireEngine().listProjectActionRuns(
+      String(projectId),
+      sessionId ? String(sessionId) : undefined,
+    ),
   );
   handle(IPC_CHANNELS.getStatus, () => requireEngine().getStatus());
   handle(IPC_CHANNELS.getSubsystemStatus, () => requireEngine().getSubsystemStatus());
@@ -483,6 +598,22 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.pinSession, (id, pinned) =>
     requireEngine().pinSession(String(id), Boolean(pinned)),
   );
+  handle(IPC_CHANNELS.reorderPinnedSessions, (projectId, orderedIds) =>
+    requireEngine().reorderPinnedSessions(
+      String(projectId),
+      Array.isArray(orderedIds) ? orderedIds.map(String) : [],
+    ),
+  );
+  handle(IPC_CHANNELS.validateAttachments, (attachments) =>
+    requireEngine().validateAttachments(
+      Array.isArray(attachments)
+        ? attachments.map((item) => ({
+            name: String((item as { name?: unknown }).name ?? "attachment"),
+            path: String((item as { path?: unknown }).path ?? ""),
+          }))
+        : [],
+    ),
+  );
   handle(IPC_CHANNELS.regenerateTitle, (id) => requireEngine().regenerateTitle(String(id)));
   handle(IPC_CHANNELS.setPermissionProfile, (id, profile) =>
     requireEngine().setPermissionProfile(String(id), profile as never),
@@ -491,38 +622,74 @@ function registerIpc(): void {
     requireEngine().updateProject(String(id), patch as UpdateProjectInput),
   );
   handle(IPC_CHANNELS.deleteProject, (id) => requireEngine().deleteProject(String(id)));
-  handle(IPC_CHANNELS.gitStatus, (projectId) => requireEngine().gitStatus(String(projectId)));
-  handle(IPC_CHANNELS.gitDiff, (projectId, relative) =>
-    requireEngine().gitDiff(String(projectId), relative ? String(relative) : undefined),
+  handle(IPC_CHANNELS.gitStatus, (projectId, sessionId) =>
+    requireEngine().gitStatus(String(projectId), sessionId ? String(sessionId) : undefined),
   );
-  handle(IPC_CHANNELS.checkoutBranch, (projectId, branch) =>
-    requireEngine().checkoutBranch(String(projectId), String(branch)),
+  handle(IPC_CHANNELS.listPullRequests, (projectId, sessionId) =>
+    requireEngine().listPullRequests(String(projectId), sessionId ? String(sessionId) : undefined),
   );
-  handle(IPC_CHANNELS.gitCommit, (projectId, message) =>
-    requireEngine().gitCommit(String(projectId), String(message)),
+  handle(IPC_CHANNELS.gitInit, (projectId) => requireEngine().gitInit(String(projectId)));
+  handle(IPC_CHANNELS.gitDiff, (projectId, relative, sessionId) =>
+    requireEngine().gitDiff(
+      String(projectId),
+      relative ? String(relative) : undefined,
+      sessionId ? String(sessionId) : undefined,
+    ),
   );
-  handle(IPC_CHANNELS.gitStage, (projectId, relative) =>
-    requireEngine().gitStage(String(projectId), String(relative)),
+  handle(IPC_CHANNELS.checkoutBranch, (projectId, branch, sessionId) =>
+    requireEngine().checkoutBranch(
+      String(projectId),
+      String(branch),
+      sessionId ? String(sessionId) : undefined,
+    ),
   );
-  handle(IPC_CHANNELS.gitDiscard, (projectId, relative) =>
-    requireEngine().gitDiscard(String(projectId), String(relative)),
+  handle(IPC_CHANNELS.gitCommit, (projectId, message, sessionId) =>
+    requireEngine().gitCommit(
+      String(projectId),
+      String(message),
+      sessionId ? String(sessionId) : undefined,
+    ),
   );
-  handle(IPC_CHANNELS.gitCreateBranch, (projectId, branch) =>
-    requireEngine().gitCreateBranch(String(projectId), String(branch)),
+  handle(IPC_CHANNELS.gitStage, (projectId, relative, sessionId) =>
+    requireEngine().gitStage(
+      String(projectId),
+      String(relative),
+      sessionId ? String(sessionId) : undefined,
+    ),
   );
-  handle(IPC_CHANNELS.gitPush, (projectId) => requireEngine().gitPush(String(projectId)));
+  handle(IPC_CHANNELS.gitDiscard, (projectId, relative, sessionId) =>
+    requireEngine().gitDiscard(
+      String(projectId),
+      String(relative),
+      sessionId ? String(sessionId) : undefined,
+    ),
+  );
+  handle(IPC_CHANNELS.gitCreateBranch, (projectId, branch, sessionId) =>
+    requireEngine().gitCreateBranch(
+      String(projectId),
+      String(branch),
+      sessionId ? String(sessionId) : undefined,
+    ),
+  );
+  handle(IPC_CHANNELS.gitPush, (projectId, sessionId) =>
+    requireEngine().gitPush(String(projectId), sessionId ? String(sessionId) : undefined),
+  );
   handle(IPC_CHANNELS.gitCreatePullRequest, (projectId, input) =>
     requireEngine().gitCreatePullRequest(
       String(projectId),
       input as { title?: string; body?: string; sessionId?: string } | undefined,
     ),
   );
-  handle(IPC_CHANNELS.gitMergePullRequest, (projectId) =>
-    requireEngine().gitMergePullRequest(String(projectId)),
+  handle(IPC_CHANNELS.gitMergePullRequest, (projectId, sessionId) =>
+    requireEngine().gitMergePullRequest(
+      String(projectId),
+      sessionId ? String(sessionId) : undefined,
+    ),
   );
   handle(IPC_CHANNELS.searchContents, (projectId, query) =>
     requireEngine().searchContents(String(projectId), String(query)),
   );
+  handle(IPC_CHANNELS.listLocalServers, () => requireEngine().localServers());
   handle(IPC_CHANNELS.openPath, async (target) => {
     const location = String(target);
     if (!location) return;
@@ -879,5 +1046,6 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   applyKeepAwake(undefined);
+  stopAllTerminals();
   void engine?.stop();
 });

@@ -43,7 +43,15 @@ export default defineConfig({
           "@capsule/buzz",
           "@capsule/ui",
         ],
-        include: ["better-sqlite3", "@openclaw/gateway-client", "@openclaw/gateway-protocol", "ws"],
+        /* Native modules stay external: bundling them rewrites the dynamic
+           require that loads the .node binary, and the app dies at startup. */
+        include: [
+          "better-sqlite3",
+          "node-pty",
+          "@openclaw/gateway-client",
+          "@openclaw/gateway-protocol",
+          "ws",
+        ],
       }),
     ],
   },

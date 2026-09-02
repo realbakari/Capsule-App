@@ -112,3 +112,27 @@ export function turnPreview(turn: Turn, limit = 180): { prompt?: string; reply?:
     text ? (text.length > limit ? `${text.slice(0, limit).trimEnd()}…` : text) : undefined;
   return { prompt: clip(prompt), reply: clip(reply) };
 }
+
+/**
+ * Hands back the turn objects from the previous render wherever the new ones
+ * hold the same messages, and the previous array itself when nothing moved.
+ *
+ * `turnsFromMessages` builds fresh objects every call, and it is called on
+ * every streamed frame. Without this, each frame hands every row a new `turn`
+ * prop, so a memoized row re-renders the whole thread to append one message.
+ */
+export function reconcileTurns(previous: readonly Turn[], next: readonly Turn[]): Turn[] {
+  let changed = previous.length !== next.length;
+  const merged = next.map((turn, index) => {
+    const before = previous[index];
+    if (before && sameTurn(before, turn)) return before;
+    changed = true;
+    return turn;
+  });
+  return changed ? merged : (previous as Turn[]);
+}
+
+function sameTurn(a: Turn, b: Turn): boolean {
+  if (a.id !== b.id || a.prompt !== b.prompt || a.messages.length !== b.messages.length) return false;
+  return a.messages.every((message, index) => message === b.messages[index]);
+}

@@ -78,6 +78,59 @@ function checkRollup(
   return "pending";
 }
 
+export function parsePullRequestList(raw: string): GitPullRequest[] {
+  try {
+    const rows = JSON.parse(raw) as Array<{
+      number?: number;
+      url?: string;
+      title?: string;
+      isDraft?: boolean;
+      state?: string;
+      mergeStateStatus?: string;
+      reviewDecision?: string;
+      statusCheckRollup?: unknown;
+      author?: { login?: string; name?: string };
+      headRefName?: string;
+      updatedAt?: string;
+    }>;
+    if (!Array.isArray(rows)) return [];
+    return rows
+      .filter((row) => Boolean(row.number && row.url))
+      .map((row) => ({
+        number: row.number!,
+        url: row.url!,
+        title: row.title ?? `Pull request #${row.number}`,
+        isDraft: Boolean(row.isDraft),
+        state: row.state ?? "OPEN",
+        mergeState: row.mergeStateStatus,
+        reviewDecision: row.reviewDecision || undefined,
+        checks: checkRollup(row.statusCheckRollup),
+        author: row.author?.login || row.author?.name || undefined,
+        headRefName: row.headRefName || undefined,
+        updatedAt: row.updatedAt || undefined,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+export function listPullRequests(cwd: string): GitPullRequest[] {
+  const result = run(
+    "gh",
+    [
+      "pr",
+      "list",
+      "--limit",
+      "50",
+      "--json",
+      "number,url,title,isDraft,state,mergeStateStatus,reviewDecision,statusCheckRollup,author,headRefName,updatedAt",
+    ],
+    cwd,
+    15_000,
+  );
+  return result.ok ? parsePullRequestList(result.stdout) : [];
+}
+
 export function viewPullRequest(cwd: string): GitPullRequest | undefined {
   const result = run(
     "gh",

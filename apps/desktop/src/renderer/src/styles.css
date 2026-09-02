@@ -49,9 +49,18 @@
   position: relative;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  /* The toggle and the wordmark sit together after the traffic-light inset.
+     With space-between the wordmark started at the 4.5rem padding and drifted
+     to the middle of the rail, which read as a centred dialog title rather
+     than a sidebar header. */
+  justify-content: flex-start;
+  gap: 0.45rem;
   height: var(--workspace-topbar-height);
-  padding: 0 0.5rem;
+  /* The app already has one number for clearing the window controls, and the
+     page header uses it. This hardcoded 4.5rem was 18px tighter, so the toggle
+     sat against the green button and under the Move & Resize menu macOS shows
+     on hover. */
+  padding: 0 0.5rem 0 var(--workspace-traffic-inset);
   border-bottom: 1px solid var(--border-color);
   -webkit-app-region: drag;
   flex-shrink: 0;
@@ -64,7 +73,9 @@
 
 .sidebar-header .sidebar-toggle {
   position: static;
-  margin-left: auto;
+  /* No auto margin. It pushed the toggle to the right when it was the second
+     child; with the toggle first it absorbed the free space and shoved the
+     toggle and the wordmark together into the middle of the rail. */
 }
 
 .page-header .sidebar-toggle {
@@ -97,8 +108,9 @@
   min-width: 0;
   overflow: hidden;
   font-weight: 600;
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   letter-spacing: -0.02em;
+  color: var(--text);
 }
 
 .icon-btn {
@@ -126,7 +138,7 @@
   display: flex;
   align-items: center;
   gap: 0.35rem;
-  padding: 0.35rem var(--sidebar-content-inset) 0.15rem;
+  padding: 0.5rem var(--sidebar-content-inset) 0.2rem;
 }
 .sidebar-new {
   color: var(--text);
@@ -151,18 +163,15 @@
   flex: 1;
   min-width: 0;
   margin: 0;
-  /* A filled, generously rounded field. An earlier pass stripped this to a
-     bare row, which lost the one affordance at the top of the sidebar: with no
-     fill and no border it read as a heading rather than something to type in.
-     The weight belongs here; it is the scope row below that should be quiet. */
-  padding: 0.42rem 0.6rem;
+  padding: 0.35rem 0.3rem;
   border: 1px solid transparent;
-  border-radius: 0.6rem;
+  border-radius: 0.4rem;
   color: var(--text-faint);
-  background: var(--bg-hover);
+  background: transparent;
 }
 .sidebar-search:focus-within {
-  border-color: var(--border-color);
+  border-color: transparent;
+  background: var(--bg-hover);
 }
 .sidebar-search input,
 .sidebar-search input[type="search"] {
@@ -275,36 +284,27 @@
   padding: 0.35rem 0.5rem 0.1rem;
 }
 .session-list {
-  padding: 0.05rem 0 0.35rem;
+  padding: 0.05rem 0 0.25rem;
 }
 .project-block {
-  margin-bottom: 0.15rem;
+  margin-bottom: 0.05rem;
   min-width: 0;
 }
 .project-row,
 .thread-row {
   display: grid;
-  /*
-   * Two columns used to be paid for on every row and shown on almost none:
-   * a fixed pin slot (16px) and the row menu (24px + gap), which is
-   * opacity:0 until hover. Together they took ~45px of a 264px sidebar —
-   * enough to truncate several words of every thread title.
-   *
-   * The pin column is now `auto`, so it sizes to the icon when pinned and
-   * collapses otherwise, and the menu is positioned out of flow. The leading
-   * indent is widened with the reclaimed space so a thread's title still lines
-   * up under its project's name rather than hanging to the left of it.
-   */
+  /* Chevron/indent, glyph, title, metadata. The overflow menu is positioned
+     out of flow so an invisible action never shortens the title. */
   position: relative;
-  grid-template-columns: 1.25rem auto minmax(0, 1fr) auto;
-  column-gap: 0.3rem;
+  grid-template-columns: 1rem 1rem minmax(0, 1fr) auto;
+  column-gap: 0.25rem;
   align-items: center;
   width: 100%;
   min-width: 0;
   border: 0;
   background: transparent;
   color: var(--subtext-1);
-  border-radius: var(--control-radius);
+  border-radius: 0.35rem;
   text-align: left;
   overflow: visible;
 }
@@ -316,7 +316,7 @@
   cursor: pointer;
 }
 .project-row.active {
-  background: var(--bg-hover);
+  background: transparent;
 }
 .project-row:hover,
 .thread-row:hover {
@@ -351,20 +351,29 @@
   flex-shrink: 0;
   display: block;
 }
+.project-icon img,
+.project-settings-icon img {
+  display: block;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 0.25rem;
+  object-fit: contain;
+}
+.thread-row[draggable="true"]:active {
+  cursor: grabbing;
+  opacity: 0.65;
+}
 .thread-row {
-  /* A project row spends its second column on a folder icon; a thread has no
-     icon there, so without a wider indent its title hangs to the left of the
-     project it belongs to. This lines the two up. */
-  grid-template-columns: 2.15rem auto minmax(0, 1fr) auto;
+  /* The smaller first column nests a conversation under its project while the
+     message glyph keeps the row readable without a filled pill. */
+  grid-template-columns: 0.75rem 1rem minmax(0, 1fr) auto;
   padding: 0.24rem 0.2rem;
-  /* Matches the project row above it. At 0.75rem a thread read as a caption
-     under its project rather than as the row you actually click. */
   font-size: 0.8125rem;
-  min-height: 1.95rem;
+  min-height: 1.8rem;
   cursor: pointer;
 }
 .thread-row.active {
-  background: var(--bg-active);
+  background: transparent;
   color: var(--text);
   font-weight: 550;
 }
@@ -487,7 +496,7 @@
 
 .sidebar-footer {
   padding: 0.4rem var(--sidebar-content-inset) 0.55rem;
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid transparent;
 }
 .sidebar-utils {
   display: flex;
@@ -737,12 +746,41 @@
   align-items: center;
   min-height: 100%;
 }
+.main.conversation-empty {
+  justify-content: center;
+}
+.conversation-empty .conversation {
+  flex: 0 0 auto;
+  overflow: visible;
+  padding: 0 1.5rem;
+}
+.conversation-empty .thread:has(.empty-thread) {
+  flex: 0 0 auto;
+  min-height: 0;
+}
+.conversation-empty .composer {
+  padding-bottom: 0;
+}
+.conversation-empty .composer::before {
+  display: none;
+}
+.conversation-empty .composer-glass {
+  display: flex;
+  flex-direction: column;
+  min-height: 6rem;
+}
+.conversation-empty .composer-glass textarea {
+  flex: 1;
+}
+.conversation-empty .composer-row {
+  margin-top: auto;
+}
 
 .empty-thread {
   width: min(36rem, 100%);
   margin: 0 auto;
   text-align: center;
-  padding: 2rem 1rem 5rem;
+  padding: 0 1rem 1.65rem;
 }
 .empty-thread h1 {
   font-size: 2rem;
@@ -750,6 +788,11 @@
   letter-spacing: -0.045em;
   margin: 0 0 0.65rem;
   line-height: 1.15;
+}
+.empty-thread h1 span {
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 0.14em;
 }
 .empty-thread p {
   color: var(--text-muted);
@@ -838,6 +881,40 @@
   background: rgb(255 255 255 / 7%);
   padding: 0.05rem 0.3rem;
   border-radius: 0.25rem;
+}
+.message-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.55rem;
+}
+.message-attachment {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 9rem;
+  max-width: 18rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  background: var(--surface-0);
+  color: var(--text-muted);
+  padding: 0.4rem 0.55rem;
+  text-align: left;
+}
+.message-attachment:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.message-attachment span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+}
+.message-attachment small {
+  color: var(--text-faint);
+  font-size: 0.625rem;
 }
 .msg-code {
   margin: 0.55rem 0;
@@ -996,7 +1073,7 @@
   max-width: var(--chat-max);
   margin: 0 auto;
   border-radius: var(--composer-radius);
-  padding: 0.7rem 0.8rem 0.55rem;
+  padding: 0.85rem 0.9rem 0.6rem;
   box-shadow: 0 12px 28px -18px rgb(0 0 0 / 55%);
   overflow: visible;
 }
@@ -1061,7 +1138,7 @@
   position: relative;
   z-index: 1;
   width: 100%;
-  min-height: 2.6rem;
+  min-height: 3.5rem;
   max-height: 11rem;
   resize: none;
   border: 0;
@@ -1080,37 +1157,145 @@
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  margin-top: 0.3rem;
+  margin-top: 0.45rem;
 }
-.chips {
+.composer-attachments {
+  position: relative;
+  z-index: 2;
   display: flex;
-  gap: 0.35rem;
-  align-items: center;
   flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.15rem 0 0.45rem;
+}
+.composer-attachment {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 16rem;
+  gap: 0.35rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.45rem;
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  padding: 0.28rem 0.35rem 0.28rem 0.45rem;
+  font-size: 0.6875rem;
+}
+.composer-attachment > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.composer-attachment button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1.1rem;
+  height: 1.1rem;
+  padding: 0;
+  border: 0;
+  border-radius: 99px;
+  background: transparent;
+  color: var(--text-faint);
+}
+.composer-attachment button:hover {
+  background: var(--bg-active);
+  color: var(--text);
+}
+.composer-stash {
+  position: absolute;
+  z-index: 8;
+  left: 0.65rem;
+  bottom: 3.2rem;
+  width: min(24rem, calc(100% - 1.3rem));
+  max-height: 16rem;
+  overflow: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.7rem;
+  background: color-mix(in srgb, var(--surface-0) 96%, transparent);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  box-shadow: var(--shadow);
+  padding: 0.3rem;
+}
+.composer-stash > p {
+  margin: 0;
+  padding: 0.65rem;
+  color: var(--text-faint);
+  font-size: 0.75rem;
+}
+.composer-stash-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.35rem 0.5rem 0.45rem;
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+.composer-stash-head small { color: var(--text-faint); }
+.composer-stash-entry {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  border-top: 1px solid var(--border-color);
+  padding: 0.2rem;
+}
+.composer-stash-restore {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 0.12rem;
+  border: 0;
+  border-radius: 0.4rem;
+  background: transparent;
+  color: var(--text);
+  padding: 0.4rem 0.45rem;
+  text-align: left;
+}
+.composer-stash-restore:hover { background: var(--bg-hover); }
+.composer-stash-restore span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+}
+.composer-stash-restore small {
+  color: var(--text-faint);
+  font-size: 0.625rem;
+}
+.composer-stash-button { position: relative; }
+.composer-stash-button > span {
+  position: absolute;
+  top: -0.25rem;
+  right: -0.25rem;
+  display: grid;
+  place-items: center;
+  min-width: 0.9rem;
+  height: 0.9rem;
+  padding: 0 0.18rem;
+  border-radius: 99px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: 0.5625rem;
+  font-weight: 700;
+}
+.composer-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
   min-width: 0;
   overflow: visible;
 }
-
-.seg {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.12rem;
-  border-radius: 999px;
-  background: var(--bg-hover);
-}
-.seg button {
-  border: 0;
-  background: transparent;
-  color: var(--text-faint);
-  font-size: 0.6875rem;
-  font-weight: 550;
-  padding: 0.22rem 0.5rem;
-  border-radius: 999px;
-  text-transform: capitalize;
-}
-.seg button.active {
-  background: var(--bg-active);
-  color: var(--text);
+/* A hairline groups the controls into one row of settings. Without it the
+   ghost buttons run together into a sentence. */
+.composer-controls-divider {
+  width: 1px;
+  height: 0.9rem;
+  flex-shrink: 0;
+  margin: 0 0.3rem;
+  background: var(--border-color);
 }
 
 .menu-select {
@@ -1205,6 +1390,24 @@
   outline: none;
   font-size: 0.75rem;
 }
+
+.composer-preflight {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0.15rem 0 0.45rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid color-mix(in srgb, var(--yellow) 32%, var(--border-color));
+  border-radius: var(--control-radius);
+  background: color-mix(in srgb, var(--yellow) 7%, transparent);
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+}
+.composer-preflight > span { flex: 1; }
+.composer-preflight .ghost { flex-shrink: 0; font-size: 0.6875rem; }
+.workspace-mode-label { color: var(--green); }
 
 .composer-context {
   max-width: var(--chat-max);
@@ -2178,6 +2381,60 @@ select:focus,
   color: var(--overlay-0);
   font-weight: 600;
 }
+.codex-pr-list {
+  margin: 0 0 0.8rem;
+}
+.codex-pr-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+.codex-pr-list-head h4 {
+  margin: 0;
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--overlay-0);
+  font-weight: 600;
+}
+.codex-pr-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text);
+  padding: 0.5rem 0.15rem;
+  text-align: left;
+}
+.codex-pr-row:hover { background: var(--bg-hover); }
+.codex-pr-number,
+.codex-pr-checks {
+  color: var(--text-faint);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+}
+.codex-pr-copy {
+  display: grid;
+  min-width: 0;
+  gap: 0.1rem;
+}
+.codex-pr-copy b,
+.codex-pr-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.codex-pr-copy b { font-size: 0.75rem; font-weight: 550; }
+.codex-pr-copy small { color: var(--text-faint); font-size: 0.625rem; }
+.codex-pr-checks.passing { color: var(--green); }
+.codex-pr-checks.failing { color: var(--red); }
+.codex-pr-checks.pending { color: var(--yellow); }
 .codex-terminal-pane {
   flex: 1;
   display: flex;
@@ -2213,6 +2470,10 @@ select:focus,
   align-items: center;
   margin-bottom: 0.85rem;
 }
+.codex-browser-nav .icon-btn:disabled { opacity: 0.28; }
+.browser-back svg { transform: rotate(180deg); }
+.browser-go { min-width: 2.75rem; }
+.browser-external { min-width: auto; }
 .codex-browser-input {
   flex: 1;
   border: 1px solid var(--border-color);
@@ -2223,6 +2484,112 @@ select:focus,
   font-size: 0.75rem;
   outline: none;
 }
+.embedded-browser-frame {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  border-radius: 0.6rem;
+  background: #fff;
+}
+.embedded-browser-webview {
+  display: flex;
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+.browser-loading {
+  position: absolute;
+  z-index: 2;
+  top: 0.45rem;
+  left: 50%;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  transform: translateX(-50%);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-0) 92%, transparent);
+  color: var(--text-muted);
+  padding: 0.2rem 0.55rem;
+  font-size: 0.625rem;
+  box-shadow: var(--shadow);
+}
+.browser-error {
+  flex-shrink: 0;
+  margin: -0.35rem 0 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--red) 30%, var(--border-color));
+  border-radius: var(--control-radius);
+  background: color-mix(in srgb, var(--red) 8%, transparent);
+  color: var(--red);
+  padding: 0.45rem 0.55rem;
+  font-size: 0.6875rem;
+}
+.local-server-list {
+  min-height: 0;
+  overflow: auto;
+}
+.codex-browser-links {
+  width: min(46rem, 100%);
+  margin: 1.75rem auto 0;
+  padding: 0 0.35rem 2rem;
+}
+.browser-home-section + .browser-home-section {
+  margin-top: 1.5rem;
+}
+.browser-home-section > h4,
+.browser-home-section > .row h4 {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+.recent-server-grid .local-server-card {
+  border-bottom: 0;
+}
+.local-server-list h4 { margin: 0 0 0.15rem; font-size: 0.8125rem; }
+.local-server-list p { margin: 0; font-size: 0.6875rem; }
+.local-server-grid {
+  display: grid;
+  margin-top: 0.65rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.65rem;
+  overflow: hidden;
+}
+.local-server-card {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--border-color);
+  background: transparent;
+  padding: 0.7rem;
+  color: var(--text);
+  text-align: left;
+}
+.local-server-card:last-child { border-bottom: 0; }
+.local-server-card:hover { background: var(--bg-hover); }
+.local-server-icon {
+  display: flex;
+  gap: 0.18rem;
+  align-items: flex-start;
+  width: 2rem;
+  height: 1.65rem;
+  padding: 0.32rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.35rem;
+  background: var(--surface-0);
+}
+.local-server-icon span { width: 0.22rem; height: 0.22rem; border-radius: 50%; background: var(--text-faint); }
+.local-server-icon span:first-child { background: var(--red); }
+.local-server-icon span:nth-child(2) { background: var(--yellow); }
+.local-server-icon span:nth-child(3) { background: var(--green); }
+.local-server-copy { display: grid; min-width: 0; gap: 0.15rem; }
+.local-server-copy b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.8125rem; }
+.local-server-copy small { color: var(--text-faint); font-size: 0.6875rem; }
 
 .inspector-header {
   display: flex;
@@ -2777,6 +3144,39 @@ select:focus,
   color: var(--text-muted);
   font-size: 0.8125rem;
 }
+.clone-repository-dialog {
+  display: grid;
+  gap: 0.7rem;
+}
+.clone-repository-dialog h3,
+.clone-repository-dialog > p { margin: 0; }
+.clone-repository-dialog label {
+  display: grid;
+  gap: 0.3rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+.clone-repository-dialog label small { color: var(--text-faint); }
+.clone-destination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  min-width: 0;
+  padding: 0.55rem 0;
+}
+.clone-destination > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-faint);
+  font-size: 0.6875rem;
+}
+.clone-repository-dialog .actions {
+  justify-content: flex-end;
+  margin-top: 0.15rem;
+}
 
 @media (max-width: 1100px) {
   .inspector {
@@ -2858,6 +3258,22 @@ select:focus,
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 22rem;
+}
+.project-settings-row {
+  align-items: center;
+}
+.project-settings-icon {
+  display: grid;
+  place-items: center;
+  width: 1.65rem;
+  height: 1.65rem;
+  flex: 0 0 1.65rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.45rem;
+  background: var(--surface-0);
+  color: var(--text-faint);
+  font-size: 0.6875rem;
+  font-weight: 650;
 }
 .accent-picks {
   display: flex;
@@ -4563,6 +4979,61 @@ label.field input {
   background: rgba(255, 255, 255, 0.08);
 }
 
+.project-actions-menu {
+  width: min(25rem, calc(100vw - 2rem));
+  max-height: min(32rem, calc(100vh - 5rem));
+  overflow: auto;
+}
+.project-action-form { display: grid; gap: 0.55rem; padding: 0.5rem; }
+.project-action-form label { display: grid; gap: 0.25rem; color: var(--text-faint); font-size: 0.6875rem; }
+.project-action-form input { width: 100%; }
+.project-action-form .actions { justify-content: flex-end; margin: 0.2rem 0 0; }
+.project-actions-empty { margin: 0; padding: 0.5rem 0.65rem; }
+.project-action-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.15rem;
+}
+.project-action-row .project-action-run {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.project-action-run > span:nth-child(2) { display: grid; min-width: 0; flex: 1; }
+.project-action-run b,
+.project-action-run small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-action-run small { color: var(--text-faint); font-size: 0.625rem; font-family: var(--mono); }
+.project-action-state { color: var(--text-faint); font-size: 0.625rem; text-transform: capitalize; }
+.project-action-state.running { color: var(--green); }
+.project-action-state.failed { color: var(--red); }
+.project-action-output {
+  grid-column: 1 / -1;
+  max-height: 8rem;
+  margin: 0.1rem 0.4rem 0.45rem;
+  padding: 0.45rem;
+  overflow: auto;
+  border-radius: 0.35rem;
+  background: var(--bg);
+  color: var(--text-muted);
+  font-size: 0.625rem;
+  white-space: pre-wrap;
+}
+
+/* Settings use headings and separator rows as their hierarchy. Cards remain
+   for the rest of the product, but stacked boxes made this page harder to scan. */
+.settings-body .card {
+  margin: 0;
+  padding: 1.15rem 0;
+  border: 0;
+  border-bottom: 1px solid var(--border-color);
+  border-radius: 0;
+  background: transparent;
+}
+.settings-body .appearance-page { gap: 0; }
+.settings-body .card:last-child { border-bottom: 0; }
+
 /* ==========================================================================
    ContextWindowMeter (Ring + Popover Card)
    ========================================================================== */
@@ -5947,4 +6418,186 @@ button.shortcut-keys.capturing {
 .tool-guidance code,
 .tool-row code {
   font-family: var(--mono);
+}
+
+/* Harnesses screen. The mark and the name read as one identity block, and the
+   session options are labelled fields rather than four bare inputs. */
+.harness-identity {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  min-width: 0;
+}
+.harness-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+.harness-options label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+.harness-options label > span {
+  font-size: 0.6875rem;
+  color: var(--text-faint);
+}
+.harness-options input {
+  min-width: 0;
+}
+details.card > summary {
+  cursor: default;
+  font-weight: 600;
+  font-size: 0.8125rem;
+}
+
+/* Terminal panel. Docked under the composer so the shell and the conversation
+   share the same folder and the same column. */
+.terminal-dock {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex-shrink: 0;
+  border-top: 1px solid var(--border-color);
+  background: var(--surface-0);
+}
+.terminal-dock-rail {
+  position: absolute;
+  top: -3px;
+  left: 0;
+  right: 0;
+  height: 7px;
+  cursor: ns-resize;
+  z-index: 2;
+}
+.terminal-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.25rem 0.4rem;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+.terminal-tab {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--control-radius);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+.terminal-tab:hover {
+  background: var(--bg-hover);
+}
+.terminal-tab.active {
+  background: var(--bg-active);
+  color: var(--text);
+}
+.terminal-tab.exited {
+  color: var(--text-faint);
+}
+.terminal-tab > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+  padding: 0.3rem 0.15rem 0.3rem 0.5rem;
+  max-width: 12rem;
+}
+.terminal-tab > button > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.terminal-tab small {
+  color: var(--text-faint);
+  font-size: 0.625rem;
+}
+.terminal-tab-close {
+  display: inline-flex;
+  align-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--overlay-0);
+  padding: 0.3rem 0.4rem 0.3rem 0.25rem;
+  opacity: 0;
+}
+.terminal-tab:hover .terminal-tab-close,
+.terminal-tab.active .terminal-tab-close {
+  opacity: 1;
+}
+.terminal-tab-close:hover {
+  color: var(--text);
+}
+.terminal-panes {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  padding: 0.35rem 0.5rem 0.5rem;
+}
+.terminal-pane {
+  position: absolute;
+  inset: 0.35rem 0.5rem 0.5rem;
+  /* Hidden rather than unmounted: disposing an xterm loses the scrollback and
+     kills whatever is running in it. */
+  visibility: hidden;
+}
+.terminal-pane.active {
+  visibility: visible;
+}
+.terminal-pane .xterm-viewport {
+  background: transparent !important;
+  scrollbar-width: thin;
+}
+
+/* The action editor. Wider than the app's other dialogs because a command and
+   a URL both want a full line to themselves. */
+.project-action-dialog {
+  width: min(30rem, calc(100vw - 2.5rem));
+  display: grid;
+  gap: 0.85rem;
+}
+.project-action-dialog header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.project-action-dialog h3,
+.project-action-dialog header p {
+  margin: 0;
+}
+.project-action-dialog header p {
+  margin-top: 0.2rem;
+}
+.project-action-dialog label {
+  display: grid;
+  gap: 0.3rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+.project-action-dialog label small {
+  color: var(--text-faint);
+  font-weight: 400;
+}
+.project-action-dialog .field-hint {
+  color: var(--text-faint);
+  font-size: 0.6875rem;
+}
+.project-action-dialog textarea {
+  resize: vertical;
+  min-height: 3.5rem;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.8125rem;
+}
+.project-action-dialog .actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.15rem;
 }

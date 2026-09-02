@@ -97,9 +97,11 @@ describe("conflictsFor", () => {
   });
 
   it("compares against overrides, not just defaults", () => {
-    const keymap = { "toggle-sidebar": { key: "j", meta: true } };
+    // The override chord has to be one no command claims by default, or the
+    // assertion would be measuring the defaults it is meant to look past.
+    const keymap = { "toggle-sidebar": { key: "g", meta: true } };
     expect(conflictsFor("search-files", { key: "b", meta: true }, keymap)).toEqual([]);
-    expect(conflictsFor("search-files", { key: "j", meta: true }, keymap).map((c) => c.id)).toEqual([
+    expect(conflictsFor("search-files", { key: "g", meta: true }, keymap).map((c) => c.id)).toEqual([
       "toggle-sidebar",
     ]);
   });

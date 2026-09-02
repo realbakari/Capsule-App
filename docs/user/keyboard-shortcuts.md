@@ -11,6 +11,7 @@
 | Search in files | `⇧⌘F` |
 | Toggle the sidebar | `⌘B` |
 | Toggle the inspector | `⌘\` |
+| Stash the current prompt | `⌘S` |
 | Send | `Enter`, or `⌘Enter` if you changed the send key |
 
 ## Changing a shortcut
@@ -32,3 +33,5 @@ Two things the editor will not let you do:
 - `/` for commands
 - `@` to mention a file
 - `$` to attach a skill
+- Paperclip or drop to attach local files
+- `⌘S` to stash the current prompt, or open the stash when the composer is empty

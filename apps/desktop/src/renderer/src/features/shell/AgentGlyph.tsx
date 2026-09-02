@@ -17,9 +17,13 @@ export function AgentGlyph({ id, name, size = 14 }: { id: string | undefined; na
         height={size}
         viewBox="0 0 24 24"
         fill="currentColor"
+        fillRule="evenodd"
+        clipRule="evenodd"
         aria-hidden
       >
-        <path d={mark.path} />
+        {mark.paths.map((d) => (
+          <path key={d} d={d} />
+        ))}
       </svg>
     );
   }

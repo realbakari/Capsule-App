@@ -1,21 +1,107 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ChatMessage } from "@capsule/shared";
 import { CopyIcon, DiffIcon, FileIcon, SparkIcon, TerminalIcon } from "../shell/icons";
 import { useWorkspace } from "../../lib/workspace";
 import { GatewayBanner } from "../shell/GatewayBanner";
 import { ViewErrorBoundary } from "../shell/ErrorBoundary";
 import { Composer } from "./Composer";
+import { TerminalDock } from "../terminal/TerminalDock";
 import {
   foldedTurnIds,
   foldedTurnLabel,
   formatDuration,
   turnDurationMs,
+  reconcileTurns,
   turnPreview,
   turnsFromMessages,
+  type Turn,
 } from "../../lib/turns";
 import { RunSummary } from "./RunSummary";
 import { summariseWork } from "../../lib/activity";
 import { ChangedFilesCard } from "./ChangedFilesCard";
 import { MessageBody } from "./MessageBody";
+
+/*
+ * One message. Memoized because a streamed frame appends a message rather
+ * than editing one: without this, every row in the thread re-rendered on
+ * every frame.
+ */
+const MessageRow = memo(function MessageRow({
+  message,
+  isNew,
+  onOpenAttachment,
+}: {
+  message: ChatMessage;
+  isNew: boolean;
+  onOpenAttachment: (path: string) => void;
+}) {
+  return (
+    <div className={`msg ${message.role}${isNew ? " motion-enter-conversation" : ""}`}>
+      {/* No author label: a right-aligned bubble already says "you", and the
+          reply is the timeline — naming it "Agent" on every turn is chrome.
+          Timestamp and copy appear on hover. */}
+      <div className="who">
+        {message.kind === "steer" && <span className="tag">Steer</span>}
+        <span className="when">{formatTime(message.createdAt)}</span>
+        <span className="msg-actions">
+          <button
+            className="icon-btn"
+            title="Copy"
+            aria-label="Copy"
+            onClick={() => void navigator.clipboard.writeText(message.content)}
+          >
+            <CopyIcon size={13} />
+          </button>
+        </span>
+      </div>
+      {message.content ? <MessageBody content={message.content} /> : null}
+      {message.attachments?.length ? (
+        <div className="message-attachments">
+          {message.attachments.map((attachment) => (
+            <button
+              type="button"
+              className="message-attachment"
+              key={attachment.path}
+              title={attachment.path}
+              onClick={() => onOpenAttachment(attachment.path)}
+            >
+              <FileIcon size={13} />
+              <span>{attachment.name}</span>
+              <small>{Math.max(1, Math.ceil(attachment.size / 1024))} KB</small>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+});
+
+/** A folded exchange: one row that says what happened and how long it took. */
+const FoldedTurn = memo(function FoldedTurn({
+  turn,
+  onOpen,
+}: {
+  turn: Turn;
+  onOpen: (id: string) => void;
+}) {
+  const preview = turnPreview(turn);
+  const elapsed = turnDurationMs(turn);
+  return (
+    <button className="turn-fold" onClick={() => onOpen(turn.id)}>
+      <span className="turn-fold-count">{turn.messages.length} messages</span>
+      <span className="turn-fold-label">{foldedTurnLabel(turn)}</span>
+      {/* Hover shows the prompt and the start of the answer, so a folded turn
+          can be identified without unfolding it. */}
+      {preview.prompt || preview.reply ? (
+        <span className="turn-fold-preview" role="tooltip">
+          {preview.prompt && <span className="turn-fold-preview-prompt">{preview.prompt}</span>}
+          {preview.reply && <span className="turn-fold-preview-reply">{preview.reply}</span>}
+        </span>
+      ) : null}
+      {elapsed ? <span className="turn-fold-duration">{formatDuration(elapsed)}</span> : null}
+    </button>
+  );
+});
 
 function formatTime(iso: string): string {
   const date = new Date(iso);
@@ -91,16 +177,25 @@ export function Conversation() {
     createTask,
     createProjectFromFolder,
     pickProjectDirectory,
-    setDraft,
-    setMode,
     connected,
     settings,
+    openPath,
+    terminalOpen,
+    setTerminalOpen,
   } = useWorkspace();
 
   /* Older exchanges fold to one row so a long thread stays skimmable; the
      newest few always stay open, and anything you open stays open. */
   const [openedTurns, setOpenedTurns] = useState<ReadonlySet<string>>(() => new Set());
-  const turns = useMemo(() => turnsFromMessages(messages), [messages]);
+  /* Every streamed frame rebuilds the turn list. Handing the rows the objects
+     from the last render wherever the messages did not move is what lets the
+     memoized rows below skip a re-render of the whole thread per frame. */
+  const previousTurns = useRef<Turn[]>([]);
+  const turns = useMemo(() => {
+    const next = reconcileTurns(previousTurns.current, turnsFromMessages(messages));
+    previousTurns.current = next;
+    return next;
+  }, [messages]);
 
   /*
    * Where each turn starts in the flat message list, so a row can tell whether
@@ -126,11 +221,15 @@ export function Conversation() {
     [turns, openedTurns],
   );
 
-  const emptyPrompts = [
-    { label: "Review this repo", mode: "code" as const, text: "Review the working directory and summarize the main risks." },
-    { label: "Plan a change", mode: "plan" as const, text: "Help me plan the next change for this project." },
-    { label: "Research options", mode: "research" as const, text: "Research options for this problem and cite sources." },
-  ];
+  /* The shell opens where the conversation works: its worktree when it has
+     one, the project folder otherwise. */
+  const terminalCwd = session?.workingDirectory ?? project?.workingDirectory;
+
+  const openTurn = useCallback((id: string) => {
+    setOpenedTurns((current) => new Set(current).add(id));
+  }, []);
+  const openAttachment = useCallback((path: string) => void openPath(path), [openPath]);
+
   const scroller = useRef<HTMLDivElement>(null);
   /* Track the message count at mount time so entrance animations only fire for
      messages that arrive after the initial load, not the whole history. */
@@ -144,7 +243,7 @@ export function Conversation() {
   }, [messages, activeRun, stick]);
 
   return (
-    <section className="main page-content">
+    <section className={`main page-content${messages.length === 0 ? " conversation-empty" : ""}`}>
       {notice && <div className="notice">{notice}</div>}
       {statusText && <div className="notice status">{statusText}</div>}
       {!connected && (
@@ -163,37 +262,22 @@ export function Conversation() {
           {messages.length === 0 ? (
             <div className="empty-thread">
               <h1>
-                {!project
-                  ? "What should we work on?"
-                  : session
-                    ? "What should we work on?"
-                    : "Pick a thread to continue"}
+                {project && session && project.name !== "Inbox" ? (
+                  <>What should we build in <span>{project.name}</span>?</>
+                ) : project && !session ? (
+                  "Pick a conversation to continue"
+                ) : (
+                  "What should we work on?"
+                )}
               </h1>
-              <p>
-                {!project || !session
-                  ? "Start a conversation, or attach a folder when the work needs a repo."
-                  : !project.workingDirectory && project.name === "Inbox"
-                    ? "This chat isn't bound to a repo. Attach a folder or start a project from one."
-                    : !project.workingDirectory
-                      ? "Attach a folder so Capsule can search files, run git, and spawn coding harnesses."
-                      : "Ask for a change, a review, or research."}
-              </p>
-              {project && session && (
-                <div className="empty-prompts">
-                  {emptyPrompts.map((item) => (
-                    <button
-                      key={item.label}
-                      className="chip"
-                      type="button"
-                      onClick={() => {
-                        setMode(item.mode);
-                        setDraft(item.text);
-                      }}
-                    >
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
+              {(!project || !session || !project.workingDirectory) && (
+                <p>
+                  {!project || !session
+                    ? "Start a conversation, or attach a folder when the work needs a repo."
+                    : project.name === "Inbox"
+                      ? "This chat isn't bound to a repo. Attach a folder or start a project from one."
+                      : "Attach a folder so Capsule can search files, run git, and start coding harnesses."}
+                </p>
               )}
               {(!project || !project.workingDirectory) && (
                 <div className="actions">
@@ -230,66 +314,16 @@ export function Conversation() {
               )}
               {turns.map((turn) =>
                 folded.has(turn.id) ? (
-                  <button
-                    className="turn-fold"
-                    key={turn.id}
-                    onClick={() =>
-                      setOpenedTurns((current) => new Set(current).add(turn.id))
-                    }
-                  >
-                    <span className="turn-fold-count">
-                      {turn.messages.length} messages
-                    </span>
-                    <span className="turn-fold-label">{foldedTurnLabel(turn)}</span>
-                    {/* Hover shows the prompt and the start of the answer, so a
-                        folded turn can be identified without unfolding it. */}
-                    {(() => {
-                      const preview = turnPreview(turn);
-                      if (!preview.prompt && !preview.reply) return null;
-                      return (
-                        <span className="turn-fold-preview" role="tooltip">
-                          {preview.prompt && (
-                            <span className="turn-fold-preview-prompt">{preview.prompt}</span>
-                          )}
-                          {preview.reply && (
-                            <span className="turn-fold-preview-reply">{preview.reply}</span>
-                          )}
-                        </span>
-                      );
-                    })()}
-                    {(() => {
-                      const elapsed = turnDurationMs(turn);
-                      return elapsed ? (
-                        <span className="turn-fold-duration">{formatDuration(elapsed)}</span>
-                      ) : null;
-                    })()}
-                  </button>
+                  <FoldedTurn key={turn.id} turn={turn} onOpen={openTurn} />
                 ) : (
-                  turn.messages.map((message, messageIndex) => {
-              const globalIndex = (turnOffsets.get(turn.id) ?? 0) + messageIndex;
-              const isNew = globalIndex >= initialCountRef.current;
-              return (
-              <div className={`msg ${message.role}${isNew ? " motion-enter-conversation" : ""}`} key={message.id}>
-                {/* No author label: a right-aligned bubble already says "you",
-                    and the reply is the timeline — naming it "Agent" on every
-                    turn is chrome. Timestamp and copy appear on hover. */}
-                <div className="who">
-                  {message.kind === "steer" && <span className="tag">Steer</span>}
-                  <span className="when">{formatTime(message.createdAt)}</span>
-                  <span className="msg-actions">
-                    <button
-                      className="icon-btn"
-                      title="Copy" aria-label="Copy"
-                      onClick={() => void navigator.clipboard.writeText(message.content)}
-                    >
-                      <CopyIcon size={13} />
-                    </button>
-                  </span>
-                </div>
-                <MessageBody content={message.content} />
-              </div>
-                  );
-                })
+                  turn.messages.map((message, messageIndex) => (
+                    <MessageRow
+                      key={message.id}
+                      message={message}
+                      isNew={(turnOffsets.get(turn.id) ?? 0) + messageIndex >= initialCountRef.current}
+                      onOpenAttachment={openAttachment}
+                    />
+                  ))
                 ),
               )}
               {/* The turn's outcome on disk, under the reply. Not a second copy
@@ -410,6 +444,11 @@ export function Conversation() {
       <ViewErrorBoundary compact label="Composer">
         <Composer showSuggestions={false} />
       </ViewErrorBoundary>
+      {terminalOpen && terminalCwd && (
+        <ViewErrorBoundary compact label="Terminal">
+          <TerminalDock cwd={terminalCwd} onClose={() => setTerminalOpen(false)} />
+        </ViewErrorBoundary>
+      )}
     </section>
   );
 }

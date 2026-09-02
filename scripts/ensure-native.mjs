@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * better-sqlite3 must be compiled for Electron's Node ABI, not the host Node.
+ * Native modules must be compiled for Electron's Node ABI, not the host Node.
  */
 import { createRequire } from "node:module";
 import { spawnSync } from "node:child_process";
@@ -23,12 +23,15 @@ const stampPath = path.join(electronDir, ".capsule-native-abi");
 const executablePath = fs.readFileSync(path.join(electronDir, "path.txt"), "utf8").trim();
 const electronBin = path.join(electronDir, "dist", executablePath);
 
+const NATIVE_MODULES = ["better-sqlite3", "node-pty"];
+
 function probe() {
+  const requires = NATIVE_MODULES.map((name) => `require('${name}');`).join(" ");
   const result = spawnSync(
     electronBin,
     [
       "-e",
-      "try { require('better-sqlite3'); console.log(process.versions.modules); process.exit(0); } catch (e) { console.error(e.message); process.exit(2); }",
+      `try { ${requires} console.log(process.versions.modules); process.exit(0); } catch (e) { console.error(e.message); process.exit(2); }`,
     ],
     {
       cwd: desktop,
@@ -40,7 +43,7 @@ function probe() {
 }
 
 function rebuild() {
-  console.log("Rebuilding better-sqlite3 for Electron", electronVersion);
+  console.log(`Rebuilding ${NATIVE_MODULES.join(", ")} for Electron`, electronVersion);
   const result = spawnSync(
     "pnpm",
     [
@@ -48,7 +51,7 @@ function rebuild() {
       "electron-rebuild",
       "--force",
       "--only",
-      "better-sqlite3",
+      NATIVE_MODULES.join(","),
       "--version",
       electronVersion,
       "--module-dir",
@@ -62,9 +65,32 @@ function rebuild() {
     },
   );
   if (result.status !== 0) {
-    throw new Error("electron-rebuild failed for better-sqlite3");
+    throw new Error(`electron-rebuild failed for ${NATIVE_MODULES.join(", ")}`);
   }
 }
+
+/*
+ * node-pty forks through a helper binary it ships prebuilt. The package's own
+ * install script is what marks it executable, and a store that skips install
+ * scripts leaves it at 0644 — every terminal then dies with "posix_spawnp
+ * failed" before the shell starts.
+ */
+function ensureSpawnHelperIsExecutable() {
+  let ptyDir;
+  try {
+    ptyDir = path.dirname(requireFromDesktop.resolve("node-pty/package.json"));
+  } catch {
+    return;
+  }
+  const helper = path.join(ptyDir, "prebuilds", `${process.platform}-${process.arch}`, "spawn-helper");
+  if (!fs.existsSync(helper)) return;
+  const mode = fs.statSync(helper).mode;
+  if (mode & 0o111) return;
+  fs.chmodSync(helper, 0o755);
+  console.log("Marked node-pty's spawn-helper executable");
+}
+
+ensureSpawnHelperIsExecutable();
 
 const stamped = fs.existsSync(stampPath)
   ? fs.readFileSync(stampPath, "utf8").trim()
@@ -72,7 +98,7 @@ const stamped = fs.existsSync(stampPath)
 if (stamped !== electronVersion || !probe()) {
   rebuild();
   if (!probe()) {
-    throw new Error("better-sqlite3 still does not load inside Electron after rebuild");
+    throw new Error(`${NATIVE_MODULES.join(" or ")} still does not load inside Electron after rebuild`);
   }
   fs.writeFileSync(stampPath, electronVersion);
 }

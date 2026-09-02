@@ -1,10 +1,16 @@
 import { existsSync } from "node:fs";
 import { spawn } from "node:child_process";
+import { spawn as spawnPty } from "node-pty";
 
 export interface ExecResult {
   stdout: string;
   stderr: string;
   code: number;
+}
+
+export interface ManagedCommand {
+  pid?: number;
+  stop: () => void;
 }
 
 export function terminalAppleScript(app: "Terminal" | "iTerm"): string {
@@ -100,4 +106,96 @@ export function runInDirectory(
       });
     });
   });
+}
+
+export function startInDirectory(
+  cwd: string,
+  command: string,
+  handlers: {
+    onOutput: (text: string) => void;
+    onExit: (code: number | null, signal: NodeJS.Signals | null) => void;
+    onError: (error: Error) => void;
+  },
+): ManagedCommand {
+  const text = command.trim();
+  if (!text) throw new Error("Command is empty");
+  if (!cwd || !existsSync(cwd)) throw new Error("Working directory is missing");
+  const child = spawn("/bin/zsh", ["-lc", text], {
+    cwd,
+    env: process.env,
+    detached: process.platform !== "win32",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  child.stdout.on("data", (chunk: Buffer) => handlers.onOutput(chunk.toString("utf8")));
+  child.stderr.on("data", (chunk: Buffer) => handlers.onOutput(chunk.toString("utf8")));
+  child.on("error", handlers.onError);
+  child.on("close", handlers.onExit);
+  return {
+    pid: child.pid,
+    stop: () => {
+      if (child.killed) return;
+      if (process.platform !== "win32" && child.pid) {
+        try {
+          process.kill(-child.pid, "SIGTERM");
+          return;
+        } catch {
+          // The shell may already have exited; fall back to the child handle.
+        }
+      }
+      child.kill("SIGTERM");
+    },
+  };
+}
+
+/**
+ * A shell running on a pseudo-terminal, for the terminal panel inside Capsule.
+ *
+ * `runInDirectory` and `startInDirectory` above run one command and hand back
+ * its output — enough for a project action, useless for a shell session, which
+ * needs a TTY to draw a prompt, run an editor, or read a keystroke.
+ */
+export interface PtySession {
+  pid: number;
+  write: (data: string) => void;
+  resize: (cols: number, rows: number) => void;
+  kill: () => void;
+}
+
+/** The shell to open. The login shell if the OS reports one, else zsh. */
+export function preferredShell(env: NodeJS.ProcessEnv = process.env): string {
+  const shell = env.SHELL?.trim();
+  return shell && existsSync(shell) ? shell : "/bin/zsh";
+}
+
+export function startPty(
+  input: { cwd: string; cols?: number; rows?: number; shell?: string },
+  handlers: { onData: (data: string) => void; onExit: (code: number, signal?: number) => void },
+): PtySession {
+  if (!input.cwd || !existsSync(input.cwd)) throw new Error("Working directory is missing");
+  const shell = input.shell ?? preferredShell();
+  const child = spawnPty(shell, ["-l"], {
+    name: "xterm-256color",
+    cols: Math.max(2, input.cols ?? 80),
+    rows: Math.max(1, input.rows ?? 24),
+    cwd: input.cwd,
+    env: { ...process.env, TERM: "xterm-256color" } as Record<string, string>,
+  });
+  child.onData(handlers.onData);
+  child.onExit(({ exitCode, signal }) => handlers.onExit(exitCode, signal));
+  return {
+    pid: child.pid,
+    write: (data) => child.write(data),
+    resize: (cols, rows) => {
+      // A zero column count is what a hidden pane reports; the shell treats it
+      // as an error and stops redrawing.
+      child.resize(Math.max(2, cols), Math.max(1, rows));
+    },
+    kill: () => {
+      try {
+        child.kill();
+      } catch {
+        // Already gone: the exit handler has run or the shell was killed.
+      }
+    },
+  };
 }

@@ -33,10 +33,14 @@ describe("CapsuleDatabase", () => {
       ...projects[0]!,
       workingDirectory: "/tmp/app",
       extraFolders: ["/tmp/docs"],
+      actions: [{ id: "dev", name: "Dev", command: "pnpm dev", previewUrl: "http://localhost:5173" }],
+      iconPath: "/tmp/app/icon.png",
       updatedAt: "2026-01-01T00:00:01.000Z",
     });
     expect(repos.getProject("proj_1")?.workingDirectory).toBe("/tmp/app");
     expect(repos.getProject("proj_1")?.extraFolders).toEqual(["/tmp/docs"]);
+    expect(repos.getProject("proj_1")?.actions?.[0]?.command).toBe("pnpm dev");
+    expect(repos.getProject("proj_1")?.iconPath).toBe("/tmp/app/icon.png");
     repos.insertSession({
       id: "sess_1",
       workspaceId: "ws_1",
@@ -48,12 +52,15 @@ describe("CapsuleDatabase", () => {
       harnessId: "claude",
       harnessState: "running",
       acpMode: "persistent",
+      pinned: true,
+      pinOrder: 0,
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
     });
     const session = repos.getSession("sess_1");
     expect(session?.harnessId).toBe("claude");
     expect(session?.harnessState).toBe("running");
+    expect(session?.pinOrder).toBe(0);
     repos.insertSession({
       id: "sess_2",
       workspaceId: "ws_1",
@@ -63,12 +70,16 @@ describe("CapsuleDatabase", () => {
       mode: "chat",
       state: "active",
       workingDirectory: "/tmp/capsule-tasks/2026-08-26/inbox-thread",
+      workspaceMode: "worktree",
+      worktreeBranch: "capsule/inbox-thread",
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
     });
     expect(repos.getSession("sess_2")?.workingDirectory).toBe(
       "/tmp/capsule-tasks/2026-08-26/inbox-thread",
     );
+    expect(repos.getSession("sess_2")?.workspaceMode).toBe("worktree");
+    expect(repos.getSession("sess_2")?.worktreeBranch).toBe("capsule/inbox-thread");
     db.close();
   });
 });
@@ -127,14 +138,16 @@ describe("message pagination", () => {
     db.close();
   });
 
-  it("round-trips the message kind", () => {
+  it("round-trips the message kind and attachments", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "capsule-msgkind-"));
     const db = new CapsuleDatabase(path.join(dir, "capsule.sqlite"));
     const repos = new CapsuleRepositories(db);
     seedSession(repos, "s1");
     repos.insertMessage({
       id: "m1", sessionId: "s1", role: "user", content: "how are you",
-      kind: "steer", createdAt: "2026-08-26T00:00:00.000Z",
+      kind: "steer",
+      attachments: [{ name: "brief.md", path: "/tmp/brief.md", size: 42, mimeType: "text/markdown" }],
+      createdAt: "2026-08-26T00:00:00.000Z",
     });
     repos.insertMessage({
       id: "m2", sessionId: "s1", role: "user", content: "plain",
@@ -142,6 +155,9 @@ describe("message pagination", () => {
     });
     const rows = repos.listMessages("s1");
     expect(rows.find((m) => m.id === "m1")?.kind).toBe("steer");
+    expect(rows.find((m) => m.id === "m1")?.attachments).toEqual([
+      { name: "brief.md", path: "/tmp/brief.md", size: 42, mimeType: "text/markdown" },
+    ]);
     expect(rows.find((m) => m.id === "m2")?.kind ?? null).toBeNull();
     db.close();
   });

@@ -23,13 +23,16 @@ import { SETTINGS_TABS } from "../settings/SettingsView";
 import { searchSettings } from "../settings/settings-search";
 import { useWorkspace, type View } from "../../lib/workspace";
 import { ActionMenu } from "./ActionMenu";
+import { CloneRepositoryDialog } from "./CloneRepositoryDialog";
 import { SidebarToggle } from "./SidebarControl";
 import {
   CpuIcon,
   FolderIcon,
   FolderPlusIcon,
+  GitBranchIcon,
   HistoryIcon,
   InboxIcon,
+  MessageSquareIcon,
   MoreHorizontalIcon,
   PinIcon,
   PlusIcon,
@@ -44,10 +47,17 @@ import {
   XIcon,
 } from "./icons";
 
+/*
+ * The footer rail, not a full navigation. Seven unlabelled glyphs in a 264px
+ * column is a puzzle rather than a menu: the eye cannot tell them apart and
+ * nothing says what any of them does.
+ *
+ * Approvals earns its place because it carries a live badge and is
+ * time-sensitive; Usage because it is read often. Harnesses, Skills and
+ * History are one keystroke away in the command palette, which already lists
+ * all three, so dropping them from the rail costs nothing but the clutter.
+ */
 const LIBRARY: Array<{ id: View; label: string; icon: typeof CpuIcon }> = [
-  { id: "runtimes", label: "Harnesses", icon: CpuIcon },
-  { id: "skills", label: "Skills", icon: SparkIcon },
-  { id: "history", label: "History", icon: HistoryIcon },
   { id: "approvals", label: "Approvals", icon: ShieldIcon },
   { id: "usage", label: "Usage", icon: ChartIcon },
 ];
@@ -101,6 +111,7 @@ export function Sidebar() {
     sidebarWidth,
     setSidebarWidth,
     pinSession,
+    reorderPinnedSessions,
     regenerateTitle,
     projectRuns,
     approvals,
@@ -112,6 +123,8 @@ export function Sidebar() {
   const [settingsQuery, setSettingsQuery] = useState("");
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateResult, setUpdateResult] = useState<UpdateCheck | null>(null);
+  const [draggedPinnedId, setDraggedPinnedId] = useState<string>();
+  const [cloneOpen, setCloneOpen] = useState(false);
 
   /*
    * A manual check. Installing an update in place needs a signed, notarised
@@ -372,6 +385,35 @@ export function Sidebar() {
         data-thread-item
         data-menu-open={menu?.kind === "session" && menu.id === session.id ? "true" : undefined}
         className={`thread-row ${active ? "active" : ""} ${recede ? "recede" : ""}`}
+        draggable={Boolean(session.pinned)}
+        onDragStart={(event) => {
+          if (!session.pinned) return;
+          setDraggedPinnedId(session.id);
+          event.dataTransfer.effectAllowed = "move";
+          event.dataTransfer.setData("text/plain", session.id);
+        }}
+        onDragEnd={() => setDraggedPinnedId(undefined)}
+        onDragOver={(event) => {
+          if (!session.pinned || !draggedPinnedId || draggedPinnedId === session.id) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "move";
+        }}
+        onDrop={(event) => {
+          if (!session.pinned) return;
+          event.preventDefault();
+          const sourceId = draggedPinnedId || event.dataTransfer.getData("text/plain");
+          if (!sourceId || sourceId === session.id) return;
+          const ordered = sessionsFor(session.projectId)
+            .filter((item) => item.pinned)
+            .map((item) => item.id);
+          const sourceIndex = ordered.indexOf(sourceId);
+          const targetIndex = ordered.indexOf(session.id);
+          if (sourceIndex < 0 || targetIndex < 0) return;
+          ordered.splice(sourceIndex, 1);
+          ordered.splice(targetIndex, 0, sourceId);
+          setDraggedPinnedId(undefined);
+          void reorderPinnedSessions(session.projectId, ordered);
+        }}
         onClick={(event) => openThread(session, event)}
         onDoubleClick={(event) => {
           event.preventDefault();
@@ -388,7 +430,7 @@ export function Sidebar() {
       >
         <span className="row-slot" aria-hidden />
         <span className="row-slot">
-          {session.pinned ? <PinIcon size={11} /> : null}
+          {session.pinned ? <PinIcon size={11} /> : <MessageSquareIcon size={12} />}
         </span>
         <span className="truncate">{session.title}</span>
         <span className="thread-meta">
@@ -436,6 +478,7 @@ export function Sidebar() {
       <aside className="sidebar" data-testid="app-sidebar">
         <div className="sidebar-header">
           <SidebarToggle />
+          <span className="brand">Capsule</span>
         </div>
         <div className="sidebar-toolbar">
           <label className="sidebar-search">
@@ -516,6 +559,7 @@ export function Sidebar() {
     <aside className="sidebar" data-testid="app-sidebar">
       <div className="sidebar-header">
         <SidebarToggle />
+        <span className="brand">Capsule</span>
       </div>
       <div className="sidebar-toolbar">
         <label className="sidebar-search">
@@ -577,6 +621,15 @@ export function Sidebar() {
         >
           <FolderPlusIcon size={13} />
         </button>
+        <button
+          type="button"
+          className="icon-btn"
+          title="Clone Git repository"
+          aria-label="Clone Git repository"
+          onClick={() => setCloneOpen(true)}
+        >
+          <GitBranchIcon size={13} />
+        </button>
       </div>
       <div className="sidebar-scroll">
         {filteredProjects.length === 0 && <div className="sidebar-empty">No projects</div>}
@@ -630,7 +683,11 @@ export function Sidebar() {
                     {isOpen ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} />}
                   </button>
                   <span className="row-slot project-icon">
-                    <ProjectGlyph size={14} />
+                    {item.iconDataUrl && item.name !== "Inbox" ? (
+                      <img src={item.iconDataUrl} alt="" />
+                    ) : (
+                      <ProjectGlyph size={14} />
+                    )}
                   </span>
                   <span className="truncate">{item.name}</span>
                   <span className="thread-meta">
@@ -690,6 +747,15 @@ export function Sidebar() {
       </div>
       <div className="sidebar-footer">
         <div className="sidebar-utils">
+          <button
+            type="button"
+            className="icon-btn"
+            title="Settings"
+            aria-label="Settings"
+            onClick={() => setView("settings")}
+          >
+            <SettingsIcon size={15} />
+          </button>
           {LIBRARY.map((item) => {
             const Icon = item.icon;
             const badge = item.id === "approvals" && pendingApprovals > 0 ? pendingApprovals : 0;
@@ -707,16 +773,6 @@ export function Sidebar() {
               </button>
             );
           })}
-          {/* Never shows active: opening Settings replaces this whole sidebar. */}
-          <button
-            type="button"
-            className="icon-btn"
-            title="Settings"
-            aria-label="Settings"
-            onClick={() => setView("settings")}
-          >
-            <SettingsIcon size={15} />
-          </button>
           <span className="grow" />
           <button
             type="button"
@@ -750,6 +806,7 @@ export function Sidebar() {
           onSelect={(action) => runAction(menu.kind, menu.id, action)}
         />
       ) : null}
+      {cloneOpen ? <CloneRepositoryDialog onClose={() => setCloneOpen(false)} /> : null}
     </aside>
   );
 }

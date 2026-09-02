@@ -271,4 +271,20 @@ export const MIGRATIONS: Array<{ version: number; sql: string }> = [
       );
     `,
   },
+  {
+    version: 8,
+    sql: `
+      ALTER TABLE projects ADD COLUMN project_actions TEXT NOT NULL DEFAULT '[]';
+      ALTER TABLE sessions ADD COLUMN workspace_mode TEXT NOT NULL DEFAULT 'local';
+      ALTER TABLE sessions ADD COLUMN worktree_branch TEXT;
+    `,
+  },
+  {
+    version: 9,
+    sql: `
+      ALTER TABLE projects ADD COLUMN icon_path TEXT;
+      ALTER TABLE sessions ADD COLUMN pin_order INTEGER;
+      ALTER TABLE messages ADD COLUMN attachments TEXT NOT NULL DEFAULT '[]';
+    `,
+  },
 ];

@@ -168,3 +168,16 @@ export function createBranch(workingDirectory: string, branch: string): { ok: bo
   if (result.ok) return { ok: true, detail: `Created ${name}.` };
   return { ok: false, detail: result.stderr || "Could not create branch." };
 }
+
+export function initializeRepository(workingDirectory: string): { ok: boolean; detail: string } {
+  if (!workingDirectory || !fs.existsSync(workingDirectory)) {
+    return { ok: false, detail: "Choose a project folder first." };
+  }
+  const existing = git(workingDirectory, ["rev-parse", "--is-inside-work-tree"]);
+  if (existing.ok && existing.stdout.trim() === "true") {
+    return { ok: true, detail: "Git is already initialized." };
+  }
+  const result = git(workingDirectory, ["init"]);
+  if (result.ok) return { ok: true, detail: result.stdout.trim() || "Initialized Git." };
+  return { ok: false, detail: result.stderr || "Could not initialize Git." };
+}
