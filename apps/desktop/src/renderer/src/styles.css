@@ -4090,15 +4090,24 @@ label.field input {
 .inspector {
   animation: side-panel-enter var(--motion-standard, 180ms) var(--motion-ease-arrival) both;
   will-change: transform, opacity;
+  /* Width changes that are not a drag — the refit after the window resizes —
+     move rather than jump. A drag has to stay on the pointer, so the panel
+     opts out of the transition while one is in progress. */
+  transition: width var(--motion-standard, 180ms) var(--motion-ease-arrival);
 }
+.inspector[data-resizing="true"] {
+  transition: none;
+}
+/*
+ * The panel used to fade in at full width while the conversation reflowed in a
+ * single frame. Animating the width itself opens the layout instead: with no
+ * `to` block the animation ends at the width the panel was given.
+ */
 @keyframes side-panel-enter {
   from {
     opacity: 0;
     transform: translateX(0.5rem);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
+    width: 0;
   }
 }
 
@@ -4178,6 +4187,7 @@ label.field input {
   }
   .inspector {
     animation: none;
+    transition: none;
   }
   .icon-btn:hover,
   .icon-btn:active,

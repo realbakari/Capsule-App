@@ -91,7 +91,9 @@ export const DEFAULT_CAPSULE_SETTINGS: CapsuleSettings = {
   defaultMode: "chat",
   defaultWorkspaceMode: "local",
   defaultPermission: "default",
-  appearanceTheme: "dark",
+  // Follows the Mac. A first run that ignores a light system and opens dark
+  // is the app deciding something it was never asked to decide.
+  appearanceTheme: "system",
   appearanceLight: DEFAULT_LIGHT_PALETTE,
   appearanceDark: DEFAULT_DARK_PALETTE,
   webAccess: "on",

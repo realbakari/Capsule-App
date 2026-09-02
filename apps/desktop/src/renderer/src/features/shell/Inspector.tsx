@@ -3,6 +3,7 @@ import type { FileEntry, FilePreview, GitPullRequest, LocalServer } from "@capsu
 import { folderBasename, projectFolderList } from "@capsule/shared";
 import { FileSaveCoordinator, isConflictError } from "../../lib/file-save";
 import { sameListing } from "../../lib/file-listing";
+import { clampPanelWidth, fitPanelWidth } from "../../lib/panel-size";
 import { formatProjectRoot } from "../../lib/paths";
 import { useWorkspace } from "../../lib/workspace";
 import { DiffView } from "./DiffView";
@@ -116,6 +117,16 @@ const TOOL_SHORTCUTS: Record<InspectorTool, string> = {
   chat: "⌥⌘S",
 };
 
+/* The panel's own bounds, and what the conversation keeps beside it. */
+const PANEL_MIN_WIDTH = 340;
+const PANEL_MAX_WIDTH = 1080;
+const CONVERSATION_MIN_WIDTH = 480;
+
+/** The width the panel and the conversation share. */
+function available(): number {
+  return document.querySelector(".workspace-body")?.clientWidth ?? window.innerWidth;
+}
+
 export function Inspector() {
   const {
     project,
@@ -164,6 +175,7 @@ export function Inspector() {
     }
   });
   const [isMaximized, setIsMaximized] = useState(false);
+  const [resizing, setResizing] = useState(false);
   const [showTree, setShowTree] = useState(true);
 
   const [activeTool, setActiveTool] = useState<InspectorTool>(() => toolFromTab(inspectorTab));
@@ -413,22 +425,53 @@ export function Inspector() {
     event.preventDefault();
     const origin = event.clientX;
     const start = panelWidth;
+    setResizing(true);
     const move = (next: PointerEvent) => {
-      const nextWidth = Math.max(340, Math.min(1080, start + (origin - next.clientX)));
-      setPanelWidth(nextWidth);
-      try {
-        localStorage.setItem("capsule.inspectorWidth", String(nextWidth));
-      } catch {
-        // ignore
-      }
+      setPanelWidth((current) => {
+        const nextWidth = clampPanelWidth({
+          requested: start + (origin - next.clientX),
+          current,
+          available: available(),
+          min: PANEL_MIN_WIDTH,
+          max: PANEL_MAX_WIDTH,
+          minContent: CONVERSATION_MIN_WIDTH,
+        });
+        try {
+          localStorage.setItem("capsule.inspectorWidth", String(nextWidth));
+        } catch {
+          // ignore
+        }
+        return nextWidth;
+      });
     };
     const up = () => {
+      setResizing(false);
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
   }
+
+  /*
+   * A width saved on a wide screen must not crush the conversation when the
+   * window gets smaller — or when the app opens on a laptop display.
+   */
+  useEffect(() => {
+    const refit = () => {
+      setPanelWidth((current) =>
+        fitPanelWidth({
+          current,
+          available: available(),
+          min: PANEL_MIN_WIDTH,
+          minContent: CONVERSATION_MIN_WIDTH,
+        }),
+      );
+    };
+    refit();
+    window.addEventListener("resize", refit);
+    return () => window.removeEventListener("resize", refit);
+  }, []);
 
   async function openRoot(root: string) {
     setFileRoot(root);
@@ -534,6 +577,7 @@ export function Inspector() {
   return (
     <aside
       className={`inspector codex-inspector${isMaximized ? " maximized" : ""}`}
+      data-resizing={resizing ? "true" : undefined}
       style={!isMaximized ? { width: `${panelWidth}px` } : undefined}
     >
       <div className="inspector-rail" onPointerDown={startResize} title="Drag to resize pane" />

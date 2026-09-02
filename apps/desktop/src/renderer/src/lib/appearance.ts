@@ -25,7 +25,8 @@ export function applyAppearance(settings: CapsuleSettings | undefined): void {
     media.addEventListener("change", () => applyAppearance(lastSettings));
   }
   const root = document.documentElement;
-  const theme: AppearanceTheme = settings?.appearanceTheme ?? "dark";
+  // Before settings arrive, follow the Mac rather than assuming dark.
+  const theme: AppearanceTheme = settings?.appearanceTheme ?? "system";
   const mode = resolvedTheme(theme);
   const palette = mode === "light" ? settings?.appearanceLight : settings?.appearanceDark;
   root.dataset.theme = theme;

@@ -387,7 +387,8 @@ describe("CapsuleEngine first user flow", () => {
     expect(loaded.defaultPermission).toBe("strict");
     expect(loaded.launchAtLogin).toBe(true);
     expect(loaded.useMockWhenOffline).toBe(false);
-    expect(loaded.appearanceTheme).toBe("dark");
+    // Nothing set a theme, so this is the default: follow the Mac.
+    expect(loaded.appearanceTheme).toBe("system");
     expect(loaded.appearanceDark.accent).toBe("#F3F3EE");
     expect(loaded.appearanceLight.background).toBe("#FFFFFF");
     expect(loaded.notifyRunComplete).toBe(true);
