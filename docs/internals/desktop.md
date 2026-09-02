@@ -212,13 +212,20 @@ result names the section it lives in.
 | General | Launch at login, send key, menu bar extra, keep awake, notifications, session archiving |
 | Appearance | System / Light / Dark, per-theme accent / background / foreground, UI and code fonts, translucent sidebar, contrast, transcript size / width, with live type previews |
 | Agents | Default mode, agent and conversation workspace, approval policy, sandbox, web access, output detail, reasoning, harness credentials |
-| Gateway | URL, connect / disconnect, token in Keychain |
+| Gateway | URL, connect / disconnect, token in Keychain, reading from another device |
 | Projects | Create, delete, attach primary folder, choose or reset project icon |
 | Source control | Branch prefix, force-with-lease, draft PRs, merge method, review delivery, watch-and-fix, auto-merge, commit / PR instructions |
 | Skills | skills.sh token for the catalog |
 | Shortcuts | Editable key bindings — see below |
 | Diagnostics | Process monitor, subsystem versions, export |
 | About | App icon squircle, version, copyright, copy version info |
+
+Gateway also owns **Read from another device**: off, this Mac, or this
+network. It shows the address, a Create link button that mints a single-use
+pairing link, and the list of paired devices with a Revoke beside each. A
+paired device is granted the `read` scope only — every channel is classified
+in `packages/shared/src/ipc-scopes.ts`, an unclassified channel counts as a
+write, and the socket checks the scope before the handler runs.
 
 Harnesses uses a two-pane catalog/detail layout. Installed and ready entries
 sort first; selecting one reveals project dedication, Doctor output, start,

@@ -13,6 +13,7 @@ need the shipped-product voice.
 - [Drafts, attachments, and prompt stash](./user/composer.md)
 - [Projects, actions, and local previews](./user/projects-and-previews.md)
 - [Providers and credentials](./user/providers.md)
+- [Reading from another device](./user/reading-from-another-device.md)
 - [Updating](./user/updating.md)
 - [Diagnostics](./user/diagnostics.md)
 
