@@ -67,22 +67,46 @@ function Shell() {
   );
 }
 
-export default function App() {
+function ShellWrapper() {
+  const { ready } = useWorkspace();
   const [phase, setPhase] = useState<"holding" | "fading" | "done">("holding");
 
   useEffect(() => {
-    const fade = window.setTimeout(() => setPhase("fading"), BOOT_SPLASH_MS);
-    const done = window.setTimeout(() => setPhase("done"), BOOT_SPLASH_MS + BOOT_FADE_MS);
+    if (!ready) return;
+    const fade = window.setTimeout(() => setPhase("fading"), 80);
+    const done = window.setTimeout(() => setPhase("done"), 80 + BOOT_FADE_MS);
     return () => {
       window.clearTimeout(fade);
       window.clearTimeout(done);
     };
+  }, [ready]);
+
+  // Safety fallback: never hold splash screen longer than 1200ms
+  useEffect(() => {
+    const fallbackFade = window.setTimeout(() => {
+      setPhase((p) => (p === "holding" ? "fading" : p));
+    }, 1200);
+    const fallbackDone = window.setTimeout(() => {
+      setPhase((p) => (p !== "done" ? "done" : p));
+    }, 1200 + BOOT_FADE_MS);
+    return () => {
+      window.clearTimeout(fallbackFade);
+      window.clearTimeout(fallbackDone);
+    };
   }, []);
 
   return (
-    <WorkspaceProvider>
+    <>
       {phase !== "done" && <Splash fading={phase === "fading"} />}
       <Shell />
+    </>
+  );
+}
+
+export default function App() {
+  return (
+    <WorkspaceProvider>
+      <ShellWrapper />
     </WorkspaceProvider>
   );
 }

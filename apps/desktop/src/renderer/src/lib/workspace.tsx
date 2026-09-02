@@ -106,6 +106,8 @@ const SIDEBAR_WIDTH_KEY = "capsule.sidebarWidth";
 const SIDEBAR_COLLAPSED_KEY = "capsule.sidebarCollapsed";
 const INSPECTOR_OPEN_KEY = "capsule.inspectorOpen";
 const TERMINAL_OPEN_KEY = "capsule.terminalOpen";
+const LAST_PROJECT_ID_KEY = "capsule.lastProjectId";
+const LAST_SESSION_ID_KEY = "capsule.lastSessionId";
 const DEFAULT_SIDEBAR_WIDTH = 264;
 
 function storedFlag(key: string, fallback = false): boolean {
@@ -251,6 +253,7 @@ export interface WorkspaceValue {
     value: string,
   ) => Promise<void>;
   exportDiagnostics: () => Promise<void>;
+  ready: boolean;
   sidebarCollapsed: boolean;
   inspectorOpen: boolean;
   terminalOpen: boolean;
@@ -331,8 +334,21 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [events, setEvents] = useState<RunEvent[]>([]);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
-  const [projectId, setProjectId] = useState<string>();
-  const [sessionId, setSessionId] = useState<string>();
+  const [projectId, setProjectId] = useState<string | undefined>(() => {
+    try {
+      return localStorage.getItem(LAST_PROJECT_ID_KEY) || undefined;
+    } catch {
+      return undefined;
+    }
+  });
+  const [sessionId, setSessionId] = useState<string | undefined>(() => {
+    try {
+      return localStorage.getItem(LAST_SESSION_ID_KEY) || undefined;
+    } catch {
+      return undefined;
+    }
+  });
+  const [ready, setReady] = useState(false);
   const [agentId, setAgentId] = useState<string>("general");
   const [mode, setMode] = useState<AgentMode>("chat");
   const [draft, setDraft] = useState("");
@@ -566,7 +582,17 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       setHarnessSessions(nextHarnessSessions);
       setProjectRuns(nextRuns);
       if (!sessionId) {
-        const first = nextSessions.find(
+        const savedSessionId = (() => {
+          try {
+            return localStorage.getItem(LAST_SESSION_ID_KEY) || undefined;
+          } catch {
+            return undefined;
+          }
+        })();
+        const validSaved = savedSessionId && nextSessions.find(
+          (item: Session) => item.id === savedSessionId && item.projectId === selectedProject && item.state === "active",
+        );
+        const first = validSaved ?? nextSessions.find(
           (item: Session) => item.projectId === selectedProject && item.state === "active",
         );
         if (first) setSessionId(first.id);
@@ -574,6 +600,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error("Failed to load Capsule state", error);
       setNotice(formatUserError(error));
+    } finally {
+      setReady(true);
     }
   }, [agentId, api, projectId, sessionId]);
 
@@ -727,9 +755,27 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     try {
       localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth));
     } catch {
-      /* ignore quota */
+      // Storage unavailable.
     }
   }, [sidebarWidth]);
+
+  useEffect(() => {
+    try {
+      if (projectId) localStorage.setItem(LAST_PROJECT_ID_KEY, projectId);
+      else localStorage.removeItem(LAST_PROJECT_ID_KEY);
+    } catch {
+      // Storage unavailable.
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    try {
+      if (sessionId) localStorage.setItem(LAST_SESSION_ID_KEY, sessionId);
+      else localStorage.removeItem(LAST_SESSION_ID_KEY);
+    } catch {
+      // Storage unavailable.
+    }
+  }, [sessionId]);
 
   function setSidebarWidth(value: number) {
     setSidebarWidthState(Math.min(352, Math.max(220, Math.round(value))));
@@ -1625,6 +1671,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       closeHarness,
       refreshHarnessStatus,
       setHarnessOption,
+      ready,
       exportDiagnostics,
       sidebarCollapsed,
       inspectorOpen,
@@ -1705,6 +1752,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       git,
       files,
       confirm,
+      ready,
       sidebarCollapsed,
       inspectorOpen,
       sidebarWidth,
