@@ -42,6 +42,10 @@ const SUGGESTIONS = [
 
 function slashCommands(input: {
   harnesses: Array<{ id: string; name: string }>;
+  /* Skills belong in this menu too: $ was the only way to reach one, and the
+     only thing that ever said so was a legend under the composer. */
+  skills: Array<{ id: string; name: string }>;
+  setSkillId: (id: string) => void;
   query: string;
   createTask: () => void;
   setMode: (mode: "plan" | "chat" | "code") => void;
@@ -76,6 +80,12 @@ function slashCommands(input: {
     { id: "runtimes", label: "/runtimes", detail: "Open harnesses", run: () => input.setView("runtimes") },
     { id: "approvals", label: "/approvals", detail: "Open approvals", run: () => input.setView("approvals") },
     { id: "settings", label: "/settings", detail: "Open settings", run: () => input.setView("settings") },
+    ...input.skills.map((skill) => ({
+      id: `skill-${skill.id}`,
+      label: `/${skill.name.toLowerCase().replace(/\s+/gu, "-")}`,
+      detail: `Use the ${skill.name} skill`,
+      run: () => input.setSkillId(skill.id),
+    })),
   ].filter((item) => item.label.includes(input.query || "___"));
 }
 
@@ -176,6 +186,8 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
     () =>
       slashCommands({
         harnesses,
+        skills,
+        setSkillId,
         query: trigger?.kind === "slash" ? trigger.query : "___",
         createTask,
         setMode,
@@ -189,6 +201,8 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
     [
       createTask,
       harnesses,
+      skills,
+      setSkillId,
       openInspector,
       pickProjectDirectory,
       setTerminalOpen,
