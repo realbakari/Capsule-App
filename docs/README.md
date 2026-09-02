@@ -12,6 +12,7 @@ need the shipped-product voice.
 - [Restoring a turn](./user/checkpoints.md)
 - [Drafts, attachments, and prompt stash](./user/composer.md)
 - [Projects, actions, and local previews](./user/projects-and-previews.md)
+- [capsule.json — project config in the repository](./user/project-file.md)
 - [Providers and credentials](./user/providers.md)
 - [Reading from another device](./user/reading-from-another-device.md)
 - [Updating](./user/updating.md)

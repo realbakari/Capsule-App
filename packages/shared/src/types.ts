@@ -222,6 +222,12 @@ export interface Project {
    * expressed by one global switch.
    */
   defaultWorkspaceMode?: WorkspaceMode;
+  /**
+   * What capsule.json in this project's folder says, if anything. Read on
+   * every list rather than stored: it is a file someone edits with the app
+   * open, and a stale copy would be worse than none.
+   */
+  projectFile?: import("./project-file.js").ProjectFileState;
   createdAt: string;
   updatedAt: string;
 }

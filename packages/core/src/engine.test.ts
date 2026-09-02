@@ -232,6 +232,44 @@ describe("CapsuleEngine first user flow", () => {
     await engine.stop();
   });
 
+  it("takes actions and defaults from the repository's capsule.json", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-project-file-"));
+    const repository = path.join(dir, "repository");
+    mkdirSync(repository);
+    writeFileSync(
+      path.join(repository, "capsule.json"),
+      JSON.stringify({
+        defaultWorkspaceMode: "worktree",
+        actions: [{ name: "Dev server", command: "pnpm dev", previewUrl: "localhost:5173" }],
+      }),
+    );
+    const engine = new CapsuleEngine({
+      databasePath: path.join(dir, "capsule.sqlite"),
+      userDataDir: dir,
+      autoConnect: false,
+    });
+    await engine.start();
+    const created = engine.createProject({ name: "Shared", workingDirectory: repository });
+
+    const project = engine.getProject(created.id);
+    expect(project?.actions?.map((action) => action.name)).toEqual(["Dev server"]);
+    expect(project?.actions?.[0]?.id).toBe("file:dev-server");
+    // Nothing on this machine has chosen, so the repository's default applies.
+    expect(project?.defaultWorkspaceMode).toBe("worktree");
+    expect(project?.projectFile?.status).toBe("ok");
+
+    // A choice made here outranks the file for whoever made it.
+    engine.updateProject(created.id, { defaultWorkspaceMode: "local" });
+    expect(engine.getProject(created.id)?.defaultWorkspaceMode).toBe("local");
+
+    // A broken file is reported, not ignored.
+    writeFileSync(path.join(repository, "capsule.json"), "{ oops");
+    const broken = engine.getProject(created.id);
+    expect(broken?.projectFile?.status).toBe("invalid");
+    expect(broken?.actions ?? []).toEqual([]);
+    await engine.stop();
+  });
+
   it("does not offer bootstrap mock agents after a live Gateway connects", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "capsule-live-agents-"));
     const engine = new CapsuleEngine({

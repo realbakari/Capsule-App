@@ -44,6 +44,7 @@ import {
   pushCurrentBranch,
   readGitDiff,
   readGitStatus,
+  readProjectFile,
   readProjectIconDataUrl,
   readPreviewFile,
   previewFromBytes,
@@ -68,6 +69,7 @@ import { createProjectRecord } from "@capsule/projects";
 import { createRunEvent, createRunRecord } from "@capsule/runs";
 import { createSessionRecord, titleFromPrompt } from "@capsule/sessions";
 import {
+  mergeProjectActions,
   acpDoctorCommand,
   acpInstallCommand,
   FILE_CHANGED_ON_DISK,
@@ -2472,9 +2474,35 @@ export class CapsuleEngine {
     return session;
   }
 
+  /*
+   * A project as the app sees it: what this machine stored, plus what the
+   * repository itself declares in capsule.json. The file is read here rather
+   * than cached, because it is a file someone edits with the app open.
+   */
   private withProjectIcon(project: Project): Project {
-    const iconDataUrl = readProjectIconDataUrl(project.workingDirectory, project.iconPath);
-    return iconDataUrl ? { ...project, iconDataUrl } : project;
+    const state = readProjectFile(project.workingDirectory);
+    const file = state.status === "ok" ? state.file : undefined;
+    const merged: Project = {
+      ...project,
+      ...(file
+        ? {
+            actions: mergeProjectActions(file.actions, project.actions ?? []),
+            // The stored value wins: an override made here is a decision, and
+            // the file is the default for everyone who has not made one.
+            ...(project.defaultWorkspaceMode
+              ? {}
+              : file.defaultWorkspaceMode
+                ? { defaultWorkspaceMode: file.defaultWorkspaceMode }
+                : {}),
+          }
+        : {}),
+      projectFile: state,
+    };
+    const iconDataUrl = readProjectIconDataUrl(
+      merged.workingDirectory,
+      merged.iconPath ?? file?.iconPath,
+    );
+    return iconDataUrl ? { ...merged, iconDataUrl } : merged;
   }
 
   private requireProject(id: string): Project {

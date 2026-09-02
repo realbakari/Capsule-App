@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { AgentMode, ProjectAction, WorkspaceMode } from "@capsule/shared";
+import { isSharedAction, PROJECT_FILE_NAME } from "@capsule/shared";
 
 import { MODES, useWorkspace } from "../../lib/workspace";
 import { formatProjectRoot } from "../../lib/paths";
@@ -281,7 +282,10 @@ export function ProjectView() {
           <div className="row">
             <div>
               <h3>Actions</h3>
-              <p className="muted">Commands saved with this project and run from the top bar.</p>
+              <p className="muted">
+                Commands run from the top bar. Ones declared in {PROJECT_FILE_NAME} come with the
+                repository and are the same for everyone who clones it.
+              </p>
             </div>
             <button
               className="chip"
@@ -291,6 +295,12 @@ export function ProjectView() {
               <PlusIcon size={12} /> Add action
             </button>
           </div>
+          {project.projectFile?.status === "invalid" ? (
+            <p className="notice">
+              {PROJECT_FILE_NAME} is here but cannot be read, so everything it declares is being
+              ignored: {project.projectFile.error}
+            </p>
+          ) : null}
           {actions.length === 0 ? (
             <p className="faint">No actions yet.</p>
           ) : (
@@ -304,12 +314,27 @@ export function ProjectView() {
                 <div className="actions" style={{ marginTop: 0 }}>
                   {action.runOnWorktreeCreate ? <span className="chip-static">setup</span> : null}
                   {action.previewUrl ? <span className="chip-static">preview</span> : null}
-                  <button className="ghost" type="button" onClick={() => setEditing(action)}>
-                    Edit
-                  </button>
+                  {/* A shared action is edited by editing the file, not here:
+                      saving it locally would fork it from the repository
+                      without saying so. */}
+                  {isSharedAction(action) ? (
+                    <span className="chip-static" title={`Declared in ${PROJECT_FILE_NAME}`}>
+                      shared
+                    </span>
+                  ) : (
+                    <button className="ghost" type="button" onClick={() => setEditing(action)}>
+                      Edit
+                    </button>
+                  )}
                   <button
                     className="danger"
                     type="button"
+                    disabled={isSharedAction(action)}
+                    title={
+                      isSharedAction(action)
+                        ? `Remove it from ${PROJECT_FILE_NAME} instead`
+                        : undefined
+                    }
                     onClick={() =>
                       setConfirm({
                         title: `Delete “${action.name}”?`,
