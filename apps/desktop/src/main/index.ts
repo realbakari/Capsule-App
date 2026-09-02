@@ -669,6 +669,16 @@ async function announceRemoteAccess(): Promise<void> {
   console.log(`Pair a device: ${remotePairingUrl}`);
   console.log("The link works once and expires in five minutes. Read only.\n");
   send(IPC_EVENTS.state, { command: "remote-updated" });
+  /*
+   * And open it, because a link printed in a terminal is a link somebody has
+   * to copy. `--no-open` is for a machine with no browser to open it on, where
+   * the printed link is the whole point.
+   */
+  if (!process.argv.includes("--no-open")) {
+    void shell.openExternal(remotePairingUrl).catch(() => {
+      console.log("Could not open a browser here — use the link above.");
+    });
+  }
 }
 
 const remoteListeners = new Set<(event: string, payload: unknown) => void>();

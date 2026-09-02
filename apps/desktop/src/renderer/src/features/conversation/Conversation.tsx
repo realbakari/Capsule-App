@@ -174,6 +174,7 @@ export function Conversation() {
     api,
     notice,
     ready,
+    runs,
     setNotice,
     statusText,
     createTask,
@@ -226,6 +227,13 @@ export function Conversation() {
   /* The shell opens where the conversation works: its worktree when it has
      one, the project folder otherwise. */
   const terminalCwd = session?.workingDirectory ?? project?.workingDirectory;
+
+  /*
+   * A turn that wrote something leaves a checkpoint behind — the hidden ref
+   * the engine captures when a run finishes. Without one, whatever git is
+   * reporting belongs to the person at the keyboard, not to this thread.
+   */
+  const turnTouchedTree = runs.some((run) => Boolean(run.checkpointRef));
 
   const openTurn = useCallback((id: string) => {
     setOpenedTurns((current) => new Set(current).add(id));
@@ -351,7 +359,11 @@ export function Conversation() {
               )}
               {/* The turn's outcome on disk, under the reply. Not a second copy
                   of the reply — the diff itself lives in the side panel. */}
-              {git && session && <ChangedFilesCard git={git} />}
+              {/* Only when a turn in this thread actually touched the tree.
+                  It used to render on any working-tree change at all, so a
+                  chat that asked "how are you" ended with a card announcing
+                  ".DS_Store" and a folder you cloned yourself as its outcome. */}
+              {git && session && turnTouchedTree && <ChangedFilesCard git={git} />}
             </>
           )}
           {activeRun && (
