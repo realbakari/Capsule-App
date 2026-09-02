@@ -6815,8 +6815,8 @@ button.shortcut-keys.capturing {
   position: relative;
   z-index: 1;
   isolation: isolate;
-  height: 40rem;
-  max-height: 82vh;
+  height: 42rem;
+  max-height: 85vh;
   border-radius: 0.75rem;
   overflow: hidden;
   background: var(--surface-0);
@@ -6825,83 +6825,37 @@ button.shortcut-keys.capturing {
     0 24px 72px -16px rgba(0, 0, 0, 0.75),
     0 0 0 1px var(--border-strong),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  display: flex;
-  flex-direction: column;
 }
-.site-shot-header {
-  height: 2.25rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 0.85rem;
-  background: color-mix(in srgb, var(--surface-1) 75%, var(--bg-sidebar));
-  border-bottom: 1px solid var(--border-color);
-  flex-shrink: 0;
-  user-select: none;
+.site-shot-frame .app {
+  height: 100%;
 }
 .site-shot-traffic-lights {
+  position: absolute;
+  top: 1.25rem;
+  left: 1.15rem;
   display: flex;
   align-items: center;
   gap: 0.45rem;
-  width: 5rem;
+  z-index: 10;
+  pointer-events: none;
 }
 .traffic-dot {
-  width: 0.625rem;
-  height: 0.625rem;
+  width: 0.6875rem;
+  height: 0.6875rem;
   border-radius: 99px;
   display: inline-block;
 }
 .traffic-dot.close {
   background: #ff5f56;
-  border: 1px solid rgba(0, 0, 0, 0.15);
+  border: 1px solid rgba(0, 0, 0, 0.18);
 }
 .traffic-dot.minimize {
   background: #ffbd2e;
-  border: 1px solid rgba(0, 0, 0, 0.15);
+  border: 1px solid rgba(0, 0, 0, 0.18);
 }
 .traffic-dot.maximize {
   background: #27c93f;
-  border: 1px solid rgba(0, 0, 0, 0.15);
-}
-.site-shot-title {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--text-muted);
-}
-.site-shot-app-name {
-  color: var(--text);
-  font-weight: 600;
-}
-.site-shot-sep {
-  color: var(--text-faint);
-  opacity: 0.6;
-}
-.site-shot-status {
-  width: 5rem;
-  display: flex;
-  justify-content: flex-end;
-}
-.site-shot-badge {
-  font-size: 0.6875rem;
-  font-weight: 500;
-  color: var(--text-muted);
-  background: var(--bg-hover);
-  border: 1px solid var(--border-color);
-  padding: 0.125rem 0.5rem;
-  border-radius: 9999px;
-  line-height: 1.2;
-}
-.site-shot-body {
-  flex: 1;
-  min-height: 0;
-  position: relative;
-  overflow: hidden;
-}
-.site-shot-body .app {
-  height: 100%;
+  border: 1px solid rgba(0, 0, 0, 0.18);
 }
 .site-shot-note {
   margin-top: 1rem;

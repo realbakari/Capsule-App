@@ -84,24 +84,12 @@ export function LandingPage({ demo = true }: { demo?: boolean }) {
           <div className="site-shot-wrapper">
             <div className="site-shot-glow" aria-hidden />
             <div className="site-shot-frame">
-              <div className="site-shot-header">
-                <div className="site-shot-traffic-lights" aria-hidden>
-                  <span className="traffic-dot close" />
-                  <span className="traffic-dot minimize" />
-                  <span className="traffic-dot maximize" />
-                </div>
-                <div className="site-shot-title">
-                  <span className="site-shot-app-name">Capsule</span>
-                  <span className="site-shot-sep">/</span>
-                  <span>workspace</span>
-                </div>
-                <div className="site-shot-status">
-                  <span className="site-shot-badge">Live preview</span>
-                </div>
+              <div className="site-shot-traffic-lights" aria-hidden>
+                <span className="traffic-dot close" />
+                <span className="traffic-dot minimize" />
+                <span className="traffic-dot maximize" />
               </div>
-              <div className="site-shot-body">
-                <App />
-              </div>
+              <App />
             </div>
           </div>
           <p className="site-note site-shot-note">
