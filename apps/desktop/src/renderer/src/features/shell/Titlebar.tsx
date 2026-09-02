@@ -65,11 +65,7 @@ export function Titlebar() {
     return undefined;
   }, [openMenu]);
 
-  const label = connected
-    ? "OpenClaw connected"
-    : status?.kind === "mock"
-      ? "Gateway offline"
-      : (status?.state ?? "Offline");
+  const label = connected ? "OpenClaw connected" : (status?.state ?? "Offline");
   const harnessLive = Boolean(session?.harnessId && session.harnessState && session.harnessState !== "closed");
   const harnessName = harnessDisplayName(harnesses, session?.harnessId);
 

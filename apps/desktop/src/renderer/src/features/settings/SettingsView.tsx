@@ -1,6 +1,6 @@
 import { isFeaturedHarness } from "../../lib/harness";
 import { useEffect, useState } from "react";
-import type { CapsuleSettings, MockScenario } from "@capsule/shared";
+import type { CapsuleSettings } from "@capsule/shared";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { KeybindingsSettings } from "./KeybindingsSettings";
 import { ProcessMonitor } from "./ProcessMonitor";
@@ -44,17 +44,6 @@ export const SETTINGS_TABS: Array<{ id: SettingsSectionId; label: string }> = [
   { id: "about", label: "About" },
 ];
 
-const SCENARIO_LABELS: Record<MockScenario, string> = {
-  successful_run: "Successful run",
-  failed_run: "Failed run",
-  approval_required: "Approval required",
-  verification_failure: "Verification failure",
-  multi_agent: "Multi-agent",
-  long_running: "Long running",
-  disconnected_gateway: "Disconnected gateway",
-  buzz_message: "Channel message",
-  tool_failure: "Tool failure",
-};
 
 export function SettingsView() {
   const {
@@ -144,7 +133,6 @@ export function SettingsView() {
 
   const tokenSaved = Boolean(settings.gatewayToken);
   const sendOnEnter = settings.composerSendKey !== "cmd-enter";
-  const mock = status?.kind === "mock";
 
   return (
     <section className="panel">
@@ -345,11 +333,7 @@ export function SettingsView() {
                     <div>
                       <div className="faint">Status</div>
                       <div>
-                        {connected
-                          ? "Connected"
-                          : mock
-                            ? "Gateway offline · mock runtime"
-                            : (status?.state ?? "Disconnected")}
+                        {connected ? "Connected" : (status?.state ?? "Disconnected")}
                       </div>
                     </div>
                     <div>
@@ -379,36 +363,6 @@ export function SettingsView() {
                       Disconnect
                     </button>
                   </div>
-                </div>
-                <div className="card">
-                  <h3>Offline</h3>
-                  <SettingRow
-                    label="Use mock when offline"
-                    hint="Keep the workspace usable if the Gateway is not running."
-                  >
-                    <Switch
-                      checked={settings.useMockWhenOffline}
-                      label="Use mock when offline"
-                      onChange={(value) => void patch({ useMockWhenOffline: value })}
-                    />
-                  </SettingRow>
-                  {settings.useMockWhenOffline && (
-                    <SettingRow label="Mock scenario" hint="What the local fallback runtime simulates.">
-                      <select
-                        className="field-select"
-                        value={settings.mockScenario}
-                        onChange={(event) =>
-                          void patch({ mockScenario: event.target.value as MockScenario })
-                        }
-                      >
-                        {(Object.keys(SCENARIO_LABELS) as MockScenario[]).map((item) => (
-                          <option key={item} value={item}>
-                            {SCENARIO_LABELS[item]}
-                          </option>
-                        ))}
-                      </select>
-                    </SettingRow>
-                  )}
                 </div>
                 <div className="card">
                   <h3>ACP harnesses</h3>

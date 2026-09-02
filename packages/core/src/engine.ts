@@ -170,7 +170,10 @@ export interface CapsuleEngineOptions {
   gatewayUrl?: string;
   clientVersion?: string;
   capsuleVersion?: string;
-  /** When false, start() stays on the mock runtime and does not probe the Gateway. */
+  /**
+   * When false the engine runs on the in-process test double and never probes
+   * the Gateway. Tests only: nothing in the app sets it.
+   */
   autoConnect?: boolean;
 }
 
@@ -194,7 +197,8 @@ export class CapsuleEngine {
   private settings: CapsuleSettings;
   private logs: string[] = [];
   private stopped = false;
-  private usingMock = true;
+  /** True only for the in-process test double. Never in a shipped app. */
+  private readonly usingMock: boolean;
   private acpBuffers = new Map<string, string>();
   private acpUnsub?: () => void;
   private prWatchers = new Map<string, ReturnType<typeof setInterval>>();
@@ -206,6 +210,7 @@ export class CapsuleEngine {
   private skillsShClient = new SkillsShClient();
 
   constructor(private readonly options: CapsuleEngineOptions) {
+    this.usingMock = options.autoConnect === false;
     this.db = new CapsuleDatabase(options.databasePath);
     // The GitHub catalog is cached on disk: unauthenticated GitHub allows 60
     // requests an hour for the whole machine, so refetching on every launch
@@ -292,7 +297,6 @@ export class CapsuleEngine {
     try {
       await this.openclaw.connect();
       this.runtime = this.openclaw;
-      this.usingMock = false;
       await this.syncRuntimeCatalog();
       this.bindAcpReplies();
       this.log(`Connected to OpenClaw Gateway at ${this.settings.gatewayUrl}`);
@@ -300,15 +304,6 @@ export class CapsuleEngine {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.log(`Gateway connect failed: ${message}`);
-      if (this.settings.useMockWhenOffline) {
-        this.mock.setScenario(this.settings.mockScenario);
-        await this.mock.connect();
-        this.runtime = this.mock;
-        this.usingMock = true;
-        await this.syncRuntimeCatalog();
-        this.events.emit("connection", await this.runtime.getStatus());
-        return;
-      }
       throw error;
     }
   }
@@ -1715,7 +1710,6 @@ export class CapsuleEngine {
       this.skillsShClient.setToken(skillsShToken);
       await this.keychain.set(CAPSULE_KEYCHAIN_SERVICE, SKILLS_SH_TOKEN_ACCOUNT, skillsShToken);
     }
-    if (patch.mockScenario) this.mock.setScenario(this.settings.mockScenario);
     if (patch.projectlessFolder !== undefined) this.bindInboxToProjectless();
     if (
       patch.webAccess !== undefined ||
@@ -1811,24 +1805,25 @@ export class CapsuleEngine {
     this.events.emit("run", running);
   }
 
+  /*
+   * The mock runtime is a test double, reached only by constructing the engine
+   * with autoConnect: false. It used to be what the app fell back to whenever
+   * the Gateway was unreachable, which meant an offline Capsule answered with
+   * invented replies that looked exactly like real ones.
+   */
   private async connectPreferredRuntime(): Promise<void> {
     if (this.options.autoConnect === false) {
-      this.mock.setScenario(this.settings.mockScenario);
       await this.mock.connect();
       this.runtime = this.mock;
-      this.usingMock = true;
       await this.syncRuntimeCatalog();
       return;
     }
     try {
       await this.connectGateway();
     } catch (error) {
-      this.log(`Falling back to mock runtime: ${String(error)}`);
-      this.mock.setScenario(this.settings.mockScenario);
-      await this.mock.connect();
-      this.runtime = this.mock;
-      this.usingMock = true;
-      await this.syncRuntimeCatalog();
+      // Offline is a state, not a failure to start: the app opens, says so,
+      // and offers to connect.
+      this.log(`Gateway unavailable, staying offline: ${String(error)}`);
     }
   }
 

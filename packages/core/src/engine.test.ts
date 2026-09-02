@@ -357,7 +357,6 @@ describe("CapsuleEngine first user flow", () => {
       defaultMode: "code",
       defaultPermission: "strict",
       launchAtLogin: true,
-      useMockWhenOffline: false,
     });
     expect(saved.gatewayToken).toBe("••••");
     expect(saved.composerSendKey).toBe("cmd-enter");
@@ -386,7 +385,6 @@ describe("CapsuleEngine first user flow", () => {
     expect(loaded.defaultMode).toBe("code");
     expect(loaded.defaultPermission).toBe("strict");
     expect(loaded.launchAtLogin).toBe(true);
-    expect(loaded.useMockWhenOffline).toBe(false);
     // Nothing set a theme, so this is the default: follow the Mac.
     expect(loaded.appearanceTheme).toBe("system");
     expect(loaded.appearanceDark.accent).toBe("#F3F3EE");

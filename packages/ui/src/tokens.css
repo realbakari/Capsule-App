@@ -27,7 +27,13 @@
 
   /* Graphite, matching the Capsule mark — not purple */
   --crust: #000000;
-  --mantle: #000000;
+  /*
+   * The sidebar sits on the same ground as the workspace, with its border
+   * doing the separating. Pure black beside #0a0a0a read as two apps joined
+   * down the middle, and on first launch — before the panes have painted
+   * anything — that seam was the whole window.
+   */
+  --mantle: #0a0a0a;
   --base: #0a0a0a;
   --surface-0: #111111;
   --surface-1: #191919;

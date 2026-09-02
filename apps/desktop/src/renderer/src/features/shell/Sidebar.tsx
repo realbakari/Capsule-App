@@ -671,7 +671,11 @@ export function Sidebar() {
         </div>
       </div>
       <div className="sidebar-scroll">
-        {filteredProjects.length === 0 && <div className="sidebar-empty">No projects</div>}
+        {/* The scope row above already says there are none. When a search is
+            what emptied the list, say that instead of repeating it. */}
+        {filteredProjects.length === 0 && needle ? (
+          <div className="sidebar-empty">No project matches “{needle}”.</div>
+        ) : null}
         {filteredProjects.map((item) => {
           const threads = sessionsFor(item.id);
           const isOpen = needle ? threads.length > 0 || item.id === projectId : !collapsed.has(item.id);

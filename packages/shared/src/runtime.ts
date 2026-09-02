@@ -13,7 +13,6 @@ import type {
   ApprovalRequest,
   ChannelBinding,
   CreateSessionInput,
-  MockScenario,
   Run,
   RunEvent,
   RuntimeStatus,
@@ -84,9 +83,7 @@ export const ARCHIVE_INACTIVE_MS: Record<ArchiveInactiveAfter, number | null> = 
 
 export const DEFAULT_CAPSULE_SETTINGS: CapsuleSettings = {
   gatewayUrl: "ws://127.0.0.1:18789",
-  useMockWhenOffline: true,
   launchAtLogin: false,
-  mockScenario: "successful_run",
   composerSendKey: "enter",
   defaultMode: "chat",
   defaultWorkspaceMode: "local",
@@ -158,7 +155,7 @@ export const SETTINGS_SECTION_KEYS: Record<string, ReadonlyArray<keyof CapsuleSe
     "outputDetail",
     "reasoningSummary",
   ],
-  gateway: ["gatewayUrl", "useMockWhenOffline", "mockScenario"],
+  gateway: ["gatewayUrl"],
   projects: ["projectlessFolder"],
   sourceControl: [
     "branchPrefix",
@@ -187,9 +184,7 @@ export interface CapsuleSettings {
    * Stored in the Keychain like gatewayToken; masked on the way out.
    */
   skillsShToken?: string;
-  useMockWhenOffline: boolean;
   launchAtLogin: boolean;
-  mockScenario: MockScenario;
   composerSendKey: ComposerSendKey;
   defaultMode: AgentMode;
   /** Default isolation for conversations created inside Git projects. */
@@ -257,17 +252,6 @@ const TRANSCRIPT_WIDTHS: TranscriptWidth[] = ["narrow", "standard", "wide"];
 const ARCHIVE_AFTER: ArchiveInactiveAfter[] = ["never", "1d", "7d", "30d"];
 const PR_MERGE: PrMergeMethod[] = ["merge", "squash", "rebase"];
 const PR_REVIEW: PrReviewDelivery[] = ["current", "new-chat"];
-const SCENARIOS: MockScenario[] = [
-  "successful_run",
-  "failed_run",
-  "approval_required",
-  "verification_failure",
-  "multi_agent",
-  "long_running",
-  "disconnected_gateway",
-  "buzz_message",
-  "tool_failure",
-];
 
 function pick<T extends string>(value: string | undefined, allowed: readonly T[], fallback: T): T {
   return value && (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
@@ -393,12 +377,7 @@ export function normalizeCapsuleSettings(input: Partial<CapsuleSettings> = {}): 
   return {
     gatewayUrl,
     gatewayToken: input.gatewayToken,
-    useMockWhenOffline: flag(
-      input.useMockWhenOffline,
-      DEFAULT_CAPSULE_SETTINGS.useMockWhenOffline,
-    ),
     launchAtLogin: Boolean(input.launchAtLogin),
-    mockScenario: pick(input.mockScenario, SCENARIOS, DEFAULT_CAPSULE_SETTINGS.mockScenario),
     composerSendKey: pick(
       input.composerSendKey,
       SEND_KEYS,

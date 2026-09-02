@@ -53,6 +53,13 @@ import { ensureSqliteAbi } from "./sqlite-abi";
 let mainWindow: BrowserWindow | undefined;
 let tray: Tray | undefined;
 let engine: CapsuleEngine | undefined;
+/*
+ * The window is shown before the engine has opened its database, so the
+ * renderer's first calls can arrive first. They used to be answered with
+ * "Capsule engine is not ready" — a red banner over an empty app on every
+ * cold start. They wait for it instead.
+ */
+let engineStarted: Promise<void> | undefined;
 let awakeBlocker: number | undefined;
 
 function loadLocalEnv(): void {
@@ -499,6 +506,8 @@ function registerIpc(): void {
   const handle = (channel: string, fn: (...args: unknown[]) => unknown) => {
     ipcMain.handle(channel, async (_event, ...args) => {
       try {
+        // Startup, not an error: a call that beat the engine waits for it.
+        if (!engine && engineStarted) await engineStarted;
         return await fn(...args);
       } catch (error) {
         console.error(`IPC ${channel} failed`, error);
@@ -1113,6 +1122,11 @@ function createTray(): void {
 }
 
 async function startEngine(): Promise<void> {
+  engineStarted = startEngineOnce();
+  await engineStarted;
+}
+
+async function startEngineOnce(): Promise<void> {
   await ensureSqliteAbi();
   const { CapsuleEngine } = await import("@capsule/core");
   engine = new CapsuleEngine({
@@ -1132,12 +1146,15 @@ app.whenReady().then(async () => {
   augmentPath();
   applyDockIcon();
   registerIpc();
+  // Started before the window so the renderer's first calls have a promise to
+  // wait on, and awaited after so the window still appears while it opens.
+  const starting = startEngine();
   startResourceSampling();
   createMenu();
   createTray();
   mainWindow = createWindow();
   try {
-    await startEngine();
+    await starting;
   } catch (error) {
     console.error("Capsule engine failed to start", error);
   }

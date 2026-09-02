@@ -321,7 +321,7 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
           value={draft}
           placeholder={
             !connected
-              ? "Gateway offline — replies are mock and will not edit files"
+              ? "Connect the Gateway to send"
               : harnessLive
                 ? `Continue with ${harnessDisplayName(harnesses, session?.harnessId)}…`
                 : "Ask Capsule…"
@@ -640,7 +640,6 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
         {session?.workspaceMode === "worktree" && session.worktreeBranch && (
           <span className="workspace-mode-label">Isolated · {session.worktreeBranch}</span>
         )}
-        {!connected && <span>Gateway offline</span>}
       </div>
       {busy && (
         <div className="composer-dock-activity" aria-live="polite">
