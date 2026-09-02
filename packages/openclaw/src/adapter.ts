@@ -387,17 +387,14 @@ export class OpenClawAdapter implements AgentRuntime {
       parentKey = await this.createGatewaySession({
         /*
          * The carrier label is a unique key on the Gateway and a conversation
-         * title is not, so gatewaySessionLabel suffixes it with an id. That id
-         * used to fall back to the harness id when no session key was given —
-         * which is the same string for every conversation on that harness, so
-         * every new thread asked for "New conversation (claude)" and the
-         * second one was rejected with "label already in use". We are creating
-         * a fresh carrier here, so a fresh id is the right suffix.
+         * title is not, so gatewaySessionLabel suffixes it with an id. It has
+         * to be a fresh one every time we come through here. Suffixing with
+         * the incoming session key looked stable and was: a thread whose ACP
+         * session had died came back with the same dead key, asked for the
+         * same label as the carrier it made the first time, and the Gateway
+         * rejected it with "label already in use".
          */
-        label: gatewaySessionLabel(
-          input.title ?? input.harnessId,
-          input.sessionKey ?? createId(input.harnessId),
-        ),
+        label: gatewaySessionLabel(input.title ?? input.harnessId, createId(input.harnessId)),
         cwd: input.cwd,
       });
     }

@@ -106,6 +106,38 @@ describe("OpenClawAdapter ACP lifecycle", () => {
     );
   });
 
+  it("gives a respawned thread a new carrier label", async () => {
+    /*
+     * The Gateway keeps the carrier from the first spawn, and its label is a
+     * unique key. A thread whose ACP session has died comes back holding that
+     * dead key, so labelling the new carrier from it asked for a label the
+     * Gateway already had: "label already in use: hi (2f99f2)".
+     */
+    const adapter = new OpenClawAdapter();
+    replyToControl(
+      adapter,
+      "✅ Spawned ACP session agent:claude:acp:abc-def (persistent, backend acpx). Session is unbound.",
+    );
+    const labels: string[] = [];
+    (
+      adapter as unknown as {
+        createGatewaySession: (input: { label: string }) => Promise<string>;
+      }
+    ).createGatewaySession = async (input) => {
+      if (labels.includes(input.label)) throw new Error(`label already in use: ${input.label}`);
+      labels.push(input.label);
+      return "agent:main:dashboard:parent";
+    };
+    (adapter as unknown as { subscribeSession: () => Promise<void> }).subscribeSession = async () => undefined;
+
+    const dead = "agent:claude:acp:0cc8e153-ba70-4b80-afc2-0ceaf12f99f2";
+    await adapter.spawnAcpSession({ harnessId: "claude", title: "hi", sessionKey: dead });
+    await expect(
+      adapter.spawnAcpSession({ harnessId: "claude", title: "hi", sessionKey: dead }),
+    ).resolves.toMatchObject({ sessionKey: "agent:claude:acp:abc-def" });
+    expect(labels[0]).not.toBe(labels[1]);
+  });
+
   it("does not treat a bind-here failure as a successful Claude spawn", async () => {
     const adapter = new OpenClawAdapter();
     replyToControl(adapter, "⚠️ Conversation bindings are unavailable for webchat.");
