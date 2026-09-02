@@ -173,6 +173,7 @@ export function Conversation() {
     pendingApproval,
     api,
     notice,
+    ready,
     setNotice,
     statusText,
     createTask,
@@ -244,7 +245,7 @@ export function Conversation() {
   }, [messages, activeRun, stick]);
 
   return (
-    <section className={`main page-content${messages.length === 0 ? " conversation-empty" : ""}`}>
+    <section className={`main page-content${ready && messages.length === 0 ? " conversation-empty" : ""}`}>
       {notice && (
         <div className="notice notice-dismissable" role="status">
           <span>{notice}</span>
@@ -273,7 +274,15 @@ export function Conversation() {
         }}
       >
         <div className="thread">
-          {messages.length === 0 ? (
+          {/*
+           * Nothing until the first load lands. Projects, conversations and
+           * messages all start empty, which is indistinguishable from a real
+           * empty workspace — so every launch flashed "What should we work
+           * on?" and an Attach folder button before the real thread appeared.
+           */}
+          {!ready ? (
+            <div className="thread-hydrating" aria-hidden />
+          ) : messages.length === 0 ? (
             <div className="empty-thread">
               <h1>
                 {project && session && project.name !== "Inbox" ? (

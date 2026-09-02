@@ -113,6 +113,7 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
     api,
     projectId,
     connected,
+    ready,
     checkoutBranch,
     openInspector,
     terminalOpen,
@@ -320,7 +321,7 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
           rows={1}
           value={draft}
           placeholder={
-            !connected
+            ready && !connected
               ? "Connect the Gateway to send"
               : harnessLive
                 ? `Continue with ${harnessDisplayName(harnesses, session?.harnessId)}…`

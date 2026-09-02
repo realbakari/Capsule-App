@@ -1,8 +1,10 @@
 import { useWorkspace } from "../../lib/workspace";
 
 export function GatewayBanner({ inset }: { inset?: boolean }) {
-  const { connected, status, api } = useWorkspace();
-  if (connected) return null;
+  const { connected, ready, status, api } = useWorkspace();
+  // Nothing has been asked yet on the first frames after launch, and "offline"
+  // is an answer, not the absence of one.
+  if (connected || !ready) return null;
   return (
     <div className={`banner compact ${inset ? "inline" : ""}`}>
       <span>

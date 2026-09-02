@@ -7651,3 +7651,9 @@ details.card > summary {
   font-size: 0.6875rem;
   color: var(--text-faint);
 }
+
+/* Holds the thread's place while the first load lands, so the composer does
+   not start centred and then jump to the bottom. */
+.thread-hydrating {
+  min-height: 1px;
+}
