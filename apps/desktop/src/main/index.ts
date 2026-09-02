@@ -193,6 +193,13 @@ async function checkForUpdates(): Promise<UpdateCheck> {
   }
 }
 
+/*
+ * How long the window waits for the renderer to say it has painted before
+ * showing anyway. Long enough for a dev build's first compile to be worth
+ * waiting for, short enough that a broken renderer still gives you a window.
+ */
+const WINDOW_PAINT_GRACE_MS = 2_500;
+
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
     width: 1280,
@@ -285,11 +292,18 @@ function createWindow(): BrowserWindow {
   // header layout, so push it on both transitions and once at startup.
   window.on("enter-full-screen", reportFullscreen);
   window.on("leave-full-screen", reportFullscreen);
-  window.once("ready-to-show", () => window.show());
+  /*
+   * Not shown on "ready-to-show": that fires on the renderer's first frame,
+   * which for a dev build is the empty document Vite serves before React has
+   * mounted. The window appeared blank and then filled in — the pop the app
+   * seemed to do on every start. The renderer says when it has painted, and
+   * these are the fallbacks for when it cannot.
+   */
+  const showWhenPainted = () => {
+    if (!window.isDestroyed() && !window.isVisible()) window.show();
+  };
+  window.once("ready-to-show", () => setTimeout(showWhenPainted, WINDOW_PAINT_GRACE_MS));
   window.webContents.on("did-finish-load", () => {
-    // A renderer that never reaches "ready-to-show" must not leave the app
-    // running with no window at all.
-    if (!window.isVisible()) window.show();
     reportFullscreen();
     /*
      * The smoke test needs to know the app got as far as a loaded window.
@@ -929,6 +943,11 @@ function registerIpc(): void {
 
   handle(IPC_CHANNELS.processMetrics, () => latestSample ?? sampleResources());
   handle(IPC_CHANNELS.processHistory, () => [...resourceHistory]);
+  // The renderer has painted the app, not just an empty document.
+  handle(IPC_CHANNELS.rendererReady, () => {
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) mainWindow.show();
+    return true;
+  });
   handleArgs(IPC_CHANNELS.usageSummary, [num], (days: number) =>
     requireEngine().usageSummary(days),
   );

@@ -29,3 +29,16 @@ if (!isDesktop) {
 createRoot(root).render(
   <React.StrictMode>{isDesktop ? <App /> : <WebRoot />}</React.StrictMode>,
 );
+
+/*
+ * The window stays hidden until this runs. Two frames: the first is React
+ * committing the tree, the second is the browser having painted it — telling
+ * the main process any earlier shows the empty document again.
+ */
+if (isDesktop) {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      void window.capsule.rendererReady?.();
+    });
+  });
+}
