@@ -44,6 +44,7 @@ export function Palette() {
       { id: "approvals", label: "Open approvals", run: () => setView("approvals") },
       { id: "connect", label: "Connect OpenClaw", run: () => api.connectGateway() },
       { id: "settings", label: "Open settings", run: () => setView("settings") },
+      { id: "update", label: "Check for updates", run: () => setAboutOpen(true) },
       { id: "about", label: "About Capsule", run: () => setAboutOpen(true) },
     ].filter((command) => command.label.toLowerCase().includes(query));
     const projectHits = projects

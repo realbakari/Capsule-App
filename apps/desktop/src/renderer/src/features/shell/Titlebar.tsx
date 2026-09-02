@@ -87,13 +87,16 @@ export function Titlebar() {
           {view === "chat" ? (
             <div className="topbar-breadcrumb">
               <span className="breadcrumb-segment project-segment">
-                <FolderIcon size={13} className="breadcrumb-icon" />
                 <span>{projectName}</span>
               </span>
-              <span className="breadcrumb-separator">/</span>
-              <span className="breadcrumb-segment session-segment">
-                <span>{sessionTitle}</span>
-              </span>
+              {sessionTitle ? (
+                <>
+                  <span className="breadcrumb-separator">/</span>
+                  <span className="breadcrumb-segment session-segment">
+                    <span>{sessionTitle}</span>
+                  </span>
+                </>
+              ) : null}
             </div>
           ) : (
             <b>{VIEW_TITLE[view] ?? ""}</b>

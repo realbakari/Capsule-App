@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import type { Session, UpdateCheck } from "@capsule/shared";
 import {
   buildProjectActionMenuItems,
@@ -126,19 +126,25 @@ export function Sidebar() {
   const [draggedPinnedId, setDraggedPinnedId] = useState<string>();
   const [cloneOpen, setCloneOpen] = useState(false);
 
-  /*
-   * A manual check. Installing an update in place needs a signed, notarised
-   * build, which this project does not produce, so this reports what is
-   * published and opens the release page rather than pretending to install.
-   */
+  const [feedbackMessage, setFeedbackMessage] = useState<string>();
+  const feedbackTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  function triggerFeedback(msg: string) {
+    setFeedbackMessage(msg);
+    if (feedbackTimer.current) clearTimeout(feedbackTimer.current);
+    feedbackTimer.current = setTimeout(() => {
+      setFeedbackMessage(undefined);
+    }, 4500);
+  }
+
   const updateLabel = checkingUpdate
-    ? "Checking…"
+    ? "Checking for updates…"
     : updateResult?.state === "update-available"
       ? `Version ${updateResult.latest} is available — click to open it`
       : updateResult?.state === "up-to-date"
         ? `Up to date (${updateResult.current})`
         : updateResult?.state === "no-releases"
-          ? "No releases have been published yet"
+          ? "No releases published yet"
           : updateResult?.state === "unreachable"
             ? `Could not check: ${updateResult.detail ?? "unreachable"}`
             : "Check for updates";
@@ -150,11 +156,38 @@ export function Sidebar() {
     }
     setCheckingUpdate(true);
     try {
-      setUpdateResult((await api.checkForUpdates()) as UpdateCheck);
+      const res = (await api.checkForUpdates()) as UpdateCheck;
+      setUpdateResult(res);
+      if (res.state === "update-available") {
+        triggerFeedback(`Update v${res.latest} available — click to open`);
+      } else if (res.state === "up-to-date") {
+        triggerFeedback(`Capsule is up to date (v${res.current})`);
+      } else if (res.state === "no-releases") {
+        triggerFeedback("No published releases found");
+      } else if (res.state === "unreachable") {
+        triggerFeedback(`Check failed: ${res.detail ?? "unreachable"}`);
+      }
+    } catch (e) {
+      triggerFeedback(e instanceof Error ? e.message : "Update check failed");
     } finally {
       setCheckingUpdate(false);
     }
   }
+
+  useEffect(() => {
+    // Check in background 4 seconds after startup
+    const timer = setTimeout(() => {
+      void api.checkForUpdates().then((res) => {
+        if (res && typeof res === "object" && (res as UpdateCheck).state === "update-available") {
+          setUpdateResult(res as UpdateCheck);
+        }
+      }).catch(() => {
+        // Ignore background failure
+      });
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, [api]);
+
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [restLimit, setRestLimit] = useState<Record<string, number>>({});
   const pendingApprovals = approvals.filter((item) => item.status === "pending").length;
@@ -747,6 +780,20 @@ export function Sidebar() {
         })}
       </div>
       <div className="sidebar-footer">
+        {feedbackMessage ? (
+          <div
+            className={`update-feedback-bubble ${updateResult?.state === "update-available" ? "has-update" : ""}`}
+            onClick={() => {
+              if (updateResult?.state === "update-available" && updateResult.url) {
+                window.open(updateResult.url, "_blank", "noreferrer");
+              }
+              setFeedbackMessage(undefined);
+            }}
+            title={updateResult?.state === "update-available" ? "Click to open release" : "Dismiss"}
+          >
+            <span>{feedbackMessage}</span>
+          </div>
+        ) : null}
         <div className="sidebar-utils">
           <button
             type="button"
@@ -777,13 +824,14 @@ export function Sidebar() {
           <span className="grow" />
           <button
             type="button"
-            className="icon-btn"
+            className={`icon-btn ${checkingUpdate ? "is-spinning" : ""} ${updateResult?.state === "update-available" ? "has-update" : ""}`}
             title={updateLabel}
             aria-label="Check for updates"
             disabled={checkingUpdate}
             onClick={() => void runUpdateCheck()}
           >
             <RefreshIcon size={14} />
+            {updateResult?.state === "update-available" ? <span className="update-dot" /> : null}
           </button>
           <span
             className={`dot ${connected ? "on" : status?.state === "connecting" ? "warn live" : "off"}`}
