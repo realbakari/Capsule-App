@@ -90,4 +90,5 @@ export const IPC_EVENTS = {
   message: "capsule:event:message",
   approval: "capsule:event:approval",
   connection: "capsule:event:connection",
+  fullscreen: "capsule:event:fullscreen",
 } as const;

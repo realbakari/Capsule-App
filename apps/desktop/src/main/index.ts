@@ -221,7 +221,23 @@ function createWindow(): BrowserWindow {
   } else {
     void window.loadFile(path.join(__dirname, "../renderer/index.html"));
   }
+  // The renderer cannot see the window's fullscreen state, and it changes the
+  // header layout, so push it on both transitions and once at startup.
+  window.on("enter-full-screen", reportFullscreen);
+  window.on("leave-full-screen", reportFullscreen);
+  window.webContents.on("did-finish-load", reportFullscreen);
+
   return window;
+}
+
+/*
+ * macOS hides the window controls in fullscreen, so the inset reserved for
+ * them becomes dead space at the left of every header. Only the main process
+ * knows the window's fullscreen state, so it tells the renderer and the
+ * renderer collapses the inset.
+ */
+function reportFullscreen(): void {
+  send(IPC_EVENTS.fullscreen, Boolean(mainWindow?.isFullScreen()));
 }
 
 function send(channel: string, payload: unknown): void {

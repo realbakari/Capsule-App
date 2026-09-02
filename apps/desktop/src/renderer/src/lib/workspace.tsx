@@ -325,6 +325,22 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [projectRuns, setProjectRuns] = useState<Run[]>([]);
   const [settings, setSettings] = useState<CapsuleSettings>();
   const settingsDefaultsApplied = useRef(false);
+  /*
+   * macOS hides the window controls in fullscreen, so the inset reserved for
+   * them is dead space there. One attribute drives the token, which both the
+   * sidebar header and the page header already read.
+   */
+  useEffect(() => {
+    const apply = (value: unknown) => {
+      document.documentElement.dataset.fullscreen = value ? "true" : "false";
+    };
+    apply(false);
+    const dispose = api.on("fullscreen", apply);
+    return () => {
+      dispose();
+    };
+  }, [api]);
+
   const keymap = useMemo<Keymap>(() => {
     const stored = settings?.keybindings ?? {};
     const map: Keymap = {};
