@@ -2057,6 +2057,20 @@ export class CapsuleEngine {
       run.completedAt = nowIso();
       this.repos.updateRun(run);
     }
+    /*
+     * And the sessions that were pointing at those runs. An ACP session does
+     * not survive the app quitting, but its "running" state was written to the
+     * database — so every thread that had ever been live came back claiming to
+     * be Working, with a harness bar offering to cancel a turn that ended when
+     * the app closed.
+     */
+    for (const session of this.repos.listSessions()) {
+      if (!isLiveHarnessState(session.harnessState)) continue;
+      session.harnessState = "closed";
+      session.openclawSessionKey = undefined;
+      session.updatedAt = nowIso();
+      this.repos.updateSession(session);
+    }
   }
 
   private bootstrapWorkspace(): void {

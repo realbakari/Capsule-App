@@ -186,7 +186,14 @@ describe("CapsuleEngine first user flow", () => {
     await engine.start();
     const project = engine.createProject({ name: "Interrupted" });
     const session = await engine.createSession({ projectId: project.id, title: "Mid-turn" });
-    const { run } = await engine.sendMessage({ sessionId: session.id, content: "Start work." });
+    // Through a harness, so the thread has a live harness state to lose.
+    const { run, session: live } = await engine.sendMessage({
+      sessionId: session.id,
+      content: "Start work.",
+      agentId: "claude",
+      mode: "code",
+    });
+    expect(live.harnessState).toBe("running");
     // Quit while the turn is in flight.
     await engine.stop();
 
@@ -195,6 +202,9 @@ describe("CapsuleEngine first user flow", () => {
     const recovered = reopened.listRuns(session.id).find((item) => item.id === run.id);
     // Not "failed": the agent did not fail, the app closed.
     expect(recovered?.status).toBe("cancelled");
+    // And the thread stops claiming a harness that died with the app.
+    const thread = reopened.listSessions().find((item) => item.id === session.id);
+    expect(thread?.harnessState).toBe("closed");
     await reopened.stop();
   });
 

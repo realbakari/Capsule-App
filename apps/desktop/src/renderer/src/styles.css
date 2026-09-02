@@ -790,6 +790,14 @@
   margin: 0 auto;
   display: flex;
   flex-direction: column;
+  /*
+   * A short thread sits on the composer instead of pinned to the top with a
+   * void beneath it. `auto` on the top margin does the work: the column grows
+   * downward once it is taller than the scroller, and the reader's eye stays
+   * where the next message will appear.
+   */
+  margin-top: auto;
+  min-height: min-content;
 }
 .thread:has(.empty-thread) {
   flex: 1;
