@@ -23,6 +23,7 @@ import { SETTINGS_TABS } from "../settings/SettingsView";
 import { searchSettings } from "../settings/settings-search";
 import { useWorkspace, type View } from "../../lib/workspace";
 import { ActionMenu } from "./ActionMenu";
+import { AddProjectPicker, type ProjectSourceId } from "./AddProjectPicker";
 import { CloneRepositoryDialog } from "./CloneRepositoryDialog";
 import { SidebarToggle } from "./SidebarControl";
 import {
@@ -125,7 +126,15 @@ export function Sidebar() {
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateResult, setUpdateResult] = useState<UpdateCheck | null>(null);
   const [draggedPinnedId, setDraggedPinnedId] = useState<string>();
-  const [cloneOpen, setCloneOpen] = useState(false);
+  const [cloneOpen, setCloneOpen] = useState<"git-url" | "github">();
+  const [addProjectOpen, setAddProjectOpen] = useState(false);
+
+  /* One entry point, three ways in. */
+  function addProject(source: ProjectSourceId) {
+    setAddProjectOpen(false);
+    if (source === "folder") void createProjectFromFolder();
+    else setCloneOpen(source);
+  }
 
   const [feedbackMessage, setFeedbackMessage] = useState<string>();
   const feedbackTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -655,20 +664,11 @@ export function Sidebar() {
           <button
             type="button"
             className="icon-btn"
-            title="Add project from folder"
-            aria-label="Add project from folder"
-            onClick={() => void createProjectFromFolder()}
+            title="Add project"
+            aria-label="Add project"
+            onClick={() => setAddProjectOpen(true)}
           >
             <FolderPlusIcon size={13} />
-          </button>
-          <button
-            type="button"
-            className="icon-btn"
-            title="Clone Git repository"
-            aria-label="Clone Git repository"
-            onClick={() => setCloneOpen(true)}
-          >
-            <GitBranchIcon size={13} />
           </button>
         </div>
       </div>
@@ -686,7 +686,7 @@ export function Sidebar() {
         ) : projects.length === 0 ? (
           <div className="sidebar-onboarding">
             <p>No projects yet</p>
-            <button type="button" className="chip" onClick={() => void createProjectFromFolder()}>
+            <button type="button" className="chip" onClick={() => setAddProjectOpen(true)}>
               <PlusIcon size={12} /> Add project
             </button>
           </div>
@@ -879,7 +879,12 @@ export function Sidebar() {
           onSelect={(action) => runAction(menu.kind, menu.id, action)}
         />
       ) : null}
-      {cloneOpen ? <CloneRepositoryDialog onClose={() => setCloneOpen(false)} /> : null}
+      {addProjectOpen ? (
+        <AddProjectPicker onPick={addProject} onClose={() => setAddProjectOpen(false)} />
+      ) : null}
+      {cloneOpen ? (
+        <CloneRepositoryDialog source={cloneOpen} onClose={() => setCloneOpen(undefined)} />
+      ) : null}
     </aside>
   );
 }

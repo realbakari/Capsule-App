@@ -1,10 +1,18 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useWorkspace } from "../../lib/workspace";
+import { normalizeCloneUrl } from "../../lib/clone-url";
 import { formatProjectRoot } from "../../lib/paths";
 import { XIcon } from "./icons";
 
-export function CloneRepositoryDialog({ onClose }: { onClose: () => void }) {
+export function CloneRepositoryDialog({
+  onClose,
+  source = "git-url",
+}: {
+  onClose: () => void;
+  /** Which row of the source picker opened it, for the copy and the example. */
+  source?: "git-url" | "github";
+}) {
   const { api, cloneRepository } = useWorkspace();
   const [url, setUrl] = useState("");
   const [name, setName] = useState("");
@@ -19,11 +27,12 @@ export function CloneRepositoryDialog({ onClose }: { onClose: () => void }) {
         onClick={(event) => event.stopPropagation()}
         onSubmit={(event) => {
           event.preventDefault();
-          if (!url.trim() || !parentDirectory || busy) return;
+          const remote = normalizeCloneUrl(url);
+          if (!remote || !parentDirectory || busy) return;
           setBusy(true);
           setError(undefined);
           void cloneRepository({
-            url: url.trim(),
+            url: remote,
             parentDirectory,
             ...(name.trim() ? { name: name.trim() } : {}),
           })
@@ -47,13 +56,13 @@ export function CloneRepositoryDialog({ onClose }: { onClose: () => void }) {
           </button>
         </div>
         <label>
-          <span>Repository URL</span>
+          <span>{source === "github" ? "Repository" : "Repository URL"}</span>
           <input
             autoFocus
             type="text"
             value={url}
             onChange={(event) => setUrl(event.target.value)}
-            placeholder="https://github.com/owner/repository.git"
+            placeholder={source === "github" ? "owner/repository" : "https://github.com/owner/repository.git"}
           />
         </label>
         <label>
@@ -88,7 +97,7 @@ export function CloneRepositoryDialog({ onClose }: { onClose: () => void }) {
           <button className="ghost" type="button" onClick={onClose} disabled={busy}>
             Cancel
           </button>
-          <button className="send" type="submit" disabled={!url.trim() || !parentDirectory || busy}>
+          <button className="send" type="submit" disabled={!normalizeCloneUrl(url) || !parentDirectory || busy}>
             {busy ? "Cloning…" : "Clone and open"}
           </button>
         </div>
