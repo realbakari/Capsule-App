@@ -2,6 +2,7 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useWorkspace } from "../../lib/workspace";
 import { formatProjectRoot } from "../../lib/paths";
+import { XIcon } from "./icons";
 
 export function CloneRepositoryDialog({ onClose }: { onClose: () => void }) {
   const { api, cloneRepository } = useWorkspace();
@@ -31,8 +32,20 @@ export function CloneRepositoryDialog({ onClose }: { onClose: () => void }) {
             .finally(() => setBusy(false));
         }}
       >
-        <h3>Clone Git repository</h3>
-        <p>Add a project from an HTTPS or SSH remote.</p>
+        <div className="dialog-header">
+          <div>
+            <h3>Clone Git repository</h3>
+            <p>Add a project from an HTTPS or SSH remote.</p>
+          </div>
+          <button
+            type="button"
+            className="dialog-close"
+            onClick={onClose}
+            aria-label="Close dialog"
+          >
+            <XIcon size={14} />
+          </button>
+        </div>
         <label>
           <span>Repository URL</span>
           <input
