@@ -44,7 +44,7 @@ const FATAL_PATTERNS = [
  * behind reality; the app printing this means it reached a loaded window,
  * whatever else appeared on the way.
  */
-const READY_MARKER = "capsule: window ready";
+const READY_MARKER = /capsule: window ready \((\d+)\)/u;
 
 if (!fs.existsSync(mainBundle)) {
   console.error(`No build to smoke test at ${mainBundle}. Run: pnpm build`);
@@ -83,7 +83,9 @@ child.on("exit", (code) => {
   fs.rmSync(userData, { recursive: true, force: true });
 
   const failures = FATAL_PATTERNS.filter((pattern) => output.includes(pattern));
-  if (!output.includes(READY_MARKER)) failures.push("the window never finished loading");
+  const ready = READY_MARKER.exec(output);
+  if (!ready) failures.push("the window never finished loading");
+  else if (ready[1] !== "1") failures.push(`the app opened ${ready[1]} windows, not 1`);
   // Exiting on its own before the window is up is a failure too, however
   // quietly it happened.
   if (!timedOut && code !== 0) failures.push(`exited with code ${code}`);
@@ -94,6 +96,6 @@ child.on("exit", (code) => {
     console.error(`\n${output}`);
     process.exit(1);
   }
-  console.log("Smoke test passed: the app started and loaded its window.");
+  console.log("Smoke test passed: the app started and loaded one window.");
   process.exit(0);
 });

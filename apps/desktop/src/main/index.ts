@@ -297,7 +297,11 @@ function createWindow(): BrowserWindow {
      * process that dies during module load prints "App threw an error during
      * load", which matches none of them — so the check is positive instead.
      */
-    if (process.env.CAPSULE_SMOKE_TEST) console.log("capsule: window ready");
+    if (process.env.CAPSULE_SMOKE_TEST) {
+      // The count too: a second window nobody asked for is a startup bug the
+      // smoke test can catch as easily as a crash.
+      console.log(`capsule: window ready (${BrowserWindow.getAllWindows().length})`);
+    }
   });
 
   return window;
