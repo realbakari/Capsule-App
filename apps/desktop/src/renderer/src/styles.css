@@ -7722,3 +7722,12 @@ details.card > summary {
 .palette-source.active svg {
   color: var(--text);
 }
+
+/* A finished turn's work log. No "Working" line above it and no shimmer —
+   just the card, collapsed, saying what the turn did. */
+.active-run-msg.settled .run-summary-card {
+  margin-top: 0;
+}
+.active-run-msg.settled {
+  padding-top: 0;
+}

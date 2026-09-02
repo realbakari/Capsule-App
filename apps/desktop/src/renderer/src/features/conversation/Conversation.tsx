@@ -366,16 +366,23 @@ export function Conversation() {
               {git && session && turnTouchedTree && <ChangedFilesCard git={git} />}
             </>
           )}
-          {activeRun && (
-            <div className="msg active-run-msg">
-              <div className="who">
-                <span className="shimmer-text">
-                  Working
-                  <span className="shimmer-overlay" aria-hidden>Working</span>
-                </span>
-                {activeRun.createdAt && <RunElapsed startedAt={activeRun.createdAt} />}
-              </div>
-              <RunSummary label={summariseWork(steps).label} isComplete={false}>
+          {/* The work log belongs to the turn, not to the moment it is running.
+              It used to be mounted on activeRun alone, so the record of what
+              the agent did — every command, every file — disappeared the
+              instant the turn finished, and the only way back to it was to
+              start another one. */}
+          {(activeRun || steps.length > 0) && (
+            <div className={`msg active-run-msg${activeRun ? "" : " settled"}`}>
+              {activeRun ? (
+                <div className="who">
+                  <span className="shimmer-text">
+                    Working
+                    <span className="shimmer-overlay" aria-hidden>Working</span>
+                  </span>
+                  {activeRun.createdAt && <RunElapsed startedAt={activeRun.createdAt} />}
+                </div>
+              ) : null}
+              <RunSummary label={summariseWork(steps).label} isComplete={!activeRun}>
                 <div className="progress">
                   {steps.map((step) => (
                     <div key={step.id}>
@@ -407,7 +414,7 @@ export function Conversation() {
               {/* Only when something went wrong. A raw list of stream frames
                   with timestamps is what you want when a turn failed and
                   nothing you would ever open when it did not. */}
-              {activeRun.status === "failed" || activeRun.status === "blocked" ? (
+              {activeRun?.status === "failed" || activeRun?.status === "blocked" ? (
               <details className="advanced">
                 <summary>What the agent reported</summary>
                 <div className="event-log">
