@@ -223,6 +223,11 @@ export function Sidebar() {
     setMenu(undefined);
     if (kind === "project") {
       const project = projects.find((item) => item.id === id);
+      if (action === "settings") {
+        setProjectId(id);
+        setView("project");
+        return;
+      }
       if (action === "rename") {
         setEditing({ kind: "project", id, value: project?.name ?? "" });
         return;

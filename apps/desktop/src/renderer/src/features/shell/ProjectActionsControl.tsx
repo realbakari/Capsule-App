@@ -1,14 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import type { ProjectAction, ProjectActionRun } from "@capsule/shared";
 import { useWorkspace } from "../../lib/workspace";
-import { PlusIcon, StopIcon, TerminalIcon, XIcon } from "./icons";
-
-function previewUrl(value: string): string {
-  const trimmed = value.trim();
-  if (!trimmed) return "";
-  return /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
-}
+import { PlusIcon, StopIcon, TerminalIcon } from "./icons";
+import { ProjectActionDialog } from "./ProjectActionDialog";
 
 export function ProjectActionsControl() {
   const {
@@ -23,9 +17,6 @@ export function ProjectActionsControl() {
   const root = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<ProjectAction>();
-  const [name, setName] = useState("");
-  const [command, setCommand] = useState("");
-  const [url, setUrl] = useState("");
   const [runs, setRuns] = useState<ProjectActionRun[]>([]);
   const [error, setError] = useState<string>();
 
@@ -70,21 +61,11 @@ export function ProjectActionsControl() {
 
   function edit(action?: ProjectAction) {
     setEditing(action ?? { id: "", name: "", command: "" });
-    setName(action?.name ?? "");
-    setCommand(action?.command ?? "");
-    setUrl(action?.previewUrl ?? "");
   }
 
-  async function save() {
-    const next: ProjectAction = {
-      id: editing?.id || `action-${crypto.randomUUID()}`,
-      name: name.trim(),
-      command: command.trim(),
-      ...(previewUrl(url) ? { previewUrl: previewUrl(url) } : {}),
-    };
-    if (!next.name || !next.command) return;
-    const updated = editing?.id
-      ? actions.map((action) => (action.id === editing.id ? next : action))
+  async function save(next: ProjectAction) {
+    const updated = actions.some((item) => item.id === next.id)
+      ? actions.map((item) => (item.id === next.id ? next : item))
       : [...actions, next];
     await saveProjectActions(updated);
     setEditing(undefined);
@@ -96,7 +77,7 @@ export function ProjectActionsControl() {
     try {
       const next = (await api.runProjectAction(project.id, action.id, session?.id)) as ProjectActionRun;
       setRuns((current) => [next, ...current.filter((run) => run.actionId !== next.actionId)]);
-      if (action.previewUrl) {
+      if (action.previewUrl && action.openPreview !== false) {
         setBrowserUrl(action.previewUrl);
         openInspector("browser");
       }
@@ -188,82 +169,13 @@ export function ProjectActionsControl() {
           }
         </div>
       ) : null}
-      {/* A modal, not a panel inside the dropdown: the form is a task of its
-          own, and a menu that reflows into a form loses the list behind it. */}
-      {editing
-        ? createPortal(
-            <div className="palette-backdrop center" onClick={() => setEditing(undefined)}>
-              <form
-                className="dialog project-action-dialog"
-                onClick={(event) => event.stopPropagation()}
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void save();
-                }}
-              >
-                <header>
-                  <div>
-                    <h3>{editing.id ? "Edit action" : "Add action"}</h3>
-                    <p>A command saved with this project, to run from the top bar.</p>
-                  </div>
-                  <button
-                    type="button"
-                    className="icon-btn"
-                    aria-label="Close"
-                    onClick={() => setEditing(undefined)}
-                  >
-                    <XIcon size={14} />
-                  </button>
-                </header>
-                <label>
-                  <span>Name</span>
-                  <input
-                    autoFocus
-                    type="text"
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                    placeholder="Dev server"
-                  />
-                </label>
-                <label>
-                  <span>Command</span>
-                  {/* A textarea: a build command with flags does not fit one
-                      line, and a single-line input hides its own end. */}
-                  <textarea
-                    className="field"
-                    rows={2}
-                    value={command}
-                    onChange={(event) => setCommand(event.target.value)}
-                    placeholder="pnpm dev"
-                  />
-                </label>
-                <label>
-                  <span>
-                    Preview URL <small>optional</small>
-                  </span>
-                  <input
-                    type="text"
-                    value={url}
-                    onChange={(event) => setUrl(event.target.value)}
-                    placeholder="localhost:5173"
-                  />
-                  <small className="field-hint">
-                    Opens in Capsule's browser panel when the action runs.
-                  </small>
-                </label>
-                <div className="actions">
-                  <button className="ghost" type="button" onClick={() => setEditing(undefined)}>
-                    Cancel
-                  </button>
-                  <button className="send" type="submit" disabled={!name.trim() || !command.trim()}>
-                    Save action
-                  </button>
-                </div>
-              </form>
-            </div>,
-            document.body,
-          )
-        : null}
+      {editing ? (
+        <ProjectActionDialog
+          action={editing}
+          onSave={(next) => void save(next)}
+          onClose={() => setEditing(undefined)}
+        />
+      ) : null}
     </div>
   );
 }

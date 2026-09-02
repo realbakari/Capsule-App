@@ -17,6 +17,7 @@ import {
   PinOffIcon,
   PlusIcon,
   RefreshIcon,
+  SettingsIcon,
   TrashIcon,
 } from "./icons";
 
@@ -30,6 +31,7 @@ const ICONS: Record<ActionMenuIcon, typeof PencilIcon> = {
   plus: PlusIcon,
   folder: FolderIcon,
   copy: CopyIcon,
+  settings: SettingsIcon,
 };
 
 export function ActionMenu({

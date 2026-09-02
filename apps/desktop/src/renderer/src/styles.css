@@ -7606,3 +7606,38 @@ details.card > summary {
 .process-section {
   margin-top: 1rem;
 }
+
+/* Project screen. The rows are settings, so they read like the ones in
+   Settings rather than like a file listing. */
+.project-folder-row,
+.project-action-listing {
+  gap: 0.6rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border-color);
+}
+.project-folder-row:last-of-type,
+.project-action-listing:last-of-type {
+  border-bottom: 0;
+}
+.project-folder-row .inline-icon,
+.project-action-listing .inline-icon {
+  min-width: 0;
+  gap: 0.4rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.project-action-listing code {
+  color: var(--text-faint);
+  font-size: 0.75rem;
+}
+/* A state, not a control: it says how a row is used, and clicking it does
+   nothing. */
+.chip-static {
+  flex-shrink: 0;
+  border-radius: 0.3rem;
+  border: 1px solid var(--border-color);
+  padding: 0.05rem 0.3rem;
+  font-size: 0.6875rem;
+  color: var(--text-faint);
+}

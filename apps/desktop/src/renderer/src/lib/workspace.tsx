@@ -58,6 +58,7 @@ import {
 
 export type View =
   | "chat"
+  | "project"
   | "runtimes"
   | "skills"
   | "history"

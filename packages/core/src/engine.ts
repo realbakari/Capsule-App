@@ -783,6 +783,10 @@ export class CapsuleEngine {
           ...(action.previewUrl?.trim()
             ? { previewUrl: action.previewUrl.trim().slice(0, 500) }
             : {}),
+          ...(action.runOnWorktreeCreate ? { runOnWorktreeCreate: true } : {}),
+          // Stored only when it is off: an action with a preview URL opened it
+          // before this was a choice, and that stays the default.
+          ...(action.openPreview === false ? { openPreview: false } : {}),
         }))
         .filter((action) => action.id && action.name && action.command)
         .slice(0, 24);
@@ -799,6 +803,9 @@ export class CapsuleEngine {
       project.defaultAgentId = patch.defaultAgentId ?? undefined;
     }
     if (patch.defaultMode !== undefined) project.defaultMode = patch.defaultMode;
+    if (patch.defaultWorkspaceMode !== undefined) {
+      project.defaultWorkspaceMode = patch.defaultWorkspaceMode ?? undefined;
+    }
     project.updatedAt = nowIso();
     this.repos.updateProject(project);
     return project;
@@ -1104,7 +1111,8 @@ export class CapsuleEngine {
   async createSession(input: CreateSessionInput): Promise<Session> {
     const project = this.requireProject(input.projectId);
     const agentId = input.agentId ?? project.defaultAgentId ?? agentIdForMode(input.mode ?? project.defaultMode);
-    const requestedWorkspaceMode = input.workspaceMode ?? this.settings.defaultWorkspaceMode;
+    const requestedWorkspaceMode =
+      input.workspaceMode ?? project.defaultWorkspaceMode ?? this.settings.defaultWorkspaceMode;
     const workspaceMode =
       !isInboxProject(project) &&
       requestedWorkspaceMode === "worktree" &&
@@ -1136,6 +1144,9 @@ export class CapsuleEngine {
       }
     }
     this.repos.insertSession(session);
+    // After the record exists: an action resolves its working directory
+    // through the session, which cannot be read before it is stored.
+    if (session.workspaceMode === "worktree") this.runWorktreeSetupActions(session, project);
     return session;
   }
 
@@ -1180,6 +1191,7 @@ export class CapsuleEngine {
     if (mode === "worktree") {
       session.workspaceMode = "worktree";
       this.attachSessionWorktree(session, project);
+      this.runWorktreeSetupActions(session, project);
     } else {
       const cleanup = this.cleanupSessionWorktree(session, project);
       if (!cleanup) throw new Error("The worktree has changes and cannot be switched to Local.");
@@ -2367,6 +2379,29 @@ export class CapsuleEngine {
     session.worktreeBranch = result.branch;
     session.workspaceMode = "worktree";
     this.log(`Created worktree ${result.branch} for ${session.title}`);
+  }
+
+  /*
+   * A fresh worktree has no node_modules, no .env, nothing a build needs. The
+   * actions marked as setup run once, here, so the first prompt in an isolated
+   * conversation is not "install the dependencies".
+   */
+  private runWorktreeSetupActions(session: Session, project: Project): void {
+    const setup = (project.actions ?? []).filter((action) => action.runOnWorktreeCreate);
+    for (const action of setup) {
+      try {
+        this.runProjectAction(project.id, action.id, session.id);
+        this.log(`Started setup action ${action.name} in ${session.worktreeBranch}`);
+      } catch (error) {
+        // A setup action that will not start must not take the worktree with
+        // it: the conversation is usable, it just has more to do first.
+        this.log(
+          `Setup action ${action.name} did not start: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
   }
 
   private cleanupSessionWorktree(session: Session, project: Project): boolean {

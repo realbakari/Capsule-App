@@ -287,4 +287,11 @@ export const MIGRATIONS: Array<{ version: number; sql: string }> = [
       ALTER TABLE messages ADD COLUMN attachments TEXT NOT NULL DEFAULT '[]';
     `,
   },
+  {
+    version: 10,
+    sql: `
+      -- Null means the project follows the app-wide default.
+      ALTER TABLE projects ADD COLUMN default_workspace_mode TEXT;
+    `,
+  },
 ];

@@ -117,10 +117,10 @@ export class CapsuleRepositories {
       .prepare(
         `INSERT INTO projects (
           id, workspace_id, name, description, working_directory, extra_folders, project_actions, icon_path, default_agent_id,
-          default_skill_ids, default_mode, created_at, updated_at
+          default_skill_ids, default_mode, default_workspace_mode, created_at, updated_at
         ) VALUES (
           @id, @workspaceId, @name, @description, @workingDirectory, @extraFolders, @actions, @iconPath, @defaultAgentId,
-          @defaultSkillIds, @defaultMode, @createdAt, @updatedAt
+          @defaultSkillIds, @defaultMode, @defaultWorkspaceMode, @createdAt, @updatedAt
         )`,
       )
       .run({
@@ -131,6 +131,7 @@ export class CapsuleRepositories {
         actions: JSON.stringify(project.actions ?? []),
         iconPath: project.iconPath ?? null,
         defaultAgentId: project.defaultAgentId ?? null,
+        defaultWorkspaceMode: project.defaultWorkspaceMode ?? null,
         defaultSkillIds: JSON.stringify(project.defaultSkillIds),
       });
   }
@@ -142,6 +143,7 @@ export class CapsuleRepositories {
                 extra_folders AS extraFolders, project_actions AS actions, icon_path AS iconPath,
                 default_agent_id AS defaultAgentId,
                 default_skill_ids AS defaultSkillIds, default_mode AS defaultMode,
+                default_workspace_mode AS defaultWorkspaceMode,
                 created_at AS createdAt, updated_at AS updatedAt
          FROM projects ORDER BY updated_at DESC`,
       )
@@ -163,6 +165,7 @@ export class CapsuleRepositories {
         actions: actions && actions.length > 0 ? actions : undefined,
         iconPath: row.iconPath || undefined,
         defaultAgentId: row.defaultAgentId || undefined,
+        defaultWorkspaceMode: row.defaultWorkspaceMode || undefined,
         defaultSkillIds: parseJson<string[]>(row.defaultSkillIds, []),
       };
     });
@@ -179,6 +182,7 @@ export class CapsuleRepositories {
          extra_folders = @extraFolders, project_actions = @actions, icon_path = @iconPath,
          default_agent_id = @defaultAgentId,
          default_skill_ids = @defaultSkillIds, default_mode = @defaultMode,
+         default_workspace_mode = @defaultWorkspaceMode,
          updated_at = @updatedAt WHERE id = @id`,
       )
       .run({
@@ -190,6 +194,7 @@ export class CapsuleRepositories {
         actions: JSON.stringify(project.actions ?? []),
         iconPath: project.iconPath ?? null,
         defaultAgentId: project.defaultAgentId ?? null,
+        defaultWorkspaceMode: project.defaultWorkspaceMode ?? null,
         defaultSkillIds: JSON.stringify(project.defaultSkillIds),
         defaultMode: project.defaultMode,
         updatedAt: project.updatedAt,

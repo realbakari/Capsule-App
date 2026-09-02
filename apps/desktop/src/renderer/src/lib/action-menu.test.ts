@@ -74,7 +74,10 @@ describe("menu keyboard helpers", () => {
       canRename: false,
     });
     const selectable = selectableMenuItems(items);
+    // Settings stays reachable even for a project that cannot be renamed or
+    // deleted: it is where the folder and the defaults are set.
     expect(selectable.map((item) => item.id)).toEqual([
+      "settings",
       "new-conversation",
       "change-folder",
       "add-folder",

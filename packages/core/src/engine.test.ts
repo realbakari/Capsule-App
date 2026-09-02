@@ -131,6 +131,50 @@ describe("CapsuleEngine first user flow", () => {
     await engine.stop();
   });
 
+  it("takes the project's workspace default and runs its setup actions", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-project-defaults-"));
+    const repository = path.join(dir, "repository");
+    mkdirSync(repository);
+    const git = (...args: string[]) =>
+      execFileSync("git", args, { cwd: repository, encoding: "utf8" });
+    git("init");
+    git("config", "user.email", "capsule@example.test");
+    git("config", "user.name", "Capsule Test");
+    writeFileSync(path.join(repository, "README.md"), "base\n");
+    git("add", "README.md");
+    git("commit", "-m", "initial");
+
+    const engine = new CapsuleEngine({
+      databasePath: path.join(dir, "capsule.sqlite"),
+      userDataDir: dir,
+      autoConnect: false,
+    });
+    await engine.start();
+    const project = engine.createProject({ name: "Defaults", workingDirectory: repository });
+    // The app-wide default is "local"; the project asks for isolation.
+    engine.updateProject(project.id, {
+      defaultWorkspaceMode: "worktree",
+      actions: [
+        { id: "setup", name: "Setup", command: "pwd", runOnWorktreeCreate: true },
+        { id: "other", name: "Other", command: "pwd" },
+      ],
+    });
+    expect(engine.getProject(project.id)?.defaultWorkspaceMode).toBe("worktree");
+
+    const session = await engine.createSession({ projectId: project.id, title: "Isolated" });
+    expect(session.workspaceMode).toBe("worktree");
+    expect(session.workingDirectory).not.toBe(repository);
+
+    const runs = engine.listProjectActionRuns(project.id, session.id);
+    expect(runs.map((run) => run.actionId)).toEqual(["setup"]);
+
+    // Clearing the override returns the project to the app-wide default.
+    engine.updateProject(project.id, { defaultWorkspaceMode: null });
+    const plain = await engine.createSession({ projectId: project.id, title: "Shared" });
+    expect(plain.workspaceMode).toBe("local");
+    await engine.stop();
+  });
+
   it("does not offer bootstrap mock agents after a live Gateway connects", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "capsule-live-agents-"));
     const engine = new CapsuleEngine({

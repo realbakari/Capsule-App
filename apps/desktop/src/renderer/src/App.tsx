@@ -1,5 +1,6 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { Conversation } from "./features/conversation/Conversation";
+import { ProjectView } from "./features/project/ProjectView";
 import { RuntimesView } from "./features/harness/RuntimesView";
 import { ApprovalsView, HistoryView, SkillsView } from "./features/library/LibraryViews";
 import { UsageView } from "./features/library/UsageView";
@@ -36,6 +37,7 @@ function Shell() {
         <div className="workspace-body">
           <ViewErrorBoundary key={view} label={view === "chat" ? "Conversation" : "This view"}>
             {view === "chat" && <Conversation />}
+            {view === "project" && <ProjectView />}
             {view === "runtimes" && <RuntimesView />}
             {view === "skills" && <SkillsView />}
             {view === "usage" && <UsageView />}

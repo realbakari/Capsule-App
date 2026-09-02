@@ -216,6 +216,12 @@ export interface Project {
   defaultAgentId?: string;
   defaultSkillIds: string[];
   defaultMode: AgentMode;
+  /**
+   * Where new conversations in this project run. Unset means the app-wide
+   * default: a repo you always want isolated and one you never do cannot be
+   * expressed by one global switch.
+   */
+  defaultWorkspaceMode?: WorkspaceMode;
   createdAt: string;
   updatedAt: string;
 }
@@ -256,6 +262,8 @@ export interface UpdateProjectInput {
   iconPath?: string | null;
   defaultAgentId?: string | null;
   defaultMode?: AgentMode;
+  /** null clears the override and returns the project to the app-wide default. */
+  defaultWorkspaceMode?: WorkspaceMode | null;
 }
 
 export interface FileEntry {
@@ -270,6 +278,16 @@ export interface ProjectAction {
   command: string;
   /** Optional local URL selected in the Browser panel after the action starts. */
   previewUrl?: string;
+  /**
+   * Run this automatically when a conversation gets its own worktree. A fresh
+   * checkout usually needs an install before anything else works.
+   */
+  runOnWorktreeCreate?: boolean;
+  /**
+   * Open the preview URL when the action runs. Defaults to true for an action
+   * that has one — that was the only behaviour before this was a choice.
+   */
+  openPreview?: boolean;
 }
 
 export interface ProjectActionRun {

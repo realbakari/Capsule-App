@@ -9,7 +9,8 @@ export type ActionMenuIcon =
   | "trash"
   | "plus"
   | "folder"
-  | "copy";
+  | "copy"
+  | "settings";
 
 export type SessionActionId =
   | "rename"
@@ -95,6 +96,7 @@ export function buildProjectActionMenuItems(state: {
   canRename: boolean;
 }): ActionMenuItem[] {
   return [
+    { id: "settings", label: "Project settings", icon: "settings" },
     { id: "rename", label: "Rename", icon: "pencil", enabled: state.canRename },
     { id: "new-conversation", label: "New conversation", icon: "plus" },
     {
