@@ -14,6 +14,13 @@ export interface WindowBounds {
 
 export interface WindowState extends WindowBounds {
   maximized: boolean;
+  /**
+   * The colour the app paints, as the renderer last resolved it. The window's
+   * own background is drawn before any stylesheet or setting has loaded, and
+   * the app's palette is a user setting — so without remembering it, every
+   * launch showed the token default and then jumped to the real one.
+   */
+  background?: string;
 }
 
 export interface DisplayArea {
@@ -26,6 +33,11 @@ const MIN_WIDTH = 960;
 const MIN_HEIGHT = 640;
 /** How much of the window has to land on a display for it to be reachable. */
 const MIN_VISIBLE = 80;
+
+/** Only a plain hex colour: this value is handed straight to Electron. */
+export function isHexColor(value: unknown): value is string {
+  return typeof value === "string" && /^#[0-9a-f]{6}$/iu.test(value);
+}
 
 function overlap(a: WindowBounds, b: WindowBounds): number {
   const width = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
@@ -48,6 +60,7 @@ export function parseWindowState(raw: unknown): WindowState | undefined {
     width: Math.round(value.width!),
     height: Math.round(value.height!),
     maximized: value.maximized === true,
+    ...(isHexColor(value.background) ? { background: value.background } : {}),
   };
 }
 

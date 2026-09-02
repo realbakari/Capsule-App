@@ -51,6 +51,7 @@ import { startPty, type PtySession } from "@capsule/terminal";
 import { popupContextMenu } from "./popup-menu";
 import {
   DEFAULT_WINDOW_SIZE,
+  isHexColor,
   parseWindowState,
   restoreWindowBounds,
   type WindowState,
@@ -219,6 +220,9 @@ function readWindowState(): WindowState | undefined {
  * default size every launch, which is what made Capsule look like it opened
  * small and then jumped to the size you actually work in.
  */
+/** The colour the renderer last painted, remembered for the next launch. */
+let paintedBackground: string | undefined;
+
 function saveWindowState(window: BrowserWindow): void {
   if (window.isDestroyed() || window.isMinimized() || window.isFullScreen()) return;
   const maximized = window.isMaximized();
@@ -226,7 +230,15 @@ function saveWindowState(window: BrowserWindow): void {
   // somewhere.
   const bounds = maximized ? window.getNormalBounds() : window.getBounds();
   try {
-    writeFileSync(windowStatePath(), JSON.stringify({ ...bounds, maximized }), "utf8");
+    writeFileSync(
+      windowStatePath(),
+      JSON.stringify({
+        ...bounds,
+        maximized,
+        ...(paintedBackground ? { background: paintedBackground } : {}),
+      }),
+      "utf8",
+    );
   } catch {
     // A window position is not worth failing over.
   }
@@ -250,7 +262,14 @@ function createWindow(): BrowserWindow {
      * app then painted. `nativeTheme` is what the renderer will resolve
      * "system" to, so the two agree.
      */
-    backgroundColor: nativeTheme.shouldUseDarkColors ? "#0a0a0a" : "#f4f4f1",
+    /*
+     * The colour the app painted last time, when it is known. The palette is a
+     * setting that only the renderer can resolve, and it does so several
+     * frames after this window has already drawn itself — so guessing from the
+     * system theme alone opened a #0a0a0a window in front of a #181818 app.
+     */
+    backgroundColor:
+      saved?.background ?? (nativeTheme.shouldUseDarkColors ? "#0a0a0a" : "#f4f4f1"),
     // Shown once it has something to show: a window that appears before its
     // first paint is a flash of empty chrome no matter what colour it is.
     show: false,
@@ -994,6 +1013,17 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.processMetrics, () => latestSample ?? sampleResources());
   handle(IPC_CHANNELS.processHistory, () => [...resourceHistory]);
   // The renderer has painted the app, not just an empty document.
+  handle(IPC_CHANNELS.windowBackground, (color) => {
+    if (!isHexColor(color)) return false;
+    if (paintedBackground === color) return true;
+    paintedBackground = color;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      // The frame behind the app while it is resized or restored.
+      mainWindow.setBackgroundColor(color);
+      saveWindowState(mainWindow);
+    }
+    return true;
+  });
   handle(IPC_CHANNELS.rendererReady, () => {
     if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) mainWindow.show();
     return true;

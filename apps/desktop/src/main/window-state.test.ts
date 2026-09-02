@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseWindowState, restoreWindowBounds } from "./window-state.js";
+import { isHexColor, parseWindowState, restoreWindowBounds } from "./window-state.js";
 
 const laptop = { workArea: { x: 0, y: 25, width: 1512, height: 945 } };
 const external = { workArea: { x: 1512, y: 0, width: 2560, height: 1415 } };
@@ -22,6 +22,30 @@ describe("parseWindowState", () => {
     // Smaller than the window's own minimum: restoring it would fight the
     // constraint and land somewhere nobody chose.
     expect(parseWindowState({ x: 0, y: 0, width: 400, height: 300 })).toBeUndefined();
+  });
+});
+
+describe("isHexColor", () => {
+  it("takes a plain hex colour and nothing else", () => {
+    expect(isHexColor("#181818")).toBe(true);
+    expect(isHexColor("#FFF")).toBe(false);
+    expect(isHexColor("rgb(0 0 0)")).toBe(false);
+    expect(isHexColor(undefined)).toBe(false);
+  });
+});
+
+describe("keeps the painted background", () => {
+  it("round-trips a colour the renderer resolved", () => {
+    expect(
+      parseWindowState({ x: 0, y: 0, width: 1400, height: 900, background: "#181818" })?.background,
+    ).toBe("#181818");
+  });
+
+  it("drops anything that is not one", () => {
+    expect(
+      parseWindowState({ x: 0, y: 0, width: 1400, height: 900, background: "javascript:x" })
+        ?.background,
+    ).toBeUndefined();
   });
 });
 

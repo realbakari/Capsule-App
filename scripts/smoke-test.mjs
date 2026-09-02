@@ -56,7 +56,13 @@ const electron = resolveElectronBinary();
 // settings or the window state of the app you actually use.
 const userData = fs.mkdtempSync(path.join(os.tmpdir(), "capsule-smoke-"));
 
-const child = spawn(electron, [desktop, `--user-data-dir=${userData}`], {
+/*
+ * The switch goes before the app path: everything after it is handed to the
+ * app as its own argv, so Chromium never saw it and the smoke test was
+ * writing to the real profile — the database and window state of the app you
+ * actually use.
+ */
+const child = spawn(electron, [`--user-data-dir=${userData}`, desktop], {
   cwd: desktop,
   stdio: ["ignore", "pipe", "pipe"],
   env: { ...process.env, ELECTRON_ENABLE_LOGGING: "1", CAPSULE_SMOKE_TEST: "1" },

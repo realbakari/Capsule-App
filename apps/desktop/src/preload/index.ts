@@ -83,6 +83,7 @@ const api = {
     ipcRenderer.invoke(IPC_CHANNELS.execInProject, projectId, command, sessionId),
   processHistory: () => ipcRenderer.invoke(IPC_CHANNELS.processHistory),
   rendererReady: () => ipcRenderer.invoke(IPC_CHANNELS.rendererReady),
+  windowBackground: (color: string) => ipcRenderer.invoke(IPC_CHANNELS.windowBackground, color),
   terminalStart: (input: { cwd: string; cols?: number; rows?: number }) =>
     ipcRenderer.invoke(IPC_CHANNELS.terminalStart, input),
   terminalInput: (id: string, data: string) =>
