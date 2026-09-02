@@ -17,6 +17,32 @@ function resolvedTheme(theme: AppearanceTheme): "dark" | "light" {
 let lastSettings: CapsuleSettings | undefined;
 let media: MediaQueryList | undefined;
 
+/**
+ * Where the chosen theme is kept for the next launch.
+ *
+ * Settings live in the engine's database, which the renderer can only read
+ * over IPC — several frames after it has already painted. The first paint was
+ * therefore always the stylesheet's own dark defaults, so a light app opened
+ * dark and swapped once the answer arrived. This is read synchronously before
+ * React renders.
+ */
+const THEME_KEY = "capsule.appearanceTheme";
+
+/** Applies the last known theme before the first paint. */
+export function applyStoredTheme(): void {
+  if (typeof document === "undefined") return;
+  let stored: string | null = null;
+  try {
+    stored = localStorage.getItem(THEME_KEY);
+  } catch {
+    // Private windows and cleared site data: fall through to the system.
+  }
+  const theme: AppearanceTheme =
+    stored === "light" || stored === "dark" || stored === "system" ? stored : "system";
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.dataset.surface = resolvedTheme(theme);
+}
+
 export function applyAppearance(settings: CapsuleSettings | undefined): void {
   if (typeof document === "undefined") return;
   lastSettings = settings;
@@ -31,6 +57,11 @@ export function applyAppearance(settings: CapsuleSettings | undefined): void {
   const palette = mode === "light" ? settings?.appearanceLight : settings?.appearanceDark;
   root.dataset.theme = theme;
   root.dataset.surface = mode;
+  try {
+    localStorage.setItem(THEME_KEY, theme);
+  } catch {
+    // A theme that cannot be remembered still applies to this session.
+  }
   if (!palette) return;
   const vars = appearanceCssVars(palette);
   const customMono = sanitizeFontName(settings?.customCodeFont);

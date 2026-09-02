@@ -9,6 +9,32 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" href="./icon.png" />
     <title>Capsule</title>
+    <!--
+      The ground colour, before any stylesheet or script has run. Without it
+      the document paints the browser default for the moments before the app's
+      CSS arrives, which in a dev build is long enough to see.
+    -->
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #0a0a0a;
+      }
+      @media (prefers-color-scheme: light) {
+        html,
+        body {
+          background: #f4f4f1;
+        }
+      }
+      html[data-theme="dark"],
+      html[data-theme="dark"] body {
+        background: #0a0a0a;
+      }
+      html[data-theme="light"],
+      html[data-theme="light"] body {
+        background: #f4f4f1;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

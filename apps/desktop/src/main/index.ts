@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 /** Where releases are published. */
 const UPDATE_REPO = "realbakari/Capsule-App";
@@ -23,6 +23,7 @@ import {
   nativeImage,
   nativeTheme,
   powerMonitor,
+  screen,
   powerSaveBlocker,
   shell,
 } from "electron";
@@ -48,6 +49,12 @@ import {
 import { readAgentProcesses } from "@capsule/filesystem";
 import { startPty, type PtySession } from "@capsule/terminal";
 import { popupContextMenu } from "./popup-menu";
+import {
+  DEFAULT_WINDOW_SIZE,
+  parseWindowState,
+  restoreWindowBounds,
+  type WindowState,
+} from "./window-state";
 import { ensureSqliteAbi } from "./sqlite-abi";
 
 let mainWindow: BrowserWindow | undefined;
@@ -200,10 +207,44 @@ async function checkForUpdates(): Promise<UpdateCheck> {
  */
 const WINDOW_PAINT_GRACE_MS = 2_500;
 
+const WINDOW_STATE_FILE = "window-state.json";
+
+function windowStatePath(): string {
+  return path.join(userDataDir(), WINDOW_STATE_FILE);
+}
+
+function readWindowState(): WindowState | undefined {
+  try {
+    return parseWindowState(JSON.parse(readFileSync(windowStatePath(), "utf8")));
+  } catch {
+    return undefined;
+  }
+}
+
+/*
+ * Written on move, resize and close. A window nobody saved opens at the
+ * default size every launch, which is what made Capsule look like it opened
+ * small and then jumped to the size you actually work in.
+ */
+function saveWindowState(window: BrowserWindow): void {
+  if (window.isDestroyed() || window.isMinimized() || window.isFullScreen()) return;
+  const maximized = window.isMaximized();
+  // Its normal frame, not the maximised one: unmaximising has to land
+  // somewhere.
+  const bounds = maximized ? window.getNormalBounds() : window.getBounds();
+  try {
+    writeFileSync(windowStatePath(), JSON.stringify({ ...bounds, maximized }), "utf8");
+  } catch {
+    // A window position is not worth failing over.
+  }
+}
+
 function createWindow(): BrowserWindow {
+  const saved = readWindowState();
+  const restored = restoreWindowBounds(saved, screen.getAllDisplays());
   const window = new BrowserWindow({
-    width: 1280,
-    height: 820,
+    ...DEFAULT_WINDOW_SIZE,
+    ...(restored ?? {}),
     minWidth: 960,
     minHeight: 640,
     title: "Capsule",
@@ -299,6 +340,22 @@ function createWindow(): BrowserWindow {
    * seemed to do on every start. The renderer says when it has painted, and
    * these are the fallbacks for when it cannot.
    */
+  if (saved?.maximized) window.maximize();
+
+  let saveTimer: NodeJS.Timeout | undefined;
+  const rememberBounds = () => {
+    if (saveTimer) clearTimeout(saveTimer);
+    // A drag fires these continuously; the last one is the one that matters.
+    saveTimer = setTimeout(() => saveWindowState(window), 400);
+    saveTimer.unref?.();
+  };
+  window.on("resize", rememberBounds);
+  window.on("move", rememberBounds);
+  window.on("close", () => {
+    if (saveTimer) clearTimeout(saveTimer);
+    saveWindowState(window);
+  });
+
   const showWhenPainted = () => {
     if (!window.isDestroyed() && !window.isVisible()) window.show();
   };
