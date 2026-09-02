@@ -140,6 +140,7 @@ import {
   SkillCatalogClient,
   SkillsShClient,
   discoverGlobalSkills,
+  projectSkillRoots,
   listGlobalSkillFiles,
   resolveGlobalSkillFile,
   skillIdForMode,
@@ -982,10 +983,24 @@ export class CapsuleEngine {
     return searchContents(project.workingDirectory, query);
   }
 
-  async listSkills(): Promise<Skill[]> {
+  /**
+   * Every skill this workspace can reach: the ones installed on this Mac, the
+   * ones checked into the open project, and Capsule's own.
+   *
+   * A project's skills come last of the discovered ones so an installed skill
+   * of the same name keeps its place — the CLIs resolve collisions the same
+   * way, and a picker that disagreed with the agent would offer something it
+   * then refuses to run.
+   */
+  async listSkills(projectId?: string): Promise<Skill[]> {
     const stored = this.repos.listSkills();
     const capsuleSkills = stored.length > 0 ? stored : DEFAULT_SKILLS;
-    return [...discoverGlobalSkills(), ...capsuleSkills];
+    const project = projectId ? this.repos.getProject(projectId) : undefined;
+    const installed = discoverGlobalSkills();
+    const fromProject = discoverGlobalSkills(projectSkillRoots(project?.workingDirectory)).filter(
+      (skill) => !installed.some((candidate) => candidate.name === skill.name),
+    );
+    return [...installed, ...fromProject, ...capsuleSkills];
   }
 
   private async requireSkill(skillId: string): Promise<Skill> {

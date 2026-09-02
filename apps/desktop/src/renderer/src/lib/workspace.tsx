@@ -540,7 +540,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       ] = await Promise.all([
           api.listProjects(),
           api.listAgents(),
-          api.listSkills(),
+          api.listSkills(projectId),
           api.listSkillPacks(),
           api.getStatus(),
           api.getSubsystemStatus(),

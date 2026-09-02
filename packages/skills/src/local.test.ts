@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   discoverGlobalSkills,
   listGlobalSkillFiles,
+  projectSkillRoots,
   resolveGlobalSkillFile,
   type GlobalSkillRoot,
 } from "./local.js";
@@ -101,5 +102,54 @@ describe("discoverGlobalSkills", () => {
       "outside the skill folder",
     );
     expect(listGlobalSkillFiles(location).map((entry) => entry.name)).toEqual(["SKILL.md"]);
+  });
+});
+
+describe("skills a project carries", () => {
+  it("finds a skill checked into the repository", () => {
+    const repository = fs.mkdtempSync(path.join(os.tmpdir(), "capsule-project-skill-"));
+    const skillDirectory = path.join(repository, ".claude", "skills", "release");
+    fs.mkdirSync(skillDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(skillDirectory, "SKILL.md"),
+      "---\nname: Release\ndescription: Cut a release\n---\n\nSteps…\n",
+    );
+
+    const found = discoverGlobalSkills(projectSkillRoots(repository));
+    expect(found.map((skill) => skill.name)).toEqual(["Release"]);
+    expect(found[0]?.source).toBe("This project");
+  });
+
+  it("has nothing to find without a folder", () => {
+    expect(projectSkillRoots(undefined)).toEqual([]);
+  });
+});
+
+describe("skills the agent keeps to itself", () => {
+  function withFrontmatter(line: string): number {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "capsule-invocable-"));
+    const skillDirectory = path.join(root, "skills", "internal");
+    fs.mkdirSync(skillDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(skillDirectory, "SKILL.md"),
+      `---\nname: Internal\n${line}\n---\n\nBody\n`,
+    );
+    return discoverGlobalSkills([
+      { id: "test", label: "Test", directory: path.join(root, "skills") },
+    ]).length;
+  }
+
+  it("leaves out one marked not user-invocable", () => {
+    expect(withFrontmatter("user-invocable: false")).toBe(0);
+    // YAML 1.1 spellings, which is what these files are written in.
+    expect(withFrontmatter("user-invocable: no")).toBe(0);
+    expect(withFrontmatter("user-invocable: off")).toBe(0);
+    expect(withFrontmatter("user-invocable: 0")).toBe(0);
+  });
+
+  it("keeps everything else", () => {
+    expect(withFrontmatter("user-invocable: true")).toBe(1);
+    expect(withFrontmatter("user-invocable: yes")).toBe(1);
+    expect(withFrontmatter("description: Plain")).toBe(1);
   });
 });

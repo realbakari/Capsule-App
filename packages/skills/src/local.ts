@@ -63,6 +63,30 @@ export function listGlobalSkillFiles(location: string, relative = "."): FileEntr
   });
 }
 
+/**
+ * Where a project keeps skills of its own.
+ *
+ * Claude Code reads `<cwd>/.claude/skills` alongside the user's, and a skill
+ * checked into a repository is the one case where everybody working on it has
+ * the same skill without installing anything. The user's roots still win a
+ * name collision, which is what the CLI does.
+ */
+export function projectSkillRoots(workingDirectory: string | undefined): GlobalSkillRoot[] {
+  if (!workingDirectory) return [];
+  return [
+    {
+      id: "project-claude",
+      label: "This project",
+      directory: path.join(workingDirectory, ".claude", "skills"),
+    },
+    {
+      id: "project-agents",
+      label: "This project",
+      directory: path.join(workingDirectory, ".agents", "skills"),
+    },
+  ];
+}
+
 /** Roots used by the shared skills CLI and the supported coding agents. */
 export function defaultGlobalSkillRoots(
   home = os.homedir(),
@@ -82,6 +106,28 @@ export function defaultGlobalSkillRoots(
       directory: path.join(home, ".config", "opencode", "skills"),
     },
   ];
+}
+
+/**
+ * YAML 1.1 booleans, which is what these files are written in: `no`, `off` and
+ * `0` all mean false. Reading only `false` would offer a skill the agent
+ * itself refuses to run.
+ */
+function frontmatterBoolean(markdown: string, key: string): boolean | undefined {
+  const value = frontmatterValue(markdown, key)?.toLowerCase();
+  if (value === undefined) return undefined;
+  if (["true", "yes", "on", "1"].includes(value)) return true;
+  if (["false", "no", "off", "0"].includes(value)) return false;
+  return undefined;
+}
+
+/**
+ * Whether a person can invoke this skill at all. A skill marked otherwise is
+ * for the agent to reach on its own, and listing it in the picker offers
+ * something that will come back as an unknown command.
+ */
+export function isUserInvocable(markdown: string): boolean {
+  return frontmatterBoolean(markdown, "user-invocable") ?? true;
 }
 
 function frontmatterValue(markdown: string, key: string): string | undefined {
@@ -139,6 +185,8 @@ export function discoverGlobalSkills(
         return;
       }
       seenDocuments.add(canonical);
+      // A skill only the agent may reach is not a skill anyone can pick.
+      if (!isUserInvocable(content)) return;
       const relativeDirectory = path.relative(root.directory, directory) || path.basename(directory);
       const fallbackName = path.basename(directory);
       found.push({

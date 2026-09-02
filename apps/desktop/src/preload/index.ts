@@ -18,7 +18,7 @@ const api = {
   cloneRepository: (input: unknown) => ipcRenderer.invoke(IPC_CHANNELS.cloneRepository, input),
   getProject: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.getProject, id),
   listAgents: () => ipcRenderer.invoke(IPC_CHANNELS.listAgents),
-  listSkills: () => ipcRenderer.invoke(IPC_CHANNELS.listSkills),
+  listSkills: (projectId?: string) => ipcRenderer.invoke(IPC_CHANNELS.listSkills, projectId),
   listSkillFiles: (skillId: string, relative = ".") =>
     ipcRenderer.invoke(IPC_CHANNELS.listSkillFiles, skillId, relative),
   previewSkillFile: (skillId: string, relative: string): Promise<FilePreview> =>

@@ -735,7 +735,11 @@ function registerIpc(): void {
     requireEngine().getProject(projectId),
   );
   handle(IPC_CHANNELS.listAgents, () => requireEngine().listAgents());
-  handle(IPC_CHANNELS.listSkills, () => requireEngine().listSkills());
+  // The open project too: a skill checked into it is only reachable when the
+  // list knows which project is open.
+  handle(IPC_CHANNELS.listSkills, (projectId) =>
+    requireEngine().listSkills(projectId ? String(projectId) : undefined),
+  );
   handleArgs(IPC_CHANNELS.listSkillFiles, [id, optStr], (skillId: string, relative?: string) =>
     requireEngine().listSkillFiles(skillId, relative),
   );
