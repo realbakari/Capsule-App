@@ -6,6 +6,7 @@ export * from "./preview.js";
 export * from "./version.js";
 export * from "./ids.js";
 export * from "./ipc.js";
+export * from "./ipc-scopes.js";
 export * from "./revision.js";
 export * from "./runtime.js";
 export * from "./types.js";

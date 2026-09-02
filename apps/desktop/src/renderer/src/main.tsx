@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import { applyStoredTheme } from "./lib/appearance";
 import { createDemoBridge } from "./features/landing/demoBridge";
+import { createRemoteBridge, resolveRemoteToken } from "./lib/remote-bridge";
 import { WebRoot } from "./features/landing/WebRoot";
 import "@xterm/xterm/css/xterm.css";
 import "./styles.css";
@@ -29,13 +30,19 @@ window.addEventListener("unhandledrejection", (event) => {
  * brochure, install a read-only demo bridge and render the real application
  * over it, with the landing card on top.
  */
+/*
+ * Three ways in. The desktop window has a preload bridge; a paired browser
+ * gets one over a socket; the public web URL gets the read-only demo. The app
+ * itself cannot tell the difference.
+ */
 const isDesktop = Boolean(window.capsule);
+const remoteToken = isDesktop ? undefined : await resolveRemoteToken();
 if (!isDesktop) {
-  window.capsule = createDemoBridge();
+  window.capsule = remoteToken ? createRemoteBridge(remoteToken) : createDemoBridge();
 }
 
 createRoot(root).render(
-  <React.StrictMode>{isDesktop ? <App /> : <WebRoot />}</React.StrictMode>,
+  <React.StrictMode>{isDesktop || remoteToken ? <App /> : <WebRoot />}</React.StrictMode>,
 );
 
 /*

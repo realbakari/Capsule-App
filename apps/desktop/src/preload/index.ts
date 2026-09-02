@@ -83,6 +83,9 @@ const api = {
     ipcRenderer.invoke(IPC_CHANNELS.execInProject, projectId, command, sessionId),
   processHistory: () => ipcRenderer.invoke(IPC_CHANNELS.processHistory),
   rendererReady: () => ipcRenderer.invoke(IPC_CHANNELS.rendererReady),
+  remoteStatus: () => ipcRenderer.invoke(IPC_CHANNELS.remoteStatus),
+  remotePair: () => ipcRenderer.invoke(IPC_CHANNELS.remotePair),
+  remoteRevoke: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.remoteRevoke, id),
   windowBackground: (color: string) => ipcRenderer.invoke(IPC_CHANNELS.windowBackground, color),
   terminalStart: (input: { cwd: string; cols?: number; rows?: number }) =>
     ipcRenderer.invoke(IPC_CHANNELS.terminalStart, input),

@@ -38,6 +38,7 @@ export default defineConfig({
           "@capsule/artifacts",
           "@capsule/filesystem",
           "@capsule/terminal",
+          "@capsule/remote",
           "@capsule/openclaw",
           "@capsule/harness",
           "@capsule/buzz",

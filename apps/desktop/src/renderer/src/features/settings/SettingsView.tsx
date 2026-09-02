@@ -21,6 +21,7 @@ import {
   SkillCatalogCard,
 } from "./ConfigurationSettings";
 import { AboutCard } from "./AboutModal";
+import { RemoteAccessSettings } from "./RemoteAccessSettings";
 import { SettingRow, Switch } from "./controls";
 import { formatProjectRoot } from "../../lib/paths";
 import { MODES, useWorkspace } from "../../lib/workspace";
@@ -364,6 +365,7 @@ export function SettingsView() {
                     </button>
                   </div>
                 </div>
+                <RemoteAccessSettings settings={settings} patch={patch} />
                 <div className="card">
                   <h3>ACP harnesses</h3>
                   <p className="muted">

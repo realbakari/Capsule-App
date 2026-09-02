@@ -90,6 +90,9 @@ export const DEFAULT_CAPSULE_SETTINGS: CapsuleSettings = {
   defaultPermission: "default",
   // Follows the Mac. A first run that ignores a light system and opens dark
   // is the app deciding something it was never asked to decide.
+  // Reading Capsule from another device is off until someone says otherwise,
+  // and reaching it from the network is a second, separate choice.
+  remoteAccess: "off",
   appearanceTheme: "system",
   appearanceLight: DEFAULT_LIGHT_PALETTE,
   appearanceDark: DEFAULT_DARK_PALETTE,
@@ -175,6 +178,9 @@ export const SETTINGS_SECTION_KEYS: Record<string, ReadonlyArray<keyof CapsuleSe
   about: [],
 };
 
+/** Who can reach this Capsule: nobody, this Mac, or the local network. */
+export type RemoteAccess = "off" | "loopback" | "network";
+
 export interface CapsuleSettings {
   gatewayUrl: string;
   gatewayToken?: string;
@@ -193,6 +199,7 @@ export interface CapsuleSettings {
   defaultAgentId?: string;
   /** Root folder for Inbox / tasks started without opening a project. */
   projectlessFolder?: string;
+  remoteAccess: RemoteAccess;
   appearanceTheme: AppearanceTheme;
   appearanceLight: AppearancePalette;
   appearanceDark: AppearancePalette;
@@ -242,6 +249,7 @@ const AGENT_MODES: AgentMode[] = [
 const WORKSPACE_MODES: DefaultWorkspaceMode[] = ["local", "worktree"];
 const SEND_KEYS: ComposerSendKey[] = ["enter", "cmd-enter"];
 const THEMES: AppearanceTheme[] = ["system", "dark", "light"];
+const REMOTE_ACCESS: RemoteAccess[] = ["off", "loopback", "network"];
 const PERMISSIONS: HarnessPermissionProfile[] = ["default", "strict", "approve-all"];
 const WEB_ACCESS: WebAccess[] = ["off", "ask", "on"];
 const SANDBOX: SandboxMode[] = ["off", "ask", "strict"];
@@ -396,6 +404,7 @@ export function normalizeCapsuleSettings(input: Partial<CapsuleSettings> = {}): 
     ),
     defaultAgentId: defaultAgentId || undefined,
     projectlessFolder: input.projectlessFolder?.trim() || undefined,
+    remoteAccess: pick(input.remoteAccess, REMOTE_ACCESS, DEFAULT_CAPSULE_SETTINGS.remoteAccess),
     appearanceTheme: pick(input.appearanceTheme, THEMES, DEFAULT_CAPSULE_SETTINGS.appearanceTheme),
     appearanceLight: normalizeAppearancePalette(input.appearanceLight, DEFAULT_LIGHT_PALETTE),
     appearanceDark: normalizeAppearancePalette(input.appearanceDark, DEFAULT_DARK_PALETTE),

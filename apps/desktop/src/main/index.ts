@@ -40,6 +40,7 @@ import {
   type HarnessOptionPatch,
   type MonitoredProcess,
   type PopupMenuRequest,
+  type RemoteAccess,
   type ResourceHistoryPoint,
   type ResourceSample,
   type Run,
@@ -47,6 +48,7 @@ import {
   type UpdateProjectInput,
 } from "@capsule/shared";
 import { readAgentProcesses } from "@capsule/filesystem";
+import { startRemoteServer, type RemoteServerHandle } from "@capsule/remote";
 import { startPty, type PtySession } from "@capsule/terminal";
 import { popupContextMenu } from "./popup-menu";
 import {
@@ -505,6 +507,13 @@ function stopAllTerminals(): void {
 
 function send(channel: string, payload: unknown): void {
   mainWindow?.webContents.send(channel, payload);
+  for (const listener of remoteListeners) {
+    try {
+      listener(channel, payload);
+    } catch {
+      // A dead socket must not stop the window from being updated.
+    }
+  }
 }
 
 function windowFocused(): boolean {
@@ -582,6 +591,63 @@ function applyDesktopSettings(settings?: CapsuleSettings): void {
   applyNativeTheme(settings?.appearanceTheme);
   applyMenuBar(settings);
   applyKeepAwake(settings);
+  void applyRemoteAccess(settings?.remoteAccess ?? "off");
+}
+
+/*
+ * Reading Capsule from another device.
+ *
+ * The listener exists only while this setting says so, and every call it
+ * forwards is checked against the paired device's scopes — a viewer holding
+ * "read" cannot reach a channel that runs a command, writes a file, or opens
+ * a shell.
+ */
+let remote: RemoteServerHandle | undefined;
+let remoteReach: RemoteAccess = "off";
+let remotePairingUrl: string | undefined;
+let remoteError: string | undefined;
+
+async function applyRemoteAccess(reach: RemoteAccess): Promise<void> {
+  if (reach === remoteReach) return;
+  remoteReach = reach;
+  remotePairingUrl = undefined;
+  remoteError = undefined;
+  await remote?.stop().catch(() => undefined);
+  remote = undefined;
+  if (reach !== "off") {
+    try {
+      remote = await startRemoteServer({
+        serveDir: path.join(__dirname, "../renderer"),
+        reach,
+        invoke: (channel, args) => forwardToHandler(channel, args),
+        subscribe: (emit) => subscribeRemote(emit),
+        onChange: () => send(IPC_EVENTS.state, { command: "remote-updated" }),
+      });
+    } catch (error) {
+      remoteError = error instanceof Error ? error.message : String(error);
+    }
+  }
+  send(IPC_EVENTS.state, { command: "remote-updated" });
+}
+
+/*
+ * The same handlers the window calls, recorded as they are registered. A
+ * separate table for the remote path would be a second definition of what
+ * Capsule can do, and the two would drift.
+ */
+const handlers = new Map<string, (...args: unknown[]) => unknown>();
+
+async function forwardToHandler(channel: string, args: unknown[]): Promise<unknown> {
+  const handler = handlers.get(channel);
+  if (!handler) throw new Error(`Unknown channel ${channel}`);
+  return await handler(...args);
+}
+
+const remoteListeners = new Set<(event: string, payload: unknown) => void>();
+
+function subscribeRemote(emit: (event: string, payload: unknown) => void): () => void {
+  remoteListeners.add(emit);
+  return () => remoteListeners.delete(emit);
 }
 
 function registerIpc(): void {
@@ -591,6 +657,7 @@ function registerIpc(): void {
   };
 
   const handle = (channel: string, fn: (...args: unknown[]) => unknown) => {
+    handlers.set(channel, fn);
     ipcMain.handle(channel, async (_event, ...args) => {
       try {
         // Startup, not an error: a call that beat the engine waits for it.
@@ -1022,6 +1089,32 @@ function registerIpc(): void {
       mainWindow.setBackgroundColor(color);
       saveWindowState(mainWindow);
     }
+    return true;
+  });
+  handle(IPC_CHANNELS.remoteStatus, () => ({
+    reach: remoteReach,
+    ...(remote ? { url: remote.url } : {}),
+    ...(remotePairingUrl ? { pairingUrl: remotePairingUrl } : {}),
+    ...(remoteError ? { error: remoteError } : {}),
+    devices: (remote?.sessions() ?? []).map((session) => ({
+      id: session.id,
+      label: session.label,
+      scopes: session.scopes,
+      createdAt: session.createdAt,
+      lastSeenAt: session.lastSeenAt,
+      expiresAt: session.expiresAt,
+    })),
+  }));
+  handle(IPC_CHANNELS.remotePair, () => {
+    if (!remote) throw new Error("Turn on reading from another device first.");
+    // Read only. Nothing in this build hands out a scope that can send a
+    // prompt or run a command from another device.
+    remotePairingUrl = remote.pair(["read"]);
+    send(IPC_EVENTS.state, { command: "remote-updated" });
+    return remotePairingUrl;
+  });
+  handle(IPC_CHANNELS.remoteRevoke, (id) => {
+    remote?.revoke(String(id));
     return true;
   });
   handle(IPC_CHANNELS.rendererReady, () => {

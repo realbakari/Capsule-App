@@ -646,3 +646,20 @@ export interface ResourceHistoryPoint {
   agentMemoryBytes: number;
   agentCount: number;
 }
+
+/** What the Settings screen shows about devices reading this Capsule. */
+export interface RemoteAccessStatus {
+  reach: "off" | "loopback" | "network";
+  url?: string;
+  /** Undefined until someone asks for a link; it is only shown once. */
+  pairingUrl?: string;
+  devices: Array<{
+    id: string;
+    label: string;
+    scopes: string[];
+    createdAt: number;
+    lastSeenAt: number;
+    expiresAt: number;
+  }>;
+  error?: string;
+}

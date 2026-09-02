@@ -15,6 +15,7 @@
     { "path": "packages/artifacts" },
     { "path": "packages/filesystem" },
     { "path": "packages/terminal" },
+    { "path": "packages/remote" },
     { "path": "packages/openclaw" },
     { "path": "packages/harness" },
     { "path": "packages/buzz" },
