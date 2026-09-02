@@ -34,8 +34,14 @@ pnpm test
 pnpm lint
 pnpm typecheck
 pnpm build
+pnpm smoke        # boots the built app and fails if it does not reach a window
 pnpm package:mac
 ```
+
+To read the workspace from a phone or another Mac, start it with `--remote`
+(or `CAPSULE_REMOTE=loopback pnpm dev` from a source checkout) and open the
+pairing link it prints. A paired device can read and nothing else — see
+[reading from another device](./docs/user/reading-from-another-device.md).
 
 Requires Node 22+ and pnpm 10+. Apple Silicon macOS is the first packaging target.
 

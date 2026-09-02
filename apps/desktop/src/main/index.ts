@@ -51,6 +51,7 @@ import { readAgentProcesses } from "@capsule/filesystem";
 import { startRemoteServer, type RemoteServerHandle } from "@capsule/remote";
 import { startPty, type PtySession } from "@capsule/terminal";
 import { popupContextMenu } from "./popup-menu";
+import { remoteReachFromArgs } from "./remote-args";
 import {
   DEFAULT_WINDOW_SIZE,
   isHexColor,
@@ -638,9 +639,36 @@ async function applyRemoteAccess(reach: RemoteAccess): Promise<void> {
 const handlers = new Map<string, (...args: unknown[]) => unknown>();
 
 async function forwardToHandler(channel: string, args: unknown[]): Promise<unknown> {
-  const handler = handlers.get(channel);
+  /*
+   * A paired device names a channel the way the bridge does — "listSessions",
+   * the same word the scope table uses. The handlers are keyed by the wire
+   * name ("capsule:listSessions"), so this is where the two meet. Anything
+   * that is not a known name is refused rather than guessed at.
+   */
+  const wireName = IPC_CHANNELS[channel as keyof typeof IPC_CHANNELS];
+  const handler = wireName ? handlers.get(wireName) : undefined;
   if (!handler) throw new Error(`Unknown channel ${channel}`);
   return await handler(...args);
+}
+
+/*
+ * Started from a terminal, the pairing link belongs in that terminal. It is
+ * the one place the token can be shown once and read by the person who asked
+ * for it.
+ */
+async function announceRemoteAccess(): Promise<void> {
+  const reach = remoteReachFromArgs(process.argv, process.env);
+  if (!reach || reach === "off") return;
+  await applyRemoteAccess(reach);
+  if (!remote) {
+    console.error(`Capsule could not start reading from another device: ${remoteError ?? "unknown"}`);
+    return;
+  }
+  remotePairingUrl = remote.pair(["read"]);
+  console.log(`\nCapsule is readable at ${remote.url}`);
+  console.log(`Pair a device: ${remotePairingUrl}`);
+  console.log("The link works once and expires in five minutes. Read only.\n");
+  send(IPC_EVENTS.state, { command: "remote-updated" });
 }
 
 const remoteListeners = new Set<(event: string, payload: unknown) => void>();
@@ -1354,6 +1382,7 @@ app.whenReady().then(async () => {
   } catch (error) {
     console.error("Capsule engine failed to start", error);
   }
+  await announceRemoteAccess();
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {

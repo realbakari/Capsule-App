@@ -20,6 +20,37 @@ and nothing in the app hands one out.
 Choosing an option starts or stops the listener immediately; there is no
 restart. Turning it off closes every socket and forgets every paired device.
 
+## Starting it from a terminal
+
+If you launch Capsule from a terminal, `--remote` turns this on for that run
+and prints the pairing link where you started it:
+
+```bash
+open -a Capsule --args --remote
+```
+
+or, running the app binary directly:
+
+```bash
+/Applications/Capsule.app/Contents/MacOS/Capsule --remote
+```
+
+```
+Capsule is readable at http://127.0.0.1:51101
+Pair a device: http://127.0.0.1:51101/#pair=zh9C7r5kJKkIcaOheXX48keKOv0
+The link works once and expires in five minutes. Read only.
+```
+
+`--remote=network` opens it to the local network instead of this Mac. The flag
+applies to that launch; it does not change the setting.
+
+From a source checkout, the launcher owns the arguments, so use the
+environment variable instead:
+
+```bash
+CAPSULE_REMOTE=loopback pnpm dev
+```
+
 ## Pairing a device
 
 1. Set it to **This Mac** or **This network**.
