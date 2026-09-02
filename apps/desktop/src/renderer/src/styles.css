@@ -359,14 +359,10 @@
   border-radius: 0.25rem;
   object-fit: contain;
 }
-.thread-row[draggable="true"]:active {
-  cursor: grabbing;
-  opacity: 0.65;
-}
 .thread-row {
-  /* The smaller first column nests a conversation under its project while the
-     message glyph keeps the row readable without a filled pill. */
-  grid-template-columns: 0.75rem 1rem minmax(0, 1fr) auto;
+  /* The first column lines up with the project chevron above it, placing the
+     conversation glyph cleanly under the project folder icon. */
+  grid-template-columns: 1rem 1rem minmax(0, 1fr) auto;
   padding: 0.24rem 0.2rem;
   font-size: 0.8125rem;
   min-height: 1.8rem;
@@ -3098,7 +3094,27 @@ select:focus,
   pointer-events: none;
 }
 .action-menu button.danger {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  min-height: 1.75rem;
+  padding: 0.28rem 0.5rem;
+  border: 0;
+  border-radius: 0.4rem;
+  background: transparent;
   color: var(--red);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  text-align: left;
+}
+.action-menu button.danger:hover,
+.action-menu button.danger[data-highlighted="true"] {
+  background: color-mix(in srgb, var(--red) 12%, transparent);
+  color: var(--red);
+  border: 0;
 }
 .action-menu-icon {
   display: inline-flex;
@@ -5683,9 +5699,23 @@ button.shortcut-keys.capturing {
 .sidebar-scope {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 0.4rem;
   padding: 0.1rem var(--sidebar-content-inset) 0.35rem;
+}
+/* The actions sit together at the end of the row they belong to. Dimmed
+   rather than hidden until hover: with no projects yet, these two are the
+   only way forward, and a control nobody can see is not a quiet one. */
+.sidebar-scope-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.05rem;
+  margin-left: auto;
+  opacity: 0.55;
+  transition: opacity var(--motion-instant, 120ms) var(--motion-ease, ease);
+}
+.sidebar-scope:hover .sidebar-scope-actions,
+.sidebar-scope:focus-within .sidebar-scope-actions {
+  opacity: 1;
 }
 .sidebar-scope-label {
   display: inline-flex;
