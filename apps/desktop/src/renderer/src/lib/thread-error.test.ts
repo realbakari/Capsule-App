@@ -53,6 +53,38 @@ describe("threadError", () => {
     ).toBeUndefined();
   });
 
+  it("says nothing about a turn that answered", () => {
+    // 90 tools, a full reply on screen, and a contract check that came back
+    // unhappy afterwards: red over the top of that is a lie about the turn.
+    expect(
+      threadError({
+        sessionId: "s1",
+        runs: [
+          {
+            sessionId: "s1",
+            status: "failed",
+            createdAt: "2026-09-02T10:00:00Z",
+            error: "Verification failed",
+            result: "Here is the summary you asked for.",
+          },
+        ],
+      }),
+    ).toBeUndefined();
+  });
+
+  it("keeps Capsule's own contract verdicts out of the thread", () => {
+    // "Verification failed" is this app judging the turn against a contract
+    // it wrote for itself. It is not something the reader can act on.
+    for (const verdict of ["Verification failed", "Empty result", "Completed"]) {
+      expect(
+        threadError({
+          sessionId: "s1",
+          runs: [run("s1", "failed", "2026-09-02T10:00:00Z", verdict)],
+        }),
+      ).toBeUndefined();
+    }
+  });
+
   it("stays in its own thread", () => {
     expect(
       threadError({ sessionId: "s2", runs: [run("s1", "failed", "2026-09-02T10:00:00Z", "Broke")] }),

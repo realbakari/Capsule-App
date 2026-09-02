@@ -3,7 +3,9 @@ import { harnessDisplayName } from "../../lib/harness";
 import { useWorkspace } from "../../lib/workspace";
 import { SidebarToggle } from "./SidebarControl";
 import { ProjectActionsControl } from "./ProjectActionsControl";
+import { CommitControl } from "./CommitControl";
 import {
+  ChevronDownIcon,
   FolderIcon,
   GitBranchIcon,
   PanelBottomIcon,
@@ -114,7 +116,8 @@ export function Titlebar() {
                 title="Open project folder"
               >
                 <FolderIcon size={12} />
-                <span>Open ▾</span>
+                <span>Open</span>
+                <ChevronDownIcon size={12} />
               </button>
               {openMenu && (
                 <div className="topbar-dropdown-menu">
@@ -153,6 +156,7 @@ export function Titlebar() {
                 {git.dirty && <span className="git-dirty-indicator">•</span>}
               </button>
             )}
+            <CommitControl />
             {git?.available && !git.isRepo && (
               <button
                 type="button"

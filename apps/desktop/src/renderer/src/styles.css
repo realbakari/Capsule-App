@@ -5706,6 +5706,40 @@ label.field input {
   background: rgba(255, 255, 255, 0.08);
 }
 
+/* Without this a disabled item looked exactly like one that works, and the
+   only way to find out was to click it. */
+.topbar-dropdown-menu button:disabled {
+  color: var(--text-faint);
+  cursor: default;
+}
+.topbar-dropdown-menu button:disabled:hover {
+  background: transparent;
+}
+
+.commit-menu {
+  min-width: 15rem;
+  padding: 0.375rem;
+}
+.commit-menu-message {
+  width: 100%;
+  margin-bottom: 0.25rem;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.35rem;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.75rem;
+}
+.commit-menu-message:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--border-color));
+}
+.commit-menu-note {
+  padding: 0.4rem 0.65rem;
+  color: var(--text-faint);
+  font-size: 0.6875rem;
+}
+
 .project-actions-menu {
   width: min(25rem, calc(100vw - 2rem));
   max-height: min(32rem, calc(100vh - 5rem));
@@ -7743,32 +7777,40 @@ details.card > summary {
 /* Why the last turn failed. Sized to its text and capped at three lines, with
    the whole message on hover: a wall of red the width of the thread reads as
    the app breaking rather than one turn going wrong. */
+/* Aligned with the messages and cards it sits under, not floated in the
+   middle of them: it is one more block in the thread's single column. */
 .thread-error {
   display: flex;
   align-items: flex-start;
   gap: 0.5rem;
-  width: fit-content;
-  max-width: min(40rem, 100%);
-  margin: 0.75rem auto 0;
-  padding: 0.5rem 0.5rem 0.5rem 0.75rem;
-  border: 1px solid color-mix(in srgb, var(--red) 40%, transparent);
+  width: 100%;
+  margin: 0.5rem 0 0;
+  padding: 0.4375rem 0.4375rem 0.4375rem 0.625rem;
+  border: 1px solid color-mix(in srgb, var(--red) 32%, transparent);
   border-radius: var(--control-radius);
-  background: color-mix(in srgb, var(--red) 10%, transparent);
-  color: var(--red);
+  background: color-mix(in srgb, var(--red) 8%, transparent);
+  color: var(--fg);
   font-size: 0.8125rem;
+  line-height: 1.45;
+}
+.thread-error > svg:first-child {
+  flex-shrink: 0;
+  margin-top: 0.1875rem;
+  color: var(--red);
 }
 .thread-error-text {
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  flex: 1;
   min-width: 0;
 }
 .thread-error .icon-btn {
   flex-shrink: 0;
-  color: inherit;
-  opacity: 0.7;
+  margin: -0.125rem -0.125rem 0 0;
+  color: var(--muted);
 }
 .thread-error .icon-btn:hover {
-  opacity: 1;
+  color: var(--fg);
 }

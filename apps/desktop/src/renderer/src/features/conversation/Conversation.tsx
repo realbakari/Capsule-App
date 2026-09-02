@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChatMessage } from "@capsule/shared";
-import { CopyIcon, DiffIcon, FileIcon, SparkIcon, TerminalIcon, XIcon } from "../shell/icons";
+import { AlertTriangleIcon, CopyIcon, DiffIcon, FileIcon, SparkIcon, TerminalIcon, XIcon } from "../shell/icons";
 import { useWorkspace } from "../../lib/workspace";
 import { GatewayBanner } from "../shell/GatewayBanner";
 import { ViewErrorBoundary } from "../shell/ErrorBoundary";
@@ -378,23 +378,6 @@ export function Conversation() {
               {git && session && turnTouchedTree && <ChangedFilesCard git={git} />}
             </>
           )}
-          {showFailure && failure ? (
-            <div className="thread-error" role="status">
-              <span className="thread-error-text" title={failure}>
-                {failure}
-              </span>
-              <button
-                type="button"
-                className="icon-btn"
-                aria-label="Dismiss error"
-                onClick={() =>
-                  setDismissedFailures((current) => new Set(current).add(failureKey!))
-                }
-              >
-                <XIcon size={12} />
-              </button>
-            </div>
-          ) : null}
           {/* The work log belongs to the turn, not to the moment it is running.
               It used to be mounted on activeRun alone, so the record of what
               the agent did — every command, every file — disappeared the
@@ -472,6 +455,27 @@ export function Conversation() {
               ) : null}
             </div>
           )}
+          {/* Last in the thread: the outcome of the newest turn, under the
+              record of what that turn did. Above the work log it read as a
+              verdict on the turn before it. */}
+          {showFailure && failure ? (
+            <div className="thread-error" role="status">
+              <AlertTriangleIcon size={13} aria-hidden />
+              <span className="thread-error-text" title={failure}>
+                {failure}
+              </span>
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Dismiss error"
+                onClick={() =>
+                  setDismissedFailures((current) => new Set(current).add(failureKey!))
+                }
+              >
+                <XIcon size={12} />
+              </button>
+            </div>
+          ) : null}
           {pendingApproval && (
             <div className="approval">
               <h3>Approval required</h3>
