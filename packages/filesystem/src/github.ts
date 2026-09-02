@@ -1,5 +1,11 @@
 import { spawnSync } from "node:child_process";
-import type { GitPullRequest, GitStatus, PrMergeMethod } from "@capsule/shared";
+import type {
+  GitPullRequest,
+  GitPullRequestActivity,
+  GitPullRequestDetail,
+  GitStatus,
+  PrMergeMethod,
+} from "@capsule/shared";
 
 function run(
   command: string,
@@ -91,6 +97,7 @@ export function parsePullRequestList(raw: string): GitPullRequest[] {
       statusCheckRollup?: unknown;
       author?: { login?: string; name?: string };
       headRefName?: string;
+      createdAt?: string;
       updatedAt?: string;
     }>;
     if (!Array.isArray(rows)) return [];
@@ -107,6 +114,7 @@ export function parsePullRequestList(raw: string): GitPullRequest[] {
         checks: checkRollup(row.statusCheckRollup),
         author: row.author?.login || row.author?.name || undefined,
         headRefName: row.headRefName || undefined,
+        createdAt: row.createdAt || undefined,
         updatedAt: row.updatedAt || undefined,
       }));
   } catch {
@@ -123,12 +131,132 @@ export function listPullRequests(cwd: string): GitPullRequest[] {
       "--limit",
       "50",
       "--json",
-      "number,url,title,isDraft,state,mergeStateStatus,reviewDecision,statusCheckRollup,author,headRefName,updatedAt",
+      "number,url,title,isDraft,state,mergeStateStatus,reviewDecision,statusCheckRollup,author,headRefName,createdAt,updatedAt",
     ],
     cwd,
     15_000,
   );
   return result.ok ? parsePullRequestList(result.stdout) : [];
+}
+
+function actorName(value: unknown): string | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const actor = value as { login?: unknown; name?: unknown };
+  if (typeof actor.login === "string" && actor.login) return actor.login;
+  return typeof actor.name === "string" && actor.name ? actor.name : undefined;
+}
+
+/** Parse the `gh pr view --json` shape without trusting optional host fields. */
+export function parsePullRequestDetail(raw: string, diff = ""): GitPullRequestDetail | undefined {
+  try {
+    const row = JSON.parse(raw) as Record<string, unknown>;
+    const number = typeof row.number === "number" ? row.number : 0;
+    const url = typeof row.url === "string" ? row.url : "";
+    if (!number || !url) return undefined;
+    const comments = Array.isArray(row.comments) ? row.comments : [];
+    const reviews = Array.isArray(row.reviews) ? row.reviews : [];
+    const activity: GitPullRequestActivity[] = [
+      ...comments.map((value, index) => {
+        const item = value as Record<string, unknown>;
+        return {
+          id: typeof item.id === "string" ? item.id : `comment-${index}`,
+          kind: "comment" as const,
+          author: actorName(item.author),
+          body: typeof item.body === "string" ? item.body : "",
+          createdAt: typeof item.createdAt === "string" ? item.createdAt : undefined,
+        };
+      }),
+      ...reviews.map((value, index) => {
+        const item = value as Record<string, unknown>;
+        return {
+          id: typeof item.id === "string" ? item.id : `review-${index}`,
+          kind: "review" as const,
+          author: actorName(item.author),
+          body: typeof item.body === "string" ? item.body : "",
+          createdAt: typeof item.submittedAt === "string" ? item.submittedAt : undefined,
+          state: typeof item.state === "string" ? item.state : undefined,
+        };
+      }),
+    ].sort((left, right) => (left.createdAt ?? "").localeCompare(right.createdAt ?? ""));
+    const labels = (Array.isArray(row.labels) ? row.labels : [])
+      .map((value) => {
+        if (typeof value === "string") return value;
+        return value && typeof value === "object" && !Array.isArray(value)
+          ? String((value as { name?: unknown }).name ?? "")
+          : "";
+      })
+      .filter(Boolean);
+    const reviewers = (Array.isArray(row.reviewRequests) ? row.reviewRequests : [])
+      .map(actorName)
+      .filter((value): value is string => Boolean(value));
+    const commits = (Array.isArray(row.commits) ? row.commits : []).map((value, index) => {
+      const item = value as Record<string, unknown>;
+      const authors = (Array.isArray(item.authors) ? item.authors : [])
+        .map(actorName)
+        .filter((value): value is string => Boolean(value));
+      return {
+        oid: typeof item.oid === "string" ? item.oid : `commit-${index}`,
+        title: typeof item.messageHeadline === "string" ? item.messageHeadline : "Commit",
+        body: typeof item.messageBody === "string" && item.messageBody ? item.messageBody : undefined,
+        authoredAt: typeof item.authoredDate === "string" ? item.authoredDate : undefined,
+        authors,
+      };
+    });
+    const files = (Array.isArray(row.files) ? row.files : []).flatMap((value) => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+      const item = value as Record<string, unknown>;
+      if (typeof item.path !== "string" || !item.path) return [];
+      return [{
+        path: item.path,
+        additions: typeof item.additions === "number" ? item.additions : 0,
+        deletions: typeof item.deletions === "number" ? item.deletions : 0,
+      }];
+    });
+    const statusCheckRollup = row.statusCheckRollup;
+    return {
+      number,
+      url,
+      title: typeof row.title === "string" ? row.title : `Pull request #${number}`,
+      body: typeof row.body === "string" ? row.body : "",
+      isDraft: Boolean(row.isDraft),
+      state: typeof row.state === "string" ? row.state : "OPEN",
+      mergeState: typeof row.mergeStateStatus === "string" ? row.mergeStateStatus : undefined,
+      reviewDecision: typeof row.reviewDecision === "string" && row.reviewDecision
+        ? row.reviewDecision
+        : undefined,
+      checks: checkRollup(statusCheckRollup),
+      author: actorName(row.author),
+      headRefName: typeof row.headRefName === "string" ? row.headRefName : undefined,
+      baseRefName: typeof row.baseRefName === "string" ? row.baseRefName : undefined,
+      createdAt: typeof row.createdAt === "string" ? row.createdAt : undefined,
+      updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : undefined,
+      additions: typeof row.additions === "number" ? row.additions : 0,
+      deletions: typeof row.deletions === "number" ? row.deletions : 0,
+      changedFiles: typeof row.changedFiles === "number" ? row.changedFiles : files.length,
+      labels,
+      reviewers,
+      activity,
+      commits,
+      files,
+      diff,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+export function readPullRequestDetail(cwd: string, number: number): GitPullRequestDetail | undefined {
+  if (!Number.isInteger(number) || number < 1) return undefined;
+  const fields = [
+    "number", "url", "title", "body", "isDraft", "state", "mergeStateStatus",
+    "reviewDecision", "statusCheckRollup", "author", "headRefName", "baseRefName", "createdAt", "updatedAt",
+    "additions", "deletions", "changedFiles", "labels", "reviewRequests", "comments", "reviews",
+    "commits", "files",
+  ].join(",");
+  const detail = run("gh", ["pr", "view", String(number), "--json", fields], cwd, 20_000);
+  if (!detail.ok || !detail.stdout.trim()) return undefined;
+  const patch = run("gh", ["pr", "diff", String(number), "--color=never"], cwd, 20_000);
+  return parsePullRequestDetail(detail.stdout, patch.ok ? patch.stdout : "");
 }
 
 export function viewPullRequest(cwd: string): GitPullRequest | undefined {

@@ -33,7 +33,7 @@ export function ContextWindowMeter({
    * theme entirely.
    */
   const stroke =
-    tone === "critical" ? "var(--red)" : tone === "warn" ? "var(--yellow)" : "var(--text-faint)";
+    tone === "critical" ? "var(--red)" : tone === "warn" ? "var(--yellow)" : "var(--text-muted)";
 
   // Close popover on outside click.
   useEffect(() => {
@@ -73,7 +73,7 @@ export function ContextWindowMeter({
             cy={size / 2}
             r={radius}
             fill="none"
-            stroke="rgba(255,255,255,0.1)"
+            stroke="var(--border-color)"
             strokeWidth={strokeWidth}
           />
           <circle

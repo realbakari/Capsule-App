@@ -64,3 +64,37 @@ describe("splitProjectThreads", () => {
     expect(split.rest.map((item) => item.id)).toEqual(["s"]);
   });
 });
+
+describe("threads that answered", () => {
+  it("is not a failed thread when the run left an answer", () => {
+    expect(
+      resolveSidebarThreadKind({ liveHarness: false, runStatus: "failed", runAnswered: true }),
+    ).toBe("ready");
+  });
+
+  it("is still failed when nothing came back", () => {
+    expect(resolveSidebarThreadKind({ liveHarness: false, runStatus: "failed" })).toBe("failed");
+  });
+});
+
+describe("contract verdicts in the sidebar", () => {
+  it("does not call a thread failed over Capsule's own verdict", () => {
+    expect(
+      resolveSidebarThreadKind({
+        liveHarness: false,
+        runStatus: "failed",
+        runError: "Verification failed",
+      }),
+    ).toBe("ready");
+  });
+
+  it("still reports a fault the runtime reported", () => {
+    expect(
+      resolveSidebarThreadKind({
+        liveHarness: false,
+        runStatus: "failed",
+        runError: "Claude Code exited before answering.",
+      }),
+    ).toBe("failed");
+  });
+});

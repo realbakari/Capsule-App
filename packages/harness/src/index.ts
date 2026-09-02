@@ -55,6 +55,7 @@ export function extraBinDirs(): string[] {
     path.join(home, ".codex", "bin"),
     path.join(home, ".cursor", "bin"),
     path.join(home, ".gemini", "bin"),
+    path.join(home, ".grok", "bin"),
     path.join(home, ".local", "share", "fnm", "current", "bin"),
     path.join(home, ".npm-global", "bin"),
     path.join(home, ".nvm", "current", "bin"),
@@ -335,6 +336,8 @@ export function localDoctorChecks(input: {
   loginState?: HarnessLoginState;
   acpxPermissionMode?: string;
   acpxPolicyKnown?: boolean;
+  acpxAgentConfigured?: boolean;
+  acpxAgentError?: string;
 }): HarnessDoctorCheck[] {
   return [
     {
@@ -413,6 +416,20 @@ export function localDoctorChecks(input: {
           },
         ]
       : []),
+    ...(input.preset.acpxCommand
+      ? [
+          {
+            id: "acpx-agent",
+            label: `${input.preset.name} ACP command`,
+            ok: input.acpxAgentConfigured === true,
+            detail:
+              input.acpxAgentConfigured === true
+                ? `Registered \`${input.preset.acpxCommand.command} ${(input.preset.acpxCommand.args ?? []).join(" ")}\` with OpenClaw acpx.`
+                : input.acpxAgentError ??
+                  `OpenClaw must map \`${input.preset.openclawAgentId}\` to \`${input.preset.acpxCommand.command} ${(input.preset.acpxCommand.args ?? []).join(" ")}\`. Run Doctor while the Gateway is connected.`,
+          },
+        ]
+      : []),
   ];
 }
 
@@ -423,9 +440,10 @@ export function buildDoctorReport(input: {
 }): HarnessDoctorReport {
   const gateway = input.checks.find((check) => check.id === "gateway")?.ok ?? false;
   const acpx = input.checks.find((check) => check.id === "acpx")?.ok ?? false;
+  const acpxAgent = input.checks.find((check) => check.id === "acpx-agent")?.ok ?? true;
   return {
     harnessId: input.harnessId,
-    ready: gateway && acpx,
+    ready: gateway && acpx && acpxAgent,
     checks: input.checks,
     gatewayOutput: input.gatewayOutput,
   };

@@ -15,6 +15,7 @@ const CLONE_COMMAND =
 const HARNESSES: Array<{ name: string; cli: string }> = [
   { name: "Claude Code", cli: "claude" },
   { name: "Codex", cli: "codex" },
+  { name: "Grok Build", cli: "grok" },
   { name: "Cursor", cli: "cursor-agent" },
   { name: "OpenCode", cli: "opencode" },
   { name: "Gemini CLI", cli: "gemini" },
@@ -65,8 +66,8 @@ export function LandingPage({ demo = true }: { demo?: boolean }) {
         <img className="site-hero-mark" src="./icon.png" alt="" width={72} height={72} />
         <h1>A desktop workspace for the coding agents you already run.</h1>
         <p className="site-lede">
-          Capsule drives Claude Code, Codex and other ACP harnesses from one window — projects,
-          conversations, diffs and approvals, on your own machine.
+          Capsule drives Claude Code, Codex, Grok Build and other ACP harnesses from one window —
+          projects, conversations, diffs and approvals, on your own machine.
         </p>
         <div className="site-cta">
           <a className="site-btn-primary" href={`${REPO}/releases`} target="_blank" rel="noreferrer">

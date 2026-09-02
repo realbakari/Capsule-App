@@ -205,11 +205,15 @@ export function Sidebar() {
   const activeSessions = sessions.filter((item) => item.state === "active");
   const needle = query.trim().toLowerCase();
 
-  const kindOf = (session: Session): SidebarThreadKind =>
-    resolveSidebarThreadKind({
+  const kindOf = (session: Session): SidebarThreadKind => {
+    const run = latestRunForSession(projectRuns, session.id);
+    return resolveSidebarThreadKind({
       liveHarness: isWorkingHarnessState(session.harnessState),
-      runStatus: latestRunForSession(projectRuns, session.id)?.status,
+      runStatus: run?.status,
+      runAnswered: Boolean(run?.result?.trim()),
+      runError: run?.error,
     });
+  };
 
   const filteredProjects = useMemo(() => {
     if (!needle) return projects;

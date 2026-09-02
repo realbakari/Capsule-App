@@ -8,12 +8,13 @@ you in, and never resells tokens.
 |----------|-----------|
 | Claude Code | `claude` |
 | Codex | `codex` |
+| Grok Build | `grok` |
 | Cursor | `cursor-agent` |
 | OpenCode | `opencode` |
 | Gemini CLI | `gemini` |
 | GitHub Copilot | `copilot` |
 
-Sign in with each tool's own flow — `claude`, `codex login`, and so on.
+Sign in with each tool's own flow — `claude`, `codex login`, `grok login`, and so on.
 
 ## Choose and check a harness
 
@@ -27,6 +28,11 @@ catalog. An open session appears in the selected agent's detail panel, where
 you can refresh its status, cancel the current turn, close it, or update its
 permissions, model, timeout, and agent-specific mode.
 
+When the live agent publishes its available models through ACP, **Model** is a
+dropdown containing those exact choices. If the agent does not publish a list,
+Capsule shows a model-id field instead. Model ids belong to the selected agent;
+Capsule does not reuse one provider's names for another.
+
 Capsule disables **Start a session** when the Gateway is disconnected, the
 project has no folder, acpx is unavailable, or the CLI still needs sign-in.
 Run the check shown in the detail panel to see which prerequisite is missing.
@@ -38,10 +44,11 @@ and the Gateway is what launches these CLIs, so a key entered in Capsule would
 never reach them.
 
 Set it where the Gateway starts instead. Codex reads `CODEX_API_KEY` or
-`OPENAI_API_KEY`; Claude Code reads `ANTHROPIC_API_KEY`:
+`OPENAI_API_KEY`; Claude Code reads `ANTHROPIC_API_KEY`; Grok Build reads
+`XAI_API_KEY`:
 
 ```bash
-OPENAI_API_KEY=… ANTHROPIC_API_KEY=… openclaw gateway run
+OPENAI_API_KEY=… ANTHROPIC_API_KEY=… XAI_API_KEY=… openclaw gateway run
 ```
 
 A Gateway installed as a background service does not inherit your shell, so

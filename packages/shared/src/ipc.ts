@@ -59,6 +59,7 @@ export const IPC_CHANNELS = {
   validateAttachments: "capsule:validateAttachments",
   gitStatus: "capsule:gitStatus",
   listPullRequests: "capsule:listPullRequests",
+  getPullRequest: "capsule:getPullRequest",
   gitInit: "capsule:gitInit",
   gitDiff: "capsule:gitDiff",
   checkoutBranch: "capsule:checkoutBranch",

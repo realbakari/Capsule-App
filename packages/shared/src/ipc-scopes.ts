@@ -48,6 +48,7 @@ const READ_CHANNELS: ChannelName[] = [
   "gitStatus",
   "gitDiff",
   "listPullRequests",
+  "getPullRequest",
   "listLocalServers",
   "listHarnesses",
   "harnessStatus",

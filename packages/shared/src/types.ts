@@ -343,7 +343,46 @@ export interface GitPullRequest {
   checksSummary?: string;
   author?: string;
   headRefName?: string;
+  createdAt?: string;
   updatedAt?: string;
+}
+
+export interface GitPullRequestActivity {
+  id: string;
+  kind: "comment" | "review";
+  author?: string;
+  body: string;
+  createdAt?: string;
+  state?: string;
+}
+
+export interface GitPullRequestCommit {
+  oid: string;
+  title: string;
+  body?: string;
+  authoredAt?: string;
+  authors: string[];
+}
+
+export interface GitPullRequestFile {
+  path: string;
+  additions: number;
+  deletions: number;
+}
+
+/** Host-backed detail for Capsule's in-app pull-request reader. */
+export interface GitPullRequestDetail extends GitPullRequest {
+  body: string;
+  baseRefName?: string;
+  additions: number;
+  deletions: number;
+  changedFiles: number;
+  labels: string[];
+  reviewers: string[];
+  activity: GitPullRequestActivity[];
+  commits: GitPullRequestCommit[];
+  files: GitPullRequestFile[];
+  diff: string;
 }
 
 export interface GitStatus {

@@ -954,6 +954,13 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.listPullRequests, (projectId, sessionId) =>
     requireEngine().listPullRequests(String(projectId), sessionId ? String(sessionId) : undefined),
   );
+  handle(IPC_CHANNELS.getPullRequest, (projectId, number, sessionId) =>
+    requireEngine().pullRequestDetail(
+      String(projectId),
+      Number(number),
+      sessionId ? String(sessionId) : undefined,
+    ),
+  );
   handle(IPC_CHANNELS.gitInit, (projectId) => requireEngine().gitInit(String(projectId)));
   handle(IPC_CHANNELS.gitDiff, (projectId, relative, sessionId) =>
     requireEngine().gitDiff(

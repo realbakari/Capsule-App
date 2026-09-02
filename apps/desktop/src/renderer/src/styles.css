@@ -608,6 +608,24 @@
   border-bottom: 1px solid var(--border-color);
   -webkit-app-region: drag;
   flex-shrink: 0;
+  container-type: inline-size;
+  container-name: page-header;
+}
+/* Chips give up what they can spare before they start losing letters: first
+   the branch, which the composer's footer also carries, then the labels. Left
+   to shrink on their own they compressed into unreadable slivers of icon. */
+@container page-header (max-width: 46rem) {
+  .topbar-chip-btn.git-chip {
+    display: none;
+  }
+}
+@container page-header (max-width: 34rem) {
+  .topbar-chip-btn > span {
+    display: none;
+  }
+  .topbar-chip-btn {
+    padding: 0 0.4rem;
+  }
 }
 .page-header.with-traffic {
   padding-left: var(--workspace-titlebar-content-left);
@@ -636,9 +654,17 @@
   gap: 0.25rem;
   flex-shrink: 0;
 }
-.header-lead {
+/* The action group gives way before the title does. It used to be the other
+   way round: at a narrow window the chips held their full width and the
+   breadcrumb was squeezed to nothing, so the header stopped saying which
+   conversation you were in. */
+.header-actions:not(.header-lead) {
   min-width: 0;
-  flex: 1;
+  flex-shrink: 1;
+}
+.header-lead {
+  flex: 1 1 auto;
+  min-width: 4rem;
   justify-content: flex-start;
 }
 .grow {
@@ -1340,23 +1366,16 @@
   font-size: 0.5625rem;
   font-weight: 700;
 }
+/* Wraps rather than spills. Held on one line, the last control ran out from
+   under the row and printed itself on top of the attach and send buttons. */
 .composer-controls {
   display: flex;
   align-items: center;
-  gap: 0.15rem;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.25rem;
   min-width: 0;
   overflow: visible;
 }
-/* A hairline groups the controls into one row of settings. Without it the
-   ghost buttons run together into a sentence. */
-.composer-controls-divider {
-  width: 1px;
-  height: 0.9rem;
-  flex-shrink: 0;
-  margin: 0 0.3rem;
-  background: var(--border-color);
-}
-
 .menu-select {
   position: relative;
   flex-shrink: 0;
@@ -2484,9 +2503,170 @@ select:focus,
 }
 .codex-pr-copy b { font-size: 0.75rem; font-weight: 550; }
 .codex-pr-copy small { color: var(--text-faint); font-size: 0.625rem; }
+.codex-pr-checks.success,
 .codex-pr-checks.passing { color: var(--green); }
+.codex-pr-checks.failure,
 .codex-pr-checks.failing { color: var(--red); }
 .codex-pr-checks.pending { color: var(--yellow); }
+.pr-detail {
+  display: grid;
+  gap: 0;
+  min-width: 0;
+}
+.pr-detail-actions,
+.pr-detail-kicker,
+.pr-branch-line,
+.pr-tabs,
+.pr-timeline-head,
+.pr-file-list > div {
+  display: flex;
+  align-items: center;
+}
+.pr-detail-actions {
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.8rem;
+}
+.pr-detail-actions .ghost { padding-left: 0; }
+.pr-detail-hero {
+  padding: 0 0.2rem 0.85rem;
+}
+.pr-detail-kicker {
+  justify-content: space-between;
+  gap: 0.5rem;
+  color: var(--text-faint);
+  font-size: 0.6875rem;
+}
+.pr-detail-hero h3 {
+  margin: 0.35rem 0 0.3rem;
+  color: var(--text);
+  font-size: 1.0625rem;
+  line-height: 1.35;
+  letter-spacing: -0.02em;
+}
+.pr-detail-hero p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+}
+.pr-branch-line {
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+  color: var(--text-faint);
+  font-size: 0.625rem;
+}
+.pr-diff-stat {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-style: normal;
+  white-space: nowrap;
+}
+.pr-diff-stat i { color: var(--green); font-style: normal; }
+.pr-diff-stat b { color: var(--red); font-weight: 500; }
+.pr-tabs {
+  gap: 0.2rem;
+  padding: 0.3rem;
+  border-top: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
+}
+.pr-tabs button {
+  min-height: 1.75rem;
+  border: 0;
+  border-radius: 0.4rem;
+  padding: 0 0.7rem;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 0.6875rem;
+}
+.pr-tabs button:hover { color: var(--text); background: var(--bg-hover); }
+.pr-tabs button.active { color: var(--text); background: var(--surface-2); }
+.pr-loading { padding: 1rem 0.2rem; }
+.pr-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-bottom: 1px solid var(--border-color);
+}
+.pr-meta-grid > div {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+  padding: 0.7rem 0.4rem;
+}
+.pr-meta-grid span {
+  color: var(--text-faint);
+  font-size: 0.625rem;
+}
+.pr-meta-grid b {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pr-section { padding: 0.85rem 0.2rem; }
+.pr-section h4 {
+  margin: 0 0 0.65rem;
+  font-size: 0.75rem;
+}
+.pr-section .body,
+.pr-timeline .body {
+  font-size: 0.75rem;
+  line-height: 1.55;
+}
+.pr-timeline {
+  padding: 0.8rem 0.2rem 0.2rem 0.85rem;
+}
+.pr-timeline article {
+  position: relative;
+  min-height: 3.2rem;
+  border-left: 1px solid var(--border-color);
+  padding: 0 0 1rem 1rem;
+}
+.pr-timeline article:last-child { border-left-color: transparent; }
+.pr-timeline-dot {
+  position: absolute;
+  top: 0.35rem;
+  left: -0.25rem;
+  width: 0.4375rem;
+  height: 0.4375rem;
+  border: 1px solid var(--overlay-0);
+  border-radius: 50%;
+  background: var(--base);
+}
+.pr-timeline-head {
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-bottom: 0.35rem;
+  font-size: 0.6875rem;
+}
+.pr-timeline-head b { font-weight: 600; }
+.pr-timeline-head span,
+.pr-timeline-head time { color: var(--text-faint); }
+.pr-timeline-head time { margin-left: auto; font-size: 0.625rem; }
+.pr-timeline-head code { color: var(--text-muted); }
+.pr-code { padding-top: 0.55rem; }
+.pr-file-list {
+  margin-bottom: 0.65rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+.pr-file-list > div {
+  gap: 0.5rem;
+  min-height: 2rem;
+  border-bottom: 1px solid var(--border-color);
+  padding: 0.35rem 0.55rem;
+  font-size: 0.625rem;
+}
+.pr-file-list > div:last-child { border-bottom: 0; }
+.pr-file-list .mono {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .codex-terminal-pane {
   flex: 1;
   display: flex;
@@ -5630,6 +5810,8 @@ label.field input {
   align-items: center;
   gap: 0.375rem;
   margin-right: 0.25rem;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .topbar-chip-btn {
@@ -5647,7 +5829,15 @@ label.field input {
   color: var(--text);
   cursor: pointer;
   white-space: nowrap;
+  min-width: 0;
   transition: background var(--motion-instant, 120ms) ease, border-color var(--motion-instant, 120ms) ease;
+}
+.topbar-chip-btn > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.topbar-chip-btn > svg {
+  flex-shrink: 0;
 }
 
 .topbar-chip-btn:hover {
@@ -7418,8 +7608,15 @@ button.shortcut-keys.capturing {
   font-size: 0.6875rem;
   color: var(--text-faint);
 }
-.harness-options input {
+.harness-options input,
+.harness-options select {
   min-width: 0;
+  width: 100%;
+}
+.harness-options label > small {
+  min-height: 2.1em;
+  font-size: 0.625rem;
+  line-height: 1.35;
 }
 .harness-workspace + details.card { margin-top: 0; }
 @media (max-width: 820px) {

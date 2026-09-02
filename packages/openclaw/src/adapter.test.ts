@@ -35,6 +35,53 @@ describe("OpenClawAdapter ACP lifecycle", () => {
     });
   }
 
+  it("registers Grok's native ACP command with acpx", async () => {
+    const adapter = new OpenClawAdapter();
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce({
+        parsed: { plugins: { entries: { acpx: { enabled: true, config: {} } } } },
+      })
+      .mockResolvedValueOnce({});
+    (adapter as unknown as { client: { request: typeof request } }).client = { request };
+
+    await expect(
+      adapter.ensureAcpxAgentCommand("grok", { command: "grok", args: ["agent", "stdio"] }),
+    ).resolves.toEqual({ already: false, applied: true });
+    expect(request).toHaveBeenNthCalledWith(2, "config.patch", {
+      plugins: {
+        entries: {
+          acpx: {
+            enabled: true,
+            config: { agents: { grok: { command: "grok", args: ["agent", "stdio"] } } },
+          },
+        },
+      },
+    });
+  });
+
+  it("keeps an existing Grok ACP command without rewriting Gateway config", async () => {
+    const adapter = new OpenClawAdapter();
+    const request = vi.fn().mockResolvedValue({
+      parsed: {
+        plugins: {
+          entries: {
+            acpx: {
+              enabled: true,
+              config: { agents: { grok: { command: "grok", args: ["agent", "stdio"] } } },
+            },
+          },
+        },
+      },
+    });
+    (adapter as unknown as { client: { request: typeof request } }).client = { request };
+
+    await expect(
+      adapter.ensureAcpxAgentCommand("grok", { command: "grok", args: ["agent", "stdio"] }),
+    ).resolves.toEqual({ already: true, applied: false });
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
   it("subscribes for a control reply before sending a fast slash command", async () => {
     const adapter = new OpenClawAdapter();
     const send = replyToControl(adapter, "ACP session closed");

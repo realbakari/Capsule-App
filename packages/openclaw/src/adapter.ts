@@ -52,11 +52,15 @@ import {
   readLocalGatewayBootstrapToken,
 } from "./discovery.js";
 import {
+  acpxAgentPatch,
   acpxPermissionPatch,
   isAcpPermissionRequestEvent,
+  readAcpAllowedAgents,
   readAcpPermissionRequest,
+  readAcpxAgentCommand,
   readAcpxHarnessPolicy,
   resolveAcpxEnabled,
+  type AcpxAgentCommand,
   type AcpxHarnessPolicy,
 } from "./plugins.js";
 import {
@@ -321,6 +325,71 @@ export class OpenClawAdapter implements AgentRuntime {
   async readAcpxHarnessPolicy(): Promise<AcpxHarnessPolicy> {
     const config = await this.request("config.get", {}).catch(() => undefined);
     return readAcpxHarnessPolicy(config);
+  }
+
+  /**
+   * Registers a CLI's native ACP stdio command with acpx. This is needed for
+   * first-class harnesses such as Grok Build that are valid ACP agents but are
+   * not bundled aliases in every OpenClaw/acpx release.
+   */
+  async ensureAcpxAgentCommand(
+    agentId: string,
+    requested: AcpxAgentCommand,
+  ): Promise<{ already: boolean; applied: boolean; error?: string }> {
+    let config: unknown;
+    try {
+      config = await this.request("config.get", {});
+    } catch (error) {
+      return {
+        already: false,
+        applied: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+
+    const current = readAcpxAgentCommand(config, agentId);
+    const allowedAgents = readAcpAllowedAgents(config);
+    const commandMatches =
+      current?.command === requested.command &&
+      JSON.stringify(current.args ?? []) === JSON.stringify(requested.args ?? []);
+    const allowlistMatches = allowedAgents === undefined || allowedAgents.includes(agentId);
+    if (commandMatches && allowlistMatches) return { already: true, applied: false };
+
+    const pluginId = current?.pluginId ?? readAcpxHarnessPolicy(config).pluginId ?? "acpx";
+    const definition = {
+      command: requested.command,
+      ...(requested.args ? { args: requested.args } : {}),
+    };
+    const patch = acpxAgentPatch(pluginId, agentId, definition, allowedAgents);
+    const path = `plugins.entries.${pluginId}.config.agents.${agentId}`;
+    const attempts: Array<{ method: string; params: unknown }> = [
+      { method: "config.patch", params: patch },
+      { method: "config.patch", params: { patch } },
+      { method: "config.set", params: { path, value: definition } },
+      { method: "config.set", params: { key: path, value: definition } },
+    ];
+    let lastError: string | undefined;
+    for (const attempt of attempts) {
+      try {
+        await this.request(attempt.method, attempt.params);
+        if (
+          attempt.method === "config.set" &&
+          allowedAgents &&
+          !allowedAgents.includes(agentId)
+        ) {
+          const value = [...new Set([...allowedAgents, agentId])];
+          try {
+            await this.request("config.set", { path: "acp.allowedAgents", value });
+          } catch {
+            await this.request("config.set", { key: "acp.allowedAgents", value });
+          }
+        }
+        return { already: false, applied: true };
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : String(error);
+      }
+    }
+    return { already: false, applied: false, error: lastError };
   }
 
   /**

@@ -1,6 +1,7 @@
 export const ACP_HARNESS_IDS = [
   "claude",
   "codex",
+  "grok",
   "copilot",
   "cursor",
   "droid",
@@ -20,7 +21,7 @@ export const ACP_HARNESS_IDS = [
 
 export type HarnessId = (typeof ACP_HARNESS_IDS)[number];
 
-export const PRIMARY_HARNESS_IDS: HarnessId[] = ["claude", "codex"];
+export const PRIMARY_HARNESS_IDS: HarnessId[] = ["claude", "codex", "grok"];
 
 export type HarnessReadiness =
   | "ready"
@@ -115,6 +116,12 @@ export interface HarnessPreset {
   loginProbeArgs?: string[];
   /** What the user has to run when the probe says logged out. */
   loginHint?: string;
+  /**
+   * Native ACP stdio command for agents that are not built into every acpx
+   * release. Capsule registers this thin mapping with OpenClaw before Doctor
+   * or Spawn; the coding loop still belongs to the CLI and acpx.
+   */
+  acpxCommand?: { command: string; args?: string[] };
 }
 
 export interface HarnessDoctorCheck {
@@ -184,6 +191,12 @@ export interface AcpStatusSnapshot {
   permissions?: string;
   timeout?: string;
   thinking?: string;
+  models?: AcpModelCatalog;
+}
+
+export interface AcpModelCatalog {
+  currentModelId?: string;
+  availableModels: Array<{ modelId: string; name: string }>;
 }
 
 /** Lightweight session shape so harness types do not import the full domain graph. */
@@ -215,6 +228,7 @@ function preset(
     configFilePath?: string;
     providerLocked?: boolean;
     featured?: boolean;
+    acpxCommand?: { command: string; args?: string[] };
   },
 ): HarnessPreset {
   return {
@@ -255,6 +269,22 @@ export const PRESET_HARNESSES: HarnessPreset[] = [
     "https://developers.openai.com/codex/cli",
     { probeArgs: ["login", "status"], hint: "Run `codex login`" },
     { underlyingCli: "codex", configFilePath: "~/.codex/config.toml", featured: true },
+  ),
+  preset(
+    "grok",
+    "Grok Build",
+    "xAI Grok Build through its native ACP stdio mode. Capsule owns the workspace; Grok owns the coding loop.",
+    ["grok"],
+    "Install and authenticate Grok Build on the OpenClaw Gateway host.",
+    "https://github.com/xai-org/grok-build",
+    undefined,
+    {
+      underlyingCli: "grok",
+      configFilePath: "~/.grok/config.toml",
+      providerLocked: true,
+      featured: true,
+      acpxCommand: { command: "grok", args: ["agent", "stdio"] },
+    },
   ),
   preset(
     "copilot",
@@ -393,7 +423,7 @@ export function isHarnessId(value: string | undefined): value is HarnessId {
 }
 
 export function isPrimaryHarness(value: string | undefined): boolean {
-  return value === "claude" || value === "codex";
+  return value === "claude" || value === "codex" || value === "grok";
 }
 
 export function quoteAcpArg(value: string): string {
@@ -532,20 +562,93 @@ export function acpOptionCommand(
   return acpSetModeCommand(value, target);
 }
 
+function availableModelsFromUnknown(value: unknown): AcpModelCatalog["availableModels"] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    if (typeof entry === "string") return [{ modelId: entry, name: entry }];
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
+    const model = entry as Record<string, unknown>;
+    const modelId = [model.modelId, model.value, model.id].find(
+      (candidate): candidate is string => typeof candidate === "string" && candidate.length > 0,
+    );
+    if (modelId) {
+      const name = typeof model.name === "string" && model.name ? model.name : modelId;
+      return [{ modelId, name }];
+    }
+    return availableModelsFromUnknown(model.options);
+  });
+}
+
+function modelCatalogFromUnknown(value: unknown): AcpModelCatalog | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  const currentModelId =
+    typeof record.currentModelId === "string"
+      ? record.currentModelId
+      : typeof record.currentValue === "string"
+        ? record.currentValue
+        : undefined;
+  const rawModels = Array.isArray(record.availableModels)
+    ? record.availableModels
+    : Array.isArray(record.availableModelIds)
+      ? record.availableModelIds
+      : undefined;
+  if (!rawModels) return undefined;
+  const availableModels = availableModelsFromUnknown(rawModels);
+  if (!currentModelId && availableModels.length === 0) return undefined;
+  return { currentModelId, availableModels };
+}
+
+function modelCatalogFromConfigOptions(value: unknown): AcpModelCatalog | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const option = value.find((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return false;
+    const record = entry as Record<string, unknown>;
+    return record.id === "model" || record.category === "model";
+  });
+  if (!option || typeof option !== "object" || Array.isArray(option)) return undefined;
+  const record = option as Record<string, unknown>;
+  const direct = modelCatalogFromUnknown({
+    currentValue: record.currentValue,
+    availableModels: record.options,
+  });
+  return direct?.availableModels.length ? direct : undefined;
+}
+
+function statusJsonLine(text: string, label: string): Record<string, unknown> | undefined {
+  const line = text.match(new RegExp(`^${label}:\\s*(\\{.*\\})$`, "im"))?.[1];
+  if (!line) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(line);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function parseAcpStatus(text: string): AcpStatusSnapshot {
   const pick = (label: string) => {
-    const match = text.match(new RegExp(`${label}\\s*[:\\-]?\\s*(\\S+)`, "i"));
+    const match = text.match(new RegExp(`(?:^|\\s)${label}\\s*[:=\\-]\\s*([^,\\s]+)`, "i"));
     return match?.[1]?.replace(/[,"']+$/, "");
   };
+  const runtimeDetails = statusJsonLine(text, "runtimeDetails");
+  const modelLine = statusJsonLine(text, "models");
+  const models =
+    modelCatalogFromUnknown(modelLine) ??
+    modelCatalogFromUnknown(runtimeDetails?.models) ??
+    modelCatalogFromConfigOptions(runtimeDetails?.configOptions);
   return {
     backend: pick("backend"),
-    mode: pick("mode"),
+    mode: pick("sessionMode") ?? pick("mode"),
     state: pick("state") ?? pick("status"),
-    model: pick("model"),
+    model: pick("model") ?? models?.currentModelId,
     cwd: pick("cwd") ?? pick("working.?directory"),
     permissions: pick("permissions") ?? pick("permission.?profile") ?? pick("approval.?policy"),
-    timeout: pick("timeout"),
+    timeout: pick("timeoutSeconds") ?? pick("timeout"),
     thinking: pick("thinking") ?? pick("reasoning.?effort"),
+    models,
   };
 }
 

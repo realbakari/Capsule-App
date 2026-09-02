@@ -1,3 +1,5 @@
+import { isInternalVerdict } from "./thread-error.js";
+
 export type SidebarThreadKind = "working" | "approval" | "failed" | "ready";
 
 /** In-flight ACP only. `waiting` is an idle persistent session, not work. */
@@ -20,6 +22,10 @@ export function latestRunForSession<T extends { sessionId: string; createdAt: st
 export function resolveSidebarThreadKind(input: {
   liveHarness: boolean;
   runStatus?: string;
+  /** Whether that run left an answer behind. */
+  runAnswered?: boolean;
+  /** The error that run stored, if it stored one. */
+  runError?: string;
 }): SidebarThreadKind {
   if (input.runStatus === "approval_required" || input.runStatus === "blocked") return "approval";
   if (
@@ -30,7 +36,16 @@ export function resolveSidebarThreadKind(input: {
   ) {
     return "working";
   }
-  if (input.runStatus === "failed") return "failed";
+  // A turn that answered is not a failed thread, whatever a later check
+  // decided about it — nor is one whose only complaint is Capsule's own
+  // contract verdict. The thread reads the same way: see `threadError`.
+  if (
+    input.runStatus === "failed" &&
+    !input.runAnswered &&
+    !isInternalVerdict(input.runError)
+  ) {
+    return "failed";
+  }
   return "ready";
 }
 

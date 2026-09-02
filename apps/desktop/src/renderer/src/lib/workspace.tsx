@@ -25,6 +25,7 @@ import {
   type FileEntry,
   type GitStatus,
   type HarnessDoctorReport,
+  type HarnessLiveStatus,
   type HarnessPermissionProfile,
   type HarnessStatus,
   type MessageAttachment,
@@ -164,6 +165,7 @@ export interface WorkspaceValue {
   harnesses: HarnessStatus[];
   harnessSessions: Session[];
   doctors: Partial<Record<string, HarnessDoctorReport>>;
+  harnessStatuses: Partial<Record<string, HarnessLiveStatus>>;
   projectId?: string;
   sessionId?: string;
   agentId: string;
@@ -251,6 +253,7 @@ export interface WorkspaceValue {
   setHarnessOption: (
     key: "model" | "permissions" | "cwd" | "mode" | "timeout",
     value: string,
+    sessionId?: string,
   ) => Promise<void>;
   exportDiagnostics: () => Promise<void>;
   ready: boolean;
@@ -373,6 +376,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [harnesses, setHarnesses] = useState<HarnessStatus[]>([]);
   const [harnessSessions, setHarnessSessions] = useState<Session[]>([]);
   const [doctors, setDoctors] = useState<Partial<Record<string, HarnessDoctorReport>>>({});
+  const [harnessStatuses, setHarnessStatuses] = useState<
+    Partial<Record<string, HarnessLiveStatus>>
+  >({});
   const [notice, setNotice] = useState<string>();
   const [steerDraft, setSteerDraft] = useState("");
   const [statusText, setStatusText] = useState<string>();
@@ -1344,7 +1350,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   async function refreshHarnessStatus(id?: string) {
     const target = id ?? sessionId;
     if (!target) return;
-    const live = await api.harnessStatus(target);
+    const live = (await api.harnessStatus(target)) as HarnessLiveStatus;
+    setHarnessStatuses((current) => ({ ...current, [target]: live }));
     setStatusText(live.statusText);
     await refresh();
   }
@@ -1352,10 +1359,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   async function setHarnessOption(
     key: "model" | "permissions" | "cwd" | "mode" | "timeout",
     value: string,
+    targetSessionId?: string,
   ) {
-    if (!sessionId) return;
-    await api.setHarnessOption({ sessionId, key, value });
-    await refresh();
+    const target = targetSessionId ?? sessionId;
+    if (!target) return;
+    await api.setHarnessOption({ sessionId: target, key, value });
+    if (harnessStatuses[target]) {
+      await refreshHarnessStatus(target);
+    } else {
+      await refresh();
+    }
   }
 
   async function exportDiagnostics() {
@@ -1587,6 +1600,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       harnesses,
       harnessSessions,
       doctors,
+      harnessStatuses,
       projectId,
       sessionId,
       agentId,
@@ -1739,6 +1753,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       harnesses,
       harnessSessions,
       doctors,
+      harnessStatuses,
       projectId,
       sessionId,
       agentId,

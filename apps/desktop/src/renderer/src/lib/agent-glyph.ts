@@ -3,7 +3,7 @@ import { PROVIDER_MARKS, type ProviderMark } from "./provider-marks";
 /*
  * Marks for the agents in the composer's picker.
  *
- * Capsule reaches seventeen ACP harnesses plus whatever agents OpenClaw
+ * Capsule reaches eighteen ACP harnesses plus whatever agents OpenClaw
  * exposes. The ones with a real mark draw it; the rest draw a monogram tile,
  * because inventing a logo for a product that has its own would misidentify
  * it. See scripts/generate-provider-icons.mjs for where the marks come from.

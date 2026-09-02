@@ -155,7 +155,7 @@ describe("harness capability facts", () => {
 
   it("marks exactly the featured harnesses", () => {
     const featured = PRESET_HARNESSES.filter(isFeaturedHarness).map((p) => p.id);
-    expect(featured).toEqual(["claude", "codex"]);
+    expect(featured).toEqual(["claude", "codex", "grok"]);
   });
 
   it("names every harness without branching on its id", () => {

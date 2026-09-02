@@ -1,6 +1,6 @@
 # ACP harnesses
 
-Capsule owns the workspace: projects, conversations, runs, contracts, approvals, and artifacts. OpenClaw acpx owns the coding loop. Capsule never ships or installs Claude Code, Codex, or any other ACP CLI.
+Capsule owns the workspace: projects, conversations, runs, contracts, approvals, and artifacts. OpenClaw acpx owns the coding loop. Capsule never ships or installs Claude Code, Codex, Grok Build, or any other ACP CLI.
 
 See [OpenClaw ACP agents](https://docs.openclaw.ai/tools/acp-agents) and [setup](https://docs.openclaw.ai/tools/acp-agents-setup).
 
@@ -14,19 +14,50 @@ See [OpenClaw ACP agents](https://docs.openclaw.ai/tools/acp-agents) and [setup]
 | **Work** | Follow-up prompts go to the bound ACP session. Gateway commands (`/acp`, `/status`) stay local. |
 | **Steer** | `sessions.steer` when the Gateway supports it, otherwise `/acp steer`. |
 | **Cancel** | `sessions.abort` plus `/acp cancel` for the in-flight turn. Binding stays. |
-| **Status** | `/acp status` — backend, mode, state, model, cwd, permissions, timeout. |
-| **Tune** | `/acp permissions`, `/acp model`, `/acp cwd`, `/acp timeout`, `/acp set-mode`. |
+| **Status** | `/acp status` — backend, mode, state, model, advertised model catalog, cwd, permissions, timeout. |
+| **Tune** | `/acp permissions`, `/acp model`, `/acp cwd`, `/acp timeout`, `/acp set-mode`. Advertised models become a selector; other agents retain a free-form model id. |
 | **Close** | `/acp close` — ends the ACP session and unbinds. Capsule keeps the conversation history. |
 
 `sessions.create` does **not** accept `runtime: "acp"`. `sessions_spawn({ runtime: "acp" })` is an agent tool, not a Gateway session-create field.
 
 ## Official acpx targets
 
-Claude Code and Codex are first-class in Capsule. These ids are also valid `/acp spawn` targets: `copilot`, `cursor`, `droid`, `fast-agent`, `gemini`, `iflow`, `kilocode`, `kimi`, `kiro`, `mux`, `opencode`, `openclaw`, `qoder`, `qwen`, `trae`.
+Claude Code, Codex, and Grok Build are first-class in Capsule. These ids are also valid built-in `/acp spawn` targets: `copilot`, `cursor`, `droid`, `fast-agent`, `gemini`, `iflow`, `kilocode`, `kimi`, `kiro`, `mux`, `opencode`, `openclaw`, `qoder`, `qwen`, `trae`.
 
 `pi` is registered in acpx but is not treated as a coding harness here.
 
 Codex has two OpenClaw routes. Native `/codex` is preferred when the Codex plugin is enabled. Capsule spawn of Codex is the **explicit ACP** path (`/acp spawn codex`).
+
+Grok Build exposes native ACP over `grok agent stdio`. Because `grok` is not a
+built-in alias in every acpx release, Doctor and Spawn register this Gateway
+mapping before use:
+
+```json
+{
+  "plugins": {
+    "entries": {
+      "acpx": {
+        "config": {
+          "agents": {
+            "grok": { "command": "grok", "args": ["agent", "stdio"] }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+If `acp.allowedAgents` is explicitly configured, Capsule preserves the existing
+entries and adds `grok`. It does not create an allowlist when none exists. The
+normal operator lifecycle remains `/acp spawn grok --bind off`; Capsule does not
+open or proxy Grok's stdio transport itself.
+
+Model lists are capability-driven, not hard-coded per vendor. OpenClaw's status
+text includes acpx `runtimeDetails`; Capsule reads the model configuration option
+and its grouped or flat choices when present. A harness that exposes only the
+current model still works through `/acp model <id>`, but the UI does not invent a
+catalog it cannot verify.
 
 ## Workspace
 
@@ -74,7 +105,7 @@ openclaw config set plugins.entries.acpx.config.nonInteractivePermissions deny
 openclaw gateway restart
 
 # On this Mac
-# Install and authenticate Claude Code, Codex, Gemini, …
+# Install and authenticate Claude Code, Codex, Grok Build, Gemini, …
 ```
 
 Then in Capsule: **Runtimes → Doctor / Dedicate / Spawn**, or Inspector **Side chat**. Code-mode messages on a dedicated project auto-spawn ACP if no live session exists. The composer also blocks a known-unready harness before send and links directly to Doctor.

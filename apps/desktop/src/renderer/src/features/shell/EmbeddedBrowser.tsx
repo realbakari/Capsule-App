@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { WebviewTag } from "electron";
 import type { LocalServer } from "@capsule/shared";
 import { ChevronRightIcon, GlobeIcon, RefreshIcon } from "./icons";
@@ -94,6 +94,28 @@ export function EmbeddedBrowser({
     }
   });
   const webviewRef = useRef<WebviewTag>(null);
+  const publishedAddress = useRef(address);
+
+  const publishAddress = useCallback((value: string) => {
+    publishedAddress.current = value;
+    onAddressChange(value);
+  }, [onAddressChange]);
+
+  /*
+   * The address can come from outside the browser (a Markdown link, a pull
+   * request, or a local-server card). Input edits are marked through
+   * `publishedAddress`, so this effect navigates only genuine external opens
+   * rather than trying to load every character typed into the address bar.
+   */
+  useEffect(() => {
+    if (address === publishedAddress.current) return;
+    publishedAddress.current = address;
+    const next = normalizedBrowserUrl(address);
+    if (!next || next === currentUrl) return;
+    setError(undefined);
+    setCurrentUrl(next);
+    if (webviewRef.current) void webviewRef.current.loadURL(next);
+  }, [address, currentUrl]);
 
   const rememberCurrentPage = () => {
     const view = webviewRef.current;
@@ -137,7 +159,7 @@ export function EmbeddedBrowser({
     };
     const navigated = (event: Event) => {
       const next = (event as Event & { url?: string }).url;
-      if (next) onAddressChange(next);
+      if (next) publishAddress(next);
       syncNavigation();
     };
     const failed = (event: Event) => {
@@ -160,7 +182,7 @@ export function EmbeddedBrowser({
       view.removeEventListener("page-title-updated", rememberCurrentPage);
       view.removeEventListener("did-fail-load", failed);
     };
-  }, [currentUrl, onAddressChange]);
+  }, [currentUrl, publishAddress]);
 
   const navigate = (value: string) => {
     const next = normalizedBrowserUrl(value);
@@ -169,7 +191,7 @@ export function EmbeddedBrowser({
       return;
     }
     setError(undefined);
-    onAddressChange(next);
+    publishAddress(next);
     if (webviewRef.current) void webviewRef.current.loadURL(next);
     else setCurrentUrl(next);
   };
@@ -217,7 +239,7 @@ export function EmbeddedBrowser({
           type="text"
           className="codex-browser-input"
           value={address}
-          onChange={(event) => onAddressChange(event.target.value)}
+          onChange={(event) => publishAddress(event.target.value)}
           placeholder="Search or enter URL"
         />
         <button className="chip browser-go" type="submit" disabled={!address.trim()}>

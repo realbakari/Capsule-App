@@ -34,6 +34,8 @@ export {
   ghAvailable,
   lastCommitSubject,
   listPullRequests,
+  parsePullRequestDetail,
+  readPullRequestDetail,
   mergePullRequest,
   mergePullRequestArgs,
   pushArgs,

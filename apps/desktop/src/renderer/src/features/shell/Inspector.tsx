@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import type { FileEntry, FilePreview, GitPullRequest, LocalServer } from "@capsule/shared";
+import type {
+  FileEntry,
+  FilePreview,
+  GitPullRequest,
+  GitPullRequestDetail,
+  LocalServer,
+} from "@capsule/shared";
 import { folderBasename, projectFolderList } from "@capsule/shared";
 import { FileSaveCoordinator, isConflictError } from "../../lib/file-save";
 import { sameListing } from "../../lib/file-listing";
@@ -10,6 +16,7 @@ import { DiffView } from "./DiffView";
 import { EmbeddedBrowser } from "./EmbeddedBrowser";
 import { FilePreviewView } from "./FilePreview";
 import { FileTreePane, sortTreeEntries } from "./FileTree";
+import { GitPullRequestDetail as PullRequestDetailView } from "./PullRequestDetail";
 import {
   ColumnsIcon,
   CpuIcon,
@@ -207,6 +214,10 @@ export function Inspector() {
   const [serversLoading, setServersLoading] = useState(false);
   const [pullRequests, setPullRequests] = useState<GitPullRequest[]>([]);
   const [pullRequestsLoading, setPullRequestsLoading] = useState(false);
+  const [selectedPullRequest, setSelectedPullRequest] = useState<GitPullRequest>();
+  const [pullRequestDetail, setPullRequestDetail] = useState<GitPullRequestDetail>();
+  const [pullRequestDetailLoading, setPullRequestDetailLoading] = useState(false);
+  const pullRequestRequest = useRef(0);
 
   const [termCmd, setTermCmd] = useState("");
   const [termOut, setTermOut] = useState("");
@@ -293,6 +304,8 @@ export function Inspector() {
   useEffect(() => {
     if (activeTool !== "review" || !projectId || !git?.isRepo) {
       setPullRequests([]);
+      setSelectedPullRequest(undefined);
+      setPullRequestDetail(undefined);
       return;
     }
     let disposed = false;
@@ -309,6 +322,34 @@ export function Inspector() {
       disposed = true;
     };
   }, [activeTool, api, git?.branch, git?.isRepo, projectId, session?.id]);
+
+  useEffect(() => {
+    pullRequestRequest.current += 1;
+    setSelectedPullRequest(undefined);
+    setPullRequestDetail(undefined);
+    setPullRequestDetailLoading(false);
+  }, [projectId, session?.id]);
+
+  function openPullRequest(pullRequest: GitPullRequest) {
+    if (!projectId) return;
+    const request = ++pullRequestRequest.current;
+    setSelectedPullRequest(pullRequest);
+    setPullRequestDetail(undefined);
+    setPullRequestDetailLoading(true);
+    void api
+      .getPullRequest(projectId, pullRequest.number, session?.id)
+      .then((value) => {
+        if (pullRequestRequest.current === request) {
+          setPullRequestDetail(value as GitPullRequestDetail | undefined);
+        }
+      })
+      .catch(() => {
+        if (pullRequestRequest.current === request) setPullRequestDetail(undefined);
+      })
+      .finally(() => {
+        if (pullRequestRequest.current === request) setPullRequestDetailLoading(false);
+      });
+  }
 
   useEffect(() => {
     setPreviewDoc(undefined);
@@ -849,6 +890,25 @@ export function Inspector() {
 
         {activeTool === "review" && (
           <div className="codex-tool-pane">
+            {selectedPullRequest ? (
+              <PullRequestDetailView
+                key={selectedPullRequest.number}
+                summary={selectedPullRequest}
+                detail={pullRequestDetail}
+                loading={pullRequestDetailLoading}
+                onBack={() => {
+                  pullRequestRequest.current += 1;
+                  setSelectedPullRequest(undefined);
+                  setPullRequestDetail(undefined);
+                  setPullRequestDetailLoading(false);
+                }}
+                onOpenBrowser={() => {
+                  setBrowserUrl(selectedPullRequest.url);
+                  selectTool("browser");
+                }}
+              />
+            ) : (
+              <>
             <div className="codex-review-header">
               <div className="kv">
                 <span>Branch</span>
@@ -893,7 +953,7 @@ export function Inspector() {
                   type="button"
                   className="codex-pr-row"
                   key={pullRequest.number}
-                  onClick={() => void openPath(pullRequest.url)}
+                  onClick={() => openPullRequest(pullRequest)}
                 >
                   <span className="codex-pr-number">#{pullRequest.number}</span>
                   <span className="codex-pr-copy">
@@ -982,6 +1042,8 @@ export function Inspector() {
                 <p className="faint">Select a changed file to view its git diff.</p>
               )}
             </div>
+              </>
+            )}
           </div>
         )}
 

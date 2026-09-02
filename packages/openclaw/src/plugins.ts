@@ -39,16 +39,21 @@ export function acpxFromHealth(payload: unknown): boolean | undefined {
   return undefined;
 }
 
-function pluginEntriesFromConfig(payload: unknown): Record<string, unknown> | undefined {
+function configRoots(payload: unknown): Record<string, unknown>[] {
   const root = asRecord(payload);
-  for (const key of ["config", "parsed", "resolved", "runtimeConfig", "sourceConfig"]) {
-    const plugins = asRecord(asRecord(root[key]).plugins);
+  return ["config", "parsed", "resolved", "runtimeConfig", "sourceConfig"]
+    .map((key) => asRecord(root[key]))
+    .filter((entry) => Object.keys(entry).length > 0)
+    .concat(root);
+}
+
+function pluginEntriesFromConfig(payload: unknown): Record<string, unknown> | undefined {
+  for (const root of configRoots(payload)) {
+    const plugins = asRecord(root.plugins);
     const entries = asRecord(plugins.entries);
     if (Object.keys(entries).length > 0) return entries;
     if (plugins.entries && typeof plugins.entries === "object") return entries;
   }
-  const plugins = asRecord(root.plugins);
-  if (plugins.entries && typeof plugins.entries === "object") return asRecord(plugins.entries);
   return undefined;
 }
 
@@ -95,6 +100,15 @@ export interface AcpxHarnessPolicy {
   nonInteractivePermissions?: string;
 }
 
+export interface AcpxAgentCommand {
+  command: string;
+  args?: string[];
+}
+
+export interface ConfiguredAcpxAgent extends AcpxAgentCommand {
+  pluginId?: string;
+}
+
 function pluginConfigRecord(entry: Record<string, unknown>): Record<string, unknown> {
   return asRecord(entry.config);
 }
@@ -110,6 +124,68 @@ export function readAcpxHarnessPolicy(payload: unknown): AcpxHarnessPolicy {
     pluginId: match[0],
     permissionMode: asString(config.permissionMode) || undefined,
     nonInteractivePermissions: asString(config.nonInteractivePermissions) || undefined,
+  };
+}
+
+/** Reads a custom plugins.entries.acpx.config.agents.<id> command mapping. */
+export function readAcpxAgentCommand(
+  payload: unknown,
+  agentId: string,
+): ConfiguredAcpxAgent | undefined {
+  const entries = pluginEntriesFromConfig(payload);
+  if (!entries) return undefined;
+  const match = Object.entries(entries).find(([id]) => looksLikeAcpx(id));
+  if (!match) return undefined;
+  const agent = asRecord(asRecord(pluginConfigRecord(asRecord(match[1])).agents)[agentId]);
+  const command = asString(agent.command);
+  if (!command) return undefined;
+  const args = Array.isArray(agent.args)
+    ? agent.args.filter((value): value is string => typeof value === "string")
+    : undefined;
+  return {
+    pluginId: match[0],
+    command,
+    ...(args ? { args } : {}),
+  };
+}
+
+/** Undefined means OpenClaw is using its default (unrestricted) ACP allowlist. */
+export function readAcpAllowedAgents(payload: unknown): string[] | undefined {
+  for (const root of configRoots(payload)) {
+    const acp = asRecord(root.acp);
+    if (!("allowedAgents" in acp)) continue;
+    if (!Array.isArray(acp.allowedAgents)) return undefined;
+    return acp.allowedAgents.filter((value): value is string => typeof value === "string");
+  }
+  return undefined;
+}
+
+/** Deep-merge patch for a native ACP command that acpx does not ship itself. */
+export function acpxAgentPatch(
+  pluginId: string,
+  agentId: string,
+  definition: AcpxAgentCommand,
+  allowedAgents?: string[],
+): Record<string, unknown> {
+  return {
+    plugins: {
+      entries: {
+        [pluginId]: {
+          enabled: true,
+          config: {
+            agents: {
+              [agentId]: {
+                command: definition.command,
+                ...(definition.args ? { args: definition.args } : {}),
+              },
+            },
+          },
+        },
+      },
+    },
+    ...(allowedAgents
+      ? { acp: { allowedAgents: [...new Set([...allowedAgents, agentId])] } }
+      : {}),
   };
 }
 

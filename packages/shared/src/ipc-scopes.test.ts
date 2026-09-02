@@ -39,7 +39,13 @@ describe("ipc scopes", () => {
   });
 
   it("lets a viewer read a conversation", () => {
-    for (const channel of ["listSessions", "listMessagePage", "gitDiff", "listRunEvents"]) {
+    for (const channel of [
+      "listSessions",
+      "listMessagePage",
+      "gitDiff",
+      "getPullRequest",
+      "listRunEvents",
+    ]) {
       expect(isChannelAllowed(channel, ["read"])).toBe(true);
     }
   });

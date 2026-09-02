@@ -115,6 +115,8 @@ const api = {
     ipcRenderer.invoke(IPC_CHANNELS.gitStatus, projectId, sessionId),
   listPullRequests: (projectId: string, sessionId?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.listPullRequests, projectId, sessionId),
+  getPullRequest: (projectId: string, number: number, sessionId?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.getPullRequest, projectId, number, sessionId),
   gitInit: (projectId: string) => ipcRenderer.invoke(IPC_CHANNELS.gitInit, projectId),
   gitDiff: (projectId: string, relative?: string, sessionId?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.gitDiff, projectId, relative, sessionId),

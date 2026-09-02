@@ -1,6 +1,11 @@
 import { harnessReadinessLabel, isFeaturedHarness } from "../../lib/harness";
-import { useMemo, useState } from "react";
-import { PERMISSION_PROFILES, type AcpMode, type HarnessStatus } from "@capsule/shared";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  PERMISSION_PROFILES,
+  type AcpMode,
+  type HarnessLiveStatus,
+  type HarnessStatus,
+} from "@capsule/shared";
 import { AgentGlyph } from "../shell/AgentGlyph";
 import { GatewayBanner } from "../shell/GatewayBanner";
 import { Switch } from "../settings/controls";
@@ -33,6 +38,7 @@ export function RuntimesView() {
   const {
     harnesses: harnessList,
     harnessSessions,
+    harnessStatuses,
     doctors,
     project,
     projectId,
@@ -55,6 +61,8 @@ export function RuntimesView() {
   const [spawnMode, setSpawnMode] = useState<AcpMode>("persistent");
   const [showAll, setShowAll] = useState(false);
   const [selectedHarnessId, setSelectedHarnessId] = useState<string>();
+  const [configuredSessionId, setConfiguredSessionId] = useState<string>();
+  const requestedStatuses = useRef(new Set<string>());
   const harnesses = harnessList ?? [];
   const blockReason = spawnBlockReason(connected, projectId, project?.workingDirectory);
 
@@ -73,6 +81,23 @@ export function RuntimesView() {
   const listed = showAll ? [...available, ...uninstalled] : available;
   const selectedHarness =
     listed.find((harness) => harness.id === selectedHarnessId) ?? listed[0];
+  const selectedSessions = selectedHarness
+    ? harnessSessions.filter((item) => item.harnessId === selectedHarness.id)
+    : [];
+  const configuredSession =
+    selectedSessions.find((item) => item.id === configuredSessionId) ??
+    selectedSessions.find((item) => item.id === sessionId) ??
+    selectedSessions[0];
+  const configuredStatus = configuredSession ? harnessStatuses[configuredSession.id] : undefined;
+
+  useEffect(() => {
+    const id = configuredSession?.id;
+    if (!id || harnessStatuses[id] || requestedStatuses.current.has(id)) return;
+    requestedStatuses.current.add(id);
+    void refreshHarnessStatus(id).catch(() => {
+      requestedStatuses.current.delete(id);
+    });
+  }, [configuredSession?.id, harnessStatuses, refreshHarnessStatus]);
 
   return (
     <section className="panel">
@@ -146,11 +171,12 @@ export function RuntimesView() {
               harness={selectedHarness}
               doctor={doctors[selectedHarness.id]}
               dedicated={project?.defaultAgentId === selectedHarness.id}
-              live={harnessSessions.filter((item) => item.harnessId === selectedHarness.id)}
+              live={selectedSessions}
+              activeSessionId={configuredSession?.id}
+              status={configuredStatus}
               canSpawnNow={
                 Boolean(projectId) && !busy && canSpawn(selectedHarness.readiness) && connected
               }
-              sessionId={sessionId}
               connected={connected}
               onDoctor={() => void doctorHarness(selectedHarness.id)}
               onDedicatedChange={(value) =>
@@ -162,10 +188,15 @@ export function RuntimesView() {
                 setSessionId(id);
                 setView("chat");
               }}
-              onStatus={(id) => void refreshHarnessStatus(id)}
+              onStatus={(id) => {
+                setConfiguredSessionId(id);
+                void refreshHarnessStatus(id);
+              }}
               onCancel={(id) => void cancelHarness(id)}
               onClose={(id) => void closeHarness(id)}
-              onOption={(key, value) => void setHarnessOption(key, value)}
+              onOption={(key, value) =>
+                void setHarnessOption(key, value, configuredSession?.id)
+              }
             />
           ) : (
             <div className="harness-detail harness-empty">No harnesses were reported by the Gateway.</div>
@@ -194,8 +225,9 @@ function HarnessDetail({
   doctor,
   dedicated,
   live,
+  activeSessionId,
+  status,
   canSpawnNow,
-  sessionId,
   connected,
   onDoctor,
   onDedicatedChange,
@@ -210,9 +242,16 @@ function HarnessDetail({
   harness: HarnessStatus;
   doctor?: { checks: Array<{ id: string; label: string; ok: boolean; detail: string }>; gatewayOutput?: string };
   dedicated: boolean;
-  live: Array<{ id: string; title: string; harnessState?: string; permissionProfile?: string }>;
+  live: Array<{
+    id: string;
+    title: string;
+    harnessState?: string;
+    permissionProfile?: string;
+    modelOverride?: string;
+  }>;
+  activeSessionId?: string;
+  status?: HarnessLiveStatus;
   canSpawnNow: boolean;
-  sessionId?: string;
   connected: boolean;
   onDoctor: () => void;
   onDedicatedChange: (value: boolean) => void;
@@ -225,6 +264,13 @@ function HarnessDetail({
   onOption: (key: "permissions" | "model" | "timeout" | "mode", value: string) => void;
 }) {
   const installed = isInstalled(harness);
+  const activeSession = live.find((item) => item.id === activeSessionId);
+  const advertisedModels = status?.parsed?.models?.availableModels ?? [];
+  const currentModel =
+    activeSession?.modelOverride ??
+    status?.parsed?.models?.currentModelId ??
+    status?.parsed?.model ??
+    "";
   return (
     <section className="harness-detail">
       <div className="harness-detail-head">
@@ -320,13 +366,13 @@ function HarnessDetail({
               </div>
             </div>
           ))}
-          {sessionId && live.some((item) => item.id === sessionId) && (
+          {activeSession && (
             <div className="harness-options">
               <label>
                 <span>Permissions</span>
                 <select
                   className="field-select"
-                  value={live.find((item) => item.id === sessionId)?.permissionProfile ?? "default"}
+                  value={activeSession.permissionProfile ?? "default"}
                   onChange={(event) => {
                     if (event.target.value) onOption("permissions", event.target.value);
                   }}
@@ -340,16 +386,46 @@ function HarnessDetail({
               </label>
               <label>
                 <span>Model</span>
-                <input
-                  type="text"
-                  placeholder="Name a model, then press Enter"
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      const value = event.currentTarget.value.trim();
-                      if (value) onOption("model", value);
-                    }
-                  }}
-                />
+                {advertisedModels.length > 0 ? (
+                  <select
+                    className="field-select"
+                    value={currentModel}
+                    onChange={(event) => {
+                      if (event.target.value) onOption("model", event.target.value);
+                    }}
+                  >
+                    {currentModel &&
+                      !advertisedModels.some((model) => model.modelId === currentModel) && (
+                        <option value={currentModel}>{currentModel}</option>
+                      )}
+                    {!currentModel && <option value="">Choose a model</option>}
+                    {advertisedModels.map((model) => (
+                      <option key={model.modelId} value={model.modelId}>
+                        {model.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    key={currentModel}
+                    type="text"
+                    defaultValue={currentModel}
+                    placeholder="Model id, then press Enter"
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        const value = event.currentTarget.value.trim();
+                        if (value) onOption("model", value);
+                      }
+                    }}
+                  />
+                )}
+                <small className="muted">
+                  {advertisedModels.length > 0
+                    ? `${advertisedModels.length} ${advertisedModels.length === 1 ? "model" : "models"} reported by ${harness.name}.`
+                    : status
+                      ? `${harness.name} did not advertise a model list; enter a supported model id.`
+                      : "Loading models from the live ACP session…"}
+                </small>
               </label>
               <label>
                 <span>Turn timeout</span>

@@ -20,7 +20,11 @@ function isFilePath(value: string): boolean {
   return value.includes("/") && /\w/.test(value[0] ?? "");
 }
 
-function inline(text: string, onOpenFile?: (path: string) => void): ReactNode {
+function inline(
+  text: string,
+  onOpenFile?: (path: string) => void,
+  onOpenLink?: (href: string) => void,
+): ReactNode {
   const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/g);
   return parts.map((part, index) => {
     if (part.startsWith("`") && part.endsWith("`") && part.length >= 2) {
@@ -56,7 +60,8 @@ function inline(text: string, onOpenFile?: (path: string) => void): ReactNode {
           href={href}
           onClick={(event) => {
             event.preventDefault();
-            window.open(href, "_blank", "noopener");
+            if (onOpenLink) onOpenLink(href);
+            else window.open(href, "_blank", "noopener");
           }}
         >
           {link[1]}
@@ -67,7 +72,12 @@ function inline(text: string, onOpenFile?: (path: string) => void): ReactNode {
   });
 }
 
-function block(text: string, key: number, onOpenFile?: (path: string) => void): ReactNode {
+function block(
+  text: string,
+  key: number,
+  onOpenFile?: (path: string) => void,
+  onOpenLink?: (href: string) => void,
+): ReactNode {
   const lines = text.split("\n");
   const out: ReactNode[] = [];
 
@@ -83,7 +93,7 @@ function block(text: string, key: number, onOpenFile?: (path: string) => void): 
               <tr>
                 {table.table.headers.map((header, column) => (
                   <th key={column} style={{ textAlign: table.table.align[column] ?? "left" }}>
-                    {inline(header, onOpenFile)}
+                    {inline(header, onOpenFile, onOpenLink)}
                   </th>
                 ))}
               </tr>
@@ -93,7 +103,7 @@ function block(text: string, key: number, onOpenFile?: (path: string) => void): 
                 <tr key={rowIndex}>
                   {row.map((cell, column) => (
                     <td key={column} style={{ textAlign: table.table.align[column] ?? "left" }}>
-                      {inline(cell, onOpenFile)}
+                      {inline(cell, onOpenFile, onOpenLink)}
                     </td>
                   ))}
                 </tr>
@@ -112,7 +122,7 @@ function block(text: string, key: number, onOpenFile?: (path: string) => void): 
       const Tag = heading[1].length === 1 ? "h3" : "h4";
       out.push(
         <Tag key={`${key}-${index}`} className="md-h">
-          {inline(heading[2], onOpenFile)}
+          {inline(heading[2], onOpenFile, onOpenLink)}
         </Tag>,
       );
       continue;
@@ -122,7 +132,7 @@ function block(text: string, key: number, onOpenFile?: (path: string) => void): 
     if (/^\s*[-*]\s+/.test(line)) {
       out.push(
         <div key={`${key}-${index}`} className="md-li">
-          {inline(line.replace(/^\s*[-*]\s+/, ""), onOpenFile)}
+          {inline(line.replace(/^\s*[-*]\s+/, ""), onOpenFile, onOpenLink)}
         </div>,
       );
       continue;
@@ -134,14 +144,16 @@ function block(text: string, key: number, onOpenFile?: (path: string) => void): 
       out.push(
         <div key={`${key}-${index}`} className="md-li-num">
           <span className="md-num">{num[1]}.</span>
-          <span>{inline(num[2], onOpenFile)}</span>
+          <span>{inline(num[2], onOpenFile, onOpenLink)}</span>
         </div>,
       );
       continue;
     }
 
     // Plain prose
-    out.push(<Fragment key={`${key}-${index}`}>{inline(line, onOpenFile)}</Fragment>);
+    out.push(
+      <Fragment key={`${key}-${index}`}>{inline(line, onOpenFile, onOpenLink)}</Fragment>,
+    );
     if (index < lines.length - 1) out.push(<Fragment key={`${key}-${index}-nl`}>{"\n"}</Fragment>);
   }
   return out;
@@ -173,7 +185,7 @@ function CodeBlock({ code, language }: { code: string; language?: string }) {
 }
 
 export function MessageBody({ content }: { content: string }) {
-  const { openFile } = useWorkspace();
+  const { openFile, setBrowserUrl, setInspectorOpen, setInspectorTab } = useWorkspace();
 
   /*
    * The path, not the folder it is in. This opened the file tree and stopped
@@ -184,13 +196,25 @@ export function MessageBody({ content }: { content: string }) {
     openFile(path);
   }
 
+  function handleOpenLink(href: string) {
+    if (/^https?:\/\//i.test(href)) {
+      setBrowserUrl(href);
+      setInspectorTab("browser");
+      setInspectorOpen(true);
+      return;
+    }
+    window.open(href, "_blank", "noopener");
+  }
+
   return (
     <div className="body">
       {splitFences(content).map((segment, index) =>
         segment.kind === "code" ? (
           <CodeBlock key={index} code={segment.text} language={segment.language} />
         ) : (
-          <Fragment key={index}>{block(segment.text, index, handleOpenFile)}</Fragment>
+          <Fragment key={index}>
+            {block(segment.text, index, handleOpenFile, handleOpenLink)}
+          </Fragment>
         ),
       )}
     </div>

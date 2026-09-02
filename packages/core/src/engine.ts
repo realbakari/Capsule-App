@@ -40,6 +40,7 @@ import {
   lastCommitSubject,
   listLocalServers as discoverLocalServers,
   listPullRequests as discoverPullRequests,
+  readPullRequestDetail,
   mergePullRequest as mergeGithubPullRequest,
   pushCurrentBranch,
   readGitDiff,
@@ -108,6 +109,7 @@ import {
   type FileEntry,
   type GitStatus,
   type GitPullRequest,
+  type GitPullRequestDetail,
   type HarnessControlResult,
   type HarnessDoctorReport,
   type HarnessId,
@@ -415,7 +417,17 @@ export class CapsuleEngine {
     const binaryPath = whichBinary(preset.binaries);
     let acpxPermissionModeValue: string | undefined;
     let acpxPolicyKnown = false;
+    let acpxAgentConfigured: boolean | undefined = preset.acpxCommand ? false : undefined;
+    let acpxAgentError: string | undefined;
     if (!this.usingMock && acpxEnabled) {
+      if (preset.acpxCommand) {
+        const result = await this.openclaw.ensureAcpxAgentCommand(
+          preset.openclawAgentId,
+          preset.acpxCommand,
+        );
+        acpxAgentConfigured = result.already || result.applied;
+        acpxAgentError = result.error;
+      }
       try {
         let policy = await this.openclaw.readAcpxHarnessPolicy();
         acpxPolicyKnown = true;
@@ -437,6 +449,8 @@ export class CapsuleEngine {
       loginState: this.usingMock ? undefined : probeLoginState(preset, binaryPath),
       acpxPermissionMode: acpxPermissionModeValue,
       acpxPolicyKnown,
+      acpxAgentConfigured,
+      acpxAgentError,
     });
     let gatewayOutput: string | undefined;
     if (!this.usingMock) {
@@ -501,6 +515,17 @@ export class CapsuleEngine {
      * harness.
      */
     if (!this.usingMock) {
+      if (preset.acpxCommand) {
+        const configured = await this.openclaw.ensureAcpxAgentCommand(
+          preset.openclawAgentId,
+          preset.acpxCommand,
+        );
+        if (!configured.already && !configured.applied) {
+          throw new Error(
+            `Could not register ${preset.name}'s ACP command with OpenClaw: ${configured.error ?? "Gateway rejected the acpx agent configuration."}`,
+          );
+        }
+      }
       const loginState = probeLoginState(preset, whichBinary(preset.binaries));
       if (loginState === "logged_out") {
         throw new Error(
@@ -569,7 +594,7 @@ export class CapsuleEngine {
         session,
         usedSlashCommand: false,
         detail:
-          "Mock session only. Connect the OpenClaw Gateway and enable acpx, then spawn again for a real Claude or Codex run.",
+          "Mock session only. Connect the OpenClaw Gateway and enable acpx, then spawn again for a real coding-agent run.",
       };
     }
 
@@ -847,6 +872,13 @@ export class CapsuleEngine {
     const cwd = this.workingDirectoryFor(project, sessionId);
     if (!cwd || !readGitStatus(cwd).isRepo) return [];
     return discoverPullRequests(cwd);
+  }
+
+  pullRequestDetail(projectId: string, number: number, sessionId?: string): GitPullRequestDetail | undefined {
+    const project = this.requireProject(projectId);
+    const cwd = this.workingDirectoryFor(project, sessionId);
+    if (!cwd || !readGitStatus(cwd).isRepo) return undefined;
+    return readPullRequestDetail(cwd, number);
   }
 
   gitDiff(projectId: string, relative?: string, sessionId?: string): string {

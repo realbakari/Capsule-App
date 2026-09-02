@@ -60,6 +60,12 @@ home keeps the eight most recently used pages above the live-server list.
 ## Pull requests
 
 The Review panel lists open pull requests for the selected repository when the
-GitHub CLI is installed and signed in. Select one to open it in your browser.
+GitHub CLI is installed and signed in. Select one to read its summary, review
+metadata, comments and commits, or full patch without leaving Capsule. Use
+**Open in Browser** from that view to load its canonical URL in Capsule's
+embedded browser.
+
+Web links in conversation Markdown also open in the embedded browser. Use the
+browser toolbar's external-open action only when you want the system browser.
 The same panel still owns changed files, commits, push, and creating a draft or
 ready pull request for the current branch.

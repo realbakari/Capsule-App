@@ -2,7 +2,7 @@
 /*
  * Vendors the provider marks the composer's agent picker draws.
  *
- * Capsule reaches seventeen ACP harnesses. Hand-copying path data is how a
+ * Capsule reaches eighteen ACP harnesses. Hand-copying path data is how a
  * logo goes stale and wrong, so the marks are generated from the MIT-licensed
  * @lobehub/icons-static-svg set (Copyright (c) LobeHub) into one module. The
  * harnesses with no mark in that set keep the monogram tile — inventing a logo
@@ -20,6 +20,7 @@ const MARKS = {
   // The burst, not the CLI's blocky tile: it is still legible at 14px.
   claude: "claude",
   codex: "codex",
+  grok: "grok",
   copilot: "copilot",
   cursor: "cursor",
   gemini: "gemini",

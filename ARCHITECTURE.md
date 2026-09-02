@@ -106,7 +106,7 @@ packages/
   filesystem          Project-scoped file access
   terminal            Native terminal open
   openclaw            Gateway adapter + mock runtime
-  harness             Claude Code / Codex ACP lifecycle (doctor, spawn, steer, cancel, close)
+  harness             Claude Code / Codex / Grok ACP lifecycle (doctor, spawn, steer, cancel, close)
   buzz                Gateway channel mapping
   ui                  Shared tokens
 ```
@@ -153,12 +153,12 @@ Capsule UI  →  dedicate / spawn
                  ↓
            @openclaw/acpx
                  ↓
-        Claude Code, Codex, Gemini, Cursor, …
+        Claude Code, Codex, Grok Build, Gemini, Cursor, …
 ```
 
 Operator spawn creates a Gateway session, then sends `/acp spawn <id> --bind off --mode persistent|oneshot --cwd <dir>`. The cwd is the conversation's Git worktree when isolation is enabled, otherwise the project folder. That is the operator path from [ACP agents](https://docs.openclaw.ai/tools/acp-agents). `--bind here` is for messaging channels, not Capsule’s operator socket. `sessions_spawn({ runtime: "acp" })` is an agent tool, not a `sessions.create` field — Gateway protocol 4 rejects `runtime` on `sessions.create`.
 
-Claude Code and Codex are first-class. Other official acpx ids (Copilot, Cursor, Droid, Gemini, OpenCode, …) are spawnable from Runtimes. Codex ACP is the explicit fallback; native `/codex` stays on the Gateway when that plugin is enabled.
+Claude Code, Codex, and Grok Build are first-class. Grok's native `grok agent stdio` command is registered as a custom acpx agent before Doctor or Spawn. Other official acpx ids (Copilot, Cursor, Droid, Gemini, OpenCode, …) are spawnable from Runtimes. Codex ACP is the explicit fallback; native `/codex` stays on the Gateway when that plugin is enabled.
 
 ACP harnesses run on the Gateway host, not inside the OpenClaw sandbox. Capsule does not speak ACP JSON-RPC over stdio and does not install the CLIs.
 

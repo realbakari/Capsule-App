@@ -14,12 +14,35 @@ import {
 } from "./index.js";
 
 describe("harness catalog", () => {
-  it("ships Claude Code and Codex first, then the official acpx catalog", () => {
-    expect(PRESET_HARNESSES.map((item) => item.id).slice(0, 2)).toEqual(["claude", "codex"]);
+  it("ships Claude Code, Codex, and Grok Build first, then the official acpx catalog", () => {
+    expect(PRESET_HARNESSES.map((item) => item.id).slice(0, 3)).toEqual([
+      "claude",
+      "codex",
+      "grok",
+    ]);
     expect(PRESET_HARNESSES.map((item) => item.id)).toEqual(
-      expect.arrayContaining(["claude", "codex", "gemini", "opencode", "cursor", "copilot"]),
+      expect.arrayContaining([
+        "claude",
+        "codex",
+        "grok",
+        "gemini",
+        "opencode",
+        "cursor",
+        "copilot",
+      ]),
     );
     expect(PRESET_HARNESSES.map((item) => item.id as string)).not.toContain("pi");
+  });
+
+  it("registers Grok Build through its native ACP stdio command", () => {
+    expect(PRESET_HARNESSES.find((item) => item.id === "grok")).toMatchObject({
+      name: "Grok Build",
+      binaries: ["grok"],
+      configFilePath: "~/.grok/config.toml",
+      providerLocked: true,
+      featured: true,
+      acpxCommand: { command: "grok", args: ["agent", "stdio"] },
+    });
   });
 
   it("builds the OpenClaw ACP spawn command", () => {
@@ -128,5 +151,28 @@ describe("harness catalog", () => {
     expect(parsed.model).toBe("claude-opus");
     expect(parsed.permissions).toBe("approve-all");
     expect(parsed.timeout).toBe("120");
+  });
+
+  it("parses models advertised through ACP session config options", () => {
+    const parsed = parseAcpStatus(
+      [
+        "ACP status:",
+        "sessionMode: persistent",
+        "state: running",
+        "runtimeOptions: model=grok-build, permissionProfile=approve-all, timeoutSeconds=120",
+        'runtimeDetails: {"cwd":"/repo","configOptions":[{"id":"model","category":"model","type":"select","currentValue":"grok-build","options":[{"value":"grok-build","name":"Grok Build"},{"group":"Other","name":"Other","options":[{"value":"grok-fast","name":"Grok Fast"}]}]}]}',
+      ].join("\n"),
+    );
+    expect(parsed.mode).toBe("persistent");
+    expect(parsed.model).toBe("grok-build");
+    expect(parsed.permissions).toBe("approve-all");
+    expect(parsed.timeout).toBe("120");
+    expect(parsed.models).toEqual({
+      currentModelId: "grok-build",
+      availableModels: [
+        { modelId: "grok-build", name: "Grok Build" },
+        { modelId: "grok-fast", name: "Grok Fast" },
+      ],
+    });
   });
 });

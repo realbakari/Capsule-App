@@ -509,7 +509,6 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
               options={MODES.map((item) => ({ id: item, label: item }))}
               onChange={(id) => setMode(id as typeof mode)}
             />
-            <span className="composer-controls-divider" aria-hidden />
             <MenuSelect
               ariaLabel="Permission mode"
               icon={<ShieldIcon size={13} />}
@@ -521,7 +520,6 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
               }))}
               onChange={(id) => void setPermissionProfile(id)}
             />
-            <span className="composer-controls-divider" aria-hidden />
             <MenuSelect
               ariaLabel="Agent"
               icon={selectedAgentName ? <AgentGlyph id={agentId} name={selectedAgentName} /> : undefined}
@@ -542,23 +540,20 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
               onChange={setAgentId}
             />
             {git?.isRepo && (
-              <>
-                <span className="composer-controls-divider" aria-hidden />
-                <MenuSelect
-                  ariaLabel="Conversation workspace"
-                  icon={<GitBranchIcon size={13} />}
-                  value={workspaceMode}
-                  options={[
-                    { id: "local", label: "Local", detail: "Share the current checkout." },
-                    {
-                      id: "worktree",
-                      label: "Worktree",
-                      detail: "Use an isolated branch and folder for this conversation.",
-                    },
-                  ]}
-                  onChange={(id) => void setWorkspaceMode(id as "local" | "worktree")}
-                />
-              </>
+              <MenuSelect
+                ariaLabel="Conversation workspace"
+                icon={<GitBranchIcon size={13} />}
+                value={workspaceMode}
+                options={[
+                  { id: "local", label: "Local", detail: "Share the current checkout." },
+                  {
+                    id: "worktree",
+                    label: "Worktree",
+                    detail: "Use an isolated branch and folder for this conversation.",
+                  },
+                ]}
+                onChange={(id) => void setWorkspaceMode(id as "local" | "worktree")}
+              />
             )}
           </div>
           <div className="composer-actions-right">

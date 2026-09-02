@@ -67,8 +67,9 @@ export function CommitControl() {
         }
       >
         <GitBranchIcon size={12} />
+        {/* No second dot: the branch chip beside this one already carries the
+            one that says the tree is dirty. */}
         <span>Commit</span>
-        {git.dirty ? <span className="git-dirty-indicator">•</span> : null}
         <ChevronDownIcon size={12} />
       </button>
       {open && (

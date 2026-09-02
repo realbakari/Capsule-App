@@ -19,6 +19,9 @@ Capsule is a workspace, not a clone of any other agent product. Quality bars els
 - Graphite and off-white. No purple. No app mark in the titlebar.
 - 52px titlebar is an Electron drag region. Interactive controls must be **no-drag children of the titlebar**, not `position: fixed` overlays. Fixed siblings are swallowed by `-webkit-app-region: drag`.
 - Centered chat column. Glass composer dock. Inspector closed until opened (`⌘\`, `/inspect`, or the titlebar control). Width persists as `capsule.inspectorWidth`.
+- At narrow widths, titlebar actions shrink before the project/thread breadcrumb;
+  composer controls wrap inside their own row instead of overlapping Attach or
+  Send.
 
 ---
 
@@ -87,7 +90,11 @@ Tools: **Launch**, **Review**, **Terminal**, **Browser**, **Files**, **Side chat
 - Hidden tree names: `node_modules`, `.git`, `dist`, `out`, `.next`, `coverage`, `build`, `Pods`, `.DS_Store`.
 - **Review** is git status, stage / discard / commit, diff, push, open-PR
   discovery, and PR creation via local `git` + `gh` when present. No GitHub
-  OAuth. Pull-request rows open the canonical URL externally.
+  OAuth. Selecting a pull request keeps the reader in Capsule and opens its
+  **Summary / Timeline / Code** views. Summary contains review metadata and the
+  Markdown description, Timeline interleaves commits, comments, and reviews,
+  and Code shows file stats plus the host patch. **Open in Browser** moves the
+  canonical URL into Capsule's Browser surface.
 - **Terminal** is a command form (`execInProject`) plus “Open Terminal.app”. It is not a PTY or xterm.
 - **Browser** polls `capsule:listLocalServers` while open. The filesystem adapter
   reads loopback listeners with `lsof`, performs bounded HTTP/HTTPS probes, and
@@ -124,6 +131,9 @@ anything. Permission options carry a line saying what each one does, because
 An empty conversation centers its project-aware heading and composer as one
 unit. After the first turn, the composer returns to the bottom dock so the
 transcript remains the primary reading surface.
+
+HTTP and HTTPS links in rendered Markdown open the Inspector's embedded Browser
+surface. Non-web schemes keep the platform handler fallback.
 
 For a selected coding harness, the composer shows its live readiness detail and
 blocks send before spawn when the Gateway, acpx, folder, or CLI login is known
@@ -231,7 +241,9 @@ Harnesses uses a two-pane catalog/detail layout. Installed and ready entries
 sort first; selecting one reveals project dedication, Doctor output, start,
 live sessions, and advanced session options. Project cwd and persistent/one-turn
 mode stay in the compact context bar instead of repeating inside every agent
-card. Missing or signed-out CLIs cannot start until readiness becomes usable.
+card. A live session's ACP-advertised model catalog renders as a selector; a
+manual model-id field remains when no catalog is advertised. Missing or
+signed-out CLIs cannot start until readiness becomes usable.
 
 ---
 

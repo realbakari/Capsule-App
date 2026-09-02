@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  acpxAgentPatch,
   acpxFromConfig,
   acpxFromHealth,
   acpxFromPluginsList,
@@ -8,7 +9,9 @@ import {
   acpxPermissionPatch,
   acpxPolicyAllowsHeadlessWrites,
   isAcpPermissionRequestEvent,
+  readAcpAllowedAgents,
   readAcpPermissionRequest,
+  readAcpxAgentCommand,
   readAcpxHarnessPolicy,
   resolveAcpxEnabled,
 } from "./plugins.js";
@@ -79,6 +82,50 @@ describe("acpx harness policy", () => {
       permissionMode: "approve-reads",
       nonInteractivePermissions: undefined,
     });
+  });
+
+  it("reads a custom native ACP command and an explicit agent allowlist", () => {
+    const config = {
+      parsed: {
+        acp: { allowedAgents: ["claude"] },
+        plugins: {
+          entries: {
+            acpx: {
+              enabled: true,
+              config: { agents: { grok: { command: "grok", args: ["agent", "stdio"] } } },
+            },
+          },
+        },
+      },
+    };
+    expect(readAcpxAgentCommand(config, "grok")).toEqual({
+      pluginId: "acpx",
+      command: "grok",
+      args: ["agent", "stdio"],
+    });
+    expect(readAcpAllowedAgents(config)).toEqual(["claude"]);
+    expect(readAcpAllowedAgents({ parsed: { acp: {} } })).toBeUndefined();
+  });
+
+  it("patches a custom ACP command without inventing an allowlist", () => {
+    expect(acpxAgentPatch("acpx", "grok", { command: "grok", args: ["agent", "stdio"] })).toEqual({
+      plugins: {
+        entries: {
+          acpx: {
+            enabled: true,
+            config: { agents: { grok: { command: "grok", args: ["agent", "stdio"] } } },
+          },
+        },
+      },
+    });
+    expect(
+      acpxAgentPatch(
+        "acpx",
+        "grok",
+        { command: "grok", args: ["agent", "stdio"] },
+        ["claude"],
+      ),
+    ).toMatchObject({ acp: { allowedAgents: ["claude", "grok"] } });
   });
 
   it("treats only approve-all as headless-write capable", () => {
