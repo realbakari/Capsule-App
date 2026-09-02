@@ -173,10 +173,15 @@ function CodeBlock({ code, language }: { code: string; language?: string }) {
 }
 
 export function MessageBody({ content }: { content: string }) {
-  const { openInspector } = useWorkspace();
+  const { openFile } = useWorkspace();
 
-  function handleOpenFile(_path: string) {
-    openInspector("files");
+  /*
+   * The path, not the folder it is in. This opened the file tree and stopped
+   * there, so clicking a file the agent had just named left you to find it by
+   * hand in a tree that was not even scrolled to it.
+   */
+  function handleOpenFile(path: string) {
+    openFile(path);
   }
 
   return (

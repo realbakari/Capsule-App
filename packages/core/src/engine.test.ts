@@ -175,6 +175,53 @@ describe("CapsuleEngine first user flow", () => {
     await engine.stop();
   });
 
+  it("cancels an interrupted run rather than calling it a failure", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-stale-run-"));
+    const options = {
+      databasePath: path.join(dir, "capsule.sqlite"),
+      userDataDir: dir,
+      autoConnect: false,
+    };
+    const engine = new CapsuleEngine(options);
+    await engine.start();
+    const project = engine.createProject({ name: "Interrupted" });
+    const session = await engine.createSession({ projectId: project.id, title: "Mid-turn" });
+    const { run } = await engine.sendMessage({ sessionId: session.id, content: "Start work." });
+    // Quit while the turn is in flight.
+    await engine.stop();
+
+    const reopened = new CapsuleEngine(options);
+    await reopened.start();
+    const recovered = reopened.listRuns(session.id).find((item) => item.id === run.id);
+    // Not "failed": the agent did not fail, the app closed.
+    expect(recovered?.status).toBe("cancelled");
+    await reopened.stop();
+  });
+
+  it("does not fail a turn whose answer arrived over ACP", async () => {
+    /*
+     * The reply comes back through the ACP stream, not as a runtime
+     * "assistant" event, so the run's own result stayed empty — and the
+     * contract's decisive check is that the run produced output. Every
+     * answered conversation was marked failed because of it.
+     */
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-acp-result-"));
+    const engine = new CapsuleEngine({
+      databasePath: path.join(dir, "capsule.sqlite"),
+      userDataDir: dir,
+      autoConnect: false,
+    });
+    await engine.start();
+    const project = engine.createProject({ name: "Answered" });
+    const session = await engine.createSession({ projectId: project.id, title: "Question" });
+    const { run } = await engine.sendMessage({ sessionId: session.id, content: "What is this?" });
+
+    const stored = engine.listRuns(session.id).find((item) => item.id === run.id);
+    expect(stored?.status).not.toBe("failed");
+    expect(stored?.error).not.toBe("Verification failed");
+    await engine.stop();
+  });
+
   it("does not offer bootstrap mock agents after a live Gateway connects", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "capsule-live-agents-"));
     const engine = new CapsuleEngine({

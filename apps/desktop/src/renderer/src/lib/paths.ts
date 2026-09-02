@@ -120,3 +120,37 @@ export function projectFolderName(path: string | undefined): string | undefined 
   if (!path?.trim()) return undefined;
   return basenameOf(trimTrailingSeparators(normalizeSeparators(path.trim()))) || undefined;
 }
+
+/**
+ * The path to hand the file reader, given whatever the transcript said.
+ *
+ * An agent writes paths several ways in the same conversation: absolute,
+ * relative to the workspace, prefixed with the workspace's own folder name, or
+ * with a `:line` suffix from a stack trace. The reader takes one shape — a
+ * path relative to the root — so this is where the others become that.
+ */
+export function toWorkspaceRelative(
+  pathWithPosition: string,
+  workspaceRoot: string | undefined,
+): string {
+  const { path } = splitPathAndPosition(pathWithPosition);
+  const normalized = canonicalizeWindowsDrivePath(normalizeSeparators(path.trim()));
+  if (!workspaceRoot) return stripRelativePrefixes(normalized);
+
+  const root = canonicalizeWindowsDrivePath(
+    normalizeSeparators(trimTrailingSeparators(workspaceRoot)),
+  );
+  const lower = normalized.toLowerCase();
+  const rootLower = root.toLowerCase();
+  if (lower === rootLower) return ".";
+  if (lower.startsWith(`${rootLower}/`)) return normalized.slice(root.length + 1);
+
+  const relative = stripRelativePrefixes(normalized);
+  const label = basenameOf(root);
+  // "capsule/src/app.ts" inside a workspace called "capsule" means the file,
+  // not a folder of the same name one level down.
+  if (relative.toLowerCase().startsWith(`${label.toLowerCase()}/`)) {
+    return relative.slice(label.length + 1);
+  }
+  return relative;
+}

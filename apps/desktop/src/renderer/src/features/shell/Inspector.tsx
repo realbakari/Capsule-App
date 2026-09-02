@@ -4,7 +4,7 @@ import { folderBasename, projectFolderList } from "@capsule/shared";
 import { FileSaveCoordinator, isConflictError } from "../../lib/file-save";
 import { sameListing } from "../../lib/file-listing";
 import { clampPanelWidth, fitPanelWidth } from "../../lib/panel-size";
-import { formatProjectRoot } from "../../lib/paths";
+import { formatProjectRoot, toWorkspaceRelative } from "../../lib/paths";
 import { useWorkspace } from "../../lib/workspace";
 import { DiffView } from "./DiffView";
 import { EmbeddedBrowser } from "./EmbeddedBrowser";
@@ -164,6 +164,8 @@ export function Inspector() {
     busy,
     browserUrl,
     setBrowserUrl,
+    requestedFile,
+    clearRequestedFile,
   } = useWorkspace();
 
   const [panelWidth, setPanelWidth] = useState<number>(() => {
@@ -472,6 +474,21 @@ export function Inspector() {
     window.addEventListener("resize", refit);
     return () => window.removeEventListener("resize", refit);
   }, []);
+
+  /*
+   * A path clicked in the transcript. It used to open the file tree and stop
+   * there, which is the folder the file is in rather than the file — so the
+   * one thing the click was about still had to be found by hand.
+   */
+  useEffect(() => {
+    if (!requestedFile || !projectId) return;
+    const relative = toWorkspaceRelative(requestedFile, activeRoot);
+    clearRequestedFile();
+    setActiveTool("files");
+    void previewFile(relative);
+    // previewFile is redefined on every render; the request is the trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedFile, projectId, activeRoot]);
 
   async function openRoot(root: string) {
     setFileRoot(root);

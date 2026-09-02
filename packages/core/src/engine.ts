@@ -1777,15 +1777,31 @@ export class CapsuleEngine {
     if (content.length < 2) return;
     const last = this.repos.listMessages(session.id).at(-1);
     if (last?.role === "assistant" && last.content === content) return;
+    /*
+     * The reply belongs to the turn that asked for it. Nothing linked them, so
+     * the run finished with no result — and the contract's only decisive check
+     * is that the run produced output, which meant every completed ACP turn
+     * was marked "Verification failed" and every answered conversation showed
+     * as failed in the sidebar.
+     */
+    const active = this.repos
+      .listRuns(session.id)
+      .find((run) => ["running", "waiting", "queued"].includes(run.status));
     const message: ChatMessage = {
       id: createId("msg"),
       sessionId: session.id,
       role: "assistant",
       content,
+      ...(active ? { runId: active.id } : {}),
       createdAt: nowIso(),
     };
     this.repos.insertMessage(message);
     this.events.emit("message", message);
+    if (active) {
+      active.result = active.result ? `${active.result}\n${content}` : content;
+      active.updatedAt = nowIso();
+      this.repos.updateRun(active);
+    }
     const failed = acpCommandFailed(content);
     if (!failed) return;
     const running = this.repos
@@ -1933,6 +1949,24 @@ export class CapsuleEngine {
           status === "completed" && run.contractId
             ? this.repos.getContract(run.contractId)
             : undefined;
+        /*
+         * A last resort for a turn whose text arrived by another route: judge
+         * it on what the conversation actually gained, not on a field nothing
+         * filled in.
+         */
+        if (contract && !run.result?.trim()) {
+          const since = Date.parse(run.createdAt);
+          run.result = this.repos
+            .listMessages(session.id)
+            .filter(
+              (item) =>
+                item.role === "assistant" &&
+                (item.runId === run.id || Date.parse(item.createdAt) >= since),
+            )
+            .map((item) => item.content)
+            .join("\n")
+            .trim();
+        }
         if (contract) {
           const verification = verifyContract({
             contract,
@@ -2008,10 +2042,16 @@ export class CapsuleEngine {
     this.repos.updateProject(inbox);
   }
 
+  /*
+   * A run that was in flight when the app quit is cancelled, not failed. It
+   * was marked failed, which painted the conversation red in the sidebar for
+   * ever after — including threads whose answer had already arrived and whose
+   * only problem was that Capsule was closed afterwards.
+   */
   private failStaleRuns(): void {
     for (const run of this.repos.listRuns()) {
       if (!["running", "waiting", "queued"].includes(run.status)) continue;
-      run.status = "failed";
+      run.status = "cancelled";
       run.error = run.error ?? "Interrupted when Capsule last quit.";
       run.updatedAt = nowIso();
       run.completedAt = nowIso();

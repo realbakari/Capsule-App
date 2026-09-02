@@ -278,6 +278,11 @@ export interface WorkspaceValue {
   inspectorTab: InspectorTab;
   setInspectorTab: (tab: InspectorTab) => void;
   openInspector: (tab?: InspectorTab) => void;
+  /** Opens a file from the transcript in the inspector's preview. */
+  openFile: (path: string) => void;
+  /** The file the inspector has been asked to show, if any. */
+  requestedFile?: string;
+  clearRequestedFile: () => void;
   contentSearch: boolean;
   setContentSearch: (open: boolean) => void;
   gitCommit: (message: string) => Promise<void>;
@@ -384,6 +389,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [filePicker, setFilePicker] = useState(false);
   const [contentSearch, setContentSearch] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("launcher");
+  const [requestedFile, setRequestedFile] = useState<string>();
   const [projectRuns, setProjectRuns] = useState<Run[]>([]);
   const [settings, setSettings] = useState<CapsuleSettings>();
   const [workspaceMode, setWorkspaceModeState] = useState<WorkspaceMode>("local");
@@ -1696,6 +1702,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       checkoutBranch,
       inspectorTab,
       setInspectorTab,
+      openFile: (path: string) => {
+        setRequestedFile(path);
+        setInspectorOpen(true);
+        setInspectorTab("files");
+      },
+      requestedFile,
+      clearRequestedFile: () => setRequestedFile(undefined),
       openInspector,
       contentSearch,
       setContentSearch,

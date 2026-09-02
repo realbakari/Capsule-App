@@ -392,8 +392,12 @@ export function Conversation() {
                   ))}
                 </div>
               </RunSummary>
+              {/* Only when something went wrong. A raw list of stream frames
+                  with timestamps is what you want when a turn failed and
+                  nothing you would ever open when it did not. */}
+              {activeRun.status === "failed" || activeRun.status === "blocked" ? (
               <details className="advanced">
-                <summary>Execution details</summary>
+                <summary>What the agent reported</summary>
                 <div className="event-log">
                   {events
                     .filter((event) => {
@@ -417,6 +421,7 @@ export function Conversation() {
                   )}
                 </div>
               </details>
+              ) : null}
             </div>
           )}
           {pendingApproval && (
