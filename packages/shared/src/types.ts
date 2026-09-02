@@ -121,6 +121,10 @@ export interface Skill {
   author?: string;
   url?: string;
   files?: Array<{ path: string; contents: string }>;
+  /** Local SKILL.md path when this entry was discovered from an agent CLI. */
+  location?: string;
+  /** True when another CLI owns the files and Capsule must not remove them. */
+  managedExternally?: boolean;
 }
 
 export interface SkillPack {

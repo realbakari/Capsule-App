@@ -5,6 +5,8 @@ export const IPC_CHANNELS = {
   getProject: "capsule:getProject",
   listAgents: "capsule:listAgents",
   listSkills: "capsule:listSkills",
+  listSkillFiles: "capsule:listSkillFiles",
+  previewSkillFile: "capsule:previewSkillFile",
   listSessions: "capsule:listSessions",
   createSession: "capsule:createSession",
   setSessionWorkspaceMode: "capsule:setSessionWorkspaceMode",

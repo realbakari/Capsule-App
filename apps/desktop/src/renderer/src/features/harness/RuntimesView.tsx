@@ -8,7 +8,7 @@ import { formatProjectRoot } from "../../lib/paths";
 import { useWorkspace } from "../../lib/workspace";
 
 function canSpawn(readiness: string): boolean {
-  return readiness !== "gateway_offline";
+  return readiness === "ready" || readiness === "dedicated" || readiness === "running";
 }
 
 function spawnBlockReason(connected: boolean, projectId?: string, folder?: string): string | undefined {
@@ -54,6 +54,7 @@ export function RuntimesView() {
   } = useWorkspace();
   const [spawnMode, setSpawnMode] = useState<AcpMode>("persistent");
   const [showAll, setShowAll] = useState(false);
+  const [selectedHarnessId, setSelectedHarnessId] = useState<string>();
   const harnesses = harnessList ?? [];
   const blockReason = spawnBlockReason(connected, projectId, project?.workingDirectory);
 
@@ -70,87 +71,106 @@ export function RuntimesView() {
     return [sorted.filter(isInstalled), sorted.filter((item) => !isInstalled(item))];
   }, [harnesses]);
   const listed = showAll ? [...available, ...uninstalled] : available;
+  const selectedHarness =
+    listed.find((harness) => harness.id === selectedHarnessId) ?? listed[0];
 
   return (
     <section className="panel">
       <div className="panel-inner">
         <div className="panel-header">
-          <h2>Agents</h2>
+          <h2>Harnesses</h2>
           <p>
-            Capsule drives the coding agents already installed on this Mac. Turn one on for this
-            project and every new conversation here starts with it; you can still pick a different
-            agent per conversation in the composer.
+            Coding agents Capsule can start through the OpenClaw Gateway.
           </p>
         </div>
         <GatewayBanner />
         {blockReason && <p className="notice">{blockReason}</p>}
 
-        <div className="card">
-          <h3>Project folder</h3>
-          <p className="muted">The agent runs in this folder. It has to exist on the Gateway host.</p>
-          <div className="row">
-            <div className="mono">
+        <div className="harness-context-bar">
+          <div className="harness-context-folder">
+            <span>Project folder</span>
+            <strong className="mono">
               {formatProjectRoot(project?.workingDirectory, {
                 home: window.capsule.homeDir,
                 fallback: "No folder chosen",
               })}
-            </div>
-            <button className="chip" disabled={!projectId} onClick={() => void pickProjectDirectory()}>
-              Choose folder
-            </button>
+            </strong>
           </div>
-          <div className="setting" style={{ marginTop: "0.35rem" }}>
-            <div className="setting-copy">
-              <div>Session mode</div>
-              <p>Persistent keeps the agent open between turns. Oneshot runs one turn and closes.</p>
-            </div>
-            <div className="setting-control">
-              <select
-                className="field-select"
-                value={spawnMode}
-                onChange={(event) => setSpawnMode(event.target.value as AcpMode)}
-              >
-                <option value="persistent">Persistent</option>
-                <option value="oneshot">Oneshot</option>
-              </select>
-            </div>
+          <div className="harness-context-actions">
+            <button className="chip" disabled={!projectId} onClick={() => void pickProjectDirectory()}>
+              Change
+            </button>
+            <select
+              aria-label="Session mode"
+              value={spawnMode}
+              onChange={(event) => setSpawnMode(event.target.value as AcpMode)}
+            >
+              <option value="persistent">Persistent session</option>
+              <option value="oneshot">One turn</option>
+            </select>
           </div>
         </div>
 
-        {listed.map((harness) => (
-          <HarnessCard
-            key={harness.id}
-            harness={harness}
-            doctor={doctors[harness.id]}
-            dedicated={project?.defaultAgentId === harness.id}
-            live={harnessSessions.filter((item) => item.harnessId === harness.id)}
-            canSpawnNow={Boolean(projectId) && !busy && canSpawn(harness.readiness) && connected}
-            sessionId={sessionId}
-            connected={connected}
-            onDoctor={() => void doctorHarness(harness.id)}
-            onDedicatedChange={(value) =>
-              value ? void dedicateHarness(harness.id) : void undedicateHarness()
-            }
-            onConnect={() => void api.connectGateway()}
-            onSpawn={() => void spawnHarness(harness.id, undefined, { mode: spawnMode })}
-            onOpen={(id) => {
-              setSessionId(id);
-              setView("chat");
-            }}
-            onStatus={(id) => void refreshHarnessStatus(id)}
-            onCancel={(id) => void cancelHarness(id)}
-            onClose={(id) => void closeHarness(id)}
-            onOption={(key, value) => void setHarnessOption(key, value)}
-          />
-        ))}
+        <div className="harness-workspace">
+          <aside className="harness-catalog" aria-label="Available harnesses">
+            <div className="harness-catalog-heading">
+              <span>Available</span>
+              <small>{available.length}</small>
+            </div>
+            {listed.map((harness) => (
+              <button
+                type="button"
+                className={`harness-catalog-row${selectedHarness?.id === harness.id ? " active" : ""}`}
+                key={harness.id}
+                onClick={() => setSelectedHarnessId(harness.id)}
+              >
+                <AgentGlyph id={harness.id} name={harness.name} size={17} />
+                <span>
+                  <b>{harness.name}</b>
+                  <small>{isInstalled(harness) ? harnessReadinessLabel(harness.readiness) : "Not installed"}</small>
+                </span>
+                {harnessSessions.some((item) => item.harnessId === harness.id) ? (
+                  <i className="dot on" aria-label="Session open" />
+                ) : null}
+              </button>
+            ))}
+            {uninstalled.length > 0 && (
+              <button className="harness-show-all" type="button" onClick={() => setShowAll((value) => !value)}>
+                {showAll ? "Show installed only" : `Show ${uninstalled.length} more`}
+              </button>
+            )}
+          </aside>
 
-        {uninstalled.length > 0 && (
-          <button className="ghost" type="button" onClick={() => setShowAll((value) => !value)}>
-            {showAll
-              ? "Hide the agents that are not installed"
-              : `Show ${uninstalled.length} more Capsule can drive once installed`}
-          </button>
-        )}
+          {selectedHarness ? (
+            <HarnessDetail
+              harness={selectedHarness}
+              doctor={doctors[selectedHarness.id]}
+              dedicated={project?.defaultAgentId === selectedHarness.id}
+              live={harnessSessions.filter((item) => item.harnessId === selectedHarness.id)}
+              canSpawnNow={
+                Boolean(projectId) && !busy && canSpawn(selectedHarness.readiness) && connected
+              }
+              sessionId={sessionId}
+              connected={connected}
+              onDoctor={() => void doctorHarness(selectedHarness.id)}
+              onDedicatedChange={(value) =>
+                value ? void dedicateHarness(selectedHarness.id) : void undedicateHarness()
+              }
+              onConnect={() => void api.connectGateway()}
+              onSpawn={() => void spawnHarness(selectedHarness.id, undefined, { mode: spawnMode })}
+              onOpen={(id) => {
+                setSessionId(id);
+                setView("chat");
+              }}
+              onStatus={(id) => void refreshHarnessStatus(id)}
+              onCancel={(id) => void cancelHarness(id)}
+              onClose={(id) => void closeHarness(id)}
+              onOption={(key, value) => void setHarnessOption(key, value)}
+            />
+          ) : (
+            <div className="harness-detail harness-empty">No harnesses were reported by the Gateway.</div>
+          )}
+        </div>
 
         <details className="card">
           <summary>How Capsule starts an agent</summary>
@@ -169,7 +189,7 @@ export function RuntimesView() {
   );
 }
 
-function HarnessCard({
+function HarnessDetail({
   harness,
   doctor,
   dedicated,
@@ -206,10 +226,10 @@ function HarnessCard({
 }) {
   const installed = isInstalled(harness);
   return (
-    <div className="card">
-      <div className="row">
+    <section className="harness-detail">
+      <div className="harness-detail-head">
         <div className="harness-identity">
-          <AgentGlyph id={harness.id} name={harness.name} size={18} />
+          <AgentGlyph id={harness.id} name={harness.name} size={24} />
           <div>
             <b>{harness.name}</b>
             <div className="muted">{harness.description}</div>
@@ -227,7 +247,7 @@ function HarnessCard({
 
       {/* The old control was one button whose label flipped to "Dedicated",
           so it never said whether that was the state or what a click would do. */}
-      <div className="setting">
+      <div className="setting harness-dedication">
         <div className="setting-copy">
           <div>Use for this project</div>
           <p>New conversations here start with this agent.</p>
@@ -242,7 +262,7 @@ function HarnessCard({
       </div>
 
       {doctor && (
-        <div style={{ marginTop: "0.75rem" }}>
+        <div className="harness-doctor">
           {doctor.checks.map((check) => (
             <div className="check" key={check.id}>
               <span className={check.ok ? "ok" : "bad"}>{check.ok ? "●" : "○"}</span>
@@ -256,7 +276,7 @@ function HarnessCard({
         </div>
       )}
 
-      <div className="actions">
+      <div className="actions harness-primary-actions">
         <button className="chip" onClick={onDoctor}>
           Check this agent
         </button>
@@ -277,12 +297,12 @@ function HarnessCard({
       </div>
 
       {live.length > 0 && (
-        <div style={{ marginTop: "0.85rem" }}>
-          <div className="nav-label" style={{ paddingLeft: 0 }}>
+        <div className="harness-live-sessions">
+          <div className="nav-label">
             Open sessions
           </div>
           {live.map((item) => (
-            <div className="row" key={item.id} style={{ marginTop: 8 }}>
+            <div className="harness-session-row" key={item.id}>
               <button className="list-item" onClick={() => onOpen(item.id)}>
                 {item.title}
                 <span className="meta">{item.harnessState}</span>
@@ -361,6 +381,6 @@ function HarnessCard({
           )}
         </div>
       )}
-    </div>
+    </section>
   );
 }

@@ -57,6 +57,7 @@ export function normalizedBrowserUrl(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) return "";
   if (/^[a-z][a-z0-9+.-]*:(?!\d)/i.test(trimmed) && !/^https?:/i.test(trimmed)) return "";
+  if (/\s/.test(trimmed)) return `https://www.google.com/search?q=${encodeURIComponent(trimmed)}`;
   const candidate = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
   try {
     const parsed = new URL(candidate);

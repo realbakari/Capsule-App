@@ -4,6 +4,7 @@ import { PACKED_SKILLS } from "./packs.js";
 export * from "./packs.js";
 export * from "./client.js";
 export * from "./github.js";
+export * from "./local.js";
 
 export const DEFAULT_SKILLS: Skill[] = PACKED_SKILLS;
 

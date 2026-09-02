@@ -10,6 +10,12 @@ describe("normalizedBrowserUrl", () => {
     expect(normalizedBrowserUrl("https://example.com/path")).toBe("https://example.com/path");
   });
 
+  it("turns multi-word input into a web search", () => {
+    expect(normalizedBrowserUrl("react server components")).toBe(
+      "https://www.google.com/search?q=react%20server%20components",
+    );
+  });
+
   it("rejects non-web protocols and invalid addresses", () => {
     expect(normalizedBrowserUrl("javascript:alert(1)")).toBe("");
     expect(normalizedBrowserUrl("file:///tmp/index.html")).toBe("");

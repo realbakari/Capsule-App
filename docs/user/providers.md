@@ -15,6 +15,22 @@ you in, and never resells tokens.
 
 Sign in with each tool's own flow — `claude`, `codex login`, and so on.
 
+## Choose and check a harness
+
+Open **Harnesses** from the agent picker or type `/runtimes`. The catalog puts
+installed agents first. Select one to see its readiness, run **Check this
+agent**, make it the default for the current project, or start a persistent or
+one-turn session.
+
+The project folder and session lifetime are set once in the bar above the
+catalog. An open session appears in the selected agent's detail panel, where
+you can refresh its status, cancel the current turn, close it, or update its
+permissions, model, timeout, and agent-specific mode.
+
+Capsule disables **Start a session** when the Gateway is disconnected, the
+project has no folder, acpx is unavailable, or the CLI still needs sign-in.
+Run the check shown in the detail panel to see which prerequisite is missing.
+
 ## If you want to use an API key instead of a subscription
 
 Capsule cannot hold that key. It connects to a Gateway that is already running,

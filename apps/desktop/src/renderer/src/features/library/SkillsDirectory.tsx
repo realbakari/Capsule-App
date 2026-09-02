@@ -1,12 +1,23 @@
 import { useState, useMemo, useEffect } from "react";
-import type { Skill, SkillPack, SkillCatalogEntry } from "@capsule/shared";
+import type { FileEntry, FilePreview, Skill, SkillPack, SkillCatalogEntry } from "@capsule/shared";
 import { useWorkspace } from "../../lib/workspace";
-import { SearchIcon, XIcon, SparkIcon, CopyIcon, CheckIcon, ShieldIcon, GlobeIcon } from "../shell/icons";
+import { skillMarkdownBody } from "../../lib/skill-markdown";
+import { MessageBody } from "../conversation/MessageBody";
+import {
+  SearchIcon,
+  XIcon,
+  SparkIcon,
+  CopyIcon,
+  CheckIcon,
+  RefreshIcon,
+  PlusIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  FileIcon,
+  FolderIcon,
+} from "../shell/icons";
 
-type TabFilter = "all" | "packs" | "installed" | "directory";
-
-/** Tags shown before "N more". One row on a normal window. */
-const TAG_PREVIEW = 8;
+type TabFilter = "packs" | "installed" | "directory";
 
 /** Compact a count for a badge: 12480 -> "12.5k". */
 function compactCount(value: number): string {
@@ -44,6 +55,234 @@ function skillFromCatalog(
   };
 }
 
+function InstalledSkillGroup({
+  title,
+  description,
+  skills,
+  empty,
+  skillId,
+  onInspect,
+  onAttach,
+}: {
+  title: string;
+  description: string;
+  skills: Skill[];
+  empty: string;
+  skillId?: string;
+  onInspect: (skill: Skill) => void;
+  onAttach: (id: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const visibleSkills = expanded ? skills : skills.slice(0, 12);
+
+  return (
+    <section className="installed-skill-group">
+      <header>
+        <div>
+          <h3>{title}</h3>
+          <p>{description}</p>
+        </div>
+        <span>{skills.length}</span>
+      </header>
+      {skills.length === 0 ? (
+        <p className="installed-skills-empty">{empty}</p>
+      ) : (
+        <div className="installed-skill-list">
+          {visibleSkills.map((skill) => (
+            <div className="installed-skill-row" key={skill.id}>
+              <button type="button" className="installed-skill-main" onClick={() => onInspect(skill)}>
+                <span className="installed-skill-name">
+                  <b>{skill.name}</b>
+                  <i>{skill.source}</i>
+                </span>
+                <span className="installed-skill-description">
+                  {skill.description || "No description in SKILL.md."}
+                </span>
+              </button>
+              <button
+                type="button"
+                className={`installed-skill-attach${skillId === skill.id ? " attached" : ""}`}
+                onClick={() => onAttach(skill.id)}
+              >
+                {skillId === skill.id ? <CheckIcon size={13} /> : <PlusIcon size={13} />}
+                {skillId === skill.id ? "Attached" : "Attach"}
+              </button>
+            </div>
+          ))}
+          {skills.length > 12 ? (
+            <button
+              type="button"
+              className="installed-skills-more"
+              onClick={() => setExpanded((value) => !value)}
+            >
+              {expanded ? "Show fewer" : `Show all ${skills.length}`}
+            </button>
+          ) : null}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function SkillFolderExplorer({ skill }: { skill: Skill }) {
+  const [listing, setListing] = useState<FileEntry[]>([]);
+  const [childrenByDirectory, setChildrenByDirectory] = useState<Record<string, FileEntry[]>>({});
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [loadingDirectories, setLoadingDirectories] = useState<Set<string>>(new Set());
+  const [preview, setPreview] = useState<FilePreview | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const folderPath = skill.location?.replace(/[\\/]SKILL\.md$/i, "");
+
+  useEffect(() => {
+    let cancelled = false;
+    setListing([]);
+    setChildrenByDirectory({});
+    setExpanded(new Set());
+    setPreview(null);
+    setError(null);
+    void window.capsule
+      .listSkillFiles(skill.id)
+      .then(async (entries) => {
+        if (cancelled) return;
+        const nextEntries = entries as FileEntry[];
+        setListing(nextEntries);
+        const firstFile = nextEntries.find((entry) => entry.type === "file");
+        if (!firstFile) return;
+        const doc = (await window.capsule.previewSkillFile(skill.id, firstFile.path)) as FilePreview;
+        if (!cancelled) setPreview(doc);
+      })
+      .catch((reason: unknown) => {
+        if (!cancelled) setError(reason instanceof Error ? reason.message : String(reason));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [skill.id]);
+
+  async function toggleDirectory(relative: string) {
+    const next = new Set(expanded);
+    if (next.has(relative)) {
+      next.delete(relative);
+      setExpanded(next);
+      return;
+    }
+    next.add(relative);
+    setExpanded(next);
+    if (childrenByDirectory[relative]) return;
+    setLoadingDirectories((current) => new Set(current).add(relative));
+    try {
+      const entries = (await window.capsule.listSkillFiles(skill.id, relative)) as FileEntry[];
+      setChildrenByDirectory((current) => ({ ...current, [relative]: entries }));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setLoadingDirectories((current) => {
+        const remaining = new Set(current);
+        remaining.delete(relative);
+        return remaining;
+      });
+    }
+  }
+
+  async function previewFile(relative: string) {
+    try {
+      setPreview((await window.capsule.previewSkillFile(skill.id, relative)) as FilePreview);
+      setError(null);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    }
+  }
+
+  function rows(entries: FileEntry[], depth = 0) {
+    return entries.map((entry) => {
+      const open = expanded.has(entry.path);
+      if (entry.type === "directory") {
+        return (
+          <div className="skill-file-tree-group" key={entry.path}>
+            <button
+              type="button"
+              className="skill-file-tree-row"
+              style={{ paddingLeft: `${0.55 + depth * 0.75}rem` }}
+              aria-expanded={open}
+              onClick={() => void toggleDirectory(entry.path)}
+            >
+              {open ? <ChevronDownIcon size={11} /> : <ChevronRightIcon size={11} />}
+              <FolderIcon size={13} />
+              <span>{entry.name}</span>
+            </button>
+            {open ? (
+              loadingDirectories.has(entry.path) ? (
+                <div className="skill-file-tree-loading" style={{ paddingLeft: `${1.8 + depth * 0.75}rem` }}>
+                  Loading…
+                </div>
+              ) : (
+                rows(childrenByDirectory[entry.path] ?? [], depth + 1)
+              )
+            ) : null}
+          </div>
+        );
+      }
+      return (
+        <button
+          type="button"
+          className={`skill-file-tree-row file${preview?.path === entry.path ? " active" : ""}`}
+          style={{ paddingLeft: `${1.8 + depth * 0.75}rem` }}
+          key={entry.path}
+          onClick={() => void previewFile(entry.path)}
+        >
+          <FileIcon size={12} />
+          <span>{entry.name}</span>
+        </button>
+      );
+    });
+  }
+
+  return (
+    <div className="skill-folder-explorer">
+      <div className="skill-folder-heading">
+        <div>
+          <b>{folderPath ? "Skill folder" : "Stored skill"}</b>
+          <span>{folderPath ?? "Capsule library · SKILL.md only"}</span>
+        </div>
+        <span className="skill-folder-readonly">Read only</span>
+      </div>
+      {error ? <div className="skill-folder-error">{error}</div> : null}
+      <div className="skill-folder-workspace">
+        <div className="skill-file-tree">
+          {listing.length > 0 ? rows(listing) : <p>No files available.</p>}
+        </div>
+        <div className="skill-file-preview">
+          {preview ? (
+            <>
+              <div className="skill-file-preview-bar">
+                <span className="mono">{preview.path}</span>
+                <span>{preview.kind === "image" ? preview.mime : preview.language || preview.kind}</span>
+              </div>
+              {preview.truncated ? <p className="skill-file-note">Showing the first part of this file.</p> : null}
+              {preview.kind === "image" && preview.dataUrl ? (
+                <div className="skill-file-image-frame">
+                  <img src={preview.dataUrl} alt={preview.path} />
+                </div>
+              ) : null}
+              {preview.kind === "text" && preview.language === "markdown" ? (
+                <div className="skill-markdown-rendered skill-file-markdown">
+                  <MessageBody content={skillMarkdownBody(preview.contents ?? "")} />
+                </div>
+              ) : null}
+              {preview.kind === "text" && preview.language !== "markdown" ? (
+                <pre className="mono skill-file-code">{preview.contents}</pre>
+              ) : null}
+              {preview.kind === "binary" ? <p>{preview.detail ?? "This file cannot be previewed."}</p> : null}
+            </>
+          ) : (
+            <p>Select a file to preview it.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function SkillsDirectory() {
   const {
     skills,
@@ -51,20 +290,24 @@ export function SkillsDirectory() {
     skillId,
     setSkillId,
     setView,
+    setBrowserUrl,
+    openInspector,
     installSkill,
     installSkillPack,
     uninstallSkill,
     searchSkillCatalog,
     fetchSkillDetail,
+    refresh,
   } = useWorkspace();
 
-  const [tab, setTab] = useState<TabFilter>("all");
+  const [tab, setTab] = useState<TabFilter>("installed");
   const [search, setSearch] = useState("");
-  const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [inspectSkill, setInspectSkill] = useState<Skill | null>(null);
   const [inspectPack, setInspectPack] = useState<SkillPack | null>(null);
   const [inspectContent, setInspectContent] = useState<string | null>(null);
-  const [inspectModalTab, setInspectModalTab] = useState<"instructions" | "permissions" | "cli">("instructions");
+  const [inspectModalTab, setInspectModalTab] = useState<
+    "instructions" | "cli" | "source" | "files"
+  >("instructions");
   const [directoryResults, setDirectoryResults] = useState<SkillCatalogEntry[]>([]);
   const [searching, setSearching] = useState(false);
   const [directoryError, setDirectoryError] = useState<string | null>(null);
@@ -75,8 +318,9 @@ export function SkillsDirectory() {
   const [fetchedAt, setFetchedAt] = useState<number | null>(null);
   const [importNotice, setImportNotice] = useState<string | null>(null);
   const [copiedCmd, setCopiedCmd] = useState<string | null>(null);
-  const [showAllTags, setShowAllTags] = useState(false);
   const [installing, setInstalling] = useState<string | null>(null);
+  const [refreshingInstalled, setRefreshingInstalled] = useState(false);
+  const [showAllCatalog, setShowAllCatalog] = useState(false);
 
   // The catalog is fetched live: GitHub always, plus skills.sh when a token is
   // configured. An empty query browses everything; typing filters what was
@@ -125,7 +369,7 @@ export function SkillsDirectory() {
       return;
     }
     const catalogId = inspectSkill.url?.startsWith("https://github.com/")
-      ? `${inspectSkill.source}/${inspectSkill.id}`
+      ? inspectSkill.id
       : undefined;
     if (!catalogId) {
       setInspectContent(inspectSkill.content ?? null);
@@ -136,37 +380,26 @@ export function SkillsDirectory() {
     });
   }, [inspectSkill, fetchSkillDetail]);
 
-  /** Tags with how many skills carry them, most-used first. */
-  const rankedTags = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const skill of skills) {
-      for (const tag of skill.tags ?? []) counts.set(tag, (counts.get(tag) ?? 0) + 1);
-    }
-    return [...counts.entries()]
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
-  }, [skills]);
-
   const filteredSkills = useMemo(() => {
     const query = search.trim().toLowerCase();
     return skills.filter((s) => {
-      if (tab === "installed" && s.status !== "installed") return false;
-      if (selectedTag && !s.tags?.includes(selectedTag)) return false;
+      if (s.status !== "installed") return false;
       if (!query) return true;
       return (
         s.name.toLowerCase().includes(query) ||
         s.id.toLowerCase().includes(query) ||
         s.description.toLowerCase().includes(query) ||
+        s.source.toLowerCase().includes(query) ||
+        s.location?.toLowerCase().includes(query) ||
         s.packName?.toLowerCase().includes(query) ||
         s.tags?.some((t) => t.toLowerCase().includes(query))
       );
     });
-  }, [skills, tab, search, selectedTag]);
+  }, [skills, search]);
 
   const filteredPacks = useMemo(() => {
     const query = search.trim().toLowerCase();
     return skillPacks.filter((p) => {
-      if (selectedTag && !p.tags?.includes(selectedTag)) return false;
       if (!query) return true;
       return (
         p.name.toLowerCase().includes(query) ||
@@ -175,7 +408,23 @@ export function SkillsDirectory() {
         p.tags?.some((t) => t.toLowerCase().includes(query))
       );
     });
-  }, [skillPacks, search, selectedTag]);
+  }, [skillPacks, search]);
+
+  const installedSkills = filteredSkills.filter((skill) => skill.status === "installed");
+  const globalSkills = installedSkills.filter((skill) => skill.managedExternally);
+  const capsuleSkills = installedSkills.filter((skill) => !skill.managedExternally);
+  const skillsShFailed = directoryPartial.some((reason) => /skills\.sh/i.test(reason));
+  const visibleDirectoryResults =
+    search.trim() || showAllCatalog ? directoryResults : directoryResults.slice(0, 24);
+
+  async function refreshInstalledSkills() {
+    setRefreshingInstalled(true);
+    try {
+      await refresh();
+    } finally {
+      setRefreshingInstalled(false);
+    }
+  }
 
   /**
    * Install a catalog skill, fetching its SKILL.md first. Without the document
@@ -209,43 +458,17 @@ export function SkillsDirectory() {
     }
   }
 
-  async function handleImportInput(input: string) {
-    setImportNotice(null);
-    const trimmed = input.trim();
-    if (!trimmed) return;
-
-    // Check if it's a pack url or id
-    const pack = skillPacks.find(
-      (p) =>
-        p.id === trimmed ||
-        trimmed.includes(`/p/${p.id}`) ||
-        trimmed.includes(p.id),
-    );
-    if (pack) {
-      await installSkillPack(pack.id);
-      setImportNotice(`Installed pack: ${pack.name}`);
-      setTimeout(() => setImportNotice(null), 3000);
-      return;
-    }
-
-    // Otherwise resolve it against the live catalog.
-    const page = await searchSkillCatalog(trimmed);
-    const first = page.entries[0];
-    if (!first) {
-      setImportNotice(`Nothing in the catalog matches "${trimmed}".`);
-      setTimeout(() => setImportNotice(null), 4000);
-      return;
-    }
-    await installFromCatalog(first);
+  function openInCapsuleBrowser(url: string) {
+    setBrowserUrl(url);
+    openInspector("browser");
   }
 
   return (
     <div className="skills-directory">
-      {/* Header & Stats Banner */}
       <div className="skills-header">
         <div className="skills-header-text">
           <div className="skills-title-row">
-            <h2>Skills Directory</h2>
+            <h2>Skills</h2>
             {tab === "directory" && directoryLoaded && !directoryError && (
               <div className="skills-stats-badge">
                 <SparkIcon size={14} className="skills-spark-icon" />
@@ -257,10 +480,14 @@ export function SkillsDirectory() {
             )}
           </div>
           <p>
-            Bundled packs, plus skills from{" "}
-            <a href="https://github.com/topics/agent-skills" target="_blank" rel="noreferrer" className="skills-link">
+            Use skills already installed on this Mac, or add more from{" "}
+            <button
+              type="button"
+              className="skills-link skills-link-button"
+              onClick={() => openInCapsuleBrowser("https://github.com/topics/agent-skills")}
+            >
               GitHub
-            </a>
+            </button>
             . Attach one with <code className="mono">$</code> in the composer.
           </p>
         </div>
@@ -274,9 +501,6 @@ export function SkillsDirectory() {
             placeholder="Search skills and packs…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void handleImportInput(search);
-            }}
           />
           {search && (
             <button
@@ -292,278 +516,121 @@ export function SkillsDirectory() {
 
       {importNotice && <div className="skills-notice">{importNotice}</div>}
 
-      {/* Tabs */}
       <div className="skills-tabs">
         <button
           type="button"
-          className={`skills-tab ${tab === "all" ? "active" : ""}`}
-          onClick={() => {
-            setTab("all");
-            setSelectedTag(null);
-          }}
-        >
-          All Skills <span className="tab-count">{skills.length}</span>
-        </button>
-        <button
-          type="button"
-          className={`skills-tab ${tab === "packs" ? "active" : ""}`}
-          onClick={() => {
-            setTab("packs");
-            setSelectedTag(null);
-          }}
-        >
-          Skill Packs <span className="tab-count">{skillPacks.length}</span>
-        </button>
-        <button
-          type="button"
           className={`skills-tab ${tab === "installed" ? "active" : ""}`}
-          onClick={() => {
-            setTab("installed");
-            setSelectedTag(null);
-          }}
+          onClick={() => setTab("installed")}
         >
           Installed{" "}
           <span className="tab-count">
-            {skills.filter((s) => s.status === "installed").length}
+            {skills.filter((skill) => skill.status === "installed").length}
           </span>
         </button>
         <button
           type="button"
           className={`skills-tab ${tab === "directory" ? "active" : ""}`}
-          onClick={() => {
-            setTab("directory");
-            setSelectedTag(null);
-          }}
+          onClick={() => setTab("directory")}
         >
           Browse GitHub
         </button>
+        <button
+          type="button"
+          className={`skills-tab ${tab === "packs" ? "active" : ""}`}
+          onClick={() => setTab("packs")}
+        >
+          Packs <span className="tab-count">{skillPacks.length}</span>
+        </button>
       </div>
 
-      {/*
-        * Tags used to render as one chip per tag — 57 of them, six rows deep,
-        * filling the screen before a single skill appeared. Ranking by how many
-        * skills carry a tag puts the ones that actually partition the list
-        * first, and the rest stay one click away.
-        */}
-      {(tab === "all" || tab === "installed") && rankedTags.length > 0 && (
-        <div className="skills-tag-filters">
-          <button
-            type="button"
-            className={`tag-chip ${selectedTag === null ? "active" : ""}`}
-            onClick={() => setSelectedTag(null)}
-          >
-            All
-          </button>
-          {(showAllTags ? rankedTags : rankedTags.slice(0, TAG_PREVIEW)).map((tag) => (
-            <button
-              key={tag.name}
-              type="button"
-              className={`tag-chip ${selectedTag === tag.name ? "active" : ""}`}
-              title={`${tag.count} ${tag.count === 1 ? "skill" : "skills"}`}
-              onClick={() => setSelectedTag(selectedTag === tag.name ? null : tag.name)}
-            >
-              {tag.name}
-              <span className="tag-count">{tag.count}</span>
-            </button>
-          ))}
-          {rankedTags.length > TAG_PREVIEW && (
+      {tab === "installed" && (
+        <div className="installed-skills">
+          <div className="installed-skills-toolbar">
+            <p>Choose a skill to inspect its guidance, or attach it directly.</p>
             <button
               type="button"
-              className="tag-chip tag-more"
-              onClick={() => setShowAllTags((value) => !value)}
+              className="ghost"
+              disabled={refreshingInstalled}
+              onClick={() => void refreshInstalledSkills()}
             >
-              {showAllTags ? "Show fewer" : `${rankedTags.length - TAG_PREVIEW} more`}
+              <RefreshIcon size={13} />
+              {refreshingInstalled ? "Scanning…" : "Scan again"}
             </button>
-          )}
+          </div>
+
+          <InstalledSkillGroup
+            title="On this Mac"
+            description="Read from global Agent Skills, Codex, Claude Code, and OpenCode folders. Capsule does not move or remove these files."
+            skills={globalSkills}
+            empty="No matching global skills were found. Global installs appear here automatically."
+            skillId={skillId}
+            onInspect={setInspectSkill}
+            onAttach={(id) => {
+              setSkillId(id);
+              setView("chat");
+            }}
+          />
+
+          <InstalledSkillGroup
+            title="Capsule library"
+            description="Skills and packs installed through Capsule."
+            skills={capsuleSkills}
+            empty="No matching Capsule-managed skills are installed."
+            skillId={skillId}
+            onInspect={setInspectSkill}
+            onAttach={(id) => {
+              setSkillId(id);
+              setView("chat");
+            }}
+          />
         </div>
       )}
 
       {/* Packs View */}
       {tab === "packs" && (
-        <div className="packs-grid">
-          {filteredPacks.length === 0 && (
-            <div className="skills-empty">
-              {search.trim()
-                ? `No skill pack matches "${search.trim()}".`
-                : selectedTag
-                  ? `No skill pack is tagged ${selectedTag}.`
+        <div className="skills-compact-section">
+          <div className="skills-section-intro">
+            <p>Install a curated group at once, or open it to inspect every included skill.</p>
+          </div>
+          <div className="skill-pack-list">
+            {filteredPacks.length === 0 ? (
+              <div className="skills-empty compact">
+                {search.trim()
+                  ? `No skill pack matches "${search.trim()}".`
                   : "No skill packs are bundled."}
-            </div>
-          )}
-          {filteredPacks.map((pack) => {
-            const packSkills = skills.filter((s) => s.packId === pack.id);
-            const allInstalled = packSkills.length > 0 && packSkills.every((s) => s.status === "installed");
-            const installCmd = pack.installCommand ?? `npx skills add https://skills.sh/p/${pack.id}`;
-            const isCmdCopied = copiedCmd === installCmd;
-
-            return (
-              <div className="pack-card" key={pack.id}>
-                <div className="pack-card-header">
-                  <div className="pack-meta-row">
-                    <span className="pack-badge">Skill Pack</span>
-                    {pack.author && (
-                      <span className="pack-author">by {pack.author}</span>
-                    )}
-                    <span className="pack-skill-count">
-                      {pack.skillCount || packSkills.length} skills
+              </div>
+            ) : null}
+            {filteredPacks.map((pack) => {
+              const packSkills = skills.filter((skill) => skill.packId === pack.id);
+              const allInstalled =
+                packSkills.length > 0 && packSkills.every((skill) => skill.status === "installed");
+              const included = packSkills.map((skill) => skill.name).join(" · ");
+              return (
+                <div className="skill-pack-row" key={pack.id}>
+                  <button type="button" className="skill-pack-main" onClick={() => setInspectPack(pack)}>
+                    <span className="skill-pack-name">
+                      <b>{pack.name}</b>
+                      {pack.author ? <i>by {pack.author}</i> : null}
                     </span>
-                  </div>
-                  <h3 className="pack-title">{pack.name}</h3>
-                  <p className="pack-desc">{pack.description}</p>
-                </div>
-
-                {packSkills.length > 0 && (
-                  <div className="pack-skills-section">
-                    <div className="pack-skills-heading">Included Skills (Click to inspect):</div>
-                    <div className="pack-skills-pills">
-                      {packSkills.map((s) => (
-                        <button
-                          key={s.id}
-                          type="button"
-                          className="pack-skill-pill"
-                          onClick={() => setInspectSkill(s)}
-                          title={`Click to view ${s.name} details & SKILL.md`}
-                        >
-                          {s.name}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div className="pack-card-cli-row">
-                  <code className="pack-cmd mono">{installCmd}</code>
-                  <button
-                    type="button"
-                    className="pack-cmd-copy"
-                    onClick={() => void handleCopyText(installCmd)}
-                    title="Copy CLI install command"
-                  >
-                    {isCmdCopied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
-                  </button>
-                </div>
-
-                <div className="pack-card-footer">
-                  <button
-                    type="button"
-                    className="ghost"
-                    onClick={() => setInspectPack(pack)}
-                  >
-                    View Pack Details
+                    <span className="skill-pack-description">{pack.description}</span>
+                    <span className="skill-pack-summary">
+                      {pack.skillCount || packSkills.length} skills
+                      {included ? ` · ${included}` : ""}
+                    </span>
                   </button>
                   <button
                     type="button"
-                    className={`chip ${allInstalled ? "installed" : "send"}`}
+                    className={`installed-skill-attach${allInstalled ? " attached" : ""}`}
+                    disabled={allInstalled}
                     onClick={() => void installSkillPack(pack.id)}
                   >
-                    {allInstalled ? "Pack Installed" : "Install Pack"}
+                    {allInstalled ? <CheckIcon size={13} /> : <PlusIcon size={13} />}
+                    {allInstalled ? "Installed" : "Install"}
                   </button>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Skills Grid (All / Installed) */}
-      {(tab === "all" || tab === "installed") && (
-        <div className="skills-grid">
-          {filteredSkills.length === 0 && (
-            <div className="skills-empty">
-              {search.trim()
-                ? `No skill matches "${search.trim()}".`
-                : selectedTag
-                  ? `No skill is tagged ${selectedTag}.`
-                  : tab === "installed"
-                    ? "Nothing installed yet. Browse GitHub to add a skill."
-                    : "No skills are available."}
-            </div>
-          )}
-          {filteredSkills.map((skill) => {
-            const isAttached = skillId === skill.id;
-            const isInstalled = skill.status === "installed";
-
-            return (
-              <div
-                className={`skill-card ${isAttached ? "attached" : ""}`}
-                key={skill.id}
-              >
-                <div className="skill-card-body">
-                  <div className="skill-card-top">
-                    <div>
-                      <div className="skill-title-row">
-                        <h3 className="skill-name">{skill.name}</h3>
-                        {skill.version && (
-                          <span className="skill-version">v{skill.version}</span>
-                        )}
-                      </div>
-                      {skill.packName && (
-                        <span className="skill-pack-tag">{skill.packName}</span>
-                      )}
-                    </div>
-
-                    <div className="skill-badges">
-                      {skill.installs && (
-                        <span className="skill-installs">
-                          {skill.installs >= 1000000
-                            ? `${(skill.installs / 1000000).toFixed(1)}M`
-                            : skill.installs >= 1000
-                              ? `${(skill.installs / 1000).toFixed(0)}k`
-                              : skill.installs}{" "}
-                          runs
-                        </span>
-                      )}
-                      <span className={`skill-status-badge ${skill.status}`}>
-                        {skill.status}
-                      </span>
-                    </div>
-                  </div>
-
-                  <p className="skill-desc">{skill.description}</p>
-
-                  {skill.tags && skill.tags.length > 0 && (
-                    <div className="skill-tags">
-                      {skill.tags.map((tag) => (
-                        <span key={tag} className="skill-tag">
-                          #{tag}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="skill-card-actions">
-                  <button
-                    type="button"
-                    className="ghost"
-                    onClick={() => setInspectSkill(skill)}
-                  >
-                    View Details
-                  </button>
-                  {isInstalled ? (
-                    <button
-                      type="button"
-                      className={`chip ${isAttached ? "active-attached" : "send"}`}
-                      onClick={() => {
-                        setSkillId(skill.id);
-                        setView("chat");
-                      }}
-                    >
-                      {isAttached ? "Attached" : "Attach to Chat"}
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      className="chip send"
-                      onClick={() => void installSkill(skill)}
-                    >
-                      Install Skill
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -573,12 +640,12 @@ export function SkillsDirectory() {
           <div className="skills-source-bar">
             <span className="skills-source-state">
               <span
-                className={`skills-source-dot ${skillsShConnected ? "on" : "off"}`}
+                className={`skills-source-dot ${directoryResults.length > 0 ? "on" : "off"}`}
                 aria-hidden
               />
-              {skillsShConnected
+              {skillsShConnected && !skillsShFailed
                 ? "GitHub + skills.sh"
-                : "GitHub only — add a skills.sh token in Settings for install counts"}
+                : "GitHub catalog"}
               {fetchedAt ? (
                 <span className="faint">
                   {" · fetched "}
@@ -599,11 +666,16 @@ export function SkillsDirectory() {
             </button>
           </div>
           {directoryPartial.length > 0 && (
-            <div className="skills-notice skills-notice-warn">
-              Some sources did not load: {directoryPartial.join("; ")}
-            </div>
+            <details className="skills-inline-warning">
+              <summary>
+                {skillsShFailed
+                  ? "skills.sh is unavailable — showing GitHub results"
+                  : `${directoryPartial.length} catalog source${directoryPartial.length === 1 ? "" : "s"} did not refresh`}
+              </summary>
+              <p>{directoryPartial.join("; ")}</p>
+            </details>
           )}
-          <div className="skills-grid">
+          <div className="skill-catalog-list">
             {searching && directoryResults.length === 0 && (
               <div className="skills-loading">Loading skills from GitHub…</div>
             )}
@@ -622,77 +694,61 @@ export function SkillsDirectory() {
                   : "No skills were returned."}
               </div>
             )}
-            {directoryResults.map((result) => {
-              const isInstalled = skills.some((s) => s.id === result.id);
+            {visibleDirectoryResults.map((result) => {
+              const isInstalled = skills.some(
+                (skill) =>
+                  skill.status === "installed" &&
+                  (skill.id === result.id ||
+                    skill.name.toLowerCase() === result.name.toLowerCase()),
+              );
+              const metric =
+                typeof result.installs === "number"
+                  ? `${compactCount(result.installs)} installs`
+                  : typeof result.stars === "number"
+                    ? `${compactCount(result.stars)} ★`
+                    : undefined;
               return (
-                <div className="skill-card" key={result.id}>
-                  <div className="skill-card-body">
-                    <div className="skill-card-top">
-                      <div>
-                        <h3 className="skill-name">{result.name}</h3>
-                        <a
-                          className="skill-pack-tag skill-source-link"
-                          href={result.url}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          {result.source}
-                        </a>
-                      </div>
-                      {/* Each metric is a real number from whichever source
-                          returned it: installs from skills.sh, stars from the
-                          GitHub repo record. A source that reports neither
-                          shows nothing rather than a placeholder. */}
-                      {typeof result.installs === "number" ? (
-                        <span
-                          className="skill-installs"
-                          title={`${result.installs.toLocaleString()} installs reported by skills.sh`}
-                        >
-                          {compactCount(result.installs)} installs
-                        </span>
-                      ) : typeof result.stars === "number" ? (
-                        <span
-                          className="skill-installs"
-                          title={`${result.stars.toLocaleString()} stars on ${result.source}`}
-                        >
-                          {compactCount(result.stars)} ★
-                        </span>
-                      ) : null}
-                    </div>
-                    {result.description ? (
-                      <p className="skill-desc">{result.description}</p>
-                    ) : (
-                      <p className="skill-desc skill-desc-missing">No description in SKILL.md.</p>
-                    )}
-                  </div>
-                  <div className="skill-card-actions">
-                    <button
-                      type="button"
-                      className="ghost"
-                      onClick={() =>
-                        setInspectSkill(
-                          skillFromCatalog(result, isInstalled ? "installed" : "available"),
-                        )
-                      }
-                    >
-                      View Details
-                    </button>
-                    <button
-                      type="button"
-                      className={`chip ${isInstalled ? "installed" : "send"}`}
-                      disabled={installing === result.id}
-                      onClick={() => void installFromCatalog(result)}
-                    >
-                      {installing === result.id
-                        ? "Installing…"
-                        : isInstalled
-                          ? "Installed"
-                          : "Install Skill"}
-                    </button>
-                  </div>
+                <div className="skill-catalog-row" key={result.id}>
+                  <button
+                    type="button"
+                    className="skill-catalog-main"
+                    onClick={() =>
+                      setInspectSkill(
+                        skillFromCatalog(result, isInstalled ? "installed" : "available"),
+                      )
+                    }
+                  >
+                    <span className="skill-catalog-name">
+                      <b>{result.name}</b>
+                      <i>{result.source}</i>
+                    </span>
+                    <span className={`skill-catalog-description${result.description ? "" : " missing"}`}>
+                      {result.description || "No description in SKILL.md."}
+                    </span>
+                    {metric ? <span className="skill-catalog-metric">{metric}</span> : null}
+                  </button>
+                  <button
+                    type="button"
+                    className={`installed-skill-attach${isInstalled ? " attached" : ""}`}
+                    disabled={isInstalled || installing === result.id}
+                    onClick={() => void installFromCatalog(result)}
+                  >
+                    {isInstalled ? <CheckIcon size={13} /> : <PlusIcon size={13} />}
+                    {installing === result.id ? "Installing…" : isInstalled ? "Installed" : "Install"}
+                  </button>
                 </div>
               );
             })}
+            {!search.trim() && directoryResults.length > visibleDirectoryResults.length ? (
+              <button type="button" className="installed-skills-more" onClick={() => setShowAllCatalog(true)}>
+                Show all {directoryResults.length} skills
+              </button>
+            ) : null}
+            {!search.trim() && showAllCatalog && directoryResults.length > 24 ? (
+              <button type="button" className="installed-skills-more" onClick={() => setShowAllCatalog(false)}>
+                Show fewer
+              </button>
+            ) : null}
           </div>
         </>
       )}
@@ -742,17 +798,26 @@ export function SkillsDirectory() {
               </button>
               <button
                 type="button"
-                className={`skill-subnav-btn ${inspectModalTab === "permissions" ? "active" : ""}`}
-                onClick={() => setInspectModalTab("permissions")}
+                className={`skill-subnav-btn ${inspectModalTab === "source" ? "active" : ""}`}
+                onClick={() => setInspectModalTab("source")}
               >
-                Permissions & Policy
+                Source
               </button>
+              {inspectSkill.status === "installed" ? (
+                <button
+                  type="button"
+                  className={`skill-subnav-btn ${inspectModalTab === "files" ? "active" : ""}`}
+                  onClick={() => setInspectModalTab("files")}
+                >
+                  Files
+                </button>
+              ) : null}
               <button
                 type="button"
                 className={`skill-subnav-btn ${inspectModalTab === "cli" ? "active" : ""}`}
                 onClick={() => setInspectModalTab("cli")}
               >
-                CLI Command
+                {inspectSkill.managedExternally ? "On disk" : "CLI Command"}
               </button>
             </div>
 
@@ -760,50 +825,49 @@ export function SkillsDirectory() {
               {inspectModalTab === "instructions" && (
                 <div className="skill-inspect-content">
                   <p className="skill-modal-desc">{inspectSkill.description}</p>
-                  <pre className="mono skill-markdown-pre">
-                    {inspectContent ?? "SKILL.md could not be loaded for this skill."}
-                  </pre>
+                  {inspectContent ? (
+                    <div className="skill-markdown-rendered">
+                      <MessageBody content={skillMarkdownBody(inspectContent)} />
+                    </div>
+                  ) : (
+                    <p className="skills-empty">SKILL.md could not be loaded for this skill.</p>
+                  )}
                 </div>
               )}
 
-              {inspectModalTab === "permissions" && (
-                <div className="skill-permissions-view">
-                  <div className="permissions-card">
-                    <div className="permissions-row">
-                      <ShieldIcon size={16} />
-                      <div className="permissions-info">
-                        <b>Filesystem Access</b>
-                        <p>Requires user approval before modifying files outside workspace.</p>
-                      </div>
-                      <span className="permission-chip">Approval Required</span>
-                    </div>
-                    <div className="permissions-row">
-                      <GlobeIcon size={16} />
-                      <div className="permissions-info">
-                        <b>External Network</b>
-                        <p>Allowed for fetching documentation and public APIs.</p>
-                      </div>
-                      <span className="permission-chip">Standard</span>
-                    </div>
-                  </div>
-                </div>
+              {inspectModalTab === "source" && (
+                <pre className="mono skill-markdown-pre">
+                  {inspectContent ?? "SKILL.md could not be loaded for this skill."}
+                </pre>
               )}
+
+              {inspectModalTab === "files" && <SkillFolderExplorer skill={inspectSkill} />}
 
               {inspectModalTab === "cli" && (
                 <div className="skill-cli-view">
-                  <p>Install via the open skills CLI:</p>
+                  <p>
+                    {inspectSkill.managedExternally
+                      ? "This skill is managed by another agent CLI:"
+                      : "Install via the open skills CLI:"}
+                  </p>
                   <div className="pack-card-cli-row">
                     <code className="pack-cmd mono">
-                      {inspectSkill.url ? `npx skills add ${inspectSkill.url}` : `npx skills add ${inspectSkill.id}`}
+                      {inspectSkill.managedExternally
+                        ? inspectSkill.location
+                        : inspectSkill.url
+                          ? `npx skills add ${inspectSkill.url}`
+                          : `npx skills add ${inspectSkill.id}`}
                     </code>
                     <button
                       type="button"
                       className="pack-cmd-copy"
                       onClick={() =>
                         void handleCopyText(
-                          inspectSkill.url
-                            ? `npx skills add ${inspectSkill.url}`
-                            : `npx skills add ${inspectSkill.id}`,
+                          inspectSkill.managedExternally
+                            ? inspectSkill.location ?? ""
+                            : inspectSkill.url
+                              ? `npx skills add ${inspectSkill.url}`
+                              : `npx skills add ${inspectSkill.id}`,
                         )
                       }
                     >
@@ -816,14 +880,13 @@ export function SkillsDirectory() {
 
             <div className="skill-inspect-footer">
               {inspectSkill.url && (
-                <a
-                  href={inspectSkill.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="skills-link"
+                <button
+                  type="button"
+                  className="skills-link skills-link-button"
+                  onClick={() => openInCapsuleBrowser(inspectSkill.url!)}
                 >
                   {inspectSkill.url.startsWith("https://github.com/") ? "View on GitHub ↗" : "View source ↗"}
-                </a>
+                </button>
               )}
               <div className="skill-inspect-actions">
                 <button
@@ -835,16 +898,18 @@ export function SkillsDirectory() {
                 </button>
                 {inspectSkill.status === "installed" ? (
                   <>
-                    <button
-                      type="button"
-                      className="ghost danger-text"
-                      onClick={() => {
-                        void uninstallSkill(inspectSkill.id);
-                        setInspectSkill(null);
-                      }}
-                    >
-                      Uninstall
-                    </button>
+                    {!inspectSkill.managedExternally && (
+                      <button
+                        type="button"
+                        className="ghost danger-text"
+                        onClick={() => {
+                          void uninstallSkill(inspectSkill.id);
+                          setInspectSkill(null);
+                        }}
+                      >
+                        Uninstall
+                      </button>
+                    )}
                     <button
                       type="button"
                       className="send"

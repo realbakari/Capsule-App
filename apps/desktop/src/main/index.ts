@@ -420,6 +420,12 @@ function registerIpc(): void {
   );
   handle(IPC_CHANNELS.listAgents, () => requireEngine().listAgents());
   handle(IPC_CHANNELS.listSkills, () => requireEngine().listSkills());
+  handleArgs(IPC_CHANNELS.listSkillFiles, [id, optStr], (skillId: string, relative?: string) =>
+    requireEngine().listSkillFiles(skillId, relative),
+  );
+  handleArgs(IPC_CHANNELS.previewSkillFile, [id, str], (skillId: string, relative: string) =>
+    requireEngine().previewSkillFile(skillId, relative),
+  );
   handleArgs(IPC_CHANNELS.listSessions, [optStr], (projectId: string | undefined) =>
     requireEngine().listSessions(projectId),
   );

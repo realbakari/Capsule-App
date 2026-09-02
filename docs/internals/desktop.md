@@ -220,12 +220,31 @@ result names the section it lives in.
 | Diagnostics | Process monitor, subsystem versions, export |
 | About | App icon squircle, version, copyright, copy version info |
 
+Harnesses uses a two-pane catalog/detail layout. Installed and ready entries
+sort first; selecting one reveals project dedication, Doctor output, start,
+live sessions, and advanced session options. Project cwd and persistent/one-turn
+mode stay in the compact context bar instead of repeating inside every agent
+card. Missing or signed-out CLIs cannot start until readiness becomes usable.
+
 ---
 
 ## Skills Directory
 
-- **Packed skills and packs**: pre-bundled skills across Web & React, Backend & Database, Testing & Quality, Agent Workflows, and Design & UI.
-- **Browse GitHub**: the directory reads a live catalog from the skill repositories on GitHub — names from the repository listing, descriptions from `SKILL.md` frontmatter. No account is needed. The catalog is cached on disk because unauthenticated GitHub allows 60 requests an hour for the whole machine; a failed refetch serves the last good page with the reason attached rather than an empty list. Refresh forces a refetch.
+- **Installed first**: the default tab separates Capsule-managed entries from
+  read-only global skills discovered under `~/.agents/skills`,
+  `~/.codex/skills`, the Claude config directory's `skills`, and
+  `~/.config/opencode/skills`. Discovery recursively reads real `SKILL.md`
+  documents, deduplicates symlinked installs by canonical path, and exposes a
+  manual rescan. Global entries can be attached but not uninstalled by Capsule.
+  Installed rows omit full paths and initially cap long groups at twelve;
+  location remains available in the detail view. Guidance uses the shared
+  Markdown renderer with frontmatter removed, while Source preserves the raw
+  document. An explicit read-only Skills IPC lists and previews files under the
+  selected skill root; canonical-path containment prevents traversal and
+  symlink escapes. The Files tab presents that folder tree and renders Markdown
+  previews in place.
+- **Packed skills and packs**: pre-bundled skills across Web & React, Backend & Database, Testing & Quality, Agent Workflows, and Design & UI. Packs use flat compact rows; repeated CLI commands and included-skill controls live in the detail view.
+- **Browse GitHub**: the directory reads a live catalog from the skill repositories on GitHub — names from the repository listing, descriptions from `SKILL.md` frontmatter. Results use compact rows capped to an initial page, and partial-source errors collapse behind a summary instead of taking over the view. No account is needed. The catalog is cached on disk because unauthenticated GitHub allows 60 requests an hour for the whole machine; a failed refetch serves the last good page with the reason attached rather than an empty list. Refresh forces a refetch. Links route into Capsule's embedded Browser.
 - **skills.sh**: optional. Every skills.sh endpoint answers 401 without a Vercel OIDC token, so the catalog reads GitHub unless a token is set in Settings → Skills. With one, skills.sh results merge in ahead of the GitHub ones and carry install counts.
 - **Installing** fetches the skill's `SKILL.md` and stores it. A skill without that text is refused rather than saved, because a turn injects the active skill as `[Active Skill: name]` followed by its content — a skill stored without content attaches and contributes nothing.
 - **Composer attachment**: type `$skill` in the composer to attach procedural guidance to a run.

@@ -15,7 +15,7 @@ import {
 } from "./icons";
 
 const VIEW_TITLE: Record<string, string> = {
-  runtimes: "ACP harnesses",
+  runtimes: "Harnesses",
   skills: "Skills",
   history: "History",
   approvals: "Approvals",

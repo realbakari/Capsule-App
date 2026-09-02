@@ -45,6 +45,8 @@ import {
   readGitDiff,
   readGitStatus,
   readProjectIconDataUrl,
+  readPreviewFile,
+  previewFromBytes,
   resolveProjectIconPath,
   removeWorktree,
   restoreCheckpoint,
@@ -135,6 +137,9 @@ import {
   DEFAULT_SKILL_PACKS,
   SkillCatalogClient,
   SkillsShClient,
+  discoverGlobalSkills,
+  listGlobalSkillFiles,
+  resolveGlobalSkillFile,
   skillIdForMode,
 } from "@capsule/skills";
 import {
@@ -975,7 +980,32 @@ export class CapsuleEngine {
 
   async listSkills(): Promise<Skill[]> {
     const stored = this.repos.listSkills();
-    return stored.length > 0 ? stored : DEFAULT_SKILLS;
+    const capsuleSkills = stored.length > 0 ? stored : DEFAULT_SKILLS;
+    return [...discoverGlobalSkills(), ...capsuleSkills];
+  }
+
+  private async requireSkill(skillId: string): Promise<Skill> {
+    const skill = (await this.listSkills()).find((entry) => entry.id === skillId);
+    if (!skill) throw new Error(`Unknown skill: ${skillId}`);
+    return skill;
+  }
+
+  /** List files owned by one installed skill, never an arbitrary path. */
+  async listSkillFiles(skillId: string, relative = "."): Promise<FileEntry[]> {
+    const skill = await this.requireSkill(skillId);
+    if (skill.location) return listGlobalSkillFiles(skill.location, relative);
+    if (relative !== ".") return [];
+    return skill.content ? [{ name: "SKILL.md", path: "SKILL.md", type: "file" }] : [];
+  }
+
+  /** Read-only preview scoped to the selected skill's own folder. */
+  async previewSkillFile(skillId: string, relative: string): Promise<FilePreview> {
+    const skill = await this.requireSkill(skillId);
+    if (skill.location) {
+      return readPreviewFile(resolveGlobalSkillFile(skill.location, relative), relative);
+    }
+    if (relative !== "SKILL.md" || !skill.content) throw new Error("Skill file not found");
+    return previewFromBytes("SKILL.md", Buffer.from(skill.content, "utf8"));
   }
 
   listSkillPacks(): SkillPack[] {
@@ -1333,7 +1363,10 @@ export class CapsuleEngine {
 
     let skillInstruction = "";
     if (skillId) {
-      const activeSkill = this.repos.getSkill(skillId) ?? DEFAULT_SKILLS.find((s) => s.id === skillId);
+      const activeSkill =
+        this.repos.getSkill(skillId) ??
+        DEFAULT_SKILLS.find((skill) => skill.id === skillId) ??
+        discoverGlobalSkills().find((skill) => skill.id === skillId);
       if (activeSkill?.content) {
         skillInstruction = `\n\n[Active Skill: ${activeSkill.name}]\n${activeSkill.content}`;
       }

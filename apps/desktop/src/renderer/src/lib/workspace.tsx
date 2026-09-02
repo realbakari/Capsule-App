@@ -616,6 +616,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         if (
           command === "harness" ||
           command === "harness-updated" ||
+          command === "skills-updated" ||
           command === "projects-updated" ||
           command === "sessions-updated"
         ) {

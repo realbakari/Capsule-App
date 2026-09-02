@@ -19,6 +19,10 @@ const api = {
   getProject: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.getProject, id),
   listAgents: () => ipcRenderer.invoke(IPC_CHANNELS.listAgents),
   listSkills: () => ipcRenderer.invoke(IPC_CHANNELS.listSkills),
+  listSkillFiles: (skillId: string, relative = ".") =>
+    ipcRenderer.invoke(IPC_CHANNELS.listSkillFiles, skillId, relative),
+  previewSkillFile: (skillId: string, relative: string): Promise<FilePreview> =>
+    ipcRenderer.invoke(IPC_CHANNELS.previewSkillFile, skillId, relative),
   listSkillPacks: () => ipcRenderer.invoke(IPC_CHANNELS.listSkillPacks),
   installSkill: (skill: unknown) => ipcRenderer.invoke(IPC_CHANNELS.installSkill, skill),
   installSkillPack: (packId: string) => ipcRenderer.invoke(IPC_CHANNELS.installSkillPack, packId),
