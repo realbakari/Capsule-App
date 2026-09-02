@@ -122,7 +122,15 @@ export function parsePullRequestList(raw: string): GitPullRequest[] {
   }
 }
 
-export function listPullRequests(cwd: string): GitPullRequest[] {
+/**
+ * The open pull requests, or `undefined` when the host could not be asked.
+ *
+ * An empty array used to mean both "this repository has none" and "the call
+ * failed", so a slow or offline lookup was reported to the reader as fact.
+ * `statusCheckRollup` alone takes ten seconds on a busy repository, so this is
+ * the common case, not the rare one — hence the wider budget too.
+ */
+export function listPullRequests(cwd: string): GitPullRequest[] | undefined {
   const result = run(
     "gh",
     [
@@ -134,9 +142,9 @@ export function listPullRequests(cwd: string): GitPullRequest[] {
       "number,url,title,isDraft,state,mergeStateStatus,reviewDecision,statusCheckRollup,author,headRefName,createdAt,updatedAt",
     ],
     cwd,
-    15_000,
+    30_000,
   );
-  return result.ok ? parsePullRequestList(result.stdout) : [];
+  return result.ok ? parsePullRequestList(result.stdout) : undefined;
 }
 
 function actorName(value: unknown): string | undefined {

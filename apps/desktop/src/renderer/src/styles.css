@@ -955,17 +955,35 @@
 .msg:hover .msg-actions {
   opacity: 1;
 }
-.msg .body {
+/*
+ * MessageBody's own presentation, wherever it is mounted.
+ *
+ * It used to hang off `.msg .body` alone. The pull-request panel mounts the
+ * same component, so a description arrived there with its line breaks
+ * collapsed into one run-on paragraph and its inline code and links rendered
+ * as plain prose — the markdown was parsed correctly and then thrown away by
+ * the stylesheet.
+ */
+.body {
   line-height: 1.55;
   white-space: pre-wrap;
-  font-size: var(--text-message);
+  /* Long paths and URLs must wrap rather than widen the panel they sit in. */
+  overflow-wrap: anywhere;
 }
-.msg .body code {
+.body code {
   font-family: var(--mono);
   font-size: 0.85em;
   background: rgb(255 255 255 / 7%);
   padding: 0.05rem 0.3rem;
   border-radius: 0.25rem;
+}
+.body a {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+.msg .body {
+  font-size: var(--text-message);
 }
 .message-attachments {
   display: flex;
@@ -2513,6 +2531,12 @@ select:focus,
   gap: 0;
   min-width: 0;
 }
+/* Grid tracks size to their content unless told otherwise, so one wide child —
+   a diff, a long branch name — stretched the whole panel and pushed the rest
+   of the inspector off screen. */
+.pr-detail > * {
+  min-width: 0;
+}
 .pr-detail-actions,
 .pr-detail-kicker,
 .pr-branch-line,
@@ -2543,6 +2567,8 @@ select:focus,
   font-size: 1.0625rem;
   line-height: 1.35;
   letter-spacing: -0.02em;
+  /* Titles carry branch names and identifiers with no break opportunity. */
+  overflow-wrap: anywhere;
 }
 .pr-detail-hero p {
   margin: 0;
@@ -2555,6 +2581,15 @@ select:focus,
   margin-top: 0.75rem;
   color: var(--text-faint);
   font-size: 0.625rem;
+}
+/* `feature/some-long-branch-name` is one unbreakable token. Truncate it
+   rather than let it run out of the panel. */
+.pr-branch-line > span:not(.pr-diff-stat) {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .pr-diff-stat {
   margin-left: auto;
@@ -2620,7 +2655,7 @@ select:focus,
 }
 .pr-timeline article {
   position: relative;
-  min-height: 3.2rem;
+  min-width: 0;
   border-left: 1px solid var(--border-color);
   padding: 0 0 1rem 1rem;
 }
@@ -2641,12 +2676,21 @@ select:focus,
   margin-bottom: 0.35rem;
   font-size: 0.6875rem;
 }
-.pr-timeline-head b { font-weight: 600; }
+.pr-timeline-head b {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .pr-timeline-head span,
 .pr-timeline-head time { color: var(--text-faint); }
 .pr-timeline-head time { margin-left: auto; font-size: 0.625rem; }
 .pr-timeline-head code { color: var(--text-muted); }
-.pr-code { padding-top: 0.55rem; }
+.pr-code {
+  min-width: 0;
+  padding-top: 0.55rem;
+}
 .pr-file-list {
   margin-bottom: 0.65rem;
   border: 1px solid var(--border-color);
@@ -2661,10 +2705,21 @@ select:focus,
   font-size: 0.625rem;
 }
 .pr-file-list > div:last-child { border-bottom: 0; }
-.pr-file-list .mono {
+/* The end of a path is the half that identifies the file. Truncating from the
+   right left two rows reading `.../ProviderRuntimeIngesti…`, one the source and
+   one its test, with nothing to tell them apart. */
+.pr-file-path {
+  display: flex;
   min-width: 0;
+}
+.pr-file-dir {
   overflow: hidden;
+  color: var(--text-faint);
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pr-file-name {
+  flex-shrink: 0;
   white-space: nowrap;
 }
 .codex-terminal-pane {
@@ -2934,6 +2989,14 @@ select:focus,
   font-size: 0.95rem;
   font-weight: 600;
 }
+/* The inspector styles its own h4s as small-caps section labels. A markdown
+   heading is an h4 too, so `## Verification` in a pull-request body came out
+   looking like one of Capsule's own chrome labels. */
+.inspector .md-h {
+  font-size: 0.875rem;
+  letter-spacing: normal;
+  text-transform: none;
+}
 .md-li {
   padding-left: 0.85rem;
   position: relative;
@@ -2946,11 +3009,6 @@ select:focus,
 }
 .composer-glass.dropping::before {
   box-shadow: inset 0 0 0 1px rgb(255 255 255 / 28%);
-}
-.msg .body a {
-  color: var(--text);
-  text-decoration: underline;
-  text-underline-offset: 0.15em;
 }
 .inspector h4,
 .inspector-header h4 {

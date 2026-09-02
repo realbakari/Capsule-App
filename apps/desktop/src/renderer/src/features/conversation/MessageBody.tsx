@@ -3,6 +3,7 @@ import { CopyIcon } from "../shell/icons";
 import { highlight } from "../../lib/highlight";
 import { splitFences } from "../../lib/fences";
 import { parseTable } from "../../lib/tables";
+import { stripHtmlComments, stripInlineTags } from "../../lib/markdown-html";
 import { useWorkspace } from "../../lib/workspace";
 
 /**
@@ -68,7 +69,7 @@ function inline(
         </a>
       );
     }
-    return <Fragment key={index}>{part}</Fragment>;
+    return <Fragment key={index}>{stripInlineTags(part)}</Fragment>;
   });
 }
 
@@ -78,7 +79,7 @@ function block(
   onOpenFile?: (path: string) => void,
   onOpenLink?: (href: string) => void,
 ): ReactNode {
-  const lines = text.split("\n");
+  const lines = stripHtmlComments(text).split("\n");
   const out: ReactNode[] = [];
 
   for (let index = 0; index < lines.length; index += 1) {
@@ -117,7 +118,7 @@ function block(
     }
 
     // Headings
-    const heading = /^(#{1,3})\s+(.*)$/.exec(line);
+    const heading = /^(#{1,6})\s+(.*)$/.exec(line);
     if (heading?.[1] && heading[2]) {
       const Tag = heading[1].length === 1 ? "h3" : "h4";
       out.push(

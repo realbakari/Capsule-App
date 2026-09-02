@@ -867,7 +867,8 @@ export class CapsuleEngine {
     return status;
   }
 
-  listPullRequests(projectId: string, sessionId?: string): GitPullRequest[] {
+  /** `undefined` when the host could not be asked; an array when it answered. */
+  listPullRequests(projectId: string, sessionId?: string): GitPullRequest[] | undefined {
     const project = this.requireProject(projectId);
     const cwd = this.workingDirectoryFor(project, sessionId);
     if (!cwd || !readGitStatus(cwd).isRepo) return [];

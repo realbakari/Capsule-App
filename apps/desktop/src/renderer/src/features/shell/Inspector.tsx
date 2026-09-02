@@ -212,7 +212,8 @@ export function Inspector() {
 
   const [localServers, setLocalServers] = useState<LocalServer[]>([]);
   const [serversLoading, setServersLoading] = useState(false);
-  const [pullRequests, setPullRequests] = useState<GitPullRequest[]>([]);
+  // `undefined` means the lookup did not answer; an empty array means none.
+  const [pullRequests, setPullRequests] = useState<GitPullRequest[] | undefined>([]);
   const [pullRequestsLoading, setPullRequestsLoading] = useState(false);
   const [selectedPullRequest, setSelectedPullRequest] = useState<GitPullRequest>();
   const [pullRequestDetail, setPullRequestDetail] = useState<GitPullRequestDetail>();
@@ -313,7 +314,7 @@ export function Inspector() {
     void api
       .listPullRequests(projectId, session?.id)
       .then((items) => {
-        if (!disposed) setPullRequests(items as GitPullRequest[]);
+        if (!disposed) setPullRequests(items as GitPullRequest[] | undefined);
       })
       .finally(() => {
         if (!disposed) setPullRequestsLoading(false);
@@ -942,13 +943,18 @@ export function Inspector() {
 
             <div className="codex-pr-list">
               <div className="codex-pr-list-head">
-                <h4>Open pull requests ({pullRequests.length})</h4>
+                <h4>Open pull requests ({pullRequests?.length ?? 0})</h4>
                 {pullRequestsLoading ? <span className="faint">Refreshing…</span> : null}
               </div>
-              {!pullRequestsLoading && pullRequests.length === 0 ? (
+              {!pullRequestsLoading && !pullRequests ? (
+                <p className="faint">
+                  GitHub could not be reached. Check that `gh` is signed in, then refresh.
+                </p>
+              ) : null}
+              {!pullRequestsLoading && pullRequests?.length === 0 ? (
                 <p className="faint">No open pull requests were found for this repository.</p>
               ) : null}
-              {pullRequests.map((pullRequest) => (
+              {(pullRequests ?? []).map((pullRequest) => (
                 <button
                   type="button"
                   className="codex-pr-row"
