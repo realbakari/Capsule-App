@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import {
   appearanceCssVars,
+  DEFAULT_DARK_PALETTE,
+  DEFAULT_LIGHT_PALETTE,
   type AppearanceCodeFont,
   type AppearancePalette,
   type AppearanceTheme,
@@ -44,6 +46,9 @@ export function AppearanceSettings({
   settings: CapsuleSettings;
   onPatch: (next: Partial<CapsuleSettings>) => void;
 }) {
+  const light = settings.appearanceLight ?? DEFAULT_LIGHT_PALETTE;
+  const dark = settings.appearanceDark ?? DEFAULT_DARK_PALETTE;
+
   return (
     <div className="appearance-page">
       <div className="card">
@@ -59,8 +64,8 @@ export function AppearanceSettings({
               id={item.id}
               label={item.label}
               selected={settings.appearanceTheme === item.id}
-              light={settings.appearanceLight}
-              dark={settings.appearanceDark}
+              light={light}
+              dark={dark}
               onSelect={() => onPatch({ appearanceTheme: item.id })}
             />
           ))}
@@ -83,19 +88,12 @@ export function AppearanceSettings({
             ))}
           </select>
         </SettingRow>
-        {/*
-          * A live sample. These read the same custom properties the
-          * transcript itself does (--text-message,
-          * --mono, --chat-max), so they are the real result of the setting
-          * rather than a mock-up that can drift from it.
-          */}
-        <div className="type-preview" aria-hidden>
-          <p className="type-preview-prose">
-            The agent edited three files and left the tests passing.
-          </p>
-          <pre className="type-preview-code">
-            <code>{"export function formatUser(user: User) {\n  return `${user.name} <${user.email}>`; // 0O 1lI\n}"}</code>
-          </pre>
+        <div className="appearance-sample" aria-hidden="true">
+          <div className="appearance-sample-label">Preview</div>
+          <div className="appearance-sample-bubble">
+            <code>export async function verify(contract: Contract)</code>
+            <p>Runs the contract test suite against the changed files.</p>
+          </div>
         </div>
         <SettingRow
           label="Transcript width"
@@ -115,15 +113,6 @@ export function AppearanceSettings({
             ))}
           </select>
         </SettingRow>
-        {/* Driven by --chat-max, the transcript's own column width, so the
-            options stay in true proportion to one another. */}
-        <div className="width-preview" aria-hidden>
-          <div className="width-preview-column">
-            <span />
-            <span />
-            <span />
-          </div>
-        </div>
         <SettingRow
           label="Custom code font"
           hint="Optional monospace family for code and the terminal, e.g. JetBrains Mono."
@@ -144,14 +133,14 @@ export function AppearanceSettings({
       <PaletteEditor
         title="Light theme"
         hint="Used when Theme is Light, or when System follows a light Mac."
-        palette={settings.appearanceLight}
+        palette={light}
         kind="light"
         onChange={(appearanceLight) => onPatch({ appearanceLight })}
       />
       <PaletteEditor
         title="Dark theme"
         hint="Used when Theme is Dark, or when System follows a dark Mac."
-        palette={settings.appearanceDark}
+        palette={dark}
         kind="dark"
         onChange={(appearanceDark) => onPatch({ appearanceDark })}
       />

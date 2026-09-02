@@ -120,9 +120,10 @@ export const CODE_FONT_STACKS: Record<AppearanceCodeFont, string> = {
   jetbrains: '"JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace',
 };
 
-export function appearanceCssVars(palette: AppearancePalette): Record<string, string> {
-  const dark = isDarkColor(palette.background);
-  const contrast = clampContrast(palette.contrast) / 100;
+export function appearanceCssVars(palette: Partial<AppearancePalette> | undefined): Record<string, string> {
+  const safePalette = normalizeAppearancePalette(palette, DEFAULT_DARK_PALETTE);
+  const dark = isDarkColor(safePalette.background);
+  const contrast = clampContrast(safePalette.contrast) / 100;
   const toward = dark ? "#000000" : "#D8D8D4";
   const lift = dark ? "#FFFFFF" : "#000000";
   const sidebarMix = 0.12 + contrast * 0.28;
@@ -135,16 +136,16 @@ export function appearanceCssVars(palette: AppearancePalette): Record<string, st
   const border = dark
     ? `rgb(255 255 255 / ${borderAlpha.toFixed(3)})`
     : `rgb(0 0 0 / ${borderAlpha.toFixed(3)})`;
-  const sidebar = mixHex(palette.background, toward, sidebarMix);
-  const elevated = mixHex(palette.background, lift, elevatedMix);
-  const glassOpacity = palette.translucentSidebar ? `${Math.round(62 + contrast * 20)}%` : "100%";
+  const sidebar = mixHex(safePalette.background, toward, sidebarMix);
+  const elevated = mixHex(safePalette.background, lift, elevatedMix);
+  const glassOpacity = safePalette.translucentSidebar ? `${Math.round(62 + contrast * 20)}%` : "100%";
   return {
-    "--bg": palette.background,
-    "--base": palette.background,
-    "--text": palette.foreground,
-    "--accent": palette.accent,
-    "--accent-fg": inkOn(palette.accent),
-    "--ring": palette.accent,
+    "--bg": safePalette.background,
+    "--base": safePalette.background,
+    "--text": safePalette.foreground,
+    "--accent": safePalette.accent,
+    "--accent-fg": inkOn(safePalette.accent),
+    "--ring": safePalette.accent,
     "--bg-sidebar": sidebar,
     "--mantle": sidebar,
     "--bg-elevated": elevated,
@@ -153,11 +154,11 @@ export function appearanceCssVars(palette: AppearancePalette): Record<string, st
     "--bg-active": hover,
     "--border-color": border,
     "--glass-opacity": glassOpacity,
-    "--sidebar-filter": palette.translucentSidebar ? "blur(18px) saturate(1.08)" : "none",
-    "--sidebar-fill": palette.translucentSidebar
+    "--sidebar-filter": safePalette.translucentSidebar ? "blur(18px) saturate(1.08)" : "none",
+    "--sidebar-fill": safePalette.translucentSidebar
       ? `color-mix(in srgb, ${sidebar} ${glassOpacity}, transparent)`
       : sidebar,
-    "--font": UI_FONT_STACKS[palette.uiFont],
-    "--mono": CODE_FONT_STACKS[palette.codeFont],
+    "--font": UI_FONT_STACKS[safePalette.uiFont] ?? UI_FONT_STACKS.system,
+    "--mono": CODE_FONT_STACKS[safePalette.codeFont] ?? CODE_FONT_STACKS["sf-mono"],
   };
 }
