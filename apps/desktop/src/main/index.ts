@@ -200,13 +200,6 @@ async function checkForUpdates(): Promise<UpdateCheck> {
   }
 }
 
-/*
- * How long the window waits for the renderer to say it has painted before
- * showing anyway. Long enough for a dev build's first compile to be worth
- * waiting for, short enough that a broken renderer still gives you a window.
- */
-const WINDOW_PAINT_GRACE_MS = 2_500;
-
 const WINDOW_STATE_FILE = "window-state.json";
 
 function windowStatePath(): string {
@@ -359,7 +352,7 @@ function createWindow(): BrowserWindow {
   const showWhenPainted = () => {
     if (!window.isDestroyed() && !window.isVisible()) window.show();
   };
-  window.once("ready-to-show", () => setTimeout(showWhenPainted, WINDOW_PAINT_GRACE_MS));
+  window.once("ready-to-show", showWhenPainted);
   window.webContents.on("did-finish-load", () => {
     reportFullscreen();
     /*

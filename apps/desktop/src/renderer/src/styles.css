@@ -3004,10 +3004,10 @@ select:focus,
 .splash {
   position: fixed;
   inset: 0;
-  z-index: 40;
+  z-index: 999;
   display: grid;
   place-items: center;
-  background: var(--bg);
+  background: var(--bg-sidebar, #0a0a0a);
   transition: opacity 200ms ease;
 }
 .splash.fading {
