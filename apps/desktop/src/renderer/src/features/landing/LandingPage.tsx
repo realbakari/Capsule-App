@@ -81,8 +81,28 @@ export function LandingPage({ demo = true }: { demo?: boolean }) {
 
       {demo && (
         <section className="site-shot" aria-label="Capsule running on sample data">
-          <div className="site-shot-frame">
-            <App />
+          <div className="site-shot-wrapper">
+            <div className="site-shot-glow" aria-hidden />
+            <div className="site-shot-frame">
+              <div className="site-shot-header">
+                <div className="site-shot-traffic-lights" aria-hidden>
+                  <span className="traffic-dot close" />
+                  <span className="traffic-dot minimize" />
+                  <span className="traffic-dot maximize" />
+                </div>
+                <div className="site-shot-title">
+                  <span className="site-shot-app-name">Capsule</span>
+                  <span className="site-shot-sep">/</span>
+                  <span>workspace</span>
+                </div>
+                <div className="site-shot-status">
+                  <span className="site-shot-badge">Live preview</span>
+                </div>
+              </div>
+              <div className="site-shot-body">
+                <App />
+              </div>
+            </div>
           </div>
           <p className="site-note site-shot-note">
             The real interface on sample data. Nothing here reaches a gateway or your disk.

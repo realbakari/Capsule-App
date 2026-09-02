@@ -6799,24 +6799,112 @@ button.shortcut-keys.capturing {
   margin: 0 auto;
   padding: 0 var(--site-gutter);
 }
+.site-shot-wrapper {
+  position: relative;
+  margin-top: 1.5rem;
+}
+.site-shot-glow {
+  position: absolute;
+  inset: -1.5rem 5%;
+  background: radial-gradient(ellipse at 50% 25%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 70%);
+  filter: blur(40px);
+  pointer-events: none;
+  z-index: 0;
+}
 .site-shot-frame {
   position: relative;
+  z-index: 1;
   isolation: isolate;
-  height: 36rem;
-  border-radius: 0.9rem;
+  height: 40rem;
+  max-height: 82vh;
+  border-radius: 0.75rem;
   overflow: hidden;
-  /* Surface, shadow and rim together. The ring is brighter than a border
-     because it reads as light catching a raised edge. */
   background: var(--surface-0);
+  border: 1px solid var(--border-color);
   box-shadow:
+    0 24px 72px -16px rgba(0, 0, 0, 0.75),
     0 0 0 1px var(--border-strong),
-    var(--shadow);
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
 }
-.site-shot-frame .app {
+.site-shot-header {
+  height: 2.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0.85rem;
+  background: color-mix(in srgb, var(--surface-1) 75%, var(--bg-sidebar));
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+  user-select: none;
+}
+.site-shot-traffic-lights {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 5rem;
+}
+.traffic-dot {
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 99px;
+  display: inline-block;
+}
+.traffic-dot.close {
+  background: #ff5f56;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+}
+.traffic-dot.minimize {
+  background: #ffbd2e;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+}
+.traffic-dot.maximize {
+  background: #27c93f;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+}
+.site-shot-title {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.site-shot-app-name {
+  color: var(--text);
+  font-weight: 600;
+}
+.site-shot-sep {
+  color: var(--text-faint);
+  opacity: 0.6;
+}
+.site-shot-status {
+  width: 5rem;
+  display: flex;
+  justify-content: flex-end;
+}
+.site-shot-badge {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--bg-hover);
+  border: 1px solid var(--border-color);
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  line-height: 1.2;
+}
+.site-shot-body {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+.site-shot-body .app {
   height: 100%;
 }
 .site-shot-note {
-  margin-top: 0.85rem;
+  margin-top: 1rem;
   text-align: center;
 }
 
