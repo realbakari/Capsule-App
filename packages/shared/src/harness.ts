@@ -7,6 +7,7 @@ export const ACP_HARNESS_IDS = [
   "droid",
   "fast-agent",
   "gemini",
+  "gemini-flash",
   "iflow",
   "kilocode",
   "kimi",
@@ -244,6 +245,15 @@ function preset(
   };
 }
 
+/*
+ * The Flash model this harness pins.
+ *
+ * `--acp` is the CLI's own ACP mode — the `--experimental-acp` spelling still
+ * works but is deprecated as of 0.52. The model id is the one the CLI calls
+ * its current Flash; older releases answer to `gemini-2.5-flash`.
+ */
+export const GEMINI_FLASH_MODEL = "gemini-3.5-flash";
+
 export const PRESET_HARNESSES: HarnessPreset[] = [
   preset(
     "claude",
@@ -311,12 +321,35 @@ export const PRESET_HARNESSES: HarnessPreset[] = [
     "https://www.factory.ai",
   ),
   preset(
+    "gemini-flash",
+    "Gemini Flash",
+    "Google's Gemini CLI in its own ACP mode, pinned to the Flash model. Capsule owns the workspace; Gemini owns the coding loop.",
+    ["gemini"],
+    "Install Gemini CLI on the Gateway host and give it a key: GEMINI_API_KEY, or Vertex AI. A personal Google sign-in is not accepted by current releases.",
+    "https://github.com/google-gemini/gemini-cli",
+    undefined,
+    {
+      underlyingCli: "gemini",
+      configFilePath: "~/.gemini/settings.json",
+      providerLocked: true,
+      featured: true,
+      acpxCommand: { command: "gemini", args: ["--acp", "--model", GEMINI_FLASH_MODEL] },
+    },
+  ),
+  preset(
     "gemini",
     "Gemini CLI",
-    "Google Gemini CLI through the acpx Gemini ACP adapter.",
+    "Google Gemini CLI in its own ACP mode, on whichever model the CLI defaults to.",
     ["gemini"],
-    "Authenticate Gemini CLI or provide an API key on the Gateway host.",
+    "Install Gemini CLI on the Gateway host and give it a key: GEMINI_API_KEY, or Vertex AI. A personal Google sign-in is not accepted by current releases.",
     "https://github.com/google-gemini/gemini-cli",
+    undefined,
+    {
+      underlyingCli: "gemini",
+      configFilePath: "~/.gemini/settings.json",
+      providerLocked: true,
+      acpxCommand: { command: "gemini", args: ["--acp"] },
+    },
   ),
   preset(
     "opencode",

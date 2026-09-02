@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { acpLabelToken, gatewaySessionLabel } from "./harness.js";
+import {
+  GEMINI_FLASH_MODEL,
+  PRESET_HARNESSES,
+  acpLabelToken,
+  gatewaySessionLabel,
+} from "./harness.js";
 
 describe("gatewaySessionLabel", () => {
   it("keeps the title readable and suffixes it with the id's tail", () => {
@@ -48,5 +53,28 @@ describe("acpLabelToken", () => {
   it("never returns empty, which would drop the --label value", () => {
     expect(acpLabelToken("   ")).toBe("capsule");
     expect(acpLabelToken("!!!")).toBe("capsule");
+  });
+});
+
+describe("Gemini Flash", () => {
+  const gemini = PRESET_HARNESSES.find((preset) => preset.id === "gemini-flash");
+
+  it("drives the CLI's own ACP mode on the Flash model", () => {
+    // `--experimental-acp` still works but is deprecated; `--acp` is current.
+    expect(gemini?.acpxCommand).toEqual({
+      command: "gemini",
+      args: ["--acp", "--model", GEMINI_FLASH_MODEL],
+    });
+  });
+
+  it("does not claim a sign-in check the CLI does not offer", () => {
+    // Without a probe Capsule reports "unknown" and lets the spawn proceed,
+    // rather than guessing that an unreadable state means logged out.
+    expect(gemini?.loginProbeArgs).toBeUndefined();
+  });
+
+  it("is locked to Google, like the harness it wraps", () => {
+    expect(gemini?.providerLocked).toBe(true);
+    expect(gemini?.underlyingCli).toBe("gemini");
   });
 });

@@ -11,10 +11,18 @@ you in, and never resells tokens.
 | Grok Build | `grok` |
 | Cursor | `cursor-agent` |
 | OpenCode | `opencode` |
+| Gemini Flash | `gemini` |
 | Gemini CLI | `gemini` |
 | GitHub Copilot | `copilot` |
 
 Sign in with each tool's own flow — `claude`, `codex login`, `grok login`, and so on.
+
+Gemini is the exception: current Gemini CLI releases refuse a personal Google
+sign-in with "this client is no longer supported for Gemini Code Assist for
+individuals". Give it a key instead — `GEMINI_API_KEY` in the Gateway host's
+environment, or Vertex AI credentials. Gemini Flash and Gemini CLI are the same
+binary; the first pins the Flash model, the second takes whatever the CLI
+defaults to.
 
 ## Choose and check a harness
 

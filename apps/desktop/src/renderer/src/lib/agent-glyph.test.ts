@@ -52,3 +52,13 @@ describe("agentAccent", () => {
     expect(relativeLuminance("#d97757")).toBeGreaterThan(relativeLuminance("#6950ef"));
   });
 });
+
+describe("marks for product variants", () => {
+  it("gives a variant the product's own mark", () => {
+    expect(providerMark("gemini-flash")).toBe(providerMark("gemini"));
+  });
+
+  it("still invents nothing for a product with no mark", () => {
+    expect(providerMark("not-a-product")).toBeUndefined();
+  });
+});

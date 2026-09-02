@@ -23,10 +23,21 @@ export function agentInitials(name: string): string {
     .join("");
 }
 
-/** The drawn mark for an agent id, or undefined when that product has none. */
+/**
+ * The drawn mark for an agent id, or undefined when that product has none.
+ *
+ * A harness id may name a variant of a product — `gemini-flash` is the Gemini
+ * CLI on one model — and the variant wears the product's mark. Falling back to
+ * the part before the first dash keeps that from drawing a "GF" monogram
+ * beside the Gemini one.
+ */
 export function providerMark(id: string | undefined): ProviderMark | undefined {
   if (!id) return undefined;
-  return PROVIDER_MARKS[id.toLowerCase()];
+  const key = id.toLowerCase();
+  const exact = PROVIDER_MARKS[key];
+  if (exact) return exact;
+  const dash = key.indexOf("-");
+  return dash > 0 ? PROVIDER_MARKS[key.slice(0, dash)] : undefined;
 }
 
 /*
