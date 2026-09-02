@@ -21,6 +21,7 @@ const VIEW_TITLE: Record<string, string> = {
   skills: "Skills",
   history: "History",
   approvals: "Approvals",
+  usage: "Usage",
   settings: "Settings",
 };
 
