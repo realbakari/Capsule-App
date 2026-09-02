@@ -15,6 +15,7 @@
   "dependencies": {
     "@capsule/contracts": "workspace:*",
     "@capsule/core": "workspace:*",
+    "@capsule/filesystem": "workspace:*",
     "@capsule/shared": "workspace:*",
     "@capsule/terminal": "workspace:*",
     "@capsule/ui": "workspace:*",

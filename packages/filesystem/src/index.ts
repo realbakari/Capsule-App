@@ -60,6 +60,13 @@ export {
   probeLocalServer,
   type ListeningPort,
 } from "./ports.js";
+export {
+  readAgentProcesses,
+  readProcessTable,
+  selectAgentPids,
+  type AgentProcess,
+  type ProcessRow,
+} from "./process-tree.js";
 export { createWorktree, removeWorktree, type WorktreeResult } from "./worktrees.js";
 export {
   isSupportedProjectIcon,

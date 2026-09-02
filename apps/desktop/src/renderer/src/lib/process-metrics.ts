@@ -1,17 +1,17 @@
 /**
  * Presentation helpers for the process table in Diagnostics.
  *
- * The numbers come from Electron's own `app.getAppMetrics()`, so this covers
- * the app's process tree — main, renderer, GPU, utility — and nothing else.
- * Per-process disk throughput, thermal state and CPU speed limits are not
- * available to Electron; reporting them would need a native sampler Capsule
- * does not ship, so they are absent rather than estimated.
+ * Capsule's own processes come from Electron, and the agent CLIs come from the
+ * OS: they are started by the Gateway, not by Capsule, so `getAppMetrics()`
+ * never sees the processes doing the actual work. Per-process disk throughput
+ * and cumulative CPU time still need a native sampler Capsule does not ship,
+ * so they are absent rather than estimated.
  */
 
 export interface ProcessMetric {
   pid: number;
   /** Electron's process type: "Browser", "Tab", "GPU", "Utility"… */
-  type: string;
+  type?: string;
   /** Percent of one core, as Electron reports it. */
   cpuPercent: number;
   /** Resident set, in bytes. */
@@ -19,6 +19,11 @@ export interface ProcessMetric {
   /** Milliseconds since the process started, when known. */
   uptimeMs?: number;
   name?: string;
+  /**
+   * When an agent process started. A pid is not an identity on its own — the
+   * OS reuses them — so a row is keyed on both.
+   */
+  startTimeMs?: number;
 }
 
 /**
@@ -36,6 +41,8 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 export function processLabel(metric: ProcessMetric): string {
+  // An agent process has no Electron type; its executable name is the label.
+  if (!metric.type) return metric.name ?? `pid ${metric.pid}`;
   const base = TYPE_LABELS[metric.type] ?? metric.type;
   // serviceName distinguishes one utility process from another; without it a
   // table of four "Utility" rows says nothing.
@@ -114,4 +121,51 @@ export function idleLabel(state: HostState): string {
   if (state.idleState === "unknown") return "Unknown";
   if (state.idleState === "idle") return `Idle · ${formatUptime(state.idleSeconds * 1000)}`;
   return "Active";
+}
+
+export interface ResourceSample {
+  sampledAt: number;
+  app: ProcessMetric[];
+  agents: ProcessMetric[];
+  inaccessibleCount: number;
+}
+
+export interface ResourceHistoryPoint {
+  sampledAt: number;
+  appCpuPercent: number;
+  appMemoryBytes: number;
+  agentCpuPercent: number;
+  agentMemoryBytes: number;
+  agentCount: number;
+}
+
+/**
+ * A CPU total in percent-of-one-core can exceed 100 on any machine with more
+ * than one, which reads as a bug unless the scale is named. This says how much
+ * of the whole machine that is.
+ */
+export function coreShare(percent: number, cores: number): string {
+  if (!Number.isFinite(percent) || percent <= 0 || cores <= 0) return "idle";
+  return `${Math.min(100, Math.round((percent / cores) * 100) / 100)}% of ${cores} cores`;
+}
+
+/**
+ * Points to draw, oldest first, padded to a fixed count so a short history
+ * does not stretch across the whole chart as if it covered the window.
+ */
+export function sparklinePath(
+  values: readonly number[],
+  width: number,
+  height: number,
+): string {
+  if (values.length === 0) return "";
+  const peak = Math.max(...values, 1);
+  const step = values.length === 1 ? 0 : width / (values.length - 1);
+  return values
+    .map((value, index) => {
+      const x = values.length === 1 ? width : index * step;
+      const y = height - (value / peak) * height;
+      return `${index === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)}`;
+    })
+    .join(" ");
 }

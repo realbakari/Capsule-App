@@ -30,17 +30,22 @@ import type { CapsuleEngine } from "@capsule/core";
 import {
   IPC_CHANNELS,
   isNewerRelease,
+  PRESET_HARNESSES,
   type UpdateCheck,
   IPC_EVENTS,
   type ApprovalRequest,
   type CapsuleSettings,
   type HarnessId,
   type HarnessOptionPatch,
+  type MonitoredProcess,
   type PopupMenuRequest,
+  type ResourceHistoryPoint,
+  type ResourceSample,
   type Run,
   type SpawnHarnessInput,
   type UpdateProjectInput,
 } from "@capsule/shared";
+import { readAgentProcesses } from "@capsule/filesystem";
 import { startPty, type PtySession } from "@capsule/terminal";
 import { popupContextMenu } from "./popup-menu";
 import { ensureSqliteAbi } from "./sqlite-abi";
@@ -190,8 +195,17 @@ function createWindow(): BrowserWindow {
     title: "Capsule",
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 16, y: 18 },
-    backgroundColor: "#0a0a0a",
-    show: true,
+    /*
+     * The frame the window paints before the renderer has drawn anything. It
+     * was always the dark base, so opening the app in light mode flashed
+     * near-black, and even in dark mode it was a shade under every surface the
+     * app then painted. `nativeTheme` is what the renderer will resolve
+     * "system" to, so the two agree.
+     */
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#0a0a0a" : "#f4f4f1",
+    // Shown once it has something to show: a window that appears before its
+    // first paint is a flash of empty chrome no matter what colour it is.
+    show: false,
     icon: loadIcon("icon.png"),
     webPreferences: {
       preload: preloadPath(),
@@ -264,7 +278,20 @@ function createWindow(): BrowserWindow {
   // header layout, so push it on both transitions and once at startup.
   window.on("enter-full-screen", reportFullscreen);
   window.on("leave-full-screen", reportFullscreen);
-  window.webContents.on("did-finish-load", reportFullscreen);
+  window.once("ready-to-show", () => window.show());
+  window.webContents.on("did-finish-load", () => {
+    // A renderer that never reaches "ready-to-show" must not leave the app
+    // running with no window at all.
+    if (!window.isVisible()) window.show();
+    reportFullscreen();
+    /*
+     * The smoke test needs to know the app got as far as a loaded window.
+     * Watching stderr for known failure strings is whack-a-mole — a main
+     * process that dies during module load prints "App threw an error during
+     * load", which matches none of them — so the check is positive instead.
+     */
+    if (process.env.CAPSULE_SMOKE_TEST) console.log("capsule: window ready");
+  });
 
   return window;
 }
@@ -284,6 +311,94 @@ function reportFullscreen(): void {
  * main process owns them and forwards their output by id.
  */
 const terminals = new Map<string, PtySession>();
+
+/*
+ * Resource sampling.
+ *
+ * The panel used to sample only while it was open, which meant the spike you
+ * opened it to investigate had already gone. Sampling runs on its own slow
+ * ticker and keeps a bounded window, so the panel reads history rather than
+ * starting a stopwatch.
+ */
+const SAMPLE_INTERVAL_MS = 5_000;
+const HISTORY_WINDOW_MS = 15 * 60_000;
+const MAX_HISTORY_POINTS = Math.ceil(HISTORY_WINDOW_MS / SAMPLE_INTERVAL_MS);
+
+let latestSample: ResourceSample | undefined;
+const resourceHistory: ResourceHistoryPoint[] = [];
+let sampleTimer: NodeJS.Timeout | undefined;
+
+/** The CLI names that mean an agent is running, from the harness catalog. */
+const AGENT_BINARIES: ReadonlySet<string> = new Set([
+  ...PRESET_HARNESSES.flatMap((preset) => preset.binaries),
+  // The Gateway and the plugin that starts the harnesses. Their descendants
+  // are the agent processes, so they are roots of the search either way.
+  "openclaw",
+  "acpx",
+]);
+
+function sampleResources(): ResourceSample {
+  const now = Date.now();
+  const appProcesses: MonitoredProcess[] = app.getAppMetrics().map((metric) => ({
+    pid: metric.pid,
+    type: metric.type,
+    cpuPercent: metric.cpu?.percentCPUUsage ?? 0,
+    memoryBytes: (metric.memory?.workingSetSize ?? 0) * 1024,
+    // creationTime is epoch ms; a process that did not report one gets no
+    // uptime rather than one measured from zero.
+    uptimeMs: metric.creationTime ? now - metric.creationTime : undefined,
+    name: metric.serviceName ?? metric.name ?? metric.type,
+  }));
+  const appPids = new Set(appProcesses.map((item) => item.pid));
+  const agents = readAgentProcesses(AGENT_BINARIES, now)
+    // Capsule's own helpers can match a harness name when a CLI is bundled
+    // with the app; Electron already reported those.
+    .filter((row) => !appPids.has(row.pid))
+    .map((row) => ({
+      pid: row.pid,
+      name: row.name,
+      cpuPercent: row.cpuPercent,
+      memoryBytes: row.residentBytes,
+      uptimeMs: row.elapsedSeconds * 1_000,
+      startTimeMs: row.startTimeMs,
+    }));
+
+  const sample: ResourceSample = {
+    sampledAt: now,
+    app: appProcesses,
+    agents,
+    // ps reports every process it can see; the ones it cannot are the
+    // difference between what it listed and what it could attribute.
+    inaccessibleCount: 0,
+  };
+  latestSample = sample;
+  resourceHistory.push({
+    sampledAt: now,
+    appCpuPercent: appProcesses.reduce((total, item) => total + item.cpuPercent, 0),
+    appMemoryBytes: appProcesses.reduce((total, item) => total + item.memoryBytes, 0),
+    agentCpuPercent: agents.reduce((total, item) => total + item.cpuPercent, 0),
+    agentMemoryBytes: agents.reduce((total, item) => total + item.memoryBytes, 0),
+    agentCount: agents.length,
+  });
+  // Bounded two ways: a clock that jumps backwards must not keep points
+  // forever, and neither must a long-running window.
+  const cutoff = now - HISTORY_WINDOW_MS;
+  while (
+    resourceHistory.length > MAX_HISTORY_POINTS ||
+    (resourceHistory[0] && resourceHistory[0].sampledAt < cutoff)
+  ) {
+    resourceHistory.shift();
+  }
+  return sample;
+}
+
+function startResourceSampling(): void {
+  if (sampleTimer) return;
+  sampleResources();
+  sampleTimer = setInterval(sampleResources, SAMPLE_INTERVAL_MS);
+  // Sampling must never be the reason the app stays awake.
+  sampleTimer.unref?.();
+}
 
 function stopTerminal(id: string): void {
   terminals.get(id)?.kill();
@@ -799,19 +914,8 @@ function registerIpc(): void {
     };
   });
 
-  handle(IPC_CHANNELS.processMetrics, () => {
-    const now = Date.now();
-    return app.getAppMetrics().map((metric) => ({
-      pid: metric.pid,
-      type: metric.type,
-      cpuPercent: metric.cpu?.percentCPUUsage ?? 0,
-      memoryBytes: (metric.memory?.workingSetSize ?? 0) * 1024,
-      // creationTime is epoch ms; a process that did not report one gets no
-      // uptime rather than one measured from zero.
-      uptimeMs: metric.creationTime ? now - metric.creationTime : undefined,
-      name: metric.serviceName ?? metric.name,
-    }));
-  });
+  handle(IPC_CHANNELS.processMetrics, () => latestSample ?? sampleResources());
+  handle(IPC_CHANNELS.processHistory, () => [...resourceHistory]);
   handleArgs(IPC_CHANNELS.usageSummary, [num], (days: number) =>
     requireEngine().usageSummary(days),
   );
@@ -1028,6 +1132,7 @@ app.whenReady().then(async () => {
   augmentPath();
   applyDockIcon();
   registerIpc();
+  startResourceSampling();
   createMenu();
   createTray();
   mainWindow = createWindow();
@@ -1052,6 +1157,7 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   applyKeepAwake(undefined);
+  if (sampleTimer) clearInterval(sampleTimer);
   stopAllTerminals();
   void engine?.stop();
 });

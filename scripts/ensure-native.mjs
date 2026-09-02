@@ -8,6 +8,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  electronPackageDir,
+  electronVersion as electronVersionOf,
+  resolveElectronBinary,
+} from "./electron-path.mjs";
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const desktop = path.join(root, "apps/desktop");
 
@@ -17,11 +23,10 @@ if (process.env.VERCEL) {
 }
 
 const requireFromDesktop = createRequire(path.join(desktop, "package.json"));
-const electronDir = path.dirname(requireFromDesktop.resolve("electron/package.json"));
-const electronVersion = requireFromDesktop("electron/package.json").version;
+const electronDir = electronPackageDir();
+const electronVersion = electronVersionOf(electronDir);
 const stampPath = path.join(electronDir, ".capsule-native-abi");
-const executablePath = fs.readFileSync(path.join(electronDir, "path.txt"), "utf8").trim();
-const electronBin = path.join(electronDir, "dist", executablePath);
+const electronBin = resolveElectronBinary(electronDir);
 
 const NATIVE_MODULES = ["better-sqlite3", "node-pty"];
 

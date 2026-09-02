@@ -38,6 +38,9 @@ importers:
       '@capsule/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@capsule/filesystem':
+        specifier: workspace:*
+        version: link:../../packages/filesystem
       '@capsule/shared':
         specifier: workspace:*
         version: link:../../packages/shared

@@ -92,6 +92,7 @@ export const IPC_CHANNELS = {
   resetSettingsSection: "capsule:resetSettingsSection",
   checkForUpdates: "capsule:checkForUpdates",
   processMetrics: "capsule:processMetrics",
+  processHistory: "capsule:processHistory",
   hostState: "capsule:hostState",
   sourceControlTools: "capsule:sourceControlTools",
   usageSummary: "capsule:usageSummary",

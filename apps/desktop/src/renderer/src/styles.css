@@ -7570,3 +7570,39 @@ details.card > summary {
 .notice-dismissable > .icon-btn:hover {
   opacity: 1;
 }
+
+/* Resource history. Two lines, no axes: the shape is the point — whether the
+   agents or the app were busy, and when. */
+.resource-history {
+  margin: 0.75rem 0 0.25rem;
+}
+.resource-history svg {
+  width: 100%;
+  height: 44px;
+  display: block;
+}
+.resource-history path {
+  fill: none;
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+.resource-history-agent {
+  stroke: var(--green);
+}
+.resource-history-app {
+  stroke: var(--overlay-0);
+}
+.resource-history figcaption {
+  margin-top: 0.3rem;
+  font-size: 0.6875rem;
+  color: var(--text-faint);
+}
+.resource-key-agent {
+  color: var(--green);
+}
+.resource-key-app {
+  color: var(--text-muted);
+}
+.process-section {
+  margin-top: 1rem;
+}

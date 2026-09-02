@@ -594,3 +594,37 @@ export interface TerminalExitEvent {
   id: string;
   code: number;
 }
+
+/** One process in the resource monitor. */
+export interface MonitoredProcess {
+  pid: number;
+  name: string;
+  /** Percent of one core. Summing these across processes can exceed 100. */
+  cpuPercent: number;
+  memoryBytes: number;
+  uptimeMs?: number;
+  /** Electron's own process type, for the app's own processes. */
+  type?: string;
+  /** Set for agent processes: a pid alone is not an identity. */
+  startTimeMs?: number;
+}
+
+export interface ResourceSample {
+  sampledAt: number;
+  /** Capsule's own processes, from Electron. */
+  app: MonitoredProcess[];
+  /** The agent CLIs and whatever they spawned, read from the OS. */
+  agents: MonitoredProcess[];
+  /** How many processes the OS reported but Capsule could not read. */
+  inaccessibleCount: number;
+}
+
+/** Totals kept per sample so a long window stays small. */
+export interface ResourceHistoryPoint {
+  sampledAt: number;
+  appCpuPercent: number;
+  appMemoryBytes: number;
+  agentCpuPercent: number;
+  agentMemoryBytes: number;
+  agentCount: number;
+}

@@ -1,44 +1,15 @@
 #!/usr/bin/env node
 /**
- * electron-vite throws "Electron uninstall" when path.txt is missing or empty.
- * That happens when pnpm skips electron's postinstall. This script finds the
- * electron package, runs its installer if needed, and prints the binary path.
+ * electron-vite throws "Electron uninstall" when path.txt is missing or empty,
+ * which happens when pnpm skips electron's postinstall. A half-extracted dist
+ * fails later and less clearly: the binary is there and is not an executable.
+ * This repairs both, then prints the path.
  */
-import { createRequire } from "node:module";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const searchRoots = [
-  path.join(root, "apps/desktop"),
-  root,
-];
-
-function resolveElectronPackage() {
-  const errors = [];
-  for (const from of searchRoots) {
-    try {
-      const require = createRequire(path.join(from, "package.json"));
-      const pkgJson = require.resolve("electron/package.json");
-      return path.dirname(pkgJson);
-    } catch (error) {
-      errors.push(`${from}: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-  throw new Error(`Could not resolve the electron package.\n${errors.join("\n")}`);
-}
-
-function readExecutablePath(electronDir) {
-  const pathFile = path.join(electronDir, "path.txt");
-  if (!fs.existsSync(pathFile)) return "";
-  return fs.readFileSync(pathFile, "utf8").trim();
-}
-
-function binaryPath(electronDir, executablePath) {
-  return path.join(electronDir, "dist", executablePath);
-}
+import { electronPackageDir, resolveElectronBinary, runtimeProblems } from "./electron-path.mjs";
 
 function installElectron(electronDir) {
   const installer = path.join(electronDir, "install.js");
@@ -55,22 +26,17 @@ function installElectron(electronDir) {
   }
 }
 
-const electronDir = resolveElectronPackage();
-let executablePath = readExecutablePath(electronDir);
-let resolved = executablePath ? binaryPath(electronDir, executablePath) : "";
-
-if (!executablePath || !fs.existsSync(resolved)) {
-  console.log("Electron binary is missing; running electron/install.js…");
+const electronDir = electronPackageDir();
+const problems = runtimeProblems(electronDir);
+if (problems.length > 0) {
+  console.log(`Electron runtime needs repair:\n${problems.map((line) => `- ${line}`).join("\n")}`);
+  // A partial dist is what produced the problems; reinstalling over it keeps
+  // whatever was already wrong.
+  fs.rmSync(path.join(electronDir, "dist"), { recursive: true, force: true });
+  fs.rmSync(path.join(electronDir, "path.txt"), { force: true });
   installElectron(electronDir);
-  executablePath = readExecutablePath(electronDir);
-  resolved = executablePath ? binaryPath(electronDir, executablePath) : "";
 }
 
-if (!executablePath || !fs.existsSync(resolved)) {
-  throw new Error(
-    `Electron failed to install. Expected a binary at ${resolved || path.join(electronDir, "dist")}. Try: pnpm rebuild electron`,
-  );
-}
-
+const resolved = resolveElectronBinary(electronDir);
 process.env.ELECTRON_EXEC_PATH = resolved;
 console.log(`Electron ready: ${resolved}`);
