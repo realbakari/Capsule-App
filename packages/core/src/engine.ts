@@ -1993,7 +1993,13 @@ export class CapsuleEngine {
           });
           if (!verification.passed) {
             run.status = "failed";
-            run.error = verification.summary;
+            /*
+             * Which check failed, not that checking happened. "Verification
+             * failed" is Capsule talking to itself; the check's own detail
+             * says what the turn was supposed to have produced.
+             */
+            const failed = verification.checks.find((check) => !check.advisory && !check.passed);
+            run.error = failed?.detail || failed?.description || verification.summary;
           }
           this.appendEvent(run.id, "verification", verification.summary, {
             passed: verification.passed,

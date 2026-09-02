@@ -18,6 +18,7 @@ import {
 } from "../../lib/turns";
 import { RunSummary } from "./RunSummary";
 import { summariseWork } from "../../lib/activity";
+import { threadError, threadErrorKey } from "../../lib/thread-error";
 import { ChangedFilesCard } from "./ChangedFilesCard";
 import { MessageBody } from "./MessageBody";
 
@@ -235,6 +236,17 @@ export function Conversation() {
    */
   const turnTouchedTree = runs.some((run) => Boolean(run.checkpointRef));
 
+  /*
+   * Why the last turn failed, in the thread it failed in. A dismissal is
+   * remembered for that thread and that message together: keyed on the thread
+   * alone it would swallow the next, different failure, and on the message
+   * alone it would hide the same failure in another conversation.
+   */
+  const failure = threadError({ sessionId: session?.id, runs });
+  const failureKey = threadErrorKey(session?.id, failure);
+  const [dismissedFailures, setDismissedFailures] = useState<ReadonlySet<string>>(() => new Set());
+  const showFailure = Boolean(failureKey) && !dismissedFailures.has(failureKey!);
+
   const openTurn = useCallback((id: string) => {
     setOpenedTurns((current) => new Set(current).add(id));
   }, []);
@@ -366,6 +378,23 @@ export function Conversation() {
               {git && session && turnTouchedTree && <ChangedFilesCard git={git} />}
             </>
           )}
+          {showFailure && failure ? (
+            <div className="thread-error" role="status">
+              <span className="thread-error-text" title={failure}>
+                {failure}
+              </span>
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Dismiss error"
+                onClick={() =>
+                  setDismissedFailures((current) => new Set(current).add(failureKey!))
+                }
+              >
+                <XIcon size={12} />
+              </button>
+            </div>
+          ) : null}
           {/* The work log belongs to the turn, not to the moment it is running.
               It used to be mounted on activeRun alone, so the record of what
               the agent did — every command, every file — disappeared the
