@@ -4,6 +4,7 @@ import {
   acpxFromConfig,
   acpxFromHealth,
   acpxFromPluginsList,
+  configWriteAttempts,
   acpxHeadlessWritesPatch,
   acpxModeIsNonFatal,
   acpxPermissionPatch,
@@ -196,5 +197,23 @@ describe("acpx harness policy", () => {
       agentId: undefined,
       action: "execute",
     });
+  });
+});
+
+describe("configWriteAttempts", () => {
+  it("asks the way this Gateway accepts before the ways older ones did", () => {
+    const patch = { plugins: { entries: { acpx: { enabled: true } } } };
+    const attempts = configWriteAttempts(patch, "plugins.entries.acpx.enabled", true);
+    expect(attempts[0]).toEqual({
+      method: "config.patch",
+      params: { raw: JSON.stringify(patch) },
+    });
+    expect(attempts.map((attempt) => attempt.method)).toEqual([
+      "config.patch",
+      "config.patch",
+      "config.patch",
+      "config.set",
+      "config.set",
+    ]);
   });
 });

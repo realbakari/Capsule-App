@@ -54,6 +54,8 @@ import {
 import {
   acpxAgentPatch,
   acpxPermissionPatch,
+  configWriteAttempts,
+  readConfigBaseHash,
   isAcpPermissionRequestEvent,
   readAcpAllowedAgents,
   readAcpPermissionRequest,
@@ -327,6 +329,11 @@ export class OpenClawAdapter implements AgentRuntime {
     return readAcpxHarnessPolicy(config);
   }
 
+  /** The snapshot a write has to quote back, read fresh. */
+  private async readConfigSnapshot(): Promise<unknown> {
+    return this.request("config.get", {}).catch(() => undefined);
+  }
+
   /**
    * Registers a CLI's native ACP stdio command with acpx. This is needed for
    * first-class harnesses such as Grok Build that are valid ACP agents but are
@@ -362,13 +369,8 @@ export class OpenClawAdapter implements AgentRuntime {
     };
     const patch = acpxAgentPatch(pluginId, agentId, definition, allowedAgents);
     const path = `plugins.entries.${pluginId}.config.agents.${agentId}`;
-    const attempts: Array<{ method: string; params: unknown }> = [
-      { method: "config.patch", params: patch },
-      { method: "config.patch", params: { patch } },
-      { method: "config.set", params: { path, value: definition } },
-      { method: "config.set", params: { key: path, value: definition } },
-    ];
-    let lastError: string | undefined;
+    const attempts = configWriteAttempts(patch, path, definition, readConfigBaseHash(config));
+    let firstError: string | undefined;
     for (const attempt of attempts) {
       try {
         await this.request(attempt.method, attempt.params);
@@ -379,17 +381,21 @@ export class OpenClawAdapter implements AgentRuntime {
         ) {
           const value = [...new Set([...allowedAgents, agentId])];
           try {
-            await this.request("config.set", { path: "acp.allowedAgents", value });
+            const followUpHash = readConfigBaseHash(await this.readConfigSnapshot());
+            await this.request("config.patch", {
+              raw: JSON.stringify({ acp: { allowedAgents: value } }),
+              ...(followUpHash ? { baseHash: followUpHash } : {}),
+            });
           } catch {
-            await this.request("config.set", { key: "acp.allowedAgents", value });
+            await this.request("config.set", { path: "acp.allowedAgents", value });
           }
         }
         return { already: false, applied: true };
       } catch (error) {
-        lastError = error instanceof Error ? error.message : String(error);
+        firstError ??= error instanceof Error ? error.message : String(error);
       }
     }
-    return { already: false, applied: false, error: lastError };
+    return { already: false, applied: false, error: firstError };
   }
 
   /**
@@ -412,25 +418,23 @@ export class OpenClawAdapter implements AgentRuntime {
     const pluginId = policy.pluginId ?? "acpx";
     const patch = acpxPermissionPatch(pluginId, mode);
     const path = `plugins.entries.${pluginId}.config.permissionMode`;
-    const attempts: Array<{ method: string; params: unknown }> = [
-      { method: "config.patch", params: patch },
-      { method: "config.patch", params: { patch } },
-      { method: "config.set", params: { path, value: mode } },
-      { method: "config.set", params: { key: path, value: mode } },
-    ];
-    let lastError: string | undefined;
+    const attempts = configWriteAttempts(
+      patch,
+      path,
+      mode,
+      readConfigBaseHash(await this.readConfigSnapshot()),
+    );
+    let firstError: string | undefined;
     for (const attempt of attempts) {
       try {
+        // The patch already carries nonInteractivePermissions: "deny".
         await this.request(attempt.method, attempt.params);
-        const nip = `plugins.entries.${pluginId}.config.nonInteractivePermissions`;
-        await this.request("config.set", { path: nip, value: "deny" }).catch(() => undefined);
-        await this.request("config.set", { key: nip, value: "deny" }).catch(() => undefined);
         return { already: false, applied: true };
       } catch (error) {
-        lastError = error instanceof Error ? error.message : String(error);
+        firstError ??= error instanceof Error ? error.message : String(error);
       }
     }
-    return { already: false, applied: false, error: lastError };
+    return { already: false, applied: false, error: firstError };
   }
 
   async ensureAcpxHeadlessWrites(): Promise<{

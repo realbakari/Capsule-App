@@ -48,16 +48,39 @@ describe("OpenClawAdapter ACP lifecycle", () => {
     await expect(
       adapter.ensureAcpxAgentCommand("grok", { command: "grok", args: ["agent", "stdio"] }),
     ).resolves.toEqual({ already: false, applied: true });
+    // The Gateway takes the patch as a JSON5 document under `raw`. Passing the
+    // object itself came back as "must have required property 'raw'".
     expect(request).toHaveBeenNthCalledWith(2, "config.patch", {
-      plugins: {
-        entries: {
-          acpx: {
-            enabled: true,
-            config: { agents: { grok: { command: "grok", args: ["agent", "stdio"] } } },
+      raw: JSON.stringify({
+        plugins: {
+          entries: {
+            acpx: {
+              enabled: true,
+              config: { agents: { grok: { command: "grok", args: ["agent", "stdio"] } } },
+            },
           },
         },
-      },
+      }),
     });
+  });
+
+  it("quotes the config hash back so the Gateway accepts the write", async () => {
+    // The Gateway writes optimistically: no hash, no write.
+    const adapter = new OpenClawAdapter();
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce({
+        hash: "sha256:abc123",
+        parsed: { plugins: { entries: { acpx: { enabled: true, config: {} } } } },
+      })
+      .mockResolvedValueOnce({});
+    (adapter as unknown as { client: { request: typeof request } }).client = { request };
+
+    await expect(
+      adapter.ensureAcpxAgentCommand("grok", { command: "grok", args: ["agent", "stdio"] }),
+    ).resolves.toEqual({ already: false, applied: true });
+    const [, params] = request.mock.calls[1] ?? [];
+    expect((params as { baseHash?: string }).baseHash).toBe("sha256:abc123");
   });
 
   it("keeps an existing Grok ACP command without rewriting Gateway config", async () => {

@@ -199,6 +199,45 @@ export function acpxModeIsNonFatal(mode: string | undefined): boolean {
   return mode === "approve-all" || mode === "deny-all";
 }
 
+/**
+ * The snapshot hash a config write has to quote back.
+ *
+ * The Gateway writes optimistically: it hands out a hash of the config it read
+ * and refuses a write that does not carry it, so two writers cannot silently
+ * overwrite each other. Older Gateways did not ask, hence the optional return.
+ */
+export function readConfigBaseHash(payload: unknown): string | undefined {
+  const record = asRecord(payload);
+  const hash = asString(record.hash);
+  return hash?.trim() ? hash.trim() : undefined;
+}
+
+/**
+ * The shapes a Gateway config write has taken, newest first.
+ *
+ * The current one carries the patch as a JSON5 document under `raw`; a Gateway
+ * that gets the object itself answers "must have required property 'raw'".
+ * Older builds took the patch object directly, and older ones still took a
+ * dotted path and a value.
+ */
+export function configWriteAttempts(
+  patch: Record<string, unknown>,
+  path: string,
+  value: unknown,
+  baseHash?: string,
+): Array<{ method: string; params: unknown }> {
+  return [
+    {
+      method: "config.patch",
+      params: { raw: JSON.stringify(patch), ...(baseHash ? { baseHash } : {}) },
+    },
+    { method: "config.patch", params: patch },
+    { method: "config.patch", params: { patch } },
+    { method: "config.set", params: { path, value } },
+    { method: "config.set", params: { key: path, value } },
+  ];
+}
+
 export function acpxPermissionPatch(
   pluginId = "acpx",
   mode: "approve-all" | "deny-all",
