@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { FolderPlusIcon, GitBranchIcon, GlobeIcon } from "./icons";
 
@@ -49,7 +50,14 @@ export function AddProjectPicker({
   }, [query]);
   const active = Math.min(index, Math.max(0, matches.length - 1));
 
-  return (
+  /*
+   * Through a portal, because this is opened from the sidebar and the sidebar
+   * carries a backdrop-filter when the translucent setting is on. A filtered
+   * element becomes the containing block for its fixed-position descendants,
+   * so the overlay was laid out inside the rail — and clipped by its
+   * overflow: hidden — instead of covering the window.
+   */
+  const picker = (
     <div className="palette-backdrop" onClick={onClose}>
       <div className="palette" onClick={(event) => event.stopPropagation()}>
         <input
@@ -113,4 +121,6 @@ export function AddProjectPicker({
       </div>
     </div>
   );
+
+  return typeof document !== "undefined" ? createPortal(picker, document.body) : picker;
 }
