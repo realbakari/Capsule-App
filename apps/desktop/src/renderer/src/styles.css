@@ -7550,3 +7550,23 @@ details.card > summary {
   line-height: 1.35;
   color: var(--text-faint);
 }
+
+/* A failure the reader can put away. The banner used to sit there until the
+   next one replaced it, over whatever they did next. */
+.notice-dismissable {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+.notice-dismissable > span {
+  flex: 1;
+  min-width: 0;
+}
+.notice-dismissable > .icon-btn {
+  flex-shrink: 0;
+  color: inherit;
+  opacity: 0.65;
+}
+.notice-dismissable > .icon-btn:hover {
+  opacity: 1;
+}
