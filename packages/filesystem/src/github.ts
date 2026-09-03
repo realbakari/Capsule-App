@@ -99,6 +99,7 @@ export function clearGhCache(): void {
   pullRequestCache.clear();
   pullRequestListCache.clear();
   pullRequestListInFlight.clear();
+  pullRequestListFailures.clear();
 }
 
 export function pushArgs(forceWithLease: boolean): string[] {
@@ -291,6 +292,7 @@ export function parsePullRequestList(raw: string): GitPullRequest[] {
  */
 const PR_LIST_TTL_MS = 120_000;
 const pullRequestListCache = new Map<string, { value: GitPullRequest[]; at: number }>();
+const pullRequestListFailures = new Map<string, string>();
 /*
  * The call itself, not a flag saying one is happening. Two callers arriving
  * together must share the one `gh pr list` — a flag let the second start its
@@ -352,10 +354,19 @@ export async function listPullRequests(cwd: string): Promise<GitPullRequest[] | 
     cwd,
     30_000,
   );
-  if (!result.ok) return undefined;
+  if (!result.ok) {
+    pullRequestListFailures.set(cwd, listFailureReason(result.stderr));
+    return undefined;
+  }
+  pullRequestListFailures.delete(cwd);
   const parsed = parsePullRequestList(result.stdout);
   pullRequestListCache.set(cwd, { value: parsed, at: Date.now() });
   return parsed;
+}
+
+/** Why the last listing for `cwd` failed, if the last one did. */
+export function pullRequestListFailure(cwd: string): string | undefined {
+  return pullRequestListFailures.get(cwd);
 }
 
 function actorName(value: unknown): string | undefined {
@@ -372,6 +383,47 @@ function actorName(value: unknown): string | undefined {
  * The common case by far is GitHub's own ceiling: it will not render a diff of
  * more than three hundred files, and answers 406 rather than truncating.
  */
+/**
+ * Why the pull request list came back empty-handed, in plain language.
+ *
+ * The review pane said "GitHub could not be reached. Check that `gh` is signed
+ * in, then refresh." for every failure, whatever it was — so a folder with no
+ * GitHub remote at all, which is not a sign-in problem and cannot be fixed by
+ * refreshing, sent people to look at their credentials.
+ */
+export function listFailureReason(stderr: string): string {
+  const text = stderr.trim();
+  if (/no git remotes found|not a git repository/i.test(text)) {
+    return "This folder has no GitHub remote, so there are no pull requests to show.";
+  }
+  // Checked before the repository case, whose wording would otherwise claim a
+  // missing `gh` binary ("executable file not found") was a missing repository.
+  if (/executable file not found|ENOENT|command not found/i.test(text)) {
+    return "The `gh` command is not installed, so pull requests cannot be listed.";
+  }
+  if (/could not resolve( to)? a repository|no such repository|repository not found/i.test(text)) {
+    return "GitHub does not have a repository for this folder's remote.";
+  }
+  if (/authentication|not logged in|gh auth login|401|bad credentials/i.test(text)) {
+    return "`gh` is not signed in to GitHub. Run `gh auth login`, then refresh.";
+  }
+  if (/rate limit|403/i.test(text)) {
+    return "GitHub is rate limiting this machine. Wait a few minutes, then refresh.";
+  }
+  if (/timed out|dial tcp|network is unreachable|no such host|connection refused/i.test(text)) {
+    return "GitHub could not be reached. Check your connection, then refresh.";
+  }
+  /*
+   * GitHub's own trouble, not the user's. It answers these with a paragraph
+   * apologising and linking its GraphQL endpoint, which is not something to
+   * put in a side panel — and nothing here needs fixing, only retrying.
+   */
+  if (/HTTP 5\d\d|bad gateway|service unavailable|internal server error/i.test(text)) {
+    return "GitHub is having trouble right now. Try again in a moment.";
+  }
+  return text ? text.split("\n").filter(Boolean)[0]! : "Pull requests could not be listed.";
+}
+
 export function diffFailureReason(stderr: string): string {
   const text = stderr.trim();
   if (/maximum number of files/i.test(text) || /too_large/i.test(text)) {

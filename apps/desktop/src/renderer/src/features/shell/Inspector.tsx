@@ -216,6 +216,7 @@ export function Inspector() {
   // `undefined` means the lookup did not answer; an empty array means none.
   const [pullRequests, setPullRequests] = useState<GitPullRequest[] | undefined>([]);
   const [pullRequestsLoading, setPullRequestsLoading] = useState(false);
+  const [pullRequestsError, setPullRequestsError] = useState<string>();
   const [selectedPullRequest, setSelectedPullRequest] = useState<GitPullRequest>();
   const [pullRequestDetail, setPullRequestDetail] = useState<GitPullRequestDetail>();
   const [pullRequestDetailLoading, setPullRequestDetailLoading] = useState(false);
@@ -314,8 +315,11 @@ export function Inspector() {
     setPullRequestsLoading(true);
     void api
       .listPullRequests(projectId, session?.id)
-      .then((items) => {
-        if (!disposed) setPullRequests(items as GitPullRequest[] | undefined);
+      .then((result) => {
+        if (disposed) return;
+        const answer = result as { items?: GitPullRequest[]; error?: string } | undefined;
+        setPullRequests(answer?.items);
+        setPullRequestsError(answer?.error);
       })
       .finally(() => {
         if (!disposed) setPullRequestsLoading(false);
@@ -948,12 +952,15 @@ export function Inspector() {
 
             <div className="codex-pr-list">
               <div className="codex-pr-list-head">
-                <h4>Open pull requests ({pullRequests?.length ?? 0})</h4>
+                {/* No count until there is one: "(0)" beside "could not be
+                    reached" claimed to know a number we had not been told. */}
+                <h4>Open pull requests{pullRequests ? ` (${pullRequests.length})` : ""}</h4>
                 {pullRequestsLoading ? <span className="faint">Refreshing…</span> : null}
               </div>
               {!pullRequestsLoading && !pullRequests ? (
                 <p className="faint">
-                  GitHub could not be reached. Check that `gh` is signed in, then refresh.
+                  {pullRequestsError ??
+                    "GitHub could not be reached. Check that `gh` is signed in, then refresh."}
                 </p>
               ) : null}
               {!pullRequestsLoading && pullRequests?.length === 0 ? (

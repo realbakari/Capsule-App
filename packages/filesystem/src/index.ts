@@ -45,6 +45,7 @@ export {
   parsePullRequestList,
   pollPullRequest,
   pollPullRequestList,
+  pullRequestListFailure,
   viewPullRequest,
 } from "./github.js";
 export {

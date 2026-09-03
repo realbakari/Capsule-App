@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createPullRequestArgs,
   diffFailureReason,
+  listFailureReason,
   mergePullRequestArgs,
   parseChecks,
   parsePullRequestDetail,
@@ -159,5 +160,63 @@ describe("a pull request whose diff GitHub will not render", () => {
 
   it("has something to say even when gh said nothing", () => {
     expect(diffFailureReason("")).toMatch(/no diff/i);
+  });
+});
+
+describe("why there are no pull requests to show", () => {
+  it("does not blame the sign-in for a folder with no GitHub remote", () => {
+    /*
+     * The pane guessed "check that `gh` is signed in" for every failure. This
+     * is the common one, it is not a sign-in problem, and refreshing will
+     * never fix it.
+     */
+    expect(listFailureReason("no git remotes found")).toMatch(/no GitHub remote/i);
+    expect(listFailureReason("no git remotes found")).not.toMatch(/signed in/i);
+  });
+
+  it("says to sign in when that is actually the problem", () => {
+    expect(listFailureReason("gh: To use GitHub CLI, run: gh auth login")).toMatch(/gh auth login/);
+  });
+
+  it("tells rate limiting apart from being offline", () => {
+    expect(listFailureReason("HTTP 403: API rate limit exceeded")).toMatch(/rate limiting/i);
+    expect(listFailureReason("dial tcp: lookup api.github.com: no such host")).toMatch(
+      /connection/i,
+    );
+  });
+
+  it("says gh is missing rather than that GitHub is unreachable", () => {
+    expect(listFailureReason("exec: \"gh\": executable file not found in $PATH")).toMatch(
+      /not installed/i,
+    );
+  });
+
+  it("passes an unknown failure through rather than inventing a cause", () => {
+    expect(listFailureReason("something odd happened")).toBe("something odd happened");
+  });
+
+  it("still says something when gh said nothing", () => {
+    expect(listFailureReason("")).toMatch(/could not be listed/i);
+  });
+});
+
+describe("when the trouble is GitHub's own", () => {
+  it("does not hand the user GitHub's apology paragraph", () => {
+    /*
+     * The real thing gh returns: three sentences, an apology, and a link to
+     * the GraphQL endpoint. Nothing in it is actionable except waiting.
+     */
+    const reason = listFailureReason(
+      "HTTP 504: We couldn't respond to your request in time. Sorry about that. Please try resubmitting your request and contact us if the problem persists. (https://api.github.com/graphql)",
+    );
+    expect(reason).toBe("GitHub is having trouble right now. Try again in a moment.");
+  });
+
+  it("treats a bad gateway the same way", () => {
+    expect(listFailureReason("HTTP 502: Bad gateway")).toMatch(/trouble right now/i);
+  });
+
+  it("still tells a rate limit apart from an outage", () => {
+    expect(listFailureReason("HTTP 403: API rate limit exceeded")).toMatch(/rate limiting/i);
   });
 });

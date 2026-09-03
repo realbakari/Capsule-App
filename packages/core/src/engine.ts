@@ -68,6 +68,7 @@ import {
   validateMessageAttachments,
   pollPullRequest,
   pollPullRequestList,
+  pullRequestListFailure,
 } from "@capsule/filesystem";
 import {
   MockAgentRuntime,
@@ -971,23 +972,36 @@ export class CapsuleEngine {
   }
 
   /** `undefined` when the host could not be asked; an array when it answered. */
+  /**
+   * The open pull requests, or why there are none to show.
+   *
+   * `undefined` used to be the whole answer for every failure, and the pane
+   * turned that into one guess — that `gh` was not signed in — however wrong.
+   * A folder with no GitHub remote is the common case and the one that guess
+   * fits worst.
+   */
   async listPullRequests(
     projectId: string,
     sessionId?: string,
-  ): Promise<GitPullRequest[] | undefined> {
+  ): Promise<{ items?: GitPullRequest[]; error?: string }> {
     const project = this.requireProject(projectId);
     const cwd = this.workingDirectoryFor(project, sessionId);
-    if (!cwd || !readGitStatus(cwd).isRepo) return [];
+    if (!cwd) return { error: "This project has no folder, so there is nothing to list." };
+    if (!readGitStatus(cwd).isRepo) {
+      return { error: "This folder is not a git repository." };
+    }
     /*
      * The last list, immediately, with a refresh started behind it. Only the
      * very first look waits for GitHub; after that the pane opens at once and
      * updates itself when the newer list lands.
      */
     const cached = pollPullRequestList(cwd);
-    if (cached.known) return cached.value;
+    if (cached.known) return { items: cached.value };
     // Nothing cached yet, so wait for the refresh already under way rather
     // than starting a second identical lookup beside it.
-    return await (cached.pending ?? discoverPullRequests(cwd));
+    const items = await (cached.pending ?? discoverPullRequests(cwd));
+    if (items) return { items };
+    return { error: pullRequestListFailure(cwd) ?? "Pull requests could not be listed." };
   }
 
   async pullRequestDetail(

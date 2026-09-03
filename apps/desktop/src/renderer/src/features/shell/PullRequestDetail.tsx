@@ -8,7 +8,7 @@ import { MessageBody } from "../conversation/MessageBody";
 import { compactRelativeTime } from "../../lib/sidebar";
 import { DiffView } from "./DiffView";
 import { FileDiff } from "./FileDiff";
-import { ChecksBadge, PullRequestChecks, tallyChecks } from "./PullRequestChecks";
+import { ChecksBadge, PullRequestChecks } from "./PullRequestChecks";
 import {
   CheckIcon,
   ChevronDownIcon,
@@ -105,7 +105,6 @@ export function GitPullRequestDetail({
   const [allOpen, setAllOpen] = useState(true);
 
   const diffFiles = useMemo(() => parseUnifiedDiff(detail?.diff ?? ""), [detail?.diff]);
-  const checksTally = useMemo(() => tallyChecks(detail?.checkRuns ?? []), [detail?.checkRuns]);
 
   const timeline = useMemo(() => {
     if (!detail) return [];
@@ -313,11 +312,11 @@ export function GitPullRequestDetail({
               {summary.isDraft ? "Draft" : summary.checks ?? summary.state}
             </span>
           </div>
-          {detail ? (
-            <span className="pr-checks-pill">
-              <CheckIcon size={12} /> {checksTally.passing} of {checksTally.total} passing
-            </span>
-          ) : null}
+          {/*
+            * The tally lives with the tabs, and only there. It was also here,
+            * a hundred pixels above the same words — the same fact twice on
+            * one screen, which reads as two facts until you compare them.
+            */}
         </div>
         <h3>{summary.title}</h3>
         <p title={exactDate(summary.updatedAt)}>
@@ -417,9 +416,9 @@ export function GitPullRequestDetail({
                 {checksOpen ? <ChevronDownIcon size={14} /> : <ChevronRightIcon size={14} />}
               </span>
               <h4>Checks</h4>
-              <span className="faint pr-accordion-badge">
-                {checksTally.passing} of {checksTally.total} passing
-              </span>
+              {/* A count, the way Comments below it does: the pass tally is
+                  already stated beside the tabs. */}
+              <span className="faint pr-accordion-badge">{detail.checkRuns.length}</span>
             </button>
             {checksOpen && (
               <div className="pr-accordion-content">
