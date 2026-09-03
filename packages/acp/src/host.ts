@@ -8,6 +8,7 @@ import {
   type Unsubscribe,
 } from "@capsule/shared";
 
+import { explainDirectFailure, readCliError } from "./errors.js";
 import { DirectAcpSession } from "./session.js";
 
 /*
@@ -205,11 +206,20 @@ export class DirectAcpHost {
       this.emitter.emit("acp-reply", { sessionKey: key, text, control: thought });
     });
     session.on("exit", ({ stderr }) => {
+      const harnessId = this.harnessBySession.get(key);
       this.sessions.delete(key);
       this.harnessBySession.delete(key);
+      /*
+       * One sentence, and one worth reading. This used to append the whole of
+       * stderr to the thread, so a failure arrived as a usage block and a
+       * footer telling the reader to try --help. What they need is the line
+       * that says what broke and, where we know it, what to do about it.
+       */
+      const detail = readCliError(stderr ?? "");
+      const label = PRESET_HARNESSES.find((preset) => preset.id === harnessId)?.name ?? "The agent";
       this.emitter.emit("acp-reply", {
         sessionKey: key,
-        text: stderr ? `\n${stderr}` : undefined,
+        text: detail ? `\n${explainDirectFailure(detail, label)}` : undefined,
         done: true,
       });
     });

@@ -81,6 +81,24 @@ export function ChangedFilesCard({ git, files }: { git: GitStatus; files: Touche
   const shown = expanded ? files : files.slice(0, COLLAPSED_LIMIT);
   const hidden = files.length - shown.length;
 
+  /*
+   * Totals for the files listed here, not for the working tree.
+   *
+   * The header read git.added and git.removed — every uncommitted change in
+   * the project, including files this turn never touched — while the rows
+   * below it were the turn's. The two disagreed in plain sight: a header
+   * saying "+17 −0" above rows summing to −74, and an untracked file nobody
+   * had mentioned contributing the 17.
+   */
+  const totals = files.reduce(
+    (sum, file) => ({
+      added: sum.added + (file.added ?? 0),
+      removed: sum.removed + (file.removed ?? 0),
+      counted: sum.counted || file.added !== undefined || file.removed !== undefined,
+    }),
+    { added: 0, removed: 0, counted: false },
+  );
+
   const openDiff = () => {
     setInspectorTab("diff");
     setInspectorOpen(true);
@@ -94,10 +112,10 @@ export function ChangedFilesCard({ git, files }: { git: GitStatus; files: Touche
         </span>
         {/* Binary files carry no line stats, so the totals can be absent even
             when files did change. Showing nothing beats showing a fake 0. */}
-        {typeof git.added === "number" && (
+        {totals.counted && (
           <span className="diffstat">
-            <span className="added">+{git.added}</span>
-            <span className="removed">−{git.removed ?? 0}</span>
+            <span className="added">+{totals.added}</span>
+            <span className="removed">−{totals.removed}</span>
           </span>
         )}
       </button>
@@ -143,23 +161,37 @@ export function ChangedFilesCard({ git, files }: { git: GitStatus; files: Touche
           </li>
         ))}
       </ul>
-      {restorable && (
+      {/*
+        * One footer, not two. "Show 6 more" and "Restore this turn" were
+        * stacked full-width bars below the list — two rows of chrome under
+        * five rows of content, and the reader's next move buried under the
+        * destructive one.
+        */}
+      {(hidden > 0 || expanded || restorable) && (
         <div className="changed-files-actions">
-          <button
-            type="button"
-            className="ghost"
-            disabled={restoring}
-            onClick={() => void restoreTurn()}
-            title="Put the project folder back to how this turn left it"
-          >
-            {restoring ? "Restoring…" : "Restore this turn"}
-          </button>
+          {hidden > 0 ? (
+            <button className="ghost" type="button" onClick={() => setExpanded(true)}>
+              Show {hidden} more
+            </button>
+          ) : expanded && files.length > COLLAPSED_LIMIT ? (
+            <button className="ghost" type="button" onClick={() => setExpanded(false)}>
+              Show less
+            </button>
+          ) : (
+            <span />
+          )}
+          {restorable && (
+            <button
+              type="button"
+              className="ghost"
+              disabled={restoring}
+              onClick={() => void restoreTurn()}
+              title="Put the project folder back to how this turn left it"
+            >
+              {restoring ? "Restoring…" : "Restore this turn"}
+            </button>
+          )}
         </div>
-      )}
-      {hidden > 0 && (
-        <button className="changed-files-more" onClick={() => setExpanded(true)}>
-          Show {hidden} more
-        </button>
       )}
     </div>
   );

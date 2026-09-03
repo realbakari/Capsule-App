@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { EventEmitter } from "node:events";
 
 import type { AcpModelCatalog } from "@capsule/shared";
+import { readCliError } from "./errors.js";
 import {
   ACP_PROTOCOL_VERSION,
   chooseOption,
@@ -185,7 +186,12 @@ export class DirectAcpSession {
   }
 
   private exitReason(code: number | null): string {
-    const detail = this.stderr.trim().split("\n").filter(Boolean).at(-1);
+    /*
+     * The line that says what went wrong, not the last line printed. Taking
+     * the last one surfaced a CLI's usage footer as the failure: a thread
+     * whose only explanation was "For more information, try '--help'."
+     */
+    const detail = readCliError(this.stderr);
     if (detail) return detail;
     return code === null
       ? `${this.options.command} stopped before answering.`

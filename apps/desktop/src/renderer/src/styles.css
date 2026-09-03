@@ -7151,7 +7151,11 @@ label.field input {
 
 .changed-files-actions {
   display: flex;
-  justify-content: flex-end;
+  /* Expanding sits at the reading edge, restoring at the far one: the safe
+     move and the destructive one should not be neighbours. */
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
   padding: 0.3rem 0.5rem 0.45rem;
   border-top: 1px solid var(--border-color);
 }

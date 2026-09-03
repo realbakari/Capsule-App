@@ -13,6 +13,7 @@ export {
   type SessionUpdate,
 } from "./protocol.js";
 export { DirectAcpSession, type DirectAcpOptions, type DirectAcpEvents } from "./session.js";
+export { readCliError, explainDirectFailure } from "./errors.js";
 export {
   DirectAcpHost,
   directCapableHarnesses,
