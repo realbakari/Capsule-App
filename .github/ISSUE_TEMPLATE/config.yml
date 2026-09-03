@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Harness will not start
+    url: https://github.com/realbakari/Capsule-App/blob/main/docs/user/providers.md
+    about: >
+      Capsule does not install or sign you into a coding CLI. Check the
+      provider notes first — most spawn failures are a CLI that is not signed
+      in on this machine.

@@ -81,4 +81,45 @@ export interface UpdateCheck {
   url?: string;
   /** Why the check could not answer, for the unreachable case. */
   detail?: string;
+  /**
+   * The installer for this Mac, when the release published one.
+   *
+   * Sending someone to a release page and leaving them to work out which of
+   * several files is theirs is the step where an update stops happening.
+   */
+  download?: { name: string; url: string; size?: number };
+  /** What changed, as the release itself describes it. */
+  notes?: string;
+}
+
+/**
+ * The installer built for this machine.
+ *
+ * Assets are named by electron-builder, so the architecture is in the file
+ * name: `Capsule-0.1.0-arm64.dmg`. An Intel build carries no arch suffix in
+ * some configurations, so a `.dmg` with no arch at all is taken as x64 rather
+ * than offered to an Apple Silicon Mac by mistake.
+ */
+export function pickReleaseAsset(
+  assets: ReadonlyArray<{ name?: unknown; browser_download_url?: unknown; size?: unknown }>,
+  arch: string,
+): { name: string; url: string; size?: number } | undefined {
+  const rows = assets
+    .map((asset) => ({
+      name: typeof asset.name === "string" ? asset.name : "",
+      url: typeof asset.browser_download_url === "string" ? asset.browser_download_url : "",
+      size: typeof asset.size === "number" ? asset.size : undefined,
+    }))
+    .filter((asset) => asset.name && asset.url && asset.name.toLowerCase().endsWith(".dmg"));
+  if (rows.length === 0) return undefined;
+  const wanted = arch === "arm64" ? "arm64" : "x64";
+  const exact = rows.find((asset) => asset.name.toLowerCase().includes(wanted));
+  if (exact) return exact;
+  // A universal build serves both, and a lone unsuffixed dmg is the Intel one.
+  const universal = rows.find((asset) => asset.name.toLowerCase().includes("universal"));
+  if (universal) return universal;
+  const unsuffixed = rows.find(
+    (asset) => !/arm64|x64|universal/i.test(asset.name),
+  );
+  return wanted === "x64" ? unsuffixed : undefined;
 }

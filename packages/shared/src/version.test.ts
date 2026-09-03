@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compareVersions, isNewerRelease, parseVersion } from "./version.js";
+import { compareVersions, isNewerRelease, parseVersion, pickReleaseAsset } from "./version.js";
 
 describe("parseVersion", () => {
   it("accepts the tag shapes this project produces", () => {
@@ -55,5 +55,40 @@ describe("isNewerRelease", () => {
     // worse than saying nothing.
     expect(isNewerRelease("nightly", "0.1.0")).toBe(false);
     expect(isNewerRelease("v0.2.0", "unknown")).toBe(false);
+  });
+});
+
+describe("pickReleaseAsset", () => {
+  const asset = (name: string) => ({
+    name,
+    browser_download_url: `https://example.com/${name}`,
+    size: 1024,
+  });
+
+  it("picks the build for this Mac", () => {
+    // The release page lists several files. Leaving someone to work out which
+    // is theirs is the step where updating stops happening.
+    const assets = [asset("Capsule-0.2.0-arm64.dmg"), asset("Capsule-0.2.0-x64.dmg")];
+    expect(pickReleaseAsset(assets, "arm64")?.name).toBe("Capsule-0.2.0-arm64.dmg");
+    expect(pickReleaseAsset(assets, "x64")?.name).toBe("Capsule-0.2.0-x64.dmg");
+  });
+
+  it("takes a universal build for either", () => {
+    const assets = [asset("Capsule-0.2.0-universal.dmg")];
+    expect(pickReleaseAsset(assets, "arm64")?.name).toBe("Capsule-0.2.0-universal.dmg");
+    expect(pickReleaseAsset(assets, "x64")?.name).toBe("Capsule-0.2.0-universal.dmg");
+  });
+
+  it("does not offer an unlabelled build to an Apple Silicon Mac", () => {
+    // A dmg with no architecture in its name is the Intel one; handing it to
+    // an arm64 Mac is a download that will not run.
+    const assets = [asset("Capsule-0.2.0.dmg")];
+    expect(pickReleaseAsset(assets, "x64")?.name).toBe("Capsule-0.2.0.dmg");
+    expect(pickReleaseAsset(assets, "arm64")).toBeUndefined();
+  });
+
+  it("ignores everything that is not an installer", () => {
+    const assets = [asset("SHA256SUMS.txt"), asset("Capsule-0.2.0-arm64.zip")];
+    expect(pickReleaseAsset(assets, "arm64")).toBeUndefined();
   });
 });

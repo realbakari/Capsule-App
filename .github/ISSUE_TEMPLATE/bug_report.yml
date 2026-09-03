@@ -1,0 +1,52 @@
+name: Bug report
+description: Something in Capsule does not work the way it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Capsule drives coding CLIs that are already installed on your Mac, so
+        the answer is often in which harness, which route, and which version.
+        Settings → Diagnostics has all three in one place.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you got instead.
+      placeholder: I asked Grok to edit a file and the turn ended with…
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Capsule version
+      description: Settings → About, or the version in the title bar.
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: Runtime
+      description: Settings → Gateway.
+      options:
+        - Automatic
+        - Direct
+        - OpenClaw Gateway
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: harness
+    attributes:
+      label: Which agent
+      placeholder: Claude Code, Codex, Grok Build, Gemini Flash…
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: >
+        Settings → Diagnostics → Export. It carries versions and check results,
+        not your conversations. Read it before pasting if the folder names
+        matter to you.
+      render: text

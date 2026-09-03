@@ -6,9 +6,23 @@ on:
   pull_request:
     branches: [main]
 
+# Reading the repository is all this needs; a token that can write is a token
+# a compromised action can push with.
+permissions:
+  contents: read
+
+# A branch that gets two pushes should not run two full macOS builds. Pull
+# requests cancel the superseded run; main does not, so every commit that
+# lands keeps its own result.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test-and-build:
     runs-on: macos-14
+    # A hung runner otherwise burns six hours of the account's minutes.
+    timeout-minutes: 25
 
     steps:
       - uses: actions/checkout@v4

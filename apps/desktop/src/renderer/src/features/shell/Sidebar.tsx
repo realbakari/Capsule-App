@@ -150,7 +150,9 @@ export function Sidebar() {
   const updateLabel = checkingUpdate
     ? "Checking for updates…"
     : updateResult?.state === "update-available"
-      ? `Version ${updateResult.latest} is available — click to open it`
+      ? `Version ${updateResult.latest} is available — click to download ${
+          updateResult.download?.name ?? "it"
+        }`
       : updateResult?.state === "up-to-date"
         ? `Up to date (${updateResult.current})`
         : updateResult?.state === "no-releases"
@@ -160,8 +162,14 @@ export function Sidebar() {
             : "Check for updates";
 
   async function runUpdateCheck() {
-    if (updateResult?.state === "update-available" && updateResult.url) {
-      window.open(updateResult.url, "_blank", "noreferrer");
+    if (updateResult?.state === "update-available") {
+      /*
+       * The installer for this Mac when the release published one, and the
+       * release page when it did not. A page listing an arm64 and an x64 build
+       * asks a question most people should not have to answer.
+       */
+      const target = updateResult.download?.url ?? updateResult.url;
+      if (target) window.open(target, "_blank", "noreferrer");
       return;
     }
     setCheckingUpdate(true);
@@ -184,16 +192,41 @@ export function Sidebar() {
     }
   }
 
+  /*
+   * A quiet check once a day, not once a launch.
+   *
+   * Unauthenticated GitHub allows sixty requests an hour for a whole IP, and
+   * this ran every time the app opened — on a shared network that is a check
+   * that silently starts failing. A release is not published often enough for
+   * the difference to cost anyone an update.
+   */
   useEffect(() => {
-    // Check in background 4 seconds after startup
+    const LAST_CHECK_KEY = "capsule.updateCheckedAt";
+    const DAY_MS = 86_400_000;
+    const last = (() => {
+      try {
+        return Number(localStorage.getItem(LAST_CHECK_KEY)) || 0;
+      } catch {
+        return 0;
+      }
+    })();
+    if (Date.now() - last < DAY_MS) return undefined;
     const timer = setTimeout(() => {
-      void api.checkForUpdates().then((res) => {
-        if (res && typeof res === "object" && (res as UpdateCheck).state === "update-available") {
-          setUpdateResult(res as UpdateCheck);
-        }
-      }).catch(() => {
-        // Ignore background failure
-      });
+      void api
+        .checkForUpdates()
+        .then((res) => {
+          try {
+            localStorage.setItem(LAST_CHECK_KEY, String(Date.now()));
+          } catch {
+            // A browser that refuses storage checks every launch, as before.
+          }
+          if (res && typeof res === "object" && (res as UpdateCheck).state === "update-available") {
+            setUpdateResult(res as UpdateCheck);
+          }
+        })
+        .catch(() => {
+          // Ignore background failure
+        });
     }, 4000);
     return () => clearTimeout(timer);
   }, [api]);

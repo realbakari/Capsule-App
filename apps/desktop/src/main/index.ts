@@ -31,6 +31,7 @@ import type { CapsuleEngine } from "@capsule/core";
 import {
   IPC_CHANNELS,
   isNewerRelease,
+  pickReleaseAsset,
   PRESET_HARNESSES,
   type UpdateCheck,
   IPC_EVENTS,
@@ -184,17 +185,25 @@ async function checkForUpdates(): Promise<UpdateCheck> {
     if (!response.ok) {
       return { state: "unreachable", current, detail: `GitHub responded ${response.status}` };
     }
-    const release = (await response.json()) as { tag_name?: string; html_url?: string };
+    const release = (await response.json()) as {
+      tag_name?: string;
+      html_url?: string;
+      body?: string;
+      assets?: Array<{ name?: unknown; browser_download_url?: unknown; size?: unknown }>;
+    };
     const tag = typeof release.tag_name === "string" ? release.tag_name : "";
     if (!tag) return { state: "no-releases", current };
-    return isNewerRelease(tag, current)
-      ? {
-          state: "update-available",
-          current,
-          latest: tag,
-          url: release.html_url ?? `https://github.com/${UPDATE_REPO}/releases/latest`,
-        }
-      : { state: "up-to-date", current, latest: tag };
+    if (!isNewerRelease(tag, current)) return { state: "up-to-date", current, latest: tag };
+    const download = pickReleaseAsset(release.assets ?? [], process.arch);
+    const notes = typeof release.body === "string" ? release.body.trim() : "";
+    return {
+      state: "update-available",
+      current,
+      latest: tag,
+      url: release.html_url ?? `https://github.com/${UPDATE_REPO}/releases/latest`,
+      ...(download ? { download } : {}),
+      ...(notes ? { notes } : {}),
+    };
   } catch (error) {
     return {
       state: "unreachable",
