@@ -112,39 +112,22 @@ export class FilesystemAdapter {
     }));
   }
 
+  /*
+   * Answers from the project's remembered file list, ranked.
+   *
+   * This used to walk the tree on every query, stop at a fixed depth, and
+   * return whatever the walk reached first — so a deep file was invisible and
+   * "index" in a large project answered with eighty arbitrary ones.
+   */
   search(query = "", limit = 80): FileEntry[] {
     if (!this.projectRoot) return [];
     const root = this.resolve(".");
     if (!fs.existsSync(root)) return [];
-    const skip = new Set(["node_modules", ".git", "dist", "out", ".next", "coverage", "build", "Pods"]);
-    const needle = query.trim().toLowerCase();
-    const matches: FileEntry[] = [];
-    const walk = (dir: string, relative: string, depth: number) => {
-      if (matches.length >= limit || depth > 6) return;
-      let entries: fs.Dirent[] = [];
-      try {
-        entries = fs.readdirSync(dir, { withFileTypes: true });
-      } catch {
-        return;
-      }
-      for (const entry of entries) {
-        if (matches.length >= limit) return;
-        if (entry.name === ".DS_Store") continue;
-        if (skip.has(entry.name)) continue;
-        if (entry.name.startsWith(".") && entry.name !== ".env" && entry.name !== ".gitignore") continue;
-        const rel = relative ? `${relative}/${entry.name}` : entry.name;
-        const full = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-          walk(full, rel, depth + 1);
-          continue;
-        }
-        if (!needle || rel.toLowerCase().includes(needle) || entry.name.toLowerCase().includes(needle)) {
-          matches.push({ name: entry.name, path: rel, type: "file" });
-        }
-      }
-    };
-    walk(root, "", 0);
-    return matches;
+    return rankFiles(projectFiles(root), query, limit).map((file) => ({
+      name: file.name,
+      path: file.path,
+      type: "file" as const,
+    }));
   }
 
   read(relative: string): string {
@@ -166,3 +149,14 @@ export class FilesystemAdapter {
     fs.writeFileSync(file, content, "utf8");
   }
 }
+import { projectFiles, rankFiles } from "./file-index.js";
+
+export {
+  clearFileIndex,
+  projectFiles,
+  rankFiles,
+  readProjectFiles,
+  scorePath,
+  FILE_INDEX_TTL_MS,
+  type RankedFile,
+} from "./file-index.js";

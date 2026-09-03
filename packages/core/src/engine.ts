@@ -41,6 +41,7 @@ import {
   detectSourceControlTools,
   diffCheckpoints,
   discardFile,
+  clearFileIndex,
   clearGhCache,
   enrichGitStatus,
   setPullRequestListener,
@@ -2578,6 +2579,8 @@ export class CapsuleEngine {
       if (this.stopped) return;
       try {
         const result = captureCheckpoint(cwd, ref);
+        // A turn that wrote something changes what the project holds.
+        clearFileIndex(cwd);
         if (!result.ok) return;
         const stored = this.repos.getRun(run.id);
         if (!stored) return;
