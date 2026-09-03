@@ -1,0 +1,152 @@
+name: Electron Desktop Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (without v prefix)'
+        required: false
+
+jobs:
+  verify-version:
+    runs-on: macos-14
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate release version
+        id: version
+        env:
+          RELEASE_VERSION: ${{ github.event.inputs.version }}
+        run: node scripts/check-release-version.mjs
+
+  build-mac:
+    needs: verify-version
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Check for signing credentials
+        id: creds
+        env:
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+        run: |
+          if [ -n "$CSC_LINK" ]; then
+            echo 'signed=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'signed=false' >> "$GITHUB_OUTPUT"
+            echo '::warning::MAC_CSC_LINK is not set - producing an UNSIGNED macOS build that Gatekeeper will block.'
+          fi
+
+      - name: Validate notarization credentials
+        if: steps.creds.outputs.signed == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ "$APPLE_APP_SPECIFIC_PASSWORD" != "$(printf '%s' "$APPLE_APP_SPECIFIC_PASSWORD" | tr -d '[:space:]')" ]; then
+            echo '::error::APPLE_APP_SPECIFIC_PASSWORD contains whitespace. Re-add it with: gh secret set APPLE_APP_SPECIFIC_PASSWORD'
+            exit 1
+          fi
+          if ! xcrun notarytool history \
+              --apple-id "$APPLE_ID" \
+              --team-id "$APPLE_TEAM_ID" \
+              --password "$APPLE_APP_SPECIFIC_PASSWORD" > /dev/null; then
+            echo '::error::Apple rejected the notarization credentials. Verify locally with: xcrun notarytool store-credentials'
+            exit 1
+          fi
+          echo 'Notarization credentials accepted by Apple.'
+
+      - name: Package macOS app (signed and notarized)
+        if: steps.creds.outputs.signed == 'true'
+        env:
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: pnpm package:mac
+
+      - name: Package macOS app (unsigned fallback)
+        if: steps.creds.outputs.signed != 'true'
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: pnpm package:mac
+
+      - name: Verify signature and notarization
+        if: steps.creds.outputs.signed == 'true'
+        run: |
+          for APP in apps/desktop/release/mac*/*.app; do
+            echo "Verifying $APP"
+            codesign --verify --deep --strict --verbose=2 "$APP"
+            spctl --assess --type execute --verbose=4 "$APP"
+          done
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac
+          path: |
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.zip
+            apps/desktop/release/latest-mac.yml
+          if-no-files-found: error
+
+  publish:
+    needs: [verify-version, build-mac]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          find . -type f \( -name '*.dmg' -o -name '*.zip' \) -exec sha256sum {} + \
+            | sed 's#\./[^/]*/##' > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Publish GitHub desktop release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Capsule v${{ needs.verify-version.outputs.version }}
+          tag_name: v${{ needs.verify-version.outputs.version }}
+          draft: true
+          files: |
+            artifacts/**/*.dmg
+            artifacts/**/*.zip
+            artifacts/**/*.blockmap
+            artifacts/**/latest*.yml
+            artifacts/SHA256SUMS.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

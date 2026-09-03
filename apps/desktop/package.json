@@ -28,6 +28,7 @@
     "node-pty": "^1.1.0"
   },
   "devDependencies": {
+    "@electron/notarize": "^3.1.1",
     "@electron/rebuild": "^4.0.1",
     "@types/react": "^19.1.12",
     "@types/react-dom": "^19.1.9",

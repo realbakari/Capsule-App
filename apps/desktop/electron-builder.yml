@@ -3,6 +3,7 @@ productName: Capsule
 directories:
   output: release
   buildResources: build
+afterPack: scripts/after-pack.cjs
 files:
   - out/**/*
 # Native modules load a .node binary by path, which cannot be read from inside

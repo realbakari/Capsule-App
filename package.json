@@ -17,7 +17,7 @@
     "test:watch": "vitest",
     "lint": "eslint .",
     "typecheck": "tsc -b --pretty false && pnpm --filter @capsule/desktop typecheck",
-    "package:mac": "pnpm --filter @capsule/desktop package:mac",
+    "package:mac": "node scripts/package-mac.mjs",
     "icons": "python3 scripts/generate-icons.py",
     "icons:providers": "node scripts/generate-provider-icons.mjs",
     "smoke": "pnpm build && node scripts/smoke-test.mjs"
