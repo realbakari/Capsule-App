@@ -316,11 +316,16 @@ export function describeReadiness(input: {
       };
     }
     if (input.loginState === "logged_out") {
+      /*
+       * Short, because this lands in the composer above the thread. It also no
+       * longer says "on the Gateway host": in direct mode there is no Gateway,
+       * and the CLI it means is the one on this Mac either way.
+       */
       return {
         readiness: "needs_login",
-        detail: `${input.preset.name} is installed but not signed in. ${
+        detail: `${input.preset.name} is not signed in. ${
           input.preset.loginHint ?? "Sign in to its CLI"
-        } on the Gateway host, then run Doctor.`,
+        }.`,
       };
     }
     if (input.dedicated) {

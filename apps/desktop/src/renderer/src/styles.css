@@ -1275,6 +1275,21 @@
   justify-content: space-between;
   gap: 0.5rem;
   margin-top: 0.45rem;
+  container-type: inline-size;
+  container-name: composer-row;
+}
+/* The order things are given up in: the workspace is also on the strip below,
+   and an agent's name is the one label worth keeping longest. */
+@container composer-row (max-width: 34rem) {
+  .composer-controls .menu-select:nth-child(4) .menu-select-trigger > span {
+    display: none;
+  }
+}
+@container composer-row (max-width: 27rem) {
+  .composer-controls .menu-select:nth-child(2) .menu-select-trigger > span,
+  .composer-controls .menu-select:nth-child(1) .menu-select-trigger > span {
+    display: none;
+  }
 }
 .composer-attachments {
   position: relative;
@@ -1398,15 +1413,21 @@
   font-size: 0.5625rem;
   font-weight: 700;
 }
-/* Wraps rather than spills. Held on one line, the last control ran out from
-   under the row and printed itself on top of the attach and send buttons. */
+/*
+ * One row that gives up labels rather than wrapping.
+ *
+ * Held rigid it spilled over the attach and send buttons. Allowed to wrap it
+ * stopped overlapping and started stranding a lone control on a second line
+ * with the send button floating beside nothing. So it stays on one line and
+ * sheds what it can spare: the workspace first, then permission and mode,
+ * leaving the icons — which is what the row is read for at a glance anyway.
+ */
 .composer-controls {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 0.4rem 0.25rem;
+  gap: 0.25rem;
   min-width: 0;
-  overflow: visible;
+  overflow: hidden;
 }
 .menu-select {
   position: relative;
@@ -1430,6 +1451,19 @@
   text-transform: capitalize;
   max-width: 12rem;
   line-height: 1;
+}
+/* A label gives way before its control does, so a row that is a few pixels
+   short ellipsises a word instead of cutting a chevron in half. */
+.composer-controls .menu-select {
+  min-width: 0;
+}
+.composer-controls .menu-select-trigger {
+  min-width: 0;
+}
+.composer-controls .menu-select-trigger > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .menu-select-trigger svg {
   flex-shrink: 0;
@@ -1515,7 +1549,16 @@
   color: var(--text-muted);
   font-size: 0.6875rem;
 }
-.composer-preflight > span { flex: 1; }
+/* Two lines at most, and the whole sentence on hover: this sits above the
+   thread, and a paragraph there pushes the conversation off screen. */
+.composer-preflight > span {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+}
 .composer-preflight .ghost { flex-shrink: 0; font-size: 0.6875rem; }
 .workspace-mode-label { color: var(--green); }
 

@@ -494,7 +494,7 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
         )}
         {sendBlockReason && (
           <div className="composer-preflight" role="status">
-            <span>{sendBlockReason}</span>
+            <span title={sendBlockReason}>{sendBlockReason}</span>
             {selectedHarness ? (
               <button className="ghost" type="button" onClick={() => void doctorHarness(selectedHarness.id)}>
                 Run Doctor
