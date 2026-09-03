@@ -260,3 +260,45 @@ describe("OpenClawAdapter ACP lifecycle", () => {
     expect(approval.action).toMatch(/edit/i);
   });
 });
+
+describe("control command replies stay out of the conversation", () => {
+  function frames(adapter: OpenClawAdapter) {
+    const seen: Array<{ text?: string; control?: boolean }> = [];
+    adapter.onAcpReply((payload) => seen.push({ text: payload.text, control: payload.control }));
+    return seen;
+  }
+
+  it("marks the tail of a status dump, not just its first frame", async () => {
+    /*
+     * The regression: `/acp status` answers in several frames and the Gateway
+     * can emit the rest after the one it marks done. Control was released the
+     * instant that frame landed, so the remainder — the whole runtimeDetails
+     * blob, every model and permission mode in it — was read as the agent
+     * speaking and printed into the thread.
+     */
+    const adapter = new OpenClawAdapter();
+    const seen = frames(adapter);
+    const internals = adapter as unknown as {
+      beginAcpControl: (key: string) => void;
+      endAcpControl: (key: string) => void;
+      isAcpControl: (key: string) => boolean;
+    };
+    internals.beginAcpControl("agent:main:acp:claude:1");
+    internals.endAcpControl("agent:main:acp:claude:1");
+    expect(internals.isAcpControl("agent:main:acp:claude:1")).toBe(true);
+    expect(seen).toEqual([]);
+  });
+
+  it("lets a real turn through once the tail window has passed", () => {
+    const adapter = new OpenClawAdapter();
+    const internals = adapter as unknown as {
+      endAcpControl: (key: string) => void;
+      isAcpControl: (key: string) => boolean;
+      recentAcpControls: Map<string, number>;
+    };
+    internals.endAcpControl("k");
+    // A window that never expired would swallow the answer to the next prompt.
+    internals.recentAcpControls.set("k", Date.now() - 1);
+    expect(internals.isAcpControl("k")).toBe(false);
+  });
+});

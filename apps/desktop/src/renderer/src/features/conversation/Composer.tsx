@@ -16,6 +16,7 @@ import {
   GitBranchIcon,
   PaperclipIcon,
   ShieldIcon,
+  SparkIcon,
   StopIcon,
   TerminalIcon,
   XIcon,
@@ -120,6 +121,9 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
     setSkillId,
     skillId,
     setPermissionProfile,
+    harnessStatuses,
+    loadHarnessStatus,
+    setHarnessOption,
     api,
     projectId,
     connected,
@@ -149,6 +153,25 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
   const [dropping, setDropping] = useState(false);
   const [caret, setCaret] = useState(0);
   const [menuDismissed, setMenuDismissed] = useState(false);
+  /*
+   * Which models this agent will run is something only the running agent can
+   * say, so it is asked once per live session and remembered. Without this the
+   * list existed but only after someone pressed Status on the Harnesses screen.
+   */
+  const liveHarnessSessionId =
+    session?.harnessId && session.harnessState && session.harnessState !== "closed"
+      ? session.id
+      : undefined;
+  const harnessStatus = liveHarnessSessionId ? harnessStatuses[liveHarnessSessionId] : undefined;
+  useEffect(() => {
+    if (!liveHarnessSessionId || harnessStatus) return;
+    void loadHarnessStatus(liveHarnessSessionId);
+  }, [harnessStatus, liveHarnessSessionId, loadHarnessStatus]);
+
+  const models = harnessStatus?.parsed?.models;
+  const currentModel =
+    session?.modelOverride ?? models?.currentModelId ?? harnessStatus?.parsed?.model ?? "";
+
   const [stashOpen, setStashOpen] = useState(false);
   const harnessLive = Boolean(session?.harnessId && session.harnessState && session.harnessState !== "closed");
   const liveHarnessId = harnessLive ? session?.harnessId : undefined;
@@ -539,6 +562,20 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
               })}
               onChange={setAgentId}
             />
+            {/* Only when the running agent has said what it will accept: a
+                picker of models it may refuse is worse than no picker. */}
+            {models && models.availableModels.length > 0 && (
+              <MenuSelect
+                ariaLabel="Model"
+                icon={<SparkIcon size={13} />}
+                value={currentModel || models.availableModels[0]!.modelId}
+                options={models.availableModels.map((item) => ({
+                  id: item.modelId,
+                  label: item.name,
+                }))}
+                onChange={(id) => void setHarnessOption("model", id)}
+              />
+            )}
             {git?.isRepo && (
               <MenuSelect
                 ariaLabel="Conversation workspace"

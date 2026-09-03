@@ -183,6 +183,29 @@ export interface HarnessOptionPatch {
   value: string;
 }
 
+/** One choice a harness offers, as the harness itself describes it. */
+export interface AcpConfigChoice {
+  value: string;
+  name: string;
+  description?: string;
+}
+
+/**
+ * A setting the running harness says it accepts.
+ *
+ * acpx reports these in its status — the models a backend will run, its
+ * reasoning effort levels, its permission modes — each with the values it
+ * takes and the one it is on. Capsule used to let you set a model by typing
+ * one, with no way to see what the agent would actually accept.
+ */
+export interface AcpConfigOption {
+  id: string;
+  name: string;
+  description?: string;
+  currentValue?: string;
+  choices: AcpConfigChoice[];
+}
+
 export interface AcpStatusSnapshot {
   backend?: string;
   mode?: string;
@@ -192,6 +215,8 @@ export interface AcpStatusSnapshot {
   permissions?: string;
   timeout?: string;
   thinking?: string;
+  /** What this harness says it can be set to, when it says anything. */
+  configOptions?: AcpConfigOption[];
   models?: AcpModelCatalog;
 }
 

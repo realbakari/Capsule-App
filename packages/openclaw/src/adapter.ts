@@ -82,6 +82,13 @@ import {
   isGatewayTurnDone,
 } from "./events.js";
 
+/*
+ * How long after a control command finishes its trailing frames are still
+ * treated as part of the answer. Long enough for the tail of a status dump,
+ * short enough that a prompt sent straight afterwards is not swallowed.
+ */
+const CONTROL_TAIL_MS = 1_500;
+
 const CAPSULE_SCOPES = [
   "operator.read",
   "operator.write",
@@ -153,6 +160,14 @@ export class OpenClawAdapter implements AgentRuntime {
    * cannot win the race with the reply listener.
    */
   private readonly pendingAcpControls = new Map<string, number>();
+  /*
+   * A control command's answer does not always arrive in one frame, and the
+   * Gateway sometimes emits the tail after the frame it marked done. The
+   * marking used to be dropped the instant that frame landed, so the rest of a
+   * `/acp status` dump — the whole runtimeDetails blob, models and all — was
+   * read as the agent speaking and printed into the conversation.
+   */
+  private readonly recentAcpControls = new Map<string, number>();
   private cachedAgents: Agent[] = [];
   private cachedSessionCount = 0;
   private activeRunCount = 0;
@@ -605,9 +620,18 @@ export class OpenClawAdapter implements AgentRuntime {
   async acpCommand(
     sessionKey: string,
     command: string,
-    options: { waitMs?: number } = {},
+    options: { waitMs?: number; target?: string } = {},
   ): Promise<{ command: string; text?: string }> {
-    this.beginAcpControl(sessionKey);
+    /*
+     * A command that names a target is issued on one session and answered on
+     * another: the Gateway runs it through a plain control session, and acpx
+     * replies on the ACP session it was asked about. Marking only the session
+     * we sent on left that answer looking like the agent's own words.
+     */
+    const keys = options.target && options.target !== sessionKey
+      ? [sessionKey, options.target]
+      : [sessionKey];
+    for (const key of keys) this.beginAcpControl(key);
     const reply = this.waitForReply(sessionKey, options.waitMs ?? 8_000);
     try {
       await this.sendSlash(sessionKey, command);
@@ -622,7 +646,7 @@ export class OpenClawAdapter implements AgentRuntime {
       void reply.catch(() => undefined);
       throw error;
     } finally {
-      this.endAcpControl(sessionKey);
+      for (const key of keys) this.endAcpControl(key);
     }
   }
 
@@ -680,6 +704,7 @@ export class OpenClawAdapter implements AgentRuntime {
     const controlKey = acpTarget ? await this.controlSessionKey() : sessionKey;
     const result = await this.acpCommand(controlKey, acpOptionCommand(key, value, acpTarget), {
       waitMs: 6_000,
+      ...(acpTarget ? { target: acpTarget } : {}),
     });
     return result.text ?? "";
   }
@@ -926,7 +951,7 @@ export class OpenClawAdapter implements AgentRuntime {
     // A protocol failure is not the agent speaking, however prose-shaped its
     // frame is. It reaches the user through the error path instead.
     const text = isProseFrame && !isAcpFailureText(frameText) ? frameText : "";
-    const control = sessionKey ? this.pendingAcpControls.has(sessionKey) : false;
+    const control = sessionKey ? this.isAcpControl(sessionKey) : false;
     if (sessionKey && text) {
       this.emitter.emit("acp-reply", {
         sessionKey,
@@ -1005,12 +1030,24 @@ export class OpenClawAdapter implements AgentRuntime {
 
   private beginAcpControl(sessionKey: string): void {
     this.pendingAcpControls.set(sessionKey, (this.pendingAcpControls.get(sessionKey) ?? 0) + 1);
+    this.recentAcpControls.delete(sessionKey);
   }
 
   private endAcpControl(sessionKey: string): void {
     const pending = this.pendingAcpControls.get(sessionKey) ?? 0;
     if (pending <= 1) this.pendingAcpControls.delete(sessionKey);
     else this.pendingAcpControls.set(sessionKey, pending - 1);
+    this.recentAcpControls.set(sessionKey, Date.now() + CONTROL_TAIL_MS);
+  }
+
+  /** Whether a frame on this key belongs to a control command rather than a turn. */
+  private isAcpControl(sessionKey: string): boolean {
+    if (this.pendingAcpControls.has(sessionKey)) return true;
+    const until = this.recentAcpControls.get(sessionKey);
+    if (until === undefined) return false;
+    if (until > Date.now()) return true;
+    this.recentAcpControls.delete(sessionKey);
+    return false;
   }
 
   private emit(runId: string, type: string, message: string, data?: Record<string, unknown>): void {

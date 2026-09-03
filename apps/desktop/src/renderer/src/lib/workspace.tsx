@@ -166,6 +166,7 @@ export interface WorkspaceValue {
   harnessSessions: Session[];
   doctors: Partial<Record<string, HarnessDoctorReport>>;
   harnessStatuses: Partial<Record<string, HarnessLiveStatus>>;
+  loadHarnessStatus: (sessionId: string) => Promise<void>;
   projectId?: string;
   sessionId?: string;
   agentId: string;
@@ -1347,6 +1348,22 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     await refresh();
   }
 
+  /*
+   * Read a live harness's status into the cache and nothing else.
+   *
+   * refreshHarnessStatus also reloads the whole workspace, which is right for
+   * a button press and far too much for "the composer would like to know which
+   * models this agent offers".
+   */
+  async function loadHarnessStatus(id: string) {
+    try {
+      const live = (await api.harnessStatus(id)) as HarnessLiveStatus;
+      setHarnessStatuses((current) => ({ ...current, [id]: live }));
+    } catch {
+      // A status we could not read means no model list, not a broken thread.
+    }
+  }
+
   async function refreshHarnessStatus(id?: string) {
     const target = id ?? sessionId;
     if (!target) return;
@@ -1601,6 +1618,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       harnessSessions,
       doctors,
       harnessStatuses,
+      loadHarnessStatus,
       projectId,
       sessionId,
       agentId,
@@ -1754,6 +1772,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       harnessSessions,
       doctors,
       harnessStatuses,
+      loadHarnessStatus,
       projectId,
       sessionId,
       agentId,
