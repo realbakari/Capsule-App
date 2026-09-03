@@ -11,6 +11,15 @@ files:
 asarUnpack:
   - "**/node_modules/better-sqlite3/**"
   - "**/node_modules/node-pty/**"
+# Where the app looks for an update, and what electron-builder writes so it can.
+# Without this there is no latest-mac.yml in a release, and with no feed the app
+# can only tell someone a newer version exists and send them to download it by
+# hand — which is not an update, it is a reinstall.
+publish:
+  - provider: github
+    owner: realbakari
+    repo: Capsule-App
+
 # `capsule://` has to be declared in the bundle, or macOS never hands the app a
 # link no matter what the running process registers.
 protocols:

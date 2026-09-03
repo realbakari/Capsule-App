@@ -149,10 +149,16 @@ export function Sidebar() {
 
   const updateLabel = checkingUpdate
     ? "Checking for updates…"
-    : updateResult?.state === "update-available"
-      ? `Version ${updateResult.latest} is available — click to download ${
-          updateResult.download?.name ?? "it"
-        }`
+    : updateResult?.state === "downloading"
+      ? `Downloading ${updateResult.latest ?? "the update"} — ${updateResult.percent ?? 0}%`
+      : updateResult?.state === "ready-to-install"
+        ? `Version ${updateResult.latest} is ready — click to restart and install`
+      : updateResult?.state === "update-available"
+        ? updateResult.canInstall
+          ? `Version ${updateResult.latest} is available — click to install it`
+          : `Version ${updateResult.latest} is available — click to download ${
+              updateResult.download?.name ?? "it"
+            }`
       : updateResult?.state === "up-to-date"
         ? `Up to date (${updateResult.current})`
         : updateResult?.state === "no-releases"
@@ -162,12 +168,25 @@ export function Sidebar() {
             : "Check for updates";
 
   async function runUpdateCheck() {
+    /*
+     * Downloading a hundred megabytes is not something to do to someone
+     * unasked, and replacing the app under a running turn is worse. So each
+     * step is a click: offer, download, restart.
+     */
+    if (updateResult?.state === "ready-to-install") {
+      void api.installUpdate();
+      return;
+    }
+    if (updateResult?.state === "downloading") return;
     if (updateResult?.state === "update-available") {
-      /*
-       * The installer for this Mac when the release published one, and the
-       * release page when it did not. A page listing an arm64 and an x64 build
-       * asks a question most people should not have to answer.
-       */
+      if (updateResult.canInstall) {
+        setUpdateResult({ ...updateResult, state: "downloading", percent: 0 });
+        const next = (await api.downloadUpdate()) as UpdateCheck;
+        setUpdateResult(next);
+        return;
+      }
+      // No update feed in that release, or a build that cannot replace itself:
+      // hand over the file for this Mac, or the page when there is not one.
       const target = updateResult.download?.url ?? updateResult.url;
       if (target) window.open(target, "_blank", "noreferrer");
       return;
@@ -200,6 +219,22 @@ export function Sidebar() {
    * that silently starts failing. A release is not published often enough for
    * the difference to cost anyone an update.
    */
+  /* The updater reports progress from the main process; ask again when it does. */
+  useEffect(() => {
+    const off = api.on("state", (payload) => {
+      if ((payload as { command?: string }).command !== "update-status") return;
+      void api
+        .checkForUpdates()
+        .then((res) => setUpdateResult(res as UpdateCheck))
+        .catch(() => {
+          // The status will be right at the next check; nothing to say here.
+        });
+    });
+    return () => {
+      off();
+    };
+  }, [api]);
+
   useEffect(() => {
     const LAST_CHECK_KEY = "capsule.updateCheckedAt";
     const DAY_MS = 86_400_000;

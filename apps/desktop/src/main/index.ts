@@ -30,6 +30,8 @@ import {
 } from "electron";
 import type { CapsuleEngine } from "@capsule/core";
 import { mergePath, readLoginShellEnvironment } from "@capsule/harness";
+import electronUpdater from "electron-updater";
+import { Updater, mergeUpdateStatus } from "./updater";
 import {
   IPC_CHANNELS,
   isNewerRelease,
@@ -186,6 +188,31 @@ function applyDockIcon(): void {
  * download something macOS then refuses to launch. This reports honestly and
  * sends the user to the release page.
  */
+/*
+ * The in-place updater, when this build can be replaced.
+ *
+ * A packaged, signed app can swap itself; a development run cannot, and asking
+ * electron-updater to try only produces an error to explain away. The GitHub
+ * check below still runs either way, because a release published without an
+ * update feed — every one before 0.3.0 — has nothing for the updater to read.
+ */
+let updater: Updater | undefined;
+
+function ensureUpdater(): Updater {
+  if (updater) return updater;
+  updater = new Updater({
+    updater: electronUpdater.autoUpdater,
+    currentVersion: app.getVersion(),
+    canInstall: app.isPackaged,
+    /*
+     * Progress arrives as events, and the renderer asks for the status when
+     * it hears one rather than being handed a payload it might race with.
+     */
+    onStatus: () => send(IPC_EVENTS.state, { command: "update-status" }),
+  });
+  return updater;
+}
+
 async function checkForUpdates(): Promise<UpdateCheck> {
   const current = app.getVersion();
   try {
@@ -1132,7 +1159,22 @@ function registerIpc(): void {
   handleArgs(IPC_CHANNELS.resetSettingsSection, [id], (section: string) =>
     requireEngine().resetSettingsSection(section),
   );
-  handle(IPC_CHANNELS.checkForUpdates, () => checkForUpdates());
+  /*
+   * Both routes, one answer. The updater knows whether this build can replace
+   * itself; the GitHub check knows what the latest release is even when that
+   * release shipped no update feed, which every one before 0.3.0 did.
+   */
+  handle(IPC_CHANNELS.checkForUpdates, async () => {
+    const fallback = await checkForUpdates();
+    if (!app.isPackaged) return fallback;
+    const status = await ensureUpdater().check();
+    return mergeUpdateStatus(status, fallback);
+  });
+  handle(IPC_CHANNELS.downloadUpdate, async () => {
+    const status = await ensureUpdater().download();
+    return mergeUpdateStatus(status, undefined);
+  });
+  handle(IPC_CHANNELS.installUpdate, () => ensureUpdater().install());
   /*
    * Electron's own accounting for this app's process tree. It costs nothing to
    * collect and needs no native code — which is also its limit: per-process

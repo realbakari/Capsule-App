@@ -70,7 +70,13 @@ export function isNewerRelease(latest: string, current: string): boolean {
   return compareVersions(next, now) > 0;
 }
 
-export type UpdateState = "up-to-date" | "update-available" | "no-releases" | "unreachable";
+export type UpdateState =
+  | "up-to-date"
+  | "update-available"
+  | "downloading"
+  | "ready-to-install"
+  | "no-releases"
+  | "unreachable";
 
 export interface UpdateCheck {
   state: UpdateState;
@@ -90,6 +96,13 @@ export interface UpdateCheck {
   download?: { name: string; url: string; size?: number };
   /** What changed, as the release itself describes it. */
   notes?: string;
+  /**
+   * Whether this build can replace itself rather than sending someone to
+   * download a disk image and drag it over the old one.
+   */
+  canInstall?: boolean;
+  /** 0-100 while the update is coming down. */
+  percent?: number;
 }
 
 /**

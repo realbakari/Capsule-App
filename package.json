@@ -12,7 +12,7 @@
   "scripts": {
     "postinstall": "node scripts/ensure-electron.mjs && node scripts/ensure-native.mjs",
     "dev": "pnpm --filter @capsule/desktop dev",
-    "build": "node scripts/build-policy-pages.mjs && pnpm --filter @capsule/desktop build",
+    "build": "pnpm --filter @capsule/desktop build && node scripts/build-policy-pages.mjs",
     "test": "node scripts/test.mjs",
     "test:watch": "vitest",
     "lint": "eslint .",

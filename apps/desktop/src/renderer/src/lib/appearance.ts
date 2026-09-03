@@ -35,9 +35,20 @@ const THEME_KEY = "capsule.appearanceTheme";
  */
 const BACKGROUND_KEY = "capsule.appearanceBackground";
 
-/** Applies the last known theme before the first paint. */
-export function applyStoredTheme(): void {
+/**
+ * Applies the last known theme before the first paint.
+ *
+ * `force` is for the website, which is dark and only dark: it is one designed
+ * surface, drawn against a dark ground, and a visitor's system preference
+ * recolouring it means half of them see a version nobody looked at.
+ */
+export function applyStoredTheme(force?: "dark" | "light"): void {
   if (typeof document === "undefined") return;
+  if (force) {
+    document.documentElement.dataset.theme = force;
+    document.documentElement.dataset.surface = force;
+    return;
+  }
   let stored: string | null = null;
   try {
     stored = localStorage.getItem(THEME_KEY);

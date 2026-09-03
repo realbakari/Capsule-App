@@ -13,8 +13,11 @@ import "./styles.css";
  * Before anything renders. The stylesheet is dark by default, so a light Mac
  * painted a dark window and swapped to light once settings came back over
  * IPC — the "pop" on every start.
+ *
+ * The website takes no part in that: no preload bridge means this is the
+ * public site, which is dark and stays dark.
  */
-applyStoredTheme();
+applyStoredTheme(window.capsule ? undefined : "dark");
 
 const root = document.getElementById("root");
 if (!root) throw new Error("Missing #root");
@@ -48,6 +51,7 @@ if (!isDesktop) {
  * before the app does: they need no bridge, no data and no demo.
  */
 const policy = isDesktop ? undefined : policyForPath(window.location.pathname);
+
 
 createRoot(root).render(
   <React.StrictMode>

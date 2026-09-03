@@ -46,3 +46,23 @@ describe("the policy markdown converter", () => {
     expect(inline("[x](javascript:alert(1))")).toBe("[x](javascript:alert(1))");
   });
 });
+
+describe("wrapped items", () => {
+  it("keeps a bullet that wraps as one bullet", () => {
+    // Every wrapped bullet used to break in half: the first line inside the
+    // list, the rest as a paragraph beneath it.
+    expect(toHtml("- one line\n  continues here\n- second")).toBe(
+      "<ul>\n<li>one line continues here</li>\n<li>second</li>\n</ul>",
+    );
+  });
+
+  it("keeps a numbered item that wraps as one item", () => {
+    expect(toHtml("1. first\n   wrapped\n2. second")).toBe(
+      "<ol>\n<li>first wrapped</li>\n<li>second</li>\n</ol>",
+    );
+  });
+
+  it("still ends the list at a blank line", () => {
+    expect(toHtml("- one\n\nAfter.")).toBe("<ul>\n<li>one</li>\n</ul>\n<p>After.</p>");
+  });
+});

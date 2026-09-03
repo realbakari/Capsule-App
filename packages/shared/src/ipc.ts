@@ -97,6 +97,8 @@ export const IPC_CHANNELS = {
   searchSkillCatalog: "capsule:searchSkillCatalog",
   resetSettingsSection: "capsule:resetSettingsSection",
   checkForUpdates: "capsule:checkForUpdates",
+  downloadUpdate: "capsule:downloadUpdate",
+  installUpdate: "capsule:installUpdate",
   processMetrics: "capsule:processMetrics",
   processHistory: "capsule:processHistory",
   hostState: "capsule:hostState",
