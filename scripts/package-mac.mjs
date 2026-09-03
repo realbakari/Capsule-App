@@ -24,7 +24,7 @@ execSync("npx electron-vite build", { cwd: desktopDir, stdio: "inherit" });
 // 3. Run electron-builder with output in /tmp/capsule-release to prevent iCloud FileProvider detritus
 console.log("==> Running electron-builder with signing and notarization in /tmp...");
 execSync(
-  `npx electron-builder --mac --arm64 -c.directories.output="${tmpRelease}"`,
+  `npx electron-builder --mac --arm64 -c.directories.output="${tmpRelease}" --publish never`,
   {
     cwd: desktopDir,
     stdio: "inherit",
