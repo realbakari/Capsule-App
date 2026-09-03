@@ -19,26 +19,44 @@
 
 ## What is Capsule?
 
-Capsule is an open-source, local-first desktop workspace designed for orchestrating autonomous AI coding agents and harness sessions on macOS.
+Capsule is a desktop workspace for the coding agents you already run. Claude
+Code, Codex, Grok Build and other ACP harnesses do the work; Capsule gives them
+a window — projects, conversations, diffs, approvals and a record of what each
+turn changed, on your own machine.
 
-While engines like OpenClaw and ACP run the execution loops, Capsule provides the **human-in-the-loop workspace**: projects, run inspection, diff review, file touches, governance contracts, and artifact tracking.
+It installs nothing on your behalf and holds no API keys. If a CLI is on your
+Mac and signed in, Capsule can drive it.
 
-### ✨ Key Features
+### What it does
 
-- 🖥️ **First-Class Coding Harnesses**: Direct operator lifecycle management for Claude Code, OpenAI Codex, Grok Build, and OpenClaw agents (`/acp spawn --bind off`, steer, doctor, cancel, permissions, and timeout controls).
-- 🔍 **Run Inspector & Review**: Detailed execution history with per-turn touched files summaries, additions/deletions tracking, code diffs, terminal outputs, and artifacts.
-- 💬 **Glass Composer Dock**: Slash commands (`/`), file mentions (`@`), skills (`$`), and permission toggles built into a clean, minimalist interface.
-- 🔒 **Local-First & Secure**: Model keys and gateway tokens stay in macOS Keychain—never in plain text, SQLite, or web renderers. No analytics, no telemetry.
-- 🧪 **Offline Mock Runtime**: Develop, test, and explore agent workflows completely offline without an active OpenClaw installation or API keys using trigger tokens (`[approval]`, `[verify]`, `[multi]`, `[tool]`, etc.).
-- 🚀 **Signed & Apple Notarized**: Official macOS Apple Silicon builds (`.dmg` / `.zip`) with Hardened Runtime and Apple notarization—no Gatekeeper warnings.
+**Runs the agents you have.** Start, steer, cancel and close a harness session,
+and switch a conversation from one agent to another without losing the thread.
+
+**Shows the work, not just the answer.** Every turn keeps its commands, its
+tool calls, the files it touched and the lines it moved — and a checkpoint, so
+you can see what a single turn changed and put it back.
+
+**Reviews changes where you are.** Diffs, changed files, and pull requests read
+in the app instead of a browser tab.
+
+**Keeps your work on your Mac.** A local SQLite database, tokens encrypted in
+the Keychain, no analytics and no telemetry. Read [PRIVACY.md](PRIVACY.md) —
+it lists everything that leaves the machine, which is five things.
+
+**Works without a Gateway.** Direct mode spawns an ACP-capable CLI itself, so
+an install with nothing else running still gets a working turn.
+
+**Ships signed.** Official builds are Developer ID signed and notarized by
+Apple, so Gatekeeper opens them without argument. Verify any download with
+`spctl --assess --type execute -vv /Applications/Capsule.app`.
 
 ---
 
-## 📦 Installation
+## Installation
 
 Download the latest Apple Silicon DMG from GitHub Releases:
 
-📥 **[Download Capsule v0.1.0 (.dmg)](https://github.com/realbakari/Capsule-App/releases/latest)**
+**[Download the latest release](https://github.com/realbakari/Capsule-App/releases/latest)**
 
 1. Open `Capsule-0.1.0-arm64.dmg`.
 2. Drag **Capsule** into your **Applications** folder.
@@ -46,7 +64,7 @@ Download the latest Apple Silicon DMG from GitHub Releases:
 
 ---
 
-## 🛠️ Developer Quickstart
+## Developing Capsule
 
 Capsule is built as a pnpm monorepo using Electron, Vite, React, and TypeScript.
 
@@ -87,7 +105,7 @@ node scripts/ensure-native.mjs    # Compiles SQLite for Electron
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -113,17 +131,22 @@ Capsule enforces clean architectural separation:
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
-Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md) before submitting pull requests.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) first, and [AGENTS.md](AGENTS.md) if an
+agent is doing the work.
 
 1. Fork the repo & create your feature branch: `git checkout -b feat/my-feature`
 2. Ensure tests and lint pass: `pnpm test && pnpm lint && pnpm typecheck`
 3. Commit your changes: `git commit -m "feat: my new feature"`
-4. Push to your branch & open a Pull Request!
+4. Push the branch and open a pull request.
 
 ---
 
-## 📄 License
+## Licence and policies
 
-MIT © Bakari Mustafa
+MIT © Bakari Mustafa — see [LICENSE](LICENSE).
+
+- [Privacy](PRIVACY.md) — what is stored, and the five things that leave your Mac.
+- [Security](SECURITY.md) — reporting a vulnerability, and what Capsule does and does not defend against.
+- [Terms of use](TERMS.md) — how the software is offered.
