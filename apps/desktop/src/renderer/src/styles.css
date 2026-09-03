@@ -8825,3 +8825,37 @@ details.card > summary {
   font-size: 0.75rem;
   line-height: 1.5;
 }
+
+/* A turn in flight, said in one line: how long, how much, what it is doing. */
+.turn-status {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  margin-bottom: 0.35rem;
+  color: var(--text-faint);
+  font-size: 0.8125rem;
+}
+.turn-status > svg,
+.turn-status .agent-glyph {
+  flex-shrink: 0;
+}
+.turn-status .run-elapsed {
+  margin-left: 0;
+}
+.turn-status-dot {
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+.turn-status-tokens {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+/* The state is the part that changes; it gives way first when the column is
+   narrow, because the clock and the count are fixed width and it is not. */
+.turn-status-state {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

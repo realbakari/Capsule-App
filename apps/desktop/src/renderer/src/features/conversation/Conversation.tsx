@@ -1,5 +1,8 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ChatMessage } from "@capsule/shared";
+import type { ChatMessage, Run } from "@capsule/shared";
+import { harnessDisplayName } from "../../lib/harness";
+import { AgentGlyph } from "../shell/AgentGlyph";
+import { formatTokens, type ContextUsage } from "../../lib/context-window";
 import { AlertTriangleIcon, CopyIcon, DiffIcon, FileIcon, SparkIcon, TerminalIcon, XIcon } from "../shell/icons";
 import { useWorkspace } from "../../lib/workspace";
 import { GatewayBanner } from "../shell/GatewayBanner";
@@ -130,7 +133,58 @@ function RunElapsed({ startedAt }: { startedAt: string }) {
     return () => window.clearInterval(id);
   }, [startedMs]);
   if (Number.isNaN(startedMs)) return null;
-  return <span className="run-elapsed">for {formatDuration(Date.now() - startedMs)}</span>;
+  return <span className="run-elapsed">{formatDuration(Date.now() - startedMs)}</span>;
+}
+
+/**
+ * One line for a turn in flight: how long, how much, and what it is doing.
+ *
+ * These three facts were all in the app and none of them together — the clock
+ * beside the word "Working", the token count inside a ring's tooltip, and what
+ * the agent was actually doing further down the work log. Waiting is the whole
+ * experience of a slow turn, and this is the line someone watches while it
+ * happens.
+ */
+function TurnStatusLine({
+  run,
+  agentId,
+  agentName,
+  usage,
+  activity,
+}: {
+  run: Run;
+  agentId?: string;
+  agentName: string;
+  usage?: ContextUsage;
+  activity?: string;
+}) {
+  // The agent's own most recent step when there is one; otherwise the honest
+  // answer, which is that nothing has come back yet.
+  const state = activity?.trim() || `Waiting for ${agentName}`;
+  return (
+    <div className="turn-status">
+      {agentId ? <AgentGlyph id={agentId} name={agentName} size={14} /> : null}
+      {run.createdAt && <RunElapsed startedAt={run.createdAt} />}
+      {usage ? (
+        <>
+          <span className="turn-status-dot" aria-hidden>·</span>
+          <span
+            className="turn-status-tokens"
+            title={`${formatTokens(usage.used)} of ${formatTokens(usage.limit)} context`}
+          >
+            {formatTokens(usage.used)} tokens
+          </span>
+        </>
+      ) : null}
+      <span className="turn-status-dot" aria-hidden>·</span>
+      <span className="shimmer-text turn-status-state" title={state}>
+        {state}…
+        <span className="shimmer-overlay" aria-hidden>
+          {state}…
+        </span>
+      </span>
+    </div>
+  );
 }
 
 /**
@@ -170,6 +224,8 @@ export function Conversation() {
     agents,
     agentId,
     activeRun,
+    harnesses,
+    contextUsage,
     steps,
     events,
     pendingApproval,
@@ -439,13 +495,17 @@ export function Conversation() {
           {(activeRun || steps.length > 0) && (
             <div className={`msg active-run-msg${activeRun ? "" : " settled"}`}>
               {activeRun ? (
-                <div className="who">
-                  <span className="shimmer-text">
-                    Working
-                    <span className="shimmer-overlay" aria-hidden>Working</span>
-                  </span>
-                  {activeRun.createdAt && <RunElapsed startedAt={activeRun.createdAt} />}
-                </div>
+                <TurnStatusLine
+                  run={activeRun}
+                  agentId={session?.harnessId ?? session?.agentId}
+                  agentName={harnessDisplayName(
+                    harnesses,
+                    session?.harnessId,
+                    agents.find((item) => item.id === agentId)?.name ?? "the agent",
+                  )}
+                  usage={contextUsage}
+                  activity={steps.at(-1)?.label}
+                />
               ) : null}
               <RunSummary
                 label={summariseWork(steps).label}
