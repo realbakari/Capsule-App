@@ -1,5 +1,13 @@
 <!doctype html>
-<html lang="en">
+<!--
+  Dark from the first byte.
+
+  The module script is deferred, so on a light Mac the document painted
+  #f4f4f1 and went dark once it ran — a flash on the website, which is dark
+  and only dark. The desktop app overwrites this attribute with the theme you
+  chose before React renders, so it costs nothing there.
+-->
+<html lang="en" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta

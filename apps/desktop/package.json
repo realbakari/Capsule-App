@@ -10,7 +10,7 @@
     "dev": "node ../../scripts/dev-desktop.mjs",
     "build": "node ../../scripts/ensure-electron.mjs && electron-vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "package:mac": "node ../../scripts/ensure-electron.mjs && electron-vite build && electron-builder --mac --arm64"
+    "package:mac": "node ../../scripts/ensure-electron.mjs && electron-vite build && electron-builder --mac --arm64 --publish never"
   },
   "dependencies": {
     "@capsule/contracts": "workspace:*",

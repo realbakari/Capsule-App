@@ -45,10 +45,12 @@ const BACKGROUND_KEY = "capsule.appearanceBackground";
 export function applyStoredTheme(force?: "dark" | "light"): void {
   if (typeof document === "undefined") return;
   if (force) {
+    lockedTheme = force;
     document.documentElement.dataset.theme = force;
     document.documentElement.dataset.surface = force;
     return;
   }
+  lockedTheme = undefined;
   let stored: string | null = null;
   try {
     stored = localStorage.getItem(THEME_KEY);
@@ -67,8 +69,18 @@ export function applyStoredTheme(force?: "dark" | "light"): void {
   }
 }
 
+/*
+ * Set when the surface is not the app: the website, which is dark and only
+ * dark. The landing page embeds the real app over a demo bridge, and that app
+ * loads settings and applies them like any other — so without this the site
+ * went light the moment the demo's "follow the system" theme arrived, a
+ * second after painting dark.
+ */
+let lockedTheme: "dark" | "light" | undefined;
+
 export function applyAppearance(settings: CapsuleSettings | undefined): void {
   if (typeof document === "undefined") return;
+  if (lockedTheme) return;
   lastSettings = settings;
   if (typeof window !== "undefined" && !media) {
     media = window.matchMedia("(prefers-color-scheme: light)");
