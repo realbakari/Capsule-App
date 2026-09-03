@@ -43,6 +43,7 @@ export {
   pushArgs,
   pushCurrentBranch,
   parsePullRequestList,
+  pollPullRequest,
   viewPullRequest,
 } from "./github.js";
 export {
@@ -143,13 +144,17 @@ export class FilesystemAdapter {
     return readPreviewFile(this.resolve(relative), relative.replaceAll("\\", "/"));
   }
 
+  /*
+   * Atomic, because this is how the editor and the agent write the user's own
+   * source. A truncating write that fails halfway leaves them with an empty
+   * file and no copy of what was in it.
+   */
   write(relative: string, content: string): void {
-    const file = this.resolve(relative);
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, content, "utf8");
+    writeFileAtomic(this.resolve(relative), content);
   }
 }
 import { projectFiles, rankFiles } from "./file-index.js";
+import { writeFileAtomic } from "./atomic-write.js";
 
 export {
   clearFileIndex,
@@ -160,3 +165,4 @@ export {
   FILE_INDEX_TTL_MS,
   type RankedFile,
 } from "./file-index.js";
+export { writeFileAtomic } from "./atomic-write.js";

@@ -66,7 +66,7 @@ import {
   searchContents,
   stageFile,
   validateMessageAttachments,
-  viewPullRequest,
+  pollPullRequest,
 } from "@capsule/filesystem";
 import {
   MockAgentRuntime,
@@ -2438,7 +2438,15 @@ export class CapsuleEngine {
       this.stopPrWatch(projectId);
       return;
     }
-    const pullRequest = viewPullRequest(project.workingDirectory);
+    /*
+     * Read what is known and let the refresh happen behind it. Asking GitHub
+     * from here blocked the main process for about a second every forty-five,
+     * for as long as watching stayed on.
+     */
+    const { value: pullRequest, known } = pollPullRequest(project.workingDirectory);
+    // Nothing has come back yet: that is not the same as "there is no pull
+    // request", and stopping on it would end the watch before it began.
+    if (!known) return;
     if (!pullRequest || pullRequest.state === "MERGED" || pullRequest.state === "CLOSED") {
       this.events.emit("state", { command: "git-updated" });
       if (!this.settings.prWatchUntilMerged || !pullRequest || pullRequest.state !== "OPEN") {

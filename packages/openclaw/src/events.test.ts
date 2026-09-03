@@ -162,3 +162,17 @@ describe("isAcpControlOutput", () => {
     expect(isAcpControlOutput("   ")).toBe(false);
   });
 });
+
+describe("polling a pull request", () => {
+  it("does not report 'no pull request' before an answer has landed", async () => {
+    /*
+     * The watcher stops itself when there is no open pull request. Reading an
+     * empty cache as that answer would end the watch on its first tick, before
+     * anything had been asked.
+     */
+    const { pollPullRequest } = await import("@capsule/filesystem");
+    const first = pollPullRequest("/nonexistent/repo/for/this/test");
+    expect(first.known).toBe(false);
+    expect(first.value).toBeUndefined();
+  });
+});

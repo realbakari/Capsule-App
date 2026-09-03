@@ -382,6 +382,20 @@ function cachedPullRequest(cwd: string): GitPullRequest | undefined {
   return cached?.value;
 }
 
+/**
+ * The pull request as last known, refreshing behind the answer.
+ *
+ * For a caller that polls: the watcher used to run `gh pr view` itself, and
+ * that call reaches GitHub — about a second, synchronously, on the main
+ * process, every forty-five seconds for as long as watching is on. `known` is
+ * false until a reading has actually landed, so a caller cannot read "not
+ * fetched yet" as "there is no pull request".
+ */
+export function pollPullRequest(cwd: string): { value?: GitPullRequest; known: boolean } {
+  const value = cachedPullRequest(cwd);
+  return { value, known: pullRequestCache.has(cwd) };
+}
+
 export function enrichGitStatus(status: GitStatus, cwd?: string): GitStatus {
   if (!status.isRepo || !cwd) return { ...status, ghAvailable: false };
   const available = ghAvailable();

@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
+import { writeFileAtomic } from "@capsule/filesystem";
 import os from "node:os";
 import path from "node:path";
 import type { DeviceIdentity, GatewayClientHostDeps } from "@openclaw/gateway-client";
@@ -48,10 +49,7 @@ function ensurePrivateDir(dir: string): void {
 
 function writePrivateJson(filePath: string, value: unknown): void {
   ensurePrivateDir(path.dirname(filePath));
-  fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, {
-    encoding: "utf8",
-    mode: 0o600,
-  });
+  writeFileAtomic(filePath, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
   try {
     fs.chmodSync(filePath, 0o600);
   } catch {

@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { writeFileAtomic } from "@capsule/filesystem";
 import os from "node:os";
 import path from "node:path";
 
@@ -53,8 +54,9 @@ function fileStore(dir: string, encryptor?: SecretEncryptor): KeychainAdapter {
     }
   };
   const write = (data: Record<string, string>) => {
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(file, JSON.stringify(data), { encoding: "utf8", mode: 0o600 });
+    // Atomic: a truncated secrets file is a signed-out Gateway with no way
+    // back except pasting the token again.
+    writeFileAtomic(file, JSON.stringify(data), { mode: 0o600 });
   };
   const keyFor = (service: string, account: string) => `${service}:${account}`;
   return {
