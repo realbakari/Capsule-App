@@ -32,7 +32,7 @@ execSync(
   }
 );
 
-// 4. Copy final artifacts to apps/desktop/release
+// 4. Copy final artifacts to apps/desktop/release using ditto to preserve symlinks and code signatures
 console.log(`==> Copying release artifacts to ${finalRelease}...`);
 fs.mkdirSync(finalRelease, { recursive: true });
 const files = fs.readdirSync(tmpRelease);
@@ -40,7 +40,7 @@ for (const file of files) {
   const src = path.join(tmpRelease, file);
   const dest = path.join(finalRelease, file);
   fs.rmSync(dest, { recursive: true, force: true });
-  fs.cpSync(src, dest, { recursive: true });
+  execSync(`ditto "${src}" "${dest}"`);
 }
 
 console.log("\n===========================================");
