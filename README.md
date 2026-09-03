@@ -58,7 +58,7 @@ Download the latest Apple Silicon DMG from GitHub Releases:
 
 **[Download the latest release](https://github.com/realbakari/Capsule-App/releases/latest)**
 
-1. Open `Capsule-0.1.0-arm64.dmg`.
+1. Open the downloaded `.dmg`.
 2. Drag **Capsule** into your **Applications** folder.
 3. Launch Capsule!
 
