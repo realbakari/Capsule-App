@@ -12,6 +12,7 @@ export { OpenClawAdapter, type OpenClawAdapterOptions } from "./adapter.js";
 export { createGatewayHostDeps, loadOrCreateDeviceIdentity } from "./device-identity.js";
 export {
   acpCommandFailed,
+  isAcpControlOutput,
   extractAcpSessionKey,
   extractGatewayText,
   isGatewayTurnDone,

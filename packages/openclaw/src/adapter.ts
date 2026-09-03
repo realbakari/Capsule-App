@@ -982,7 +982,15 @@ export class OpenClawAdapter implements AgentRuntime {
     }
     // Run events describe what happened, so they keep the frame's own text
     // even when it is activity rather than prose.
-    const agentText = frameText || asString(payload.summary, asString(payload.errorMessage));
+    const frameSummary = frameText || asString(payload.summary, asString(payload.errorMessage));
+    /*
+     * A control command's answer is not the agent's. `acp-reply` already knew
+     * that, but run events did not: a `/acp status` frame closed a Gateway run
+     * carrying the whole dump as its output, the engine stored that as the
+     * run's result, and the result is what becomes the assistant's message. So
+     * the same status blob reached the thread by a second door.
+     */
+    const agentText = control ? "" : frameSummary;
     if (runId && isGatewayAgentFailure(agentText)) {
       this.activeRunCount = Math.max(0, this.activeRunCount - 1);
       const explained = explainAcpFailure(agentText) ?? agentText;
@@ -1013,7 +1021,7 @@ export class OpenClawAdapter implements AgentRuntime {
       const kind = classifyRuntimeEvent(payload) ?? classifyAgentStream(stream);
       // "assistant" is the only type the engine folds into run.result, so
       // reasoning, plan text and command output must not use it.
-      this.emit(runId, isAssistantProse(kind) ? "assistant" : kind, agentText, {
+      this.emit(runId, isAssistantProse(kind) && !control ? "assistant" : kind, agentText, {
         ...payload,
         streamKind: kind,
       });

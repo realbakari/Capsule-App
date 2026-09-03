@@ -89,6 +89,28 @@ const ACP_FAIL = [
   "agent failed before reply",
 ];
 
+/*
+ * Markers of a control command's own answer.
+ *
+ * `/acp status` and `/acp doctor` describe the session — its acpx record, the
+ * backend process, the models and permission modes the harness accepts. It is
+ * Capsule's own bookkeeping and has twice reached the transcript looking like
+ * something the agent said. Recognising it is the last line of defence behind
+ * the control marking, not a substitute for it.
+ */
+const CONTROL_OUTPUT_MARKERS = [
+  "acp status:",
+  "acp doctor:",
+  "acpx record id:",
+  "backendsessionid=",
+];
+
+export function isAcpControlOutput(text: string | undefined): boolean {
+  const value = text?.trim().toLowerCase();
+  if (!value) return false;
+  return CONTROL_OUTPUT_MARKERS.some((marker) => value.includes(marker));
+}
+
 export function acpCommandFailed(text: string | undefined): string | undefined {
   if (!text?.trim()) return undefined;
   const lower = text.toLowerCase();

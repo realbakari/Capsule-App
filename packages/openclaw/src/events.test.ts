@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   acpCommandFailed,
+  isAcpControlOutput,
   compactParams,
   explainAcpFailure,
   extractAcpSessionKey,
@@ -134,5 +135,30 @@ describe("isAcpFailureText", () => {
     expect(isAcpFailureText("The ACP adapter is configured correctly.")).toBe(false);
     expect(isAcpFailureText("")).toBe(false);
     expect(isAcpFailureText(undefined)).toBe(false);
+  });
+});
+
+describe("isAcpControlOutput", () => {
+  it("recognises the status dump that kept reaching the transcript", () => {
+    // Verbatim shape of what a user saw twice: once as a stray tail, once as
+    // the whole thing arriving as a run's output.
+    const dump =
+      "ACP status: ----- session: agent:claude:acp:f3627e45 backend: acpx agent: claude " +
+      'acpx record id: agent:claude:acp:f3627e45 sessionMode: persistent state: idle ' +
+      'runtimeDetails: {"cwd":"/Users/x/t3code","configOptions":[{"id":"model"}]}';
+    expect(isAcpControlOutput(dump)).toBe(true);
+  });
+
+  it("recognises a doctor report and a runtime line", () => {
+    expect(isAcpControlOutput("ACP doctor: everything looks fine")).toBe(true);
+    expect(isAcpControlOutput("runtime: session=x backendSessionId=1c45effe pid=82746")).toBe(true);
+  });
+
+  it("leaves the agent's own words alone", () => {
+    // The guard must not eat an answer that happens to discuss ACP.
+    expect(isAcpControlOutput("I checked the ACP adapter and it looks right.")).toBe(false);
+    expect(isAcpControlOutput("Here is the status of your build: green.")).toBe(false);
+    expect(isAcpControlOutput(undefined)).toBe(false);
+    expect(isAcpControlOutput("   ")).toBe(false);
   });
 });

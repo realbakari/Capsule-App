@@ -302,3 +302,38 @@ describe("control command replies stay out of the conversation", () => {
     expect(internals.isAcpControl("k")).toBe(false);
   });
 });
+
+describe("a control command's output is not the agent's answer", () => {
+  it("does not close a run with the status dump as its result", () => {
+    /*
+     * The second door. `acp-reply` was already guarded, but a `/acp status`
+     * frame also closed a Gateway run carrying the dump as `output` — the
+     * engine stores that as run.result, and run.result is what becomes the
+     * assistant's message. The whole blob landed in the thread that way.
+     */
+    const adapter = new OpenClawAdapter();
+    const events: Array<{ type: string; data?: Record<string, unknown> }> = [];
+    const emitter = (adapter as unknown as { emitter: { on: (name: string, fn: (payload: unknown) => void) => void } })
+      .emitter;
+    emitter.on("run", (payload) => events.push(payload as { type: string; data?: Record<string, unknown> }));
+
+    const internals = adapter as unknown as {
+      beginAcpControl: (key: string) => void;
+      handleEvent: (event: unknown) => void;
+    };
+    const sessionKey = "agent:claude:acp:f3627e45";
+    internals.beginAcpControl(sessionKey);
+    internals.handleEvent({
+      event: "agent",
+      payload: {
+        sessionKey,
+        runId: "run_1",
+        status: "ok",
+        text: "ACP status: ----- session: agent:claude:acp:f3627e45 acpx record id: x",
+      },
+    });
+
+    const completed = events.find((event) => event.data?.status === "completed");
+    expect(completed?.data?.output).toBe("");
+  });
+});

@@ -71,6 +71,7 @@ import {
   MockAgentRuntime,
   OpenClawAdapter,
   acpCommandFailed,
+  isAcpControlOutput,
   acpxModeIsNonFatal,
   defaultGatewayEndpoint,
 } from "@capsule/openclaw";
@@ -1960,6 +1961,9 @@ export class CapsuleEngine {
   }): void {
     if (!payload.sessionKey) return;
     if (payload.control) return;
+    // Behind the control marking: a status dump is recognisable on its own, so
+    // a frame that slips past the marking still cannot become a message.
+    if (isAcpControlOutput(payload.text)) return;
     const session = this.repos
       .listSessions()
       .find((item) => item.openclawSessionKey === payload.sessionKey);
@@ -2209,6 +2213,11 @@ export class CapsuleEngine {
           this.appendEvent(run.id, "verification", verification.summary, {
             passed: verification.passed,
           });
+        }
+        if (run.result && isAcpControlOutput(run.result)) {
+          // The turn's own answer never looks like this; a control command's
+          // does, and it is not something the reader asked for.
+          run.result = undefined;
         }
         if (run.result) {
           const last = this.repos.listMessages(session.id).at(-1);
