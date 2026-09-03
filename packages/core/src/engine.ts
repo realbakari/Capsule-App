@@ -1,6 +1,12 @@
 import { EventEmitter } from "node:events";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import {
+  DirectAcpHost,
+  isDirectSessionKey,
+  supportsDirectMode,
+  type AcpReply,
+} from "@capsule/acp";
 import { agentIdForMode, DEFAULT_AGENTS, excludeSystemAgents } from "@capsule/agents";
 import {
   buildDoctorReport,
@@ -202,6 +208,14 @@ export class CapsuleEngine {
   private runtime: AgentRuntime;
   private mock = new MockAgentRuntime();
   private openclaw: OpenClawAdapter;
+  /*
+   * The route a coding turn takes. In Gateway mode this is the adapter above;
+   * in direct mode it is a host that spawns the CLI here and speaks ACP to it.
+   * Everything from `spawnHarness` down calls this, not the adapter, so the
+   * turn pipeline does not branch on which route carried it.
+   */
+  private direct = new DirectAcpHost();
+  private directUnsub?: () => void;
   private settings: CapsuleSettings;
   private logs: string[] = [];
   private stopped = false;
@@ -283,6 +297,9 @@ export class CapsuleEngine {
     this.stopped = true;
     setLoginStateListener(undefined);
     setPullRequestListener(undefined);
+    this.directUnsub?.();
+    // Agents Capsule spawned are Capsule's to stop; nothing else will.
+    void this.direct.closeAll();
     this.stopAllPrWatch();
     for (const process of this.actionProcesses.values()) process.stop();
     this.actionProcesses.clear();
@@ -467,13 +484,14 @@ export class CapsuleEngine {
     clearLoginCache();
     clearGhCache();
     this.forgetAcpxState();
-    const acpxEnabled = await this.acpxEnabled();
+    const direct = this.useDirectMode(harnessId);
+    const acpxEnabled = direct ? false : await this.acpxEnabled();
     const binaryPath = whichBinary(preset.binaries);
     let acpxPermissionModeValue: string | undefined;
     let acpxPolicyKnown = false;
     let acpxAgentConfigured: boolean | undefined = preset.acpxCommand ? false : undefined;
     let acpxAgentError: string | undefined;
-    if (!this.usingMock && acpxEnabled) {
+    if (!this.usingMock && !direct && acpxEnabled) {
       if (preset.acpxCommand) {
         const result = await this.openclaw.ensureAcpxAgentCommand(
           preset.openclawAgentId,
@@ -505,9 +523,10 @@ export class CapsuleEngine {
       acpxPolicyKnown,
       acpxAgentConfigured,
       acpxAgentError,
+      direct,
     });
     let gatewayOutput: string | undefined;
-    if (!this.usingMock) {
+    if (!this.usingMock && !direct) {
       try {
         const scratch = await this.openclaw.createSession({
           projectId: this.repos.listProjects()[0]?.id ?? "local",
@@ -515,7 +534,7 @@ export class CapsuleEngine {
           mode: "code",
         });
         const key = scratch.openclawSessionKey ?? scratch.id;
-        gatewayOutput = await this.openclaw.doctorAcp(key);
+        gatewayOutput = await this.acpHost(key).doctorAcp(key);
         if (!acpxEnabled) {
           const install = await this.openclaw.acpCommand(key, acpInstallCommand(), { waitMs: 8_000 });
           if (install.text) {
@@ -568,8 +587,11 @@ export class CapsuleEngine {
      * an unrunnable probe returns "unknown" and must not gate a working
      * harness.
      */
+    const direct = this.useDirectMode(harnessId);
     if (!this.usingMock) {
-      if (preset.acpxCommand) {
+      // Direct mode spawns the CLI here, so there is no Gateway config to
+      // write and nothing to register a command with.
+      if (preset.acpxCommand && !direct) {
         const configured = await this.openclaw.ensureAcpxAgentCommand(
           preset.openclawAgentId,
           preset.acpxCommand,
@@ -654,16 +676,25 @@ export class CapsuleEngine {
     }
 
     try {
-      const spawned = await this.openclaw.spawnAcpSession({
-        harnessId,
-        cwd,
-        title,
-        prompt: input.prompt,
-        mode: input.mode ?? "persistent",
-        sessionKey: session.openclawSessionKey,
-        permissionProfile,
-        model: input.model,
-      });
+      const spawned = direct
+        ? await this.direct.spawnAcpSession({
+            harnessId,
+            cwd,
+            title,
+            prompt: input.prompt,
+            sessionKey: session.openclawSessionKey,
+            model: input.model,
+          })
+        : await this.openclaw.spawnAcpSession({
+            harnessId,
+            cwd,
+            title,
+            prompt: input.prompt,
+            mode: input.mode ?? "persistent",
+            sessionKey: session.openclawSessionKey,
+            permissionProfile,
+            model: input.model,
+          });
       session.openclawSessionKey = spawned.sessionKey;
       session.harnessState = "running";
       if (input.sessionId) this.repos.updateSession(session);
@@ -699,7 +730,10 @@ export class CapsuleEngine {
       if (run) await this.stopRun(run.id);
     } else if (session.openclawSessionKey) {
       try {
-        await this.openclaw.cancelAcp(session.openclawSessionKey, run?.openclawRunId);
+        await this.acpHost(session.openclawSessionKey).cancelAcp(
+          session.openclawSessionKey,
+          run?.openclawRunId,
+        );
       } catch (error) {
         session.harnessState = "error";
         session.updatedAt = nowIso();
@@ -727,7 +761,7 @@ export class CapsuleEngine {
     const text = instruction.trim();
     if (!text) throw new Error("Steer instruction is empty");
     if (!this.usingMock && session.openclawSessionKey) {
-      await this.openclaw.steerAcp(session.openclawSessionKey, text);
+      await this.acpHost(session.openclawSessionKey).steerAcp(session.openclawSessionKey, text);
     }
     const userMessage: ChatMessage = {
       id: createId("msg"),
@@ -750,7 +784,7 @@ export class CapsuleEngine {
     const session = this.requireHarnessSession(sessionId);
     if (!this.usingMock && session.openclawSessionKey) {
       try {
-        await this.openclaw.closeAcp(session.openclawSessionKey);
+        await this.acpHost(session.openclawSessionKey).closeAcp(session.openclawSessionKey);
       } catch (error) {
         session.harnessState = "error";
         session.updatedAt = nowIso();
@@ -781,7 +815,7 @@ export class CapsuleEngine {
           : "No OpenClaw session key yet.",
       };
     }
-    const result = await this.openclaw.statusAcp(session.openclawSessionKey);
+    const result = await this.acpHost(session.openclawSessionKey).statusAcp(session.openclawSessionKey);
     const statusState = result.parsed.state?.toLowerCase();
     if (statusState === "running" || statusState === "idle" || statusState === "waiting") {
       session.harnessState = statusState === "running" ? "running" : "waiting";
@@ -817,7 +851,11 @@ export class CapsuleEngine {
           .ensureAcpxPermissionMode(acpxPermissionMode(value))
           .catch(() => undefined);
       }
-      statusText = await this.openclaw.setAcpOption(session.openclawSessionKey, patch.key, value);
+      statusText = await this.acpHost(session.openclawSessionKey).setAcpOption(
+        session.openclawSessionKey,
+        patch.key,
+        value,
+      );
     }
     if (patch.key === "model") session.modelOverride = value;
     if (patch.key === "permissions") session.permissionProfile = value;
@@ -1359,7 +1397,11 @@ export class CapsuleEngine {
     this.repos.updateSession(session);
     if (!this.usingMock && session.openclawSessionKey && isLiveHarnessState(session.harnessState)) {
       await this.openclaw.ensureAcpxPermissionMode(acpxPermissionMode(profile)).catch(() => undefined);
-      await this.openclaw.setAcpOption(session.openclawSessionKey, "permissions", profile);
+      await this.acpHost(session.openclawSessionKey).setAcpOption(
+        session.openclawSessionKey,
+        "permissions",
+        profile,
+      );
     }
     return session;
   }
@@ -1498,6 +1540,52 @@ export class CapsuleEngine {
       skillId,
       mode,
     };
+
+    /*
+     * Direct mode carries its own turn. There is no Gateway run to subscribe
+     * to: the CLI answers over its own stdout, `handleAcpReply` records what it
+     * said, and the turn is finished here with the same lifecycle event the
+     * Gateway route would have produced — so verification, the checkpoint and
+     * the harness state all follow the one path.
+     */
+    if (isDirectSessionKey(session.openclawSessionKey)) {
+      const key = session.openclawSessionKey!;
+      void this.direct
+        .send(key, runtimeMessage.content)
+        .then(() =>
+          this.handleRuntimeEvent(
+            session,
+            run,
+            {
+              id: createId("evt"),
+              runId: run.id,
+              timestamp: nowIso(),
+              type: "run.completed",
+              message: "",
+              data: { status: "completed" },
+            },
+            () => undefined,
+          ),
+        )
+        .catch((error: unknown) => {
+          const detail = error instanceof Error ? error.message : String(error);
+          return this.handleRuntimeEvent(
+            session,
+            run,
+            {
+              id: createId("evt"),
+              runId: run.id,
+              timestamp: nowIso(),
+              type: "run.failed",
+              message: detail,
+              data: { status: "failed", error: detail },
+            },
+            () => undefined,
+          );
+        });
+      this.events.emit("run", run);
+      return { session, run, userMessage };
+    }
 
     let runtimeRun: Run;
     try {
@@ -1858,6 +1946,10 @@ export class CapsuleEngine {
     this.acpUnsub?.();
     if (this.usingMock) return;
     this.acpUnsub = this.openclaw.onAcpReply((payload) => this.handleAcpReply(payload));
+    // Both routes deliver the same reply shape, and a thread keeps whichever
+    // one started it, so both stay bound regardless of the current setting.
+    this.directUnsub?.();
+    this.directUnsub = this.direct.onAcpReply((payload: AcpReply) => this.handleAcpReply(payload));
   }
 
   private handleAcpReply(payload: {
@@ -1932,6 +2024,29 @@ export class CapsuleEngine {
    * the Gateway was unreachable, which meant an offline Capsule answered with
    * invented replies that looked exactly like real ones.
    */
+  /**
+   * The host that owns a thread's ACP session.
+   *
+   * A thread keeps the route it started on: its session key says which, so a
+   * setting changed mid-conversation cannot steer a turn into a host that has
+   * never heard of that session.
+   */
+  private acpHost(sessionKey: string | undefined): DirectAcpHost | OpenClawAdapter {
+    return isDirectSessionKey(sessionKey) ? this.direct : this.openclaw;
+  }
+
+  /** Whether this turn should be carried by the CLI directly. */
+  private useDirectMode(harnessId?: HarnessId): boolean {
+    if (this.usingMock) return false;
+    const mode = this.settings.runtimeMode;
+    if (mode === "openclaw") return false;
+    // Direct mode can only drive an agent that speaks ACP itself.
+    if (harnessId && !supportsDirectMode(harnessId)) return false;
+    if (mode === "direct") return true;
+    // auto: the Gateway when there is one, this Mac when there is not.
+    return this.runtime.kind !== "openclaw";
+  }
+
   private async connectPreferredRuntime(): Promise<void> {
     // A new connection may be a different Gateway with different plugins.
     this.forgetAcpxState();

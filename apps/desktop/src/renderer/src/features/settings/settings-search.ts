@@ -73,6 +73,11 @@ export const SETTINGS_SEARCH_ITEMS: SettingsSearchItem[] = [
   { title: "Reasoning summary", section: "agents", keywords: ["thinking", "chain of thought"] },
   { title: "skills.sh token", section: "agents", keywords: ["api key", "credential"] },
 
+  {
+    title: "Runtime",
+    section: "gateway",
+    keywords: ["direct", "standalone", "openclaw", "gateway", "daemon", "acp", "offline"],
+  },
   { title: "URL", section: "gateway", keywords: ["openclaw", "websocket", "connect", "gateway"] },
   { title: "Operator token", section: "gateway", keywords: ["auth", "credential", "keychain"] },
 

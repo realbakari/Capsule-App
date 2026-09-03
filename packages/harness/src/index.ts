@@ -398,17 +398,27 @@ export function localDoctorChecks(input: {
   acpxPolicyKnown?: boolean;
   acpxAgentConfigured?: boolean;
   acpxAgentError?: string;
+  /**
+   * Direct mode drives the CLI from Capsule, so the Gateway and acpx are not
+   * part of the answer. Reporting them red would tell someone to fix something
+   * this run will never touch.
+   */
+  direct?: boolean;
 }): HarnessDoctorCheck[] {
   return [
     {
       id: "cli",
       label: `${input.preset.name} on this Mac`,
-      ok: Boolean(input.binaryPath) || (input.gatewayConnected && input.acpxEnabled),
+      ok: input.direct
+        ? Boolean(input.binaryPath)
+        : Boolean(input.binaryPath) || (input.gatewayConnected && input.acpxEnabled),
       detail: input.binaryPath
         ? `Picked up ${input.binaryPath}`
-        : input.gatewayConnected && input.acpxEnabled
-          ? "No local binary on PATH. OpenClaw can still spawn it on the Gateway host."
-          : input.preset.installHint,
+        : input.direct
+          ? `${input.preset.installHint} Direct mode runs it from this Mac, so it has to be on PATH.`
+          : input.gatewayConnected && input.acpxEnabled
+            ? "No local binary on PATH. OpenClaw can still spawn it on the Gateway host."
+            : input.preset.installHint,
     },
     ...(input.preset.configFilePath
       ? [
@@ -441,23 +451,37 @@ export function localDoctorChecks(input: {
           },
         ]
       : []),
-    {
-      id: "gateway",
-      label: "OpenClaw Gateway",
-      ok: input.gatewayConnected,
-      detail: input.gatewayConnected
-        ? "Connected."
-        : "Gateway is not running. Capsule looks for it at the configured URL (default ws://127.0.0.1:18789).",
-    },
-    {
-      id: "acpx",
-      label: "ACP (acpx)",
-      ok: input.acpxEnabled,
-      detail: input.acpxEnabled
-        ? "acpx is enabled. ACP runs on the Gateway host, not inside the OpenClaw sandbox."
-        : "openclaw plugins install @openclaw/acpx && openclaw config set plugins.entries.acpx.enabled true. If plugins.allow is set, it must include acpx.",
-    },
-    ...(input.acpxEnabled
+    ...(input.direct
+      ? [
+          {
+            id: "direct",
+            label: "Direct mode",
+            ok: true,
+            detail: `Capsule runs \`${[
+              input.preset.acpxCommand?.command ?? input.preset.binaries[0],
+              ...(input.preset.acpxCommand?.args ?? []),
+            ].join(" ")}\` on this Mac and speaks ACP to it. No Gateway, no acpx.`,
+          },
+        ]
+      : [
+          {
+            id: "gateway",
+            label: "OpenClaw Gateway",
+            ok: input.gatewayConnected,
+            detail: input.gatewayConnected
+              ? "Connected."
+              : "Gateway is not running. Capsule looks for it at the configured URL (default ws://127.0.0.1:18789).",
+          },
+          {
+            id: "acpx",
+            label: "ACP (acpx)",
+            ok: input.acpxEnabled,
+            detail: input.acpxEnabled
+              ? "acpx is enabled. ACP runs on the Gateway host, not inside the OpenClaw sandbox."
+              : "openclaw plugins install @openclaw/acpx && openclaw config set plugins.entries.acpx.enabled true. If plugins.allow is set, it must include acpx.",
+          },
+        ]),
+    ...(!input.direct && input.acpxEnabled
       ? [
           {
             id: "acpx-permissions",
@@ -476,7 +500,7 @@ export function localDoctorChecks(input: {
           },
         ]
       : []),
-    ...(input.preset.acpxCommand
+    ...(!input.direct && input.preset.acpxCommand
       ? [
           {
             id: "acpx-agent",

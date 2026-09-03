@@ -21,6 +21,7 @@
     { "path": "../filesystem" },
     { "path": "../terminal" },
     { "path": "../openclaw" },
+    { "path": "../acp" },
     { "path": "../harness" },
     { "path": "../buzz" }
   ]

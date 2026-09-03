@@ -4,6 +4,7 @@ import type { CapsuleSettings } from "@capsule/shared";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { KeybindingsSettings } from "./KeybindingsSettings";
 import { ProcessMonitor } from "./ProcessMonitor";
+import { RuntimeModeCard } from "./RuntimeModeCard";
 import { SourceControlTools } from "./SourceControlTools";
 import {
   SETTINGS_SECTION_LABELS,
@@ -286,6 +287,7 @@ export function SettingsView() {
 
             {tab === "gateway" && (
               <>
+                <RuntimeModeCard settings={settings} onPatch={patch} />
                 <div className="card">
                   <h3>OpenClaw Gateway</h3>
                   <p className="muted">

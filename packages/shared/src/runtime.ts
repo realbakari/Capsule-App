@@ -83,6 +83,8 @@ export const ARCHIVE_INACTIVE_MS: Record<ArchiveInactiveAfter, number | null> = 
 
 export const DEFAULT_CAPSULE_SETTINGS: CapsuleSettings = {
   gatewayUrl: "ws://127.0.0.1:18789",
+  // Existing installs are on the Gateway and stay there until asked otherwise.
+  runtimeMode: "auto",
   launchAtLogin: false,
   composerSendKey: "enter",
   defaultMode: "chat",
@@ -181,8 +183,23 @@ export const SETTINGS_SECTION_KEYS: Record<string, ReadonlyArray<keyof CapsuleSe
 /** Who can reach this Capsule: nobody, this Mac, or the local network. */
 export type RemoteAccess = "off" | "loopback" | "network";
 
+/**
+ * Who carries a coding turn to the CLI.
+ *
+ * `openclaw` goes through the Gateway's ACP bridge, which is what unlocks its
+ * plugins, its channels and its remote workers. `direct` spawns the CLI from
+ * Capsule and speaks ACP to it over its own stdin and stdout — nothing to
+ * install, nothing running in the background, and the CLI's own logins. `auto`
+ * takes the Gateway when one is reachable and direct mode when none is.
+ */
+export type RuntimeMode = "auto" | "openclaw" | "direct";
+
+export const RUNTIME_MODES: RuntimeMode[] = ["auto", "openclaw", "direct"];
+
 export interface CapsuleSettings {
   gatewayUrl: string;
+  /** Which route carries a coding turn. */
+  runtimeMode: RuntimeMode;
   gatewayToken?: string;
   /**
    * Vercel OIDC token for the skills.sh API. Every skills.sh endpoint answers
@@ -384,6 +401,7 @@ export function normalizeCapsuleSettings(input: Partial<CapsuleSettings> = {}): 
   const defaultAgentId = input.defaultAgentId?.trim();
   return {
     gatewayUrl,
+    runtimeMode: pick(input.runtimeMode, RUNTIME_MODES, DEFAULT_CAPSULE_SETTINGS.runtimeMode),
     gatewayToken: input.gatewayToken,
     launchAtLogin: Boolean(input.launchAtLogin),
     composerSendKey: pick(

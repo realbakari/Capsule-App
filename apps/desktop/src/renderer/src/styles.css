@@ -8468,3 +8468,43 @@ details.card > summary {
 .thread-error .icon-btn:hover {
   color: var(--fg);
 }
+
+/* Runtime route picker: one row per option, the whole row is the target. */
+.runtime-modes {
+  display: grid;
+  gap: 0.4rem;
+  margin-top: 0.6rem;
+}
+.runtime-mode {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--control-radius);
+  cursor: pointer;
+}
+.runtime-mode:hover {
+  background: var(--bg-hover);
+}
+.runtime-mode.selected {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border-color));
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+.runtime-mode input {
+  margin-top: 0.15rem;
+}
+.runtime-mode-body {
+  display: grid;
+  gap: 0.15rem;
+  font-size: 0.8125rem;
+}
+.runtime-mode-body .muted {
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+.runtime-mode-note {
+  margin-top: 0.6rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
