@@ -67,6 +67,7 @@ import {
   stageFile,
   validateMessageAttachments,
   pollPullRequest,
+  pollPullRequestList,
 } from "@capsule/filesystem";
 import {
   MockAgentRuntime,
@@ -977,7 +978,16 @@ export class CapsuleEngine {
     const project = this.requireProject(projectId);
     const cwd = this.workingDirectoryFor(project, sessionId);
     if (!cwd || !readGitStatus(cwd).isRepo) return [];
-    return await discoverPullRequests(cwd);
+    /*
+     * The last list, immediately, with a refresh started behind it. Only the
+     * very first look waits for GitHub; after that the pane opens at once and
+     * updates itself when the newer list lands.
+     */
+    const cached = pollPullRequestList(cwd);
+    if (cached.known) return cached.value;
+    // Nothing cached yet, so wait for the refresh already under way rather
+    // than starting a second identical lookup beside it.
+    return await (cached.pending ?? discoverPullRequests(cwd));
   }
 
   async pullRequestDetail(

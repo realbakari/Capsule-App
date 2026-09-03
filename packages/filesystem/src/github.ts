@@ -2,6 +2,7 @@ import { spawn, spawnSync } from "node:child_process";
 import type {
   GitPullRequest,
   GitPullRequestActivity,
+  GitPullRequestCheck,
   GitPullRequestDetail,
   GitStatus,
   PrMergeMethod,
@@ -96,6 +97,8 @@ export function ghAvailable(): boolean {
 export function clearGhCache(): void {
   ghPresent = undefined;
   pullRequestCache.clear();
+  pullRequestListCache.clear();
+  pullRequestListInFlight.clear();
 }
 
 export function pushArgs(forceWithLease: boolean): string[] {
@@ -156,6 +159,81 @@ function checkRollup(
   return "pending";
 }
 
+/*
+ * GitHub reports two kinds of check against a commit: a CheckRun from Actions
+ * and the like, which carries a status and then a conclusion, and the older
+ * StatusContext, which carries a single state. Both arrive in the same array.
+ */
+function checkState(item: Record<string, unknown>): GitPullRequestCheck["state"] {
+  const status = String(item.status ?? "").toUpperCase();
+  const raw = String(item.conclusion ?? item.state ?? "").toUpperCase();
+  // A run that has not finished has no conclusion yet, whatever it will be.
+  if (status && status !== "COMPLETED" && !raw) return "pending";
+  switch (raw) {
+    case "SUCCESS":
+      return "success";
+    case "FAILURE":
+    case "ERROR":
+    case "TIMED_OUT":
+    case "STARTUP_FAILURE":
+    case "ACTION_REQUIRED":
+      return "failure";
+    case "SKIPPED":
+      return "skipped";
+    case "NEUTRAL":
+      return "neutral";
+    case "CANCELLED":
+      return "cancelled";
+    case "PENDING":
+    case "EXPECTED":
+    case "QUEUED":
+    case "IN_PROGRESS":
+      return "pending";
+    default:
+      return status === "COMPLETED" ? "neutral" : "pending";
+  }
+}
+
+/**
+ * The checks, one per name, most recent run wins.
+ *
+ * A branch pushed twice has two runs of the same check in the rollup, and
+ * counting both makes "17 of 27 passing" a number that matches nothing anyone
+ * can see. The newest run is the one that is true now.
+ */
+export function parseChecks(value: unknown): GitPullRequestCheck[] {
+  if (!Array.isArray(value)) return [];
+  const latest = new Map<string, GitPullRequestCheck>();
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+    const item = entry as Record<string, unknown>;
+    const name =
+      (typeof item.name === "string" && item.name) ||
+      (typeof item.context === "string" && item.context) ||
+      "";
+    if (!name) continue;
+    const workflow = typeof item.workflowName === "string" ? item.workflowName : undefined;
+    const check: GitPullRequestCheck = {
+      name,
+      ...(workflow ? { workflow } : {}),
+      state: checkState(item),
+      ...(typeof item.detailsUrl === "string" && item.detailsUrl
+        ? { url: item.detailsUrl }
+        : typeof item.targetUrl === "string" && item.targetUrl
+          ? { url: item.targetUrl }
+          : {}),
+      ...(typeof item.startedAt === "string" ? { startedAt: item.startedAt } : {}),
+      ...(typeof item.completedAt === "string" ? { completedAt: item.completedAt } : {}),
+    };
+    const key = `${workflow ?? ""}\u0000${name}`;
+    const previous = latest.get(key);
+    const when = check.completedAt ?? check.startedAt ?? "";
+    const before = previous?.completedAt ?? previous?.startedAt ?? "";
+    if (!previous || when >= before) latest.set(key, check);
+  }
+  return [...latest.values()].sort((left, right) => left.name.localeCompare(right.name));
+}
+
 export function parsePullRequestList(raw: string): GitPullRequest[] {
   try {
     const rows = JSON.parse(raw) as Array<{
@@ -202,6 +280,64 @@ export function parsePullRequestList(raw: string): GitPullRequest[] {
  * `statusCheckRollup` alone takes ten seconds on a busy repository, so this is
  * the common case, not the rare one — hence the wider budget too.
  */
+/*
+ * The list, served from the last reading and refreshed behind it.
+ *
+ * `gh pr list` on a busy repository takes about ten seconds, and this ran on
+ * every visit to the review pane — so opening it was a ten second wait, and
+ * opening it again a minute later was another one. The answer changes on the
+ * scale of minutes; showing the last one immediately and replacing it when the
+ * new one lands is both faster and no less true.
+ */
+const PR_LIST_TTL_MS = 120_000;
+const pullRequestListCache = new Map<string, { value: GitPullRequest[]; at: number }>();
+/*
+ * The call itself, not a flag saying one is happening. Two callers arriving
+ * together must share the one `gh pr list` — a flag let the second start its
+ * own, so the first look ran the ten second command twice at once.
+ */
+const pullRequestListInFlight = new Map<string, Promise<GitPullRequest[] | undefined>>();
+
+function refreshPullRequestList(cwd: string): Promise<GitPullRequest[] | undefined> {
+  const existing = pullRequestListInFlight.get(cwd);
+  if (existing) return existing;
+  const started = listPullRequests(cwd)
+    .catch(() => undefined)
+    .then((next) => {
+      pullRequestListInFlight.delete(cwd);
+      // A failed lookup must not erase a list that is merely old: a moment
+      // offline should not empty the pane.
+      if (next) onPullRequestSettled?.();
+      return next;
+    });
+  pullRequestListInFlight.set(cwd, started);
+  return started;
+}
+
+/**
+ * The list as last known, refreshing behind the answer.
+ *
+ * `known` is false until a reading has landed, so a caller can tell "not
+ * fetched yet" from "this repository has no open pull requests" and wait for
+ * `pending` rather than showing an empty pane.
+ */
+export function pollPullRequestList(cwd: string): {
+  value?: GitPullRequest[];
+  known: boolean;
+  stale: boolean;
+  pending?: Promise<GitPullRequest[] | undefined>;
+} {
+  const cached = pullRequestListCache.get(cwd);
+  const fresh = cached && Date.now() - cached.at < PR_LIST_TTL_MS;
+  const pending = fresh ? undefined : refreshPullRequestList(cwd);
+  return {
+    value: cached?.value,
+    known: Boolean(cached),
+    stale: Boolean(cached) && !fresh,
+    ...(pending ? { pending } : {}),
+  };
+}
+
 export async function listPullRequests(cwd: string): Promise<GitPullRequest[] | undefined> {
   const result = await runAsync(
     "gh",
@@ -216,7 +352,10 @@ export async function listPullRequests(cwd: string): Promise<GitPullRequest[] | 
     cwd,
     30_000,
   );
-  return result.ok ? parsePullRequestList(result.stdout) : undefined;
+  if (!result.ok) return undefined;
+  const parsed = parsePullRequestList(result.stdout);
+  pullRequestListCache.set(cwd, { value: parsed, at: Date.now() });
+  return parsed;
 }
 
 function actorName(value: unknown): string | undefined {
@@ -227,7 +366,28 @@ function actorName(value: unknown): string | undefined {
 }
 
 /** Parse the `gh pr view --json` shape without trusting optional host fields. */
-export function parsePullRequestDetail(raw: string, diff = ""): GitPullRequestDetail | undefined {
+/**
+ * Why `gh pr diff` produced nothing, said plainly.
+ *
+ * The common case by far is GitHub's own ceiling: it will not render a diff of
+ * more than three hundred files, and answers 406 rather than truncating.
+ */
+export function diffFailureReason(stderr: string): string {
+  const text = stderr.trim();
+  if (/maximum number of files/i.test(text) || /too_large/i.test(text)) {
+    return "GitHub does not render a diff for a pull request this large.";
+  }
+  if (/timed out/i.test(text)) return "GitHub did not return the diff in time.";
+  if (!text) return "GitHub returned no diff for this pull request.";
+  // The last line of gh's output is the message; the rest is its own framing.
+  return text.split("\n").filter(Boolean).at(-1) ?? text;
+}
+
+export function parsePullRequestDetail(
+  raw: string,
+  diff = "",
+  diffUnavailable?: string,
+): GitPullRequestDetail | undefined {
   try {
     const row = JSON.parse(raw) as Record<string, unknown>;
     const number = typeof row.number === "number" ? row.number : 0;
@@ -305,6 +465,8 @@ export function parsePullRequestDetail(raw: string, diff = ""): GitPullRequestDe
         ? row.reviewDecision
         : undefined,
       checks: checkRollup(statusCheckRollup),
+      checkRuns: parseChecks(statusCheckRollup),
+      ...(diffUnavailable ? { diffUnavailable } : {}),
       author: actorName(row.author),
       headRefName: typeof row.headRefName === "string" ? row.headRefName : undefined,
       baseRefName: typeof row.baseRefName === "string" ? row.baseRefName : undefined,
@@ -346,7 +508,11 @@ export async function readPullRequestDetail(
     runAsync("gh", ["pr", "diff", String(number), "--color=never"], cwd, 20_000),
   ]);
   if (!detail.ok || !detail.stdout.trim()) return undefined;
-  return parsePullRequestDetail(detail.stdout, patch.ok ? patch.stdout : "");
+  return parsePullRequestDetail(
+    detail.stdout,
+    patch.ok ? patch.stdout : "",
+    patch.ok ? undefined : diffFailureReason(patch.stderr),
+  );
 }
 
 export async function viewPullRequest(cwd: string): Promise<GitPullRequest | undefined> {

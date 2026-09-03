@@ -9037,3 +9037,625 @@ details.card > summary {
 .policy-body em {
   color: var(--text-faint);
 }
+
+/* ── Pull request: files, checks and the controls above them ─────────────
+ *
+ * The patch used to be one <pre> coloured by first character. These style a
+ * real diff: a section per file that can be closed, a gutter of line numbers
+ * on each side, and a split view that puts the two sides next to each other.
+ */
+.pr-tabrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.pr-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.5rem 0.2rem 0.75rem;
+}
+.pr-toolbar .pr-add { color: var(--green); font-style: normal; }
+.pr-toolbar .pr-del { color: var(--red); font-weight: 500; }
+
+.pr-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  font-weight: 400;
+}
+.pr-pill {
+  padding: 0.1rem 0.45rem;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--surface-2);
+  font-size: 0.78rem;
+  /* A long label shortens rather than widening the row it sits in. */
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.checks-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.checks-badge--success { color: var(--green); }
+.checks-badge--failure { color: var(--red); }
+.checks-badge--pending { color: var(--text-dim); }
+
+.pr-collapsible-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.pr-collapsible-head h4 { margin: 0; }
+.pr-collapsible-caret { color: var(--text-dim); font-size: 0.7rem; }
+.pr-collapsible-count {
+  margin-left: auto;
+  color: var(--text-dim);
+  font-size: 0.82rem;
+}
+
+.pr-checks { list-style: none; margin: 0.6rem 0 0; padding: 0; }
+.pr-checks li { border-top: 1px solid var(--border-color); }
+.pr-check {
+  display: grid;
+  grid-template-columns: 1rem minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.4rem 0.2rem;
+  color: inherit;
+  text-decoration: none;
+  font-size: 0.85rem;
+}
+a.pr-check:hover { background: var(--bg-hover); }
+.pr-check-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pr-check-workflow {
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 12rem;
+}
+.pr-check-state { color: var(--text-dim); font-size: 0.75rem; text-transform: capitalize; }
+.pr-check-glyph--success, .pr-check-state--success { color: var(--green); }
+.pr-check-glyph--failure, .pr-check-state--failure { color: var(--red); }
+.pr-check-glyph--pending, .pr-check-state--pending { color: var(--text-dim); }
+.pr-check-glyph--skipped, .pr-check-glyph--neutral, .pr-check-glyph--cancelled { color: var(--text-faint, var(--text-dim)); }
+
+.pr-file-diffs { display: flex; flex-direction: column; gap: 0.6rem; }
+.file-diff {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--surface-1);
+}
+.file-diff-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.5rem 0.7rem;
+  border: 0;
+  background: var(--surface-2);
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  font-size: 0.85rem;
+}
+.file-diff-head:hover { background: var(--bg-hover); }
+.file-diff-caret { color: var(--text-dim); font-size: 0.7rem; }
+.file-diff-path {
+  display: flex;
+  min-width: 0;
+  /* The directory gives way first; the file name is what identifies the row. */
+  flex: 1 1 auto;
+}
+.file-diff-dir {
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+.file-diff-name { white-space: nowrap; }
+.file-diff-from { color: var(--text-dim); font-size: 0.75rem; white-space: nowrap; }
+.file-diff-status {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.file-diff-status--added { color: var(--green); }
+.file-diff-status--deleted { color: var(--red); }
+.file-diff-binary { padding: 0.7rem; margin: 0; }
+
+/*
+ * One grid for the whole file, not one per line.
+ *
+ * With a grid per row every row sized its own columns, so the two sides of a
+ * split view never lined up and each half clipped its own text instead of the
+ * file scrolling as one piece. The rows are `display: contents` so their cells
+ * join the file's grid, which is what makes a column the same width from the
+ * first line to the last.
+ *
+ * `minmax(max-content, 1fr)` on the text columns is what allows scrolling: the
+ * column never shrinks below its longest line, so a long line widens the grid
+ * and the body scrolls, rather than the line being cut off in place.
+ */
+.file-diff-body {
+  overflow-x: auto;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  display: grid;
+}
+.file-diff-body.is-unified {
+  grid-template-columns: min-content min-content minmax(max-content, 1fr);
+}
+.file-diff-body.is-split {
+  grid-template-columns:
+    min-content minmax(max-content, 1fr)
+    min-content minmax(max-content, 1fr);
+}
+.diff-row,
+.diff-split-row {
+  display: contents;
+}
+.diff-gutter {
+  padding: 0 0.5rem;
+  text-align: right;
+  color: var(--text-dim);
+  background: var(--surface-2);
+  user-select: none;
+  white-space: nowrap;
+}
+.diff-text { white-space: pre; padding: 0 0.6rem; }
+.diff-marker { display: inline-block; width: 1ch; color: var(--text-dim); }
+
+/* The tint goes on the cells, since the row itself no longer draws a box. */
+.diff-row--add > *,
+.diff-half--add { background: color-mix(in srgb, var(--green) 12%, transparent); }
+.diff-row--del > *,
+.diff-half--del { background: color-mix(in srgb, var(--red) 12%, transparent); }
+.diff-half--empty { background: var(--surface-2); }
+.diff-cell--edge { border-right: 1px solid var(--border-color); }
+
+/* A hunk heading is one line across every column. */
+.diff-row--hunk > .diff-text,
+.diff-split-row--hunk > .diff-text {
+  grid-column: 1 / -1;
+  background: var(--surface-2);
+  color: var(--text-dim);
+}
+.diff-row--hunk > .diff-gutter,
+.diff-split-row--hunk > .diff-gutter { display: none; }
+
+
+.pr-nodiff { display: flex; flex-direction: column; gap: 0.6rem; }
+
+/* --- Modern Diff & Review Inspector Enhancements --- */
+
+/* Diagonal hatched background for empty split counterpart */
+.diff-half--empty {
+  background: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 255, 255, 0.025),
+    rgba(255, 255, 255, 0.025) 8px,
+    rgba(0, 0, 0, 0.25) 8px,
+    rgba(0, 0, 0, 0.25) 16px
+  );
+}
+
+/* File badge icon */
+.file-badge-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-right: 0.25rem;
+}
+
+/* Diff chips on file headers */
+.file-diff-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.25rem;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1;
+}
+.file-diff-chip--add {
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.12);
+}
+.file-diff-chip--del {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.12);
+}
+
+/* Gutter comment trigger */
+.diff-gutter {
+  position: relative;
+}
+.diff-gutter-add-btn {
+  display: none;
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: #38bdf8;
+  color: #030712;
+  border: 0;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+.diff-row:hover .diff-gutter-add-btn,
+.diff-split-row:hover .diff-gutter-add-btn {
+  display: inline-flex;
+}
+
+/* Toast notification */
+.pr-toast-notification {
+  position: fixed;
+  top: 4.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  background: var(--surface-2);
+  border: 1px solid var(--border-color);
+  color: var(--text);
+  padding: 0.4rem 0.85rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(12px);
+  animation: fadeIn 0.2s ease-out;
+}
+
+/* Header & action button group */
+.pr-action-button-group {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.pr-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem;
+  border-radius: 0.35rem;
+  color: var(--text-faint);
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.pr-icon-btn:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+.pr-menu-wrapper {
+  position: relative;
+}
+.pr-action-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 200px;
+  background: var(--base);
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  padding: 0.3rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  z-index: 50;
+  backdrop-filter: blur(16px);
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.pr-action-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0.65rem;
+  border: 0;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.75rem;
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+}
+.pr-action-item:hover {
+  background: var(--bg-hover);
+}
+.pr-menu-divider {
+  border: 0;
+  border-top: 1px solid var(--border-color);
+  margin: 0.25rem 0;
+}
+
+/* Header pill & checks count */
+.pr-kicker-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.pr-checks-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.6875rem;
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.1);
+  padding: 0.15rem 0.5rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(74, 222, 128, 0.2);
+}
+
+/* Code toolbar */
+.pr-code-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.pr-code-toolbar-left,
+.pr-code-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* Accordions in Summary Tab */
+.pr-accordion-section {
+  border-bottom: 1px solid var(--border-color);
+}
+.pr-accordion-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.75rem 0.4rem;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.75rem;
+  cursor: pointer;
+  text-align: left;
+}
+.pr-accordion-header:hover {
+  background: var(--bg-hover);
+}
+.pr-accordion-header h4 {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.pr-accordion-badge {
+  margin-left: auto;
+  font-size: 0.6875rem;
+}
+.pr-accordion-content {
+  padding: 0 0.4rem 0.85rem;
+}
+.pr-comment-row {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border-color);
+}
+.pr-comment-row:last-child {
+  border-bottom: 0;
+}
+.pr-comment-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.25rem;
+  font-size: 0.6875rem;
+}
+.pr-comment-header time {
+  color: var(--text-faint);
+}
+
+/* Quick comment in Summary Tab */
+.pr-quick-comment-box {
+  padding: 0.85rem 0.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.pr-quick-comment-box textarea {
+  width: 100%;
+  border: 1px solid var(--border-color);
+  border-radius: 0.4rem;
+  background: var(--surface-1);
+  color: var(--text);
+  padding: 0.5rem;
+  font-family: inherit;
+  font-size: 0.75rem;
+  resize: vertical;
+}
+.pr-quick-comment-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Floating Review Button */
+.pr-floating-review-btn {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 50;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.95rem;
+  border-radius: 9999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-color);
+  color: var(--text);
+  font-size: 0.75rem;
+  font-weight: 500;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(16px);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.pr-floating-review-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--text-faint);
+  transform: translateY(-1px);
+}
+.pr-staged-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #2563eb;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+/* Floating Review Drawer */
+.pr-review-drawer {
+  position: fixed;
+  bottom: 1.25rem;
+  right: 1.25rem;
+  width: 440px;
+  max-width: calc(100vw - 2.5rem);
+  background: var(--base);
+  border: 1px solid var(--border-color);
+  border-radius: 0.75rem;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(24px);
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.pr-review-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 0.8125rem;
+}
+.pr-review-drawer-body {
+  padding: 0.75rem 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.pr-review-empty {
+  margin: 0;
+  font-size: 0.75rem;
+}
+.pr-staged-comments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: 120px;
+  overflow-y: auto;
+}
+.pr-staged-comment-item {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.35rem;
+  background: var(--surface-1);
+  font-size: 0.6875rem;
+}
+.pr-staged-comment-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text-faint);
+  margin-bottom: 0.15rem;
+}
+.pr-review-textarea {
+  width: 100%;
+  border: 1px solid var(--border-color);
+  border-radius: 0.4rem;
+  background: var(--surface-1);
+  color: var(--text);
+  padding: 0.5rem;
+  font-family: inherit;
+  font-size: 0.75rem;
+  resize: vertical;
+  min-height: 4rem;
+}
+.pr-review-drawer-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.4rem;
+  padding: 0.65rem 0.85rem;
+  border-top: 1px solid var(--border-color);
+  background: var(--surface-1);
+}
+.pr-btn-approve {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 0.4rem;
+  border: 0;
+  background: #2563eb;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+.pr-btn-approve:hover {
+  background: #1d4ed8;
+}
+.pr-btn-request-changes {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 0.4rem;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.12);
+  color: #f87171;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+.pr-btn-request-changes:hover {
+  background: rgba(239, 68, 68, 0.2);
+}

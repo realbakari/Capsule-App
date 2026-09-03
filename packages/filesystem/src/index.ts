@@ -44,6 +44,7 @@ export {
   pushCurrentBranch,
   parsePullRequestList,
   pollPullRequest,
+  pollPullRequestList,
   viewPullRequest,
 } from "./github.js";
 export {

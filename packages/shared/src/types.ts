@@ -364,6 +364,17 @@ export interface GitPullRequestCommit {
   authors: string[];
 }
 
+/** One check run or status context reported against a pull request's head. */
+export interface GitPullRequestCheck {
+  name: string;
+  /** The workflow it belongs to, when GitHub names one. */
+  workflow?: string;
+  state: "success" | "failure" | "pending" | "skipped" | "neutral" | "cancelled";
+  url?: string;
+  startedAt?: string;
+  completedAt?: string;
+}
+
 export interface GitPullRequestFile {
   path: string;
   additions: number;
@@ -382,7 +393,20 @@ export interface GitPullRequestDetail extends GitPullRequest {
   activity: GitPullRequestActivity[];
   commits: GitPullRequestCommit[];
   files: GitPullRequestFile[];
+  /*
+   * Every check by name, not just the one word `checks` reduces them to. The
+   * rollup answers "is anything failing"; this answers "what is failing", and
+   * GitHub already sends it in the same response.
+   */
+  checkRuns: GitPullRequestCheck[];
   diff: string;
+  /*
+   * Why there is no patch, when there is none. GitHub refuses a diff of more
+   * than 300 files outright, and without this the Code tab said only "No patch
+   * was returned" — which reads as a bug in Capsule rather than a limit at the
+   * other end that no amount of retrying will move.
+   */
+  diffUnavailable?: string;
 }
 
 export interface GitStatus {

@@ -150,6 +150,7 @@ export function Inspector() {
     execInProject,
     openPath,
     mentionFile,
+    setDraft,
     setView,
     toggleInspector,
     setInspectorOpen,
@@ -906,6 +907,10 @@ export function Inspector() {
                 onOpenBrowser={() => {
                   setBrowserUrl(selectedPullRequest.url);
                   selectTool("browser");
+                }}
+                onSteerAgent={(prompt) => {
+                  setDraft(prompt);
+                  setView("chat");
                 }}
               />
             ) : (
