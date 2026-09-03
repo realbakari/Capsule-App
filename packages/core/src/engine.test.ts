@@ -853,3 +853,55 @@ describe("what a thread shows while a turn is starting", () => {
     await engine.stop();
   });
 });
+
+describe("what a turn changed", () => {
+  it("diffs against the turn before it, not the start of the conversation", async () => {
+    /*
+     * Runs come back newest first, and this took the last of the older ones —
+     * the oldest checkpoint in the thread. "What changed in this turn"
+     * answered with everything since the conversation began.
+     */
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-turndiff-"));
+    const repo = path.join(dir, "repo");
+    mkdirSync(repo, { recursive: true });
+    execFileSync("git", ["init", "-q"], { cwd: repo });
+    execFileSync("git", ["config", "user.email", "t@example.com"], { cwd: repo });
+    execFileSync("git", ["config", "user.name", "T"], { cwd: repo });
+    writeFileSync(path.join(repo, "first.txt"), "one\n");
+
+    const engine = new CapsuleEngine({
+      databasePath: path.join(dir, "capsule.sqlite"),
+      userDataDir: dir,
+      autoConnect: false,
+    });
+    await engine.start();
+    const project = engine.createProject({ name: "Diff", workingDirectory: repo });
+    const session = await engine.createSession({
+      projectId: project.id,
+      title: "Turns",
+      mode: "chat",
+      agentId: "general",
+    });
+
+    const capture = (engine as unknown as {
+      captureTurnCheckpoint: (run: unknown, session: unknown) => void;
+    }).captureTurnCheckpoint.bind(engine);
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 1200));
+
+    const first = (await engine.sendMessage({ sessionId: session.id, content: "one" })).run;
+    await waitForRun(engine, first.id);
+    capture(engine.getRun(first.id), session);
+    await settle();
+
+    writeFileSync(path.join(repo, "second.txt"), "two\n");
+    const second = (await engine.sendMessage({ sessionId: session.id, content: "two" })).run;
+    await waitForRun(engine, second.id);
+    capture(engine.getRun(second.id), session);
+    await settle();
+
+    // Only the file the second turn added, not everything in the thread.
+    const changed = engine.turnDiff(second.id).files.map((file) => file.path);
+    expect(changed).toEqual(["second.txt"]);
+    await engine.stop();
+  });
+});

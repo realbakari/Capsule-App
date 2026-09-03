@@ -316,19 +316,16 @@ export function extractTouchedFiles(
     }
   };
 
-  // 1. Git status: real files on disk changed in this worktree
-  if (git?.files) {
-    for (const f of git.files) {
-      const code = f.code.trim()[0] || "";
-      let action: TouchedFile["action"] = "modified";
-      if (code === "?" || code === "A") action = "created";
-      else if (code === "D") action = "deleted";
-      else if (code === "M" || code === "R") action = "modified";
-      register(f.path, action, f.added, f.removed);
-    }
-  }
-
-  // 2. Run events: tool calls, parameters, and messages
+  /*
+   * Only what this turn did.
+   *
+   * Git status describes the whole working tree — the person at the keyboard,
+   * an earlier turn, a file left over from last week — and folding it in
+   * meant one uncommitted file put "1 file changed · capsule.json · Restore
+   * this turn" under every reply in the project, including conversations that
+   * touched nothing. The turn's own events say what the turn touched; git is
+   * consulted afterwards, and only to fill in the counts for those files.
+   */
   for (const event of events) {
     const data = event.data;
     if (data && typeof data === "object") {
@@ -390,6 +387,25 @@ export function extractTouchedFiles(
           register(match[1], rule.action, addedFromMsg);
         }
       }
+    }
+  }
+
+  /*
+   * Now the numbers. A file the turn named and git also reports gets git's
+   * account of it — the real +/− and whether it was created or deleted — and
+   * a file git does not know about keeps whatever the events said.
+   */
+  if (git?.files) {
+    for (const change of git.files) {
+      const rel = toWorkspaceRelative(change.path, workspaceDir);
+      const existing = map.get(rel);
+      if (!existing) continue;
+      const code = change.code.trim()[0] || "";
+      if (code === "?" || code === "A") existing.action = "created";
+      else if (code === "D") existing.action = "deleted";
+      else if (existing.action !== "created") existing.action = "modified";
+      if (change.added !== undefined) existing.added = change.added;
+      if (change.removed !== undefined) existing.removed = change.removed;
     }
   }
 

@@ -2606,10 +2606,16 @@ export class CapsuleEngine {
     const project = session ? this.repos.getProject(session.projectId) : undefined;
     const cwd = session?.workingDirectory ?? project?.workingDirectory;
     if (!cwd) return { patch: "", files: [] };
+    /*
+     * The turn before this one, which is the first of the older runs — the
+     * list comes back newest first. Taking the last of them diffed against the
+     * oldest checkpoint in the thread instead, so "what changed in this turn"
+     * answered with everything since the conversation began.
+     */
     const previous = this.repos
       .listRuns(run.sessionId)
-      .filter((candidate) => candidate.checkpointRef && candidate.createdAt < run.createdAt)
-      .at(-1)?.checkpointRef;
+      .filter((candidate) => candidate.checkpointRef && candidate.createdAt < run.createdAt)[0]
+      ?.checkpointRef;
     return {
       patch: diffCheckpoints(cwd, run.checkpointRef, previous),
       files: checkpointNumstat(cwd, run.checkpointRef, previous),

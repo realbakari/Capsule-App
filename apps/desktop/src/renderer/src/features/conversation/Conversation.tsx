@@ -20,7 +20,7 @@ import {
   type Turn,
 } from "../../lib/turns";
 import { RunSummary } from "./RunSummary";
-import { summariseWork, extractTouchedFiles } from "../../lib/activity";
+import { summariseWork, extractTouchedFiles, type TouchedFile } from "../../lib/activity";
 import { threadError, threadErrorKey } from "../../lib/thread-error";
 import { ChangedFilesCard } from "./ChangedFilesCard";
 import { TurnFilesCard } from "./TurnFilesCard";
@@ -331,10 +331,58 @@ export function Conversation() {
      one, the project folder otherwise. */
   const terminalCwd = session?.workingDirectory ?? project?.workingDirectory;
 
-  const touchedFiles = useMemo(
+  const eventFiles = useMemo(
     () => extractTouchedFiles(events, git, project?.workingDirectory),
     [events, git, project?.workingDirectory],
   );
+
+  /*
+   * What the turn changed, from the turn's own checkpoint.
+   *
+   * The tool frames do not always name the file — a turn that created
+   * capsule.json never mentioned it once — and the working tree cannot answer
+   * for a single turn, because it holds everything anyone has done since the
+   * last commit. The checkpoint can: it is what the tree looked like when this
+   * turn finished, diffed against the one before it.
+   */
+  const [checkpointFiles, setCheckpointFiles] = useState<TouchedFile[]>([]);
+  const newestCheckpointRun = useMemo(
+    () => [...runs].reverse().find((run) => run.checkpointRef && run.status !== "running"),
+    [runs],
+  );
+  useEffect(() => {
+    if (!newestCheckpointRun) {
+      setCheckpointFiles([]);
+      return;
+    }
+    let disposed = false;
+    void api
+      .turnDiff(newestCheckpointRun.id)
+      .then((diff) => {
+        if (disposed) return;
+        const rows = (diff as { files?: Array<{ path: string; added: number; removed: number }> })
+          .files;
+        setCheckpointFiles(
+          (rows ?? []).map((row) => ({
+            path: row.path,
+            // A checkpoint diff says how much moved, not which verb was used.
+            action: row.removed > 0 && row.added === 0 ? "deleted" : "modified",
+            added: row.added,
+            removed: row.removed,
+          })),
+        );
+      })
+      .catch(() => {
+        if (!disposed) setCheckpointFiles([]);
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [api, newestCheckpointRun]);
+
+  // The checkpoint is the authority when there is one; the events are what
+  // there is otherwise.
+  const touchedFiles = checkpointFiles.length > 0 ? checkpointFiles : eventFiles;
 
   /*
    * A turn that wrote something leaves a checkpoint behind or touches files

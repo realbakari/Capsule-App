@@ -366,7 +366,13 @@ describe("extractTouchedFiles", () => {
     });
   });
 
-  it("extracts files from git status changes including untracked", () => {
+  it("takes git's account of a file the turn touched, and lists no others", () => {
+    /*
+     * This used to list everything git reported, so one uncommitted file
+     * appeared under every reply in the project — including conversations
+     * that touched nothing. Git supplies the counts; the turn supplies the
+     * list.
+     */
     const git = {
       available: true,
       isRepo: true,
@@ -380,14 +386,11 @@ describe("extractTouchedFiles", () => {
         { path: "src/index.ts", code: "M", added: 4, removed: 1 },
       ],
     };
-    const touched = extractTouchedFiles([], git);
-    expect(touched).toHaveLength(2);
-    expect(touched.find((f) => f.path === "capsule.json")).toMatchObject({
-      path: "capsule.json",
-      action: "created",
-      added: 12,
-    });
-    expect(touched.find((f) => f.path === "src/index.ts")).toMatchObject({
+    expect(extractTouchedFiles([], git)).toEqual([]);
+
+    const touched = extractTouchedFiles([event("tool", "write_file src/index.ts", "1")], git);
+    expect(touched).toHaveLength(1);
+    expect(touched[0]).toMatchObject({
       path: "src/index.ts",
       action: "modified",
       added: 4,
@@ -445,5 +448,46 @@ describe("extractTouchedFiles", () => {
     const touched = extractTouchedFiles([structuredEvent]);
     expect(touched).toHaveLength(1);
     expect(touched[0]?.added).toBe(3);
+  });
+});
+
+describe("files a turn touched, and only those", () => {
+  const gitStatus = {
+    available: true,
+    isRepo: true,
+    branch: "main",
+    dirty: true,
+    changed: 1,
+    summary: "1 changed",
+    files: [{ path: "capsule.json", code: "??", added: 17, removed: 0 }],
+    branches: ["main"],
+  } as never;
+
+  const toolEvent = (title: string): RunEvent => ({
+    id: "evt_1",
+    runId: "run_1",
+    timestamp: new Date().toISOString(),
+    type: "tool",
+    message: title,
+    data: { streamKind: "tool", title },
+  });
+
+  it("says nothing about a working tree this turn did not touch", () => {
+    /*
+     * One uncommitted file put "1 file changed · capsule.json · Restore this
+     * turn" under every reply in the project, including conversations that
+     * touched nothing at all. Git status describes the whole tree; a turn's
+     * card is about the turn.
+     */
+    expect(extractTouchedFiles([], gitStatus, "/repo")).toEqual([]);
+    expect(extractTouchedFiles([toolEvent("Read README.md")], gitStatus, "/repo")).toEqual([
+      expect.objectContaining({ path: "README.md", action: "read" }),
+    ]);
+  });
+
+  it("still takes git's counts for a file the turn did touch", () => {
+    // The +17 is worth having; it just cannot be the reason a file is listed.
+    const [file] = extractTouchedFiles([toolEvent("write_file capsule.json")], gitStatus, "/repo");
+    expect(file).toMatchObject({ path: "capsule.json", action: "created", added: 17, removed: 0 });
   });
 });
