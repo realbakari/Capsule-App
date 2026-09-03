@@ -565,3 +565,9 @@ export function isLiveHarnessState(state: string | undefined): boolean {
 export function canSpawnHarness(readiness: HarnessReadiness): boolean {
   return readiness === "ready" || readiness === "dedicated" || readiness === "running";
 }
+
+export {
+  mergePath,
+  parseShellEnvironment,
+  readLoginShellEnvironment,
+} from "./shell-env.js";

@@ -23,11 +23,13 @@ import {
   nativeImage,
   nativeTheme,
   powerMonitor,
+  safeStorage,
   screen,
   powerSaveBlocker,
   shell,
 } from "electron";
 import type { CapsuleEngine } from "@capsule/core";
+import { mergePath, readLoginShellEnvironment } from "@capsule/harness";
 import {
   IPC_CHANNELS,
   isNewerRelease,
@@ -104,6 +106,15 @@ function loadLocalEnv(): void {
   }
 }
 
+/*
+ * Take the user's real environment, not a guess at it.
+ *
+ * Launched from the Dock, this process has the minimal PATH macOS hands a GUI
+ * app. The hardcoded list this replaces was wrong on the first machine it met:
+ * `grok` lives in ~/.grok/bin and `kimi` in ~/.kimi-code/bin, and neither was
+ * on it — two harnesses Capsule ships, invisible when it was not started from
+ * a terminal. The list stays as a floor for when the shell cannot be read.
+ */
 function augmentPath(): void {
   loadLocalEnv();
   const extras = [
@@ -114,8 +125,14 @@ function augmentPath(): void {
     path.join(app.getPath("home"), ".claude", "bin"),
     path.join(app.getPath("home"), ".codex", "bin"),
   ].filter((dir) => existsSync(dir));
-  const current = process.env.PATH ?? "";
-  process.env.PATH = [...extras, current].join(path.delimiter);
+
+  const shellEnv = readLoginShellEnvironment();
+  process.env.PATH = mergePath(shellEnv.PATH, process.env.PATH, extras.join(path.delimiter));
+  // The rest only fills gaps: an explicit value in this process was set on
+  // purpose and outranks the shell's.
+  for (const [name, value] of Object.entries(shellEnv)) {
+    if (name !== "PATH" && !process.env[name]) process.env[name] = value;
+  }
 }
 
 function userDataDir(): string {
@@ -1393,6 +1410,13 @@ async function startEngineOnce(): Promise<void> {
     userDataDir: userDataDir(),
     capsuleVersion: app.getVersion(),
     clientVersion: app.getVersion(),
+    // The Gateway operator token and the skills.sh token; the settings screen
+    // calls this the Keychain and now it is one.
+    secretEncryptor: {
+      isAvailable: () => safeStorage.isEncryptionAvailable(),
+      encryptString: (value) => safeStorage.encryptString(value),
+      decryptString: (value) => safeStorage.decryptString(value),
+    },
   });
   await engine.start();
   bindEngineEvents();
@@ -1400,8 +1424,72 @@ async function startEngineOnce(): Promise<void> {
   send(IPC_EVENTS.connection, await engine.getStatus());
 }
 
+
+/*
+ * `capsule://` links.
+ *
+ * A link is how another app hands work over: a pairing page, a note, a
+ * terminal. Only routes the app already has are honoured — a link cannot ask
+ * for anything the menu cannot — and an unknown one just brings the window
+ * forward rather than failing silently.
+ */
+const APP_SCHEME = "capsule";
+
+function revealWindow(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    mainWindow = createWindow();
+    return;
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+function handleDeepLink(raw: string): void {
+  revealWindow();
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return;
+  }
+  if (parsed.protocol !== `${APP_SCHEME}:`) return;
+  // `capsule://settings`, `capsule://skills`, and so on: the same commands the
+  // menu sends, named the same way.
+  const route = (parsed.hostname || parsed.pathname.replace(/^\/+/, "")).toLowerCase();
+  const allowed = ["settings", "skills", "approvals", "runs", "harness", "palette", "about"];
+  if (allowed.includes(route)) send(IPC_EVENTS.state, { command: route });
+}
+
+/*
+ * One Capsule per profile.
+ *
+ * Two instances open the same SQLite file, keep their own idea of which agent
+ * sessions are live, both watch the same pull requests, and both try to bind
+ * the remote-access port. Nothing stopped it: a second launch simply started
+ * and neither said a word. The second instance now hands its argv to the first
+ * and quits.
+ */
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on("second-instance", (_event, argv) => {
+    revealWindow();
+    const url = argv.find((arg) => arg.startsWith(`${APP_SCHEME}://`));
+    if (url) handleDeepLink(url);
+  });
+}
+
+// macOS delivers a link through open-url, which can fire before the app is
+// ready; the window is created on demand, so it does not need to wait.
+app.on("open-url", (event, url) => {
+  event.preventDefault();
+  handleDeepLink(url);
+});
+
 app.whenReady().then(async () => {
   app.setName("Capsule");
+  app.setAsDefaultProtocolClient(APP_SCHEME);
   augmentPath();
   applyDockIcon();
   registerIpc();
@@ -1426,13 +1514,60 @@ app.whenReady().then(async () => {
       mainWindow?.show();
     }
   });
+
+  /*
+   * A socket does not survive a closed lid. Nothing reconnected it, so the
+   * Gateway stayed dead after every sleep until someone noticed the offline
+   * banner and pressed Connect. Reconnect on wake, and only when it was
+   * connected before — an app deliberately left offline stays offline.
+   */
+  powerMonitor.on("resume", () => {
+    void (async () => {
+      try {
+        const status = await engine?.getStatus();
+        if (!status || status.state === "connected") return;
+        if (!engine?.getSettings().gatewayUrl) return;
+        await engine.connectGateway();
+        send(IPC_EVENTS.connection, await engine.getStatus());
+      } catch {
+        // Still asleep, still offline, or the Gateway is gone. The banner
+        // already says so and a manual Connect still works.
+      }
+    })();
+  });
 });
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
-app.on("before-quit", () => {
+/*
+ * Quitting stops every running agent, and ⌘Q is one key away from ⌘W. Ask
+ * first, but only when there is something to lose: a confirmation on an idle
+ * app is a dialog that teaches people to dismiss dialogs.
+ */
+let quitConfirmed = false;
+
+app.on("before-quit", (event) => {
+  const running = engine?.listRuns().filter((run) =>
+    ["running", "queued", "waiting", "approval_required"].includes(run.status),
+  ).length ?? 0;
+  if (running > 0 && !quitConfirmed && mainWindow && !mainWindow.isDestroyed()) {
+    event.preventDefault();
+    revealWindow();
+    const choice = dialog.showMessageBoxSync(mainWindow, {
+      type: "question",
+      buttons: ["Quit anyway", "Keep working"],
+      defaultId: 1,
+      cancelId: 1,
+      message: running === 1 ? "A turn is still running." : `${running} turns are still running.`,
+      detail: "Quitting stops the agent where it is. Anything it has already written stays.",
+    });
+    if (choice !== 0) return;
+    quitConfirmed = true;
+    app.quit();
+    return;
+  }
   applyKeepAwake(undefined);
   if (sampleTimer) clearInterval(sampleTimer);
   stopAllTerminals();

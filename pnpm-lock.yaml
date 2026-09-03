@@ -41,6 +41,9 @@ importers:
       '@capsule/filesystem':
         specifier: workspace:*
         version: link:../../packages/filesystem
+      '@capsule/harness':
+        specifier: workspace:*
+        version: link:../../packages/harness
       '@capsule/remote':
         specifier: workspace:*
         version: link:../../packages/remote

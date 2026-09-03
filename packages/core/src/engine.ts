@@ -169,6 +169,7 @@ import {
   GATEWAY_TOKEN_ACCOUNT,
   SKILLS_SH_TOKEN_ACCOUNT,
   createKeychainAdapter,
+  type SecretEncryptor,
   type KeychainAdapter,
 } from "./keychain.js";
 import {
@@ -190,6 +191,12 @@ export interface CapsuleEngineOptions {
    * the Gateway. Tests only: nothing in the app sets it.
    */
   autoConnect?: boolean;
+  /**
+   * The host's secret storage. The desktop passes Electron's `safeStorage`;
+   * without one, secrets fall back to a plain file, which is what the engine
+   * used to do unconditionally.
+   */
+  secretEncryptor?: SecretEncryptor;
 }
 
 export interface EngineState {
@@ -257,7 +264,7 @@ export class CapsuleEngine {
       },
     });
     this.repos = new CapsuleRepositories(this.db);
-    this.keychain = createKeychainAdapter(options.userDataDir);
+    this.keychain = createKeychainAdapter(options.userDataDir, options.secretEncryptor);
     this.settings = normalizeCapsuleSettings({
       ...DEFAULT_CAPSULE_SETTINGS,
       gatewayUrl: options.gatewayUrl ?? defaultGatewayEndpoint().url,

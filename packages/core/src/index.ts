@@ -5,4 +5,5 @@ export {
   CAPSULE_KEYCHAIN_SERVICE,
   GATEWAY_TOKEN_ACCOUNT,
   SKILLS_SH_TOKEN_ACCOUNT,
+  type SecretEncryptor,
 } from "./keychain.js";

@@ -11,6 +11,12 @@ files:
 asarUnpack:
   - "**/node_modules/better-sqlite3/**"
   - "**/node_modules/node-pty/**"
+# `capsule://` has to be declared in the bundle, or macOS never hands the app a
+# link no matter what the running process registers.
+protocols:
+  - name: Capsule
+    schemes: [capsule]
+
 mac:
   icon: icon.icns
   category: public.app-category.developer-tools

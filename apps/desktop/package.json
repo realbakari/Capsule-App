@@ -16,6 +16,7 @@
     "@capsule/contracts": "workspace:*",
     "@capsule/core": "workspace:*",
     "@capsule/filesystem": "workspace:*",
+    "@capsule/harness": "workspace:*",
     "@capsule/remote": "workspace:*",
     "@capsule/shared": "workspace:*",
     "@capsule/terminal": "workspace:*",
