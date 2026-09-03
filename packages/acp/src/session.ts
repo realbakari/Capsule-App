@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { EventEmitter } from "node:events";
 
+import type { AcpModelCatalog } from "@capsule/shared";
 import {
   ACP_PROTOCOL_VERSION,
   chooseOption,
@@ -11,6 +12,7 @@ import {
   readStopReason,
   splitLines,
   type JsonRpcMessage,
+  readModelCatalog,
 } from "./protocol.js";
 
 /*
@@ -61,6 +63,7 @@ export class DirectAcpSession {
     { resolve: (value: unknown) => void; reject: (error: Error) => void; timer?: NodeJS.Timeout }
   >();
   private acpSessionId: string | undefined;
+  private acpModels: AcpModelCatalog | undefined;
   private closed = false;
 
   constructor(private readonly options: DirectAcpOptions) {}
@@ -73,6 +76,18 @@ export class DirectAcpSession {
   /** The agent's own id for this conversation, once it has one. */
   get sessionId(): string | undefined {
     return this.acpSessionId;
+  }
+
+  /**
+   * The models this agent will run, as it named them when the session opened.
+   *
+   * `session/new` answers with them — grok replies with grok-4.6 and grok-4.5
+   * and says which is current — and this used to read the session id out of
+   * that reply and throw the rest away, so direct mode had no model list while
+   * the answer was sitting in the response.
+   */
+  get models(): AcpModelCatalog | undefined {
+    return this.acpModels;
   }
 
   get running(): boolean {
@@ -127,6 +142,7 @@ export class DirectAcpSession {
       throw new Error("The agent started but did not open a session.");
     }
     this.acpSessionId = sessionId;
+    this.acpModels = readModelCatalog((created as { models?: unknown })?.models);
     return sessionId;
   }
 

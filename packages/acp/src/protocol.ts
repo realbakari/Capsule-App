@@ -1,3 +1,5 @@
+import type { AcpModelCatalog } from "@capsule/shared";
+
 /*
  * The wire, on its own.
  *
@@ -172,4 +174,29 @@ export function chooseOption(
       : /reject|deny|no/i.test(option.name),
   );
   return byName?.optionId ?? options[0]?.optionId;
+}
+
+/**
+ * The models an agent named when its session opened.
+ *
+ * ACP returns them from `session/new`, in the shape Capsule's picker already
+ * speaks, so there is nothing to translate — only to not throw away.
+ */
+export function readModelCatalog(value: unknown): AcpModelCatalog | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as { currentModelId?: unknown; availableModels?: unknown };
+  if (!Array.isArray(record.availableModels)) return undefined;
+  const availableModels = record.availableModels
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") return undefined;
+      const row = entry as { modelId?: unknown; name?: unknown };
+      if (typeof row.modelId !== "string" || !row.modelId) return undefined;
+      return { modelId: row.modelId, name: typeof row.name === "string" ? row.name : row.modelId };
+    })
+    .filter((entry): entry is { modelId: string; name: string } => Boolean(entry));
+  if (availableModels.length === 0) return undefined;
+  return {
+    ...(typeof record.currentModelId === "string" ? { currentModelId: record.currentModelId } : {}),
+    availableModels,
+  };
 }

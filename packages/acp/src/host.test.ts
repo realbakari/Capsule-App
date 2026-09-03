@@ -68,3 +68,39 @@ describe("status for a session that is not running", () => {
     expect(status.parsed.state).toBe("closed");
   });
 });
+
+describe("the models a direct session offers", () => {
+  it("hands over what the agent named when the session opened", async () => {
+    /*
+     * `session/new` answers with them — grok replies with grok-4.6 and
+     * grok-4.5 and says which is current — and this used to read the session
+     * id out of that reply and drop the rest, leaving the composer's picker
+     * with nothing while the answer sat in the response.
+     */
+    const host = new DirectAcpHost();
+    const sessions = (host as unknown as { sessions: Map<string, unknown> }).sessions;
+    sessions.set("direct:acp:grok:1", {
+      running: true,
+      models: {
+        currentModelId: "grok-4.6",
+        availableModels: [
+          { modelId: "grok-4.6", name: "Grok 4.6" },
+          { modelId: "grok-4.5", name: "Grok 4.5" },
+        ],
+      },
+    });
+
+    const status = await host.statusAcp("direct:acp:grok:1");
+    expect(status.parsed.models?.availableModels.map((m) => m.modelId)).toEqual([
+      "grok-4.6",
+      "grok-4.5",
+    ]);
+    expect(status.parsed.model).toBe("grok-4.6");
+  });
+
+  it("says nothing about models when the agent named none", async () => {
+    const host = new DirectAcpHost();
+    const status = await host.statusAcp("direct:acp:grok:missing");
+    expect(status.parsed.models).toBeUndefined();
+  });
+});

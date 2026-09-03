@@ -165,7 +165,19 @@ export class DirectAcpHost {
     const text = session?.running
       ? `backend: direct\nstate: running\nmode: persistent${harnessId ? `\nbackend-agent: ${harnessId}` : ""}`
       : "state: closed";
-    return { text, parsed: parseAcpStatus(text) };
+    /*
+     * The agent named its models when the session opened, so hand them over —
+     * the composer's picker reads exactly this. Parsing them back out of the
+     * text above would be inventing a format to immediately re-read.
+     */
+    const models = session?.models;
+    return {
+      text,
+      parsed: {
+        ...parseAcpStatus(text),
+        ...(models ? { models, ...(models.currentModelId ? { model: models.currentModelId } : {}) } : {}),
+      },
+    };
   }
 
   async doctorAcp(sessionKey: string): Promise<string> {
