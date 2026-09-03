@@ -8,7 +8,7 @@
   "type": "module",
   "scripts": {
     "dev": "node ../../scripts/dev-desktop.mjs",
-    "build": "node ../../scripts/ensure-electron.mjs && electron-vite build",
+    "build": "node ../../scripts/ensure-electron.mjs && electron-vite build && node ../../scripts/build-policy-pages.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "package:mac": "node ../../scripts/ensure-electron.mjs && electron-vite build && electron-builder --mac --arm64 --publish never"
   },
