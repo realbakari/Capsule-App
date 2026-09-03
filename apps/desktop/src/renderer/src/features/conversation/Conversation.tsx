@@ -351,6 +351,26 @@ export function Conversation() {
    * alone it would swallow the next, different failure, and on the message
    * alone it would hide the same failure in another conversation.
    */
+  /*
+   * What the turn is doing, right now.
+   *
+   * A step once there is one. Before that there is a real wait — starting the
+   * agent can take seconds — and the lifecycle events carry the only account
+   * of it, so the line says "Starting Claude Code" rather than sitting blank
+   * with a spinner.
+   */
+  const liveActivity = useMemo(() => {
+    const step = steps.at(-1)?.label;
+    if (step) return step;
+    for (let index = events.length - 1; index >= 0; index -= 1) {
+      const event = events[index];
+      if (event?.data?.step !== "harness") continue;
+      const message = event.message?.trim();
+      if (message) return message;
+    }
+    return undefined;
+  }, [events, steps]);
+
   const failure = threadError({ sessionId: session?.id, runs });
   const failureKey = threadErrorKey(session?.id, failure);
   const [dismissedFailures, setDismissedFailures] = useState<ReadonlySet<string>>(() => new Set());
@@ -504,7 +524,7 @@ export function Conversation() {
                     agents.find((item) => item.id === agentId)?.name ?? "the agent",
                   )}
                   usage={contextUsage}
-                  activity={steps.at(-1)?.label}
+                  activity={liveActivity}
                 />
               ) : null}
               <RunSummary

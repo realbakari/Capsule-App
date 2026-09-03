@@ -1444,14 +1444,6 @@ export class CapsuleEngine {
     const runtimePrompt = `${prompt}${attachmentPromptBlock(attachments)}`;
     const mode = input.mode ?? session.mode;
     const harnessId = this.resolveHarnessId(session, project, input.agentId, mode);
-    if (harnessId) {
-      session = await this.ensureHarnessSession(session, harnessId);
-      if (!this.usingMock && !isAcpSessionKey(session.openclawSessionKey)) {
-        throw new Error(
-          `${harnessId} did not start through acpx. Capsule will not send this to OpenClaw's default agent (that path needs that agent's provider auth, not ${harnessId}).`,
-        );
-      }
-    }
     const agentId = harnessId ?? input.agentId ?? session.agentId ?? agentIdForMode(mode);
     const skillId = input.skillId ?? skillIdForMode(mode);
     if (session.title === "New conversation") {
@@ -1482,6 +1474,54 @@ export class CapsuleEngine {
     });
     run.status = "running";
     this.repos.insertRun(run);
+    this.events.emit("run", run);
+    this.appendEvent(run.id, "request", "Request received", { step: "understand" });
+
+    /*
+     * Starting an agent takes seconds — a spawn, a login check, sometimes a
+     * Gateway config write — and all of it used to happen before the message
+     * was even written down. Nothing existed for the UI to attach to, so the
+     * thread sat still with a spinner and no account of itself, and a spawn
+     * that failed left no record at all: just a notice, and a message the
+     * conversation never kept.
+     *
+     * The turn is on the record first now, and the wait is one of its steps.
+     */
+    if (harnessId) {
+      const harnessName = presetFor(harnessId)?.name ?? harnessId;
+      const alreadyLive =
+        isLiveHarnessState(session.harnessState) && session.harnessId === harnessId;
+      if (!alreadyLive) {
+        this.appendEvent(run.id, "lifecycle", `Starting ${harnessName}`, {
+          step: "harness",
+          streamKind: "lifecycle",
+        });
+      }
+      try {
+        session = await this.ensureHarnessSession(session, harnessId);
+        if (!this.usingMock && !isAcpSessionKey(session.openclawSessionKey)) {
+          throw new Error(
+            `${harnessId} did not start through acpx. Capsule will not send this to OpenClaw's default agent (that path needs that agent's provider auth, not ${harnessId}).`,
+          );
+        }
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        run.status = "failed";
+        run.error = detail;
+        run.updatedAt = nowIso();
+        run.completedAt = nowIso();
+        this.repos.updateRun(run);
+        this.appendEvent(run.id, "lifecycle", detail, { status: "failed", error: detail });
+        this.events.emit("run", run);
+        throw new Error(detail);
+      }
+      if (!alreadyLive) {
+        this.appendEvent(run.id, "lifecycle", `${harnessName} is ready`, {
+          step: "harness",
+          streamKind: "lifecycle",
+        });
+      }
+    }
 
     const contract = buildContract({
       mode,
@@ -1496,7 +1536,6 @@ export class CapsuleEngine {
     run.contractId = contract.id;
     this.repos.updateRun(run);
 
-    this.appendEvent(run.id, "request", "Request received", { step: "understand" });
     this.appendEvent(run.id, "route", `Agent selected: ${agentId}`, { step: "route", agentId });
     this.appendEvent(run.id, "skill", skillId ? `Skill activated: ${skillId}` : "No skill override", {
       step: "skill",

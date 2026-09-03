@@ -812,3 +812,44 @@ describe("the turn checkpoint", () => {
     await engine.stop();
   });
 });
+
+describe("what a thread shows while a turn is starting", () => {
+  it("records the message and the run before it waits on the agent", async () => {
+    /*
+     * Starting an agent takes seconds. All of it used to happen before the
+     * message was written down, so the thread sat with a spinner and nothing
+     * to show — and a spawn that failed left no record of the turn at all.
+     */
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-send-order-"));
+    const engine = new CapsuleEngine({
+      databasePath: path.join(dir, "capsule.sqlite"),
+      userDataDir: dir,
+      autoConnect: false,
+    });
+    await engine.start();
+    const project = engine.createProject({ name: "Ordering", defaultMode: "chat" });
+    const session = await engine.createSession({
+      projectId: project.id,
+      title: "Order",
+      mode: "chat",
+      agentId: "general",
+    });
+
+    // The run event arrives before sendMessage resolves, which is what lets
+    // the UI show a turn while the agent is still being started.
+    const runsSeenEarly: string[] = [];
+    const onRun = (run: unknown) => runsSeenEarly.push((run as { id: string }).id);
+    engine.events.on("run", onRun);
+    const sent = engine.sendMessage({ sessionId: session.id, content: "hello" });
+    const { run } = await sent;
+    engine.events.off("run", onRun);
+
+    expect(runsSeenEarly[0]).toBe(run.id);
+    expect(engine.listMessages(session.id).some((m) => m.role === "user")).toBe(true);
+    // And the turn's own record starts with the request, so a reader opening
+    // it mid-flight sees something.
+    const events = engine.listRunEvents(run.id);
+    expect(events[0]?.type).toBe("request");
+    await engine.stop();
+  });
+});
