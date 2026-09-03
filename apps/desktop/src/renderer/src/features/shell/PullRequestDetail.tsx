@@ -3,6 +3,7 @@ import {
   parseUnifiedDiff,
   type GitPullRequest,
   type GitPullRequestDetail as PullRequestDetail,
+  type GitPullRequestLabel,
 } from "@capsule/shared";
 import { MessageBody } from "../conversation/MessageBody";
 import { compactRelativeTime } from "../../lib/sidebar";
@@ -58,13 +59,117 @@ function nameOf(path: string): string {
   return cut < 0 ? path : path.slice(cut + 1);
 }
 
-function Pills({ values, empty }: { values: string[]; empty: string }) {
+/**
+ * Labels in the colours the repository chose for them.
+ *
+ * The colour is the label's whole point — green for a vouched author, orange
+ * for a large change — and this rendered every one of them the same grey. The
+ * dot carries the colour rather than the pill: a repository is free to pick
+ * something unreadable against either theme, and a dot cannot be unreadable.
+ */
+function LabelPills({ values, empty }: { values: GitPullRequestLabel[]; empty: string }) {
   if (values.length === 0) return <b className="faint">{empty}</b>;
   return (
     <b className="pr-pills">
-      {values.map((value) => (
-        <span className="pr-pill" key={value} title={value}>
-          {value}
+      {values.map((label) => (
+        <span
+          className="pr-pill pr-label"
+          key={label.name}
+          title={label.description ? `${label.name} — ${label.description}` : label.name}
+        >
+          {label.color ? (
+            <span className="pr-label-dot" style={{ background: `#${label.color}` }} aria-hidden />
+          ) : null}
+          {label.name}
+        </span>
+      ))}
+    </b>
+  );
+}
+
+/*
+ * Initials, coloured from the name itself.
+ *
+ * Shown when there is no avatar — offline, a fetch that failed, an account
+ * with no picture. A blank circle says nothing; two letters in a stable colour
+ * still tells you two comments came from the same person.
+ */
+function initialsOf(login: string): string {
+  const parts = login.split(/[-_. ]+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return (parts[0]?.slice(0, 2) ?? "?").toUpperCase();
+  return `${parts[0]?.[0] ?? ""}${parts[1]?.[0] ?? ""}`.toUpperCase();
+}
+
+function hueOf(login: string): number {
+  let hash = 0;
+  for (let index = 0; index < login.length; index += 1) {
+    hash = (hash * 31 + login.charCodeAt(index)) % 360;
+  }
+  return hash;
+}
+
+export function Avatar({
+  login,
+  avatars,
+  size = 20,
+}: {
+  login?: string;
+  avatars?: Record<string, string>;
+  size?: number;
+}) {
+  if (!login) return null;
+  const src = avatars?.[login];
+  const style = { width: size, height: size } as const;
+  if (src) {
+    return <img className="pr-avatar" src={src} alt="" title={login} style={style} />;
+  }
+  return (
+    <span
+      className="pr-avatar pr-avatar--initials"
+      title={login}
+      aria-hidden
+      style={{ ...style, background: `hsl(${hueOf(login)} 45% 32%)`, fontSize: size * 0.42 }}
+    >
+      {initialsOf(login)}
+    </span>
+  );
+}
+
+/** A person, as a face and a name. */
+function Actor({
+  login,
+  avatars,
+  size = 20,
+}: {
+  login?: string;
+  avatars?: Record<string, string>;
+  size?: number;
+}) {
+  if (!login) return null;
+  return (
+    <span className="pr-actor">
+      <Avatar login={login} avatars={avatars} size={size} />
+      <span className="pr-actor-name">{login}</span>
+    </span>
+  );
+}
+
+function ActorPills({
+  values,
+  avatars,
+  empty,
+}: {
+  values: string[];
+  avatars?: Record<string, string>;
+  empty: string;
+}) {
+  if (values.length === 0) return <b className="faint">{empty}</b>;
+  return (
+    <b className="pr-pills">
+      {values.map((login) => (
+        <span className="pr-pill pr-pill--actor" key={login}>
+          <Actor login={login} avatars={avatars} size={16} />
         </span>
       ))}
     </b>
@@ -319,8 +424,12 @@ export function GitPullRequestDetail({
             */}
         </div>
         <h3>{summary.title}</h3>
-        <p title={exactDate(summary.updatedAt)}>
-          {[summary.author, dateLabel(summary.updatedAt)].filter(Boolean).join(" · ") || summary.state}
+        <p className="pr-byline" title={exactDate(summary.updatedAt)}>
+          {summary.author ? (
+            <Actor login={summary.author} avatars={detail?.avatars} size={18} />
+          ) : null}
+          {summary.author && dateLabel(summary.updatedAt) ? <span aria-hidden>·</span> : null}
+          <span>{dateLabel(summary.updatedAt) || (summary.author ? "" : summary.state)}</span>
         </p>
         <div className="pr-branch-line mono">
           <span title={detail?.baseRefName}>{detail?.baseRefName ?? "base"}</span>
@@ -366,11 +475,11 @@ export function GitPullRequestDetail({
           <div className="pr-meta-grid">
             <div>
               <span>Reviewers</span>
-              <Pills values={detail.reviewers} empty="None yet" />
+              <ActorPills values={detail.reviewers} avatars={detail.avatars} empty="None yet" />
             </div>
             <div>
               <span>Labels</span>
-              <Pills values={detail.labels} empty="None" />
+              <LabelPills values={detail.labels} empty="None" />
             </div>
             <div>
               <span>Comments</span>
@@ -511,7 +620,13 @@ export function GitPullRequestDetail({
           {shownTimeline.length === 0 ? <p className="faint">No activity was returned.</p> : null}
           {shownTimeline.map((item) => (
             <article key={item.id}>
-              <div className="pr-timeline-dot" aria-hidden />
+              {/* The face replaces the dot: it marks the row in the same
+                  place and says who, which the dot never did. */}
+              {item.author ? (
+                <Avatar login={item.author} avatars={detail.avatars} size={22} />
+              ) : (
+                <div className="pr-timeline-dot" aria-hidden />
+              )}
               <div className="pr-timeline-head">
                 <b title={item.author || item.kind}>{item.author || item.kind}</b>
                 <span>{item.title}</span>

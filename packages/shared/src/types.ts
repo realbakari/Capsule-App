@@ -364,6 +364,20 @@ export interface GitPullRequestCommit {
   authors: string[];
 }
 
+/**
+ * A label, with the colour the repository gave it.
+ *
+ * This used to be reduced to a name. GitHub picks these colours deliberately —
+ * green for a vouched author, orange for a large change — and a wall of
+ * identical grey pills throws away the one thing that makes a label scannable.
+ */
+export interface GitPullRequestLabel {
+  name: string;
+  /** Six hex digits, no leading `#`, exactly as GitHub stores it. */
+  color?: string;
+  description?: string;
+}
+
 /** One check run or status context reported against a pull request's head. */
 export interface GitPullRequestCheck {
   name: string;
@@ -388,8 +402,18 @@ export interface GitPullRequestDetail extends GitPullRequest {
   additions: number;
   deletions: number;
   changedFiles: number;
-  labels: string[];
+  labels: GitPullRequestLabel[];
   reviewers: string[];
+  /*
+   * Avatars by GitHub login, as data URIs.
+   *
+   * Fetched in the main process and inlined, because the renderer's CSP
+   * allows images only from itself and `data:` — and widening it to reach
+   * github.com would put every pull request view on the network from inside
+   * the renderer. Absent for anyone whose avatar could not be fetched, which
+   * is what the initials fallback is for.
+   */
+  avatars?: Record<string, string>;
   activity: GitPullRequestActivity[];
   commits: GitPullRequestCommit[];
   files: GitPullRequestFile[];

@@ -5,6 +5,7 @@ import {
   listFailureReason,
   mergePullRequestArgs,
   parseChecks,
+  parseLabels,
   parsePullRequestDetail,
   parsePullRequestList,
   pushArgs,
@@ -77,7 +78,7 @@ describe("git and pull request args", () => {
       baseRefName: "main",
       headRefName: "feature/ship",
       checks: "success",
-      labels: ["ready"],
+      labels: [{ name: "ready" }],
       reviewers: ["reviewer"],
       files: [{ path: "src/app.ts", additions: 12, deletions: 3 }],
     });
@@ -218,5 +219,38 @@ describe("when the trouble is GitHub's own", () => {
 
   it("still tells a rate limit apart from an outage", () => {
     expect(listFailureReason("HTTP 403: API rate limit exceeded")).toMatch(/rate limiting/i);
+  });
+});
+
+describe("labels", () => {
+  it("keeps the colour the repository chose", () => {
+    /*
+     * The colour is the label's point — green for a vouched author, orange
+     * for a large change — and only the name was kept, so every label
+     * rendered the same grey.
+     */
+    const labels = parseLabels([
+      { name: "vouch:trusted", color: "1f883d", description: "PR author is trusted." },
+      { name: "size:L", color: "fe7d37" },
+    ]);
+    expect(labels).toEqual([
+      { name: "vouch:trusted", color: "1f883d", description: "PR author is trusted." },
+      { name: "size:L", color: "fe7d37" },
+    ]);
+  });
+
+  it("takes a colour only when it is one", () => {
+    // Anything else would go straight into a style attribute.
+    expect(parseLabels([{ name: "a", color: "red" }])[0]?.color).toBeUndefined();
+    expect(parseLabels([{ name: "b", color: "#1F883D" }])[0]?.color).toBe("1f883d");
+    expect(parseLabels([{ name: "c", color: "12345" }])[0]?.color).toBeUndefined();
+  });
+
+  it("still reads the plain strings older callers pass", () => {
+    expect(parseLabels(["bug", "chore"])).toEqual([{ name: "bug" }, { name: "chore" }]);
+  });
+
+  it("skips entries with no name rather than rendering a blank pill", () => {
+    expect(parseLabels([{ color: "1f883d" }, null, 7, ""])).toEqual([]);
   });
 });

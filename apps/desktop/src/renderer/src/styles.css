@@ -9663,3 +9663,98 @@ a.pr-check:hover { background: var(--bg-hover); }
 .pr-btn-request-changes:hover {
   background: rgba(239, 68, 68, 0.2);
 }
+
+/* ── Pull request: people and labels ─────────────────────────────────────
+ *
+ * Avatars arrive from the main process as data URIs, because the renderer's
+ * CSP allows images only from itself and `data:`. When one is missing the
+ * initials stand in, so a row is never a blank circle.
+ */
+.pr-avatar {
+  flex-shrink: 0;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--surface-2);
+}
+.pr-avatar--initials {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  user-select: none;
+}
+.pr-actor {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.pr-actor-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pr-byline {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.pr-pill--actor { padding-left: 0.25rem; }
+
+/* The dot carries the repository's colour; the pill stays legible in either
+   theme, whatever colour that turns out to be. */
+.pr-label { display: inline-flex; align-items: center; gap: 0.35rem; }
+.pr-label-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+  /* A pale label on a pale ground still reads as a dot with this. */
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.25);
+}
+.pr-timeline > article > .pr-avatar { margin-top: 0.1rem; }
+
+/* ── Markdown: quotes, alerts and rules ──────────────────────────────────
+ *
+ * A GitHub body leans on all three. Without them a quoted paragraph arrived
+ * with a literal ">" on every line and "[!NOTE]" read as prose.
+ */
+.md-quote {
+  margin: 0.4rem 0;
+  padding: 0.1rem 0 0.1rem 0.75rem;
+  border-left: 3px solid var(--border-color);
+  color: var(--text-dim);
+}
+.md-alert {
+  margin: 0.5rem 0;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--border-color);
+  border-left-width: 3px;
+  border-radius: var(--control-radius, 6px);
+  background: var(--surface-2);
+}
+.md-alert-title {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.8125rem;
+}
+/* GitHub's own five, in its own order of severity. */
+.md-alert--note { border-left-color: #4493f8; }
+.md-alert--note .md-alert-title { color: #4493f8; }
+.md-alert--tip { border-left-color: #3fb950; }
+.md-alert--tip .md-alert-title { color: #3fb950; }
+.md-alert--important { border-left-color: #ab7df8; }
+.md-alert--important .md-alert-title { color: #ab7df8; }
+.md-alert--warning { border-left-color: #d29922; }
+.md-alert--warning .md-alert-title { color: #d29922; }
+.md-alert--caution { border-left-color: #f85149; }
+.md-alert--caution .md-alert-title { color: #f85149; }
+.md-hr {
+  margin: 0.7rem 0;
+  border: 0;
+  border-top: 1px solid var(--border-color);
+}

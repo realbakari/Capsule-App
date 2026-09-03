@@ -1,8 +1,10 @@
 import { spawn, spawnSync } from "node:child_process";
+import { avatarsFor } from "./avatars.js";
 import type {
   GitPullRequest,
   GitPullRequestActivity,
   GitPullRequestCheck,
+  GitPullRequestLabel,
   GitPullRequestDetail,
   GitStatus,
   PrMergeMethod,
@@ -202,6 +204,37 @@ function checkState(item: Record<string, unknown>): GitPullRequestCheck["state"]
  * counting both makes "17 of 27 passing" a number that matches nothing anyone
  * can see. The newest run is the one that is true now.
  */
+/**
+ * Labels with the colour the repository assigned them.
+ *
+ * The name alone was kept and the colour dropped, so every label rendered the
+ * same grey — which is the whole point of a label thrown away. A plain string
+ * is still accepted, since that is what older callers pass.
+ */
+export function parseLabels(value: unknown): GitPullRequestLabel[] {
+  if (!Array.isArray(value)) return [];
+  const labels: GitPullRequestLabel[] = [];
+  for (const entry of value) {
+    if (typeof entry === "string") {
+      if (entry) labels.push({ name: entry });
+      continue;
+    }
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+    const item = entry as Record<string, unknown>;
+    const name = typeof item.name === "string" ? item.name : "";
+    if (!name) continue;
+    // GitHub stores six hex digits with no "#". Anything else is not a colour
+    // we can trust into a stylesheet.
+    const raw = typeof item.color === "string" ? item.color.replace(/^#/, "") : "";
+    const color = /^[0-9a-f]{6}$/i.test(raw) ? raw.toLowerCase() : undefined;
+    const description = typeof item.description === "string" && item.description
+      ? item.description
+      : undefined;
+    labels.push({ name, ...(color ? { color } : {}), ...(description ? { description } : {}) });
+  }
+  return labels;
+}
+
 export function parseChecks(value: unknown): GitPullRequestCheck[] {
   if (!Array.isArray(value)) return [];
   const latest = new Map<string, GitPullRequestCheck>();
@@ -470,14 +503,7 @@ export function parsePullRequestDetail(
         };
       }),
     ].sort((left, right) => (left.createdAt ?? "").localeCompare(right.createdAt ?? ""));
-    const labels = (Array.isArray(row.labels) ? row.labels : [])
-      .map((value) => {
-        if (typeof value === "string") return value;
-        return value && typeof value === "object" && !Array.isArray(value)
-          ? String((value as { name?: unknown }).name ?? "")
-          : "";
-      })
-      .filter(Boolean);
+    const labels = parseLabels(row.labels);
     const reviewers = (Array.isArray(row.reviewRequests) ? row.reviewRequests : [])
       .map(actorName)
       .filter((value): value is string => Boolean(value));
@@ -560,11 +586,24 @@ export async function readPullRequestDetail(
     runAsync("gh", ["pr", "diff", String(number), "--color=never"], cwd, 20_000),
   ]);
   if (!detail.ok || !detail.stdout.trim()) return undefined;
-  return parsePullRequestDetail(
+  const parsed = parsePullRequestDetail(
     detail.stdout,
     patch.ok ? patch.stdout : "",
     patch.ok ? undefined : diffFailureReason(patch.stderr),
   );
+  if (!parsed) return undefined;
+  /*
+   * Everyone the view will name: the author, whoever was asked to review, and
+   * whoever wrote a comment or review. Fetched together, and failures are
+   * simply missing keys.
+   */
+  const logins = [
+    parsed.author,
+    ...parsed.reviewers,
+    ...parsed.activity.map((item) => item.author),
+    ...parsed.commits.flatMap((commit) => commit.authors),
+  ].filter((value): value is string => Boolean(value));
+  return { ...parsed, avatars: await avatarsFor(logins) };
 }
 
 export async function viewPullRequest(cwd: string): Promise<GitPullRequest | undefined> {

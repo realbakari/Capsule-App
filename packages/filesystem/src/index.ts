@@ -33,6 +33,7 @@ export {
   createPullRequestArgs,
   enrichGitStatus,
   ghAvailable,
+  parseLabels,
   setPullRequestListener,
   lastCommitSubject,
   listPullRequests,
@@ -168,3 +169,4 @@ export {
   type RankedFile,
 } from "./file-index.js";
 export { writeFileAtomic } from "./atomic-write.js";
+export { avatarsFor, clearAvatarCache } from "./avatars.js";

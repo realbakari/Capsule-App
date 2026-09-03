@@ -117,6 +117,41 @@ function block(
       continue;
     }
 
+    /*
+     * Blockquotes, and the alerts GitHub builds out of them.
+     *
+     * Neither was handled, so a pull request body arrived with a literal ">"
+     * down the left of every quoted line — twenty-nine of them in one real
+     * description — and "[!NOTE]" printed as though it were prose.
+     */
+    if (/^\s*>/.test(line)) {
+      const quoted: string[] = [];
+      while (index < lines.length && /^\s*>/.test(lines[index] ?? "")) {
+        quoted.push((lines[index] ?? "").replace(/^\s*>\s?/, ""));
+        index += 1;
+      }
+      index -= 1;
+      const alert = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*$/i.exec(quoted[0] ?? "");
+      const body = alert ? quoted.slice(1) : quoted;
+      const kind = alert?.[1]?.toLowerCase();
+      out.push(
+        <div
+          key={`${key}-${index}-quote`}
+          className={kind ? `md-alert md-alert--${kind}` : "md-quote"}
+        >
+          {kind ? <b className="md-alert-title">{kind[0]!.toUpperCase() + kind.slice(1)}</b> : null}
+          {block(body.join("\n"), key + index + 1, onOpenFile, onOpenLink)}
+        </div>,
+      );
+      continue;
+    }
+
+    // A rule, which is a divider and not three stray hyphens.
+    if (/^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {
+      out.push(<hr key={`${key}-${index}-hr`} className="md-hr" />);
+      continue;
+    }
+
     // Headings
     const heading = /^(#{1,6})\s+(.*)$/.exec(line);
     if (heading?.[1] && heading[2]) {
