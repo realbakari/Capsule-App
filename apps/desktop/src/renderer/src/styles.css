@@ -4250,11 +4250,10 @@ label.field input {
 
 /* Changed-files card: the turn's outcome on disk, summarised. */
 .changed-files {
-  max-width: 42rem;
-  margin: 0 auto 1rem;
+  margin: 0.5rem 0;
   border: 1px solid var(--border-color);
-  border-radius: 0.65rem;
-  background: var(--surface-0);
+  border-radius: 0.5rem;
+  background: rgba(0, 0, 0, 0.15);
   overflow: hidden;
 }
 .changed-files-head {
@@ -6588,6 +6587,266 @@ label.field input {
   border-top: 1px solid rgba(255, 255, 255, 0.06);
   min-width: 0;
 }
+
+/* RunSummary trailing meta and inline chips */
+.run-summary-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.run-summary-chips-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.run-summary-file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 0.25rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 0.6875rem;
+  font-family: var(--mono);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.run-summary-file-chip:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.file-chip-action {
+  font-weight: 700;
+  font-size: 0.6875rem;
+  line-height: 1;
+}
+
+.file-chip-action.created { color: var(--green, #30d158); }
+.file-chip-action.modified { color: var(--yellow, #ffd60a); }
+.file-chip-action.deleted { color: var(--red, #ff453a); }
+.file-chip-action.read { color: var(--text-muted); }
+
+.file-chip-name {
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-chip-stat {
+  color: var(--green, #30d158);
+  font-size: 0.625rem;
+  font-family: var(--mono);
+}
+
+.file-chip-stat-del {
+  color: var(--red, #ff453a);
+  font-size: 0.625rem;
+  font-family: var(--mono);
+}
+
+.run-summary-more-chip {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  padding: 0.1rem 0.3rem;
+}
+
+/* TurnFilesCard */
+.turn-files-card {
+  margin: 0.5rem 0;
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  background: var(--surface-0);
+  overflow: hidden;
+}
+
+.turn-files-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.45rem 0.75rem;
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 0.75rem;
+}
+
+.turn-files-title {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.turn-files-icon {
+  color: var(--text-faint);
+}
+
+.turn-files-stats {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.turn-files-diff-btn {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 0.25rem;
+  padding: 0.1rem 0.4rem;
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.turn-files-diff-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+}
+
+.turn-files-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 0.25rem 0;
+}
+
+.turn-file-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 0.3rem 0.75rem;
+  text-align: left;
+  font-family: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.turn-file-pill:hover {
+  background: var(--bg-hover);
+}
+
+.turn-file-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 0.2rem;
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.turn-file-badge.created {
+  background: rgba(48, 209, 88, 0.15);
+  color: var(--green, #30d158);
+}
+
+.turn-file-badge.modified {
+  background: rgba(255, 214, 10, 0.15);
+  color: var(--yellow, #ffd60a);
+}
+
+.turn-file-badge.deleted {
+  background: rgba(255, 69, 58, 0.15);
+  color: var(--red, #ff453a);
+}
+
+.turn-file-badge.read {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+}
+
+.turn-file-path {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  flex: 1;
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+}
+
+.turn-file-dir {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-faint);
+  direction: rtl;
+  unicode-bidi: plaintext;
+  text-align: left;
+}
+
+.turn-file-name {
+  color: var(--text);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.turn-file-numstat {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: var(--mono);
+  font-size: 0.625rem;
+}
+
+.turn-file-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.turn-file-row:hover .turn-file-undo,
+.turn-file-row:focus-within .turn-file-undo {
+  opacity: 1;
+}
+
+.turn-file-undo {
+  flex-shrink: 0;
+  border: 0;
+  background: transparent;
+  padding: 0 0.5rem;
+  color: var(--text-faint);
+  font-size: 0.6875rem;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+
+.turn-file-undo:hover {
+  color: var(--red, #ff453a);
+}
+
+.turn-files-restore-btn {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 0.25rem;
+  padding: 0.1rem 0.45rem;
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.turn-files-restore-btn:hover {
+  background: rgba(255, 69, 58, 0.15);
+  color: var(--red, #ff453a);
+  border-color: rgba(255, 69, 58, 0.3);
+}
+
 
 /* ==========================================================================
    File Mentions (Clickable Inline Code)

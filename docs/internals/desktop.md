@@ -167,7 +167,10 @@ widening the transcript column.
 A running turn shows elapsed time, not just that it is running: a turn can go
 for minutes and "working" alone gives no way to tell a slow one from a stuck
 one. Activity rows carry an icon for the kind of work — command, read, edit,
-reasoning — so a list can be skimmed without reading every label.
+reasoning — so a list can be skimmed without reading every label. Turns that
+touch, create, or modify files surface interactive file chips (`[+] Created`,
+`[~] Modified`, `[-] Deleted`) directly in the run summary and `TurnFilesCard`,
+linking immediately to file previews or diffs in the Inspector.
 
 A folded turn shows how long it took beside its message count, and hovering it
 previews the prompt and the start of the answer, so it can be identified

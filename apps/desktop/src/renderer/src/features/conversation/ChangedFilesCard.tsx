@@ -9,7 +9,7 @@ const CODE_LABELS: Record<string, string> = {
   A: "added",
   D: "deleted",
   R: "renamed",
-  "?": "untracked",
+  "?": "added",
 };
 
 function statusLabel(code: string): string {
@@ -97,7 +97,7 @@ export function ChangedFilesCard({ git }: { git: GitStatus }) {
           <li key={file.path}>
             <button onClick={openDiff} title={`${file.path} — ${statusLabel(file.code)}`}>
               <span className={`change-code ${statusLabel(file.code)}`} aria-hidden>
-                {file.code.trim()[0] ?? "M"}
+                {file.code.trim()[0] === "?" ? "+" : (file.code.trim()[0] ?? "M")}
               </span>
               <span className="change-path">
                 <span className="change-dir">{splitPath(file.path).dir}</span>

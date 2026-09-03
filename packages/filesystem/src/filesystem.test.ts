@@ -48,6 +48,11 @@ describe("FilesystemAdapter", () => {
     expect(status.files.some((item) => item.path.includes("README.md"))).toBe(true);
     expect(status.branches.length).toBeGreaterThan(0);
     expect(readGitDiff(root, "README.md")).toContain("two");
+    writeFileSync(path.join(root, "capsule.json"), "{\n  \"name\": \"test\"\n}\n");
+    const withUntracked = readGitStatus(root);
+    const untrackedFile = withUntracked.files.find((f) => f.path === "capsule.json");
+    expect(untrackedFile?.code.trim()).toBe("??");
+    expect(untrackedFile?.added).toBe(4);
     spawnSync("git", ["checkout", "-b", "feature"], { cwd: root });
     const switched = checkoutBranch(root, status.branch ?? "HEAD");
     expect(switched.ok).toBe(true);

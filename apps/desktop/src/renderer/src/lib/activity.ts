@@ -1,4 +1,5 @@
-import type { ReasoningSummary, RunEvent } from "@capsule/shared";
+import type { GitStatus, ReasoningSummary, RunEvent } from "@capsule/shared";
+import { toWorkspaceRelative } from "./paths.js";
 
 /*
  * Activity is derived from what the agent actually did, not from a fixed
@@ -238,4 +239,159 @@ export function summariseWork(phases: readonly RunActivity[]): WorkSummary {
           : "";
 
   return { commands, tools, label };
+}
+
+export interface TouchedFile {
+  path: string;
+  action: "created" | "modified" | "deleted" | "read";
+  added?: number;
+  removed?: number;
+}
+
+const FILE_ACTION_PRIORITY: Record<TouchedFile["action"], number> = {
+  created: 4,
+  modified: 3,
+  deleted: 2,
+  read: 1,
+};
+
+function cleanExtractedPath(raw: string): string {
+  let p = raw.trim();
+  p = p.replace(/^[`"']+|[`"']+$/g, "");
+  p = p.replace(/[:.,;!?)]+$/, "");
+  return p.trim();
+}
+
+function isValidFilePath(p: string): boolean {
+  if (!p || p.length < 2) return false;
+  if (p.startsWith("http://") || p.startsWith("https://")) return false;
+  if (p.startsWith("-") || p.startsWith("--")) return false;
+  if (/^(the|a|an|this|that|these|those|file|files|it|all|some|any|null|undefined|true|false)$/i.test(p)) return false;
+  return /\.[a-z0-9_-]+$/i.test(p) || p.includes("/") || p.includes("\\") || p.startsWith(".");
+}
+
+const FILE_ACTION_PATTERNS: Array<{
+  pattern: RegExp;
+  action: TouchedFile["action"];
+}> = [
+  { pattern: /(?:create[_\s-]?file|created|touch|add[_\s-]?file)\s*[:=]?\s*[`"']?([^\s,;'"`)]+)/i, action: "created" },
+  { pattern: /(?:write[_\s-]?to[_\s-]?file|write[_\s-]?file|writing|wrote|written)\s*[:=]?\s*(?:to\s+)?(?:file\s+)?[`"']?([^\s,;'"`)]+)/i, action: "modified" },
+  { pattern: /(?:edit[_\s-]?file|editing|edited|patch[_\s-]?file|patch|diff|update[_\s-]?file|updated|replace[_\s-]?file[_\s-]?content)\s*[:=]?\s*[`"']?([^\s,;'"`)]+)/i, action: "modified" },
+  { pattern: /(?:delete[_\s-]?file|deleted|remove[_\s-]?file|removed|rm)\s*[:=]?\s*[`"']?([^\s,;'"`)]+)/i, action: "deleted" },
+  { pattern: /(?:read[_\s-]?file|reading|read|view[_\s-]?file|viewing|view|cat|open[_\s-]?file)\s*[:=]?\s*[`"']?([^\s,;'"`)]+)/i, action: "read" },
+];
+
+export function extractTouchedFiles(
+  events: readonly RunEvent[],
+  git?: GitStatus,
+  workspaceDir?: string,
+): TouchedFile[] {
+  const map = new Map<string, TouchedFile>();
+
+  const register = (
+    rawPath: string,
+    action: TouchedFile["action"],
+    added?: number,
+    removed?: number,
+  ) => {
+    const cleaned = cleanExtractedPath(rawPath);
+    if (!isValidFilePath(cleaned)) return;
+    const rel = toWorkspaceRelative(cleaned, workspaceDir);
+    if (!rel || rel === "." || rel.length < 2) return;
+
+    const existing = map.get(rel);
+    if (existing) {
+      if (FILE_ACTION_PRIORITY[action] > FILE_ACTION_PRIORITY[existing.action]) {
+        existing.action = action;
+      }
+      if (added !== undefined) existing.added = added;
+      if (removed !== undefined) existing.removed = removed;
+    } else {
+      map.set(rel, {
+        path: rel,
+        action,
+        ...(added !== undefined ? { added } : {}),
+        ...(removed !== undefined ? { removed } : {}),
+      });
+    }
+  };
+
+  // 1. Git status: real files on disk changed in this worktree
+  if (git?.files) {
+    for (const f of git.files) {
+      const code = f.code.trim()[0] || "";
+      let action: TouchedFile["action"] = "modified";
+      if (code === "?" || code === "A") action = "created";
+      else if (code === "D") action = "deleted";
+      else if (code === "M" || code === "R") action = "modified";
+      register(f.path, action, f.added, f.removed);
+    }
+  }
+
+  // 2. Run events: tool calls, parameters, and messages
+  for (const event of events) {
+    const data = event.data;
+    if (data && typeof data === "object") {
+      const rawData = data as Record<string, unknown>;
+      const directPath =
+        (typeof rawData.path === "string" && rawData.path) ||
+        (typeof rawData.filePath === "string" && rawData.filePath) ||
+        (typeof rawData.targetFile === "string" && rawData.targetFile) ||
+        (typeof rawData.file === "string" && rawData.file);
+      if (directPath) {
+        const streamKind = String(rawData.streamKind ?? event.type).toLowerCase();
+        let action: TouchedFile["action"] = "modified";
+        if (streamKind.includes("create")) action = "created";
+        else if (streamKind.includes("read") || streamKind.includes("view")) action = "read";
+        else if (streamKind.includes("delete") || streamKind.includes("remove")) action = "deleted";
+        register(directPath, action);
+      }
+
+      const toolCall = rawData.toolCall as Record<string, unknown> | undefined;
+      if (toolCall && typeof toolCall === "object") {
+        const params = (toolCall.parameters ?? toolCall.input ?? toolCall.args) as
+          | Record<string, unknown>
+          | undefined;
+        const toolName = String(toolCall.name ?? "").toLowerCase();
+        const p =
+          params &&
+          ((typeof params.path === "string" && params.path) ||
+            (typeof params.filePath === "string" && params.filePath) ||
+            (typeof params.targetFile === "string" && params.targetFile) ||
+            (typeof params.file === "string" && params.file));
+        if (p) {
+          let action: TouchedFile["action"] = "modified";
+          if (toolName.includes("create") || toolName.includes("write")) action = "created";
+          else if (toolName.includes("read") || toolName.includes("view") || toolName.includes("cat")) action = "read";
+          else if (toolName.includes("delete") || toolName.includes("remove")) action = "deleted";
+
+          const rawCode =
+            typeof params?.content === "string"
+              ? params.content
+              : typeof params?.codeContent === "string"
+                ? params.codeContent
+                : typeof params?.replacementContent === "string"
+                  ? params.replacementContent
+                  : undefined;
+          const addedLines =
+            rawCode !== undefined ? (rawCode.length > 0 ? rawCode.split(/\r?\n/).length : 0) : undefined;
+          register(p, action, addedLines);
+        }
+      }
+    }
+
+    const msg = event.message?.trim();
+    if (msg) {
+      const lineMatch = /(?:\+(\d+)|\b(\d+)\s+lines?\b)/i.exec(msg);
+      const addedFromMsg = lineMatch ? Number(lineMatch[1] || lineMatch[2]) : undefined;
+      for (const rule of FILE_ACTION_PATTERNS) {
+        const match = rule.pattern.exec(msg);
+        if (match && match[1]) {
+          register(match[1], rule.action, addedFromMsg);
+        }
+      }
+    }
+  }
+
+  return Array.from(map.values());
 }

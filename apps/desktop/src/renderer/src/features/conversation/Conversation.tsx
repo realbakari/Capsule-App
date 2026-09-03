@@ -17,9 +17,10 @@ import {
   type Turn,
 } from "../../lib/turns";
 import { RunSummary } from "./RunSummary";
-import { summariseWork } from "../../lib/activity";
+import { summariseWork, extractTouchedFiles } from "../../lib/activity";
 import { threadError, threadErrorKey } from "../../lib/thread-error";
 import { ChangedFilesCard } from "./ChangedFilesCard";
+import { TurnFilesCard } from "./TurnFilesCard";
 import { MessageBody } from "./MessageBody";
 
 /*
@@ -186,7 +187,52 @@ export function Conversation() {
     openPath,
     terminalOpen,
     setTerminalOpen,
+    setInspectorOpen,
+    setInspectorTab,
+    gitDiscard,
+    setConfirm,
   } = useWorkspace();
+
+  const [restoring, setRestoring] = useState(false);
+  const restorable = useMemo(
+    () => [...runs].reverse().find((run) => run.checkpointRef && run.status !== "running"),
+    [runs],
+  );
+
+  const restoreTurn = useCallback(async () => {
+    if (!restorable) return;
+    setConfirm({
+      title: "Restore this turn?",
+      detail:
+        "Files in the project folder go back to how this turn left them. Anything changed since — by the agent or by you — is discarded.",
+      confirmLabel: "Restore",
+      danger: true,
+      onConfirm: async () => {
+        setRestoring(true);
+        try {
+          await api.restoreTurn(restorable.id);
+        } finally {
+          setRestoring(false);
+        }
+      },
+    });
+  }, [restorable, setConfirm, api]);
+
+  const discardFile = useCallback(
+    (filePath: string) => {
+      setConfirm({
+        title: "Discard changes?",
+        detail: `${filePath} will be reverted to its last committed state. This cannot be undone.`,
+        danger: true,
+        confirmLabel: "Discard",
+        onConfirm: () => {
+          void gitDiscard(filePath);
+          setConfirm(undefined);
+        },
+      });
+    },
+    [setConfirm, gitDiscard],
+  );
 
   /* Older exchanges fold to one row so a long thread stays skimmable; the
      newest few always stay open, and anything you open stays open. */
@@ -229,12 +275,19 @@ export function Conversation() {
      one, the project folder otherwise. */
   const terminalCwd = session?.workingDirectory ?? project?.workingDirectory;
 
+  const touchedFiles = useMemo(
+    () => extractTouchedFiles(events, git, project?.workingDirectory),
+    [events, git, project?.workingDirectory],
+  );
+
   /*
-   * A turn that wrote something leaves a checkpoint behind — the hidden ref
-   * the engine captures when a run finishes. Without one, whatever git is
-   * reporting belongs to the person at the keyboard, not to this thread.
+   * A turn that wrote something leaves a checkpoint behind or touches files
+   * in the worktree. Without one, whatever git is reporting belongs to the
+   * person at the keyboard, not to this thread.
    */
-  const turnTouchedTree = runs.some((run) => Boolean(run.checkpointRef));
+  const turnTouchedTree =
+    runs.some((run) => Boolean(run.checkpointRef)) ||
+    touchedFiles.some((f) => f.action !== "read");
 
   /*
    * Why the last turn failed, in the thread it failed in. A dismissal is
@@ -371,11 +424,11 @@ export function Conversation() {
               )}
               {/* The turn's outcome on disk, under the reply. Not a second copy
                   of the reply — the diff itself lives in the side panel. */}
-              {/* Only when a turn in this thread actually touched the tree.
-                  It used to render on any working-tree change at all, so a
-                  chat that asked "how are you" ended with a card announcing
-                  ".DS_Store" and a folder you cloned yourself as its outcome. */}
-              {git && session && turnTouchedTree && <ChangedFilesCard git={git} />}
+              {/* Only when a turn in this thread touched the tree and no active work
+                  summary is currently mounted below (avoiding duplicate cards). */}
+              {git && session && turnTouchedTree && !activeRun && steps.length === 0 && (
+                <ChangedFilesCard git={git} />
+              )}
             </>
           )}
           {/* The work log belongs to the turn, not to the moment it is running.
@@ -394,7 +447,26 @@ export function Conversation() {
                   {activeRun.createdAt && <RunElapsed startedAt={activeRun.createdAt} />}
                 </div>
               ) : null}
-              <RunSummary label={summariseWork(steps).label} isComplete={!activeRun}>
+              <RunSummary
+                label={summariseWork(steps).label}
+                isComplete={!activeRun}
+                touchedFiles={touchedFiles}
+                onOpenFile={openAttachment}
+              >
+                {touchedFiles.length > 0 && (
+                  <TurnFilesCard
+                    files={touchedFiles}
+                    onOpenFile={openAttachment}
+                    onOpenDiff={() => {
+                      setInspectorTab("diff");
+                      setInspectorOpen(true);
+                    }}
+                    onDiscardFile={discardFile}
+                    onRestoreTurn={restorable ? () => void restoreTurn() : undefined}
+                    restorable={Boolean(restorable)}
+                    restoring={restoring}
+                  />
+                )}
                 <div className="progress">
                   {steps.map((step) => (
                     <div key={step.id}>

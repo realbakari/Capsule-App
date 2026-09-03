@@ -4,6 +4,7 @@ import {
   activityFromEvents,
   cleanActivityDetail,
   detailAddsSomething,
+  extractTouchedFiles,
   summariseWork,
 } from "./activity.js";
 
@@ -338,5 +339,111 @@ describe("detailAddsSomething", () => {
 
   it("has nothing to keep when there is no detail", () => {
     expect(detailAddsSomething("Read 1 file", undefined)).toBe(false);
+  });
+});
+
+describe("extractTouchedFiles", () => {
+  it("extracts created files from tool messages", () => {
+    const events: RunEvent[] = [
+      event("tool", "create_file capsule.json", "1"),
+      event("tool", "read_file package.json", "2"),
+    ];
+    const touched = extractTouchedFiles(events);
+    expect(touched).toHaveLength(2);
+    expect(touched.find((f) => f.path === "capsule.json")?.action).toBe("created");
+    expect(touched.find((f) => f.path === "package.json")?.action).toBe("read");
+  });
+
+  it("extracts files from absolute paths within workspace", () => {
+    const events: RunEvent[] = [
+      event("tool", "Created /Users/me/project/capsule.json with config", "1"),
+    ];
+    const touched = extractTouchedFiles(events, undefined, "/Users/me/project");
+    expect(touched).toHaveLength(1);
+    expect(touched[0]).toMatchObject({
+      path: "capsule.json",
+      action: "created",
+    });
+  });
+
+  it("extracts files from git status changes including untracked", () => {
+    const git = {
+      available: true,
+      isRepo: true,
+      branch: "main",
+      dirty: true,
+      changed: 2,
+      summary: "2 changed",
+      branches: ["main"],
+      files: [
+        { path: "capsule.json", code: "?", added: 12 },
+        { path: "src/index.ts", code: "M", added: 4, removed: 1 },
+      ],
+    };
+    const touched = extractTouchedFiles([], git);
+    expect(touched).toHaveLength(2);
+    expect(touched.find((f) => f.path === "capsule.json")).toMatchObject({
+      path: "capsule.json",
+      action: "created",
+      added: 12,
+    });
+    expect(touched.find((f) => f.path === "src/index.ts")).toMatchObject({
+      path: "src/index.ts",
+      action: "modified",
+      added: 4,
+      removed: 1,
+    });
+  });
+
+  it("prioritizes created and modified actions over read", () => {
+    const events: RunEvent[] = [
+      event("tool", "read_file capsule.json", "1"),
+      event("tool", "write_file capsule.json", "2"),
+    ];
+    const touched = extractTouchedFiles(events);
+    expect(touched).toHaveLength(1);
+    expect(touched[0]?.action).toBe("modified");
+  });
+
+  it("extracts structured parameters from toolCall data", () => {
+    const structuredEvent: RunEvent = {
+      id: "1",
+      runId: "run_1",
+      timestamp: "2026-08-26T00:00:00.000Z",
+      type: "tool",
+      message: "write",
+      data: {
+        toolCall: {
+          name: "write_to_file",
+          parameters: { targetFile: "src/components/Button.tsx" },
+        },
+      },
+    };
+    const touched = extractTouchedFiles([structuredEvent]);
+    expect(touched).toHaveLength(1);
+    expect(touched[0]?.path).toBe("src/components/Button.tsx");
+    expect(touched[0]?.action).toBe("created");
+  });
+
+  it("extracts line counts from toolCall code content", () => {
+    const structuredEvent: RunEvent = {
+      id: "1",
+      runId: "run_1",
+      timestamp: "2026-08-26T00:00:00.000Z",
+      type: "tool",
+      message: "write",
+      data: {
+        toolCall: {
+          name: "write_to_file",
+          parameters: {
+            targetFile: "capsule.json",
+            codeContent: "line1\nline2\nline3",
+          },
+        },
+      },
+    };
+    const touched = extractTouchedFiles([structuredEvent]);
+    expect(touched).toHaveLength(1);
+    expect(touched[0]?.added).toBe(3);
   });
 });

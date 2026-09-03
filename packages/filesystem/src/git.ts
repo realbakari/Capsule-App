@@ -107,7 +107,20 @@ function applyLineStats(workingDirectory: string, files: GitChange[]): GitChange
   }
   return files.map((file) => {
     const stat = stats.get(file.path);
-    return stat ? { ...file, added: stat.added, removed: stat.removed } : file;
+    if (stat) return { ...file, added: stat.added, removed: stat.removed };
+    if (file.code.includes("?")) {
+      try {
+        const fullPath = path.join(workingDirectory, file.path);
+        if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
+          const content = fs.readFileSync(fullPath, "utf8");
+          const lineCount = content.length === 0 ? 0 : content.split(/\r?\n/).length;
+          return { ...file, added: lineCount, removed: 0 };
+        }
+      } catch {
+        // ignore binary or unreadable file
+      }
+    }
+    return file;
   });
 }
 
