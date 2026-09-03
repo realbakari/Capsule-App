@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import type {
   GitPullRequest,
   GitPullRequestActivity,
@@ -19,6 +19,59 @@ function run(
     stdout: result.stdout ?? "",
     stderr: (result.stderr ?? "").trim(),
   };
+}
+
+/*
+ * The same, without stopping the world.
+ *
+ * `gh` reaches GitHub, and on a busy repository it is not quick: listing pull
+ * requests on a repository with thousands of them measured between 7.6 and 9.0
+ * seconds here. Run synchronously on Electron's main process that is not a
+ * slow list — it is nine seconds in which the window does not redraw, no other
+ * IPC call is answered, and the app is indistinguishable from hung. Everything
+ * that reaches the network goes through this instead; `run` above stays for
+ * the local git questions, which are milliseconds.
+ */
+function runAsync(
+  command: string,
+  args: string[],
+  cwd: string,
+  timeout = 12_000,
+): Promise<{ ok: boolean; stdout: string; stderr: string }> {
+  return new Promise((resolve) => {
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(command, args, { cwd });
+    } catch {
+      resolve({ ok: false, stdout: "", stderr: `Could not run ${command}.` });
+      return;
+    }
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    const finish = (result: { ok: boolean; stdout: string; stderr: string }) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(result);
+    };
+    const timer = setTimeout(() => {
+      child.kill();
+      finish({ ok: false, stdout, stderr: stderr.trim() || `${command} timed out.` });
+    }, timeout);
+    // Unref so a pending lookup cannot hold the app open at quit.
+    timer.unref?.();
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk: string) => {
+      stdout += chunk;
+    });
+    child.stderr?.on("data", (chunk: string) => {
+      stderr += chunk;
+    });
+    child.on("error", (error: Error) => finish({ ok: false, stdout, stderr: error.message }));
+    child.on("close", (code) => finish({ ok: code === 0, stdout, stderr: stderr.trim() }));
+  });
 }
 
 /*
@@ -74,11 +127,11 @@ export function lastCommitSubject(cwd: string): string {
   return run("git", ["log", "-1", "--pretty=%s"], cwd, 4000).stdout.trim();
 }
 
-export function pushCurrentBranch(
+export async function pushCurrentBranch(
   cwd: string,
   forceWithLease: boolean,
-): { ok: boolean; detail: string } {
-  const result = run("git", pushArgs(forceWithLease), cwd, 30_000);
+): Promise<{ ok: boolean; detail: string }> {
+  const result = await runAsync("git", pushArgs(forceWithLease), cwd, 30_000);
   if (result.ok) return { ok: true, detail: result.stdout.trim() || "Pushed." };
   return { ok: false, detail: result.stderr || result.stdout.trim() || "Push failed." };
 }
@@ -149,8 +202,8 @@ export function parsePullRequestList(raw: string): GitPullRequest[] {
  * `statusCheckRollup` alone takes ten seconds on a busy repository, so this is
  * the common case, not the rare one — hence the wider budget too.
  */
-export function listPullRequests(cwd: string): GitPullRequest[] | undefined {
-  const result = run(
+export async function listPullRequests(cwd: string): Promise<GitPullRequest[] | undefined> {
+  const result = await runAsync(
     "gh",
     [
       "pr",
@@ -272,7 +325,10 @@ export function parsePullRequestDetail(raw: string, diff = ""): GitPullRequestDe
   }
 }
 
-export function readPullRequestDetail(cwd: string, number: number): GitPullRequestDetail | undefined {
+export async function readPullRequestDetail(
+  cwd: string,
+  number: number,
+): Promise<GitPullRequestDetail | undefined> {
   if (!Number.isInteger(number) || number < 1) return undefined;
   const fields = [
     "number", "url", "title", "body", "isDraft", "state", "mergeStateStatus",
@@ -280,14 +336,21 @@ export function readPullRequestDetail(cwd: string, number: number): GitPullReque
     "additions", "deletions", "changedFiles", "labels", "reviewRequests", "comments", "reviews",
     "commits", "files",
   ].join(",");
-  const detail = run("gh", ["pr", "view", String(number), "--json", fields], cwd, 20_000);
+  /*
+   * Both at once. They are independent requests to GitHub, and running them
+   * one after the other made opening a pull request cost the sum of the two —
+   * about 2.2s here — where it need only cost the slower.
+   */
+  const [detail, patch] = await Promise.all([
+    runAsync("gh", ["pr", "view", String(number), "--json", fields], cwd, 20_000),
+    runAsync("gh", ["pr", "diff", String(number), "--color=never"], cwd, 20_000),
+  ]);
   if (!detail.ok || !detail.stdout.trim()) return undefined;
-  const patch = run("gh", ["pr", "diff", String(number), "--color=never"], cwd, 20_000);
   return parsePullRequestDetail(detail.stdout, patch.ok ? patch.stdout : "");
 }
 
-export function viewPullRequest(cwd: string): GitPullRequest | undefined {
-  const result = run(
+export async function viewPullRequest(cwd: string): Promise<GitPullRequest | undefined> {
+  const result = await runAsync(
     "gh",
     [
       "pr",
@@ -363,21 +426,23 @@ function cachedPullRequest(cwd: string): GitPullRequest | undefined {
   if (cached && Date.now() - cached.at < PR_CACHE_TTL_MS) return cached.value;
   if (!pullRequestInFlight.has(cwd)) {
     pullRequestInFlight.add(cwd);
-    // setImmediate, not a worker: the spawn itself is what has to leave the
-    // current tick. The call still blocks, but nothing is waiting on it.
-    setImmediate(() => {
-      let next: GitPullRequest | undefined;
-      try {
-        next = viewPullRequest(cwd);
-      } finally {
+    /*
+     * Off the current tick and off the thread. This used to be a setImmediate
+     * around a synchronous spawn, on the reasoning that nothing was waiting on
+     * the answer — but a blocking spawn on the main process is not waited on
+     * by one caller, it is waited on by everything, so a refresh nobody asked
+     * for still froze the window for the length of a network round trip.
+     */
+    void viewPullRequest(cwd)
+      .catch(() => undefined)
+      .then((next) => {
         pullRequestInFlight.delete(cwd);
-      }
-      const previous = pullRequestCache.get(cwd)?.value;
-      pullRequestCache.set(cwd, { value: next, at: Date.now() });
-      if (previous?.number !== next?.number || previous?.state !== next?.state) {
-        onPullRequestSettled?.();
-      }
-    });
+        const previous = pullRequestCache.get(cwd)?.value;
+        pullRequestCache.set(cwd, { value: next, at: Date.now() });
+        if (previous?.number !== next?.number || previous?.state !== next?.state) {
+          onPullRequestSettled?.();
+        }
+      });
   }
   return cached?.value;
 }
@@ -410,23 +475,23 @@ export function enrichGitStatus(status: GitStatus, cwd?: string): GitStatus {
   };
 }
 
-export function createPullRequest(
+export async function createPullRequest(
   cwd: string,
   input: { title: string; body: string; draft: boolean },
-): { ok: boolean; detail: string; url?: string } {
-  const result = run("gh", createPullRequestArgs(input), cwd, 30_000);
+): Promise<{ ok: boolean; detail: string; url?: string }> {
+  const result = await runAsync("gh", createPullRequestArgs(input), cwd, 30_000);
   const text = `${result.stdout}\n${result.stderr}`.trim();
   const url = text.match(/https:\/\/github\.com\/\S+/)?.[0];
   if (result.ok) return { ok: true, detail: text || "Opened pull request.", url };
   return { ok: false, detail: result.stderr || result.stdout.trim() || "Could not create pull request." };
 }
 
-export function mergePullRequest(
+export async function mergePullRequest(
   cwd: string,
   method: PrMergeMethod,
   auto: boolean,
-): { ok: boolean; detail: string } {
-  const result = run("gh", mergePullRequestArgs(method, auto), cwd, 30_000);
+): Promise<{ ok: boolean; detail: string }> {
+  const result = await runAsync("gh", mergePullRequestArgs(method, auto), cwd, 30_000);
   if (result.ok) return { ok: true, detail: result.stdout.trim() || "Merge started." };
   return { ok: false, detail: result.stderr || result.stdout.trim() || "Could not merge pull request." };
 }

@@ -123,3 +123,49 @@ describe("what the sidebar is told", () => {
     expect(mergeUpdateStatus(base, undefined)).toMatchObject({ state: "up-to-date" });
   });
 });
+
+describe("a check that arrives while an update is already in hand", () => {
+  it("does not interrupt a download in progress", async () => {
+    /*
+     * Every progress event told the renderer the status had changed, and the
+     * renderer answered by running a full check — so a single download issued
+     * a check per event, and each one reset the state to "checking". The
+     * percentage was lost, the sidebar fell back to "Update available", and
+     * the next click started the same download over again.
+     */
+    const api = fakeUpdater();
+    const updater = new Updater({
+      updater: api,
+      currentVersion: "0.2.0",
+      canInstall: true,
+      onStatus: () => {},
+    });
+    api.emit("update-available", { version: "0.3.0" });
+    api.emit("download-progress", { percent: 42 });
+    expect(updater.current().state).toBe("downloading");
+
+    const status = await updater.check();
+    expect(status.state).toBe("downloading");
+    expect(status.percent).toBe(42);
+    expect(api.checkForUpdates).not.toHaveBeenCalled();
+  });
+
+  it("does not throw away an update already downloaded and waiting", async () => {
+    const api = fakeUpdater();
+    const updater = new Updater({
+      updater: api,
+      currentVersion: "0.2.0",
+      canInstall: true,
+      onStatus: () => {},
+    });
+    api.emit("update-available", { version: "0.3.0" });
+    api.emit("update-downloaded", { version: "0.3.0" });
+    expect(updater.current().state).toBe("ready");
+
+    // Asking again must not send someone who already has the file back to
+    // "download it" — that is the second download the user should never need.
+    const status = await updater.check();
+    expect(status.state).toBe("ready");
+    expect(mergeUpdateStatus(status, undefined).state).toBe("ready-to-install");
+  });
+});

@@ -116,6 +116,18 @@ export class Updater {
       this.set({ state: "unavailable", detail: "This build cannot update itself." });
       return this.status;
     }
+    /*
+     * A check must never interrupt work already under way.
+     *
+     * Checking mid-download reset the state to "checking", which threw away
+     * the percentage and, once the check answered, put the sidebar back on
+     * "Update available" — where the next click started the same download
+     * again. A download already running, or one already on disk waiting to be
+     * installed, is the more current answer than any check could give.
+     */
+    if (this.status.state === "downloading" || this.status.state === "ready") {
+      return this.status;
+    }
     this.set({ state: "checking" });
     try {
       await this.options.updater.checkForUpdates();

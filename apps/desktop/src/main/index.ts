@@ -213,7 +213,19 @@ function ensureUpdater(): Updater {
   return updater;
 }
 
+/*
+ * The last answer GitHub gave, kept so the cheap status call has the release
+ * URL and notes to hand without asking for them again.
+ */
+let lastUpdateCheck: UpdateCheck | undefined;
+
 async function checkForUpdates(): Promise<UpdateCheck> {
+  const result = await fetchLatestRelease();
+  lastUpdateCheck = result;
+  return result;
+}
+
+async function fetchLatestRelease(): Promise<UpdateCheck> {
   const current = app.getVersion();
   try {
     const response = await fetch(`https://api.github.com/repos/${UPDATE_REPO}/releases/latest`, {
@@ -1170,6 +1182,20 @@ function registerIpc(): void {
     const status = await ensureUpdater().check();
     return mergeUpdateStatus(status, fallback);
   });
+  /*
+   * What is already known, for the renderer that just heard the status change.
+   *
+   * It used to answer that event by running the full check again — a GitHub
+   * request and a fresh autoUpdater check, per event. Progress events arrive
+   * many times a second, so downloading an update meant hundreds of calls to
+   * an API that allows sixty an hour, and each one reset the download it was
+   * reporting on. This reads the state and nothing else.
+   */
+  handle(IPC_CHANNELS.updateStatus, () =>
+    app.isPackaged
+      ? mergeUpdateStatus(ensureUpdater().current(), lastUpdateCheck)
+      : (lastUpdateCheck ?? { state: "up-to-date", current: app.getVersion() }),
+  );
   handle(IPC_CHANNELS.downloadUpdate, async () => {
     const status = await ensureUpdater().download();
     return mergeUpdateStatus(status, undefined);

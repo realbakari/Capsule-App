@@ -219,15 +219,23 @@ export function Sidebar() {
    * that silently starts failing. A release is not published often enough for
    * the difference to cost anyone an update.
    */
-  /* The updater reports progress from the main process; ask again when it does. */
+  /*
+   * The updater reports progress from the main process; read it when it does.
+   *
+   * Read, not re-check. This answered the event with checkForUpdates(), which
+   * reaches GitHub and starts a fresh check — and progress events arrive many
+   * times a second while a download runs, so a single download issued hundreds
+   * of requests against a sixty-an-hour limit and kept resetting itself back
+   * to "update available", where the next click downloaded it all over again.
+   */
   useEffect(() => {
     const off = api.on("state", (payload) => {
       if ((payload as { command?: string }).command !== "update-status") return;
       void api
-        .checkForUpdates()
+        .updateStatus()
         .then((res) => setUpdateResult(res as UpdateCheck))
         .catch(() => {
-          // The status will be right at the next check; nothing to say here.
+          // The status will be right at the next event; nothing to say here.
         });
     });
     return () => {

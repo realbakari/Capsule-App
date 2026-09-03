@@ -25,7 +25,7 @@ import {
 
 import { createBuzzAdapter } from "@capsule/buzz";
 import { buildContract } from "@capsule/contracts";
-import { readUsageSummary, sinceDaysAgo, type UsageSummary } from "./usage/index.js";
+import { readUsageSummaryAsync, sinceDaysAgo, type UsageSummary } from "./usage/index.js";
 import { CapsuleDatabase, CapsuleRepositories } from "@capsule/database";
 import {
   attachmentPromptBlock,
@@ -970,18 +970,25 @@ export class CapsuleEngine {
   }
 
   /** `undefined` when the host could not be asked; an array when it answered. */
-  listPullRequests(projectId: string, sessionId?: string): GitPullRequest[] | undefined {
+  async listPullRequests(
+    projectId: string,
+    sessionId?: string,
+  ): Promise<GitPullRequest[] | undefined> {
     const project = this.requireProject(projectId);
     const cwd = this.workingDirectoryFor(project, sessionId);
     if (!cwd || !readGitStatus(cwd).isRepo) return [];
-    return discoverPullRequests(cwd);
+    return await discoverPullRequests(cwd);
   }
 
-  pullRequestDetail(projectId: string, number: number, sessionId?: string): GitPullRequestDetail | undefined {
+  async pullRequestDetail(
+    projectId: string,
+    number: number,
+    sessionId?: string,
+  ): Promise<GitPullRequestDetail | undefined> {
     const project = this.requireProject(projectId);
     const cwd = this.workingDirectoryFor(project, sessionId);
     if (!cwd || !readGitStatus(cwd).isRepo) return undefined;
-    return readPullRequestDetail(cwd, number);
+    return await readPullRequestDetail(cwd, number);
   }
 
   gitDiff(projectId: string, relative?: string, sessionId?: string): string {
@@ -1039,11 +1046,11 @@ export class CapsuleEngine {
     return this.gitStatus(projectId, sessionId);
   }
 
-  gitPush(projectId: string, sessionId?: string): GitStatus {
+  async gitPush(projectId: string, sessionId?: string): Promise<GitStatus> {
     const project = this.requireProject(projectId);
     const cwd = this.workingDirectoryFor(project, sessionId);
     if (!cwd) throw new Error("Project has no working directory");
-    const result = pushCurrentBranch(cwd, this.settings.gitForceWithLease);
+    const result = await pushCurrentBranch(cwd, this.settings.gitForceWithLease);
     if (!result.ok) throw new Error(result.detail);
     this.log(result.detail);
     return this.gitStatus(projectId, sessionId);
@@ -1056,7 +1063,7 @@ export class CapsuleEngine {
     const project = this.requireProject(projectId);
     const cwd = this.workingDirectoryFor(project, input?.sessionId);
     if (!cwd) throw new Error("Project has no working directory");
-    const pushed = pushCurrentBranch(cwd, this.settings.gitForceWithLease);
+    const pushed = await pushCurrentBranch(cwd, this.settings.gitForceWithLease);
     if (!pushed.ok) throw new Error(pushed.detail);
     const branch = readGitStatus(cwd).branch ?? "HEAD";
     const title =
@@ -1065,7 +1072,7 @@ export class CapsuleEngine {
       branch.replace(/^.*\//, "").replace(/[-_]/g, " ");
     const body =
       [input?.body?.trim(), this.settings.prInstructions].filter(Boolean).join("\n\n") || title;
-    const opened = openPullRequest(cwd, {
+    const opened = await openPullRequest(cwd, {
       title,
       body,
       draft: this.settings.prDraft,
@@ -1074,7 +1081,7 @@ export class CapsuleEngine {
     this.log(opened.detail);
     if (input?.sessionId) this.prWatchSessions.set(projectId, input.sessionId);
     if (this.settings.prAutoMerge) {
-      const queued = mergeGithubPullRequest(
+      const queued = await mergeGithubPullRequest(
         cwd,
         this.settings.prMergeMethod,
         true,
@@ -1085,11 +1092,11 @@ export class CapsuleEngine {
     return this.gitStatus(projectId, input?.sessionId);
   }
 
-  gitMergePullRequest(projectId: string, sessionId?: string): GitStatus {
+  async gitMergePullRequest(projectId: string, sessionId?: string): Promise<GitStatus> {
     const project = this.requireProject(projectId);
     const cwd = this.workingDirectoryFor(project, sessionId);
     if (!cwd) throw new Error("Project has no working directory");
-    const result = mergeGithubPullRequest(
+    const result = await mergeGithubPullRequest(
       cwd,
       this.settings.prMergeMethod,
       this.settings.prAutoMerge,
@@ -2466,7 +2473,7 @@ export class CapsuleEngine {
       pullRequest.checks !== "failure" &&
       pullRequest.checks !== "pending"
     ) {
-      mergeGithubPullRequest(project.workingDirectory, this.settings.prMergeMethod, false);
+      void mergeGithubPullRequest(project.workingDirectory, this.settings.prMergeMethod, false);
     }
     this.events.emit("state", { command: "git-updated" });
   }
@@ -2605,8 +2612,8 @@ export class CapsuleEngine {
    * Token accounting for the last `days` days, read from the CLIs' own
    * transcripts. Nothing is recorded for this; see usage/transcripts.
    */
-  usageSummary(days: number): UsageSummary {
-    return readUsageSummary(sinceDaysAgo(days));
+  async usageSummary(days: number): Promise<UsageSummary> {
+    return await readUsageSummaryAsync(sinceDaysAgo(days));
   }
 
   /** The patch a single turn produced, from its checkpoint back to the previous one. */

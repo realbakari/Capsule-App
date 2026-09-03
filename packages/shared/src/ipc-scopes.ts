@@ -42,6 +42,9 @@ const READ_CHANNELS: ChannelName[] = [
   "getSubsystemStatus",
   "getSettings",
   "getDiagnostics",
+  // Unlike checkForUpdates, this only reports what is already known: no
+  // network call, no check started, nothing downloaded.
+  "updateStatus",
   "search",
   "searchContents",
   "searchFiles",

@@ -551,7 +551,7 @@ export function Conversation() {
               {/* Only when a turn in this thread touched the tree and no active work
                   summary is currently mounted below (avoiding duplicate cards). */}
               {git && session && turnTouchedTree && !activeRun && steps.length === 0 && (
-                <ChangedFilesCard git={git} />
+                <ChangedFilesCard git={git} files={touchedFiles} />
               )}
             </>
           )}

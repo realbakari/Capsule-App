@@ -97,6 +97,8 @@ export const IPC_CHANNELS = {
   searchSkillCatalog: "capsule:searchSkillCatalog",
   resetSettingsSection: "capsule:resetSettingsSection",
   checkForUpdates: "capsule:checkForUpdates",
+  /* The status already known, with no network call and no fresh check. */
+  updateStatus: "capsule:updateStatus",
   downloadUpdate: "capsule:downloadUpdate",
   installUpdate: "capsule:installUpdate",
   processMetrics: "capsule:processMetrics",

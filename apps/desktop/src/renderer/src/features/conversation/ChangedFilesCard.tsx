@@ -1,4 +1,5 @@
 import type { GitStatus } from "@capsule/shared";
+import type { TouchedFile } from "../../lib/activity";
 import { useState } from "react";
 import { useWorkspace } from "../../lib/workspace";
 
@@ -34,7 +35,15 @@ function splitPath(path: string): { dir: string; name: string } {
     : { dir: path.slice(0, index + 1), name: path.slice(index + 1) };
 }
 
-export function ChangedFilesCard({ git }: { git: GitStatus }) {
+/*
+ * The files this turn changed, and the way back to before it.
+ *
+ * `git` is still the source of the diff and discard actions — those are about
+ * the working tree — but the list is the turn's, passed in. Rendering
+ * `git.files` put every uncommitted file in the project under every reply,
+ * including conversations that had touched nothing.
+ */
+export function ChangedFilesCard({ git, files }: { git: GitStatus; files: TouchedFile[] }) {
   const { api, gitDiscard, runs, setConfirm, setInspectorOpen, setInspectorTab } = useWorkspace();
   const [expanded, setExpanded] = useState(false);
   const [restoring, setRestoring] = useState(false);
@@ -68,9 +77,9 @@ export function ChangedFilesCard({ git }: { git: GitStatus }) {
     });
   }
 
-  if (!git.isRepo || git.files.length === 0) return null;
-  const shown = expanded ? git.files : git.files.slice(0, COLLAPSED_LIMIT);
-  const hidden = git.files.length - shown.length;
+  if (!git.isRepo || files.length === 0) return null;
+  const shown = expanded ? files : files.slice(0, COLLAPSED_LIMIT);
+  const hidden = files.length - shown.length;
 
   const openDiff = () => {
     setInspectorTab("diff");
@@ -81,7 +90,7 @@ export function ChangedFilesCard({ git }: { git: GitStatus }) {
     <div className="changed-files">
       <button className="changed-files-head" onClick={openDiff}>
         <span className="changed-files-count">
-          {git.files.length} {git.files.length === 1 ? "file" : "files"} changed
+          {files.length} {files.length === 1 ? "file" : "files"} changed
         </span>
         {/* Binary files carry no line stats, so the totals can be absent even
             when files did change. Showing nothing beats showing a fake 0. */}
@@ -95,9 +104,9 @@ export function ChangedFilesCard({ git }: { git: GitStatus }) {
       <ul className="changed-files-list">
         {shown.map((file) => (
           <li key={file.path}>
-            <button onClick={openDiff} title={`${file.path} — ${statusLabel(file.code)}`}>
-              <span className={`change-code ${statusLabel(file.code)}`} aria-hidden>
-                {file.code.trim()[0] === "?" ? "+" : (file.code.trim()[0] ?? "M")}
+            <button onClick={openDiff} title={`${file.path} — ${file.action}`}>
+              <span className={`change-code ${file.action}`} aria-hidden>
+                {file.action === "created" ? "+" : file.action === "deleted" ? "−" : "M"}
               </span>
               <span className="change-path">
                 <span className="change-dir">{splitPath(file.path).dir}</span>

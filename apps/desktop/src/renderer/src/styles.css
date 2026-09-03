@@ -3077,21 +3077,34 @@ select:focus,
   color: var(--text-muted);
 }
 
+/*
+ * Moved with a transform rather than a background position.
+ *
+ * `background-position` is not a compositor property: animating it repaints
+ * the bar on every frame for as long as a page is loading, which on a 120Hz
+ * display is work the GPU does not need to be given.
+ */
 .preview-loading-bar {
   position: absolute;
   bottom: -1px;
   left: 0;
   right: 0;
   height: 2px;
-  background: linear-gradient(90deg, transparent, #3b82f6 50%, transparent);
-  background-size: 200% 100%;
-  animation: previewProgressPulse 1.2s infinite ease-in-out;
+  overflow: hidden;
   z-index: 20;
+}
+.preview-loading-bar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, #3b82f6 50%, transparent);
+  will-change: transform;
+  animation: previewProgressPulse 1.2s infinite ease-in-out;
 }
 
 @keyframes previewProgressPulse {
-  0% { background-position: 100% 0; }
-  100% { background-position: -100% 0; }
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
 }
 
 .preview-toast {
@@ -4016,6 +4029,12 @@ select:focus,
 }
 .settings {
   display: block;
+  /* So a wide child scrolls in its own box instead of widening the page. */
+  min-width: 0;
+}
+.settings-body,
+.settings-body .card {
+  min-width: 0;
 }
 .settings-body .card h3 {
   margin-bottom: 0.55rem;
@@ -4740,11 +4759,12 @@ label.field input {
  * single frame. Animating the width itself opens the layout instead: with no
  * `to` block the animation ends at the width the panel was given.
  */
+/* Opacity and transform only. `width` in here relayed out the panel — and
+   everything beside it — on every frame of the entrance. */
 @keyframes side-panel-enter {
   from {
     opacity: 0;
     transform: translateX(0.5rem);
-    width: 0;
   }
 }
 
@@ -4821,6 +4841,22 @@ label.field input {
   .shimmer-text > .shimmer-overlay {
     animation: none;
     opacity: 0.5;
+  }
+  /*
+   * Every animation that repeats forever. Someone who asks the system for less
+   * motion is usually asking because repetition is the part that hurts, and
+   * these ran regardless: the spinners, the live dot, the readiness pulse, the
+   * loading bar.
+   */
+  .icon-btn.is-spinning svg,
+  .dot.live::after,
+  .readiness.running::before,
+  .preview-loading-bar::before,
+  .preview-spin-icon {
+    animation: none;
+  }
+  .dot.live::after {
+    opacity: 0;
   }
   .inspector {
     animation: none;
@@ -7503,10 +7539,25 @@ button.shortcut-keys.capturing {
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
+/*
+ * A table that is wider than its column scrolls inside itself.
+ *
+ * The process table has a first column reserved at 12rem plus five more, and
+ * on a narrow window it was wider than the settings page — so instead of
+ * scrolling, it pushed the whole page sideways and every card in it went off
+ * screen. Wide content scrolls in its own box; the page never does.
+ */
 .usage-table {
+  display: block;
+  overflow-x: auto;
   width: 100%;
   border-collapse: collapse;
   font-size: 0.8125rem;
+}
+.usage-table thead,
+.usage-table tbody {
+  display: table;
+  width: 100%;
 }
 .usage-table th {
   padding: 0 0 0.4rem;
@@ -7718,8 +7769,12 @@ button.shortcut-keys.capturing {
   white-space: nowrap;
 }
 
+/* Enough for a process name, and the table scrolls when the window is not. */
 .process-table td:first-child {
   min-width: 12rem;
+}
+.process-table {
+  min-width: 0;
 }
 .process-sampled {
   margin-top: 0.6rem;

@@ -2,7 +2,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { collectUsageRecords, defaultUsageRoots, readUsageSummary } from "./reader.js";
+import {
+  clearUsageCache,
+  collectUsageRecords,
+  collectUsageRecordsAsync,
+  defaultUsageRoots,
+  readUsageSummary,
+} from "./reader.js";
 
 const made: string[] = [];
 
@@ -102,5 +108,69 @@ describe("defaultUsageRoots", () => {
     const roots = defaultUsageRoots("/home/x");
     expect(roots.claude).toBe(path.join("/home/x", ".claude", "projects"));
     expect(roots.codex).toBe(path.join("/home/x", ".codex", "sessions"));
+  });
+});
+
+describe("reading transcripts without stopping the world", () => {
+  it("counts the same records as the synchronous reader", async () => {
+    const roots = tempRoots();
+    writeClaude(roots.claude, "a.jsonl", ["m1", "m2"]);
+    clearUsageCache();
+    const async = await collectUsageRecordsAsync(roots);
+    expect(async.map((record) => record.dedupeKey)).toEqual(
+      collectUsageRecords(roots).map((record) => record.dedupeKey),
+    );
+  });
+
+  it("reads only what was appended since the last look", async () => {
+    /*
+     * A transcript for a session still in use grows every turn, so a cache
+     * that asks "has this file changed" misses it every time and re-reads the
+     * whole file — which for the 902MB rollouts on a real machine is where
+     * the seconds went. These are append-only: the bytes already read cannot
+     * have changed, so only the tail is new.
+     */
+    const roots = tempRoots();
+    const file = writeClaude(roots.claude, "a.jsonl", ["m1", "m2"]);
+    clearUsageCache();
+    expect(await collectUsageRecordsAsync(roots)).toHaveLength(2);
+
+    fs.appendFileSync(
+      file,
+      `\n${JSON.stringify({
+        timestamp: "2026-09-01T11:00:00.000Z",
+        sessionId: "s1",
+        message: { id: "m3", model: "claude-opus-5", usage: { input_tokens: 1, output_tokens: 1 } },
+      })}`,
+    );
+
+    const after = await collectUsageRecordsAsync(roots);
+    expect(after.map((record) => record.dedupeKey)).toEqual(["m1", "m2", "m3"]);
+  });
+
+  it("reads a rewritten transcript from the start rather than trusting an offset into it", async () => {
+    const roots = tempRoots();
+    writeClaude(roots.claude, "a.jsonl", ["m1", "m2", "m3"]);
+    clearUsageCache();
+    expect(await collectUsageRecordsAsync(roots)).toHaveLength(3);
+
+    // Shorter than what was already read: rotated, so the old records are not
+    // this file's any more.
+    writeClaude(roots.claude, "a.jsonl", ["m9"]);
+    expect((await collectUsageRecordsAsync(roots)).map((r) => r.dedupeKey)).toEqual(["m9"]);
+  });
+
+  it("leaves the event loop free while it reads", async () => {
+    const roots = tempRoots();
+    writeClaude(roots.claude, "a.jsonl", Array.from({ length: 400 }, (_, i) => `m${i}`));
+    writeClaude(roots.claude, "b.jsonl", Array.from({ length: 400 }, (_, i) => `n${i}`));
+    clearUsageCache();
+    let ticks = 0;
+    const timer = setInterval(() => ticks++, 1);
+    await collectUsageRecordsAsync(roots);
+    clearInterval(timer);
+    // The synchronous reader serves none of these: it holds the thread from
+    // the first file to the last, and on Electron that thread draws the window.
+    expect(ticks).toBeGreaterThan(0);
   });
 });

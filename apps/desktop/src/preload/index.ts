@@ -32,6 +32,7 @@ const api = {
   resetSettingsSection: (section: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.resetSettingsSection, section),
   checkForUpdates: () => ipcRenderer.invoke(IPC_CHANNELS.checkForUpdates),
+  updateStatus: () => ipcRenderer.invoke(IPC_CHANNELS.updateStatus),
   downloadUpdate: () => ipcRenderer.invoke(IPC_CHANNELS.downloadUpdate),
   installUpdate: () => ipcRenderer.invoke(IPC_CHANNELS.installUpdate),
   processMetrics: () => ipcRenderer.invoke(IPC_CHANNELS.processMetrics),
