@@ -171,6 +171,9 @@ export function LandingPage({ demo = true }: { demo?: boolean }) {
 
       <footer className="site-footer">
         <span>Capsule</span>
+        <a href="/privacy">Privacy</a>
+        <a href="/security">Security</a>
+        <a href="/terms">Terms</a>
         <a href={REPO} target="_blank" rel="noreferrer">
           GitHub
         </a>

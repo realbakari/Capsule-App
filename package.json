@@ -12,7 +12,7 @@
   "scripts": {
     "postinstall": "node scripts/ensure-electron.mjs && node scripts/ensure-native.mjs",
     "dev": "pnpm --filter @capsule/desktop dev",
-    "build": "pnpm --filter @capsule/desktop build",
+    "build": "node scripts/build-policy-pages.mjs && pnpm --filter @capsule/desktop build",
     "test": "node scripts/test.mjs",
     "test:watch": "vitest",
     "lint": "eslint .",
@@ -20,7 +20,8 @@
     "package:mac": "node scripts/package-mac.mjs",
     "icons": "python3 scripts/generate-icons.py",
     "icons:providers": "node scripts/generate-provider-icons.mjs",
-    "smoke": "pnpm build && node scripts/smoke-test.mjs"
+    "smoke": "pnpm build && node scripts/smoke-test.mjs",
+    "policies": "node scripts/build-policy-pages.mjs"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

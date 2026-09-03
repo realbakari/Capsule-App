@@ -5,6 +5,7 @@ import { applyStoredTheme } from "./lib/appearance";
 import { createDemoBridge } from "./features/landing/demoBridge";
 import { createRemoteBridge, resolveRemoteToken } from "./lib/remote-bridge";
 import { WebRoot } from "./features/landing/WebRoot";
+import { PolicyPage, policyForPath } from "./features/landing/PolicyPage";
 import "@xterm/xterm/css/xterm.css";
 import "./styles.css";
 
@@ -41,8 +42,17 @@ if (!isDesktop) {
   window.capsule = remoteToken ? createRemoteBridge(remoteToken) : createDemoBridge();
 }
 
+/*
+ * The public pages are reachable by their own URL — /privacy, /security,
+ * /terms — because a policy nobody can link to is not published. They render
+ * before the app does: they need no bridge, no data and no demo.
+ */
+const policy = isDesktop ? undefined : policyForPath(window.location.pathname);
+
 createRoot(root).render(
-  <React.StrictMode>{isDesktop || remoteToken ? <App /> : <WebRoot />}</React.StrictMode>,
+  <React.StrictMode>
+    {policy ? <PolicyPage slug={policy.slug} /> : isDesktop || remoteToken ? <App /> : <WebRoot />}
+  </React.StrictMode>,
 );
 
 /*

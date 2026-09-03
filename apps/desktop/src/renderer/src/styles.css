@@ -8859,3 +8859,126 @@ details.card > summary {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Public policy pages: one readable column, the site's own type. */
+.policy-page {
+  min-height: 100vh;
+  padding: 2rem 1.5rem 4rem;
+}
+.policy-head {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  max-width: 46rem;
+  margin: 0 auto 2rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border-color);
+}
+.policy-home {
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: none;
+}
+.policy-nav {
+  display: flex;
+  gap: 1rem;
+  margin-left: auto;
+  font-size: 0.875rem;
+}
+.policy-nav a {
+  color: var(--text-muted);
+  text-decoration: none;
+}
+.policy-nav a:hover,
+.policy-nav a.current {
+  color: var(--text);
+}
+.policy-body {
+  max-width: 46rem;
+  margin: 0 auto;
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+  line-height: 1.7;
+}
+.policy-body h2 {
+  margin: 0 0 0.5rem;
+  color: var(--text);
+  font-size: 1.75rem;
+  letter-spacing: -0.02em;
+}
+.policy-body h3 {
+  margin: 2.25rem 0 0.5rem;
+  color: var(--text);
+  font-size: 1.125rem;
+}
+.policy-body h4 {
+  margin: 1.5rem 0 0.4rem;
+  color: var(--text);
+  font-size: 1rem;
+}
+.policy-body p {
+  margin: 0 0 1rem;
+}
+.policy-body strong {
+  color: var(--text);
+}
+.policy-body a {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+.policy-body ul,
+.policy-body ol {
+  margin: 0 0 1rem;
+  padding-left: 1.25rem;
+}
+.policy-body li {
+  margin-bottom: 0.35rem;
+}
+.policy-body code {
+  padding: 0.1rem 0.3rem;
+  border-radius: 0.25rem;
+  background: var(--bg-hover);
+  font-family: var(--mono);
+  font-size: 0.85em;
+}
+.policy-body pre {
+  overflow-x: auto;
+  margin: 0 0 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  background: var(--bg-hover);
+}
+.policy-body pre code {
+  padding: 0;
+  background: none;
+}
+.policy-body table {
+  display: block;
+  overflow-x: auto;
+  width: 100%;
+  margin: 0 0 1.25rem;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+.policy-body th,
+.policy-body td {
+  padding: 0.5rem 0.75rem 0.5rem 0;
+  border-bottom: 1px solid var(--border-color);
+  text-align: left;
+  vertical-align: top;
+}
+.policy-body th {
+  color: var(--text);
+  font-weight: 600;
+}
+.policy-body hr {
+  margin: 2rem 0;
+  border: 0;
+  border-top: 1px solid var(--border-color);
+}
+.policy-body em {
+  color: var(--text-faint);
+}

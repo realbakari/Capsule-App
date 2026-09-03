@@ -1,3 +1,9 @@
 {
-  "outputDirectory": "out/renderer"
+  "outputDirectory": "out/renderer",
+  "rewrites": [
+    {
+      "source": "/(privacy|security|terms)",
+      "destination": "/index.html"
+    }
+  ]
 }
