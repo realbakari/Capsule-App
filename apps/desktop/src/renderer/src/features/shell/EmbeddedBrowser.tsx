@@ -1,10 +1,20 @@
-import { useCallback, useEffect, useRef, useState } from "react";
 import type { WebviewTag } from "electron";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { LocalServer } from "@capsule/shared";
-import { ChevronRightIcon, GlobeIcon, RefreshIcon } from "./icons";
-
-const BROWSER_RECENTS_KEY = "capsule.browserRecents";
-const MAX_BROWSER_RECENTS = 8;
+import {
+  ArrowLeftIcon,
+  ArrowRightIcon,
+  CameraIcon,
+  CheckIcon,
+  ExternalLinkIcon,
+  GlobeIcon,
+  MinusIcon,
+  MoreVerticalIcon,
+  MousePointerClickIcon,
+  PictureInPictureIcon,
+  PlusIcon,
+  RefreshIcon,
+} from "./icons";
 
 export interface BrowserRecent {
   url: string;
@@ -12,49 +22,148 @@ export interface BrowserRecent {
   lastUsedAt: string;
 }
 
-export function parseBrowserRecents(value: string | null): BrowserRecent[] {
-  if (!value) return [];
+const BROWSER_RECENTS_KEY = "capsule.browser.recents";
+const MAX_RECENTS = 6;
+
+const ELEMENT_PICKER_SCRIPT = `
+(() => {
+  if (window.__capsulePickerActive) {
+    if (window.__capsulePickerCleanup) window.__capsulePickerCleanup();
+    return Promise.resolve(null);
+  }
+  window.__capsulePickerActive = true;
+
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.id = '__capsule_picker_overlay';
+    overlay.style.position = 'fixed';
+    overlay.style.pointerEvents = 'none';
+    overlay.style.zIndex = '2147483647';
+    overlay.style.border = '2px solid #3b82f6';
+    overlay.style.background = 'rgba(59, 130, 246, 0.18)';
+    overlay.style.borderRadius = '3px';
+    overlay.style.transition = 'all 40ms ease';
+    overlay.style.display = 'none';
+
+    const badge = document.createElement('div');
+    badge.style.position = 'absolute';
+    badge.style.bottom = '100%';
+    badge.style.left = '0';
+    badge.style.marginBottom = '4px';
+    badge.style.padding = '2px 6px';
+    badge.style.background = '#18181b';
+    badge.style.border = '1px solid rgba(255,255,255,0.15)';
+    badge.style.color = '#f4f4f5';
+    badge.style.fontFamily = 'monospace';
+    badge.style.fontSize = '11px';
+    badge.style.fontWeight = '500';
+    badge.style.borderRadius = '4px';
+    badge.style.whiteSpace = 'nowrap';
+    badge.style.pointerEvents = 'none';
+    badge.style.boxShadow = '0 4px 12px rgba(0,0,0,0.5)';
+    overlay.appendChild(badge);
+    document.documentElement.appendChild(overlay);
+
+    let currentTarget = null;
+
+    function onMouseMove(e) {
+      const target = document.elementFromPoint(e.clientX, e.clientY);
+      if (!target || target === overlay || overlay.contains(target)) return;
+      currentTarget = target;
+      const rect = target.getBoundingClientRect();
+      overlay.style.display = 'block';
+      overlay.style.top = rect.top + 'px';
+      overlay.style.left = rect.left + 'px';
+      overlay.style.width = rect.width + 'px';
+      overlay.style.height = rect.height + 'px';
+
+      let label = target.tagName.toLowerCase();
+      if (target.id) label += '#' + target.id;
+      else if (target.className && typeof target.className === 'string') {
+        const cls = target.className.trim().split(/\s+/).filter(Boolean).slice(0, 2).join('.');
+        if (cls) label += '.' + cls;
+      }
+      badge.textContent = label + ' (' + Math.round(rect.width) + ' × ' + Math.round(rect.height) + ')';
+    }
+
+    function onClick(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (currentTarget) {
+        let tag = currentTarget.tagName.toLowerCase();
+        let id = currentTarget.id ? '#' + currentTarget.id : '';
+        let cls = currentTarget.className && typeof currentTarget.className === 'string'
+          ? '.' + currentTarget.className.trim().split(/\s+/).filter(Boolean).slice(0, 3).join('.')
+          : '';
+        const selector = tag + id + cls;
+        cleanup();
+        resolve({ selector, tag });
+        return;
+      }
+      cleanup();
+      resolve(null);
+    }
+
+    function onKeyDown(e) {
+      if (e.key === 'Escape') {
+        cleanup();
+        resolve(null);
+      }
+    }
+
+    function cleanup() {
+      window.__capsulePickerActive = false;
+      document.removeEventListener('mousemove', onMouseMove, true);
+      document.removeEventListener('click', onClick, true);
+      document.removeEventListener('keydown', onKeyDown, true);
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      delete window.__capsulePickerCleanup;
+    }
+
+    window.__capsulePickerCleanup = () => {
+      cleanup();
+      resolve(null);
+    };
+
+    document.addEventListener('mousemove', onMouseMove, true);
+    document.addEventListener('click', onClick, true);
+    document.addEventListener('keydown', onKeyDown, true);
+  });
+})()
+`;
+
+export function parseBrowserRecents(raw: string | null): BrowserRecent[] {
+  if (!raw) return [];
   try {
-    const parsed = JSON.parse(value) as unknown;
+    const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter(
-        (item): item is BrowserRecent =>
-          Boolean(
-            item &&
-            typeof item === "object" &&
-            typeof (item as BrowserRecent).url === "string" &&
-            typeof (item as BrowserRecent).title === "string" &&
-            typeof (item as BrowserRecent).lastUsedAt === "string" &&
-            normalizedBrowserUrl((item as BrowserRecent).url) &&
-            Number.isFinite(new Date((item as BrowserRecent).lastUsedAt).getTime()),
-          ),
-      )
-      .slice(0, MAX_BROWSER_RECENTS);
+    return parsed.filter(
+      (entry): entry is BrowserRecent =>
+        Boolean(entry) &&
+        typeof entry === "object" &&
+        typeof entry.url === "string" &&
+        typeof entry.title === "string" &&
+        typeof entry.lastUsedAt === "string",
+    );
   } catch {
     return [];
   }
 }
 
-export function mergeBrowserRecent(
-  recents: readonly BrowserRecent[],
-  next: BrowserRecent,
-): BrowserRecent[] {
-  return [next, ...recents.filter((item) => item.url !== next.url)].slice(0, MAX_BROWSER_RECENTS);
+export function mergeBrowserRecent(existing: BrowserRecent[], next: BrowserRecent): BrowserRecent[] {
+  return [next, ...existing.filter((entry) => entry.url !== next.url)].slice(0, MAX_RECENTS);
 }
 
-function recentAge(value: string): string {
-  const elapsed = Math.max(0, Date.now() - new Date(value).getTime());
-  const minutes = Math.floor(elapsed / 60_000);
-  if (minutes < 1) return "now";
+function recentAge(isoDate: string): string {
+  const minutes = Math.max(1, Math.round((Date.now() - new Date(isoDate).getTime()) / 60_000));
   if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
+  const hours = Math.round(minutes / 60);
   if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
+  return `${Math.round(hours / 24)}d ago`;
 }
 
-export function normalizedBrowserUrl(value: string): string {
-  const trimmed = value.trim();
+export function normalizedBrowserUrl(raw: string): string {
+  const trimmed = raw.trim();
   if (!trimmed) return "";
   if (/^[a-z][a-z0-9+.-]*:(?!\d)/i.test(trimmed) && !/^https?:/i.test(trimmed)) return "";
   if (/\s/.test(trimmed)) return `https://www.google.com/search?q=${encodeURIComponent(trimmed)}`;
@@ -86,6 +195,10 @@ export function EmbeddedBrowser({
   const [canGoBack, setCanGoBack] = useState(false);
   const [canGoForward, setCanGoForward] = useState(false);
   const [error, setError] = useState<string>();
+  const [pickActive, setPickActive] = useState(false);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [zoomFactor, setZoomFactor] = useState(1.0);
+  const [toast, setToast] = useState<string | null>(null);
   const [recents, setRecents] = useState<BrowserRecent[]>(() => {
     try {
       return parseBrowserRecents(localStorage.getItem(BROWSER_RECENTS_KEY));
@@ -93,20 +206,43 @@ export function EmbeddedBrowser({
       return [];
     }
   });
+
   const webviewRef = useRef<WebviewTag>(null);
   const publishedAddress = useRef(address);
+  const moreMenuAnchorRef = useRef<HTMLDivElement>(null);
+  const toastTimerRef = useRef<number | undefined>(undefined);
+
+  const showToast = useCallback((message: string) => {
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    setToast(message);
+    toastTimerRef.current = window.setTimeout(() => {
+      setToast(null);
+    }, 2400);
+  }, []);
 
   const publishAddress = useCallback((value: string) => {
     publishedAddress.current = value;
     onAddressChange(value);
   }, [onAddressChange]);
 
-  /*
-   * The address can come from outside the browser (a Markdown link, a pull
-   * request, or a local-server card). Input edits are marked through
-   * `publishedAddress`, so this effect navigates only genuine external opens
-   * rather than trying to load every character typed into the address bar.
-   */
+  useEffect(() => {
+    if (!moreMenuOpen) return;
+    function onPointerDown(event: MouseEvent) {
+      if (!moreMenuAnchorRef.current?.contains(event.target as Node)) {
+        setMoreMenuOpen(false);
+      }
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setMoreMenuOpen(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [moreMenuOpen]);
+
   useEffect(() => {
     if (address === publishedAddress.current) return;
     publishedAddress.current = address;
@@ -131,9 +267,7 @@ export function EmbeddedBrowser({
       const next = mergeBrowserRecent(current, entry);
       try {
         localStorage.setItem(BROWSER_RECENTS_KEY, JSON.stringify(next));
-      } catch {
-        // Browser history is a convenience; private/disabled storage should not block navigation.
-      }
+      } catch {}
       return next;
     });
   };
@@ -196,82 +330,360 @@ export function EmbeddedBrowser({
     else setCurrentUrl(next);
   };
 
+  const handlePickElement = async () => {
+    const view = webviewRef.current;
+    if (!view || !currentUrl) return;
+
+    if (pickActive) {
+      setPickActive(false);
+      try {
+        await view.executeJavaScript("if (window.__capsulePickerCleanup) window.__capsulePickerCleanup();");
+      } catch {
+        // ignore
+      }
+      return;
+    }
+
+    setPickActive(true);
+    try {
+      const result = (await view.executeJavaScript(ELEMENT_PICKER_SCRIPT)) as { selector?: string; tag?: string } | null;
+      setPickActive(false);
+      if (result?.selector) {
+        await navigator.clipboard.writeText(result.selector);
+        showToast(`Copied selector: ${result.selector}`);
+      }
+    } catch {
+      setPickActive(false);
+    }
+  };
+
+  const handleCaptureScreenshot = async () => {
+    const view = webviewRef.current;
+    if (!view || !currentUrl) return;
+
+    try {
+      const image = await view.capturePage();
+      const dataUrl = image.toDataURL();
+      const res = await fetch(dataUrl);
+      const blob = await res.blob();
+      await navigator.clipboard.write([
+        new ClipboardItem({ [blob.type]: blob }),
+      ]);
+      showToast("Screenshot copied to clipboard");
+    } catch {
+      try {
+        const image = await view.capturePage();
+        await navigator.clipboard.writeText(image.toDataURL());
+        showToast("Screenshot copied to clipboard");
+      } catch {
+        showToast("Unable to capture screenshot");
+      }
+    }
+  };
+
+  const handleZoomIn = () => {
+    const next = Math.min(3.0, Math.round((zoomFactor + 0.1) * 10) / 10);
+    setZoomFactor(next);
+    webviewRef.current?.setZoomFactor(next);
+  };
+
+  const handleZoomOut = () => {
+    const next = Math.max(0.5, Math.round((zoomFactor - 0.1) * 10) / 10);
+    setZoomFactor(next);
+    webviewRef.current?.setZoomFactor(next);
+  };
+
+  const handleResetZoom = () => {
+    setZoomFactor(1.0);
+    webviewRef.current?.setZoomFactor(1.0);
+  };
+
+  const handleClearCache = async () => {
+    const view = webviewRef.current;
+    if (!view) return;
+    try {
+      await view.executeJavaScript(`
+        try {
+          localStorage.clear();
+          sessionStorage.clear();
+          if ('caches' in window) {
+            caches.keys().then(keys => keys.forEach(key => caches.delete(key))).catch(() => {});
+          }
+        } catch {}
+      `);
+      showToast("Cache cleared");
+    } catch {
+      showToast("Unable to clear cache");
+    }
+    setMoreMenuOpen(false);
+  };
+
+  const handleClearCookies = async () => {
+    const view = webviewRef.current;
+    if (!view) return;
+    try {
+      await view.executeJavaScript(`
+        try {
+          document.cookie.split(";").forEach((c) => {
+            document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+          });
+          localStorage.clear();
+          sessionStorage.clear();
+        } catch {}
+      `);
+      showToast("Cookies and storage cleared");
+    } catch {
+      showToast("Unable to clear cookies");
+    }
+    setMoreMenuOpen(false);
+  };
+
   return (
     <div className="codex-browser-pane">
-      <form
-        className="codex-browser-nav"
-        onSubmit={(event) => {
-          event.preventDefault();
-          navigate(address);
-        }}
-      >
-        <button
-          className="icon-btn browser-back"
-          type="button"
-          aria-label="Back"
-          title="Back"
-          disabled={!canGoBack}
-          onClick={() => webviewRef.current?.goBack()}
-        >
-          <ChevronRightIcon size={14} />
-        </button>
-        <button
-          className="icon-btn"
-          type="button"
-          aria-label="Forward"
-          title="Forward"
-          disabled={!canGoForward}
-          onClick={() => webviewRef.current?.goForward()}
-        >
-          <ChevronRightIcon size={14} />
-        </button>
-        <button
-          className="icon-btn"
-          type="button"
-          aria-label="Reload"
-          title="Reload"
-          disabled={!currentUrl}
-          onClick={() => webviewRef.current?.reload()}
-        >
-          <RefreshIcon size={13} />
-        </button>
-        <input
-          type="text"
-          className="codex-browser-input"
-          value={address}
-          onChange={(event) => publishAddress(event.target.value)}
-          placeholder="Search or enter URL"
-        />
-        <button className="chip browser-go" type="submit" disabled={!address.trim()}>
-          Go
-        </button>
-        <button
-          className="icon-btn"
-          type="button"
-          aria-label="Show local servers"
-          title="Show local servers"
-          onClick={() => {
-            setCurrentUrl("");
-            setCanGoBack(false);
-            setCanGoForward(false);
+      <div className="codex-browser-nav preview-chrome-row">
+        <div className="preview-nav-cluster">
+          <button
+            className="preview-chrome-btn"
+            type="button"
+            aria-label="Back"
+            title="Back"
+            disabled={!canGoBack}
+            onClick={() => webviewRef.current?.goBack()}
+          >
+            <ArrowLeftIcon size={14} />
+          </button>
+          <button
+            className="preview-chrome-btn"
+            type="button"
+            aria-label="Forward"
+            title="Forward"
+            disabled={!canGoForward}
+            onClick={() => webviewRef.current?.goForward()}
+          >
+            <ArrowRightIcon size={14} />
+          </button>
+          <button
+            className="preview-chrome-btn"
+            type="button"
+            aria-label={loading ? "Stop loading" : "Reload"}
+            title={loading ? "Stop loading" : "Reload"}
+            disabled={!currentUrl}
+            onClick={() => (loading ? webviewRef.current?.stop() : webviewRef.current?.reload())}
+          >
+            <RefreshIcon size={13} className={loading ? "preview-spin-icon" : ""} />
+          </button>
+        </div>
+
+        <form
+          className="preview-address-group"
+          onSubmit={(event) => {
+            event.preventDefault();
+            navigate(address);
           }}
         >
-          <GlobeIcon size={13} />
-        </button>
-        <button
-          className="ghost browser-external"
-          type="button"
-          disabled={!currentUrl}
-          onClick={() => onOpenExternal(currentUrl)}
-        >
-          External
-        </button>
-      </form>
+          <input
+            type="text"
+            className="preview-address-input"
+            value={address}
+            onChange={(event) => publishAddress(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                publishAddress(currentUrl);
+                (event.target as HTMLInputElement).blur();
+              }
+            }}
+            placeholder="Search or enter URL"
+            spellCheck={false}
+          />
+          {currentUrl ? (
+            <button
+              className="preview-address-inline-btn"
+              type="button"
+              title="Open in system browser"
+              aria-label="Open in system browser"
+              onClick={() => onOpenExternal(currentUrl)}
+            >
+              <ExternalLinkIcon size={12} />
+            </button>
+          ) : null}
+        </form>
+
+        <div className="preview-actions-cluster">
+          <button
+            className={`preview-chrome-btn ${pickActive ? "active" : ""}`}
+            type="button"
+            aria-label="Inspect element"
+            title={pickActive ? "Cancel inspection (Esc)" : "Inspect element"}
+            disabled={!currentUrl}
+            onClick={handlePickElement}
+          >
+            <MousePointerClickIcon size={14} />
+          </button>
+
+          <button
+            className="preview-chrome-btn"
+            type="button"
+            aria-label="Capture screenshot"
+            title="Capture screenshot"
+            disabled={!currentUrl}
+            onClick={() => void handleCaptureScreenshot()}
+          >
+            <CameraIcon size={14} />
+          </button>
+
+          <button
+            className="preview-chrome-btn"
+            type="button"
+            aria-label="Open in system browser"
+            title="Open in system browser"
+            disabled={!currentUrl}
+            onClick={() => onOpenExternal(currentUrl)}
+          >
+            <PictureInPictureIcon size={14} />
+          </button>
+
+          <div className="preview-menu-anchor" ref={moreMenuAnchorRef}>
+            <button
+              className={`preview-chrome-btn ${moreMenuOpen ? "active" : ""}`}
+              type="button"
+              aria-label="More options"
+              title="More options"
+              onClick={() => setMoreMenuOpen((prev) => !prev)}
+            >
+              <MoreVerticalIcon size={14} />
+            </button>
+
+            {moreMenuOpen && (
+              <div className="preview-more-menu" role="menu">
+                <button
+                  type="button"
+                  className="preview-menu-item"
+                  disabled={!currentUrl}
+                  onClick={() => {
+                    webviewRef.current?.reloadIgnoringCache();
+                    setMoreMenuOpen(false);
+                  }}
+                >
+                  Hard reload
+                </button>
+                <button
+                  type="button"
+                  className="preview-menu-item"
+                  disabled={!currentUrl}
+                  onClick={() => {
+                    if (webviewRef.current?.isDevToolsOpened()) {
+                      webviewRef.current.closeDevTools();
+                    } else {
+                      webviewRef.current?.openDevTools();
+                    }
+                    setMoreMenuOpen(false);
+                  }}
+                >
+                  Open DevTools
+                </button>
+
+                <div className="preview-menu-divider" />
+
+                <div className="preview-zoom-row">
+                  <span>Zoom</span>
+                  <div className="preview-zoom-controls">
+                    <button
+                      type="button"
+                      className="preview-zoom-btn"
+                      title="Zoom out"
+                      onClick={handleZoomOut}
+                      disabled={zoomFactor <= 0.5}
+                    >
+                      <MinusIcon size={11} />
+                    </button>
+                    <span className="preview-zoom-value">{Math.round(zoomFactor * 100)}%</span>
+                    <button
+                      type="button"
+                      className="preview-zoom-btn"
+                      title="Zoom in"
+                      onClick={handleZoomIn}
+                      disabled={zoomFactor >= 3.0}
+                    >
+                      <PlusIcon size={11} />
+                    </button>
+                    <button
+                      type="button"
+                      className="preview-zoom-btn"
+                      title="Reset zoom"
+                      onClick={handleResetZoom}
+                      disabled={zoomFactor === 1.0}
+                    >
+                      <RefreshIcon size={10} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="preview-menu-divider" />
+
+                <button
+                  type="button"
+                  className="preview-menu-item"
+                  disabled={!currentUrl}
+                  onClick={() => {
+                    onOpenExternal(currentUrl);
+                    setMoreMenuOpen(false);
+                  }}
+                >
+                  Open in system browser
+                </button>
+                <button
+                  type="button"
+                  className="preview-menu-item"
+                  onClick={() => {
+                    setCurrentUrl("");
+                    setCanGoBack(false);
+                    setCanGoForward(false);
+                    setMoreMenuOpen(false);
+                  }}
+                >
+                  <span className="preview-menu-item-row">
+                    <span>Local servers home</span>
+                    <GlobeIcon size={12} />
+                  </span>
+                </button>
+
+                <div className="preview-menu-divider" />
+
+                <button
+                  type="button"
+                  className="preview-menu-item"
+                  disabled={!currentUrl}
+                  onClick={() => void handleClearCache()}
+                >
+                  Clear cache
+                </button>
+                <button
+                  type="button"
+                  className="preview-menu-item"
+                  disabled={!currentUrl}
+                  onClick={() => void handleClearCookies()}
+                >
+                  Clear cookies &amp; storage
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {loading && <div className="preview-loading-bar" />}
+      </div>
 
       {error ? <div className="browser-error">{error}</div> : null}
+
+      {toast && (
+        <div className="preview-toast">
+          <CheckIcon size={12} />
+          <span>{toast}</span>
+        </div>
+      )}
+
       {currentUrl ? (
         <div className="embedded-browser-frame">
-          {loading ? <div className="browser-loading"><span className="dot warn live" /> Loading</div> : null}
           <webview
             ref={webviewRef}
             className="embedded-browser-webview"

@@ -410,3 +410,83 @@ export function AlertTriangleIcon(props: IconProps) {
     </Svg>
   );
 }
+
+export function ArrowLeftIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="m12 19-7-7 7-7" />
+      <path d="M19 12H5" />
+    </Svg>
+  );
+}
+
+export function ArrowRightIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M5 12h14" />
+      <path d="m12 5 7 7-7 7" />
+    </Svg>
+  );
+}
+
+export function MousePointerClickIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="m9 9 5 12 1.8-5.2L21 14Z" />
+      <path d="M7.2 2.2 8 5.1" />
+      <path d="m5.1 8-2.9-.8" />
+      <path d="M14 4.1 12 6" />
+      <path d="m6 12-1.9 2" />
+    </Svg>
+  );
+}
+
+export function CameraIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
+      <circle cx="12" cy="13" r="3" />
+    </Svg>
+  );
+}
+
+export function PictureInPictureIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M2 10h6V4" />
+      <path d="m2 4 6 6" />
+      <path d="M21 10V7a2 2 0 0 0-2-2h-7" />
+      <path d="M3 14v3a2 2 0 0 0 2 2h7" />
+      <rect x="12" y="14" width="10" height="7" rx="1" />
+    </Svg>
+  );
+}
+
+export function MoreVerticalIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="1.25" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="5" r="1.25" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="19" r="1.25" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+export function ExternalLinkIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M15 3h6v6" />
+      <path d="M10 14 21 3" />
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+    </Svg>
+  );
+}
+
+export function MinusIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M5 12h14" />
+    </Svg>
+  );
+}
+

@@ -374,7 +374,12 @@ function createWindow(): BrowserWindow {
   const showWhenPainted = () => {
     if (!window.isDestroyed() && !window.isVisible()) window.show();
   };
-  window.once("ready-to-show", showWhenPainted);
+  // The renderer signals rendererReady once React has settled data and completed two
+  // animation frames. If the renderer crashes or fails to signal, fallback after 1500ms.
+  window.once("ready-to-show", () => {
+    const fallback = setTimeout(showWhenPainted, 1500);
+    fallback.unref?.();
+  });
   window.webContents.on("did-finish-load", () => {
     reportFullscreen();
     /*

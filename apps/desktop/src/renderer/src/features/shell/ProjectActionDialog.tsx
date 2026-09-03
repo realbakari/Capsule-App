@@ -66,15 +66,15 @@ export function ProjectActionDialog({
           });
         }}
       >
-        <header>
+        <div className="dialog-header">
           <div>
-            <h3>{action.id ? "Edit action" : "Add action"}</h3>
-            <p>A command saved with this project, to run from the top bar.</p>
+            <h3>{action.id ? "Edit Action" : "Add Action"}</h3>
+            <p>Actions are project-scoped commands you can run from the top bar or keybindings.</p>
           </div>
-          <button type="button" className="icon-btn" aria-label="Close" onClick={onClose}>
+          <button type="button" className="dialog-close" aria-label="Close" onClick={onClose}>
             <XIcon size={14} />
           </button>
-        </header>
+        </div>
         <label>
           <span>Name</span>
           <input
@@ -82,7 +82,7 @@ export function ProjectActionDialog({
             type="text"
             value={name}
             onChange={(event) => setName(event.target.value)}
-            placeholder="Dev server"
+            placeholder="Test or Dev server"
           />
         </label>
         <label>
@@ -94,7 +94,7 @@ export function ProjectActionDialog({
             rows={2}
             value={command}
             onChange={(event) => setCommand(event.target.value)}
-            placeholder="pnpm dev"
+            placeholder="bun test or pnpm dev"
           />
         </label>
         <label>
@@ -105,33 +105,34 @@ export function ProjectActionDialog({
             type="text"
             value={url}
             onChange={(event) => setUrl(event.target.value)}
-            placeholder="localhost:5173"
+            placeholder="http://localhost:5173"
           />
+          <span className="field-hint">Open this URL in the in-app preview when this action runs.</span>
         </label>
         <div className="setting">
           <div className="setting-copy">
-            <div>Run on a new worktree</div>
-            <p>A fresh checkout has no dependencies installed. This runs once, when it is created.</p>
+            <div>Run automatically on worktree creation</div>
+            <p>A fresh checkout has no dependencies installed. Runs once when created.</p>
           </div>
           <div className="setting-control">
             <Switch
               checked={runOnWorktreeCreate}
               onChange={setRunOnWorktreeCreate}
-              label="Run this action when a worktree is created"
+              label="Run automatically on worktree creation"
             />
           </div>
         </div>
         {previewUrl ? (
           <div className="setting">
             <div className="setting-copy">
-              <div>Open the preview</div>
+              <div>Open preview automatically when this action runs</div>
               <p>Shows {previewUrl} in Capsule&rsquo;s browser panel when the action runs.</p>
             </div>
             <div className="setting-control">
               <Switch
                 checked={openPreview}
                 onChange={setOpenPreview}
-                label="Open the preview when this action runs"
+                label="Open preview automatically when this action runs"
               />
             </div>
           </div>
@@ -141,7 +142,7 @@ export function ProjectActionDialog({
             Cancel
           </button>
           <button className="send" type="submit" disabled={!name.trim() || !command.trim()}>
-            Save action
+            {action.id ? "Save changes" : "Save action"}
           </button>
         </div>
       </form>

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { FileEntry } from "@capsule/shared";
 import { searchProjectFiles } from "../../lib/bridge";
 import { useWorkspace } from "../../lib/workspace";
+import { SearchIcon } from "./icons";
 
 export function FilePicker() {
   const { filePicker, setFilePicker, projectId, project, mentionFile, pickProjectDirectory, pickFilesToMention } =
@@ -35,31 +36,34 @@ export function FilePicker() {
       }}
     >
       <div className="palette" onClick={(event) => event.stopPropagation()}>
-        <input
-          autoFocus
-          placeholder="Search project files…"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "ArrowDown") {
-              event.preventDefault();
-              setIndex((current) => Math.min(items.length - 1, current + 1));
-            }
-            if (event.key === "ArrowUp") {
-              event.preventDefault();
-              setIndex((current) => Math.max(0, current - 1));
-            }
-            if (event.key === "Enter" && items[index]) {
-              event.preventDefault();
-              mentionFile(items[index].path);
-              setFilePicker(false);
-              setQuery("");
-            }
-            if (event.key === "Escape") {
-              setFilePicker(false);
-            }
-          }}
-        />
+        <div className="palette-search-row">
+          <SearchIcon size={16} />
+          <input
+            autoFocus
+            placeholder="Search project files…"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowDown") {
+                event.preventDefault();
+                setIndex((current) => Math.min(items.length - 1, current + 1));
+              }
+              if (event.key === "ArrowUp") {
+                event.preventDefault();
+                setIndex((current) => Math.max(0, current - 1));
+              }
+              if (event.key === "Enter" && items[index]) {
+                event.preventDefault();
+                mentionFile(items[index].path);
+                setFilePicker(false);
+                setQuery("");
+              }
+              if (event.key === "Escape") {
+                setFilePicker(false);
+              }
+            }}
+          />
+        </div>
         {!project?.workingDirectory && (
           <div className="sidebar-empty">
             <p>Open a code folder first, then search files.</p>

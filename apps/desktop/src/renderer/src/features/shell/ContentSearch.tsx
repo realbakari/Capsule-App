@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { ContentHit } from "@capsule/shared";
 import { searchProjectContents } from "../../lib/bridge";
 import { useWorkspace } from "../../lib/workspace";
+import { SearchIcon } from "./icons";
 
 export function ContentSearch() {
   const { contentSearch, setContentSearch, projectId, mentionFile, openInspector } = useWorkspace();
@@ -42,41 +43,46 @@ export function ContentSearch() {
       }}
     >
       <div className="palette" onClick={(event) => event.stopPropagation()}>
-        <input
-          autoFocus
-          placeholder="Search in files…"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "ArrowDown") {
-              event.preventDefault();
-              setIndex((current) => Math.min(hits.length - 1, current + 1));
-            }
-            if (event.key === "ArrowUp") {
-              event.preventDefault();
-              setIndex((current) => Math.max(0, current - 1));
-            }
-            if (event.key === "Enter" && hits[index]) {
-              event.preventDefault();
-              pick(hits[index]);
-            }
-            if (event.key === "Escape") setContentSearch(false);
-          }}
-        />
-        {query.trim().length >= 2 && hits.length === 0 && <div className="sidebar-empty">No matches</div>}
-        {hits.map((hit, hitIndex) => (
-          <button
-            key={`${hit.path}:${hit.line}:${hitIndex}`}
-            className={hitIndex === index ? "active" : ""}
-            onMouseEnter={() => setIndex(hitIndex)}
-            onClick={() => pick(hit)}
-          >
-            <span className="mono">
-              {hit.path}:{hit.line}
-            </span>
-            <span className="faint"> {hit.text}</span>
-          </button>
-        ))}
+        <div className="palette-search-row">
+          <SearchIcon size={16} />
+          <input
+            autoFocus
+            placeholder="Search in files…"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowDown") {
+                event.preventDefault();
+                setIndex((current) => Math.min(hits.length - 1, current + 1));
+              }
+              if (event.key === "ArrowUp") {
+                event.preventDefault();
+                setIndex((current) => Math.max(0, current - 1));
+              }
+              if (event.key === "Enter" && hits[index]) {
+                event.preventDefault();
+                pick(hits[index]);
+              }
+              if (event.key === "Escape") setContentSearch(false);
+            }}
+          />
+        </div>
+        <div className="palette-list">
+          {query.trim().length >= 2 && hits.length === 0 && <div className="sidebar-empty">No matches</div>}
+          {hits.map((hit, hitIndex) => (
+            <button
+              key={`${hit.path}:${hit.line}:${hitIndex}`}
+              className={hitIndex === index ? "active" : ""}
+              onMouseEnter={() => setIndex(hitIndex)}
+              onClick={() => pick(hit)}
+            >
+              <span className="mono">
+                {hit.path}:{hit.line}
+              </span>
+              <span className="faint"> {hit.text}</span>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );

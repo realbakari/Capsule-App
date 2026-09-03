@@ -99,11 +99,13 @@ Tools: **Launch**, **Review**, **Terminal**, **Browser**, **Files**, **Side chat
 - **Browser** polls `capsule:listLocalServers` while open. The filesystem adapter
   reads loopback listeners with `lsof`, performs bounded HTTP/HTTPS probes, and
   returns only endpoints that answer like web apps. Selecting one opens it in
-  an isolated Electron guest with back, forward, reload, address, and an
-  explicit external-browser escape hatch. Main process attachment policy strips
-  preload, disables Node integration, requires context isolation + sandbox, and
-  rejects non-HTTP(S) top-level navigation. The landing page keeps the eight
-  most recently used addresses in renderer-local storage above live servers.
+  an isolated Electron guest with back, forward, reload, address bar with search
+  normalization, interactive DOM element inspection, viewport screenshot capture
+  to clipboard, system-browser launch, and an options menu offering hard reload,
+  DevTools, zoom controls, and cache/cookie clearing. Main process attachment policy
+  strips preload, disables Node integration, requires context isolation + sandbox,
+  and rejects non-HTTP(S) top-level navigation. The landing page keeps recently
+  used addresses in renderer-local storage above live servers.
 - **Side chat** lists ACP harnesses and live sessions (spawn / cancel / close).
 
 Inspector-only shortcuts (ignored while typing, do not steal global `⌘P`):

@@ -53,9 +53,10 @@ Open **Browser** in the inspector to see local HTTP apps that are responding on
 this Mac. The list refreshes while the panel is open and excludes listening
 services that do not answer like web pages. Select a server to open it in the
 in-app browser, or type another HTTP or HTTPS address above the list. The
-toolbar supports back, forward, reload, returning to local servers, and opening
-the current page in your system browser when you need it there. The Browser
-home keeps the eight most recently used pages above the live-server list.
+toolbar supports back, forward, reload, an interactive element inspector,
+screenshot capture to clipboard, opening in the system browser, zoom controls,
+DevTools, and cache/cookie clearing. The Browser home keeps recently used pages
+above the live-server list.
 
 ## Pull requests
 

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { FolderPlusIcon, GitBranchIcon, GlobeIcon } from "./icons";
+import { FolderPlusIcon, GitBranchIcon, GlobeIcon, SearchIcon } from "./icons";
 
 export type ProjectSourceId = "folder" | "git-url" | "github";
 
@@ -60,31 +60,34 @@ export function AddProjectPicker({
   const picker = (
     <div className="palette-backdrop" onClick={onClose}>
       <div className="palette" onClick={(event) => event.stopPropagation()}>
-        <input
-          autoFocus
-          type="text"
-          placeholder="Search…"
-          value={query}
-          onChange={(event) => {
-            setQuery(event.target.value);
-            setIndex(0);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "ArrowDown") {
-              event.preventDefault();
-              setIndex(Math.min(matches.length - 1, active + 1));
-            }
-            if (event.key === "ArrowUp") {
-              event.preventDefault();
-              setIndex(Math.max(0, active - 1));
-            }
-            if (event.key === "Enter" && matches[active]) {
-              event.preventDefault();
-              onPick(matches[active]!.id);
-            }
-            if (event.key === "Escape") onClose();
-          }}
-        />
+        <div className="palette-search-row">
+          <SearchIcon size={16} />
+          <input
+            autoFocus
+            type="text"
+            placeholder="Search sources…"
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setIndex(0);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowDown") {
+                event.preventDefault();
+                setIndex(Math.min(matches.length - 1, active + 1));
+              }
+              if (event.key === "ArrowUp") {
+                event.preventDefault();
+                setIndex(Math.max(0, active - 1));
+              }
+              if (event.key === "Enter" && matches[active]) {
+                event.preventDefault();
+                onPick(matches[active]!.id);
+              }
+              if (event.key === "Escape") onClose();
+            }}
+          />
+        </div>
         <div className="palette-list">
           <p className="palette-section">Sources</p>
           {matches.length === 0 && <p className="palette-empty">No source matches that.</p>}
@@ -97,8 +100,10 @@ export function AddProjectPicker({
                 onMouseEnter={() => setIndex(sourceIndex)}
                 onClick={() => onPick(source.id)}
               >
-                <Icon size={16} />
-                <span>
+                <span className="palette-source-icon">
+                  <Icon size={16} />
+                </span>
+                <span className="palette-source-copy">
                   <b>{source.label}</b>
                   <small>{source.detail}</small>
                 </span>
@@ -112,10 +117,10 @@ export function AddProjectPicker({
             <kbd>↓</kbd> Navigate
           </span>
           <span>
-            <kbd>Enter</kbd> Select
+            <kbd>↵</kbd> Select
           </span>
           <span>
-            <kbd>Esc</kbd> Close
+            <kbd>esc</kbd> Close
           </span>
         </div>
       </div>

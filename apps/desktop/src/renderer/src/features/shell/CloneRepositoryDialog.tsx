@@ -74,24 +74,27 @@ export function CloneRepositoryDialog({
             placeholder="Derived from the repository URL"
           />
         </label>
-        <div className="clone-destination">
-          <span>
-            {parentDirectory
-              ? formatProjectRoot(parentDirectory, { home: window.capsule?.homeDir })
-              : "Choose where the repository folder will be created."}
-          </span>
-          <button
-            className="ghost"
-            type="button"
-            onClick={() => {
-              void api.pickDirectory().then((directory) => {
-                if (directory) setParentDirectory(directory);
-              });
-            }}
-          >
-            Choose destination
-          </button>
-        </div>
+        <label className="clone-destination-field">
+          <span>Destination folder</span>
+          <div className="clone-destination">
+            <span className={parentDirectory ? "path" : "placeholder"}>
+              {parentDirectory
+                ? formatProjectRoot(parentDirectory, { home: window.capsule?.homeDir })
+                : "Select destination folder…"}
+            </span>
+            <button
+              className="ghost"
+              type="button"
+              onClick={() => {
+                void api.pickDirectory().then((directory) => {
+                  if (directory) setParentDirectory(directory);
+                });
+              }}
+            >
+              Browse…
+            </button>
+          </div>
+        </label>
         {error ? <p className="notice">{error}</p> : null}
         <div className="actions">
           <button className="ghost" type="button" onClick={onClose} disabled={busy}>

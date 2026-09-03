@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { SearchResults } from "@capsule/shared";
 import { useWorkspace } from "../../lib/workspace";
+import { SearchIcon } from "./icons";
 
 export function Palette() {
   const {
@@ -105,29 +106,32 @@ export function Palette() {
   return (
     <div className="palette-backdrop" onClick={() => setPalette(false)}>
       <div className="palette" onClick={(event) => event.stopPropagation()}>
-        <input
-          autoFocus
-          placeholder="Search commands, projects, threads…"
-          value={paletteQuery}
-          onChange={(event) => setPaletteQuery(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "ArrowDown") {
-              event.preventDefault();
-              setIndex((current) => Math.min(commands.length - 1, current + 1));
-            }
-            if (event.key === "ArrowUp") {
-              event.preventDefault();
-              setIndex((current) => Math.max(0, current - 1));
-            }
-            if (event.key === "Enter" && commands[index]) {
-              event.preventDefault();
-              run(commands[index]);
-            }
-            if (event.key === "Escape") {
-              setPalette(false);
-            }
-          }}
-        />
+        <div className="palette-search-row">
+          <SearchIcon size={16} />
+          <input
+            autoFocus
+            placeholder="Search commands, projects, threads…"
+            value={paletteQuery}
+            onChange={(event) => setPaletteQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowDown") {
+                event.preventDefault();
+                setIndex((current) => Math.min(commands.length - 1, current + 1));
+              }
+              if (event.key === "ArrowUp") {
+                event.preventDefault();
+                setIndex((current) => Math.max(0, current - 1));
+              }
+              if (event.key === "Enter" && commands[index]) {
+                event.preventDefault();
+                run(commands[index]);
+              }
+              if (event.key === "Escape") {
+                setPalette(false);
+              }
+            }}
+          />
+        </div>
         <div className="palette-list">
           {commands.length === 0 && (
             <p className="palette-empty">No command matches that.</p>
