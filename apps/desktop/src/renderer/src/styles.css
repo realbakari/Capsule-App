@@ -896,18 +896,30 @@
   padding: 0 1rem 1.65rem;
 }
 .empty-thread-mark {
-  width: 44px;
-  height: 44px;
-  margin: 0 auto 0.9rem;
+  width: 40px;
+  height: 40px;
+  /*
+   * Room above the heading. Fourteen pixels between a 40px mark and a 32px
+   * heading read as one crowded lump; the mark is its own thing and needs to
+   * sit apart from the sentence.
+   */
+  margin: 0 auto 1.75rem;
   display: block;
-  /* Present, not loud: the question is the thing to read. */
-  opacity: 0.75;
+  /*
+   * Full strength. This is the app icon — a dark tile with the mark on it —
+   * and fading it toward the background turned it into a hole in the page
+   * rather than an icon. Nothing is drawn around it: the tile has
+   * transparent corners, so a border or ring would trace the square it sits
+   * in and give away the box.
+   */
+  opacity: 1;
 }
 .empty-thread h1 {
   font-size: 2rem;
   font-weight: 600;
   letter-spacing: -0.045em;
-  margin: 0 0 0.65rem;
+  /* The heading and the line under it are one thought; the gap says so. */
+  margin: 0 0 0.75rem;
   line-height: 1.15;
 }
 .empty-thread h1 span {
