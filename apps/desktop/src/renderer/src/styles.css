@@ -6416,6 +6416,25 @@ div.changed-files-head { cursor: default; }
   min-width: 0;
   overflow: hidden;
 }
+/*
+ * Let the controls narrow instead of losing one.
+ *
+ * A flex item defaults to min-width: auto, so with nowrap labels these refused
+ * to shrink below their full width; the row overflowed and `overflow: hidden`
+ * removed the last control outright — Commit was clipped away at an ordinary
+ * window size, with no scroll and no menu to reach it. The ellipsis already
+ * declared on the label could never fire, because the button never shrank.
+ * With a floor of zero they narrow, the label truncates, and every control
+ * stays on screen and clickable.
+ */
+.topbar-project-actions > *,
+.topbar-project-actions .topbar-chip-btn {
+  min-width: 0;
+}
+/* Icons keep their size; only the words give way. */
+.topbar-chip-btn > svg {
+  flex-shrink: 0;
+}
 
 .topbar-chip-btn {
   display: inline-flex;
