@@ -438,7 +438,7 @@ describe("extractTouchedFiles", () => {
     expect(touched[0]?.action).toBe("created");
   });
 
-  it("extracts line counts from toolCall code content", () => {
+  it("names the file a write touched, without inventing a line count for it", () => {
     const structuredEvent: RunEvent = {
       id: "1",
       runId: "run_1",
@@ -457,7 +457,15 @@ describe("extractTouchedFiles", () => {
     };
     const touched = extractTouchedFiles([structuredEvent]);
     expect(touched).toHaveLength(1);
-    expect(touched[0]?.added).toBe(3);
+    expect(touched[0]?.path).toBe("capsule.json");
+    /*
+     * This used to report "+3" — the number of lines in the content sent.
+     * That is what the agent wrote, not what the file gained: a replacement
+     * of three lines by three lines is +3 here and 0 by git. Beside a
+     * filename, in the same styling as a measured count, an estimate reads as
+     * a measurement, so no count is better than a wrong one.
+     */
+    expect(touched[0]?.added).toBeUndefined();
   });
 });
 
@@ -499,5 +507,43 @@ describe("files a turn touched, and only those", () => {
     // The +17 is worth having; it just cannot be the reason a file is listed.
     const [file] = extractTouchedFiles([toolEvent("write_file capsule.json")], gitStatus, "/repo");
     expect(file).toMatchObject({ path: "capsule.json", action: "created", added: 17, removed: 0 });
+  });
+});
+
+describe("counts the card is willing to show", () => {
+  it("takes no line count from the words of a message", () => {
+    /*
+     * One regex over the whole message used to take the first number-shaped
+     * thing in it and hand that to every file the message named, so a turn
+     * that said "added 47 tests" put "+47" beside each one. A number rendered
+     * beside a filename reads as a measurement of that file.
+     */
+    const files = extractTouchedFiles(
+      [
+        {
+          id: "1",
+          type: "info",
+          message: "Updated src/one.ts and src/two.ts — added 47 tests",
+        } as never,
+      ],
+      undefined,
+      "/repo",
+    );
+    for (const file of files) {
+      expect(file.added).toBeUndefined();
+      expect(file.removed).toBeUndefined();
+    }
+  });
+
+  it("still takes the count git measured", () => {
+    const files = extractTouchedFiles(
+      [{ id: "1", type: "info", message: "Updated src/one.ts" } as never],
+      { files: [{ path: "src/one.ts", code: "M", added: 12, removed: 4 }] } as never,
+      "/repo",
+    );
+    expect(files.find((file) => file.path === "src/one.ts")).toMatchObject({
+      added: 12,
+      removed: 4,
+    });
   });
 });

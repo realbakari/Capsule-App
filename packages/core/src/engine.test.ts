@@ -904,7 +904,14 @@ describe("what a thread shows while a turn is starting", () => {
 });
 
 describe("what a turn changed", () => {
-  it("diffs against the turn before it, not the start of the conversation", async () => {
+  /*
+   * Twenty seconds, not the default five. This drives real git — several
+   * spawns, two checkpoints, a diff — and it had crept from about 3s to just
+   * over the limit, so it began failing on load rather than on a defect. A
+   * check that flips with how busy the machine is teaches people to ignore
+   * failures, which costs more than the minute it saves.
+   */
+  it("diffs against the turn before it, not the start of the conversation", { timeout: 20_000 }, async () => {
     /*
      * Runs come back newest first, and this took the last of the older ones —
      * the oldest checkpoint in the thread. "What changed in this turn"

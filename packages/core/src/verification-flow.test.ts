@@ -5,7 +5,9 @@ import path from "node:path";
 import { expect, it } from "vitest";
 import { CapsuleEngine } from "./engine.js";
 
-it("persists a check on its owning turn, coalesces repeat clicks, and never follows a project folder change", async () => {
+// Real git and a real database; the default five seconds is not enough on a
+// loaded machine, and a test that flips on load is one people stop reading.
+it("persists a check on its owning turn, coalesces repeat clicks, and never follows a project folder change", { timeout: 20_000 }, async () => {
   const profile = mkdtempSync(path.join(tmpdir(), "capsule-check-profile-"));
   const cwd = mkdtempSync(path.join(tmpdir(), "capsule-check-worktree-"));
   execFileSync("git", ["init", "-q"], { cwd });

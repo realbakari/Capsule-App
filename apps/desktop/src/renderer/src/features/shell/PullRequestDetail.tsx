@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   parseUnifiedDiff,
+  sanitizeUntrusted,
   type GitPullRequest,
   type GitPullRequestDetail as PullRequestDetail,
   type GitPullRequestLabel,
@@ -263,8 +264,19 @@ export function GitPullRequestDetail({
     setReviewDrawerOpen(false);
   };
 
+  /*
+   * The title is the other side's writing.
+   *
+   * Lower stakes than the watcher's prompt — these land in the composer and
+   * the person sending them reads them first — so this sanitizes rather than
+   * fencing: a wall of markup in a draft someone is about to edit costs more
+   * than it protects. What it removes is the part a glance would miss, a title
+   * carrying invisible characters or shaped like the app's own scaffolding.
+   */
+  const safeTitle = sanitizeUntrusted(summary.title, { singleLine: true, maxChars: 200 });
+
   const handleExplainPR = () => {
-    const prompt = `Please explain PR #${summary.number} (${summary.title}) and walk through the diff. Highlight key architectural changes and what to review closely.`;
+    const prompt = `Please explain PR #${summary.number} (${safeTitle}) and walk through the diff. Highlight key architectural changes and what to review closely.`;
     if (onSteerAgent) onSteerAgent(prompt);
     else {
       navigator.clipboard.writeText(prompt);
@@ -284,7 +296,7 @@ export function GitPullRequestDetail({
   };
 
   const handleAskQuestion = () => {
-    const prompt = `Regarding PR #${summary.number} (${summary.title}): `;
+    const prompt = `Regarding PR #${summary.number} (${safeTitle}): `;
     if (onSteerAgent) onSteerAgent(prompt);
     else {
       navigator.clipboard.writeText(prompt);

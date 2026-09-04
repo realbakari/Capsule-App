@@ -74,7 +74,6 @@ const MARKUP =
 /** The fences Capsule uses. Literals, never built from what is being fenced. */
 export const FENCE_LABELS = {
   checkNames: "untrusted-check-names",
-  pullRequest: "untrusted-pull-request-text",
 } as const;
 
 export type FenceLabel = (typeof FENCE_LABELS)[keyof typeof FENCE_LABELS];

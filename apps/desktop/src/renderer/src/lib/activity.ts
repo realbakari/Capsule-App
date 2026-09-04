@@ -389,21 +389,33 @@ export function extractTouchedFiles(
                 : typeof params?.replacementContent === "string"
                   ? params.replacementContent
                   : undefined;
-          const addedLines =
-            rawCode !== undefined ? (rawCode.length > 0 ? rawCode.split(/\r?\n/).length : 0) : undefined;
-          register(p, action, addedLines);
+          /*
+           * No line count from here.
+           *
+           * The content of a write is what the agent sent, not what the file
+           * gained: replacing 120 lines with 120 lines is "+120" by this
+           * measure and zero by git's. Rendered in the same styling as a
+           * measured count, an estimate reads as a measurement, so counts come
+           * only from git below.
+           */
+          register(p, action);
         }
       }
     }
 
     const msg = event.message?.trim();
     if (msg) {
-      const lineMatch = /(?:\+(\d+)|\b(\d+)\s+lines?\b)/i.exec(msg);
-      const addedFromMsg = lineMatch ? Number(lineMatch[1] || lineMatch[2]) : undefined;
+      /*
+       * The paths a message names are worth keeping; the numbers in it are
+       * not. A single regex over the whole message took the first
+       * number-shaped thing in it and gave that count to every file the
+       * message mentioned — so "updated 3 files and added 47 tests" put "+47"
+       * beside all of them.
+       */
       for (const rule of FILE_ACTION_PATTERNS) {
         const match = rule.pattern.exec(msg);
         if (match && match[1]) {
-          register(match[1], rule.action, addedFromMsg);
+          register(match[1], rule.action);
         }
       }
     }
