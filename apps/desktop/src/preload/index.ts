@@ -153,6 +153,8 @@ const api = {
   saveClipboardImage: () => ipcRenderer.invoke(IPC_CHANNELS.saveClipboardImage),
   registerBrowserView: (webContentsId: number | undefined) =>
     ipcRenderer.invoke(IPC_CHANNELS.registerBrowserView, webContentsId),
+  togglePet: (visible?: boolean) => ipcRenderer.invoke(IPC_CHANNELS.togglePet, visible),
+  focusSession: (sessionId: string) => ipcRenderer.invoke(IPC_CHANNELS.focusSession, sessionId),
   validateAttachments: (attachments: Array<{ name: string; path: string; }>) =>
     ipcRenderer.invoke(IPC_CHANNELS.validateAttachments, attachments),
   listHarnesses: () => ipcRenderer.invoke(IPC_CHANNELS.listHarnesses),

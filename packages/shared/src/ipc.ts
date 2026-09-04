@@ -62,6 +62,9 @@ export const IPC_CHANNELS = {
   saveClipboardImage: "capsule:saveClipboardImage",
   /* The browser pane's guest WebContents, so agent tools can reach it. */
   registerBrowserView: "capsule:registerBrowserView",
+  /* The floating pet: show or hide it, and open a thread from it. */
+  togglePet: "capsule:togglePet",
+  focusSession: "capsule:focusSession",
   gitStatus: "capsule:gitStatus",
   listPullRequests: "capsule:listPullRequests",
   getPullRequest: "capsule:getPullRequest",

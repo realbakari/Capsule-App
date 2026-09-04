@@ -19,6 +19,25 @@ import "./styles.css";
  */
 applyStoredTheme(window.capsule ? undefined : "dark");
 
+/*
+ * The pet is the same bundle in a different window, chosen by the hash the
+ * main process opens it with. A second Vite entry would mean a second build
+ * and a second copy of everything it imports; the pet needs the same IPC
+ * bridge and the same types, so it rides along.
+ */
+const isPet = window.location.hash === "#pet";
+if (isPet) {
+  void (async () => {
+    await import("./features/pet/pet.css" as string);
+    const { Pet } = await import("./features/pet/Pet");
+    createRoot(document.getElementById("root")!).render(
+      <React.StrictMode>
+        <Pet />
+      </React.StrictMode>,
+    );
+  })();
+}
+
 const root = document.getElementById("root");
 if (!root) throw new Error("Missing #root");
 
@@ -53,11 +72,15 @@ if (!isDesktop) {
 const policy = isDesktop ? undefined : policyForPath(window.location.pathname);
 
 
-createRoot(root).render(
-  <React.StrictMode>
-    {policy ? <PolicyPage slug={policy.slug} /> : isDesktop || remoteToken ? <App /> : <WebRoot />}
-  </React.StrictMode>,
-);
+// The pet window has already rendered itself; the app must not land in the
+// same root behind it.
+if (!isPet) {
+  createRoot(root).render(
+    <React.StrictMode>
+      {policy ? <PolicyPage slug={policy.slug} /> : isDesktop || remoteToken ? <App /> : <WebRoot />}
+    </React.StrictMode>,
+  );
+}
 
 /*
  * The main process keeps the window hidden until the app says it is ready,

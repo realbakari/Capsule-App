@@ -1,0 +1,124 @@
+/* ── The pet window ──────────────────────────────────────────────────────
+ *
+ * A frameless, transparent, always-on-top window. Everything here paints on
+ * nothing, so the page itself must stay clear: any background would show as a
+ * rectangle floating over the desktop.
+ */
+html, body, #root {
+  margin: 0;
+  height: 100%;
+  background: transparent !important;
+  overflow: hidden;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.pet {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 6px;
+  box-sizing: border-box;
+  font-family: ui-sans-serif, -apple-system, system-ui, sans-serif;
+}
+
+/* The capsule is the handle: dragging it moves the window, so the button
+   itself must opt back in to receiving clicks. */
+.pet-body {
+  -webkit-app-region: drag;
+  border: 0;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+  line-height: 0;
+}
+.pet-body:active { -webkit-app-region: no-drag; }
+
+.pet-capsule {
+  width: 56px;
+  height: 66px;
+  filter: drop-shadow(0 4px 10px rgb(0 0 0 / 0.45));
+}
+
+/* Motion says what the state is, quietly. Working breathes; something that
+   wants you leans in; a stopped capsule does not move at all. */
+@keyframes petBreathe {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2.5px); }
+}
+@keyframes petNudge {
+  0%, 70%, 100% { transform: translateY(0) rotate(0deg); }
+  78% { transform: translateY(-3px) rotate(-5deg); }
+  86% { transform: translateY(-3px) rotate(5deg); }
+}
+.pet-capsule--running { animation: petBreathe 2.6s ease-in-out infinite; }
+.pet-capsule--needs-input { animation: petNudge 3.2s ease-in-out infinite; }
+.pet-capsule--idle { opacity: 0.75; }
+
+/* A blink, so a resting capsule still looks alive without asking for anything. */
+@keyframes petBlink {
+  0%, 92%, 100% { transform: scaleY(1); }
+  95% { transform: scaleY(0.1); }
+}
+.pet-eye {
+  transform-origin: center;
+  transform-box: fill-box;
+  animation: petBlink 5.5s ease-in-out infinite;
+}
+
+/*
+ * Asked for stillness, give stillness. The states are carried by colour and by
+ * the eyes, so a static capsule says exactly as much as a moving one.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .pet-capsule,
+  .pet-eye {
+    animation: none !important;
+  }
+}
+
+.pet-tray {
+  -webkit-app-region: no-drag;
+  width: 248px;
+  margin-bottom: 8px;
+  padding: 8px;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 12px;
+  background: rgb(24 24 27 / 0.96);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.5);
+  color: #f2f2f2;
+  font-size: 12px;
+}
+.pet-tray-head {
+  padding: 2px 4px 6px;
+  color: #9a9aa2;
+  font-size: 11px;
+}
+.pet-tray-empty { margin: 4px; color: #9a9aa2; }
+.pet-tray ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.pet-tray button {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+.pet-tray button:hover { background: rgb(255 255 255 / 0.08); }
+.pet-tray-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pet-tray-state { color: #9a9aa2; font-size: 11px; }
+
+.pet-dot { width: 8px; height: 8px; border-radius: 50%; }
+.pet-dot--needs-input { background: #d6a03c; }
+.pet-dot--blocked { background: #c96a6a; }
+.pet-dot--ready { background: #6fae68; }
+.pet-dot--running { background: #5b8bd0; }

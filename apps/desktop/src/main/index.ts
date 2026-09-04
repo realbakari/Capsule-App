@@ -183,6 +183,79 @@ function withThumbnails(attachments: MessageAttachment[]): MessageAttachment[] {
 let browserViewId: number | undefined;
 
 let browserMcp: BrowserMcpServer | undefined;
+let petWindow: BrowserWindow | undefined;
+
+/*
+ * The pet: a small window that floats over everything and says whether
+ * anything wants you.
+ *
+ * Frameless and transparent, so what shows on the desktop is the capsule and
+ * nothing else. It sits at the "floating" level rather than "screen-saver":
+ * above ordinary windows, never above a system dialog someone has to answer.
+ * It stays out of the Dock and the window switcher — it is an indicator, not
+ * a place to go — and it does not take focus, so clicking near it never steals
+ * the caret from the editor behind it.
+ */
+function petBounds(): { x: number; y: number; width: number; height: number } {
+  const width = 280;
+  const height = 340;
+  const area = screen.getPrimaryDisplay().workArea;
+  // Bottom right, a little in from the corner.
+  return {
+    width,
+    height,
+    x: Math.round(area.x + area.width - width - 24),
+    y: Math.round(area.y + area.height - height - 24),
+  };
+}
+
+function openPetWindow(): void {
+  if (petWindow && !petWindow.isDestroyed()) {
+    petWindow.show();
+    return;
+  }
+  petWindow = new BrowserWindow({
+    ...petBounds(),
+    frame: false,
+    transparent: true,
+    hasShadow: false,
+    resizable: false,
+    movable: true,
+    skipTaskbar: true,
+    focusable: false,
+    alwaysOnTop: true,
+    fullscreenable: false,
+    // Nothing to show until it has drawn; a transparent window that appears
+    // early is a grey rectangle for a frame.
+    show: false,
+    webPreferences: {
+      preload: preloadPath(),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
+  });
+  petWindow.setAlwaysOnTop(true, "floating");
+  // Follows you between Spaces, the way a menu bar extra does.
+  petWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false });
+  petWindow.once("ready-to-show", () => petWindow?.showInactive());
+  petWindow.on("closed", () => {
+    petWindow = undefined;
+  });
+
+  const rendererURL = process.env.ELECTRON_RENDERER_URL;
+  if (rendererURL) void petWindow.loadURL(`${rendererURL}#pet`);
+  else void petWindow.loadFile(path.join(__dirname, "../renderer/index.html"), { hash: "pet" });
+}
+
+function closePetWindow(): void {
+  if (petWindow && !petWindow.isDestroyed()) petWindow.close();
+  petWindow = undefined;
+}
+
+export function isPetOpen(): boolean {
+  return Boolean(petWindow && !petWindow.isDestroyed());
+}
 
 export const browserTarget: BrowserTarget = {
   contents: () => {
@@ -1207,6 +1280,20 @@ function registerIpc(): void {
    * when the pane closes — a stale id would let a tool drive a page nobody is
    * looking at.
    */
+  handle(IPC_CHANNELS.togglePet, (visible) => {
+    const wanted = typeof visible === "boolean" ? visible : !isPetOpen();
+    if (wanted) openPetWindow();
+    else closePetWindow();
+    return wanted;
+  });
+  /* Opened from the pet, which is a different window and cannot route itself. */
+  handle(IPC_CHANNELS.focusSession, (sessionId) => {
+    if (typeof sessionId !== "string" || !sessionId) return false;
+    mainWindow?.show();
+    mainWindow?.focus();
+    send(IPC_EVENTS.state, { command: "open-session", sessionId });
+    return true;
+  });
   handle(IPC_CHANNELS.registerBrowserView, (webContentsId) => {
     browserViewId = typeof webContentsId === "number" ? webContentsId : undefined;
     return true;
@@ -1601,6 +1688,14 @@ function buildTrayMenu(): void {
       Menu.buildFromTemplate([
         ...attentionEntries(),
         { label: "Open Capsule", click: () => mainWindow?.show() },
+        {
+          label: isPetOpen() ? "Hide pet" : "Show pet",
+          click: () => {
+            if (isPetOpen()) closePetWindow();
+            else openPetWindow();
+            buildTrayMenu();
+          },
+        },
         { label: "About Capsule", click: () => send(IPC_EVENTS.state, { command: "about" }) },
         { label: "Settings…", click: () => send(IPC_EVENTS.state, { command: "settings" }) },
         { label: "Skills & Packs", click: () => send(IPC_EVENTS.state, { command: "skills" }) },
