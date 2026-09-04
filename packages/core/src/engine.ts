@@ -157,6 +157,7 @@ import {
   type WorkspaceMode,
   FENCE_LABELS,
   fenceUntrusted,
+  isReplyAlreadyRecorded,
 } from "@capsule/shared";
 import {
   DEFAULT_SKILLS,
@@ -2199,8 +2200,14 @@ export class CapsuleEngine {
       ? runHistory.find((run) => Date.parse(run.createdAt) <= timestamp)
       : runHistory.find((run) => ["running", "waiting", "queued"].includes(run.status));
     const messages = this.repos.listMessages(session.id);
-    if (messages.some((item) => item.role === "assistant" && item.content === content &&
-      (active ? item.runId === active.id : item.id === messages.at(-1)?.id))) return;
+    /*
+     * The same reply reaches here twice — streamed, then as a snapshot — and
+     * only the first should become a message. This used to ask whether the
+     * identical text happened to be the newest message in the session, which
+     * is a question about position rather than about the reply, and it let
+     * duplicates through.
+     */
+    if (isReplyAlreadyRecorded(messages, content, active?.id)) return;
     /*
      * The reply belongs to the turn that asked for it. Nothing linked them, so
      * the run finished with no result — and the contract's only decisive check
