@@ -60,9 +60,34 @@ function share(value: number, total: number): string {
   return `${Math.round(percent)}%`;
 }
 
+const USAGE_WINDOW_KEY = "capsule.usageWindowDays";
+
 export function UsageView() {
   const { api } = useWorkspace();
-  const [days, setDays] = useState(30);
+  /*
+   * The window someone chose, kept.
+   *
+   * This reset to thirty days on every visit, so anyone who works in a
+   * different range re-picked it each time they opened the page. Stored the
+   * way the inspector stores its width; an unreadable or unknown value falls
+   * back to the default rather than trusting whatever is in storage.
+   */
+  const [days, setDays] = useState<number>(() => {
+    try {
+      const saved = Number(localStorage.getItem(USAGE_WINDOW_KEY));
+      return WINDOWS.some((option) => option.days === saved) ? saved : 30;
+    } catch {
+      return 30;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(USAGE_WINDOW_KEY, String(days));
+    } catch {
+      // A browser that refuses storage simply forgets, as before.
+    }
+  }, [days]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

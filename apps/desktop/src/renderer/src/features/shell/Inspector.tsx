@@ -7,6 +7,7 @@ import type {
   LocalServer,
 } from "@capsule/shared";
 import { folderBasename, projectFolderList } from "@capsule/shared";
+import { useRememberedScroll } from "../../lib/remembered-scroll";
 import { FileSaveCoordinator, isConflictError } from "../../lib/file-save";
 import { sameListing } from "../../lib/file-listing";
 import { formatUserError } from "../../lib/errors";
@@ -186,6 +187,13 @@ export function Inspector() {
       return 520;
     }
   });
+  /*
+   * The inspector shows one tool at a time, so leaving a pane unmounts it.
+   * Scoped by thread: a Review position belongs to the pull request being
+   * read, and restoring it into a different thread is worse than the top.
+   */
+  const reviewScroll = useRememberedScroll<HTMLDivElement>(`review:${session?.id ?? ""}`);
+  const chatScroll = useRememberedScroll<HTMLDivElement>(`agents:${session?.id ?? ""}`);
   const [isMaximized, setIsMaximized] = useState(false);
   /*
    * Maximising changes the panel's width by a lot, and the width transition
@@ -928,7 +936,7 @@ export function Inspector() {
         )}
 
         {activeTool === "review" && (
-          <div className="codex-tool-pane">
+          <div className="codex-tool-pane" ref={reviewScroll}>
             {selectedPullRequest ? (
               <PullRequestDetailView
                 key={selectedPullRequest.number}
@@ -1144,7 +1152,7 @@ export function Inspector() {
         )}
 
         {activeTool === "chat" && (
-          <div className="codex-tool-pane">
+          <div className="codex-tool-pane" ref={chatScroll}>
             <div className="inspector-block">
               <h4>ACP Harness Agents</h4>
               {harnesses.map((harness) => (
