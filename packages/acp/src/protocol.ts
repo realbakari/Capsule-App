@@ -1,4 +1,4 @@
-import type { AcpModelCatalog } from "@capsule/shared";
+import { sanitizeUntrusted, type AcpModelCatalog } from "@capsule/shared";
 
 /*
  * The wire, on its own.
@@ -109,6 +109,67 @@ export function readStopReason(result: unknown): string | undefined {
   if (!result || typeof result !== "object") return undefined;
   const reason = (result as { stopReason?: unknown }).stopReason;
   return typeof reason === "string" ? reason : undefined;
+}
+
+/** What a stop reason means for the run that carried the turn. */
+export interface TurnOutcome {
+  /** One of the three the engine acts on; anything else leaves a run running. */
+  status: "completed" | "failed" | "cancelled";
+  /** Why, when the turn did not simply finish. */
+  error?: string;
+}
+
+/*
+ * A turn that stopped early is not a turn that finished.
+ *
+ * The protocol says how a turn ended, and Capsule used to read that field and
+ * throw it away: every prompt whose promise resolved was recorded as
+ * "completed". A refusal, an output limit and an ordinary silent reply were
+ * indistinguishable, so the conversation could only fall back to "No reply was
+ * received for this turn" without ever saying why — while the answer had been
+ * on the wire the whole time.
+ *
+ * An unknown reason is still a reason the turn did not finish, so it fails
+ * rather than passing as success. The text is echoed back to the person, and
+ * it comes from the agent process, so it is sanitised and clamped to the
+ * identifier shape these values actually have.
+ */
+export function turnOutcome(stopReason: string | undefined): TurnOutcome {
+  switch (stopReason) {
+    // No reason given is the older behaviour, and means the turn simply ended.
+    case undefined:
+    case "":
+    case "end_turn":
+      return { status: "completed" };
+    case "cancelled":
+    case "canceled":
+      return { status: "cancelled", error: "The turn was cancelled." };
+    case "refusal":
+      return { status: "failed", error: "The agent declined to continue this turn." };
+    case "max_tokens":
+      return {
+        status: "failed",
+        error: "The agent reached its output limit before finishing this turn.",
+      };
+    case "max_turn_requests":
+      return {
+        status: "failed",
+        error: "The agent reached its limit on tool calls before finishing this turn.",
+      };
+    default:
+      return { status: "failed", error: `The agent stopped early: ${readableReason(stopReason)}.` };
+  }
+}
+
+/*
+ * Stop reasons are enum-like identifiers, so anything outside that shape is
+ * not a stop reason and has no business being shown as one.
+ */
+function readableReason(reason: string): string {
+  const cleaned = sanitizeUntrusted(reason, { maxChars: 60, singleLine: true })
+    .replace(/[^A-Za-z0-9 _-]/g, "")
+    .trim();
+  return cleaned || "no reason given";
 }
 
 /**

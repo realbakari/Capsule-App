@@ -145,11 +145,15 @@ export class DirectAcpHost {
   }
 
   /** Send a turn. The reply arrives through `onAcpReply`, as the Gateway's does. */
-  async send(sessionKey: string, prompt: string): Promise<void> {
+  /*
+   * Returns how the turn ended. The caller decides what that means for the
+   * run: a prompt that resolves has not necessarily produced an answer.
+   */
+  async send(sessionKey: string, prompt: string): Promise<{ stopReason?: string }> {
     const session = this.sessions.get(sessionKey);
     if (!session) throw new Error("That agent is no longer running. Start it again.");
     try {
-      await session.prompt(prompt);
+      return await session.prompt(prompt);
     } finally {
       this.emitter.emit("acp-reply", { sessionKey, done: true });
     }

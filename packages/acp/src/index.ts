@@ -7,10 +7,12 @@ export {
   readSessionUpdate,
   readStopReason,
   splitLines,
+  turnOutcome,
   type JsonRpcMessage,
   type PermissionOption,
   type PermissionRequest,
   type SessionUpdate,
+  type TurnOutcome,
 } from "./protocol.js";
 export { DirectAcpSession, type DirectAcpOptions, type DirectAcpEvents, type AcpMcpServer } from "./session.js";
 export { readCliError, explainDirectFailure } from "./errors.js";

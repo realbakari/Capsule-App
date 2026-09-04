@@ -8,6 +8,7 @@ import {
   type AcpMcpServer,
   isDirectSessionKey,
   supportsDirectMode,
+  turnOutcome,
   type AcpReply,
 } from "@capsule/acp";
 import { agentIdForMode, DEFAULT_AGENTS, excludeSystemAgents } from "@capsule/agents";
@@ -1707,21 +1708,28 @@ export class CapsuleEngine {
       const key = session.openclawSessionKey!;
       void this.direct
         .send(key, runtimeMessage.content)
-        .then(() =>
-          this.handleRuntimeEvent(
+        .then((result) => {
+          /*
+           * How the turn ended, not merely that the call returned. A refusal
+           * or an output limit resolves exactly like a finished turn, and
+           * recording both as "completed" left the conversation saying only
+           * that no reply arrived.
+           */
+          const outcome = turnOutcome(result?.stopReason);
+          return this.handleRuntimeEvent(
             session,
             run,
             {
               id: createId("evt"),
               runId: run.id,
               timestamp: nowIso(),
-              type: "run.completed",
-              message: "",
-              data: { status: "completed" },
+              type: outcome.status === "completed" ? "run.completed" : "run.failed",
+              message: outcome.error ?? "",
+              data: { status: outcome.status, ...(outcome.error ? { error: outcome.error } : {}) },
             },
             () => undefined,
-          ),
-        )
+          );
+        })
         .catch((error: unknown) => {
           const detail = error instanceof Error ? error.message : String(error);
           return this.handleRuntimeEvent(
