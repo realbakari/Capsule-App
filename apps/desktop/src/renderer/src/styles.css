@@ -659,8 +659,7 @@
   padding-left: var(--workspace-titlebar-content-left);
 }
 .page-header button,
-.page-header input,
-.page-header .live-chip {
+.page-header input {
   -webkit-app-region: no-drag;
 }
 
@@ -776,38 +775,6 @@
     transform: scale(2.8);
     opacity: 0;
   }
-}
-
-.live-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  height: 1.75rem;
-  padding: 0 0.35rem 0 0.55rem;
-  border-radius: 999px;
-  background: var(--bg-hover);
-  font-size: 0.6875rem;
-  color: var(--subtext-1);
-  overflow: visible;
-  isolation: isolate;
-}
-.live-chip button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.25rem;
-  height: 1.25rem;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--text-faint);
-  border-radius: 999px;
-  flex-shrink: 0;
-  transition: background var(--motion-instant) var(--motion-ease), color var(--motion-instant) var(--motion-ease);
-}
-.live-chip button:hover {
-  color: var(--text);
-  background: var(--bg-hover);
 }
 
 .workspace-body {
@@ -6414,25 +6381,31 @@ div.changed-files-head { cursor: default; }
   gap: 0.375rem;
   margin-right: 0.25rem;
   min-width: 0;
-  overflow: hidden;
 }
 /*
- * Let the controls narrow instead of losing one.
+ * Keep the words, and keep every control reachable.
  *
- * A flex item defaults to min-width: auto, so with nowrap labels these refused
- * to shrink below their full width; the row overflowed and `overflow: hidden`
- * removed the last control outright — Commit was clipped away at an ordinary
- * window size, with no scroll and no menu to reach it. The ellipsis already
- * declared on the label could never fire, because the button never shrank.
- * With a floor of zero they narrow, the label truncates, and every control
- * stays on screen and clickable.
+ * `overflow: hidden` alone deleted whatever fell off the end — Commit sat 72px
+ * past the row at an ordinary window size, with no scroll and no menu. Letting
+ * the buttons shrink instead only traded that for illegibility: they squeezed
+ * uniformly until a branch called "main" read as "m…", which tells a reader
+ * less than a clipped button does.
+ *
+ * So the labels are not squeezed at all, and the row scrolls when it genuinely
+ * runs out of room. The scrollbar is hidden because this is a strip of four
+ * controls, not a document. A priority-ordered overflow menu would be better
+ * still — the low-priority actions folding into a "…" — but nothing here is
+ * ever unreachable or unreadable.
  */
-.topbar-project-actions > *,
-.topbar-project-actions .topbar-chip-btn {
-  min-width: 0;
+.topbar-project-actions {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
 }
-/* Icons keep their size; only the words give way. */
-.topbar-chip-btn > svg {
+.topbar-project-actions::-webkit-scrollbar {
+  display: none;
+}
+.topbar-project-actions > * {
   flex-shrink: 0;
 }
 

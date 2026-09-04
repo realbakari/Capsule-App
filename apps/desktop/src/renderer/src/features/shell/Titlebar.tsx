@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect } from "react";
-import { harnessDisplayName } from "../../lib/harness";
 import { useWorkspace } from "../../lib/workspace";
 import { SidebarToggle } from "./SidebarControl";
 import { ProjectActionsControl } from "./ProjectActionsControl";
@@ -30,7 +29,6 @@ const VIEW_TITLE: Record<string, string> = {
 export function Titlebar() {
   const {
     connected,
-    harnesses,
     status,
     setView,
     view,
@@ -47,8 +45,6 @@ export function Titlebar() {
     setTerminalOpen,
     activeRun,
     stopRun,
-    cancelHarness,
-    closeHarness,
     createTask,
     initializeGit,
     setNotice,
@@ -73,8 +69,6 @@ export function Titlebar() {
   }
 
   const label = connected ? "OpenClaw connected" : (status?.state ?? "Offline");
-  const harnessLive = Boolean(session?.harnessId && session.harnessState && session.harnessState !== "closed");
-  const harnessName = harnessDisplayName(harnesses, session?.harnessId);
 
   const projectName = project?.name ?? "Inbox";
   // Whatever the thread is actually called. Substituting a nicer-sounding
@@ -186,27 +180,6 @@ export function Titlebar() {
           <button className="icon-btn" title="New conversation (⌘N)" aria-label="New conversation (⌘N)" onClick={() => void createTask()}>
             <PlusIcon size={14} />
           </button>
-        )}
-
-        {harnessLive && (
-          <span className="live-chip">
-            <span className="dot on live" title={`${harnessName} is running`} />
-            <span>{harnessName}</span>
-            {/*
-              * Only when nothing else offers to stop something. With a run in
-              * flight the header drew this beside "Stop run" — two stop
-              * squares, touching, doing different things, neither saying
-              * which. That one stops the work you can see, so it wins.
-              */}
-            {!activeRun && (
-              <button title="Cancel turn" aria-label="Cancel turn" onClick={() => void cancelHarness()}>
-                <StopIcon size={10} />
-              </button>
-            )}
-            <button title="Close harness" aria-label="Close harness" onClick={() => void closeHarness()}>
-              <XIcon size={10} />
-            </button>
-          </span>
         )}
 
         {activeRun && (
