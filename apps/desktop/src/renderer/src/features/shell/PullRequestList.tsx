@@ -38,7 +38,15 @@ export function PullRequestList({ items, loading, error, onRefresh, onSelect }: 
             <b>{item.title}</b>
             <small>{[item.author, item.headRefName].filter(Boolean).join(" · ") || "Open pull request"}</small>
           </span>
-          <span className={`codex-pr-checks ${item.checks ?? "none"}`}>{item.isDraft ? "Draft" : item.checks ?? "Open"}</span>
+          {/*
+            * A draft is grey, whatever its checks say. The class came from
+            * `checks` even when the label read "Draft", so a draft with a
+            * green tick rendered the word "Draft" in the colour that means
+            * ready to merge.
+            */}
+          <span className={`codex-pr-checks ${item.isDraft ? "draft" : (item.checks ?? "none")}`}>
+            {item.isDraft ? "Draft" : (item.checks ?? "Open")}
+          </span>
         </button>
       ))}
       {items && items.length >= 50 ? <p className="faint">Showing the first 50 open pull requests. Filters apply to these results.</p> : null}

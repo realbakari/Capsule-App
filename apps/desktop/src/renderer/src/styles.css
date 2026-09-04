@@ -2649,6 +2649,8 @@ select:focus,
 .codex-pr-checks.failure,
 .codex-pr-checks.failing { color: var(--red); }
 .codex-pr-checks.pending { color: var(--yellow); }
+/* A draft is not ready, whatever its checks came back as. */
+.codex-pr-checks.draft { color: var(--text-faint); }
 .pr-detail {
   display: grid;
   gap: 0;
@@ -9153,13 +9155,13 @@ details.card > summary {
   align-items: center;
   gap: 0.35rem;
   font-size: 0.75rem;
-  color: var(--text-dim);
+  color: var(--text-faint);
   white-space: nowrap;
 }
 .checks-badge--success { color: var(--text-muted); }
 .checks-badge--success svg { color: var(--green); }
 .checks-badge--failure { color: var(--red); }
-.checks-badge--pending { color: var(--text-dim); }
+.checks-badge--pending { color: var(--text-faint); }
 
 .pr-collapsible-head {
   display: flex;
@@ -9174,10 +9176,10 @@ details.card > summary {
   text-align: left;
 }
 .pr-collapsible-head h4 { margin: 0; }
-.pr-collapsible-caret { color: var(--text-dim); font-size: 0.7rem; }
+.pr-collapsible-caret { color: var(--text-faint); font-size: 0.7rem; }
 .pr-collapsible-count {
   margin-left: auto;
-  color: var(--text-dim);
+  color: var(--text-faint);
   font-size: 0.82rem;
 }
 
@@ -9198,17 +9200,17 @@ a.pr-check:hover { background: var(--bg-hover); }
 .pr-check-copy { display: grid; min-width: 0; gap: 0.15rem; }
 .pr-check-glyph { display: flex; align-items: center; }
 .pr-check-workflow {
-  color: var(--text-dim);
+  color: var(--text-faint);
   font-size: 0.78rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.pr-check-state { color: var(--text-dim); font-size: 0.75rem; text-transform: capitalize; }
+.pr-check-state { color: var(--text-faint); font-size: 0.75rem; text-transform: capitalize; }
 .pr-check-glyph--success { color: var(--green); }
 .pr-check-glyph--failure, .pr-check-state--failure { color: var(--red); }
-.pr-check-glyph--pending, .pr-check-state--pending { color: var(--text-dim); }
-.pr-check-glyph--skipped, .pr-check-glyph--neutral, .pr-check-glyph--cancelled { color: var(--text-faint, var(--text-dim)); }
+.pr-check-glyph--pending, .pr-check-state--pending { color: var(--text-faint); }
+.pr-check-glyph--skipped, .pr-check-glyph--neutral, .pr-check-glyph--cancelled { color: var(--text-faint); }
 
 .pr-file-diffs { display: flex; flex-direction: column; gap: 0; }
 .file-diff {
@@ -9233,7 +9235,7 @@ a.pr-check:hover { background: var(--bg-hover); }
   font-size: 0.75rem;
 }
 .file-diff-head:hover { background: var(--bg-hover); }
-.file-diff-caret { color: var(--text-dim); font-size: 0.7rem; }
+.file-diff-caret { color: var(--text-faint); font-size: 0.7rem; }
 .file-diff-path {
   display: flex;
   min-width: 0;
@@ -9241,7 +9243,7 @@ a.pr-check:hover { background: var(--bg-hover); }
   flex: 1 1 auto;
 }
 .file-diff-dir {
-  color: var(--text-dim);
+  color: var(--text-faint);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -9249,12 +9251,12 @@ a.pr-check:hover { background: var(--bg-hover); }
   text-align: left;
 }
 .file-diff-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.file-diff-from { max-width: 25%; overflow: hidden; text-overflow: ellipsis; color: var(--text-dim); font-size: 0.75rem; white-space: nowrap; }
+.file-diff-from { max-width: 25%; overflow: hidden; text-overflow: ellipsis; color: var(--text-faint); font-size: 0.75rem; white-space: nowrap; }
 .file-diff-status {
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--text-dim);
+  color: var(--text-faint);
   white-space: nowrap;
 }
 .file-diff-status--added { color: var(--green); }
@@ -9312,13 +9314,13 @@ a.pr-check:hover { background: var(--bg-hover); }
 .diff-gutter {
   padding: 0 0.45rem;
   text-align: right;
-  color: var(--text-dim);
+  color: var(--text-faint);
   background: transparent;
   user-select: none;
   white-space: nowrap;
 }
 .diff-text { white-space: pre; padding: 0 0.6rem; font: inherit; }
-.diff-marker { display: inline-block; width: 1ch; color: var(--text-dim); }
+.diff-marker { display: inline-block; width: 1ch; color: var(--text-faint); }
 
 /* The tint goes on the cells, since the row itself no longer draws a box. */
 .diff-row--add > *,
@@ -9333,7 +9335,7 @@ a.pr-check:hover { background: var(--bg-hover); }
 .diff-split-row--hunk > .diff-text {
   grid-column: 1 / -1;
   background: var(--surface-1);
-  color: var(--text-dim);
+  color: var(--text-faint);
   padding: 0.35rem 0.6rem;
   font-size: 0.6875rem;
 }
@@ -9846,7 +9848,7 @@ details[open] > summary > .pr-disclosure-caret { transform: none; }
   margin: 0.4rem 0;
   padding: 0.1rem 0 0.1rem 0.75rem;
   border-left: 3px solid var(--border-color);
-  color: var(--text-dim);
+  color: var(--text-faint);
 }
 .md-alert {
   margin: 0.5rem 0;

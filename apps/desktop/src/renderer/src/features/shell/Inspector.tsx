@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type {
   FileEntry,
   FilePreview,
@@ -187,6 +187,24 @@ export function Inspector() {
     }
   });
   const [isMaximized, setIsMaximized] = useState(false);
+  /*
+   * Maximising changes the panel's width by a lot, and the width transition
+   * turned that into the chat column being squeezed for the length of the
+   * animation. A drag already opts out; so does this, for the two frames the
+   * new width needs to land.
+   */
+  const [sizing, setSizing] = useState(false);
+  useLayoutEffect(() => {
+    setSizing(true);
+    let second = 0;
+    const first = requestAnimationFrame(() => {
+      second = requestAnimationFrame(() => setSizing(false));
+    });
+    return () => {
+      cancelAnimationFrame(first);
+      cancelAnimationFrame(second);
+    };
+  }, [isMaximized]);
   const [resizing, setResizing] = useState(false);
   const [showTree, setShowTree] = useState(true);
 
@@ -656,7 +674,7 @@ export function Inspector() {
   return (
     <aside
       className={`inspector codex-inspector${isMaximized ? " maximized" : ""}`}
-      data-resizing={resizing ? "true" : undefined}
+      data-resizing={resizing || sizing ? "true" : undefined}
       style={!isMaximized ? { width: `${panelWidth}px` } : undefined}
     >
       <div className="inspector-rail" onPointerDown={startResize} title="Drag to resize pane" />
