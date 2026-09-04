@@ -30,7 +30,8 @@ export function TurnOutcome({ run, cwd }: { run: Run; cwd?: string }) {
   if (!outcome?.files.length) return null;
   const restore = () => setConfirm({
     title: "Restore this turn?",
-    detail: "Files in the project folder go back to how this turn left them. Anything changed since — by the agent or by you — is discarded.",
+    detail:
+      "Files in the project folder go back to how they stood when this turn finished — which includes anything you changed before it, not only the agent's work. Anything changed since is discarded.",
     confirmLabel: "Restore",
     danger: true,
     onConfirm: async () => {

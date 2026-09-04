@@ -56,9 +56,28 @@ export function ChangedFilesCard({ files, onOpenDiff, onRestore, restoring = fal
 
   return (
     <div className="changed-files">
-      <FileControl className="changed-files-head" onClick={onOpenDiff} title={onOpenDiff ? "View this turn's saved diff" : "Files reported by this turn"}>
+      {/*
+        * "Since", not "by".
+        *
+        * This is measured from the previous turn's checkpoint to this one's,
+        * so it holds every change the project saw in between — including the
+        * ones the person made in a terminal while the agent was idle. A turn
+        * that committed two files was headed "16 files changed" because four
+        * commits had been made outside the app in between. The measurement is
+        * worth keeping; the claim that the agent made it was not.
+        */}
+      <FileControl
+        className="changed-files-head"
+        onClick={onOpenDiff}
+        title={
+          onOpenDiff
+            ? "View the saved diff for this point in the thread"
+            : "Everything that changed in the project between the previous turn and this one"
+        }
+      >
         <span className="changed-files-count">
           {files.length} {files.length === 1 ? "file" : "files"} changed
+          <span className="changed-files-scope"> since the previous turn</span>
         </span>
         {/* Binary files carry no line stats, so the totals can be absent even
             when files did change. Showing nothing beats showing a fake 0. */}

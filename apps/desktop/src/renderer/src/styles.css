@@ -9938,3 +9938,6 @@ details[open] > summary > .pr-disclosure-caret { transform: none; }
   cursor: pointer;
 }
 .composer-attachment--image > button:hover { background: rgb(0 0 0 / 0.75); }
+
+/* The qualifier is secondary to the count it corrects. */
+.changed-files-scope { color: var(--text-faint); font-weight: 400; }
