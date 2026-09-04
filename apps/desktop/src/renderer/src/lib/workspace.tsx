@@ -679,6 +679,18 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
         if (command === "about") setAboutOpen(true);
         if (command === "approvals") setView("approvals");
         if (command === "runs") setView("history");
+        /*
+         * Opened from the menu bar, which lists the threads waiting on a
+         * person. Landing on the thread is the whole point of the entry, so
+         * the chat view comes with it.
+         */
+        if (command === "open-session") {
+          const target = (payload as { sessionId?: string }).sessionId;
+          if (target) {
+            setSessionId(target);
+            setView("chat");
+          }
+        }
         if (command === "harness") setView("runtimes");
         if (command === "new-project") void createProjectFromFolder();
         if (command === "open-folder") void pickProjectDirectory();

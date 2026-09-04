@@ -42,6 +42,9 @@ import {
   isNewerRelease,
   pickReleaseAsset,
   PRESET_HARNESSES,
+  type AttentionState,
+  attentionLabel,
+  summariseAttention,
   type MessageAttachment,
   type UpdateCheck,
   IPC_EVENTS,
@@ -1393,6 +1396,7 @@ function bindEngineEvents(): void {
     send(IPC_EVENTS.run, run);
     notifyRunSettled(run);
     applyKeepAwake(engine?.getSettings());
+    refreshTrayAttention();
   });
   engine.events.on("run-event", (event) => send(IPC_EVENTS.run, event));
   engine.events.on("message", (message) => send(IPC_EVENTS.message, message));
@@ -1400,6 +1404,7 @@ function bindEngineEvents(): void {
   engine.events.on("approval", (approval: ApprovalRequest) => {
     send(IPC_EVENTS.approval, approval);
     if (approval.status === "pending") notifyApproval(approval);
+    refreshTrayAttention();
   });
 }
 
@@ -1541,8 +1546,60 @@ function createTray(): void {
     }
     tray = new Tray(image);
     tray.setToolTip("Capsule");
+    buildTrayMenu();
+  } catch (error) {
+    console.warn("Menu bar extra failed", error);
+  }
+}
+
+/*
+ * The menu bar extra, as a place to find the thread that wants you.
+ *
+ * It held a fixed list of destinations and never changed, so with a dozen
+ * threads running there was no way to tell which one had stopped for a
+ * decision without opening them. The threads waiting on a person go at the
+ * top, most urgent first, and clicking one opens it.
+ */
+const ATTENTION_MARK: Record<AttentionState, string> = {
+  "needs-input": "●",
+  blocked: "✕",
+  ready: "✓",
+  running: "○",
+};
+
+function attentionEntries(): Electron.MenuItemConstructorOptions[] {
+  if (!engine) return [];
+  try {
+    const summary = summariseAttention({
+      sessions: engine.listSessions(),
+      runs: engine.listRuns(),
+    });
+    if (summary.items.length === 0) return [];
+    // A menu is not a dashboard; the tail is reachable in the window.
+    const shown = summary.items.slice(0, 8);
+    return [
+      { label: attentionLabel(summary) ?? "Waiting", enabled: false },
+      ...shown.map((item) => ({
+        label: `${ATTENTION_MARK[item.state]}  ${item.title}`,
+        click: () => {
+          mainWindow?.show();
+          send(IPC_EVENTS.state, { command: "open-session", sessionId: item.sessionId });
+        },
+      })),
+      { type: "separator" as const },
+    ];
+  } catch {
+    // The menu must open whatever the engine is doing.
+    return [];
+  }
+}
+
+function buildTrayMenu(): void {
+  if (!tray) return;
+  try {
     tray.setContextMenu(
       Menu.buildFromTemplate([
+        ...attentionEntries(),
         { label: "Open Capsule", click: () => mainWindow?.show() },
         { label: "About Capsule", click: () => send(IPC_EVENTS.state, { command: "about" }) },
         { label: "Settings…", click: () => send(IPC_EVENTS.state, { command: "settings" }) },
@@ -1554,7 +1611,30 @@ function createTray(): void {
       ]),
     );
   } catch (error) {
-    console.warn("Menu bar extra failed", error);
+    console.warn("Menu bar menu failed", error);
+  }
+}
+
+/*
+ * Rebuild on every run and approval. A menu bar extra that is right only when
+ * it was last opened is worse than one that says nothing.
+ */
+function refreshTrayAttention(): void {
+  if (!tray || !engine) return;
+  buildTrayMenu();
+  try {
+    const summary = summariseAttention({ sessions: engine.listSessions(), runs: engine.listRuns() });
+    const label = attentionLabel(summary);
+    tray.setToolTip(label ? `Capsule — ${label}` : "Capsule");
+    /*
+     * A count in the menu bar only when someone is actually needed. "Running"
+     * is the app doing its job, and a number that is always there stops being
+     * read.
+     */
+    const waiting = summary.counts["needs-input"] + summary.counts.blocked;
+    if (process.platform === "darwin") tray.setTitle(waiting > 0 ? ` ${waiting}` : "");
+  } catch {
+    // Never let the menu bar take the app down.
   }
 }
 

@@ -1,4 +1,5 @@
 export * from "./appearance.js";
+export * from "./attention.js";
 export * from "./context-menu.js";
 export * from "./control-notice.js";
 export * from "./diff.js";
