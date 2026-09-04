@@ -5,6 +5,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
   DirectAcpHost,
+  type AcpMcpServer,
   isDirectSessionKey,
   supportsDirectMode,
   type AcpReply,
@@ -233,6 +234,18 @@ export class CapsuleEngine {
    * turn pipeline does not branch on which route carried it.
    */
   private direct = new DirectAcpHost();
+
+  /**
+   * MCP servers to offer agents Capsule spawns itself.
+   *
+   * Set by the desktop app once its own servers are listening — the URL has to
+   * exist before an agent can be told about it — and applies to sessions
+   * started from then on, not ones already running.
+   */
+  offerDirectMcpServers(servers: AcpMcpServer[]): void {
+    this.direct.offerMcpServers(servers);
+  }
+
   private directUnsub?: () => void;
   private settings: CapsuleSettings;
   private logs: string[] = [];

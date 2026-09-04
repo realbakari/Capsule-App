@@ -9,7 +9,7 @@ import {
 } from "@capsule/shared";
 
 import { explainDirectFailure, readCliError } from "./errors.js";
-import { DirectAcpSession } from "./session.js";
+import { DirectAcpSession, type AcpMcpServer } from "./session.js";
 
 /*
  * Direct mode.
@@ -61,6 +61,18 @@ export function directCapableHarnesses(): HarnessId[] {
 }
 
 export class DirectAcpHost {
+  /*
+   * MCP servers offered to every agent this host spawns. Set by the
+   * application once its servers are listening, because the URL has to exist
+   * before an agent can be told about it.
+   */
+  private mcpServers: AcpMcpServer[] = [];
+
+  /** Replaces the set offered to agents started from now on. */
+  offerMcpServers(servers: AcpMcpServer[]): void {
+    this.mcpServers = servers;
+  }
+
   readonly kind = "direct" as const;
 
   private readonly emitter = new EventEmitter();
@@ -107,10 +119,15 @@ export class DirectAcpHost {
       else args.push("--model", input.model);
     }
 
+    /*
+     * Whatever the host wants this agent to be able to reach. Capsule passes
+     * its browser tools here; an empty list is the old behaviour.
+     */
     const session = new DirectAcpSession({
       command: preset.acpxCommand.command,
       args,
       cwd: input.cwd,
+      ...(this.mcpServers.length > 0 ? { mcpServers: this.mcpServers } : {}),
     });
 
     const key = directSessionKey(input.harnessId, `${Date.now().toString(36)}${this.counter++}`);

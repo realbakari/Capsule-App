@@ -51,6 +51,22 @@ export interface DirectAcpOptions {
   env?: NodeJS.ProcessEnv;
   /** How long to wait for a reply to a request. A prompt is exempt. */
   timeoutMs?: number;
+  /*
+   * MCP servers to offer the agent when the session opens.
+   *
+   * Both agents Capsule spawns report `mcpCapabilities: {http: true}`, so
+   * these are HTTP entries rather than child processes. Sent as given: the
+   * caller knows what it is running and what it will let the agent reach.
+   */
+  mcpServers?: AcpMcpServer[];
+}
+
+/** An HTTP MCP server, in the shape `session/new` takes. */
+export interface AcpMcpServer {
+  type: "http";
+  name: string;
+  url: string;
+  headers?: Array<{ name: string; value: string }>;
 }
 
 export class DirectAcpSession {
@@ -136,7 +152,7 @@ export class DirectAcpSession {
 
     const created = await this.request("session/new", {
       cwd: this.options.cwd ?? process.cwd(),
-      mcpServers: [],
+      mcpServers: this.options.mcpServers ?? [],
     });
     const sessionId = (created as { sessionId?: unknown })?.sessionId;
     if (typeof sessionId !== "string" || !sessionId) {

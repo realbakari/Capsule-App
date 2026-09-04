@@ -35,6 +35,7 @@ import type { CapsuleEngine } from "@capsule/core";
 import { mergePath, readLoginShellEnvironment } from "@capsule/harness";
 import electronUpdater from "electron-updater";
 import type { BrowserTarget } from "./browser-tools";
+import { startBrowserMcpServer, type BrowserMcpServer } from "./browser-mcp";
 import { Updater, mergeUpdateStatus } from "./updater";
 import {
   IPC_CHANNELS,
@@ -177,6 +178,8 @@ function withThumbnails(attachments: MessageAttachment[]): MessageAttachment[] {
  * held, so a destroyed page is never driven: the id outlives the contents.
  */
 let browserViewId: number | undefined;
+
+let browserMcp: BrowserMcpServer | undefined;
 
 export const browserTarget: BrowserTarget = {
   contents: () => {
@@ -1577,6 +1580,26 @@ async function startEngineOnce(): Promise<void> {
     },
   });
   await engine.start();
+  /*
+   * The browser tools, offered to agents Capsule spawns itself.
+   *
+   * Started after the engine so its URL exists before any agent is told about
+   * it, and best effort: a port that will not bind is a browser the agent
+   * cannot use, not a Capsule that will not open.
+   */
+  try {
+    browserMcp = await startBrowserMcpServer(browserTarget);
+    engine.offerDirectMcpServers([
+      {
+        type: "http",
+        name: "capsule-browser",
+        url: browserMcp.url,
+        headers: Object.entries(browserMcp.headers).map(([name, value]) => ({ name, value })),
+      },
+    ]);
+  } catch (error) {
+    console.warn("Browser tools unavailable:", error instanceof Error ? error.message : error);
+  }
   bindEngineEvents();
   applyDesktopSettings(engine.getSettings());
   send(IPC_EVENTS.connection, await engine.getStatus());
