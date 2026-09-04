@@ -292,7 +292,7 @@ describe("CapsuleEngine first user flow", () => {
       kind: "agent",
       recentRunIds: [],
     });
-    (engine as unknown as { usingMock: boolean }).usingMock = false;
+    (engine as unknown as { usingMock: boolean; }).usingMock = false;
 
     const agents = await engine.listAgents();
 
@@ -361,7 +361,7 @@ describe("CapsuleEngine first user flow", () => {
       engine.searchFiles(project.id, "notes", extra).some((entry) => entry.name === "notes.md"),
     ).toBe(true);
     expect(() => engine.listFiles(project.id, ".", "/not-attached")).toThrow(/not attached/i);
-    engine.deleteProject(project.id);
+    await engine.deleteProject(project.id);
     expect(engine.getProject(project.id)).toBeUndefined();
     expect(engine.listSessions().some((item) => item.id === session.id)).toBe(false);
     expect(engine.listProjects().some((item) => item.id === keep?.id || item.name === "Inbox")).toBe(
@@ -563,7 +563,7 @@ describe("project workspace tools", () => {
     expect(session.workspaceMode).toBe("worktree");
     expect(session.workingDirectory).not.toBe(repository);
     expect(session.worktreeBranch).toMatch(/^capsule\//);
-    expect(engine.gitStatus(project.id, session.id).isRepo).toBe(true);
+    expect((await engine.gitStatus(project.id, session.id)).isRepo).toBe(true);
 
     engine.runProjectAction(project.id, "where", session.id);
     for (let attempt = 0; attempt < 50; attempt += 1) {
@@ -576,7 +576,7 @@ describe("project workspace tools", () => {
     expect(action?.output).toContain(session.workingDirectory);
 
     const worktree = session.workingDirectory!;
-    engine.deleteSession(session.id);
+    await engine.deleteSession(session.id);
     expect(() => readFileSync(path.join(worktree, "README.md"))).toThrow();
     await engine.stop();
   });
@@ -629,7 +629,8 @@ describe("operator acknowledgements", () => {
       await waitForRun(engine, sent.run.id);
       const internal = engine as unknown as {
         usingMock: boolean;
-        handleAcpReply: (reply: { sessionKey: string; text: string; done: boolean }) => void;
+        repos: { updateRun: (run: Run) => void };
+        handleAcpReply: (reply: { sessionKey: string; text: string; done: boolean; }) => void;
         handleRuntimeEvent: (session: Session, run: Run, event: RunEvent, stop: () => void) => Promise<void>;
       };
       const key = sent.session.openclawSessionKey!;
@@ -642,6 +643,12 @@ describe("operator acknowledgements", () => {
 
       internal.usingMock = false;
       const run = engine.getRun(sent.run.id)!;
+      // Exercise an actual completion, not a duplicate terminal frame for
+      // the mock run that has already finished (duplicates are ignored).
+      run.status = "running";
+      run.completedAt = undefined;
+      run.result = undefined;
+      internal.repos.updateRun(run);
       await internal.handleRuntimeEvent(sent.session, run, {
         id: "control-complete", runId: run.id, type: "lifecycle", message: "Completed", timestamp: new Date().toISOString(),
         data: { status: "completed", output: acknowledgement },
@@ -801,8 +808,8 @@ describe("one harness listing per tick", () => {
     });
     await engine.start();
     let readings = 0;
-    const original = (engine as unknown as { readHarnesses: () => Promise<unknown> }).readHarnesses;
-    (engine as unknown as { readHarnesses: () => Promise<unknown> }).readHarnesses = async function counted() {
+    const original = (engine as unknown as { readHarnesses: () => Promise<unknown>; }).readHarnesses;
+    (engine as unknown as { readHarnesses: () => Promise<unknown>; }).readHarnesses = async function counted() {
       readings += 1;
       return original.call(engine);
     };
@@ -879,7 +886,7 @@ describe("what a thread shows while a turn is starting", () => {
     // The run event arrives before sendMessage resolves, which is what lets
     // the UI show a turn while the agent is still being started.
     const runsSeenEarly: string[] = [];
-    const onRun = (run: unknown) => runsSeenEarly.push((run as { id: string }).id);
+    const onRun = (run: unknown) => runsSeenEarly.push((run as { id: string; }).id);
     engine.events.on("run", onRun);
     const sent = engine.sendMessage({ sessionId: session.id, content: "hello" });
     const { run } = await sent;
@@ -942,23 +949,23 @@ describe("what a turn changed", () => {
     await settle();
 
     // Only the file the second turn added, not everything in the thread.
-    const snapshot = engine.turnDiff(second.id);
+    const snapshot = await engine.turnDiff(second.id);
     const changed = snapshot.files.map((file) => file.path);
     expect(changed).toEqual(["second.txt"]);
     expect(snapshot.available).toBe(true);
 
     // A first checkpoint has no before-state. It must not use the live tree
     // and start claiming edits made long after the original reply.
-    expect(engine.turnDiff(first.id)).toEqual({ patch: "", files: [], available: false });
+    expect(await engine.turnDiff(first.id)).toEqual({ patch: "", files: [], available: false });
     writeFileSync(path.join(repo, "first.txt"), "changed later by the user\n");
     writeFileSync(path.join(repo, "second.txt"), "also changed later\n");
-    expect(engine.turnDiff(first.id)).toEqual({ patch: "", files: [], available: false });
-    expect(engine.turnDiff(second.id)).toEqual(snapshot);
+    expect(await engine.turnDiff(first.id)).toEqual({ patch: "", files: [], available: false });
+    expect(await engine.turnDiff(second.id)).toEqual(snapshot);
 
     // Missing saved refs are unavailable, not a signal to compare with the
     // current tree instead. This ref belongs only to this test's temp repo.
     execFileSync("git", ["update-ref", "-d", engine.getRun(first.id)!.checkpointRef!], { cwd: repo });
-    expect(engine.turnDiff(second.id)).toEqual({ patch: "", files: [], available: false });
+    expect(await engine.turnDiff(second.id)).toEqual({ patch: "", files: [], available: false });
     await engine.stop();
   });
 });

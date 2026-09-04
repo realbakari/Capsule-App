@@ -1,7 +1,9 @@
-import { spawnSync } from "node:child_process";
+import { inRepository } from "./git-process.js";
 import { randomUUID } from "node:crypto";
-import fs from "node:fs";
+import fs from "node:fs/promises";
 import path from "node:path";
+import { git } from "./git-process.js";
+import type { WorkspaceRevision } from "@capsule/shared";
 
 /**
  * Per-turn workspace checkpoints, stored as hidden Git refs.
@@ -25,7 +27,6 @@ import path from "node:path";
  */
 
 const REF_ROOT = "refs/capsule/checkpoints";
-const GIT_TIMEOUT_MS = 10_000;
 
 export interface GitResult {
   ok: boolean;
@@ -33,19 +34,6 @@ export interface GitResult {
   stderr: string;
 }
 
-function git(cwd: string, args: string[], env?: NodeJS.ProcessEnv): GitResult {
-  const result = spawnSync("git", args, {
-    cwd,
-    encoding: "utf8",
-    timeout: GIT_TIMEOUT_MS,
-    env: env ?? process.env,
-  });
-  return {
-    ok: result.status === 0,
-    stdout: result.stdout ?? "",
-    stderr: (result.stderr ?? "").trim(),
-  };
-}
 
 /**
  * Ref for one turn. Session and turn are sanitised because they land in a ref
@@ -58,124 +46,142 @@ export function checkpointRef(sessionId: string, turn: number): string {
   return `${REF_ROOT}/${safeSession}/turn/${safeTurn}`;
 }
 
-export function isGitRepository(cwd: string): boolean {
-  return git(cwd, ["rev-parse", "--is-inside-work-tree"]).stdout.trim() === "true";
+export async function isGitRepository(cwd: string): Promise<boolean> {
+  return (await git(cwd, ["rev-parse", "--is-inside-work-tree"])).stdout.trim() === "true";
 }
 
 /** The real .git directory, which is not cwd/.git inside a worktree. */
-function gitCommonDir(cwd: string): string | undefined {
-  const result = git(cwd, ["rev-parse", "--git-common-dir"]);
+async function gitCommonDir(cwd: string): Promise<string | undefined> {
+  const result = await git(cwd, ["rev-parse", "--git-common-dir"]);
   if (!result.ok) return undefined;
   const dir = result.stdout.trim();
   if (!dir) return undefined;
   return path.isAbsolute(dir) ? dir : path.resolve(cwd, dir);
 }
 
-function hasHead(cwd: string): boolean {
-  return git(cwd, ["rev-parse", "--verify", "HEAD"]).ok;
-}
-
 /**
  * Capture the current worktree at `ref`. Safe to call on a repository with no
  * commits yet, and a no-op result rather than a throw when cwd is not a repo.
  */
-export function captureCheckpoint(cwd: string, ref: string): { ok: boolean; detail: string } {
-  if (!isGitRepository(cwd)) return { ok: false, detail: "Not a Git repository." };
-  const commonDir = gitCommonDir(cwd);
-  if (!commonDir) return { ok: false, detail: "Could not resolve the Git directory." };
-
-  const tempIndex = path.join(commonDir, `capsule-checkpoint-index-${randomUUID()}`);
-  const env: NodeJS.ProcessEnv = {
-    ...process.env,
-    GIT_INDEX_FILE: tempIndex,
-    // A checkpoint is Capsule's bookkeeping, not the user's authorship.
-    GIT_AUTHOR_NAME: "Capsule",
-    GIT_AUTHOR_EMAIL: "capsule@localhost",
-    GIT_COMMITTER_NAME: "Capsule",
-    GIT_COMMITTER_EMAIL: "capsule@localhost",
-  };
-
-  try {
-    if (hasHead(cwd)) {
-      const seeded = git(cwd, ["read-tree", "HEAD"], env);
-      if (!seeded.ok) return { ok: false, detail: seeded.stderr || "read-tree failed." };
-    }
-
-    const staged = git(cwd, ["add", "-A", "--", "."], env);
-    if (!staged.ok) return { ok: false, detail: staged.stderr || "add failed." };
-
-    const tree = git(cwd, ["write-tree"], env);
-    const treeOid = tree.stdout.trim();
-    if (!tree.ok || !treeOid) return { ok: false, detail: tree.stderr || "write-tree failed." };
-
-    const commit = git(cwd, ["commit-tree", treeOid, "-m", `capsule checkpoint ${ref}`], env);
-    const commitOid = commit.stdout.trim();
-    if (!commit.ok || !commitOid) {
-      return { ok: false, detail: commit.stderr || "commit-tree failed." };
-    }
-
-    const updated = git(cwd, ["update-ref", ref, commitOid]);
-    if (!updated.ok) return { ok: false, detail: updated.stderr || "update-ref failed." };
-    return { ok: true, detail: commitOid };
-  } finally {
+export async function captureCheckpoint(cwd: string, ref: string): Promise<{ ok: boolean; detail: string; revision?: WorkspaceRevision; }> {
+  return inRepository(cwd, async () => {
     try {
-      fs.rmSync(tempIndex, { force: true });
-    } catch {
-      // A leftover index costs a few kilobytes; it must not fail the turn.
+      const revision = await readWorktreeRevision(cwd);
+      const env = { ...process.env, GIT_AUTHOR_NAME: "Capsule", GIT_AUTHOR_EMAIL: "capsule@localhost", GIT_COMMITTER_NAME: "Capsule", GIT_COMMITTER_EMAIL: "capsule@localhost" };
+      const commit = await git(cwd, ["commit-tree", revision.tree, "-m", `capsule checkpoint ${ref}`], env);
+      if (!commit.ok) return { ok: false, detail: commit.stderr };
+      const updated = await git(cwd, ["update-ref", ref, commit.stdout.trim()]);
+      return { ok: updated.ok, detail: updated.ok ? commit.stdout.trim() : updated.stderr, revision };
+    } catch (error) {
+      return { ok: false, detail: error instanceof Error ? error.message : String(error) };
     }
-  }
+  });
 }
 
-export function hasCheckpoint(cwd: string, ref: string): boolean {
-  return git(cwd, ["rev-parse", "--verify", `${ref}^{commit}`]).ok;
+/** Includes staged, unstaged and untracked (not ignored) files, without touching the user's index. */
+export async function readWorktreeRevision(cwd: string): Promise<WorkspaceRevision> {
+  return inRepository(cwd, async () => {
+    if (!(await isGitRepository(cwd))) throw new Error("Not a Git repository.");
+    const commonDir = await gitCommonDir(cwd);
+    if (!commonDir) throw new Error("Could not resolve the Git directory.");
+
+    const tempIndex = path.join(commonDir, `capsule-checkpoint-index-${randomUUID()}`);
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      GIT_INDEX_FILE: tempIndex,
+      // A checkpoint is Capsule's bookkeeping, not the user's authorship.
+      GIT_AUTHOR_NAME: "Capsule",
+      GIT_AUTHOR_EMAIL: "capsule@localhost",
+      GIT_COMMITTER_NAME: "Capsule",
+      GIT_COMMITTER_EMAIL: "capsule@localhost",
+    };
+
+    try {
+      const headResult = await git(cwd, ["rev-parse", "--verify", "HEAD"]);
+      const head = headResult.ok ? headResult.stdout.trim() : null;
+      if (head) {
+        const seeded = await git(cwd, ["read-tree", head], env);
+        if (!seeded.ok) throw new Error(seeded.stderr || "read-tree failed.");
+      }
+
+      const staged = await git(cwd, ["add", "-A", "--", "."], env);
+      if (!staged.ok) throw new Error(staged.stderr || "add failed.");
+
+      const tree = await git(cwd, ["write-tree"], env);
+      const treeOid = tree.stdout.trim();
+      if (!tree.ok || !treeOid) throw new Error(tree.stderr || "write-tree failed.");
+      const afterHead = await git(cwd, ["rev-parse", "--verify", "HEAD"]);
+      if (head !== (afterHead.ok ? afterHead.stdout.trim() : null)) throw new Error("HEAD changed while recording the workspace. Retry.");
+      return { cwd: await fs.realpath(cwd), head, tree: treeOid };
+    } finally {
+      try {
+        await fs.rm(tempIndex, { force: true });
+      } catch {
+        // A leftover index costs a few kilobytes; it must not fail the turn.
+      }
+    }
+
+  });
+}
+
+export async function hasCheckpoint(cwd: string, ref: string): Promise<boolean> {
+  return (await git(cwd, ["rev-parse", "--verify", `${ref}^{commit}`])).ok;
 }
 
 /**
  * Diff two checkpoints. With only `to`, diffs that checkpoint against the
  * current worktree, which is how "what changed since this turn" is asked.
  */
-export function diffCheckpoints(
+export async function diffCheckpoints(
   cwd: string,
   to: string,
   from?: string,
-  options?: { ignoreWhitespace?: boolean; relative?: string },
-): string {
-  if (!hasCheckpoint(cwd, to)) return "";
-  const args = ["diff"];
-  if (options?.ignoreWhitespace) args.push("-w");
-  if (from && hasCheckpoint(cwd, from)) args.push(from, to);
-  else args.push(to);
-  if (options?.relative) args.push("--", options.relative);
-  const result = git(cwd, args);
-  return result.ok ? result.stdout : "";
+  options?: { ignoreWhitespace?: boolean; relative?: string; },
+): Promise<string> {
+  return inRepository(cwd, async () => {
+
+    if (!(await hasCheckpoint(cwd, to))) return "";
+    const args = ["diff"];
+    if (options?.ignoreWhitespace) args.push("-w");
+    if (from && (await hasCheckpoint(cwd, from))) args.push(from, to);
+    else args.push(to);
+    if (options?.relative) args.push("--", options.relative);
+    const result = await git(cwd, args);
+    return result.ok ? result.stdout : "";
+
+  }, JSON.stringify(["diffCheckpoints", cwd, to, from, options]));
 }
 
 /** Files touched between two checkpoints, as `git diff --numstat` rows. */
-export function checkpointNumstat(
+export async function checkpointNumstat(
   cwd: string,
   to: string,
   from?: string,
-): Array<{ path: string; added: number; removed: number }> {
-  if (!hasCheckpoint(cwd, to)) return [];
-  const args = ["diff", "--numstat"];
-  if (from && hasCheckpoint(cwd, from)) args.push(from, to);
-  else args.push(to);
-  const result = git(cwd, args);
-  if (!result.ok) return [];
-  return result.stdout
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const [added, removed, file] = line.split("\t");
-      return {
-        path: file ?? "",
-        // "-" is git's marker for a binary file, not a count.
-        added: added === "-" ? 0 : Number(added ?? 0),
-        removed: removed === "-" ? 0 : Number(removed ?? 0),
-      };
-    })
-    .filter((entry) => entry.path.length > 0);
+): Promise<Array<{ path: string; added: number; removed: number; }>> {
+  return inRepository(cwd, async () => {
+
+    if (!(await hasCheckpoint(cwd, to))) return [];
+    const args = ["diff", "--numstat"];
+    if (from && (await hasCheckpoint(cwd, from))) args.push(from, to);
+    else args.push(to);
+    const result = await git(cwd, args);
+    if (!result.ok) return [];
+    return result.stdout
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const [added, removed, file] = line.split("\t");
+        return {
+          path: file ?? "",
+          // "-" is git's marker for a binary file, not a count.
+          added: added === "-" ? 0 : Number(added ?? 0),
+          removed: removed === "-" ? 0 : Number(removed ?? 0),
+        };
+      })
+      .filter((entry) => entry.path.length > 0);
+
+  }, JSON.stringify(["checkpointNumstat", cwd, to, from]));
 }
 
 /**
@@ -191,49 +197,57 @@ export function checkpointNumstat(
  * alone — `add -A` honoured .gitignore when the checkpoint was captured, so
  * they were never in it to begin with and are not the agent's doing.
  */
-export function restoreCheckpoint(cwd: string, ref: string): { ok: boolean; detail: string } {
-  if (!isGitRepository(cwd)) return { ok: false, detail: "Not a Git repository." };
-  if (!hasCheckpoint(cwd, ref)) return { ok: false, detail: "That checkpoint no longer exists." };
+export async function restoreCheckpoint(cwd: string, ref: string): Promise<{ ok: boolean; detail: string; }> {
+  return inRepository(cwd, async () => {
 
-  const lines = (result: GitResult): string[] =>
-    result.ok
-      ? result.stdout.split("\n").map((value) => value.trim()).filter(Boolean)
-      : [];
+    if (!(await isGitRepository(cwd))) return { ok: false, detail: "Not a Git repository." };
+    if (!(await hasCheckpoint(cwd, ref))) return { ok: false, detail: "That checkpoint no longer exists." };
 
-  const inCheckpoint = new Set(lines(git(cwd, ["ls-tree", "-r", "--name-only", ref])));
-  const inWorktree = lines(
-    git(cwd, ["ls-files", "--cached", "--others", "--exclude-standard"]),
-  );
+    const lines = (result: GitResult): string[] =>
+      result.ok
+        ? result.stdout.split("\n").map((value) => value.trim()).filter(Boolean)
+        : [];
 
-  const restored = git(cwd, ["checkout", ref, "--", "."]);
-  if (!restored.ok) return { ok: false, detail: restored.stderr || "checkout failed." };
+    const inCheckpoint = new Set(lines(await git(cwd, ["ls-tree", "-r", "--name-only", ref])));
+    const inWorktree = lines(
+      await git(cwd, ["ls-files", "--cached", "--others", "--exclude-standard"]),
+    );
 
-  let removed = 0;
-  for (const relative of inWorktree) {
-    if (inCheckpoint.has(relative)) continue;
-    try {
-      fs.rmSync(path.resolve(cwd, relative), { force: true });
-      removed += 1;
-    } catch {
-      // Surfaced by the next status read rather than aborting a partial restore.
+    const restored = await git(cwd, ["checkout", ref, "--", "."]);
+    if (!restored.ok) return { ok: false, detail: restored.stderr || "checkout failed." };
+
+    let removed = 0;
+    for (const relative of inWorktree) {
+      if (inCheckpoint.has(relative)) continue;
+      try {
+        await fs.rm(path.resolve(cwd, relative), { force: true });
+        removed += 1;
+      } catch {
+        // Surfaced by the next status read rather than aborting a partial restore.
+      }
     }
-  }
-  return {
-    ok: true,
-    detail: removed > 0 ? `Restored, removing ${removed} newer file(s).` : "Restored.",
-  };
+    return {
+      ok: true,
+      detail: removed > 0 ? `Restored, removing ${removed} newer file(s).` : "Restored.",
+    };
+
+  });
 }
 
 /** Drop every checkpoint for a session, e.g. when its thread is deleted. */
-export function deleteCheckpoints(cwd: string, sessionId: string): number {
-  if (!isGitRepository(cwd)) return 0;
-  const prefix = checkpointRef(sessionId, 0).replace(/\/turn\/0$/, "");
-  const listed = git(cwd, ["for-each-ref", "--format=%(refname)", prefix]);
-  if (!listed.ok) return 0;
-  const refs = listed.stdout.split("\n").map((value) => value.trim()).filter(Boolean);
-  let removed = 0;
-  for (const ref of refs) {
-    if (git(cwd, ["update-ref", "-d", ref]).ok) removed += 1;
-  }
-  return removed;
+export async function deleteCheckpoints(cwd: string, sessionId: string): Promise<number> {
+  return inRepository(cwd, async () => {
+
+    if (!(await isGitRepository(cwd))) return 0;
+    const prefix = checkpointRef(sessionId, 0).replace(/\/turn\/0$/, "");
+    const listed = await git(cwd, ["for-each-ref", "--format=%(refname)", prefix]);
+    if (!listed.ok) return 0;
+    const refs = listed.stdout.split("\n").map((value) => value.trim()).filter(Boolean);
+    let removed = 0;
+    for (const ref of refs) {
+      if ((await git(cwd, ["update-ref", "-d", ref])).ok) removed += 1;
+    }
+    return removed;
+
+  });
 }

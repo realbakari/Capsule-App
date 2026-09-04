@@ -16,6 +16,16 @@ icon discovery.
 
 ## Git and conversation workspaces
 
+Folders containing spaces work with a Gateway running on this Mac. Capsule
+creates a private folder alias for the agent; your project stays in place and
+keeps its original path in Capsule. The alias points to the same files, not a
+copy. Starting an agent and changing its working directory both use this alias.
+
+A Gateway on another machine needs a path it can read on that machine. If that
+path contains spaces, use a whitespace-free folder alias on the Gateway host.
+This also applies to a remote Gateway reached through a local tunnel. Capsule
+does not switch a thread's runtime route or move its project to work around it.
+
 When a folder is not a Git repository, choose **Initialize Git** in the
 titlebar. Git worktree conversations need at least one commit before Capsule
 can create their branch.

@@ -10,6 +10,7 @@ need the shipped-product voice.
 - [Keyboard shortcuts](./user/keyboard-shortcuts.md)
 - [Skills](./user/skills.md)
 - [Restoring a turn](./user/checkpoints.md)
+- [Checking a turn](./user/verification.md)
 - [Drafts, attachments, and prompt stash](./user/composer.md)
 - [Projects, actions, and local previews](./user/projects-and-previews.md)
 - [capsule.json — project config in the repository](./user/project-file.md)

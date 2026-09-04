@@ -5,6 +5,7 @@ import type { FileEntry } from "@capsule/shared";
 import { readPreviewFile } from "./preview.js";
 
 export type { FileEntry };
+export { inRepository } from "./git-process.js";
 export {
   cloneRepository,
   cloneRepositoryArgs,
@@ -52,6 +53,7 @@ export {
 } from "./github.js";
 export {
   captureCheckpoint,
+  readWorktreeRevision,
   checkpointNumstat,
   checkpointRef,
   deleteCheckpoints,

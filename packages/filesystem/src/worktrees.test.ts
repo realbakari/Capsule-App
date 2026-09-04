@@ -10,7 +10,7 @@ function git(cwd: string, ...args: string[]) {
 }
 
 describe("Git worktrees", () => {
-  it("creates an isolated branch and removes it only while clean", () => {
+  it("creates an isolated branch and removes it only while clean", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "capsule-worktree-"));
     git(root, "init");
     git(root, "config", "user.email", "capsule@example.test");
@@ -20,16 +20,16 @@ describe("Git worktrees", () => {
     git(root, "commit", "-m", "initial");
 
     const destination = path.join(root, "..", `${path.basename(root)}-thread`);
-    const created = createWorktree(root, destination, "capsule/thread-one");
+    const created = await createWorktree(root, destination, "capsule/thread-one");
     expect(created.ok).toBe(true);
     expect(fs.readFileSync(path.join(destination, "README.md"), "utf8")).toBe("base\n");
 
     fs.writeFileSync(path.join(destination, "README.md"), "changed\n");
-    expect(removeWorktree(root, destination).ok).toBe(false);
+    expect((await removeWorktree(root, destination)).ok).toBe(false);
     expect(fs.existsSync(destination)).toBe(true);
 
     git(destination, "restore", "README.md");
-    expect(removeWorktree(root, destination).ok).toBe(true);
+    expect((await removeWorktree(root, destination)).ok).toBe(true);
     expect(fs.existsSync(destination)).toBe(false);
   });
 });

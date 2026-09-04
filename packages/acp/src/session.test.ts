@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -59,6 +59,31 @@ const HAPPY = `
 `;
 
 describe("talking to an agent directly", () => {
+  it("keeps a whitespace-containing cwd intact in both process spawn and session/new", async () => {
+    const cwd = mkdtempSync(path.join(tmpdir(), "capsule working folder-"));
+    const agent = fakeAgent(`
+      function handle(message) {
+        if (message.method === "initialize") {
+          send({ jsonrpc: "2.0", id: message.id, result: { protocolVersion: 1 } });
+        } else if (message.method === "session/new") {
+          send({ jsonrpc: "2.0", id: message.id, result: {
+            sessionId: JSON.stringify({ cwd: process.cwd(), received: message.params.cwd })
+          } });
+        }
+      }
+    `);
+    const session = new DirectAcpSession({ command: "node", args: [agent], cwd });
+    try {
+      const opened = JSON.parse(await session.start()) as { cwd: string; received: string };
+      expect(realpathSync(opened.cwd)).toBe(realpathSync(cwd));
+      expect(opened.received).toBe(cwd);
+    } finally {
+      await session.close();
+      rmSync(cwd, { recursive: true, force: true });
+      rmSync(path.dirname(agent), { recursive: true, force: true });
+    }
+  });
+
   it("handshakes, opens a session, and streams a turn", async () => {
     const session = new DirectAcpSession({ command: "node", args: [fakeAgent(HAPPY)] });
     const text: string[] = [];

@@ -35,6 +35,24 @@ Capsule identifies as `clientName: cli`, `mode: ui`, `displayName: Capsule`. The
 
 Advertise `tool-events` or live tool streaming never arrives (the handshake still succeeds).
 
+Subscribe to `sessions.messages.subscribe` with `{ key }` **before** sending a
+turn. `includeApprovals` is not a supported subscription parameter and causes
+validation failure. Only an unknown-method response permits the legacy stream
+fallback; other subscription errors surface before the prompt is sent.
+`session.message` carries a persisted whole message, not a text delta or a
+turn-end event. Only assistant rows supply prose. User and tool rows are ignored.
+The message timestamp associates a delayed snapshot with its originating run;
+snapshots replace partial buffers and duplicate replies are not appended again.
+An empty terminal output or a late send acknowledgement must not erase a reply.
+Several assistant snapshots remain separate messages, not a repeated aggregate
+on completion. Control output is filtered on both the reply and result paths.
+
+Completed Gateway runs keep their completion status independently of Capsule's
+local verification result. Assistant text, including claims that tests passed,
+does not count as execution evidence. Saved local checks are explicit desktop
+actions, not Gateway RPCs, and certify only the recorded local revision. Direct
+ACP runs follow the same rule. No remote-host verification is implied.
+
 ## What Capsule must not do
 
 - Import `openclaw/src/**`
@@ -43,6 +61,12 @@ Advertise `tool-events` or live tool streaming never arrives (the handshake stil
 - Treat `hello-ok.features.methods` as a complete method dump
 
 ## Discovery
+
+ACP spawn and cwd tuning resolve local whitespace-containing folder paths at
+the adapter boundary, since quoting cannot protect a slash-command token.
+Only loopback endpoints may use local private aliases; remote endpoints need
+host-side paths. The original project path is not rewritten. See the
+[harness transport notes](harness.md) for alias lifetime and tunnel limits.
 
 1. Settings URL
 2. `~/.openclaw/openclaw.json` `gateway.port` / remote URL

@@ -45,6 +45,11 @@ export function buildContract(input: {
 
   if (input.mode === "code") {
     required.push({
+      id: "tests-pass",
+      description: "Record a passing saved project check for this workspace revision.",
+      kind: "tests_pass" as const,
+    });
+    required.push({
       id: "describe-changes",
       description: "Describe the files changed and how to verify them.",
       kind: "output_contains" as const,

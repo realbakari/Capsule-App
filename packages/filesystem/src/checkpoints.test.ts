@@ -49,7 +49,7 @@ describe("checkpointRef", () => {
 });
 
 describe("captureCheckpoint", () => {
-  it("captures the worktree without disturbing the user's index", () => {
+  it("captures the worktree without disturbing the user's index", async () => {
     const dir = repo();
     fs.writeFileSync(path.join(dir, "staged.txt"), "s\n");
     git(dir, ["add", "staged.txt"]);
@@ -57,7 +57,7 @@ describe("captureCheckpoint", () => {
     const stagedBefore = git(dir, ["diff", "--cached", "--name-only"]).stdout;
 
     const ref = checkpointRef("s1", 1);
-    expect(captureCheckpoint(dir, ref).ok).toBe(true);
+    expect((await captureCheckpoint(dir, ref)).ok).toBe(true);
 
     // The index is exactly as the user left it.
     expect(git(dir, ["diff", "--cached", "--name-only"]).stdout).toBe(stagedBefore);
@@ -66,115 +66,115 @@ describe("captureCheckpoint", () => {
     expect(git(dir, ["cat-file", "-e", `${ref}:loose.txt`]).status).toBe(0);
   });
 
-  it("leaves no branch, tag or log entry behind", () => {
+  it("leaves no branch, tag or log entry behind", async () => {
     const dir = repo();
     fs.writeFileSync(path.join(dir, "a.txt"), "a\n");
-    captureCheckpoint(dir, checkpointRef("s1", 1));
+    await captureCheckpoint(dir, checkpointRef("s1", 1));
 
     expect(git(dir, ["branch", "--list"]).stdout).not.toContain("capsule");
     expect(git(dir, ["tag", "--list"]).stdout.trim()).toBe("");
     expect(git(dir, ["log", "--oneline"]).stdout).not.toContain("checkpoint");
   });
 
-  it("cleans up its temporary index", () => {
+  it("cleans up its temporary index", async () => {
     const dir = repo();
-    captureCheckpoint(dir, checkpointRef("s1", 1));
+    await captureCheckpoint(dir, checkpointRef("s1", 1));
     const leftovers = fs
       .readdirSync(path.join(dir, ".git"))
       .filter((name) => name.startsWith("capsule-checkpoint-index-"));
     expect(leftovers).toEqual([]);
   });
 
-  it("works before the first commit", () => {
+  it("works before the first commit", async () => {
     const dir = repo(false);
     fs.writeFileSync(path.join(dir, "first.txt"), "1\n");
     const ref = checkpointRef("s1", 1);
-    expect(captureCheckpoint(dir, ref).ok).toBe(true);
-    expect(hasCheckpoint(dir, ref)).toBe(true);
+    expect((await captureCheckpoint(dir, ref)).ok).toBe(true);
+    expect(await hasCheckpoint(dir, ref)).toBe(true);
   });
 
-  it("reports rather than throws outside a repository", () => {
+  it("reports rather than throws outside a repository", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "capsule-plain-"));
     made.push(dir);
-    const result = captureCheckpoint(dir, checkpointRef("s1", 1));
+    const result = await captureCheckpoint(dir, checkpointRef("s1", 1));
     expect(result.ok).toBe(false);
     expect(result.detail).toContain("Not a Git repository");
   });
 });
 
 describe("diff between checkpoints", () => {
-  it("scopes to one turn, excluding earlier changes", () => {
+  it("scopes to one turn, excluding earlier changes", async () => {
     const dir = repo();
     fs.writeFileSync(path.join(dir, "turn1.txt"), "one\n");
     const first = checkpointRef("s1", 1);
-    captureCheckpoint(dir, first);
+    await captureCheckpoint(dir, first);
 
     fs.writeFileSync(path.join(dir, "turn2.txt"), "two\n");
     const second = checkpointRef("s1", 2);
-    captureCheckpoint(dir, second);
+    await captureCheckpoint(dir, second);
 
-    const scoped = checkpointNumstat(dir, second, first).map((entry) => entry.path);
+    const scoped = (await checkpointNumstat(dir, second, first)).map((entry) => entry.path);
     expect(scoped).toEqual(["turn2.txt"]);
 
-    const patch = diffCheckpoints(dir, second, first);
+    const patch = await diffCheckpoints(dir, second, first);
     expect(patch).toContain("turn2.txt");
     expect(patch).not.toContain("turn1.txt");
   });
 
-  it("counts a binary file as zero rather than NaN", () => {
+  it("counts a binary file as zero rather than NaN", async () => {
     const dir = repo();
     const first = checkpointRef("s1", 1);
-    captureCheckpoint(dir, first);
+    await captureCheckpoint(dir, first);
     fs.writeFileSync(path.join(dir, "blob.bin"), Buffer.from([0, 1, 2, 0, 3]));
     const second = checkpointRef("s1", 2);
-    captureCheckpoint(dir, second);
+    await captureCheckpoint(dir, second);
 
-    const entry = checkpointNumstat(dir, second, first).find((row) => row.path === "blob.bin");
+    const entry = (await checkpointNumstat(dir, second, first)).find((row) => row.path === "blob.bin");
     expect(entry).toBeDefined();
     expect(Number.isNaN(entry!.added)).toBe(false);
     expect(entry!.added).toBe(0);
   });
 
-  it("returns empty for a checkpoint that does not exist", () => {
+  it("returns empty for a checkpoint that does not exist", async () => {
     const dir = repo();
-    expect(diffCheckpoints(dir, checkpointRef("nope", 9))).toBe("");
-    expect(checkpointNumstat(dir, checkpointRef("nope", 9))).toEqual([]);
+    expect(await diffCheckpoints(dir, checkpointRef("nope", 9))).toBe("");
+    expect(await checkpointNumstat(dir, checkpointRef("nope", 9))).toEqual([]);
   });
 });
 
 describe("restoreCheckpoint", () => {
-  it("puts back an edited file and removes one created afterwards", () => {
+  it("puts back an edited file and removes one created afterwards", async () => {
     const dir = repo();
     fs.writeFileSync(path.join(dir, "kept.txt"), "original\n");
     const ref = checkpointRef("s1", 1);
-    captureCheckpoint(dir, ref);
+    await captureCheckpoint(dir, ref);
 
     fs.writeFileSync(path.join(dir, "kept.txt"), "changed by the agent\n");
     fs.writeFileSync(path.join(dir, "added-later.txt"), "new\n");
 
-    expect(restoreCheckpoint(dir, ref).ok).toBe(true);
+    expect((await restoreCheckpoint(dir, ref)).ok).toBe(true);
     expect(fs.readFileSync(path.join(dir, "kept.txt"), "utf8")).toBe("original\n");
     expect(fs.existsSync(path.join(dir, "added-later.txt"))).toBe(false);
   });
 
-  it("refuses a missing checkpoint instead of emptying the worktree", () => {
+  it("refuses a missing checkpoint instead of emptying the worktree", async () => {
     const dir = repo();
     fs.writeFileSync(path.join(dir, "kept.txt"), "still here\n");
-    const result = restoreCheckpoint(dir, checkpointRef("gone", 4));
+    const result = await restoreCheckpoint(dir, checkpointRef("gone", 4));
     expect(result.ok).toBe(false);
     expect(fs.readFileSync(path.join(dir, "kept.txt"), "utf8")).toBe("still here\n");
   });
 });
 
 describe("deleteCheckpoints", () => {
-  it("removes only the named session's refs", () => {
+  it("removes only the named session's refs", async () => {
     const dir = repo();
-    captureCheckpoint(dir, checkpointRef("keep", 1));
-    captureCheckpoint(dir, checkpointRef("drop", 1));
-    captureCheckpoint(dir, checkpointRef("drop", 2));
+    await captureCheckpoint(dir, checkpointRef("keep", 1));
+    await captureCheckpoint(dir, checkpointRef("drop", 1));
+    await captureCheckpoint(dir, checkpointRef("drop", 2));
 
-    expect(deleteCheckpoints(dir, "drop")).toBe(2);
-    expect(hasCheckpoint(dir, checkpointRef("drop", 1))).toBe(false);
-    expect(hasCheckpoint(dir, checkpointRef("keep", 1))).toBe(true);
+    expect(await deleteCheckpoints(dir, "drop")).toBe(2);
+    expect(await hasCheckpoint(dir, checkpointRef("drop", 1))).toBe(false);
+    expect(await hasCheckpoint(dir, checkpointRef("keep", 1))).toBe(true);
   });
 });

@@ -11,11 +11,11 @@ vi.mock("./Composer", () => ({ Composer: () => null }));
 vi.mock("../terminal/TerminalDock", () => ({ TerminalDock: () => null }));
 // Render the loading boundary as a marker to assert its transcript position
 // without opening a browser or depending on a live filesystem.
-vi.mock("./TurnOutcome", () => ({ TurnOutcome: ({ run }: { run: Run }) => createElement("div", { "data-outcome": run.id }) }));
+vi.mock("./TurnOutcome", () => ({ TurnOutcome: ({ run }: { run: Run; }) => createElement("div", { "data-outcome": run.id }) }));
 
 beforeEach(() => {
   workspace.value = {
-    api: {}, connected: true, ready: true, events: [], steps: [], agents: [], harnesses: [],
+    api: {}, projects: [], connected: true, ready: true, events: [], steps: [], agents: [], harnesses: [],
     session: { id: "s", projectId: "p" }, project: { id: "p", name: "Workspace", workingDirectory: "/repo" },
     messages: [
       { id: "u1", sessionId: "s", runId: "r1", role: "user", content: "Make a change", createdAt: "2026-09-04T00:00:01Z" },
@@ -31,6 +31,22 @@ beforeEach(() => {
 });
 
 describe("saved outcome placement", () => {
+  it("places the latest verification below its work log without moving an older receipt", () => {
+    workspace.value.events = [{ id: "e", runId: "r2", type: "tool", message: "read_file source.ts", timestamp: "2026-09-04T00:00:04Z" }];
+    workspace.value.steps = [{ id: "work:read", label: "Read 1 file", count: 1, status: "complete" }];
+    const html = renderToStaticMarkup(createElement(Conversation));
+    expect(html.indexOf('data-verification-run="r2"')).toBeGreaterThan(html.indexOf('class="run-summary-label"'));
+    expect(html.indexOf('data-verification-run="r1"')).toBeLessThan(html.indexOf("Follow up"));
+    expect(html.match(/data-verification-run="r2"/g)).toHaveLength(1);
+  });
+
+  it("explains a missing reply without inventing an answer or a failed check", () => {
+    workspace.value.messages = (workspace.value.messages as Array<{ id: string }>).filter((message) => message.id !== "a2");
+    const html = renderToStaticMarkup(createElement(Conversation));
+    expect(html.indexOf("No reply was received for this turn")).toBeGreaterThan(html.indexOf("Follow up"));
+    expect(html).not.toContain("Check failed");
+  });
+
   it("renders an older card between its reply and the next prompt, exactly once", () => {
     const html = renderToStaticMarkup(createElement(Conversation));
     const first = html.indexOf('data-outcome="r1"');

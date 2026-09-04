@@ -120,7 +120,7 @@ export interface Skill {
   tags?: string[];
   author?: string;
   url?: string;
-  files?: Array<{ path: string; contents: string }>;
+  files?: Array<{ path: string; contents: string; }>;
   /** Local SKILL.md path when this entry was discovered from an agent CLI. */
   location?: string;
   /** True when another CLI owns the files and Capsule must not remove them. */
@@ -188,7 +188,7 @@ export interface SkillsShSkillDetail {
   slug: string;
   installs?: number;
   hash?: string | null;
-  files?: Array<{ path: string; contents: string }> | null;
+  files?: Array<{ path: string; contents: string; }> | null;
 }
 
 export interface Workspace {
@@ -566,15 +566,40 @@ export interface Artifact {
   createdAt: string;
 }
 
+export interface WorkspaceRevision {
+  cwd: string;
+  head: string | null;
+  tree: string;
+}
+
+export type VerificationState = "passed" | "failed" | "unverified" | "stale";
+
+export interface VerificationEvidence {
+  runId: string;
+  actionId: string;
+  command: string;
+  revision: WorkspaceRevision;
+  after?: WorkspaceRevision;
+  exitCode?: number;
+  output: string;
+  startedAt: string;
+  completedAt: string;
+}
+
 export interface VerificationResult {
   id: string;
   runId: string;
   passed: boolean;
+  status: VerificationState;
   summary: string;
+  /** Persisted so a running check remains cancellable after navigating away. */
+  inProgress?: boolean;
+  evidence?: VerificationEvidence;
   checks: Array<{
     requirementId: string;
     description: string;
     passed: boolean;
+    status: VerificationState;
     detail?: string;
     /**
      * Advisory checks are guidance to the agent, not testable postconditions —
@@ -596,7 +621,7 @@ export interface EvaluationResult {
 
 export interface TurnDiffResult {
   patch: string;
-  files: Array<{ path: string; added: number; removed: number }>;
+  files: Array<{ path: string; added: number; removed: number; }>;
   /** False when a pair of saved snapshots is unavailable; never a live diff. */
   available?: boolean;
 }
@@ -615,6 +640,10 @@ export interface Run {
   openclawRunId?: string;
   /** Hidden Git ref capturing the worktree when this turn finished. */
   checkpointRef?: string;
+  /** Captured once; never resolve an old turn against a newly selected folder. */
+  workingDirectory?: string;
+  revision?: WorkspaceRevision;
+  verification?: VerificationResult;
   createdAt: string;
   updatedAt: string;
   completedAt?: string;

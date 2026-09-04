@@ -45,6 +45,7 @@ import {
   type GatewayAgentMap,
 } from "./agent-map.js";
 import { createGatewayHostDeps } from "./device-identity.js";
+import { gatewayAcpCwd } from "./acp-cwd.js";
 import {
   defaultGatewayEndpoint,
   parseGatewayUrl,
@@ -108,6 +109,8 @@ export interface OpenClawAdapterOptions {
   token?: string;
   clientVersion?: string;
   identityDir?: string;
+  /** Optional private, whitespace-free alias directory (also isolates tests). */
+  cwdAliasRoot?: string;
 }
 
 function describeConnectError(error: unknown): Error {
@@ -171,6 +174,7 @@ export class OpenClawAdapter implements AgentRuntime {
   private cachedAgents: Agent[] = [];
   private cachedSessionCount = 0;
   private activeRunCount = 0;
+  private connectedGatewayHost?: string;
   private agentMap: GatewayAgentMap = { defaultId: "main", configuredIds: ["main"] };
 
   constructor(private readonly options: OpenClawAdapterOptions = {}) {}
@@ -178,6 +182,7 @@ export class OpenClawAdapter implements AgentRuntime {
   async connect(): Promise<void> {
     await this.disconnect();
     const endpoint = defaultGatewayEndpoint(this.options.gatewayUrl);
+    this.connectedGatewayHost = endpoint.host;
     const reachable = await probeTcp(endpoint.host, endpoint.port);
     if (!reachable) {
       this.connectionState = "disconnected";
@@ -470,6 +475,8 @@ export class OpenClawAdapter implements AgentRuntime {
     permissionProfile?: string;
     model?: string;
   }): Promise<{ sessionKey: string; usedSlashCommand: boolean; command: string }> {
+    // Prepare before creating a carrier or changing Gateway configuration.
+    const cwd = await this.gatewayCwd(input.cwd);
     let parentKey = input.sessionKey;
     if (!parentKey || parentKey.startsWith("mock:") || isAcpSessionKey(parentKey)) {
       parentKey = await this.createGatewaySession({
@@ -489,7 +496,7 @@ export class OpenClawAdapter implements AgentRuntime {
     await this.subscribeSession(parentKey);
     const mapped = acpxPermissionMode(input.permissionProfile);
     await this.ensureAcpxPermissionMode(mapped).catch(() => undefined);
-    const spawned = await this.spawnAcpOnParent(parentKey, input);
+    const spawned = await this.spawnAcpOnParent(parentKey, { ...input, cwd });
     const acpKey = extractAcpSessionKey(spawned.text);
     if (!acpKey) {
       throw new Error(
@@ -602,10 +609,11 @@ export class OpenClawAdapter implements AgentRuntime {
     try {
       await this.request("sessions.messages.subscribe", {
         key: sessionKey,
-        includeApprovals: true,
       });
-    } catch {
-      // Older gateways may not support this subscribe method.
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      if (/unknown method|method not found|unsupported method/i.test(detail)) return;
+      throw new Error(`Could not subscribe to Gateway replies: ${detail}`);
     }
   }
 
@@ -700,13 +708,22 @@ export class OpenClawAdapter implements AgentRuntime {
    * target instead.
    */
   async setAcpOption(sessionKey: string, key: HarnessOptionKey, value: string): Promise<string> {
+    const wireValue = key === "cwd" ? (await this.gatewayCwd(value))! : value;
     const acpTarget = isAcpSessionKey(sessionKey) ? sessionKey : undefined;
     const controlKey = acpTarget ? await this.controlSessionKey() : sessionKey;
-    const result = await this.acpCommand(controlKey, acpOptionCommand(key, value, acpTarget), {
+    const result = await this.acpCommand(controlKey, acpOptionCommand(key, wireValue, acpTarget), {
       waitMs: 6_000,
       ...(acpTarget ? { target: acpTarget } : {}),
     });
     return result.text ?? "";
+  }
+
+  private gatewayCwd(cwd: string | undefined): Promise<string | undefined> {
+    return gatewayAcpCwd(
+      cwd,
+      this.connectedGatewayHost ?? defaultGatewayEndpoint(this.options.gatewayUrl).host,
+      this.options.cwdAliasRoot,
+    );
   }
 
   /** A plain Gateway session kept for issuing ACP control commands. */
@@ -786,6 +803,8 @@ export class OpenClawAdapter implements AgentRuntime {
       requestedAgentId: input.agentId,
     });
     await this.ensureAcpPermissionMode(sessionKey, input.permissionProfile);
+    // Subscribe before sending: a fast reply can precede sessions.send's ack.
+    await this.subscribeSession(sessionKey);
     const idempotencyKey = createId("idemp");
     const payload = await this.request<{ runId?: string; id?: string; status?: string }>(
       "sessions.send",
@@ -812,14 +831,6 @@ export class OpenClawAdapter implements AgentRuntime {
     this.runSessions.set(openclawRunId, run.id);
     this.sessionRuns.set(sessionKey, run.id);
     this.activeRunCount += 1;
-    try {
-      await this.request("sessions.messages.subscribe", {
-        key: sessionKey,
-        includeApprovals: true,
-      });
-    } catch {
-      // Older gateways may not support this subscribe method.
-    }
     return run;
   }
 
@@ -916,7 +927,7 @@ export class OpenClawAdapter implements AgentRuntime {
   }
 
   onAcpReply(
-    handler: (payload: { sessionKey?: string; text?: string; done?: boolean; control?: boolean }) => void,
+    handler: (payload: { sessionKey?: string; text?: string; done?: boolean; control?: boolean; snapshot?: boolean; timestamp?: number }) => void,
   ): Unsubscribe {
     this.emitter.on("acp-reply", handler);
     return () => this.emitter.off("acp-reply", handler);
@@ -932,6 +943,23 @@ export class OpenClawAdapter implements AgentRuntime {
       (payloadId ? this.runSessions.get(payloadId) : undefined) ??
       (sessionKey ? this.sessionRuns.get(sessionKey) : undefined) ??
       (openclawRunId || payloadId);
+    // Persisted messages are whole snapshots, not stream deltas or turn-end
+    // events. The subscription includes user and tool rows too; neither is
+    // assistant prose. In particular, never echo the submitted prompt.
+    if (event.event === "session.message") {
+      const message = asRecord(payload.message);
+      if (!sessionKey || message.role !== "assistant") return;
+      const text = extractGatewayText({ message });
+      if (!text || isAcpFailureText(text)) return;
+      const timestamp = typeof message.timestamp === "number"
+        ? message.timestamp : Date.parse(asString(message.timestamp));
+      this.emitter.emit("acp-reply", {
+        sessionKey, text, done: true, snapshot: true,
+        control: this.isAcpControl(sessionKey),
+        ...(Number.isFinite(timestamp) ? { timestamp } : {}),
+      });
+      return;
+    }
     /*
      * The reply is prose only. ACP runtime frames also carry text — "usage
      * updated: 87690/200000", "tool call (completed)" — and once that text was

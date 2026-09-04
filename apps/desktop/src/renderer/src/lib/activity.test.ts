@@ -18,6 +18,16 @@ const event = (streamKind: string, message: string, id: string): RunEvent => ({
 });
 
 describe("activityFromEvents", () => {
+  it("counts ACP invocations once across interleaved updates and preserves failures", () => {
+    const call = (id: string, text: string, status = "pending", runId = "r") => ({ ...event("tool", "", `${id}-${status}`), runId, data: { streamKind: "tool", data: { toolCallId: id, text, status } } });
+    const events = [call("a", "Terminal (pending)"), call("b", "Read file (pending)"), call("a", "ls source", "in_progress"), call("b", "Permission denied", "failed"), call("a", "Command finished", "completed"), call("a", "Terminal", "pending", "other-run")];
+    const phases = activityFromEvents(events, true);
+    expect(summariseWork(phases).tools).toBe(3);
+    expect(phases.some((phase) => phase.status === "error")).toBe(true);
+    expect(phases.some((phase) => phase.detail === "ls source" || phase.detail === "Command finished")).toBe(true);
+    expect(events[0]?.message).toBe("");
+  });
+
   it("derives phases from the agent's own stream kinds", () => {
     const phases = activityFromEvents(
       [

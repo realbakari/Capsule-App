@@ -134,10 +134,26 @@ export function activityFromEvents(
 ): RunActivity[] {
   const reasoning = options?.reasoning ?? "visible";
   const phases: RunActivity[] = [];
-  for (const event of events) {
+  const toolCalls = new Map<string, RunActivity>();
+  for (const original of events) {
+    const nested = original.data?.data && typeof original.data.data === "object" ? original.data.data as Record<string, unknown> : {};
+    // Older saved frames keep their readable text only in the ACP payload.
+    const event = { ...original, message: original.message || (typeof nested.text === "string" ? nested.text : "") };
     const kind = String(event.data?.streamKind ?? "") || kindFromEventType(event.type);
     if (!kind || kind === "lifecycle") continue;
     if (kind === "thinking" && reasoning === "hidden") continue;
+    const callId = event.data?.toolCallId ?? nested.toolCallId;
+    const callKey = kind === "tool" && typeof callId === "string" && callId ? `${event.runId}:${callId}` : undefined;
+    const failedCall = kind === "tool" && (nested.status === "failed" || event.data?.status === "failed" || event.type.endsWith(".failed"));
+    const previousCall = callKey ? toolCalls.get(callKey) : undefined;
+    if (previousCall) {
+      // Pending, title updates and completion all describe one invocation.
+      // Match by run and call id so interleaved tools cannot inflate counts.
+      const detail = cleanActivityDetail(event.message);
+      if (detail && detailAddsSomething(previousCall.label, detail)) previousCall.detail = detail;
+      if (failedCall) previousCall.status = "error";
+      continue;
+    }
     /*
      * `tool.completed` / `tool.failed` report the end of the call the previous
      * frame started; they are not a second piece of work, so they fold into the
@@ -172,6 +188,8 @@ export function activityFromEvents(
     const last = phases.at(-1);
     if (last && last.id === groupId) {
       last.count += 1;
+      if (callKey) toolCalls.set(callKey, last);
+      if (failedCall) last.status = "error";
       if (action) last.label = workLabel(action, last.count);
       // Keep the most recent line for this phase rather than appending a row,
       // and only when it says more than the label does.
@@ -186,8 +204,9 @@ export function activityFromEvents(
       ...(detailAddsSomething(label, detail) ? { detail } : {}),
       ...(chunk ? { body: chunk } : {}),
       count: 1,
-      status: kind === "error" ? "error" : "active",
+      status: kind === "error" || failedCall ? "error" : "active",
     });
+    if (callKey) toolCalls.set(callKey, phases.at(-1)!);
   }
   return phases.map((phase, index) => ({
     ...phase,

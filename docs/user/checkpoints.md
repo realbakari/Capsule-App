@@ -33,3 +33,8 @@ Nothing you will trip over later:
 
 Projects that are not git repositories do not get checkpoints, and the restore
 control does not appear for them.
+
+Captures run in the background without freezing the app. A follow-up into the
+same folder waits for its pending capture. New turns retain their original
+folder and revision, so later project changes do not move their saved outcomes.
+See [Checking a turn](verification.md) for explicit test and build receipts.

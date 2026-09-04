@@ -22,6 +22,7 @@ export const IPC_CHANNELS = {
   listRuns: "capsule:listRuns",
   listRunEvents: "capsule:listRunEvents",
   verifyRun: "capsule:verifyRun",
+  cancelVerification: "capsule:cancelVerification",
   listArtifacts: "capsule:listArtifacts",
   listApprovals: "capsule:listApprovals",
   resolveApproval: "capsule:resolveApproval",

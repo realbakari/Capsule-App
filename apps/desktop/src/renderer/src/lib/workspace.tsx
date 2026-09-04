@@ -1,4 +1,6 @@
 import { applyAppearance } from "./appearance";
+import { RequestScope } from "./request-scope";
+import { useScopedState } from "./scoped-state";
 import { activityFromEvents, type RunActivity } from "./activity";
 import {
   createContext,
@@ -228,7 +230,7 @@ export interface WorkspaceValue {
   deleteSession: (id: string) => void;
   archiveSession: (id: string) => Promise<void>;
   openTerminal: () => Promise<void>;
-  execInProject: (command: string) => Promise<{ stdout: string; stderr: string; code: number }>;
+  execInProject: (command: string) => Promise<{ stdout: string; stderr: string; code: number; }>;
   initializeGit: () => Promise<void>;
   saveProjectActions: (actions: ProjectAction[]) => Promise<boolean>;
   workspaceMode: WorkspaceMode;
@@ -241,7 +243,7 @@ export interface WorkspaceValue {
   spawnHarness: (
     harnessId: string,
     prompt?: string,
-    options?: { mode?: "persistent" | "oneshot" },
+    options?: { mode?: "persistent" | "oneshot"; },
   ) => Promise<void>;
   dedicateHarness: (harnessId: string) => Promise<void>;
   undedicateHarness: () => Promise<void>;
@@ -293,7 +295,7 @@ export interface WorkspaceValue {
   gitDiscard: (relative: string) => void;
   gitCreateBranch: (branch: string) => Promise<void>;
   gitPush: () => Promise<boolean>;
-  gitCreatePullRequest: (input?: { title?: string; body?: string }) => Promise<boolean>;
+  gitCreatePullRequest: (input?: { title?: string; body?: string; }) => Promise<boolean>;
   gitMergePullRequest: () => Promise<void>;
   skillPacks: SkillPack[];
   installSkill: (skill: Skill) => Promise<Skill>;
@@ -323,7 +325,7 @@ export function useWorkspace(): WorkspaceValue {
 /** Messages fetched per page; older pages load on demand. */
 const MESSAGE_PAGE_SIZE = 60;
 
-export function WorkspaceProvider({ children }: { children: ReactNode }) {
+export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   const api = window.capsule;
   const [view, setView] = useState<View>("chat");
   const [settingsTab, setSettingsTab] = useState<SettingsSectionId>("general");
@@ -335,12 +337,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [skills, setSkills] = useState<Skill[]>([]);
   const [skillPacks, setSkillPacks] = useState<SkillPack[]>([]);
   const [aboutOpen, setAboutOpen] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [hasOlderMessages, setHasOlderMessages] = useState(false);
-  const [loadingOlder, setLoadingOlder] = useState(false);
-  const [runs, setRuns] = useState<Run[]>([]);
-  const [events, setEvents] = useState<RunEvent[]>([]);
-  const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
   const [projectId, setProjectId] = useState<string | undefined>(() => {
     try {
@@ -357,10 +353,23 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
   });
   const [ready, setReady] = useState(false);
+  const requests = useRef(new RequestScope()).current;
+  const scope = requests.select(JSON.stringify([projectId, sessionId,
+    projects.find((p) => p.id === projectId)?.workingDirectory,
+    sessions.find((s) => s.id === sessionId && s.projectId === projectId)?.workingDirectory]));
+  // Drafts belong to the thread, not its mutable folder configuration.
+  const draftScopes = useRef(new RequestScope()).current;
+  const draftScope = draftScopes.select(JSON.stringify([projectId, sessionId]));
+  const [messages, setMessages] = useScopedState<ChatMessage[]>(scope, []);
+  const [hasOlderMessages, setHasOlderMessages] = useScopedState(scope, false);
+  const [loadingOlder, setLoadingOlder] = useScopedState(scope, false);
+  const [runs, setRuns] = useScopedState<Run[]>(scope, []);
+  const [events, setEvents] = useScopedState<RunEvent[]>(scope, []);
+  const [artifacts, setArtifacts] = useScopedState<Artifact[]>(scope, []);
   const [agentId, setAgentId] = useState<string>("general");
   const [mode, setMode] = useState<AgentMode>("chat");
-  const [draft, setDraft] = useState("");
-  const [attachments, setAttachments] = useState<MessageAttachment[]>([]);
+  const [draft, setDraft] = useScopedState(draftScope, "");
+  const [attachments, setAttachments] = useScopedState<MessageAttachment[]>(draftScope, []);
   const [promptStashes, setPromptStashes] = useState<PromptStashEntry[]>(() => {
     try {
       return readPromptStash(localStorage);
@@ -368,7 +377,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       return [];
     }
   });
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useScopedState(scope, false);
   const [palette, setPalette] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
   const [newProjectName, setNewProjectName] = useState("");
@@ -379,11 +388,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [harnessStatuses, setHarnessStatuses] = useState<
     Partial<Record<string, HarnessLiveStatus>>
   >({});
-  const [notice, setNotice] = useState<string>();
+  const [notice, setNotice] = useScopedState<string | undefined>(scope, undefined);
   const [steerDraft, setSteerDraft] = useState("");
-  const [git, setGit] = useState<GitStatus>();
-  const [files, setFiles] = useState<FileEntry[]>([]);
-  const [confirm, setConfirm] = useState<ConfirmState>();
+  const [git, setGit] = useScopedState<GitStatus | undefined>(scope, undefined);
+  const [files, setFiles] = useScopedState<FileEntry[]>(scope, []);
+  const [confirm, setConfirm] = useScopedState<ConfirmState | undefined>(scope, undefined);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => storedFlag(SIDEBAR_COLLAPSED_KEY));
   const [inspectorOpen, setInspectorOpen] = useState(() => storedFlag(INSPECTOR_OPEN_KEY));
   const [terminalOpen, setTerminalOpen] = useState(() => storedFlag(TERMINAL_OPEN_KEY));
@@ -431,7 +440,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
 
   const project = projects.find((item) => item.id === projectId);
-  const session = sessions.find((item) => item.id === sessionId);
+  const session = sessions.find((item) => item.id === sessionId && item.projectId === projectId);
   const currentDraftKey = promptDraftKey(projectId, sessionId);
   const activeRun = runs.find(
     (run) => run.sessionId === sessionId && ["running", "approval_required", "waiting"].includes(run.status),
@@ -470,7 +479,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   const loadSession = useCallback(
     async (id: string) => {
+      if (id !== sessionId || !requests.isCurrent(scope)) return;
+      const current = requests.capture("messages");
       const generation = ++loadGeneration.current;
+      const runsCurrent = requests.capture("project-runs");
       // Only the most recent page. Loading an entire conversation on every
       // streamed chunk made a long thread quadratic to render.
       const [page, nextRuns] = await Promise.all([
@@ -478,18 +490,19 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         api.listRuns(id),
       ]);
       const nextMessages = page.messages;
-      if (generation !== loadGeneration.current) return;
+      if (generation !== loadGeneration.current || !current()) return;
       setMessages((current) => {
         const pending = current.filter(
           (item) =>
             item.id.startsWith("local-") &&
+            item.sessionId === id &&
             !nextMessages.some((message: ChatMessage) => message.role === item.role && message.content === item.content),
         );
         return [...nextMessages, ...pending];
       });
       setHasOlderMessages(page.hasMore);
       setRuns(nextRuns);
-      setProjectRuns((current) => {
+      if (runsCurrent()) setProjectRuns((current) => {
         const others = current.filter((item) => item.sessionId !== id);
         return [...nextRuns, ...others];
       });
@@ -499,7 +512,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           api.listRunEvents(latest.id),
           api.listArtifacts(latest.id),
         ]);
-        if (generation !== loadGeneration.current) return;
+        if (generation !== loadGeneration.current || !current()) return;
         setEvents(nextEvents);
         setArtifacts(nextArtifacts);
       } else {
@@ -507,19 +520,21 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         setArtifacts([]);
       }
     },
-    [api],
+    [api, scope, sessionId],
   );
 
   const loadOlderMessages = useCallback(async () => {
     if (!sessionId || loadingOlder) return;
     const oldest = messages.find((item) => !item.id.startsWith("local-"));
     if (!oldest) return;
+    const current = requests.capture("older-messages");
     setLoadingOlder(true);
     try {
       const page = await api.listMessagePage(sessionId, {
         limit: MESSAGE_PAGE_SIZE,
         before: { createdAt: oldest.createdAt, id: oldest.id },
       });
+      if (!current()) return;
       setMessages((current) => {
         const known = new Set(current.map((item) => item.id));
         return [...page.messages.filter((item) => !known.has(item.id)), ...current];
@@ -528,9 +543,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoadingOlder(false);
     }
-  }, [api, sessionId, messages, loadingOlder]);
+  }, [api, scope, sessionId, messages, loadingOlder]);
 
   const refresh = useCallback(async () => {
+    if (!requests.isCurrent(scope)) return;
+    const current = requests.capture("workspace");
     try {
       const [
         nextProjects,
@@ -553,6 +570,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           api.listHarnesses(),
           api.getSettings(),
         ]);
+      if (!current()) return;
       setProjects(nextProjects);
       setAgents(nextAgents);
       setSkills(nextSkills);
@@ -584,14 +602,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         applyProjectDefaults(nextProjects.find((item: Project) => item.id === selectedProject), nextHarnesses);
         setProjectId(selectedProject);
       }
+      const runsCurrent = requests.capture("project-runs");
       const [nextSessions, nextHarnessSessions, nextRuns] = await Promise.all([
         api.listSessions(),
         selectedProject ? api.listHarnessSessions(selectedProject) : Promise.resolve([]),
         api.listRuns(),
       ]);
+      if (!current()) return;
       setSessions(nextSessions);
       setHarnessSessions(nextHarnessSessions);
-      setProjectRuns(nextRuns);
+      if (runsCurrent()) setProjectRuns(nextRuns);
       if (!sessionId) {
         const savedSessionId = (() => {
           try {
@@ -614,7 +634,18 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     } finally {
       setReady(true);
     }
-  }, [agentId, api, projectId, sessionId]);
+  }, [agentId, api, scope, projectId, sessionId]);
+
+  const loadGit = useCallback(async () => {
+    if (!projectId || !requests.isCurrent(scope)) return;
+    const current = requests.capture("git");
+    try {
+      const result = await api.gitStatus(projectId, sessionId);
+      if (current()) setGit(result);
+    } catch (error) {
+      if (current()) { setGit(undefined); setNotice(formatUserError(error)); }
+    }
+  }, [api, scope, projectId, sessionId]);
 
   useEffect(() => {
     void refresh();
@@ -640,7 +671,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       }),
       api.on("approval", () => void refresh()),
       api.on("state", (payload) => {
-        const command = (payload as { command?: string }).command;
+        const command = (payload as { command?: string; }).command;
         if (command === "palette") setPalette(true);
         if (command === "new-task") void createTask();
         if (command === "skills") setView("skills");
@@ -665,7 +696,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           void refresh();
         }
         if (command === "git-updated" && projectId) {
-          void api.gitStatus(projectId, sessionId).then(setGit).catch(() => undefined);
+          void loadGit();
         }
       }),
     ];
@@ -704,7 +735,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       off.forEach((fn) => fn());
       window.removeEventListener("keydown", onKey, true);
     };
-  }, [api, loadSession, projectId, refresh, sessionId]);
+  }, [api, loadGit, loadSession, projectId, refresh, sessionId]);
 
   useEffect(() => {
     if (sessionId) void loadSession(sessionId);
@@ -812,10 +843,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       setFiles([]);
       return;
     }
-    void api.listRuns().then(setProjectRuns).catch(() => undefined);
-    void api.gitStatus(projectId, sessionId).then(setGit).catch(() => setGit(undefined));
+    void loadGit();
     void api
-      .listFiles(projectId)
+      .listFiles(projectId, ".", session?.workingDirectory)
       .then((entries: FileEntry[]) =>
         setFiles(
           entries.filter(
@@ -828,7 +858,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         ),
       )
       .catch(() => setFiles([]));
-  }, [api, projectId, project?.workingDirectory, sessionId, session?.workingDirectory]);
+  }, [api, scope, loadGit, projectId, project?.workingDirectory, sessionId, session?.workingDirectory]);
 
   async function createTask() {
     const targetProject = projectId ?? projects[0]?.id;
@@ -841,6 +871,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       workspaceMode: git?.isRepo ? (settings?.defaultWorkspaceMode ?? "local") : "local",
       title: "New conversation",
     });
+    if (!requests.isCurrent(scope)) return;
     setSessionId(created.id);
     setView("chat");
     await refresh();
@@ -951,7 +982,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   async function pickFilesToMention() {
     try {
-      const paths = (await api.pickFiles()) as string[] | undefined;
+      const paths = await api.pickFiles() as string[] | undefined;
       if (!paths?.length) return;
       const first = paths[0];
       if (!first) return;
@@ -1002,7 +1033,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }
 
   async function pickAttachments() {
-    const paths = (await api.pickFiles()) as string[] | undefined;
+    const paths = await api.pickFiles() as string[] | undefined;
     if (paths?.length) await attachFiles(paths);
   }
 
@@ -1076,7 +1107,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   async function cloneRepository(input: CloneRepositoryInput) {
     setNotice(undefined);
     try {
-      const created = (await api.cloneRepository(input)) as Project;
+      const created = await api.cloneRepository(input) as Project;
       setProjectId(created.id);
       setSessionId(undefined);
       setView("chat");
@@ -1089,7 +1120,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   async function applyFolderPatch(
     targetId: string,
-    patch: { workingDirectory?: string; extraFolders: string[] },
+    patch: { workingDirectory?: string; extraFolders: string[]; },
   ) {
     await api.updateProject(targetId, {
       workingDirectory: patch.workingDirectory ?? null,
@@ -1207,7 +1238,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   async function execInProject(command: string) {
     if (!projectId) throw new Error("No project selected");
-    return (await api.execInProject(projectId, command, sessionId)) as {
+    return await api.execInProject(projectId, command, sessionId) as {
       stdout: string;
       stderr: string;
       code: number;
@@ -1216,12 +1247,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   async function initializeGit() {
     if (!projectId) return;
-    try {
-      const next = await api.gitInit(projectId);
-      setGit(next);
+    if (await performGit(() => api.gitInit(projectId))) {
       setNotice("Git initialized. Create the first commit before using worktree conversations.");
-    } catch (error) {
-      setNotice(formatUserError(error));
     }
   }
 
@@ -1264,7 +1291,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   async function spawnHarness(
     harnessId: string,
     prompt?: string,
-    options?: { mode?: "persistent" | "oneshot" },
+    options?: { mode?: "persistent" | "oneshot"; },
   ) {
     if (!projectId) return;
     setBusy(true);
@@ -1317,7 +1344,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       if (!report.ready) {
         setNotice(
           report.gatewayOutput ||
-            report.checks.find((item: { ok: boolean; detail: string }) => !item.ok)?.detail,
+          report.checks.find((item: { ok: boolean; detail: string; }) => !item.ok)?.detail,
         );
       }
     } catch (error) {
@@ -1357,7 +1384,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
    */
   async function loadHarnessStatus(id: string) {
     try {
-      const live = (await api.harnessStatus(id)) as HarnessLiveStatus;
+      const live = await api.harnessStatus(id) as HarnessLiveStatus;
       setHarnessStatuses((current) => ({ ...current, [id]: live }));
     } catch {
       // A status we could not read means no model list, not a broken thread.
@@ -1367,7 +1394,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   async function refreshHarnessStatus(id?: string) {
     const target = id ?? sessionId;
     if (!target) return;
-    const live = (await api.harnessStatus(target)) as HarnessLiveStatus;
+    const live = await api.harnessStatus(target) as HarnessLiveStatus;
     setHarnessStatuses((current) => ({ ...current, [target]: live }));
     await refresh();
   }
@@ -1426,12 +1453,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   async function checkoutBranch(branch: string) {
     if (!projectId) return;
-    try {
-      const next = await api.checkoutBranch(projectId, branch, sessionId);
-      setGit(next);
-    } catch (error) {
-      setNotice(formatUserError(error));
-    }
+    await performGit(() => api.checkoutBranch(projectId, branch, sessionId));
   }
 
   function openInspector(tab?: InspectorTab) {
@@ -1441,7 +1463,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }
 
   async function updateSettings(patch: Partial<CapsuleSettings>) {
-    const next = (await api.updateSettings(patch)) as CapsuleSettings;
+    const next = await api.updateSettings(patch) as CapsuleSettings;
     setSettings(next);
     applyAppearance(next);
     if (patch.defaultMode) setMode(patch.defaultMode);
@@ -1450,25 +1472,27 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     return next;
   }
 
-  async function gitCommit(message: string) {
-    if (!projectId) return false;
+  async function performGit(operation: () => Promise<GitStatus>): Promise<boolean> {
+    if (!requests.isCurrent(scope)) return false;
+    const current = requests.capture("git");
     try {
-      setGit(await api.gitCommit(projectId, message, sessionId));
+      const next = await operation();
+      if (!current()) return requests.isCurrent(scope);
+      setGit(next);
       setNotice(undefined);
       return true;
     } catch (error) {
-      setNotice(formatUserError(error));
+      if (requests.isCurrent(scope)) setNotice(formatUserError(error));
       return false;
     }
   }
 
-  async function gitStage(relative: string) {
-    if (!projectId) return;
-    try {
-      setGit(await api.gitStage(projectId, relative, sessionId));
-    } catch (error) {
-      setNotice(formatUserError(error));
+  async function gitCommit(message: string) {
+    return projectId ? performGit(() => api.gitCommit(projectId, message, sessionId)) : false;
     }
+
+  async function gitStage(relative: string) {
+    if (projectId) await performGit(() => api.gitStage(projectId, relative, sessionId));
   }
 
   function gitDiscard(relative: string) {
@@ -1480,7 +1504,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       onConfirm: () => {
         void (async () => {
           if (!projectId) return;
-          setGit(await api.gitDiscard(projectId, relative, sessionId));
+          await performGit(() => api.gitDiscard(projectId, relative, sessionId));
           setConfirm(undefined);
         })();
       },
@@ -1488,55 +1512,24 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }
 
   async function gitCreateBranch(branch: string) {
-    if (!projectId) return;
-    try {
-      setGit(await api.gitCreateBranch(projectId, branch, sessionId));
-    } catch (error) {
-      setNotice(formatUserError(error));
-    }
+    if (projectId) await performGit(() => api.gitCreateBranch(projectId, branch, sessionId));
   }
 
   async function gitPush() {
-    if (!projectId) return false;
-    try {
-      setGit(await api.gitPush(projectId, sessionId));
-      setNotice(undefined);
-      return true;
-    } catch (error) {
-      setNotice(formatUserError(error));
-      return false;
-    }
+    return projectId ? performGit(() => api.gitPush(projectId, sessionId)) : false;
   }
 
-  async function gitCreatePullRequest(input?: { title?: string; body?: string }) {
-    if (!projectId) return false;
-    try {
-      setGit(
-        await api.gitCreatePullRequest(projectId, {
-          ...input,
-          sessionId,
-        }),
-      );
-      setNotice(undefined);
-      return true;
-    } catch (error) {
-      setNotice(formatUserError(error));
-      return false;
-    }
+  async function gitCreatePullRequest(input?: { title?: string; body?: string; }) {
+    return projectId ? performGit(() => api.gitCreatePullRequest(projectId, { ...input, sessionId })) : false;
   }
 
   async function gitMergePullRequest() {
-    if (!projectId) return;
-    try {
-      setGit(await api.gitMergePullRequest(projectId, sessionId));
-    } catch (error) {
-      setNotice(formatUserError(error));
-    }
+    if (projectId) await performGit(() => api.gitMergePullRequest(projectId, sessionId));
   }
 
   const installSkill = useCallback(
     async (skill: Skill) => {
-      const result = (await api.installSkill(skill)) as Skill;
+      const result = await api.installSkill(skill) as Skill;
       await refresh();
       return result;
     },
@@ -1545,7 +1538,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   const installSkillPack = useCallback(
     async (packId: string) => {
-      const result = (await api.installSkillPack(packId)) as SkillPack;
+      const result = await api.installSkillPack(packId) as SkillPack;
       await refresh();
       return result;
     },
@@ -1570,14 +1563,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   const searchSkillCatalog = useCallback(
     async (query: string, refresh?: boolean) => {
-      return (await api.searchSkillCatalog(query, refresh)) as SkillCatalogPage;
+      return await api.searchSkillCatalog(query, refresh) as SkillCatalogPage;
     },
     [api],
   );
 
   const fetchSkillDetail = useCallback(
     async (id: string) => {
-      return (await api.fetchSkillDetail(id)) as string | undefined;
+      return await api.fetchSkillDetail(id) as string | undefined;
     },
     [api],
   );
@@ -1588,7 +1581,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     [events],
   );
 
-  const steps = activityFromEvents(events, Boolean(activeRun && activeRun.status !== "running"), {
+  const steps = activityFromEvents(events, !activeRun || activeRun.status !== "running", {
     reasoning: settings?.reasoningSummary,
   });
 

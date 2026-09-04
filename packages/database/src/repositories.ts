@@ -86,7 +86,7 @@ export class CapsuleRepositories {
   getSetting(key: string): string | undefined {
     const row = this.db.sqlite
       .prepare("SELECT value FROM settings WHERE key = ?")
-      .get(key) as { value: string } | undefined;
+      .get(key) as { value: string; } | undefined;
     return row?.value;
   }
 
@@ -234,7 +234,7 @@ export class CapsuleRepositories {
 
   deleteSession(id: string): void {
     const runIds = (
-      this.db.sqlite.prepare("SELECT id FROM runs WHERE session_id = ?").all(id) as Array<{ id: string }>
+      this.db.sqlite.prepare("SELECT id FROM runs WHERE session_id = ?").all(id) as Array<{ id: string; }>
     ).map((row) => row.id);
     this.deleteRuns(runIds);
     this.db.sqlite.prepare("DELETE FROM messages WHERE session_id = ?").run(id);
@@ -302,7 +302,7 @@ export class CapsuleRepositories {
                 run_id AS runId, created_at AS createdAt
          FROM messages WHERE session_id = ? ORDER BY created_at ASC`,
       )
-      .all(sessionId) as Array<Omit<ChatMessage, "attachments"> & { attachments: string }>;
+      .all(sessionId) as Array<Omit<ChatMessage, "attachments"> & { attachments: string; }>;
     return rows.map((row) => {
       const attachments = parseJson<NonNullable<ChatMessage["attachments"]>>(row.attachments, []);
       return { ...row, attachments: attachments.length > 0 ? attachments : undefined };
@@ -318,7 +318,7 @@ export class CapsuleRepositories {
   listMessagesBefore(
     sessionId: string,
     limit: number,
-    before?: { createdAt: string; id: string },
+    before?: { createdAt: string; id: string; },
   ): ChatMessage[] {
     const columns = `id, session_id AS sessionId, role, content, attachments, kind,
                      run_id AS runId, created_at AS createdAt`;
@@ -331,7 +331,7 @@ export class CapsuleRepositories {
              ORDER BY created_at DESC, id DESC LIMIT @limit`,
           )
           .all({ sessionId, createdAt: before.createdAt, id: before.id, limit }) as Array<
-          Omit<ChatMessage, "attachments"> & { attachments: string }
+          Omit<ChatMessage, "attachments"> & { attachments: string; }
         >)
       : (this.db.sqlite
           .prepare(
@@ -339,7 +339,7 @@ export class CapsuleRepositories {
              ORDER BY created_at DESC, id DESC LIMIT @limit`,
           )
           .all({ sessionId, limit }) as Array<
-          Omit<ChatMessage, "attachments"> & { attachments: string }
+          Omit<ChatMessage, "attachments"> & { attachments: string; }
         >);
     // Query is newest-first so LIMIT takes the right end; callers want reading order.
     return rows.reverse().map((row) => {
@@ -552,7 +552,7 @@ export class CapsuleRepositories {
                 skill_count AS skillCount, created_at AS createdAt
          FROM skill_packs ORDER BY name`,
       )
-      .all() as Array<Omit<SkillPack, "tags"> & { tags: string }>;
+      .all() as Array<Omit<SkillPack, "tags"> & { tags: string; }>;
     return rows.map((row) => ({
       ...row,
       tags: parseJson<string[]>(row.tags, []),
@@ -572,10 +572,10 @@ export class CapsuleRepositories {
       .prepare(
         `INSERT INTO runs (
           id, session_id, project_id, agent_id, skill_id, contract_id, status, prompt, result,
-          error, openclaw_run_id, checkpoint_ref, created_at, updated_at, completed_at
+          error, openclaw_run_id, checkpoint_ref, working_directory, revision, verification, created_at, updated_at, completed_at
         ) VALUES (
           @id, @sessionId, @projectId, @agentId, @skillId, @contractId, @status, @prompt, @result,
-          @error, @openclawRunId, @checkpointRef, @createdAt, @updatedAt, @completedAt
+          @error, @openclawRunId, @checkpointRef, @workingDirectory, @revision, @verification, @createdAt, @updatedAt, @completedAt
         )`,
       )
       .run({
@@ -586,6 +586,9 @@ export class CapsuleRepositories {
         error: run.error ?? null,
         openclawRunId: run.openclawRunId ?? null,
         checkpointRef: run.checkpointRef ?? null,
+        workingDirectory: run.workingDirectory ?? null,
+        revision: run.revision ? JSON.stringify(run.revision) : null,
+        verification: run.verification ? JSON.stringify(run.verification) : null,
         completedAt: run.completedAt ?? null,
       });
   }
@@ -595,6 +598,7 @@ export class CapsuleRepositories {
       .prepare(
         `UPDATE runs SET status = @status, result = @result, error = @error,
          openclaw_run_id = @openclawRunId, checkpoint_ref = @checkpointRef,
+         working_directory = @workingDirectory, revision = @revision, verification = @verification,
          updated_at = @updatedAt, completed_at = @completedAt,
          contract_id = @contractId WHERE id = @id`,
       )
@@ -605,6 +609,9 @@ export class CapsuleRepositories {
         error: run.error ?? null,
         openclawRunId: run.openclawRunId ?? null,
         checkpointRef: run.checkpointRef ?? null,
+        workingDirectory: run.workingDirectory ?? null,
+        revision: run.revision ? JSON.stringify(run.revision) : null,
+        verification: run.verification ? JSON.stringify(run.verification) : null,
         updatedAt: run.updatedAt,
         completedAt: run.completedAt ?? null,
         contractId: run.contractId ?? null,
@@ -612,7 +619,15 @@ export class CapsuleRepositories {
   }
 
   getRun(id: string): Run | undefined {
-    return this.listRuns().find((run) => run.id === id);
+    const row = this.db.sqlite.prepare(
+      `SELECT id, session_id AS sessionId, project_id AS projectId, agent_id AS agentId,
+              skill_id AS skillId, contract_id AS contractId, status, prompt, result, error,
+              openclaw_run_id AS openclawRunId, checkpoint_ref AS checkpointRef,
+              working_directory AS workingDirectory, revision, verification,
+              created_at AS createdAt, updated_at AS updatedAt, completed_at AS completedAt
+       FROM runs WHERE id = ?`,
+    ).get(id) as (Omit<Run, "revision" | "verification"> & { revision: string | null; verification: string | null }) | undefined;
+    return row ? { ...row, revision: row.revision ? JSON.parse(row.revision) : undefined, verification: row.verification ? JSON.parse(row.verification) : undefined } : undefined;
   }
 
   listRuns(sessionId?: string): Run[] {
@@ -620,16 +635,19 @@ export class CapsuleRepositories {
       ? `SELECT id, session_id AS sessionId, project_id AS projectId, agent_id AS agentId,
                 skill_id AS skillId, contract_id AS contractId, status, prompt, result, error,
                 openclaw_run_id AS openclawRunId, checkpoint_ref AS checkpointRef,
+                working_directory AS workingDirectory, revision, verification,
                 created_at AS createdAt, updated_at AS updatedAt,
                 completed_at AS completedAt FROM runs WHERE session_id = ? ORDER BY created_at DESC`
       : `SELECT id, session_id AS sessionId, project_id AS projectId, agent_id AS agentId,
                 skill_id AS skillId, contract_id AS contractId, status, prompt, result, error,
                 openclaw_run_id AS openclawRunId, checkpoint_ref AS checkpointRef,
+                working_directory AS workingDirectory, revision, verification,
                 created_at AS createdAt, updated_at AS updatedAt,
                 completed_at AS completedAt FROM runs ORDER BY created_at DESC`;
-    return (sessionId
+    const rows = (sessionId
       ? this.db.sqlite.prepare(sql).all(sessionId)
-      : this.db.sqlite.prepare(sql).all()) as Run[];
+      : this.db.sqlite.prepare(sql).all()) as Array<Omit<Run, "revision" | "verification"> & { revision: string | null; verification: string | null; }>;
+    return rows.map((row) => ({ ...row, revision: row.revision ? JSON.parse(row.revision) : undefined, verification: row.verification ? JSON.parse(row.verification) : undefined }));
   }
 
   insertRunEvent(event: RunEvent): void {
@@ -650,7 +668,7 @@ export class CapsuleRepositories {
         `SELECT id, run_id AS runId, timestamp, type, message, data
          FROM run_events WHERE run_id = ? ORDER BY timestamp ASC`,
       )
-      .all(runId) as Array<Omit<RunEvent, "data"> & { data: string | null }>;
+      .all(runId) as Array<Omit<RunEvent, "data"> & { data: string | null; }>;
     return rows.map((row) => ({
       ...row,
       data: parseJson(row.data, undefined),

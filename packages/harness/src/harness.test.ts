@@ -69,8 +69,8 @@ describe("harness catalog", () => {
     expect(acpOptionCommand("model", "anthropic/claude-opus-4-6")).toBe(
       "/acp model anthropic/claude-opus-4-6",
     );
-    expect(acpOptionCommand("cwd", "/Users/me/Work Space")).toBe(
-      '/acp cwd "/Users/me/Work Space"',
+    expect(acpOptionCommand("cwd", "/Users/me/Workspace")).toBe(
+      '/acp cwd /Users/me/Workspace',
     );
     expect(acpOptionCommand("timeout", "120")).toBe("/acp timeout 120");
     expect(acpOptionCommand("mode", "plan")).toBe("/acp set-mode plan");

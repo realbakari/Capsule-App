@@ -53,7 +53,7 @@ const api = {
   listMessages: (sessionId: string) => ipcRenderer.invoke(IPC_CHANNELS.listMessages, sessionId),
   listMessagePage: (
     sessionId: string,
-    options?: { limit?: number; before?: { createdAt: string; id: string } },
+    options?: { limit?: number; before?: { createdAt: string; id: string; }; },
   ): Promise<MessagePage> => ipcRenderer.invoke(IPC_CHANNELS.listMessagePage, sessionId, options),
   sendMessage: (input: unknown) => ipcRenderer.invoke(IPC_CHANNELS.sendMessage, input),
   startRun: (input: unknown) => ipcRenderer.invoke(IPC_CHANNELS.startRun, input),
@@ -61,7 +61,8 @@ const api = {
   getRun: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.getRun, id),
   listRuns: (sessionId?: string) => ipcRenderer.invoke(IPC_CHANNELS.listRuns, sessionId),
   listRunEvents: (runId: string) => ipcRenderer.invoke(IPC_CHANNELS.listRunEvents, runId),
-  verifyRun: (runId: string) => ipcRenderer.invoke(IPC_CHANNELS.verifyRun, runId),
+  verifyRun: (runId: string, actionId?: string) => ipcRenderer.invoke(IPC_CHANNELS.verifyRun, runId, actionId),
+  cancelVerification: (runId: string) => ipcRenderer.invoke(IPC_CHANNELS.cancelVerification, runId),
   listArtifacts: (runId?: string) => ipcRenderer.invoke(IPC_CHANNELS.listArtifacts, runId),
   listApprovals: (status?: string) => ipcRenderer.invoke(IPC_CHANNELS.listApprovals, status),
   resolveApproval: (id: string, decision: string) =>
@@ -76,7 +77,7 @@ const api = {
     projectId: string,
     relative: string,
     content: string,
-    options?: { origin?: "user" | "agent"; expectedRevision?: string; root?: string },
+    options?: { origin?: "user" | "agent"; expectedRevision?: string; root?: string; },
   ) => ipcRenderer.invoke(IPC_CHANNELS.writeFile, projectId, relative, content, options),
   listFiles: (projectId: string, relative?: string, root?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.listFiles, projectId, relative, root),
@@ -90,7 +91,7 @@ const api = {
   remotePair: () => ipcRenderer.invoke(IPC_CHANNELS.remotePair),
   remoteRevoke: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.remoteRevoke, id),
   windowBackground: (color: string) => ipcRenderer.invoke(IPC_CHANNELS.windowBackground, color),
-  terminalStart: (input: { cwd: string; cols?: number; rows?: number }) =>
+  terminalStart: (input: { cwd: string; cols?: number; rows?: number; }) =>
     ipcRenderer.invoke(IPC_CHANNELS.terminalStart, input),
   terminalInput: (id: string, data: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.terminalInput, id, data),
@@ -139,7 +140,7 @@ const api = {
     ipcRenderer.invoke(IPC_CHANNELS.gitPush, projectId, sessionId),
   gitCreatePullRequest: (
     projectId: string,
-    input?: { title?: string; body?: string; sessionId?: string },
+    input?: { title?: string; body?: string; sessionId?: string; },
   ) => ipcRenderer.invoke(IPC_CHANNELS.gitCreatePullRequest, projectId, input),
   gitMergePullRequest: (projectId: string, sessionId?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.gitMergePullRequest, projectId, sessionId),
@@ -149,7 +150,7 @@ const api = {
   openPath: (target: string) => ipcRenderer.invoke(IPC_CHANNELS.openPath, target),
   pickDirectory: () => ipcRenderer.invoke(IPC_CHANNELS.pickDirectory),
   pickFiles: () => ipcRenderer.invoke(IPC_CHANNELS.pickFiles),
-  validateAttachments: (attachments: Array<{ name: string; path: string }>) =>
+  validateAttachments: (attachments: Array<{ name: string; path: string; }>) =>
     ipcRenderer.invoke(IPC_CHANNELS.validateAttachments, attachments),
   listHarnesses: () => ipcRenderer.invoke(IPC_CHANNELS.listHarnesses),
   doctorHarness: (harnessId: string) => ipcRenderer.invoke(IPC_CHANNELS.doctorHarness, harnessId),

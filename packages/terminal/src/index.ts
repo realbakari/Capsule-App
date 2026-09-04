@@ -75,33 +75,53 @@ export function runInDirectory(
   cwd: string,
   command: string,
   timeoutMs = 30_000,
+  signal?: AbortSignal,
 ): Promise<ExecResult> {
   const text = command.trim();
   if (!text) throw new Error("Command is empty");
   if (!cwd || !existsSync(cwd)) throw new Error("Working directory is missing");
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(new Error("Check cancelled.")); return; }
     const child = spawn("/bin/zsh", ["-lc", text], {
       cwd,
       env: process.env,
       stdio: ["ignore", "pipe", "pipe"],
+      detached: process.platform !== "win32",
     });
-    const stdout: Buffer[] = [];
-    const stderr: Buffer[] = [];
-    const timer = setTimeout(() => {
-      child.kill("SIGTERM");
-      reject(new Error(`Command timed out after ${Math.round(timeoutMs / 1000)}s`));
-    }, timeoutMs);
-    child.stdout.on("data", (chunk) => stdout.push(chunk as Buffer));
-    child.stderr.on("data", (chunk) => stderr.push(chunk as Buffer));
+    let stdout = "";
+    let stderr = "";
+    let failure: string | undefined;
+    let killTimer: ReturnType<typeof setTimeout> | undefined;
+    const kill = (kind: NodeJS.Signals) => {
+      try {
+        if (process.platform !== "win32" && child.pid) process.kill(-child.pid, kind);
+        else child.kill(kind);
+      } catch { /* The captured child has already exited. */ }
+    };
+    const stop = (reason: string) => {
+      if (failure) return;
+      failure = reason;
+      kill("SIGTERM");
+      killTimer = setTimeout(() => kill("SIGKILL"), 1000);
+    };
+    const cancel = () => stop("Check cancelled.");
+    signal?.addEventListener("abort", cancel, { once: true });
+    const timer = setTimeout(() => stop(`Command timed out after ${Math.round(timeoutMs / 1000)}s`), timeoutMs);
+    const cleanup = () => { clearTimeout(timer); clearTimeout(killTimer); signal?.removeEventListener("abort", cancel); };
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => { stdout = (stdout + chunk).slice(-20_000); });
+    child.stderr.on("data", (chunk: string) => { stderr = (stderr + chunk).slice(-20_000); });
     child.on("error", (error) => {
-      clearTimeout(timer);
+      cleanup();
       reject(error);
     });
     child.on("close", (code) => {
-      clearTimeout(timer);
+      cleanup();
+      if (failure) { reject(new Error(failure)); return; }
       resolve({
-        stdout: Buffer.concat(stdout).toString("utf8"),
-        stderr: Buffer.concat(stderr).toString("utf8"),
+        stdout,
+        stderr,
         code: code ?? 1,
       });
     });
@@ -168,8 +188,8 @@ export function preferredShell(env: NodeJS.ProcessEnv = process.env): string {
 }
 
 export function startPty(
-  input: { cwd: string; cols?: number; rows?: number; shell?: string },
-  handlers: { onData: (data: string) => void; onExit: (code: number, signal?: number) => void },
+  input: { cwd: string; cols?: number; rows?: number; shell?: string; },
+  handlers: { onData: (data: string) => void; onExit: (code: number, signal?: number) => void; },
 ): PtySession {
   if (!input.cwd || !existsSync(input.cwd)) throw new Error("Working directory is missing");
   const shell = input.shell ?? preferredShell();

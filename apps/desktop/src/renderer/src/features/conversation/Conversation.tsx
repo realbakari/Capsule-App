@@ -24,6 +24,7 @@ import { summariseWork, extractTouchedFiles } from "../../lib/activity";
 import { outcomesByTurn } from "../../lib/turn-outcomes";
 import { threadFeedback } from "../../lib/thread-error";
 import { TurnOutcome } from "./TurnOutcome";
+import { TurnVerification } from "./TurnVerification";
 import { TurnFilesCard } from "./TurnFilesCard";
 import { MessageBody } from "./MessageBody";
 
@@ -125,7 +126,7 @@ const KEEP_EXPANDED_TURNS = 3;
  * The interval is cleared with the component: a timer left running behind a
  * closed thread repaints the whole transcript every second for nothing.
  */
-function RunElapsed({ startedAt }: { startedAt: string }) {
+function RunElapsed({ startedAt }: { startedAt: string; }) {
   const startedMs = Date.parse(startedAt);
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -193,7 +194,7 @@ function TurnStatusLine({
  * finished; this says what it was, so a list of rows can be skimmed without
  * reading every label.
  */
-function StepIcon({ id }: { id: string }) {
+function StepIcon({ id }: { id: string; }) {
   const action = id.startsWith("work:") ? id.slice(5) : id;
   const Icon =
     action === "ran"
@@ -289,6 +290,12 @@ export function Conversation() {
   }, [messages]);
   const visibleMessageCount = useMemo(() => turns.reduce((count, turn) => count + turn.messages.length, 0), [turns]);
   const turnOutcomes = useMemo(() => outcomesByTurn(turns, runs, session?.id, project?.id), [turns, runs, session?.id, project?.id]);
+  // The newest work log is rendered below the messages. Keep its receipt
+  // below it too, while older receipts remain attached to their own turn.
+  const lastTurn = turns.at(-1);
+  const footerVerification = !activeRun && steps.length > 0 && lastTurn
+    ? turnOutcomes.get(lastTurn.id)?.find((run) => run.status === "completed" && events.some((event) => event.runId === run.id))
+    : undefined;
 
   /*
    * Where each turn starts in the flat message list, so a row can tell whether
@@ -469,7 +476,11 @@ export function Conversation() {
                       onOpenAttachment={openAttachment}
                     />
                   ))}
-                  {(turnOutcomes.get(turn.id) ?? []).map((run) => <TurnOutcome key={run.id} run={run} cwd={terminalCwd} />)}
+                    {(turnOutcomes.get(turn.id) ?? []).map((run) => <Fragment key={run.id}>
+                      {run.status === "completed" && !run.result?.trim() && !turn.messages.some((message) => message.role === "assistant") && <p className="muted turn-missing-reply" role="status">No reply was received for this turn. Review the work log before retrying.</p>}
+                      <TurnOutcome run={run} cwd={terminalCwd} />
+                      {run.id !== footerVerification?.id && <TurnVerification run={run} />}
+                    </Fragment>)}
                   </Fragment>
                 ),
               )}
@@ -575,6 +586,7 @@ export function Conversation() {
           {/* Last in the thread: the outcome of the newest turn, under the
               record of what that turn did. Above the work log it read as a
               verdict on the turn before it. */}
+          {footerVerification && <TurnVerification key={footerVerification.id} run={footerVerification} />}
           {failure && failureKey ? (
             <div className="thread-error" role="status">
               <AlertTriangleIcon size={13} aria-hidden />

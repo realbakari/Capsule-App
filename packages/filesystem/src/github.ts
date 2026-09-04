@@ -1,4 +1,5 @@
-import { spawn, spawnSync } from "node:child_process";
+import { inRepository } from "./git-process.js";
+import { spawn } from "node:child_process";
 import { avatarsFor } from "./avatars.js";
 import { INCOMPLETE_GITHUB_RESPONSE, isIncompleteResponse, readGhJson } from "./github-read.js";
 import type {
@@ -16,13 +17,8 @@ function run(
   args: string[],
   cwd: string,
   timeout = 12_000,
-): { ok: boolean; stdout: string; stderr: string } {
-  const result = spawnSync(command, args, { cwd, encoding: "utf8", timeout });
-  return {
-    ok: result.status === 0,
-    stdout: result.stdout ?? "",
-    stderr: (result.stderr ?? "").trim(),
-  };
+): Promise<{ ok: boolean; stdout: string; stderr: string; }> {
+  return runAsync(command, args, cwd, timeout);
 }
 
 /*
@@ -33,15 +29,14 @@ function run(
  * seconds here. Run synchronously on Electron's main process that is not a
  * slow list — it is nine seconds in which the window does not redraw, no other
  * IPC call is answered, and the app is indistinguishable from hung. Everything
- * that reaches the network goes through this instead; `run` above stays for
- * the local git questions, which are milliseconds.
+ * that reaches the network and local Git reads use asynchronous subprocesses.
  */
 function runAsync(
   command: string,
   args: string[],
   cwd: string,
   timeout = 12_000,
-): Promise<{ ok: boolean; stdout: string; stderr: string }> {
+): Promise<{ ok: boolean; stdout: string; stderr: string; }> {
   return new Promise((resolve) => {
     let child: ReturnType<typeof spawn>;
     try {
@@ -54,7 +49,7 @@ function runAsync(
     let stderr = "";
     let outputBytes = 0;
     let settled = false;
-    const finish = (result: { ok: boolean; stdout: string; stderr: string }) => {
+    const finish = (result: { ok: boolean; stdout: string; stderr: string; }) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
@@ -93,14 +88,18 @@ function runAsync(
  * time to ask a question whose answer is fixed for the life of the app.
  */
 let ghPresent: boolean | undefined;
+let ghProbe: Promise<boolean> | undefined;
 
-const pullRequestCache = new Map<string, { value?: GitPullRequest; at: number }>();
+const pullRequestCache = new Map<string, { value?: GitPullRequest; at: number; }>();
 const pullRequestAttempts = new Map<string, number>();
 
-export function ghAvailable(): boolean {
+export async function ghAvailable(): Promise<boolean> {
   if (ghPresent === undefined) {
-    const result = spawnSync("gh", ["--version"], { encoding: "utf8", timeout: 1500 });
-    ghPresent = result.status === 0;
+    ghProbe ??= runAsync("gh", ["--version"], process.cwd(), 1500).then((result) => result.ok);
+    const pending = ghProbe;
+    const available = await pending;
+    if (ghProbe === pending) ghPresent = available;
+    return available;
   }
   return ghPresent;
 }
@@ -108,6 +107,7 @@ export function ghAvailable(): boolean {
 /** Forgets the cached answer, for a Doctor run that re-checks the environment. */
 export function clearGhCache(): void {
   ghPresent = undefined;
+  ghProbe = undefined;
   pullRequestCache.clear();
   pullRequestAttempts.clear();
   pullRequestListCache.clear();
@@ -140,17 +140,21 @@ export function mergePullRequestArgs(method: PrMergeMethod, auto: boolean): stri
   return args;
 }
 
-export function lastCommitSubject(cwd: string): string {
-  return run("git", ["log", "-1", "--pretty=%s"], cwd, 4000).stdout.trim();
+export async function lastCommitSubject(cwd: string): Promise<string> {
+  return (await run("git", ["log", "-1", "--pretty=%s"], cwd, 4000)).stdout.trim();
 }
 
 export async function pushCurrentBranch(
   cwd: string,
   forceWithLease: boolean,
-): Promise<{ ok: boolean; detail: string }> {
-  const result = await runAsync("git", pushArgs(forceWithLease), cwd, 30_000);
-  if (result.ok) return { ok: true, detail: result.stdout.trim() || "Pushed." };
-  return { ok: false, detail: result.stderr || result.stdout.trim() || "Push failed." };
+): Promise<{ ok: boolean; detail: string; }> {
+  return inRepository(cwd, async () => {
+
+    const result = await runAsync("git", pushArgs(forceWithLease), cwd, 30_000);
+    if (result.ok) return { ok: true, detail: result.stdout.trim() || "Pushed." };
+    return { ok: false, detail: result.stderr || result.stdout.trim() || "Push failed." };
+
+  });
 }
 
 function checkRollup(
@@ -158,7 +162,7 @@ function checkRollup(
 ): GitPullRequest["checks"] {
   if (!Array.isArray(value) || value.length === 0) return "none";
   const states = value.map((item) =>
-    String((item as { state?: string; conclusion?: string }).state ?? (item as { conclusion?: string }).conclusion ?? "")
+    String((item as { state?: string; conclusion?: string; }).state ?? (item as { conclusion?: string; }).conclusion ?? "")
       .toUpperCase(),
   );
   if (states.some((state) => state === "FAILURE" || state === "FAILED" || state === "ERROR")) {
@@ -290,7 +294,7 @@ export function parsePullRequestList(raw: string): GitPullRequest[] | undefined 
       mergeStateStatus?: string;
       reviewDecision?: string;
       statusCheckRollup?: unknown;
-      author?: { login?: string; name?: string };
+      author?: { login?: string; name?: string; };
       headRefName?: string;
       createdAt?: string;
       updatedAt?: string;
@@ -338,7 +342,7 @@ export function parsePullRequestList(raw: string): GitPullRequest[] | undefined 
  * new one lands is both faster and no less true.
  */
 const PR_LIST_TTL_MS = 120_000;
-const pullRequestListCache = new Map<string, { value: GitPullRequest[]; at: number }>();
+const pullRequestListCache = new Map<string, { value: GitPullRequest[]; at: number; }>();
 const pullRequestListFailures = new Map<string, string>();
 /*
  * The call itself, not a flag saying one is happening. Two callers arriving
@@ -419,7 +423,7 @@ export function pullRequestListFailure(cwd: string): string | undefined {
 
 function actorName(value: unknown): string | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  const actor = value as { login?: unknown; name?: unknown };
+  const actor = value as { login?: unknown; name?: unknown; };
   if (typeof actor.login === "string" && actor.login) return actor.login;
   return typeof actor.name === "string" && actor.name ? actor.name : undefined;
 }
@@ -671,13 +675,13 @@ function parseCurrentPullRequest(raw: string): GitPullRequest | undefined {
     const failed =
       Array.isArray(parsed.statusCheckRollup)
         ? parsed.statusCheckRollup
-            .map((item) => {
-              const row = item as { name?: string; state?: string; conclusion?: string };
-              const state = String(row.state ?? row.conclusion ?? "");
-              return /fail|error/i.test(state) ? row.name ?? state : undefined;
-            })
-            .filter((name): name is string => Boolean(name))
-            .join(", ")
+          .map((item) => {
+            const row = item as { name?: string; state?: string; conclusion?: string; };
+            const state = String(row.state ?? row.conclusion ?? "");
+            return /fail|error/i.test(state) ? row.name ?? state : undefined;
+          })
+          .filter((name): name is string => Boolean(name))
+          .join(", ")
         : undefined;
     return {
       number: parsed.number,
@@ -753,42 +757,54 @@ function cachedPullRequest(cwd: string): GitPullRequest | undefined {
  * false until a reading has actually landed, so a caller cannot read "not
  * fetched yet" as "there is no pull request".
  */
-export function pollPullRequest(cwd: string): { value?: GitPullRequest; known: boolean } {
+export function pollPullRequest(cwd: string): { value?: GitPullRequest; known: boolean; } {
   const value = cachedPullRequest(cwd);
   return { value, known: pullRequestCache.has(cwd) };
 }
 
-export function enrichGitStatus(status: GitStatus, cwd?: string): GitStatus {
-  if (!status.isRepo || !cwd) return { ...status, ghAvailable: false };
-  const available = ghAvailable();
-  const ahead = run("git", ["rev-list", "--count", "@{upstream}..HEAD"], cwd, 3000);
-  const behind = run("git", ["rev-list", "--count", "HEAD..@{upstream}"], cwd, 3000);
-  return {
-    ...status,
-    ghAvailable: available,
-    ahead: ahead.ok ? Number.parseInt(ahead.stdout.trim(), 10) || 0 : undefined,
-    behind: behind.ok ? Number.parseInt(behind.stdout.trim(), 10) || 0 : undefined,
-    pullRequest: available ? cachedPullRequest(cwd) : undefined,
-  };
+export async function enrichGitStatus(status: GitStatus, cwd?: string): Promise<GitStatus> {
+  return inRepository(cwd, async () => {
+
+    if (!status.isRepo || !cwd) return { ...status, ghAvailable: false };
+    const available = await ghAvailable();
+    const ahead = await run("git", ["rev-list", "--count", "@{upstream}..HEAD"], cwd, 3000);
+    const behind = await run("git", ["rev-list", "--count", "HEAD..@{upstream}"], cwd, 3000);
+    return {
+      ...status,
+      ghAvailable: available,
+      ahead: ahead.ok ? Number.parseInt(ahead.stdout.trim(), 10) || 0 : undefined,
+      behind: behind.ok ? Number.parseInt(behind.stdout.trim(), 10) || 0 : undefined,
+      pullRequest: available ? cachedPullRequest(cwd) : undefined,
+    };
+
+  }, JSON.stringify(["enrichGitStatus", status, cwd]));
 }
 
 export async function createPullRequest(
   cwd: string,
-  input: { title: string; body: string; draft: boolean },
-): Promise<{ ok: boolean; detail: string; url?: string }> {
-  const result = await runAsync("gh", createPullRequestArgs(input), cwd, 30_000);
-  const text = `${result.stdout}\n${result.stderr}`.trim();
-  const url = text.match(/https:\/\/github\.com\/\S+/)?.[0];
-  if (result.ok) return { ok: true, detail: text || "Opened pull request.", url };
-  return { ok: false, detail: result.stderr || result.stdout.trim() || "Could not create pull request." };
+  input: { title: string; body: string; draft: boolean; },
+): Promise<{ ok: boolean; detail: string; url?: string; }> {
+  return inRepository(cwd, async () => {
+
+    const result = await runAsync("gh", createPullRequestArgs(input), cwd, 30_000);
+    const text = `${result.stdout}\n${result.stderr}`.trim();
+    const url = text.match(/https:\/\/github\.com\/\S+/)?.[0];
+    if (result.ok) return { ok: true, detail: text || "Opened pull request.", url };
+    return { ok: false, detail: result.stderr || result.stdout.trim() || "Could not create pull request." };
+
+  });
 }
 
 export async function mergePullRequest(
   cwd: string,
   method: PrMergeMethod,
   auto: boolean,
-): Promise<{ ok: boolean; detail: string }> {
-  const result = await runAsync("gh", mergePullRequestArgs(method, auto), cwd, 30_000);
-  if (result.ok) return { ok: true, detail: result.stdout.trim() || "Merge started." };
-  return { ok: false, detail: result.stderr || result.stdout.trim() || "Could not merge pull request." };
+): Promise<{ ok: boolean; detail: string; }> {
+  return inRepository(cwd, async () => {
+
+    const result = await runAsync("gh", mergePullRequestArgs(method, auto), cwd, 30_000);
+    if (result.ok) return { ok: true, detail: result.stdout.trim() || "Merge started." };
+    return { ok: false, detail: result.stderr || result.stdout.trim() || "Could not merge pull request." };
+
+  });
 }

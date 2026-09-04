@@ -241,11 +241,11 @@ async function fetchLatestRelease(): Promise<UpdateCheck> {
     if (!response.ok) {
       return { state: "unreachable", current, detail: `GitHub responded ${response.status}` };
     }
-    const release = (await response.json()) as {
+    const release = await response.json() as {
       tag_name?: string;
       html_url?: string;
       body?: string;
-      assets?: Array<{ name?: unknown; browser_download_url?: unknown; size?: unknown }>;
+      assets?: Array<{ name?: unknown; browser_download_url?: unknown; size?: unknown; }>;
     };
     const tag = typeof release.tag_name === "string" ? release.tag_name : "";
     if (!tag) return { state: "no-releases", current };
@@ -840,7 +840,7 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.listMessagePage, (sessionId, options) =>
     requireEngine().listMessagePage(
       String(sessionId),
-      options as { limit?: number; before?: { createdAt: string; id: string } } | undefined,
+      options as { limit?: number; before?: { createdAt: string; id: string; }; } | undefined,
     ),
   );
   handle(IPC_CHANNELS.sendMessage, (input) =>
@@ -857,7 +857,8 @@ function registerIpc(): void {
   handleArgs(IPC_CHANNELS.listRunEvents, [id], (runId: string) =>
     requireEngine().listRunEvents(runId),
   );
-  handleArgs(IPC_CHANNELS.verifyRun, [id], (runId: string) => requireEngine().verifyRun(runId));
+  handleArgs(IPC_CHANNELS.verifyRun, [id, optStr], (runId: string, actionId?: string) => requireEngine().verifyRun(runId, actionId));
+  handleArgs(IPC_CHANNELS.cancelVerification, [id], (runId: string) => requireEngine().cancelVerification(runId));
   handleArgs(IPC_CHANNELS.listArtifacts, [optStr], (runId: string | undefined) =>
     requireEngine().listArtifacts(runId),
   );
@@ -893,13 +894,13 @@ function registerIpc(): void {
     requireEngine().writeFile(String(projectId), String(relative), String(content), {
       // Only the renderer's own editor calls this channel, and reaching it
       // required a person typing into the file.
-      origin: (options as { origin?: "user" | "agent" } | undefined)?.origin ?? "user",
+      origin: (options as { origin?: "user" | "agent"; } | undefined)?.origin ?? "user",
       ...(() => {
-        const revision = (options as { expectedRevision?: string } | undefined)?.expectedRevision;
+        const revision = (options as { expectedRevision?: string; } | undefined)?.expectedRevision;
         return revision === undefined ? {} : { expectedRevision: revision };
       })(),
       ...(() => {
-        const root = (options as { root?: string } | undefined)?.root;
+        const root = (options as { root?: string; } | undefined)?.root;
         return root ? { root } : {};
       })(),
     }),
@@ -915,7 +916,7 @@ function registerIpc(): void {
     requireEngine().openTerminal(String(projectId), sessionId ? String(sessionId) : undefined),
   );
   handle(IPC_CHANNELS.terminalStart, (input) => {
-    const request = input as { cwd?: string; cols?: number; rows?: number };
+    const request = input as { cwd?: string; cols?: number; rows?: number; };
     const cwd = String(request.cwd ?? "");
     const id = `term_${Math.random().toString(36).slice(2, 10)}`;
     const session = startPty(
@@ -1004,8 +1005,8 @@ function registerIpc(): void {
     requireEngine().validateAttachments(
       Array.isArray(attachments)
         ? attachments.map((item) => ({
-            name: String((item as { name?: unknown }).name ?? "attachment"),
-            path: String((item as { path?: unknown }).path ?? ""),
+          name: String((item as { name?: unknown; }).name ?? "attachment"),
+          path: String((item as { path?: unknown; }).path ?? ""),
           }))
         : [],
     ),
@@ -1083,7 +1084,7 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.gitCreatePullRequest, (projectId, input) =>
     requireEngine().gitCreatePullRequest(
       String(projectId),
-      input as { title?: string; body?: string; sessionId?: string } | undefined,
+      input as { title?: string; body?: string; sessionId?: string; } | undefined,
     ),
   );
   handle(IPC_CHANNELS.gitMergePullRequest, (projectId, sessionId) =>

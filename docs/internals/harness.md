@@ -20,6 +20,23 @@ See [OpenClaw ACP agents](https://docs.openclaw.ai/tools/acp-agents) and [setup]
 
 `sessions.create` does **not** accept `runtime: "acp"`. `sessions_spawn({ runtime: "acp" })` is an agent tool, not a Gateway session-create field.
 
+The Gateway slash parser splits on whitespace without shell unquoting. For
+loopback Gateways, the adapter resolves whitespace-containing cwd values to
+stable symlinks under a private `~/.capsule-acp-cwd` directory before spawn or
+targeted `/acp cwd`. Links are keyed by the canonical directory path, checked
+before reuse, and never overwrite existing entries. They stay across app
+restarts because Gateway sessions may outlive Capsule. If the home path itself
+contains whitespace, a per-user temporary directory is used instead; clearing
+that directory requires respawning the session to recreate its alias.
+
+Project/thread/checkpoint paths remain original; only the slash-command cwd
+changes. This is transport adaptation, not a replacement runtime or a Gateway
+patch. All Gateway harness presets share it. Direct sessions already pass cwd
+as structured data and do not use aliases. Non-loopback Gateways receive no
+local alias: whitespace paths fail before session creation with guidance to
+use a host-side alias. A loopback tunnel also needs an alias on the actual host;
+Capsule cannot provision one remotely.
+
 Operator acknowledgements are not assistant replies. The cancellation guard
 checks individual frames, the assembled reply, and completed run output on
 both runtime routes. The renderer hides previously stored cancellation notices
@@ -72,6 +89,20 @@ current model still works through `/acp model <id>`, but the UI does not invent 
 catalog it cannot verify.
 
 ## Workspace
+
+Turn verification is a workspace capability shared by every harness and both
+Gateway/direct routes. A runtime completion or tool-status message is not a
+test receipt. Only an explicitly selected saved local action supplies an exit
+code and pre/post revision evidence. Remote Gateway files are not certified by
+a local check. No model/provider loops or ACP protocol methods were added for
+verification; see [Checking a turn](../user/verification.md).
+
+Gateway harness replies use the persisted assistant-message subscription in
+addition to legacy prose streams. Slim ACP tool/lifecycle telemetry is not an
+answer. Whole snapshots are deduplicated and associated with the turn by their
+timestamp, including after completion. Direct mode continues to deliver prose
+from its stdio route; both routes preserve that prose when a completion frame
+contains no output. No session loop or transport is replaced by this handling.
 
 - Projects and threads with rename, archive, pin, and delete
 - Folder as the coding cwd, git branch/dirty status, file mention (`@path`)

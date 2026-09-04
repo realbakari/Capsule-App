@@ -56,6 +56,11 @@ Capsule is a workspace, not a clone of any other agent product. Quality bars els
 
 ## Folders
 
+Project and thread paths containing spaces remain unchanged in the UI. Local
+Gateway spawn and working-directory controls use a private alias internally;
+they no longer tell the user to move the project. Remote Gateway errors explain
+the need for a host-side path/alias without changing the selected runtime route.
+
 A project is one or more real folders.
 
 | Role | Stored as | Used for |
@@ -224,7 +229,7 @@ It warns at 75% and turns critical at 90%; below that a meter people learn to
 ignore is worse than none.
 
 Each finished turn captures the worktree as a hidden Git ref under
-`refs/capsule/checkpoints/<session>/turn/<n>`, so the changed-files card can
+`refs/capsule/checkpoints/<session>/turn/0/<run-id>` (legacy refs use a turn number), so the changed-files card can
 offer **Restore this turn**: the project folder goes back to how that turn left
 it. Capture uses a throwaway index, so a half-staged change is untouched, and
 writes a parentless commit that appears in no branch and no `git log`.
@@ -242,6 +247,45 @@ borrowing current worktree counts. The raw checkpoint-to-worktree helper is
 not a turn-diff fallback. Restore targets the card's own run after confirmation,
 and the card expands its immutable saved diff in place. Current-file discard
 stays in Review, not on a historical card.
+
+### Verification receipts and workspace ownership
+
+Completed turns and History render the same collapsed `TurnVerification`
+disclosure. It lists saved project actions from the run's project, shows the
+command before explicit execution, and supports cancel, rerun, and evidence-only
+recheck only when a receipt exists. **Add check** saves an action on that owning
+project through the existing `updateProject` IPC; it never executes on save.
+The only action is preselected, never automatically run. Cwd, hashes and
+requirement guidance sit inside **Evidence details**. The latest receipt follows
+the work log; historical receipts keep their position below their own reply.
+A completed turn with neither a saved reply nor result shows a missing-reply
+notice. ACP activity counts deduplicate updates by run plus tool call id, while
+retaining failure status and the latest readable detail. Completion and verification are independent: prose and custom
+requirements never produce an objective pass. Missing evidence is unverified,
+not a failed agent run. The receipt is explicitly local-only for both routes.
+
+Migration 12 persists `working_directory`, `revision` (cwd, HEAD, tree), and
+`verification` on runs. Capture uses asynchronous Git with a temporary index.
+Follow-up sends wait for a pending capture in that cwd. Revision checks reject
+newer work before starting a saved action and compare again after it exits.
+The check holds the repository queue, records bounded output, and is cancelled
+on shutdown. The pending receipt is unverified, so interrupted checks do not
+become passes on restart. `verifyRun` and `cancelVerification` are write IPC;
+read-only viewers can read receipts through run records but cannot execute.
+
+Renderer state is owned by a selection token containing project, thread and
+resolved folder. Scoped setters reject old responses even after A → B → A.
+Git, messages, older pages and global run refreshes also use request versions:
+an earlier response cannot replace a newer result. Notices, confirmations and
+draft setters cannot spill into another selection.
+
+Native Git status, diff, checkpoint and worktree helpers run asynchronously.
+`inRepository` serializes composite operations by canonical Git common
+directory, including linked worktrees. Concurrent identical reads share one
+answer; a queued write invalidates that sharing before a later read. There is
+no time-based cache of Git status. A composite push/create-PR operation keeps
+its lock through both steps. External Git processes are not governed by this
+queue; Git's own locking and pre/post revision checks remain necessary.
 
 
 - Timeline of turns: user on the right, assistant markdown full-width, collapsed tool rows, a changed-files card scoped to each turn's saved result.

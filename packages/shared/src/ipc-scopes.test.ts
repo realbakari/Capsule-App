@@ -24,6 +24,8 @@ describe("ipc scopes", () => {
       "terminalInput",
       "execInProject",
       "runProjectAction",
+      "verifyRun",
+      "cancelVerification",
       "writeFile",
       "pickDirectory",
       "spawnHarness",

@@ -1,4 +1,4 @@
-export const MIGRATIONS: Array<{ version: number; sql: string }> = [
+export const MIGRATIONS: Array<{ version: number; sql: string; }> = [
   {
     version: 1,
     sql: `
@@ -302,6 +302,14 @@ export const MIGRATIONS: Array<{ version: number; sql: string }> = [
       -- nothing wrote it down, so "what changed in this turn" and "restore
       -- this turn" had nothing to read.
       ALTER TABLE runs ADD COLUMN checkpoint_ref TEXT;
+    `,
+  },
+  {
+    version: 12,
+    sql: `
+      ALTER TABLE runs ADD COLUMN working_directory TEXT;
+      ALTER TABLE runs ADD COLUMN revision TEXT;
+      ALTER TABLE runs ADD COLUMN verification TEXT;
     `,
   },
 ];

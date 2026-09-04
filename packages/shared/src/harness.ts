@@ -521,15 +521,7 @@ export function acpSpawnCommand(
   const mode = options.mode ?? "persistent";
   const parts = [`/acp spawn ${id}`, `--bind ${bind}`, `--mode ${mode}`];
   if (options.cwd) {
-    // A path cannot be slugified without breaking it, and acpx cannot receive
-    // a value containing whitespace. Fail with the actual reason rather than
-    // emitting a command that mis-parses into a confusing usage error.
-    if (/\s/.test(options.cwd)) {
-      throw new Error(
-        `The working directory contains a space, which the Gateway's /acp spawn parser cannot accept: ${options.cwd}. Move the project to a path without spaces, or set a different working directory.`,
-      );
-    }
-    parts.push(`--cwd ${options.cwd}`);
+    parts.push(`--cwd ${acpCwdToken(options.cwd)}`);
   }
   if (options.label) parts.push(`--label ${acpLabelToken(options.label)}`);
   return parts.join(" ");
@@ -585,7 +577,16 @@ export function acpPermissionsCommand(profile: string, target?: string): string 
 }
 
 export function acpCwdCommand(cwd: string, target?: string): string {
-  return withTarget(`/acp cwd ${quoteAcpArg(cwd)}`, target);
+  return withTarget(`/acp cwd ${acpCwdToken(cwd)}`, target);
+}
+
+/** The adapter resolves local folder aliases before calling these builders. */
+function acpCwdToken(cwd: string): string {
+  if (!cwd || /[\s\0]/.test(cwd)) {
+    throw new Error("Gateway cwd must be a single whitespace-free token; resolve a folder alias before building the command.");
+  }
+  // This is not a shell: quotes, backslashes and dollar signs are literal.
+  return cwd;
 }
 
 export function acpSetModeCommand(mode: string, target?: string): string {

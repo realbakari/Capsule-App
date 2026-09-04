@@ -1,5 +1,6 @@
 import { useWorkspace } from "../../lib/workspace";
 import { SkillsDirectory } from "./SkillsDirectory";
+import { TurnVerification } from "../conversation/TurnVerification";
 
 export function SkillsView() {
   return (
@@ -26,6 +27,7 @@ export function HistoryView() {
       {items.map((item) => {
         const session = sessions.find((entry) => entry.id === item.sessionId);
         return (
+            <article key={item.id}>
           <button
             className="card"
             key={item.id}
@@ -45,6 +47,8 @@ export function HistoryView() {
               <span className="faint">{item.createdAt?.slice(11, 19) ?? ""}</span>
             </div>
           </button>
+              <TurnVerification run={item} />
+            </article>
         );
       })}
       </div>

@@ -46,10 +46,17 @@ describe("acpSpawnCommand", () => {
     expect(tokens[tokens.indexOf("--cwd") + 1]).toBe("/Users/me/code/site");
   });
 
-  it("refuses a cwd containing a space, naming the real reason", () => {
+  it("requires the adapter to resolve a folder alias for whitespace paths", () => {
     expect(() => acpSpawnCommand("claude", { cwd: "/Users/me/Open Source/Capsule" })).toThrow(
-      /contains a space/i,
+      /resolve a folder alias/i,
     );
+    expect(() => acpOptionCommand("cwd", "/Users/me/Open Source/Capsule")).toThrow(/resolve a folder alias/i);
+  });
+
+  it("passes punctuation in cwd literally, without shell quoting", () => {
+    const cwd = '/repo/café-"quoted"-$folder';
+    expect(acpOptionCommand("cwd", cwd, "agent:claude:acp:123")).toBe(`/acp cwd ${cwd} agent:claude:acp:123`);
+    expect(acpSpawnCommand("claude", { cwd })).toContain(`--cwd ${cwd}`);
   });
 
   it("produces no token containing a quote character", () => {

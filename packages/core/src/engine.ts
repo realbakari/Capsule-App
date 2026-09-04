@@ -1,4 +1,6 @@
 import { EventEmitter } from "node:events";
+import { checkRun } from "./run-verification.js";
+import type { VerificationResult } from "@capsule/shared";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
@@ -29,6 +31,7 @@ import { readUsageSummaryAsync, sinceDaysAgo, type UsageSummary } from "./usage/
 import { CapsuleDatabase, CapsuleRepositories } from "@capsule/database";
 import {
   attachmentPromptBlock,
+  inRepository,
   captureCheckpoint,
   checkoutBranch as checkoutGitBranch,
   checkpointNumstat,
@@ -241,6 +244,9 @@ export class CapsuleEngine {
   private prWatchSessions = new Map<string, string>();
   private actionProcesses = new Map<string, ManagedCommand>();
   private actionRuns = new Map<string, ProjectActionRun>();
+  private checkpointPending = new Map<string, Promise<void>>();
+  private checkpointCapturing = new Set<string>();
+  private verificationPending = new Map<string, { cwd?: string; controller: AbortController; promise: Promise<VerificationResult>; }>();
   private skillsClient: SkillCatalogClient;
   private skillsShClient = new SkillsShClient();
 
@@ -293,6 +299,11 @@ export class CapsuleEngine {
     this.bindInboxToProjectless();
     this.applyWorkspacePolicies();
     this.failStaleRuns();
+    for (const run of this.repos.listRuns()) {
+      if (!run.verification?.inProgress) continue;
+      run.verification = { ...run.verification, inProgress: false, passed: false, status: "unverified", summary: "Check interrupted; not verified." };
+      this.repos.updateRun(run);
+    }
     this.archiveInactiveSessions();
     await this.hydrateSecrets();
     this.openclaw = this.createOpenClawAdapter();
@@ -308,6 +319,7 @@ export class CapsuleEngine {
     // than throwing "The database connection is not open" from a detached
     // promise, which surfaces as an unhandled rejection with no run to blame.
     this.stopped = true;
+    for (const check of this.verificationPending.values()) check.controller.abort();
     setLoginStateListener(undefined);
     setPullRequestListener(undefined);
     this.directUnsub?.();
@@ -435,7 +447,7 @@ export class CapsuleEngine {
    * answer changes when someone installs a plugin, not between two frames of a
    * streaming turn, and Capsule clears this itself when it writes that config.
    */
-  private acpxEnabledCache: { value: boolean; at: number } | undefined;
+  private acpxEnabledCache: { value: boolean; at: number; } | undefined;
 
   private static readonly ACPX_CACHE_TTL_MS = 30_000;
 
@@ -637,21 +649,21 @@ export class CapsuleEngine {
     const session = input.sessionId
       ? this.requireSession(input.sessionId)
       : createSessionRecord(
-          project,
-          {
-            projectId: project.id,
-            agentId: harnessId,
-            mode: "code",
-            title,
-            workspaceMode:
-              !isInboxProject(project) &&
+        project,
+        {
+          projectId: project.id,
+          agentId: harnessId,
+          mode: "code",
+          title,
+          workspaceMode:
+            !isInboxProject(project) &&
               this.settings.defaultWorkspaceMode === "worktree" &&
-              readGitStatus(project.workingDirectory).isRepo
-                ? "worktree"
-                : "local",
-          },
-          harnessId,
-        );
+              (await readGitStatus(project.workingDirectory)).isRepo
+              ? "worktree"
+              : "local",
+        },
+        harnessId,
+      );
     if (!session.workingDirectory && isInboxProject(project)) {
       session.workingDirectory = allocateThreadFolder(
         ensureProjectlessFolder(this.projectlessRoot()),
@@ -659,7 +671,7 @@ export class CapsuleEngine {
       );
     }
     if (!input.sessionId && session.workspaceMode === "worktree") {
-      this.attachSessionWorktree(session, project);
+      await this.attachSessionWorktree(session, project);
     }
     const cwd = session.workingDirectory ?? input.cwd ?? project.workingDirectory;
 
@@ -691,23 +703,23 @@ export class CapsuleEngine {
     try {
       const spawned = direct
         ? await this.direct.spawnAcpSession({
-            harnessId,
-            cwd,
-            title,
-            prompt: input.prompt,
-            sessionKey: session.openclawSessionKey,
-            model: input.model,
-          })
+          harnessId,
+          cwd,
+          title,
+          prompt: input.prompt,
+          sessionKey: session.openclawSessionKey,
+          model: input.model,
+        })
         : await this.openclaw.spawnAcpSession({
-            harnessId,
-            cwd,
-            title,
-            prompt: input.prompt,
-            mode: input.mode ?? "persistent",
-            sessionKey: session.openclawSessionKey,
-            permissionProfile,
-            model: input.model,
-          });
+          harnessId,
+          cwd,
+          title,
+          prompt: input.prompt,
+          mode: input.mode ?? "persistent",
+          sessionKey: session.openclawSessionKey,
+          permissionProfile,
+          model: input.model,
+        });
       session.openclawSessionKey = spawned.sessionKey;
       session.harnessState = "running";
       if (input.sessionId) this.repos.updateSession(session);
@@ -940,13 +952,13 @@ export class CapsuleEngine {
     return project;
   }
 
-  deleteProject(id: string): void {
+  async deleteProject(id: string): Promise<void> {
     const project = this.requireProject(id);
     for (const run of this.listProjectActionRuns(id)) {
       if (run.status === "running") this.stopProjectAction(id, run.actionId, run.sessionId);
     }
     for (const session of this.repos.listSessions(id)) {
-      this.cleanupSessionWorktree(session, project);
+      await this.cleanupSessionWorktree(session, project);
     }
     this.repos.deleteProject(id);
     if (this.repos.listProjects().length === 0) {
@@ -958,19 +970,22 @@ export class CapsuleEngine {
     this.events.emit("state", { command: "projects-updated" });
   }
 
-  gitStatus(projectId: string, sessionId?: string): GitStatus {
+  async gitStatus(projectId: string, sessionId?: string): Promise<GitStatus> {
     const project = this.requireProject(projectId);
     const cwd = this.workingDirectoryFor(project, sessionId);
-    const status = enrichGitStatus(
-      readGitStatus(cwd),
-      cwd,
-    );
-    if (status.pullRequest && pullRequestWatchEnabled(this.settings)) {
-      this.schedulePrWatch(projectId);
-    } else if (!status.pullRequest) {
-      this.stopPrWatch(projectId);
-    }
-    return status;
+    return inRepository(cwd, async () => {
+      const status = await enrichGitStatus(
+        await readGitStatus(cwd),
+        cwd,
+      );
+      if (status.pullRequest && pullRequestWatchEnabled(this.settings)) {
+        this.schedulePrWatch(projectId);
+      } else if (!status.pullRequest) {
+        this.stopPrWatch(projectId);
+      }
+      return status;
+
+    }, JSON.stringify(["gitStatus", projectId, sessionId]));
   }
 
   /** `undefined` when the host could not be asked; an array when it answered. */
@@ -986,11 +1001,11 @@ export class CapsuleEngine {
     projectId: string,
     sessionId?: string,
     refresh = false,
-  ): Promise<{ items?: GitPullRequest[]; error?: string }> {
+  ): Promise<{ items?: GitPullRequest[]; error?: string; }> {
     const project = this.requireProject(projectId);
     const cwd = this.workingDirectoryFor(project, sessionId);
     if (!cwd) return { error: "This project has no folder, so there is nothing to list." };
-    if (!readGitStatus(cwd).isRepo) {
+    if (!(await readGitStatus(cwd)).isRepo) {
       return { error: "This folder is not a git repository." };
     }
     // A user refresh bypasses the TTL but shares an already-running read.
@@ -1014,140 +1029,167 @@ export class CapsuleEngine {
   ): Promise<GitPullRequestDetail | undefined> {
     const project = this.requireProject(projectId);
     const cwd = this.workingDirectoryFor(project, sessionId);
-    if (!cwd || !readGitStatus(cwd).isRepo) return undefined;
+    if (!cwd || !(await readGitStatus(cwd)).isRepo) return undefined;
     return await readPullRequestDetail(cwd, number);
   }
 
-  gitDiff(projectId: string, relative?: string, sessionId?: string): string {
+  async gitDiff(projectId: string, relative?: string, sessionId?: string): Promise<string> {
     const project = this.requireProject(projectId);
     const cwd = this.workingDirectoryFor(project, sessionId);
-    if (!cwd) return "";
-    return readGitDiff(cwd, relative);
+    return inRepository(cwd, async () => {
+      if (!cwd) return "";
+      return await readGitDiff(cwd, relative);
+
+    }, JSON.stringify(["gitDiff", projectId, relative, sessionId]));
   }
 
   async commitDiff(projectId: string, oid: string, sessionId?: string): Promise<string> {
     const project = this.requireProject(projectId);
     const cwd = this.workingDirectoryFor(project, sessionId);
-    if (!cwd || !readGitStatus(cwd).isRepo) throw new Error("This folder is not a git repository.");
+    if (!cwd || !(await readGitStatus(cwd)).isRepo) throw new Error("This folder is not a git repository.");
     return readCommitDiff(cwd, oid);
   }
 
-  checkoutBranch(projectId: string, branch: string, sessionId?: string): GitStatus {
+  async checkoutBranch(projectId: string, branch: string, sessionId?: string): Promise<GitStatus> {
     const project = this.requireProject(projectId);
     const cwd = this.workingDirectoryFor(project, sessionId);
-    if (!cwd) throw new Error("Project has no working directory");
-    const result = checkoutGitBranch(cwd, branch);
-    if (!result.ok) throw new Error(result.detail);
-    return readGitStatus(cwd);
+    return inRepository(cwd, async () => {
+      if (!cwd) throw new Error("Project has no working directory");
+      const result = await checkoutGitBranch(cwd, branch);
+      if (!result.ok) throw new Error(result.detail);
+      return await readGitStatus(cwd);
+
+    });
   }
 
-  gitCommit(projectId: string, message: string, sessionId?: string): GitStatus {
+  async gitCommit(projectId: string, message: string, sessionId?: string): Promise<GitStatus> {
     const project = this.requireProject(projectId);
     const cwd = this.workingDirectoryFor(project, sessionId);
-    if (!cwd) throw new Error("Project has no working directory");
-    const result = commitAll(cwd, message);
-    if (!result.ok) throw new Error(result.detail);
-    return this.gitStatus(projectId, sessionId);
+    return inRepository(cwd, async () => {
+      if (!cwd) throw new Error("Project has no working directory");
+      const result = await commitAll(cwd, message);
+      if (!result.ok) throw new Error(result.detail);
+      return await this.gitStatus(projectId, sessionId);
+
+    });
   }
 
-  gitStage(projectId: string, relative: string, sessionId?: string): GitStatus {
+  async gitStage(projectId: string, relative: string, sessionId?: string): Promise<GitStatus> {
     const project = this.requireProject(projectId);
     const cwd = this.workingDirectoryFor(project, sessionId);
-    if (!cwd) throw new Error("Project has no working directory");
-    const result = stageFile(cwd, relative);
-    if (!result.ok) throw new Error(result.detail);
-    return readGitStatus(cwd);
+    return inRepository(cwd, async () => {
+      if (!cwd) throw new Error("Project has no working directory");
+      const result = await stageFile(cwd, relative);
+      if (!result.ok) throw new Error(result.detail);
+      return await readGitStatus(cwd);
+
+    });
   }
 
-  gitDiscard(projectId: string, relative: string, sessionId?: string): GitStatus {
+  async gitDiscard(projectId: string, relative: string, sessionId?: string): Promise<GitStatus> {
     const project = this.requireProject(projectId);
     const cwd = this.workingDirectoryFor(project, sessionId);
-    if (!cwd) throw new Error("Project has no working directory");
-    const result = discardFile(cwd, relative);
-    if (!result.ok) throw new Error(result.detail);
-    return readGitStatus(cwd);
+    return inRepository(cwd, async () => {
+      if (!cwd) throw new Error("Project has no working directory");
+      const result = await discardFile(cwd, relative);
+      if (!result.ok) throw new Error(result.detail);
+      return await readGitStatus(cwd);
+
+    });
   }
 
-  gitCreateBranch(projectId: string, branch: string, sessionId?: string): GitStatus {
+  async gitCreateBranch(projectId: string, branch: string, sessionId?: string): Promise<GitStatus> {
     const project = this.requireProject(projectId);
     const cwd = this.workingDirectoryFor(project, sessionId);
-    if (!cwd) throw new Error("Project has no working directory");
-    const result = createGitBranch(
-      cwd,
-      applyBranchPrefix(this.settings.branchPrefix, branch),
-    );
-    if (!result.ok) throw new Error(result.detail);
-    return this.gitStatus(projectId, sessionId);
+    return inRepository(cwd, async () => {
+      if (!cwd) throw new Error("Project has no working directory");
+      const result = await createGitBranch(
+        cwd,
+        applyBranchPrefix(this.settings.branchPrefix, branch),
+      );
+      if (!result.ok) throw new Error(result.detail);
+      return await this.gitStatus(projectId, sessionId);
+
+    });
   }
 
   async gitPush(projectId: string, sessionId?: string): Promise<GitStatus> {
     const project = this.requireProject(projectId);
     const cwd = this.workingDirectoryFor(project, sessionId);
-    if (!cwd) throw new Error("Project has no working directory");
-    const result = await pushCurrentBranch(cwd, this.settings.gitForceWithLease);
-    if (!result.ok) throw new Error(result.detail);
-    this.log(result.detail);
-    return this.gitStatus(projectId, sessionId);
+    return inRepository(cwd, async () => {
+      if (!cwd) throw new Error("Project has no working directory");
+      const result = await pushCurrentBranch(cwd, this.settings.gitForceWithLease);
+      if (!result.ok) throw new Error(result.detail);
+      this.log(result.detail);
+      return await this.gitStatus(projectId, sessionId);
+
+    });
   }
 
   async gitCreatePullRequest(
     projectId: string,
-    input?: { title?: string; body?: string; sessionId?: string },
+    input?: { title?: string; body?: string; sessionId?: string; },
   ): Promise<GitStatus> {
     const project = this.requireProject(projectId);
     const cwd = this.workingDirectoryFor(project, input?.sessionId);
-    if (!cwd) throw new Error("Project has no working directory");
-    const pushed = await pushCurrentBranch(cwd, this.settings.gitForceWithLease);
-    if (!pushed.ok) throw new Error(pushed.detail);
-    const branch = readGitStatus(cwd).branch ?? "HEAD";
-    const title =
-      input?.title?.trim() ||
-      lastCommitSubject(cwd) ||
-      branch.replace(/^.*\//, "").replace(/[-_]/g, " ");
-    const body =
-      [input?.body?.trim(), this.settings.prInstructions].filter(Boolean).join("\n\n") || title;
-    const opened = await openPullRequest(cwd, {
-      title,
-      body,
-      draft: this.settings.prDraft,
+    return inRepository(cwd, async () => {
+      if (!cwd) throw new Error("Project has no working directory");
+      const pushed = await pushCurrentBranch(cwd, this.settings.gitForceWithLease);
+      if (!pushed.ok) throw new Error(pushed.detail);
+      const branch = (await readGitStatus(cwd)).branch ?? "HEAD";
+      const title =
+        input?.title?.trim() ||
+        (await lastCommitSubject(cwd)) ||
+        branch.replace(/^.*\//, "").replace(/[-_]/g, " ");
+      const body =
+        [input?.body?.trim(), this.settings.prInstructions].filter(Boolean).join("\n\n") || title;
+      const opened = await openPullRequest(cwd, {
+        title,
+        body,
+        draft: this.settings.prDraft,
+      });
+      if (!opened.ok) throw new Error(opened.detail);
+      this.log(opened.detail);
+      if (input?.sessionId) this.prWatchSessions.set(projectId, input.sessionId);
+      if (this.settings.prAutoMerge) {
+        const queued = await mergeGithubPullRequest(
+          cwd,
+          this.settings.prMergeMethod,
+          true,
+        );
+        this.log(queued.detail);
+      }
+      if (pullRequestWatchEnabled(this.settings)) this.schedulePrWatch(projectId, input?.sessionId);
+      return await this.gitStatus(projectId, input?.sessionId);
+
     });
-    if (!opened.ok) throw new Error(opened.detail);
-    this.log(opened.detail);
-    if (input?.sessionId) this.prWatchSessions.set(projectId, input.sessionId);
-    if (this.settings.prAutoMerge) {
-      const queued = await mergeGithubPullRequest(
-        cwd,
-        this.settings.prMergeMethod,
-        true,
-      );
-      this.log(queued.detail);
-    }
-    if (pullRequestWatchEnabled(this.settings)) this.schedulePrWatch(projectId, input?.sessionId);
-    return this.gitStatus(projectId, input?.sessionId);
   }
 
   async gitMergePullRequest(projectId: string, sessionId?: string): Promise<GitStatus> {
     const project = this.requireProject(projectId);
     const cwd = this.workingDirectoryFor(project, sessionId);
-    if (!cwd) throw new Error("Project has no working directory");
-    const result = await mergeGithubPullRequest(
-      cwd,
-      this.settings.prMergeMethod,
-      this.settings.prAutoMerge,
-    );
-    if (!result.ok) throw new Error(result.detail);
-    this.log(result.detail);
-    return this.gitStatus(projectId, sessionId);
+    return inRepository(cwd, async () => {
+      if (!cwd) throw new Error("Project has no working directory");
+      const result = await mergeGithubPullRequest(
+        cwd,
+        this.settings.prMergeMethod,
+        this.settings.prAutoMerge,
+      );
+      if (!result.ok) throw new Error(result.detail);
+      this.log(result.detail);
+      return await this.gitStatus(projectId, sessionId);
+
+    });
   }
 
-  gitInit(projectId: string): GitStatus {
+  async gitInit(projectId: string): Promise<GitStatus> {
     const project = this.requireProject(projectId);
     if (!project.workingDirectory) throw new Error("Choose a project folder first");
-    const result = initializeRepository(project.workingDirectory);
+    const result = await initializeRepository(project.workingDirectory);
     if (!result.ok) throw new Error(result.detail);
     this.log(result.detail);
     this.events.emit("state", { command: "git-updated" });
-    return this.gitStatus(projectId);
+    return await this.gitStatus(projectId);
   }
 
   async localServers(): Promise<LocalServer[]> {
@@ -1303,8 +1345,8 @@ export class CapsuleEngine {
       input.workspaceMode ?? project.defaultWorkspaceMode ?? this.settings.defaultWorkspaceMode;
     const workspaceMode =
       !isInboxProject(project) &&
-      requestedWorkspaceMode === "worktree" &&
-      readGitStatus(project.workingDirectory).isRepo
+        requestedWorkspaceMode === "worktree" &&
+        (await readGitStatus(project.workingDirectory)).isRepo
         ? "worktree"
         : "local";
     const session = createSessionRecord(project, { ...input, workspaceMode }, agentId);
@@ -1316,7 +1358,7 @@ export class CapsuleEngine {
       );
     }
     if (session.workspaceMode === "worktree") {
-      this.attachSessionWorktree(session, project);
+      await this.attachSessionWorktree(session, project);
     }
     if (!this.usingMock) {
       try {
@@ -1354,17 +1396,17 @@ export class CapsuleEngine {
     return session;
   }
 
-  deleteSession(id: string): void {
+  async deleteSession(id: string): Promise<void> {
     const session = this.requireSession(id);
     const project = this.requireProject(session.projectId);
     for (const run of this.listProjectActionRuns(project.id, id)) {
       if (run.status === "running") this.stopProjectAction(project.id, run.actionId, id);
     }
-    this.cleanupSessionWorktree(session, project);
+    await this.cleanupSessionWorktree(session, project);
     this.repos.deleteSession(id);
   }
 
-  setSessionWorkspaceMode(id: string, mode: WorkspaceMode): Session {
+  async setSessionWorkspaceMode(id: string, mode: WorkspaceMode): Promise<Session> {
     const session = this.requireSession(id);
     const project = this.requireProject(session.projectId);
     if (isInboxProject(project)) throw new Error("Inbox conversations already use isolated folders.");
@@ -1378,10 +1420,10 @@ export class CapsuleEngine {
     }
     if (mode === "worktree") {
       session.workspaceMode = "worktree";
-      this.attachSessionWorktree(session, project);
+      await this.attachSessionWorktree(session, project);
       this.runWorktreeSetupActions(session, project);
     } else {
-      const cleanup = this.cleanupSessionWorktree(session, project);
+      const cleanup = await this.cleanupSessionWorktree(session, project);
       if (!cleanup) throw new Error("The worktree has changes and cannot be switched to Local.");
       session.workspaceMode = "local";
       session.workingDirectory = undefined;
@@ -1466,7 +1508,7 @@ export class CapsuleEngine {
    */
   listMessagePage(
     sessionId: string,
-    options?: { limit?: number; before?: { createdAt: string; id: string } },
+    options?: { limit?: number; before?: { createdAt: string; id: string; }; },
   ): MessagePage {
     const limit = Math.min(Math.max(options?.limit ?? 60, 1), 500);
     const rows = this.repos.listMessagesBefore(sessionId, limit + 1, options?.before);
@@ -1475,9 +1517,14 @@ export class CapsuleEngine {
     return { messages: hasMore ? rows.slice(1) : rows, hasMore };
   }
 
-  async sendMessage(input: AgentMessage): Promise<{ session: Session; run: Run; userMessage: ChatMessage }> {
+  async sendMessage(input: AgentMessage): Promise<{ session: Session; run: Run; userMessage: ChatMessage; }> {
     let session = this.requireSession(input.sessionId);
     const project = this.requireProject(session.projectId);
+    const startingCwd = this.cwdFor(session, project);
+    if ([...this.verificationPending.values()].some((check) => check.cwd === startingCwd)) {
+      throw new Error("A workspace check is running. Cancel it or wait before starting another turn.");
+    }
+    if (startingCwd) await this.checkpointPending.get(startingCwd);
     const attachments = validateMessageAttachments(input.attachments ?? []);
     if (!input.content.trim() && attachments.length === 0) {
       throw new Error("Write a message or attach a file first.");
@@ -1504,6 +1551,7 @@ export class CapsuleEngine {
       prompt,
     });
     run.status = "running";
+    run.workingDirectory = startingCwd;
     this.repos.insertRun(run);
     const userMessage: ChatMessage = {
       id: createId("msg"),
@@ -1542,6 +1590,8 @@ export class CapsuleEngine {
       }
       try {
         session = await this.ensureHarnessSession(session, harnessId);
+        run.workingDirectory = this.cwdFor(session, project);
+        this.repos.updateRun(run);
         if (!this.usingMock && !isAcpSessionKey(session.openclawSessionKey)) {
           throw new Error(
             `${harnessId} did not start through acpx. Capsule will not send this to OpenClaw's default agent (that path needs that agent's provider auth, not ${harnessId}).`,
@@ -1692,6 +1742,8 @@ export class CapsuleEngine {
       throw new Error(message);
     }
     run.openclawRunId = runtimeRun.openclawRunId ?? runtimeRun.id;
+    // A subscribed reply may arrive before sessions.send acknowledges it.
+    run.result = this.repos.getRun(run.id)?.result ?? run.result;
     this.repos.updateRun(run);
 
     const stop = this.runtime.subscribeToRun(runtimeRun.id, (event) => {
@@ -1724,15 +1776,50 @@ export class CapsuleEngine {
     return this.repos.listRunEvents(runId);
   }
 
-  async verifyRun(runId: string) {
+  verifyRun(runId: string, actionId?: string): Promise<VerificationResult> {
+    const pending = this.verificationPending.get(runId);
+    if (pending) return pending.promise;
     const run = this.requireRun(runId);
     const contract = run.contractId ? this.repos.getContract(run.contractId) : undefined;
     if (!contract) throw new Error("Run has no contract");
-    return verifyContract({
-      contract,
-      output: run.result ?? "",
-      workingDirectory: this.getProject(run.projectId)?.workingDirectory,
-    });
+    if (run.status !== "completed") throw new Error("Only a completed turn can be checked.");
+    if (actionId && this.settings.sandbox === "strict") throw new Error("Shell checks are disabled by strict sandbox mode.");
+    const action = actionId ? this.requireProject(run.projectId).actions?.find((item) => item.id === actionId) : undefined;
+    if (actionId && !action) throw new Error("That saved project action no longer exists.");
+    const controller = new AbortController();
+    const persist = (verification: VerificationResult) => {
+      if (this.stopped) return;
+      const current = this.repos.getRun(runId);
+      if (!current) return;
+      current.verification = verification;
+      this.repos.updateRun(current);
+      this.events.emit("run", current);
+    };
+    const promise = (async () => {
+      if (run.workingDirectory) await this.checkpointPending.get(run.workingDirectory);
+      const latest = this.requireRun(runId);
+      // Older contracts may not have an executable check requirement yet.
+      const required = contract.required.some((r) => r.kind === "tests_pass") ? contract.required
+        : [...contract.required, { id: "saved-check", kind: "tests_pass" as const, description: "Run a saved project check for this revision." }];
+      const result = await checkRun({
+        run: latest, contract: { ...contract, required }, action, signal: controller.signal, started: persist,
+        assertIdle: () => {
+          const active = this.repos.listRuns().some((r) => r.workingDirectory === latest.workingDirectory && ["running", "waiting", "approval_required"].includes(r.status));
+          if (active) throw new Error("An agent is working in this folder. Wait before checking it.");
+        },
+      });
+      persist(result);
+      if (!this.stopped) this.appendEvent(runId, "verification", result.summary, { status: result.status, passed: result.passed });
+      return result;
+    })();
+    this.verificationPending.set(runId, { cwd: run.workingDirectory, controller, promise });
+    const clear = () => this.verificationPending.delete(runId);
+    void promise.then(clear, clear);
+    return promise;
+  }
+
+  cancelVerification(runId: string): void {
+    this.verificationPending.get(runId)?.controller.abort();
   }
 
   listArtifacts(runId?: string) {
@@ -1818,8 +1905,8 @@ export class CapsuleEngine {
     projectId: string,
     relative: string,
     content: string,
-    options?: { origin?: "user" | "agent"; expectedRevision?: string; root?: string },
-  ): { revision: string } {
+    options?: { origin?: "user" | "agent"; expectedRevision?: string; root?: string; },
+  ): { revision: string; } {
     const project = this.requireProject(projectId);
     const origin = options?.origin ?? "agent";
     const decision = decidePolicy(this.repos.listPolicies(), "filesystem", "write");
@@ -2013,7 +2100,7 @@ export class CapsuleEngine {
       electronVersion: process.versions.electron,
       macosVersion:
         process.platform === "darwin"
-          ? (process as NodeJS.Process & { getSystemVersion?: () => string }).getSystemVersion?.()
+          ? (process as NodeJS.Process & { getSystemVersion?: () => string; }).getSystemVersion?.()
           : undefined,
       gatewayStatus: this.usingMock ? "disconnected" : "connected",
       databaseStatus: "connected",
@@ -2047,6 +2134,8 @@ export class CapsuleEngine {
     text?: string;
     done?: boolean;
     control?: boolean;
+    snapshot?: boolean;
+    timestamp?: number;
   }): void {
     if (!payload.sessionKey) return;
     if (payload.control) return;
@@ -2059,15 +2148,21 @@ export class CapsuleEngine {
     if (!session) return;
     if (payload.text) {
       const prev = this.acpBuffers.get(payload.sessionKey) ?? "";
-      this.acpBuffers.set(payload.sessionKey, `${prev}${payload.text}`);
+      this.acpBuffers.set(payload.sessionKey, payload.snapshot ? payload.text : `${prev}${payload.text}`);
     }
     if (!payload.done) return;
     const content = (this.acpBuffers.get(payload.sessionKey) ?? payload.text ?? "").trim();
     this.acpBuffers.delete(payload.sessionKey);
     if (isAcpControlOutput(content)) return;
     if (content.length < 2) return;
-    const last = this.repos.listMessages(session.id).at(-1);
-    if (last?.role === "assistant" && last.content === content) return;
+    const timestamp = payload.timestamp ?? Date.now();
+    const runHistory = this.repos.listRuns(session.id);
+    const active = payload.snapshot
+      ? runHistory.find((run) => Date.parse(run.createdAt) <= timestamp)
+      : runHistory.find((run) => ["running", "waiting", "queued"].includes(run.status));
+    const messages = this.repos.listMessages(session.id);
+    if (messages.some((item) => item.role === "assistant" && item.content === content &&
+      (active ? item.runId === active.id : item.id === messages.at(-1)?.id))) return;
     /*
      * The reply belongs to the turn that asked for it. Nothing linked them, so
      * the run finished with no result — and the contract's only decisive check
@@ -2075,23 +2170,23 @@ export class CapsuleEngine {
      * was marked "Verification failed" and every answered conversation showed
      * as failed in the sidebar.
      */
-    const active = this.repos
-      .listRuns(session.id)
-      .find((run) => ["running", "waiting", "queued"].includes(run.status));
     const message: ChatMessage = {
       id: createId("msg"),
       sessionId: session.id,
       role: "assistant",
       content,
       ...(active ? { runId: active.id } : {}),
-      createdAt: nowIso(),
+      createdAt: new Date(timestamp).toISOString(),
     };
     this.repos.insertMessage(message);
     this.events.emit("message", message);
     if (active) {
-      active.result = active.result ? `${active.result}\n${content}` : content;
+      if (!active.result?.endsWith(content)) {
+        active.result = active.result ? `${active.result}\n${content}` : content;
+      }
       active.updatedAt = nowIso();
       this.repos.updateRun(active);
+      this.events.emit("run", active);
     }
     const failed = acpCommandFailed(content);
     if (!failed) return;
@@ -2190,6 +2285,18 @@ export class CapsuleEngine {
       stop();
       return;
     }
+    const storedRun = this.repos.getRun(run.id);
+    // Late runtime frames must not erase receipts saved by a separate action.
+    if (storedRun) {
+      run.result = storedRun.result ?? run.result;
+      run.checkpointRef = storedRun.checkpointRef;
+      run.revision = storedRun.revision;
+      run.verification = storedRun.verification;
+      if (storedRun.completedAt && ["completed", "failed", "cancelled"].includes(String(event.data?.status))) {
+        stop();
+        return;
+      }
+    }
     const mapped: RunEvent = {
       ...event,
       runId: run.id,
@@ -2220,7 +2327,9 @@ export class CapsuleEngine {
       run.status = status;
       run.updatedAt = nowIso();
       run.completedAt = nowIso();
-      if (typeof event.data?.output === "string") run.result = event.data.output;
+      // A lifecycle-only end frame has no answer; it must not erase prose
+      // already delivered by the stream or a persisted session.message.
+      if (typeof event.data?.output === "string" && event.data.output.trim()) run.result = event.data.output;
       if (typeof event.data?.error === "string") run.error = event.data.error;
       this.captureTurnCheckpoint(run, session);
       /*
@@ -2237,6 +2346,8 @@ export class CapsuleEngine {
       }
       if (status === "completed") {
         if (this.usingMock) {
+          const contract = run.contractId ? this.repos.getContract(run.contractId) : undefined;
+          if (contract) run.verification = verifyContract({ contract, output: run.result ?? "", forceFail: Boolean(event.data?.forceVerifyFail) });
           if (run.result) {
             const assistantMessage: ChatMessage = {
               id: createId("msg"),
@@ -2287,21 +2398,12 @@ export class CapsuleEngine {
           const verification = verifyContract({
             contract,
             output: run.result ?? "",
-            workingDirectory: this.getProject(run.projectId)?.workingDirectory,
             forceFail: Boolean(event.data?.forceVerifyFail),
           });
-          if (!verification.passed) {
-            run.status = "failed";
-            /*
-             * Which check failed, not that checking happened. "Verification
-             * failed" is Capsule talking to itself; the check's own detail
-             * says what the turn was supposed to have produced.
-             */
-            const failed = verification.checks.find((check) => !check.advisory && !check.passed);
-            run.error = failed?.detail || failed?.description || verification.summary;
-          }
+          run.verification = verification;
           this.appendEvent(run.id, "verification", verification.summary, {
             passed: verification.passed,
+            status: verification.status,
           });
         }
         if (run.result && isAcpControlOutput(run.result)) {
@@ -2310,8 +2412,10 @@ export class CapsuleEngine {
           run.result = undefined;
         }
         if (run.result) {
-          const last = this.repos.listMessages(session.id).at(-1);
-          if (!(last?.role === "assistant" && last.content === run.result)) {
+          const replies = this.repos.listMessages(session.id).filter((item) => item.role === "assistant" && item.runId === run.id);
+          // Persisted assistant snapshots may include commentary and a final
+          // reply. Their aggregate is the result, not a third chat message.
+          if (!replies.some((item) => item.content === run.result) && replies.map((item) => item.content).join("\n") !== run.result) {
             const assistantMessage: ChatMessage = {
               id: createId("msg"),
               sessionId: session.id,
@@ -2616,31 +2720,31 @@ export class CapsuleEngine {
    * fails, must not fail the turn that just succeeded.
    */
   private captureTurnCheckpoint(run: Run, session: Session): void {
-    const cwd = session.workingDirectory ?? this.repos.getProject(session.projectId)?.workingDirectory;
-    if (!cwd) return;
-    const turn = this.repos.listRuns(session.id).length;
-    const ref = checkpointRef(session.id, turn);
-    /*
-     * Off this tick. `git add -A` against a fresh index reads the whole
-     * worktree — three seconds on a large repository — and it ran inline at
-     * the end of every turn, freezing the window and every queued IPC call
-     * for that long just as the answer arrived.
-     */
-    setImmediate(() => {
+    const cwd = run.workingDirectory;
+    if (!cwd || this.checkpointCapturing.has(run.id) || this.repos.getRun(run.id)?.checkpointRef) return;
+    this.checkpointCapturing.add(run.id);
+    const ref = `${checkpointRef(session.id, 0)}/${run.id}`;
+    const pending = (async () => {
       if (this.stopped) return;
       try {
-        const result = captureCheckpoint(cwd, ref);
+        const result = await captureCheckpoint(cwd, ref);
         // A turn that wrote something changes what the project holds.
         clearFileIndex(cwd);
         if (!result.ok) return;
         const stored = this.repos.getRun(run.id);
         if (!stored) return;
         stored.checkpointRef = ref;
+        stored.revision = result.revision;
         this.repos.updateRun(stored);
         this.events.emit("run", stored);
       } catch {
         // A checkpoint is a convenience; losing one is not worth a crash.
       }
+    })();
+    this.checkpointPending.set(cwd, pending);
+    void pending.finally(() => {
+      this.checkpointCapturing.delete(run.id);
+      if (this.checkpointPending.get(cwd) === pending) this.checkpointPending.delete(cwd);
     });
   }
 
@@ -2653,12 +2757,12 @@ export class CapsuleEngine {
   }
 
   /** The patch a single turn produced, from its checkpoint back to the previous one. */
-  turnDiff(runId: string): import("@capsule/shared").TurnDiffResult {
+  async turnDiff(runId: string): Promise<import("@capsule/shared").TurnDiffResult> {
     const run = this.repos.getRun(runId);
     if (!run?.checkpointRef) return { patch: "", files: [], available: false };
     const session = this.repos.getSession(run.sessionId);
     const project = session ? this.repos.getProject(session.projectId) : undefined;
-    const cwd = session?.workingDirectory ?? project?.workingDirectory;
+    const cwd = run.workingDirectory ?? session?.workingDirectory ?? project?.workingDirectory;
     if (!cwd) return { patch: "", files: [], available: false };
     /*
      * The turn before this one, which is the first of the older runs — the
@@ -2668,31 +2772,31 @@ export class CapsuleEngine {
      */
     const previous = this.repos
       .listRuns(run.sessionId)
-      .filter((candidate) => candidate.checkpointRef && candidate.createdAt < run.createdAt)[0]
+      .filter((candidate) => candidate.checkpointRef && candidate.workingDirectory === run.workingDirectory && candidate.createdAt < run.createdAt)[0]
       ?.checkpointRef;
     // With no base, the low-level helper compares to the current worktree.
     // That is "since this turn", not "by this turn", and changes as the user
     // works. Older first checkpoints have no recorded before-state: be honest
     // about that instead of attributing later repository edits to the agent.
-    if (!previous || !hasCheckpoint(cwd, previous) || !hasCheckpoint(cwd, run.checkpointRef)) {
+    if (!previous || !(await hasCheckpoint(cwd, previous)) || !(await hasCheckpoint(cwd, run.checkpointRef))) {
       return { patch: "", files: [], available: false };
     }
     return {
       available: true,
-      patch: diffCheckpoints(cwd, run.checkpointRef, previous),
-      files: checkpointNumstat(cwd, run.checkpointRef, previous),
+      patch: await diffCheckpoints(cwd, run.checkpointRef, previous),
+      files: await checkpointNumstat(cwd, run.checkpointRef, previous),
     };
   }
 
   /** Put the worktree back to how a turn left it. */
-  restoreTurn(runId: string): { ok: boolean; detail: string } {
+  async restoreTurn(runId: string): Promise<{ ok: boolean; detail: string; }> {
     const run = this.repos.getRun(runId);
     if (!run?.checkpointRef) return { ok: false, detail: "That turn has no checkpoint." };
     const session = this.repos.getSession(run.sessionId);
     const project = session ? this.repos.getProject(session.projectId) : undefined;
-    const cwd = session?.workingDirectory ?? project?.workingDirectory;
+    const cwd = run.workingDirectory ?? session?.workingDirectory ?? project?.workingDirectory;
     if (!cwd) return { ok: false, detail: "That turn has no working directory." };
-    const result = restoreCheckpoint(cwd, run.checkpointRef);
+    const result = await restoreCheckpoint(cwd, run.checkpointRef);
     if (result.ok) this.events.emit("state", { command: "files-updated" });
     return result;
   }
@@ -2745,8 +2849,7 @@ export class CapsuleEngine {
         await this.closeHarness(current.id);
       } catch (error) {
         this.log(
-          `Could not close the ${current.harnessId} session before switching to ${harnessId}: ${
-            error instanceof Error ? error.message : String(error)
+          `Could not close the ${current.harnessId} session before switching to ${harnessId}: ${error instanceof Error ? error.message : String(error)
           }`,
         );
       }
@@ -2766,8 +2869,8 @@ export class CapsuleEngine {
       mode: current.acpMode ?? "persistent",
       permissionProfile:
         current.permissionProfile === "strict" ||
-        current.permissionProfile === "approve-all" ||
-        current.permissionProfile === "default"
+          current.permissionProfile === "approve-all" ||
+          current.permissionProfile === "default"
           ? current.permissionProfile
           : undefined,
       model: current.modelOverride,
@@ -2775,7 +2878,7 @@ export class CapsuleEngine {
     return this.requireSession(result.session.id);
   }
 
-  private attachSessionWorktree(session: Session, project: Project): void {
+  private async attachSessionWorktree(session: Session, project: Project): Promise<void> {
     if (!project.workingDirectory) throw new Error("Choose a project folder before using a worktree.");
     const slug = session.title
       .toLowerCase()
@@ -2785,7 +2888,7 @@ export class CapsuleEngine {
     const suffix = session.id.replace(/[^a-zA-Z0-9]/g, "").slice(-8).toLowerCase();
     const branch = applyBranchPrefix(this.settings.branchPrefix ?? "capsule", `${slug}-${suffix}`);
     const destination = path.join(this.options.userDataDir, "worktrees", project.id, session.id);
-    const result = createWorktree(project.workingDirectory, destination, branch);
+    const result = await createWorktree(project.workingDirectory, destination, branch);
     if (!result.ok || !result.path || !result.branch) throw new Error(result.detail);
     session.workingDirectory = result.path;
     session.worktreeBranch = result.branch;
@@ -2808,21 +2911,20 @@ export class CapsuleEngine {
         // A setup action that will not start must not take the worktree with
         // it: the conversation is usable, it just has more to do first.
         this.log(
-          `Setup action ${action.name} did not start: ${
-            error instanceof Error ? error.message : String(error)
+          `Setup action ${action.name} did not start: ${error instanceof Error ? error.message : String(error)
           }`,
         );
       }
     }
   }
 
-  private cleanupSessionWorktree(session: Session, project: Project): boolean {
+  private async cleanupSessionWorktree(session: Session, project: Project): Promise<boolean> {
     if (session.workspaceMode !== "worktree" || !session.workingDirectory) return true;
     if (!project.workingDirectory) {
       this.log(`Kept worktree ${session.workingDirectory}; project folder is unavailable.`);
       return false;
     }
-    const result = removeWorktree(project.workingDirectory, session.workingDirectory);
+    const result = await removeWorktree(project.workingDirectory, session.workingDirectory);
     this.log(result.detail);
     return result.ok;
   }
@@ -2847,15 +2949,15 @@ export class CapsuleEngine {
       ...project,
       ...(file
         ? {
-            actions: mergeProjectActions(file.actions, project.actions ?? []),
-            // The stored value wins: an override made here is a decision, and
-            // the file is the default for everyone who has not made one.
-            ...(project.defaultWorkspaceMode
-              ? {}
-              : file.defaultWorkspaceMode
-                ? { defaultWorkspaceMode: file.defaultWorkspaceMode }
-                : {}),
-          }
+          actions: mergeProjectActions(file.actions, project.actions ?? []),
+          // The stored value wins: an override made here is a decision, and
+          // the file is the default for everyone who has not made one.
+          ...(project.defaultWorkspaceMode
+            ? {}
+            : file.defaultWorkspaceMode
+              ? { defaultWorkspaceMode: file.defaultWorkspaceMode }
+              : {}),
+        }
         : {}),
       projectFile: state,
     };

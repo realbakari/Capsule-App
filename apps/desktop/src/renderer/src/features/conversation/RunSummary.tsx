@@ -37,7 +37,7 @@ export function RunSummary({
           <span className="run-summary-label">{label}</span>
           {duration && <span className="run-summary-duration">· {duration}</span>}
           {isComplete && (
-            <span className="run-summary-done-badge">
+            <span className="run-summary-done-badge" title="Activity finished — not a verification result">
               <CheckIcon size={11} />
             </span>
           )}
