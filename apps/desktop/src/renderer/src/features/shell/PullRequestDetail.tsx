@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   parseUnifiedDiff,
   type GitPullRequest,
@@ -7,11 +7,13 @@ import {
 } from "@capsule/shared";
 import { MessageBody } from "../conversation/MessageBody";
 import { compactRelativeTime } from "../../lib/sidebar";
+import { formatUserError } from "../../lib/errors";
+import { activityTime, reviewStateLabel } from "../../lib/pull-request-activity";
 import { DiffView } from "./DiffView";
 import { FileDiff } from "./FileDiff";
 import { ChecksBadge, PullRequestChecks } from "./PullRequestChecks";
+import { Avatar, PullRequestComment, PullRequestTimeline } from "./PullRequestActivity";
 import {
-  CheckIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   CopyIcon,
@@ -35,6 +37,7 @@ interface StagedComment {
   filePath: string;
   line: number;
   text: string;
+  side: "left" | "right";
 }
 
 function dateLabel(value?: string): string {
@@ -87,55 +90,6 @@ function LabelPills({ values, empty }: { values: GitPullRequestLabel[]; empty: s
   );
 }
 
-/*
- * Initials, coloured from the name itself.
- *
- * Shown when there is no avatar — offline, a fetch that failed, an account
- * with no picture. A blank circle says nothing; two letters in a stable colour
- * still tells you two comments came from the same person.
- */
-function initialsOf(login: string): string {
-  const parts = login.split(/[-_. ]+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  if (parts.length === 1) return (parts[0]?.slice(0, 2) ?? "?").toUpperCase();
-  return `${parts[0]?.[0] ?? ""}${parts[1]?.[0] ?? ""}`.toUpperCase();
-}
-
-function hueOf(login: string): number {
-  let hash = 0;
-  for (let index = 0; index < login.length; index += 1) {
-    hash = (hash * 31 + login.charCodeAt(index)) % 360;
-  }
-  return hash;
-}
-
-export function Avatar({
-  login,
-  avatars,
-  size = 20,
-}: {
-  login?: string;
-  avatars?: Record<string, string>;
-  size?: number;
-}) {
-  if (!login) return null;
-  const src = avatars?.[login];
-  const style = { width: size, height: size } as const;
-  if (src) {
-    return <img className="pr-avatar" src={src} alt="" title={login} style={style} />;
-  }
-  return (
-    <span
-      className="pr-avatar pr-avatar--initials"
-      title={login}
-      aria-hidden
-      style={{ ...style, background: `hsl(${hueOf(login)} 45% 32%)`, fontSize: size * 0.42 }}
-    >
-      {initialsOf(login)}
-    </span>
-  );
-}
-
 /** A person, as a face and a name. */
 function Actor({
   login,
@@ -180,26 +134,59 @@ export function GitPullRequestDetail({
   summary,
   detail,
   loading,
+  error,
+  onRefresh,
+  onLoadCommitDiff,
   onBack,
   onOpenBrowser,
   onSteerAgent,
+  onOpenUrl,
 }: {
   summary: GitPullRequest;
   detail?: PullRequestDetail;
   loading: boolean;
+  error?: string;
+  onRefresh: () => void;
+  onLoadCommitDiff: (oid: string) => Promise<string>;
   onBack: () => void;
   onOpenBrowser: () => void;
   onSteerAgent?: (prompt: string) => void;
+  onOpenUrl: (url: string) => void;
 }) {
   const [tab, setTab] = useState<PullRequestTab>("summary");
-  const [newestFirst, setNewestFirst] = useState(false);
+  const [newestFirst, setNewestFirst] = useState(true);
   const [split, setSplit] = useState(true);
+  const [wrap, setWrap] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const [reviewDrawerOpen, setReviewDrawerOpen] = useState(false);
   const [reviewSummary, setReviewSummary] = useState("");
   const [stagedComments, setStagedComments] = useState<StagedComment[]>([]);
+  const [pendingComment, setPendingComment] = useState<Omit<StagedComment, "id">>();
   const [quickComment, setQuickComment] = useState("");
   const [copiedNotification, setCopiedNotification] = useState("");
+  const [selectedCommit, setSelectedCommit] = useState("");
+  const [commitDiff, setCommitDiff] = useState("");
+  const [commitLoading, setCommitLoading] = useState(false);
+  const [commitError, setCommitError] = useState<string>();
+  const commitRequest = useRef(0);
+  useEffect(() => () => { commitRequest.current += 1; }, []);
+
+  async function selectCommit(oid: string) {
+    const request = ++commitRequest.current;
+    setSelectedCommit(oid);
+    setCommitDiff("");
+    setCommitError(undefined);
+    setCommitLoading(Boolean(oid));
+    if (!oid) return;
+    try {
+      const diff = await onLoadCommitDiff(oid);
+      if (request === commitRequest.current) setCommitDiff(diff);
+    } catch (error) {
+      if (request === commitRequest.current) setCommitError(formatUserError(error));
+    } finally {
+      if (request === commitRequest.current) setCommitLoading(false);
+    }
+  }
 
   // Accordion open states
   const [descriptionOpen, setDescriptionOpen] = useState(true);
@@ -207,47 +194,17 @@ export function GitPullRequestDetail({
   const [commentsOpen, setCommentsOpen] = useState(true);
 
   // Expand all files state
-  const [allOpen, setAllOpen] = useState(true);
+  const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(new Set());
 
-  const diffFiles = useMemo(() => parseUnifiedDiff(detail?.diff ?? ""), [detail?.diff]);
+  const shownDiff = selectedCommit ? commitDiff : detail?.diff ?? "";
+  const diffFiles = useMemo(() => parseUnifiedDiff(shownDiff), [shownDiff]);
+  const diffStats = selectedCommit
+    ? { changedFiles: diffFiles.length, additions: diffFiles.reduce((sum, file) => sum + file.additions, 0), deletions: diffFiles.reduce((sum, file) => sum + file.deletions, 0) }
+    : detail;
+  const allOpen = diffFiles.every((file) => !collapsedFiles.has(file.path));
 
-  const timeline = useMemo(() => {
-    if (!detail) return [];
-    return [
-      {
-        id: `opened-${detail.number}`,
-        kind: "Pull request",
-        title: "Opened this pull request",
-        body: "",
-        author: detail.author ?? "Unknown author",
-        at: detail.createdAt,
-        sha: "",
-      },
-      ...detail.commits.map((commit) => ({
-        id: `commit-${commit.oid}`,
-        kind: "Commit",
-        title: commit.title,
-        body: commit.body ?? "",
-        author: commit.authors.join(", "),
-        at: commit.authoredAt,
-        sha: commit.oid.slice(0, 7),
-      })),
-      ...detail.activity.map((item) => ({
-        id: `${item.kind}-${item.id}`,
-        kind: item.kind === "review" ? item.state || "Review" : "Comment",
-        title: item.kind === "review" ? "Reviewed this pull request" : "Commented",
-        body: item.body,
-        author: item.author ?? "Unknown author",
-        at: item.createdAt,
-        sha: "",
-      })),
-    ].sort((left, right) => (left.at ?? "").localeCompare(right.at ?? ""));
-  }, [detail]);
-
-  const shownTimeline = useMemo(
-    () => (newestFirst ? [...timeline].reverse() : timeline),
-    [timeline, newestFirst],
-  );
+  const shownComments = useMemo(() => [...(detail?.activity ?? [])].sort((a, b) =>
+    (activityTime(a.createdAt) - activityTime(b.createdAt)) * (newestFirst ? -1 : 1)), [detail?.activity, newestFirst]);
 
   const showToast = (msg: string) => {
     setCopiedNotification(msg);
@@ -262,46 +219,43 @@ export function GitPullRequestDetail({
     setMenuOpen(false);
   };
 
-  const handleAddComment = (filePath: string, line: number) => {
-    const text = prompt(`Add inline comment for ${filePath}:${line}`);
-    if (text?.trim()) {
-      setStagedComments((prev) => [
-        ...prev,
-        { id: `c-${Date.now()}`, filePath, line, text: text.trim() },
-      ]);
-      setReviewDrawerOpen(true);
+  const handleAddComment = (filePath: string, line: number, side: "left" | "right") => {
+    if (pendingComment?.text.trim()) {
+      showToast("Save or cancel the current note before starting another.");
+      return;
     }
+    setPendingComment({ filePath, line, side, text: "" });
+    setReviewDrawerOpen(true);
   };
 
   const removeStagedComment = (id: string) => {
     setStagedComments((prev) => prev.filter((c) => c.id !== id));
   };
 
-  const handleReviewAction = (action: "comment" | "approve" | "request_changes") => {
+  const handleReviewAction = async (copy = false) => {
     let summaryText = reviewSummary.trim();
     if (stagedComments.length > 0) {
       const lineNotes = stagedComments
-        .map((c) => `- \`${c.filePath}:${c.line}\`: ${c.text}`)
+        .map((c) => `- \`${c.filePath}:${c.line}\` (${c.side === "left" ? "old" : "new"} side): ${c.text}`)
         .join("\n");
       summaryText = summaryText
         ? `${summaryText}\n\nLine comments:\n${lineNotes}`
         : `Line comments:\n${lineNotes}`;
     }
 
-    if (onSteerAgent) {
-      const promptText =
-        action === "approve"
-          ? `I reviewed PR #${summary.number}: Approved! ${summaryText}`
-          : action === "request_changes"
-            ? `Please fix the following findings in PR #${summary.number}:\n${summaryText}`
-            : `Review comments on PR #${summary.number}:\n${summaryText}`;
-      onSteerAgent(promptText);
-      showToast(`Review sent to agent thread`);
-    } else {
-      navigator.clipboard.writeText(
-        `PR #${summary.number} Review (${action.toUpperCase()}):\n${summaryText}`,
-      );
-      showToast("Review copied to clipboard");
+    if (!summaryText) return;
+    const promptText = `Review notes for ${summary.url}:\n${summaryText}`;
+    try {
+      if (onSteerAgent && !copy) {
+        onSteerAgent(promptText);
+        showToast("Review notes added to the thread draft");
+      } else {
+        await navigator.clipboard.writeText(promptText);
+        showToast("Review notes copied");
+      }
+    } catch {
+      showToast("Could not copy the notes. Your draft has been kept.");
+      return;
     }
 
     setReviewSummary("");
@@ -350,8 +304,14 @@ export function GitPullRequestDetail({
           ← Pull requests
         </button>
         <div className="pr-action-button-group">
-          <button className="chip" type="button" onClick={onOpenBrowser}>
-            <ExternalLinkIcon size={12} /> Open in Browser
+          <button className="pr-icon-btn" type="button" disabled={loading || commitLoading} title={error ? "Retry loading pull request" : "Refresh pull request"} aria-label={loading ? "Refreshing pull request" : error ? "Retry loading pull request" : "Refresh pull request"} onClick={() => {
+            onRefresh();
+            if (selectedCommit) void selectCommit(selectedCommit);
+          }}>
+            <RefreshIcon size={15} />
+          </button>
+          <button className="pr-icon-btn" type="button" onClick={onOpenBrowser} title="Open on GitHub" aria-label="Open on GitHub">
+            <ExternalLinkIcon size={15} />
           </button>
           <div className="pr-menu-wrapper">
             <button
@@ -359,6 +319,8 @@ export function GitPullRequestDetail({
               type="button"
               onClick={() => setMenuOpen((v) => !v)}
               title="More options"
+              aria-label="More pull request options"
+              aria-expanded={menuOpen}
             >
               <MoreHorizontalIcon size={15} />
             </button>
@@ -413,8 +375,8 @@ export function GitPullRequestDetail({
         <div className="pr-detail-kicker">
           <div className="pr-kicker-left">
             <span className="pr-number">#{summary.number}</span>
-            <span className={`codex-pr-checks ${summary.checks ?? "none"}`}>
-              {summary.isDraft ? "Draft" : summary.checks ?? summary.state}
+            <span className="codex-pr-checks">
+              {(detail ?? summary).isDraft ? "Draft" : (detail ?? summary).state.toLowerCase().replace(/^./, (letter) => letter.toUpperCase())}
             </span>
           </div>
           {/*
@@ -423,7 +385,7 @@ export function GitPullRequestDetail({
             * one screen, which reads as two facts until you compare them.
             */}
         </div>
-        <h3>{summary.title}</h3>
+        <h3>{detail?.title ?? summary.title}</h3>
         <p className="pr-byline" title={exactDate(summary.updatedAt)}>
           {summary.author ? (
             <Actor login={summary.author} avatars={detail?.avatars} size={18} />
@@ -466,7 +428,8 @@ export function GitPullRequestDetail({
       </div>
 
       {loading && !detail ? <p className="faint pr-loading">Loading pull request…</p> : null}
-      {!loading && !detail ? (
+      {error ? <p className="notice" role="alert">{error}{detail ? " Showing the last successful result." : ""}</p> : null}
+      {!loading && !detail && !error ? (
         <p className="notice">GitHub did not return details for this pull request.</p>
       ) : null}
 
@@ -487,7 +450,7 @@ export function GitPullRequestDetail({
             </div>
             <div>
               <span>Review</span>
-              <b>{detail.reviewDecision || "Not decided"}</b>
+              <b>{detail.reviewDecision ? reviewStateLabel(detail.reviewDecision) : "Not decided"}</b>
             </div>
           </div>
 
@@ -506,7 +469,7 @@ export function GitPullRequestDetail({
             {descriptionOpen && (
               <div className="pr-accordion-content">
                 {detail.body.trim() ? (
-                  <MessageBody content={detail.body} />
+                  <MessageBody content={detail.body} githubBaseUrl={summary.url} />
                 ) : (
                   <p className="faint">No description provided.</p>
                 )}
@@ -531,12 +494,13 @@ export function GitPullRequestDetail({
             </button>
             {checksOpen && (
               <div className="pr-accordion-content">
-                <PullRequestChecks checks={detail.checkRuns} />
+                <PullRequestChecks checks={detail.checkRuns} onOpenUrl={onOpenUrl} />
               </div>
             )}
           </section>
 
           <section className="pr-accordion-section">
+            <div className="pr-section-heading">
             <button
               type="button"
               className="pr-accordion-header"
@@ -551,21 +515,15 @@ export function GitPullRequestDetail({
                 {detail.activity.length}
               </span>
             </button>
+            <button type="button" className="pr-sort-button" aria-pressed={newestFirst} onClick={() => setNewestFirst((value) => !value)}>{newestFirst ? "Newest first" : "Oldest first"}</button>
+            </div>
             {commentsOpen && (
               <div className="pr-accordion-content">
                 {detail.activity.length === 0 ? (
                   <p className="faint">No comments on this pull request yet.</p>
                 ) : (
                   <div className="pr-comments-list">
-                    {detail.activity.map((act) => (
-                      <div key={act.id} className="pr-comment-row">
-                        <div className="pr-comment-header">
-                          <b>{act.author || "Reviewer"}</b>
-                          <time>{dateLabel(act.createdAt)}</time>
-                        </div>
-                        <p>{act.body}</p>
-                      </div>
-                    ))}
+                    {shownComments.map((act) => <PullRequestComment key={`${act.kind}-${act.id}`} activity={act} avatars={detail.avatars} baseUrl={summary.url} onOpenUrl={onOpenUrl} />)}
                   </div>
                 )}
               </div>
@@ -574,7 +532,8 @@ export function GitPullRequestDetail({
 
           <div className="pr-quick-comment-box">
             <textarea
-              placeholder="Leave a comment..."
+              aria-label="Comment draft for the thread"
+              placeholder="Draft a comment for the thread…"
               rows={2}
               value={quickComment}
               onChange={(e) => setQuickComment(e.target.value)}
@@ -584,20 +543,25 @@ export function GitPullRequestDetail({
                 type="button"
                 className="chip"
                 disabled={!quickComment.trim()}
-                onClick={() => {
-                  if (onSteerAgent) {
-                    onSteerAgent(`Comment on PR #${summary.number}: ${quickComment.trim()}`);
-                    showToast("Comment sent to agent thread");
-                  } else {
-                    navigator.clipboard.writeText(quickComment.trim());
-                    showToast("Comment copied to clipboard");
+                onClick={async () => {
+                  try {
+                    if (onSteerAgent) {
+                      onSteerAgent(`Comment draft for ${summary.url}: ${quickComment.trim()}`);
+                      showToast("Comment added to the thread draft");
+                    } else {
+                      await navigator.clipboard.writeText(quickComment.trim());
+                      showToast("Comment copied to clipboard");
+                    }
+                    setQuickComment("");
+                  } catch {
+                    showToast("Could not copy the comment. Your draft has been kept.");
                   }
-                  setQuickComment("");
                 }}
               >
-                Comment
+                {onSteerAgent ? "Use in thread" : "Copy draft"}
               </button>
             </div>
+            <p className="faint">Drafts are not posted to GitHub. Open on GitHub to submit a review there.</p>
           </div>
         </div>
       ) : null}
@@ -606,36 +570,18 @@ export function GitPullRequestDetail({
         <div className="pr-timeline" role="tabpanel" id="pr-panel-timeline" aria-labelledby="pr-tab-timeline">
           <div className="pr-toolbar">
             <span className="faint">
-              {detail.activity.length} comments · {detail.commits.length} commits
+                {detail.activity.length} {detail.activity.length === 1 ? "comment" : "comments"} · {detail.commits.length} {detail.commits.length === 1 ? "commit" : "commits"}
             </span>
             <button
               type="button"
-              className="chip"
+              className="pr-sort-button"
               aria-pressed={newestFirst}
               onClick={() => setNewestFirst((value) => !value)}
             >
               {newestFirst ? "Newest first" : "Oldest first"}
             </button>
           </div>
-          {shownTimeline.length === 0 ? <p className="faint">No activity was returned.</p> : null}
-          {shownTimeline.map((item) => (
-            <article key={item.id}>
-              {/* The face replaces the dot: it marks the row in the same
-                  place and says who, which the dot never did. */}
-              {item.author ? (
-                <Avatar login={item.author} avatars={detail.avatars} size={22} />
-              ) : (
-                <div className="pr-timeline-dot" aria-hidden />
-              )}
-              <div className="pr-timeline-head">
-                <b title={item.author || item.kind}>{item.author || item.kind}</b>
-                <span>{item.title}</span>
-                {item.sha ? <code>{item.sha}</code> : null}
-                <time title={exactDate(item.at)}>{dateLabel(item.at)}</time>
-              </div>
-              {item.body ? <MessageBody content={item.body} /> : null}
-            </article>
-          ))}
+          <PullRequestTimeline detail={detail} newestFirst={newestFirst} onOpenUrl={onOpenUrl} onSelectCommit={(oid) => { setTab("code"); void selectCommit(oid); }} />
         </div>
       ) : null}
 
@@ -643,31 +589,37 @@ export function GitPullRequestDetail({
         <div className="pr-code" role="tabpanel" id="pr-panel-code" aria-labelledby="pr-tab-code">
           <div className="pr-toolbar pr-code-toolbar">
             <div className="pr-code-toolbar-left">
-              <span className="chip faint">All commits ▾</span>
-              <span className="faint">
-                {detail.changedFiles} files <i className="pr-add">+{detail.additions}</i>{" "}
-                <b className="pr-del">−{detail.deletions}</b>
-              </span>
+              <select aria-label="Commit to review" className="pr-commit-select" value={selectedCommit} onChange={(event) => void selectCommit(event.target.value)}>
+                <option value="">All commits</option>
+                {[...detail.commits].reverse().map((commit) => (
+                  <option key={commit.oid} value={commit.oid}>{commit.oid.slice(0, 7)} · {commit.title}</option>
+                ))}
+              </select>
+              {!commitLoading && !commitError && diffStats ? <span className="faint">
+                {diffStats.changedFiles} files <i className="pr-add">+{diffStats.additions}</i>{" "}
+                <b className="pr-del">−{diffStats.deletions}</b>
+              </span> : null}
             </div>
             <div className="pr-code-toolbar-right">
               <button
                 type="button"
                 className="chip"
-                onClick={() => setAllOpen((v) => !v)}
+                onClick={() => setCollapsedFiles(allOpen ? new Set(diffFiles.map((file) => file.path)) : new Set())}
+                disabled={diffFiles.length === 0}
               >
                 {allOpen ? "Collapse all" : "Expand all"}
               </button>
-              <button
-                type="button"
-                className="chip"
-                aria-pressed={split}
-                onClick={() => setSplit((value) => !value)}
-                title="Toggle Split / Unified view"
-              >
-                {split ? "Split" : "Unified"}
-              </button>
+              <div className="pr-view-toggle" role="group" aria-label="Diff layout">
+                <button type="button" aria-pressed={!split} onClick={() => setSplit(false)}>Unified</button>
+                <button type="button" aria-pressed={split} onClick={() => setSplit(true)}>Split</button>
+              </div>
+              <button type="button" className="pr-wrap-toggle" aria-pressed={wrap} onClick={() => setWrap((value) => !value)} title="Wrap long lines to fit the panel">Wrap lines</button>
             </div>
           </div>
+
+          {selectedCommit ? <p className="faint">Viewing this commit's changes. Choose All commits to add line notes for the pull request.</p> : null}
+          {commitLoading ? <p className="faint" role="status">Loading commit diff…</p> : null}
+          {commitError ? <div className="notice" role="alert">{commitError} <button className="chip" type="button" onClick={() => void selectCommit(selectedCommit)}>Retry diff</button></div> : null}
 
           {diffFiles.length > 0 ? (
             <div className="pr-file-diffs">
@@ -676,19 +628,26 @@ export function GitPullRequestDetail({
                   key={`${file.oldPath ?? ""}->${file.path}`}
                   file={file}
                   split={split}
-                  defaultOpen={allOpen}
-                  onAddComment={handleAddComment}
+                  wrap={wrap}
+                  expanded={!collapsedFiles.has(file.path)}
+                  onExpandedChange={(open) => setCollapsedFiles((previous) => {
+                    const next = new Set(previous);
+                    if (open) next.delete(file.path);
+                    else next.add(file.path);
+                    return next;
+                  })}
+                  onAddComment={selectedCommit ? undefined : handleAddComment}
                 />
               ))}
             </div>
-          ) : detail.diff.trim() ? (
-            <DiffView text={detail.diff} />
-          ) : (
+          ) : shownDiff.trim() ? (
+            <DiffView text={shownDiff} />
+          ) : !commitLoading && !commitError ? (
             <div className="pr-nodiff">
               <p className="notice">
-                {detail.diffUnavailable ?? "GitHub returned no diff for this pull request."}
+                {selectedCommit ? "This commit has no text diff." : detail.diffUnavailable ?? "GitHub returned no diff for this pull request."}
               </p>
-              {detail.files.length > 0 ? (
+              {!selectedCommit && detail.files.length > 0 ? (
                 <>
                   <p className="faint">
                     Showing {detail.files.length} of {detail.changedFiles} changed files.
@@ -709,7 +668,7 @@ export function GitPullRequestDetail({
                 </>
               ) : null}
             </div>
-          )}
+          ) : null}
 
           {/* Floating Review Button */}
           <button
@@ -717,7 +676,7 @@ export function GitPullRequestDetail({
             className="pr-floating-review-btn"
             onClick={() => setReviewDrawerOpen((v) => !v)}
           >
-            <MessageSquareIcon size={14} /> Review
+            <MessageSquareIcon size={14} /> Review notes
             {stagedComments.length > 0 && (
               <span className="pr-staged-count-badge">{stagedComments.length}</span>
             )}
@@ -727,17 +686,30 @@ export function GitPullRequestDetail({
           {reviewDrawerOpen && (
             <div className="pr-review-drawer">
               <div className="pr-review-drawer-head">
-                <b>Review changes</b>
+                <b>Review notes</b>
                 <button
                   type="button"
                   className="ghost pr-icon-btn"
                   onClick={() => setReviewDrawerOpen(false)}
+                  aria-label="Close review notes"
                 >
                   <XIcon size={14} />
                 </button>
               </div>
 
               <div className="pr-review-drawer-body">
+                <p className="faint">Notes stay in this view until you copy them or add them to the thread draft. They are not submitted to GitHub.</p>
+                {pendingComment ? (
+                  <div className="pr-pending-note">
+                    <label htmlFor="pr-line-note">{pendingComment.filePath}:{pendingComment.line} ({pendingComment.side === "left" ? "old" : "new"} side)</label>
+                    <textarea id="pr-line-note" autoFocus rows={3} value={pendingComment.text} onChange={(event) => setPendingComment({ ...pendingComment, text: event.target.value })} />
+                    <button type="button" className="chip" disabled={!pendingComment.text.trim()} onClick={() => {
+                      setStagedComments((previous) => [...previous, { ...pendingComment, text: pendingComment.text.trim(), id: crypto.randomUUID() }]);
+                      setPendingComment(undefined);
+                    }}>Add note</button>
+                    <button type="button" className="ghost" onClick={() => setPendingComment(undefined)}>Cancel</button>
+                  </div>
+                ) : null}
                 {stagedComments.length === 0 ? (
                   <p className="faint pr-review-empty">No line comments yet</p>
                 ) : (
@@ -745,7 +717,7 @@ export function GitPullRequestDetail({
                     {stagedComments.map((c) => (
                       <div key={c.id} className="pr-staged-comment-item">
                         <div className="pr-staged-comment-meta">
-                          <code className="mono">{c.filePath}:{c.line}</code>
+                          <code className="mono">{c.filePath}:{c.line} ({c.side === "left" ? "old" : "new"})</code>
                           <button
                             type="button"
                             className="ghost pr-icon-btn"
@@ -764,6 +736,7 @@ export function GitPullRequestDetail({
                 <textarea
                   className="pr-review-textarea"
                   placeholder="Summarize your review (optional)..."
+                  aria-label="Review summary draft"
                   rows={3}
                   value={reviewSummary}
                   onChange={(e) => setReviewSummary(e.target.value)}
@@ -774,24 +747,19 @@ export function GitPullRequestDetail({
                 <button
                   type="button"
                   className="chip"
-                  onClick={() => handleReviewAction("comment")}
+                  disabled={(!reviewSummary.trim() && stagedComments.length === 0) || Boolean(pendingComment)}
+                  onClick={() => void handleReviewAction()}
                 >
-                  <MessageSquareIcon size={12} /> Comment
+                  <MessageSquareIcon size={12} /> {onSteerAgent ? "Use in thread" : "Copy notes"}
                 </button>
-                <button
+                {onSteerAgent ? <button
                   type="button"
-                  className="pr-btn-approve"
-                  onClick={() => handleReviewAction("approve")}
+                  className="chip"
+                  disabled={(!reviewSummary.trim() && stagedComments.length === 0) || Boolean(pendingComment)}
+                  onClick={() => void handleReviewAction(true)}
                 >
-                  <CheckIcon size={12} /> Approve
-                </button>
-                <button
-                  type="button"
-                  className="pr-btn-request-changes"
-                  onClick={() => handleReviewAction("request_changes")}
-                >
-                  <XIcon size={12} /> Request changes
-                </button>
+                  <CopyIcon size={12} /> Copy notes
+                </button> : null}
               </div>
             </div>
           )}

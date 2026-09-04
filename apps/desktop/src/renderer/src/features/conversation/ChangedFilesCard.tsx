@@ -1,32 +1,17 @@
-import type { GitStatus } from "@capsule/shared";
 import type { TouchedFile } from "../../lib/activity";
 import { useState } from "react";
-import { useWorkspace } from "../../lib/workspace";
 
 const COLLAPSED_LIMIT = 5;
 
-const CODE_LABELS: Record<string, string> = {
-  M: "modified",
-  A: "added",
-  D: "deleted",
-  R: "renamed",
-  "?": "added",
-};
-
-function statusLabel(code: string): string {
-  const key = code.trim()[0] ?? "";
-  return CODE_LABELS[key] ?? "changed";
-}
-
 /**
  * The outcome of a turn that touched the tree: which files moved and by how
- * much — not the contents. The diff itself belongs in the side panel, so this
- * stays a summary you can skim without leaving the thread.
+ * much — not the contents. The owning turn can expand its saved diff below
+ * this summary without consulting the current working tree.
  */
 /*
  * A path is read basename-first: `workspace.tsx` is the answer, and the
  * directory is context. Splitting them lets the directory dim and truncate
- * while the filename stays legible, which is how Codex renders the same list.
+ * while the filename stays legible.
  */
 function splitPath(path: string): { dir: string; name: string } {
   const index = path.lastIndexOf("/");
@@ -36,50 +21,20 @@ function splitPath(path: string): { dir: string; name: string } {
 }
 
 /*
- * The files this turn changed, and the way back to before it.
- *
- * `git` is still the source of the diff and discard actions — those are about
- * the working tree — but the list is the turn's, passed in. Rendering
- * `git.files` put every uncommitted file in the project under every reply,
- * including conversations that had touched nothing.
+ * A saved turn's outcome. Its owner supplies both data and actions, so this
+ * card cannot silently select another run or discard today's working tree.
  */
-export function ChangedFilesCard({ git, files }: { git: GitStatus; files: TouchedFile[] }) {
-  const { api, gitDiscard, runs, setConfirm, setInspectorOpen, setInspectorTab } = useWorkspace();
+export function ChangedFilesCard({ files, onOpenDiff, onRestore, restoring = false }: {
+  files: TouchedFile[];
+  onOpenDiff?: () => void;
+  onRestore?: () => void;
+  restoring?: boolean;
+}) {
   const [expanded, setExpanded] = useState(false);
-  const [restoring, setRestoring] = useState(false);
-
-  /*
-   * The most recent finished turn that captured a checkpoint. Restoring puts
-   * the worktree back to how that turn left it, which is the way out of an
-   * edit the agent made and the user did not want.
-   */
-  const restorable = [...runs]
-    .reverse()
-    .find((run) => run.checkpointRef && run.status !== "running");
-
-  async function restoreTurn() {
-    if (!restorable) return;
-    setConfirm({
-      title: "Restore this turn?",
-      // Says what is lost, because it is not recoverable through this button.
-      detail:
-        "Files in the project folder go back to how this turn left them. Anything changed since — by the agent or by you — is discarded.",
-      confirmLabel: "Restore",
-      danger: true,
-      onConfirm: async () => {
-        setRestoring(true);
-        try {
-          await api.restoreTurn(restorable.id);
-        } finally {
-          setRestoring(false);
-        }
-      },
-    });
-  }
-
-  if (!git.isRepo || files.length === 0) return null;
+  if (files.length === 0) return null;
   const shown = expanded ? files : files.slice(0, COLLAPSED_LIMIT);
   const hidden = files.length - shown.length;
+  const FileControl = onOpenDiff ? "button" : "div";
 
   /*
    * Totals for the files listed here, not for the working tree.
@@ -99,14 +54,9 @@ export function ChangedFilesCard({ git, files }: { git: GitStatus; files: Touche
     { added: 0, removed: 0, counted: false },
   );
 
-  const openDiff = () => {
-    setInspectorTab("diff");
-    setInspectorOpen(true);
-  };
-
   return (
     <div className="changed-files">
-      <button className="changed-files-head" onClick={openDiff}>
+      <FileControl className="changed-files-head" onClick={onOpenDiff} title={onOpenDiff ? "View this turn's saved diff" : "Files reported by this turn"}>
         <span className="changed-files-count">
           {files.length} {files.length === 1 ? "file" : "files"} changed
         </span>
@@ -118,11 +68,11 @@ export function ChangedFilesCard({ git, files }: { git: GitStatus; files: Touche
             <span className="removed">−{totals.removed}</span>
           </span>
         )}
-      </button>
+      </FileControl>
       <ul className="changed-files-list">
         {shown.map((file) => (
           <li key={file.path}>
-            <button onClick={openDiff} title={`${file.path} — ${file.action}`}>
+            <FileControl className="changed-file-row" onClick={onOpenDiff} title={`${file.path} — ${file.action}`}>
               <span className={`change-code ${file.action}`} aria-hidden>
                 {file.action === "created" ? "+" : file.action === "deleted" ? "−" : "M"}
               </span>
@@ -136,28 +86,7 @@ export function ChangedFilesCard({ git, files }: { git: GitStatus; files: Touche
                   <span className="removed">−{file.removed ?? 0}</span>
                 </span>
               )}
-            </button>
-            {/* Discarding rewrites the working tree and cannot be undone from
-                here, so it asks first and names the file it will revert. */}
-            <button
-              className="change-undo"
-              title={`Discard changes to ${file.path}`}
-              aria-label={`Discard changes to ${file.path}`}
-              onClick={() =>
-                setConfirm({
-                  title: "Discard changes?",
-                  detail: `${file.path} will be reverted to its last committed state. This cannot be undone.`,
-                  danger: true,
-                  confirmLabel: "Discard",
-                  onConfirm: () => {
-                    void gitDiscard(file.path);
-                    setConfirm(undefined);
-                  },
-                })
-              }
-            >
-              Undo
-            </button>
+            </FileControl>
           </li>
         ))}
       </ul>
@@ -167,7 +96,7 @@ export function ChangedFilesCard({ git, files }: { git: GitStatus; files: Touche
         * five rows of content, and the reader's next move buried under the
         * destructive one.
         */}
-      {(hidden > 0 || expanded || restorable) && (
+      {(hidden > 0 || expanded || onRestore) && (
         <div className="changed-files-actions">
           {hidden > 0 ? (
             <button className="ghost" type="button" onClick={() => setExpanded(true)}>
@@ -180,12 +109,12 @@ export function ChangedFilesCard({ git, files }: { git: GitStatus; files: Touche
           ) : (
             <span />
           )}
-          {restorable && (
+          {onRestore && (
             <button
               type="button"
               className="ghost"
               disabled={restoring}
-              onClick={() => void restoreTurn()}
+              onClick={onRestore}
               title="Put the project folder back to how this turn left it"
             >
               {restoring ? "Restoring…" : "Restore this turn"}

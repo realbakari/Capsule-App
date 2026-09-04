@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { threadError, threadErrorKey } from "./thread-error";
+import { threadError, threadErrorKey, threadFeedback } from "./thread-error";
 
 const run = (
   sessionId: string,
@@ -109,5 +109,33 @@ describe("threadErrorKey", () => {
   it("has no key without both", () => {
     expect(threadErrorKey(undefined, "Broke")).toBeUndefined();
     expect(threadErrorKey("s1", undefined)).toBeUndefined();
+  });
+});
+
+describe("threadFeedback", () => {
+  const failure = { ...run("s1", "failed", "2026-09-04T10:00:00Z", "Sign in to continue."), id: "r1" };
+  const input = { sessionId: "s1", runs: [failure], notice: "Sign in to continue.", dismissed: new Set<string>() };
+
+  it("shows a rejection once before and after its run event arrives", () => {
+    expect(threadFeedback({ ...input, runs: [] })).toMatchObject({ notice: input.notice, failure: undefined });
+    expect(threadFeedback(input)).toMatchObject({ notice: undefined, failure: input.notice });
+    expect(threadFeedback({ ...input, notice: undefined })).toMatchObject({ notice: undefined, failure: input.notice });
+  });
+  it("deduplicates equivalent wrapped errors without silencing different notices", () => {
+    expect(threadFeedback({ ...input, notice: "Error invoking remote method 'capsule:sendMessage': Error: Sign in to continue." }).notice).toBeUndefined();
+    expect(threadFeedback({ ...input, notice: "Could not load the file." }).notice).toBe("Could not load the file.");
+  });
+  it("dismisses both copies and does not reveal a stale notice on rerender", () => {
+    const key = threadFeedback(input).failureKey!;
+    expect(threadFeedback({ ...input, dismissed: new Set([key]) })).toEqual({ failure: undefined, notice: undefined, failureKey: key });
+  });
+  it("allows the same error to appear on a later run or in a different thread", () => {
+    const dismissed = new Set([threadFeedback(input).failureKey!]);
+    expect(threadFeedback({ ...input, dismissed, runs: [{ ...failure, id: "r2", createdAt: "2026-09-04T11:00:00Z" }] }).failure).toBe(input.notice);
+    expect(threadFeedback({ ...input, dismissed, sessionId: "s2", runs: [{ ...failure, sessionId: "s2" }] }).failure).toBe(input.notice);
+  });
+  it("preserves notice-only preflight failures, drafts, and non-error state", () => {
+    expect(threadFeedback({ ...input, runs: [{ ...failure, status: "running" }] })).toMatchObject({ notice: input.notice, failure: undefined });
+    expect(threadFeedback({ ...input, notice: "Prompt stashed." })).toMatchObject({ notice: "Prompt stashed.", failure: input.notice });
   });
 });

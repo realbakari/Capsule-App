@@ -1021,8 +1021,11 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.gitStatus, (projectId, sessionId) =>
     requireEngine().gitStatus(String(projectId), sessionId ? String(sessionId) : undefined),
   );
-  handle(IPC_CHANNELS.listPullRequests, (projectId, sessionId) =>
-    requireEngine().listPullRequests(String(projectId), sessionId ? String(sessionId) : undefined),
+  handleArgs(IPC_CHANNELS.listPullRequests, [id, optStr, optBool], (projectId: string, sessionId: string | undefined, refresh: boolean) =>
+    requireEngine().listPullRequests(projectId, sessionId, refresh),
+  );
+  handleArgs(IPC_CHANNELS.getCommitDiff, [id, id, optStr], (projectId: string, oid: string, sessionId: string | undefined) =>
+    requireEngine().commitDiff(projectId, oid, sessionId),
   );
   handle(IPC_CHANNELS.getPullRequest, (projectId, number, sessionId) =>
     requireEngine().pullRequestDetail(

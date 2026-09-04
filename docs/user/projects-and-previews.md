@@ -63,8 +63,37 @@ above the live-server list.
 The Review panel lists open pull requests for the selected repository when the
 GitHub CLI is installed and signed in. Select one to read its summary, review
 metadata, comments and commits, or full patch without leaving Capsule. Use
-**Open in Browser** from that view to load its canonical URL in Capsule's
+**Open on GitHub** from that view to load its canonical URL in Capsule's
 embedded browser.
+
+Filter the loaded list by title, author, branch, or PR number, and sort by recent
+updates or creation time. The list shows up to 50 open pull requests. **Refresh**
+asks GitHub for a new result. If a read fails, **Retry** tries again and any last
+successful result stays visible; a connection failure is not shown as an empty
+repository.
+
+In **Code**, choose **All commits** or an individual commit to inspect its
+changes without checking out another branch. Switch between split and unified
+diffs, collapse a file, or collapse and expand them all. **Summary** renders
+comment Markdown and lists checks with links to their output.
+Code is syntax-coloured, and long lines wrap by default while keeping both sides
+aligned. Turn **Wrap lines** off to scroll horizontally instead. File headers
+remain compact when collapsed.
+HTML review badges appear as labelled links instead of raw tags, and hidden bot
+metadata is omitted. Tables retain their columns, and expandable sections can
+be opened in place. Code examples remain literal, including nested fences.
+Comments appear in collapsible cards and can be sorted in either direction.
+Timeline groups consecutive comments and reviews; expand a group to read them,
+or select a commit title to inspect that commit's diff. Merge and close events
+use the dates reported by GitHub. The newest events appear first by default.
+Collapsing a comment only changes this view; it does not resolve a conversation
+on GitHub. Review-thread resolution and publishing reviews are not available here.
+
+Use a line's **+** control in the full-PR diff to write a review note. Notes keep
+track of the old or new side of the diff. **Use in thread** places notes or a
+comment into your draft so you can review it before sending it to the agent;
+**Copy notes** copies them instead. These controls do not publish reviews or
+comments to GitHub. Use **Open on GitHub** to submit a review on GitHub.
 
 Web links in conversation Markdown also open in the embedded browser. Use the
 browser toolbar's external-open action only when you want the system browser.

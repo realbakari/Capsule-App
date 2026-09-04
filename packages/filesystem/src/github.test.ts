@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createPullRequestArgs,
+  commitDiffArgs,
   diffFailureReason,
   listFailureReason,
   mergePullRequestArgs,
@@ -12,6 +13,14 @@ import {
 } from "./github.js";
 
 describe("git and pull request args", () => {
+  it("reads a commit's patch from the checkout's repository with an explicit GET", () => {
+    const oid = "a".repeat(40);
+    expect(commitDiffArgs(oid)).toEqual(["api", `repos/{owner}/{repo}/commits/${oid}`, "--method", "GET", "-H", "Accept: application/vnd.github.diff"]);
+  });
+
+  it.each(["--help", "../other", "HEAD", "abc", "z".repeat(40)])("rejects a non-commit argument: %s", (oid) => {
+    expect(() => commitDiffArgs(oid)).toThrow("full commit ID");
+  });
   it("pushes with lease only when asked", () => {
     expect(pushArgs(false)).toEqual(["push", "-u", "origin", "HEAD"]);
     expect(pushArgs(true)).toEqual(["push", "--force-with-lease", "-u", "origin", "HEAD"]);
@@ -43,7 +52,7 @@ describe("git and pull request args", () => {
             statusCheckRollup: [{ state: "SUCCESS" }],
           },
         ]),
-      )[0],
+      )?.[0],
     ).toMatchObject({ number: 42, title: "Ship it", author: "octocat", checks: "success" });
   });
 
@@ -85,6 +94,18 @@ describe("git and pull request args", () => {
     expect(detail?.activity.map((item) => item.kind)).toEqual(["comment", "review"]);
     expect(detail?.commits[0]).toMatchObject({ oid: "abcdef", title: "Ship", authors: ["octocat"] });
     expect(detail?.diff).toContain("src/app.ts");
+  });
+
+  it("does not report a malformed response as an empty repository", () => {
+    for (const raw of ["", " ", "[", '{"error":"bad gateway"}', "[null]", '[{"number":42}]']) {
+      expect(parsePullRequestList(raw)).toBeUndefined();
+    }
+    expect(parsePullRequestList("[]")).toEqual([]);
+  });
+
+  it("preserves host merge and close timestamps independently of later updates", () => {
+    const detail = parsePullRequestDetail(JSON.stringify({ number: 42, url: "https://github.com/example/repo/pull/42", mergedAt: "2026-09-01", closedAt: "2026-09-01", updatedAt: "2026-09-02" }));
+    expect(detail).toMatchObject({ mergedAt: "2026-09-01", closedAt: "2026-09-01", updatedAt: "2026-09-02" });
   });
 });
 
@@ -219,6 +240,15 @@ describe("when the trouble is GitHub's own", () => {
 
   it("still tells a rate limit apart from an outage", () => {
     expect(listFailureReason("HTTP 403: API rate limit exceeded")).toMatch(/rate limiting/i);
+  });
+
+  it("explains gh JSON decoder failures as retryable incomplete responses", () => {
+    expect(listFailureReason("unexpected end of JSON input")).toMatch(/incomplete response/i);
+    expect(diffFailureReason("unexpected EOF")).toMatch(/incomplete response/i);
+  });
+
+  it("does not claim every forbidden response is a rate limit", () => {
+    expect(listFailureReason("HTTP 403: Resource not accessible by integration")).toMatch(/permissions/i);
   });
 });
 

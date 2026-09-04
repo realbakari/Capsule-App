@@ -44,6 +44,7 @@ describe("ipc scopes", () => {
       "listMessagePage",
       "gitDiff",
       "getPullRequest",
+      "getCommitDiff",
       "listRunEvents",
     ]) {
       expect(isChannelAllowed(channel, ["read"])).toBe(true);

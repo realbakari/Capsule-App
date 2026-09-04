@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import { avatarsFor } from "./avatars.js";
+import { INCOMPLETE_GITHUB_RESPONSE, isIncompleteResponse, readGhJson } from "./github-read.js";
 import type {
   GitPullRequest,
   GitPullRequestActivity,
@@ -51,6 +52,7 @@ function runAsync(
     }
     let stdout = "";
     let stderr = "";
+    let outputBytes = 0;
     let settled = false;
     const finish = (result: { ok: boolean; stdout: string; stderr: string }) => {
       if (settled) return;
@@ -67,10 +69,17 @@ function runAsync(
     child.stdout?.setEncoding("utf8");
     child.stderr?.setEncoding("utf8");
     child.stdout?.on("data", (chunk: string) => {
+      if (settled) return;
+      outputBytes += Buffer.byteLength(chunk);
+      if (outputBytes > 16 * 1024 * 1024) {
+        child.kill();
+        finish({ ok: false, stdout: "", stderr: "The command response is too large to display." });
+        return;
+      }
       stdout += chunk;
     });
     child.stderr?.on("data", (chunk: string) => {
-      stderr += chunk;
+      if (!settled) stderr = (stderr + chunk).slice(-16_384);
     });
     child.on("error", (error: Error) => finish({ ok: false, stdout, stderr: error.message }));
     child.on("close", (code) => finish({ ok: code === 0, stdout, stderr: stderr.trim() }));
@@ -86,6 +95,7 @@ function runAsync(
 let ghPresent: boolean | undefined;
 
 const pullRequestCache = new Map<string, { value?: GitPullRequest; at: number }>();
+const pullRequestAttempts = new Map<string, number>();
 
 export function ghAvailable(): boolean {
   if (ghPresent === undefined) {
@@ -99,6 +109,7 @@ export function ghAvailable(): boolean {
 export function clearGhCache(): void {
   ghPresent = undefined;
   pullRequestCache.clear();
+  pullRequestAttempts.clear();
   pullRequestListCache.clear();
   pullRequestListInFlight.clear();
   pullRequestListFailures.clear();
@@ -268,7 +279,7 @@ export function parseChecks(value: unknown): GitPullRequestCheck[] {
   return [...latest.values()].sort((left, right) => left.name.localeCompare(right.name));
 }
 
-export function parsePullRequestList(raw: string): GitPullRequest[] {
+export function parsePullRequestList(raw: string): GitPullRequest[] | undefined {
   try {
     const rows = JSON.parse(raw) as Array<{
       number?: number;
@@ -284,7 +295,10 @@ export function parsePullRequestList(raw: string): GitPullRequest[] {
       createdAt?: string;
       updatedAt?: string;
     }>;
-    if (!Array.isArray(rows)) return [];
+    if (!Array.isArray(rows) || rows.some((row) =>
+      !row || typeof row !== "object" || !Number.isInteger(row.number) ||
+      (row.number ?? 0) < 1 || typeof row.url !== "string" || !row.url
+    )) return undefined;
     return rows
       .filter((row) => Boolean(row.number && row.url))
       .map((row) => ({
@@ -302,7 +316,7 @@ export function parsePullRequestList(raw: string): GitPullRequest[] {
         updatedAt: row.updatedAt || undefined,
       }));
   } catch {
-    return [];
+    return undefined;
   }
 }
 
@@ -356,7 +370,7 @@ function refreshPullRequestList(cwd: string): Promise<GitPullRequest[] | undefin
  * fetched yet" from "this repository has no open pull requests" and wait for
  * `pending` rather than showing an empty pane.
  */
-export function pollPullRequestList(cwd: string): {
+export function pollPullRequestList(cwd: string, force = false): {
   value?: GitPullRequest[];
   known: boolean;
   stale: boolean;
@@ -364,7 +378,7 @@ export function pollPullRequestList(cwd: string): {
 } {
   const cached = pullRequestListCache.get(cwd);
   const fresh = cached && Date.now() - cached.at < PR_LIST_TTL_MS;
-  const pending = fresh ? undefined : refreshPullRequestList(cwd);
+  const pending = fresh && !force ? undefined : refreshPullRequestList(cwd);
   return {
     value: cached?.value,
     known: Boolean(cached),
@@ -374,25 +388,26 @@ export function pollPullRequestList(cwd: string): {
 }
 
 export async function listPullRequests(cwd: string): Promise<GitPullRequest[] | undefined> {
-  const result = await runAsync(
-    "gh",
+  const result = await readGhJson(
     [
       "pr",
       "list",
       "--limit",
       "50",
       "--json",
-      "number,url,title,isDraft,state,mergeStateStatus,reviewDecision,statusCheckRollup,author,headRefName,createdAt,updatedAt",
+      "number,url,title,isDraft,state,author,headRefName,createdAt,updatedAt",
     ],
     cwd,
+    parsePullRequestList,
+    runAsync,
     30_000,
   );
-  if (!result.ok) {
-    pullRequestListFailures.set(cwd, listFailureReason(result.stderr));
+  if (result.value === undefined) {
+    pullRequestListFailures.set(cwd, listFailureReason(result.error));
     return undefined;
   }
   pullRequestListFailures.delete(cwd);
-  const parsed = parsePullRequestList(result.stdout);
+  const parsed = result.value;
   pullRequestListCache.set(cwd, { value: parsed, at: Date.now() });
   return parsed;
 }
@@ -409,13 +424,6 @@ function actorName(value: unknown): string | undefined {
   return typeof actor.name === "string" && actor.name ? actor.name : undefined;
 }
 
-/** Parse the `gh pr view --json` shape without trusting optional host fields. */
-/**
- * Why `gh pr diff` produced nothing, said plainly.
- *
- * The common case by far is GitHub's own ceiling: it will not render a diff of
- * more than three hundred files, and answers 406 rather than truncating.
- */
 /**
  * Why the pull request list came back empty-handed, in plain language.
  *
@@ -426,6 +434,7 @@ function actorName(value: unknown): string | undefined {
  */
 export function listFailureReason(stderr: string): string {
   const text = stderr.trim();
+  if (isIncompleteResponse(text)) return INCOMPLETE_GITHUB_RESPONSE;
   if (/no git remotes found|not a git repository/i.test(text)) {
     return "This folder has no GitHub remote, so there are no pull requests to show.";
   }
@@ -440,10 +449,13 @@ export function listFailureReason(stderr: string): string {
   if (/authentication|not logged in|gh auth login|401|bad credentials/i.test(text)) {
     return "`gh` is not signed in to GitHub. Run `gh auth login`, then refresh.";
   }
-  if (/rate limit|403/i.test(text)) {
+  if (/rate limit/i.test(text)) {
     return "GitHub is rate limiting this machine. Wait a few minutes, then refresh.";
   }
-  if (/timed out|dial tcp|network is unreachable|no such host|connection refused/i.test(text)) {
+  if (/403|forbidden|resource not accessible/i.test(text)) {
+    return "GitHub denied access. Check this account's repository permissions, then refresh.";
+  }
+  if (/timed out|dial tcp|network is unreachable|no such host|connection refused|error connecting/i.test(text)) {
     return "GitHub could not be reached. Check your connection, then refresh.";
   }
   /*
@@ -459,6 +471,7 @@ export function listFailureReason(stderr: string): string {
 
 export function diffFailureReason(stderr: string): string {
   const text = stderr.trim();
+  if (isIncompleteResponse(text)) return INCOMPLETE_GITHUB_RESPONSE;
   if (/maximum number of files/i.test(text) || /too_large/i.test(text)) {
     return "GitHub does not render a diff for a pull request this large.";
   }
@@ -468,6 +481,7 @@ export function diffFailureReason(stderr: string): string {
   return text.split("\n").filter(Boolean).at(-1) ?? text;
 }
 
+/** Parse the `gh pr view --json` shape without trusting optional host fields. */
 export function parsePullRequestDetail(
   raw: string,
   diff = "",
@@ -548,6 +562,8 @@ export function parsePullRequestDetail(
       author: actorName(row.author),
       headRefName: typeof row.headRefName === "string" ? row.headRefName : undefined,
       baseRefName: typeof row.baseRefName === "string" ? row.baseRefName : undefined,
+      mergedAt: typeof row.mergedAt === "string" ? row.mergedAt : undefined,
+      closedAt: typeof row.closedAt === "string" ? row.closedAt : undefined,
       createdAt: typeof row.createdAt === "string" ? row.createdAt : undefined,
       updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : undefined,
       additions: typeof row.additions === "number" ? row.additions : 0,
@@ -574,7 +590,7 @@ export async function readPullRequestDetail(
     "number", "url", "title", "body", "isDraft", "state", "mergeStateStatus",
     "reviewDecision", "statusCheckRollup", "author", "headRefName", "baseRefName", "createdAt", "updatedAt",
     "additions", "deletions", "changedFiles", "labels", "reviewRequests", "comments", "reviews",
-    "commits", "files",
+    "commits", "files", "mergedAt", "closedAt",
   ].join(",");
   /*
    * Both at once. They are independent requests to GitHub, and running them
@@ -582,16 +598,15 @@ export async function readPullRequestDetail(
    * about 2.2s here — where it need only cost the slower.
    */
   const [detail, patch] = await Promise.all([
-    runAsync("gh", ["pr", "view", String(number), "--json", fields], cwd, 20_000),
+    readGhJson(["pr", "view", String(number), "--json", fields], cwd, parsePullRequestDetail, runAsync, 20_000),
     runAsync("gh", ["pr", "diff", String(number), "--color=never"], cwd, 20_000),
   ]);
-  if (!detail.ok || !detail.stdout.trim()) return undefined;
-  const parsed = parsePullRequestDetail(
-    detail.stdout,
-    patch.ok ? patch.stdout : "",
-    patch.ok ? undefined : diffFailureReason(patch.stderr),
-  );
-  if (!parsed) return undefined;
+  if (!detail.value) throw new Error(listFailureReason(detail.error));
+  const parsed = {
+    ...detail.value,
+    diff: patch.ok ? patch.stdout : "",
+    ...(!patch.ok ? { diffUnavailable: diffFailureReason(patch.stderr) } : {}),
+  };
   /*
    * Everyone the view will name: the author, whoever was asked to review, and
    * whoever wrote a comment or review. Fetched together, and failures are
@@ -606,9 +621,23 @@ export async function readPullRequestDetail(
   return { ...parsed, avatars: await avatarsFor(logins) };
 }
 
+export function commitDiffArgs(oid: string): string[] {
+  if (!/^[a-f0-9]{40}$/i.test(oid)) throw new Error("A full commit ID is required.");
+  return ["api", `repos/{owner}/{repo}/commits/${oid}`, "--method", "GET", "-H", "Accept: application/vnd.github.diff"];
+}
+
+/** Resolve the repository from this checkout, never from renderer-supplied URLs. */
+export async function readCommitDiff(cwd: string, oid: string): Promise<string> {
+  const result = await runAsync("gh", commitDiffArgs(oid), cwd, 20_000);
+  if (!result.ok) throw new Error(listFailureReason(result.stderr));
+  if (result.stdout.trim() && !result.stdout.startsWith("diff --git ")) {
+    throw new Error("GitHub returned an unreadable commit diff. Try refreshing again.");
+  }
+  return result.stdout;
+}
+
 export async function viewPullRequest(cwd: string): Promise<GitPullRequest | undefined> {
-  const result = await runAsync(
-    "gh",
+  const result = await readGhJson(
     [
       "pr",
       "view",
@@ -616,11 +645,18 @@ export async function viewPullRequest(cwd: string): Promise<GitPullRequest | und
       "number,url,title,isDraft,state,mergeStateStatus,reviewDecision,statusCheckRollup",
     ],
     cwd,
+    parseCurrentPullRequest,
+    runAsync,
     12_000,
   );
-  if (!result.ok || !result.stdout.trim()) return undefined;
+  if (result.value) return result.value;
+  if (/no pull requests? found/i.test(result.error)) return undefined;
+  throw new Error(listFailureReason(result.error));
+}
+
+function parseCurrentPullRequest(raw: string): GitPullRequest | undefined {
   try {
-    const parsed = JSON.parse(result.stdout) as {
+    const parsed = JSON.parse(raw) as {
       number?: number;
       url?: string;
       title?: string;
@@ -681,8 +717,11 @@ export function setPullRequestListener(listener: (() => void) | undefined): void
 function cachedPullRequest(cwd: string): GitPullRequest | undefined {
   const cached = pullRequestCache.get(cwd);
   if (cached && Date.now() - cached.at < PR_CACHE_TTL_MS) return cached.value;
+  const attempted = pullRequestAttempts.get(cwd);
+  if (attempted !== undefined && Date.now() - attempted < PR_CACHE_TTL_MS) return cached?.value;
   if (!pullRequestInFlight.has(cwd)) {
     pullRequestInFlight.add(cwd);
+    pullRequestAttempts.set(cwd, Date.now());
     /*
      * Off the current tick and off the thread. This used to be a setImmediate
      * around a synchronous spawn, on the reasoning that nothing was waiting on
@@ -691,15 +730,16 @@ function cachedPullRequest(cwd: string): GitPullRequest | undefined {
      * for still froze the window for the length of a network round trip.
      */
     void viewPullRequest(cwd)
-      .catch(() => undefined)
       .then((next) => {
-        pullRequestInFlight.delete(cwd);
         const previous = pullRequestCache.get(cwd)?.value;
         pullRequestCache.set(cwd, { value: next, at: Date.now() });
-        if (previous?.number !== next?.number || previous?.state !== next?.state) {
+        if (JSON.stringify(previous) !== JSON.stringify(next)) {
           onPullRequestSettled?.();
         }
-      });
+      })
+      // Failure neither erases a prior reading nor marks an unknown PR as absent.
+      .catch(() => undefined)
+      .finally(() => pullRequestInFlight.delete(cwd));
   }
   return cached?.value;
 }

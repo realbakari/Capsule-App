@@ -50,6 +50,22 @@ describe("turnsFromMessages", () => {
   it("returns nothing for an empty transcript", () => {
     expect(turnsFromMessages([])).toEqual([]);
   });
+  it("hides stored operator acknowledgements but leaves the user's text and real replies intact", () => {
+    const notice = "✅ Cancel requested for ACP session agent:claude:acp:abc-123.";
+    const messages = [msg("1", "user", notice), msg("2", "assistant", notice), msg("3", "assistant", "The cancellation was requested. Here is your summary.")];
+    expect(turnsFromMessages(messages)[0]?.messages.map((item) => item.id)).toEqual(["1", "3"]);
+    expect(messages).toHaveLength(3);
+  });
+
+  it("hides a stored status dump without removing user-pasted reports or agent explanations", () => {
+    const status = 'ACP status: ----- session: agent:claude:acp:abc-123 backend: acpx state: idle runtimeOptions: model=opus runtimeDetails: {"configOptions":[]}';
+    const messages = [msg("1", "assistant", status), msg("2", "user", status), msg("3", "assistant", `The report says:\n${status}`)];
+    const turns = turnsFromMessages(messages);
+    expect(turns).toHaveLength(1);
+    expect(turns[0]?.messages.map((message) => message.id)).toEqual(["2", "3"]);
+    expect(messages).toHaveLength(3);
+    expect(turnsFromMessages([msg("status-only", "assistant", status)])).toEqual([]);
+  });
 });
 
 describe("foldedTurnIds", () => {

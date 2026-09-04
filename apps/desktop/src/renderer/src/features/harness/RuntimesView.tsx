@@ -11,6 +11,7 @@ import { GatewayBanner } from "../shell/GatewayBanner";
 import { Switch } from "../settings/controls";
 import { formatProjectRoot } from "../../lib/paths";
 import { useWorkspace } from "../../lib/workspace";
+import { HarnessSessionDiagnostics } from "./HarnessSessionDiagnostics";
 
 function canSpawn(readiness: string): boolean {
   return readiness === "ready" || readiness === "dedicated" || readiness === "running";
@@ -455,6 +456,7 @@ function HarnessDetail({
               </label>
             </div>
           )}
+          <HarnessSessionDiagnostics status={status} />
         </div>
       )}
     </section>

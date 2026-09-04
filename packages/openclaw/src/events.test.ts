@@ -152,6 +152,7 @@ describe("isAcpControlOutput", () => {
   it("recognises a doctor report and a runtime line", () => {
     expect(isAcpControlOutput("ACP doctor: everything looks fine")).toBe(true);
     expect(isAcpControlOutput("runtime: session=x backendSessionId=1c45effe pid=82746")).toBe(true);
+    expect(isAcpControlOutput("✅ Cancel requested for ACP session agent:claude:acp:abc-123.")).toBe(true);
   });
 
   it("leaves the agent's own words alone", () => {

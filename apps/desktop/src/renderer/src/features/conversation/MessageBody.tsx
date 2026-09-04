@@ -4,6 +4,8 @@ import { highlight } from "../../lib/highlight";
 import { splitFences } from "../../lib/fences";
 import { parseTable } from "../../lib/tables";
 import { stripHtmlComments, stripInlineTags } from "../../lib/markdown-html";
+import { normalizeGitHubMarkdown } from "../../lib/github-markdown";
+import { splitGitHubDetails } from "../../lib/github-details";
 import { useWorkspace } from "../../lib/workspace";
 
 /**
@@ -78,8 +80,9 @@ function block(
   key: number,
   onOpenFile?: (path: string) => void,
   onOpenLink?: (href: string) => void,
+  commentsStripped = false,
 ): ReactNode {
-  const lines = stripHtmlComments(text).split("\n");
+  const lines = (commentsStripped ? text : stripHtmlComments(text)).split("\n");
   const out: ReactNode[] = [];
 
   for (let index = 0; index < lines.length; index += 1) {
@@ -140,7 +143,7 @@ function block(
           className={kind ? `md-alert md-alert--${kind}` : "md-quote"}
         >
           {kind ? <b className="md-alert-title">{kind[0]!.toUpperCase() + kind.slice(1)}</b> : null}
-          {block(body.join("\n"), key + index + 1, onOpenFile, onOpenLink)}
+          {block(body.join("\n"), key + index + 1, onOpenFile, onOpenLink, commentsStripped)}
         </div>,
       );
       continue;
@@ -220,7 +223,7 @@ function CodeBlock({ code, language }: { code: string; language?: string }) {
   );
 }
 
-export function MessageBody({ content }: { content: string }) {
+export function MessageBody({ content, githubBaseUrl }: { content: string; githubBaseUrl?: string }) {
   const { openFile, setBrowserUrl, setInspectorOpen, setInspectorTab } = useWorkspace();
 
   /*
@@ -242,17 +245,32 @@ export function MessageBody({ content }: { content: string }) {
     window.open(href, "_blank", "noopener");
   }
 
-  return (
-    <div className="body">
-      {splitFences(content).map((segment, index) =>
+  return <MarkdownBody content={content} githubBaseUrl={githubBaseUrl} onOpenFile={handleOpenFile} onOpenLink={handleOpenLink} />;
+}
+
+/** Pure renderer shared by conversation and host-backed review content. */
+export function MarkdownBody({ content, githubBaseUrl, onOpenFile, onOpenLink }: {
+  content: string;
+  githubBaseUrl?: string;
+  onOpenFile?: (path: string) => void;
+  onOpenLink?: (href: string) => void;
+}) {
+  function renderMarkdown(text: string, depth = 0): ReactNode {
+    const sections = githubBaseUrl && depth < 12 ? splitGitHubDetails(text) : [{ kind: "markdown" as const, text }];
+    return sections.map((section, sectionIndex) => section.kind === "details" ? (
+      <details className="md-details" open={section.open} key={sectionIndex}>
+        <summary>{inline(normalizeGitHubMarkdown(section.summary, githubBaseUrl!), undefined, onOpenLink)}</summary>
+        <div className="md-details-body">{renderMarkdown(section.text, depth + 1)}</div>
+      </details>
+    ) : <Fragment key={sectionIndex}>{splitFences(section.text).map((segment, index) =>
         segment.kind === "code" ? (
           <CodeBlock key={index} code={segment.text} language={segment.language} />
         ) : (
           <Fragment key={index}>
-            {block(segment.text, index, handleOpenFile, handleOpenLink)}
+            {block(githubBaseUrl ? normalizeGitHubMarkdown(segment.text, githubBaseUrl) : segment.text, index, onOpenFile, onOpenLink, Boolean(githubBaseUrl))}
           </Fragment>
         ),
-      )}
-    </div>
-  );
+      )}</Fragment>);
+  }
+  return <div className="body">{renderMarkdown(content)}</div>;
 }

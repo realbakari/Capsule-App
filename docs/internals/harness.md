@@ -20,6 +20,18 @@ See [OpenClaw ACP agents](https://docs.openclaw.ai/tools/acp-agents) and [setup]
 
 `sessions.create` does **not** accept `runtime: "acp"`. `sessions_spawn({ runtime: "acp" })` is an agent tool, not a Gateway session-create field.
 
+Operator acknowledgements are not assistant replies. The cancellation guard
+checks individual frames, the assembled reply, and completed run output on
+both runtime routes. The renderer hides previously stored cancellation notices
+without rewriting the database; agent prose discussing cancellation is retained.
+
+Status refreshes after model selection update only the session-keyed renderer
+cache. The raw `HarnessLiveStatus.statusText` is diagnostic data, shown only in
+the selected session's collapsed Harnesses disclosure, never a global chat
+banner. This presentation rule applies to Gateway and direct routes and every
+harness. Full stored status reports are hidden from assistant history too;
+user-pasted reports and explanations are not removed.
+
 ## Official acpx targets
 
 Claude Code, Codex, and Grok Build are first-class in Capsule. These ids are also valid built-in `/acp spawn` targets: `copilot`, `cursor`, `droid`, `fast-agent`, `gemini`, `iflow`, `kilocode`, `kimi`, `kiro`, `mux`, `opencode`, `openclaw`, `qoder`, `qwen`, `trae`.

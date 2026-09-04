@@ -9,6 +9,7 @@ import type {
 import { folderBasename, projectFolderList } from "@capsule/shared";
 import { FileSaveCoordinator, isConflictError } from "../../lib/file-save";
 import { sameListing } from "../../lib/file-listing";
+import { formatUserError } from "../../lib/errors";
 import { clampPanelWidth, fitPanelWidth } from "../../lib/panel-size";
 import { formatProjectRoot, toWorkspaceRelative } from "../../lib/paths";
 import { useWorkspace } from "../../lib/workspace";
@@ -17,6 +18,7 @@ import { EmbeddedBrowser } from "./EmbeddedBrowser";
 import { FilePreviewView } from "./FilePreview";
 import { FileTreePane, sortTreeEntries } from "./FileTree";
 import { GitPullRequestDetail as PullRequestDetailView } from "./PullRequestDetail";
+import { PullRequestList } from "./PullRequestList";
 import {
   ColumnsIcon,
   CpuIcon,
@@ -214,12 +216,15 @@ export function Inspector() {
   const [localServers, setLocalServers] = useState<LocalServer[]>([]);
   const [serversLoading, setServersLoading] = useState(false);
   // `undefined` means the lookup did not answer; an empty array means none.
-  const [pullRequests, setPullRequests] = useState<GitPullRequest[] | undefined>([]);
+  const [pullRequests, setPullRequests] = useState<GitPullRequest[] | undefined>();
+  const [listRefreshVersion, setListRefreshVersion] = useState(0);
+  const forceNextListRead = useRef(false);
   const [pullRequestsLoading, setPullRequestsLoading] = useState(false);
   const [pullRequestsError, setPullRequestsError] = useState<string>();
   const [selectedPullRequest, setSelectedPullRequest] = useState<GitPullRequest>();
   const [pullRequestDetail, setPullRequestDetail] = useState<GitPullRequestDetail>();
   const [pullRequestDetailLoading, setPullRequestDetailLoading] = useState(false);
+  const [pullRequestDetailError, setPullRequestDetailError] = useState<string>();
   const pullRequestRequest = useRef(0);
 
   const [termCmd, setTermCmd] = useState("");
@@ -312,14 +317,19 @@ export function Inspector() {
       return;
     }
     let disposed = false;
+    const force = forceNextListRead.current;
+    forceNextListRead.current = false;
     setPullRequestsLoading(true);
     void api
-      .listPullRequests(projectId, session?.id)
+      .listPullRequests(projectId, session?.id, force)
       .then((result) => {
         if (disposed) return;
         const answer = result as { items?: GitPullRequest[]; error?: string } | undefined;
         setPullRequests(answer?.items);
         setPullRequestsError(answer?.error);
+      })
+      .catch((error: unknown) => {
+        if (!disposed) setPullRequestsError(formatUserError(error));
       })
       .finally(() => {
         if (!disposed) setPullRequestsLoading(false);
@@ -327,30 +337,35 @@ export function Inspector() {
     return () => {
       disposed = true;
     };
-  }, [activeTool, api, git?.branch, git?.isRepo, projectId, session?.id]);
+  }, [activeTool, api, git?.branch, git?.isRepo, projectId, session?.id, listRefreshVersion]);
 
   useEffect(() => {
     pullRequestRequest.current += 1;
     setSelectedPullRequest(undefined);
     setPullRequestDetail(undefined);
     setPullRequestDetailLoading(false);
+    setPullRequestDetailError(undefined);
+    setPullRequests(undefined);
+    setPullRequestsError(undefined);
   }, [projectId, session?.id]);
 
-  function openPullRequest(pullRequest: GitPullRequest) {
+  function openPullRequest(pullRequest: GitPullRequest, refresh = false) {
     if (!projectId) return;
     const request = ++pullRequestRequest.current;
     setSelectedPullRequest(pullRequest);
-    setPullRequestDetail(undefined);
+    if (!refresh) setPullRequestDetail(undefined);
+    setPullRequestDetailError(undefined);
     setPullRequestDetailLoading(true);
     void api
       .getPullRequest(projectId, pullRequest.number, session?.id)
       .then((value) => {
         if (pullRequestRequest.current === request) {
-          setPullRequestDetail(value as GitPullRequestDetail | undefined);
+          if (value) setPullRequestDetail(value as GitPullRequestDetail);
+          else setPullRequestDetailError("GitHub did not return details for this pull request.");
         }
       })
-      .catch(() => {
-        if (pullRequestRequest.current === request) setPullRequestDetail(undefined);
+      .catch((error: unknown) => {
+        if (pullRequestRequest.current === request) setPullRequestDetailError(formatUserError(error));
       })
       .finally(() => {
         if (pullRequestRequest.current === request) setPullRequestDetailLoading(false);
@@ -902,6 +917,12 @@ export function Inspector() {
                 summary={selectedPullRequest}
                 detail={pullRequestDetail}
                 loading={pullRequestDetailLoading}
+                error={pullRequestDetailError}
+                onRefresh={() => openPullRequest(selectedPullRequest, true)}
+                onLoadCommitDiff={async (oid) => {
+                  if (!projectId) throw new Error("Select a project first.");
+                  return await api.getCommitDiff(projectId, oid, session?.id) as string;
+                }}
                 onBack={() => {
                   pullRequestRequest.current += 1;
                   setSelectedPullRequest(undefined);
@@ -910,6 +931,10 @@ export function Inspector() {
                 }}
                 onOpenBrowser={() => {
                   setBrowserUrl(selectedPullRequest.url);
+                  selectTool("browser");
+                }}
+                onOpenUrl={(url) => {
+                  setBrowserUrl(url);
                   selectTool("browser");
                 }}
                 onSteerAgent={(prompt) => {
@@ -950,42 +975,17 @@ export function Inspector() {
               </div>
             </div>
 
-            <div className="codex-pr-list">
-              <div className="codex-pr-list-head">
-                {/* No count until there is one: "(0)" beside "could not be
-                    reached" claimed to know a number we had not been told. */}
-                <h4>Open pull requests{pullRequests ? ` (${pullRequests.length})` : ""}</h4>
-                {pullRequestsLoading ? <span className="faint">Refreshing…</span> : null}
-              </div>
-              {!pullRequestsLoading && !pullRequests ? (
-                <p className="faint">
-                  {pullRequestsError ??
-                    "GitHub could not be reached. Check that `gh` is signed in, then refresh."}
-                </p>
-              ) : null}
-              {!pullRequestsLoading && pullRequests?.length === 0 ? (
-                <p className="faint">No open pull requests were found for this repository.</p>
-              ) : null}
-              {(pullRequests ?? []).map((pullRequest) => (
-                <button
-                  type="button"
-                  className="codex-pr-row"
-                  key={pullRequest.number}
-                  onClick={() => openPullRequest(pullRequest)}
-                >
-                  <span className="codex-pr-number">#{pullRequest.number}</span>
-                  <span className="codex-pr-copy">
-                    <b>{pullRequest.title}</b>
-                    <small>
-                      {[pullRequest.author, pullRequest.headRefName].filter(Boolean).join(" · ") || "Open pull request"}
-                    </small>
-                  </span>
-                  <span className={`codex-pr-checks ${pullRequest.checks ?? "none"}`}>
-                    {pullRequest.isDraft ? "Draft" : pullRequest.checks ?? "Open"}
-                  </span>
-                </button>
-              ))}
-            </div>
+            <PullRequestList
+              key={`${projectId}/${session?.id ?? ""}`}
+              items={pullRequests}
+              loading={pullRequestsLoading}
+              error={pullRequestsError}
+              onSelect={openPullRequest}
+              onRefresh={() => {
+                forceNextListRead.current = true;
+                setListRefreshVersion((value) => value + 1);
+              }}
+            />
 
             <div className="codex-review-files">
               <h4>Changed Files ({git?.files?.length ?? 0})</h4>

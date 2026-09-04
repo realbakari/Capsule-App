@@ -12,12 +12,22 @@ import { formatUserError } from "./errors";
 export interface ThreadErrorInput {
   sessionId?: string;
   runs: ReadonlyArray<{
+    id?: string;
     sessionId: string;
     status: string;
     error?: string;
     result?: string;
     createdAt: string;
   }>;
+}
+
+function latestThreadRun(input: ThreadErrorInput): ThreadErrorInput["runs"][number] | undefined {
+  let latest: ThreadErrorInput["runs"][number] | undefined;
+  for (const run of input.runs) {
+    if (run.sessionId !== input.sessionId) continue;
+    if (!latest || run.createdAt > latest.createdAt) latest = run;
+  }
+  return latest;
 }
 
 /*
@@ -36,11 +46,7 @@ export function isInternalVerdict(message: string | undefined): boolean {
 /** What to show for this thread, if anything. */
 export function threadError(input: ThreadErrorInput): string | undefined {
   if (!input.sessionId) return undefined;
-  let latest: { status: string; error?: string; result?: string; createdAt: string } | undefined;
-  for (const run of input.runs) {
-    if (run.sessionId !== input.sessionId) continue;
-    if (!latest || run.createdAt > latest.createdAt) latest = run;
-  }
+  const latest = latestThreadRun(input);
   // Only the newest run: an older failure that a later turn moved past is
   // history, not the state of the conversation.
   if (!latest || (latest.status !== "failed" && latest.status !== "blocked")) return undefined;
@@ -55,11 +61,29 @@ export function threadError(input: ThreadErrorInput): string | undefined {
 /**
  * What a dismissal remembers: the thread and the message together.
  *
- * Keying on the thread alone would silence the next, different failure; on
- * the message alone, the same failure in another conversation. Both together
- * mean dismissing is about this error here, and navigating away and back
- * cannot bring it back.
+ * Include the run when known: a later attempt may fail for the same reason
+ * and still needs to be visible. The legacy two-argument form stays useful
+ * for a notice that does not belong to a persisted run.
  */
-export function threadErrorKey(sessionId: string | undefined, message: string | undefined): string | undefined {
-  return sessionId && message ? `${sessionId}\u0000${message}` : undefined;
+export function threadErrorKey(sessionId: string | undefined, message: string | undefined, runId?: string): string | undefined {
+  return sessionId && message ? `${sessionId}\u0000${runId ?? ""}\u0000${message}` : undefined;
+}
+
+/** The IPC rejection and the failed-run event can report the same fault in
+ * either order. Once the run owns it, the top notice must not repeat it — even
+ * after dismissal. Other notices (including successful actions) stay visible. */
+export function threadFeedback(input: ThreadErrorInput & { notice?: string; dismissed: ReadonlySet<string> }): {
+  notice?: string;
+  failure?: string;
+  failureKey?: string;
+} {
+  const failure = threadError(input);
+  const latest = latestThreadRun(input);
+  const failureKey = threadErrorKey(input.sessionId, failure, latest?.id ?? latest?.createdAt);
+  const duplicate = Boolean(input.notice && failure && formatUserError(input.notice) === failure);
+  return {
+    notice: duplicate ? undefined : input.notice,
+    failure: failureKey && input.dismissed.has(failureKey) ? undefined : failure,
+    failureKey,
+  };
 }

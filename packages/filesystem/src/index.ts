@@ -39,6 +39,7 @@ export {
   listPullRequests,
   parsePullRequestDetail,
   readPullRequestDetail,
+  readCommitDiff,
   mergePullRequest,
   mergePullRequestArgs,
   pushArgs,

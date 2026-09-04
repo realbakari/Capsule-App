@@ -1,42 +1,53 @@
-/*
- * Splitting a reply into prose and fenced code.
- *
- * `content.split(/```(\w+)?\n?/)` puts a capture slot at every odd index — one
- * for the opening fence and one for the closing fence — so a single closed
- * block yields five parts, not four:
- *
- *   "A\n```ts\ncode\n```\nB"  ->  ["A\n", "ts", "code\n", undefined, "B"]
- *
- * Even indices hold the content and alternate prose, code, prose, code…, and a
- * block's language is the capture immediately before it. Treating the array as
- * repeating triples mis-indexes everything after the first block and hands
- * `undefined` to the prose renderer.
- */
+/* Fenced code is kept separate from Markdown and HTML normalization, including
+   tilde fences, longer fences around examples, and incomplete streaming blocks. */
 export interface FenceSegment {
   kind: "prose" | "code";
   text: string;
   language?: string;
 }
 
-const FENCE = /```(\w+)?\n?/;
+interface CodeFence {
+  start: number;
+  bodyStart: number;
+  bodyEnd: number;
+  end: number;
+  language?: string;
+}
+
+/** Fences start on a line; a shorter fence inside a code example is literal. */
+export function codeFences(content: string): CodeFence[] {
+  const opener = /^ {0,3}(`{3,}|~{3,})([^\r\n]*)(?:\r?\n|$)/gm;
+  const fences: CodeFence[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = opener.exec(content))) {
+    const fence = match[1]!;
+    const info = match[2]!.trim();
+    if (fence[0] === "`" && info.includes("`")) continue;
+    const bodyStart = opener.lastIndex;
+    const closer = new RegExp(`^ {0,3}${fence[0]}{${fence.length},}[ \\t]*(?:\\r?\\n|$)`, "gm");
+    closer.lastIndex = bodyStart;
+    const closing = closer.exec(content);
+    const end = closing ? closer.lastIndex : content.length;
+    const language = info.split(/\s+/)[0] || undefined;
+    fences.push({ start: match.index, bodyStart, bodyEnd: closing?.index ?? content.length, end, language });
+    opener.lastIndex = end;
+    if (!closing) break;
+  }
+  return fences;
+}
 
 export function splitFences(content: string): FenceSegment[] {
-  const parts = content.split(FENCE);
   const segments: FenceSegment[] = [];
-  for (let index = 0; index < parts.length; index += 2) {
-    const text = parts[index];
-    if (text === undefined) continue;
-    const isCode = (index / 2) % 2 === 1;
-    if (!isCode) {
-      if (text) segments.push({ kind: "prose", text });
-      continue;
-    }
-    const language = parts[index - 1];
+  let consumed = 0;
+  for (const fence of codeFences(content)) {
+    if (fence.start > consumed) segments.push({ kind: "prose", text: content.slice(consumed, fence.start) });
     segments.push({
       kind: "code",
-      text: text.replace(/\n$/, ""),
-      ...(language ? { language } : {}),
+      text: content.slice(fence.bodyStart, fence.bodyEnd).replace(/\r?\n$/, ""),
+      ...(fence.language ? { language: fence.language } : {}),
     });
+    consumed = fence.end;
   }
+  if (consumed < content.length) segments.push({ kind: "prose", text: content.slice(consumed) });
   return segments;
 }

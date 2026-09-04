@@ -1,11 +1,12 @@
-import { useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { splitRows, type DiffFile, type DiffHunk, type DiffLine } from "@capsule/shared";
+import { highlight } from "../../lib/highlight";
 
 /*
  * One file of a patch, rendered with split and unified diff support:
  * - Rounded file type badge
  * - Monospace file path with distinct directory vs name styling
- * - +N -M diff stat chips
+ * - +N -M diff stats
  * - Split diff with diagonal hatched background for empty side
  * - Gutter line hover '+' button for inline commenting
  */
@@ -19,6 +20,12 @@ function nameOf(path: string): string {
   const cut = path.lastIndexOf("/");
   return cut < 0 ? path : path.slice(cut + 1);
 }
+
+// Memoize by text/path: collapsing a sibling or drafting a note should not
+// tokenize the whole patch again. The highlighter emits React text, not HTML.
+const DiffText = memo(function DiffText({ text, filePath }: { text: string; filePath?: string }) {
+  return <>{highlight(text || " ", filePath?.split(".").pop())}</>;
+});
 
 const STATUS_LABEL: Record<DiffFile["status"], string> = {
   added: "Added",
@@ -45,7 +52,7 @@ function UnifiedHunk({
 }: {
   hunk: DiffHunk;
   filePath?: string;
-  onAddComment?: (filePath: string, line: number) => void;
+  onAddComment?: (filePath: string, line: number, side: "left" | "right") => void;
 }) {
   return (
     <>
@@ -69,9 +76,9 @@ function UnifiedHunk({
                   className="diff-gutter-add-btn"
                   onClick={(e) => {
                     e.stopPropagation();
-                    onAddComment(filePath, lineNum);
+                    onAddComment(filePath, lineNum, line.kind === "del" ? "left" : "right");
                   }}
-                  title="Add inline comment"
+                  title="Add review note"
                 >
                   +
                 </button>
@@ -81,7 +88,7 @@ function UnifiedHunk({
               <span className="diff-marker" aria-hidden>
                 {line.kind === "add" ? "+" : line.kind === "del" ? "−" : " "}
               </span>
-              {line.text || " "}
+              <DiffText text={line.text} filePath={filePath} />
             </code>
           </div>
         );
@@ -99,7 +106,7 @@ function SplitCell({
   line?: DiffLine;
   side: "left" | "right";
   filePath?: string;
-  onAddComment?: (filePath: string, line: number) => void;
+  onAddComment?: (filePath: string, line: number, side: "left" | "right") => void;
 }) {
   const tone = line ? `diff-half--${line.kind}` : "diff-half--empty";
   const edge = side === "left" ? "diff-cell--edge" : "";
@@ -117,15 +124,15 @@ function SplitCell({
             className="diff-gutter-add-btn"
             onClick={(e) => {
               e.stopPropagation();
-              onAddComment(filePath, lineNum);
+              onAddComment(filePath, lineNum, side);
             }}
-            title="Add inline comment"
+            title="Add review note"
           >
             +
           </button>
         ) : null}
       </span>
-      <code className={`diff-text ${tone} ${edge}`}>{line?.text || " "}</code>
+      <code className={`diff-text ${tone} ${edge}`}><DiffText text={line?.text ?? ""} filePath={filePath} /></code>
     </>
   );
 }
@@ -137,7 +144,7 @@ function SplitHunk({
 }: {
   hunk: DiffHunk;
   filePath?: string;
-  onAddComment?: (filePath: string, line: number) => void;
+  onAddComment?: (filePath: string, line: number, side: "left" | "right") => void;
 }) {
   const rows = useMemo(() => splitRows(hunk), [hunk]);
   return (
@@ -168,15 +175,22 @@ function SplitHunk({
 export function FileDiff({
   file,
   split,
+  wrap = true,
   defaultOpen = true,
+  expanded,
+  onExpandedChange,
   onAddComment,
 }: {
   file: DiffFile;
   split: boolean;
+  wrap?: boolean;
   defaultOpen?: boolean;
-  onAddComment?: (filePath: string, line: number) => void;
+  expanded?: boolean;
+  onExpandedChange?: (open: boolean) => void;
+  onAddComment?: (filePath: string, line: number, side: "left" | "right") => void;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  const [localOpen, setOpen] = useState(defaultOpen);
+  const open = expanded ?? localOpen;
   const label = STATUS_LABEL[file.status];
   return (
     <section className={`file-diff ${open ? "is-open" : ""}`}>
@@ -184,7 +198,7 @@ export function FileDiff({
         type="button"
         className="file-diff-head"
         aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => onExpandedChange ? onExpandedChange(!open) : setOpen(!open)}
       >
         <span className="file-diff-caret" aria-hidden>
           {open ? (
@@ -223,7 +237,7 @@ export function FileDiff({
             {file.status === "renamed" ? "Renamed with no changes to its contents." : "No changes to show."}
           </p>
         ) : (
-          <div className={`file-diff-body ${split ? "is-split" : "is-unified"}`}>
+          <div className={`file-diff-body ${split ? "is-split" : "is-unified"} ${wrap ? "is-wrapped" : "is-scrollable"}`} tabIndex={wrap ? undefined : 0} role={wrap ? undefined : "region"} aria-label={wrap ? undefined : `Scrollable diff for ${file.path}`}>
             {file.hunks.map((hunk, index) =>
               split ? (
                 <SplitHunk

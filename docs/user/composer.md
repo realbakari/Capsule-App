@@ -4,6 +4,22 @@ Capsule keeps an unfinished draft for each conversation on this Mac. Switching
 projects or conversations and returning later restores its prompt and selected
 attachments. A successful send clears that draft.
 
+If a send fails, your draft and attachments return to the composer. Once the
+failed turn is recorded, its error appears once below the work log rather than
+also appearing at the top. Dismiss hides that attempt's error; a later attempt
+can still show its own failure. Sign-in guidance remains visible until dismissed.
+Cancellation acknowledgements are controls, not replies, and do not appear as
+agent messages. Previous records remain stored.
+
+## Choose a model
+
+When the running agent offers models, choose one beside its name in the
+composer. Changing it updates the session without posting a message or a status
+banner, and leaves your draft untouched. This also applies to model changes in
+Harnesses. To inspect the session's raw status, open **Harnesses**, select the
+session with **Refresh**, and expand **Session diagnostics**. Diagnostics stay
+with that session and are collapsed by default.
+
 ## Attach local files
 
 Choose the paperclip or drop files onto the composer. Selected files appear as

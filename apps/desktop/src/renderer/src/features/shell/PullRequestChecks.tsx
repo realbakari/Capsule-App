@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { GitPullRequestCheck } from "@capsule/shared";
 
 /*
@@ -19,14 +19,21 @@ const ORDER: Record<GitPullRequestCheck["state"], number> = {
   success: 5,
 };
 
-const GLYPH: Record<GitPullRequestCheck["state"], string> = {
-  failure: "✕",
-  pending: "○",
-  cancelled: "⊘",
-  neutral: "–",
-  skipped: "–",
-  success: "✓",
+const LABEL: Record<GitPullRequestCheck["state"], string> = {
+  failure: "Failed",
+  pending: "Pending",
+  cancelled: "Cancelled",
+  neutral: "Neutral",
+  skipped: "Skipped",
+  success: "Passed",
 };
+
+function CheckStatusIcon({ state }: { state: GitPullRequestCheck["state"] }) {
+  return <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden>
+    <circle cx="8" cy="8" r="6" strokeDasharray={state === "skipped" || state === "neutral" ? "2 2" : undefined} />
+    {state === "success" ? <path d="m5 8 2 2 4-4" /> : state === "failure" ? <path d="m6 6 4 4m0-4-4 4" /> : state === "pending" ? <path d="M8 4.5V8l2 1" /> : state === "cancelled" ? <path d="m4 12 8-8" /> : null}
+  </svg>;
+}
 
 export interface ChecksTally {
   passing: number;
@@ -56,17 +63,19 @@ export function tallyChecks(checks: GitPullRequestCheck[]): ChecksTally {
 export function ChecksBadge({ checks }: { checks: GitPullRequestCheck[] }) {
   const tally = useMemo(() => tallyChecks(checks), [checks]);
   if (tally.total === 0) return null;
-  const tone = tally.failing > 0 ? "failure" : tally.pending > 0 ? "pending" : "success";
+  const tone = tally.failing > 0 ? "failure" : tally.pending > 0 ? "pending" : tally.passing > 0 ? "success" : "neutral";
   return (
     <span className={`checks-badge checks-badge--${tone}`}>
-      <span aria-hidden>{tone === "failure" ? "✕" : tone === "pending" ? "○" : "✓"}</span>
+      <CheckStatusIcon state={tone} />
       {tally.passing} of {tally.total} passing
     </span>
   );
 }
 
-export function PullRequestChecks({ checks }: { checks: GitPullRequestCheck[] }) {
-  const [open, setOpen] = useState(false);
+export function PullRequestChecks({ checks, onOpenUrl }: {
+  checks: GitPullRequestCheck[];
+  onOpenUrl: (url: string) => void;
+}) {
   const sorted = useMemo(
     () =>
       [...checks].sort(
@@ -76,38 +85,27 @@ export function PullRequestChecks({ checks }: { checks: GitPullRequestCheck[] })
   );
   if (sorted.length === 0) return null;
   return (
-    <section className="pr-section pr-collapsible">
-      <button
-        type="button"
-        className="pr-collapsible-head"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-      >
-        <span className="pr-collapsible-caret" aria-hidden>
-          {open ? "▾" : "▸"}
-        </span>
-        <h4>Checks</h4>
-        <span className="pr-collapsible-count">{sorted.length}</span>
-      </button>
-      {open ? (
         <ul className="pr-checks">
           {sorted.map((check) => {
             const row = (
               <>
                 <span className={`pr-check-glyph pr-check-glyph--${check.state}`} aria-hidden>
-                  {GLYPH[check.state]}
+                  <CheckStatusIcon state={check.state} />
                 </span>
-                <span className="pr-check-name" title={check.name}>
-                  {check.name}
+                <span className="pr-check-copy">
+                  <span className="pr-check-name" title={check.name}>{check.name}</span>
+                  {check.workflow ? <span className="pr-check-workflow" title={check.workflow}>{check.workflow}</span> : null}
                 </span>
-                {check.workflow ? <span className="pr-check-workflow">{check.workflow}</span> : null}
-                <span className={`pr-check-state pr-check-state--${check.state}`}>{check.state}</span>
+                <span className={`pr-check-state pr-check-state--${check.state}`}>{LABEL[check.state]}</span>
               </>
             );
             return (
               <li key={`${check.workflow ?? ""}/${check.name}`}>
                 {check.url ? (
-                  <a href={check.url} target="_blank" rel="noreferrer" className="pr-check">
+                  <a href={check.url} className="pr-check" onClick={(event) => {
+                    event.preventDefault();
+                    onOpenUrl(check.url!);
+                  }}>
                     {row}
                   </a>
                 ) : (
@@ -117,7 +115,5 @@ export function PullRequestChecks({ checks }: { checks: GitPullRequestCheck[] })
             );
           })}
         </ul>
-      ) : null}
-    </section>
   );
 }

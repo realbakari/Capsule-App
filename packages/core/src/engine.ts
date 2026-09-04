@@ -40,6 +40,7 @@ import {
   createPullRequest as openPullRequest,
   detectSourceControlTools,
   diffCheckpoints,
+  hasCheckpoint,
   discardFile,
   clearFileIndex,
   clearGhCache,
@@ -51,6 +52,7 @@ import {
   listLocalServers as discoverLocalServers,
   listPullRequests as discoverPullRequests,
   readPullRequestDetail,
+  readCommitDiff,
   mergePullRequest as mergeGithubPullRequest,
   pushCurrentBranch,
   readGitDiff,
@@ -983,6 +985,7 @@ export class CapsuleEngine {
   async listPullRequests(
     projectId: string,
     sessionId?: string,
+    refresh = false,
   ): Promise<{ items?: GitPullRequest[]; error?: string }> {
     const project = this.requireProject(projectId);
     const cwd = this.workingDirectoryFor(project, sessionId);
@@ -990,18 +993,18 @@ export class CapsuleEngine {
     if (!readGitStatus(cwd).isRepo) {
       return { error: "This folder is not a git repository." };
     }
-    /*
-     * The last list, immediately, with a refresh started behind it. Only the
-     * very first look waits for GitHub; after that the pane opens at once and
-     * updates itself when the newer list lands.
-     */
-    const cached = pollPullRequestList(cwd);
-    if (cached.known) return { items: cached.value };
+    // A user refresh bypasses the TTL but shares an already-running read.
+    // Keep the last good list with an error when the new reading fails.
+    const cached = pollPullRequestList(cwd, refresh);
+    if (cached.known && !cached.stale && !refresh) return { items: cached.value };
     // Nothing cached yet, so wait for the refresh already under way rather
     // than starting a second identical lookup beside it.
     const items = await (cached.pending ?? discoverPullRequests(cwd));
     if (items) return { items };
-    return { error: pullRequestListFailure(cwd) ?? "Pull requests could not be listed." };
+    return {
+      items: cached.value,
+      error: pullRequestListFailure(cwd) ?? "Pull requests could not be listed.",
+    };
   }
 
   async pullRequestDetail(
@@ -1020,6 +1023,13 @@ export class CapsuleEngine {
     const cwd = this.workingDirectoryFor(project, sessionId);
     if (!cwd) return "";
     return readGitDiff(cwd, relative);
+  }
+
+  async commitDiff(projectId: string, oid: string, sessionId?: string): Promise<string> {
+    const project = this.requireProject(projectId);
+    const cwd = this.workingDirectoryFor(project, sessionId);
+    if (!cwd || !readGitStatus(cwd).isRepo) throw new Error("This folder is not a git repository.");
+    return readCommitDiff(cwd, oid);
   }
 
   checkoutBranch(projectId: string, branch: string, sessionId?: string): GitStatus {
@@ -1486,17 +1496,6 @@ export class CapsuleEngine {
     session.updatedAt = nowIso();
     this.repos.updateSession(session);
 
-    const userMessage: ChatMessage = {
-      id: createId("msg"),
-      sessionId: session.id,
-      role: "user",
-      content: input.content,
-      attachments: attachments.length > 0 ? attachments : undefined,
-      createdAt: nowIso(),
-    };
-    this.repos.insertMessage(userMessage);
-    this.events.emit("message", userMessage);
-
     const run = createRunRecord({
       sessionId: session.id,
       projectId: project.id,
@@ -1506,6 +1505,18 @@ export class CapsuleEngine {
     });
     run.status = "running";
     this.repos.insertRun(run);
+    const userMessage: ChatMessage = {
+      id: createId("msg"),
+      sessionId: session.id,
+      runId: run.id,
+      role: "user",
+      content: input.content,
+      attachments: attachments.length > 0 ? attachments : undefined,
+      createdAt: nowIso(),
+    };
+    this.repos.insertMessage(userMessage);
+    this.events.emit("message", userMessage);
+
     this.events.emit("run", run);
     this.appendEvent(run.id, "request", "Request received", { step: "understand" });
 
@@ -2053,6 +2064,7 @@ export class CapsuleEngine {
     if (!payload.done) return;
     const content = (this.acpBuffers.get(payload.sessionKey) ?? payload.text ?? "").trim();
     this.acpBuffers.delete(payload.sessionKey);
+    if (isAcpControlOutput(content)) return;
     if (content.length < 2) return;
     const last = this.repos.listMessages(session.id).at(-1);
     if (last?.role === "assistant" && last.content === content) return;
@@ -2641,13 +2653,13 @@ export class CapsuleEngine {
   }
 
   /** The patch a single turn produced, from its checkpoint back to the previous one. */
-  turnDiff(runId: string): { patch: string; files: Array<{ path: string; added: number; removed: number }> } {
+  turnDiff(runId: string): import("@capsule/shared").TurnDiffResult {
     const run = this.repos.getRun(runId);
-    if (!run?.checkpointRef) return { patch: "", files: [] };
+    if (!run?.checkpointRef) return { patch: "", files: [], available: false };
     const session = this.repos.getSession(run.sessionId);
     const project = session ? this.repos.getProject(session.projectId) : undefined;
     const cwd = session?.workingDirectory ?? project?.workingDirectory;
-    if (!cwd) return { patch: "", files: [] };
+    if (!cwd) return { patch: "", files: [], available: false };
     /*
      * The turn before this one, which is the first of the older runs — the
      * list comes back newest first. Taking the last of them diffed against the
@@ -2658,7 +2670,15 @@ export class CapsuleEngine {
       .listRuns(run.sessionId)
       .filter((candidate) => candidate.checkpointRef && candidate.createdAt < run.createdAt)[0]
       ?.checkpointRef;
+    // With no base, the low-level helper compares to the current worktree.
+    // That is "since this turn", not "by this turn", and changes as the user
+    // works. Older first checkpoints have no recorded before-state: be honest
+    // about that instead of attributing later repository edits to the agent.
+    if (!previous || !hasCheckpoint(cwd, previous) || !hasCheckpoint(cwd, run.checkpointRef)) {
+      return { patch: "", files: [], available: false };
+    }
     return {
+      available: true,
       patch: diffCheckpoints(cwd, run.checkpointRef, previous),
       files: checkpointNumstat(cwd, run.checkpointRef, previous),
     };

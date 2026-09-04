@@ -13,6 +13,9 @@ const KEYWORDS = new Set([
   "const", "let", "var", "function", "return", "if", "else", "for", "while",
   "import", "export", "from", "default", "class", "extends", "new", "await",
   "async", "try", "catch", "finally", "throw", "typeof", "instanceof", "in",
+  "interface", "type", "readonly", "implements", "enum", "public", "private",
+  "protected", "static", "abstract", "satisfies", "keyof", "infer", "never",
+  "boolean", "string", "number", "void", "unknown",
   "of", "this", "null", "undefined", "true", "false", "require", "module",
   "def", "elif", "lambda", "pass", "with", "as", "not", "and", "or", "print",
   "echo", "cd", "ls", "mkdir", "rm", "cp", "mv", "cat", "grep", "npm", "pnpm",
@@ -36,7 +39,7 @@ export function highlight(code: string, language?: string): ReactNode {
   if (code.length > MAX_HIGHLIGHT_CHARS) return code;
   const lang = (language ?? "").toLowerCase();
   // Prose-ish fences gain nothing from keyword colouring.
-  if (lang === "text" || lang === "md" || lang === "markdown") return code;
+  if (lang === "text" || lang === "txt" || lang === "md" || lang === "markdown") return code;
 
   const nodes: ReactNode[] = [];
   let last = 0;

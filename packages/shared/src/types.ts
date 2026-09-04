@@ -398,6 +398,8 @@ export interface GitPullRequestFile {
 /** Host-backed detail for Capsule's in-app pull-request reader. */
 export interface GitPullRequestDetail extends GitPullRequest {
   body: string;
+  mergedAt?: string;
+  closedAt?: string;
   baseRefName?: string;
   additions: number;
   deletions: number;
@@ -590,6 +592,13 @@ export interface EvaluationResult {
   summary: string;
   score?: number;
   createdAt: string;
+}
+
+export interface TurnDiffResult {
+  patch: string;
+  files: Array<{ path: string; added: number; removed: number }>;
+  /** False when a pair of saved snapshots is unavailable; never a live diff. */
+  available?: boolean;
 }
 
 export interface Run {

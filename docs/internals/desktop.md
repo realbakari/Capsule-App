@@ -19,6 +19,12 @@ Capsule is a workspace, not a clone of any other agent product. Quality bars els
 - Graphite and off-white. No purple. No app mark in the titlebar.
 - 52px titlebar is an Electron drag region. Interactive controls must be **no-drag children of the titlebar**, not `position: fixed` overlays. Fixed siblings are swallowed by `-webkit-app-region: drag`.
 - Centered chat column. Glass composer dock. Inspector closed until opened (`⌘\`, `/inspect`, or the titlebar control). Width persists as `capsule.inspectorWidth`.
+- A persisted failed turn owns its inline error. A normalized duplicate IPC
+  notice is suppressed at the top, including after dismissal. Notice-only
+  failures and unrelated notices remain visible. Dismissal keys include the
+  thread, run, and error so a later attempt is not silently dismissed. Failed
+  sends keep their existing draft/attachment recovery. Exact cancellation
+  acknowledgements are filtered from displayed history without deleting records.
 - At narrow widths, titlebar actions shrink before the project/thread breadcrumb;
   composer controls wrap inside their own row instead of overlapping Attach or
   Send.
@@ -93,8 +99,43 @@ Tools: **Launch**, **Review**, **Terminal**, **Browser**, **Files**, **Side chat
   OAuth. Selecting a pull request keeps the reader in Capsule and opens its
   **Summary / Timeline / Code** views. Summary contains review metadata and the
   Markdown description, Timeline interleaves commits, comments, and reviews,
-  and Code shows file stats plus the host patch. **Open in Browser** moves the
+  and Code shows file stats plus the host patch. **Open on GitHub** moves the
   canonical URL into Capsule's Browser surface.
+  The list has local title/author/branch/number filtering, update/creation sorting,
+  and a refresh that bypasses the two-minute cache. It loads up to 50 open PRs;
+  filters are explicitly scoped to those loaded results. Listing reads omit the
+  heavyweight check rollup; individual checks load in the detail view.
+  Empty or malformed JSON is a failed read, not an empty list. Idempotent JSON
+  reads retry incomplete responses and transient 502/503/504 failures once within
+  one timeout budget. Writes are never automatically retried. Failed refreshes
+  retain the last successful result and show an actionable error with Retry.
+  Code's commit selector uses the read-scoped `getCommitDiff` IPC, a validated
+  full SHA, and `gh api` in the thread's checkout. It does not switch branches.
+  Both full-PR and single-commit diffs support split/unified display and working
+  individual/all-file collapse controls. The existing bounded React-node highlighter
+  colours code, and long lines wrap by default. One file-wide CSS grid keeps split
+  counterparts aligned; disabling Wrap lines restores horizontal scrolling. File
+  headers use flat separators and tabs use one segmented control. Line notes are available only for the
+  full PR and retain old/new-side coordinates in an in-panel editor.
+  Review notes and comment drafts can be copied or placed into the thread
+  composer; they do not post, approve, or request changes on GitHub. Check links
+  open in Capsule's Browser. These reads work independently of the runtime route
+  or selected harness and remain available to the read-only remote viewer.
+  Summary, comments, and Timeline use the same host-Markdown normalization:
+  hidden HTML comments disappear, presentation tags become text, and HTML/image
+  badges become labelled HTTP(S) links. No untrusted HTML is injected and no
+  remote image is fetched by the renderer. Fenced and inline code remain literal.
+  Balanced details/summary blocks become native expandable sections; their attributes
+  are discarded, nested sections are bounded to 12 levels, and code/comment ranges
+  are excluded from structure parsing. Backtick and tilde code fences preserve
+  shorter fences inside examples. Markdown tables scroll within the body.
+  Summary comments are collapsible cards with shared newest/oldest ordering.
+  Timeline groups adjacent comments/reviews without grouping across a commit;
+  commit titles open the single-commit diff. Optional mergedAt/closedAt fields
+  supply lifecycle events; updatedAt is never used to fabricate their timestamps.
+  Thread-resolution state is not fetched or inferred; collapsed is not resolved.
+  Timeline avatars sit on the event rail beside the author; heading contrast,
+  wrapping and type scale are scoped to the PR reader rather than chat.
 - **Terminal** is a command form (`execInProject`) plus “Open Terminal.app”. It is not a PTY or xterm.
 - **Browser** polls `capsule:listLocalServers` while open. The filesystem adapter
   reads loopback listeners with `lsof`, performs bounded HTTP/HTTPS probes, and
@@ -188,8 +229,22 @@ offer **Restore this turn**: the project folder goes back to how that turn left
 it. Capture uses a throwaway index, so a half-staged change is untouched, and
 writes a parentless commit that appears in no branch and no `git log`.
 
+Changed-files outcomes are mounted inside their owning transcript turn, keyed
+by session/run/checkpoint, rather than in a conversation footer. New prompts
+persist their `runId`; legacy history uses explicit reply run ids or an
+unambiguous matching prompt/time window. Project and session scope are checked
+before rendering, and folded turns unmount their outcome until reopened.
+The in-flight work log uses only the active run's events, never an older
+checkpoint or Git status counts. Completed outcomes load their own saved diff;
+a successful empty diff does not fall back to events. When no pair of saved
+snapshots exists, only that run's write events may provide a file list, without
+borrowing current worktree counts. The raw checkpoint-to-worktree helper is
+not a turn-diff fallback. Restore targets the card's own run after confirmation,
+and the card expands its immutable saved diff in place. Current-file discard
+stays in Review, not on a historical card.
 
-- Timeline of turns: user on the right, assistant markdown full-width, collapsed tool rows, a changed-files card that opens Review.
+
+- Timeline of turns: user on the right, assistant markdown full-width, collapsed tool rows, a changed-files card scoped to each turn's saved result.
 - Do not dump Artifacts or a second “run result” copy of the assistant reply.
 - Composer: actual file attachments, `/` commands, `@` file mentions, `$`
   skills, prompt stash, permission profile, folder chip, Terminal.app.
@@ -249,6 +304,14 @@ mode stay in the compact context bar instead of repeating inside every agent
 card. A live session's ACP-advertised model catalog renders as a selector; a
 manual model-id field remains when no catalog is advertised. Missing or
 signed-out CLIs cannot start until readiness becomes usable.
+
+Harness status is cached by session id, not as a global chat notice. Both the
+composer model picker and Harnesses option controls may refresh that cache;
+neither renders the raw response in the conversation or changes the draft.
+Raw status remains available in a bounded, collapsed **Session diagnostics**
+disclosure in Harnesses, reset when the selected session changes. Stored full
+ACP status reports are filtered from assistant history at render time without
+deleting records; user-pasted reports and agent explanations are preserved.
 
 ---
 

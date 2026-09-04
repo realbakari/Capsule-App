@@ -60,6 +60,7 @@ export const IPC_CHANNELS = {
   gitStatus: "capsule:gitStatus",
   listPullRequests: "capsule:listPullRequests",
   getPullRequest: "capsule:getPullRequest",
+  getCommitDiff: "capsule:getCommitDiff",
   gitInit: "capsule:gitInit",
   gitDiff: "capsule:gitDiff",
   checkoutBranch: "capsule:checkoutBranch",

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { CapsuleEngine } from "./engine.js";
+import type { Run, RunEvent, Session } from "@capsule/shared";
 
 async function waitForRun(engine: CapsuleEngine, runId: string): Promise<void> {
   await new Promise<void>((resolve, reject) => {
@@ -616,6 +617,46 @@ describe("failed runs are not contract-verified", () => {
   });
 });
 
+describe("operator acknowledgements", () => {
+  it("keeps cancellation output out of both replies and completed run results", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-control-reply-"));
+    const engine = new CapsuleEngine({ databasePath: path.join(dir, "capsule.sqlite"), userDataDir: dir, autoConnect: false });
+    await engine.start();
+    try {
+      const project = engine.createProject({ name: "Operator messages" });
+      const session = await engine.createSession({ projectId: project.id, mode: "code", agentId: "claude" });
+      const sent = await engine.sendMessage({ sessionId: session.id, content: "Hello", mode: "code", agentId: "claude" });
+      await waitForRun(engine, sent.run.id);
+      const internal = engine as unknown as {
+        usingMock: boolean;
+        handleAcpReply: (reply: { sessionKey: string; text: string; done: boolean }) => void;
+        handleRuntimeEvent: (session: Session, run: Run, event: RunEvent, stop: () => void) => Promise<void>;
+      };
+      const key = sent.session.openclawSessionKey!;
+      const acknowledgement = "✅ Cancel requested for ACP session agent:claude:acp:abc-123.";
+      const before = engine.listMessages(session.id).length;
+      // Split the marker across chunks, as it can arrive on either route.
+      internal.handleAcpReply({ sessionKey: key, text: "✅ Cancel requested for ACP ", done: false });
+      internal.handleAcpReply({ sessionKey: key, text: "session agent:claude:acp:abc-123.", done: true });
+      expect(engine.listMessages(session.id)).toHaveLength(before);
+
+      internal.usingMock = false;
+      const run = engine.getRun(sent.run.id)!;
+      await internal.handleRuntimeEvent(sent.session, run, {
+        id: "control-complete", runId: run.id, type: "lifecycle", message: "Completed", timestamp: new Date().toISOString(),
+        data: { status: "completed", output: acknowledgement },
+      }, () => {});
+      expect(engine.listMessages(session.id)).toHaveLength(before);
+      expect(engine.getRun(run.id)?.result ?? undefined).toBeUndefined();
+
+      internal.handleAcpReply({ sessionKey: key, text: "Here is the answer.", done: true });
+      expect(engine.listMessages(session.id).at(-1)?.content).toBe("Here is the answer.");
+    } finally {
+      await engine.stop();
+    }
+  });
+});
+
 describe("inactive session archive", () => {
   it("archives idle threads past the cutoff and keeps pinned work", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "capsule-archive-"));
@@ -846,6 +887,7 @@ describe("what a thread shows while a turn is starting", () => {
 
     expect(runsSeenEarly[0]).toBe(run.id);
     expect(engine.listMessages(session.id).some((m) => m.role === "user")).toBe(true);
+    expect(engine.listMessages(session.id).find((m) => m.role === "user")?.runId).toBe(run.id);
     // And the turn's own record starts with the request, so a reader opening
     // it mid-flight sees something.
     const events = engine.listRunEvents(run.id);
@@ -900,8 +942,23 @@ describe("what a turn changed", () => {
     await settle();
 
     // Only the file the second turn added, not everything in the thread.
-    const changed = engine.turnDiff(second.id).files.map((file) => file.path);
+    const snapshot = engine.turnDiff(second.id);
+    const changed = snapshot.files.map((file) => file.path);
     expect(changed).toEqual(["second.txt"]);
+    expect(snapshot.available).toBe(true);
+
+    // A first checkpoint has no before-state. It must not use the live tree
+    // and start claiming edits made long after the original reply.
+    expect(engine.turnDiff(first.id)).toEqual({ patch: "", files: [], available: false });
+    writeFileSync(path.join(repo, "first.txt"), "changed later by the user\n");
+    writeFileSync(path.join(repo, "second.txt"), "also changed later\n");
+    expect(engine.turnDiff(first.id)).toEqual({ patch: "", files: [], available: false });
+    expect(engine.turnDiff(second.id)).toEqual(snapshot);
+
+    // Missing saved refs are unavailable, not a signal to compare with the
+    // current tree instead. This ref belongs only to this test's temp repo.
+    execFileSync("git", ["update-ref", "-d", engine.getRun(first.id)!.checkpointRef!], { cwd: repo });
+    expect(engine.turnDiff(second.id)).toEqual({ patch: "", files: [], available: false });
     await engine.stop();
   });
 });

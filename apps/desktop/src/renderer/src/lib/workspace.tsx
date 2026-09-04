@@ -183,7 +183,6 @@ export interface WorkspaceValue {
   notice?: string;
   setNotice: (value: string | undefined) => void;
   steerDraft: string;
-  statusText?: string;
   project?: Project;
   session?: Session;
   activeRun?: Run;
@@ -231,7 +230,7 @@ export interface WorkspaceValue {
   openTerminal: () => Promise<void>;
   execInProject: (command: string) => Promise<{ stdout: string; stderr: string; code: number }>;
   initializeGit: () => Promise<void>;
-  saveProjectActions: (actions: ProjectAction[]) => Promise<void>;
+  saveProjectActions: (actions: ProjectAction[]) => Promise<boolean>;
   workspaceMode: WorkspaceMode;
   setWorkspaceMode: (mode: WorkspaceMode) => Promise<void>;
   browserUrl: string;
@@ -289,12 +288,12 @@ export interface WorkspaceValue {
   clearRequestedFile: () => void;
   contentSearch: boolean;
   setContentSearch: (open: boolean) => void;
-  gitCommit: (message: string) => Promise<void>;
+  gitCommit: (message: string) => Promise<boolean>;
   gitStage: (relative: string) => Promise<void>;
   gitDiscard: (relative: string) => void;
   gitCreateBranch: (branch: string) => Promise<void>;
-  gitPush: () => Promise<void>;
-  gitCreatePullRequest: (input?: { title?: string; body?: string }) => Promise<void>;
+  gitPush: () => Promise<boolean>;
+  gitCreatePullRequest: (input?: { title?: string; body?: string }) => Promise<boolean>;
   gitMergePullRequest: () => Promise<void>;
   skillPacks: SkillPack[];
   installSkill: (skill: Skill) => Promise<Skill>;
@@ -382,7 +381,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   >({});
   const [notice, setNotice] = useState<string>();
   const [steerDraft, setSteerDraft] = useState("");
-  const [statusText, setStatusText] = useState<string>();
   const [git, setGit] = useState<GitStatus>();
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [confirm, setConfirm] = useState<ConfirmState>();
@@ -1228,13 +1226,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }
 
   async function saveProjectActions(actions: ProjectAction[]) {
-    if (!projectId) return;
+    if (!projectId) return false;
     try {
       await api.updateProject(projectId, { actions });
       setNotice(undefined);
       await refresh();
+      return true;
     } catch (error) {
       setNotice(formatUserError(error));
+      return false;
     }
   }
 
@@ -1369,7 +1369,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     if (!target) return;
     const live = (await api.harnessStatus(target)) as HarnessLiveStatus;
     setHarnessStatuses((current) => ({ ...current, [target]: live }));
-    setStatusText(live.statusText);
     await refresh();
   }
 
@@ -1452,11 +1451,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }
 
   async function gitCommit(message: string) {
-    if (!projectId) return;
+    if (!projectId) return false;
     try {
       setGit(await api.gitCommit(projectId, message, sessionId));
+      setNotice(undefined);
+      return true;
     } catch (error) {
       setNotice(formatUserError(error));
+      return false;
     }
   }
 
@@ -1495,16 +1497,19 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }
 
   async function gitPush() {
-    if (!projectId) return;
+    if (!projectId) return false;
     try {
       setGit(await api.gitPush(projectId, sessionId));
+      setNotice(undefined);
+      return true;
     } catch (error) {
       setNotice(formatUserError(error));
+      return false;
     }
   }
 
   async function gitCreatePullRequest(input?: { title?: string; body?: string }) {
-    if (!projectId) return;
+    if (!projectId) return false;
     try {
       setGit(
         await api.gitCreatePullRequest(projectId, {
@@ -1512,8 +1517,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           sessionId,
         }),
       );
+      setNotice(undefined);
+      return true;
     } catch (error) {
       setNotice(formatUserError(error));
+      return false;
     }
   }
 
@@ -1635,7 +1643,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       notice,
       setNotice,
       steerDraft,
-      statusText,
       project,
       session,
       activeRun,
@@ -1789,7 +1796,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       notice,
       setNotice,
       steerDraft,
-      statusText,
       project,
       session,
       activeRun,

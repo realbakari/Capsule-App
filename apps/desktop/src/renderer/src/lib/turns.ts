@@ -1,4 +1,4 @@
-import type { ChatMessage } from "@capsule/shared";
+import { isAcpCancelNotice, isAcpStatusNotice, type ChatMessage } from "@capsule/shared";
 
 /*
  * A turn is one exchange: a user message plus everything that answered it,
@@ -17,6 +17,8 @@ export interface Turn {
 export function turnsFromMessages(messages: readonly ChatMessage[]): Turn[] {
   const turns: Turn[] = [];
   for (const message of messages) {
+    // Hide historical acknowledgements without deleting the stored history.
+    if (message.role === "assistant" && (isAcpCancelNotice(message.content) || isAcpStatusNotice(message.content))) continue;
     const startsTurn = message.role === "user" && message.kind !== "steer";
     const open = turns.at(-1);
     if (startsTurn || !open) {

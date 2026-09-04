@@ -4,6 +4,19 @@ Every turn that finishes captures the state of your project folder. When a turn
 changes files, the changed-files card under the reply offers **Restore this
 turn**, which puts the folder back to how that turn left it.
 
+The card stays beneath that turn's reply when you send a follow-up. Folding
+the old turn folds its card too; expanding the turn brings it back. It does not
+follow you into another conversation or project.
+
+Select the card to expand that turn's saved diff in place. Later edits do not
+change this saved view. The Review panel still shows your current repository
+changes; use it to stage or discard current edits.
+
+When both saved snapshots exist, an empty diff means no changed-files card.
+If a before-snapshot is unavailable (including the first saved turn), Capsule
+can list writes reported by that turn, but does not substitute your current
+repository changes or invent a saved diff.
+
 Restoring discards everything changed since that point — by the agent *and* by
 you — so Capsule asks first.
 

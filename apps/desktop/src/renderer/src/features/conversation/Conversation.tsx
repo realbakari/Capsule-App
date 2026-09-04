@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChatMessage, Run } from "@capsule/shared";
 import { harnessDisplayName } from "../../lib/harness";
 import { AgentGlyph } from "../shell/AgentGlyph";
@@ -20,9 +20,10 @@ import {
   type Turn,
 } from "../../lib/turns";
 import { RunSummary } from "./RunSummary";
-import { summariseWork, extractTouchedFiles, type TouchedFile } from "../../lib/activity";
-import { threadError, threadErrorKey } from "../../lib/thread-error";
-import { ChangedFilesCard } from "./ChangedFilesCard";
+import { summariseWork, extractTouchedFiles } from "../../lib/activity";
+import { outcomesByTurn } from "../../lib/turn-outcomes";
+import { threadFeedback } from "../../lib/thread-error";
+import { TurnOutcome } from "./TurnOutcome";
 import { TurnFilesCard } from "./TurnFilesCard";
 import { MessageBody } from "./MessageBody";
 
@@ -216,25 +217,24 @@ export function Conversation() {
   const {
     project,
     session,
-    messages,
+    messages: workspaceMessages,
     git,
     hasOlderMessages,
     loadingOlder,
     loadOlderMessages,
     agents,
     agentId,
-    activeRun,
+    activeRun: workspaceActiveRun,
     harnesses,
     contextUsage,
     steps,
-    events,
+    events: workspaceEvents,
     pendingApproval,
     api,
     notice,
     ready,
-    runs,
+    runs: workspaceRuns,
     setNotice,
-    statusText,
     createTask,
     createProjectFromFolder,
     pickProjectDirectory,
@@ -249,30 +249,15 @@ export function Conversation() {
     setConfirm,
   } = useWorkspace();
 
-  const [restoring, setRestoring] = useState(false);
-  const restorable = useMemo(
-    () => [...runs].reverse().find((run) => run.checkpointRef && run.status !== "running"),
-    [runs],
-  );
-
-  const restoreTurn = useCallback(async () => {
-    if (!restorable) return;
-    setConfirm({
-      title: "Restore this turn?",
-      detail:
-        "Files in the project folder go back to how this turn left them. Anything changed since — by the agent or by you — is discarded.",
-      confirmLabel: "Restore",
-      danger: true,
-      onConfirm: async () => {
-        setRestoring(true);
-        try {
-          await api.restoreTurn(restorable.id);
-        } finally {
-          setRestoring(false);
-        }
-      },
-    });
-  }, [restorable, setConfirm, api]);
+  // Selection changes before asynchronous history loads finish. Never render
+  // a previous repository's outcomes while waiting for the next thread.
+  const messages = useMemo(() => workspaceMessages.filter((message) => message.sessionId === session?.id), [workspaceMessages, session?.id]);
+  const runs = useMemo(() => workspaceRuns.filter((run) => run.sessionId === session?.id && run.projectId === project?.id), [workspaceRuns, session?.id, project?.id]);
+  const events = useMemo(() => {
+    const ids = new Set(runs.map((run) => run.id));
+    return workspaceEvents.filter((event) => ids.has(event.runId));
+  }, [workspaceEvents, runs]);
+  const activeRun = workspaceActiveRun?.sessionId === session?.id && workspaceActiveRun?.projectId === project?.id ? workspaceActiveRun : undefined;
 
   const discardFile = useCallback(
     (filePath: string) => {
@@ -302,6 +287,8 @@ export function Conversation() {
     previousTurns.current = next;
     return next;
   }, [messages]);
+  const visibleMessageCount = useMemo(() => turns.reduce((count, turn) => count + turn.messages.length, 0), [turns]);
+  const turnOutcomes = useMemo(() => outcomesByTurn(turns, runs, session?.id, project?.id), [turns, runs, session?.id, project?.id]);
 
   /*
    * Where each turn starts in the flat message list, so a row can tell whether
@@ -331,74 +318,12 @@ export function Conversation() {
      one, the project folder otherwise. */
   const terminalCwd = session?.workingDirectory ?? project?.workingDirectory;
 
-  const eventFiles = useMemo(
-    () => extractTouchedFiles(events, git, project?.workingDirectory),
-    [events, git, project?.workingDirectory],
-  );
+  // In-flight activity may show only this run's evidence. Saved outcomes have
+  // their own per-run loader below the originating reply.
+  const touchedFiles = useMemo(() => activeRun
+    ? extractTouchedFiles(events.filter((event) => event.runId === activeRun.id), undefined, terminalCwd).filter((file) => file.action !== "read")
+    : [], [events, activeRun?.id, terminalCwd]);
 
-  /*
-   * What the turn changed, from the turn's own checkpoint.
-   *
-   * The tool frames do not always name the file — a turn that created
-   * capsule.json never mentioned it once — and the working tree cannot answer
-   * for a single turn, because it holds everything anyone has done since the
-   * last commit. The checkpoint can: it is what the tree looked like when this
-   * turn finished, diffed against the one before it.
-   */
-  const [checkpointFiles, setCheckpointFiles] = useState<TouchedFile[]>([]);
-  const newestCheckpointRun = useMemo(
-    () => [...runs].reverse().find((run) => run.checkpointRef && run.status !== "running"),
-    [runs],
-  );
-  useEffect(() => {
-    if (!newestCheckpointRun) {
-      setCheckpointFiles([]);
-      return;
-    }
-    let disposed = false;
-    void api
-      .turnDiff(newestCheckpointRun.id)
-      .then((diff) => {
-        if (disposed) return;
-        const rows = (diff as { files?: Array<{ path: string; added: number; removed: number }> })
-          .files;
-        setCheckpointFiles(
-          (rows ?? []).map((row) => ({
-            path: row.path,
-            // A checkpoint diff says how much moved, not which verb was used.
-            action: row.removed > 0 && row.added === 0 ? "deleted" : "modified",
-            added: row.added,
-            removed: row.removed,
-          })),
-        );
-      })
-      .catch(() => {
-        if (!disposed) setCheckpointFiles([]);
-      });
-    return () => {
-      disposed = true;
-    };
-  }, [api, newestCheckpointRun]);
-
-  // The checkpoint is the authority when there is one; the events are what
-  // there is otherwise.
-  const touchedFiles = checkpointFiles.length > 0 ? checkpointFiles : eventFiles;
-
-  /*
-   * A turn that wrote something leaves a checkpoint behind or touches files
-   * in the worktree. Without one, whatever git is reporting belongs to the
-   * person at the keyboard, not to this thread.
-   */
-  const turnTouchedTree =
-    runs.some((run) => Boolean(run.checkpointRef)) ||
-    touchedFiles.some((f) => f.action !== "read");
-
-  /*
-   * Why the last turn failed, in the thread it failed in. A dismissal is
-   * remembered for that thread and that message together: keyed on the thread
-   * alone it would swallow the next, different failure, and on the message
-   * alone it would hide the same failure in another conversation.
-   */
   /*
    * What the turn is doing, right now.
    *
@@ -419,10 +344,10 @@ export function Conversation() {
     return undefined;
   }, [events, steps]);
 
-  const failure = threadError({ sessionId: session?.id, runs });
-  const failureKey = threadErrorKey(session?.id, failure);
+  // A failed run owns its error; the send rejection is only a fallback until
+  // that run arrives. Remember dismissals per attempt, not per error string.
   const [dismissedFailures, setDismissedFailures] = useState<ReadonlySet<string>>(() => new Set());
-  const showFailure = Boolean(failureKey) && !dismissedFailures.has(failureKey!);
+  const { notice: shownNotice, failure, failureKey } = threadFeedback({ sessionId: session?.id, runs, notice, dismissed: dismissedFailures });
 
   const openTurn = useCallback((id: string) => {
     setOpenedTurns((current) => new Set(current).add(id));
@@ -432,7 +357,7 @@ export function Conversation() {
   const scroller = useRef<HTMLDivElement>(null);
   /* Track the message count at mount time so entrance animations only fire for
      messages that arrive after the initial load, not the whole history. */
-  const initialCountRef = useRef(messages.length);
+  const initialCountRef = useRef(visibleMessageCount);
   const [stick, setStick] = useState(true);
 
   useEffect(() => {
@@ -442,10 +367,10 @@ export function Conversation() {
   }, [messages, activeRun, stick]);
 
   return (
-    <section className={`main page-content${ready && messages.length === 0 ? " conversation-empty" : ""}`}>
-      {notice && (
+    <section className={`main page-content${ready && visibleMessageCount === 0 ? " conversation-empty" : ""}`}>
+      {shownNotice && (
         <div className="notice notice-dismissable" role="status">
-          <span>{notice}</span>
+          <span>{shownNotice}</span>
           <button
             type="button"
             className="icon-btn"
@@ -457,7 +382,6 @@ export function Conversation() {
           </button>
         </div>
       )}
-      {statusText && <div className="notice status">{statusText}</div>}
       {!connected && (
         <GatewayBanner inset />
       )}
@@ -479,7 +403,7 @@ export function Conversation() {
            */}
           {!ready ? (
             <div className="thread-hydrating" aria-hidden />
-          ) : messages.length === 0 ? (
+          ) : visibleMessageCount === 0 ? (
             <div className="empty-thread">
               <h1>
                 {project && session && project.name !== "Inbox" ? (
@@ -536,22 +460,18 @@ export function Conversation() {
                 folded.has(turn.id) ? (
                   <FoldedTurn key={turn.id} turn={turn} onOpen={openTurn} />
                 ) : (
-                  turn.messages.map((message, messageIndex) => (
+                  <Fragment key={turn.id}>
+                  {turn.messages.map((message, messageIndex) => (
                     <MessageRow
                       key={message.id}
                       message={message}
                       isNew={(turnOffsets.get(turn.id) ?? 0) + messageIndex >= initialCountRef.current}
                       onOpenAttachment={openAttachment}
                     />
-                  ))
+                  ))}
+                  {(turnOutcomes.get(turn.id) ?? []).map((run) => <TurnOutcome key={run.id} run={run} cwd={terminalCwd} />)}
+                  </Fragment>
                 ),
-              )}
-              {/* The turn's outcome on disk, under the reply. Not a second copy
-                  of the reply — the diff itself lives in the side panel. */}
-              {/* Only when a turn in this thread touched the tree and no active work
-                  summary is currently mounted below (avoiding duplicate cards). */}
-              {git && session && turnTouchedTree && !activeRun && steps.length === 0 && (
-                <ChangedFilesCard git={git} files={touchedFiles} />
               )}
             </>
           )}
@@ -590,9 +510,6 @@ export function Conversation() {
                       setInspectorOpen(true);
                     }}
                     onDiscardFile={discardFile}
-                    onRestoreTurn={restorable ? () => void restoreTurn() : undefined}
-                    restorable={Boolean(restorable)}
-                    restoring={restoring}
                   />
                 )}
                 <div className="progress">
@@ -658,7 +575,7 @@ export function Conversation() {
           {/* Last in the thread: the outcome of the newest turn, under the
               record of what that turn did. Above the work log it read as a
               verdict on the turn before it. */}
-          {showFailure && failure ? (
+          {failure && failureKey ? (
             <div className="thread-error" role="status">
               <AlertTriangleIcon size={13} aria-hidden />
               <span className="thread-error-text" title={failure}>
@@ -668,9 +585,10 @@ export function Conversation() {
                 type="button"
                 className="icon-btn"
                 aria-label="Dismiss error"
-                onClick={() =>
-                  setDismissedFailures((current) => new Set(current).add(failureKey!))
-                }
+                onClick={() => {
+                  setDismissedFailures((current) => new Set(current).add(failureKey));
+                  if (notice && !shownNotice) setNotice(undefined);
+                }}
               >
                 <XIcon size={12} />
               </button>

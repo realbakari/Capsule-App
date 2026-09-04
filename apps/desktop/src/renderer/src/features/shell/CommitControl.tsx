@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { useWorkspace } from "../../lib/workspace";
 import { ChevronDownIcon, GitBranchIcon } from "./icons";
+import { HeaderPopover } from "./HeaderPopover";
 
 /*
  * Commit, push and open a pull request from the thread's own header.
@@ -12,36 +13,24 @@ import { ChevronDownIcon, GitBranchIcon } from "./icons";
  * are on; this puts the next step beside that.
  */
 export function CommitControl() {
-  const { git, gitCommit, gitPush, gitCreatePullRequest } = useWorkspace();
+  const { git, gitCommit, gitPush, gitCreatePullRequest, project, session } = useWorkspace();
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const anchor = useRef<HTMLDivElement>(null);
-  const field = useRef<HTMLInputElement>(null);
 
+  // A message typed for one thread is not a message for the next one.
   useEffect(() => {
-    if (!open) return;
-    field.current?.focus();
-    function onPointerDown(event: MouseEvent) {
-      if (!anchor.current?.contains(event.target as Node)) setOpen(false);
-    }
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
-    }
-    document.addEventListener("mousedown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open]);
+    setOpen(false);
+    setMessage("");
+  }, [project?.id, session?.id]);
 
   if (!git?.isRepo) return null;
 
   const trimmed = message.trim();
   const ahead = git.ahead ?? 0;
   // A push with nothing to send is not an error worth making someone discover.
-  const canPush = ahead > 0 || git.dirty;
+  const canPush = ahead > 0;
 
   async function run(work: () => Promise<void>) {
     setBusy(true);
@@ -58,6 +47,8 @@ export function CommitControl() {
         type="button"
         className="topbar-chip-btn"
         onClick={() => setOpen((prev) => !prev)}
+        aria-haspopup="dialog"
+        aria-expanded={open}
         title={
           git.dirty
             ? `${git.changed} changed file${git.changed === 1 ? "" : "s"}`
@@ -73,20 +64,21 @@ export function CommitControl() {
         <ChevronDownIcon size={12} />
       </button>
       {open && (
-        <div className="topbar-dropdown-menu commit-menu">
+        <HeaderPopover anchor={anchor} label="Commit changes" className="commit-menu" onClose={() => setOpen(false)}>
           <input
-            ref={field}
             className="commit-menu-message"
             placeholder="Commit message"
+            aria-label="Commit message"
             value={message}
             disabled={!git.dirty || busy}
             onChange={(event) => setMessage(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key !== "Enter" || !trimmed || !git.dirty) return;
+              if (event.key !== "Enter" || !trimmed || !git.dirty || busy) return;
               event.preventDefault();
               void run(async () => {
-                await gitCommit(trimmed);
+                if (!await gitCommit(trimmed)) return;
                 setMessage("");
+                setOpen(false);
               });
             }}
           />
@@ -95,7 +87,7 @@ export function CommitControl() {
             disabled={!git.dirty || !trimmed || busy}
             onClick={() =>
               void run(async () => {
-                await gitCommit(trimmed);
+                if (!await gitCommit(trimmed)) return;
                 setMessage("");
                 setOpen(false);
               })
@@ -108,9 +100,9 @@ export function CommitControl() {
             disabled={!git.dirty || !trimmed || busy}
             onClick={() =>
               void run(async () => {
-                await gitCommit(trimmed);
+                if (!await gitCommit(trimmed)) return;
                 setMessage("");
-                await gitPush();
+                if (!await gitPush()) return;
                 setOpen(false);
               })
             }
@@ -120,9 +112,10 @@ export function CommitControl() {
           <button
             type="button"
             disabled={!canPush || busy}
+            title={canPush ? "Push committed changes" : "No outgoing commits. Commit changes before pushing."}
             onClick={() =>
               void run(async () => {
-                await gitPush();
+                if (!await gitPush()) return;
                 setOpen(false);
               })
             }
@@ -137,7 +130,7 @@ export function CommitControl() {
               disabled={busy}
               onClick={() =>
                 void run(async () => {
-                  await gitCreatePullRequest(trimmed ? { title: trimmed } : undefined);
+                  if (!await gitCreatePullRequest(trimmed ? { title: trimmed } : undefined)) return;
                   setMessage("");
                   setOpen(false);
                 })
@@ -151,7 +144,7 @@ export function CommitControl() {
               Pull request #{git.pullRequest.number} is open.
             </div>
           )}
-        </div>
+        </HeaderPopover>
       )}
     </div>
   );

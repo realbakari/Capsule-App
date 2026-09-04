@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ProjectAction, ProjectActionRun } from "@capsule/shared";
 import { useWorkspace } from "../../lib/workspace";
 import { PlusIcon, StopIcon, TerminalIcon } from "./icons";
+import { HeaderPopover } from "./HeaderPopover";
 import { ProjectActionDialog } from "./ProjectActionDialog";
 
 export function ProjectActionsControl() {
@@ -22,14 +23,13 @@ export function ProjectActionsControl() {
 
   const actions = project?.actions ?? [];
 
+  // Switching project or thread closes the menu and drops anything half-typed
+  // in it, rather than carrying it into a place it does not belong.
   useEffect(() => {
-    if (!open) return undefined;
-    const close = (event: MouseEvent) => {
-      if (!root.current?.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [open]);
+    setOpen(false);
+    setEditing(undefined);
+    setError(undefined);
+  }, [project?.id, session?.id]);
 
   useEffect(() => {
     if (!project?.id || !open) return undefined;
@@ -106,12 +106,24 @@ export function ProjectActionsControl() {
         className="topbar-chip-btn"
         onClick={() => setOpen((value) => !value)}
         title="Run or add a project action"
+        aria-haspopup="dialog"
+        aria-expanded={open}
       >
         <PlusIcon size={12} />
         <span>Add action</span>
       </button>
       {open ? (
-        <div className="topbar-dropdown-menu project-actions-menu">
+        /*
+         * Portalled, like the other two header controls. This menu lived
+         * inside .topbar-project-actions, which is overflow: hidden — so the
+         * list of actions was cut off at the bar it hung from.
+         */
+        <HeaderPopover
+          anchor={root}
+          label="Project actions"
+          className="project-actions-menu"
+          onClose={() => setOpen(false)}
+        >
           {
             <>
               {error ? <p className="notice project-action-error">{error}</p> : null}
@@ -167,7 +179,7 @@ export function ProjectActionsControl() {
               </button>
             </>
           }
-        </div>
+        </HeaderPopover>
       ) : null}
       {editing ? (
         <ProjectActionDialog

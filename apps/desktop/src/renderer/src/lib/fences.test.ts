@@ -44,4 +44,18 @@ describe("splitFences", () => {
       }
     }
   });
+
+  it("keeps shorter fences inside longer examples literal", () => {
+    expect(splitFences('````md\n```ts\nconst x = 1;\n```\n````\nAfter')).toEqual([
+      { kind: "code", text: '```ts\nconst x = 1;\n```', language: "md" }, { kind: "prose", text: "After" },
+    ]);
+  });
+  it("supports tilde fences, non-word languages and longer closing fences", () => {
+    expect(splitFences('~~~c++\r\nint x = 1;\r\n~~~~\r\nAfter')).toEqual([
+      { kind: "code", text: "int x = 1;", language: "c++" }, { kind: "prose", text: "After" },
+    ]);
+  });
+  it("does not mistake backticks inside prose for block fences", () => {
+    expect(splitFences('Use ``` as a delimiter.')).toEqual([{ kind: "prose", text: 'Use ``` as a delimiter.' }]);
+  });
 });

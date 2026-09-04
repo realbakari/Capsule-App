@@ -1,3 +1,5 @@
+import { isAcpCancelNotice } from "@capsule/shared";
+
 export function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 }
@@ -108,7 +110,7 @@ const CONTROL_OUTPUT_MARKERS = [
 export function isAcpControlOutput(text: string | undefined): boolean {
   const value = text?.trim().toLowerCase();
   if (!value) return false;
-  return CONTROL_OUTPUT_MARKERS.some((marker) => value.includes(marker));
+  return isAcpCancelNotice(text) || CONTROL_OUTPUT_MARKERS.some((marker) => value.includes(marker));
 }
 
 export function acpCommandFailed(text: string | undefined): string | undefined {

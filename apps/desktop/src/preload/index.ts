@@ -116,10 +116,12 @@ const api = {
   deleteProject: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.deleteProject, id),
   gitStatus: (projectId: string, sessionId?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.gitStatus, projectId, sessionId),
-  listPullRequests: (projectId: string, sessionId?: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.listPullRequests, projectId, sessionId),
+  listPullRequests: (projectId: string, sessionId?: string, refresh = false) =>
+    ipcRenderer.invoke(IPC_CHANNELS.listPullRequests, projectId, sessionId, refresh),
   getPullRequest: (projectId: string, number: number, sessionId?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.getPullRequest, projectId, number, sessionId),
+  getCommitDiff: (projectId: string, oid: string, sessionId?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.getCommitDiff, projectId, oid, sessionId),
   gitInit: (projectId: string) => ipcRenderer.invoke(IPC_CHANNELS.gitInit, projectId),
   gitDiff: (projectId: string, relative?: string, sessionId?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.gitDiff, projectId, relative, sessionId),

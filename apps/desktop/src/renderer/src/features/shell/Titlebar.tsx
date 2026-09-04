@@ -4,6 +4,8 @@ import { useWorkspace } from "../../lib/workspace";
 import { SidebarToggle } from "./SidebarControl";
 import { ProjectActionsControl } from "./ProjectActionsControl";
 import { CommitControl } from "./CommitControl";
+import { HeaderPopover } from "./HeaderPopover";
+import { formatUserError } from "../../lib/errors";
 import {
   ChevronDownIcon,
   FolderIcon,
@@ -49,6 +51,7 @@ export function Titlebar() {
     closeHarness,
     createTask,
     initializeGit,
+    setNotice,
   } = useWorkspace();
   const terminalCwd = session?.workingDirectory ?? project?.workingDirectory;
 
@@ -56,17 +59,18 @@ export function Titlebar() {
   const openMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (openMenuRef.current && !openMenuRef.current.contains(event.target as Node)) {
-        setOpenMenu(false);
-      }
+    setOpenMenu(false);
+  }, [project?.id, session?.id, view]);
+
+  async function revealFolder() {
+    if (!terminalCwd) return;
+    setOpenMenu(false);
+    try {
+      await api.openPath(terminalCwd);
+    } catch (error) {
+      setNotice(formatUserError(error));
     }
-    if (openMenu) {
-      document.addEventListener("mousedown", handleClickOutside);
-      return () => document.removeEventListener("mousedown", handleClickOutside);
-    }
-    return undefined;
-  }, [openMenu]);
+  }
 
   const label = connected ? "OpenClaw connected" : (status?.state ?? "Offline");
   const harnessLive = Boolean(session?.harnessId && session.harnessState && session.harnessState !== "closed");
@@ -107,6 +111,13 @@ export function Titlebar() {
         {/* Workspace Quick Actions */}
         {view === "chat" && project?.workingDirectory && (
           <div className="topbar-project-actions">
+            {/*
+              * Deliberately unkeyed. Keying these on project+session to reset
+              * their state left the previous element in the DOM when the key
+              * changed — two "Add action" buttons side by side — so each
+              * control clears its own state instead, the way the Open menu
+              * below already does.
+              */}
             <ProjectActionsControl />
             {/* Open in Finder/Terminal Menu */}
             <div className="topbar-menu-anchor" ref={openMenuRef}>
@@ -115,19 +126,18 @@ export function Titlebar() {
                 className="topbar-chip-btn"
                 onClick={() => setOpenMenu((prev) => !prev)}
                 title="Open project folder"
+                aria-haspopup="dialog"
+                aria-expanded={openMenu}
               >
                 <FolderIcon size={12} />
                 <span>Open</span>
                 <ChevronDownIcon size={12} />
               </button>
               {openMenu && (
-                <div className="topbar-dropdown-menu">
+                <HeaderPopover anchor={openMenuRef} label="Open folder" onClose={() => setOpenMenu(false)}>
                   <button
                     type="button"
-                    onClick={() => {
-                      setOpenMenu(false);
-                      if (project.workingDirectory) void api.openPath?.(project.workingDirectory);
-                    }}
+                    onClick={() => void revealFolder()}
                   >
                     Reveal in Finder
                   </button>
@@ -140,7 +150,7 @@ export function Titlebar() {
                   >
                     Open in Terminal
                   </button>
-                </div>
+                </HeaderPopover>
               )}
             </div>
 
