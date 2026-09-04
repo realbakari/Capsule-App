@@ -192,9 +192,17 @@ export function Titlebar() {
           <span className="live-chip">
             <span className="dot on live" title={`${harnessName} is running`} />
             <span>{harnessName}</span>
-            <button title="Cancel turn" aria-label="Cancel turn" onClick={() => void cancelHarness()}>
-              <StopIcon size={10} />
-            </button>
+            {/*
+              * Only when nothing else offers to stop something. With a run in
+              * flight the header drew this beside "Stop run" — two stop
+              * squares, touching, doing different things, neither saying
+              * which. That one stops the work you can see, so it wins.
+              */}
+            {!activeRun && (
+              <button title="Cancel turn" aria-label="Cancel turn" onClick={() => void cancelHarness()}>
+                <StopIcon size={10} />
+              </button>
+            )}
             <button title="Close harness" aria-label="Close harness" onClick={() => void closeHarness()}>
               <XIcon size={10} />
             </button>

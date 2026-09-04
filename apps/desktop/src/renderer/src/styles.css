@@ -895,6 +895,14 @@
   text-align: center;
   padding: 0 1rem 1.65rem;
 }
+.empty-thread-mark {
+  width: 44px;
+  height: 44px;
+  margin: 0 auto 0.9rem;
+  display: block;
+  /* Present, not loud: the question is the thing to read. */
+  opacity: 0.75;
+}
 .empty-thread h1 {
   font-size: 2rem;
   font-weight: 600;
@@ -1613,6 +1621,19 @@
 }
 .composer-context button:hover {
   color: var(--text);
+}
+/*
+ * The branch picker is the same control the composer uses above, where a
+ * 1.75rem height and its own type are right. In this row they were not: it
+ * rendered larger and bolder than the folder and terminal beside it, and its
+ * height pushed the whole line off its baseline. Here it is one of the row.
+ */
+.composer-context .menu-select-trigger {
+  height: auto;
+  padding: 0;
+  gap: 0.3rem;
+  font-size: inherit;
+  font-weight: inherit;
 }
 .composer-context button.missing {
   color: var(--yellow);

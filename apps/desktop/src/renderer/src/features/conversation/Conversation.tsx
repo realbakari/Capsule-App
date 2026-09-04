@@ -412,6 +412,13 @@ export function Conversation() {
             <div className="thread-hydrating" aria-hidden />
           ) : visibleMessageCount === 0 ? (
             <div className="empty-thread">
+              {/*
+                * The mark, above the question. An empty thread was the one
+                * screen in the app that carried no sign of what it belonged
+                * to; the icon is the same one the About panel and the Dock
+                * use, so it reads as Capsule rather than as decoration.
+                */}
+              <img className="empty-thread-mark" src="./icon.png" alt="" aria-hidden />
               <h1>
                 {project && session && project.name !== "Inbox" ? (
                   <>What should we build in <span>{project.name}</span>?</>
