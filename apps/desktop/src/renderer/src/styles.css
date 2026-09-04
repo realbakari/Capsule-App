@@ -895,9 +895,28 @@
   text-align: center;
   padding: 0 1rem 1.65rem;
 }
+/*
+ * The mark alone, with no tile behind it.
+ *
+ * The app icon is a dark square with the mark drawn on it, so dropping it on
+ * this page put a slightly darker rectangle in the middle of the screen. This
+ * is the glyph lifted out of that icon as an alpha mask, painted in the text
+ * colour — which also means it follows the theme rather than being a white
+ * PNG that vanishes on a light background.
+ */
 .empty-thread-mark {
   width: 40px;
   height: 40px;
+  background: currentColor;
+  color: var(--text-faint);
+  -webkit-mask-image: url("./mark.png");
+  mask-image: url("./mark.png");
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
   /*
    * Room above the heading. Fourteen pixels between a 40px mark and a 32px
    * heading read as one crowded lump; the mark is its own thing and needs to
@@ -905,14 +924,6 @@
    */
   margin: 0 auto 1.75rem;
   display: block;
-  /*
-   * Full strength. This is the app icon — a dark tile with the mark on it —
-   * and fading it toward the background turned it into a hole in the page
-   * rather than an icon. Nothing is drawn around it: the tile has
-   * transparent corners, so a border or ring would trace the square it sits
-   * in and give away the box.
-   */
-  opacity: 1;
 }
 .empty-thread h1 {
   font-size: 2rem;

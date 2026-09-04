@@ -418,7 +418,7 @@ export function Conversation() {
                 * to; the icon is the same one the About panel and the Dock
                 * use, so it reads as Capsule rather than as decoration.
                 */}
-              <img className="empty-thread-mark" src="./icon.png" alt="" aria-hidden />
+              <span className="empty-thread-mark" aria-hidden />
               <h1>
                 {project && session && project.name !== "Inbox" ? (
                   <>What should we build in <span>{project.name}</span>?</>
