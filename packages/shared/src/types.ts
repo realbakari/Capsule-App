@@ -458,6 +458,15 @@ export interface MessageAttachment {
   path: string;
   size: number;
   mimeType?: string;
+  /*
+   * A small preview of an image attachment, as a data URI.
+   *
+   * The composer showed every attachment as the same grey file chip, so a
+   * pasted screenshot gave no sign of which screenshot it was. The renderer
+   * cannot load the file itself — its CSP allows images from `self` and
+   * `data:` only — so the main process makes the thumbnail and inlines it.
+   */
+  thumbnail?: string;
 }
 
 export interface ChatMessage {

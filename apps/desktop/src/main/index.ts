@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import fsp from "node:fs/promises";
 
 /** Where releases are published. */
 const UPDATE_REPO = "realbakari/Capsule-App";
@@ -15,6 +16,7 @@ import path from "node:path";
 import {
   app,
   BrowserWindow,
+  clipboard,
   dialog,
   ipcMain,
   Menu,
@@ -37,6 +39,7 @@ import {
   isNewerRelease,
   pickReleaseAsset,
   PRESET_HARNESSES,
+  type MessageAttachment,
   type UpdateCheck,
   IPC_EVENTS,
   type ApprovalRequest,
@@ -135,6 +138,36 @@ function augmentPath(): void {
   for (const [name, value] of Object.entries(shellEnv)) {
     if (name !== "PATH" && !process.env[name]) process.env[name] = value;
   }
+}
+
+/**
+ * Image attachments, with a thumbnail the composer can actually show.
+ *
+ * nativeImage does the decoding and the downscale, so a 12MP screenshot
+ * becomes a couple of kilobytes rather than being inlined whole. Anything that
+ * is not a decodable image, or is too big to be worth reading, simply comes
+ * back without one and keeps the generic file chip.
+ */
+const THUMBNAIL_SOURCE_LIMIT = 20 * 1024 * 1024;
+
+function withThumbnails(attachments: MessageAttachment[]): MessageAttachment[] {
+  return attachments.map((attachment) => {
+    if (!attachment.mimeType?.startsWith("image/")) return attachment;
+    if (attachment.size > THUMBNAIL_SOURCE_LIMIT) return attachment;
+    try {
+      const image = nativeImage.createFromPath(attachment.path);
+      if (image.isEmpty()) return attachment;
+      const { width, height } = image.getSize();
+      if (!width || !height) return attachment;
+      // Height-bounded, so a wide screenshot and a tall one both come back a
+      // sensible size for a row of chips.
+      const scaled = height > 96 ? image.resize({ height: 96, quality: "good" }) : image;
+      return { ...attachment, thumbnail: scaled.toDataURL() };
+    } catch {
+      // A file we cannot decode is still a perfectly good attachment.
+      return attachment;
+    }
+  });
 }
 
 function userDataDir(): string {
@@ -1002,14 +1035,14 @@ function registerIpc(): void {
     ),
   );
   handle(IPC_CHANNELS.validateAttachments, (attachments) =>
-    requireEngine().validateAttachments(
+    withThumbnails(requireEngine().validateAttachments(
       Array.isArray(attachments)
         ? attachments.map((item) => ({
           name: String((item as { name?: unknown; }).name ?? "attachment"),
           path: String((item as { path?: unknown; }).path ?? ""),
           }))
         : [],
-    ),
+    )),
   );
   handle(IPC_CHANNELS.regenerateTitle, (id) => requireEngine().regenerateTitle(String(id)));
   handle(IPC_CHANNELS.setPermissionProfile, (id, profile) =>
@@ -1130,6 +1163,30 @@ function registerIpc(): void {
       ? await dialog.showOpenDialog(win, options)
       : await dialog.showOpenDialog(options);
     return result.canceled ? [] : result.filePaths;
+  });
+  /*
+   * A screenshot on the clipboard, written to a file the agent can open.
+   *
+   * Pasting an image did nothing at all: the composer only ever accepted
+   * filesystem paths, which is why dropping a file worked and pasting a
+   * screenshot did not — clipboard image data has no path to hand over. This
+   * reads the bitmap the OS is holding and gives it one.
+   *
+   * Stored under userData rather than a temp directory, because an attachment
+   * has to still be there when the turn runs, and a prompt can be stashed and
+   * picked up days later.
+   */
+  handle(IPC_CHANNELS.saveClipboardImage, async () => {
+    const image = clipboard.readImage();
+    if (image.isEmpty()) return undefined;
+    const dir = path.join(app.getPath("userData"), "attachments");
+    await fsp.mkdir(dir, { recursive: true });
+    // Seconds are not enough: two screenshots pasted in the same second would
+    // otherwise land on the same name and the first would be lost.
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const file = path.join(dir, `Pasted image ${stamp}.png`);
+    await fsp.writeFile(file, image.toPNG());
+    return file;
   });
   handle(IPC_CHANNELS.listHarnesses, () => requireEngine().listHarnesses());
   handle(IPC_CHANNELS.doctorHarness, (harnessId) =>

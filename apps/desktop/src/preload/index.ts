@@ -150,6 +150,7 @@ const api = {
   openPath: (target: string) => ipcRenderer.invoke(IPC_CHANNELS.openPath, target),
   pickDirectory: () => ipcRenderer.invoke(IPC_CHANNELS.pickDirectory),
   pickFiles: () => ipcRenderer.invoke(IPC_CHANNELS.pickFiles),
+  saveClipboardImage: () => ipcRenderer.invoke(IPC_CHANNELS.saveClipboardImage),
   validateAttachments: (attachments: Array<{ name: string; path: string; }>) =>
     ipcRenderer.invoke(IPC_CHANNELS.validateAttachments, attachments),
   listHarnesses: () => ipcRenderer.invoke(IPC_CHANNELS.listHarnesses),

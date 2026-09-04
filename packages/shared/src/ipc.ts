@@ -58,6 +58,8 @@ export const IPC_CHANNELS = {
   pickDirectory: "capsule:pickDirectory",
   pickFiles: "capsule:pickFiles",
   validateAttachments: "capsule:validateAttachments",
+  /* Writes the clipboard's image to a file so it can be attached. */
+  saveClipboardImage: "capsule:saveClipboardImage",
   gitStatus: "capsule:gitStatus",
   listPullRequests: "capsule:listPullRequests",
   getPullRequest: "capsule:getPullRequest",

@@ -140,6 +140,7 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
     attachments,
     promptStashes,
     pickAttachments,
+    attachClipboardImage,
     attachFiles,
     removeAttachment,
     stashCurrentPrompt,
@@ -338,6 +339,35 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
           setDropping(true);
         }}
         onDragLeave={() => setDropping(false)}
+        /*
+         * A pasted screenshot becomes an attachment.
+         *
+         * Nothing handled paste at all, so an image on the clipboard was
+         * simply dropped on the floor — Cmd+V after a screenshot did nothing.
+         * Files that carry a path (pasted from Finder) go straight to
+         * attachFiles; bitmap data has no path, so the main process writes it
+         * out first. Text paste is left alone.
+         */
+        onPaste={(event) => {
+          const data = event.clipboardData;
+          if (!data) return;
+          const paths = Array.from(data.files)
+            .map((file) => (file as File & { path?: string }).path)
+            .filter((filePath): filePath is string => Boolean(filePath));
+          if (paths.length > 0) {
+            event.preventDefault();
+            void attachFiles(paths);
+            return;
+          }
+          const hasImage = Array.from(data.items).some((item) =>
+            item.type.startsWith("image/"),
+          );
+          if (!hasImage) return;
+          // Only swallow the keystroke once we know an image is there, or a
+          // normal text paste would stop working.
+          event.preventDefault();
+          void attachClipboardImage();
+        }}
         onDrop={(event) => {
           event.preventDefault();
           setDropping(false);
@@ -435,9 +465,19 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
         {attachments.length > 0 && (
           <div className="composer-attachments" aria-label="Attached files">
             {attachments.map((attachment) => (
-              <span className="composer-attachment" key={attachment.path} title={attachment.path}>
-                <FileIcon size={12} />
-                <span>{attachment.name}</span>
+              <span
+                className={`composer-attachment${attachment.thumbnail ? " composer-attachment--image" : ""}`}
+                key={attachment.path}
+                title={attachment.path}
+              >
+                {/* An image shows itself. A pasted screenshot as a grey file
+                    chip told you nothing about which screenshot it was. */}
+                {attachment.thumbnail ? (
+                  <img className="composer-attachment-thumb" src={attachment.thumbnail} alt="" />
+                ) : (
+                  <FileIcon size={12} />
+                )}
+                {attachment.thumbnail ? null : <span>{attachment.name}</span>}
                 <button
                   type="button"
                   aria-label={`Remove ${attachment.name}`}

@@ -199,6 +199,7 @@ export interface WorkspaceValue {
   setMode: (mode: AgentMode) => void;
   setDraft: (value: string) => void;
   pickAttachments: () => Promise<void>;
+  attachClipboardImage: () => Promise<boolean>;
   attachFiles: (paths: string[]) => Promise<void>;
   removeAttachment: (path: string) => void;
   stashCurrentPrompt: () => void;
@@ -1032,6 +1033,26 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     }
   }
 
+  /**
+   * Attach whatever image the clipboard is holding.
+   *
+   * A pasted screenshot is bitmap data, not a file, so there is no path for
+   * attachFiles to take. The main process writes it out and hands back one.
+   * Returns false when the clipboard held no image, so the composer can let an
+   * ordinary text paste through untouched.
+   */
+  async function attachClipboardImage(): Promise<boolean> {
+    try {
+      const saved = (await api.saveClipboardImage()) as string | undefined;
+      if (!saved) return false;
+      await attachFiles([saved]);
+      return true;
+    } catch (error) {
+      setNotice(formatUserError(error));
+      return false;
+    }
+  }
+
   async function pickAttachments() {
     const paths = await api.pickFiles() as string[] | undefined;
     if (paths?.length) await attachFiles(paths);
@@ -1663,6 +1684,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       setMode,
       setDraft,
       pickAttachments,
+      attachClipboardImage,
       attachFiles,
       removeAttachment,
       stashCurrentPrompt,

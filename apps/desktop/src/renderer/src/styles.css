@@ -9907,3 +9907,34 @@ details[open] > summary > .pr-disclosure-caret { transform: none; }
   border: 0;
   border-top: 1px solid var(--border-color);
 }
+
+/* An image attachment previews itself; the remove button sits over it, as it
+   does in the file chips beside it. */
+.composer-attachment--image {
+  padding: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
+}
+.composer-attachment-thumb {
+  display: block;
+  height: 4.5rem;
+  width: auto;
+  max-width: 9rem;
+  object-fit: cover;
+}
+.composer-attachment--image > button {
+  position: absolute;
+  top: 0.2rem;
+  right: 0.2rem;
+  display: grid;
+  place-items: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  border-radius: 50%;
+  border: 0;
+  background: rgb(0 0 0 / 0.55);
+  color: #fff;
+  cursor: pointer;
+}
+.composer-attachment--image > button:hover { background: rgb(0 0 0 / 0.75); }
