@@ -86,7 +86,7 @@ const api = {
   execInProject: (projectId: string, command: string, sessionId?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.execInProject, projectId, command, sessionId),
   processHistory: () => ipcRenderer.invoke(IPC_CHANNELS.processHistory),
-  rendererReady: () => ipcRenderer.invoke(IPC_CHANNELS.rendererReady),
+  rendererReady: (surface?: "pet") => ipcRenderer.invoke(IPC_CHANNELS.rendererReady, surface),
   remoteStatus: () => ipcRenderer.invoke(IPC_CHANNELS.remoteStatus),
   remotePair: () => ipcRenderer.invoke(IPC_CHANNELS.remotePair),
   remoteRevoke: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.remoteRevoke, id),

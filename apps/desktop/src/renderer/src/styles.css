@@ -1052,7 +1052,7 @@
   padding: 0.7rem 0.8rem;
   background: rgb(255 255 255 / 4%);
   border-radius: 0.6rem;
-  font-size: 0.8125rem;
+  font-size: 0.867em;
   /* Wrap rather than scroll: a reply is read in a narrow column, and having to
      scroll right to see the end of a command is worse than a wrapped line.
      overflow-wrap catches tokens with no break opportunity (long paths, URLs). */
@@ -3389,7 +3389,11 @@ select:focus,
 }
 .md-h {
   margin: 0.55rem 0 0.25rem;
-  font-size: 0.95rem;
+  /* Relative to the message, not to the root. These were fixed in rem while
+     the body scaled with the transcript-size setting, so raising that size
+     grew the prose and left headings and code behind — and a message with
+     markdown stopped matching one without. The ratios are today's. */
+  font-size: 1.013em;
   font-weight: 600;
 }
 /* The inspector styles its own h4s as small-caps section labels. A markdown

@@ -27,6 +27,16 @@ applyStoredTheme(window.capsule ? undefined : "dark");
  */
 const isPet = window.location.hash === "#pet";
 if (isPet) {
+  /*
+   * Transparent before anything paints. The pet shares the app's bundle, so
+   * the app's stylesheet is already applied when this runs and the pet's own
+   * arrives a moment later — that gap painted a rectangle over the desktop
+   * and then became a capsule. Setting it here closes the gap; pet.css still
+   * carries the rule for everything after.
+   */
+  document.documentElement.style.background = "transparent";
+  document.body.style.background = "transparent";
+  document.body.style.margin = "0";
   void (async () => {
     await import("./features/pet/pet.css" as string);
     const { Pet } = await import("./features/pet/Pet");

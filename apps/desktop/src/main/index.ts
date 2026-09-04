@@ -218,6 +218,12 @@ function openPetWindow(): void {
     ...petBounds(),
     frame: false,
     transparent: true,
+    /*
+     * The colour the window paints before the renderer has drawn anything.
+     * Without it a transparent window still starts on the platform default
+     * and flashes a pale rectangle over the desktop.
+     */
+    backgroundColor: "#00000000",
     hasShadow: false,
     resizable: false,
     movable: true,
@@ -238,7 +244,19 @@ function openPetWindow(): void {
   petWindow.setAlwaysOnTop(true, "floating");
   // Follows you between Spaces, the way a menu bar extra does.
   petWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false });
-  petWindow.once("ready-to-show", () => petWindow?.showInactive());
+  /*
+   * Not shown on "ready-to-show". That fires on the renderer's first frame,
+   * which here is the empty document before React has mounted and before the
+   * pet's own stylesheet has landed — so the window appeared as a bare
+   * rectangle and then became a capsule. The pet says when it has painted;
+   * this is only the fallback for when it cannot.
+   */
+  petWindow.once("ready-to-show", () => {
+    const fallback = setTimeout(() => {
+      if (petWindow && !petWindow.isDestroyed() && !petWindow.isVisible()) petWindow.showInactive();
+    }, 1500);
+    fallback.unref?.();
+  });
   petWindow.on("closed", () => {
     petWindow = undefined;
   });
@@ -1448,7 +1466,16 @@ function registerIpc(): void {
     remote?.revoke(String(id));
     return true;
   });
-  handle(IPC_CHANNELS.rendererReady, () => {
+  handle(IPC_CHANNELS.rendererReady, (surface) => {
+    /*
+     * The renderer says which window it is, because the two are the same
+     * bundle. The pet reveals itself without taking focus — it is an
+     * indicator, not somewhere to go.
+     */
+    if (surface === "pet") {
+      if (petWindow && !petWindow.isDestroyed() && !petWindow.isVisible()) petWindow.showInactive();
+      return true;
+    }
     if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) mainWindow.show();
     return true;
   });

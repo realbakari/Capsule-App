@@ -126,6 +126,18 @@ export function Pet() {
     };
   }, [api, load]);
 
+  /*
+   * Shown only once it has drawn. The window is transparent, so revealing it
+   * on the renderer's first frame showed an empty rectangle that then became
+   * a capsule — the flicker. Two frames, the same wait the main window uses.
+   */
+  useEffect(() => {
+    const id = requestAnimationFrame(() =>
+      requestAnimationFrame(() => void api?.rendererReady?.("pet")),
+    );
+    return () => cancelAnimationFrame(id);
+  }, [api]);
+
   const summary = useMemo(() => summariseAttention({ sessions, runs }), [sessions, runs]);
   const state: AttentionState | "idle" = summary.state ?? "idle";
   const label = attentionLabel(summary) ?? "Nothing waiting";
