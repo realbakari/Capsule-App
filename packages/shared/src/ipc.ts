@@ -60,6 +60,8 @@ export const IPC_CHANNELS = {
   validateAttachments: "capsule:validateAttachments",
   /* Writes the clipboard's image to a file so it can be attached. */
   saveClipboardImage: "capsule:saveClipboardImage",
+  /* The browser pane's guest WebContents, so agent tools can reach it. */
+  registerBrowserView: "capsule:registerBrowserView",
   gitStatus: "capsule:gitStatus",
   listPullRequests: "capsule:listPullRequests",
   getPullRequest: "capsule:getPullRequest",

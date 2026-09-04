@@ -151,6 +151,8 @@ const api = {
   pickDirectory: () => ipcRenderer.invoke(IPC_CHANNELS.pickDirectory),
   pickFiles: () => ipcRenderer.invoke(IPC_CHANNELS.pickFiles),
   saveClipboardImage: () => ipcRenderer.invoke(IPC_CHANNELS.saveClipboardImage),
+  registerBrowserView: (webContentsId: number | undefined) =>
+    ipcRenderer.invoke(IPC_CHANNELS.registerBrowserView, webContentsId),
   validateAttachments: (attachments: Array<{ name: string; path: string; }>) =>
     ipcRenderer.invoke(IPC_CHANNELS.validateAttachments, attachments),
   listHarnesses: () => ipcRenderer.invoke(IPC_CHANNELS.listHarnesses),

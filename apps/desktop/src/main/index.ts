@@ -29,10 +29,12 @@ import {
   screen,
   powerSaveBlocker,
   shell,
+  webContents,
 } from "electron";
 import type { CapsuleEngine } from "@capsule/core";
 import { mergePath, readLoginShellEnvironment } from "@capsule/harness";
 import electronUpdater from "electron-updater";
+import type { BrowserTarget } from "./browser-tools";
 import { Updater, mergeUpdateStatus } from "./updater";
 import {
   IPC_CHANNELS,
@@ -169,6 +171,20 @@ function withThumbnails(attachments: MessageAttachment[]): MessageAttachment[] {
     }
   });
 }
+
+/*
+ * The browser pane's guest, if one is open. Resolved on each use rather than
+ * held, so a destroyed page is never driven: the id outlives the contents.
+ */
+let browserViewId: number | undefined;
+
+export const browserTarget: BrowserTarget = {
+  contents: () => {
+    if (browserViewId === undefined) return undefined;
+    const contents = webContents.fromId(browserViewId);
+    return contents && !contents.isDestroyed() ? contents : undefined;
+  },
+};
 
 function userDataDir(): string {
   const dir = path.join(app.getPath("userData"), "state");
@@ -1176,6 +1192,19 @@ function registerIpc(): void {
    * has to still be there when the turn runs, and a prompt can be stashed and
    * picked up days later.
    */
+  /*
+   * Which WebContents the browser pane is showing.
+   *
+   * A <webview> is a guest the main process can reach by id, so the agent's
+   * browser tools run here rather than hopping through the renderer. The
+   * renderer only has to say which id it owns, and say so again as undefined
+   * when the pane closes — a stale id would let a tool drive a page nobody is
+   * looking at.
+   */
+  handle(IPC_CHANNELS.registerBrowserView, (webContentsId) => {
+    browserViewId = typeof webContentsId === "number" ? webContentsId : undefined;
+    return true;
+  });
   handle(IPC_CHANNELS.saveClipboardImage, async () => {
     const image = clipboard.readImage();
     if (image.isEmpty()) return undefined;

@@ -1,4 +1,5 @@
 import type { WebviewTag } from "electron";
+import { useWorkspace } from "../../lib/workspace";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { LocalServer } from "@capsule/shared";
 import {
@@ -189,6 +190,7 @@ export function EmbeddedBrowser({
   serversLoading: boolean;
   onOpenExternal: (url: string) => void;
 }) {
+  const { api } = useWorkspace();
   const initialUrl = address !== "http://localhost:3000" ? normalizedBrowserUrl(address) : "";
   const [currentUrl, setCurrentUrl] = useState(initialUrl);
   const [loading, setLoading] = useState(false);
@@ -304,6 +306,20 @@ export function EmbeddedBrowser({
     };
     view.addEventListener("did-start-loading", started);
     view.addEventListener("did-stop-loading", stopped);
+    /*
+     * Tell the main process which guest this pane owns, so the agent's browser
+     * tools can drive it directly. Registered on attach and cleared on unmount:
+     * a stale id would point at a page nobody is looking at any more.
+     */
+    const register = () => {
+      try {
+        void api.registerBrowserView?.(view.getWebContentsId());
+      } catch {
+        // The guest is not attached yet; dom-ready will come round again.
+      }
+    };
+    view.addEventListener("dom-ready", register);
+    register();
     view.addEventListener("did-navigate", navigated);
     view.addEventListener("did-navigate-in-page", navigated);
     view.addEventListener("page-title-updated", rememberCurrentPage);
@@ -311,6 +327,8 @@ export function EmbeddedBrowser({
     return () => {
       view.removeEventListener("did-start-loading", started);
       view.removeEventListener("did-stop-loading", stopped);
+      view.removeEventListener("dom-ready", register);
+      void api.registerBrowserView?.(undefined);
       view.removeEventListener("did-navigate", navigated);
       view.removeEventListener("did-navigate-in-page", navigated);
       view.removeEventListener("page-title-updated", rememberCurrentPage);
