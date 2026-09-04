@@ -1832,6 +1832,21 @@ export class CapsuleEngine {
     return this.repos.listApprovals(status);
   }
 
+  /**
+   * Record a decision on a pending approval.
+   *
+   * The ordering here is load-bearing and rests on the store being
+   * synchronous. Finding the approval and writing the decision happen without
+   * an await between them, so two resolves of the same id cannot both see it
+   * pending and both commit; and the runtime is told only once the decision is
+   * durable, so a crash cannot leave an action taken against a decision that
+   * was never written.
+   *
+   * An asynchronous store would break both properties without changing a line
+   * of this method. If the repositories ever start awaiting, this needs a
+   * conditional write — commit the decision only if the row is still pending —
+   * rather than a read followed by a write.
+   */
   async resolveApproval(
     approvalId: string,
     decision: "approved_once" | "approved_session" | "denied",
