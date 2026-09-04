@@ -43,10 +43,17 @@ export function PullRequestList({ items, loading, error, onRefresh, onSelect }: 
             * `checks` even when the label read "Draft", so a draft with a
             * green tick rendered the word "Draft" in the colour that means
             * ready to merge.
+            *
+            * "none" is the rollup's word for a pull request with no CI at
+            * all, and it was printed as-is — a column reading "none" down
+            * every row, which says nothing to anyone. A checks chip with no
+            * checks behind it is better left out.
             */}
-          <span className={`codex-pr-checks ${item.isDraft ? "draft" : (item.checks ?? "none")}`}>
-            {item.isDraft ? "Draft" : (item.checks ?? "Open")}
-          </span>
+          {item.isDraft ? (
+            <span className="codex-pr-checks draft">Draft</span>
+          ) : item.checks && item.checks !== "none" ? (
+            <span className={`codex-pr-checks ${item.checks}`}>{item.checks}</span>
+          ) : null}
         </button>
       ))}
       {items && items.length >= 50 ? <p className="faint">Showing the first 50 open pull requests. Filters apply to these results.</p> : null}
