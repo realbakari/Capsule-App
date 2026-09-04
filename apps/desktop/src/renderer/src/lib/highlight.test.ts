@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { highlight } from "./highlight.js";
+import { clearHighlightCache, highlight } from "./highlight.js";
 
 const render = (code: string, lang?: string) =>
   renderToStaticMarkup(highlight(code, lang) as never);
@@ -46,5 +46,41 @@ describe("highlight", () => {
 
   it("handles an empty block", () => {
     expect(render("", "js")).toBe("");
+  });
+  it("returns the same tokenised tree for an unchanged block", () => {
+    /*
+     * The point of the cache: a streamed reply re-renders on every chunk, and
+     * the fences that already finished arriving must not be tokenised again.
+     * Identity is the observable proof that no second pass happened.
+     */
+    clearHighlightCache();
+    const code = 'const greeting = "hello"; // a note';
+    expect(highlight(code, "ts")).toBe(highlight(code, "ts"));
+  });
+
+  it("does not confuse two blocks that differ only by language", () => {
+    clearHighlightCache();
+    const code = "const x = 1;";
+    expect(highlight(code, "ts")).not.toBe(highlight(code, "python"));
+    // ...and the earlier one is still itself, not overwritten by the later.
+    expect(render(code, "ts")).toContain("tok-kw");
+  });
+
+  it("keeps a separator in the code from colliding with the language", () => {
+    clearHighlightCache();
+    // "ts" + NUL + "x" must not key the same as "" + NUL + "ts\u0000x".
+    const a = highlight("x", "ts");
+    const b = highlight("ts\u0000x", undefined);
+    expect(a).not.toBe(b);
+  });
+
+  it("bounds what it retains rather than growing for the whole session", () => {
+    clearHighlightCache();
+    const first = "const first = 1;";
+    const original = highlight(first, "ts");
+    // Push well past the limit, so the first entry cannot still be held.
+    for (let i = 0; i < 40; i += 1) highlight(`const filler${i} = ${i};`, "ts");
+    // Evicted, so this is tokenised afresh rather than handed back.
+    expect(highlight(first, "ts")).not.toBe(original);
   });
 });

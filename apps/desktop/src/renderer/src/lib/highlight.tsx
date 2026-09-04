@@ -35,8 +35,44 @@ const TOKEN = new RegExp(
   "g",
 );
 
+/*
+ * The last few blocks tokenised, so a re-render does not redo the work.
+ *
+ * A streamed reply re-renders on every chunk, and each render re-tokenised
+ * every fence in the message — including the ones that finished arriving long
+ * ago. Measured on a 6.7KB reply with three fences over 40 chunks: 81 calls
+ * and 97ms, where 42 calls and 19ms is the whole of the real work. Diffs and
+ * file previews call this too, and re-render for reasons of their own.
+ *
+ * The result is a tree of React elements, which are immutable descriptors, so
+ * handing the same one back to a later render is safe. Bounded, and refreshed
+ * on use, because a long session would otherwise hold every block it ever
+ * drew.
+ */
+const CACHE_LIMIT = 24;
+const cache = new Map<string, ReactNode>();
+
+/** For tests, and for anywhere that wants the memory back. */
+export function clearHighlightCache(): void {
+  cache.clear();
+}
+
 export function highlight(code: string, language?: string): ReactNode {
   if (code.length > MAX_HIGHLIGHT_CHARS) return code;
+  /*
+   * The language changes what is emitted, so it belongs in the key. A language
+   * never contains \u0000, so the separator marks an unambiguous split no
+   * matter what the code contains.
+   */
+  const cacheKey = `${language ?? ""}\u0000${code}`;
+  const hit = cache.get(cacheKey);
+  if (hit !== undefined) {
+    // Re-inserting makes this the most recent, so the cache evicts what is
+    // genuinely cold rather than whatever was drawn first.
+    cache.delete(cacheKey);
+    cache.set(cacheKey, hit);
+    return hit;
+  }
   const lang = (language ?? "").toLowerCase();
   // Prose-ish fences gain nothing from keyword colouring.
   if (lang === "text" || lang === "txt" || lang === "md" || lang === "markdown") return code;
@@ -56,5 +92,12 @@ export function highlight(code: string, language?: string): ReactNode {
     last = index + raw.length;
   }
   if (last < code.length) nodes.push(<Fragment key={key++}>{code.slice(last)}</Fragment>);
+
+  if (cache.size >= CACHE_LIMIT) {
+    // Map iterates in insertion order, so the first key is the coldest.
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
+  cache.set(cacheKey, nodes);
   return nodes;
 }

@@ -1,4 +1,4 @@
-import { Fragment, useState, type ReactNode } from "react";
+import { Fragment, memo, useState, type ReactNode } from "react";
 import { CopyIcon } from "../shell/icons";
 import { highlight } from "../../lib/highlight";
 import { splitFences } from "../../lib/fences";
@@ -198,7 +198,11 @@ function block(
   return out;
 }
 
-function CodeBlock({ code, language }: { code: string; language?: string }) {
+/*
+ * Memoised: while a reply streams, the fences that already finished arriving
+ * keep identical props, so they neither re-render nor re-tokenise.
+ */
+const CodeBlock = memo(function CodeBlock({ code, language }: { code: string; language?: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <div className="msg-code-wrap">
@@ -221,7 +225,7 @@ function CodeBlock({ code, language }: { code: string; language?: string }) {
       <pre className="msg-code mono">{highlight(code, language)}</pre>
     </div>
   );
-}
+});
 
 export function MessageBody({ content, githubBaseUrl }: { content: string; githubBaseUrl?: string }) {
   const { openFile, setBrowserUrl, setInspectorOpen, setInspectorTab } = useWorkspace();
