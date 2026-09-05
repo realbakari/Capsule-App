@@ -126,6 +126,7 @@ export function createRemoteBridge(token: string): CapsuleApi {
   const bridge = new Proxy(
     {
       homeDir: "",
+      getPathForFile: () => { throw new Error("File attachments are available in the desktop app, not the read-only viewer."); },
       on: (channel: string, handler: (payload: unknown) => void) => {
         const set = listeners.get(channel) ?? new Set();
         set.add(handler);

@@ -1,5 +1,5 @@
 import os from "node:os";
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 import {
   IPC_CHANNELS,
   IPC_EVENTS,
@@ -13,6 +13,7 @@ const api = {
   /* Resolved once at preload time so path display can abbreviate the home
      directory without an IPC round trip on every render. */
   homeDir: os.homedir(),
+  getPathForFile: (file: File): string => webUtils.getPathForFile(file),
   listProjects: () => ipcRenderer.invoke(IPC_CHANNELS.listProjects),
   createProject: (input: unknown) => ipcRenderer.invoke(IPC_CHANNELS.createProject, input),
   cloneRepository: (input: unknown) => ipcRenderer.invoke(IPC_CHANNELS.cloneRepository, input),
@@ -153,6 +154,8 @@ const api = {
   saveClipboardImage: () => ipcRenderer.invoke(IPC_CHANNELS.saveClipboardImage),
   registerBrowserView: (webContentsId: number | undefined) =>
     ipcRenderer.invoke(IPC_CHANNELS.registerBrowserView, webContentsId),
+  clearBrowserData: (webContentsId: number, kind: "cache" | "storage") =>
+    ipcRenderer.invoke(IPC_CHANNELS.clearBrowserData, webContentsId, kind),
   togglePet: (visible?: boolean) => ipcRenderer.invoke(IPC_CHANNELS.togglePet, visible),
   focusSession: (sessionId: string) => ipcRenderer.invoke(IPC_CHANNELS.focusSession, sessionId),
   validateAttachments: (attachments: Array<{ name: string; path: string; }>) =>

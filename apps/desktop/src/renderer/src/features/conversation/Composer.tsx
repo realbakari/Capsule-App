@@ -349,10 +349,11 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
          * out first. Text paste is left alone.
          */
         onPaste={(event) => {
+          try {
           const data = event.clipboardData;
           if (!data) return;
           const paths = Array.from(data.files)
-            .map((file) => (file as File & { path?: string }).path)
+            .map((file) => api.getPathForFile(file))
             .filter((filePath): filePath is string => Boolean(filePath));
           if (paths.length > 0) {
             event.preventDefault();
@@ -367,14 +368,20 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
           // normal text paste would stop working.
           event.preventDefault();
           void attachClipboardImage();
+          } catch (error) {
+            event.preventDefault();
+            workspace.setNotice(error instanceof Error ? error.message : String(error));
+          }
         }}
         onDrop={(event) => {
           event.preventDefault();
           setDropping(false);
+          try {
           const paths = Array.from(event.dataTransfer.files)
-            .map((file) => (file as File & { path?: string }).path)
+            .map((file) => api.getPathForFile(file))
             .filter((filePath): filePath is string => Boolean(filePath));
           if (paths.length > 0) void attachFiles(paths);
+          } catch (error) { workspace.setNotice(error instanceof Error ? error.message : String(error)); }
         }}
       >
         <ComposerMenu
