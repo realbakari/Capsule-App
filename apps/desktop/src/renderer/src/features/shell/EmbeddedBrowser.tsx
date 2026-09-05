@@ -193,6 +193,8 @@ export function EmbeddedBrowser({
   const { api } = useWorkspace();
   const initialUrl = address !== "http://localhost:3000" ? normalizedBrowserUrl(address) : "";
   const [currentUrl, setCurrentUrl] = useState(initialUrl);
+  // Keep the guest's initial src stable across committed navigations.
+  const [guestUrl, setGuestUrl] = useState(initialUrl);
   const [loading, setLoading] = useState(false);
   const [canGoBack, setCanGoBack] = useState(false);
   const [canGoForward, setCanGoForward] = useState(false);
@@ -251,8 +253,8 @@ export function EmbeddedBrowser({
     const next = normalizedBrowserUrl(address);
     if (!next || next === currentUrl) return;
     setError(undefined);
-    setCurrentUrl(next);
-    if (webviewRef.current) void webviewRef.current.loadURL(next);
+    if (webviewRef.current) void webviewRef.current.loadURL(next).catch((error) => setError(String(error)));
+    else { setGuestUrl(next); setCurrentUrl(next); }
   }, [address, currentUrl]);
 
   const rememberCurrentPage = () => {
@@ -295,7 +297,10 @@ export function EmbeddedBrowser({
     };
     const navigated = (event: Event) => {
       const next = (event as Event & { url?: string }).url;
-      if (next) publishAddress(next);
+      if (next && (event as Event & { isMainFrame?: boolean }).isMainFrame !== false) {
+        setCurrentUrl(next);
+        publishAddress(next);
+      }
       syncNavigation();
     };
     const failed = (event: Event) => {
@@ -344,8 +349,8 @@ export function EmbeddedBrowser({
     }
     setError(undefined);
     publishAddress(next);
-    if (webviewRef.current) void webviewRef.current.loadURL(next);
-    else setCurrentUrl(next);
+    if (webviewRef.current) void webviewRef.current.loadURL(next).catch((error) => setError(String(error)));
+    else { setGuestUrl(next); setCurrentUrl(next); }
   };
 
   const handlePickElement = async () => {
@@ -420,16 +425,8 @@ export function EmbeddedBrowser({
     const view = webviewRef.current;
     if (!view) return;
     try {
-      await view.executeJavaScript(`
-        try {
-          localStorage.clear();
-          sessionStorage.clear();
-          if ('caches' in window) {
-            caches.keys().then(keys => keys.forEach(key => caches.delete(key))).catch(() => {});
-          }
-        } catch {}
-      `);
-      showToast("Cache cleared");
+      await api.clearBrowserData(view.getWebContentsId(), "cache");
+      showToast("Browser HTTP cache cleared");
     } catch {
       showToast("Unable to clear cache");
     }
@@ -439,17 +436,11 @@ export function EmbeddedBrowser({
   const handleClearCookies = async () => {
     const view = webviewRef.current;
     if (!view) return;
+    if (!window.confirm("Clear cookies and site storage for all Capsule browser pages? This signs you out of those sites. Capsule projects and drafts are kept.")) return;
     try {
-      await view.executeJavaScript(`
-        try {
-          document.cookie.split(";").forEach((c) => {
-            document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
-          });
-          localStorage.clear();
-          sessionStorage.clear();
-        } catch {}
-      `);
-      showToast("Cookies and storage cleared");
+      await api.clearBrowserData(view.getWebContentsId(), "storage");
+      view.reload();
+      showToast("Browser cookies and site storage cleared");
     } catch {
       showToast("Unable to clear cookies");
     }
@@ -673,7 +664,7 @@ export function EmbeddedBrowser({
                   disabled={!currentUrl}
                   onClick={() => void handleClearCache()}
                 >
-                  Clear cache
+                  Clear browser HTTP cache
                 </button>
                 <button
                   type="button"
@@ -681,7 +672,7 @@ export function EmbeddedBrowser({
                   disabled={!currentUrl}
                   onClick={() => void handleClearCookies()}
                 >
-                  Clear cookies &amp; storage
+                  Clear browser cookies &amp; storage
                 </button>
               </div>
             )}
@@ -705,7 +696,7 @@ export function EmbeddedBrowser({
           <webview
             ref={webviewRef}
             className="embedded-browser-webview"
-            src={currentUrl}
+            src={guestUrl}
             partition="persist:capsule-browser"
             webpreferences="contextIsolation=yes,nodeIntegration=no,sandbox=yes"
           />

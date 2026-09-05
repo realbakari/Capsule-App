@@ -181,6 +181,7 @@ function withThumbnails(attachments: MessageAttachment[]): MessageAttachment[] {
  * held, so a destroyed page is never driven: the id outlives the contents.
  */
 let browserViewId: number | undefined;
+const browserGuestIds = new Set<number>();
 
 let browserMcp: BrowserMcpServer | undefined;
 let petWindow: BrowserWindow | undefined;
@@ -517,9 +518,15 @@ function createWindow(): BrowserWindow {
     webPreferences.nodeIntegration = false;
     webPreferences.contextIsolation = true;
     webPreferences.sandbox = true;
+    webPreferences.partition = "persist:capsule-browser";
   });
 
   window.webContents.on("did-attach-webview", (_event, contents) => {
+    browserGuestIds.add(contents.id);
+    contents.once("destroyed", () => {
+      browserGuestIds.delete(contents.id);
+      if (browserViewId === contents.id) browserViewId = undefined;
+    });
     contents.setWindowOpenHandler((details) => {
       void shell.openExternal(details.url);
       return { action: "deny" };
@@ -1322,7 +1329,19 @@ function registerIpc(): void {
     return true;
   });
   handle(IPC_CHANNELS.registerBrowserView, (webContentsId) => {
+    if (webContentsId !== undefined && (typeof webContentsId !== "number" || !browserGuestIds.has(webContentsId))) {
+      throw new Error("That browser page does not belong to Capsule.");
+    }
     browserViewId = typeof webContentsId === "number" ? webContentsId : undefined;
+    return true;
+  });
+  handle(IPC_CHANNELS.clearBrowserData, async (id, kind) => {
+    if (typeof id !== "number" || !browserGuestIds.has(id)) throw new Error("That browser page is no longer open.");
+    if (kind !== "cache" && kind !== "storage") throw new Error("Unknown browser data operation.");
+    const guest = webContents.fromId(id);
+    if (!guest || guest.isDestroyed()) throw new Error("That browser page is no longer open.");
+    const { clearBrowserData } = await import("./browser-data.js");
+    await clearBrowserData(guest.session, kind);
     return true;
   });
   handle(IPC_CHANNELS.saveClipboardImage, async () => {

@@ -22,6 +22,8 @@ describe("ipc scopes", () => {
       "sendMessage",
       "terminalStart",
       "terminalInput",
+      "clearBrowserData",
+      "registerBrowserView",
       "execInProject",
       "runProjectAction",
       "verifyRun",
