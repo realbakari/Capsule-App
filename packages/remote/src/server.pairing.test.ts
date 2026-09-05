@@ -1,7 +1,7 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 
 import { startRemoteServer, type RemoteServerHandle } from "./server.js";
@@ -13,6 +13,7 @@ import { startRemoteServer, type RemoteServerHandle } from "./server.js";
  */
 
 const called: string[] = [];
+const subscribers = new Set<(event: string, payload: unknown) => void>();
 let handle: RemoteServerHandle;
 let base: string;
 
@@ -26,7 +27,10 @@ beforeAll(async () => {
       called.push(channel);
       return { channel };
     },
-    subscribe: () => () => undefined,
+    subscribe: (send) => {
+      subscribers.add(send);
+      return () => { subscribers.delete(send); };
+    },
   });
   base = `http://127.0.0.1:${handle.port}`;
 });
@@ -127,5 +131,43 @@ describe("pairing a device", () => {
     expect(await rpc(session.token!, [{ id: 1, channel: "listSessions", args: [] }])).toEqual([
       { closed: 4401 },
     ]);
+  });
+
+  it.each(["revoke", "expire"])("disconnects an already connected device on %s", async (action) => {
+    const session = await pair(handle.pair(["read"]).split("#pair=")[1]!);
+    const paired = handle.sessions().at(-1)!;
+    const socket = new WebSocket(`ws://127.0.0.1:${handle.port}/rpc`);
+    await new Promise<void>((resolve, reject) => {
+      socket.once("error", reject);
+      socket.once("open", () => socket.send(JSON.stringify({ token: session.token })));
+      socket.once("message", () => resolve());
+    });
+    const closed = new Promise<number>((resolve) => socket.once("close", resolve));
+    const baseline = called.length;
+    const clock = action === "expire" ? vi.spyOn(Date, "now").mockReturnValue(paired.expiresAt + 1) : undefined;
+    try {
+      if (action === "revoke") handle.revoke(paired.id);
+      // Even a queued event cannot leak after expiry or revocation.
+      for (const send of subscribers) send("workspace", { private: true });
+      expect(await closed).toBe(4401);
+      expect(called).toHaveLength(baseline);
+    } finally {
+      clock?.mockRestore();
+      socket.close();
+    }
+  });
+
+  it.each(["null", "[]", '"text"', "{"])("contains malformed socket input %s", async (payload) => {
+    const socket = new WebSocket(`ws://127.0.0.1:${handle.port}/rpc`);
+    const closed = new Promise<number>((resolve) => socket.once("close", resolve));
+    socket.once("open", () => socket.send(payload));
+    expect(await closed).toBe(4400);
+    expect((await fetch(base)).status).toBe(200);
+  });
+
+  it("rejects malformed request paths and pairing bodies without stopping the server", async () => {
+    expect((await fetch(`${base}/%ZZ`)).status).toBe(404);
+    expect((await fetch(`${base}/pair`, { method: "POST", body: "null" })).status).toBe(400);
+    expect((await fetch(base)).status).toBe(200);
   });
 });

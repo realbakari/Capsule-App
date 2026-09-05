@@ -63,15 +63,39 @@ export function createRemoteBridge(token: string): CapsuleApi {
   let nextId = 1;
   let socket: WebSocket | undefined;
   let queue: string[] = [];
+  let ready = false;
+
+  function disconnect(connection: WebSocket, message = "Disconnected from Capsule. Check the result before retrying an action."): void {
+    if (socket !== connection) return;
+    ready = false;
+    socket = undefined;
+    // Rejected work has no owner waiting for its result. Never replay it on a
+    // later connection: it may create another turn or repeat a file write.
+    queue = [];
+    for (const waiting of pending.values()) waiting.reject(new Error(message));
+    pending.clear();
+    setTimeout(connect, 1_500);
+  }
+
+  function sendFrame(connection: WebSocket, message: string) {
+    try { connection.send(message); }
+    catch {
+      disconnect(connection);
+      connection.close();
+    }
+  }
 
   function connect(): void {
     const url = `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/rpc`;
-    socket = new WebSocket(url);
-    socket.addEventListener("open", () => {
-      socket?.send(JSON.stringify({ token }));
+    const connection = new WebSocket(url);
+    socket = connection;
+    ready = false;
+    connection.addEventListener("open", () => {
+      if (socket === connection) sendFrame(connection, JSON.stringify({ token }));
     });
-    socket.addEventListener("message", (event) => {
-      const frame = JSON.parse(String(event.data)) as {
+    connection.addEventListener("message", (event) => {
+      if (socket !== connection) return;
+      let frame: {
         type?: string;
         id?: number;
         result?: unknown;
@@ -80,9 +104,23 @@ export function createRemoteBridge(token: string): CapsuleApi {
         payload?: unknown;
         scopes?: string[];
       };
+      try {
+        const parsed: unknown = JSON.parse(String(event.data));
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error();
+        frame = parsed as typeof frame;
+      } catch {
+        disconnect(connection, "Capsule sent an unreadable response. Check the result before retrying an action.");
+        connection.close();
+        return;
+      }
       if (frame.type === "ready") {
-        for (const message of queue) socket?.send(message);
+        ready = true;
+        const messages = queue;
         queue = [];
+        for (const message of messages) {
+          if (socket !== connection) break;
+          sendFrame(connection, message);
+        }
         return;
       }
       if (frame.type === "event" && frame.event) {
@@ -97,13 +135,7 @@ export function createRemoteBridge(token: string): CapsuleApi {
         else waiting.resolve(frame.result);
       }
     });
-    socket.addEventListener("close", () => {
-      // Every call still waiting has no answer coming.
-      for (const waiting of pending.values()) waiting.reject(new Error("Disconnected from Capsule."));
-      pending.clear();
-      socket = undefined;
-      setTimeout(connect, 1_500);
-    });
+    connection.addEventListener("close", () => disconnect(connection));
   }
   connect();
 
@@ -113,7 +145,7 @@ export function createRemoteBridge(token: string): CapsuleApi {
     const promise = new Promise<unknown>((resolve, reject) => {
       pending.set(id, { resolve, reject });
     });
-    if (socket?.readyState === WebSocket.OPEN) socket.send(message);
+    if (ready && socket?.readyState === WebSocket.OPEN) sendFrame(socket, message);
     else queue.push(message);
     return promise;
   }

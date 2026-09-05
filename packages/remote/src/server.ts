@@ -71,13 +71,22 @@ export function lanAddress(): string | undefined {
 
 /** Resolves a request path inside the served directory, or nothing. */
 export function resolveStaticFile(serveDir: string, requestPath: string): string | undefined {
-  const relative = decodeURIComponent(requestPath.split("?")[0] ?? "/").replace(/^\/+/u, "");
+  let relative: string;
+  try {
+    relative = decodeURIComponent(requestPath.split("?")[0] ?? "/").replace(/^\/+/u, "");
+  } catch {
+    return undefined;
+  }
   const target = path.resolve(serveDir, relative || "index.html");
   const root = path.resolve(serveDir);
   // Containment: a request for ../../etc/passwd must not escape the folder.
   const inside = target === root || target.startsWith(`${root}${path.sep}`);
   if (!inside) return undefined;
-  if (existsSync(target) && statSync(target).isFile()) return target;
+  try {
+    if (statSync(target).isFile()) return target;
+  } catch {
+    // Missing, malformed, or removed between resolution and stat.
+  }
   const index = path.join(root, "index.html");
   return existsSync(index) ? index : undefined;
 }
@@ -88,6 +97,7 @@ export async function startRemoteServer(
   const grants: PairingGrant[] = [];
   let sessions: RemoteSession[] = [];
   const sockets = new Set<WebSocket>();
+  const disconnectBySocket = new Map<WebSocket, { sessionId: string; disconnect: () => void }>();
 
   const host = options.reach === "network" ? "0.0.0.0" : "127.0.0.1";
 
@@ -95,6 +105,7 @@ export async function startRemoteServer(
     return new Promise((resolve, reject) => {
       let body = "";
       request.on("data", (chunk) => {
+        if (body.length > 4_096) return;
         body += chunk;
         // A pairing request is a few dozen bytes; anything larger is not one.
         if (body.length > 4_096) reject(new Error("Request too large"));
@@ -117,7 +128,11 @@ export async function startRemoteServer(
     if (request.method === "POST" && request.url === "/pair") {
       void readBody(request)
         .then((body) => {
-          const payload = JSON.parse(body || "{}") as { token?: string; label?: string };
+          const payload: unknown = JSON.parse(body || "{}");
+          if (!isRecord(payload) || typeof payload.token !== "string" ||
+              (payload.label !== undefined && typeof payload.label !== "string")) {
+            throw new Error("Invalid pairing request");
+          }
           const result = exchangeGrant({
             grants: pruneExpired(grants),
             token: String(payload.token ?? ""),
@@ -145,10 +160,15 @@ export async function startRemoteServer(
       return;
     }
     response.writeHead(200, { "content-type": MIME[path.extname(file)] ?? "application/octet-stream" });
-    createReadStream(file).pipe(response);
+    const stream = createReadStream(file);
+    stream.on("error", () => response.destroy());
+    stream.pipe(response);
   });
 
-  const wss = new WebSocketServer({ server, path: "/rpc" });
+  const wss = new WebSocketServer({ server, path: "/rpc", maxPayload: 64 * 1024 });
+  // The HTTP listener owns startup errors. ws also re-emits them; leaving its
+  // error event unhandled would crash instead of rejecting startRemoteServer.
+  wss.on("error", () => {});
   wss.on("connection", (socket) => {
     let session: RemoteSession | undefined;
     /*
@@ -161,59 +181,88 @@ export async function startRemoteServer(
     }, 3_000);
 
     let unsubscribe: (() => void) | undefined;
+    let expiryTimer: ReturnType<typeof setTimeout> | undefined;
+    const disconnect = () => {
+      unsubscribe?.();
+      unsubscribe = undefined;
+      if (expiryTimer) clearTimeout(expiryTimer);
+      socket.close(4401, "session expired or revoked");
+    };
+    const authorized = (): RemoteSession | undefined => {
+      const current = sessions.find((item) => item.id === session?.id && item.expiresAt > Date.now());
+      if (!current) disconnect();
+      return current;
+    };
+    const send = (frame: unknown) => {
+      if (socket.readyState === socket.OPEN && authorized()) socket.send(JSON.stringify(frame));
+    };
 
     socket.on("message", (raw) => {
-      let frame: { id?: number; channel?: string; args?: unknown[]; token?: string };
+      let frame: Record<string, unknown>;
       try {
-        frame = JSON.parse(String(raw)) as typeof frame;
+        const parsed: unknown = JSON.parse(String(raw));
+        if (!isRecord(parsed)) throw new Error("Invalid frame");
+        frame = parsed;
       } catch {
+        socket.close(4400, "invalid request");
         return;
       }
 
       if (!session) {
-        const candidate = resolveSession(pruneExpired(sessions), String(frame.token ?? ""));
+        const candidate = typeof frame.token === "string"
+          ? resolveSession(pruneExpired(sessions), frame.token) : undefined;
         if (!candidate) {
           socket.close(4401, "unauthenticated");
           return;
         }
         session = candidate;
+        disconnectBySocket.set(socket, { sessionId: session.id, disconnect });
+        expiryTimer = setTimeout(disconnect, Math.max(0, session.expiresAt - Date.now()));
+        expiryTimer.unref();
         clearTimeout(authTimer);
         socket.send(JSON.stringify({ type: "ready", scopes: session.scopes }));
         unsubscribe = options.subscribe((event, payload) => {
-          socket.send(JSON.stringify({ type: "event", event, payload }));
+          send({ type: "event", event, payload });
         });
         options.onChange?.();
         return;
       }
 
-      const channel = String(frame.channel ?? "");
-      const id = Number(frame.id ?? 0);
-      if (!isChannelAllowed(channel, session.scopes)) {
-        socket.send(
-          JSON.stringify({ type: "result", id, error: `This device may not call ${channel}.` }),
-        );
+      const current = authorized();
+      if (!current) return;
+      if (typeof frame.channel !== "string" || !Number.isSafeInteger(frame.id) ||
+          !Array.isArray(frame.args)) {
+        socket.close(4400, "invalid request");
         return;
       }
-      void options
-        .invoke(channel, Array.isArray(frame.args) ? frame.args : [])
-        .then((result) => socket.send(JSON.stringify({ type: "result", id, result })))
+      const channel = frame.channel;
+      const id = frame.id;
+      if (!isChannelAllowed(channel, current.scopes)) {
+        send({ type: "result", id, error: `This device may not call ${channel}.` });
+        return;
+      }
+      const args = frame.args;
+      void Promise.resolve()
+        .then(() => authorized() ? options.invoke(channel, args) : undefined)
+        .then((result) => send({ type: "result", id, result }))
         .catch((error: unknown) =>
-          socket.send(
-            JSON.stringify({
+          send({
               type: "result",
               id,
               error: error instanceof Error ? error.message : String(error),
             }),
-          ),
         );
     });
 
     socket.on("close", () => {
       clearTimeout(authTimer);
+      if (expiryTimer) clearTimeout(expiryTimer);
       unsubscribe?.();
       sockets.delete(socket);
+      disconnectBySocket.delete(socket);
       options.onChange?.();
     });
+    socket.on("error", disconnect);
     sockets.add(socket);
   });
 
@@ -244,6 +293,9 @@ export async function startRemoteServer(
     },
     revoke: (id) => {
       sessions = sessions.filter((session) => session.id !== id);
+      for (const connection of disconnectBySocket.values()) {
+        if (connection.sessionId === id) connection.disconnect();
+      }
       options.onChange?.();
     },
     stop: async () => {
@@ -252,4 +304,8 @@ export async function startRemoteServer(
       await new Promise<void>((resolve) => server.close(() => resolve()));
     },
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
