@@ -57,8 +57,9 @@ Capsule is a workspace, not a clone of any other agent product. Quality bars els
 ## Folders
 
 Project and thread paths containing spaces remain unchanged in the UI. Local
-Gateway spawn and working-directory controls use a private alias internally;
-they no longer tell the user to move the project. Remote Gateway errors explain
+Gateway spawn uses a private alias internally; live cwd tuning is refused by
+the engine instead of mutating the project while a thread is bound. Local spawn
+does not tell the user to move the project. Remote Gateway errors explain
 the need for a host-side path/alias without changing the selected runtime route.
 
 A project is one or more real folders.
@@ -141,7 +142,7 @@ Tools: **Launch**, **Review**, **Terminal**, **Browser**, **Files**, **Side chat
   Thread-resolution state is not fetched or inferred; collapsed is not resolved.
   Timeline avatars sit on the event rail beside the author; heading contrast,
   wrapping and type scale are scoped to the PR reader rather than chat.
-- **Terminal** is a command form (`execInProject`) plus “Open Terminal.app”. It is not a PTY or xterm.
+- **Terminal** in the Inspector is a command form (`execInProject`) plus “Open Terminal.app”. The separate xterm dock is an interactive PTY. `PersistentTerminals` retains panes by folder; the chat host stays mounted but hidden in other views. Hide and Settings do not kill shells; closing a pane or quitting does. Main checks strict command policy on start and input, not just on the command runner. Existing processes are not retroactively stopped. PTYs hold a folder activity lease until exit, excluding checkpoint restore.
 - **Browser** polls `capsule:listLocalServers` while open. The filesystem adapter
   reads loopback listeners with `lsof`, performs bounded HTTP/HTTPS probes, and
   returns only endpoints that answer like web apps. Selecting one opens it in
@@ -152,6 +153,16 @@ Tools: **Launch**, **Review**, **Terminal**, **Browser**, **Files**, **Side chat
   strips preload, disables Node integration, requires context isolation + sandbox,
   and rejects non-HTTP(S) top-level navigation. The landing page keeps recently
   used addresses in renderer-local storage above live servers.
+  Committed main-frame navigation updates the address and external-open target
+  without resetting guest `src`. Main forces `persist:capsule-browser` on guest
+  attachment, tracks guest ownership, and limits clear-data IPC to owned guests.
+  Cache/storage clearing awaits the isolated Electron session operation;
+  application drafts/preferences are not touched. Clear-data and registration
+  are write-scoped for paired viewers.
+- File editors capture immutable project/root/path and their own revision cell.
+  Navigating flushes pending changes to that owner; late preview/listing reads
+  are rejected after selection changes. Old save replies do not update a new
+  document's revision or UI.
 - **Side chat** lists ACP harnesses and live sessions (spawn / cancel / close).
 
 Inspector-only shortcuts (ignored while typing, do not steal global `⌘P`):
@@ -184,9 +195,18 @@ HTTP and HTTPS links in rendered Markdown open the Inspector's embedded Browser
 surface. Non-web schemes keep the platform handler fallback.
 
 For a selected coding harness, the composer shows its live readiness detail and
-blocks send before spawn when the Gateway, acpx, folder, or CLI login is known
+blocks send before spawn when the selected route, folder, or CLI login is known
 to be unavailable. Doctor and Harnesses are linked from that notice. A live ACP
 session bypasses the spawn preflight.
+Direct readiness does not require Gateway/acpx. Harnesses and the composer use
+the same route decision. Engine admission and renderer submission guards refuse
+overlapping turns. Steer is shown only for active Gateway turns, never merely
+while a send is awaiting acknowledgement. Send-and-new-thread advances only on
+acceptance; read/refresh failure after acceptance cannot recreate the sent draft.
+Direct permissions become persisted approvals with approve-once/deny callbacks;
+session-wide approval is refused. Completion/cancellation settles pending
+requests. Unsupported live options fail before local persistence and their
+errors reach the UI.
 
 Git projects expose **Local / Worktree** in the composer. The selected
 conversation’s worktree branch appears in the reference strip.
@@ -196,6 +216,9 @@ The filesystem adapter revalidates up to eight files at 50 MB each. Message
 metadata is persisted as `messages.attachments` JSON (schema v9), while the
 runtime prompt receives a clearly-delimited list of exact paths. An empty text
 prompt is valid when at least one file is attached.
+Paste/drop paths come from Electron `webUtils.getPathForFile` through the
+preload, not the removed `File.path` property. Remote attachment attempts show
+a desktop-only error and cannot invoke the host file picker or send.
 
 Unsent composer text and attachment metadata are saved in renderer-local
 storage under a project/session-specific key. Prompt stash is also local: `⌘S`
@@ -233,6 +256,11 @@ Each finished turn captures the worktree as a hidden Git ref under
 offer **Restore this turn**: the project folder goes back to how that turn left
 it. Capture uses a throwaway index, so a half-staged change is untouched, and
 writes a parentless commit that appears in no branch and no `git log`.
+Restore also uses a private index (`git restore --worktree`), preserving the
+real staging area. Canonical folder activity excludes admitted turns, active
+runs, checks, saved actions and PTYs during restore, including overlapping parent
+and nested project folders and aliases. New local writes are
+refused while restoring. This is not a lock on external editors or processes.
 
 Changed-files outcomes are mounted inside their owning transcript turn, keyed
 by session/run/checkpoint, rather than in a conversation footer. New prompts
@@ -292,7 +320,7 @@ queue; Git's own locking and pre/post revision checks remain necessary.
 - Do not dump Artifacts or a second “run result” copy of the assistant reply.
 - Composer: actual file attachments, `/` commands, `@` file mentions, `$`
   skills, prompt stash, permission profile, folder chip, Terminal.app.
-- Mock runtime is first-class when the Gateway is down. It must never pretend it edited files. Prompt tokens: `[approval]`, `[fail]`, `[verify]`, `[multi]`, `[long]`, `[buzz]`, `[tool]`.
+- Mock runtime is first-class in explicit test mode (`autoConnect: false`), never a silent production fallback. Prompt tokens: `[approval]`, `[fail]`, `[verify]`, `[multi]`, `[long]`, `[buzz]`, `[tool]`.
 
 ### Project actions
 
@@ -303,6 +331,40 @@ output in memory, and exposes explicit list / stop IPC channels. Process groups
 are terminated on Stop, project or conversation deletion, and app shutdown.
 The IPC remains a closed set; there is no renderer-facing generic shell beyond
 the existing project command runner.
+
+The header and project screen share an asynchronous action editor. Saving
+disables repeat submissions and keeps the entered values visible on failure;
+only an acknowledged save closes it. Preview URLs accept HTTP(S) and bare
+host/port addresses. Oversized commands and action lists are rejected by the
+engine before persistence, rather than silently shortened or dropped.
+Both action menus treat repository-declared actions as shared. Saving a local
+action or a verification check stores only local additions and actual
+overrides, so future changes to shared commands continue to take effect.
+
+### Skill directory requests
+
+Catalog Retry increments the fetch request, and a failed refresh preserves
+the last catalog. Installed matches use IDs or source URLs, never names alone.
+The catalog and detail controls both load a nonempty document before saving;
+the engine also rejects empty instructions through every IPC entry point.
+Undeclared skill versions use an empty database field and deserialize as
+absent; the original non-null schema does not require a fabricated version.
+Attachment waits for persistence, and late install replies cannot navigate a
+different project, thread, or detail selection.
+
+Each Files view owns a `SkillFiles` reader. Refresh invalidates old folder and
+preview reads; file selection publishes only the newest response. Errors and
+loading states are separate for the root, each directory, and the selected
+preview. `SKILL.md` is preferred over the first alphabetical file. No global
+skill files are modified. These library controls are shared by both runtime
+routes and all harness presets. Existing remote write-channel checks remain
+authoritative; a denied operation stays visible as a recoverable UI error.
+
+The paired renderer waits for the socket's authenticated `ready` frame before
+sending queued requests. Disconnects reject pending calls and discard their
+queue; reconnection never retries writes without a caller. Socket identity
+guards reject late callbacks from an older connection. Invalid JSON fails
+pending calls with a readable connection error instead of stranding them.
 
 ---
 
@@ -340,6 +402,11 @@ pairing link, and the list of paired devices with a Revoke beside each. A
 paired device is granted the `read` scope only — every channel is classified
 in `packages/shared/src/ipc-scopes.ts`, an unclassified channel counts as a
 write, and the socket checks the scope before the handler runs.
+Revocation disconnects existing sockets and removes subscriptions immediately;
+absolute session expiry closes them too. Every request, event and delayed reply
+rechecks authorization. JSON primitives, malformed RPC shapes, oversized frames,
+invalid pairing bodies and malformed URL encodings fail closed. UI tests use a
+hidden, isolated renderer with network requests blocked, never the live profile.
 
 Harnesses uses a two-pane catalog/detail layout. Installed and ready entries
 sort first; selecting one reveals project dedication, Doctor output, start,
@@ -415,10 +482,13 @@ before the web contents does, so they are shown but not editable.
 
 ## What this app does not include
 
-- Monaco, xterm, or an in-app PTY
-- Embedded browser / webview
+- Monaco
 - Capsule-owned ACP JSON-RPC server or bundled Claude Agent SDK
 - GitHub OAuth (local `git` + `gh` only)
 - Messaging-channel protocols (Gateway owns those)
 
 When a limitation is lifted, delete it here and in ARCHITECTURE.md §9 in the same change.
+
+Public onboarding starts at `docs/user/getting-started.md`. README and policy
+pages distinguish actual routes, local verification, optional signing, browser
+traffic and global skill discovery. Regenerate public policy pages after changes.

@@ -1,6 +1,6 @@
 # Privacy
 
-**Last updated: 3 September 2026 · Applies to Capsule for macOS 0.1.0 and later**
+**Last updated: 5 September 2026 · Describes the current Capsule for macOS release**
 
 Capsule runs on your Mac and keeps your work there. This page describes exactly
 what the app stores, what it sends, and when. It describes the software's real
@@ -9,17 +9,19 @@ source or with a network monitor.
 
 ## The short version
 
-- Capsule has no analytics, no telemetry, and no crash reporting. Nothing
-  reports how you use it, and there is no server that receives anything.
-- Your conversations, prompts, files and projects stay on your Mac.
-- Capsule makes network requests only for things you ask it to do, plus one
-  update check a day. Each is listed below.
-- Your prompts do reach the AI provider you chose — but Capsule does not send
-  them. The coding CLI you installed does, under its own account and terms.
+- Capsule has no usage analytics, telemetry or automatic crash reporting to its
+  authors. It does not operate a hosted conversation service.
+- Workspace history is stored locally. Prompts and selected context reach your
+  chosen runtime and may leave the Mac through a provider, remote Gateway or
+  explicitly paired viewer.
+- Browsing, catalog requests, Git operations, release checks and optional
+  background integrations create network traffic described below.
+- Coding CLIs use their own accounts and terms. Capsule passes them prompts and
+  context; it does not control their network or file access.
 
 ## What is stored, and where
 
-Everything lives in your macOS Application Support folder, under
+App-managed state lives primarily in your macOS Application Support folder, under
 `~/Library/Application Support/@capsule/desktop/`.
 
 | What | Where | Notes |
@@ -27,28 +29,38 @@ Everything lives in your macOS Application Support folder, under
 | Projects, conversations, messages, runs | `state/capsule.sqlite` | A plain SQLite file you can open, copy or delete. |
 | Window size and position, appearance | `state/window-state.json` | |
 | Skills directory cache | `state/skill-catalog.json` | Public listings, cached so the app does not refetch on every launch. |
-| Gateway and skills.sh tokens | `state/secrets/secrets.json` | Encrypted with a key held in your macOS Keychain. |
-| Per-turn checkpoints | Inside your project's own `.git` | Hidden refs under `refs/capsule/checkpoints/`. Never pushed. |
+| Gateway and skills.sh tokens | `state/secrets/secrets.json` | Encrypted when platform secure storage is available; see the fallback below. |
+| Per-turn checkpoints | Inside your project's own `.git` | Hidden refs under `refs/capsule/checkpoints/`, excluded from Capsule's normal pushes. |
+| Drafts, stashes, browser history and site data | Electron profile storage | Browser pages use an isolated partition; clearing their data does not clear drafts. |
+| Pasted clipboard images | `attachments/` | Local files retained for message attachments. |
+| Gateway device identity and tokens | `state/identity/` | Private files, separate from encrypted settings tokens. |
 
-Deleting that folder removes everything Capsule knows. Uninstalling the app does
-not delete it, so remove it yourself if that is what you want.
+Removing that folder removes app-managed state, not project files, Git
+checkpoints or the coding CLIs' own history. Uninstalling does not erase those
+records. Quit before managing app files and back up anything you need. Token
+encryption depends on platform safeStorage; the adapter can fall back to a
+mode-0600 plaintext file when encryption is unavailable.
 
-Capsule reads files inside project folders you choose, and only there. It does
-not scan your disk.
+Workspace browsing is scoped to selected roots. Other features also read chosen
+attachments and icons, global skill directories, CLI transcripts for Usage,
+installed binaries and runtime configuration. Skills are discovered in Agent
+Skills, Codex, Claude and OpenCode configuration folders; Capsule does not
+recursively search the entire disk.
 
 ## What leaves your Mac
 
-Five things, and nothing else.
+Network activity depends on enabled features and the tools you run.
 
 **1. An update check, once a day.** A request to
 `api.github.com` asking for this project's latest release. It carries no
 identifier beyond a `capsule-desktop` user agent and whatever your network path
-reveals. GitHub's own logging applies. There is no way to switch this off in
-0.1.0; if that matters to you, block the host.
+reveals. The updater also reads release metadata. Requested downloads fetch
+release artifacts and may follow GitHub/CDN redirects. GitHub's logging applies.
 
 **2. The skills directory, when you open it.** Browsing or installing a skill
-queries `skills.sh` and GitHub's public API. Your search terms go to those
-services. If you never open Skills, nothing is sent.
+queries GitHub's API and raw content hosts; an optional configured token enables
+skills.sh. Search terms and requested skill identifiers can go to those services.
+Attaching a skill includes its instructions in the runtime prompt.
 
 **3. Your OpenClaw Gateway, when you use one.** By default this is
 `ws://127.0.0.1:18789` — your own machine. If you point Capsule at a Gateway on
@@ -56,9 +68,10 @@ another host, your prompts and project paths travel there, and that host's
 operator can see them. Capsule tells you which Gateway it is connected to in
 Settings → Gateway.
 
-**4. Git and GitHub, through your own tools.** Pushing, opening a pull request
-and reading review comments run `git` and the `gh` CLI on your machine with the
-credentials you already gave them. Capsule does not hold GitHub credentials.
+**4. Git and GitHub, through your tools.** Clone, fetch, push and pull-request
+operations run `git` and `gh` using existing credentials. Enabled review watching
+can poll in the background. Repository contents and review text travel according
+to the operation. Capsule does not store a separate GitHub account token.
 
 **5. Remote access, only if you turn it on.** Capsule can serve a read-only view
 of itself to another device on your network. It is off by default. When on, it
@@ -66,14 +79,30 @@ listens on loopback or your local network, requires a one-time pairing token
 that expires in five minutes, stores only a hash of that token, and refuses
 every write. Turning it off stops the server.
 
+Paired sessions expire twelve hours after pairing. Revoke immediately closes
+live connections. Network mode uses plain HTTP/WebSocket, not end-to-end
+encryption; use only a trusted network or a tunnel you manage.
+
+**6. Browser pages and previews.** Embedded pages connect to their sites and
+subresources and store cookies or site data in Capsule's browser partition.
+Search queries use the browser's search URL. Local-server discovery probes
+listening HTTP(S) endpoints. Browser screenshots or selected DOM context
+attached to a prompt become available to its runtime. External links use your
+system browser and its privacy settings when explicitly opened there.
+
+**7. Agents, commands and integrations.** Coding CLIs, saved actions and shells
+can read files and make their own network requests with your permissions.
+Gateway plugins and connected services have their own policies. Capsule's
+local-command and web preferences are not an operating-system network sandbox.
+
 ## What Capsule does *not* do
 
 - It does not send your prompts, code, file contents or conversation history to
   its authors. There is no Capsule server.
 - It does not include analytics, telemetry, session recording, crash reporting
   or A/B testing. There is no such code in the repository.
-- It does not read files outside the project folders you add.
-- It does not sell, share or transfer anything, because it collects nothing.
+- It does not sell workspace data. The feature-related transfers above are not
+  a promise that no information leaves the device.
 
 ## Your AI provider is a separate relationship
 

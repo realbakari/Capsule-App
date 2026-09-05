@@ -1,10 +1,10 @@
 # ACP harnesses
 
-Capsule owns the workspace: projects, conversations, runs, contracts, approvals, and artifacts. OpenClaw acpx owns the coding loop. Capsule never ships or installs Claude Code, Codex, Grok Build, or any other ACP CLI.
+Capsule owns the workspace: projects, conversations, runs, contracts, approvals, and artifacts. Coding CLIs own their loops, reached through OpenClaw acpx or a thin direct ACP client. Capsule never ships or installs coding CLIs.
 
 See [OpenClaw ACP agents](https://docs.openclaw.ai/tools/acp-agents) and [setup](https://docs.openclaw.ai/tools/acp-agents-setup).
 
-## Lifecycle Capsule implements
+## Gateway lifecycle Capsule implements
 
 | Action | What Capsule does |
 |--------|-------------------|
@@ -15,7 +15,7 @@ See [OpenClaw ACP agents](https://docs.openclaw.ai/tools/acp-agents) and [setup]
 | **Steer** | `sessions.steer` when the Gateway supports it, otherwise `/acp steer`. |
 | **Cancel** | `sessions.abort` plus `/acp cancel` for the in-flight turn. Binding stays. |
 | **Status** | `/acp status` — backend, mode, state, model, advertised model catalog, cwd, permissions, timeout. |
-| **Tune** | `/acp permissions`, `/acp model`, `/acp cwd`, `/acp timeout`, `/acp set-mode`. Advertised models become a selector; other agents retain a free-form model id. |
+| **Tune** | `/acp permissions`, `/acp model`, `/acp timeout`, `/acp set-mode`. Advertised models become a selector; others retain a free-form model id. Engine refuses live cwd changes rather than rewriting the project. |
 | **Close** | `/acp close` — ends the ACP session and unbinds. Capsule keeps the conversation history. |
 
 `sessions.create` does **not** accept `runtime: "acp"`. `sessions_spawn({ runtime: "acp" })` is an agent tool, not a Gateway session-create field.
@@ -79,8 +79,8 @@ mapping before use:
 
 If `acp.allowedAgents` is explicitly configured, Capsule preserves the existing
 entries and adds `grok`. It does not create an allowlist when none exists. The
-normal operator lifecycle remains `/acp spawn grok --bind off`; Capsule does not
-open or proxy Grok's stdio transport itself.
+Gateway operator lifecycle remains `/acp spawn grok --bind off`. In direct mode,
+Capsule instead opens Grok's native ACP stdio transport on this Mac.
 
 Model lists are capability-driven, not hard-coded per vendor. OpenClaw's status
 text includes acpx `runtimeDetails`; Capsule reads the model configuration option
@@ -89,6 +89,27 @@ current model still works through `/acp model <id>`, but the UI does not invent 
 catalog it cannot verify.
 
 ## Workspace
+
+### Direct sessions
+
+Presets with `acpxCommand` can use the direct route; others keep the Gateway.
+The `direct:acp:` key is authoritative for existing sessions regardless of later
+settings. Readiness and Doctor probe the local CLI/login without requiring a
+Gateway or acpx. Start is available in the composer and Harnesses alike.
+
+Direct text and tool activity feed the owning run. Permission requests are
+persisted and delivered to Approvals; callbacks are exactly-once, approve-once
+or deny only. An absent/unknown denial option cancels rather than selecting an
+allow option. No consumer means deny, not an indefinitely blocked prompt.
+Cancellation settles pending requests and waits for the active prompt to end;
+timeout does not pretend the process stopped. Close terminates only the owned
+child and awaits exit. Terminal run records reject late frames.
+
+Direct live model/permission/mode/timeout changes and Steer are not implemented:
+they throw before updating local settings. Models reported by a CLI remain
+readable; advertising a catalog is not evidence of live mutability. Cwd changes
+are refused for both routes. These are explicit limitations, not success text.
+Both routes reject overlapping turns and share local verification rules below.
 
 Turn verification is a workspace capability shared by every harness and both
 Gateway/direct routes. A runtime completion or tool-status message is not a
@@ -112,7 +133,7 @@ contains no output. No session loop or transport is replaced by this handling.
 - Approvals, run timeline, artifacts
 - ACP harnesses through OpenClaw acpx
 
-ACP sessions run on the Gateway host. OpenClaw sandbox policy does not wrap them. There is no TTY, so Capsule never pretends to ask:
+Gateway ACP sessions run on the Gateway host. OpenClaw sandbox policy does not wrap them. The Gateway's non-interactive policy is:
 
 - **Standard / Full access** → `plugins.entries.acpx.config.permissionMode=approve-all` (and `/acp permissions approve-all` on the session). Coding harnesses cannot write or fetch without this.
 - **Supervised** → `deny-all`. Tools that would need a prompt are refused.
@@ -129,7 +150,7 @@ If the UI says a CLI is already detected, the remaining step is **start/connect 
 
 ## What Capsule does not do
 
-- Speak ACP JSON-RPC to a harness over stdio
+- Implement a CLI's model/tool loop or a Capsule-owned ACP server
 - Install any coding CLI inside the app
 - Replace OpenClaw's native Codex plugin (`/codex bind`)
 - Own Discord/Telegram ACP channel bindings (those stay in Gateway config)

@@ -29,7 +29,9 @@ describe("public policy pages", () => {
   it("carries the words from the Markdown, converted", () => {
     const privacy = POLICY_PAGES.find((page) => page.slug === "privacy")!;
     // Real content, not a stub, and no leftover markup.
-    expect(privacy.html).toContain("no analytics, no telemetry");
+    expect(privacy.html).toContain("no usage analytics, telemetry or automatic crash reporting");
+    expect(privacy.html).toContain("may leave the Mac");
+    expect(privacy.html).toContain("plaintext file when encryption is unavailable");
     expect(privacy.html).toContain("<table>");
     expect(privacy.html).not.toMatch(/\*\*[A-Za-z]/);
     expect(privacy.html).not.toMatch(/^\s*#{1,6}\s/m);

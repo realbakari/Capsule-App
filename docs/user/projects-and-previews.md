@@ -2,6 +2,12 @@
 
 The titlebar keeps common project setup close to the conversation.
 
+When saving an action, the editor stays open until the save is confirmed.
+If saving fails, your command remains in the form alongside the error. Preview
+URLs can use HTTP, HTTPS, or a local address such as `localhost:5173`.
+Commands longer than 2,000 characters should be saved in a script; a project
+can store up to 24 local actions.
+
 ## Add or clone a project
 
 Use the folder-plus button in the sidebar to add a folder that already exists.
@@ -19,7 +25,9 @@ icon discovery.
 Folders containing spaces work with a Gateway running on this Mac. Capsule
 creates a private folder alias for the agent; your project stays in place and
 keeps its original path in Capsule. The alias points to the same files, not a
-copy. Starting an agent and changing its working directory both use this alias.
+copy. Gateway spawn uses this alias; direct agents receive the real path.
+Live working-directory changes are unavailable: start another thread in the
+desired folder instead.
 
 A Gateway on another machine needs a path it can read on that machine. If that
 path contains spaces, use a whitespace-free folder alias on the Gateway host.
@@ -67,6 +75,27 @@ toolbar supports back, forward, reload, an interactive element inspector,
 screenshot capture to clipboard, opening in the system browser, zoom controls,
 DevTools, and cache/cookie clearing. The Browser home keeps recently used pages
 above the live-server list.
+
+The system-browser action opens the currently committed page, including after
+redirects and in-page navigation. **Clear HTTP cache** clears browser cache;
+**Clear cookies and storage** clears the isolated browser's cookies and saved
+site data across its pages and can sign you out. Neither clears Capsule drafts
+or preferences. Errors remain visible if clearing fails.
+
+## Files and terminal ownership
+
+An open file keeps the project, folder and revision it was read from. Navigating
+elsewhere flushes its pending edit to that original file, never the new folder.
+Conflicts require an explicit reload or overwrite decision.
+
+The interactive terminal dock keeps a shell per opened folder. Hiding it,
+switching conversations or visiting Settings does not stop it. Close a shell's
+tab explicitly to stop it. Quitting Capsule closes its shells. The Inspector's
+Terminal remains a separate one-shot command runner.
+
+Strict local-command policy blocks new commands, terminal starts and shell
+input. It does not terminate existing commands or sandbox the coding CLI.
+Stop and close remain available; close shell tabs before restoring files.
 
 ## Pull requests
 

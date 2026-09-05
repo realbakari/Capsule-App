@@ -11,7 +11,7 @@
 [![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon%20(arm64)-black?style=flat-square&logo=apple)](https://github.com/realbakari/Capsule-App/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
 
-[Download Latest .dmg](https://github.com/realbakari/Capsule-App/releases/latest) · [Architecture](ARCHITECTURE.md) · [Desktop Spec](docs/internals/desktop.md) · [Harnesses](docs/internals/harness.md) · [Contributing](CONTRIBUTING.md)
+[Download Latest .dmg](https://github.com/realbakari/Capsule-App/releases/latest) · [First conversation](docs/user/getting-started.md) · [User guide](docs/README.md) · [Architecture](ARCHITECTURE.md) · [Contributing](CONTRIBUTING.md)
 
 </div>
 
@@ -24,30 +24,35 @@ Code, Codex, Grok Build and other ACP harnesses do the work; Capsule gives them
 a window — projects, conversations, diffs, approvals and a record of what each
 turn changed, on your own machine.
 
-It installs nothing on your behalf and holds no API keys. If a CLI is on your
-Mac and signed in, Capsule can drive it.
+It does not install coding CLIs or hold their provider API keys. Install and
+sign in to a supported CLI, then choose its available runtime route. Some
+harnesses require an OpenClaw Gateway and its ACP adapter.
 
 ### What it does
 
-**Runs the agents you have.** Start, steer, cancel and close a harness session,
+**Runs the agents you have.** Start, cancel and close a harness session,
 and switch a conversation from one agent to another without losing the thread.
+Steer and live setting changes depend on the runtime route; unsupported changes
+report a limitation instead of claiming success.
 
-**Shows the work, not just the answer.** Every turn keeps its commands, its
-tool calls, the files it touched and the lines it moved — and a checkpoint, so
-you can see what a single turn changed and put it back.
+**Keeps a record of the work.** Turns retain the activity the agent reports.
+Git-backed turns capture checkpoints for saved diffs and restoration. A completed
+reply is not proof that tests passed: verification receipts require a saved
+local check and matching revision evidence.
 
 **Reviews changes where you are.** Diffs, changed files, and pull requests read
 in the app instead of a browser tab.
 
 **Keeps your work on your Mac.** A local SQLite database, tokens encrypted in
-the Keychain, no analytics and no telemetry. Read [PRIVACY.md](PRIVACY.md) —
-it lists everything that leaves the machine, which is five things.
+the Keychain when available, no analytics and no telemetry. Read
+[PRIVACY.md](PRIVACY.md) for browser, provider, catalog and remote-access data flows.
 
 **Works without a Gateway.** Direct mode spawns an ACP-capable CLI itself, so
 an install with nothing else running still gets a working turn.
 
-**Ships signed.** Official builds are Developer ID signed and notarized by
-Apple, so Gatekeeper opens them without argument. Verify any download with
+**Verifiable downloads.** Packaging supports Developer ID signing and Apple
+notarization, but can also produce unsigned builds when credentials are absent.
+Check release notes and verify the downloaded app with
 `spctl --assess --type execute -vv /Applications/Capsule.app`.
 
 ---
@@ -94,7 +99,7 @@ pnpm test         # Run Vitest test suite under Electron
 pnpm lint         # Run ESLint across packages
 pnpm typecheck    # Run TypeScript checks
 pnpm build        # Build all packages and desktop renderer
-pnpm package:mac  # Package signed and notarized macOS release bundle
+pnpm package:mac  # Package macOS; signing/notarization require credentials
 ```
 
 If `pnpm dev` warns about Electron or native modules:
@@ -119,8 +124,8 @@ node scripts/ensure-native.mjs    # Compiles SQLite for Electron
 └──────────────┬───────────────────────────┬──────────────┘
                │                           │
 ┌──────────────▼────────────┐ ┌────────────▼──────────────┐
-│     OpenClaw Adapter      │ │        ACP Harness        │
-│ (Protocol 4 Gateway RPC)  │ │  (Claude Code / Codex)    │
+│     OpenClaw Adapter      │ │      Direct ACP host       │
+│ (Protocol 4 Gateway RPC)  │ │  (native ACP CLIs)         │
 └───────────────────────────┘ └───────────────────────────┘
 ```
 
@@ -147,6 +152,6 @@ agent is doing the work.
 
 MIT © Bakari Mustafa — see [LICENSE](LICENSE).
 
-- [Privacy](PRIVACY.md) — what is stored, and the five things that leave your Mac.
+- [Privacy](PRIVACY.md) — local storage and network activity.
 - [Security](SECURITY.md) — reporting a vulnerability, and what Capsule does and does not defend against.
 - [Terms of use](TERMS.md) — how the software is offered.

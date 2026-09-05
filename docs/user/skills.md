@@ -23,6 +23,10 @@ the complete downloaded skill folder, including references, scripts, images,
 and supporting documents. Capsule-managed skills that are stored in the
 library expose their `SKILL.md` there.
 
+The folder opens `SKILL.md` first. Selecting a different file shows its loading
+state and then its own preview. An unreadable file or folder has a **Retry**
+control; an empty folder is labelled separately.
+
 **Browse GitHub** lists skills read live from the repositories that
 publish them. Names come from the repository, descriptions from each skill's
 own file. The compact list opens detail on row selection and installs from the
@@ -50,3 +54,8 @@ expire roughly every 12 hours — the directory says so.
 Installing fetches the skill's text and stores it with the skill. If that text
 cannot be read, Capsule does not install it: a skill without its procedure
 would attach to a conversation and do nothing.
+
+**Install & Attach** waits until the instructions have been saved before adding
+the skill to chat. Failed installs and removals keep the detail open with an
+error you can retry. Pack installation follows the same rule. A skill with the
+same name from a different repository is a separate skill.

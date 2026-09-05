@@ -1,6 +1,6 @@
 # Security
 
-**Applies to Capsule for macOS · Last updated 3 September 2026**
+**Applies to Capsule for macOS · Last updated 5 September 2026**
 
 ## Reporting a vulnerability
 
@@ -24,8 +24,8 @@ nothing in thirty days, treat that as agreement to disclose.
 
 | Version | Supported |
 |---|---|
-| 0.1.x | Yes |
-| Anything older | No |
+| Latest published release | Yes |
+| Older releases | Upgrade for fixes |
 
 Capsule is pre-1.0 and ships from one branch. Fixes land in the next release
 rather than being backported.
@@ -35,11 +35,14 @@ rather than being backported.
 **Secrets.** The OpenClaw operator token and the skills.sh token are encrypted
 with a key held in the macOS Keychain, through Electron's `safeStorage`, and
 written to a file readable only by your user. Before 0.1.1 they were stored in
-plain text; upgrading re-encrypts them on the next write.
+plain text; upgrading re-encrypts them on the next write when encryption is
+available. The adapter falls back to a mode-0600 plaintext file if safeStorage
+is unavailable. Device identity credentials are also mode-0600 files.
 
-**The renderer has no shell.** Every capability the interface has is a named IPC
-channel with a handler in the main process. There is no generic "run this"
-bridge, and adding a capability means adding a channel deliberately.
+**Privileged capabilities are explicit.** The interface can start project
+commands and interactive shells through named IPC channels. Main enforces local
+command policy; read-only viewers cannot invoke them. Renderer JavaScript has
+no Node integration and no arbitrary main-process RPC bridge.
 
 **Remote access is read-only and off by default.** When enabled it binds to
 loopback unless you choose your local network, requires a one-time pairing token
@@ -47,21 +50,26 @@ that expires in five minutes, stores only a hash of that token, compares it in
 constant time, and refuses every channel classified as a write. A channel is
 classified as a write unless it is explicitly listed as a read, so a new one is
 refused by default rather than exposed by accident.
+Revocation and absolute twelve-hour expiry disconnect existing sockets, not
+just future logins. Requests, events and delayed replies recheck access. Network
+mode is plain HTTP/WebSocket; pairing does not encrypt the transport.
 
 **Filesystem access is scoped.** File operations refuse paths outside the
-project folders you added.
+project folders you added. Attachment, skill discovery, transcript and
+configuration readers have separate scopes; see [Privacy](PRIVACY.md).
 
-**Builds are signed.** Official releases are signed with a Developer ID
-certificate and notarized by Apple. You can check any download before opening
-it:
+**Verify release artifacts.** Packaging supports Developer ID signing and
+notarization with configured credentials and an unsigned fallback otherwise.
+Do not infer a signature from a release label. Check the download:
 
 ```bash
 codesign -dv --verbose=2 /Applications/Capsule.app
 spctl --assess --type execute -vv /Applications/Capsule.app
 ```
 
-The second should say `source=Notarized Developer ID`. A build that does not is
-not one of ours.
+The second reports `source=Notarized Developer ID` for a notarized build. If it
+does not, inspect the release's provenance and notes rather than bypassing
+Gatekeeper on the strength of this document.
 
 ## What Capsule does not protect against, by design
 

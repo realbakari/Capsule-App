@@ -7,6 +7,7 @@ need the shipped-product voice.
 
 ## Using Capsule
 
+- [Your first conversation](./user/getting-started.md)
 - [Keyboard shortcuts](./user/keyboard-shortcuts.md)
 - [Skills](./user/skills.md)
 - [Restoring a turn](./user/checkpoints.md)

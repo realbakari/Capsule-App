@@ -126,19 +126,20 @@ export function LandingPage({ demo = true }: { demo?: boolean }) {
 
       <section className="site-section">
         <p className="site-eyebrow">Requirements</p>
-        <h2>Three things, all local.</h2>
+        <h2>Your tools, your workspace.</h2>
         <div className="site-needs">
           <div>
-            <h3>A running OpenClaw Gateway</h3>
+            <h3>A runtime route</h3>
             <p>
-              With the acpx plugin enabled. Capsule talks to it over a local WebSocket; it does not
-              install or authenticate anything itself.
+              Use OpenClaw with acpx, or direct mode for a CLI with native ACP support.
+              Capsule does not install or authenticate coding CLIs for you.
             </p>
           </div>
           <div>
             <h3>At least one harness</h3>
             <p>
-              Any of the CLIs above, installed and signed in on the machine running the Gateway.
+              A supported CLI, installed and signed in on this Mac for direct mode,
+              or on the host running your Gateway.
             </p>
           </div>
           <div>

@@ -4,9 +4,9 @@
 
 Capsule is a local-first macOS workspace for AI agents.
 
-OpenClaw owns agent execution. Capsule owns the workspace: projects, conversations, runs, contracts, verification, policies, approvals, artifacts, and a native-feeling desktop UI.
+Coding CLIs own agent execution. Capsule owns the workspace: projects, conversations, runs, contracts, verification, policies, approvals, artifacts, and a native-feeling desktop UI. The Gateway route delegates to OpenClaw; direct mode is a thin native-CLI ACP client, not a model or tool loop.
 
-The OpenClaw Gateway is the single source of truth for sessions, routing, and channel connections. Capsule connects to it as an operator client over WebSocket. Messaging surfaces reach Capsule only as Gateway channels — Capsule never speaks those protocols itself.
+The OpenClaw Gateway owns its sessions and channel connections. Capsule connects to it as an operator client over WebSocket. Direct sessions belong to the local ACP host; a thread keeps the route encoded in its session key. Messaging surfaces reach Capsule only as Gateway channels — Capsule never speaks those protocols itself.
 
 Capsule is a TypeScript pnpm workspace, licensed MIT.
 
@@ -48,7 +48,7 @@ Capsule is a TypeScript pnpm workspace, licensed MIT.
               External channels (Telegram, Discord, …)
 ```
 
-**Key architectural principle:** The Gateway is the control plane. Capsule never imports OpenClaw internals (`src/**`). Integration uses `@openclaw/gateway-client`, `@openclaw/gateway-protocol`, and documented plugin SDK surfaces.
+The diagram shows the Gateway route. Direct turns instead follow Core → `DirectAcpHost` → native CLI over stdio. **Key architectural principle:** Capsule never imports OpenClaw internals (`src/**`). Gateway integration uses `@openclaw/gateway-client`, `@openclaw/gateway-protocol`, and documented plugin SDK surfaces.
 
 ---
 
@@ -78,7 +78,7 @@ Electron Main
 React Renderer
 ```
 
-There is no `execute(command: string)` IPC. The renderer may call things like `listProjects()`, `sendMessage()`, `getRun()`, and `resolveApproval()`.
+There is no unrestricted main-process RPC bridge. Named capabilities include project command execution and interactive terminals; handlers enforce local command policy. Read-only paired devices cannot call them. The renderer also calls `listProjects()`, `sendMessage()`, `getRun()`, and `resolveApproval()`.
 
 The renderer is a feature-split shell (sidebar, conversation, composer, inspector, runtimes), not a single view file. Tokens live in `@capsule/ui`. The renderer may import types from `@capsule/shared` but must not import Node APIs.
 
@@ -104,7 +104,8 @@ packages/
   verification        Contract checks + evaluation
   artifacts           Run outputs
   filesystem          Project-scoped file access
-  terminal            Native terminal open
+  terminal            Project commands, native terminal open, embedded PTY
+  acp                 Native CLI ACP stdio client and direct session host
   openclaw            Gateway adapter + mock runtime
   harness             Claude Code / Codex / Grok ACP lifecycle (doctor, spawn, steer, cancel, close)
   buzz                Gateway channel mapping
@@ -140,11 +141,11 @@ Frame shapes:
 
 Discovery order: configured URL → `~/.openclaw/openclaw.json` port → `127.0.0.1:18789`. Remote Gateways are a URL change, not a redesign.
 
-If the Gateway is down, Capsule falls back to `MockAgentRuntime` so projects and conversations still work.
+An unavailable Gateway is reported, not silently replaced with mock execution. Tests select `MockAgentRuntime` explicitly with `autoConnect: false`. Direct-capable harnesses can work without a Gateway when the configured route selects direct mode.
 
 ### Dedicated coding harnesses (ACP via acpx)
 
-Capsule does not own ACP. It is an operator client for OpenClaw acpx:
+On the Gateway route, Capsule is an operator client for OpenClaw acpx:
 
 ```
 Capsule UI  →  dedicate / spawn
@@ -160,7 +161,7 @@ Operator spawn creates a Gateway session, then sends `/acp spawn <id> --bind off
 
 Claude Code, Codex, and Grok Build are first-class. Grok's native `grok agent stdio` command is registered as a custom acpx agent before Doctor or Spawn. Other official acpx ids (Copilot, Cursor, Droid, Gemini, OpenCode, …) are spawnable from Runtimes. Codex ACP is the explicit fallback; native `/codex` stays on the Gateway when that plugin is enabled.
 
-ACP harnesses run on the Gateway host, not inside the OpenClaw sandbox. Capsule does not speak ACP JSON-RPC over stdio and does not install the CLIs.
+Gateway ACP harnesses run on the Gateway host, not inside the OpenClaw sandbox. Direct mode speaks ACP JSON-RPC over stdio to an installed native ACP CLI on this Mac. Neither route installs coding CLIs or implements their model/tool loop.
 
 ---
 
@@ -174,7 +175,7 @@ User request
     → Route (agent + skill)
     → Contract (required / forbidden)
     → Policy
-    → OpenClaw execution (or mock)
+    → Gateway or direct CLI execution (explicit mock in tests)
     → Verification
     → Evaluation
     → Artifact
@@ -211,7 +212,7 @@ channel bindings. Unsent drafts and prompt stashes are renderer-local
 preferences, not Gateway sessions. Live project-action processes and their
 bounded output are intentionally in memory; they stop with the app.
 
-Secrets never go in SQLite or the renderer. Gateway tokens live in macOS Keychain. Capsule's Ed25519 device identity and issued device tokens live as `0600` files under the user-data `identity/` directory. Tests may use a `0600` file store instead of Keychain.
+Secrets never go in SQLite or renderer settings. Gateway and catalog tokens use a `0600` file encrypted with Electron safeStorage when available, backed by the macOS Keychain. The adapter has a plaintext fallback when encryption is unavailable. Capsule's Ed25519 device identity and issued device tokens live as `0600` files under the user-data `identity/` directory.
 
 ---
 
@@ -228,6 +229,7 @@ The desktop shell is a compact agent workspace. Details and shortcuts live in [d
   (command runner, not PTY), Browser (validated local-server discovery plus a
   sandboxed HTTP(S)-only Electron guest), Files (expandable tree + image/code
   preview), Side chat (ACP sessions).
+- The separate xterm terminal dock is a PTY. Hiding it or visiting Settings preserves its shell; each folder owns its panes. Explicit close or app shutdown ends the process. It is distinct from the Inspector command runner.
 - Inbox is the projectless container (`~/Documents/Capsule`). A project has a primary folder plus optional extra folders (`extra_folders`, schema v6). Git projects may give a conversation its own `git worktree`; all conversation I/O resolves against that cwd.
 - The titlebar owns contextual project actions: saved commands, Open, Initialize Git, and branch state.
 - Settings: General, Appearance, Agents, Gateway, Projects, Source control, Skills, Shortcuts, Diagnostics, About.
@@ -240,12 +242,12 @@ Visual language is graphite and off-white, matching the Capsule mark. No purple 
 
 | # | Limitation | Detail |
 |---|-----------|--------|
-| 1 | Monaco / xterm PTY | Inspector Files has a preview + inline text editor (not Monaco). Terminal is `execInProject` plus Terminal.app, not an interactive PTY. Browser opens system URLs; there is no embedded webview. |
+| 1 | Editor / direct controls | Files has a conflict-aware editor, not Monaco. Direct sessions do not support live tuning or steer; failed changes are not persisted. |
 | 2 | Execution replay UI | Events are stored; a dedicated replay viewer is not shipped. |
 | 3 | Remote pairing UI | Loopback auto-approves Capsule's persisted Ed25519 identity; remote/non-local pairing still needs `openclaw devices approve`. |
 | 4 | Bonjour discovery | Local TCP probe and config-file hints work; mDNS browsing is not wired. |
 | 5 | Channel-to-run live ingest | Channel status is listed; inbound channel messages are not a live Capsule inbox yet. |
-| 6 | Notarization / auto-update | Packaging targets `Capsule.app` / `.dmg` for Apple Silicon; signing is prepared, not configured. |
+| 6 | Release assurance | Apple Silicon packaging supports signing/notarization with configured credentials and an unsigned fallback. In-place updates require a compatible build/feed; verify each release artifact. |
 | 7 | Dual Node/Electron native ABI | `better-sqlite3` is rebuilt for Electron. `pnpm test` runs Vitest under Electron so SQLite loads. |
 
 ---

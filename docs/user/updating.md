@@ -1,15 +1,16 @@
 # Updating Capsule
 
-The refresh button at the bottom-right of the sidebar checks whether a newer
-version has been published. Hover it to see what it found; when an update is
-available, clicking it opens the release page.
+Use the update control at the bottom of the sidebar to check for a newer release.
+Capsule also checks periodically. An update is not downloaded until you ask.
 
-Capsule does not install updates for you. Replacing a running app in place
-requires the new build to be signed and notarised with the same identity as the
-one already installed — otherwise macOS refuses to launch it. Capsule's builds
-are not signed, so an in-place updater would download something your Mac would
-then block. Downloading the release and replacing the app yourself is the
-honest path until that changes.
+When a compatible update feed is available, the control offers a download,
+shows progress, and then offers a restart to install. A downloaded update can
+also install when you quit. Finish active work and save files before either.
+Development builds, unsigned apps or releases without a compatible feed may
+not update in place; use the release page to download and replace the app.
+An update failure is not a successful install. Check the release notes and the
+signature of the particular download; do not disable system security checks to
+work around an unexplained warning.
 
 ## What the check can tell you
 

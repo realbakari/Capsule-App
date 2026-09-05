@@ -18,18 +18,24 @@ can list writes reported by that turn, but does not substitute your current
 repository changes or invent a saved diff.
 
 Restoring discards everything changed since that point — by the agent *and* by
-you — so Capsule asks first.
+you — so Capsule asks first. Stop agents, checks, actions and terminal panes in
+that folder or overlapping project folders before restoring; Capsule refuses
+while its own work is active.
+External editors and commands are outside this guard: stop those too.
 
 ## What it does to your repository
 
-Nothing you will trip over later:
+Checkpoints keep the worktree separate from your staging area and branch history:
 
 - **Your staged changes are left alone.** A checkpoint is captured through a
-  throwaway index, so a half-staged change you were in the middle of survives.
+  throwaway index, and restoration uses a private index too. Staged contents
+  survive both operations. Restoring may leave staged content different from
+  the restored files; review before committing.
 - **No branch, tag, or commit appears in your history.** Checkpoints are stored
   outside the branches and tags git shows you, so `git log`, `git branch` and
   your git client look exactly as they did.
-- **Nothing is pushed.** Checkpoints are local to your machine.
+- **Normal pushes exclude checkpoints.** They stay local unless you explicitly
+  copy or push their hidden refs using other Git tools.
 
 Projects that are not git repositories do not get checkpoints, and the restore
 control does not appear for them.

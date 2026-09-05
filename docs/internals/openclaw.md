@@ -53,6 +53,11 @@ does not count as execution evidence. Saved local checks are explicit desktop
 actions, not Gateway RPCs, and certify only the recorded local revision. Direct
 ACP runs follow the same rule. No remote-host verification is implied.
 
+Session-key route selection also governs Stop, Close and option changes. Direct
+turns must not call Gateway cancellation. Unsupported direct changes throw
+before persistence; both routes refuse live cwd retargeting. `DirectAcpHost`
+is a native CLI transport, not another Gateway. See [harnesses](harness.md).
+
 ## What Capsule must not do
 
 - Import `openclaw/src/**`

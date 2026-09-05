@@ -3,6 +3,9 @@
 Capsule can serve the workspace to a browser on your phone or another Mac, so
 you can watch a long run without sitting at the machine doing it.
 
+If the connection drops while a request is waiting, Capsule reports the lost
+connection and discards that request. It does not repeat it on reconnect.
+
 A paired device can **read**. It cannot send a prompt, open a terminal, run a
 project action, write a file, or change a setting. Those are a separate scope,
 and nothing in the app hands one out.
@@ -64,13 +67,13 @@ The page pairs itself and the workspace appears.
 
 A link is **single use** and lasts **five minutes**. Pairing a second device
 means creating a second link. A paired device stays paired for twelve hours of
-inactivity, then has to pair again.
+elapsed time since pairing, then has to pair again, even if it stayed connected.
 
 ## Taking access away
 
 Every paired device is listed under **Paired devices** with a **Revoke**
-beside it. Revoking takes effect on that device's next request — it does not
-wait for anything to expire.
+beside it. Revoking immediately closes that device's live connections and stops
+event delivery. Replies still being read are not delivered after revocation.
 
 Setting the reach back to **Off** revokes everything at once.
 

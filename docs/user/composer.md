@@ -16,7 +16,9 @@ agent messages. Previous records remain stored.
 When the running agent offers models, choose one beside its name in the
 composer. Changing it updates the session without posting a message or a status
 banner, and leaves your draft untouched. This also applies to model changes in
-Harnesses. To inspect the session's raw status, open **Harnesses**, select the
+Harnesses when the runtime supports it. Direct sessions currently reject live
+model/permission changes with an error and leave the saved selection unchanged.
+To inspect the session's raw status, open **Harnesses**, select the
 session with **Refresh**, and expand **Session diagnostics**. Diagnostics stay
 with that session and are collapsed by default.
 
@@ -25,6 +27,15 @@ with that session and are collapsed by default.
 Choose the paperclip or drop files onto the composer. Selected files appear as
 removable chips before you send and as openable attachments in the timeline.
 An attachment-only message is allowed.
+
+Pasting files uses the same attachment validation as dropping them. Pasted
+clipboard images are saved locally first. Attachments are desktop-only; a
+paired read-only viewer cannot attach files or send messages.
+
+Only one turn may run in a thread at a time. Wait or **Stop** before sending a
+follow-up; Gateway sessions offer **Steer** during a live turn when supported.
+Send-and-new-conversation stays put on a rejected send. A refresh failure after
+an accepted send does not restore an already-sent draft.
 
 Capsule validates the file again at send time and gives the agent its exact
 local path. A missing file is refused instead of being silently omitted. Each
