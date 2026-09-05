@@ -1,7 +1,10 @@
-import { useState, useMemo, useEffect } from "react";
-import type { FileEntry, FilePreview, Skill, SkillPack, SkillCatalogEntry } from "@capsule/shared";
+import { useState, useMemo, useEffect, useRef, useSyncExternalStore } from "react";
+import type { FileEntry, Skill, SkillPack, SkillCatalogEntry } from "@capsule/shared";
 import { useWorkspace } from "../../lib/workspace";
 import { skillMarkdownBody } from "../../lib/skill-markdown";
+import { installedCatalogSkill, installSkillWithContent } from "../../lib/skill-install";
+import { SkillFiles } from "../../lib/skill-files";
+import { formatUserError } from "../../lib/errors";
 import { MessageBody } from "../conversation/MessageBody";
 import {
   SearchIcon,
@@ -61,6 +64,7 @@ function InstalledSkillGroup({
   skills,
   empty,
   skillId,
+  installing,
   onInspect,
   onAttach,
 }: {
@@ -69,8 +73,9 @@ function InstalledSkillGroup({
   skills: Skill[];
   empty: string;
   skillId?: string;
+  installing: string | null;
   onInspect: (skill: Skill) => void;
-  onAttach: (id: string) => void;
+  onAttach: (skill: Skill) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const visibleSkills = expanded ? skills : skills.slice(0, 12);
@@ -102,10 +107,11 @@ function InstalledSkillGroup({
               <button
                 type="button"
                 className={`installed-skill-attach${skillId === skill.id ? " attached" : ""}`}
-                onClick={() => onAttach(skill.id)}
+                disabled={installing !== null}
+                onClick={() => onAttach(skill)}
               >
                 {skillId === skill.id ? <CheckIcon size={13} /> : <PlusIcon size={13} />}
-                {skillId === skill.id ? "Attached" : "Attach"}
+                {installing === skill.id ? "Loading…" : skillId === skill.id ? "Attached" : "Attach"}
               </button>
             </div>
           ))}
@@ -125,73 +131,11 @@ function InstalledSkillGroup({
 }
 
 function SkillFolderExplorer({ skill }: { skill: Skill }) {
-  const [listing, setListing] = useState<FileEntry[]>([]);
-  const [childrenByDirectory, setChildrenByDirectory] = useState<Record<string, FileEntry[]>>({});
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [loadingDirectories, setLoadingDirectories] = useState<Set<string>>(new Set());
-  const [preview, setPreview] = useState<FilePreview | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const files = useMemo(() => new SkillFiles(skill.id, window.capsule), [skill.id]);
+  const { listing, children, expanded, loadingDirectories, directoryErrors, loading,
+    preview, selected, previewLoading, previewError, error } = useSyncExternalStore(files.subscribe, files.getSnapshot, files.getSnapshot);
   const folderPath = skill.location?.replace(/[\\/]SKILL\.md$/i, "");
-
-  useEffect(() => {
-    let cancelled = false;
-    setListing([]);
-    setChildrenByDirectory({});
-    setExpanded(new Set());
-    setPreview(null);
-    setError(null);
-    void window.capsule
-      .listSkillFiles(skill.id)
-      .then(async (entries) => {
-        if (cancelled) return;
-        const nextEntries = entries as FileEntry[];
-        setListing(nextEntries);
-        const firstFile = nextEntries.find((entry) => entry.type === "file");
-        if (!firstFile) return;
-        const doc = (await window.capsule.previewSkillFile(skill.id, firstFile.path)) as FilePreview;
-        if (!cancelled) setPreview(doc);
-      })
-      .catch((reason: unknown) => {
-        if (!cancelled) setError(reason instanceof Error ? reason.message : String(reason));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [skill.id]);
-
-  async function toggleDirectory(relative: string) {
-    const next = new Set(expanded);
-    if (next.has(relative)) {
-      next.delete(relative);
-      setExpanded(next);
-      return;
-    }
-    next.add(relative);
-    setExpanded(next);
-    if (childrenByDirectory[relative]) return;
-    setLoadingDirectories((current) => new Set(current).add(relative));
-    try {
-      const entries = (await window.capsule.listSkillFiles(skill.id, relative)) as FileEntry[];
-      setChildrenByDirectory((current) => ({ ...current, [relative]: entries }));
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setLoadingDirectories((current) => {
-        const remaining = new Set(current);
-        remaining.delete(relative);
-        return remaining;
-      });
-    }
-  }
-
-  async function previewFile(relative: string) {
-    try {
-      setPreview((await window.capsule.previewSkillFile(skill.id, relative)) as FilePreview);
-      setError(null);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
-    }
-  }
+  useEffect(() => { void files.load(); }, [files]);
 
   function rows(entries: FileEntry[], depth = 0) {
     return entries.map((entry) => {
@@ -204,7 +148,7 @@ function SkillFolderExplorer({ skill }: { skill: Skill }) {
               className="skill-file-tree-row"
               style={{ paddingLeft: `${0.55 + depth * 0.75}rem` }}
               aria-expanded={open}
-              onClick={() => void toggleDirectory(entry.path)}
+              onClick={() => void files.toggle(entry.path)}
             >
               {open ? <ChevronDownIcon size={11} /> : <ChevronRightIcon size={11} />}
               <FolderIcon size={13} />
@@ -215,9 +159,10 @@ function SkillFolderExplorer({ skill }: { skill: Skill }) {
                 <div className="skill-file-tree-loading" style={{ paddingLeft: `${1.8 + depth * 0.75}rem` }}>
                   Loading…
                 </div>
-              ) : (
-                rows(childrenByDirectory[entry.path] ?? [], depth + 1)
-              )
+              ) : directoryErrors[entry.path] ? <div className="skill-folder-error" role="alert">
+                {directoryErrors[entry.path]} <button type="button" className="ghost" onClick={() => void files.loadDirectory(entry.path)}>Retry</button>
+              </div> : children[entry.path]?.length === 0 ? <p className="skill-file-note">Empty folder.</p>
+                : rows(children[entry.path] ?? [], depth + 1)
             ) : null}
           </div>
         );
@@ -225,10 +170,11 @@ function SkillFolderExplorer({ skill }: { skill: Skill }) {
       return (
         <button
           type="button"
-          className={`skill-file-tree-row file${preview?.path === entry.path ? " active" : ""}`}
+          className={`skill-file-tree-row file${selected === entry.path ? " active" : ""}`}
+          aria-current={selected === entry.path ? "true" : undefined}
           style={{ paddingLeft: `${1.8 + depth * 0.75}rem` }}
           key={entry.path}
-          onClick={() => void previewFile(entry.path)}
+          onClick={() => void files.select(entry.path)}
         >
           <FileIcon size={12} />
           <span>{entry.name}</span>
@@ -246,13 +192,15 @@ function SkillFolderExplorer({ skill }: { skill: Skill }) {
         </div>
         <span className="skill-folder-readonly">Read only</span>
       </div>
-      {error ? <div className="skill-folder-error">{error}</div> : null}
+      {error ? <div className="skill-folder-error" role="alert">{error} <button type="button" className="ghost" onClick={() => void files.load()}>Retry</button></div> : null}
       <div className="skill-folder-workspace">
         <div className="skill-file-tree">
-          {listing.length > 0 ? rows(listing) : <p>No files available.</p>}
+          {loading ? <p role="status">Loading files…</p> : listing.length > 0 ? rows(listing) : !error && <p>No files available.</p>}
         </div>
         <div className="skill-file-preview">
-          {preview ? (
+          {previewLoading ? <p role="status">Loading {selected}…</p> : previewError ? <div className="skill-folder-error" role="alert">
+            {previewError} <button type="button" className="ghost" onClick={() => selected && void files.select(selected)}>Retry</button>
+          </div> : preview ? (
             <>
               <div className="skill-file-preview-bar">
                 <span className="mono">{preview.path}</span>
@@ -288,6 +236,9 @@ export function SkillsDirectory() {
     skills,
     skillPacks,
     skillId,
+    projectId,
+    sessionId,
+    view,
     setSkillId,
     setView,
     setBrowserUrl,
@@ -304,7 +255,11 @@ export function SkillsDirectory() {
   const [search, setSearch] = useState("");
   const [inspectSkill, setInspectSkill] = useState<Skill | null>(null);
   const [inspectPack, setInspectPack] = useState<SkillPack | null>(null);
-  const [inspectContent, setInspectContent] = useState<string | null>(null);
+  const [inspectDocument, setInspectDocument] = useState<{ skill: Skill; content?: string; error?: string }>();
+  const [inspectRetry, setInspectRetry] = useState(0);
+  const inspectContent = inspectDocument?.skill === inspectSkill ? inspectDocument?.content : undefined;
+  const inspectError = inspectDocument?.skill === inspectSkill ? inspectDocument?.error : undefined;
+  const inspectLoading = Boolean(inspectSkill && inspectDocument?.skill !== inspectSkill);
   const [inspectModalTab, setInspectModalTab] = useState<
     "instructions" | "cli" | "source" | "files"
   >("instructions");
@@ -319,6 +274,12 @@ export function SkillsDirectory() {
   const [importNotice, setImportNotice] = useState<string | null>(null);
   const [copiedCmd, setCopiedCmd] = useState<string | null>(null);
   const [installing, setInstalling] = useState<string | null>(null);
+  const [mutationError, setMutationError] = useState<string>();
+  const mutationPending = useRef(false);
+  const selection = useRef({ inspectSkill, inspectPack, projectId, sessionId, view, skillId });
+  selection.current = { inspectSkill, inspectPack, projectId, sessionId, view, skillId };
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [refreshingInstalled, setRefreshingInstalled] = useState(false);
   const [showAllCatalog, setShowAllCatalog] = useState(false);
 
@@ -340,7 +301,6 @@ export function SkillsDirectory() {
         setDirectoryError(null);
       } catch (error) {
         if (cancelled) return;
-        setDirectoryResults([]);
         setDirectoryError(error instanceof Error ? error.message : String(error));
       } finally {
         if (!cancelled) {
@@ -359,26 +319,23 @@ export function SkillsDirectory() {
 
   // Inspect skill detail content
   useEffect(() => {
-    if (!inspectSkill) {
-      setInspectContent(null);
-      return;
-    }
+    let cancelled = false;
+    if (!inspectSkill) return;
     setInspectModalTab("instructions");
-    if (inspectSkill.content) {
-      setInspectContent(inspectSkill.content);
+    setMutationError(undefined);
+    if (inspectSkill.content?.trim()) {
+      setInspectDocument({ skill: inspectSkill, content: inspectSkill.content });
       return;
     }
-    const catalogId = inspectSkill.url?.startsWith("https://github.com/")
-      ? inspectSkill.id
-      : undefined;
-    if (!catalogId) {
-      setInspectContent(inspectSkill.content ?? null);
-      return;
-    }
-    void fetchSkillDetail(catalogId).then((doc) => {
-      setInspectContent(doc ?? inspectSkill.content ?? null);
+    setInspectDocument(undefined);
+    void fetchSkillDetail(inspectSkill.id).then((content) => {
+      if (!cancelled) setInspectDocument({ skill: inspectSkill, content,
+        error: content?.trim() ? undefined : "SKILL.md could not be loaded for this skill." });
+    }).catch((error: unknown) => {
+      if (!cancelled) setInspectDocument({ skill: inspectSkill, error: formatUserError(error) });
     });
-  }, [inspectSkill, fetchSkillDetail]);
+    return () => { cancelled = true; };
+  }, [inspectSkill, fetchSkillDetail, inspectRetry]);
 
   const filteredSkills = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -416,11 +373,15 @@ export function SkillsDirectory() {
   const skillsShFailed = directoryPartial.some((reason) => /skills\.sh/i.test(reason));
   const visibleDirectoryResults =
     search.trim() || showAllCatalog ? directoryResults : directoryResults.slice(0, 24);
+  const inspectedPackSkills = inspectPack ? skills.filter((skill) => skill.packId === inspectPack.id) : [];
+  const inspectedPackInstalled = inspectedPackSkills.length > 0 && inspectedPackSkills.every((skill) => skill.status === "installed");
 
   async function refreshInstalledSkills() {
     setRefreshingInstalled(true);
     try {
       await refresh();
+    } catch (error) {
+      setMutationError(formatUserError(error));
     } finally {
       setRefreshingInstalled(false);
     }
@@ -431,21 +392,61 @@ export function SkillsDirectory() {
    * the skill has nothing to inject; refusing to save it is better than saving
    * something that silently does nothing.
    */
-  async function installFromCatalog(entry: SkillCatalogEntry) {
-    setInstalling(entry.id);
+  async function mutate(key: string, work: () => Promise<void>) {
+    if (mutationPending.current) return;
+    mutationPending.current = true;
+    setInstalling(key); setMutationError(undefined); setImportNotice(null);
     try {
-      const doc = await fetchSkillDetail(entry.id);
-      if (!doc) {
-        setImportNotice(`Could not read SKILL.md for ${entry.name}; nothing was installed.`);
-        setTimeout(() => setImportNotice(null), 5000);
-        return;
-      }
-      await installSkill(skillFromCatalog(entry, "installed", doc));
-      setImportNotice(`Installed ${entry.name}.`);
-      setTimeout(() => setImportNotice(null), 3000);
+      await work();
+    } catch (error) {
+      if (mounted.current) setMutationError(formatUserError(error));
     } finally {
-      setInstalling(null);
+      mutationPending.current = false;
+      if (mounted.current) setInstalling(null);
     }
+  }
+
+  async function installRequestedSkill(skill: Skill, attach = false) {
+    const owner = selection.current;
+    await mutate(skill.id, async () => {
+      const saved = await installSkillWithContent(skill, { fetchSkillDetail, installSkill });
+      if (!mounted.current) return;
+      setImportNotice(`Installed ${saved.name}.`);
+      const current = selection.current;
+      if (current.inspectSkill !== owner.inspectSkill) return;
+      if (owner.inspectSkill?.id === skill.id) setInspectSkill(saved);
+      if (attach && current.projectId === owner.projectId && current.sessionId === owner.sessionId && current.view === owner.view) {
+        setSkillId(saved.id); setInspectSkill(null); setView("chat");
+      }
+    });
+  }
+
+  async function installPack(pack: SkillPack) {
+    await mutate(`pack:${pack.id}`, async () => {
+      await installSkillPack(pack.id);
+      if (mounted.current) setImportNotice(`Installed pack: ${pack.name}.`);
+    });
+  }
+
+  function attachSkill(skill: Skill) {
+    if (mutationPending.current) return;
+    if (!skill.content?.trim()) {
+      void installRequestedSkill({ ...skill, content: inspectSkill?.id === skill.id ? inspectContent : undefined }, true);
+      return;
+    }
+    setSkillId(skill.id);
+    setInspectSkill(null);
+    setView("chat");
+  }
+
+  async function removeSkill(skill: Skill) {
+    await mutate(`remove:${skill.id}`, async () => {
+      await uninstallSkill(skill.id);
+      if (!mounted.current) return;
+      if (selection.current.skillId === skill.id) setSkillId(undefined);
+      setInspectSkill((current) => current?.id === skill.id ? { ...current, status: "available" } : current);
+      setImportNotice(`Uninstalled ${skill.name}.`);
+    });
   }
 
   async function handleCopyText(text: string) {
@@ -514,7 +515,8 @@ export function SkillsDirectory() {
         </div>
       </div>
 
-      {importNotice && <div className="skills-notice">{importNotice}</div>}
+      {importNotice && <div className="skills-notice" role="status">{importNotice}</div>}
+      {mutationError && !inspectSkill && !inspectPack && <p className="skill-folder-error" role="alert">{mutationError}</p>}
 
       <div className="skills-tabs">
         <button
@@ -564,11 +566,9 @@ export function SkillsDirectory() {
             skills={globalSkills}
             empty="No matching global skills were found. Global installs appear here automatically."
             skillId={skillId}
+            installing={installing}
             onInspect={setInspectSkill}
-            onAttach={(id) => {
-              setSkillId(id);
-              setView("chat");
-            }}
+            onAttach={attachSkill}
           />
 
           <InstalledSkillGroup
@@ -577,11 +577,9 @@ export function SkillsDirectory() {
             skills={capsuleSkills}
             empty="No matching Capsule-managed skills are installed."
             skillId={skillId}
+            installing={installing}
             onInspect={setInspectSkill}
-            onAttach={(id) => {
-              setSkillId(id);
-              setView("chat");
-            }}
+            onAttach={attachSkill}
           />
         </div>
       )}
@@ -621,11 +619,11 @@ export function SkillsDirectory() {
                   <button
                     type="button"
                     className={`installed-skill-attach${allInstalled ? " attached" : ""}`}
-                    disabled={allInstalled}
-                    onClick={() => void installSkillPack(pack.id)}
+                    disabled={allInstalled || installing !== null}
+                    onClick={() => void installPack(pack)}
                   >
                     {allInstalled ? <CheckIcon size={13} /> : <PlusIcon size={13} />}
-                    {allInstalled ? "Installed" : "Install"}
+                    {installing === `pack:${pack.id}` ? "Installing…" : allInstalled ? "Installed" : "Install"}
                   </button>
                 </div>
               );
@@ -682,7 +680,7 @@ export function SkillsDirectory() {
             {!searching && directoryError && (
               <div className="skills-empty">
                 <p>Could not reach GitHub: {directoryError}</p>
-                <button type="button" className="ghost" onClick={() => setSearch((q) => q)}>
+                <button type="button" className="ghost" onClick={() => setRefreshToken((value) => value + 1)}>
                   Retry
                 </button>
               </div>
@@ -695,12 +693,8 @@ export function SkillsDirectory() {
               </div>
             )}
             {visibleDirectoryResults.map((result) => {
-              const isInstalled = skills.some(
-                (skill) =>
-                  skill.status === "installed" &&
-                  (skill.id === result.id ||
-                    skill.name.toLowerCase() === result.name.toLowerCase()),
-              );
+              const installed = installedCatalogSkill(result, skills);
+              const isInstalled = Boolean(installed);
               const metric =
                 typeof result.installs === "number"
                   ? `${compactCount(result.installs)} installs`
@@ -714,7 +708,7 @@ export function SkillsDirectory() {
                     className="skill-catalog-main"
                     onClick={() =>
                       setInspectSkill(
-                        skillFromCatalog(result, isInstalled ? "installed" : "available"),
+                        installed ?? skillFromCatalog(result, "available"),
                       )
                     }
                   >
@@ -730,8 +724,8 @@ export function SkillsDirectory() {
                   <button
                     type="button"
                     className={`installed-skill-attach${isInstalled ? " attached" : ""}`}
-                    disabled={isInstalled || installing === result.id}
-                    onClick={() => void installFromCatalog(result)}
+                    disabled={isInstalled || installing !== null}
+                    onClick={() => void installRequestedSkill(skillFromCatalog(result, "available"))}
                   >
                     {isInstalled ? <CheckIcon size={13} /> : <PlusIcon size={13} />}
                     {installing === result.id ? "Installing…" : isInstalled ? "Installed" : "Install"}
@@ -822,22 +816,24 @@ export function SkillsDirectory() {
             </div>
 
             <div className="skill-inspect-body">
+              {mutationError && <p className="skill-folder-error" role="alert">{mutationError}</p>}
+              {(inspectModalTab === "instructions" || inspectModalTab === "source") && inspectError && <div className="skill-folder-error" role="alert">
+                {inspectError} <button type="button" className="ghost" onClick={() => setInspectRetry((value) => value + 1)}>Retry</button>
+              </div>}
               {inspectModalTab === "instructions" && (
                 <div className="skill-inspect-content">
                   <p className="skill-modal-desc">{inspectSkill.description}</p>
-                  {inspectContent ? (
+                  {inspectLoading ? <p className="skills-empty" role="status">Loading SKILL.md…</p> : inspectContent ? (
                     <div className="skill-markdown-rendered">
                       <MessageBody content={skillMarkdownBody(inspectContent)} />
                     </div>
-                  ) : (
-                    <p className="skills-empty">SKILL.md could not be loaded for this skill.</p>
-                  )}
+                  ) : null}
                 </div>
               )}
 
               {inspectModalTab === "source" && (
                 <pre className="mono skill-markdown-pre">
-                  {inspectContent ?? "SKILL.md could not be loaded for this skill."}
+                  {inspectLoading ? "Loading SKILL.md…" : inspectContent ?? ""}
                 </pre>
               )}
 
@@ -902,24 +898,19 @@ export function SkillsDirectory() {
                       <button
                         type="button"
                         className="ghost danger-text"
-                        onClick={() => {
-                          void uninstallSkill(inspectSkill.id);
-                          setInspectSkill(null);
-                        }}
+                        disabled={installing !== null}
+                        onClick={() => void removeSkill(inspectSkill)}
                       >
-                        Uninstall
+                        {installing === `remove:${inspectSkill.id}` ? "Removing…" : "Uninstall"}
                       </button>
                     )}
                     <button
                       type="button"
                       className="send"
-                      onClick={() => {
-                        setSkillId(inspectSkill.id);
-                        setInspectSkill(null);
-                        setView("chat");
-                      }}
+                      disabled={installing !== null}
+                      onClick={() => attachSkill(inspectSkill)}
                     >
-                      Attach to Chat ($)
+                      {installing === inspectSkill.id ? "Installing…" : "Attach to Chat ($)"}
                     </button>
                   </>
                 ) : (
@@ -927,22 +918,16 @@ export function SkillsDirectory() {
                     <button
                       type="button"
                       className="chip send"
-                      onClick={() => {
-                        void installSkill(inspectSkill);
-                        setInspectSkill((prev) => (prev ? { ...prev, status: "installed" } : null));
-                      }}
+                      disabled={installing !== null}
+                      onClick={() => void installRequestedSkill({ ...inspectSkill, content: inspectContent ?? inspectSkill.content })}
                     >
-                      Install Skill
+                      {installing === inspectSkill.id ? "Installing…" : "Install Skill"}
                     </button>
                     <button
                       type="button"
                       className="send"
-                      onClick={() => {
-                        void installSkill(inspectSkill);
-                        setSkillId(inspectSkill.id);
-                        setInspectSkill(null);
-                        setView("chat");
-                      }}
+                      disabled={installing !== null}
+                      onClick={() => void installRequestedSkill({ ...inspectSkill, content: inspectContent ?? inspectSkill.content }, true)}
                     >
                       Install & Attach ($)
                     </button>
@@ -984,6 +969,7 @@ export function SkillsDirectory() {
             </div>
 
             <div className="skill-inspect-body">
+              {mutationError && <p className="skill-folder-error" role="alert">{mutationError}</p>}
               <p className="pack-detail-desc">{inspectPack.description}</p>
 
               <div className="pack-included-skills">
@@ -996,7 +982,7 @@ export function SkillsDirectory() {
                         <div className="pack-modal-skill-main">
                           <div className="pack-modal-skill-name">
                             <b>{s.name}</b>
-                            <span className="skill-version">v{s.version}</span>
+                            {s.version && <span className="skill-version">v{s.version}</span>}
                           </div>
                           <p>{s.description}</p>
                         </div>
@@ -1047,14 +1033,10 @@ export function SkillsDirectory() {
               <button
                 type="button"
                 className="send"
-                onClick={() => {
-                  void installSkillPack(inspectPack.id);
-                  setInspectPack(null);
-                  setImportNotice(`Installed pack: ${inspectPack.name}`);
-                  setTimeout(() => setImportNotice(null), 3000);
-                }}
+                disabled={installing !== null || inspectedPackInstalled}
+                onClick={() => void installPack(inspectPack)}
               >
-                Install All Skills in Pack
+                {installing === `pack:${inspectPack.id}` ? "Installing…" : inspectedPackInstalled ? "Installed" : "Install All Skills in Pack"}
               </button>
             </div>
           </div>

@@ -475,6 +475,9 @@ export class CapsuleRepositories {
       )
       .run({
         ...skill,
+        // The original schema requires TEXT; an empty value represents an
+        // undeclared version without inventing a release number.
+        version: skill.version ?? "",
         requirements: JSON.stringify(skill.requirements),
         permissions: JSON.stringify(skill.permissions),
         validation: skill.validation ?? null,
@@ -504,6 +507,7 @@ export class CapsuleRepositories {
     >;
     return rows.map((row) => ({
       ...row,
+      version: row.version || undefined,
       requirements: parseJson<string[]>(row.requirements, []),
       permissions: parseJson(row.permissions, {}),
       tags: parseJson<string[]>(row.tags, []),

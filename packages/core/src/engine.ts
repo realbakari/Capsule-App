@@ -1268,6 +1268,7 @@ export class CapsuleEngine {
   }
 
   installSkill(skill: Skill): Skill {
+    if (!skill.content?.trim()) throw new Error("Cannot install a skill without its SKILL.md instructions.");
     const normalized: Skill = {
       ...skill,
       status: "installed",
