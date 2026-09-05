@@ -232,12 +232,14 @@ export function Inspector() {
   const [preview, setPreview] = useState("");
   const [previewDoc, setPreviewDoc] = useState<FilePreview>();
   const [previewEditing, setPreviewEditing] = useState(false);
-  const [editing, setEditing] = useState<{ path: string; truncated: boolean; revision: string }>();
+  const [editing, setEditing] = useState<{ projectId: string; root: string; path: string; truncated: boolean; revision: string }>();
   const [saveState, setSaveState] = useState<
     "idle" | "saving" | "saved" | "error" | "truncated" | "conflict"
   >("idle");
   const saverRef = useRef<FileSaveCoordinator | undefined>(undefined);
-  const revisionRef = useRef<string | undefined>(undefined);
+  const revisionRef = useRef<{ value?: string }>({});
+  const fileRequest = useRef(0);
+  const fileScope = useRef("");
 
   const [localServers, setLocalServers] = useState<LocalServer[]>([]);
   const [serversLoading, setServersLoading] = useState(false);
@@ -271,32 +273,40 @@ export function Inspector() {
     (fileRoot && folderRoots.find((root) => root.toLowerCase() === fileRoot.toLowerCase())) ||
     (session?.workingDirectory ?? project?.workingDirectory);
   const conversationRoot = session?.workingDirectory ?? project?.workingDirectory;
+  const scope = JSON.stringify([projectId, session?.id, activeRoot]);
+  if (fileScope.current !== scope) {
+    fileScope.current = scope;
+    fileRequest.current += 1;
+  }
 
   useEffect(() => {
     const previous = saverRef.current;
     previous?.dispose();
-    revisionRef.current = editing?.revision;
-    if (!editing || !projectId) {
+    if (!editing) {
       saverRef.current = undefined;
       return;
     }
-    const path = editing.path;
-    saverRef.current = new FileSaveCoordinator({
+    const owner = editing;
+    const revision = { value: editing.revision as string | undefined };
+    revisionRef.current = revision;
+    let mounted = true;
+    const saver = new FileSaveCoordinator({
       debounceMs: 600,
       persist: async (contents) => {
-        setSaveState("saving");
-        const written = await api.writeFile(projectId, path, contents, {
+        if (mounted) setSaveState("saving");
+        const written = await api.writeFile(owner.projectId, owner.path, contents, {
           origin: "user",
-          expectedRevision: revisionRef.current,
-          root: fileRoot,
+          expectedRevision: revision.value,
+          root: owner.root,
         });
-        revisionRef.current = written?.revision;
+        revision.value = written?.revision;
       },
-      onSaved: () => setSaveState("saved"),
-      onError: (error) => setSaveState(isConflictError(error) ? "conflict" : "error"),
+      onSaved: () => { if (mounted) setSaveState("saved"); },
+      onError: (error) => { if (mounted) setSaveState(isConflictError(error) ? "conflict" : "error"); },
     });
-    return () => saverRef.current?.dispose();
-  }, [api, editing, fileRoot, projectId]);
+    saverRef.current = saver;
+    return () => { mounted = false; saver.dispose(); };
+  }, [api, editing]);
 
   /*
    * Only when the conversation moves. This used to depend on `files`, which
@@ -304,7 +314,7 @@ export function Inspector() {
    * message an agent streams — so browsing a second project folder lasted
    * until the next frame arrived and snapped the tree back to the root.
    */
-  useEffect(() => {
+  useLayoutEffect(() => {
     setFileRoot(session?.workingDirectory ?? project?.workingDirectory);
   }, [project?.workingDirectory, projectId, session?.workingDirectory]);
 
@@ -398,12 +408,15 @@ export function Inspector() {
       });
   }
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setPreviewDoc(undefined);
     setPreviewEditing(false);
     setEditing(undefined);
     setPreview("");
-  }, [projectId]);
+    setSaveState("idle");
+    setExpanded(new Set());
+    setChildrenByDir({});
+  }, [scope]);
 
   useEffect(() => {
     if (!projectId || !activeRoot) {
@@ -593,26 +606,35 @@ export function Inspector() {
       return next;
     });
     if (closing || childrenByDir[path] || !projectId) return;
+    const requestedScope = fileScope.current;
     void api
       .listFiles(projectId, path, activeRoot)
       .then((entries) => {
+        if (fileScope.current !== requestedScope) return;
         setChildrenByDir((current) => ({ ...current, [path]: sortTreeEntries(entries) }));
       })
       .catch(() => {
+        if (fileScope.current !== requestedScope) return;
         setChildrenByDir((current) => ({ ...current, [path]: [] }));
       });
   }
 
   async function previewFile(relative: string) {
-    if (!projectId) return;
+    if (!projectId || !activeRoot) return;
+    const request = ++fileRequest.current;
+    const requestedScope = fileScope.current;
+    const current = () => request === fileRequest.current && requestedScope === fileScope.current;
     try {
       const doc = await api.previewFile(projectId, relative, activeRoot);
+      if (!current()) return;
       setPreviewDoc(doc);
       setPreview(doc.contents ?? "");
       setPreviewEditing(false);
       setEditing(
         doc.kind === "text" && !doc.truncated && Boolean(doc.revision)
           ? {
+              projectId,
+              root: activeRoot,
               path: relative,
               truncated: false,
               revision: doc.revision ?? "",
@@ -634,6 +656,7 @@ export function Inspector() {
         ];
       });
     } catch (error) {
+      if (!current()) return;
       setPreviewDoc({
         path: relative,
         kind: "binary",
@@ -891,7 +914,7 @@ export function Inspector() {
                   }}
                   onReload={() => void previewFile(previewDoc.path)}
                   onOverwrite={() => {
-                    revisionRef.current = undefined;
+                    revisionRef.current.value = undefined;
                     void saverRef.current?.flush();
                   }}
                 />

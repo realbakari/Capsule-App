@@ -55,8 +55,10 @@ function Shell() {
       <div className="workspace">
         <Titlebar />
         <div className="workspace-body">
-          <ViewErrorBoundary key={view} label={view === "chat" ? "Conversation" : "This view"}>
-            {view === "chat" && <Conversation />}
+          <div className="conversation-host" hidden={view !== "chat"}>
+            <ViewErrorBoundary label="Conversation"><Conversation /></ViewErrorBoundary>
+          </div>
+          <ViewErrorBoundary key={view} label="This view">
             {view === "project" && <ProjectView />}
             {view === "runtimes" && <RuntimesView />}
             {view === "skills" && <SkillsView />}

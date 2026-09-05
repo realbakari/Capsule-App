@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import { checkRun } from "./run-verification.js";
+import { FolderActivity, foldersOverlap } from "./folder-activity.js";
 import type { VerificationResult } from "@capsule/shared";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -249,6 +250,8 @@ export class CapsuleEngine {
   }
 
   private directUnsub?: () => void;
+  private admittingSessions = new Set<string>();
+  private folderActivity = new FolderActivity();
   private settings: CapsuleSettings;
   private logs: string[] = [];
   private stopped = false;
@@ -1540,6 +1543,22 @@ export class CapsuleEngine {
   }
 
   async sendMessage(input: AgentMessage): Promise<{ session: Session; run: Run; userMessage: ChatMessage; }> {
+    if (this.admittingSessions.has(input.sessionId) || this.listRuns(input.sessionId).some((run) =>
+      ["queued", "running", "waiting", "approval_required"].includes(run.status))) {
+      throw new Error("This thread already has an active turn. Stop it or wait before sending another message.");
+    }
+    const thread = this.requireSession(input.sessionId);
+    const release = this.folderActivity.enter(this.cwdFor(thread, this.requireProject(thread.projectId)));
+    this.admittingSessions.add(input.sessionId);
+    try {
+      return await this.sendAdmittedMessage(input);
+    } finally {
+      this.admittingSessions.delete(input.sessionId);
+      release();
+    }
+  }
+
+  private async sendAdmittedMessage(input: AgentMessage): Promise<{ session: Session; run: Run; userMessage: ChatMessage; }> {
     let session = this.requireSession(input.sessionId);
     const project = this.requireProject(session.projectId);
     const startingCwd = this.cwdFor(session, project);
@@ -1806,6 +1825,7 @@ export class CapsuleEngine {
   }
 
   verifyRun(runId: string, actionId?: string): Promise<VerificationResult> {
+    this.folderActivity.assertAvailable(this.requireRun(runId).workingDirectory);
     const pending = this.verificationPending.get(runId);
     if (pending) return pending.promise;
     const run = this.requireRun(runId);
@@ -1952,6 +1972,7 @@ export class CapsuleEngine {
     options?: { origin?: "user" | "agent"; expectedRevision?: string; root?: string; },
   ): { revision: string; } {
     const project = this.requireProject(projectId);
+    this.folderActivity.assertAvailable(this.resolveProjectFolder(project, options?.root));
     const origin = options?.origin ?? "agent";
     const decision = decidePolicy(this.repos.listPolicies(), "filesystem", "write");
     if (decision.decision === "block") throw new Error("Filesystem write is blocked by policy");
@@ -1985,7 +2006,19 @@ export class CapsuleEngine {
     return { revision: fileContentRevision(content) };
   }
 
+  /** Shared by every command entry point, including the embedded terminal. */
+  assertLocalCommandsAllowed(): void {
+    if (this.settings.sandbox === "strict") throw new Error("Strict sandbox blocks local terminal commands. Existing commands are not stopped automatically; Stop remains available.");
+  }
+
+  /** Desktop terminals hold this lease until their owned shell exits. */
+  beginLocalCommand(cwd: string): () => void {
+    this.assertLocalCommandsAllowed();
+    return this.folderActivity.enter(cwd);
+  }
+
   async openTerminal(projectId: string, sessionId?: string): Promise<void> {
+    this.assertLocalCommandsAllowed();
     const project = this.requireProject(projectId);
     const cwd = this.workingDirectoryFor(project, sessionId);
     if (!cwd) throw new Error("Choose a project folder first");
@@ -1993,16 +2026,16 @@ export class CapsuleEngine {
   }
 
   async execInProject(projectId: string, command: string, sessionId?: string) {
+    this.assertLocalCommandsAllowed();
     const project = this.requireProject(projectId);
     const cwd = this.workingDirectoryFor(project, sessionId);
     if (!cwd) throw new Error("Choose a project folder first");
-    if (this.settings.sandbox === "strict") {
-      throw new Error("Strict sandbox blocks project terminal commands.");
-    }
-    return runInDirectory(cwd, command);
+    const release = this.folderActivity.enter(cwd);
+    try { return await runInDirectory(cwd, command); } finally { release(); }
   }
 
   runProjectAction(projectId: string, actionId: string, sessionId?: string): ProjectActionRun {
+    this.assertLocalCommandsAllowed();
     const project = this.requireProject(projectId);
     const action = project.actions?.find((candidate) => candidate.id === actionId);
     if (!action) throw new Error("Project action not found.");
@@ -2014,6 +2047,7 @@ export class CapsuleEngine {
     const key = this.projectActionKey(projectId, actionId, sessionId);
     const existing = this.actionRuns.get(key);
     if (existing?.status === "running") return existing;
+    const release = this.folderActivity.enter(cwd);
     const run: ProjectActionRun = {
       projectId,
       actionId,
@@ -2023,31 +2057,42 @@ export class CapsuleEngine {
       startedAt: nowIso(),
     };
     this.actionRuns.set(key, run);
-    const process = startInDirectory(cwd, action.command, {
-      onOutput: (text) => {
-        run.output = `${run.output}${text}`.slice(-20_000);
-        this.events.emit("state", { command: "project-actions-updated" });
-      },
-      onError: (error) => {
-        run.status = "failed";
-        run.output = `${run.output}\n${error.message}`.trim().slice(-20_000);
-        run.completedAt = nowIso();
-        this.actionProcesses.delete(key);
-        this.events.emit("state", { command: "project-actions-updated" });
-      },
-      onExit: (code, signal) => {
-        if (run.status === "running") run.status = code === 0 ? "completed" : "failed";
-        if (code !== null) run.output = `${run.output}\nexit ${code}`.trim().slice(-20_000);
-        else if (signal) run.output = `${run.output}\n${signal}`.trim().slice(-20_000);
-        run.completedAt = nowIso();
-        this.actionProcesses.delete(key);
-        this.events.emit("state", { command: "project-actions-updated" });
-      },
-    });
-    run.pid = process.pid;
-    this.actionProcesses.set(key, process);
-    this.log(`Started project action ${action.name} in ${cwd}`);
-    return run;
+    try {
+      const process = startInDirectory(cwd, action.command, {
+        onOutput: (text) => {
+          run.output = `${run.output}${text}`.slice(-20_000);
+          this.events.emit("state", { command: "project-actions-updated" });
+        },
+        onError: (error) => {
+          release();
+          run.status = "failed";
+          run.output = `${run.output}\n${error.message}`.trim().slice(-20_000);
+          run.completedAt = nowIso();
+          this.actionProcesses.delete(key);
+          this.events.emit("state", { command: "project-actions-updated" });
+        },
+        onExit: (code, signal) => {
+          release();
+          if (run.status === "running") run.status = code === 0 ? "completed" : "failed";
+          if (code !== null) run.output = `${run.output}\nexit ${code}`.trim().slice(-20_000);
+          else if (signal) run.output = `${run.output}\n${signal}`.trim().slice(-20_000);
+          run.completedAt = nowIso();
+          this.actionProcesses.delete(key);
+          this.events.emit("state", { command: "project-actions-updated" });
+        },
+      });
+      run.pid = process.pid;
+      this.actionProcesses.set(key, process);
+      this.log(`Started project action ${action.name} in ${cwd}`);
+      return run;
+    } catch (error) {
+      release();
+      run.status = "failed";
+      run.completedAt = nowIso();
+      run.output = error instanceof Error ? error.message : String(error);
+      this.events.emit("state", { command: "project-actions-updated" });
+      throw error;
+    }
   }
 
   stopProjectAction(projectId: string, actionId: string, sessionId?: string): ProjectActionRun {
@@ -2862,9 +2907,19 @@ export class CapsuleEngine {
     const project = session ? this.repos.getProject(session.projectId) : undefined;
     const cwd = run.workingDirectory ?? session?.workingDirectory ?? project?.workingDirectory;
     if (!cwd) return { ok: false, detail: "That turn has no working directory." };
-    const result = await restoreCheckpoint(cwd, run.checkpointRef);
-    if (result.ok) this.events.emit("state", { command: "files-updated" });
-    return result;
+    const active = this.listRuns().some((item) => item.workingDirectory && foldersOverlap(item.workingDirectory, cwd) && ["queued", "running", "waiting", "approval_required"].includes(item.status));
+    const checking = [...this.verificationPending.values()].some((check) => check.cwd && foldersOverlap(check.cwd, cwd));
+    if (active || checking) return { ok: false, detail: "An agent or check is working in this folder. Stop it or wait before restoring." };
+    let release: (() => void) | undefined;
+    try {
+      release = this.folderActivity.restore(cwd);
+      await this.checkpointPending.get(cwd);
+      const result = await restoreCheckpoint(cwd, run.checkpointRef);
+      if (result.ok) { clearFileIndex(cwd); this.events.emit("state", { command: "files-updated" }); }
+      return result;
+    } catch (error) {
+      return { ok: false, detail: error instanceof Error ? error.message : String(error) };
+    } finally { release?.(); }
   }
 
   private async hydrateSecrets(): Promise<void> {

@@ -8,7 +8,7 @@ import { ChangedFilesCard } from "./ChangedFilesCard";
 const workspace = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 vi.mock("../../lib/workspace", () => ({ useWorkspace: () => workspace.value }));
 vi.mock("./Composer", () => ({ Composer: () => null }));
-vi.mock("../terminal/TerminalDock", () => ({ TerminalDock: () => null }));
+vi.mock("../terminal/TerminalDock", () => ({ PersistentTerminals: () => null }));
 // Render the loading boundary as a marker to assert its transcript position
 // without opening a browser or depending on a live filesystem.
 vi.mock("./TurnOutcome", () => ({ TurnOutcome: ({ run }: { run: Run; }) => createElement("div", { "data-outcome": run.id }) }));

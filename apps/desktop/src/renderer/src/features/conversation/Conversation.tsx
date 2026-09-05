@@ -8,7 +8,7 @@ import { useWorkspace } from "../../lib/workspace";
 import { GatewayBanner } from "../shell/GatewayBanner";
 import { ViewErrorBoundary } from "../shell/ErrorBoundary";
 import { Composer } from "./Composer";
-import { TerminalDock } from "../terminal/TerminalDock";
+import { PersistentTerminals } from "../terminal/TerminalDock";
 import {
   foldedTurnIds,
   foldedTurnLabel,
@@ -243,6 +243,7 @@ export function Conversation() {
     settings,
     openPath,
     terminalOpen,
+    view,
     setTerminalOpen,
     setInspectorOpen,
     setInspectorTab,
@@ -661,11 +662,9 @@ export function Conversation() {
       <ViewErrorBoundary compact label="Composer">
         <Composer showSuggestions={false} />
       </ViewErrorBoundary>
-      {terminalOpen && terminalCwd && (
-        <ViewErrorBoundary compact label="Terminal">
-          <TerminalDock cwd={terminalCwd} onClose={() => setTerminalOpen(false)} />
-        </ViewErrorBoundary>
-      )}
+      <ViewErrorBoundary compact label="Terminal">
+        <PersistentTerminals cwd={terminalCwd} visible={terminalOpen && view === "chat"} onClose={() => setTerminalOpen(false)} />
+      </ViewErrorBoundary>
     </section>
   );
 }

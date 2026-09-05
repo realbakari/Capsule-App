@@ -1062,23 +1062,32 @@ function registerIpc(): void {
     requireEngine().openTerminal(String(projectId), sessionId ? String(sessionId) : undefined),
   );
   handle(IPC_CHANNELS.terminalStart, (input) => {
+    requireEngine().assertLocalCommandsAllowed();
     const request = input as { cwd?: string; cols?: number; rows?: number; };
     const cwd = String(request.cwd ?? "");
     const id = `term_${Math.random().toString(36).slice(2, 10)}`;
-    const session = startPty(
-      { cwd, cols: request.cols, rows: request.rows },
-      {
-        onData: (data) => send(IPC_EVENTS.terminalData, { id, data }),
-        onExit: (code) => {
-          terminals.delete(id);
-          send(IPC_EVENTS.terminalExit, { id, code });
+    const release = requireEngine().beginLocalCommand(cwd);
+    try {
+      const session = startPty(
+        { cwd, cols: request.cols, rows: request.rows },
+        {
+          onData: (data) => send(IPC_EVENTS.terminalData, { id, data }),
+          onExit: (code) => {
+            release();
+            terminals.delete(id);
+            send(IPC_EVENTS.terminalExit, { id, code });
+          },
         },
-      },
-    );
-    terminals.set(id, session);
-    return { id, pid: session.pid, cwd };
+      );
+      terminals.set(id, session);
+      return { id, pid: session.pid, cwd };
+    } catch (error) {
+      release();
+      throw error;
+    }
   });
   handle(IPC_CHANNELS.terminalInput, (id, data) => {
+    requireEngine().assertLocalCommandsAllowed();
     terminals.get(String(id))?.write(String(data));
     return true;
   });

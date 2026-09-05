@@ -187,15 +187,10 @@ export async function checkpointNumstat(
 /**
  * Restore the worktree to a checkpoint.
  *
- * `git checkout <ref> -- .` reinstates every file the checkpoint holds but
- * cannot remove one created afterwards. Those have to be found by comparing the
- * checkpoint's file list against the worktree's, and specifically not with
- * `git diff <ref>`: a file created after the checkpoint is untracked, and diff
- * against a ref only reports tracked paths, so it never appears.
- *
- * The worktree listing uses --exclude-standard, so ignored files are left
- * alone — `add -A` honoured .gitignore when the checkpoint was captured, so
- * they were never in it to begin with and are not the agent's doing.
+ * Seed a private index from the current worktree, including untracked files,
+ * then let Git restore only the worktree from the checkpoint. Git handles
+ * unusual filenames, deletions and directory/file transitions; the user's
+ * real index is never opened for writing. Ignored files remain untouched.
  */
 export async function restoreCheckpoint(cwd: string, ref: string): Promise<{ ok: boolean; detail: string; }> {
   return inRepository(cwd, async () => {
@@ -203,33 +198,24 @@ export async function restoreCheckpoint(cwd: string, ref: string): Promise<{ ok:
     if (!(await isGitRepository(cwd))) return { ok: false, detail: "Not a Git repository." };
     if (!(await hasCheckpoint(cwd, ref))) return { ok: false, detail: "That checkpoint no longer exists." };
 
-    const lines = (result: GitResult): string[] =>
-      result.ok
-        ? result.stdout.split("\n").map((value) => value.trim()).filter(Boolean)
-        : [];
-
-    const inCheckpoint = new Set(lines(await git(cwd, ["ls-tree", "-r", "--name-only", ref])));
-    const inWorktree = lines(
-      await git(cwd, ["ls-files", "--cached", "--others", "--exclude-standard"]),
-    );
-
-    const restored = await git(cwd, ["checkout", ref, "--", "."]);
-    if (!restored.ok) return { ok: false, detail: restored.stderr || "checkout failed." };
-
-    let removed = 0;
-    for (const relative of inWorktree) {
-      if (inCheckpoint.has(relative)) continue;
-      try {
-        await fs.rm(path.resolve(cwd, relative), { force: true });
-        removed += 1;
-      } catch {
-        // Surfaced by the next status read rather than aborting a partial restore.
-      }
+    const commonDir = await gitCommonDir(cwd);
+    if (!commonDir) return { ok: false, detail: "Could not resolve the Git directory." };
+    const tempIndex = path.join(commonDir, `capsule-restore-index-${randomUUID()}`);
+    const env = { ...process.env, GIT_INDEX_FILE: tempIndex };
+    try {
+      const current = await readWorktreeRevision(cwd);
+      const target = await git(cwd, ["rev-parse", `${ref}^{tree}`]);
+      if (!target.ok) return { ok: false, detail: target.stderr };
+      if (current.tree === target.stdout.trim()) return { ok: true, detail: "The folder already matches this turn." };
+      const seeded = await git(cwd, ["read-tree", current.tree], env);
+      if (!seeded.ok) return { ok: false, detail: seeded.stderr };
+      const restored = await git(cwd, ["restore", "--source", ref, "--worktree", "--", "."], env);
+      return { ok: restored.ok, detail: restored.ok ? "Restored the folder. Staged changes were left untouched." : restored.stderr || "Restore failed; inspect the folder before retrying." };
+    } catch (error) {
+      return { ok: false, detail: error instanceof Error ? error.message : String(error) };
+    } finally {
+      await fs.rm(tempIndex, { force: true }).catch(() => undefined);
     }
-    return {
-      ok: true,
-      detail: removed > 0 ? `Restored, removing ${removed} newer file(s).` : "Restored.",
-    };
 
   });
 }

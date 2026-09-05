@@ -8,7 +8,7 @@ import { HarnessSessionDiagnostics } from "../harness/HarnessSessionDiagnostics"
 const workspace = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 vi.mock("../../lib/workspace", () => ({ useWorkspace: () => workspace.value }));
 vi.mock("./Composer", () => ({ Composer: () => null }));
-vi.mock("../terminal/TerminalDock", () => ({ TerminalDock: () => null }));
+vi.mock("../terminal/TerminalDock", () => ({ PersistentTerminals: () => null }));
 
 const report = 'ACP status: ----- session: agent:claude:acp:abc-123 backend: acpx state: idle runtimeOptions: model=opus runtimeDetails: {"configOptions":[{"id":"model","currentValue":"opus"}]}';
 const live: HarnessLiveStatus = {

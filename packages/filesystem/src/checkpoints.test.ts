@@ -143,6 +143,36 @@ describe("diff between checkpoints", () => {
 });
 
 describe("restoreCheckpoint", () => {
+  it("preserves partially staged content, odd filenames and ignored files", async () => {
+    const dir = repo();
+    const odd = 'tab\tline\nquote".txt';
+    fs.writeFileSync(path.join(dir, odd), "checkpoint\n");
+    fs.writeFileSync(path.join(dir, ".gitignore"), "ignored.txt\n");
+    const ref = checkpointRef("restore-index", 1);
+    expect((await captureCheckpoint(dir, ref)).ok).toBe(true);
+    fs.writeFileSync(path.join(dir, "kept.txt"), "staged\n");
+    fs.writeFileSync(path.join(dir, "created.txt"), "created later\n");
+    git(dir, ["add", "kept.txt", "created.txt"]);
+    fs.writeFileSync(path.join(dir, "kept.txt"), "unstaged\n");
+    fs.writeFileSync(path.join(dir, "ignored.txt"), "do not change\n");
+    fs.unlinkSync(path.join(dir, odd));
+    const staged = git(dir, ["diff", "--cached", "--binary"]).stdout;
+    expect((await restoreCheckpoint(dir, ref)).ok).toBe(true);
+    expect(git(dir, ["diff", "--cached", "--binary"]).stdout).toBe(staged);
+    expect(fs.readFileSync(path.join(dir, "kept.txt"), "utf8")).toBe("one\n");
+    expect(fs.readFileSync(path.join(dir, odd), "utf8")).toBe("checkpoint\n");
+    expect(fs.readFileSync(path.join(dir, "ignored.txt"), "utf8")).toBe("do not change\n");
+    expect(fs.existsSync(path.join(dir, "created.txt"))).toBe(false);
+  });
+
+  it("restores an empty checkpoint before the first commit", async () => {
+    const dir = repo(false);
+    const ref = checkpointRef("empty", 1);
+    expect((await captureCheckpoint(dir, ref)).ok).toBe(true);
+    fs.writeFileSync(path.join(dir, "new.txt"), "later\n");
+    expect((await restoreCheckpoint(dir, ref)).ok).toBe(true);
+    expect(fs.existsSync(path.join(dir, "new.txt"))).toBe(false);
+  });
   it("puts back an edited file and removes one created afterwards", async () => {
     const dir = repo();
     fs.writeFileSync(path.join(dir, "kept.txt"), "original\n");

@@ -9997,3 +9997,5 @@ details[open] > summary > .pr-disclosure-caret { transform: none; }
 
 /* The qualifier is secondary to the count it corrects. */
 .changed-files-scope { color: var(--text-faint); font-weight: 400; }
+.conversation-host { display: flex; flex: 1; min-width: 0; min-height: 0; }
+.conversation-host[hidden] { display: none; }

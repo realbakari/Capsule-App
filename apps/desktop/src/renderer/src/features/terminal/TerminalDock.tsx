@@ -27,8 +27,10 @@ interface Pane {
  * keystrokes by id. Panes are kept mounted and hidden rather than unmounted,
  * because tearing down an xterm loses the scrollback and the running command.
  */
-export function TerminalDock({ cwd, onClose }: { cwd: string; onClose: () => void }) {
+export function TerminalDock({ cwd, onClose, visible = true }: { cwd: string; onClose: () => void; visible?: boolean }) {
   const { api } = useWorkspace();
+  const [error, setError] = useState<string>();
+  const alive = useRef(true);
   const [panes, setPanes] = useState<Pane[]>([]);
   const [activeId, setActiveId] = useState<string>();
   const [height, setHeight] = useState(() => {
@@ -53,17 +55,23 @@ export function TerminalDock({ cwd, onClose }: { cwd: string; onClose: () => voi
     });
     const fit = new FitAddon();
     terminal.loadAddon(fit);
-    const handle = (await api.terminalStart({ cwd, cols: 80, rows: 24 })) as TerminalHandle;
-    terminal.onData((data) => void api.terminalInput(handle.id, data));
+    let handle: TerminalHandle;
+    try { handle = await api.terminalStart({ cwd, cols: 80, rows: 24 }) as TerminalHandle; }
+    catch (error) { terminal.dispose(); throw error; }
+    terminal.onData((data) => void api.terminalInput(handle.id, data).catch((error) => setError(String(error))));
     terminal.onResize(({ cols, rows }) => void api.terminalResize(handle.id, cols, rows));
     return { id: handle.id, label: projectFolderName(cwd) ?? "Shell", terminal, fit, exited: false };
   }, [api, cwd]);
 
   const openPane = useCallback(async () => {
-    const pane = await createPane();
-    setPanes((current) => [...current, pane]);
-    setActiveId(pane.id);
-  }, [createPane]);
+    try {
+      const pane = await createPane();
+      if (!alive.current) { void api.terminalStop(pane.id); pane.terminal.dispose(); return; }
+      setError(undefined);
+      setPanes((current) => [...current, pane]);
+      setActiveId(pane.id);
+    } catch (error) { if (alive.current) setError(String(error)); }
+  }, [api, createPane]);
 
   const disposePane = useCallback(
     (pane: Pane) => {
@@ -75,8 +83,8 @@ export function TerminalDock({ cwd, onClose }: { cwd: string; onClose: () => voi
   );
 
   /*
-   * One shell for the life of the dock, and every shell dies with it — a
-   * hidden pty is a process nobody can reach.
+   * One shell for the life of this folder's dock. Hiding and navigation keep
+   * the dock mounted; closing a shell or the app ends it.
    *
    * The first shell is started here rather than in a guarded effect because
    * starting one is asynchronous: a guard that reads pane state still sees an
@@ -85,6 +93,7 @@ export function TerminalDock({ cwd, onClose }: { cwd: string; onClose: () => voi
    * on the spot.
    */
   useEffect(() => {
+    alive.current = true;
     let unmounted = false;
     void createPane().then((pane) => {
       if (unmounted) {
@@ -93,14 +102,23 @@ export function TerminalDock({ cwd, onClose }: { cwd: string; onClose: () => voi
       }
       setPanes([pane]);
       setActiveId(pane.id);
-    });
+    }).catch((error) => { if (!unmounted) setError(String(error)); });
     return () => {
+      alive.current = false;
       unmounted = true;
       for (const pane of panesRef.current) disposePane(pane);
       setPanes([]);
       setActiveId(undefined);
     };
   }, [createPane, disposePane]);
+
+  useEffect(() => {
+    if (!visible) return;
+    const frame = requestAnimationFrame(() => {
+      try { panesRef.current.find((pane) => pane.id === activeId)?.fit.fit(); } catch { /* Layout may still be hidden. */ }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [visible, activeId]);
 
   useEffect(() => {
     const offData = api.on("terminalData", (payload) => {
@@ -187,6 +205,7 @@ export function TerminalDock({ cwd, onClose }: { cwd: string; onClose: () => voi
 
   return (
     <section className="terminal-dock" style={{ height }} aria-label="Terminal">
+      {error && <div role="alert" className="notice">{error}</div>}
       <div className="terminal-dock-rail" onPointerDown={startResize} />
       <div className="terminal-tabs">
         {panes.map((pane) => (
@@ -242,6 +261,17 @@ export function TerminalDock({ cwd, onClose }: { cwd: string; onClose: () => voi
       </div>
     </section>
   );
+}
+
+/** Folder ownership outlives a view; no shell is moved into another cwd. */
+export function PersistentTerminals({ cwd, visible, onClose }: { cwd?: string; visible: boolean; onClose: () => void }) {
+  const [roots, setRoots] = useState<string[]>([]);
+  useEffect(() => {
+    if (visible && cwd) setRoots((current) => current.includes(cwd) ? current : [...current, cwd]);
+  }, [cwd, visible]);
+  return <>{roots.map((root) => <div key={root} hidden={!visible || root !== cwd}>
+    <TerminalDock cwd={root} visible={visible && root === cwd} onClose={onClose} />
+  </div>)}</>;
 }
 
 /** xterm cannot read CSS variables, so the theme is sampled from the page. */
