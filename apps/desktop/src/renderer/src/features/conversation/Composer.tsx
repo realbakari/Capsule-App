@@ -545,7 +545,7 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
             </button>
           </div>
         )}
-        {harnessLive && busy && (
+        {harnessLive && activeRun && !session?.openclawSessionKey?.startsWith("direct:acp:") && (
           <div className="steer-row">
             <input
               type="text"

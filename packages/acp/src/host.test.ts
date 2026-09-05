@@ -52,10 +52,10 @@ describe("options in direct mode", () => {
     // Accepting the change and doing nothing is the failure mode worth avoiding:
     // the picker would move and the agent would keep the old value.
     const host = new DirectAcpHost();
-    await expect(host.setAcpOption("direct:acp:grok:1", "model", "x")).resolves.toMatch(
+    await expect(host.setAcpOption("direct:acp:grok:1", "model", "x")).rejects.toThrow(
       /start it again/,
     );
-    await expect(host.setAcpOption("direct:acp:grok:1", "permissions", "y")).resolves.toMatch(
+    await expect(host.setAcpOption("direct:acp:grok:1", "permissions", "y")).rejects.toThrow(
       /does not carry/,
     );
   });

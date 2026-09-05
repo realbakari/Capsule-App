@@ -5,6 +5,7 @@ import { AgentGlyph } from "../shell/AgentGlyph";
 import { formatTokens, type ContextUsage } from "../../lib/context-window";
 import { AlertTriangleIcon, CopyIcon, DiffIcon, FileIcon, SparkIcon, TerminalIcon, XIcon } from "../shell/icons";
 import { useWorkspace } from "../../lib/workspace";
+import { formatUserError } from "../../lib/errors";
 import { GatewayBanner } from "../shell/GatewayBanner";
 import { ViewErrorBoundary } from "../shell/ErrorBoundary";
 import { Composer } from "./Composer";
@@ -625,19 +626,21 @@ export function Conversation() {
               <div className="actions">
                 <button
                   className="send"
-                  onClick={() => void api.resolveApproval(pendingApproval.id, "approved_once")}
+                  onClick={() => void api.resolveApproval(pendingApproval.id, "approved_once").catch((error) => setNotice(formatUserError(error)))}
                 >
                   Approve once
                 </button>
                 <button
                   className="chip"
-                  onClick={() => void api.resolveApproval(pendingApproval.id, "approved_session")}
+                  disabled={session?.openclawSessionKey?.startsWith("direct:acp:")}
+                  title={session?.openclawSessionKey?.startsWith("direct:acp:") ? "Direct agents support approval once here." : undefined}
+                  onClick={() => void api.resolveApproval(pendingApproval.id, "approved_session").catch((error) => setNotice(formatUserError(error)))}
                 >
                   Approve session
                 </button>
                 <button
                   className="ghost"
-                  onClick={() => void api.resolveApproval(pendingApproval.id, "denied")}
+                  onClick={() => void api.resolveApproval(pendingApproval.id, "denied").catch((error) => setNotice(formatUserError(error)))}
                 >
                   Deny
                 </button>

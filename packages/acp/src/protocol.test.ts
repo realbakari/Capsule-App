@@ -87,6 +87,12 @@ describe("readSessionUpdate", () => {
     expect(readSessionUpdate({ update: { sessionUpdate: "plan" } })).toBeUndefined();
     expect(readSessionUpdate(undefined)).toBeUndefined();
   });
+
+  it("retains status-only updates by tool call id", () => {
+    expect(readSessionUpdate({ sessionId: "s", update: {
+      sessionUpdate: "tool_call_update", toolCallId: "read-1", status: "completed",
+    } })?.tool).toMatchObject({ toolCallId: "read-1", status: "completed" });
+  });
 });
 
 describe("readStopReason", () => {
@@ -146,9 +152,11 @@ describe("chooseOption", () => {
     expect(chooseOption(named, "deny")).toBe("2");
   });
 
-  it("never returns nothing when there is something to pick", () => {
-    // Answering the wrong option is recoverable; answering nothing hangs the turn.
-    expect(chooseOption([{ optionId: "only", name: "Proceed" }], "deny")).toBe("only");
+  it("cancels when no safe option matches the user's decision", () => {
+    expect(chooseOption([{ optionId: "only", name: "Proceed" }], "deny")).toBeUndefined();
+    expect(chooseOption([{ optionId: "always", name: "Allow", kind: "allow_always" }], "allow")).toBeUndefined();
+    expect(chooseOption([{ optionId: "no", name: "Do not allow" }], "allow")).toBeUndefined();
+    expect(chooseOption([{ optionId: "always", name: "Always allow" }], "allow")).toBeUndefined();
   });
 });
 

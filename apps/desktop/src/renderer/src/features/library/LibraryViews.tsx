@@ -1,4 +1,5 @@
 import { useWorkspace } from "../../lib/workspace";
+import { formatUserError } from "../../lib/errors";
 import { SkillsDirectory } from "./SkillsDirectory";
 import { TurnVerification } from "../conversation/TurnVerification";
 
@@ -57,7 +58,7 @@ export function HistoryView() {
 }
 
 export function ApprovalsView() {
-  const { approvals, api } = useWorkspace();
+  const { approvals, api, setNotice } = useWorkspace();
   return (
     <section className="panel">
       <div className="panel-inner">
@@ -72,10 +73,10 @@ export function ApprovalsView() {
           <div className="muted">{item.reason}</div>
           {item.status === "pending" && (
             <div className="actions">
-              <button className="send" onClick={() => void api.resolveApproval(item.id, "approved_once")}>
+              <button className="send" onClick={() => void api.resolveApproval(item.id, "approved_once").catch((error) => setNotice(formatUserError(error)))}>
                 Approve once
               </button>
-              <button className="ghost" onClick={() => void api.resolveApproval(item.id, "denied")}>
+              <button className="ghost" onClick={() => void api.resolveApproval(item.id, "denied").catch((error) => setNotice(formatUserError(error)))}>
                 Deny
               </button>
             </div>

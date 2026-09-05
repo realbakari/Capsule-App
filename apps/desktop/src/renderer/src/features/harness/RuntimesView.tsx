@@ -65,7 +65,6 @@ export function RuntimesView() {
   const [configuredSessionId, setConfiguredSessionId] = useState<string>();
   const requestedStatuses = useRef(new Set<string>());
   const harnesses = harnessList ?? [];
-  const blockReason = spawnBlockReason(connected, projectId, project?.workingDirectory);
 
   /*
    * One list, not a featured card deck and a second list behind a link. The
@@ -82,6 +81,8 @@ export function RuntimesView() {
   const listed = showAll ? [...available, ...uninstalled] : available;
   const selectedHarness =
     listed.find((harness) => harness.id === selectedHarnessId) ?? listed[0];
+  const routeAvailable = connected || selectedHarness?.runtimeRoute === "direct";
+  const blockReason = spawnBlockReason(routeAvailable, projectId, project?.workingDirectory);
   const selectedSessions = selectedHarness
     ? harnessSessions.filter((item) => item.harnessId === selectedHarness.id)
     : [];
@@ -176,7 +177,7 @@ export function RuntimesView() {
               activeSessionId={configuredSession?.id}
               status={configuredStatus}
               canSpawnNow={
-                Boolean(projectId) && !busy && canSpawn(selectedHarness.readiness) && connected
+                !blockReason && !busy && canSpawn(selectedHarness.readiness)
               }
               connected={connected}
               onDoctor={() => void doctorHarness(selectedHarness.id)}
@@ -327,7 +328,7 @@ function HarnessDetail({
         <button className="chip" onClick={onDoctor}>
           Check this agent
         </button>
-        {!connected && (
+        {!connected && harness.runtimeRoute !== "direct" && (
           <button className="chip" onClick={onConnect}>
             Connect Gateway
           </button>

@@ -301,6 +301,7 @@ export function describeReadiness(input: {
   dedicated: boolean;
   live: boolean;
   loginState?: HarnessLoginState;
+  direct?: boolean;
 }): { readiness: HarnessReadiness; detail: string } {
   if (input.live) {
     return {
@@ -308,7 +309,10 @@ export function describeReadiness(input: {
       detail: `${input.preset.name} is on a live ACP session.`,
     };
   }
-  if (input.gatewayConnected && input.acpxEnabled) {
+  if (input.direct && !input.binaryPath) {
+    return { readiness: "missing_cli", detail: `Install ${input.preset.name} on this Mac before using direct mode. ${input.preset.installHint}` };
+  }
+  if (input.direct || (input.gatewayConnected && input.acpxEnabled)) {
     if (input.loginState === "config_invalid") {
       return {
         readiness: "needs_login",
@@ -363,6 +367,7 @@ export function probeHarnesses(input: {
   acpxEnabled: boolean;
   dedicatedByHarness: Record<string, string[]>;
   liveByHarness?: Record<string, string[]>;
+  directHarnessIds?: string[];
 }): HarnessStatus[] {
   return PRESET_HARNESSES.map((preset) => {
     const binaryPath = whichBinary(preset.binaries);
@@ -379,9 +384,11 @@ export function probeHarnesses(input: {
       dedicated: dedicatedProjectIds.length > 0,
       live: liveSessionIds.length > 0,
       loginState,
+      direct: input.directHarnessIds?.includes(preset.id),
     });
     return {
       ...preset,
+      runtimeRoute: input.directHarnessIds?.includes(preset.id) ? "direct" : "openclaw",
       readiness,
       binaryPath,
       acpxEnabled: input.acpxEnabled,

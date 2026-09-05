@@ -213,7 +213,7 @@ export interface WorkspaceValue {
   refresh: () => Promise<void>;
   loadSession: (id: string) => Promise<void>;
   createTask: () => Promise<void>;
-  send: () => Promise<void>;
+  send: () => Promise<boolean>;
   createProject: () => Promise<void>;
   git?: GitStatus;
   files: FileEntry[];
@@ -380,6 +380,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     }
   });
   const [busy, setBusy] = useScopedState(scope, false);
+  const submissions = useRef(new Set<string>());
   const [palette, setPalette] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
   const [newProjectName, setNewProjectName] = useState("");
@@ -891,14 +892,20 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     await refresh();
   }
 
-  async function send() {
+  async function send(continueToNew = false) {
+    const submissionKey = currentDraftKey;
     const content = draft.trim();
     const filesToSend = attachments;
-    if ((!content && filesToSend.length === 0) || busy) return;
+    if ((!content && filesToSend.length === 0) || busy || submissions.current.has(submissionKey)) return false;
+    if (activeRun) {
+      setNotice("This thread already has an active turn. Stop it or wait before sending a follow-up.");
+      return false;
+    }
     if (sendBlockReason) {
       setNotice(sendBlockReason);
-      return;
+      return false;
     }
+    submissions.current.add(submissionKey);
     setBusy(true);
     setNotice(undefined);
     try {
@@ -907,7 +914,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       if (!currentProjectId) {
         const createdProject = await api.createProject({ name: "Inbox" });
         currentProjectId = createdProject.id;
-        setProjectId(createdProject.id);
       }
       if (!currentSessionId) {
         const created = await api.createSession({
@@ -919,9 +925,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
           title: "New conversation",
         });
         currentSessionId = created.id;
-        setSessionId(created.id);
       }
-      if (!currentSessionId) return;
+      if (!currentSessionId) return false;
+      if (!draftScopes.isCurrent(draftScope)) return false;
       const optimisticId = `local-${Date.now()}`;
       setMessages((current) => [
         ...current.filter((item) => !item.id.startsWith("local-")),
@@ -936,6 +942,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       ]);
       setDraft("");
       setAttachments([]);
+      let accepted = false;
       try {
         await api.sendMessage({
           sessionId: currentSessionId,
@@ -945,18 +952,49 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
           skillId,
           attachments: filesToSend,
         });
+        accepted = true;
         setSkillId(undefined);
-        await loadSession(currentSessionId);
-        await refresh();
+        let selectionChanged = false;
+        if (draftScopes.isCurrent(draftScope)) {
+          const next = continueToNew ? await api.createSession({
+            projectId: currentProjectId,
+            agentId,
+            mode,
+            permissionProfile: settings?.defaultPermission,
+            workspaceMode: git?.isRepo ? (settings?.defaultWorkspaceMode ?? "local") : "local",
+            title: "New conversation",
+          }) : undefined;
+          if (draftScopes.isCurrent(draftScope)) {
+            selectionChanged = Boolean(next) || projectId !== currentProjectId || sessionId !== currentSessionId;
+            setProjectId(currentProjectId);
+            setSessionId(next?.id ?? currentSessionId);
+            if (!next && currentSessionId === sessionId) await loadSession(currentSessionId);
+          }
+        }
+        // The new selection's effect owns its refresh. The old selection's
+        // refresh can otherwise auto-select the first thread over the new one.
+        if (!selectionChanged) await refresh();
+        return true;
       } catch (error) {
-        setDraft(content);
-        setAttachments(filesToSend);
-        setMessages((current) => current.filter((item) => item.id !== optimisticId));
+        if (!accepted) {
+          setDraft(content);
+          setAttachments(filesToSend);
+          setMessages((current) => current.filter((item) => item.id !== optimisticId));
+        } else {
+          if (draftScopes.isCurrent(draftScope)) {
+            setProjectId(currentProjectId);
+            setSessionId(currentSessionId);
+          }
+          setNotice(`Your message was sent, but the view could not refresh: ${formatUserError(error)}`);
+          return true;
+        }
         throw error;
       }
     } catch (error) {
       setNotice(formatUserError(error));
+      return false;
     } finally {
+      submissions.current.delete(submissionKey);
       setBusy(false);
     }
   }
@@ -1391,24 +1429,30 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   async function cancelHarness(id?: string) {
     const target = id ?? sessionId;
     if (!target) return;
-    await api.cancelHarness(target);
-    await refresh();
-    await loadSession(target);
+    try {
+      await api.cancelHarness(target);
+      await refresh();
+      await loadSession(target);
+    } catch (error) { setNotice(formatUserError(error)); }
   }
 
   async function steerHarness() {
     if (!sessionId || !steerDraft.trim()) return;
-    await api.steerHarness(sessionId, steerDraft.trim());
-    setSteerDraft("");
-    await refresh();
-    await loadSession(sessionId);
+    try {
+      await api.steerHarness(sessionId, steerDraft.trim());
+      setSteerDraft("");
+      await refresh();
+      await loadSession(sessionId);
+    } catch (error) { setNotice(formatUserError(error)); }
   }
 
   async function closeHarness(id?: string) {
     const target = id ?? sessionId;
     if (!target) return;
-    await api.closeHarness(target);
-    await refresh();
+    try {
+      await api.closeHarness(target);
+      await refresh();
+    } catch (error) { setNotice(formatUserError(error)); }
   }
 
   /*
@@ -1442,12 +1486,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   ) {
     const target = targetSessionId ?? sessionId;
     if (!target) return;
-    await api.setHarnessOption({ sessionId: target, key, value });
-    if (harnessStatuses[target]) {
-      await refreshHarnessStatus(target);
-    } else {
-      await refresh();
-    }
+    try {
+      await api.setHarnessOption({ sessionId: target, key, value });
+      if (harnessStatuses[target]) {
+        await refreshHarnessStatus(target);
+      } else {
+        await refresh();
+      }
+    } catch (error) { setNotice(formatUserError(error)); }
   }
 
   async function exportDiagnostics() {
@@ -1457,8 +1503,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
 
   async function stopRun() {
     if (!activeRun) return;
-    await api.stopRun(activeRun.id);
-    await refresh();
+    try {
+      await api.stopRun(activeRun.id);
+      await refresh();
+    } catch (error) { setNotice(formatUserError(error)); }
   }
 
   async function pinSession(id: string, pinned: boolean) {
@@ -1478,13 +1526,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
 
   async function setPermissionProfile(profile: string) {
     if (!sessionId) return;
-    await api.setPermissionProfile(sessionId, profile);
-    await refresh();
+    try {
+      await api.setPermissionProfile(sessionId, profile);
+      await refresh();
+    } catch (error) { setNotice(formatUserError(error)); }
   }
 
   async function sendAndContinue() {
-    await send();
-    await createTask();
+    await send(true);
   }
 
   async function checkoutBranch(branch: string) {

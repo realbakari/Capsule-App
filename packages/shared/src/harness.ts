@@ -140,6 +140,8 @@ export interface HarnessDoctorReport {
 }
 
 export interface HarnessStatus extends HarnessPreset {
+  /** Route selected by main for a new thread with this harness. */
+  runtimeRoute?: "direct" | "openclaw";
   readiness: HarnessReadiness;
   binaryPath?: string;
   acpxEnabled: boolean;

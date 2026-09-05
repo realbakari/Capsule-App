@@ -59,7 +59,7 @@ export interface SessionUpdate {
   /** Reasoning rather than answer: shown, but not part of the reply. */
   thought?: boolean;
   /** A tool the agent is running, if this update is about one. */
-  tool?: { title: string; status?: string };
+  tool?: { title?: string; status?: string; toolCallId?: string };
 }
 
 function textFromContent(content: unknown): string | undefined {
@@ -92,12 +92,13 @@ export function readSessionUpdate(params: unknown): SessionUpdate | undefined {
   }
 
   if (kind === "tool_call" || kind === "tool_call_update") {
-    const tool = update as { title?: unknown; status?: unknown };
+    const tool = update as { title?: unknown; status?: unknown; toolCallId?: unknown };
     const title = typeof tool.title === "string" ? tool.title : undefined;
-    if (!title) return undefined;
+    const toolCallId = typeof tool.toolCallId === "string" ? tool.toolCallId : undefined;
+    if (!title && !toolCallId) return undefined;
     return {
       sessionId,
-      tool: { title, status: typeof tool.status === "string" ? tool.status : undefined },
+      tool: { title, status: typeof tool.status === "string" ? tool.status : undefined, toolCallId },
     };
   }
 
@@ -227,14 +228,14 @@ export function chooseOption(
   decision: "allow" | "deny",
 ): string | undefined {
   const wanted = decision === "allow" ? "allow" : "reject";
-  const byKind = options.find((option) => option.kind?.startsWith(`${wanted}_`));
+  const byKind = options.find((option) => option.kind === `${wanted}_once`);
   if (byKind) return byKind.optionId;
-  const byName = options.find((option) =>
+  const byName = options.find((option) => !option.kind && (
     decision === "allow"
-      ? /allow|approve|yes/i.test(option.name)
-      : /reject|deny|no/i.test(option.name),
+      ? /^(allow|approve|yes)( once)?$/i.test(option.name.trim())
+      : /^(reject|deny|no)( once)?$/i.test(option.name.trim())),
   );
-  return byName?.optionId ?? options[0]?.optionId;
+  return byName?.optionId;
 }
 
 /**

@@ -9,7 +9,11 @@ import {
 } from "@capsule/shared";
 
 import { explainDirectFailure, readCliError } from "./errors.js";
-import { DirectAcpSession, type AcpMcpServer } from "./session.js";
+import { DirectAcpSession, type AcpMcpServer, type DirectAcpEvents } from "./session.js";
+
+export type DirectActivity =
+  | { type: "tool"; sessionKey: string; tool: Parameters<DirectAcpEvents["tool"]>[0] }
+  | { type: "permission"; sessionKey: string; request: Parameters<DirectAcpEvents["permission"]>[0] };
 
 /*
  * Direct mode.
@@ -85,6 +89,11 @@ export class DirectAcpHost {
     return () => this.emitter.off("acp-reply", handler);
   }
 
+  onActivity(handler: (payload: DirectActivity) => void): Unsubscribe {
+    this.emitter.on("activity", handler);
+    return () => this.emitter.off("activity", handler);
+  }
+
   /** What a user would run to get the same thing in a terminal. */
   acpCommandFor(harnessId: HarnessId): string {
     const preset = PRESET_HARNESSES.find((item) => item.id === harnessId);
@@ -132,7 +141,7 @@ export class DirectAcpHost {
 
     const key = directSessionKey(input.harnessId, `${Date.now().toString(36)}${this.counter++}`);
     this.wire(key, session);
-    await session.start();
+    try { await session.start(); } catch (error) { await session.close(); throw error; }
     this.sessions.set(key, session);
     this.harnessBySession.set(key, input.harnessId);
 
@@ -152,6 +161,7 @@ export class DirectAcpHost {
   async send(sessionKey: string, prompt: string): Promise<{ stopReason?: string }> {
     const session = this.sessions.get(sessionKey);
     if (!session) throw new Error("That agent is no longer running. Start it again.");
+    if (session.busy) throw new Error("This agent already has an active turn. Stop it or wait before sending again.");
     try {
       return await session.prompt(prompt);
     } finally {
@@ -159,10 +169,8 @@ export class DirectAcpHost {
     }
   }
 
-  async steerAcp(sessionKey: string, instruction: string): Promise<void> {
-    // Direct mode has no separate steer channel: the agent takes a new turn,
-    // which is what steering is once a turn is already running.
-    await this.send(sessionKey, instruction);
+  async steerAcp(_sessionKey: string, _instruction: string): Promise<void> {
+    throw new Error("Direct mode does not support steering. Stop the active turn or wait, then send a follow-up.");
   }
 
   async cancelAcp(sessionKey: string, _runId?: string): Promise<void> {
@@ -171,9 +179,9 @@ export class DirectAcpHost {
 
   async closeAcp(sessionKey: string): Promise<void> {
     const session = this.sessions.get(sessionKey);
+    await session?.close();
     this.sessions.delete(sessionKey);
     this.harnessBySession.delete(sessionKey);
-    await session?.close();
   }
 
   async closeAll(): Promise<void> {
@@ -185,7 +193,7 @@ export class DirectAcpHost {
     const session = this.sessions.get(sessionKey);
     const harnessId = this.harnessBySession.get(sessionKey);
     const text = session?.running
-      ? `backend: direct\nstate: running\nmode: persistent${harnessId ? `\nbackend-agent: ${harnessId}` : ""}`
+      ? `backend: direct\nstate: ${session.busy ? "running" : "idle"}\nmode: persistent${harnessId ? `\nbackend-agent: ${harnessId}` : ""}`
       : "state: closed";
     /*
      * The agent named its models when the session opened, so hand them over —
@@ -215,12 +223,16 @@ export class DirectAcpHost {
    */
   async setAcpOption(_sessionKey: string, key: HarnessOptionKey, _value: string): Promise<string> {
     if (key === "model") {
-      return "Direct mode fixes the model when the agent starts. Close the agent and start it again to change it.";
+      throw new Error("Direct mode fixes the model when the agent starts. Close the agent and start it again to change it.");
     }
-    return `Direct mode does not carry ${key}; it is the CLI's own setting.`;
+    throw new Error(`Direct mode does not carry ${key}; it is the CLI's own setting.`);
   }
 
   private wire(key: string, session: DirectAcpSession): void {
+    session.on("tool", (tool) => this.emitter.emit("activity", { type: "tool", sessionKey: key, tool }));
+    session.on("permission", (request) => {
+      if (!this.emitter.emit("activity", { type: "permission", sessionKey: key, request })) request.deny();
+    });
     session.on("text", ({ text, thought }) => {
       // A thought is shown as it streams but is not part of the reply, so it
       // does not get folded into the message the turn produced.

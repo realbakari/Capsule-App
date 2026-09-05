@@ -250,6 +250,7 @@ export class CapsuleEngine {
   }
 
   private directUnsub?: () => void;
+  private directApprovals = new Map<string, { runId: string; allow: () => void; deny: () => void }>();
   private admittingSessions = new Set<string>();
   private folderActivity = new FolderActivity();
   private settings: CapsuleSettings;
@@ -513,10 +514,11 @@ export class CapsuleEngine {
     }
     const acpxEnabled = await this.acpxEnabled();
     return probeHarnesses({
-      gatewayConnected: !this.usingMock,
+      gatewayConnected: !this.usingMock && this.runtime.kind === "openclaw",
       acpxEnabled,
       dedicatedByHarness,
       liveByHarness,
+      directHarnessIds: PRESET_HARNESSES.filter((preset) => this.useDirectMode(preset.id)).map((preset) => preset.id),
     });
   }
 
@@ -561,7 +563,7 @@ export class CapsuleEngine {
     const checks = localDoctorChecks({
       preset,
       binaryPath,
-      gatewayConnected: !this.usingMock,
+      gatewayConnected: !this.usingMock && this.runtime.kind === "openclaw",
       acpxEnabled,
       loginState: this.usingMock ? undefined : probeLoginStateNow(preset, binaryPath),
       acpxPermissionMode: acpxPermissionModeValue,
@@ -771,13 +773,12 @@ export class CapsuleEngine {
     const run = this.listRuns(session.id).find((item) =>
       ["running", "waiting", "approval_required"].includes(item.status),
     );
-    if (this.usingMock) {
-      if (run) await this.stopRun(run.id);
-    } else if (session.openclawSessionKey) {
+    if (run) {
+      await this.stopRun(run.id);
+    } else if (!this.usingMock && session.openclawSessionKey) {
       try {
         await this.acpHost(session.openclawSessionKey).cancelAcp(
           session.openclawSessionKey,
-          run?.openclawRunId,
         );
       } catch (error) {
         session.harnessState = "error";
@@ -786,18 +787,12 @@ export class CapsuleEngine {
         this.events.emit("state", { command: "harness-updated" });
         throw error;
       }
-      if (run) {
-        run.status = "cancelled";
-        run.updatedAt = nowIso();
-        run.completedAt = nowIso();
-        this.repos.updateRun(run);
-      }
     }
     session.harnessState = "waiting";
     session.updatedAt = nowIso();
     this.repos.updateSession(session);
     this.log(`Cancelled harness turn for ${session.title}`);
-    this.events.emit("run", run);
+    this.events.emit("state", { command: "harness-updated" });
     return { session, command: "/acp cancel", detail: "Cancelled in-flight turn." };
   }
 
@@ -827,6 +822,11 @@ export class CapsuleEngine {
 
   async closeHarness(sessionId: string): Promise<HarnessControlResult> {
     const session = this.requireHarnessSession(sessionId);
+    const active = this.listRuns(session.id).find((run) =>
+      ["queued", "running", "waiting", "approval_required"].includes(run.status),
+    );
+    // Direct close can stop its owned child even when the agent ignores cancel.
+    if (active && !isDirectSessionKey(session.openclawSessionKey)) await this.stopRun(active.id);
     if (!this.usingMock && session.openclawSessionKey) {
       try {
         await this.acpHost(session.openclawSessionKey).closeAcp(session.openclawSessionKey);
@@ -836,6 +836,16 @@ export class CapsuleEngine {
         this.repos.updateSession(session);
         this.events.emit("state", { command: "harness-updated" });
         throw error;
+      }
+    }
+    if (active && isDirectSessionKey(session.openclawSessionKey)) {
+      const latest = this.requireRun(active.id);
+      if (!latest.completedAt) {
+        latest.status = "cancelled";
+        latest.updatedAt = latest.completedAt = nowIso();
+        this.repos.updateRun(latest);
+        this.settleDirectApprovals(latest.id);
+        this.events.emit("run", latest);
       }
     }
     session.harnessState = "closed";
@@ -889,9 +899,12 @@ export class CapsuleEngine {
     const session = this.requireHarnessSession(patch.sessionId);
     const value = patch.value.trim();
     if (!value) throw new Error("Option value is empty");
+    if (patch.key === "cwd") {
+      throw new Error("Live working-directory changes are unavailable. Close the agent and choose the thread's folder before starting it again.");
+    }
     let statusText: string | undefined;
     if (!this.usingMock && session.openclawSessionKey) {
-      if (patch.key === "permissions") {
+      if (patch.key === "permissions" && !isDirectSessionKey(session.openclawSessionKey)) {
         await this.openclaw
           .ensureAcpxPermissionMode(acpxPermissionMode(value))
           .catch(() => undefined);
@@ -904,12 +917,6 @@ export class CapsuleEngine {
     }
     if (patch.key === "model") session.modelOverride = value;
     if (patch.key === "permissions") session.permissionProfile = value;
-    if (patch.key === "cwd") {
-      const project = this.requireProject(session.projectId);
-      project.workingDirectory = value;
-      project.updatedAt = nowIso();
-      this.repos.updateProject(project);
-    }
     session.updatedAt = nowIso();
     this.repos.updateSession(session);
     this.log(`Set harness ${patch.key}=${value} on ${session.id}`);
@@ -1509,17 +1516,19 @@ export class CapsuleEngine {
 
   async setPermissionProfile(sessionId: string, profile: HarnessPermissionProfile): Promise<Session> {
     const session = this.requireSession(sessionId);
-    session.permissionProfile = profile;
-    session.updatedAt = nowIso();
-    this.repos.updateSession(session);
     if (!this.usingMock && session.openclawSessionKey && isLiveHarnessState(session.harnessState)) {
-      await this.openclaw.ensureAcpxPermissionMode(acpxPermissionMode(profile)).catch(() => undefined);
+      if (!isDirectSessionKey(session.openclawSessionKey)) {
+        await this.openclaw.ensureAcpxPermissionMode(acpxPermissionMode(profile)).catch(() => undefined);
+      }
       await this.acpHost(session.openclawSessionKey).setAcpOption(
         session.openclawSessionKey,
         "permissions",
         profile,
       );
     }
+    session.permissionProfile = profile;
+    session.updatedAt = nowIso();
+    this.repos.updateSession(session);
     return session;
   }
 
@@ -1803,12 +1812,22 @@ export class CapsuleEngine {
 
   async stopRun(runId: string): Promise<Run> {
     const run = this.requireRun(runId);
-    await this.runtime.cancelRun(run.openclawRunId ?? run.id);
+    if (run.completedAt) return run;
+    const session = this.requireSession(run.sessionId);
+    if (isDirectSessionKey(session.openclawSessionKey)) {
+      await this.direct.cancelAcp(session.openclawSessionKey!);
+      const latest = this.requireRun(runId);
+      if (latest.completedAt) return latest;
+    } else {
+      await this.runtime.cancelRun(run.openclawRunId ?? run.id);
+    }
     run.status = "cancelled";
     run.updatedAt = nowIso();
     run.completedAt = nowIso();
     this.repos.updateRun(run);
     this.appendEvent(run.id, "cancelled", "Run cancelled");
+    this.settleDirectApprovals(run.id);
+    this.events.emit("run", run);
     return run;
   }
 
@@ -1901,10 +1920,23 @@ export class CapsuleEngine {
     const approvals = this.repos.listApprovals("pending");
     const approval = approvals.find((item) => item.id === approvalId);
     if (!approval) throw new Error("Approval not found");
+    const direct = this.directApprovals.get(approvalId);
+    if (direct && decision === "approved_session") throw new Error("Direct agents support approval once here, not approval for the entire session.");
     approval.status = decision;
     approval.resolvedAt = nowIso();
     this.repos.updateApproval(approval);
-    await this.runtime.resolveApproval?.(approvalId, decision);
+    if (direct) {
+      this.directApprovals.delete(approvalId);
+      if (decision === "denied") direct.deny(); else direct.allow();
+      const run = this.requireRun(direct.runId);
+      if (!run.completedAt && !this.repos.listApprovals("pending").some((item) => item.runId === run.id)) {
+        run.status = "running";
+        this.repos.updateRun(run);
+        this.events.emit("run", run);
+      }
+    } else {
+      await this.runtime.resolveApproval?.(approvalId, decision);
+    }
     this.events.emit("approval", approval);
   }
 
@@ -2191,7 +2223,7 @@ export class CapsuleEngine {
         process.platform === "darwin"
           ? (process as NodeJS.Process & { getSystemVersion?: () => string; }).getSystemVersion?.()
           : undefined,
-      gatewayStatus: this.usingMock ? "disconnected" : "connected",
+      gatewayStatus: this.usingMock || this.runtime.kind !== "openclaw" ? "disconnected" : "connected",
       databaseStatus: "connected",
       connectionLogs: [...this.logs].slice(-200),
     };
@@ -2215,7 +2247,46 @@ export class CapsuleEngine {
     // Both routes deliver the same reply shape, and a thread keeps whichever
     // one started it, so both stay bound regardless of the current setting.
     this.directUnsub?.();
-    this.directUnsub = this.direct.onAcpReply((payload: AcpReply) => this.handleAcpReply(payload));
+    const replies = this.direct.onAcpReply((payload: AcpReply) => this.handleAcpReply(payload));
+    const activity = this.direct.onActivity((payload) => {
+      if (this.stopped) { if (payload.type === "permission") payload.request.deny(); return; }
+      const session = this.repos.listSessions().find((item) => item.openclawSessionKey === payload.sessionKey);
+      const run = session && this.listRuns(session.id).find((item) => ["running", "waiting", "approval_required"].includes(item.status));
+      if (!run) { if (payload.type === "permission") payload.request.deny(); return; }
+      if (payload.type === "tool") {
+        this.appendEvent(run.id, "tool", payload.tool.title, { ...payload.tool });
+        return;
+      }
+      const approval: ApprovalRequest = {
+        id: createId("approval"), runId: run.id, agentId: run.agentId,
+        agentName: session?.harnessId ?? run.agentId, action: payload.request.title,
+        target: run.workingDirectory ?? "This thread", reason: "The direct agent is waiting for your approval.",
+        status: "pending", createdAt: nowIso(),
+      };
+      this.directApprovals.set(approval.id, { runId: run.id, ...payload.request });
+      this.repos.insertApproval(approval);
+      run.status = "approval_required";
+      this.repos.updateRun(run);
+      this.appendEvent(run.id, "approval.requested", approval.action, { approval });
+      this.events.emit("approval", approval);
+      this.events.emit("run", run);
+    });
+    this.directUnsub = () => { replies(); activity(); };
+  }
+
+  private settleDirectApprovals(runId: string): void {
+    for (const [id, pending] of this.directApprovals) {
+      if (pending.runId !== runId) continue;
+      pending.deny();
+      this.directApprovals.delete(id);
+      const approval = this.repos.listApprovals("pending").find((item) => item.id === id);
+      if (approval) {
+        approval.status = "denied";
+        approval.resolvedAt = nowIso();
+        this.repos.updateApproval(approval);
+        this.events.emit("approval", approval);
+      }
+    }
   }
 
   private handleAcpReply(payload: {
@@ -2226,7 +2297,7 @@ export class CapsuleEngine {
     snapshot?: boolean;
     timestamp?: number;
   }): void {
-    if (!payload.sessionKey) return;
+    if (this.stopped || !payload.sessionKey) return;
     if (payload.control) return;
     // Behind the control marking: a status dump is recognisable on its own, so
     // a frame that slips past the marking still cannot become a message.
@@ -2248,7 +2319,8 @@ export class CapsuleEngine {
     const runHistory = this.repos.listRuns(session.id);
     const active = payload.snapshot
       ? runHistory.find((run) => Date.parse(run.createdAt) <= timestamp)
-      : runHistory.find((run) => ["running", "waiting", "queued"].includes(run.status));
+      : runHistory.find((run) => ["running", "waiting", "queued", "approval_required"].includes(run.status));
+    if (isDirectSessionKey(payload.sessionKey) && !active) return;
     const messages = this.repos.listMessages(session.id);
     /*
      * The same reply reaches here twice — streamed, then as a snapshot — and
@@ -2387,7 +2459,7 @@ export class CapsuleEngine {
       run.checkpointRef = storedRun.checkpointRef;
       run.revision = storedRun.revision;
       run.verification = storedRun.verification;
-      if (storedRun.completedAt && ["completed", "failed", "cancelled"].includes(String(event.data?.status))) {
+      if (storedRun.completedAt) {
         stop();
         return;
       }
@@ -2418,6 +2490,7 @@ export class CapsuleEngine {
 
     const status = event.data?.status;
     if (status === "completed" || status === "failed" || status === "cancelled") {
+      this.settleDirectApprovals(run.id);
       stop();
       run.status = status;
       run.updatedAt = nowIso();

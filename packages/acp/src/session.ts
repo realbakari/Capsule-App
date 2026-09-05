@@ -29,7 +29,7 @@ export interface DirectAcpEvents {
   /** Assistant text as it arrives. */
   text: (payload: { text: string; thought: boolean }) => void;
   /** A tool the agent is running, for the work log. */
-  tool: (payload: { title: string; status?: string }) => void;
+  tool: (payload: { title: string; status?: string; toolCallId?: string }) => void;
   /** The turn finished, with the agent's own reason. */
   done: (payload: { stopReason?: string }) => void;
   /** The agent wants permission and is blocked until it is answered. */
@@ -82,6 +82,11 @@ export class DirectAcpSession {
   private acpSessionId: string | undefined;
   private acpModels: AcpModelCatalog | undefined;
   private closed = false;
+  private turn: Promise<unknown> | undefined;
+  private readonly permissions = new Map<number | string, () => void>();
+  private readonly toolTitles = new Map<string, string>();
+
+  get busy(): boolean { return Boolean(this.turn); }
 
   constructor(private readonly options: DirectAcpOptions) {}
 
@@ -137,6 +142,8 @@ export class DirectAcpSession {
     child.on("error", (error) => this.fail(error));
     child.on("close", (code) => {
       this.closed = true;
+      if (this.child === child) this.child = undefined;
+      this.permissions.clear();
       for (const [, entry] of this.pending) {
         if (entry.timer) clearTimeout(entry.timer);
         entry.reject(new Error(this.exitReason(code)));
@@ -171,34 +178,64 @@ export class DirectAcpSession {
    */
   async prompt(text: string): Promise<{ stopReason?: string }> {
     if (!this.acpSessionId) throw new Error("This session has not started.");
-    const result = await this.request(
+    if (this.turn) throw new Error("This agent already has an active turn. Stop it or wait before sending another message.");
+    this.toolTitles.clear();
+    const turn = this.request(
       "session/prompt",
       { sessionId: this.acpSessionId, prompt: [{ type: "text", text }] },
       { timeoutMs: 0 },
     );
-    const stopReason = readStopReason(result);
-    this.emitter.emit("done", { stopReason });
-    return { stopReason };
+    this.turn = turn;
+    try {
+      const stopReason = readStopReason(await turn);
+      this.emitter.emit("done", { stopReason });
+      return { stopReason };
+    } finally {
+      if (this.turn === turn) this.turn = undefined;
+      this.cancelPermissions();
+    }
   }
 
   /** Ask the agent to stop the turn it is on. */
   async cancel(): Promise<void> {
     if (!this.acpSessionId || !this.child) return;
+    this.cancelPermissions();
     this.notify("session/cancel", { sessionId: this.acpSessionId });
+    const turn = this.turn;
+    if (!turn) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        turn.then(() => undefined, () => undefined),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error("The agent has not confirmed cancellation. It may still be working; close the agent to stop its process.")), DEFAULT_TIMEOUT_MS);
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   /** End the conversation and the process with it. */
   async close(): Promise<void> {
+    this.cancelPermissions();
     this.closed = true;
     const child = this.child;
     if (!child) return;
-    this.child = undefined;
     try {
       child.stdin.end();
     } catch {
       // Already gone; the kill below is what matters.
     }
-    child.kill();
+    await new Promise<void>((resolve, reject) => {
+      const force = setTimeout(() => child.kill("SIGKILL"), 3000);
+      const timeout = setTimeout(() => {
+        clearTimeout(force);
+        reject(new Error("The agent process has not exited. It may still be working."));
+      }, 10_000);
+      child.once("close", () => { clearTimeout(force); clearTimeout(timeout); resolve(); });
+      child.kill();
+    });
   }
 
   private exitReason(code: number | null): string {
@@ -244,31 +281,41 @@ export class DirectAcpSession {
 
     if (message.method === "session/update") {
       const update = readSessionUpdate(message.params);
-      if (!update) return;
+      if (!update || (update.sessionId && update.sessionId !== this.acpSessionId)) return;
       if (update.text !== undefined) {
         this.emitter.emit("text", { text: update.text, thought: Boolean(update.thought) });
       }
-      if (update.tool) this.emitter.emit("tool", update.tool);
+      if (update.tool) {
+        const { toolCallId, title } = update.tool;
+        if (toolCallId && title) this.toolTitles.set(toolCallId, title);
+        this.emitter.emit("tool", {
+          ...update.tool,
+          title: title || (toolCallId && this.toolTitles.get(toolCallId)) || "Run a tool",
+        });
+      }
       return;
     }
 
     if (message.method === "session/request_permission" && message.id !== undefined) {
       const request = readPermissionRequest(message.params);
-      if (!request) {
+      if (!request || (request.sessionId && request.sessionId !== this.acpSessionId)) {
         // An agent waits on this reply. Something we cannot read has to be
         // answered anyway, or the turn stops here for good.
         this.respond(message.id, { outcome: { outcome: "cancelled" } });
         return;
       }
       const answer = (decision: "allow" | "deny") => {
+        if (!this.permissions.delete(message.id!)) return;
         const optionId = chooseOption(request.options, decision);
-        this.respond(message.id!, { outcome: { outcome: "selected", optionId } });
+        this.respond(message.id!, { outcome: optionId ? { outcome: "selected", optionId } : { outcome: "cancelled" } });
       };
-      this.emitter.emit("permission", {
+      this.permissions.set(message.id, () => answer("deny"));
+      const handled = this.emitter.emit("permission", {
         title: request.title,
         allow: () => answer("allow"),
         deny: () => answer("deny"),
       });
+      if (!handled) answer("deny");
       return;
     }
 
@@ -280,6 +327,10 @@ export class DirectAcpSession {
     if (message.method && message.id !== undefined) {
       this.respondError(message.id, `Capsule does not provide ${message.method}.`);
     }
+  }
+
+  private cancelPermissions(): void {
+    for (const deny of this.permissions.values()) deny();
   }
 
   private request(

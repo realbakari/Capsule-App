@@ -18,6 +18,12 @@ const harness = (readiness: HarnessStatus["readiness"]): HarnessStatus => ({
 });
 
 describe("harness preflight", () => {
+  it("does not require a Gateway for direct mode but still checks login and binary", () => {
+    const direct = (readiness: HarnessStatus["readiness"]) => ({ ...harness(readiness), runtimeRoute: "direct" as const });
+    expect(harnessPreflightReason({ harness: direct("ready"), connected: false, folder: "/x", live: false })).toBeUndefined();
+    expect(harnessPreflightReason({ harness: direct("needs_login"), connected: false, folder: "/x", live: false })).toBe("status: needs_login");
+    expect(harnessPreflightReason({ harness: direct("missing_cli"), connected: false, folder: "/x", live: false })).toBe("status: missing_cli");
+  });
   it("blocks missing Gateway, acpx, and login before send", () => {
     expect(harnessPreflightReason({ harness: harness("gateway_offline"), connected: false, folder: "/x", live: false })).toMatch(/Gateway/);
     expect(harnessPreflightReason({ harness: harness("missing_acpx"), connected: true, folder: "/x", live: false })).toBe("status: missing_acpx");

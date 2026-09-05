@@ -17,7 +17,7 @@ function fakeAgent(body: string): string {
   writeFileSync(
     file,
     `let buffered = "";
-     const send = (message) => process.stdout.write(JSON.stringify(message) + "\\n");
+     const send = (message) => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...message }) + "\\n");
      process.stdin.on("data", (chunk) => {
        buffered += chunk.toString();
        const parts = buffered.split("\\n");
@@ -48,7 +48,11 @@ const HAPPY = `
       send({ jsonrpc: "2.0", method: "session/update", params: { sessionId: "sess-1",
         update: { sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "thinking" } } } });
       send({ jsonrpc: "2.0", method: "session/update", params: { sessionId: "sess-1",
-        update: { sessionUpdate: "tool_call", title: "Read README.md", status: "in_progress" } } });
+        update: { sessionUpdate: "tool_call", toolCallId: "read-1", title: "Read README.md", status: "in_progress" } } });
+      send({ method: "session/update", params: { sessionId: "other-session",
+        update: { sessionUpdate: "tool_call", title: "Wrong session" } } });
+      send({ method: "session/update", params: { sessionId: "sess-1",
+        update: { sessionUpdate: "tool_call_update", toolCallId: "read-1", status: "completed" } } });
       send({ jsonrpc: "2.0", method: "session/update", params: { sessionId: "sess-1",
         update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Hello " } } } });
       send({ jsonrpc: "2.0", method: "session/update", params: { sessionId: "sess-1",
@@ -59,6 +63,35 @@ const HAPPY = `
 `;
 
 describe("talking to an agent directly", () => {
+  it("rejects overlapping prompts and waits for cancellation to finish the active prompt", async () => {
+    const agent = fakeAgent(`
+      let turn;
+      function handle(message) {
+        if (message.method === "initialize") send({ id: message.id, result: {} });
+        if (message.method === "session/new") send({ id: message.id, result: { sessionId: "s" } });
+        if (message.method === "session/prompt") {
+          turn = message.id;
+          send({ method: "session/request_permission", id: 99, params: { sessionId: "s", toolCall: { title: "Waiting" }, options: [{ optionId: "no", kind: "reject_once" }] } });
+        }
+        if (message.method === "session/cancel") setTimeout(() => send({ id: turn, result: { stopReason: "cancelled" } }), 50);
+      }
+    `);
+    const session = new DirectAcpSession({ command: "node", args: [agent] });
+    try {
+      await session.start();
+      let allow!: () => void;
+      const permission = new Promise<void>((resolve) => session.on("permission", (request) => { allow = request.allow; resolve(); }));
+      const turn = session.prompt("First");
+      await permission;
+      await expect(session.prompt("Overlap")).rejects.toThrow("active turn");
+      const cancel = session.cancel();
+      expect(session.busy).toBe(true);
+      await cancel;
+      expect((await turn).stopReason).toBe("cancelled");
+      expect(session.busy).toBe(false);
+      expect(() => { allow(); allow(); }).not.toThrow();
+    } finally { await session.close(); rmSync(path.dirname(agent), { recursive: true, force: true }); }
+  });
   it("keeps a whitespace-containing cwd intact in both process spawn and session/new", async () => {
     const cwd = mkdtempSync(path.join(tmpdir(), "capsule working folder-"));
     const agent = fakeAgent(`
@@ -88,11 +121,11 @@ describe("talking to an agent directly", () => {
     const session = new DirectAcpSession({ command: "node", args: [fakeAgent(HAPPY)] });
     const text: string[] = [];
     const thoughts: string[] = [];
-    const tools: string[] = [];
+    const tools: Array<{ title: string; status?: string; toolCallId?: string }> = [];
     session.on("text", ({ text: chunk, thought }) =>
       (thought ? thoughts : text).push(chunk),
     );
-    session.on("tool", ({ title }) => tools.push(title));
+    session.on("tool", (tool) => tools.push(tool));
 
     expect(await session.start()).toBe("sess-1");
     const { stopReason } = await session.prompt("hi");
@@ -100,7 +133,10 @@ describe("talking to an agent directly", () => {
     expect(text.join("")).toBe("Hello world");
     // Reasoning arrives separately from the answer, and stays separate.
     expect(thoughts).toEqual(["thinking"]);
-    expect(tools).toEqual(["Read README.md"]);
+    expect(tools).toEqual([
+      { toolCallId: "read-1", title: "Read README.md", status: "in_progress" },
+      { toolCallId: "read-1", title: "Read README.md", status: "completed" },
+    ]);
     expect(stopReason).toBe("end_turn");
     await session.close();
   });
@@ -172,7 +208,10 @@ describe("talking to an agent directly", () => {
       }
     `;
     const session = new DirectAcpSession({ command: "node", args: [fakeAgent(dies)] });
+    const exited = new Promise<void>((resolve) => session.on("exit", () => resolve()));
     await expect(session.start()).rejects.toThrow(/Not signed in/);
+    await exited;
+    await expect(session.close()).resolves.toBeUndefined();
   });
 
   it("refuses a request it never offered to serve, rather than ignoring it", async () => {
