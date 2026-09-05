@@ -15,6 +15,7 @@ import {
 } from "react";
 import {
   addFolderToProject,
+  projectActionOverrides,
   makePrimaryFolder as promoteProjectFolder,
   removeFolderFromProject,
   type Agent,
@@ -233,7 +234,7 @@ export interface WorkspaceValue {
   openTerminal: () => Promise<void>;
   execInProject: (command: string) => Promise<{ stdout: string; stderr: string; code: number; }>;
   initializeGit: () => Promise<void>;
-  saveProjectActions: (actions: ProjectAction[]) => Promise<boolean>;
+  saveProjectActions: (actions: ProjectAction[]) => Promise<{ saved: true } | { saved: false; error: string }>;
   workspaceMode: WorkspaceMode;
   setWorkspaceMode: (mode: WorkspaceMode) => Promise<void>;
   browserUrl: string;
@@ -1286,15 +1287,17 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   }
 
   async function saveProjectActions(actions: ProjectAction[]) {
-    if (!projectId) return false;
+    if (!projectId) return { saved: false as const, error: "Select a project before saving an action." };
     try {
-      await api.updateProject(projectId, { actions });
+      const declared = project?.projectFile?.status === "ok" ? project.projectFile.file.actions : [];
+      await api.updateProject(projectId, { actions: projectActionOverrides(declared, actions) });
       setNotice(undefined);
       await refresh();
-      return true;
+      return { saved: true as const };
     } catch (error) {
-      setNotice(formatUserError(error));
-      return false;
+      const message = formatUserError(error);
+      setNotice(message);
+      return { saved: false as const, error: message };
     }
   }
 

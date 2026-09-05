@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Run, VerificationResult, VerificationState } from "@capsule/shared";
+import { projectActionOverrides } from "@capsule/shared";
 import { useWorkspace } from "../../lib/workspace";
 import { formatUserError } from "../../lib/errors";
 import { ChevronRightIcon, PlusIcon, ShieldIcon } from "../shell/icons";
@@ -22,6 +23,7 @@ export function TurnVerification({ run }: { run: Run; }) {
   if (run.status !== "completed") return null;
   const project = projects.find((p) => p.id === run.projectId);
   const actions = project?.actions ?? [];
+  const localActions = projectActionOverrides(project?.projectFile?.status === "ok" ? project.projectFile.file.actions : [], actions);
   const selectedId = actionId || (actions.length === 1 ? actions[0]!.id : "");
   const action = actions.find((item) => item.id === selectedId);
   const latest = result && (!run.verification || result.createdAt >= run.verification.createdAt) ? result : run.verification;
@@ -35,11 +37,11 @@ export function TurnVerification({ run }: { run: Run; }) {
     finally { setBusy(false); }
   }
   async function saveCheck() {
-    if (!project || !name.trim() || !command.trim() || actions.length >= 24) return;
+    if (!project || !name.trim() || !command.trim() || localActions.length >= 24) return;
     setSaving(true); setError(undefined);
     try {
       const next = { id: crypto.randomUUID(), name: name.trim(), command: command.trim() };
-      await api.updateProject(project.id, { actions: [...actions, next] });
+      await api.updateProject(project.id, { actions: [...localActions, next] });
       await refresh();
       setActionId(next.id); setAdding(false); setCommand("");
     } catch (cause) { setError(formatUserError(cause)); }
@@ -66,7 +68,7 @@ export function TurnVerification({ run }: { run: Run; }) {
         {settings?.sandbox === "strict" && <p className="muted">Strict sandbox mode disables shell checks.</p>}
         <div className="actions">
           {running ? <button type="button" className="ghost" onClick={() => void api.cancelVerification(run.id).catch((e: unknown) => setError(formatUserError(e)))}>Cancel check</button> : actions.length > 0 && <button type="button" className="send" disabled={!action || blocked || saving} onClick={() => void check(selectedId)}>Run selected check</button>}
-          {project && actions.length < 24 && !adding && <button type="button" className="ghost" disabled={running} onClick={() => setAdding(true)}><PlusIcon size={13} />Add check</button>}
+          {project && localActions.length < 24 && !adding && <button type="button" className="ghost" disabled={running} onClick={() => setAdding(true)}><PlusIcon size={13} />Add check</button>}
           {evidence && <button type="button" className="ghost" disabled={running || !run.revision} onClick={() => void check()}>Recheck evidence</button>}
         </div>
         {evidence && <details className="verification-details"><summary>Check output · {new Date(evidence.completedAt).toLocaleString()}</summary><p><code>{evidence.command}</code> · Exit {evidence.exitCode ?? "not recorded"}</p><pre>{evidence.output || "No output."}</pre><p className="faint">Output shows the last 20,000 characters.</p></details>}

@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { AgentMode, ProjectAction, WorkspaceMode } from "@capsule/shared";
 import { isSharedAction, PROJECT_FILE_NAME } from "@capsule/shared";
 
 import { MODES, useWorkspace } from "../../lib/workspace";
 import { formatProjectRoot } from "../../lib/paths";
+import { useScopedState } from "../../lib/scoped-state";
 import { AgentGlyph } from "../shell/AgentGlyph";
 import { MenuSelect } from "../shell/MenuSelect";
 import { SettingRow } from "../settings/controls";
@@ -41,7 +42,8 @@ export function ProjectView() {
     setConfirm,
   } = useWorkspace();
   const [name, setName] = useState(project?.name ?? "");
-  const [editing, setEditing] = useState<ProjectAction>();
+  const projectScope = useMemo(() => ({}), [projectId]);
+  const [editing, setEditing] = useScopedState<ProjectAction | undefined>(projectScope, undefined);
 
   useEffect(() => {
     setName(project?.name ?? "");
@@ -72,8 +74,7 @@ export function ProjectView() {
     const updated = actions.some((item) => item.id === next.id)
       ? actions.map((item) => (item.id === next.id ? next : item))
       : [...actions, next];
-    await saveProjectActions(updated);
-    setEditing(undefined);
+    return saveProjectActions(updated);
   }
 
   return (
@@ -381,8 +382,8 @@ export function ProjectView() {
       {editing ? (
         <ProjectActionDialog
           action={editing}
-          onSave={(next) => void saveAction(next)}
-          onClose={() => setEditing(undefined)}
+          onSave={saveAction}
+          onClose={() => setEditing((current) => current === editing ? undefined : current)}
         />
       ) : null}
     </section>

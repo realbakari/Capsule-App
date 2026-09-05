@@ -114,6 +114,18 @@ export function mergeProjectActions(
   return [...fileActions.filter((action) => !overridden.has(action.id)), ...ownActions];
 }
 
+/** Save local edits without freezing unchanged repository actions in the database. */
+export function projectActionOverrides(fileActions: readonly ProjectAction[], actions: readonly ProjectAction[]): ProjectAction[] {
+  const declared = new Map(fileActions.map((action) => [action.id, action]));
+  return actions.filter((action) => {
+    const file = declared.get(action.id);
+    return !file || file.name !== action.name || file.command !== action.command
+      || (file.previewUrl ?? "") !== (action.previewUrl ?? "")
+      || Boolean(file.runOnWorktreeCreate) !== Boolean(action.runOnWorktreeCreate)
+      || (file.openPreview !== false) !== (action.openPreview !== false);
+  });
+}
+
 /** True for an action that came from the repository rather than this machine. */
 export function isSharedAction(action: Pick<ProjectAction, "id">): boolean {
   return action.id.startsWith("file:");

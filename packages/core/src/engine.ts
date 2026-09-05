@@ -933,6 +933,10 @@ export class CapsuleEngine {
       project.extraFolders = patch.extraFolders.length > 0 ? patch.extraFolders : undefined;
     }
     if (patch.actions !== undefined) {
+      if (patch.actions.length > 24) throw new Error("A project can save up to 24 actions. Remove an action before adding another.");
+      if (patch.actions.some((action) => action.command.trim().length > 2_000)) {
+        throw new Error("An action command cannot exceed 2,000 characters. Shorten it or save it in a script.");
+      }
       project.actions = patch.actions
         .map((action) => ({
           id: action.id.trim().slice(0, 80),

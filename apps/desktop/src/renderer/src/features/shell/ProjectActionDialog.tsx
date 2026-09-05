@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ProjectAction } from "@capsule/shared";
+import { formatUserError } from "../../lib/errors";
 
 import { Switch } from "../settings/controls";
 import { XIcon } from "./icons";
@@ -8,7 +9,9 @@ import { XIcon } from "./icons";
 function withScheme(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) return "";
-  return /^https?:\/\//iu.test(trimmed) ? trimmed : `http://${trimmed}`;
+  const hasScheme = /^[a-z][a-z\d+.-]*:/iu.test(trimmed);
+  const hostAndPort = /^[^/:?#]+:\d+(?:[/?#]|$)/u.test(trimmed);
+  return hasScheme && !hostAndPort ? trimmed : `http://${trimmed}`;
 }
 
 /**
@@ -22,7 +25,7 @@ export function ProjectActionDialog({
   onClose,
 }: {
   action: ProjectAction;
-  onSave: (next: ProjectAction) => void;
+  onSave: (next: ProjectAction) => Promise<{ saved: true } | { saved: false; error: string }>;
   onClose: () => void;
 }) {
   const [name, setName] = useState(action.name);
@@ -34,12 +37,16 @@ export function ProjectActionDialog({
   // An action with a preview URL opened it before this was a choice, so an
   // action that has never been told otherwise keeps doing that.
   const [openPreview, setOpenPreview] = useState(action.openPreview !== false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string>();
+  const pending = useRef(false);
+  const savedId = useRef(action.id);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.stopPropagation();
-        onClose();
+        if (!pending.current) onClose();
       }
     };
     window.addEventListener("keydown", onKey, true);
@@ -48,22 +55,48 @@ export function ProjectActionDialog({
 
   const previewUrl = withScheme(url);
 
+  async function save() {
+    if (pending.current || !name.trim() || !command.trim()) return;
+    if (previewUrl) {
+      try {
+        const parsed = new URL(previewUrl);
+        if (!/^https?:$/.test(parsed.protocol) || parsed.username || parsed.password) throw new Error();
+      } catch {
+        setError("Enter a valid HTTP or HTTPS preview URL without a username or password.");
+        return;
+      }
+    }
+    pending.current = true; setSaving(true); setError(undefined);
+    try {
+      savedId.current ||= `action-${crypto.randomUUID()}`;
+      const result = await onSave({
+        id: savedId.current,
+        name: name.trim(), command: command.trim(),
+        ...(previewUrl ? { previewUrl } : {}),
+        ...(runOnWorktreeCreate ? { runOnWorktreeCreate: true } : {}),
+        ...(previewUrl && !openPreview ? { openPreview: false } : {}),
+      });
+      if (result.saved) onClose();
+      else setError(result.error);
+    } catch (cause) {
+      setError(formatUserError(cause));
+    } finally {
+      pending.current = false; setSaving(false);
+    }
+  }
+
   return createPortal(
-    <div className="palette-backdrop center" onClick={onClose}>
+    <div className="palette-backdrop center" onClick={() => { if (!pending.current) onClose(); }}>
       <form
         className="dialog project-action-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label={action.id ? "Edit action" : "Add action"}
+        aria-busy={saving}
         onClick={(event) => event.stopPropagation()}
         onSubmit={(event) => {
           event.preventDefault();
-          if (!name.trim() || !command.trim()) return;
-          onSave({
-            id: action.id || `action-${crypto.randomUUID()}`,
-            name: name.trim(),
-            command: command.trim(),
-            ...(previewUrl ? { previewUrl } : {}),
-            ...(runOnWorktreeCreate ? { runOnWorktreeCreate: true } : {}),
-            ...(previewUrl && !openPreview ? { openPreview: false } : {}),
-          });
+          void save();
         }}
       >
         <div className="dialog-header">
@@ -71,16 +104,19 @@ export function ProjectActionDialog({
             <h3>{action.id ? "Edit Action" : "Add Action"}</h3>
             <p>Actions are project-scoped commands you can run from the top bar or keybindings.</p>
           </div>
-          <button type="button" className="dialog-close" aria-label="Close" onClick={onClose}>
+          <button type="button" className="dialog-close" aria-label="Close" disabled={saving} onClick={onClose}>
             <XIcon size={14} />
           </button>
         </div>
+        <fieldset className="project-action-fields" disabled={saving}>
         <label>
           <span>Name</span>
           <input
             autoFocus
             type="text"
             value={name}
+            maxLength={60}
+            required
             onChange={(event) => setName(event.target.value)}
             placeholder="Test or Dev server"
           />
@@ -93,6 +129,8 @@ export function ProjectActionDialog({
             className="field"
             rows={2}
             value={command}
+            maxLength={2000}
+            required
             onChange={(event) => setCommand(event.target.value)}
             placeholder="bun test or pnpm dev"
           />
@@ -104,6 +142,7 @@ export function ProjectActionDialog({
           <input
             type="text"
             value={url}
+            maxLength={500}
             onChange={(event) => setUrl(event.target.value)}
             placeholder="http://localhost:5173"
           />
@@ -137,12 +176,14 @@ export function ProjectActionDialog({
             </div>
           </div>
         ) : null}
+        </fieldset>
+        {error && <p className="project-action-error" role="alert">{error}</p>}
         <div className="actions">
-          <button className="ghost" type="button" onClick={onClose}>
+          <button className="ghost" type="button" disabled={saving} onClick={onClose}>
             Cancel
           </button>
-          <button className="send" type="submit" disabled={!name.trim() || !command.trim()}>
-            {action.id ? "Save changes" : "Save action"}
+          <button className="send" type="submit" disabled={saving || !name.trim() || !command.trim()}>
+            {saving ? "Saving…" : action.id ? "Save changes" : "Save action"}
           </button>
         </div>
       </form>

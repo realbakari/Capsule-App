@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ProjectAction, ProjectActionRun } from "@capsule/shared";
+import { isSharedAction, PROJECT_FILE_NAME } from "@capsule/shared";
 import { useWorkspace } from "../../lib/workspace";
 import { PlusIcon, StopIcon, TerminalIcon } from "./icons";
 import { HeaderPopover } from "./HeaderPopover";
@@ -47,18 +48,6 @@ export function ProjectActionsControl() {
     };
   }, [api, open, project?.id, session?.id]);
 
-  useEffect(() => {
-    if (!editing) return undefined;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.stopPropagation();
-        setEditing(undefined);
-      }
-    };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, [editing]);
-
   function edit(action?: ProjectAction) {
     setEditing(action ?? { id: "", name: "", command: "" });
   }
@@ -67,8 +56,7 @@ export function ProjectActionsControl() {
     const updated = actions.some((item) => item.id === next.id)
       ? actions.map((item) => (item.id === next.id ? next : item))
       : [...actions, next];
-    await saveProjectActions(updated);
-    setEditing(undefined);
+    return saveProjectActions(updated);
   }
 
   async function run(action: ProjectAction) {
@@ -147,7 +135,7 @@ export function ProjectActionsControl() {
                       <button type="button" className="ghost" title="Stop action" onClick={() => void stop(action)}>
                         <StopIcon size={11} />
                       </button>
-                    ) : (
+                    ) : isSharedAction(action) ? <span className="chip-static" title={`Declared in ${PROJECT_FILE_NAME}`}>shared</span> : (
                       <button type="button" className="ghost" onClick={() => edit(action)}>
                         Edit
                       </button>
@@ -155,6 +143,8 @@ export function ProjectActionsControl() {
                     <button
                       type="button"
                       className="danger"
+                      disabled={isSharedAction(action)}
+                      title={isSharedAction(action) ? `Remove it from ${PROJECT_FILE_NAME} instead` : undefined}
                       onClick={() =>
                         setConfirm({
                           title: `Delete “${action.name}”?`,
@@ -184,8 +174,8 @@ export function ProjectActionsControl() {
       {editing ? (
         <ProjectActionDialog
           action={editing}
-          onSave={(next) => void save(next)}
-          onClose={() => setEditing(undefined)}
+          onSave={save}
+          onClose={() => setEditing((current) => current === editing ? undefined : current)}
         />
       ) : null}
     </div>

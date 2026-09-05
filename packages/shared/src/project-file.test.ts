@@ -3,9 +3,21 @@ import { describe, expect, it } from "vitest";
 import {
   isSharedAction,
   mergeProjectActions,
+  projectActionOverrides,
   parseProjectFile,
   PROJECT_FILE_NAME,
 } from "./project-file.js";
+
+it("saves local additions without pinning shared commands to an old copy", () => {
+  const shared = { id: "file:test", name: "Tests", command: "pnpm test" };
+  const local = { id: "check", name: "Build", command: "pnpm build" };
+  const saved = projectActionOverrides([shared], [shared, local]);
+  expect(saved).toEqual([local]);
+  const updated = { ...shared, command: "pnpm test --run" };
+  expect(mergeProjectActions([updated], saved)).toEqual([updated, local]);
+  const override = { ...shared, openPreview: false };
+  expect(projectActionOverrides([shared], [override, local])).toEqual([override, local]);
+});
 
 describe("parseProjectFile", () => {
   it("reads what a repository declares", () => {
