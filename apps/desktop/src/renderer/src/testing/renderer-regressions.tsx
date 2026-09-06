@@ -24,7 +24,11 @@ import { DEFAULT_CAPSULE_SETTINGS, PRESET_HARNESSES, type Session, type Run, typ
 import type { Skill, Agent, HarnessStatus } from "@capsule/shared";
 
 declare global {
-  interface Window { testWorkspace: Record<string, unknown>; runRendererRegressions: () => Promise<string>; }
+  interface Window {
+    testWorkspace: Record<string, unknown>;
+    runPetRegressions: (motion: "reduce" | "no-preference") => Promise<string>;
+    runRendererRegressions: () => Promise<string>;
+  }
 }
 
 function assert(condition: unknown, message: string): void {
@@ -69,10 +73,25 @@ function ComposerContextFixture({ base }: { base: Record<string, unknown> }) {
   return <Composer />;
 }
 
-window.runRendererRegressions = async () => {
-  const host = document.getElementById("root")!;
-  let root = createRoot(host);
+window.runPetRegressions = async (motion) => {
+  const reduced = motion === "reduce";
+  // Check the browser's actual media query, not a matchMedia mock: the CSS
+  // engine must see the same preference as the assertions.
+  assert(matchMedia(`(prefers-reduced-motion: ${motion})`).matches, `Companion motion preference was not emulated: ${motion}`);
+  const root = createRoot(document.getElementById("root")!);
   const petApi = window.capsule;
+  const animation = (selector: string, name: string) => {
+    const element = document.querySelector(selector);
+    assert(element, `Missing companion part: ${selector}`);
+    const actual = getComputedStyle(element!).animationName;
+    assert(actual === name, `${selector}: expected animation ${name}, got ${actual} (motion: ${motion})`);
+  };
+  const still = () => {
+    for (const element of Array.from(document.querySelectorAll(".pet *"))) {
+      assert(getComputedStyle(element).animationName === "none", `Companion part still animated: ${element.getAttribute("class")} (motion: ${motion})`);
+    }
+  };
+  localStorage.removeItem("capsule.pet.paused");
   let petReadFails = true;
   let petFocus = "";
   const expandedPet: boolean[] = [];
@@ -85,27 +104,50 @@ window.runRendererRegressions = async () => {
     setPetExpanded: async (value: boolean) => { expandedPet.push(value); },
     focusSession: async (id: string) => { petFocus = id; }, togglePet: async () => false,
   } as unknown as typeof window.capsule;
-  root.render(<Pet />);
-  await until(() => document.body.textContent?.includes("Status unavailable"));
-  (document.querySelector(".pet-body") as HTMLButtonElement).click();
-  await until(() => expandedPet.includes(true));
-  petReadFails = false; button("Retry status").click();
-  await until(() => document.body.textContent?.includes("Example task"));
-  assert(getComputedStyle(document.querySelector(".pet-tail")!).animationName !== "none", "Mascot tail has no animation");
-  assert(getComputedStyle(document.querySelector(".pet-leg-front")!).animationName !== "none", "Mascot has no walking legs");
-  button("Play").click();
-  await until(() => document.querySelector(".pet--pounce"));
-  assert(getComputedStyle(document.querySelector(".pet-capsule")!).animationName === "petPounce", "Play did not animate the mascot");
-  button("Stretch").click();
-  await until(() => document.querySelector(".pet--stretch"));
-  button("Pause motion").click();
-  await until(() => document.querySelector(".pet--paused"));
-  assert(getComputedStyle(document.querySelector(".pet-tail")!).animationName === "none", "Pause left the tail animated");
-  assert(getComputedStyle(document.querySelector(".pet-rig")!).animationName === "none", "Pause left the stretch animated");
-  button("Resume motion").click();
-  (document.querySelector(".pet-tray-title")?.closest("button") as HTMLButtonElement).click();
-  await until(() => petFocus === "pet-thread" && expandedPet.at(-1) === false);
-  root.unmount(); window.capsule = petApi; localStorage.clear(); root = createRoot(host);
+  try {
+    root.render(<Pet />);
+    await until(() => document.body.textContent?.includes("Status unavailable"));
+    (document.querySelector(".pet-body") as HTMLButtonElement).click();
+    await until(() => expandedPet.includes(true));
+    petReadFails = false; button("Retry status").click();
+    await until(() => document.body.textContent?.includes("Example task"));
+    for (const [selector, name] of [
+      [".pet-tail", "petTail"], [".pet-leg-front", "petStep"], [".pet-leg-back", "petStep"],
+      [".pet-head", "petLook"], [".pet-ear-left", "petEar"], [".pet-ear-right", "petEar"], [".pet-eye", "petBlink"],
+    ] as const) {
+      animation(selector, reduced ? "none" : name);
+    }
+    if (reduced) still();
+    button("Wave").click();
+    await until(() => document.querySelector(".pet--greeting"));
+    animation(".pet-capsule", reduced ? "none" : "petWave");
+    if (reduced) still();
+    button("Play").click();
+    await until(() => document.querySelector(".pet--pounce"));
+    animation(".pet-capsule", reduced ? "none" : "petPounce");
+    if (reduced) still();
+    button("Stretch").click();
+    await until(() => document.querySelector(".pet--stretch"));
+    animation(".pet-rig", reduced ? "none" : "petStretch");
+    if (reduced) still();
+    button("Pause motion").click();
+    await until(() => document.querySelector(".pet--paused"));
+    still();
+    button("Resume motion").click();
+    await until(() => !document.querySelector(".pet--paused"));
+    animation(".pet-tail", reduced ? "none" : "petTail");
+    if (reduced) still();
+    (document.querySelector(".pet-tray-title")?.closest("button") as HTMLButtonElement).click();
+    await until(() => petFocus === "pet-thread" && expandedPet.at(-1) === false);
+    return `Companion regressions passed (${motion})`;
+  } finally {
+    root.unmount(); window.capsule = petApi; localStorage.clear();
+  }
+};
+
+window.runRendererRegressions = async () => {
+  const host = document.getElementById("root")!;
+  let root = createRoot(host);
   let modelChanges = 0;
   let openedFile = "";
   root.render(<><MenuSelect ariaLabel="Unavailable model" value="" options={[{ id: "x", label: "Example" }]} unavailableReason="Direct model is fixed at startup" onChange={() => modelChanges++} /><CapabilityDetails compact /><RunSummary label="Used tools" run={{ status: "failed" } as Run} touchedFiles={[{ path: "src/example.ts", action: "modified" }]} onOpenFile={(file) => { openedFile = file; }} /></>);

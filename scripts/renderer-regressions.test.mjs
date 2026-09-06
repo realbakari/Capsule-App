@@ -6,7 +6,7 @@ import { build } from "esbuild";
 import { expect, it } from "vitest";
 import { resolveElectronBinary } from "./electron-path.mjs";
 
-it("keeps failed action edits and skill installs recoverable in the renderer", { timeout: 30_000 }, async () => {
+it("keeps renderer interactions recoverable and companion motion accessible", { timeout: 30_000 }, async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "capsule-renderer-regressions-"));
   try {
     const bundle = await build({
@@ -35,6 +35,8 @@ it("keeps failed action edits and skill installs recoverable in the renderer", {
       child.on("exit", (code, signal) => { clearTimeout(timer); resolve({ code, output: `${output}\nExit signal: ${signal ?? "none"}` }); });
     });
     expect(result.code, result.output).toBe(0);
+    expect(result.output).toContain("Companion regressions passed (reduce)");
+    expect(result.output).toContain("Companion regressions passed (no-preference)");
     expect(result.output).toContain("Renderer regressions passed");
   } finally { await rm(directory, { recursive: true, force: true }); }
 });

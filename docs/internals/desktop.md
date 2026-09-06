@@ -262,6 +262,10 @@ SVG has CSS-driven walking, tail/ear/head/eye motion and explicit wave/play/stre
 reactions. A dedicated drag region leaves the mascot keyboard/click accessible.
 The window expands upward for the tray, clamped to its display's work area.
 Size/pause preferences are renderer-local; reduced motion disables animation.
+Hidden-renderer regressions explicitly emulate both reduced motion and no
+preference in Chromium's CSS engine, independent of the host's accessibility
+settings. They check limb motion, wave/play/stretch reactions, pause/resume and
+tray navigation in both modes; reduced motion must keep every part still.
 Activity reads coalesce at 250ms with only one outstanding request; tool-output
 frames do not trigger reads. An indexed lookup selects each non-archived thread's
 newest run state without loading historical prompts, results or verification JSON.

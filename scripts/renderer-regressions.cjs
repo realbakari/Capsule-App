@@ -14,6 +14,15 @@ app.whenReady().then(async () => {
     if (!bundlePath) throw new Error("Missing renderer test bundle");
     await window.loadFile(path.join(path.dirname(bundlePath), "index.html"));
     await window.webContents.executeJavaScript(fs.readFileSync(bundlePath, "utf8"));
+    // Hosted macOS runners can request reduced motion. Exercise both settings
+    // in the real CSS engine without changing the machine's accessibility prefs.
+    window.webContents.debugger.attach("1.3");
+    for (const motion of ["reduce", "no-preference"]) {
+      await window.webContents.debugger.sendCommand("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: motion }] });
+      const result = await window.webContents.executeJavaScript(`window.runPetRegressions(${JSON.stringify(motion)}).then(value => ({ value }), error => ({ error: String(error.stack || error) }))`);
+      if (result.error) throw new Error(result.error);
+      console.log(result.value);
+    }
     const result = await window.webContents.executeJavaScript("window.runRendererRegressions().then(value => ({ value }), error => ({ error: String(error.stack || error) }))");
     if (result.error) throw new Error(result.error);
     console.log(result.value);
