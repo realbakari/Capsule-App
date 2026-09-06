@@ -6,7 +6,6 @@ import { formatTokens, type ContextUsage } from "../../lib/context-window";
 import { AlertTriangleIcon, CopyIcon, DiffIcon, FileIcon, SparkIcon, TerminalIcon, XIcon } from "../shell/icons";
 import { useWorkspace } from "../../lib/workspace";
 import { formatUserError } from "../../lib/errors";
-import { GatewayBanner } from "../shell/GatewayBanner";
 import { ViewErrorBoundary } from "../shell/ErrorBoundary";
 import { Composer } from "./Composer";
 import { PersistentTerminals } from "../terminal/TerminalDock";
@@ -21,6 +20,7 @@ import {
   type Turn,
 } from "../../lib/turns";
 import { RunSummary } from "./RunSummary";
+import { runActivityLabel } from "@capsule/shared";
 import { summariseWork, extractTouchedFiles } from "../../lib/activity";
 import { outcomesByTurn } from "../../lib/turn-outcomes";
 import { threadFeedback } from "../../lib/thread-error";
@@ -154,16 +154,18 @@ function TurnStatusLine({
   agentName,
   usage,
   activity,
+  stopping,
 }: {
   run: Run;
   agentId?: string;
   agentName: string;
   usage?: ContextUsage;
   activity?: string;
+  stopping?: boolean;
 }) {
   // The agent's own most recent step when there is one; otherwise the honest
   // answer, which is that nothing has come back yet.
-  const state = activity?.trim() || `Waiting for ${agentName}`;
+  const state = stopping ? "Stopping — waiting for the runtime" : `${runActivityLabel(run)} · ${activity?.trim() || `Waiting for ${agentName}`}`;
   return (
     <div className="turn-status">
       {agentId ? <AgentGlyph id={agentId} name={agentName} size={14} /> : null}
@@ -240,7 +242,6 @@ export function Conversation() {
     createTask,
     createProjectFromFolder,
     pickProjectDirectory,
-    connected,
     settings,
     openPath,
     terminalOpen,
@@ -250,6 +251,7 @@ export function Conversation() {
     setInspectorTab,
     gitDiscard,
     setConfirm,
+    stoppingRunIds,
   } = useWorkspace();
 
   // Selection changes before asynchronous history loads finish. Never render
@@ -292,12 +294,7 @@ export function Conversation() {
   }, [messages]);
   const visibleMessageCount = useMemo(() => turns.reduce((count, turn) => count + turn.messages.length, 0), [turns]);
   const turnOutcomes = useMemo(() => outcomesByTurn(turns, runs, session?.id, project?.id), [turns, runs, session?.id, project?.id]);
-  // The newest work log is rendered below the messages. Keep its receipt
-  // below it too, while older receipts remain attached to their own turn.
-  const lastTurn = turns.at(-1);
-  const footerVerification = !activeRun && steps.length > 0 && lastTurn
-    ? turnOutcomes.get(lastTurn.id)?.find((run) => run.status === "completed" && events.some((event) => event.runId === run.id))
-    : undefined;
+  const summaryRun = [activeRun, ...runs].find((run) => run && run.sessionId === session?.id && run.projectId === project?.id);
 
   /*
    * Where each turn starts in the flat message list, so a row can tell whether
@@ -390,9 +387,6 @@ export function Conversation() {
             <XIcon size={12} />
           </button>
         </div>
-      )}
-      {!connected && (
-        <GatewayBanner inset />
       )}
       <div
         className="conversation"
@@ -488,7 +482,10 @@ export function Conversation() {
                     {(turnOutcomes.get(turn.id) ?? []).map((run) => <Fragment key={run.id}>
                       {run.status === "completed" && !run.result?.trim() && !turn.messages.some((message) => message.role === "assistant") && <p className="muted turn-missing-reply" role="status">No reply was received for this turn. Review the work log before retrying.</p>}
                       <TurnOutcome run={run} cwd={terminalCwd} />
-                      {run.id !== footerVerification?.id && <TurnVerification run={run} />}
+                      {run.id !== summaryRun?.id && <RunSummary run={run} label="Turn details">
+                        <RunEventLog runId={run.id} failed={run.status === "failed" || run.status === "blocked"} />
+                        <TurnVerification run={run} />
+                      </RunSummary>}
                     </Fragment>)}
                   </Fragment>
                 ),
@@ -500,7 +497,7 @@ export function Conversation() {
               the agent did — every command, every file — disappeared the
               instant the turn finished, and the only way back to it was to
               start another one. */}
-          {(activeRun || steps.length > 0) && (
+          {summaryRun && (
             <div className={`msg active-run-msg${activeRun ? "" : " settled"}`}>
               {activeRun ? (
                 <TurnStatusLine
@@ -513,11 +510,14 @@ export function Conversation() {
                   )}
                   usage={contextUsage}
                   activity={liveActivity}
+                  stopping={stoppingRunIds?.includes(activeRun.id)}
                 />
               ) : null}
               <RunSummary
-                label={summariseWork(steps).label}
-                isComplete={!activeRun}
+                key={summaryRun?.id}
+                label={`${events.some((event) => event.data?.earlierEvents) ? "Recent activity · " : ""}${summariseWork(steps).label}`}
+                run={summaryRun}
+                stopping={Boolean(activeRun && stoppingRunIds?.includes(activeRun.id))}
                 touchedFiles={touchedFiles}
                 onOpenFile={openAttachment}
               >
@@ -552,50 +552,23 @@ export function Conversation() {
                       </div>
                       {step.id === "thinking" && step.body && (
                         <details className="thinking">
-                          <summary>Show full reasoning</summary>
+                          <summary>Show recorded reasoning</summary>
                           <div className="thinking-body">{step.body}</div>
                         </details>
                       )}
                     </div>
                   ))}
                 </div>
+                {/* Full history and checks share one expansion, not three cards. */}
+                {events.some((event) => event.data?.earlierEvents) && <p className="faint">Showing recent activity only. Earlier events are available in the run log.</p>}
+                {events.some((event) => event.data?.payloadTruncated) && <p className="faint">Some oversized diagnostic content was shortened.</p>}
+                {summaryRun && <>
+                  <RunEventLog runId={summaryRun.id} failed={summaryRun.status === "failed" || summaryRun.status === "blocked"} />
+                  <TurnVerification run={summaryRun} />
+                </>}
               </RunSummary>
-              {/* Only when something went wrong. A raw list of stream frames
-                  with timestamps is what you want when a turn failed and
-                  nothing you would ever open when it did not. */}
-              {activeRun?.status === "failed" || activeRun?.status === "blocked" ? (
-              <details className="advanced">
-                <summary>What the agent reported</summary>
-                <div className="event-log">
-                  {events
-                    .filter((event) => {
-                      if (!event.message?.trim()) return false;
-                      if (!event.data?.streamKind) return false;
-                      if (settings?.reasoningSummary !== "hidden") return true;
-                      const kind = String(event.data.streamKind).toLowerCase();
-                      return !kind.startsWith("think") && !kind.startsWith("reason");
-                    })
-                    .map((event) => (
-                      <div key={event.id}>
-                        <span className="event-time">{formatTime(event.timestamp)}</span>
-                        <span className="event-kind">
-                          {String(event.data?.streamKind ?? event.type)}
-                        </span>
-                        <span className="event-text">{event.message.trim()}</span>
-                      </div>
-                    ))}
-                  {events.every((event) => !event.message?.trim()) && (
-                    <div className="faint">No output yet.</div>
-                  )}
-                </div>
-              </details>
-              ) : null}
             </div>
           )}
-          {/* Last in the thread: the outcome of the newest turn, under the
-              record of what that turn did. Above the work log it read as a
-              verdict on the turn before it. */}
-          {footerVerification && <TurnVerification key={footerVerification.id} run={footerVerification} />}
           {failure && failureKey ? (
             <div className="thread-error" role="status">
               <AlertTriangleIcon size={13} aria-hidden />
@@ -671,3 +644,4 @@ export function Conversation() {
     </section>
   );
 }
+import { RunEventLog } from "./RunEventLog";

@@ -31,13 +31,17 @@ beforeEach(() => {
 });
 
 describe("saved outcome placement", () => {
-  it("places the latest verification below its work log without moving an older receipt", () => {
+  it("keeps one collapsed activity and evidence entry per owning turn", () => {
     workspace.value.events = [{ id: "e", runId: "r2", type: "tool", message: "read_file source.ts", timestamp: "2026-09-04T00:00:04Z" }];
     workspace.value.steps = [{ id: "work:read", label: "Read 1 file", count: 1, status: "complete" }];
     const html = renderToStaticMarkup(createElement(Conversation));
-    expect(html.indexOf('data-verification-run="r2"')).toBeGreaterThan(html.indexOf('class="run-summary-label"'));
-    expect(html.indexOf('data-verification-run="r1"')).toBeLessThan(html.indexOf("Follow up"));
-    expect(html.match(/data-verification-run="r2"/g)).toHaveLength(1);
+    expect(html.indexOf('data-run-summary="r2"')).toBeGreaterThan(html.indexOf("Second reply"));
+    expect(html.indexOf('data-run-summary="r1"')).toBeLessThan(html.indexOf("Follow up"));
+    expect(html.match(/data-run-summary="r2"/g)).toHaveLength(1);
+    expect(html.match(/data-run-summary="r1"/g)).toHaveLength(1);
+    expect(html).not.toContain("data-verification-run");
+    expect(html).not.toContain("run-event-log");
+    expect(html.match(/Completed · not verified/g)).toHaveLength(2);
   });
 
   it("explains a missing reply without inventing an answer or a failed check", () => {
@@ -61,6 +65,7 @@ describe("saved outcome placement", () => {
     workspace.value.project = { id: "new-project", name: "Other", workingDirectory: "/other" };
     const html = renderToStaticMarkup(createElement(Conversation));
     expect(html).not.toContain("data-outcome");
+    expect(html).not.toContain("data-run-summary");
     expect(html).not.toContain("First reply");
     expect(html).toContain("conversation-empty");
   });

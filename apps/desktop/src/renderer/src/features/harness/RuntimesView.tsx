@@ -1,4 +1,6 @@
 import { harnessReadinessLabel, isFeaturedHarness } from "../../lib/harness";
+import { harnessCapabilities } from "@capsule/shared";
+import { CapabilityDetails } from "./CapabilityDetails";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   PERMISSION_PROFILES,
@@ -244,13 +246,7 @@ function HarnessDetail({
   harness: HarnessStatus;
   doctor?: { checks: Array<{ id: string; label: string; ok: boolean; detail: string }>; gatewayOutput?: string };
   dedicated: boolean;
-  live: Array<{
-    id: string;
-    title: string;
-    harnessState?: string;
-    permissionProfile?: string;
-    modelOverride?: string;
-  }>;
+  live: import("@capsule/shared").Session[];
   activeSessionId?: string;
   status?: HarnessLiveStatus;
   canSpawnNow: boolean;
@@ -267,6 +263,7 @@ function HarnessDetail({
 }) {
   const installed = isInstalled(harness);
   const activeSession = live.find((item) => item.id === activeSessionId);
+  const capabilities = harnessCapabilities({ harness, session: activeSession, status });
   const advertisedModels = status?.parsed?.models?.availableModels ?? [];
   const currentModel =
     activeSession?.modelOverride ??
@@ -344,6 +341,7 @@ function HarnessDetail({
         )}
       </div>
 
+      <CapabilityDetails harness={harness} session={activeSession} status={status} />
       {live.length > 0 && (
         <div className="harness-live-sessions">
           <div className="nav-label">
@@ -369,7 +367,7 @@ function HarnessDetail({
             </div>
           ))}
           {activeSession && (
-            <div className="harness-options">
+            <fieldset className="harness-options" disabled={capabilities.tuning.state === "unavailable"} title={capabilities.tuning.detail}>
               <label>
                 <span>Permissions</span>
                 <select
@@ -455,7 +453,7 @@ function HarnessDetail({
                   }}
                 />
               </label>
-            </div>
+            </fieldset>
           )}
           <HarnessSessionDiagnostics status={status} />
         </div>

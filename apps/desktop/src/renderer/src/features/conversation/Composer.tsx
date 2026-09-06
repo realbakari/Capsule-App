@@ -1,12 +1,16 @@
 import { contextTone } from "../../lib/context-window";
+import { harnessCapabilities } from "@capsule/shared";
+import { CapabilityDetails } from "../harness/CapabilityDetails";
 import { ContextWindowMeter } from "./ContextWindowMeter";
-import { agentPickerDetail, agentSwitchNotice, harnessDisplayName } from "../../lib/harness";
+import { agentSwitchNotice, harnessDisplayName } from "../../lib/harness";
+import { AgentModelPicker } from "./AgentModelPicker";
+import { GatewayBanner } from "../shell/GatewayBanner";
+import { GATEWAY_CONNECTION_REQUIRED } from "../../lib/harness-preflight";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FileEntry } from "@capsule/shared";
 import { searchProjectFiles } from "../../lib/bridge";
 import { MODES, PERMISSION_OPTIONS, useWorkspace, type View } from "../../lib/workspace";
 import { formatProjectRoot, projectFolderName } from "../../lib/paths";
-import { AgentGlyph } from "../shell/AgentGlyph";
 import { MenuSelect } from "../shell/MenuSelect";
 import {
   ArrowUpIcon,
@@ -16,7 +20,6 @@ import {
   GitBranchIcon,
   PaperclipIcon,
   ShieldIcon,
-  SparkIcon,
   StopIcon,
   TerminalIcon,
   XIcon,
@@ -169,9 +172,12 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
     void loadHarnessStatus(liveHarnessSessionId);
   }, [harnessStatus, liveHarnessSessionId, loadHarnessStatus]);
 
-  const models = harnessStatus?.parsed?.models;
+  const capabilityHarness = harnesses.find((item) => item.id === agentId);
+  const capabilities = harnessCapabilities({ harness: capabilityHarness, session, status: harnessStatus });
+  const gatewayUnavailable = ready && !connected && capabilities.route !== "direct" && workspace.status?.kind !== "mock";
+  const models = session?.harnessId === agentId ? harnessStatus?.parsed?.models : undefined;
   const currentModel =
-    session?.modelOverride ?? models?.currentModelId ?? harnessStatus?.parsed?.model ?? "";
+    session?.harnessId === agentId ? session.modelOverride ?? models?.currentModelId ?? harnessStatus?.parsed?.model ?? "" : "";
 
   const [stashOpen, setStashOpen] = useState(false);
   const harnessLive = Boolean(session?.harnessId && session.harnessState && session.harnessState !== "closed");
@@ -311,6 +317,11 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
   }
 
   const permission = session?.permissionProfile ?? settings?.defaultPermission ?? "default";
+  const permissionOptions = capabilities.route === "direct"
+    ? [{ id: "agent-managed", label: "Agent-managed", disabledReason: capabilities.permissions.detail }]
+    : PERMISSION_OPTIONS.map((item) => ({ id: item.id, label: item.label, detail: item.detail }));
+  const permissionValue = capabilities.route === "direct" ? "agent-managed" : permission;
+  const modeOptions = MODES.map((item) => ({ id: item, label: item.charAt(0).toUpperCase() + item.slice(1) }));
   const sendOnEnter = settings?.composerSendKey !== "cmd-enter";
   const selectedHarness = harnesses.find((item) => item.id === agentId);
 
@@ -395,11 +406,9 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
           rows={1}
           value={draft}
           placeholder={
-            ready && !connected
-              ? "Connect the Gateway to send"
-              : harnessLive
+            harnessLive
                 ? `Continue with ${harnessDisplayName(harnesses, session?.harnessId)}…`
-                : "Ask Capsule…"
+                : "Describe a change, ask a question, or attach files…"
           }
           onChange={(event) => {
             setDraft(event.target.value);
@@ -539,7 +548,8 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
             </button>
           </div>
         )}
-        {sendBlockReason && (
+        {gatewayUnavailable && <GatewayBanner inset />}
+        {sendBlockReason && !(gatewayUnavailable && sendBlockReason === GATEWAY_CONNECTION_REQUIRED) && (
           <div className="composer-preflight" role="status">
             <span title={sendBlockReason}>{sendBlockReason}</span>
             {selectedHarness ? (
@@ -552,7 +562,8 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
             </button>
           </div>
         )}
-        {harnessLive && activeRun && !session?.openclawSessionKey?.startsWith("direct:acp:") && (
+        {harnessLive && activeRun && capabilities.steer.state === "unavailable" && <p className="capability-hint">{capabilities.steer.detail}</p>}
+        {harnessLive && activeRun && capabilities.steer.state !== "unavailable" && (
           <div className="steer-row">
             <input
               type="text"
@@ -573,79 +584,36 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
         )}
         <div className="composer-row">
           <div className="composer-controls">
-            <MenuSelect
-              ariaLabel="Mode"
-              value={mode}
-              options={MODES.map((item) => ({ id: item, label: item }))}
-              onChange={(id) => setMode(id as typeof mode)}
-            />
+            <AgentModelPicker agents={agents} harnesses={harnesses} agentId={agentId} liveHarnessId={liveHarnessId}
+              models={models} currentModel={currentModel} availability={capabilities.model}
+              onAgent={setAgentId} onModel={(id) => void setHarnessOption("model", id)} />
+            <div className="composer-options-inline">
+            <span className="composer-control-divider" aria-hidden />
             <MenuSelect
               ariaLabel="Permission mode"
               icon={<ShieldIcon size={13} />}
-              value={permission}
-              options={PERMISSION_OPTIONS.map((item) => ({
-                id: item.id,
-                label: item.label,
-                detail: item.detail,
-              }))}
+              value={permissionValue}
+              options={permissionOptions}
               onChange={(id) => void setPermissionProfile(id)}
             />
-            <MenuSelect
-              ariaLabel="Agent"
-              icon={selectedAgentName ? <AgentGlyph id={agentId} name={selectedAgentName} /> : undefined}
-              value={agentId}
-              options={agents.map((item) => {
-                const harness = harnesses.find((candidate) => candidate.id === item.id);
-                return {
-                  id: item.id,
-                  label: item.name,
-                  detail: agentPickerDetail({
-                    harness,
-                    description: item.description,
-                    live: liveHarnessId === item.id,
-                  }),
-                  icon: <AgentGlyph id={item.id} name={item.name} />,
-                };
-              })}
-              onChange={setAgentId}
-            />
-            {/* Only when the running agent has said what it will accept: a
-                picker of models it may refuse is worse than no picker. */}
-            {models && models.availableModels.length > 0 && (
-              <MenuSelect
-                ariaLabel="Model"
-                icon={<SparkIcon size={13} />}
-                value={currentModel || models.availableModels[0]!.modelId}
-                options={models.availableModels.map((item) => ({
-                  id: item.modelId,
-                  label: item.name,
-                }))}
-                onChange={(id) => void setHarnessOption("model", id)}
-              />
-            )}
-            {git?.isRepo && (
-              <MenuSelect
-                ariaLabel="Conversation workspace"
-                icon={<GitBranchIcon size={13} />}
-                value={workspaceMode}
-                options={[
-                  { id: "local", label: "Local", detail: "Share the current checkout." },
-                  {
-                    id: "worktree",
-                    label: "Worktree",
-                    detail: "Use an isolated branch and folder for this conversation.",
-                  },
-                ]}
-                onChange={(id) => void setWorkspaceMode(id as "local" | "worktree")}
-              />
-            )}
+            <MenuSelect ariaLabel="Mode" value={mode} options={modeOptions} onChange={(id) => setMode(id as typeof mode)} />
+            </div>
+            <div className="composer-options-overflow">
+              <MenuSelect ariaLabel="Composer options" value="" placeholder="More options" iconOnly options={[
+                ...permissionOptions.map((item) => ({ ...item, id: `permission:${item.id}`, group: `Permissions · ${permissionOptions.find((option) => option.id === permissionValue)?.label ?? "Standard"}` })),
+                ...modeOptions.map((item) => ({ ...item, id: `mode:${item.id}`, group: `Mode · ${modeOptions.find((option) => option.id === mode)?.label}` })),
+                { id: "stash", label: "Prompt stash", group: "Workspace" },
+                ...(capabilityHarness ? [{ id: "capabilities", label: "Harness capabilities", detail: "Inspect this agent's runtime support and limitations.", group: "Workspace" }] : []),
+              ]} onChange={(id) => { if (id.startsWith("permission:")) void setPermissionProfile(id.slice(11)); else if (id.startsWith("mode:")) setMode(id.slice(5) as typeof mode); else if (id === "stash") setStashOpen(true); else if (id === "capabilities") setView("runtimes"); }} />
+            </div>
           </div>
           <div className="composer-actions-right">
+            {capabilityHarness && <div className="composer-secondary-action"><CapabilityDetails compact harness={capabilityHarness} session={session} status={harnessStatus} /></div>}
             <button className="icon-btn" title="Attach files" aria-label="Attach files" onClick={() => void pickAttachments()}>
               <PaperclipIcon size={14} />
             </button>
             <button
-              className={`icon-btn composer-stash-button${stashOpen ? " active" : ""}`}
+              className={`icon-btn composer-stash-button composer-secondary-action${stashOpen ? " active" : ""}`}
               title={draft.trim() || attachments.length ? "Stash prompt (⌘S)" : "Open prompt stash (⌘S)"}
               aria-label="Prompt stash"
               onClick={() => setStashOpen((value) => !value)}
@@ -663,12 +631,13 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
               />
             )}
             {activeRun ? (
-              <button className="send-btn stop" title="Stop" aria-label="Stop" onClick={() => void stopRun()}>
+              <button className="send-btn stop" disabled={workspace.stoppingRunIds?.includes(activeRun.id)} title={workspace.stoppingRunIds?.includes(activeRun.id) ? "Stopping — waiting for the runtime" : "Stop"} aria-label={workspace.stoppingRunIds?.includes(activeRun.id) ? "Stopping" : "Stop"} onClick={() => void stopRun()}>
                 <StopIcon size={16} />
               </button>
             ) : (
               <button
                 className="send-btn"
+                aria-label="Send message"
                 disabled={busy || (!draft.trim() && attachments.length === 0) || Boolean(sendBlockReason)}
                 title={
                   sendBlockReason || (sendOnEnter
@@ -689,7 +658,13 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
         )}
       </div>
       <div className="composer-context">
-        <button
+        {git?.isRepo ? <MenuSelect ariaLabel="Conversation workspace" value={workspaceMode} icon={<FolderIcon size={13} />}
+          options={[
+            { id: "local", label: "Current checkout", detail: workspaceMode === "local" && folderPath ? formatProjectRoot(folderPath, { home: window.capsule.homeDir }) : "Share the current checkout." },
+            { id: "worktree", label: "Worktree", detail: "Use an isolated branch and folder for this conversation." },
+            { id: "folder", label: "Change folder…", detail: "Choose a working folder on this Mac." },
+          ]}
+          onChange={(id) => { if (id === "folder") void pickProjectDirectory(); else void setWorkspaceMode(id as "local" | "worktree"); }} /> : <button
           type="button"
           className={!folder ? "missing" : ""}
           onClick={() => void pickProjectDirectory()}
@@ -701,7 +676,7 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
         >
           <FolderIcon size={12} />
           {folder ?? "No folder"}
-        </button>
+        </button>}
         {/* The panel inside Capsule, not Terminal.app: the shell people want is
             the one already pointed at this conversation's folder. */}
         <button
@@ -709,14 +684,15 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
           className={terminalOpen ? "active" : ""}
           onClick={() => setTerminalOpen(!terminalOpen)}
           title="Terminal (⌘J)"
+          aria-label="Toggle terminal"
+          aria-pressed={terminalOpen}
         >
           <span className="inline-icon">
             <TerminalIcon size={12} />
-            Terminal
           </span>
         </button>
         {git?.isRepo && git.branches.length > 0 && (
-          <span className="inline-icon">
+          <span className="inline-icon composer-branch">
             <GitBranchIcon size={12} />
             <MenuSelect
               ariaLabel="Branch"
@@ -731,7 +707,7 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
             ) : null}
           </span>
         )}
-        {session?.workspaceMode === "worktree" && session.worktreeBranch && (
+        {!git?.isRepo && session?.workspaceMode === "worktree" && session.worktreeBranch && (
           <span className="workspace-mode-label">Isolated · {session.worktreeBranch}</span>
         )}
       </div>
@@ -739,8 +715,8 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
         <div className="composer-dock-activity" aria-live="polite">
           <span className="dot on live" />
           <span className="shimmer-text">
-            Agent working…
-            <span className="shimmer-overlay" aria-hidden>Agent working…</span>
+            Sending…
+            <span className="shimmer-overlay" aria-hidden>Sending…</span>
           </span>
         </div>
       )}

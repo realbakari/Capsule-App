@@ -41,10 +41,15 @@ export function Palette() {
       { id: "chat", label: "Open conversation", run: () => setView("chat") },
       { id: "skills", label: "Open skills & packs", run: () => setView("skills") },
       { id: "harness", label: "Open ACP harnesses", run: () => setView("runtimes") },
+      { id: "capabilities", label: "Inspect harness capabilities", run: () => setView("runtimes") },
       { id: "runs", label: "Open active runs", run: () => setView("history") },
       { id: "approvals", label: "Open approvals", run: () => setView("approvals") },
       { id: "connect", label: "Connect OpenClaw", run: () => api.connectGateway() },
       { id: "settings", label: "Open settings", run: () => setView("settings") },
+      ...(api.isDesktop === true ? [
+        { id: "pet-show", label: "Show desktop companion", run: () => api.togglePet(true) },
+        { id: "pet-hide", label: "Hide desktop companion", run: () => api.togglePet(false) },
+      ] : []),
       { id: "update", label: "Check for updates", run: () => setAboutOpen(true) },
       { id: "about", label: "About Capsule", run: () => setAboutOpen(true) },
     ].filter((command) => command.label.toLowerCase().includes(query));

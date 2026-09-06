@@ -1,12 +1,14 @@
 import { useState } from "react";
 import type { TouchedFile } from "../../lib/activity";
-import { ChevronDownIcon, TerminalIcon, CheckIcon } from "../shell/icons";
+import { ChevronDownIcon, TerminalIcon } from "../shell/icons";
+import { runActivityLabel, type Run } from "@capsule/shared";
 
 interface RunSummaryProps {
   /** Pre-computed by summariseWork, which owns the counting rules. */
   label: string;
   duration?: string;
-  isComplete?: boolean;
+  run?: Run;
+  stopping?: boolean;
   touchedFiles?: TouchedFile[];
   onOpenFile?: (path: string) => void;
   children?: React.ReactNode;
@@ -15,49 +17,49 @@ interface RunSummaryProps {
 export function RunSummary({
   label,
   duration,
-  isComplete = true,
+  run,
+  stopping,
   touchedFiles,
   onOpenFile,
   children,
 }: RunSummaryProps) {
   const [expanded, setExpanded] = useState(false);
+  const [visited, setVisited] = useState(false);
 
-  if (!label && !duration && (!touchedFiles || touchedFiles.length === 0)) return null;
+  if (!run && !label && !duration && (!touchedFiles || touchedFiles.length === 0)) return null;
 
   return (
-    <div className={`run-summary-card ${expanded ? "expanded" : ""}`}>
+    <div className={`run-summary-card ${expanded ? "expanded" : ""}`} data-run-summary={run?.id}>
       <button
         type="button"
         className="run-summary-header"
-        onClick={() => setExpanded((prev) => !prev)}
+        onClick={() => { setVisited(true); setExpanded((prev) => !prev); }}
         aria-expanded={expanded}
       >
         <span className="run-summary-lead">
           <TerminalIcon size={13} className="run-summary-icon" />
-          <span className="run-summary-label">{label}</span>
+          <span className="run-summary-label">{label || "Turn details"}</span>
           {duration && <span className="run-summary-duration">· {duration}</span>}
-          {isComplete && (
-            <span className="run-summary-done-badge" title="Activity finished — not a verification result">
-              <CheckIcon size={11} />
-            </span>
-          )}
+          <span className="run-activity-state" data-state={run?.status} title={run?.verification?.summary}>{runActivityLabel(run, stopping)}</span>
         </span>
-
-        <span className="run-summary-meta">
+        <span className={`run-summary-chevron ${expanded ? "open" : ""}`}>
+          <ChevronDownIcon size={13} />
+        </span>
+      </button>
           {touchedFiles && touchedFiles.length > 0 && (
-            <span className="run-summary-chips-inline">
+            <div className="run-summary-chips-inline" aria-label="Files touched in this turn">
               {touchedFiles.slice(0, 3).map((file) => {
                 const symbol = file.action === "created" ? "+" : file.action === "deleted" ? "−" : "~";
                 const name = file.path.split(/[/\\]/).pop() ?? file.path;
                 return (
-                  <span
+                  <button
+                    type="button"
                     key={file.path}
                     className={`run-summary-file-chip ${file.action}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onOpenFile?.(file.path);
-                    }}
-                    title={`${file.path} (${file.action}) — Click to view`}
+                    disabled={!onOpenFile}
+                    onClick={() => onOpenFile?.(file.path)}
+                    title={`${file.path} (${file.action})`}
+                    aria-label={`Open ${file.path}`}
                   >
                     <span className={`file-chip-action ${file.action}`}>{symbol}</span>
                     <span className="file-chip-name">{name}</span>
@@ -67,22 +69,17 @@ export function RunSummary({
                     {typeof file.removed === "number" && file.removed > 0 && (
                       <span className="file-chip-stat-del">−{file.removed}</span>
                     )}
-                  </span>
+                  </button>
                 );
               })}
               {touchedFiles.length > 3 && (
                 <span className="run-summary-more-chip">+{touchedFiles.length - 3} more</span>
               )}
-            </span>
+            </div>
           )}
-          <span className={`run-summary-chevron ${expanded ? "open" : ""}`}>
-            <ChevronDownIcon size={13} />
-          </span>
-        </span>
-      </button>
 
-      {expanded && children && (
-        <div className="run-summary-body">
+      {visited && children && (
+        <div className="run-summary-body" hidden={!expanded}>
           {children}
         </div>
       )}
