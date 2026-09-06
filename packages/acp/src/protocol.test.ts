@@ -11,6 +11,13 @@ import {
   turnOutcome,
 } from "./protocol.js";
 
+it("preserves bounded structured delegation metadata without retaining raw tool inputs", () => {
+  const update = readSessionUpdate({ sessionId: "s", update: { sessionUpdate: "tool_call", toolCallId: "call", title: "Agent", status: "in_progress", rawInput: { subagent_type: "reviewer", description: "Review files", prompt: "private prompt" } } });
+  expect(update?.tool?.delegation).toEqual({ role: "reviewer", title: "Review files" });
+  expect(JSON.stringify(update)).not.toContain("private prompt");
+  expect(readSessionUpdate({ update: { sessionUpdate: "tool_call_update", toolCallId: "call", status: "completed", rawOutput: { usage: { total_tokens: 123 } } } })?.tool?.delegation).toEqual({ totalTokens: 123 });
+});
+
 describe("parseMessage", () => {
   it("reads a JSON-RPC line", () => {
     expect(parseMessage('{"jsonrpc":"2.0","id":1,"result":{"ok":true}}')).toEqual({

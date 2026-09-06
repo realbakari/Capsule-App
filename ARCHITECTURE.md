@@ -228,7 +228,8 @@ The desktop shell is a compact agent workspace. Details and shortcuts live in [d
 - Inspector closed until asked (`⌘\`). Tools: Launch, Review (git), Terminal
   (command runner, not PTY), Browser (validated local-server discovery plus a
   sandboxed HTTP(S)-only Electron guest), Files (expandable tree + image/code
-  preview), Side chat (ACP sessions).
+  preview), Side chat (ACP sessions), Agents (read-only latest-turn delegation
+  observations; not a child-session orchestrator).
 - The separate xterm terminal dock is a PTY. Hiding it or visiting Settings preserves its shell; each folder owns its panes. Explicit close or app shutdown ends the process. It is distinct from the Inspector command runner.
 - Inbox is the projectless container (`~/Documents/Capsule`). A project has a primary folder plus optional extra folders (`extra_folders`, schema v6). Git projects may give a conversation its own `git worktree`; all conversation I/O resolves against that cwd.
 - The titlebar owns contextual project actions: saved commands, Open, Initialize Git, and branch state.

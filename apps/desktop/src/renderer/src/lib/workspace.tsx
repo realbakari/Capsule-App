@@ -79,6 +79,7 @@ export type InspectorTab =
   | "diff"
   | "run"
   | "agents"
+  | "chat"
   | "term"
   | "browser";
 

@@ -19,6 +19,7 @@ export function Palette() {
     sessions,
     setProjectId,
     setAboutOpen,
+    openInspector,
   } = useWorkspace();
   const [index, setIndex] = useState(0);
   const [hits, setHits] = useState<SearchResults>();
@@ -43,6 +44,7 @@ export function Palette() {
       { id: "harness", label: "Open ACP harnesses", run: () => setView("runtimes") },
       { id: "capabilities", label: "Inspect harness capabilities", run: () => setView("runtimes") },
       { id: "runs", label: "Open active runs", run: () => setView("history") },
+      { id: "thread-agents", label: "Show thread agents", run: () => openInspector("agents") },
       { id: "approvals", label: "Open approvals", run: () => setView("approvals") },
       { id: "connect", label: "Connect OpenClaw", run: () => api.connectGateway() },
       { id: "settings", label: "Open settings", run: () => setView("settings") },
@@ -85,6 +87,7 @@ export function Palette() {
     return query ? [...actions, ...projectHits, ...sessionHits, ...messageHits] : actions;
   }, [
     api,
+    openInspector,
     createProjectFromFolder,
     pickProjectDirectory,
     pickFilesToMention,

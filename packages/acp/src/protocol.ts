@@ -1,4 +1,4 @@
-import { sanitizeUntrusted, type AcpModelCatalog } from "@capsule/shared";
+import { readDelegationDetails, sanitizeUntrusted, type AcpModelCatalog, type DelegationDetails } from "@capsule/shared";
 
 /*
  * The wire, on its own.
@@ -59,7 +59,7 @@ export interface SessionUpdate {
   /** Reasoning rather than answer: shown, but not part of the reply. */
   thought?: boolean;
   /** A tool the agent is running, if this update is about one. */
-  tool?: { title?: string; status?: string; toolCallId?: string };
+  tool?: { title?: string; status?: string; toolCallId?: string; delegation?: DelegationDetails };
 }
 
 function textFromContent(content: unknown): string | undefined {
@@ -96,9 +96,10 @@ export function readSessionUpdate(params: unknown): SessionUpdate | undefined {
     const title = typeof tool.title === "string" ? tool.title : undefined;
     const toolCallId = typeof tool.toolCallId === "string" ? tool.toolCallId : undefined;
     if (!title && !toolCallId) return undefined;
+    const delegation = readDelegationDetails(tool);
     return {
       sessionId,
-      tool: { title, status: typeof tool.status === "string" ? tool.status : undefined, toolCallId },
+      tool: { title, status: typeof tool.status === "string" ? tool.status : undefined, toolCallId, ...(delegation ? { delegation } : {}) },
     };
   }
 

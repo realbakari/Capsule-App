@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import { GatewayClient, GatewayClientRequestError } from "@openclaw/gateway-client";
+import { readDelegationDetails } from "@capsule/shared";
 import {
   GATEWAY_CLIENT_CAPS,
   GATEWAY_CLIENT_IDS,
@@ -1047,9 +1048,12 @@ export class OpenClawAdapter implements AgentRuntime {
       // An ACP runtime frame's real kind lives in its nested eventType; the
       // outer stream is always "acp".
       const kind = classifyRuntimeEvent(payload) ?? classifyAgentStream(stream);
+      const tool = asRecord(payload.data);
+      const delegation = kind === "tool" ? readDelegationDetails(tool) : undefined;
       // "assistant" is the only type the engine folds into run.result, so
       // reasoning, plan text and command output must not use it.
       this.emit(runId, isAssistantProse(kind) && !control ? "assistant" : kind, agentText, {
+        ...(delegation && typeof tool.toolCallId === "string" ? { delegationTool: { toolCallId: tool.toolCallId, title: tool.title, status: tool.status, delegation } } : {}),
         ...payload,
         streamKind: kind,
       });

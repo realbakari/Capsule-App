@@ -1,7 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { EventEmitter } from "node:events";
 
-import type { AcpModelCatalog } from "@capsule/shared";
+import type { AcpModelCatalog, DelegationDetails } from "@capsule/shared";
 import { readCliError } from "./errors.js";
 import {
   ACP_PROTOCOL_VERSION,
@@ -29,7 +29,7 @@ export interface DirectAcpEvents {
   /** Assistant text as it arrives. */
   text: (payload: { text: string; thought: boolean }) => void;
   /** A tool the agent is running, for the work log. */
-  tool: (payload: { title: string; status?: string; toolCallId?: string }) => void;
+  tool: (payload: { title: string; status?: string; toolCallId?: string; delegation?: DelegationDetails }) => void;
   /** The turn finished, with the agent's own reason. */
   done: (payload: { stopReason?: string }) => void;
   /** The agent wants permission and is blocked until it is answered. */

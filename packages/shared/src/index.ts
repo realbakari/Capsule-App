@@ -20,3 +20,4 @@ export * from "./run-events.js";
 export * from "./performance.js";
 export * from "./run-activity.js";
 export * from "./harness-capabilities.js";
+export * from "./delegation.js";

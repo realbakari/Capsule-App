@@ -214,3 +214,13 @@ openclaw gateway restart
 Then in Capsule: **Runtimes → Doctor / Dedicate / Spawn**, or Inspector **Side chat**. Code-mode messages on a dedicated project auto-spawn ACP if no live session exists. The composer also blocks a known-unready harness before send and links directly to Doctor.
 
 Desktop chrome (inspector, folders, shortcuts) is specified in [desktop.md](desktop.md).
+
+## Delegation observations
+
+Direct ACP tool updates retain a bounded projection of `rawInput.subagent_type`,
+`description`, `model`, and `run_in_background`, plus numeric nonnegative
+`rawOutput.usage.total_tokens` when present. Raw prompts/output are not retained
+for this view. Partial updates fold by toolCallId; task completion describes the
+tool, not a verified child lifetime. These are optional harness-specific fields,
+not required ACP support. The UI labels missing data instead of inventing rows or
+assigning parent tokens to children. No child-control protocol is implemented.

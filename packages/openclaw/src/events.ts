@@ -280,7 +280,7 @@ export function classifyRuntimeEvent(payload: Record<string, unknown>): AgentStr
   const nested = asRecord(payload.data);
   const eventType = asString(nested.eventType).toLowerCase();
   if (!eventType) return undefined;
-  if (eventType === "tool_call") return "tool";
+  if (eventType === "tool_call" || eventType === "tool_call_update") return "tool";
   if (eventType === "error") return "error";
   if (eventType === "text_delta" || eventType === "status" || eventType === "done") {
     return "lifecycle";

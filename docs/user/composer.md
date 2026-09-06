@@ -109,3 +109,19 @@ delete a stash. When the composer is empty, `⌘S` opens the stash instead.
 
 The most recent 20 stashes are kept locally. Restoring a stash removes it from
 the stash list and puts its text, attachments and selected skill back in the composer.
+
+## Thread agents
+
+Open **Agents** from the inspector’s launcher or **Show thread agents** in the
+command palette. It shows the primary agent for this thread’s latest turn and
+any structured delegated tasks reported by the runtime, in stable order.
+
+This is not a complete roster of the agent’s internal subagents. Some harnesses
+and Gateway versions do not report delegation details or task token usage.
+Unknown values stay labelled **Not reported**. A completed delegation tool does
+not prove a background child agent has finished, and ending the parent turn
+does not mark every child complete. Task status is not verification.
+
+The panel uses a bounded recent event window and labels partial history. It
+does not start agents or control child sessions. **Manage harnesses** opens the
+harness manager; **Side chat** remains a separate surface.

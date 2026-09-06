@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { OpenClawAdapter } from "./adapter.js";
+import { compactRunEvent, delegatedTasks, type Run, type RunEvent } from "@capsule/shared";
 
 const key = "agent:claude:acp:reply-test";
 function fixture() {
@@ -17,6 +18,19 @@ function fixture() {
 }
 
 describe("persisted Gateway replies", () => {
+  it("preserves structured task details separately from parent lifecycle and bounded diagnostics", () => {
+    const { adapter, internal } = fixture();
+    const received: RunEvent[] = [];
+    adapter.subscribeToRun("remote-run", (event) => { received.push(compactRunEvent(event)); });
+    internal.handleEvent({ type: "event", event: "agent", payload: { runId: "remote-run", sessionKey: key, stream: "acp", data: {
+      phase: "runtime_event", eventType: "tool_call", toolCallId: "task", title: "Agent", status: "completed",
+      rawInput: { prompt: "x".repeat(100000), subagent_type: "reviewer", description: "Review changes" }, rawOutput: { usage: { total_tokens: 123 } },
+    } } });
+    expect(received).toHaveLength(1);
+    expect(received[0]?.type).toBe("tool");
+    expect(received[0]?.data?.status).toBeUndefined();
+    expect(delegatedTasks({ id: "remote-run", sessionId: "s" } as Run, received)[0]).toMatchObject({ title: "Review changes", status: "completed", totalTokens: 123 });
+  });
   it("subscribes with supported parameters before sending the prompt", async () => {
     const { adapter, request } = fixture();
     await adapter.sendMessage({ sessionId: key, content: "Hello", agentId: "claude" });

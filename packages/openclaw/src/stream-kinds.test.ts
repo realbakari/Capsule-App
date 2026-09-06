@@ -79,6 +79,7 @@ describe("ACP runtime frames", () => {
 
   it("classifies by nested eventType, not the outer stream", () => {
     expect(classifyRuntimeEvent(toolCall)).toBe("tool");
+    expect(classifyRuntimeEvent({ stream: "acp", data: { eventType: "tool_call_update", status: "completed" } })).toBe("tool");
     expect(classifyRuntimeEvent({ stream: "acp", data: { eventType: "error" } })).toBe("error");
   });
 

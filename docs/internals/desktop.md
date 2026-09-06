@@ -89,12 +89,12 @@ Helpers: `projectFolderList`, `addFolderToProject`, `removeFolderFromProject`, `
 ## Inspector
 
 Opening the panel with no surface chosen shows the chooser: Review, Terminal,
-Files, Browser and Side chat, each with what it opens and its shortcut. A
+Files, Browser, Agents and Side chat, each with what it opens and its shortcut. A
 surface that cannot open is disabled and says why — "Available for Git
 repositories", "Open a project first" — rather than being a control that does
 nothing when clicked.
 
-Tools: **Launch**, **Review**, **Terminal**, **Browser**, **Files**, **Side chat**.
+Tools: **Launch**, **Review**, **Terminal**, **Browser**, **Files**, **Agents**, **Side chat**.
 
 - `+` opens Launch. Tabs are not nested buttons. Maximize, tree toggle, and close live in the chrome.
 - **Files** is a split: preview on the left, expandable tree on the right. Folders expand **in place**. There is no navigate-into-directory / `← ..` stack and no `dir` current-path state.
@@ -651,7 +651,7 @@ Public onboarding starts at `docs/user/getting-started.md`. README and policy
 pages distinguish actual routes, local verification, optional signing, browser
 traffic and global skill discovery. Regenerate public policy pages after changes.
 
-### Composer context
+### Composer context and thread agents
 
 Add context offers installed skills and project-file search. Its listbox uses
 option IDs, active-descendant navigation and Escape dismissal. Explicit search
@@ -659,3 +659,11 @@ supports multiword queries. Skill selection is a single structured draft field,
 scoped and persisted with draft/stash attachments, not duplicate `$name` prose.
 File selection validates the exact path in the thread folder through the existing
 attachment channel. Debounced search rejects stale responses; no new IPC is added.
+
+Inspector **Agents** is distinct from **Side chat** (now the `chat` tab key).
+Agents and the palette’s Show thread agents entry project the latest turn’s
+events read-only. Only structured delegation inputs create task rows. Rows retain
+spawn order and label missing usage, partial history, and last-reported states
+after the parent ends. It is not a child-session orchestrator or workflow graph.
+At most 100 delegation rows are shown from the bounded event window. Internal
+subagents may be absent when a harness or route does not publish telemetry.

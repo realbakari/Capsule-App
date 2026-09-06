@@ -18,6 +18,7 @@ import { DiffView } from "./DiffView";
 import { EmbeddedBrowser } from "./EmbeddedBrowser";
 import { FilePreviewView } from "./FilePreview";
 import { FileTreePane, sortTreeEntries } from "./FileTree";
+import { ThreadAgents } from "./ThreadAgents";
 import { GitPullRequestDetail as PullRequestDetailView } from "./PullRequestDetail";
 import { PullRequestList } from "./PullRequestList";
 import {
@@ -39,12 +40,13 @@ import {
 /** Bump when the inspector shell changes so a stuck error panel remounts. */
 export const INSPECTOR_REVISION = 3;
 
-type InspectorTool = "launcher" | "review" | "terminal" | "browser" | "files" | "chat";
+type InspectorTool = "launcher" | "review" | "terminal" | "browser" | "files" | "chat" | "agents";
 
 function toolFromTab(tab: string): InspectorTool {
   if (tab === "term") return "terminal";
   if (tab === "changes" || tab === "diff") return "review";
-  if (tab === "agents" || tab === "run") return "chat";
+  if (tab === "agents" || tab === "run") return "agents";
+  if (tab === "chat") return "chat";
   if (tab === "browser") return "browser";
   if (tab === "files" || tab === "preview") return "files";
   return "launcher";
@@ -56,6 +58,7 @@ function toolTitle(tool: InspectorTool, fileName?: string): string {
   if (tool === "terminal") return "Terminal";
   if (tool === "browser") return "Browser";
   if (tool === "chat") return "Side chat";
+  if (tool === "agents") return "Agents";
   return "Launch";
 }
 
@@ -81,6 +84,7 @@ export const SURFACES: Array<{
     git?: { isRepo?: boolean; dirty?: boolean };
   }) => string | undefined;
 }> = [
+  { tool: "agents", label: "Agents", detail: "This thread’s agent and reported delegated tasks.", icon: CpuIcon, blockedBy: () => undefined },
   {
     tool: "review",
     label: "Review",
@@ -125,6 +129,7 @@ const TOOL_SHORTCUTS: Record<InspectorTool, string> = {
   browser: "",
   files: "",
   chat: "⌥⌘S",
+  agents: "",
 };
 
 /* The panel's own bounds, and what the conversation keeps beside it. */
@@ -484,7 +489,8 @@ export function Inspector() {
     if (tool === "terminal") setInspectorTab("term");
     else if (tool === "review") setInspectorTab("changes");
     else if (tool === "files") setInspectorTab(previewDoc ? "preview" : "files");
-    else if (tool === "chat") setInspectorTab("agents");
+    else if (tool === "chat") setInspectorTab("chat");
+    else if (tool === "agents") setInspectorTab("agents");
     else if (tool === "browser") setInspectorTab("browser");
     else setInspectorTab("launcher");
   }
@@ -1184,6 +1190,8 @@ export function Inspector() {
             onOpenExternal={(url) => void openPath(url)}
           />
         )}
+
+        {activeTool === "agents" && <div className="codex-tool-pane"><ThreadAgents /></div>}
 
         {activeTool === "chat" && (
           <div className="codex-tool-pane" ref={chatScroll}>

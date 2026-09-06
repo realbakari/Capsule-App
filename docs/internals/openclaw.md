@@ -82,3 +82,10 @@ Bonjour (`_openclaw-gw._tcp`) is documented by OpenClaw and not yet consumed.
 ## Channels
 
 Install channel plugins on the Gateway. Capsule lists them via `channels.status` and traces channel message → OpenClaw session → Capsule run. Private keys stay on the Gateway.
+
+Delegation display consumes structured tool metadata when the Gateway forwards
+it in runtime events. A compact `delegationTool` projection survives diagnostic
+payload truncation and remains separate from lifecycle status. Textual tool
+summaries cannot establish a child-task roster or usage figures; the UI discloses
+this. No private runtime files are scanned and no agent loop is added. Only
+lifecycle events can settle a run, never a completed tool event.

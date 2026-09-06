@@ -1279,6 +1279,18 @@
 .composer-skill-chip { display: inline-flex; align-items: center; gap: 0.35rem; min-width: 0; border: 1px solid var(--border); border-radius: 0.4rem; background: var(--bg-hover); font-size: 0.8125rem; padding: 0.15rem 0.35rem; }
 .composer-skill-chip > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .composer-skill-chip button { display: flex; padding: 0.2rem; background: transparent; border: 0; }
+.thread-agents { display: flex; flex-direction: column; gap: 0.8rem; font-size: 0.875rem; }
+.thread-agents header, .thread-agent-heading { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
+.thread-agents h3, .thread-agents h4 { margin: 0; }
+.thread-agents header .meta, .thread-agent-heading > span { margin-left: auto; }
+.thread-agent-heading > span { font-size: 0.75rem; color: var(--text-muted); }
+.thread-agent-heading strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.thread-agent-card { padding: 0.8rem; border: 1px solid var(--border); border-radius: 0.65rem; min-width: 0; }
+.thread-agent-card p { margin: 0.4rem 0; }
+.thread-agents-empty { text-align: center; padding: 2rem 1rem; color: var(--text-muted); }
+.thread-agents-empty h4 { margin-top: 0.7rem; color: var(--text); }
+.thread-agents-empty p, .thread-agents-details p { line-height: 1.55; }
+.thread-agents-details { color: var(--text-muted); font-size: 0.8125rem; }
 @media (max-width: 600px) {
   .suggest-copy { flex-direction: column; gap: 0.2rem; align-items: stretch; }
   .suggest-name { max-width: 100%; }
