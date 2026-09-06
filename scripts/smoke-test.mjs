@@ -7,7 +7,7 @@
  * node-pty's native binding, and the first thing that noticed was a person
  * opening the window. This is the cheapest check that would have caught it.
  */
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -56,6 +56,20 @@ const electron = resolveElectronBinary();
 // settings or the window state of the app you actually use.
 const userData = fs.mkdtempSync(path.join(os.tmpdir(), "capsule-smoke-"));
 
+// Opt in to a consistent, one-way snapshot of an open database. Never cp an
+// active SQLite file without its WAL. Only the new copy is sanitized or opened.
+const sourceDatabase = process.env.CAPSULE_SMOKE_SEED_DATABASE;
+if (sourceDatabase) {
+  if (!fs.statSync(sourceDatabase).isFile()) throw new Error("Smoke seed must be a database file");
+  const state = path.join(userData, "state");
+  fs.mkdirSync(state);
+  const destination = path.join(state, "capsule.sqlite");
+  execFileSync("sqlite3", [sourceDatabase, `VACUUM INTO '${destination.replaceAll("'", "''")}';`]);
+  // Do not migrate credentials, enable watchers or restore machine settings
+  // from the copied profile. Conversations and recorded runs remain intact.
+  execFileSync("sqlite3", [destination, "DELETE FROM settings;"]);
+}
+
 /*
  * The switch goes before the app path: everything after it is handed to the
  * app as its own argv, so Chromium never saw it and the smoke test was
@@ -65,7 +79,7 @@ const userData = fs.mkdtempSync(path.join(os.tmpdir(), "capsule-smoke-"));
 const child = spawn(electron, [`--user-data-dir=${userData}`, desktop], {
   cwd: desktop,
   stdio: ["ignore", "pipe", "pipe"],
-  env: { ...process.env, ELECTRON_ENABLE_LOGGING: "1", CAPSULE_SMOKE_TEST: "1" },
+  env: { ...process.env, OPENCLAW_GATEWAY_TOKEN: "", VERCEL_OIDC_TOKEN: "", ELECTRON_ENABLE_LOGGING: "1", CAPSULE_SMOKE_TEST: "1" },
 });
 
 let output = "";
