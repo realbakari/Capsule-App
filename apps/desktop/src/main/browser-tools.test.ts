@@ -1,8 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { runInNewContext } from "node:vm";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   browserNavigate,
   browserSnapshot,
+  boundedBrowserSnapshot,
   browserStatus,
   noBrowser,
   readNavigableUrl,
@@ -57,6 +59,21 @@ describe("what an agent may open", () => {
 });
 
 describe("with no page open", () => {
+  it("opens the desktop guest before navigating instead of a recovery loop", async () => {
+    const loadURL = vi.fn();
+    const target = page({ loadURL, getURL: () => "https://example.com/redirected" });
+    const open = vi.fn(async () => target.contents());
+    const result = await browserNavigate({ contents: () => undefined, open }, "https://example.com/a");
+    expect(open).toHaveBeenCalledWith("https://example.com/a");
+    expect(result.ok).toBe(true);
+    expect(loadURL).not.toHaveBeenCalled();
+    expect(result.data).toEqual({ url: "https://example.com/redirected" });
+    await browserNavigate({ contents: () => undefined, open }, "file:///private.txt");
+    expect(open).toHaveBeenCalledTimes(1);
+    const failed = await browserNavigate({ contents: () => undefined, open: async () => { throw new Error("Panel not ready"); } }, "https://example.com");
+    expect(failed.ok).toBe(false);
+    expect(failed.detail).toContain("Panel not ready");
+  });
   it("says so, and says what to do about it", async () => {
     // "false" teaches an agent nothing; this tells it which call comes first.
     for (const result of [await browserStatus(noPage), await browserSnapshot(noPage)]) {
@@ -75,6 +92,39 @@ describe("with no page open", () => {
 });
 
 describe("reading the page", () => {
+  it("bounds page text before crossing IPC and never includes password field values", async () => {
+    const result = await browserSnapshot(page({ executeJavaScript: async (script: string) => runInNewContext(script, {
+      location: { href: "https://example.com" },
+      getComputedStyle: () => ({ visibility: "visible", display: "block" }),
+      document: { title: "Fixture", body: { innerText: "x".repeat(50_000) }, querySelectorAll: () => [{
+        tagName: "INPUT", type: "password", value: "never leak this value", getAttribute: () => "", getBoundingClientRect: () => ({ width: 100, height: 20 }),
+      }] },
+    }) }));
+    expect(JSON.stringify(result)).not.toContain("never leak this value");
+    expect((result.data as { text: string }).text.length).toBeLessThan(20_100);
+    expect((result.data as { truncated: boolean }).truncated).toBe(true);
+  });
+  it("bounds long links, titles and aggregate multibyte content", async () => {
+    const huge = "界".repeat(700_000);
+    const result = await browserSnapshot(page({ executeJavaScript: async (script: string) => runInNewContext(script, {
+      location: { href: huge }, getComputedStyle: () => ({ visibility: "visible", display: "block" }),
+      document: { title: huge, body: { innerText: "hello" }, querySelectorAll: () => [{
+        tagName: "A", innerText: "Download", getAttribute: (name: string) => name === "href" ? huge : "",
+        getBoundingClientRect: () => ({ width: 10, height: 10 }),
+      }] },
+    }) }));
+    expect(result.ok).toBe(true);
+    expect(Buffer.byteLength(JSON.stringify(result))).toBeLessThan(96_000);
+    expect(result.data).toMatchObject({ truncated: true });
+    const bounded = boundedBrowserSnapshot({ title: huge, url: huge, text: huge, elements: Array.from({ length: 400 }, () => ({ href: huge, label: huge })) });
+    expect(Buffer.byteLength(JSON.stringify(bounded))).toBeLessThanOrEqual(96_000);
+    expect(bounded.truncated).toBe(true);
+  });
+  it("clears its watchdog when the page has answered", async () => {
+    vi.useFakeTimers();
+    try { await browserSnapshot(page()); expect(vi.getTimerCount()).toBe(0); }
+    finally { vi.useRealTimers(); }
+  });
   it("reports what is on screen", async () => {
     const result = await browserStatus(page());
     expect(result.ok).toBe(true);

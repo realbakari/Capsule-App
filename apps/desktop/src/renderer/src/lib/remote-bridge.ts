@@ -121,6 +121,8 @@ export function createRemoteBridge(token: string): CapsuleApi {
           if (socket !== connection) break;
           sendFrame(connection, message);
         }
+        // Events missed during disconnection require a fresh read, not replayed writes.
+        for (const listener of listeners.get("connection") ?? []) listener({ state: "connected" });
         return;
       }
       if (frame.type === "event" && frame.event) {
@@ -158,6 +160,7 @@ export function createRemoteBridge(token: string): CapsuleApi {
   const bridge = new Proxy(
     {
       homeDir: "",
+      isDesktop: false,
       getPathForFile: () => { throw new Error("File attachments are available in the desktop app, not the read-only viewer."); },
       on: (channel: string, handler: (payload: unknown) => void) => {
         const set = listeners.get(channel) ?? new Set();

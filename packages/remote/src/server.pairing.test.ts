@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 
 import { startRemoteServer, type RemoteServerHandle } from "./server.js";
+import { MAX_OUTBOUND_BYTES } from "./outbound.js";
 
 /*
  * The whole flow, against the real server: pair, connect, read, and be
@@ -23,8 +24,9 @@ beforeAll(async () => {
   handle = await startRemoteServer({
     serveDir,
     reach: "loopback",
-    invoke: async (channel) => {
+    invoke: async (channel, args) => {
       called.push(channel);
+      if (args[0] === "large-result") return "x".repeat(MAX_OUTBOUND_BYTES + 1);
       return { channel };
     },
     subscribe: (send) => {
@@ -82,6 +84,33 @@ function rpc(token: string, frames: Array<Record<string, unknown>>): Promise<unk
 }
 
 describe("pairing a device", () => {
+  it("returns an oversized read error by request ID and keeps the connection usable", async () => {
+    const session = await pair(handle.pair(["read"]).split("#pair=")[1]!);
+    const frames = await rpc(session.token!, [
+      { id: 90, channel: "listSessions", args: ["large-result"] },
+      { id: 91, channel: "listSessions", args: [] },
+    ]) as Array<{ id: number; error?: string; result?: unknown }>;
+    expect(frames.find((frame) => frame.id === 90)?.error).toContain("too large");
+    expect(frames.find((frame) => frame.id === 91)?.result).toEqual({ channel: "listSessions" });
+  });
+
+  it("unsubscribes an overflowing stream and allows a fresh connection", async () => {
+    const session = await pair(handle.pair(["read"]).split("#pair=")[1]!);
+    const socket = new WebSocket(`ws://127.0.0.1:${handle.port}/rpc`);
+    await new Promise<void>((resolve, reject) => {
+      socket.once("error", reject);
+      socket.once("open", () => socket.send(JSON.stringify({ token: session.token })));
+      socket.once("message", () => resolve());
+    });
+    const before = subscribers.size;
+    const closed = new Promise<number>((resolve) => socket.once("close", resolve));
+    for (const send of subscribers) send("run", { output: "x".repeat(MAX_OUTBOUND_BYTES + 1) });
+    expect(await closed).toBe(1013);
+    expect(subscribers.size).toBeLessThan(before);
+    expect(await rpc(session.token!, [{ id: 1, channel: "listSessions", args: [] }])).toEqual([
+      { type: "result", id: 1, result: { channel: "listSessions" } },
+    ]);
+  });
   it("serves the app to anyone, and the workspace to nobody", async () => {
     const page = await fetch(base);
     expect(page.status).toBe(200);

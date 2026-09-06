@@ -33,6 +33,14 @@ class TestSocket {
 }
 
 describe("paired commands across disconnects", () => {
+  it("announces readiness again after a disconnect so the workspace can resnapshot", async () => {
+    const bridge = createRemoteBridge("pairing-token");
+    const connected = vi.fn(); bridge.on("connection", connected);
+    const first = TestSocket.connections[0]!; first.open(); first.frame({ type: "ready" });
+    first.close(); await vi.advanceTimersByTimeAsync(1_500);
+    const next = TestSocket.connections[1]!; next.open(); next.frame({ type: "ready" });
+    expect(connected).toHaveBeenCalledTimes(2);
+  });
   beforeEach(() => {
     vi.useFakeTimers(); TestSocket.connections = [];
     vi.stubGlobal("WebSocket", TestSocket);

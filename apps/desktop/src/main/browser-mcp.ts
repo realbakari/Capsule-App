@@ -18,7 +18,7 @@ import {
  * supervise and no second hop to keep in step.
  *
  * Bound to loopback, on a port the operating system chooses, behind a token
- * minted per run. Anything on this machine can reach a loopback port, and
+ * minted per desktop launch. Anything on this machine can reach a loopback port, and
  * these tools drive a real browser — the token is what makes the URL, handed
  * only to the agent Capsule spawned, the thing that grants access.
  */

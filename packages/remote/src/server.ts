@@ -5,6 +5,7 @@ import path from "node:path";
 
 import { isChannelAllowed, type IpcScope } from "@capsule/shared";
 import { WebSocketServer, type WebSocket } from "ws";
+import { MAX_OUTBOUND_BYTES, outboundFrame } from "./outbound.js";
 
 import {
   exchangeGrant,
@@ -194,7 +195,14 @@ export async function startRemoteServer(
       return current;
     };
     const send = (frame: unknown) => {
-      if (socket.readyState === socket.OPEN && authorized()) socket.send(JSON.stringify(frame));
+      if (socket.readyState !== socket.OPEN || !authorized()) return;
+      const text = outboundFrame(frame);
+      if (!text || socket.bufferedAmount + Buffer.byteLength(text) > MAX_OUTBOUND_BYTES) {
+        unsubscribe?.(); unsubscribe = undefined;
+        socket.close(1013, "viewer fell behind; reconnect to refresh");
+        return;
+      }
+      socket.send(text);
     };
 
     socket.on("message", (raw) => {

@@ -2,6 +2,10 @@ import type { WebviewTag } from "electron";
 import { useWorkspace } from "../../lib/workspace";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { LocalServer } from "@capsule/shared";
+import { harnessCapabilities } from "@capsule/shared";
+// Electron's custom element reads a string attribute. React drops boolean
+// `true` on this non-standard attribute despite WebViewHTMLAttributes' type.
+const guestAttributes: Record<string, string> = { allowpopups: "true" };
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
@@ -182,15 +186,20 @@ export function EmbeddedBrowser({
   onAddressChange,
   localServers,
   serversLoading,
+  serversError,
+  onRetryServers,
   onOpenExternal,
 }: {
   address: string;
   onAddressChange: (value: string) => void;
   localServers: LocalServer[];
   serversLoading: boolean;
+  serversError?: string;
+  onRetryServers?: () => void;
   onOpenExternal: (url: string) => void;
 }) {
-  const { api } = useWorkspace();
+  const { api, session, agentId, harnesses } = useWorkspace();
+  const browserCapability = harnessCapabilities({ harness: harnesses?.find((item) => item.id === agentId), session }).browser;
   const initialUrl = address !== "http://localhost:3000" ? normalizedBrowserUrl(address) : "";
   const [currentUrl, setCurrentUrl] = useState(initialUrl);
   // Keep the guest's initial src stable across committed navigations.
@@ -212,6 +221,11 @@ export function EmbeddedBrowser({
   });
 
   const webviewRef = useRef<WebviewTag>(null);
+  const [mountedView, setMountedView] = useState<WebviewTag | null>(null);
+  const attachView = useCallback((view: WebviewTag | null) => {
+    webviewRef.current = view;
+    setMountedView(view);
+  }, []);
   const publishedAddress = useRef(address);
   const moreMenuAnchorRef = useRef<HTMLDivElement>(null);
   const toastTimerRef = useRef<number | undefined>(undefined);
@@ -284,7 +298,7 @@ export function EmbeddedBrowser({
   };
 
   useEffect(() => {
-    const view = webviewRef.current;
+    const view = mountedView;
     if (!view) return undefined;
     const started = () => {
       setLoading(true);
@@ -304,8 +318,8 @@ export function EmbeddedBrowser({
       syncNavigation();
     };
     const failed = (event: Event) => {
-      const detail = event as Event & { errorCode?: number; errorDescription?: string };
-      if (detail.errorCode === -3) return;
+      const detail = event as Event & { errorCode?: number; errorDescription?: string; isMainFrame?: boolean };
+      if (detail.errorCode === -3 || detail.isMainFrame === false) return;
       setLoading(false);
       setError(detail.errorDescription || "This page could not be loaded.");
     };
@@ -318,7 +332,7 @@ export function EmbeddedBrowser({
      */
     const register = () => {
       try {
-        void api.registerBrowserView?.(view.getWebContentsId());
+        void api.registerBrowserView?.(view.getWebContentsId()).catch((error) => setError(`Browser tools could not connect: ${String(error)}`));
       } catch {
         // The guest is not attached yet; dom-ready will come round again.
       }
@@ -333,13 +347,13 @@ export function EmbeddedBrowser({
       view.removeEventListener("did-start-loading", started);
       view.removeEventListener("did-stop-loading", stopped);
       view.removeEventListener("dom-ready", register);
-      void api.registerBrowserView?.(undefined);
+      void api.registerBrowserView?.(undefined).catch(() => undefined);
       view.removeEventListener("did-navigate", navigated);
       view.removeEventListener("did-navigate-in-page", navigated);
       view.removeEventListener("page-title-updated", rememberCurrentPage);
       view.removeEventListener("did-fail-load", failed);
     };
-  }, [currentUrl, publishAddress]);
+  }, [mountedView, api, publishAddress]);
 
   const navigate = (value: string) => {
     const next = normalizedBrowserUrl(value);
@@ -397,7 +411,7 @@ export function EmbeddedBrowser({
       try {
         const image = await view.capturePage();
         await navigator.clipboard.writeText(image.toDataURL());
-        showToast("Screenshot copied to clipboard");
+        showToast("Image clipboard unavailable — copied the screenshot’s data URL as text");
       } catch {
         showToast("Unable to capture screenshot");
       }
@@ -449,6 +463,7 @@ export function EmbeddedBrowser({
 
   return (
     <div className="codex-browser-pane">
+      <details className="capability-details browser-capability"><summary>Agent browser access · {browserCapability.state === "limited" ? "Limited" : "Unavailable"}</summary><p>{browserCapability.detail} Manual browsing is separate.</p></details>
       <div className="codex-browser-nav preview-chrome-row">
         <div className="preview-nav-cluster">
           <button
@@ -694,10 +709,11 @@ export function EmbeddedBrowser({
       {currentUrl ? (
         <div className="embedded-browser-frame">
           <webview
-            ref={webviewRef}
+            ref={attachView}
             className="embedded-browser-webview"
             src={guestUrl}
             partition="persist:capsule-browser"
+            {...guestAttributes}
             webpreferences="contextIsolation=yes,nodeIntegration=no,sandbox=yes"
           />
         </div>
@@ -736,9 +752,13 @@ export function EmbeddedBrowser({
                 <h4>Local servers</h4>
                 <p className="faint">Select a live app to open it in this browser tab.</p>
               </div>
-              <span className={serversLoading ? "dot warn live" : "dot on"} />
+              <span className={serversLoading ? "dot warn live" : serversError ? "dot warn" : "dot on"} aria-hidden />
             </div>
-            {localServers.length === 0 && !serversLoading ? (
+            {serversError ? <div className="notice" role="alert">
+              <span>Could not refresh local servers: {serversError}</span>
+              {onRetryServers && <button type="button" className="chip" disabled={serversLoading} onClick={onRetryServers}>Retry</button>}
+            </div> : null}
+            {localServers.length === 0 && !serversLoading && !serversError ? (
               <p className="faint">No local web servers are responding.</p>
             ) : null}
             <div className="local-server-grid">
