@@ -131,7 +131,7 @@ export class MockAgentRuntime implements AgentRuntime {
   }
 
   async cancelRun(runId: string): Promise<void> {
-    this.emit(runId, "cancelled", "Run cancelled", { status: "cancelled" });
+    this.emit(runId, "lifecycle", "Run cancelled", { status: "cancelled" });
   }
 
   subscribeToRun(runId: string, handler: RunEventHandler): Unsubscribe {
@@ -151,7 +151,7 @@ export class MockAgentRuntime implements AgentRuntime {
     approval.status = decision;
     approval.resolvedAt = nowIso();
     if (decision === "denied") {
-      this.emit(approval.runId, "cancelled", "Approval denied", { status: "cancelled" });
+      this.emit(approval.runId, "lifecycle", "Approval denied", { status: "cancelled" });
       return;
     }
     this.emit(approval.runId, "approval.resolved", "Approval granted", { status: "running" });

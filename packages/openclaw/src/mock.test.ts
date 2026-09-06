@@ -25,6 +25,12 @@ function waitFor(
 }
 
 describe("MockAgentRuntime", () => {
+  it("reports cancellation through the lifecycle channel", async () => {
+    const runtime = new MockAgentRuntime();
+    const result = waitFor(runtime, "cancel-test", "cancelled");
+    await runtime.cancelRun("cancel-test");
+    expect(await result).toMatchObject({ type: "lifecycle", data: { status: "cancelled" } });
+  });
   it("streams a successful run to completion", async () => {
     const runtime = new MockAgentRuntime();
     await runtime.connect();

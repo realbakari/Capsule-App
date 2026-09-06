@@ -2509,7 +2509,7 @@ export class CapsuleEngine {
     }
 
     const status = event.data?.status;
-    if (status === "completed" || status === "failed" || status === "cancelled") {
+    if (event.type === "lifecycle" && (status === "completed" || status === "failed" || status === "cancelled")) {
       this.settleDirectApprovals(run.id);
       stop();
       run.status = status;

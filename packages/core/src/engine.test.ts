@@ -656,6 +656,13 @@ describe("operator acknowledgements", () => {
       run.completedAt = undefined;
       run.result = undefined;
       internal.repos.updateRun(run);
+      let toolStoppedRun = false;
+      await internal.handleRuntimeEvent(sent.session, run, {
+        id: "delegated-task-complete", runId: run.id, type: "tool", message: "Task completed", timestamp: new Date().toISOString(),
+        data: { status: "completed", toolCallId: "delegated-task" },
+      }, () => { toolStoppedRun = true; });
+      expect(engine.getRun(run.id)?.status).toBe("running");
+      expect(toolStoppedRun).toBe(false);
       await internal.handleRuntimeEvent(sent.session, run, {
         id: "control-complete", runId: run.id, type: "lifecycle", message: "Completed", timestamp: new Date().toISOString(),
         data: { status: "completed", output: acknowledgement },
