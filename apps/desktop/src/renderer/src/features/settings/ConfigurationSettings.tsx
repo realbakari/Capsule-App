@@ -10,6 +10,7 @@ import type {
 } from "@capsule/shared";
 import { PERMISSION_OPTIONS, useWorkspace } from "../../lib/workspace";
 import { SettingRow, Switch } from "./controls";
+import { PetControl } from "../pet/PetControl";
 
 const WEB_OPTIONS: Array<{ id: WebAccess; label: string }> = [
   { id: "on", label: "On" },
@@ -204,6 +205,9 @@ export function DesktopCard({ settings, onPatch }: SectionProps) {
   return (
     <div className="card">
       <h3>Desktop</h3>
+      <SettingRow label="Desktop companion" hint="A movable companion for activity across all projects, even outside chat. Click to open threads; drag its handle to move it. Size and motion controls are inside.">
+        <PetControl />
+      </SettingRow>
       <SettingRow
         label="Menu bar"
         hint="Show Capsule in the menu bar for Open, Settings, Approvals, and active runs."
@@ -502,4 +506,3 @@ export function HarnessProvidersCard() {
     </div>
   );
 }
-
