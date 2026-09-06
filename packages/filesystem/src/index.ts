@@ -112,7 +112,7 @@ export class FilesystemAdapter {
   list(relative = "."): FileEntry[] {
     const dir = this.resolve(relative);
     if (!fs.existsSync(dir)) return [];
-    return fs.readdirSync(dir, { withFileTypes: true }).map((entry) => ({
+    return fs.readdirSync(dir, { withFileTypes: true }).filter((entry) => entry.isDirectory() || entry.isFile()).map((entry) => ({
       name: entry.name,
       path: path.posix.join(relative === "." ? "" : relative.replaceAll("\\", "/"), entry.name).replace(/^\//, ""),
       type: entry.isDirectory() ? "directory" : "file",
@@ -126,11 +126,11 @@ export class FilesystemAdapter {
    * return whatever the walk reached first — so a deep file was invisible and
    * "index" in a large project answered with eighty arbitrary ones.
    */
-  search(query = "", limit = 80): FileEntry[] {
+  async search(query = "", limit = 80): Promise<FileEntry[]> {
     if (!this.projectRoot) return [];
     const root = this.resolve(".");
     if (!fs.existsSync(root)) return [];
-    return rankFiles(projectFiles(root), query, limit).map((file) => ({
+    return rankFiles(await projectFiles(root), query, limit).map((file) => ({
       name: file.name,
       path: file.path,
       type: "file" as const,
@@ -140,6 +140,7 @@ export class FilesystemAdapter {
   read(relative: string): string {
     const file = this.resolve(relative);
     const stat = fs.statSync(file);
+    if (!stat.isFile()) throw new Error("Only regular files can be read.");
     if (stat.size > 1_000_000) {
       throw new Error("File is too large to preview");
     }

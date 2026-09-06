@@ -119,9 +119,10 @@ export function ProjectActionsControl() {
               {actions.map((action) => {
                 const runState = runs.find((run) => run.actionId === action.id);
                 const running = runState?.status === "running";
+                const stopping = runState?.status === "stopping";
                 return (
                   <div className="project-action-row" key={action.id}>
-                    <button type="button" className="project-action-run" onClick={() => void run(action)}>
+                    <button type="button" className="project-action-run" disabled={running || stopping} onClick={() => void run(action)}>
                       <TerminalIcon size={12} />
                       <span>
                         <b>{action.name}</b>
@@ -131,8 +132,8 @@ export function ProjectActionsControl() {
                         {runState?.status ?? "run"}
                       </span>
                     </button>
-                    {running ? (
-                      <button type="button" className="ghost" title="Stop action" onClick={() => void stop(action)}>
+                    {running || stopping ? (
+                      <button type="button" className="ghost" disabled={stopping} title={stopping ? "Waiting for the action to exit" : "Stop action"} onClick={() => void stop(action)}>
                         <StopIcon size={11} />
                       </button>
                     ) : isSharedAction(action) ? <span className="chip-static" title={`Declared in ${PROJECT_FILE_NAME}`}>shared</span> : (

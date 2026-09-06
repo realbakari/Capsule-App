@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 import { checkRun } from "./run-verification.js";
 import { FolderActivity, foldersOverlap } from "./folder-activity.js";
 import type { VerificationResult } from "@capsule/shared";
+import { localTimings } from "@capsule/shared";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
@@ -1182,11 +1183,12 @@ export class CapsuleEngine {
       if (!opened.ok) throw new Error(opened.detail);
       this.log(opened.detail);
       if (input?.sessionId) this.prWatchSessions.set(projectId, input.sessionId);
-      if (this.settings.prAutoMerge) {
+      if (this.settings.prAutoMerge && opened.url) {
         const queued = await mergeGithubPullRequest(
           cwd,
           this.settings.prMergeMethod,
           true,
+          opened.url,
         );
         this.log(queued.detail);
       }
@@ -1196,7 +1198,8 @@ export class CapsuleEngine {
     });
   }
 
-  async gitMergePullRequest(projectId: string, sessionId?: string): Promise<GitStatus> {
+  async gitMergePullRequest(projectId: string, sessionId?: string, target?: string): Promise<GitStatus> {
+    if (!target) throw new Error("Select and review a pull request before merging.");
     const project = this.requireProject(projectId);
     const cwd = this.workingDirectoryFor(project, sessionId);
     return inRepository(cwd, async () => {
@@ -1205,6 +1208,7 @@ export class CapsuleEngine {
         cwd,
         this.settings.prMergeMethod,
         this.settings.prAutoMerge,
+        target,
       );
       if (!result.ok) throw new Error(result.detail);
       this.log(result.detail);
@@ -1227,9 +1231,11 @@ export class CapsuleEngine {
     return discoverLocalServers();
   }
 
-  searchContents(projectId: string, query: string): ContentHit[] {
+  async searchContents(projectId: string, query: string, sessionId?: string): Promise<ContentHit[]> {
     const project = this.requireProject(projectId);
-    return searchContents(project.workingDirectory, query);
+    const decision = decidePolicy(this.repos.listPolicies(), "filesystem", "read");
+    if (decision.decision === "block") throw new Error("Filesystem read is blocked by policy");
+    return searchContents(this.workingDirectoryFor(project, sessionId), query);
   }
 
   /**
@@ -1241,34 +1247,36 @@ export class CapsuleEngine {
    * way, and a picker that disagreed with the agent would offer something it
    * then refuses to run.
    */
-  async listSkills(projectId?: string): Promise<Skill[]> {
+  async listSkills(projectId?: string, sessionId?: string): Promise<Skill[]> {
     const stored = this.repos.listSkills();
     const capsuleSkills = stored.length > 0 ? stored : DEFAULT_SKILLS;
-    const project = projectId ? this.repos.getProject(projectId) : undefined;
+    const session = sessionId ? this.requireSession(sessionId) : undefined;
+    const project = projectId || session ? this.requireProject(projectId ?? session!.projectId) : undefined;
+    if (session && project?.id !== session.projectId) throw new Error("The skill's thread must belong to the selected project.");
     const installed = discoverGlobalSkills();
-    const fromProject = discoverGlobalSkills(projectSkillRoots(project?.workingDirectory)).filter(
+    const fromProject = discoverGlobalSkills(projectSkillRoots(project ? this.workingDirectoryFor(project, sessionId) : undefined)).filter(
       (skill) => !installed.some((candidate) => candidate.name === skill.name),
     );
     return [...installed, ...fromProject, ...capsuleSkills];
   }
 
-  private async requireSkill(skillId: string): Promise<Skill> {
-    const skill = (await this.listSkills()).find((entry) => entry.id === skillId);
+  private async requireSkill(skillId: string, projectId?: string, sessionId?: string): Promise<Skill> {
+    const skill = (await this.listSkills(projectId, sessionId)).find((entry) => entry.id === skillId);
     if (!skill) throw new Error(`Unknown skill: ${skillId}`);
     return skill;
   }
 
   /** List files owned by one installed skill, never an arbitrary path. */
-  async listSkillFiles(skillId: string, relative = "."): Promise<FileEntry[]> {
-    const skill = await this.requireSkill(skillId);
+  async listSkillFiles(skillId: string, relative = ".", projectId?: string, sessionId?: string): Promise<FileEntry[]> {
+    const skill = await this.requireSkill(skillId, projectId, sessionId);
     if (skill.location) return listGlobalSkillFiles(skill.location, relative);
     if (relative !== ".") return [];
     return skill.content ? [{ name: "SKILL.md", path: "SKILL.md", type: "file" }] : [];
   }
 
   /** Read-only preview scoped to the selected skill's own folder. */
-  async previewSkillFile(skillId: string, relative: string): Promise<FilePreview> {
-    const skill = await this.requireSkill(skillId);
+  async previewSkillFile(skillId: string, relative: string, projectId?: string, sessionId?: string): Promise<FilePreview> {
+    const skill = await this.requireSkill(skillId, projectId, sessionId);
     if (skill.location) {
       return readPreviewFile(resolveGlobalSkillFile(skill.location, relative), relative);
     }
@@ -1585,6 +1593,8 @@ export class CapsuleEngine {
     const harnessId = this.resolveHarnessId(session, project, input.agentId, mode);
     const agentId = harnessId ?? input.agentId ?? session.agentId ?? agentIdForMode(mode);
     const skillId = input.skillId ?? skillIdForMode(mode);
+    const activeSkill = skillId ? await this.requireSkill(skillId, project.id, session.id) : undefined;
+    if (activeSkill && !activeSkill.content?.trim()) throw new Error("The selected skill has no readable SKILL.md instructions. Rescan or choose another skill.");
     if (session.title === "New conversation") {
       session.title = titleFromPrompt(input.content.trim() || attachments[0]?.name || "New conversation");
     }
@@ -1706,14 +1716,8 @@ export class CapsuleEngine {
     }
 
     let skillInstruction = "";
-    if (skillId) {
-      const activeSkill =
-        this.repos.getSkill(skillId) ??
-        DEFAULT_SKILLS.find((skill) => skill.id === skillId) ??
-        discoverGlobalSkills().find((skill) => skill.id === skillId);
-      if (activeSkill?.content) {
-        skillInstruction = `\n\n[Active Skill: ${activeSkill.name}]\n${activeSkill.content}`;
-      }
+    if (activeSkill?.content) {
+      skillInstruction = `\n\n[Active Skill: ${activeSkill.name}]\n${activeSkill.content}`;
     }
 
     const runtimeMessage: AgentMessage = {
@@ -1839,8 +1843,18 @@ export class CapsuleEngine {
     return this.repos.listRuns(sessionId);
   }
 
+  listLatestRunStates() {
+    return this.repos.listLatestRunStates();
+  }
+
   listRunEvents(runId: string): RunEvent[] {
     return this.repos.listRunEvents(runId);
+  }
+
+  listRunEventPage(runId: string, before?: RunEventCursor) {
+    this.requireRun(runId);
+    if (before && (typeof before.timestamp !== "string" || typeof before.id !== "string" || before.timestamp.length > 100 || before.id.length > 200)) throw new Error("Invalid run log cursor.");
+    return this.repos.listRunEventPage(runId, 200, before);
   }
 
   verifyRun(runId: string, actionId?: string): Promise<VerificationResult> {
@@ -1947,14 +1961,14 @@ export class CapsuleEngine {
     return new FilesystemAdapter(this.resolveProjectFolder(project, root)).list(relative);
   }
 
-  previewFile(projectId: string, relative: string, root?: string): FilePreview {
+  async previewFile(projectId: string, relative: string, root?: string): Promise<FilePreview> {
     const project = this.requireProject(projectId);
     const decision = decidePolicy(this.repos.listPolicies(), "filesystem", "read");
     if (decision.decision === "block") throw new Error("Filesystem read is blocked by policy");
     return new FilesystemAdapter(this.resolveProjectFolder(project, root)).preview(relative);
   }
 
-  searchFiles(projectId: string, query = "", root?: string): FileEntry[] {
+  async searchFiles(projectId: string, query = "", root?: string): Promise<FileEntry[]> {
     const project = this.requireProject(projectId);
     const folder = this.resolveProjectFolder(project, root);
     return new FilesystemAdapter(folder).search(query);
@@ -2019,15 +2033,15 @@ export class CapsuleEngine {
      * overwrite, and let the caller decide.
      */
     if (options?.expectedRevision !== undefined) {
-      let current: string | undefined;
+      let current: string;
       try {
         current = adapter.read(relative);
       } catch {
-        // A file that no longer reads (deleted, or newly created by this very
-        // write) cannot be compared; fall through and write it.
-        current = undefined;
+        // A deleted, oversized or unreadable file is not permission to
+        // overwrite it. Explicit creation omits expectedRevision.
+        throw new Error(FILE_CHANGED_ON_DISK);
       }
-      if (current !== undefined && fileContentRevision(current) !== options.expectedRevision) {
+      if (fileContentRevision(current) !== options.expectedRevision) {
         throw new Error(FILE_CHANGED_ON_DISK);
       }
     }
@@ -2078,7 +2092,7 @@ export class CapsuleEngine {
     if (!cwd) throw new Error("Choose a project folder first");
     const key = this.projectActionKey(projectId, actionId, sessionId);
     const existing = this.actionRuns.get(key);
-    if (existing?.status === "running") return existing;
+    if (existing && (existing.status === "running" || existing.status === "stopping")) return existing;
     const release = this.folderActivity.enter(cwd);
     const run: ProjectActionRun = {
       projectId,
@@ -2100,16 +2114,17 @@ export class CapsuleEngine {
           run.status = "failed";
           run.output = `${run.output}\n${error.message}`.trim().slice(-20_000);
           run.completedAt = nowIso();
-          this.actionProcesses.delete(key);
+          if (this.actionRuns.get(key) === run) this.actionProcesses.delete(key);
           this.events.emit("state", { command: "project-actions-updated" });
         },
         onExit: (code, signal) => {
           release();
           if (run.status === "running") run.status = code === 0 ? "completed" : "failed";
+          else if (run.status === "stopping") run.status = "stopped";
           if (code !== null) run.output = `${run.output}\nexit ${code}`.trim().slice(-20_000);
           else if (signal) run.output = `${run.output}\n${signal}`.trim().slice(-20_000);
           run.completedAt = nowIso();
-          this.actionProcesses.delete(key);
+          if (this.actionRuns.get(key) === run) this.actionProcesses.delete(key);
           this.events.emit("state", { command: "project-actions-updated" });
         },
       });
@@ -2131,10 +2146,9 @@ export class CapsuleEngine {
     const key = this.projectActionKey(projectId, actionId, sessionId);
     const run = this.actionRuns.get(key);
     if (!run) throw new Error("Project action is not running.");
-    run.status = "stopped";
-    run.completedAt = nowIso();
+    if (run.status !== "running") return run;
+    run.status = "stopping";
     this.actionProcesses.get(key)?.stop();
-    this.actionProcesses.delete(key);
     this.events.emit("state", { command: "project-actions-updated" });
     return run;
   }
@@ -2166,16 +2180,12 @@ export class CapsuleEngine {
     const keys = SETTINGS_SECTION_KEYS[section];
     if (!keys || keys.length === 0) return this.getSettings();
 
-    const next: Record<string, unknown> = { ...this.settings };
+    const patch: Record<string, unknown> = {};
     for (const key of keys) {
       const fallback = (DEFAULT_CAPSULE_SETTINGS as unknown as Record<string, unknown>)[key];
-      if (fallback === undefined) delete next[key];
-      else next[key] = fallback;
+      patch[key] = fallback;
     }
-    this.settings = normalizeCapsuleSettings(next as Partial<CapsuleSettings>);
-    this.persistSettings();
-    this.events.emit("state", { command: "settings-updated" });
-    return this.getSettings();
+    return this.updateSettings(patch as Partial<CapsuleSettings>);
   }
 
   async updateSettings(patch: Partial<CapsuleSettings>): Promise<CapsuleSettings> {
@@ -2201,7 +2211,7 @@ export class CapsuleEngine {
       this.skillsShClient.setToken(skillsShToken);
       await this.keychain.set(CAPSULE_KEYCHAIN_SERVICE, SKILLS_SH_TOKEN_ACCOUNT, skillsShToken);
     }
-    if (patch.projectlessFolder !== undefined) this.bindInboxToProjectless();
+    if (Object.hasOwn(patch, "projectlessFolder")) this.bindInboxToProjectless();
     if (
       patch.webAccess !== undefined ||
       patch.sandbox !== undefined ||
@@ -2212,11 +2222,13 @@ export class CapsuleEngine {
     if (patch.archiveInactiveAfter !== undefined) this.archiveInactiveSessions();
     if (!pullRequestWatchEnabled(this.settings)) this.stopAllPrWatch();
     this.persistSettings();
+    this.events.emit("state", { command: "settings-updated" });
     return this.getSettings();
   }
 
   getDiagnostics(): DiagnosticsSnapshot {
     return {
+      performance: localTimings.snapshot(),
       capsuleVersion: this.options.capsuleVersion ?? "0.1.0",
       electronVersion: process.versions.electron,
       macosVersion:
@@ -2443,6 +2455,14 @@ export class CapsuleEngine {
   }
 
   private async handleRuntimeEvent(
+    session: Session, run: Run, event: RunEvent, stop: () => void,
+  ): Promise<void> {
+    const end = localTimings.start("events.main");
+    try { await this.processRuntimeEvent(session, run, event, stop); end(); }
+    catch (error) { end(true); throw error; }
+  }
+
+  private async processRuntimeEvent(
     session: Session,
     run: Run,
     event: RunEvent,
@@ -2464,13 +2484,13 @@ export class CapsuleEngine {
         return;
       }
     }
-    const mapped: RunEvent = {
+    const mapped: RunEvent = compactRunEvent({
       ...event,
       runId: run.id,
       id: event.id || createId("evt"),
-    };
+    });
     this.repos.insertRunEvent(mapped);
-    this.events.emit("run-event", mapped);
+    this.events.emit("run-event", { ...mapped, sessionId: run.sessionId });
 
     if (event.type === "approval.requested" && event.data?.approval) {
       const approval = event.data.approval as ApprovalRequest;
@@ -2608,14 +2628,14 @@ export class CapsuleEngine {
     message: string,
     data?: Record<string, unknown>,
   ): void {
-    const event = createRunEvent(runId, type, message, data);
+    const event = compactRunEvent(createRunEvent(runId, type, message, data));
     this.repos.insertRunEvent(event);
-    this.events.emit("run-event", event);
+    this.events.emit("run-event", { ...event, sessionId: this.repos.getRun(runId)?.sessionId });
   }
 
   private projectlessRoot(): string {
     if (this.settings.projectlessFolder?.trim()) return this.settings.projectlessFolder.trim();
-    if (process.env.VITEST) return path.join(this.options.userDataDir, "tasks");
+    if (process.env.VITEST || process.env.CAPSULE_SMOKE_TEST) return path.join(this.options.userDataDir, "tasks");
     return defaultProjectlessFolder();
   }
 
@@ -2758,7 +2778,7 @@ export class CapsuleEngine {
      * from here blocked the main process for about a second every forty-five,
      * for as long as watching stayed on.
      */
-    const { value: pullRequest, known } = pollPullRequest(project.workingDirectory);
+    const { value: pullRequest, known } = await pollPullRequest(project.workingDirectory);
     // Nothing has come back yet: that is not the same as "there is no pull
     // request", and stopping on it would end the watch before it began.
     if (!known) return;
@@ -2781,7 +2801,7 @@ export class CapsuleEngine {
       pullRequest.checks !== "failure" &&
       pullRequest.checks !== "pending"
     ) {
-      void mergeGithubPullRequest(project.workingDirectory, this.settings.prMergeMethod, false);
+      void mergeGithubPullRequest(project.workingDirectory, this.settings.prMergeMethod, false, pullRequest.url).catch((error) => this.log(`Automatic merge failed: ${String(error)}`));
     }
     this.events.emit("state", { command: "git-updated" });
   }
@@ -2835,6 +2855,7 @@ export class CapsuleEngine {
   private persistSettings(): void {
     const stored = { ...this.settings };
     delete stored.gatewayToken;
+    delete stored.skillsShToken;
     this.repos.setSetting("settings", JSON.stringify(stored));
   }
 
@@ -2962,8 +2983,11 @@ export class CapsuleEngine {
     // That is "since this turn", not "by this turn", and changes as the user
     // works. Older first checkpoints have no recorded before-state: be honest
     // about that instead of attributing later repository edits to the agent.
-    if (!previous || !(await hasCheckpoint(cwd, previous)) || !(await hasCheckpoint(cwd, run.checkpointRef))) {
+    if (!previous) {
       return { patch: "", files: [], available: false };
+    }
+    if (!(await hasCheckpoint(cwd, previous)) || !(await hasCheckpoint(cwd, run.checkpointRef))) {
+      throw new Error("A recorded checkpoint could not be read. Retry after checking that the repository and its checkpoint refs are available.");
     }
     return {
       available: true,
@@ -2996,6 +3020,16 @@ export class CapsuleEngine {
   }
 
   private async hydrateSecrets(): Promise<void> {
+    // Migrate legacy settings only after secure storage succeeds. Never lose
+    // the only copy on a Keychain failure or send a stored mask as a token.
+    for (const [key, account] of [["gatewayToken", GATEWAY_TOKEN_ACCOUNT], ["skillsShToken", SKILLS_SH_TOKEN_ACCOUNT]] as const) {
+      const legacy = this.settings[key];
+      if (legacy && legacy !== TOKEN_PRESENT_MASK && !(await this.keychain.get(CAPSULE_KEYCHAIN_SERVICE, account))) {
+        await this.keychain.set(CAPSULE_KEYCHAIN_SERVICE, account, legacy);
+      }
+      delete this.settings[key];
+    }
+    this.persistSettings();
     const token = await this.keychain.get(CAPSULE_KEYCHAIN_SERVICE, GATEWAY_TOKEN_ACCOUNT);
     if (token) this.settings.gatewayToken = token;
     if (process.env.OPENCLAW_GATEWAY_TOKEN) {
@@ -3067,7 +3101,7 @@ export class CapsuleEngine {
           current.permissionProfile === "default"
           ? current.permissionProfile
           : undefined,
-      model: current.modelOverride,
+      model: (current.harnessId ?? current.agentId) === harnessId ? current.modelOverride : undefined,
     });
     return this.requireSession(result.session.id);
   }
@@ -3226,3 +3260,4 @@ export function inferMode(prompt: string, current?: AgentMode): AgentMode {
   if (/\b(every day|schedule|cron|automat)/.test(lower)) return "automation";
   return current ?? "chat";
 }
+import { compactRunEvent, type RunEventCursor } from "@capsule/shared";

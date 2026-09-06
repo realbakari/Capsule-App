@@ -92,6 +92,9 @@ let ghProbe: Promise<boolean> | undefined;
 
 const pullRequestCache = new Map<string, { value?: GitPullRequest; at: number; }>();
 const pullRequestAttempts = new Map<string, number>();
+const pullRequestIdentities = new Map<string, string>();
+const pullRequestReads = new Map<string, number>();
+let pullRequestEpoch = 0;
 
 export async function ghAvailable(): Promise<boolean> {
   if (ghPresent === undefined) {
@@ -110,6 +113,9 @@ export function clearGhCache(): void {
   ghProbe = undefined;
   pullRequestCache.clear();
   pullRequestAttempts.clear();
+  pullRequestIdentities.clear();
+  pullRequestReads.clear();
+  pullRequestEpoch++;
   pullRequestListCache.clear();
   pullRequestListInFlight.clear();
   pullRequestListFailures.clear();
@@ -131,8 +137,9 @@ export function createPullRequestArgs(input: {
   return args;
 }
 
-export function mergePullRequestArgs(method: PrMergeMethod, auto: boolean): string[] {
-  const args = ["pr", "merge"];
+export function mergePullRequestArgs(method: PrMergeMethod, auto: boolean, target: string): string[] {
+  if (!/^https:\/\/[^/]+\/[^/]+\/[^/]+\/pull\/\d+$/.test(target)) throw new Error("Select a pull request before merging.");
+  const args = ["pr", "merge", target];
   if (method === "squash") args.push("--squash");
   else if (method === "rebase") args.push("--rebase");
   else args.push("--merge");
@@ -640,11 +647,12 @@ export async function readCommitDiff(cwd: string, oid: string): Promise<string> 
   return result.stdout;
 }
 
-export async function viewPullRequest(cwd: string): Promise<GitPullRequest | undefined> {
+export async function viewPullRequest(cwd: string, branch?: string): Promise<GitPullRequest | undefined> {
   const result = await readGhJson(
     [
       "pr",
       "view",
+      ...(branch ? [branch] : []),
       "--json",
       "number,url,title,isDraft,state,mergeStateStatus,reviewDecision,statusCheckRollup",
     ],
@@ -718,14 +726,14 @@ export function setPullRequestListener(listener: (() => void) | undefined): void
   onPullRequestSettled = listener;
 }
 
-function cachedPullRequest(cwd: string): GitPullRequest | undefined {
-  const cached = pullRequestCache.get(cwd);
+function cachedPullRequest(cwd: string, key: string, branch: string): GitPullRequest | undefined {
+  const cached = pullRequestCache.get(key);
   if (cached && Date.now() - cached.at < PR_CACHE_TTL_MS) return cached.value;
-  const attempted = pullRequestAttempts.get(cwd);
+  const attempted = pullRequestAttempts.get(key);
   if (attempted !== undefined && Date.now() - attempted < PR_CACHE_TTL_MS) return cached?.value;
-  if (!pullRequestInFlight.has(cwd)) {
-    pullRequestInFlight.add(cwd);
-    pullRequestAttempts.set(cwd, Date.now());
+  if (!pullRequestInFlight.has(key)) {
+    pullRequestInFlight.add(key);
+    pullRequestAttempts.set(key, Date.now());
     /*
      * Off the current tick and off the thread. This used to be a setImmediate
      * around a synchronous spawn, on the reasoning that nothing was waiting on
@@ -733,17 +741,18 @@ function cachedPullRequest(cwd: string): GitPullRequest | undefined {
      * by one caller, it is waited on by everything, so a refresh nobody asked
      * for still froze the window for the length of a network round trip.
      */
-    void viewPullRequest(cwd)
+    void viewPullRequest(cwd, branch)
       .then((next) => {
-        const previous = pullRequestCache.get(cwd)?.value;
-        pullRequestCache.set(cwd, { value: next, at: Date.now() });
+        if (pullRequestIdentities.get(cwd) !== key) return;
+        const previous = pullRequestCache.get(key)?.value;
+        pullRequestCache.set(key, { value: next, at: Date.now() });
         if (JSON.stringify(previous) !== JSON.stringify(next)) {
           onPullRequestSettled?.();
         }
       })
       // Failure neither erases a prior reading nor marks an unknown PR as absent.
       .catch(() => undefined)
-      .finally(() => pullRequestInFlight.delete(cwd));
+      .finally(() => pullRequestInFlight.delete(key));
   }
   return cached?.value;
 }
@@ -757,9 +766,25 @@ function cachedPullRequest(cwd: string): GitPullRequest | undefined {
  * false until a reading has actually landed, so a caller cannot read "not
  * fetched yet" as "there is no pull request".
  */
-export function pollPullRequest(cwd: string): { value?: GitPullRequest; known: boolean; } {
-  const value = cachedPullRequest(cwd);
-  return { value, known: pullRequestCache.has(cwd) };
+export async function pollPullRequest(cwd: string): Promise<{ value?: GitPullRequest; known: boolean; }> {
+  const epoch = pullRequestEpoch;
+  const read = (pullRequestReads.get(cwd) ?? 0) + 1;
+  pullRequestReads.set(cwd, read);
+  const [branch, refs, remotes] = await Promise.all([
+    run("git", ["symbolic-ref", "--short", "HEAD"], cwd, 3000),
+    run("git", ["rev-parse", "HEAD", "@{upstream}"], cwd, 3000),
+    run("git", ["remote", "-v"], cwd, 3000),
+  ]);
+  if (!branch.ok || epoch !== pullRequestEpoch || pullRequestReads.get(cwd) !== read) return { known: false };
+  const name = branch.stdout.trim();
+  const key = JSON.stringify([cwd, name, refs.stdout, remotes.stdout, epoch]);
+  const previous = pullRequestIdentities.get(cwd);
+  if (previous !== key) {
+    if (previous) { pullRequestCache.delete(previous); pullRequestAttempts.delete(previous); }
+    pullRequestIdentities.set(cwd, key);
+  }
+  const value = cachedPullRequest(cwd, key, name);
+  return { value, known: pullRequestCache.has(key) };
 }
 
 export async function enrichGitStatus(status: GitStatus, cwd?: string): Promise<GitStatus> {
@@ -774,7 +799,7 @@ export async function enrichGitStatus(status: GitStatus, cwd?: string): Promise<
       ghAvailable: available,
       ahead: ahead.ok ? Number.parseInt(ahead.stdout.trim(), 10) || 0 : undefined,
       behind: behind.ok ? Number.parseInt(behind.stdout.trim(), 10) || 0 : undefined,
-      pullRequest: available ? cachedPullRequest(cwd) : undefined,
+      pullRequest: available ? (await pollPullRequest(cwd)).value : undefined,
     };
 
   }, JSON.stringify(["enrichGitStatus", status, cwd]));
@@ -799,10 +824,17 @@ export async function mergePullRequest(
   cwd: string,
   method: PrMergeMethod,
   auto: boolean,
+  target: string,
 ): Promise<{ ok: boolean; detail: string; }> {
   return inRepository(cwd, async () => {
 
-    const result = await runAsync("gh", mergePullRequestArgs(method, auto), cwd, 30_000);
+    const args = mergePullRequestArgs(method, auto, target);
+    const current = await viewPullRequest(cwd);
+    if (!current || current.url !== target || current.state !== "OPEN") {
+      return { ok: false, detail: "The current branch no longer matches the selected open pull request. Refresh and review it before merging." };
+    }
+    const result = await runAsync("gh", args, cwd, 30_000);
+    if (result.ok) clearGhCache();
     if (result.ok) return { ok: true, detail: result.stdout.trim() || "Merge started." };
     return { ok: false, detail: result.stderr || result.stdout.trim() || "Could not merge pull request." };
 

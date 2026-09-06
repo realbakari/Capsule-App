@@ -300,7 +300,7 @@ export interface ProjectActionRun {
   projectId: string;
   actionId: string;
   sessionId?: string;
-  status: "running" | "completed" | "failed" | "stopped";
+  status: "running" | "stopping" | "completed" | "failed" | "stopped";
   pid?: number;
   output: string;
   startedAt: string;
@@ -548,6 +548,8 @@ export interface ApprovalRequest {
 export interface RunEvent {
   id: string;
   runId: string;
+  /** Live routing hint. Older persisted events are scoped by the requested run. */
+  sessionId?: string;
   timestamp: string;
   type: string;
   message: string;
@@ -724,6 +726,7 @@ export interface SearchResults {
 }
 
 export interface DiagnosticsSnapshot {
+  performance?: import("./performance.js").TimingSnapshot;
   capsuleVersion: string;
   electronVersion?: string;
   macosVersion?: string;

@@ -1,4 +1,5 @@
 import type { FileEntry, GitChange } from "@capsule/shared";
+import { memo, useMemo } from "react";
 import { folderBasename } from "@capsule/shared";
 import { fileKind } from "../../lib/file-kind";
 import {
@@ -40,14 +41,24 @@ export function sortTreeEntries(entries: FileEntry[]): FileEntry[] {
     });
 }
 
-function gitMarkFor(entry: FileEntry, files?: GitChange[]): string | undefined {
-  const hit = files?.find(
-    (change) =>
-      change.path === entry.path ||
-      change.path.endsWith(`/${entry.path}`) ||
-      (entry.type === "directory" && change.path.startsWith(`${entry.path}/`)),
-  );
-  return hit?.code?.trim().charAt(0);
+export function indexGitMarks(files: readonly GitChange[] = []) {
+  const file = new Map<string, string>();
+  const directory = new Map<string, string>();
+  for (const change of files) {
+    const mark = change.code?.trim().charAt(0) ?? "";
+    const parts = change.path.split("/");
+    // Preserve the first matching status, including paths relative to a nested root.
+    for (let start = 0; start < parts.length; start += 1) {
+      const suffix = parts.slice(start).join("/");
+      if (!file.has(suffix)) file.set(suffix, mark);
+      if (!directory.has(suffix)) directory.set(suffix, mark);
+    }
+    for (let end = 1; end < parts.length; end += 1) {
+      const ancestor = parts.slice(0, end).join("/");
+      if (!directory.has(ancestor)) directory.set(ancestor, mark);
+    }
+  }
+  return { file, directory };
 }
 
 function TreeEntries({
@@ -56,7 +67,7 @@ function TreeEntries({
   expanded,
   childrenByDir,
   previewPath,
-  gitFiles,
+  gitMarks,
   onToggleFolder,
   onPreviewFile,
 }: {
@@ -65,7 +76,7 @@ function TreeEntries({
   expanded: Set<string>;
   childrenByDir: Record<string, FileEntry[]>;
   previewPath?: string;
-  gitFiles?: GitChange[];
+  gitMarks: ReturnType<typeof indexGitMarks>;
   onToggleFolder: (path: string) => void;
   onPreviewFile: (path: string) => void;
 }) {
@@ -73,7 +84,7 @@ function TreeEntries({
     <>
       {entries.map((entry) => {
         const open = expanded.has(entry.path);
-        const gitMark = gitMarkFor(entry, gitFiles);
+        const gitMark = gitMarks[entry.type === "directory" ? "directory" : "file"].get(entry.path);
         const selected = previewPath === entry.path;
         if (entry.type === "directory") {
           const kids = childrenByDir[entry.path];
@@ -108,7 +119,7 @@ function TreeEntries({
                     expanded={expanded}
                     childrenByDir={childrenByDir}
                     previewPath={previewPath}
-                    gitFiles={gitFiles}
+                    gitMarks={gitMarks}
                     onToggleFolder={onToggleFolder}
                     onPreviewFile={onPreviewFile}
                   />
@@ -148,7 +159,7 @@ function TreeEntries({
   );
 }
 
-export function FileTreePane({
+export const FileTreePane = memo(function FileTreePane({
   listing,
   expanded,
   childrenByDir,
@@ -181,7 +192,8 @@ export function FileTreePane({
   onToggleFolder: (path: string) => void;
   onPreviewFile: (path: string) => void;
 }) {
-  const rootEntries = sortTreeEntries(listing);
+  const rootEntries = useMemo(() => sortTreeEntries(listing), [listing]);
+  const gitMarks = useMemo(() => indexGitMarks(gitFiles), [gitFiles]);
   return (
     <div className={`codex-file-tree-pane${overlay ? " overlay" : ""}`}>
       <div className="codex-tree-search-wrap">
@@ -250,7 +262,7 @@ export function FileTreePane({
             expanded={expanded}
             childrenByDir={childrenByDir}
             previewPath={previewPath}
-            gitFiles={gitFiles}
+            gitMarks={gitMarks}
             onToggleFolder={onToggleFolder}
             onPreviewFile={onPreviewFile}
           />
@@ -258,4 +270,4 @@ export function FileTreePane({
       </div>
     </div>
   );
-}
+});

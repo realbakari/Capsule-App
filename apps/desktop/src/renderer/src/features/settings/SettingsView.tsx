@@ -4,6 +4,7 @@ import type { CapsuleSettings } from "@capsule/shared";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { KeybindingsSettings } from "./KeybindingsSettings";
 import { ProcessMonitor } from "./ProcessMonitor";
+import { PerformanceDiagnostics } from "./PerformanceDiagnostics";
 import { RuntimeModeCard } from "./RuntimeModeCard";
 import { SourceControlTools } from "./SourceControlTools";
 import {
@@ -545,6 +546,7 @@ export function SettingsView() {
             {tab === "diagnostics" && (
               <div className="appearance-page">
                 <ProcessMonitor />
+                <PerformanceDiagnostics />
               <div className="card">
                 <h3>Diagnostics</h3>
                 <div className="muted">

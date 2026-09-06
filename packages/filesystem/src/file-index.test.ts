@@ -22,38 +22,38 @@ function repo(): string {
 }
 
 describe("what a project's files are", () => {
-  it("honours the project's own ignore rules rather than a list in our source", () => {
+  it("honours the project's own ignore rules rather than a list in our source", async () => {
     // The old walk skipped a hardcoded set of directory names. A project that
     // ignores something else — target, .venv, a vendored checkout — got it
     // indexed anyway, and one that tracks a "build" directory lost it.
-    const files = readProjectFiles(repo());
+    const files = await readProjectFiles(repo());
     expect(files).toContain("README.md");
     expect(files).toContain("src/features/threads/git/GitCommitSheet.tsx");
     expect(files.some((file) => file.startsWith("node_modules/"))).toBe(false);
     expect(files.some((file) => file.startsWith("build/"))).toBe(false);
   });
 
-  it("finds a file deeper than the old walk would reach", () => {
-    const files = readProjectFiles(repo());
+  it("finds a file deeper than the old walk would reach", async () => {
+    const files = await readProjectFiles(repo());
     expect(files).toContain("src/features/threads/git/GitCommitSheet.tsx");
   });
 
-  it("still lists a folder that is not a repository", () => {
+  it("still lists a folder that is not a repository", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "capsule-plain-"));
     mkdirSync(path.join(dir, "node_modules"), { recursive: true });
     writeFileSync(path.join(dir, "notes.md"), "x\n");
     writeFileSync(path.join(dir, "node_modules/pkg.js"), "x\n");
-    expect(readProjectFiles(dir)).toEqual(["notes.md"]);
+    expect(await readProjectFiles(dir)).toEqual(["notes.md"]);
   });
 
-  it("reads the tree once and answers from memory after that", () => {
+  it("reads the tree once and answers from memory after that", async () => {
     const dir = repo();
     clearFileIndex();
-    const first = projectFiles(dir, 1_000);
+    const first = await projectFiles(dir, 1_000);
     writeFileSync(path.join(dir, "added-after.ts"), "x\n");
-    expect(projectFiles(dir, 1_100)).toBe(first);
+    expect(await projectFiles(dir, 1_100)).toBe(first);
     // And reads again once the listing is stale.
-    expect(projectFiles(dir, 1_000_000)).toContain("added-after.ts");
+    expect(await projectFiles(dir, 1_000_000)).toContain("added-after.ts");
   });
 });
 

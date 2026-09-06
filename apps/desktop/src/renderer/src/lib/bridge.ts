@@ -32,12 +32,12 @@ export async function searchProjectFiles(
   return [];
 }
 
-export async function searchProjectContents(projectId: string, query: string): Promise<ContentHit[]> {
+export async function searchProjectContents(projectId: string, query: string, sessionId?: string): Promise<ContentHit[]> {
   const capsule = api() as CapsuleApi & Record<string, unknown>;
   if (isFn(capsule.searchContents)) {
-    return (await capsule.searchContents(projectId, query)) as ContentHit[];
+    return (await capsule.searchContents(projectId, query, sessionId)) as ContentHit[];
   }
-  return [];
+  throw new Error("Content search is unavailable in this window. Restart Capsule to load the current bridge.");
 }
 
 /** Preload does not hot-reload; missing showContextMenu falls back to the in-app menu. */

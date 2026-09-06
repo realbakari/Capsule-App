@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useMemo, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type {
   FileEntry,
   FilePreview,
@@ -243,6 +243,8 @@ export function Inspector() {
 
   const [localServers, setLocalServers] = useState<LocalServer[]>([]);
   const [serversLoading, setServersLoading] = useState(false);
+  const [serversError, setServersError] = useState<string>();
+  const [serversRefresh, setServersRefresh] = useState(0);
   // `undefined` means the lookup did not answer; an empty array means none.
   const [pullRequests, setPullRequests] = useState<GitPullRequest[] | undefined>();
   const [listRefreshVersion, setListRefreshVersion] = useState(0);
@@ -264,11 +266,12 @@ export function Inspector() {
   const harnesses = harnessList ?? [];
   const dedicated = harnesses.find((item) => item.id === project?.defaultAgentId);
 
-  const projectRoots = projectFolderList(project ?? {});
-  const folderRoots =
-    session?.workingDirectory && session.workingDirectory !== project?.workingDirectory
+  const folderRoots = useMemo(() => {
+    const projectRoots = projectFolderList(project ?? {});
+    return session?.workingDirectory && session.workingDirectory !== project?.workingDirectory
       ? [session.workingDirectory, ...projectRoots.filter((root) => root !== project?.workingDirectory)]
       : projectRoots;
+  }, [project, session?.workingDirectory]);
   const activeRoot =
     (fileRoot && folderRoots.find((root) => root.toLowerCase() === fileRoot.toLowerCase())) ||
     (session?.workingDirectory ?? project?.workingDirectory);
@@ -326,14 +329,19 @@ export function Inspector() {
   useEffect(() => {
     if (activeTool !== "browser") return undefined;
     let disposed = false;
+    let running = false;
     const refreshServers = () => {
+      if (running) return;
+      running = true;
       setServersLoading(true);
       void api
         .listLocalServers()
         .then((servers) => {
-          if (!disposed) setLocalServers(servers as LocalServer[]);
+          if (!disposed) { setLocalServers(servers as LocalServer[]); setServersError(undefined); }
         })
+        .catch((error) => { if (!disposed) setServersError(formatUserError(error)); })
         .finally(() => {
+          running = false;
           if (!disposed) setServersLoading(false);
         });
     };
@@ -343,7 +351,7 @@ export function Inspector() {
       disposed = true;
       window.clearInterval(timer);
     };
-  }, [activeTool, api]);
+  }, [activeTool, api, serversRefresh]);
 
   useEffect(() => {
     if (activeTool !== "review" || !projectId || !git?.isRepo) {
@@ -587,17 +595,18 @@ export function Inspector() {
     clearRequestedFile();
     setActiveTool("files");
     void previewFile(relative);
-    // previewFile is redefined on every render; the request is the trigger.
+    // The request is the trigger; folder ownership is checked inside previewFile.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestedFile, projectId, activeRoot]);
 
-  async function openRoot(root: string) {
+  const clearFileSearch = useCallback(() => setFileSearch(""), []);
+  const openRoot = useCallback((root: string) => {
     setFileRoot(root);
     setExpanded(new Set());
     setChildrenByDir({});
-  }
+  }, []);
 
-  function toggleFolder(path: string) {
+  const toggleFolder = useCallback((path: string) => {
     const closing = expanded.has(path);
     setExpanded((current) => {
       const next = new Set(current);
@@ -617,9 +626,9 @@ export function Inspector() {
         if (fileScope.current !== requestedScope) return;
         setChildrenByDir((current) => ({ ...current, [path]: [] }));
       });
-  }
+  }, [expanded, childrenByDir, projectId, api, activeRoot]);
 
-  async function previewFile(relative: string) {
+  const previewFile = useCallback(async (relative: string) => {
     if (!projectId || !activeRoot) return;
     const request = ++fileRequest.current;
     const requestedScope = fileScope.current;
@@ -669,7 +678,7 @@ export function Inspector() {
     }
     setActiveTool("files");
     setInspectorOpen(true);
-  }
+  }, [api, projectId, activeRoot, setInspectorOpen]);
 
   async function showFileDiff(relative: string) {
     if (!projectId) return;
@@ -949,10 +958,10 @@ export function Inspector() {
                 previewPath={previewDoc?.path}
                 gitFiles={git?.files}
                 onFileSearchChange={setFileSearch}
-                onClearSearch={() => setFileSearch("")}
-                onOpenRoot={(root) => void openRoot(root)}
+                onClearSearch={clearFileSearch}
+                onOpenRoot={openRoot}
                 onToggleFolder={toggleFolder}
-                onPreviewFile={(path) => void previewFile(path)}
+                onPreviewFile={previewFile}
               />
             ) : null}
           </div>
@@ -1170,6 +1179,8 @@ export function Inspector() {
             onAddressChange={setBrowserUrl}
             localServers={localServers}
             serversLoading={serversLoading}
+            serversError={serversError}
+            onRetryServers={() => setServersRefresh((value) => value + 1)}
             onOpenExternal={(url) => void openPath(url)}
           />
         )}

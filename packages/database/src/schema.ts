@@ -312,4 +312,12 @@ export const MIGRATIONS: Array<{ version: number; sql: string; }> = [
       ALTER TABLE runs ADD COLUMN verification TEXT;
     `,
   },
+  {
+    version: 13,
+    sql: `CREATE INDEX IF NOT EXISTS idx_run_events_cursor ON run_events(run_id, timestamp);`,
+  },
+  {
+    version: 14,
+    sql: `CREATE INDEX IF NOT EXISTS idx_runs_session_created ON runs(session_id, created_at);`,
+  },
 ];

@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, unlinkSync, existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -118,6 +118,8 @@ describe("CapsuleEngine first user flow", () => {
     expect(first.session.harnessId).toBe("claude");
     await waitForRun(engine, first.run.id);
     const firstKey = first.session.openclawSessionKey;
+    await engine.setHarnessOption({ sessionId: session.id, key: "model", value: "opus" });
+    expect(engine.repos.getSession(session.id)?.modelOverride).toBe("opus");
 
     const second = await engine.sendMessage({
       sessionId: session.id,
@@ -128,6 +130,7 @@ describe("CapsuleEngine first user flow", () => {
     expect(second.session.harnessId).toBe("codex");
     expect(second.session.harnessState).toBe("running");
     expect(second.session.openclawSessionKey).not.toBe(firstKey);
+    expect(second.session.modelOverride).toBeUndefined();
     await waitForRun(engine, second.run.id);
     await engine.stop();
   });
@@ -358,7 +361,7 @@ describe("CapsuleEngine first user flow", () => {
       true,
     );
     expect(
-      engine.searchFiles(project.id, "notes", extra).some((entry) => entry.name === "notes.md"),
+      (await engine.searchFiles(project.id, "notes", extra)).some((entry) => entry.name === "notes.md"),
     ).toBe(true);
     expect(() => engine.listFiles(project.id, ".", "/not-attached")).toThrow(/not attached/i);
     await engine.deleteProject(project.id);
@@ -398,7 +401,7 @@ describe("CapsuleEngine first user flow", () => {
     const titled = engine.regenerateTitle(session.id);
     expect(titled.title.toLowerCase()).toContain("review");
     expect(engine.search("renderer").messages.length).toBeGreaterThan(0);
-    expect(engine.searchFiles(project.id, "sqlite").length).toBeGreaterThanOrEqual(0);
+    expect((await engine.searchFiles(project.id, "sqlite")).length).toBeGreaterThanOrEqual(0);
     await engine.setPermissionProfile(session.id, "strict");
     expect(engine.listSessions(project.id).find((item) => item.id === session.id)?.permissionProfile).toBe(
       "strict",
@@ -564,6 +567,10 @@ describe("project workspace tools", () => {
     expect(session.workingDirectory).not.toBe(repository);
     expect(session.worktreeBranch).toMatch(/^capsule\//);
     expect((await engine.gitStatus(project.id, session.id)).isRepo).toBe(true);
+    writeFileSync(path.join(repository, "README.md"), "project-only phrase\n");
+    expect(await engine.searchContents(project.id, "project-only", session.id)).toEqual([]);
+    expect(await engine.searchContents(project.id, "base", session.id)).toEqual([{ path: "README.md", line: 1, text: "base" }]);
+    await expect(engine.searchContents(project.id, "base", "another-thread")).rejects.toThrow(/does not belong/);
 
     engine.runProjectAction(project.id, "where", session.id);
     for (let attempt = 0; attempt < 50; attempt += 1) {
@@ -755,13 +762,28 @@ describe("concurrent edits to a project file", () => {
     });
   });
 
-  it("creates a new file even though it has no prior revision", async () => {
+  it("creates a new file only when no prior revision is supplied", async () => {
     await withEngine(async (engine, projectId, work) => {
       engine.writeFile(projectId, "fresh.md", "new\n", {
         origin: "user",
-        expectedRevision: "0:0",
       });
       expect(readFileSync(path.join(work, "fresh.md"), "utf8")).toBe("new\n");
+    });
+  });
+
+  it("refuses revisioned saves when the file was deleted or became too large to read", async () => {
+    await withEngine(async (engine, projectId, work) => {
+      const file = path.join(work, "notes.md");
+      writeFileSync(file, "original\n");
+      const opened = engine.readFileVersioned(projectId, "notes.md");
+      unlinkSync(file);
+      const save = () => engine.writeFile(projectId, "notes.md", "stale", { origin: "user", expectedRevision: opened.revision });
+      expect(save).toThrow("FILE_CHANGED_ON_DISK");
+      expect(existsSync(file)).toBe(false);
+      const grown = "a".repeat(1_000_001);
+      writeFileSync(file, grown);
+      expect(save).toThrow("FILE_CHANGED_ON_DISK");
+      expect(readFileSync(file, "utf8")).toBe(grown);
     });
   });
 
@@ -785,11 +807,11 @@ describe("concurrent edits to a project file", () => {
         path.join(work, "logo.png"),
         Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]),
       );
-      const code = engine.previewFile(projectId, "app.ts");
+      const code = await engine.previewFile(projectId, "app.ts");
       expect(code.kind).toBe("text");
       expect(code.language).toBe("ts");
       expect(code.contents).toContain("export const n");
-      const image = engine.previewFile(projectId, "logo.png");
+      const image = await engine.previewFile(projectId, "logo.png");
       expect(image.kind).toBe("image");
       expect(image.dataUrl).toMatch(/^data:image\/png;base64,/);
     });
@@ -969,10 +991,9 @@ describe("what a turn changed", () => {
     expect(await engine.turnDiff(first.id)).toEqual({ patch: "", files: [], available: false });
     expect(await engine.turnDiff(second.id)).toEqual(snapshot);
 
-    // Missing saved refs are unavailable, not a signal to compare with the
-    // current tree instead. This ref belongs only to this test's temp repo.
+    // Missing recorded refs must reach the Retry UI, never a live-tree fallback.
     execFileSync("git", ["update-ref", "-d", engine.getRun(first.id)!.checkpointRef!], { cwd: repo });
-    expect(await engine.turnDiff(second.id)).toEqual({ patch: "", files: [], available: false });
+    await expect(engine.turnDiff(second.id)).rejects.toThrow("recorded checkpoint");
     await engine.stop();
   });
 });

@@ -31,6 +31,7 @@ const READ_CHANNELS: ChannelName[] = [
   "getRun",
   "listRuns",
   "listRunEvents",
+  "listRunEventPage",
   "listArtifacts",
   "listApprovals",
   "readFile",
@@ -42,6 +43,7 @@ const READ_CHANNELS: ChannelName[] = [
   "getSubsystemStatus",
   "getSettings",
   "getDiagnostics",
+  "getPetState",
   // Unlike checkForUpdates, this only reports what is already known: no
   // network call, no check started, nothing downloaded.
   "updateStatus",

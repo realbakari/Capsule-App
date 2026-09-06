@@ -16,3 +16,7 @@ export * from "./project-file.js";
 export * from "./revision.js";
 export * from "./runtime.js";
 export * from "./types.js";
+export * from "./run-events.js";
+export * from "./performance.js";
+export * from "./run-activity.js";
+export * from "./harness-capabilities.js";

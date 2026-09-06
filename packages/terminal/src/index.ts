@@ -181,21 +181,27 @@ export function startInDirectory(
   });
   child.stdout.on("data", (chunk: Buffer) => handlers.onOutput(chunk.toString("utf8")));
   child.stderr.on("data", (chunk: Buffer) => handlers.onOutput(chunk.toString("utf8")));
-  child.on("error", handlers.onError);
-  child.on("close", handlers.onExit);
+  let closed = false;
+  let stopRequested = false;
+  let killTimer: ReturnType<typeof setTimeout> | undefined;
+  const cleanup = () => { closed = true; clearTimeout(killTimer); };
+  const signal = (value: NodeJS.Signals) => {
+    if (closed) return;
+    if (process.platform !== "win32" && child.pid) {
+      try { process.kill(-child.pid, value); return; } catch { /* Group already exited. */ }
+    }
+    child.kill(value);
+  };
+  child.on("error", (error) => { cleanup(); handlers.onError(error); });
+  child.on("close", (code, value) => { cleanup(); handlers.onExit(code, value); });
   return {
     pid: child.pid,
     stop: () => {
-      if (child.killed) return;
-      if (process.platform !== "win32" && child.pid) {
-        try {
-          process.kill(-child.pid, "SIGTERM");
-          return;
-        } catch {
-          // The shell may already have exited; fall back to the child handle.
-        }
-      }
-      child.kill("SIGTERM");
+      if (closed || stopRequested) return;
+      stopRequested = true;
+      signal("SIGTERM");
+      killTimer = setTimeout(() => signal("SIGKILL"), 1000);
+      killTimer.unref();
     },
   };
 }

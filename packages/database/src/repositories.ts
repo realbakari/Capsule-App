@@ -654,6 +654,18 @@ export class CapsuleRepositories {
     return rows.map((row) => ({ ...row, revision: row.revision ? JSON.parse(row.revision) : undefined, verification: row.verification ? JSON.parse(row.verification) : undefined }));
   }
 
+  /** One indexed lookup per visible thread, without loading prompts or result JSON. */
+  listLatestRunStates(): Array<Pick<Run, "id" | "sessionId" | "status" | "createdAt" | "updatedAt" | "completedAt">> {
+    return this.db.sqlite.prepare(`
+      SELECT r.id, r.session_id AS sessionId, r.status, r.created_at AS createdAt,
+             r.updated_at AS updatedAt, r.completed_at AS completedAt
+      FROM sessions s JOIN runs r ON r.rowid = (
+        SELECT rowid FROM runs WHERE session_id = s.id
+        ORDER BY created_at DESC, rowid DESC LIMIT 1
+      ) WHERE s.state != 'archived'
+    `).all() as Array<Pick<Run, "id" | "sessionId" | "status" | "createdAt" | "updatedAt" | "completedAt">>;
+  }
+
   insertRunEvent(event: RunEvent): void {
     this.db.sqlite
       .prepare(
@@ -670,13 +682,32 @@ export class CapsuleRepositories {
     const rows = this.db.sqlite
       .prepare(
         `SELECT id, run_id AS runId, timestamp, type, message, data
-         FROM run_events WHERE run_id = ? ORDER BY timestamp ASC`,
+         FROM run_events WHERE run_id = ? ORDER BY timestamp ASC, rowid ASC`,
       )
       .all(runId) as Array<Omit<RunEvent, "data"> & { data: string | null; }>;
     return rows.map((row) => ({
       ...row,
       data: parseJson(row.data, undefined),
     }));
+  }
+
+  listRunEventPage(runId: string, limit = 200, before?: RunEventCursor): RunEventPage {
+    const size = Math.min(200, Math.max(1, Math.trunc(limit) || 200));
+    const rows = this.db.sqlite.prepare(`
+      SELECT id, run_id AS runId, timestamp, type,
+        substr(message, 1, 8192) AS message,
+        CASE WHEN length(data) > 32768 THEN '{"payloadTruncated":true}' ELSE data END AS data,
+        length(message) > 8192 AS clipped
+      FROM run_events WHERE run_id = ?
+      ${before ? "AND (timestamp < ? OR (timestamp = ? AND rowid < (SELECT rowid FROM run_events WHERE id = ?)))" : ""}
+      ORDER BY timestamp DESC, rowid DESC LIMIT ?
+    `).all(runId, ...(before ? [before.timestamp, before.timestamp, before.id] : []), size + 1) as Array<Omit<RunEvent, "data"> & { data: string | null; clipped: number }>;
+    const events = boundRunEvents(rows.slice(0, size).reverse().map(({ data, clipped, ...row }) => compactRunEvent({
+      ...row, data: { ...parseJson(data, {}), ...(clipped ? { payloadTruncated: true } : {}) },
+    })));
+    const hasMore = rows.length > events.length;
+    const first = events[0];
+    return { events, hasMore, ...(hasMore && first ? { before: { timestamp: first.timestamp, id: first.id } } : {}) };
   }
 
   insertContract(contract: ExecutionContract): void {
@@ -859,3 +890,4 @@ export class CapsuleRepositories {
       .all() as ChannelBinding[];
   }
 }
+import { compactRunEvent, boundRunEvents, type RunEventCursor, type RunEventPage } from "@capsule/shared";

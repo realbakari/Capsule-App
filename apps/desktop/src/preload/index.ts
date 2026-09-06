@@ -10,6 +10,7 @@ import {
 } from "@capsule/shared";
 
 const api = {
+  isDesktop: true,
   /* Resolved once at preload time so path display can abbreviate the home
      directory without an IPC round trip on every render. */
   homeDir: os.homedir(),
@@ -19,11 +20,11 @@ const api = {
   cloneRepository: (input: unknown) => ipcRenderer.invoke(IPC_CHANNELS.cloneRepository, input),
   getProject: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.getProject, id),
   listAgents: () => ipcRenderer.invoke(IPC_CHANNELS.listAgents),
-  listSkills: (projectId?: string) => ipcRenderer.invoke(IPC_CHANNELS.listSkills, projectId),
-  listSkillFiles: (skillId: string, relative = ".") =>
-    ipcRenderer.invoke(IPC_CHANNELS.listSkillFiles, skillId, relative),
-  previewSkillFile: (skillId: string, relative: string): Promise<FilePreview> =>
-    ipcRenderer.invoke(IPC_CHANNELS.previewSkillFile, skillId, relative),
+  listSkills: (projectId?: string, sessionId?: string) => ipcRenderer.invoke(IPC_CHANNELS.listSkills, projectId, sessionId),
+  listSkillFiles: (skillId: string, relative = ".", projectId?: string, sessionId?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.listSkillFiles, skillId, relative, projectId, sessionId),
+  previewSkillFile: (skillId: string, relative: string, projectId?: string, sessionId?: string): Promise<FilePreview> =>
+    ipcRenderer.invoke(IPC_CHANNELS.previewSkillFile, skillId, relative, projectId, sessionId),
   listSkillPacks: () => ipcRenderer.invoke(IPC_CHANNELS.listSkillPacks),
   installSkill: (skill: unknown) => ipcRenderer.invoke(IPC_CHANNELS.installSkill, skill),
   installSkillPack: (packId: string) => ipcRenderer.invoke(IPC_CHANNELS.installSkillPack, packId),
@@ -62,6 +63,7 @@ const api = {
   getRun: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.getRun, id),
   listRuns: (sessionId?: string) => ipcRenderer.invoke(IPC_CHANNELS.listRuns, sessionId),
   listRunEvents: (runId: string) => ipcRenderer.invoke(IPC_CHANNELS.listRunEvents, runId),
+  listRunEventPage: (runId: string, before?: import("@capsule/shared").RunEventCursor): Promise<import("@capsule/shared").RunEventPage> => ipcRenderer.invoke(IPC_CHANNELS.listRunEventPage, runId, before),
   verifyRun: (runId: string, actionId?: string) => ipcRenderer.invoke(IPC_CHANNELS.verifyRun, runId, actionId),
   cancelVerification: (runId: string) => ipcRenderer.invoke(IPC_CHANNELS.cancelVerification, runId),
   listArtifacts: (runId?: string) => ipcRenderer.invoke(IPC_CHANNELS.listArtifacts, runId),
@@ -143,10 +145,10 @@ const api = {
     projectId: string,
     input?: { title?: string; body?: string; sessionId?: string; },
   ) => ipcRenderer.invoke(IPC_CHANNELS.gitCreatePullRequest, projectId, input),
-  gitMergePullRequest: (projectId: string, sessionId?: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.gitMergePullRequest, projectId, sessionId),
-  searchContents: (projectId: string, query: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.searchContents, projectId, query),
+  gitMergePullRequest: (projectId: string, sessionId?: string, target?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.gitMergePullRequest, projectId, sessionId, target),
+  searchContents: (projectId: string, query: string, sessionId?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.searchContents, projectId, query, sessionId),
   listLocalServers: () => ipcRenderer.invoke(IPC_CHANNELS.listLocalServers),
   openPath: (target: string) => ipcRenderer.invoke(IPC_CHANNELS.openPath, target),
   pickDirectory: () => ipcRenderer.invoke(IPC_CHANNELS.pickDirectory),
@@ -157,6 +159,8 @@ const api = {
   clearBrowserData: (webContentsId: number, kind: "cache" | "storage") =>
     ipcRenderer.invoke(IPC_CHANNELS.clearBrowserData, webContentsId, kind),
   togglePet: (visible?: boolean) => ipcRenderer.invoke(IPC_CHANNELS.togglePet, visible),
+  getPetState: (): Promise<{ visible: boolean; summary: import("@capsule/shared").AttentionSummary }> => ipcRenderer.invoke(IPC_CHANNELS.getPetState),
+  setPetExpanded: (expanded: boolean) => ipcRenderer.invoke(IPC_CHANNELS.setPetExpanded, expanded),
   focusSession: (sessionId: string) => ipcRenderer.invoke(IPC_CHANNELS.focusSession, sessionId),
   validateAttachments: (attachments: Array<{ name: string; path: string; }>) =>
     ipcRenderer.invoke(IPC_CHANNELS.validateAttachments, attachments),

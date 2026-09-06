@@ -1,4 +1,7 @@
-import { spawnSync } from "node:child_process";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const execute = promisify(execFile);
 
 /**
  * The agent processes Capsule's work actually costs.
@@ -110,22 +113,22 @@ export function selectAgentPids(rows: readonly ProcessRow[], binaries: ReadonlyS
 }
 
 /** Reads the process table. Returns nothing rather than throwing when ps is unavailable. */
-export function readProcessTable(): ProcessRow[] {
-  const result = spawnSync("ps", ["-Ao", "pid=,ppid=,%cpu=,rss=,etime=,comm="], {
+export async function readProcessTable(): Promise<ProcessRow[]> {
+  const result = await execute("ps", ["-Ao", "pid=,ppid=,%cpu=,rss=,etime=,comm="], {
     encoding: "utf8",
     timeout: 4_000,
     maxBuffer: 8 * 1024 * 1024,
-  });
-  if (result.status !== 0 || !result.stdout) return [];
+  }).catch(() => undefined);
+  if (!result?.stdout) return [];
   return parsePsTable(result.stdout);
 }
 
 /** The agent processes running right now, newest-costliest first. */
-export function readAgentProcesses(
+export async function readAgentProcesses(
   binaries: ReadonlySet<string>,
   now = Date.now(),
-): AgentProcess[] {
-  const rows = readProcessTable();
+): Promise<AgentProcess[]> {
+  const rows = await readProcessTable();
   const pids = selectAgentPids(rows, binaries);
   return rows
     .filter((row) => pids.has(row.pid))

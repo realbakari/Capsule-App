@@ -33,9 +33,11 @@ describe("git and pull request args", () => {
   });
 
   it("merges with the chosen method and optional auto", () => {
-    expect(mergePullRequestArgs("squash", false)).toEqual(["pr", "merge", "--squash"]);
-    expect(mergePullRequestArgs("rebase", true)).toEqual(["pr", "merge", "--rebase", "--auto"]);
-    expect(mergePullRequestArgs("merge", true)).toEqual(["pr", "merge", "--merge", "--auto"]);
+    const target = "https://github.com/example/repo/pull/3";
+    expect(mergePullRequestArgs("squash", false, target)).toEqual(["pr", "merge", target, "--squash"]);
+    expect(mergePullRequestArgs("rebase", true, target)).toEqual(["pr", "merge", target, "--rebase", "--auto"]);
+    expect(mergePullRequestArgs("merge", true, target)).toEqual(["pr", "merge", target, "--merge", "--auto"]);
+    expect(() => mergePullRequestArgs("merge", false, "--admin")).toThrow("Select a pull request");
   });
 
   it("normalizes pull request list rows", () => {

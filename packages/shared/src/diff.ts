@@ -50,8 +50,34 @@ export interface DiffFile {
 
 /** `a/src/x.ts` and `b/src/x.ts` — git's prefixes, which are not path. */
 function stripPrefix(value: string): string {
+  value = decodeGitPath(value);
   if (value === "/dev/null") return "";
   return value.replace(/^[ab]\//, "");
+}
+
+/** Git's C-quoted paths encode UTF-8 bytes using octal escapes, not JSON. */
+export function decodeGitPath(value: string): string {
+  if (!value.startsWith('"') || !value.endsWith('"')) return value;
+  const bytes: number[] = [];
+  const escapes: Record<string, number> = { a: 7, b: 8, t: 9, n: 10, v: 11, f: 12, r: 13, '"': 34, "\\": 92 };
+  const source = value.slice(1, -1);
+  for (let i = 0; i < source.length;) {
+    if (source[i] === "\\") {
+      const octal = /^[0-7]{1,3}/.exec(source.slice(i + 1));
+      if (octal) { bytes.push(Number.parseInt(octal[0], 8)); i += octal[0].length + 1; continue; }
+      const escaped = source[i + 1];
+      if (escaped && escapes[escaped] !== undefined) { bytes.push(escapes[escaped]!); i += 2; continue; }
+    }
+    const point = String.fromCodePoint(source.codePointAt(i)!);
+    bytes.push(...new TextEncoder().encode(point));
+    i += point.length;
+  }
+  return new TextDecoder().decode(new Uint8Array(bytes));
+}
+
+function patchPaths(line: string): [string, string] {
+  const quoted = /^("(?:\\.|[^"\\])*"|a\/.*?) ("(?:\\.|[^"\\])*"|b\/.*)$/.exec(line.slice(11));
+  return [stripPrefix(quoted?.[1] ?? ""), stripPrefix(quoted?.[2] ?? "")];
 }
 
 /**
@@ -59,10 +85,10 @@ function stripPrefix(value: string): string {
  *
  * A count of 1 may be written without the comma, so both forms are read.
  */
-function parseHunkHeader(line: string): { oldStart: number; newStart: number } | undefined {
+function parseHunkHeader(line: string): { oldStart: number; newStart: number; oldCount: number; newCount: number } | undefined {
   const match = /^@@+ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(line);
   if (!match) return undefined;
-  return { oldStart: Number(match[1]), newStart: Number(match[3]) };
+  return { oldStart: Number(match[1]), newStart: Number(match[3]), oldCount: Number(match[2] ?? 1), newCount: Number(match[4] ?? 1) };
 }
 
 /**
@@ -84,6 +110,8 @@ export function parseUnifiedDiff(text: string): DiffFile[] {
   let hunk: DiffHunk | undefined;
   let oldLine = 0;
   let newLine = 0;
+  let oldRemaining = 0;
+  let newRemaining = 0;
 
   const closeFile = () => {
     if (file) files.push(file);
@@ -98,9 +126,7 @@ export function parseUnifiedDiff(text: string): DiffFile[] {
       closeFile();
       // `diff --git a/x b/x`, which is the only reliable name for a file whose
       // hunks never arrive — a pure rename, or a binary.
-      const match = /^diff --git (\S+) (\S+)$/.exec(line);
-      const from = stripPrefix(match?.[1] ?? "");
-      const to = stripPrefix(match?.[2] ?? "");
+      const [from, to] = patchPaths(line);
       file = {
         path: to || from,
         status: "modified",
@@ -114,6 +140,23 @@ export function parseUnifiedDiff(text: string): DiffFile[] {
 
     if (!file) continue;
 
+    if (hunk && oldRemaining === 0 && newRemaining === 0) hunk = undefined;
+    if (hunk && (line.startsWith("+") || line.startsWith("-") || line.startsWith(" ") || line === "")) {
+      const marker = line[0];
+      const body = line.slice(1);
+      if (marker === "+" && newRemaining > 0) {
+        hunk.lines.push({ kind: "add", text: body, newLine: newLine++ });
+        newRemaining--; file.additions++;
+      } else if (marker === "-" && oldRemaining > 0) {
+        hunk.lines.push({ kind: "del", text: body, oldLine: oldLine++ });
+        oldRemaining--; file.deletions++;
+      } else if ((marker === " " || line === "") && oldRemaining > 0 && newRemaining > 0) {
+        hunk.lines.push({ kind: "context", text: body, oldLine: oldLine++, newLine: newLine++ });
+        oldRemaining--; newRemaining--;
+      }
+      continue;
+    }
+
     if (line.startsWith("new file mode")) {
       file.status = "added";
       continue;
@@ -123,12 +166,12 @@ export function parseUnifiedDiff(text: string): DiffFile[] {
       continue;
     }
     if (line.startsWith("rename from ")) {
-      file.oldPath = line.slice("rename from ".length).trim();
+      file.oldPath = decodeGitPath(line.slice("rename from ".length));
       file.status = "renamed";
       continue;
     }
     if (line.startsWith("rename to ")) {
-      file.path = line.slice("rename to ".length).trim();
+      file.path = decodeGitPath(line.slice("rename to ".length));
       file.status = "renamed";
       continue;
     }
@@ -138,12 +181,12 @@ export function parseUnifiedDiff(text: string): DiffFile[] {
     }
 
     if (line.startsWith("--- ")) {
-      const from = stripPrefix(line.slice(4).trim());
+      const from = stripPrefix(line.slice(4).replace(/\t$/, ""));
       if (from) file.oldPath = file.oldPath ?? from;
       continue;
     }
     if (line.startsWith("+++ ")) {
-      const to = stripPrefix(line.slice(4).trim());
+      const to = stripPrefix(line.slice(4).replace(/\t$/, ""));
       if (to) file.path = to;
       continue;
     }
@@ -154,6 +197,8 @@ export function parseUnifiedDiff(text: string): DiffFile[] {
       file.hunks.push(hunk);
       oldLine = header.oldStart;
       newLine = header.newStart;
+      oldRemaining = header.oldCount;
+      newRemaining = header.newCount;
       continue;
     }
 
@@ -165,23 +210,6 @@ export function parseUnifiedDiff(text: string): DiffFile[] {
      */
     if (line.startsWith("\\")) continue;
 
-    const marker = line[0];
-    const body = line.slice(1);
-    if (marker === "+") {
-      hunk.lines.push({ kind: "add", text: body, newLine });
-      newLine += 1;
-      file.additions += 1;
-    } else if (marker === "-") {
-      hunk.lines.push({ kind: "del", text: body, oldLine });
-      oldLine += 1;
-      file.deletions += 1;
-    } else if (marker === " " || line === "") {
-      // An empty context line arrives as a genuinely empty string rather than
-      // a single space, depending on who wrote the patch.
-      hunk.lines.push({ kind: "context", text: body, oldLine, newLine });
-      oldLine += 1;
-      newLine += 1;
-    }
   }
 
   closeFile();

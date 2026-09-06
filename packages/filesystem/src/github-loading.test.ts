@@ -1,14 +1,14 @@
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { clearGhCache, listPullRequests, pollPullRequest, pollPullRequestList, pullRequestListFailure, readPullRequestDetail, readCommitDiff, viewPullRequest } from "./github.js";
+import { clearGhCache, listPullRequests, mergePullRequest, pollPullRequest, pollPullRequestList, pullRequestListFailure, readPullRequestDetail, readCommitDiff, viewPullRequest } from "./github.js";
 
 const mocks = vi.hoisted(() => ({ spawn: vi.fn() }));
 vi.mock("node:child_process", async (original) => ({ ...await original<typeof import("node:child_process")>(), spawn: mocks.spawn }));
 vi.mock("./avatars.js", () => ({ avatarsFor: async () => ({}) }));
 
 const row = { number: 3, url: "https://github.com/example/repo/pull/3", title: "Fix login" };
-let answers: { stdout?: string; stderr?: string; code?: number }[];
+let answers: { stdout?: string; stderr?: string; code?: number; wait?: Promise<void> }[];
 
 beforeEach(() => {
   clearGhCache();
@@ -19,7 +19,8 @@ beforeEach(() => {
     const child = Object.assign(new EventEmitter(), {
       stdout: new PassThrough(), stderr: new PassThrough(), kill: vi.fn(),
     });
-    setImmediate(() => {
+    setImmediate(async () => {
+      await answer.wait;
       child.stdout.end(answer.stdout ?? "");
       child.stderr.end(answer.stderr ?? "");
       child.emit("close", answer.code ?? 0);
@@ -30,6 +31,28 @@ beforeEach(() => {
 afterEach(() => clearGhCache());
 
 describe("GitHub read lifecycle", () => {
+  it("does not reuse a cached PR after a branch change or publish a late old-branch read", async () => {
+    let release!: () => void;
+    const wait = new Promise<void>((resolve) => { release = resolve; });
+    const identity = (branch: string) => [{ stdout: branch }, { stdout: `sha-${branch}` }, { stdout: "origin repo" }];
+    answers.push(...identity("first"), { stdout: JSON.stringify(row), wait });
+    expect(await pollPullRequest("/branch-fixture")).toEqual({ known: false, value: undefined });
+    answers.push(...identity("second"), { stdout: JSON.stringify({ ...row, number: 4, url: row.url.replace("/3", "/4") }) });
+    expect((await pollPullRequest("/branch-fixture")).value).toBeUndefined();
+    // Let the new lookup land, then deliver the superseded result last.
+    await new Promise((resolve) => setImmediate(resolve));
+    release(); await new Promise((resolve) => setImmediate(resolve));
+    answers.push(...identity("second"));
+    expect((await pollPullRequest("/branch-fixture")).value?.number).toBe(4);
+    expect(mocks.spawn.mock.calls.filter((call) => call[0] === "gh").map((call) => call[1].slice(0, 3))).toEqual([["pr", "view", "first"], ["pr", "view", "second"]]);
+  });
+
+  it("refuses a merge when the displayed PR no longer belongs to the current branch", async () => {
+    answers.push({ stdout: JSON.stringify({ ...row, state: "OPEN" }) });
+    const result = await mergePullRequest("/merge-fixture", "squash", false, row.url.replace("/3", "/4"));
+    expect(result.ok).toBe(false);
+    expect(mocks.spawn.mock.calls.some((call) => call[1]?.includes("merge"))).toBe(false);
+  });
   it("keeps a successful list after repeated malformed output and allows recovery", async () => {
     answers.push({ stdout: JSON.stringify([row]) });
     expect(await listPullRequests("/repo")).toHaveLength(1);
@@ -74,11 +97,12 @@ describe("GitHub read lifecycle", () => {
   });
 
   it("does not mark the branch's PR as known absent after a failed read", async () => {
-    answers.push({ code: 1, stderr: "HTTP 401: Bad credentials" });
-    expect(pollPullRequest("/repo").known).toBe(false);
+    answers.push({ stdout: "main" }, { stdout: "sha" }, { stdout: "origin repo" }, { code: 1, stderr: "HTTP 401: Bad credentials" });
+    expect((await pollPullRequest("/repo")).known).toBe(false);
     await new Promise((resolve) => setImmediate(resolve));
-    expect(pollPullRequest("/repo").known).toBe(false);
-    expect(mocks.spawn).toHaveBeenCalledTimes(1);
+    answers.push({ stdout: "main" }, { stdout: "sha" }, { stdout: "origin repo" });
+    expect((await pollPullRequest("/repo")).known).toBe(false);
+    expect(mocks.spawn).toHaveBeenCalledTimes(7);
   });
 
   it("reads the selected commit without changing the checkout", async () => {

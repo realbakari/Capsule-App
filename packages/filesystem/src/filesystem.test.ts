@@ -22,15 +22,15 @@ describe("FilesystemAdapter", () => {
     expect(() => adapter.read("../secret.txt")).toThrow(/outside/);
   });
 
-  it("searches nested files and skips node_modules", () => {
+  it("searches nested files and skips node_modules", async () => {
     const root = mkdtempSync(path.join(tmpdir(), "capsule-search-"));
     writeFileSync(path.join(root, "README.md"), "# Demo\n");
     mkdirSync(path.join(root, "src"));
     writeFileSync(path.join(root, "src", "app.ts"), "export {}\n");
     const adapter = new FilesystemAdapter(root);
-    const hits = adapter.search("app");
+    const hits = await adapter.search("app");
     expect(hits.some((entry) => entry.path.endsWith("app.ts"))).toBe(true);
-    expect(adapter.search("README").some((entry) => entry.name === "README.md")).toBe(true);
+    expect((await adapter.search("README")).some((entry) => entry.name === "README.md")).toBe(true);
   });
 
   it("reports git changes, branches, and diffs", async () => {
@@ -52,7 +52,7 @@ describe("FilesystemAdapter", () => {
     const withUntracked = await readGitStatus(root);
     const untrackedFile = withUntracked.files.find((f) => f.path === "capsule.json");
     expect(untrackedFile?.code.trim()).toBe("??");
-    expect(untrackedFile?.added).toBe(4);
+    expect(untrackedFile?.added).toBe(3);
     spawnSync("git", ["checkout", "-b", "feature"], { cwd: root });
     const switched = await checkoutBranch(root, status.branch ?? "HEAD");
     expect(switched.ok).toBe(true);
@@ -60,6 +60,6 @@ describe("FilesystemAdapter", () => {
     const committed = await commitAll(root, "update readme");
     expect(committed.ok).toBe(true);
     expect((await readGitStatus(root)).dirty).toBe(false);
-    expect(searchContents(root, "three").some((hit) => hit.path.includes("README"))).toBe(true);
+    expect((await searchContents(root, "three")).some((hit) => hit.path.includes("README"))).toBe(true);
   });
 });

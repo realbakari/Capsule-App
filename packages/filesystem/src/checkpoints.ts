@@ -140,14 +140,16 @@ export async function diffCheckpoints(
 ): Promise<string> {
   return inRepository(cwd, async () => {
 
-    if (!(await hasCheckpoint(cwd, to))) return "";
+    if (!(await hasCheckpoint(cwd, to))) throw new Error("The saved checkpoint is unavailable. Refresh and try again.");
     const args = ["diff"];
     if (options?.ignoreWhitespace) args.push("-w");
-    if (from && (await hasCheckpoint(cwd, from))) args.push(from, to);
+    if (from && !(await hasCheckpoint(cwd, from))) throw new Error("The base checkpoint is unavailable. Refresh and try again.");
+    if (from) args.push(from, to);
     else args.push(to);
     if (options?.relative) args.push("--", options.relative);
     const result = await git(cwd, args);
-    return result.ok ? result.stdout : "";
+    if (!result.ok) throw new Error(`Could not read the saved diff: ${result.stderr || "Git did not complete"}`);
+    return result.stdout;
 
   }, JSON.stringify(["diffCheckpoints", cwd, to, from, options]));
 }
@@ -160,26 +162,14 @@ export async function checkpointNumstat(
 ): Promise<Array<{ path: string; added: number; removed: number; }>> {
   return inRepository(cwd, async () => {
 
-    if (!(await hasCheckpoint(cwd, to))) return [];
-    const args = ["diff", "--numstat"];
-    if (from && (await hasCheckpoint(cwd, from))) args.push(from, to);
+    if (!(await hasCheckpoint(cwd, to))) throw new Error("The saved checkpoint is unavailable. Refresh and try again.");
+    const args = ["diff", "--numstat", "-z"];
+    if (from && !(await hasCheckpoint(cwd, from))) throw new Error("The base checkpoint is unavailable. Refresh and try again.");
+    if (from) args.push(from, to);
     else args.push(to);
     const result = await git(cwd, args);
-    if (!result.ok) return [];
-    return result.stdout
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        const [added, removed, file] = line.split("\t");
-        return {
-          path: file ?? "",
-          // "-" is git's marker for a binary file, not a count.
-          added: added === "-" ? 0 : Number(added ?? 0),
-          removed: removed === "-" ? 0 : Number(removed ?? 0),
-        };
-      })
-      .filter((entry) => entry.path.length > 0);
+    if (!result.ok) throw new Error(`Could not read the changed files: ${result.stderr || "Git did not complete"}`);
+    return parseNumstat(result.stdout).map((entry) => ({ path: entry.path, added: entry.added ?? 0, removed: entry.removed ?? 0 }));
 
   }, JSON.stringify(["checkpointNumstat", cwd, to, from]));
 }
@@ -237,3 +227,4 @@ export async function deleteCheckpoints(cwd: string, sessionId: string): Promise
 
   });
 }
+import { parseNumstat } from "./git-output.js";

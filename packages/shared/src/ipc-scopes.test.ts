@@ -36,6 +36,8 @@ describe("ipc scopes", () => {
       "updateSettings",
       "deleteProject",
       "resolveApproval",
+      "togglePet",
+      "setPetExpanded",
     ]) {
       expect(scopeForChannel(channel)).toBe("write");
       expect(isChannelAllowed(channel, ["read"])).toBe(false);

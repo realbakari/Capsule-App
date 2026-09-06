@@ -98,7 +98,53 @@ function seedSession(repos: CapsuleRepositories, sessionId: string): void {
   });
 }
 
+describe("attention snapshots", () => {
+  it("reads only each visible thread's latest run state, with stable same-time ordering", () => {
+    const db = new CapsuleDatabase(":memory:");
+    const repos = new CapsuleRepositories(db);
+    try {
+      seedSession(repos, "s1");
+      const at = "2026-01-01T00:00:00.000Z";
+      db.sqlite.transaction(() => {
+        for (let i = 0; i < 500; i++) repos.insertRun({ id: `history-${i}`, sessionId: "s1", projectId: "proj_p", agentId: "general", prompt: "Old prompt", result: "x".repeat(1000), status: "failed", createdAt: at, updatedAt: "2026-02-01T00:00:00.000Z" });
+        repos.insertRun({ id: "latest", sessionId: "s1", projectId: "proj_p", agentId: "general", prompt: "Latest prompt", status: "completed", createdAt: at, updatedAt: at });
+      })();
+      // State reads must not deserialize unrelated historical/verification payloads.
+      db.sqlite.prepare("UPDATE runs SET verification = 'not-json'").run();
+      const states = repos.listLatestRunStates();
+      expect(states).toHaveLength(1);
+      expect(states[0]).toMatchObject({ id: "latest", sessionId: "s1", status: "completed" });
+      expect(states[0]).not.toHaveProperty("prompt");
+      expect(states[0]).not.toHaveProperty("result");
+      const plan = db.sqlite.prepare("EXPLAIN QUERY PLAN SELECT rowid FROM runs WHERE session_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1").all("s1");
+      expect(JSON.stringify(plan)).toContain("idx_runs_session_created");
+      expect(JSON.stringify(plan)).not.toContain("TEMP B-TREE");
+      repos.updateSession({ ...repos.getSession("s1")!, state: "archived" });
+      expect(repos.listLatestRunStates()).toEqual([]);
+    } finally { db.close(); }
+  });
+});
+
 describe("message pagination", () => {
+  it("pages run events by timestamp and id without materializing oversized legacy payloads", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-eventpage-"));
+    const db = new CapsuleDatabase(path.join(dir, "capsule.sqlite"));
+    const repos = new CapsuleRepositories(db);
+    try {
+      seedSession(repos, "s1");
+      const at = "2026-01-01T00:00:00.000Z";
+      repos.insertRun({ id: "r", sessionId: "s1", projectId: "proj_p", agentId: "general", prompt: "Work", status: "completed", createdAt: at, updatedAt: at });
+      for (let i = 0; i < 405; i++) repos.insertRunEvent({ id: String(i).padStart(4, "0"), runId: "r", timestamp: at, type: "tool", message: i === 404 ? "x".repeat(100_000) : "Event", data: i === 404 ? { output: "x".repeat(2_000_000) } : undefined });
+      const first = repos.listRunEventPage("r", 10_000);
+      const second = repos.listRunEventPage("r", 200, first.before);
+      const last = repos.listRunEventPage("r", 200, second.before);
+      expect([first.events.length, second.events.length, last.events.length]).toEqual([200, 200, 5]);
+      expect(last.hasMore).toBe(false);
+      expect(new Set([...first.events, ...second.events, ...last.events].map((event) => event.id)).size).toBe(405);
+      expect(first.events.at(-1)?.message).toHaveLength(8192);
+      expect(first.events.at(-1)?.data).toEqual({ payloadTruncated: true });
+    } finally { db.close(); }
+  });
   it("pages backwards with a stable cursor and reports whether more remain", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "capsule-msgpage-"));
     const db = new CapsuleDatabase(path.join(dir, "capsule.sqlite"));

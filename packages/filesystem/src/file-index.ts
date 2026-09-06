@@ -1,6 +1,9 @@
-import { spawnSync } from "node:child_process";
-import fs from "node:fs";
+import { execFile } from "node:child_process";
+import fs from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
+
+const execute = promisify(execFile);
 
 /*
  * What files a project has, remembered.
@@ -51,41 +54,43 @@ const SKIP = new Set([
  * without ignore rules a deep walk can wander into places nobody wants
  * indexed.
  */
-export function readProjectFiles(root: string): string[] {
-  const fromGit = gitFiles(root);
+export async function readProjectFiles(root: string): Promise<string[]> {
+  if (!(await fs.stat(root)).isDirectory()) throw new Error("The project folder is unavailable.");
+  const fromGit = await gitFiles(root);
   if (fromGit) return fromGit;
   return walkFiles(root);
 }
 
-function gitFiles(root: string): string[] | undefined {
+async function gitFiles(root: string): Promise<string[] | undefined> {
   try {
-    const inside = spawnSync("git", ["rev-parse", "--is-inside-work-tree"], {
+    const inside = await execute("git", ["rev-parse", "--is-inside-work-tree"], {
       cwd: root,
       encoding: "utf8",
       timeout: 3_000,
     });
-    if (inside.status !== 0 || inside.stdout.trim() !== "true") return undefined;
-    const listed = spawnSync(
-      "git",
-      ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
-      { cwd: root, encoding: "utf8", timeout: SCAN_TIMEOUT_MS, maxBuffer: 32 * 1024 * 1024 },
-    );
-    if (listed.status !== 0) return undefined;
-    // -z, because a file name may contain anything except NUL.
-    return listed.stdout.split("\0").filter(Boolean);
+    if (inside.stdout.trim() !== "true") return undefined;
   } catch {
     return undefined;
   }
+  // A failed repository read is not permission to bypass its ignore rules.
+  const listed = await execute(
+    "git",
+    ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+    { cwd: root, encoding: "utf8", timeout: SCAN_TIMEOUT_MS, maxBuffer: 32 * 1024 * 1024 },
+  );
+  // -z, because a file name may contain anything except NUL.
+  return [...new Set(listed.stdout.split("\0").filter(Boolean))];
 }
 
-function walkFiles(root: string, limit = 20_000): string[] {
+async function walkFiles(root: string, limit = 20_000): Promise<string[]> {
   const out: string[] = [];
-  const walk = (dir: string, relative: string, depth: number) => {
+  const walk = async (dir: string, relative: string, depth: number) => {
     if (out.length >= limit || depth > 8) return;
-    let entries: fs.Dirent[] = [];
+    let entries;
     try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch (error) {
+      if (depth === 0) throw error;
       return;
     }
     for (const entry of entries) {
@@ -96,13 +101,13 @@ function walkFiles(root: string, limit = 20_000): string[] {
       }
       const rel = relative ? `${relative}/${entry.name}` : entry.name;
       if (entry.isDirectory()) {
-        walk(path.join(dir, entry.name), rel, depth + 1);
+        await walk(path.join(dir, entry.name), rel, depth + 1);
         continue;
       }
-      out.push(rel);
+      if (entry.isFile()) out.push(rel);
     }
   };
-  walk(root, "", 0);
+  await walk(root, "", 0);
   return out;
 }
 
@@ -159,18 +164,27 @@ interface Entry {
 }
 
 const cache = new Map<string, Entry>();
+const pending = new Map<string, Promise<string[]>>();
 
 /** Drops what is remembered, for a tree that has changed under us. */
 export function clearFileIndex(root?: string): void {
-  if (root) cache.delete(root);
-  else cache.clear();
+  if (root) { cache.delete(root); pending.delete(root); }
+  else { cache.clear(); pending.clear(); }
 }
 
 /** The project's files, from memory when it is fresh enough. */
-export function projectFiles(root: string, now = Date.now()): string[] {
+export async function projectFiles(root: string, now = Date.now()): Promise<string[]> {
   const cached = cache.get(root);
   if (cached && now - cached.at < FILE_INDEX_TTL_MS) return cached.files;
-  const files = readProjectFiles(root);
-  cache.set(root, { files, at: now });
-  return files;
+  const existing = pending.get(root);
+  if (existing) return existing;
+  const scan = readProjectFiles(root).then((files) => {
+    // An invalidation during the scan must not refill the cache with old data.
+    if (pending.get(root) === scan) cache.set(root, { files, at: now });
+    return files;
+  }).finally(() => {
+    if (pending.get(root) === scan) pending.delete(root);
+  });
+  pending.set(root, scan);
+  return scan;
 }

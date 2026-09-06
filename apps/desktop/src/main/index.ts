@@ -34,7 +34,7 @@ import {
 import type { CapsuleEngine } from "@capsule/core";
 import { mergePath, readLoginShellEnvironment } from "@capsule/harness";
 import electronUpdater from "electron-updater";
-import type { BrowserTarget } from "./browser-tools";
+import { readNavigableUrl, type BrowserTarget } from "./browser-tools";
 import { startBrowserMcpServer, type BrowserMcpServer } from "./browser-mcp";
 import { Updater, mergeUpdateStatus } from "./updater";
 import {
@@ -66,6 +66,7 @@ import { startRemoteServer, type RemoteServerHandle } from "@capsule/remote";
 import { startPty, type PtySession } from "@capsule/terminal";
 import { popupContextMenu } from "./popup-menu";
 import { remoteReachFromArgs } from "./remote-args";
+import { RemoteAccessLifecycle } from "./remote-access";
 import {
   DEFAULT_WINDOW_SIZE,
   isHexColor,
@@ -182,6 +183,8 @@ function withThumbnails(attachments: MessageAttachment[]): MessageAttachment[] {
  */
 let browserViewId: number | undefined;
 const browserGuestIds = new Set<number>();
+const browserReady = new Set<(contents: Electron.WebContents) => void>();
+let openingBrowser: Promise<Electron.WebContents> | undefined;
 
 let browserMcp: BrowserMcpServer | undefined;
 let petWindow: BrowserWindow | undefined;
@@ -193,13 +196,13 @@ let petWindow: BrowserWindow | undefined;
  * Frameless and transparent, so what shows on the desktop is the capsule and
  * nothing else. It sits at the "floating" level rather than "screen-saver":
  * above ordinary windows, never above a system dialog someone has to answer.
- * It stays out of the Dock and the window switcher — it is an indicator, not
- * a place to go — and it does not take focus, so clicking near it never steals
- * the caret from the editor behind it.
+ * It stays out of the Dock and appears without taking focus. Clicking it may
+ * take focus so its tray can be operated with the keyboard; moving it uses a
+ * separate drag handle rather than swallowing the mascot's click target.
  */
 function petBounds(): { x: number; y: number; width: number; height: number } {
-  const width = 280;
-  const height = 340;
+  const width = 320;
+  const height = 208;
   const area = screen.getPrimaryDisplay().workArea;
   // Bottom right, a little in from the corner.
   return {
@@ -229,7 +232,7 @@ function openPetWindow(): void {
     resizable: false,
     movable: true,
     skipTaskbar: true,
-    focusable: false,
+    focusable: true,
     alwaysOnTop: true,
     fullscreenable: false,
     // Nothing to show until it has drawn; a transparent window that appears
@@ -281,6 +284,21 @@ export const browserTarget: BrowserTarget = {
     if (browserViewId === undefined) return undefined;
     const contents = webContents.fromId(browserViewId);
     return contents && !contents.isDestroyed() ? contents : undefined;
+  },
+  open: async (url) => {
+    if (!mainWindow || mainWindow.isDestroyed()) throw new Error("Open the Capsule desktop window first.");
+    if (openingBrowser) {
+      const contents = await openingBrowser;
+      await contents.loadURL(url);
+      return contents;
+    }
+    openingBrowser = new Promise<Electron.WebContents>((resolve, reject) => {
+      const ready = (contents: Electron.WebContents) => { clearTimeout(timer); browserReady.delete(ready); resolve(contents); };
+      const timer = setTimeout(() => { browserReady.delete(ready); reject(new Error("The Browser panel did not become ready. Open it and retry.")); }, 10_000);
+      browserReady.add(ready);
+      send(IPC_EVENTS.state, { command: "open-browser", url });
+    }).finally(() => { openingBrowser = undefined; });
+    return openingBrowser;
   },
 };
 
@@ -528,7 +546,10 @@ function createWindow(): BrowserWindow {
       if (browserViewId === contents.id) browserViewId = undefined;
     });
     contents.setWindowOpenHandler((details) => {
-      void shell.openExternal(details.url);
+      // Popup links stay in the sandboxed guest. Never forward page-supplied
+      // custom schemes to an external application.
+      const target = readNavigableUrl(details.url);
+      if (target.url) void contents.loadURL(target.url).catch(() => undefined);
       return { action: "deny" };
     });
     contents.on("will-navigate", (event, url) => {
@@ -657,7 +678,14 @@ const AGENT_BINARIES: ReadonlySet<string> = new Set([
   "acpx",
 ]);
 
-function sampleResources(): ResourceSample {
+let sampling: Promise<ResourceSample> | undefined;
+function sampleResources(): Promise<ResourceSample> {
+  if (sampling) return sampling;
+  sampling = collectResourceSample().finally(() => { sampling = undefined; });
+  return sampling;
+}
+
+async function collectResourceSample(): Promise<ResourceSample> {
   const now = Date.now();
   const appProcesses: MonitoredProcess[] = app.getAppMetrics().map((metric) => ({
     pid: metric.pid,
@@ -670,7 +698,7 @@ function sampleResources(): ResourceSample {
     name: metric.serviceName ?? metric.name ?? metric.type,
   }));
   const appPids = new Set(appProcesses.map((item) => item.pid));
-  const agents = readAgentProcesses(AGENT_BINARIES, now)
+  const agents = (await readAgentProcesses(AGENT_BINARIES, now))
     // Capsule's own helpers can match a harness name when a CLI is bundled
     // with the app; Electron already reported those.
     .filter((row) => !appPids.has(row.pid))
@@ -714,8 +742,9 @@ function sampleResources(): ResourceSample {
 
 function startResourceSampling(): void {
   if (sampleTimer) return;
-  sampleResources();
-  sampleTimer = setInterval(sampleResources, SAMPLE_INTERVAL_MS);
+  const sample = () => { void sampleResources().catch((error) => console.warn("Resource sampling failed:", error)); };
+  sample();
+  sampleTimer = setInterval(sample, SAMPLE_INTERVAL_MS);
   // Sampling must never be the reason the app stays awake.
   sampleTimer.unref?.();
 }
@@ -810,12 +839,15 @@ function applyMenuBar(settings?: CapsuleSettings): void {
   }
 }
 
-function applyDesktopSettings(settings?: CapsuleSettings): void {
+async function applyDesktopSettings(settings?: CapsuleSettings): Promise<void> {
+  // A throwaway startup fixture must not change this Mac's login item,
+  // power state, menu-bar preference, or remote-access listener.
+  if (process.env.CAPSULE_SMOKE_TEST) return;
   applyLaunchAtLogin(Boolean(settings?.launchAtLogin));
   applyNativeTheme(settings?.appearanceTheme);
   applyMenuBar(settings);
   applyKeepAwake(settings);
-  void applyRemoteAccess(settings?.remoteAccess ?? "off");
+  await applyRemoteAccess(settings?.remoteAccess ?? "off");
 }
 
 /*
@@ -826,32 +858,18 @@ function applyDesktopSettings(settings?: CapsuleSettings): void {
  * "read" cannot reach a channel that runs a command, writes a file, or opens
  * a shell.
  */
-let remote: RemoteServerHandle | undefined;
-let remoteReach: RemoteAccess = "off";
-let remotePairingUrl: string | undefined;
-let remoteError: string | undefined;
+const remoteAccess = new RemoteAccessLifecycle<RemoteServerHandle>(
+  (reach) => startRemoteServer({
+    serveDir: path.join(__dirname, "../renderer"), reach,
+    invoke: (channel, args) => forwardToHandler(channel, args),
+    subscribe: (emit) => subscribeRemote(emit),
+    onChange: () => send(IPC_EVENTS.state, { command: "remote-updated" }),
+  }),
+  () => send(IPC_EVENTS.state, { command: "remote-updated" }),
+);
 
 async function applyRemoteAccess(reach: RemoteAccess): Promise<void> {
-  if (reach === remoteReach) return;
-  remoteReach = reach;
-  remotePairingUrl = undefined;
-  remoteError = undefined;
-  await remote?.stop().catch(() => undefined);
-  remote = undefined;
-  if (reach !== "off") {
-    try {
-      remote = await startRemoteServer({
-        serveDir: path.join(__dirname, "../renderer"),
-        reach,
-        invoke: (channel, args) => forwardToHandler(channel, args),
-        subscribe: (emit) => subscribeRemote(emit),
-        onChange: () => send(IPC_EVENTS.state, { command: "remote-updated" }),
-      });
-    } catch (error) {
-      remoteError = error instanceof Error ? error.message : String(error);
-    }
-  }
-  send(IPC_EVENTS.state, { command: "remote-updated" });
+  await remoteAccess.set(reach);
 }
 
 /*
@@ -883,11 +901,12 @@ async function announceRemoteAccess(): Promise<void> {
   const reach = remoteReachFromArgs(process.argv, process.env);
   if (!reach || reach === "off") return;
   await applyRemoteAccess(reach);
+  const remote = remoteAccess.handle;
   if (!remote) {
-    console.error(`Capsule could not start reading from another device: ${remoteError ?? "unknown"}`);
+    console.error(`Capsule could not start reading from another device: ${remoteAccess.error ?? "unknown"}`);
     return;
   }
-  remotePairingUrl = remote.pair(["read"]);
+  const remotePairingUrl = remoteAccess.pairingUrl = remote.pair(["read"]);
   console.log(`\nCapsule is readable at ${remote.url}`);
   console.log(`Pair a device: ${remotePairingUrl}`);
   console.log("The link works once and expires in five minutes. Read only.\n");
@@ -960,14 +979,14 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.listAgents, () => requireEngine().listAgents());
   // The open project too: a skill checked into it is only reachable when the
   // list knows which project is open.
-  handle(IPC_CHANNELS.listSkills, (projectId) =>
-    requireEngine().listSkills(projectId ? String(projectId) : undefined),
+  handleArgs(IPC_CHANNELS.listSkills, [optStr, optStr], (projectId?: string, sessionId?: string) =>
+    requireEngine().listSkills(projectId, sessionId),
   );
-  handleArgs(IPC_CHANNELS.listSkillFiles, [id, optStr], (skillId: string, relative?: string) =>
-    requireEngine().listSkillFiles(skillId, relative),
+  handleArgs(IPC_CHANNELS.listSkillFiles, [id, optStr, optStr, optStr], (skillId: string, relative?: string, projectId?: string, sessionId?: string) =>
+    requireEngine().listSkillFiles(skillId, relative, projectId, sessionId),
   );
-  handleArgs(IPC_CHANNELS.previewSkillFile, [id, str], (skillId: string, relative: string) =>
-    requireEngine().previewSkillFile(skillId, relative),
+  handleArgs(IPC_CHANNELS.previewSkillFile, [id, str, optStr, optStr], (skillId: string, relative: string, projectId?: string, sessionId?: string) =>
+    requireEngine().previewSkillFile(skillId, relative, projectId, sessionId),
   );
   handleArgs(IPC_CHANNELS.listSessions, [optStr], (projectId: string | undefined) =>
     requireEngine().listSessions(projectId),
@@ -1010,6 +1029,7 @@ function registerIpc(): void {
   handleArgs(IPC_CHANNELS.listRunEvents, [id], (runId: string) =>
     requireEngine().listRunEvents(runId),
   );
+  handle(IPC_CHANNELS.listRunEventPage, (runId, before) => requireEngine().listRunEventPage(String(runId), before as import("@capsule/shared").RunEventCursor | undefined));
   handleArgs(IPC_CHANNELS.verifyRun, [id, optStr], (runId: string, actionId?: string) => requireEngine().verifyRun(runId, actionId));
   handleArgs(IPC_CHANNELS.cancelVerification, [id], (runId: string) => requireEngine().cancelVerification(runId));
   handleArgs(IPC_CHANNELS.listArtifacts, [optStr], (runId: string | undefined) =>
@@ -1142,7 +1162,7 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.getSettings, () => requireEngine().getSettings());
   handle(IPC_CHANNELS.updateSettings, async (patch) => {
     const next = await requireEngine().updateSettings(patch as never);
-    applyDesktopSettings(next);
+    await applyDesktopSettings(next);
     return next;
   });
   handle(IPC_CHANNELS.getDiagnostics, () => requireEngine().getDiagnostics());
@@ -1249,14 +1269,15 @@ function registerIpc(): void {
       input as { title?: string; body?: string; sessionId?: string; } | undefined,
     ),
   );
-  handle(IPC_CHANNELS.gitMergePullRequest, (projectId, sessionId) =>
+  handle(IPC_CHANNELS.gitMergePullRequest, (projectId, sessionId, target) =>
     requireEngine().gitMergePullRequest(
       String(projectId),
       sessionId ? String(sessionId) : undefined,
+      target ? String(target) : undefined,
     ),
   );
-  handle(IPC_CHANNELS.searchContents, (projectId, query) =>
-    requireEngine().searchContents(String(projectId), String(query)),
+  handle(IPC_CHANNELS.searchContents, (projectId, query, sessionId) =>
+    requireEngine().searchContents(String(projectId), String(query), typeof sessionId === "string" ? sessionId : undefined),
   );
   handle(IPC_CHANNELS.listLocalServers, () => requireEngine().localServers());
   handle(IPC_CHANNELS.openPath, async (target) => {
@@ -1320,6 +1341,20 @@ function registerIpc(): void {
     else closePetWindow();
     return wanted;
   });
+  handle(IPC_CHANNELS.getPetState, () => {
+    const engine = requireEngine();
+    // Historical failures must not overshadow a newer turn. Fetch state only,
+    // never deserialize every historical prompt/result just to animate a pet.
+    return { visible: isPetOpen(), summary: summariseAttention({ sessions: engine.listSessions(), runs: engine.listLatestRunStates() }) };
+  });
+  handle(IPC_CHANNELS.setPetExpanded, (expanded) => {
+    if (typeof expanded !== "boolean") throw new Error("Invalid companion layout.");
+    if (!petWindow || petWindow.isDestroyed()) return;
+    const bounds = petWindow.getBounds();
+    const area = screen.getDisplayMatching(bounds).workArea;
+    const height = Math.min(expanded ? 520 : 208, area.height);
+    petWindow.setBounds({ ...bounds, height, x: Math.max(area.x, Math.min(bounds.x, area.x + area.width - bounds.width)), y: Math.max(area.y, Math.min(bounds.y + bounds.height - height, area.y + area.height - height)) });
+  });
   /* Opened from the pet, which is a different window and cannot route itself. */
   handle(IPC_CHANNELS.focusSession, (sessionId) => {
     if (typeof sessionId !== "string" || !sessionId) return false;
@@ -1333,6 +1368,8 @@ function registerIpc(): void {
       throw new Error("That browser page does not belong to Capsule.");
     }
     browserViewId = typeof webContentsId === "number" ? webContentsId : undefined;
+    const contents = browserTarget.contents();
+    if (contents) for (const ready of browserReady) ready(contents);
     return true;
   });
   handle(IPC_CHANNELS.clearBrowserData, async (id, kind) => {
@@ -1397,9 +1434,11 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.uninstallSkill, (skillId) =>
     requireEngine().uninstallSkill(String(skillId)),
   );
-  handleArgs(IPC_CHANNELS.resetSettingsSection, [id], (section: string) =>
-    requireEngine().resetSettingsSection(section),
-  );
+  handleArgs(IPC_CHANNELS.resetSettingsSection, [id], async (section: string) => {
+    const next = await requireEngine().resetSettingsSection(section);
+    await applyDesktopSettings(next);
+    return next;
+  });
   /*
    * Both routes, one answer. The updater knows whether this build can replace
    * itself; the GitHub check knows what the latest release is even when that
@@ -1469,11 +1508,11 @@ function registerIpc(): void {
     return true;
   });
   handle(IPC_CHANNELS.remoteStatus, () => ({
-    reach: remoteReach,
-    ...(remote ? { url: remote.url } : {}),
-    ...(remotePairingUrl ? { pairingUrl: remotePairingUrl } : {}),
-    ...(remoteError ? { error: remoteError } : {}),
-    devices: (remote?.sessions() ?? []).map((session) => ({
+    reach: remoteAccess.reach,
+    ...(remoteAccess.handle ? { url: remoteAccess.handle.url } : {}),
+    ...(remoteAccess.pairingUrl ? { pairingUrl: remoteAccess.pairingUrl } : {}),
+    ...(remoteAccess.error ? { error: remoteAccess.error } : {}),
+    devices: (remoteAccess.handle?.sessions() ?? []).map((session) => ({
       id: session.id,
       label: session.label,
       scopes: session.scopes,
@@ -1483,15 +1522,16 @@ function registerIpc(): void {
     })),
   }));
   handle(IPC_CHANNELS.remotePair, () => {
+    const remote = remoteAccess.handle;
     if (!remote) throw new Error("Turn on reading from another device first.");
     // Read only. Nothing in this build hands out a scope that can send a
     // prompt or run a command from another device.
-    remotePairingUrl = remote.pair(["read"]);
+    remoteAccess.pairingUrl = remote.pair(["read"]);
     send(IPC_EVENTS.state, { command: "remote-updated" });
-    return remotePairingUrl;
+    return remoteAccess.pairingUrl;
   });
   handle(IPC_CHANNELS.remoteRevoke, (id) => {
-    remote?.revoke(String(id));
+    remoteAccess.handle?.revoke(String(id));
     return true;
   });
   handle(IPC_CHANNELS.rendererReady, (surface) => {
@@ -1801,6 +1841,7 @@ async function startEngineOnce(): Promise<void> {
     userDataDir: userDataDir(),
     capsuleVersion: app.getVersion(),
     clientVersion: app.getVersion(),
+    ...(process.env.CAPSULE_SMOKE_TEST ? { autoConnect: false } : {}),
     // The Gateway operator token and the skills.sh token; the settings screen
     // calls this the Keychain and now it is one.
     secretEncryptor: {
@@ -1831,7 +1872,7 @@ async function startEngineOnce(): Promise<void> {
     console.warn("Browser tools unavailable:", error instanceof Error ? error.message : error);
   }
   bindEngineEvents();
-  applyDesktopSettings(engine.getSettings());
+  await applyDesktopSettings(engine.getSettings());
   send(IPC_EVENTS.connection, await engine.getStatus());
 }
 

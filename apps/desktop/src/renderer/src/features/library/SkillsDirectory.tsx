@@ -131,7 +131,11 @@ function InstalledSkillGroup({
 }
 
 function SkillFolderExplorer({ skill }: { skill: Skill }) {
-  const files = useMemo(() => new SkillFiles(skill.id, window.capsule), [skill.id]);
+  const { api, projectId, sessionId } = useWorkspace();
+  const files = useMemo(() => new SkillFiles(skill.id, {
+    listSkillFiles: (id, relative) => api.listSkillFiles(id, relative, projectId, sessionId),
+    previewSkillFile: (id, relative) => api.previewSkillFile(id, relative, projectId, sessionId),
+  }), [skill.id, api, projectId, sessionId]);
   const { listing, children, expanded, loadingDirectories, directoryErrors, loading,
     preview, selected, previewLoading, previewError, error } = useSyncExternalStore(files.subscribe, files.getSnapshot, files.getSnapshot);
   const folderPath = skill.location?.replace(/[\\/]SKILL\.md$/i, "");

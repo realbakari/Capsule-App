@@ -243,12 +243,12 @@ export class MockAgentRuntime implements AgentRuntime {
     const output =
       scenario === "buzz_message"
         ? "Handled an inbound channel message and traced it to this Capsule run."
-        : this.describeMockReply();
+        : await this.describeMockReply();
     await this.finishSuccess(run.id, output, scenario === "verification_failure");
   }
 
-  private describeMockReply(): string {
-    const listing = this.listWorkspace();
+  private async describeMockReply(): Promise<string> {
+    const listing = await this.listWorkspace();
     return [
       "Mock runtime — OpenClaw Gateway is offline.",
       "Nothing was edited. This is not Claude Code or Codex.",
@@ -259,11 +259,11 @@ export class MockAgentRuntime implements AgentRuntime {
     ].join("\n");
   }
 
-  private listWorkspace(): string {
+  private async listWorkspace(): Promise<string> {
     if (!this.workspace) {
       return "No project folder is open, so Capsule is not reading any files.";
     }
-    const entries = new FilesystemAdapter(this.workspace).search("", 20);
+    const entries = await new FilesystemAdapter(this.workspace).search("", 20);
     if (entries.length === 0) {
       return `Project folder: ${this.workspace}\nThe folder is empty or unreadable from Capsule.`;
     }

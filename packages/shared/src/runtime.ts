@@ -403,6 +403,7 @@ export function normalizeCapsuleSettings(input: Partial<CapsuleSettings> = {}): 
     gatewayUrl,
     runtimeMode: pick(input.runtimeMode, RUNTIME_MODES, DEFAULT_CAPSULE_SETTINGS.runtimeMode),
     gatewayToken: input.gatewayToken,
+    skillsShToken: input.skillsShToken,
     launchAtLogin: Boolean(input.launchAtLogin),
     composerSendKey: pick(
       input.composerSendKey,

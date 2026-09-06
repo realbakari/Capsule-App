@@ -23,6 +23,16 @@ new file mode 100644
 `;
 
 describe("reading a patch", () => {
+  it("treats header-looking SQL and increment lines as hunk content", () => {
+    const patch = "diff --git a/query.sql b/query.sql\n--- a/query.sql\n+++ b/query.sql\n@@ -1,2 +1,2 @@\n--- old comment\n++++counter;\n keep\n";
+    const [file] = parseUnifiedDiff(patch);
+    expect(file?.path).toBe("query.sql");
+    expect(file?.hunks[0]?.lines).toEqual([
+      { kind: "del", text: "-- old comment", oldLine: 1 },
+      { kind: "add", text: "+++counter;", newLine: 1 },
+      { kind: "context", text: "keep", oldLine: 2, newLine: 2 },
+    ]);
+  });
   it("splits it into files rather than one wall of text", () => {
     const files = parseUnifiedDiff(PATCH);
     expect(files.map((file) => file.path)).toEqual(["src/one.ts", "src/two.ts"]);

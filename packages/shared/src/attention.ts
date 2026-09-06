@@ -47,7 +47,7 @@ export interface AttentionSummary {
   counts: Record<AttentionState, number>;
 }
 
-function stateOf(run: Run): AttentionState | undefined {
+function stateOf(run: Pick<Run, "status">): AttentionState | undefined {
   switch (run.status) {
     case "approval_required":
       return "needs-input";
@@ -68,7 +68,7 @@ function stateOf(run: Run): AttentionState | undefined {
 
 export interface AttentionInput {
   sessions: Session[];
-  runs: Run[];
+  runs: Array<Pick<Run, "id" | "sessionId" | "status" | "createdAt" | "updatedAt" | "completedAt">>;
   /** Threads the person is looking at, which are not waiting for them. */
   activeSessionId?: string;
   /** Threads already seen since their last change. */

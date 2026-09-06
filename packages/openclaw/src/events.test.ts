@@ -172,7 +172,7 @@ describe("polling a pull request", () => {
      * anything had been asked.
      */
     const { pollPullRequest } = await import("@capsule/filesystem");
-    const first = pollPullRequest("/nonexistent/repo/for/this/test");
+    const first = await pollPullRequest("/nonexistent/repo/for/this/test");
     expect(first.known).toBe(false);
     expect(first.value).toBeUndefined();
   });

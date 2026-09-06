@@ -135,10 +135,29 @@ describe("diff between checkpoints", () => {
     expect(entry!.added).toBe(0);
   });
 
-  it("returns empty for a checkpoint that does not exist", async () => {
+  it("reports missing checkpoints instead of an authoritative empty diff", async () => {
     const dir = repo();
-    expect(await diffCheckpoints(dir, checkpointRef("nope", 9))).toBe("");
-    expect(await checkpointNumstat(dir, checkpointRef("nope", 9))).toEqual([]);
+    await expect(diffCheckpoints(dir, checkpointRef("nope", 9))).rejects.toThrow(/checkpoint is unavailable/);
+    await expect(checkpointNumstat(dir, checkpointRef("nope", 9))).rejects.toThrow(/checkpoint is unavailable/);
+  });
+
+  it("reports a failed Git diff instead of returning a clean turn", async () => {
+    const dir = repo();
+    const ref = checkpointRef("failed-read", 1);
+    await captureCheckpoint(dir, ref);
+    fs.writeFileSync(path.join(dir, "kept.txt"), "changed\n");
+    git(dir, ["config", "diff.algorithm", "not-an-algorithm"]);
+    await expect(diffCheckpoints(dir, ref)).rejects.toThrow(/Could not read the saved diff/);
+    await expect(checkpointNumstat(dir, ref)).rejects.toThrow(/Could not read the changed files/);
+  });
+
+  it("never substitutes the live worktree for a missing base checkpoint", async () => {
+    const dir = repo();
+    const ref = checkpointRef("base", 2);
+    await captureCheckpoint(dir, ref);
+    fs.writeFileSync(path.join(dir, "kept.txt"), "unrelated live edit\n");
+    await expect(diffCheckpoints(dir, ref, checkpointRef("base", 1))).rejects.toThrow(/base checkpoint is unavailable/);
+    await expect(checkpointNumstat(dir, ref, checkpointRef("base", 1))).rejects.toThrow(/base checkpoint is unavailable/);
   });
 });
 

@@ -21,6 +21,7 @@ export const IPC_CHANNELS = {
   getRun: "capsule:getRun",
   listRuns: "capsule:listRuns",
   listRunEvents: "capsule:listRunEvents",
+  listRunEventPage: "capsule:listRunEventPage",
   verifyRun: "capsule:verifyRun",
   cancelVerification: "capsule:cancelVerification",
   listArtifacts: "capsule:listArtifacts",
@@ -65,6 +66,8 @@ export const IPC_CHANNELS = {
   clearBrowserData: "capsule:clearBrowserData",
   /* The floating pet: show or hide it, and open a thread from it. */
   togglePet: "capsule:togglePet",
+  getPetState: "capsule:getPetState",
+  setPetExpanded: "capsule:setPetExpanded",
   focusSession: "capsule:focusSession",
   gitStatus: "capsule:gitStatus",
   listPullRequests: "capsule:listPullRequests",

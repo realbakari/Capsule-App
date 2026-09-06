@@ -122,6 +122,7 @@ export function createDemoBridge(): CapsuleApi {
     listMessagePage: () => ok({ messages: MESSAGES, hasMore: false }),
     listRuns: () => ok([RUN]),
     listRunEvents: () => ok(EVENTS),
+    listRunEventPage: () => ok({ events: EVENTS, hasMore: false }),
     listAgents: () => ok([{ id: "claude", name: "Claude Code" }]),
     gitStatus: () => ok(GIT),
     gitDiff: () => ok(""),

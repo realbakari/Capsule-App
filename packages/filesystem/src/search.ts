@@ -1,55 +1,49 @@
-import fs from "node:fs";
+import fs from "node:fs/promises";
 import path from "node:path";
 import type { ContentHit } from "@capsule/shared";
+import { projectFiles } from "./file-index.js";
 
-const SKIP = new Set(["node_modules", ".git", "dist", "out", ".next", "coverage", "build", "Pods"]);
 const BINARY = /\.(png|jpe?g|gif|webp|ico|pdf|zip|gz|woff2?|ttf|mp4|mov|dylib|so|o)$/i;
+const MAX_FILE_BYTES = 400_000;
 
-export function searchContents(projectRoot: string | undefined, query: string, limit = 60): ContentHit[] {
+/** Async, ignore-aware search. Only four files are read at once. */
+export async function searchContents(projectRoot: string | undefined, query: string, limit = 60): Promise<ContentHit[]> {
   const needle = query.trim().toLowerCase();
-  if (!projectRoot || !needle || !fs.existsSync(projectRoot)) return [];
+  if (!projectRoot || !needle || limit <= 0) return [];
+  const root = await fs.realpath(projectRoot);
+  const files = await projectFiles(root);
   const hits: ContentHit[] = [];
-  const walk = (dir: string, relative: string, depth: number) => {
-    if (hits.length >= limit || depth > 6) return;
-    let entries: fs.Dirent[] = [];
+  const scan = async (relative: string): Promise<ContentHit[]> => {
+    if (BINARY.test(relative)) return [];
     try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      if (hits.length >= limit) return;
-      if (SKIP.has(entry.name) || entry.name === ".DS_Store") continue;
-      if (entry.name.startsWith(".") && entry.name !== ".env" && entry.name !== ".gitignore") continue;
-      const rel = relative ? `${relative}/${entry.name}` : entry.name;
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        walk(full, rel, depth + 1);
-        continue;
-      }
-      if (BINARY.test(entry.name)) continue;
-      let text = "";
+      const full = await fs.realpath(path.resolve(root, relative));
+      const inside = path.relative(root, full);
+      if (inside === ".." || inside.startsWith(`..${path.sep}`) || path.isAbsolute(inside)) return [];
+      const stat = await fs.stat(full);
+      if (!stat.isFile() || stat.size > MAX_FILE_BYTES) return [];
+      const handle = await fs.open(full, "r");
+      let text: string;
       try {
-        const stat = fs.statSync(full);
-        if (stat.size > 400_000) continue;
-        text = fs.readFileSync(full, "utf8");
-      } catch {
-        continue;
+        // Files growing during a search must not cause an unbounded read.
+        const buffer = Buffer.alloc(stat.size + 1);
+        const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+        if (bytesRead > stat.size) return [];
+        text = buffer.toString("utf8", 0, bytesRead);
+      } finally { await handle.close(); }
+      if (text.includes("\0")) return [];
+      const matches: ContentHit[] = [];
+      const lines = text.split("\n");
+      for (let index = 0; index < lines.length && matches.length < 3; index += 1) {
+        const line = lines[index]!;
+        if (line.toLowerCase().includes(needle)) {
+          matches.push({ path: relative, line: index + 1, text: line.trim().slice(0, 160) });
+        }
       }
-      const lines = text.split(/\n/);
-      for (let index = 0; index < lines.length; index += 1) {
-        if (hits.length >= limit) return;
-        const line = lines[index] ?? "";
-        if (!line.toLowerCase().includes(needle)) continue;
-        hits.push({
-          path: rel,
-          line: index + 1,
-          text: line.trim().slice(0, 160),
-        });
-        if (hits.filter((item) => item.path === rel).length >= 3) break;
-      }
-    }
+      return matches;
+    } catch { return []; } // Files may be renamed while the agent works.
   };
-  walk(projectRoot, "", 0);
-  return hits;
+  for (let offset = 0; offset < files.length && hits.length < limit; offset += 4) {
+    hits.push(...(await Promise.all(files.slice(offset, offset + 4).map(scan))).flat());
+  }
+  return hits.slice(0, limit);
 }
