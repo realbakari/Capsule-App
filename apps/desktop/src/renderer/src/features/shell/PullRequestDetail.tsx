@@ -11,7 +11,7 @@ import { compactRelativeTime } from "../../lib/sidebar";
 import { formatUserError } from "../../lib/errors";
 import { activityTime, reviewStateLabel } from "../../lib/pull-request-activity";
 import { DiffView } from "./DiffView";
-import { FileDiff } from "./FileDiff";
+import { PagedFileDiffs } from "./PagedFileDiffs";
 import { ChecksBadge, PullRequestChecks } from "./PullRequestChecks";
 import { Avatar, PullRequestComment, PullRequestTimeline } from "./PullRequestActivity";
 import {
@@ -194,15 +194,11 @@ export function GitPullRequestDetail({
   const [checksOpen, setChecksOpen] = useState(true);
   const [commentsOpen, setCommentsOpen] = useState(true);
 
-  // Expand all files state
-  const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(new Set());
-
   const shownDiff = selectedCommit ? commitDiff : detail?.diff ?? "";
   const diffFiles = useMemo(() => parseUnifiedDiff(shownDiff), [shownDiff]);
   const diffStats = selectedCommit
     ? { changedFiles: diffFiles.length, additions: diffFiles.reduce((sum, file) => sum + file.additions, 0), deletions: diffFiles.reduce((sum, file) => sum + file.deletions, 0) }
     : detail;
-  const allOpen = diffFiles.every((file) => !collapsedFiles.has(file.path));
 
   const shownComments = useMemo(() => [...(detail?.activity ?? [])].sort((a, b) =>
     (activityTime(a.createdAt) - activityTime(b.createdAt)) * (newestFirst ? -1 : 1)), [detail?.activity, newestFirst]);
@@ -613,14 +609,6 @@ export function GitPullRequestDetail({
               </span> : null}
             </div>
             <div className="pr-code-toolbar-right">
-              <button
-                type="button"
-                className="chip"
-                onClick={() => setCollapsedFiles(allOpen ? new Set(diffFiles.map((file) => file.path)) : new Set())}
-                disabled={diffFiles.length === 0}
-              >
-                {allOpen ? "Collapse all" : "Expand all"}
-              </button>
               <div className="pr-view-toggle" role="group" aria-label="Diff layout">
                 <button type="button" aria-pressed={!split} onClick={() => setSplit(false)}>Unified</button>
                 <button type="button" aria-pressed={split} onClick={() => setSplit(true)}>Split</button>
@@ -634,24 +622,7 @@ export function GitPullRequestDetail({
           {commitError ? <div className="notice" role="alert">{commitError} <button className="chip" type="button" onClick={() => void selectCommit(selectedCommit)}>Retry diff</button></div> : null}
 
           {diffFiles.length > 0 ? (
-            <div className="pr-file-diffs">
-              {diffFiles.map((file) => (
-                <FileDiff
-                  key={`${file.oldPath ?? ""}->${file.path}`}
-                  file={file}
-                  split={split}
-                  wrap={wrap}
-                  expanded={!collapsedFiles.has(file.path)}
-                  onExpandedChange={(open) => setCollapsedFiles((previous) => {
-                    const next = new Set(previous);
-                    if (open) next.delete(file.path);
-                    else next.add(file.path);
-                    return next;
-                  })}
-                  onAddComment={selectedCommit ? undefined : handleAddComment}
-                />
-              ))}
-            </div>
+            <PagedFileDiffs files={diffFiles} split={split} wrap={wrap} onAddComment={selectedCommit ? undefined : handleAddComment} />
           ) : shownDiff.trim() ? (
             <DiffView text={shownDiff} />
           ) : !commitLoading && !commitError ? (

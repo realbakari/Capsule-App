@@ -1,5 +1,6 @@
 import type { TouchedFile } from "../../lib/activity";
 import { useState } from "react";
+import { useSavedDiffPreview } from "./SavedDiffPreview";
 
 const COLLAPSED_LIMIT = 5;
 
@@ -24,13 +25,15 @@ function splitPath(path: string): { dir: string; name: string } {
  * A saved turn's outcome. Its owner supplies both data and actions, so this
  * card cannot silently select another run or discard today's working tree.
  */
-export function ChangedFilesCard({ files, onOpenDiff, onRestore, restoring = false }: {
+export function ChangedFilesCard({ files, patch, onOpenDiff, onRestore, restoring = false }: {
   files: TouchedFile[];
-  onOpenDiff?: () => void;
+  patch?: string;
+  onOpenDiff?: (path?: string) => void;
   onRestore?: () => void;
   restoring?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const { triggerProps, preview, close } = useSavedDiffPreview(patch, onOpenDiff);
   if (files.length === 0) return null;
   const shown = expanded ? files : files.slice(0, COLLAPSED_LIMIT);
   const hidden = files.length - shown.length;
@@ -68,7 +71,7 @@ export function ChangedFilesCard({ files, onOpenDiff, onRestore, restoring = fal
         */}
       <FileControl
         className="changed-files-head"
-        onClick={onOpenDiff}
+        onClick={() => onOpenDiff?.()}
         title={
           onOpenDiff
             ? "View the saved diff for this point in the thread"
@@ -91,7 +94,8 @@ export function ChangedFilesCard({ files, onOpenDiff, onRestore, restoring = fal
       <ul className="changed-files-list">
         {shown.map((file) => (
           <li key={file.path}>
-            <FileControl className="changed-file-row" onClick={onOpenDiff} title={`${file.path} — ${file.action}`}>
+            <FileControl className="changed-file-row" {...triggerProps(file)} onClick={() => { close(); onOpenDiff?.(file.path); }}
+              aria-label={`${file.path} — ${file.action}${patch ? ". Preview saved changes" : ""}`} title={patch ? undefined : `${file.path} — ${file.action}`}>
               <span className={`change-code ${file.action}`} aria-hidden>
                 {file.action === "created" ? "+" : file.action === "deleted" ? "−" : "M"}
               </span>
@@ -109,6 +113,7 @@ export function ChangedFilesCard({ files, onOpenDiff, onRestore, restoring = fal
           </li>
         ))}
       </ul>
+      {preview}
       {/*
         * One footer, not two. "Show 6 more" and "Restore this turn" were
         * stacked full-width bars below the list — two rows of chrome under

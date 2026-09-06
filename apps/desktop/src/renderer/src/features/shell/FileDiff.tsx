@@ -1,6 +1,7 @@
 import { memo, useMemo, useState } from "react";
 import { splitRows, type DiffFile, type DiffHunk, type DiffLine } from "@capsule/shared";
 import { highlight } from "../../lib/highlight";
+import { DIFF_PAGE_ROWS, DiffPager } from "./DiffPager";
 
 /*
  * One file of a patch, rendered with split and unified diff support:
@@ -139,14 +140,15 @@ function SplitCell({
 
 function SplitHunk({
   hunk,
+  rows,
   filePath,
   onAddComment,
 }: {
   hunk: DiffHunk;
+  rows: ReturnType<typeof splitRows>;
   filePath?: string;
   onAddComment?: (filePath: string, line: number, side: "left" | "right") => void;
 }) {
-  const rows = useMemo(() => splitRows(hunk), [hunk]);
   return (
     <>
       <div className="diff-split-row diff-split-row--hunk">
@@ -170,6 +172,38 @@ function SplitHunk({
       ))}
     </>
   );
+}
+
+function FileDiffBody({ file, split, wrap, onAddComment }: {
+  file: DiffFile; split: boolean; wrap: boolean;
+  onAddComment?: (filePath: string, line: number, side: "left" | "right") => void;
+}) {
+  const prepared = useMemo(() => {
+    let count = 0;
+    const hunks = file.hunks.map((hunk) => {
+      const rows = split ? splitRows(hunk) : [];
+      const start = count;
+      count += split ? rows.length : hunk.lines.length;
+      return { hunk, rows, start, end: count };
+    });
+    return { hunks, count };
+  }, [file, split]);
+  const [selection, setSelection] = useState({ file, split, page: 0 });
+  const page = selection.file === file && selection.split === split ? selection.page : 0;
+  const start = page * DIFF_PAGE_ROWS;
+  const end = start + DIFF_PAGE_ROWS;
+  return <>
+    <DiffPager page={page} pages={Math.ceil(prepared.count / DIFF_PAGE_ROWS)} label="Diff rows" onChange={(page) => setSelection({ file, split, page })} />
+    <div className={`file-diff-body ${split ? "is-split" : "is-unified"} ${wrap ? "is-wrapped" : "is-scrollable"}`} tabIndex={wrap ? undefined : 0} role={wrap ? undefined : "region"} aria-label={wrap ? undefined : `Scrollable diff for ${file.path}`}>
+      {prepared.hunks.filter((item) => item.end > start && item.start < end).map((item) => {
+        const from = Math.max(0, start - item.start);
+        const to = Math.min(item.end, end) - item.start;
+        return split
+          ? <SplitHunk key={item.start} hunk={item.hunk} rows={item.rows.slice(from, to)} filePath={file.path} onAddComment={onAddComment} />
+          : <UnifiedHunk key={item.start} hunk={{ ...item.hunk, lines: item.hunk.lines.slice(from, to) }} filePath={file.path} onAddComment={onAddComment} />;
+      })}
+    </div>
+  </>;
 }
 
 export function FileDiff({
@@ -237,25 +271,7 @@ export function FileDiff({
             {file.status === "renamed" ? "Renamed with no changes to its contents." : "No changes to show."}
           </p>
         ) : (
-          <div className={`file-diff-body ${split ? "is-split" : "is-unified"} ${wrap ? "is-wrapped" : "is-scrollable"}`} tabIndex={wrap ? undefined : 0} role={wrap ? undefined : "region"} aria-label={wrap ? undefined : `Scrollable diff for ${file.path}`}>
-            {file.hunks.map((hunk, index) =>
-              split ? (
-                <SplitHunk
-                  hunk={hunk}
-                  key={`${hunk.header}-${index}`}
-                  filePath={file.path}
-                  onAddComment={onAddComment}
-                />
-              ) : (
-                <UnifiedHunk
-                  hunk={hunk}
-                  key={`${hunk.header}-${index}`}
-                  filePath={file.path}
-                  onAddComment={onAddComment}
-                />
-              ),
-            )}
-          </div>
+          <FileDiffBody file={file} split={split} wrap={wrap} onAddComment={onAddComment} />
         )
       ) : null}
     </section>

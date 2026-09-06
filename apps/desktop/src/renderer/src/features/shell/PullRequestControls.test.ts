@@ -3,11 +3,27 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { parseUnifiedDiff } from "@capsule/shared";
 import { FileDiff } from "./FileDiff";
+import { PagedFileDiffs } from "./PagedFileDiffs";
+import { DiffView } from "./DiffView";
+import { DIFF_PAGE_ROWS, DIFF_PAGE_FILES } from "./DiffPager";
 import { PullRequestList } from "./PullRequestList";
 import { PullRequestChecks } from "./PullRequestChecks";
 import { PullRequestComment } from "./PullRequestActivity";
 
 describe("pull request read controls", () => {
+  it.each([true, false])("bounds a 20,000-line expanded diff in split=%s", (split) => {
+    const file = parseUnifiedDiff(`diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -0,0 +1,20000 @@\n${Array.from({ length: 20_000 }, (_, i) => `+const item${i} = ${i};`).join("\n")}\n`)[0]!;
+    const html = renderToStaticMarkup(createElement(FileDiff, { file, split, expanded: true }));
+    expect(html.match(/class="diff-gutter-num"/g)).toHaveLength(DIFF_PAGE_ROWS * 2);
+    expect(html).toContain("Diff rows");
+    expect(html).not.toContain("item19999");
+    expect(html.length).toBeLessThan(150_000);
+    const many = renderToStaticMarkup(createElement(PagedFileDiffs, { files: Array.from({ length: 100 }, (_, i) => ({ ...file, path: `${i}.ts` })), split }));
+    expect(many.match(/class="file-diff /g)).toHaveLength(DIFF_PAGE_FILES);
+    expect(many).not.toContain('class="file-diff-body');
+    const plain = renderToStaticMarkup(createElement(DiffView, { text: Array.from({ length: 20_000 }, (_, i) => `+line ${i}`).join("\n") }));
+    expect(plain.match(/class="diff-line /g)).toHaveLength(DIFF_PAGE_ROWS);
+  });
   it("honors controlled collapse and expand states for the same diff", () => {
     const file = parseUnifiedDiff("diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-old\n+new\n")[0]!;
     const render = (expanded: boolean) => renderToStaticMarkup(createElement(FileDiff, { file, split: false, expanded }));

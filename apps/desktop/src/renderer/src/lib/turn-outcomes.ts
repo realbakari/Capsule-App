@@ -1,4 +1,4 @@
-import { parseUnifiedDiff, type Run, type RunEvent, type TurnDiffResult } from "@capsule/shared";
+import { parseUnifiedDiff, type Run, type RunEvent, type RunEventPage, type TurnDiffResult } from "@capsule/shared";
 import { extractTouchedFiles, type TouchedFile } from "./activity";
 import type { Turn } from "./turns";
 
@@ -71,9 +71,13 @@ export function outcomeFiles(diff: TurnDiffResult | undefined, events: readonly 
 
 export async function loadTurnOutcome(run: Run, cwd: string | undefined, reader: {
   turnDiff: (runId: string) => Promise<TurnDiffResult>;
-  listRunEvents: (runId: string) => Promise<RunEvent[]>;
-}): Promise<{ files: TouchedFile[]; patch?: string }> {
+  listRunEventPage: (runId: string) => Promise<RunEventPage>;
+}): Promise<{ files: TouchedFile[]; patch?: string; partial?: boolean }> {
   const diff = run.checkpointRef ? await reader.turnDiff(run.id) : undefined;
-  const events = !diff || diff.available === false ? await reader.listRunEvents(run.id) : [];
-  return { files: outcomeFiles(diff, events, run.id, cwd), patch: diff?.available !== false ? diff?.patch : undefined };
+  const page = !diff || diff.available === false ? await reader.listRunEventPage(run.id) : undefined;
+  return {
+    files: outcomeFiles(diff, page?.events ?? [], run.id, cwd),
+    patch: diff?.available !== false ? diff?.patch : undefined,
+    partial: page ? page.hasMore || page.events.some((event) => event.data?.payloadTruncated === true) : false,
+  };
 }
