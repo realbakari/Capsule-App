@@ -19,6 +19,7 @@ need the shipped-product voice.
 - [Reading from another device](./user/reading-from-another-device.md)
 - [Updating](./user/updating.md)
 - [Diagnostics](./user/diagnostics.md)
+- [Desktop companion](./user/companion.md)
 
 ## Working on Capsule
 

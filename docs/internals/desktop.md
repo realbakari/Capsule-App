@@ -159,6 +159,13 @@ Tools: **Launch**, **Review**, **Terminal**, **Browser**, **Files**, **Side chat
   Cache/storage clearing awaits the isolated Electron session operation;
   application drafts/preferences are not touched. Clear-data and registration
   are write-scoped for paired viewers.
+  Discovery polling is single-flight while mounted, retains the last good list
+  on failure, and provides a retry. Guest registration failures are visible;
+  subframe and aborted-load errors do not replace the main page. The direct
+  browser navigation tool can request the first guest through `open-browser`;
+  registration completes the request with a ten-second readiness timeout.
+  The first page is not reloaded after registration. Gateway browser tools are
+  not injected; see [harness.md](harness.md).
 - File editors capture immutable project/root/path and their own revision cell.
   Navigating flushes pending changes to that owner; late preview/listing reads
   are rejected after selection changes. Old save replies do not update a new
@@ -229,6 +236,45 @@ reported by main-process validation when a restored draft is sent.
 Usage lives in its own view, read from the CLIs' transcripts. It reports
 tokens only — prices are not in the transcripts.
 
+The composer uses one agent/model picker with grouped, capability-aware choices.
+Permission and conversation mode controls collapse into an overflow menu below
+36rem of available row width, along with stash and the Harnesses link. The agent,
+attachment and send controls stay visible. Folder, terminal, workspace mode and
+branch sit in an inset context strip beneath the prompt. Menus keep sentence
+case. Git workspace selection includes the folder chooser, and its label and
+the branch label collapse to named, tooltip-equipped icons below 28rem.
+Menus clamp to the viewport,
+support arrow/Home/End keys and restore trigger
+focus on selection or Escape. Unavailable rows remain readable without dispatch.
+
+Run activity distinguishes submission, running, pending cancellation, failure and
+completion. The renderer deduplicates cancellation requests per run and shows
+Stopping until that request settles; this is transient window state, not a
+persisted runtime status. Verified requires a passing check whose evidence belongs
+to the displayed run. Merely folding a finished work log never earns a success
+badge. Raw run events and session diagnostics remain expandable.
+Touched-file chips are separate keyboard-operable buttons below the disclosure
+header, wrapping inside the card rather than overflowing the activity row.
+
+The desktop companion is a separate transparent, initially inactive window,
+available from General settings, the palette and the app menu. Its articulated
+SVG has CSS-driven walking, tail/ear/head/eye motion and explicit wave/play/stretch
+reactions. A dedicated drag region leaves the mascot keyboard/click accessible.
+The window expands upward for the tray, clamped to its display's work area.
+Size/pause preferences are renderer-local; reduced motion disables animation.
+Activity reads coalesce at 250ms with only one outstanding request; tool-output
+frames do not trigger reads. An indexed lookup selects each non-archived thread's
+newest run state without loading historical prompts, results or verification JSON.
+Only that newest run contributes to attention; errors never imply idle success.
+Read-only remote viewers can query pet state but cannot toggle or resize it.
+
+Diagnostics exposes bounded process-local timings: 200 recent samples, 20
+slowest, and fixed-label aggregates for event handling, Git process/queue time
+and local preview reads. Samples contain no paths, prompts, output or arguments;
+export is explicit. Event timing excludes browser paint and agent latency.
+Non-zero Git probes count as failures even when absence is expected. Host and
+renderer timings are separate; this is diagnostic evidence, not freeze prevention.
+
 Replies render fenced code, headings, bullets, links, inline code and
 GitHub-style pipe tables. A wide table scrolls inside the message rather than
 widening the transcript column.
@@ -276,6 +322,30 @@ not a turn-diff fallback. Restore targets the card's own run after confirmation,
 and the card expands its immutable saved diff in place. Current-file discard
 stays in Review, not on a historical card.
 
+### Saved-file previews and turn details
+
+Finished-file rows open an ephemeral saved-diff preview on hover or focus.
+`SavedDiffPreview` uses the owning `TurnOutcome` patch, never current repository
+status or live file contents. It scans file boundaries for an exact current or
+renamed path and parses only a bounded prefix (48,000 characters, 84 patch
+lines, 600 displayed characters per code line). Full numstat counts come from
+the saved outcome, not the excerpt. Binary, metadata-only and missing text
+states are explicit. One portal per card stays within the viewport, supports
+pointer traversal, keyboard focus/Down Arrow and Escape, and is disposed when
+the owning snapshot changes. Selecting a file opens that file's paged saved
+diff; the all-files view remains available. This introduces no IPC or writes
+and works with both runtime routes and read-only paired viewers.
+
+Conversation activity, paged diagnostics and verification share one
+`RunSummary` expansion per run. The collapsed summary still reports the actual
+run/check state. Details mount on first expansion and remain hidden rather
+than unmounting on collapse, preserving in-progress checks and form inputs.
+The summary is keyed to its run so those details cannot follow a new turn.
+Gateway recovery appears once inside the composer, following the selected
+runtime route (including an existing thread's pinned route). It is absent for
+direct agents and the mock runtime. Connection errors are caught inline with
+retry, while distinct folder, login and installation blockers remain visible.
+
 ### Verification receipts and workspace ownership
 
 Completed turns and History render the same collapsed `TurnVerification`
@@ -284,8 +354,8 @@ command before explicit execution, and supports cancel, rerun, and evidence-only
 recheck only when a receipt exists. **Add check** saves an action on that owning
 project through the existing `updateProject` IPC; it never executes on save.
 The only action is preselected, never automatically run. Cwd, hashes and
-requirement guidance sit inside **Evidence details**. The latest receipt follows
-the work log; historical receipts keep their position below their own reply.
+requirement guidance sit inside **Evidence details**. Receipts share the owning
+turn's activity expansion with its work log.
 A completed turn with neither a saved reply nor result shows a missing-reply
 notice. ACP activity counts deduplicate updates by run plus tool call id, while
 retaining failure status and the latest readable detail. Completion and verification are independent: prose and custom
@@ -314,6 +384,89 @@ answer; a queued write invalidates that sharing before a later read. There is
 no time-based cache of Git status. A composite push/create-PR operation keeps
 its lock through both steps. External Git processes are not governed by this
 queue; Git's own locking and pre/post revision checks remain necessary.
+
+File indexing uses asynchronous Git reads with a shared in-flight scan and a
+30-second cache. Invalidation prevents older scans from repopulating the cache.
+Content search uses the thread's owned cwd and filesystem-read policy; it reads
+four files at once, at most 400 KB each, excludes binary and escaping symlink
+targets, and retains at most three hits per file and sixty overall. A failed
+repository listing does not fall back to a walk that bypasses its ignore rules.
+The Files pane memoizes roots, sorting and indexed Git marks; editor keystrokes
+do not rebuild the tree. Content-search results open the selected preview.
+
+The shared run channel carries both run records and run events. Live events
+include an optional session routing hint; older stored events remain scoped by
+the requested run. The renderer batches at 50 ms or 128 frames, flushing terminal
+records immediately. It merges frames by ID instead of re-reading workspace,
+messages and event history per frame. Completed records refresh artifacts only.
+Snapshot reads reconcile with frames received during the read; older loaded
+message pages survive reconnects. Both runtime routes feed this same path.
+
+Live run events are retained in a window of at most 1,000 records and 2 MB.
+`listRunEventPage` is a named read-only IPC channel: 200 events per page, moving
+backwards by timestamp and insertion-order cursor. The database bounds legacy
+message/data columns before JSON decoding. New diagnostic payloads are compacted
+before persistence and publication (8,192 message characters; bounded data
+strings, depth, entries and nodes). This does not truncate authoritative agent
+replies or replace artifacts. Truncation and earlier-history markers are visible;
+recent activity counts must not be presented as whole-run totals. Each turn has
+a lazy, replace-in-place Run log, including failed runs. Event-only file evidence
+uses the recent page and discloses incompleteness instead of loading entire runs.
+
+Failed sends use draft revisions as well as selection ownership. If typing or
+attachment changes occurred after submission, preserve the new draft and stash
+the failed prompt separately. The demo bridge implements the paged log too.
+
+Diff rendering is explicitly paged, not virtualized: ten files per list page
+and 160 rows per expanded file, with a 640-line initial expansion budget.
+Collapsed files do not prepare or highlight their bodies. Split pairs and
+review-note line/side references retain their original coordinates across pages.
+Raw diff previews also page at 160 lines. Saved-diff reads that fail or lose a
+required checkpoint throw actionable errors rather than returning an empty patch;
+the turn outcome offers Retry without substituting current repository changes.
+
+Git porcelain and numstat use NUL separators; renames and quoted UTF-8 paths
+remain exact. File operations use literal pathspecs. Hunk lines are consumed by
+their declared counts before interpreting headers, so SQL `--` and `++` lines
+cannot become file headers. Current review combines HEAD-to-worktree changes
+with untracked-file patches (or staged/new files before the first commit).
+More than 200 new files or a combined patch over 16 MB requires individual
+review. PR cache identity includes checkout, branch, refs and remotes; stale
+background results cannot repopulate another identity. Merge revalidates the
+current branch's PR and passes its explicit URL to the GitHub CLI.
+
+Browser attachment effects follow the mounted guest, not its initial URL.
+Home-to-same-address navigation reconnects listeners and tool registration.
+HTTP(S) popup requests load in that guest; other schemes are denied and never
+forwarded to the system browser. Popup enablement is a string attribute because
+React drops a boolean on the custom element. Browser snapshots independently
+bound text, titles, links and labels in guest and main, with a 96 KB UTF-8 result
+limit and visible truncation. Password values remain excluded.
+
+Preview reads use an asynchronous nonblocking descriptor, validate that it is a
+regular file, check image/text size limits before allocation, and bound reads
+against growth. Save conflict checks fail closed if the original revision can
+no longer be read. Local action stop retains process ownership and folder lease
+through `stopping` until exit, with TERM-to-KILL escalation on its owned group.
+Late callbacks cannot remove a replacement action's handle.
+
+Remote-access transitions are serialized and generation-checked; a superseded
+start is stopped before its handle is exposed. Stop failure retains ownership
+and reports the actual listener state. Reset defaults uses the normal engine
+settings path and awaited desktop side effects, not just database persistence.
+Both Gateway and catalog tokens are excluded from settings serialization;
+legacy copies migrate to the secret store before their database keys are removed.
+
+The desktop pins Electron 43.4.1. Native SQLite and terminal modules must be
+rebuilt for this runtime; renderer and startup fixtures use isolated profiles.
+The startup smoke check can seed from `CAPSULE_SMOKE_SEED_DATABASE` using
+SQLite `VACUUM INTO`. Only the throwaway copy loses its settings. Smoke mode
+uses the mock runtime and profile-owned task directory, and skips host settings
+side effects; it must not connect copied sessions to live agents.
+
+Main owns resource sampling every five seconds, sharing one in-flight async
+process-table read. History is bounded to fifteen minutes and a point limit.
+The renderer does not launch process-table commands while typing or rendering.
 
 
 - Timeline of turns: user on the right, assistant markdown full-width, collapsed tool rows, a changed-files card scoped to each turn's saved result.
@@ -365,6 +518,11 @@ sending queued requests. Disconnects reject pending calls and discard their
 queue; reconnection never retries writes without a caller. Socket identity
 guards reject late callbacks from an older connection. Invalid JSON fails
 pending calls with a readable connection error instead of stranding them.
+Authenticated reconnects emit a connection notification to resnapshot the
+workspace and selected thread. Outbound frames and socket backlog share an
+8 MiB byte budget: oversized results fail by request ID, while oversized events
+or backlog unsubscribe and close with 1013. Requests are never replayed as a
+side effect of reconnecting, and read-only authorization is unchanged.
 
 ---
 

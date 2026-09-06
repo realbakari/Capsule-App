@@ -11,16 +11,68 @@ can still show its own failure. Sign-in guidance remains visible until dismissed
 Cancellation acknowledgements are controls, not replies, and do not appear as
 agent messages. Previous records remain stored.
 
+If you have already typed or attached something new while sending, that new
+draft stays untouched. The failed submission is saved in **Stash**, and a notice
+tells you where to recover it.
+
+Live work-log updates are grouped into short batches while completion appears
+promptly. They do not reload the whole workspace on every event. Older messages
+you have opened remain in the conversation after a reconnect, and overlapping
+saved and live events are shown once.
+
+Long runs keep a recent activity window so the conversation stays responsive.
+**Recent activity** means the visible counts do not cover the whole run. Open
+that turn’s **Run log** (or **What the agent reported** after failure) and use
+**Older events** and **Newer events** to inspect recorded history. Oversized
+diagnostic payloads are shortened and labelled; these logs are not a complete
+copy of tool output. Agent replies remain separate from this diagnostic limit.
+
 ## Choose a model
 
-When the running agent offers models, choose one beside its name in the
-composer. Changing it updates the session without posting a message or a status
+Open the agent name in the composer to choose an agent or a model it reports.
+The same control shows the current model when that model is known. Changing it
+updates the session without posting a message or a status
 banner, and leaves your draft untouched. This also applies to model changes in
-Harnesses when the runtime supports it. Direct sessions currently reject live
-model/permission changes with an error and leave the saved selection unchanged.
+Harnesses when the runtime supports it. Unavailable model choices explain why
+they cannot be selected; Capsule does not invent a model list. Direct sessions
+cannot change models or permissions while running. Their permissions control
+shows **Agent-managed** and explains the approval limits when opened.
 To inspect the session's raw status, open **Harnesses**, select the
 session with **Refresh**, and expand **Session diagnostics**. Diagnostics stay
 with that session and are collapsed by default.
+
+Switching to a different harness starts it with its own default model. A model
+override from the previous harness is not carried across.
+
+The info control beside the paperclip explains the selected harness and runtime
+route's model, permission, steering and browser support. The same information
+is available in Harnesses, and Browser describes its agent-tool limitations.
+Manual browsing is separate from an agent's ability to control that browser.
+
+The workspace strip below the prompt holds the folder, terminal, checkout mode
+and branch. For Git folders, **Current checkout** or **Worktree** also offers
+**Change folder**. In compact panes the workspace and branch labels become icons;
+their names remain in tooltips and menus. The **…** menu holds permissions, conversation mode,
+prompt stash and the link to Harnesses. The agent picker and send button stay
+reachable. Menus support arrow keys, Home, End and Escape; closing one returns
+focus to its trigger.
+
+## Read activity accurately
+
+Expand the activity row to see its steps, **Run log** and **Verification** in
+one place. Collapsing it preserves your check inputs and current log page.
+
+**Sending** means Capsule is submitting the prompt, not that the agent is
+already running. **Stopping** means a cancellation request is pending; a failed
+stop returns to the reported run state and shows its error. **Completed** does
+not mean verified: **Verified** requires a passing recorded check for that run.
+Failed, cancelled, blocked and stale-check states remain distinct. Expand the
+run log for diagnostics rather than reading raw status messages as agent replies.
+
+When the selected route needs an offline Gateway, one connection row appears
+inside the composer. Use **Connect**, or **Retry connection** after an error;
+you can still prepare a draft. Direct agents do not require this connection.
+Missing-login and installation guidance remain separate from connection recovery.
 
 ## Attach local files
 

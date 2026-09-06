@@ -6,6 +6,18 @@ See [OpenClaw ACP agents](https://docs.openclaw.ai/tools/acp-agents) and [setup]
 
 ## Gateway lifecycle Capsule implements
 
+Switching harnesses must not carry `modelOverride` from the previous harness.
+Session creation uses the new harness's default unless that harness was already
+selected. Unsupported direct-session option changes remain explicit errors;
+they do not mutate the saved selection. Project-skill resolution, inspection and
+submission share project/thread context and the thread's actual working folder
+on both routes. A missing selected skill fails before recording a user message.
+
+Both runtime routes compact recorded diagnostic events before database and IPC
+publication. Raw incoming replies still feed authoritative message/result
+handling; the diagnostic size limit must not truncate the actual agent reply.
+The paged run log and recent-window labels describe this distinction in the UI.
+
 | Action | What Capsule does |
 |--------|-------------------|
 | **Doctor** | Probe the CLI on `PATH`, Gateway reachability, and the `acpx` plugin. When connected, send `/acp doctor` (and `/acp install` if acpx is missing). |
@@ -88,6 +100,14 @@ and its grouped or flat choices when present. A harness that exposes only the
 current model still works through `/acp model <id>`, but the UI does not invent a
 catalog it cannot verify.
 
+The composer groups agent selection and reported model choices into one picker.
+Missing or immutable model choices carry a disabled reason inside the menu.
+`harnessCapabilities` uses the existing thread's key, not its harness's current
+route default, and ignores model catalogs from another session. Direct
+permissions display as agent-managed, with no local setting mutation. A compact
+capability disclosure, Harnesses detail, the command palette and Browser expose
+the same route limitations; none of these affordances adds runtime support.
+
 ## Workspace
 
 ### Direct sessions
@@ -110,6 +130,25 @@ they throw before updating local settings. Models reported by a CLI remain
 readable; advertising a catalog is not evidence of live mutability. Cwd changes
 are refused for both routes. These are explicit limitations, not success text.
 Both routes reject overlapping turns and share local verification rules below.
+
+### Embedded browser tools
+
+The desktop offers direct sessions an authenticated loopback HTTP MCP server
+for `browser_status`, `browser_navigate`, and `browser_snapshot`. Availability
+depends on the CLI accepting HTTP MCP servers. The bearer token is minted per
+desktop launch, not per turn; it is not a per-thread isolation boundary.
+The server targets the desktop's currently registered guest. Do not describe
+these as thread-private browser sessions.
+
+Navigation accepts only HTTP(S). If no guest exists, main requests the Browser
+panel and waits up to ten seconds for owned guest registration. The renderer
+starts the first navigation; the tool does not load the same first page twice.
+Snapshots bound text to 20,000 characters before crossing IPC, enumerate at
+most 200 interactive elements, omit password values and clear script watchdogs.
+There are no agent click/fill tools or arbitrary-script tool. Gateway sessions
+do not receive this MCP configuration; their browser setup stays Gateway-owned.
+
+### Turn evidence
 
 Turn verification is a workspace capability shared by every harness and both
 Gateway/direct routes. A runtime completion or tool-status message is not a

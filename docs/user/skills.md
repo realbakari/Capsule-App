@@ -11,6 +11,12 @@ discovered skill shows its owning CLI; its local location remains available in
 the detail view. **Scan again** picks up a skill installed while Capsule is
 open.
 
+Skills checked into the current conversation’s folder are included too. A
+worktree conversation reads its own skills, not the original checkout’s copy.
+The same folder is used when inspecting **Files** and attaching the instructions.
+If a selected skill has disappeared, sending fails visibly instead of silently
+omitting it.
+
 Global skills remain owned by their CLI: Capsule can inspect and attach them,
 but it does not move or uninstall their files. Skills installed through
 Capsule appear separately in **Capsule library**. Long installed lists start
@@ -48,6 +54,11 @@ Optional. skills.sh requires a Vercel OIDC token on every request, so Capsule
 reads GitHub unless you add one in **Settings → Skills**. With a token, its
 results appear first and carry install counts. If the token is rejected — they
 expire roughly every 12 hours — the directory says so.
+
+The token is held in the desktop’s secret store, not its settings database.
+Settings shows a mask, and clearing the field removes the saved token. An older
+settings copy is migrated when Capsule starts. A token supplied by your launch
+environment can still take effect after restarting.
 
 ## Installing
 

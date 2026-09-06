@@ -5,6 +5,11 @@ you can watch a long run without sitting at the machine doing it.
 
 If the connection drops while a request is waiting, Capsule reports the lost
 connection and discards that request. It does not repeat it on reconnect.
+After reconnecting, the viewer refreshes saved workspace and conversation data
+and reconciles it with live updates. If a device falls behind, its stream is
+closed and reconnected rather than building an unlimited queue on the desktop.
+An individual response too large for the viewer shows an error; open that
+content on the desktop instead.
 
 A paired device can **read**. It cannot send a prompt, open a terminal, run a
 project action, write a file, or change a setting. Those are a separate scope,
@@ -112,6 +117,10 @@ On a home or office network these are usually acceptable. On a café network,
 prefer **This Mac** and a tunnel you already trust.
 
 ## Troubleshooting
+
+Turning access **Off** waits for the listener to stop, including when a start
+was still pending. A shutdown failure stays visible rather than claiming the
+listener is off. Change the setting again to retry.
 
 **The address does not load on my phone.** The reach is probably **This Mac**.
 Phones cannot reach `127.0.0.1` on your laptop — switch to **This network**.

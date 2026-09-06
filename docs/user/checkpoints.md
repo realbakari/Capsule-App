@@ -8,14 +8,34 @@ The card stays beneath that turn's reply when you send a follow-up. Folding
 the old turn folds its card too; expanding the turn brings it back. It does not
 follow you into another conversation or project.
 
-Select the card to expand that turn's saved diff in place. Later edits do not
-change this saved view. The Review panel still shows your current repository
-changes; use it to stage or discard current edits.
+Hover a changed file, or focus its row with the keyboard, to preview its saved
+diff without leaving the conversation. The preview shows line numbers, syntax
+colouring, and additions and removals. Move the pointer into it to scroll;
+press Escape to dismiss it. With the file row focused, Down Arrow moves into
+the preview's **Open file diff** control.
+
+Select a file row (including on touch devices) to open that file's saved diff
+in place. Select **All changed files**, or the card's heading, for the entire
+turn. Large hover previews are labelled **Excerpt**; open the file diff to read
+the rest. Binary files and changes without a text diff are identified instead
+of showing a blank code panel.
+
+Later edits do not change these saved views. The Review panel still shows your
+current repository changes; use it to stage or discard current edits. Hovering
+never changes files or restores a turn.
+
+If a saved diff cannot be read, the turn shows an error with **Retry** instead
+of looking unchanged. A missing base snapshot is never replaced with your live
+files. Large saved diffs have file and row pages so expanding them stays bounded.
 
 When both saved snapshots exist, an empty diff means no changed-files card.
 If a before-snapshot is unavailable (including the first saved turn), Capsule
 can list writes reported by that turn, but does not substitute your current
 repository changes or invent a saved diff.
+
+Without a saved diff, a long run may show only recent reported file activity.
+That limitation is labelled, and earlier recorded activity remains in the run
+log. It is not a claim to list every file changed in the run.
 
 Restoring discards everything changed since that point — by the agent *and* by
 you — so Capsule asks first. Stop agents, checks, actions and terminal panes in

@@ -1,8 +1,9 @@
 # Checking a turn
 
 A completed reply means the agent finished responding, not that tests passed.
-Open **Verification** beneath a completed turn, or in run history, to see its
-recorded checks. The details start collapsed.
+Expand a completed turn's activity row, then **Verification**, or open the turn
+in run history, to see its recorded checks. The activity row keeps the result
+visible while collapsed, including when a turn has not been verified.
 
 To run a check:
 
@@ -45,8 +46,9 @@ and changes made and then reverted while a check runs are not covered by the
 snapshot comparison. Choose checks appropriate to the work and review their
 output before relying on them.
 
-The newest receipt appears after the work log; older receipts stay with their
-original turn. Tool counts describe distinct calls where the agent supplies
+Activity, the run log and verification share one expandable card; older cards
+stay with their original turn. Collapsing it preserves check inputs and open
+diagnostic details. Tool counts describe distinct calls where the agent supplies
 call identifiers, not every status update. A finished work log is not proof
 that checks passed. If no reply was received, the turn says so rather than
 presenting tool activity as an answer.

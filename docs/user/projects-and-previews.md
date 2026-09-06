@@ -62,6 +62,11 @@ Choose **Add action** in the titlebar to save a command such as `pnpm dev` or
 conversation’s folder. A running action can be stopped from the same menu, and
 recent output remains visible there.
 
+After **Stop**, the action shows **Stopping** until its process exits. You can
+start it again once it has stopped; repeated clicks cannot create overlapping
+copies. A process that ignores the stop request is force-stopped after a short
+grace period.
+
 An action can include a preview URL. Starting it selects that address in the
 Browser panel automatically.
 
@@ -76,6 +81,21 @@ screenshot capture to clipboard, opening in the system browser, zoom controls,
 DevTools, and cache/cookie clearing. The Browser home keeps recently used pages
 above the live-server list.
 
+If server discovery fails, the last successful list stays visible with an error
+and **Retry**. A failed scan is not reported as “no servers”. Page errors from
+embedded frames do not replace a successfully loaded main page.
+
+Returning home and reopening the same address reconnects browser tools to the
+new page. Web popup links stay inside the browser; page-supplied custom app
+schemes are blocked. Use the explicit system-browser button to leave Capsule.
+
+Direct agents that accept HTTP MCP servers are offered browser status,
+navigation, and a bounded text snapshot. Their first navigation opens Capsule's
+Browser panel automatically; it does not open the system browser. Password
+field values are omitted from snapshots. Automated click and fill tools are
+not included. These tools are not injected into Gateway sessions; their
+browser capabilities depend on the Gateway and agent setup.
+
 The system-browser action opens the currently committed page, including after
 redirects and in-page navigation. **Clear HTTP cache** clears browser cache;
 **Clear cookies and storage** clears the isolated browser's cookies and saved
@@ -88,6 +108,19 @@ An open file keeps the project, folder and revision it was read from. Navigating
 elsewhere flushes its pending edit to that original file, never the new folder.
 Conflicts require an explicit reload or overwrite decision.
 
+A file deleted or grown beyond the editor’s read limit since you opened it
+also fails that check; an automatic save will not recreate or overwrite it.
+Previews refuse special files such as pipes, and check file size before reading.
+Images over 6 MB and text over 1 MB are shown as too large to preview.
+
+**Search in files** searches the current conversation's folder, including its
+worktree. Selecting a result opens that file without adding it to your draft.
+Search runs in the background and ignores stale replies when you change the
+query or folder. Git projects use their tracked and non-ignored files. Results
+are limited to 60 matching lines, three per file; binary files and files larger
+than 400 KB are skipped. Files changing during a read may be skipped too.
+Search errors are shown separately from an empty result.
+
 The interactive terminal dock keeps a shell per opened folder. Hiding it,
 switching conversations or visiting Settings does not stop it. Close a shell's
 tab explicitly to stop it. Quitting Capsule closes its shells. The Inspector's
@@ -98,6 +131,12 @@ input. It does not terminate existing commands or sandbox the coding CLI.
 Stop and close remain available; close shell tabs before restoring files.
 
 ## Pull requests
+
+The current-changes diff combines staged, unstaged, and new files, matching the
+scope of **Commit all**. If a combined preview is too large, review individual
+files; Capsule reports the limit instead of presenting an incomplete patch as
+complete. Branch changes invalidate the current-PR reading. Merging rechecks
+the branch and targets the PR you were shown; a mismatch asks you to refresh.
 
 The Review panel lists open pull requests for the selected repository when the
 GitHub CLI is installed and signed in. Select one to read its summary, review
@@ -113,11 +152,15 @@ repository.
 
 In **Code**, choose **All commits** or an individual commit to inspect its
 changes without checking out another branch. Switch between split and unified
-diffs, collapse a file, or collapse and expand them all. **Summary** renders
+diffs, collapse a file, or expand and collapse the current page. **Summary** renders
 comment Markdown and lists checks with links to their output.
 Code is syntax-coloured, and long lines wrap by default while keeping both sides
 aligned. Turn **Wrap lines** off to scroll horizontally instead. File headers
 remain compact when collapsed.
+Large patches show ten files per page, with large files initially collapsed.
+An expanded file shows up to 160 rows per page. Use **Next**, **Previous**, or
+the page number to reach the rest. Review notes still use the original file
+line numbers, not page-relative numbers. Saved turn diffs use these controls too.
 HTML review badges appear as labelled links instead of raw tags, and hidden bot
 metadata is omitted. Tables retain their columns, and expandable sections can
 be opened in place. Code examples remain literal, including nested fences.
