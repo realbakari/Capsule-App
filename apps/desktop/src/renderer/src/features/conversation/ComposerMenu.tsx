@@ -1,7 +1,12 @@
+import { useEffect, useRef } from "react";
+import { FileIcon, CpuIcon } from "../shell/icons";
+
 export interface SuggestItem {
   id: string;
   label: string;
   detail?: string;
+  badge?: string;
+  kind?: "file" | "skill";
   insert?: string;
   run?: () => void | Promise<void>;
 }
@@ -11,28 +16,44 @@ export function ComposerMenu({
   index,
   onPick,
   onHover,
+  id,
+  empty,
 }: {
   items: SuggestItem[];
   index: number;
   onPick: (item: SuggestItem) => void;
   onHover: (index: number) => void;
+  id: string;
+  empty?: string;
 }) {
-  if (items.length === 0) return null;
+  const menu = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    menu.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" });
+  }, [index]);
+  if (items.length === 0 && !empty) return null;
   return (
-    <div className="suggest-menu" role="listbox">
+    <div ref={menu} id={id} className="suggest-menu" role="listbox" aria-label="Composer suggestions">
+      {empty && items.length === 0 && <div className="suggest-empty" role="status">{empty}</div>}
       {items.map((item, itemIndex) => (
         <button
           type="button"
           key={item.id}
+          id={`${id}-${itemIndex}`}
+          role="option"
+          aria-selected={itemIndex === index}
+          tabIndex={-1}
           className={itemIndex === index ? "active" : ""}
           onMouseEnter={() => onHover(itemIndex)}
           onMouseDown={(event) => {
             event.preventDefault();
-            onPick(item);
           }}
+          onClick={() => onPick(item)}
         >
-          <span>{item.label}</span>
-          {item.detail ? <span className="meta">{item.detail}</span> : null}
+          {item.kind === "file" ? <FileIcon size={14} /> : item.kind === "skill" ? <CpuIcon size={14} /> : null}
+          <span className="suggest-copy"><span className="suggest-name">{item.label}</span>
+            {item.detail ? <span className="meta" title={item.detail}>{item.detail}</span> : null}
+          </span>
+          {item.badge && <span className="suggest-badge">{item.badge}</span>}
         </button>
       ))}
     </div>

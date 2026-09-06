@@ -68,8 +68,8 @@ export function listGlobalSkillFiles(location: string, relative = "."): FileEntr
  *
  * Claude Code reads `<cwd>/.claude/skills` alongside the user's, and a skill
  * checked into a repository is the one case where everybody working on it has
- * the same skill without installing anything. The user's roots still win a
- * name collision, which is what the CLI does.
+ * the same skill without installing anything. Capsule attaches a selected
+ * document by identity, so equal names from different roots remain distinct.
  */
 export function projectSkillRoots(workingDirectory: string | undefined): GlobalSkillRoot[] {
   if (!workingDirectory) return [];

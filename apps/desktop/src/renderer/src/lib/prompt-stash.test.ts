@@ -18,6 +18,18 @@ function memoryStorage(): PromptStorage {
 }
 
 describe("prompt stash", () => {
+  it("preserves skill-only drafts and stashes without leaking into another thread", () => {
+    const storage = memoryStorage();
+    const value = { prompt: "", attachments: [], skillId: "global:skills:review" };
+    const key = promptDraftKey("p", "one");
+    writePromptDraft(storage, key, value);
+    expect(readPromptDraft(storage, key)).toEqual(value);
+    expect(readPromptDraft(storage, promptDraftKey("p", "two")).skillId).toBeUndefined();
+    expect(stashPrompt(storage, [], value)).toHaveLength(1);
+    expect(readPromptStash(storage)[0]?.skillId).toBe(value.skillId);
+    writePromptDraft(storage, key, { ...value, skillId: undefined });
+    expect(storage.getItem(key)).toBeNull();
+  });
   it("persists drafts by project and conversation", () => {
     const storage = memoryStorage();
     const key = promptDraftKey("project", "session");
@@ -36,4 +48,3 @@ describe("prompt stash", () => {
     expect(readPromptStash(storage)[0]).toMatchObject({ prompt: "Review this", projectId: "project" });
   });
 });
-

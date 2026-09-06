@@ -650,3 +650,12 @@ When a limitation is lifted, delete it here and in ARCHITECTURE.md §9 in the sa
 Public onboarding starts at `docs/user/getting-started.md`. README and policy
 pages distinguish actual routes, local verification, optional signing, browser
 traffic and global skill discovery. Regenerate public policy pages after changes.
+
+### Composer context
+
+Add context offers installed skills and project-file search. Its listbox uses
+option IDs, active-descendant navigation and Escape dismissal. Explicit search
+supports multiword queries. Skill selection is a single structured draft field,
+scoped and persisted with draft/stash attachments, not duplicate `$name` prose.
+File selection validates the exact path in the thread folder through the existing
+attachment channel. Debounced search rejects stale responses; no new IPC is added.

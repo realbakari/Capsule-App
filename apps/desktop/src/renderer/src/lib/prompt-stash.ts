@@ -7,6 +7,7 @@ export const MAX_PROMPT_STASH_ENTRIES = 20;
 export interface PromptDraft {
   prompt: string;
   attachments: MessageAttachment[];
+  skillId?: string;
 }
 
 export interface PromptStashEntry extends PromptDraft {
@@ -36,7 +37,7 @@ function draft(value: unknown): PromptDraft | undefined {
   if (!value || typeof value !== "object") return undefined;
   const row = value as Partial<PromptDraft>;
   if (typeof row.prompt !== "string" || !Array.isArray(row.attachments)) return undefined;
-  return { prompt: row.prompt, attachments: row.attachments.filter(attachment).slice(0, 8) };
+  return { prompt: row.prompt, attachments: row.attachments.filter(attachment).slice(0, 8), ...(typeof row.skillId === "string" ? { skillId: row.skillId } : {}) };
 }
 
 export function promptDraftKey(projectId?: string, sessionId?: string): string {
@@ -53,7 +54,7 @@ export function readPromptDraft(storage: PromptStorage, key: string): PromptDraf
 
 export function writePromptDraft(storage: PromptStorage, key: string, value: PromptDraft): boolean {
   try {
-    if (!value.prompt && value.attachments.length === 0) storage.removeItem(key);
+    if (!value.prompt && value.attachments.length === 0 && !value.skillId) storage.removeItem(key);
     else storage.setItem(key, JSON.stringify(value));
     return true;
   } catch {
@@ -98,7 +99,7 @@ export function stashPrompt(
   current: PromptStashEntry[],
   value: PromptDraft & { projectId?: string },
 ): PromptStashEntry[] {
-  if (!value.prompt.trim() && value.attachments.length === 0) return current;
+  if (!value.prompt.trim() && value.attachments.length === 0 && !value.skillId) return current;
   const entry: PromptStashEntry = {
     ...value,
     id: crypto.randomUUID(),

@@ -1242,10 +1242,8 @@ export class CapsuleEngine {
    * Every skill this workspace can reach: the ones installed on this Mac, the
    * ones checked into the open project, and Capsule's own.
    *
-   * A project's skills come last of the discovered ones so an installed skill
-   * of the same name keeps its place — the CLIs resolve collisions the same
-   * way, and a picker that disagreed with the agent would offer something it
-   * then refuses to run.
+   * Names are not identities: a project and a personal skill can share one.
+   * Capsule attaches the selected document by id, not a CLI-resolved command.
    */
   async listSkills(projectId?: string, sessionId?: string): Promise<Skill[]> {
     const stored = this.repos.listSkills();
@@ -1254,9 +1252,7 @@ export class CapsuleEngine {
     const project = projectId || session ? this.requireProject(projectId ?? session!.projectId) : undefined;
     if (session && project?.id !== session.projectId) throw new Error("The skill's thread must belong to the selected project.");
     const installed = discoverGlobalSkills();
-    const fromProject = discoverGlobalSkills(projectSkillRoots(project ? this.workingDirectoryFor(project, sessionId) : undefined)).filter(
-      (skill) => !installed.some((candidate) => candidate.name === skill.name),
-    );
+    const fromProject = discoverGlobalSkills(projectSkillRoots(project ? this.workingDirectoryFor(project, sessionId) : undefined));
     return [...installed, ...fromProject, ...capsuleSkills];
   }
 
@@ -1594,6 +1590,7 @@ export class CapsuleEngine {
     const agentId = harnessId ?? input.agentId ?? session.agentId ?? agentIdForMode(mode);
     const skillId = input.skillId ?? skillIdForMode(mode);
     const activeSkill = skillId ? await this.requireSkill(skillId, project.id, session.id) : undefined;
+    if (activeSkill && activeSkill.status !== "installed") throw new Error("The selected skill is not installed or has been disabled. Choose an installed skill.");
     if (activeSkill && !activeSkill.content?.trim()) throw new Error("The selected skill has no readable SKILL.md instructions. Rescan or choose another skill.");
     if (session.title === "New conversation") {
       session.title = titleFromPrompt(input.content.trim() || attachments[0]?.name || "New conversation");

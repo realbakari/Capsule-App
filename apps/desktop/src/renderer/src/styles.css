@@ -1263,6 +1263,26 @@
 .suggest-menu button.active {
   background: var(--bg-hover);
 }
+.suggest-copy { display: flex; min-width: 0; flex: 1; gap: 0.65rem; align-items: baseline; }
+.suggest-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0; max-width: 60%; }
+.suggest-copy .meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.suggest-badge { font-size: 0.6875rem; border: 1px solid var(--border); border-radius: 0.3rem; padding: 0.1rem 0.3rem; max-width: 25%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.suggest-empty { color: var(--text-muted); font-size: 0.8125rem; padding: 0.75rem; }
+.composer-context-picker { position: absolute; z-index: 8; left: 0; right: 0; bottom: calc(100% + 0.4rem); border: 1px solid var(--border); background: var(--surface-0); border-radius: 0.8rem; padding: 0.5rem; box-shadow: var(--shadow); }
+.composer-context-picker .suggest-menu { position: static; border: 0; box-shadow: none; background: none; backdrop-filter: none; max-height: min(16rem, 30vh); }
+.composer-context-picker input { width: 100%; box-sizing: border-box; margin: 0.3rem 0; font-size: 0.875rem; }
+.composer-context-tabs { display: flex; align-items: center; gap: 0.35rem; }
+.composer-context-tabs button { background: transparent; border: 0; border-radius: 0.35rem; padding: 0.35rem 0.5rem; font-size: 0.8125rem; }
+.composer-context-tabs button[aria-pressed="true"] { background: var(--bg-hover); color: var(--text); }
+.composer-context-tabs button:last-child { margin-left: auto; }
+.composer-context-chips { display: flex; gap: 0.35rem; padding: 0.2rem 0 0.45rem; align-items: center; min-width: 0; }
+.composer-skill-chip { display: inline-flex; align-items: center; gap: 0.35rem; min-width: 0; border: 1px solid var(--border); border-radius: 0.4rem; background: var(--bg-hover); font-size: 0.8125rem; padding: 0.15rem 0.35rem; }
+.composer-skill-chip > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.composer-skill-chip button { display: flex; padding: 0.2rem; background: transparent; border: 0; }
+@media (max-width: 600px) {
+  .suggest-copy { flex-direction: column; gap: 0.2rem; align-items: stretch; }
+  .suggest-name { max-width: 100%; }
+}
 .composer-glass::before {
   content: "";
   position: absolute;

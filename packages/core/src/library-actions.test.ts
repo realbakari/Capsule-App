@@ -19,6 +19,10 @@ it("rejects empty skills and oversized action edits without changing stored data
     expect((await engine.listSkills()).find((item) => item.id === skill.id)?.content).toBe("# Keep the instructions");
 
     const project = engine.createProject({ name: "Action regression" });
+    const thread = await engine.createSession({ projectId: project.id, mode: "chat", agentId: "general" });
+    engine.repos.upsertSkill({ ...skill, content: "# Instructions", status: "disabled" });
+    await expect(engine.sendMessage({ sessionId: thread.id, content: "Use this skill", skillId: skill.id, mode: "chat", agentId: "general" })).rejects.toThrow("disabled");
+    expect(engine.listMessages(thread.id)).toHaveLength(0);
     const original = [{ id: "test", name: "Tests", command: "node --test" }];
     engine.updateProject(project.id, { actions: original });
     expect(() => engine.updateProject(project.id, { actions: [{ ...original[0]!, command: "x".repeat(2001) }] })).toThrow("2,000");

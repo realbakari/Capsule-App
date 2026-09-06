@@ -203,7 +203,7 @@ export interface WorkspaceValue {
   setDraft: (value: string) => void;
   pickAttachments: () => Promise<void>;
   attachClipboardImage: () => Promise<boolean>;
-  attachFiles: (paths: string[]) => Promise<void>;
+  attachFiles: (paths: string[]) => Promise<boolean>;
   removeAttachment: (path: string) => void;
   stashCurrentPrompt: () => void;
   restorePromptStash: (id: string) => void;
@@ -416,7 +416,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   const [sidebarWidth, setSidebarWidthState] = useState(() =>
     Math.min(352, Math.max(220, storedNumber(SIDEBAR_WIDTH_KEY, DEFAULT_SIDEBAR_WIDTH))),
   );
-  const [skillId, setSkillId] = useState<string>();
+  const [skillId, setSkillValue] = useScopedState<string | undefined>(draftScope, undefined);
+  const setSkillId = useCallback((id?: string) => { draftRevision.current++; setSkillValue(id); }, [setSkillValue]);
   const [filePicker, setFilePicker] = useState(false);
   const [contentSearch, setContentSearch] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("launcher");
@@ -836,9 +837,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       const saved = readPromptDraft(localStorage, currentDraftKey);
       setDraft(saved.prompt);
       setAttachments(saved.attachments);
+      setSkillId(saved.skillId);
     } catch {
       setDraft("");
       setAttachments([]);
+      setSkillId(undefined);
     }
   }, [currentDraftKey]);
 
@@ -848,11 +851,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       return;
     }
     try {
-      writePromptDraft(localStorage, currentDraftKey, { prompt: draft, attachments });
+      writePromptDraft(localStorage, currentDraftKey, { prompt: draft, attachments, skillId });
     } catch {
       // Draft persistence is a convenience; storage policy must not break chat.
     }
-  }, [attachments, currentDraftKey, draft]);
+  }, [attachments, currentDraftKey, draft, skillId]);
 
   useEffect(() => {
     try {
@@ -964,7 +967,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
 
   async function send(continueToNew = false) {
     const submissionKey = currentDraftKey;
-    const content = draft.trim();
+    const content = draft.trim() || (skillId ? `Use the ${skills.find((item) => item.id === skillId)?.name ?? "selected"} skill.` : "");
     const filesToSend = attachments;
     if ((!content && filesToSend.length === 0) || busy || submissions.current.has(submissionKey)) return false;
     if (activeRun) {
@@ -1012,6 +1015,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       ]);
       setDraft("");
       setAttachments([]);
+      setSkillId(undefined);
       let accepted = false;
       const clearedRevision = draftRevision.current;
       try {
@@ -1051,9 +1055,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
           if (draftScopes.isCurrent(draftScope) && draftRevision.current === clearedRevision) {
             setDraft(content);
             setAttachments(filesToSend);
+            setSkillId(skillId);
           } else {
             // Keep the new draft and preserve the failed submission separately.
-            setPromptStashes(stashPrompt(localStorage, readPromptStash(localStorage), { prompt: content, attachments: filesToSend, projectId: currentProjectId }));
+            setPromptStashes(stashPrompt(localStorage, readPromptStash(localStorage), { prompt: content, attachments: filesToSend, skillId, projectId: currentProjectId }));
             setMessages((current) => current.filter((item) => item.id !== optimisticId));
             setNotice(`The message was not sent and was saved in Stash. Your new draft is unchanged. ${formatUserError(error)}`);
             return false;
@@ -1145,21 +1150,26 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
 
   async function attachFiles(paths: string[]) {
     try {
-      if (!paths?.length) return;
-      const validated = await api.validateAttachments(
+      if (!paths?.length) return false;
+      const validated: MessageAttachment[] = await api.validateAttachments(
         paths.map((filePath) => ({
           name: filePath.split("/").filter(Boolean).pop() ?? filePath,
           path: filePath,
         })),
       );
+      if (!draftScopes.isCurrent(draftScope)) return false;
+      const existing = new Set(attachments.map((item) => item.path));
+      if (new Set([...existing, ...validated.map((item) => item.path)]).size > 8) throw new Error("You can attach up to 8 files. Remove one first.");
       setAttachments((current) => {
         const byPath = new Map(current.map((item) => [item.path, item]));
         for (const item of validated) byPath.set(item.path, item);
         return [...byPath.values()].slice(0, 8);
       });
       setNotice(undefined);
+      return true;
     } catch (error) {
       setNotice(formatUserError(error));
+      return false;
     }
   }
 
@@ -1175,8 +1185,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     try {
       const saved = (await api.saveClipboardImage()) as string | undefined;
       if (!saved) return false;
-      await attachFiles([saved]);
-      return true;
+      return await attachFiles([saved]);
     } catch (error) {
       setNotice(formatUserError(error));
       return false;
@@ -1197,15 +1206,17 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       const next = stashPrompt(localStorage, promptStashes, {
         prompt: draft,
         attachments,
+        skillId,
         projectId,
       });
       if (next === promptStashes) {
-        if (draft.trim() || attachments.length > 0) setNotice("Could not save the prompt stash.");
+        if (draft.trim() || attachments.length > 0 || skillId) setNotice("Could not save the prompt stash.");
         return;
       }
       setPromptStashes(next);
       setDraft("");
       setAttachments([]);
+      setSkillId(undefined);
       setNotice("Prompt stashed. Press ⌘S with an empty composer to open the stash.");
     } catch {
       setNotice("Could not save the prompt stash.");
@@ -1224,6 +1235,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     setPromptStashes(next);
     setDraft(entry.prompt);
     setAttachments(entry.attachments);
+    setSkillId(entry.skillId);
     setNotice(undefined);
   }
 

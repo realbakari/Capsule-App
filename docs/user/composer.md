@@ -76,6 +76,13 @@ Missing-login and installation guidance remain separate from connection recovery
 
 ## Attach local files
 
+Type `@` or choose **Add context → Project files** to search the current
+conversation’s folder. Results show the file name and parent path. Enter or Tab
+attaches the selected file without sending your draft; Escape closes the picker.
+File paths with spaces are preserved. Search failures and empty results are
+labelled, and an older search cannot replace a newer result. Files selected here
+use the same validation and removable chips as the paperclip.
+
 Choose the paperclip or drop files onto the composer. Selected files appear as
 removable chips before you send and as openable attachments in the timeline.
 An attachment-only message is allowed.
@@ -101,4 +108,4 @@ into the prompt stash. Choose the bookmark beside the paperclip to restore or
 delete a stash. When the composer is empty, `⌘S` opens the stash instead.
 
 The most recent 20 stashes are kept locally. Restoring a stash removes it from
-the stash list and puts its text and attachments back in the composer.
+the stash list and puts its text, attachments and selected skill back in the composer.

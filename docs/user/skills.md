@@ -1,7 +1,18 @@
 # Skills
 
 A skill is a written procedure — a `SKILL.md` file — that you attach to a
-conversation so the agent follows it. Type `$` in the composer to attach one.
+conversation so the agent follows it. Type `$` in the composer or choose
+**Add context → Skills** to attach one. Search by name, description or source;
+the picker keeps similarly named skills from different sources distinct.
+
+The selected skill appears as a removable chip above your message. **Change**
+replaces it; Capsule attaches one explicit skill per turn. Selecting with Enter
+or Tab works inside a longer message without sending the message. Disabled and
+uninstalled skills are not offered. A skill-only message is allowed.
+
+The selection stays with that thread’s draft, survives a restart, and is included
+when you stash or restore the prompt. Removing the chip removes the attachment;
+it does not leave an invisible skill selection or a duplicate command in the text.
 
 ## Finding skills
 

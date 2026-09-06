@@ -103,3 +103,27 @@ it("resolves project skills for both preview and submission in the thread's work
     await engine.stopRun(result.run.id);
   } finally { await engine.stop(); }
 });
+
+it("keeps same-named personal and project skills selectable by their own identity", async () => {
+  const { engine, profile } = fixture();
+  const previousConfig = process.env.CLAUDE_CONFIG_DIR;
+  const personalRoot = path.join(profile, "personal-config");
+  const projectRoot = path.join(profile, "project");
+  for (const directory of [path.join(personalRoot, "skills", "same-name"), path.join(projectRoot, ".claude", "skills", "same-name")]) {
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(path.join(directory, "SKILL.md"), "---\nname: capsule-collision-fixture\ndescription: Test\n---\nUse the selected instructions.\n");
+  }
+  process.env.CLAUDE_CONFIG_DIR = personalRoot;
+  try {
+    await engine.start();
+    const project = engine.createProject({ name: "Skill identity", workingDirectory: projectRoot });
+    const matches = (await engine.listSkills(project.id)).filter((skill) => skill.name === "capsule-collision-fixture");
+    expect(matches).toHaveLength(2);
+    expect(new Set(matches.map((skill) => skill.id)).size).toBe(2);
+    expect(matches.map((skill) => skill.source)).toContain("This project");
+  } finally {
+    if (previousConfig === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+    else process.env.CLAUDE_CONFIG_DIR = previousConfig;
+    await engine.stop();
+  }
+});

@@ -57,6 +57,17 @@ function BrowserFixture({ onOpenExternal }: { onOpenExternal: (url: string) => v
 let actualWorkspace: ReturnType<typeof useRealWorkspace>;
 function CaptureWorkspace() { actualWorkspace = useRealWorkspace(); return null; }
 
+function ComposerContextFixture({ base }: { base: Record<string, unknown> }) {
+  const [draft, setDraft] = useState("Please use $rev");
+  const [skillId, setSkillId] = useState<string>();
+  const [attachments, setAttachments] = useState<Array<{ name: string; path: string; size: number }>>([]);
+  window.testWorkspace = { ...base, draft, setDraft, skillId, setSkillId, attachments,
+    attachFiles: async (paths: string[]) => { setAttachments(paths.map((path) => ({ path, name: path.split("/").pop()!, size: 1 }))); return true; },
+    removeAttachment: (path: string) => setAttachments((items) => items.filter((item) => item.path !== path)),
+  };
+  return <Composer />;
+}
+
 window.runRendererRegressions = async () => {
   const host = document.getElementById("root")!;
   let root = createRoot(host);
@@ -456,6 +467,7 @@ window.runRendererRegressions = async () => {
   const threads: Session[] = [];
   const project = { id: "send-project", name: "Send fixture", workingDirectory: "/fixture/send", defaultMode: "chat" };
   let sends = 0;
+  let submittedSkill: string | undefined;
   let failSend = true;
   let failRead = false;
   let finishSend!: () => void;
@@ -491,14 +503,16 @@ window.runRendererRegressions = async () => {
       return { messages: [...(options.before ? older : recent)], hasMore: !options.before && older.length > 0 };
     },
     createSession: async (input: Partial<Session>) => { const thread = { ...input, id: `send-thread-${threads.length}`, state: "active" } as Session; threads.push(thread); return thread; },
-    sendMessage: async () => { sends += 1; if (failSend) throw new Error("Send rejected"); if (delayFailure) return new Promise<void>((_resolve, reject) => { rejectSend = reject; }); await new Promise<void>((resolve) => { finishSend = resolve; }); },
+    sendMessage: async (input: { skillId?: string }) => { submittedSkill = input.skillId; sends += 1; if (failSend) throw new Error("Send rejected"); if (delayFailure) return new Promise<void>((_resolve, reject) => { rejectSend = reject; }); await new Promise<void>((resolve) => { finishSend = resolve; }); },
   } as unknown as typeof window.capsule;
   root.render(<WorkspaceProvider><CaptureWorkspace /></WorkspaceProvider>);
   await until(() => actualWorkspace?.ready && actualWorkspace?.projectId === project.id);
   actualWorkspace.setDraft("first draft"); await until(() => actualWorkspace.draft === "first draft");
+  actualWorkspace.setSkillId("chosen-skill"); await until(() => actualWorkspace.skillId === "chosen-skill");
   await actualWorkspace.sendAndContinue();
   await until(() => !actualWorkspace.busy);
   assert(actualWorkspace.draft === "first draft" && threads.length === 1 && !actualWorkspace.sessionId, "Rejected initial send lost its draft or navigated");
+  assert(submittedSkill === "chosen-skill" && actualWorkspace.skillId === "chosen-skill", "Skill selection was not sent or lost on rejection");
   failSend = false;
   const accepted = actualWorkspace.sendAndContinue();
   await until(() => sends === 2 && Boolean(finishSend));
@@ -507,6 +521,15 @@ window.runRendererRegressions = async () => {
   finishSend(); await accepted;
   await until(() => actualWorkspace.sessionId === "send-thread-2");
   assert(actualWorkspace.draft === "", "Accepted send-and-new retained the sent draft");
+  assert(!actualWorkspace.skillId, "Sent skill followed the user into a new thread");
+  actualWorkspace.setSkillId("skill-for-this-thread");
+  await until(() => actualWorkspace.skillId === "skill-for-this-thread");
+  actualWorkspace.stashCurrentPrompt();
+  await until(() => !actualWorkspace.skillId && actualWorkspace.promptStashes.some((entry) => entry.skillId === "skill-for-this-thread"));
+  actualWorkspace.restorePromptStash(actualWorkspace.promptStashes.find((entry) => entry.skillId === "skill-for-this-thread")!.id);
+  await until(() => actualWorkspace.skillId === "skill-for-this-thread");
+  actualWorkspace.setSkillId(undefined);
+  await until(() => !actualWorkspace.skillId);
   actualWorkspace.setDraft("refresh test"); await until(() => actualWorkspace.draft === "refresh test");
   const refreshing = actualWorkspace.send(); await until(() => sends === 3);
   failRead = true; finishSend(); await refreshing;
@@ -639,5 +662,49 @@ window.runRendererRegressions = async () => {
   await until(() => !document.querySelector('.gateway-recovery'));
   assert(!document.querySelector('.composer-preflight'), "Direct route is incorrectly blocked by Gateway recovery");
   root.unmount(); host.style.width = ""; window.capsule = nativeApi;
+  root = createRoot(host);
+  const contextBase = { ...window.testWorkspace, ready: true, connected: true, busy: false, activeRun: undefined, sendBlockReason: undefined,
+    projectId: "context-project", project: { id: "context-project", workingDirectory: "/tmp/Example Project" },
+    session: { id: "context-thread", projectId: "context-project", workingDirectory: "/tmp/Example Project" },
+    skills: [
+      { id: "review-local", name: "Review code", description: "Inspect a change", status: "installed", source: "Personal", managedExternally: true },
+      { id: "review-project", name: "Review code", description: "Project conventions", status: "installed", source: "This project", tags: ["project-claude"] },
+      { id: "disabled", name: "Disabled review", description: "", status: "disabled", source: "Local" },
+    ],
+  };
+  let slowFiles!: (files: unknown[]) => void;
+  let contextSearchCalls = 0;
+  window.capsule = { ...nativeApi, searchFiles: async (_project: string, query: string) => { contextSearchCalls++; if (query === "slow") return new Promise((resolve) => { slowFiles = resolve; }); return [{ name: "with spaces.ts", path: "src/with spaces.ts", type: "file" }]; } } as typeof nativeApi;
+  root.render(<ComposerContextFixture base={contextBase} />);
+  await until(() => document.querySelector('textarea[aria-label="Message"]'));
+  const composerInput = document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]')!;
+  composerInput.focus(); composerInput.setSelectionRange(composerInput.value.length, composerInput.value.length);
+  composerInput.dispatchEvent(new KeyboardEvent("keyup", { key: "ArrowRight", bubbles: true }));
+  await until(() => document.querySelectorAll('.suggest-menu [role="option"]').length === 2);
+  assert(!document.querySelector('.suggest-menu')?.textContent?.includes("Disabled"), "Disabled skill is selectable");
+  composerInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  await until(() => window.testWorkspace.skillId === "review-local" && window.testWorkspace.draft === "Please use ");
+  assert(document.querySelector('.composer-skill-chip')?.textContent?.includes("Review code"), "Skill selection did not render a removable chip");
+  document.querySelector<HTMLButtonElement>('[aria-label="Remove selected skill"]')!.click();
+  await until(() => !window.testWorkspace.skillId);
+  document.querySelector<HTMLButtonElement>('[aria-label="Add context"]')!.click();
+  await until(() => document.querySelector('input[aria-label="Search skills"]'));
+  fill('input[aria-label="Search skills"]', "review code");
+  await until(() => document.querySelectorAll('.suggest-menu [role="option"]').length === 2);
+  assert(document.querySelector('.suggest-menu')?.textContent?.includes("Project"), "Picker hid distinct skill sources");
+  button("Project files").click();
+  await until(() => document.querySelector('input[aria-label="Search project files"]'));
+  fill('input[aria-label="Search project files"]', "slow");
+  await until(() => Boolean(slowFiles));
+  fill('input[aria-label="Search project files"]', "fast");
+  await until(() => document.querySelector('.suggest-name')?.textContent === "with spaces.ts");
+  slowFiles([{ name: "stale.ts", path: "stale.ts", type: "file" }]);
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert(!document.querySelector('.suggest-menu')?.textContent?.includes("stale.ts"), "An older file search replaced the latest results");
+  assert(contextSearchCalls < 6, "File search was not bounded/debounced");
+  document.querySelector<HTMLButtonElement>('.suggest-menu [role="option"]')!.click();
+  await until(() => (window.testWorkspace.attachments as Array<{ path: string }>)[0]?.path === "/tmp/Example Project/src/with spaces.ts");
+  assert(window.testWorkspace.draft === "Please use ", "Attaching a file overwrote the draft");
+  root.unmount(); window.capsule = nativeApi;
   return "Renderer regressions passed: recovery, editor ownership and memoization, browser navigation and discovery, bounded diff pages and review notes, terminal persistence, send admission, 1,000 stream frames without snapshot reloads, reconnect/history reconciliation.";
 };

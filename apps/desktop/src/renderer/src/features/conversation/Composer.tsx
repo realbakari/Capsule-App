@@ -6,7 +6,7 @@ import { agentSwitchNotice, harnessDisplayName } from "../../lib/harness";
 import { AgentModelPicker } from "./AgentModelPicker";
 import { GatewayBanner } from "../shell/GatewayBanner";
 import { GATEWAY_CONNECTION_REQUIRED } from "../../lib/harness-preflight";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { FileEntry } from "@capsule/shared";
 import { searchProjectFiles } from "../../lib/bridge";
 import { MODES, PERMISSION_OPTIONS, useWorkspace, type View } from "../../lib/workspace";
@@ -25,6 +25,7 @@ import {
   XIcon,
 } from "../shell/icons";
 import { ComposerMenu, detectTrigger, type SuggestItem } from "./ComposerMenu";
+import { searchComposerSkills, skillSource } from "../../lib/composer-skills";
 
 const SUGGESTIONS = [
   {
@@ -90,7 +91,7 @@ function slashCommands(input: {
       detail: `Use the ${skill.name} skill`,
       run: () => input.setSkillId(skill.id),
     })),
-  ].filter((item) => item.label.includes(input.query || "___"));
+  ].filter((item) => item.label.toLowerCase().includes(input.query.toLowerCase()));
 }
 
 export function Composer({ showSuggestions = false }: { showSuggestions?: boolean }) {
@@ -152,11 +153,20 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
   } = workspace;
   const harnesses = workspace.harnesses ?? [];
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const composerRef = useRef<HTMLDivElement>(null);
   const [menuIndex, setMenuIndex] = useState(0);
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [dropping, setDropping] = useState(false);
   const [caret, setCaret] = useState(0);
   const [menuDismissed, setMenuDismissed] = useState(false);
+  const menuId = useId();
+  const [picker, setPicker] = useState<"file" | "skill">();
+  const [pickerQuery, setPickerQuery] = useState("");
+  const [fileState, setFileState] = useState("Searching files…");
+  const [picking, setPicking] = useState(false);
+  const selectionScope = `${projectId}/${session?.id}/${draft}`;
+  const selectionScopeRef = useRef(selectionScope);
+  selectionScopeRef.current = selectionScope;
   /*
    * Which models this agent will run is something only the running agent can
    * say, so it is asked once per live session and remembered. Without this the
@@ -193,7 +203,18 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
   const folderPath = session?.workingDirectory || project?.workingDirectory;
   const folder = projectFolderName(folderPath);
   const trigger = detectTrigger(draft, caret);
-  const menuOpen = Boolean(trigger) && !menuDismissed;
+  const menuOpen = Boolean(picker || trigger) && !menuDismissed;
+  const searchKind = picker ?? trigger?.kind;
+  const searchQuery = picker ? pickerQuery : trigger?.query ?? "";
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (event: PointerEvent) => {
+      if (event.target instanceof Node && !composerRef.current?.contains(event.target)) { setPicker(undefined); setMenuDismissed(true); }
+    };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, [menuOpen]);
+  useEffect(() => { setPicker(undefined); setPickerQuery(""); setMenuDismissed(true); }, [projectId, session?.id]);
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -203,20 +224,24 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
   }, [draft]);
 
   useEffect(() => {
-    if (trigger?.kind !== "file" || !projectId) {
-      setFiles([]);
-      return;
-    }
-    void searchProjectFiles(projectId, trigger.query, folderPath)
-      .then((entries) => setFiles(entries))
-      .catch(() => setFiles([]));
-  }, [folderPath, projectId, trigger?.kind, trigger?.query]);
+    setFiles([]);
+    if (!menuOpen || searchKind !== "file") return;
+    if (!projectId || !folderPath) { setFileState("Attach a project folder to search its files."); return; }
+    let cancelled = false;
+    setFileState("Searching files…");
+    const timer = window.setTimeout(() => {
+      void searchProjectFiles(projectId, searchQuery, folderPath)
+        .then((entries) => { if (!cancelled) { setFiles(entries); setFileState("No matching files."); } })
+        .catch(() => { if (!cancelled) setFileState("File search failed. Change the query or reopen to retry."); });
+    }, 120);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [folderPath, projectId, searchKind, searchQuery, menuOpen]);
 
   const slashItems = useMemo<SuggestItem[]>(
     () =>
       slashCommands({
         harnesses,
-        skills,
+        skills: skills.filter((skill) => skill.status === "installed"),
         setSkillId,
         query: trigger?.kind === "slash" ? trigger.query : "___",
         createTask,
@@ -246,71 +271,66 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
 
   const skillItems = useMemo<SuggestItem[]>(
     () =>
-      skills
-        .filter((item) => {
-          if (trigger?.kind !== "skill") return false;
-          const needle = trigger.query.toLowerCase();
-          return (
-            item.name.toLowerCase().includes(needle) ||
-            item.id.toLowerCase().includes(needle) ||
-            item.packName?.toLowerCase().includes(needle) ||
-            item.description?.toLowerCase().includes(needle)
-          );
-        })
-        .slice(0, 12)
+      searchComposerSkills(skills, searchQuery)
         .map((item) => ({
           id: item.id,
-          label: `$${item.name}`,
-          detail: item.packName ? `${item.packName} · ${item.source}` : item.source,
-          insert: `$${item.name} `,
+          label: item.name,
+          detail: item.description,
+          badge: skillSource(item),
+          kind: "skill" as const,
           run: () => setSkillId(item.id),
         })),
-    [setSkillId, skills, trigger],
+    [setSkillId, skills, searchQuery],
   );
 
   const fileItems = useMemo<SuggestItem[]>(
     () =>
-      files.slice(0, 12).map((item) => ({
+      files.filter((item) => item.type === "file").slice(0, 40).map((item) => ({
         id: item.path,
-        label: item.path,
-        insert: `@${item.path} `,
+        label: item.name,
+        detail: item.path.includes("/") ? item.path.slice(0, item.path.lastIndexOf("/")) : "Project root",
+        kind: "file" as const,
+        run: async () => { if (!folderPath || !await attachFiles([`${folderPath.replace(/\/$/, "")}/${item.path}`])) throw new Error("File was not attached. Check the file or choose another."); },
       })),
-    [files],
+    [files, folderPath, attachFiles],
   );
 
   const items = !menuOpen
     ? []
-    : trigger?.kind === "slash"
+    : searchKind === "slash"
       ? slashItems
-      : trigger?.kind === "skill"
+      : searchKind === "skill"
         ? skillItems
-        : trigger?.kind === "file"
+        : searchKind === "file"
           ? fileItems
           : [];
 
   useEffect(() => {
     setMenuIndex(0);
     setMenuDismissed(false);
-  }, [trigger?.kind, trigger?.query]);
+  }, [searchKind, searchQuery]);
 
   function syncCaret() {
     const el = textareaRef.current;
     if (el) setCaret(el.selectionStart);
   }
 
-  function applyItem(item: SuggestItem) {
-    if (item.run) void item.run();
-    if (item.insert && trigger) {
-      const next = `${draft.slice(0, trigger.start)}${item.insert}${draft.slice(textareaRef.current?.selectionStart ?? draft.length)}`;
-      setDraft(next);
-      setCaret(trigger.start + item.insert.length);
-    } else if (trigger?.kind === "slash") {
-      const next = draft.slice(0, trigger.start) + draft.slice(textareaRef.current?.selectionStart ?? draft.length);
-      setDraft(next);
-      setCaret(trigger.start);
-    }
-    setMenuDismissed(true);
+  async function applyItem(item: SuggestItem) {
+    if (picking) return;
+    setPicking(true);
+    try {
+      await item.run?.();
+      if (selectionScopeRef.current !== selectionScope) return;
+      const position = !picker && trigger ? trigger.start + (item.insert?.length ?? 0) : caret;
+      if (!picker && trigger) setDraft(draft.slice(0, trigger.start) + (item.insert ?? "") + draft.slice(caret));
+      setPicker(undefined);
+      setMenuDismissed(true);
+      requestAnimationFrame(() => { textareaRef.current?.focus(); textareaRef.current?.setSelectionRange(position, position); setCaret(position); });
+    } catch (error) { workspace.setNotice(error instanceof Error ? error.message : String(error)); }
+    finally { setPicking(false); }
   }
+
+  function openPicker(kind: "file" | "skill") { setPicker(kind); setPickerQuery(""); setMenuDismissed(false); setMenuIndex(0); }
 
   function composing(event: { nativeEvent: { isComposing?: boolean }; keyCode?: number }) {
     return Boolean(event.nativeEvent.isComposing) || event.keyCode === 229;
@@ -326,7 +346,7 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
   const selectedHarness = harnesses.find((item) => item.id === agentId);
 
   return (
-    <div className={`composer composer-dock composer-overlay-corner-masks${busy ? " composer-dock--with-activity" : ""}`}>
+    <div ref={composerRef} className={`composer composer-dock composer-overlay-corner-masks${busy ? " composer-dock--with-activity" : ""}`}>
       {showSuggestions && (
         <div className="suggestions">
           {SUGGESTIONS.map((item) => (
@@ -395,16 +415,45 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
           } catch (error) { workspace.setNotice(error instanceof Error ? error.message : String(error)); }
         }}
       >
-        <ComposerMenu
+        {picker && <div className="composer-context-picker">
+          <div className="composer-context-tabs">
+            <button type="button" aria-pressed={picker === "skill"} onClick={() => openPicker("skill")}>Skills</button>
+            <button type="button" aria-pressed={picker === "file"} onClick={() => openPicker("file")}>Project files</button>
+            <button type="button" onClick={() => { setPicker(undefined); setMenuDismissed(true); textareaRef.current?.focus(); }} aria-label="Close context picker"><XIcon size={14} /></button>
+          </div>
+          <input autoFocus aria-label={picker === "skill" ? "Search skills" : "Search project files"} placeholder={picker === "skill" ? "Search skills by name or description…" : "Search files…"} value={pickerQuery}
+            role="combobox" aria-expanded="true" aria-autocomplete="list"
+            aria-controls={menuId} aria-activedescendant={items[menuIndex] ? `${menuId}-${menuIndex}` : undefined}
+            onChange={(event) => setPickerQuery(event.target.value)} onKeyDown={(event) => {
+              if (event.nativeEvent.isComposing) return;
+              if (event.key === "Escape") { event.preventDefault(); setPicker(undefined); setMenuDismissed(true); textareaRef.current?.focus(); }
+              if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setMenuIndex((current) => Math.max(0, Math.min(items.length - 1, current + (event.key === "ArrowDown" ? 1 : -1)))); }
+              if (event.key === "Enter" || (event.key === "Tab" && !event.shiftKey && items[menuIndex])) { event.preventDefault(); if (items[menuIndex]) void applyItem(items[menuIndex]); }
+            }} />
+          <ComposerMenu id={menuId} items={items} index={menuIndex} onHover={setMenuIndex} onPick={(item) => void applyItem(item)} empty={picker === "file" ? fileState : "No installed skills match. Browse Skills to install one."} />
+        </div>}
+        {!picker && <ComposerMenu
+          id={menuId}
           items={items}
           index={menuIndex}
           onHover={setMenuIndex}
-          onPick={applyItem}
-        />
+          onPick={(item) => void applyItem(item)}
+          empty={menuOpen ? searchKind === "file" ? fileState : searchKind === "skill" ? "No installed skills match." : "No matching commands." : undefined}
+        />}
+        {skillId && <div className="composer-context-chips">
+          <span className="composer-skill-chip" title={skills.find((item) => item.id === skillId)?.description}>
+            <span>Skill · {skills.find((item) => item.id === skillId)?.name ?? "Unavailable skill"}</span>
+            <button type="button" aria-label="Remove selected skill" onClick={() => setSkillId(undefined)}><XIcon size={12} /></button>
+          </span>
+          <button type="button" className="ghost" onClick={() => openPicker("skill")}>Change</button>
+        </div>}
         <textarea
           ref={textareaRef}
           rows={1}
           value={draft}
+          aria-label="Message"
+          aria-controls={!picker && menuOpen ? menuId : undefined}
+          aria-activedescendant={!picker && items[menuIndex] ? `${menuId}-${menuIndex}` : undefined}
           placeholder={
             harnessLive
                 ? `Continue with ${harnessDisplayName(harnesses, session?.harnessId)}…`
@@ -421,7 +470,7 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
             if (composing(event)) return;
             if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
               event.preventDefault();
-              if (draft.trim() || attachments.length > 0) {
+              if (draft.trim() || attachments.length > 0 || skillId) {
                 stashCurrentPrompt();
                 setStashOpen(false);
               } else {
@@ -446,14 +495,7 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
                 return;
               }
               if (event.key === "Enter" && !event.metaKey && !event.ctrlKey && !event.shiftKey) {
-                const token = trigger ? draft.slice(trigger.start).split(/\s/)[0] : "";
-                const onlyToken = Boolean(trigger && draft.trim() === token);
-                if (trigger?.kind === "slash" && onlyToken && items[menuIndex]) {
-                  event.preventDefault();
-                  applyItem(items[menuIndex]);
-                  return;
-                }
-                if ((trigger?.kind === "file" || trigger?.kind === "skill") && items[menuIndex] && onlyToken) {
+                if (items[menuIndex]) {
                   event.preventDefault();
                   applyItem(items[menuIndex]);
                   return;
@@ -465,6 +507,8 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
                 return;
               }
             }
+            if (menuOpen && event.key === "Escape") { event.preventDefault(); setMenuDismissed(true); return; }
+            if (menuOpen && event.key === "Enter" && !event.metaKey && !event.ctrlKey && !event.shiftKey) { event.preventDefault(); return; }
             if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
               event.preventDefault();
               if (event.shiftKey || sendOnEnter) void sendAndContinue();
@@ -540,14 +584,6 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
             )}
           </div>
         )}
-        {skillId && (
-          <div className="steer-row">
-            <span className="chip">Skill {skills.find((item) => item.id === skillId)?.name ?? skillId}</span>
-            <button className="chip" onClick={() => setSkillId(undefined)}>
-              Clear
-            </button>
-          </div>
-        )}
         {gatewayUnavailable && <GatewayBanner inset />}
         {sendBlockReason && !(gatewayUnavailable && sendBlockReason === GATEWAY_CONNECTION_REQUIRED) && (
           <div className="composer-preflight" role="status">
@@ -608,6 +644,7 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
             </div>
           </div>
           <div className="composer-actions-right">
+            <button type="button" className="icon-btn" title="Attach a skill or project file ($ / @)" aria-label="Add context" aria-expanded={Boolean(picker)} onClick={() => picker ? (setPicker(undefined), setMenuDismissed(true)) : openPicker("skill")}><span aria-hidden>＋</span></button>
             {capabilityHarness && <div className="composer-secondary-action"><CapabilityDetails compact harness={capabilityHarness} session={session} status={harnessStatus} /></div>}
             <button className="icon-btn" title="Attach files" aria-label="Attach files" onClick={() => void pickAttachments()}>
               <PaperclipIcon size={14} />
@@ -638,7 +675,7 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
               <button
                 className="send-btn"
                 aria-label="Send message"
-                disabled={busy || (!draft.trim() && attachments.length === 0) || Boolean(sendBlockReason)}
+                disabled={busy || picking || (!draft.trim() && attachments.length === 0 && !skillId) || Boolean(sendBlockReason)}
                 title={
                   sendBlockReason || (sendOnEnter
                     ? "Send · Enter · ⌘Enter starts another thread"
