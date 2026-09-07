@@ -70,6 +70,7 @@ window.addEventListener("unhandledrejection", (event) => {
  */
 const isDesktop = Boolean(window.capsule);
 const remoteToken = isDesktop ? undefined : await resolveRemoteToken();
+const isShowcase = !isDesktop && !remoteToken && new URLSearchParams(window.location.search).get("showcase") === "1";
 if (!isDesktop) {
   window.capsule = remoteToken ? createRemoteBridge(remoteToken) : createDemoBridge();
 }
@@ -87,7 +88,9 @@ const policy = isDesktop ? undefined : policyForPath(window.location.pathname);
 if (!isPet) {
   createRoot(root).render(
     <React.StrictMode>
-      {policy ? <PolicyPage slug={policy.slug} /> : isDesktop || remoteToken ? <App /> : <WebRoot />}
+      {policy ? <PolicyPage slug={policy.slug} />
+        : isShowcase ? <div className="showcase-preview" inert><App /></div>
+          : isDesktop || remoteToken ? <App /> : <WebRoot />}
     </React.StrictMode>,
   );
 }

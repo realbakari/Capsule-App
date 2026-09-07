@@ -695,3 +695,17 @@ Harness status is keyed by thread, harness, live session key, effective cwd and
 closed state. A response can publish only while that identity and request are
 current. Repeated reads share a pending request; a forced refresh cannot be
 overwritten by its predecessor. Project skill IDs include their canonical root.
+
+### Public showcase
+
+The marketing page embeds a lazy, same-origin `?showcase=1` iframe instead of
+mounting the desktop shell into its own document. The sample subtree is inert;
+the surrounding copy explicitly labels it read-only. Desktop shortcuts,
+full-height layout and overlays stay in the preview document. A sample bridge
+returns shaped read results and rejects unsupported operations. It does not
+connect to a Gateway or agent. Mobile omits the preview below 900px.
+
+`scripts/showcase-regressions.test.mjs` exercises the real public entry point
+in an isolated Electron profile with external traffic blocked: desktop sample,
+mobile overflow, unsupported writes and policy routes. It is a DOM check,
+not a deployment or a live-harness verification.

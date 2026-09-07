@@ -1,17 +1,11 @@
 import { useState } from "react";
-import App from "../../App";
 import { CheckIcon, CopyIcon } from "../shell/icons";
 
 const REPO = "https://github.com/realbakari/Capsule-App";
 const CLONE_COMMAND =
   "git clone https://github.com/realbakari/Capsule-App.git && cd Capsule-App && pnpm install && pnpm dev";
 
-/*
- * The harnesses Capsule drives, with the CLI it spawns through acpx. Mirrored
- * from PRESET_HARNESSES rather than imported: the shared barrel reaches
- * node:crypto, which cannot bundle for a browser context. Keep these in step
- * with packages/shared/src/harness.ts.
- */
+/** A compact public selection; runtime readiness is checked by the desktop. */
 const HARNESSES: Array<{ name: string; cli: string }> = [
   { name: "Claude Code", cli: "claude" },
   { name: "Codex", cli: "codex" },
@@ -77,7 +71,7 @@ export function LandingPage({ demo = true }: { demo?: boolean }) {
             Read the source ↗
           </a>
         </div>
-        <p className="site-note">Apple Silicon and Intel · macOS 13+</p>
+        <p className="site-note">macOS · See release assets for supported architectures</p>
       </section>
 
       {demo && (
@@ -90,11 +84,12 @@ export function LandingPage({ demo = true }: { demo?: boolean }) {
                 <span className="traffic-dot minimize" />
                 <span className="traffic-dot maximize" />
               </div>
-              <App />
+              <iframe className="site-preview" src="/?showcase=1" title="Capsule sample workspace preview"
+                loading="lazy" sandbox="allow-scripts allow-same-origin" />
             </div>
           </div>
           <p className="site-note site-shot-note">
-            The real interface on sample data. Nothing here reaches a gateway or your disk.
+            A read-only preview of the real interface on sample data. Download Capsule to use the workspace.
           </p>
         </section>
       )}

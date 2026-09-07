@@ -8169,6 +8169,17 @@ button.shortcut-keys.capturing {
 .site-section h2 {
   margin: 0 0 0.9rem;
   font-size: clamp(1.6rem, 3.5vw, 2.1rem);
+.site-preview {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.showcase-preview {
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+}
   line-height: 1.15;
   letter-spacing: -0.02em;
   font-weight: 600;

@@ -1,12 +1,12 @@
 import type { CapsuleApi } from "../../../../preload/index";
+import { DEFAULT_CAPSULE_SETTINGS, PRESET_HARNESSES, summarizeRun } from "@capsule/shared";
 
 /*
  * A read-only stand-in for the Electron preload bridge, used only on the web
  * URL. It lets the landing page mount the real application shell with a
- * representative conversation instead of describing the app in prose — the
- * product demonstrates itself, the way tax-ui.brianlovin.com does.
+ * representative conversation instead of describing the app in prose.
  *
- * Every write is a no-op and every read returns canned data: nothing here
+ * Writes are unavailable and reads return explicitly shaped sample data: nothing here
  * reaches a gateway, a filesystem, or a database.
  */
 const now = Date.now();
@@ -34,6 +34,7 @@ const SESSION = {
   state: "active" as const,
   harnessId: "claude",
   harnessState: "waiting",
+  openclawSessionKey: "agent:claude:acp:demo",
   createdAt: at(30),
   updatedAt: at(3),
 };
@@ -66,6 +67,7 @@ const RUN = {
   createdAt: at(9),
   updatedAt: at(7),
   completedAt: at(7),
+  result: MESSAGES[1]!.content,
 };
 
 const EVENTS = [
@@ -99,12 +101,16 @@ const STATUS = {
   activeRunCount: 0,
 };
 
-/** Builds the demo bridge. Anything not named here resolves to an empty list. */
+/** Missing capabilities fail explicitly; an empty array is not a valid status. */
 export function createDemoBridge(): CapsuleApi {
   const ok = <T,>(value: T) => Promise.resolve(value);
   const api: Record<string, unknown> = {
+    isDesktop: false,
     homeDir: "/Users/you",
     on: () => () => undefined,
+    windowBackground: () => ok(undefined),
+    rendererReady: () => ok(undefined),
+    isFullscreen: () => ok(false),
     getStatus: () => ok(STATUS),
     runtimeStatus: () => ok(STATUS),
     getSubsystemStatus: () =>
@@ -121,14 +127,35 @@ export function createDemoBridge(): CapsuleApi {
     listMessages: () => ok(MESSAGES),
     listMessagePage: () => ok({ messages: MESSAGES, hasMore: false }),
     listRuns: () => ok([RUN]),
+    getRun: (id: string) => ok(id === RUN.id ? RUN : undefined),
+    listLatestRuns: () => ok([summarizeRun(RUN)]),
+    listRunPage: () => ok({ runs: [summarizeRun(RUN)], hasMore: false }),
     listRunEvents: () => ok(EVENTS),
     listRunEventPage: () => ok({ events: EVENTS, hasMore: false }),
     listAgents: () => ok([{ id: "claude", name: "Claude Code" }]),
+    listHarnesses: () => ok(PRESET_HARNESSES.filter((item) => item.id === "claude").map((preset) => ({
+      ...preset, installed: true, readiness: "ready", runtimeRoute: "gateway", detail: "Sample workspace",
+    }))),
+    harnessStatus: () => ok({ session: { id: SESSION.id, projectId: PROJECT.id }, harnessId: "claude",
+      openclawSessionKey: SESSION.openclawSessionKey, state: "waiting", parsed: {} }),
+    listSkills: () => ok([]),
+    listSkillPacks: () => ok([]),
+    listArtifacts: () => ok([]),
+    listApprovals: () => ok([]),
+    listProjectActionRuns: () => ok([]),
+    listTerminalSessions: () => ok([]),
+    listFiles: () => ok([]),
+    listLocalServers: () => ok([]),
+    contextUsage: () => ok(undefined),
     gitStatus: () => ok(GIT),
     gitDiff: () => ok(""),
-    getSettings: () => ok({ gatewayUrl: "ws://127.0.0.1:18789" }),
+    getSettings: () => ok({ ...DEFAULT_CAPSULE_SETTINGS, appearanceTheme: "dark" }),
   };
   return new Proxy(api, {
-    get: (target, key) => (key in target ? target[key as string] : () => ok([])),
+    get: (target, key) => {
+      if (key in target) return target[key as string];
+      if (typeof key !== "string" || key === "then") return undefined;
+      return () => Promise.reject(new Error("This is a sample workspace. Open the desktop app to use this action."));
+    },
   }) as unknown as CapsuleApi;
 }

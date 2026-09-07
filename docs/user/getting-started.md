@@ -24,3 +24,10 @@ committing or pushing.
 
 Learn more: [Drafts and attachments](composer.md), [projects and previews](projects-and-previews.md),
 [checking a turn](verification.md), and [restoring a turn](checkpoints.md).
+
+## Public preview
+
+The website shows a read-only sample of the interface, not a running agent or
+your own workspace. Its displayed project, conversation and connection state
+are sample data. Download the desktop app to send messages or use workspace
+controls. On smaller screens, the website omits this desktop preview.

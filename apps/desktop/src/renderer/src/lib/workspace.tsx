@@ -626,7 +626,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
         const fallbackAgent = nextAgents[0]?.id;
         if (fallbackAgent) setAgentId(fallbackAgent);
       }
-      const selectedProject = projectId ?? nextProjects[0]?.id;
+      const selectedProject = nextProjects.some((item: Project) => item.id === projectId) ? projectId : nextProjects[0]?.id;
       if (selectedProject && selectedProject !== projectId) {
         applyProjectDefaults(nextProjects.find((item: Project) => item.id === selectedProject), nextHarnesses);
         setProjectId(selectedProject);
@@ -641,7 +641,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       setSessions(nextSessions);
       setHarnessSessions(nextHarnessSessions);
       if (runsCurrent()) setProjectRuns(mergeRuns(nextRuns, [...liveRunState.runs.values()]));
-      if (!sessionId) {
+      if (!sessionId || !nextSessions.some((item: Session) => item.id === sessionId)) {
         const savedSessionId = (() => {
           try {
             return localStorage.getItem(LAST_SESSION_ID_KEY) || undefined;
