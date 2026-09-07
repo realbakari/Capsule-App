@@ -690,3 +690,8 @@ and ID, 100 rows by default and at most 200. Result bodies are omitted and
 `hasResult` preserves answer presence without retaining whole histories. The
 new IPC channels are explicitly read-only for paired viewers. Full run details
 remain available by ID; this is not a deletion or archive policy.
+
+Harness status is keyed by thread, harness, live session key, effective cwd and
+closed state. A response can publish only while that identity and request are
+current. Repeated reads share a pending request; a forced refresh cannot be
+overwritten by its predecessor. Project skill IDs include their canonical root.

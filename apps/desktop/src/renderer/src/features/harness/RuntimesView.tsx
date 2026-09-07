@@ -14,6 +14,7 @@ import { Switch } from "../settings/controls";
 import { formatProjectRoot } from "../../lib/paths";
 import { useWorkspace } from "../../lib/workspace";
 import { HarnessSessionDiagnostics } from "./HarnessSessionDiagnostics";
+import { harnessStatusIdentity } from "../../lib/harness-status-cache";
 
 function canSpawn(readiness: string): boolean {
   return readiness === "ready" || readiness === "dedicated" || readiness === "running";
@@ -96,12 +97,13 @@ export function RuntimesView() {
 
   useEffect(() => {
     const id = configuredSession?.id;
-    if (!id || harnessStatuses[id] || requestedStatuses.current.has(id)) return;
-    requestedStatuses.current.add(id);
+    const identity = configuredSession ? harnessStatusIdentity(configuredSession, project) : "";
+    if (!id || harnessStatuses[id] || requestedStatuses.current.has(identity)) return;
+    requestedStatuses.current.add(identity);
     void refreshHarnessStatus(id).catch(() => {
-      requestedStatuses.current.delete(id);
+      requestedStatuses.current.delete(identity);
     });
-  }, [configuredSession?.id, harnessStatuses, refreshHarnessStatus]);
+  }, [configuredSession, project, harnessStatuses, refreshHarnessStatus]);
 
   return (
     <section className="panel">

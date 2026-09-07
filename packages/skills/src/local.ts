@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { createHash } from "node:crypto";
 
 import type { FileEntry, Skill } from "@capsule/shared";
 import { parseSkillDoc } from "./github.js";
@@ -145,7 +146,12 @@ function globalSkillId(root: GlobalSkillRoot, relativeDirectory: string): string
     .replaceAll("\\", "/")
     .replace(/[^a-zA-Z0-9._/-]+/g, "-")
     .replaceAll("/", ":");
-  return `global:${root.id}:${suffix}`;
+  // Project paths are part of a document's identity. Reusing a relative name
+  // after switching worktrees must not silently attach another SKILL.md.
+  const projectScope = root.id.startsWith("project-")
+    ? `:${createHash("sha256").update(fs.realpathSync(root.directory)).digest("hex").slice(0, 16)}`
+    : "";
+  return `global:${root.id}${projectScope}:${suffix}`;
 }
 
 /**

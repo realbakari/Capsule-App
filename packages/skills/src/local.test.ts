@@ -106,6 +106,15 @@ describe("discoverGlobalSkills", () => {
 });
 
 describe("skills a project carries", () => {
+  it("gives identically named skills different identities in different worktrees", () => {
+    const ids = [fixture().directory, fixture().directory].map((repository) => {
+      const directory = path.join(repository, ".claude", "skills", "review");
+      fs.mkdirSync(directory, { recursive: true });
+      fs.writeFileSync(path.join(directory, "SKILL.md"), "# Review\n");
+      return discoverGlobalSkills(projectSkillRoots(repository))[0]!.id;
+    });
+    expect(ids[0]).not.toBe(ids[1]);
+  });
   it("finds a skill checked into the repository", () => {
     const repository = fs.mkdtempSync(path.join(os.tmpdir(), "capsule-project-skill-"));
     const skillDirectory = path.join(repository, ".claude", "skills", "release");

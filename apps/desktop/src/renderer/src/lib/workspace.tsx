@@ -1,5 +1,6 @@
 import { applyAppearance } from "./appearance";
 import { RequestScope } from "./request-scope";
+import { HarnessStatusCache, harnessStatusIdentity } from "./harness-status-cache";
 import { batchRunFrames, mergeMessagePage, mergeRunEvents, mergeRuns } from "./run-updates";
 import { boundRunEvents, compactRunEvent, runEventBytes, LIVE_EVENT_LIMIT, LIVE_EVENT_BYTES, localTimings, summarizeRun } from "@capsule/shared";
 import { useScopedState } from "./scoped-state";
@@ -403,9 +404,17 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   const [harnesses, setHarnesses] = useState<HarnessStatus[]>([]);
   const [harnessSessions, setHarnessSessions] = useState<Session[]>([]);
   const [doctors, setDoctors] = useState<Partial<Record<string, HarnessDoctorReport>>>({});
-  const [harnessStatuses, setHarnessStatuses] = useState<
-    Partial<Record<string, HarnessLiveStatus>>
-  >({});
+  const statusCache = useRef(new HarnessStatusCache()).current;
+  const [statusVersion, renderStatus] = useState(0);
+  const statusContext = useRef({ sessions, projects });
+  statusContext.current = { sessions, projects };
+  const harnessStatuses = useMemo(() => {
+    const values: Partial<Record<string, HarnessLiveStatus>> = {};
+    for (const thread of sessions) {
+      values[thread.id] = statusCache.get(thread, projects.find((project) => project.id === thread.projectId));
+    }
+    return values;
+  }, [sessions, projects, statusCache, statusVersion]);
   const [notice, setNotice] = useScopedState<string | undefined>(scope, undefined);
   const [steerDraft, setSteerDraft] = useState("");
   const [git, setGit] = useScopedState<GitStatus | undefined>(scope, undefined);
@@ -1559,18 +1568,29 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
    */
   async function loadHarnessStatus(id: string) {
     try {
-      const live = await api.harnessStatus(id) as HarnessLiveStatus;
-      setHarnessStatuses((current) => ({ ...current, [id]: live }));
+      await readHarnessStatus(id);
     } catch {
       // A status we could not read means no model list, not a broken thread.
     }
   }
 
+  async function readHarnessStatus(id: string, force = false) {
+    const context = statusContext.current;
+    const thread = context.sessions.find((item) => item.id === id);
+    if (!thread) return;
+    const project = context.projects.find((item) => item.id === thread.projectId);
+    const changed = await statusCache.load(thread, project, () => api.harnessStatus(id), () => {
+      const current = statusContext.current;
+      const live = current.sessions.find((item) => item.id === id);
+      return live ? harnessStatusIdentity(live, current.projects.find((item) => item.id === live.projectId)) : undefined;
+    }, force);
+    if (changed) renderStatus((value) => value + 1);
+  }
+
   async function refreshHarnessStatus(id?: string) {
     const target = id ?? sessionId;
     if (!target) return;
-    const live = await api.harnessStatus(target) as HarnessLiveStatus;
-    setHarnessStatuses((current) => ({ ...current, [target]: live }));
+    await readHarnessStatus(target, true);
     await refresh();
   }
 

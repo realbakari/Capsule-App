@@ -28,6 +28,10 @@ The same folder is used when inspecting **Files** and attaching the instructions
 If a selected skill has disappeared, sending fails visibly instead of silently
 omitting it.
 
+Project skills belong to their folder, not only to their name. After changing
+the conversation's folder, reselect the skill from that folder. Capsule will
+not substitute a same-named skill from another checkout for a saved selection.
+
 Global skills remain owned by their CLI: Capsule can inspect and attach them,
 but it does not move or uninstall their files. Skills installed through
 Capsule appear separately in **Capsule library**. Long installed lists start
