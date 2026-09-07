@@ -480,7 +480,7 @@ export function Conversation() {
                     />
                   ))}
                     {(turnOutcomes.get(turn.id) ?? []).map((run) => <Fragment key={run.id}>
-                      {run.status === "completed" && !run.result?.trim() && !turn.messages.some((message) => message.role === "assistant") && <p className="muted turn-missing-reply" role="status">No reply was received for this turn. Review the work log before retrying.</p>}
+                      {run.status === "completed" && !run.hasResult && !run.result?.trim() && !turn.messages.some((message) => message.role === "assistant") && <p className="muted turn-missing-reply" role="status">No reply was received for this turn. Review the work log before retrying.</p>}
                       <TurnOutcome run={run} cwd={terminalCwd} />
                       {run.id !== summaryRun?.id && <RunSummary run={run} label="Turn details">
                         <RunEventLog runId={run.id} failed={run.status === "failed" || run.status === "blocked"} />

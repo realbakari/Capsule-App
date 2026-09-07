@@ -2,7 +2,8 @@ import { EventEmitter } from "node:events";
 import { checkRun } from "./run-verification.js";
 import { FolderActivity, foldersOverlap } from "./folder-activity.js";
 import type { VerificationResult } from "@capsule/shared";
-import { localTimings } from "@capsule/shared";
+import { localTimings, TextBudget, OUTPUT_LIMIT_ERROR } from "@capsule/shared";
+import { ResultWriter } from "./result-writer.js";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
@@ -159,7 +160,6 @@ import {
   type WorkspaceMode,
   FENCE_LABELS,
   fenceUntrusted,
-  isReplyAlreadyRecorded,
 } from "@capsule/shared";
 import {
   DEFAULT_SKILLS,
@@ -259,7 +259,14 @@ export class CapsuleEngine {
   private stopped = false;
   /** True only for the in-process test double. Never in a shipped app. */
   private readonly usingMock: boolean;
-  private acpBuffers = new Map<string, string>();
+  private readonly replyBuffers = new TextBudget();
+  private readonly ignoredReplySessions = new Set<string>();
+  private readonly resultWriter = new ResultWriter(this.replyBuffers, (id, result) => {
+    const run = this.repos.getRun(id);
+    if (!run || run.completedAt) return;
+    run.result = result;
+    this.repos.updateRun(run);
+  });
   private acpUnsub?: () => void;
   private prWatchers = new Map<string, ReturnType<typeof setInterval>>();
   private prFixFingerprints = new Map<string, string>();
@@ -351,6 +358,9 @@ export class CapsuleEngine {
     for (const process of this.actionProcesses.values()) process.stop();
     this.actionProcesses.clear();
     this.acpUnsub?.();
+    this.resultWriter.finishAll();
+    this.replyBuffers.clear();
+    this.ignoredReplySessions.clear();
     await this.runtime.disconnect().catch(() => undefined);
     this.db.close();
   }
@@ -852,7 +862,7 @@ export class CapsuleEngine {
     session.harnessState = "closed";
     session.updatedAt = nowIso();
     this.repos.updateSession(session);
-    if (session.openclawSessionKey) this.acpBuffers.delete(session.openclawSessionKey);
+    if (session.openclawSessionKey) this.replyBuffers.delete(`acp:${session.openclawSessionKey}`);
     this.log(`Closed harness session ${session.id}`);
     this.events.emit("state", { command: "harness-updated" });
     return { session, command: "/acp close", detail: "ACP session closed." };
@@ -1042,7 +1052,7 @@ export class CapsuleEngine {
     }
     // A user refresh bypasses the TTL but shares an already-running read.
     // Keep the last good list with an error when the new reading fails.
-    const cached = pollPullRequestList(cwd, refresh);
+    const cached = await pollPullRequestList(cwd, refresh);
     if (cached.known && !cached.stale && !refresh) return { items: cached.value };
     // Nothing cached yet, so wait for the refresh already under way rather
     // than starting a second identical lookup beside it.
@@ -1556,8 +1566,7 @@ export class CapsuleEngine {
   }
 
   async sendMessage(input: AgentMessage): Promise<{ session: Session; run: Run; userMessage: ChatMessage; }> {
-    if (this.admittingSessions.has(input.sessionId) || this.listRuns(input.sessionId).some((run) =>
-      ["queued", "running", "waiting", "approval_required"].includes(run.status))) {
+    if (this.admittingSessions.has(input.sessionId) || this.repos.findReplyRun(input.sessionId)) {
       throw new Error("This thread already has an active turn. Stop it or wait before sending another message.");
     }
     const thread = this.requireSession(input.sessionId);
@@ -1573,6 +1582,7 @@ export class CapsuleEngine {
 
   private async sendAdmittedMessage(input: AgentMessage): Promise<{ session: Session; run: Run; userMessage: ChatMessage; }> {
     let session = this.requireSession(input.sessionId);
+    if (session.openclawSessionKey) this.ignoredReplySessions.delete(session.openclawSessionKey);
     const project = this.requireProject(session.projectId);
     const startingCwd = this.cwdFor(session, project);
     if ([...this.verificationPending.values()].some((check) => check.cwd === startingCwd)) {
@@ -1758,7 +1768,7 @@ export class CapsuleEngine {
               id: createId("evt"),
               runId: run.id,
               timestamp: nowIso(),
-              type: outcome.status === "completed" ? "run.completed" : "run.failed",
+              type: "lifecycle",
               message: outcome.error ?? "",
               data: { status: outcome.status, ...(outcome.error ? { error: outcome.error } : {}) },
             },
@@ -1774,7 +1784,7 @@ export class CapsuleEngine {
               id: createId("evt"),
               runId: run.id,
               timestamp: nowIso(),
-              type: "run.failed",
+              type: "lifecycle",
               message: detail,
               data: { status: "failed", error: detail },
             },
@@ -1822,6 +1832,11 @@ export class CapsuleEngine {
     } else {
       await this.runtime.cancelRun(run.openclawRunId ?? run.id);
     }
+    run.result = this.resultWriter.finish(runId) ?? run.result;
+    if (session.openclawSessionKey) {
+      const reply = this.replyBuffers.take(`acp:${session.openclawSessionKey}`);
+      if (reply) run.result = reply;
+    }
     run.status = "cancelled";
     run.updatedAt = nowIso();
     run.completedAt = nowIso();
@@ -1840,9 +1855,22 @@ export class CapsuleEngine {
     return this.repos.listRuns(sessionId);
   }
 
+  listRunPage(query: import("@capsule/shared").RunHistoryQuery = {}) {
+    if (!query || typeof query !== "object" ||
+      (query.limit !== undefined && (!Number.isInteger(query.limit) || query.limit < 1)) ||
+      (query.sessionId !== undefined && typeof query.sessionId !== "string") ||
+      (query.projectId !== undefined && typeof query.projectId !== "string") ||
+      (query.before !== undefined && (!query.before || typeof query.before.id !== "string" || typeof query.before.createdAt !== "string"))) {
+      throw new Error("Invalid run history query.");
+    }
+    return this.repos.listRunPage(query);
+  }
+
   listLatestRunStates() {
     return this.repos.listLatestRunStates();
   }
+
+  listLatestRuns() { return this.repos.listLatestRuns(); }
 
   listRunEvents(runId: string): RunEvent[] {
     return this.repos.listRunEvents(runId);
@@ -2260,7 +2288,7 @@ export class CapsuleEngine {
     const activity = this.direct.onActivity((payload) => {
       if (this.stopped) { if (payload.type === "permission") payload.request.deny(); return; }
       const session = this.repos.listSessions().find((item) => item.openclawSessionKey === payload.sessionKey);
-      const run = session && this.listRuns(session.id).find((item) => ["running", "waiting", "approval_required"].includes(item.status));
+      const run = session && this.repos.findReplyRun(session.id);
       if (!run) { if (payload.type === "permission") payload.request.deny(); return; }
       if (payload.type === "tool") {
         this.appendEvent(run.id, "tool", payload.tool.title, { ...payload.tool });
@@ -2307,6 +2335,7 @@ export class CapsuleEngine {
     timestamp?: number;
   }): void {
     if (this.stopped || !payload.sessionKey) return;
+    if (this.ignoredReplySessions.has(payload.sessionKey)) return;
     if (payload.control) return;
     // Behind the control marking: a status dump is recognisable on its own, so
     // a frame that slips past the marking still cannot become a message.
@@ -2315,22 +2344,24 @@ export class CapsuleEngine {
       .listSessions()
       .find((item) => item.openclawSessionKey === payload.sessionKey);
     if (!session) return;
-    if (payload.text) {
-      const prev = this.acpBuffers.get(payload.sessionKey) ?? "";
-      this.acpBuffers.set(payload.sessionKey, payload.snapshot ? payload.text : `${prev}${payload.text}`);
+    const timestamp = Number.isFinite(payload.timestamp) ? payload.timestamp! : Date.now();
+    const replyRun = () => this.repos.findReplyRun(session.id, payload.snapshot ? new Date(timestamp).toISOString() : undefined);
+    const bufferKey = `acp:${payload.sessionKey}`;
+    try {
+      if (payload.text) this.replyBuffers.append(bufferKey, payload.text, payload.snapshot);
+    } catch {
+      const run = replyRun();
+      const prefix = this.replyBuffers.take(bufferKey);
+      if (run && !run.completedAt) this.failOutputLimit(session, run, prefix);
+      else this.log("Ignored an oversized historical reply; no active turn was cancelled.");
+      return;
     }
     if (!payload.done) return;
-    const content = (this.acpBuffers.get(payload.sessionKey) ?? payload.text ?? "").trim();
-    this.acpBuffers.delete(payload.sessionKey);
+    const content = this.replyBuffers.take(bufferKey).trim();
     if (isAcpControlOutput(content)) return;
     if (content.length < 2) return;
-    const timestamp = payload.timestamp ?? Date.now();
-    const runHistory = this.repos.listRuns(session.id);
-    const active = payload.snapshot
-      ? runHistory.find((run) => Date.parse(run.createdAt) <= timestamp)
-      : runHistory.find((run) => ["running", "waiting", "queued", "approval_required"].includes(run.status));
+    const active = replyRun();
     if (isDirectSessionKey(payload.sessionKey) && !active) return;
-    const messages = this.repos.listMessages(session.id);
     /*
      * The same reply reaches here twice — streamed, then as a snapshot — and
      * only the first should become a message. This used to ask whether the
@@ -2338,7 +2369,7 @@ export class CapsuleEngine {
      * is a question about position rather than about the reply, and it let
      * duplicates through.
      */
-    if (isReplyAlreadyRecorded(messages, content, active?.id)) return;
+    if (this.repos.hasRecordedReply(session.id, content, active?.id)) return;
     /*
      * The reply belongs to the turn that asked for it. Nothing linked them, so
      * the run finished with no result — and the contract's only decisive check
@@ -2354,22 +2385,26 @@ export class CapsuleEngine {
       ...(active ? { runId: active.id } : {}),
       createdAt: new Date(timestamp).toISOString(),
     };
-    this.repos.insertMessage(message);
-    this.events.emit("message", message);
     if (active) {
-      if (!active.result?.endsWith(content)) {
-        active.result = active.result ? `${active.result}\n${content}` : content;
+      try {
+        active.result = this.resultWriter.recordReply(active.id, content, active.result);
+      } catch {
+        if (!active.completedAt) this.failOutputLimit(session, active, active.result);
+        else this.log("Ignored an oversized historical reply; no active turn was cancelled.");
+        return;
       }
+      if (active.completedAt) this.resultWriter.discard(active.id);
       active.updatedAt = nowIso();
       this.repos.updateRun(active);
       this.events.emit("run", active);
     }
+    this.repos.insertMessage(message);
+    this.events.emit("message", message);
     const failed = acpCommandFailed(content);
     if (!failed) return;
-    const running = this.repos
-      .listRuns(session.id)
-      .find((run) => ["running", "waiting"].includes(run.status));
+    const running = this.repos.findReplyRun(session.id);
     if (!running) return;
+    this.resultWriter.discard(running.id);
     running.status = "failed";
     running.error = failed;
     running.result = content;
@@ -2451,6 +2486,35 @@ export class CapsuleEngine {
     }
   }
 
+  private failOutputLimit(session: Session, run: Run, prefix?: string): void {
+    this.resultWriter.discard(run.id);
+    if (session.openclawSessionKey) {
+      this.ignoredReplySessions.add(session.openclawSessionKey);
+      this.replyBuffers.delete(`acp:${session.openclawSessionKey}`);
+    }
+    run.status = "failed";
+    run.error = OUTPUT_LIMIT_ERROR;
+    run.result = prefix || run.result;
+    run.updatedAt = nowIso();
+    run.completedAt = nowIso();
+    this.repos.updateRun(run);
+    this.settleDirectApprovals(run.id);
+    this.appendEvent(run.id, "lifecycle", OUTPUT_LIMIT_ERROR, { status: "failed", error: OUTPUT_LIMIT_ERROR });
+    this.events.emit("run", run);
+    const cancel = isDirectSessionKey(session.openclawSessionKey)
+      ? this.direct.cancelAcp(session.openclawSessionKey!)
+      : this.runtime.cancelRun(run.openclawRunId ?? run.id);
+    void cancel.then(() => {
+      if (this.stopped) return;
+      const current = this.repos.getSession(session.id);
+      if (!current || current.openclawSessionKey !== session.openclawSessionKey || this.repos.findReplyRun(session.id)) return;
+      current.harnessState = "waiting";
+      current.updatedAt = nowIso();
+      this.repos.updateSession(current);
+      this.events.emit("state", { command: "harness-updated" });
+    }).catch((error) => this.log(`Output-limit cancellation failed: ${String(error)}`));
+  }
+
   private async handleRuntimeEvent(
     session: Session, run: Run, event: RunEvent, stop: () => void,
   ): Promise<void> {
@@ -2469,13 +2533,15 @@ export class CapsuleEngine {
       stop();
       return;
     }
-    const storedRun = this.repos.getRun(run.id);
+    const storedRun = event.type === "assistant" ? this.repos.getRunProgress(run.id) : this.repos.getRun(run.id);
     // Late runtime frames must not erase receipts saved by a separate action.
     if (storedRun) {
       run.result = storedRun.result ?? run.result;
-      run.checkpointRef = storedRun.checkpointRef;
-      run.revision = storedRun.revision;
-      run.verification = storedRun.verification;
+      if (event.type !== "assistant") {
+        run.checkpointRef = storedRun.checkpointRef;
+        run.revision = storedRun.revision;
+        run.verification = storedRun.verification;
+      }
       if (storedRun.completedAt) {
         stop();
         return;
@@ -2501,12 +2567,18 @@ export class CapsuleEngine {
     }
 
     if (event.type === "assistant" && event.message) {
-      run.result = `${run.result ?? ""}${event.message}`;
-      this.repos.updateRun(run);
+      try {
+        this.resultWriter.append(run.id, event.message);
+      } catch {
+        stop();
+        this.failOutputLimit(session, run, this.resultWriter.finish(run.id));
+      }
+      return;
     }
 
     const status = event.data?.status;
     if (event.type === "lifecycle" && (status === "completed" || status === "failed" || status === "cancelled")) {
+      run.result = this.resultWriter.finish(run.id) ?? run.result;
       this.settleDirectApprovals(run.id);
       stop();
       run.status = status;
@@ -2514,7 +2586,15 @@ export class CapsuleEngine {
       run.completedAt = nowIso();
       // A lifecycle-only end frame has no answer; it must not erase prose
       // already delivered by the stream or a persisted session.message.
-      if (typeof event.data?.output === "string" && event.data.output.trim()) run.result = event.data.output;
+      if (typeof event.data?.output === "string" && event.data.output.trim()) {
+        try {
+          this.replyBuffers.append(`run:${run.id}`, event.data.output, true);
+          run.result = this.replyBuffers.take(`run:${run.id}`);
+        } catch {
+          this.failOutputLimit(session, run, run.result);
+          return;
+        }
+      }
       if (typeof event.data?.error === "string") run.error = event.data.error;
       this.captureTurnCheckpoint(run, session);
       /*
@@ -2567,17 +2647,8 @@ export class CapsuleEngine {
          * filled in.
          */
         if (contract && !run.result?.trim()) {
-          const since = Date.parse(run.createdAt);
-          run.result = this.repos
-            .listMessages(session.id)
-            .filter(
-              (item) =>
-                item.role === "assistant" &&
-                (item.runId === run.id || Date.parse(item.createdAt) >= since),
-            )
-            .map((item) => item.content)
-            .join("\n")
-            .trim();
+          try { run.result = this.repos.readReplyText(session.id, run.id, run.createdAt).trim(); }
+          catch { this.failOutputLimit(session, run); return; }
         }
         if (contract) {
           const verification = verifyContract({
@@ -2597,10 +2668,12 @@ export class CapsuleEngine {
           run.result = undefined;
         }
         if (run.result) {
-          const replies = this.repos.listMessages(session.id).filter((item) => item.role === "assistant" && item.runId === run.id);
+          let replies: string;
+          try { replies = this.repos.readReplyText(session.id, run.id); }
+          catch { this.failOutputLimit(session, run); return; }
           // Persisted assistant snapshots may include commentary and a final
           // reply. Their aggregate is the result, not a third chat message.
-          if (!replies.some((item) => item.content === run.result) && replies.map((item) => item.content).join("\n") !== run.result) {
+          if (replies !== run.result && !this.repos.hasRecordedReply(session.id, run.result, run.id)) {
             const assistantMessage: ChatMessage = {
               id: createId("msg"),
               sessionId: session.id,

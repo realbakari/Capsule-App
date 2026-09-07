@@ -30,7 +30,9 @@ it("keeps renderer interactions recoverable and companion motion accessible", { 
       let output = "";
       child.stdout.on("data", (data) => { output += data; });
       child.stderr.on("data", (data) => { output += data; });
-      const timer = setTimeout(() => { child.kill(); }, 20_000);
+      // A wedged renderer can prevent graceful Electron shutdown. This PID
+      // belongs to this test and uses its disposable profile.
+      const timer = setTimeout(() => { child.kill("SIGKILL"); }, 20_000);
       child.on("error", (error) => { clearTimeout(timer); reject(error); });
       child.on("exit", (code, signal) => { clearTimeout(timer); resolve({ code, output: `${output}\nExit signal: ${signal ?? "none"}` }); });
     });

@@ -320,4 +320,13 @@ export const MIGRATIONS: Array<{ version: number; sql: string; }> = [
     version: 14,
     sql: `CREATE INDEX IF NOT EXISTS idx_runs_session_created ON runs(session_id, created_at);`,
   },
+  {
+    version: 15,
+    sql: `
+      CREATE INDEX IF NOT EXISTS idx_runs_history ON runs(created_at DESC, id DESC);
+      CREATE INDEX IF NOT EXISTS idx_runs_session_history ON runs(session_id, created_at DESC, id DESC);
+      CREATE INDEX IF NOT EXISTS idx_runs_project_history ON runs(project_id, created_at DESC, id DESC);
+      CREATE INDEX IF NOT EXISTS idx_messages_reply ON messages(session_id, run_id, role);
+    `,
+  },
 ];

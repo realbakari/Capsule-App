@@ -1,7 +1,9 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { EventEmitter } from "node:events";
+import { StringDecoder } from "node:string_decoder";
 
 import type { AcpModelCatalog, DelegationDetails } from "@capsule/shared";
+import { TextBudget } from "@capsule/shared";
 import { readCliError } from "./errors.js";
 import {
   ACP_PROTOCOL_VERSION,
@@ -11,7 +13,6 @@ import {
   readPermissionRequest,
   readSessionUpdate,
   readStopReason,
-  splitLines,
   type JsonRpcMessage,
   readModelCatalog,
 } from "./protocol.js";
@@ -43,6 +44,7 @@ export interface DirectAcpEvents {
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000;
+export const MAX_ACP_FRAME_BYTES = 4 * 1024 * 1024;
 
 export interface DirectAcpOptions {
   command: string;
@@ -72,7 +74,8 @@ export interface AcpMcpServer {
 export class DirectAcpSession {
   private readonly emitter = new EventEmitter();
   private child: ChildProcessWithoutNullStreams | undefined;
-  private buffered = "";
+  private readonly lineBuffer = new TextBudget(MAX_ACP_FRAME_BYTES, MAX_ACP_FRAME_BYTES, 1);
+  private readonly decoder = new StringDecoder("utf8");
   private stderr = "";
   private nextId = 1;
   private readonly pending = new Map<
@@ -133,7 +136,7 @@ export class DirectAcpSession {
     }) as ChildProcessWithoutNullStreams;
     this.child = child;
 
-    child.stdout.on("data", (chunk: Buffer) => this.absorb(chunk.toString()));
+    child.stdout.on("data", (chunk: Buffer) => this.absorb(this.decoder.write(chunk)));
     child.stderr.on("data", (chunk: Buffer) => {
       // Kept for the error message, capped so a chatty agent cannot grow it
       // without bound over a long session.
@@ -142,6 +145,8 @@ export class DirectAcpSession {
     child.on("error", (error) => this.fail(error));
     child.on("close", (code) => {
       this.closed = true;
+      this.lineBuffer.clear();
+      this.toolTitles.clear();
       if (this.child === child) this.child = undefined;
       this.permissions.clear();
       for (const [, entry] of this.pending) {
@@ -260,11 +265,24 @@ export class DirectAcpSession {
   }
 
   private absorb(chunk: string): void {
-    const { lines, rest } = splitLines(`${this.buffered}${chunk}`);
-    this.buffered = rest;
-    for (const line of lines) {
-      const message = parseMessage(line);
-      if (message) this.handle(message);
+    if (this.closed) return;
+    try {
+      let offset = 0;
+      while (offset < chunk.length) {
+        const newline = chunk.indexOf("\n", offset);
+        const end = newline < 0 ? chunk.length : newline;
+        this.lineBuffer.append("line", chunk.slice(offset, end));
+        if (newline < 0) break;
+        const message = parseMessage(this.lineBuffer.take("line"));
+        if (message) this.handle(message);
+        offset = newline + 1;
+      }
+    } catch (error) {
+      this.lineBuffer.clear();
+      this.fail(new Error(`Invalid or oversized ACP frame: ${String(error)}`));
+      // Only close the child this session spawned. A protocol failure must not
+      // leave an unbounded producer running after its pending turn has failed.
+      void this.close().catch(() => undefined);
     }
   }
 
@@ -287,7 +305,10 @@ export class DirectAcpSession {
       }
       if (update.tool) {
         const { toolCallId, title } = update.tool;
-        if (toolCallId && title) this.toolTitles.set(toolCallId, title);
+        if (toolCallId && title) {
+          this.toolTitles.set(toolCallId, title);
+          while (this.toolTitles.size > 1000) this.toolTitles.delete(this.toolTitles.keys().next().value!);
+        }
         this.emitter.emit("tool", {
           ...update.tool,
           title: title || (toolCallId && this.toolTitles.get(toolCallId)) || "Run a tool",

@@ -30,6 +30,8 @@ const READ_CHANNELS: ChannelName[] = [
   "listMessagePage",
   "getRun",
   "listRuns",
+  "listRunPage",
+  "listLatestRuns",
   "listRunEvents",
   "listRunEventPage",
   "listArtifacts",

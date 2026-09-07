@@ -2,6 +2,8 @@ import { useWorkspace } from "../../lib/workspace";
 import { formatUserError } from "../../lib/errors";
 import { SkillsDirectory } from "./SkillsDirectory";
 import { TurnVerification } from "../conversation/TurnVerification";
+import { useEffect, useRef, useState } from "react";
+import type { RunHistoryPage, RunHistoryCursor } from "@capsule/shared";
 
 export function SkillsView() {
   return (
@@ -14,17 +16,43 @@ export function SkillsView() {
 }
 
 export function HistoryView() {
-  const { projectRuns, sessions, projectId, setSessionId, setView } = useWorkspace();
-  const items = [...projectRuns]
-    .filter((item) => item.projectId === projectId)
-    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  const { api, sessions, projectId, setSessionId, setView } = useWorkspace();
+  const [page, setPage] = useState<RunHistoryPage>({ runs: [], hasMore: false });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  const [older, setOlder] = useState(false);
+  const request = useRef(0);
+
+  async function load(before?: RunHistoryCursor) {
+    const generation = ++request.current;
+    setBusy(true);
+    setError(undefined);
+    try {
+      const next = await api.listRunPage({ projectId, before });
+      if (generation !== request.current) return;
+      setPage(next);
+      setOlder(Boolean(before));
+    } catch (cause) {
+      if (generation === request.current) setError(formatUserError(cause));
+    } finally {
+      if (generation === request.current) setBusy(false);
+    }
+  }
+  useEffect(() => {
+    setPage({ runs: [], hasMore: false });
+    void load();
+    return () => { request.current++; };
+  }, [api, projectId]);
+  const items = page.runs;
   return (
     <section className="panel">
       <div className="panel-inner">
       <div className="panel-header">
         <p>Runs in the current project.</p>
       </div>
-      {items.length === 0 && <p className="muted">No runs yet. Send a message to start one.</p>}
+      {error && <p role="alert">{error}</p>}
+      {busy && <p className="muted" role="status">Loading runs…</p>}
+      {!busy && !error && items.length === 0 && <p className="muted">No runs yet. Send a message to start one.</p>}
       {items.map((item) => {
         const session = sessions.find((entry) => entry.id === item.sessionId);
         return (
@@ -52,6 +80,10 @@ export function HistoryView() {
             </article>
         );
       })}
+      <div className="actions">
+        {older && <button className="ghost" disabled={busy} onClick={() => void load()}>Newest runs</button>}
+        {page.hasMore && <button className="ghost" disabled={busy} onClick={() => void load(page.before)}>Older runs</button>}
+      </div>
       </div>
     </section>
   );

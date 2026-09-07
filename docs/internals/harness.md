@@ -224,3 +224,20 @@ for this view. Partial updates fold by toolCallId; task completion describes the
 tool, not a verified child lifetime. These are optional harness-specific fields,
 not required ACP support. The UI labels missing data instead of inventing rows or
 assigning parent tokens to children. No child-control protocol is implemented.
+
+## Completion and retained output
+
+Direct prompt results and rejected sends emit the same terminal `lifecycle`
+event the engine consumes for Gateway runs. Tests cover normal completion,
+refusal, token-limit stops, transport failures and admitting the next turn.
+
+Native stdout is decoded incrementally as UTF-8. An unterminated JSON-RPC frame
+is limited to 4 MiB; an invalid or oversized frame rejects pending calls and
+closes only the child owned by that session. Tool-title correlation retains at
+most 1,000 IDs. These are transport bounds, not a replacement agent loop.
+
+Core shares a `TextBudget` across reply buffers: 1 MiB per entry, 8 MiB total,
+128 entries. Multiple completed messages must also fit the per-run limit.
+Budget violations preserve an accepted prefix, fail the run, request route-
+appropriate cancellation and suppress late replies until a new turn starts.
+Only confirmed cancellation updates the live harness back to waiting.

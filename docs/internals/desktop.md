@@ -681,3 +681,12 @@ new files. Previews, configuration, icons, search and untracked-file statistics
 reuse this reader. These checks reject static symlink escapes and detected
 replacement races; they are not an OS sandbox against an adversary concurrently
 renaming parent directories, and do not constrain a coding CLI's own file access.
+
+### Scoped state and bounded history
+
+Workspace refresh reads one latest-run summary per visible thread. Selected
+conversations and History use `listRunPage`: keyset pagination by creation time
+and ID, 100 rows by default and at most 200. Result bodies are omitted and
+`hasResult` preserves answer presence without retaining whole histories. The
+new IPC channels are explicitly read-only for paired viewers. Full run details
+remain available by ID; this is not a deletion or archive policy.

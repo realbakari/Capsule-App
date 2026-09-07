@@ -286,7 +286,7 @@ export function Sidebar() {
     return resolveSidebarThreadKind({
       liveHarness: isWorkingHarnessState(session.harnessState),
       runStatus: run?.status,
-      runAnswered: Boolean(run?.result?.trim()),
+      runAnswered: run?.hasResult ?? Boolean(run?.result?.trim()),
       runError: run?.error,
     });
   };

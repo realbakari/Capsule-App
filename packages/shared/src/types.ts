@@ -638,6 +638,8 @@ export interface TurnDiffResult {
 }
 
 export interface Run {
+  /** Summary reads omit the result body but preserve whether an answer exists. */
+  hasResult?: boolean;
   id: string;
   sessionId: string;
   projectId: string;

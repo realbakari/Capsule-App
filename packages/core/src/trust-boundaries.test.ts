@@ -9,7 +9,7 @@ import { CapsuleEngine } from "./engine.js";
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => { for (const dispose of cleanup.splice(0)) await dispose(); vi.restoreAllMocks(); });
 
-async function fixture() {
+async function fixture(activeRun = true) {
   const dir = mkdtempSync(path.join(tmpdir(), "capsule-boundaries-"));
   const engine = new CapsuleEngine({ databasePath: path.join(dir, "state.sqlite"), userDataDir: dir, autoConnect: false });
   await engine.start();
@@ -28,10 +28,35 @@ async function fixture() {
   internal.repos.updateSession(session);
   const now = new Date().toISOString();
   const run: Run = { id: "boundary-run", projectId: project.id, sessionId: session.id, agentId: "grok", prompt: "Fixture", status: "running", workingDirectory: dir, createdAt: now, updatedAt: now };
-  internal.repos.insertRun(run);
+  if (activeRun) internal.repos.insertRun(run);
   internal.usingMock = false;
   return { engine, internal, project, session, run, dir };
 }
+
+it.each([
+  { stopReason: "end_turn", status: "completed" },
+  { stopReason: "refusal", status: "failed" },
+  { stopReason: "max_tokens", status: "failed" },
+])("settles direct $stopReason turns and admits the next message", async ({ stopReason, status }) => {
+  const { engine, internal, session } = await fixture(false);
+  vi.spyOn(internal.direct, "send").mockResolvedValue({ stopReason });
+
+  const first = await engine.sendMessage({ sessionId: session.id, content: "First turn", mode: "chat" });
+  await vi.waitFor(() => expect(engine.getRun(first.run.id)).toMatchObject({ status, completedAt: expect.any(String) }));
+  expect(engine.listSessions().find((item) => item.id === session.id)?.harnessState).toBe("waiting");
+
+  const second = await engine.sendMessage({ sessionId: session.id, content: "Second turn", mode: "chat" });
+  await vi.waitFor(() => expect(engine.getRun(second.run.id)?.status).toBe(status));
+});
+
+it("settles a rejected direct send as failed", async () => {
+  const { engine, internal, session } = await fixture(false);
+  vi.spyOn(internal.direct, "send").mockRejectedValue(new Error("Agent disconnected"));
+  const { run } = await engine.sendMessage({ sessionId: session.id, content: "Start", mode: "chat" });
+  await vi.waitFor(() => expect(engine.getRun(run.id)).toMatchObject({
+    status: "failed", error: "Agent disconnected", completedAt: expect.any(String),
+  }));
+});
 
 it("persists direct permission requests, resolves once, denies pending requests on Stop", async () => {
   const { engine, internal, session, run } = await fixture();

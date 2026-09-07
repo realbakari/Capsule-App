@@ -1,7 +1,7 @@
 import { applyAppearance } from "./appearance";
 import { RequestScope } from "./request-scope";
 import { batchRunFrames, mergeMessagePage, mergeRunEvents, mergeRuns } from "./run-updates";
-import { boundRunEvents, compactRunEvent, runEventBytes, LIVE_EVENT_LIMIT, LIVE_EVENT_BYTES, localTimings } from "@capsule/shared";
+import { boundRunEvents, compactRunEvent, runEventBytes, LIVE_EVENT_LIMIT, LIVE_EVENT_BYTES, localTimings, summarizeRun } from "@capsule/shared";
 import { useScopedState } from "./scoped-state";
 import { activityFromEvents, type RunActivity } from "./activity";
 import {
@@ -505,13 +505,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       const runsCurrent = requests.capture("project-runs");
       // Only the most recent page. Loading an entire conversation on every
       // streamed chunk made a long thread quadratic to render.
-      const [page, savedRuns] = await Promise.all([
+      const [page, history] = await Promise.all([
         api.listMessagePage(id, { limit: MESSAGE_PAGE_SIZE }),
-        api.listRuns(id),
+        api.listRunPage({ sessionId: id }),
       ]);
       const nextMessages = page.messages;
       if (generation !== loadGeneration.current || !current()) return;
-      const nextRuns = mergeRuns(savedRuns, [...liveRunState.runs.values()].filter((run) => run.sessionId === id));
+      const nextRuns = mergeRuns(history.runs, [...liveRunState.runs.values()].filter((run) => run.sessionId === id));
       setMessages((current) => mergeMessagePage(current, nextMessages));
       if (!liveRunState.loadedOlder || !page.hasMore) setHasOlderMessages(page.hasMore);
       setRuns(nextRuns);
@@ -551,7 +551,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
         limit: MESSAGE_PAGE_SIZE,
         before: { createdAt: oldest.createdAt, id: oldest.id },
       });
+      const history = await api.listRunPage({ sessionId, before: { createdAt: oldest.createdAt, id: "\uffff" } });
       if (!current()) return;
+      setRuns((current) => mergeRuns(current, history.runs));
       liveRunState.loadedOlder = true;
       setMessages((current) => {
         const known = new Set(current.map((item) => item.id));
@@ -624,7 +626,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       const [nextSessions, nextHarnessSessions, nextRuns] = await Promise.all([
         api.listSessions(),
         selectedProject ? api.listHarnessSessions(selectedProject) : Promise.resolve([]),
-        api.listRuns(),
+        api.listLatestRuns(),
       ]);
       if (!current()) return;
       setSessions(nextSessions);
@@ -669,7 +671,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     void refresh();
     const batch = batchRunFrames((frames) => {
       if (!requests.isCurrent(scope)) return;
-      const records = frames.filter((frame): frame is Run => "status" in frame);
+      const records = frames.filter((frame): frame is Run => "status" in frame).map(summarizeRun);
       const threadRecords = records.filter((run) => run.sessionId === sessionId);
       if (records.length) setProjectRuns((current) => mergeRuns(current, records));
       if (threadRecords.length) setRuns((current) => mergeRuns(current, threadRecords));
@@ -707,6 +709,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
         let frame = payload as Run | RunEvent;
         if (!frame?.id) return;
         if ("status" in frame) {
+          frame = summarizeRun(frame);
           const previous = liveRunState.runs.get(frame.id) ?? (liveRunState.latest?.id === frame.id ? liveRunState.latest : undefined);
           if (previous && previous.updatedAt > frame.updatedAt) return;
           liveRunState.runs.set(frame.id, frame);

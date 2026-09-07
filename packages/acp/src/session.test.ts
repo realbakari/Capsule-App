@@ -63,6 +63,26 @@ const HAPPY = `
 `;
 
 describe("talking to an agent directly", () => {
+  it("rejects an oversized unterminated frame without waiting for a newline", async () => {
+    const agent = fakeAgent(`function handle() { process.stdout.write("x".repeat(4 * 1024 * 1024 + 1)); }`);
+    const session = new DirectAcpSession({ command: "node", args: [agent] });
+    try {
+      await expect(session.start()).rejects.toThrow(/oversized|invalid/i);
+    } finally { await session.close(); rmSync(path.dirname(agent), { recursive: true, force: true }); }
+  });
+
+  it("preserves a UTF-8 character split across stdout chunks", async () => {
+    const agent = fakeAgent(`function handle(message) {
+      if (message.method === "initialize") { send({ id: message.id, result: {} }); return; }
+      const bytes = Buffer.from(JSON.stringify({ jsonrpc: "2.0", id: message.id, result: { sessionId: "🐈" } }) + "\\n");
+      const cut = bytes.indexOf(Buffer.from("🐈")) + 2;
+      process.stdout.write(bytes.subarray(0, cut));
+      setTimeout(() => process.stdout.write(bytes.subarray(cut)), 25);
+    }`);
+    const session = new DirectAcpSession({ command: "node", args: [agent] });
+    try { expect(await session.start()).toBe("🐈"); }
+    finally { await session.close(); rmSync(path.dirname(agent), { recursive: true, force: true }); }
+  });
   it("rejects overlapping prompts and waits for cancellation to finish the active prompt", async () => {
     const agent = fakeAgent(`
       let turn;

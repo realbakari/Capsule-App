@@ -1026,6 +1026,8 @@ function registerIpc(): void {
   handleArgs(IPC_CHANNELS.listRuns, [optStr], (sessionId: string | undefined) =>
     requireEngine().listRuns(sessionId),
   );
+  handle(IPC_CHANNELS.listRunPage, (query) => requireEngine().listRunPage(query as import("@capsule/shared").RunHistoryQuery | undefined));
+  handle(IPC_CHANNELS.listLatestRuns, () => requireEngine().listLatestRuns());
   handleArgs(IPC_CHANNELS.listRunEvents, [id], (runId: string) =>
     requireEngine().listRunEvents(runId),
   );

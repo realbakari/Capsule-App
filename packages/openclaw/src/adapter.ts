@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { GatewayClient, GatewayClientRequestError } from "@openclaw/gateway-client";
-import { readDelegationDetails } from "@capsule/shared";
+import { readDelegationDetails, TextBudget } from "@capsule/shared";
 import {
   GATEWAY_CLIENT_CAPS,
   GATEWAY_CLIENT_IDS,
@@ -752,19 +752,27 @@ export class OpenClawAdapter implements AgentRuntime {
 
   async waitForReply(sessionKey: string, timeoutMs: number): Promise<string> {
     return new Promise((resolve, reject) => {
-      const chunks: string[] = [];
+      const chunks = new TextBudget();
       const timer = setTimeout(() => {
         this.emitter.off("acp-reply", onReply);
-        if (chunks.length > 0) resolve(chunks.join("\n"));
+        if (chunks.sizeOf("reply") > 0) resolve(chunks.take("reply"));
         else reject(new Error("Timed out waiting for ACP reply"));
       }, timeoutMs);
       const onReply = (payload: { sessionKey?: string; text?: string; done?: boolean }) => {
         if (payload.sessionKey && payload.sessionKey !== sessionKey) return;
-        if (payload.text) chunks.push(payload.text);
+        try {
+          if (payload.text) chunks.append("reply", `${chunks.sizeOf("reply") ? "\n" : ""}${payload.text}`);
+        } catch (error) {
+          clearTimeout(timer);
+          this.emitter.off("acp-reply", onReply);
+          chunks.clear();
+          reject(error);
+          return;
+        }
         if (payload.done) {
           clearTimeout(timer);
           this.emitter.off("acp-reply", onReply);
-          resolve(chunks.join("\n"));
+          resolve(chunks.take("reply"));
         }
       };
       this.emitter.on("acp-reply", onReply);

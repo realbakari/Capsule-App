@@ -532,6 +532,8 @@ window.runRendererRegressions = async () => {
     getSubsystemStatus: async () => ({}), listApprovals: async () => [], listHarnesses: async () => [],
     getSettings: async () => ({ ...DEFAULT_CAPSULE_SETTINGS, defaultMode: "chat", defaultAgentId: "general" }),
     listSessions: async () => [...threads], listHarnessSessions: async () => [], listRuns: async () => [...savedRuns],
+    listLatestRuns: async () => [...savedRuns],
+    listRunPage: async () => ({ runs: [...savedRuns], hasMore: false }),
     listRunEventPage: async () => { eventReads += 1; const events = deferEvents ? await new Promise<RunEvent[]>((resolve) => { holdEvents = resolve; }) : [...savedEvents]; return { events, hasMore: false }; },
     listArtifacts: async () => { artifactReads += 1; return [{ id: "saved-output", runId: "stream-run" }]; },
     gitStatus: async () => ({ isRepo: false }), listFiles: async () => [],

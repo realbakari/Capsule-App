@@ -17,7 +17,7 @@ import type {
   SkillPack,
   Workspace,
 } from "@capsule/shared";
-import { isHarnessId } from "@capsule/shared";
+import { isHarnessId, TextBudget, REPLY_BYTE_LIMIT } from "@capsule/shared";
 import type { CapsuleDatabase } from "./database.js";
 
 function parseJson<T>(value: string | null | undefined, fallback: T): T {
@@ -634,6 +634,73 @@ export class CapsuleRepositories {
     return row ? { ...row, revision: row.revision ? JSON.parse(row.revision) : undefined, verification: row.verification ? JSON.parse(row.verification) : undefined } : undefined;
   }
 
+  getRunProgress(id: string): Partial<Run> | undefined {
+    return this.db.sqlite.prepare(`SELECT id, status, completed_at AS completedAt
+      FROM runs WHERE id = ?`).get(id) as Partial<Run> | undefined;
+  }
+
+  findReplyRun(sessionId: string, snapshotAt?: string): Run | undefined {
+    const condition = snapshotAt ? "created_at <= ?" : "status IN ('queued', 'running', 'waiting', 'approval_required')";
+    const row = this.db.sqlite.prepare(`SELECT id FROM runs WHERE session_id = ? AND ${condition}
+      ORDER BY created_at DESC, rowid DESC LIMIT 1`).get(...(snapshotAt ? [sessionId, snapshotAt] : [sessionId])) as { id: string } | undefined;
+    return row ? this.getRun(row.id) : undefined;
+  }
+
+  listRunPage(query: import("@capsule/shared").RunHistoryQuery = {}): import("@capsule/shared").RunHistoryPage {
+    const limit = Math.min(Math.max(query.limit ?? 100, 1), 200);
+    const filters: string[] = [];
+    const values: Array<string | number> = [];
+    if (query.sessionId) { filters.push("session_id = ?"); values.push(query.sessionId); }
+    if (query.projectId) { filters.push("project_id = ?"); values.push(query.projectId); }
+    if (query.before) {
+      filters.push("(created_at, id) < (?, ?)");
+      values.push(query.before.createdAt, query.before.id);
+    }
+    const rows = this.db.sqlite.prepare(`
+      SELECT id, session_id AS sessionId, project_id AS projectId, agent_id AS agentId,
+             skill_id AS skillId, contract_id AS contractId, status,
+             substr(prompt, 1, 512) AS prompt, substr(error, 1, 2048) AS error,
+             length(trim(result)) > 0 AS hasResult,
+             openclaw_run_id AS openclawRunId, checkpoint_ref AS checkpointRef,
+             working_directory AS workingDirectory, revision, verification,
+             created_at AS createdAt, updated_at AS updatedAt, completed_at AS completedAt
+      FROM runs ${filters.length ? `WHERE ${filters.join(" AND ")}` : ""}
+      ORDER BY created_at DESC, id DESC LIMIT ?
+    `).all(...values, limit + 1) as Array<Omit<Run, "revision" | "verification" | "hasResult"> & {
+      revision: string | null; verification: string | null; hasResult: number | null;
+    }>;
+    const runs = rows.slice(0, limit).map((row) => ({ ...row, hasResult: Boolean(row.hasResult),
+      revision: row.revision ? JSON.parse(row.revision) : undefined,
+      verification: row.verification ? JSON.parse(row.verification) : undefined,
+    }));
+    const last = runs.at(-1);
+    return { runs, hasMore: rows.length > limit, ...(last ? { before: { createdAt: last.createdAt, id: last.id } } : {}) };
+  }
+
+  /** Ask SQL about a duplicate instead of loading a whole conversation to JS. */
+  hasRecordedReply(sessionId: string, content: string, runId?: string): boolean {
+    const scope = runId ? "run_id = ?" : `created_at >= coalesce((
+      SELECT max(created_at) FROM messages WHERE session_id = ? AND role = 'user'
+    ), '')`;
+    return Boolean(this.db.sqlite.prepare(`SELECT 1 FROM messages
+      WHERE session_id = ? AND role = 'assistant' AND content = ? AND ${scope} LIMIT 1`
+    ).get(sessionId, content, runId ?? sessionId));
+  }
+
+  /** Read just this turn's prose; even oversized legacy rows have a byte cap. */
+  readReplyText(sessionId: string, runId: string, since?: string): string {
+    const scope = since ? "(run_id = ? OR created_at >= ?)" : "run_id = ?";
+    const rows = this.db.sqlite.prepare(`SELECT substr(content, 1, ?) AS content FROM messages
+      WHERE session_id = ? AND role = 'assistant' AND ${scope}
+      ORDER BY created_at, rowid`).iterate(REPLY_BYTE_LIMIT + 1, sessionId, runId, ...(since ? [since] : []));
+    const budget = new TextBudget();
+    for (const row of rows) {
+      const content = (row as { content: string }).content;
+      budget.append("reply", `${budget.sizeOf("reply") ? "\n" : ""}${content}`);
+    }
+    return budget.take("reply");
+  }
+
   listRuns(sessionId?: string): Run[] {
     const sql = sessionId
       ? `SELECT id, session_id AS sessionId, project_id AS projectId, agent_id AS agentId,
@@ -655,6 +722,19 @@ export class CapsuleRepositories {
   }
 
   /** One indexed lookup per visible thread, without loading prompts or result JSON. */
+  listLatestRuns(): Run[] {
+    const rows = this.db.sqlite.prepare(`
+      SELECT r.id, r.session_id AS sessionId, r.project_id AS projectId, r.agent_id AS agentId,
+             r.status, '' AS prompt, substr(r.error, 1, 2048) AS error,
+             length(trim(r.result)) > 0 AS hasResult,
+             r.created_at AS createdAt, r.updated_at AS updatedAt, r.completed_at AS completedAt
+      FROM sessions s JOIN runs r ON r.rowid = (
+        SELECT rowid FROM runs WHERE session_id = s.id ORDER BY created_at DESC, rowid DESC LIMIT 1
+      ) WHERE s.state != 'archived'
+    `).all() as Array<Omit<Run, "hasResult"> & { hasResult: number | null }>;
+    return rows.map((row) => ({ ...row, hasResult: Boolean(row.hasResult) }));
+  }
+
   listLatestRunStates(): Array<Pick<Run, "id" | "sessionId" | "status" | "createdAt" | "updatedAt" | "completedAt">> {
     return this.db.sqlite.prepare(`
       SELECT r.id, r.session_id AS sessionId, r.status, r.created_at AS createdAt,

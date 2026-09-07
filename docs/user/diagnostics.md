@@ -19,6 +19,24 @@ reading and decoding, not loading a website. Non-zero Git probes count as errors
 even when an absent ref or repository is expected. These measurements help
 locate expensive operations; they do not certify that the app cannot freeze.
 
+## Reply limits and history
+
+Capsule limits each retained agent answer to 1 MiB of UTF-8 text, with an 8 MiB
+shared budget for active replies. Exceeding a limit marks the turn failed and
+requests cancellation. A saved prefix may be incomplete; it is not a verified
+result. Check the agent's state before retrying. Cancellation can fail separately.
+
+Streamed answers are saved in batches on substantial growth or a one-second
+timer, and flushed when a turn ends. An abrupt crash can lose the latest
+unsaved tail. Ask the agent to put large reports in files instead of printing
+them into chat.
+
+History loads a page of run summaries at a time. **Older runs** opens the next
+page and **Newest runs** returns to recent work. Opening a conversation loads
+its recent messages first; earlier exchanges remain available through its
+history control. These limits reduce retained work; they do not guarantee that
+every large-repository operation is inexpensive.
+
 ## Process monitor
 
 Capsule's own processes — the main process, the window, the GPU helper and any

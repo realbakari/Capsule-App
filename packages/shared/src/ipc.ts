@@ -20,6 +20,8 @@ export const IPC_CHANNELS = {
   stopRun: "capsule:stopRun",
   getRun: "capsule:getRun",
   listRuns: "capsule:listRuns",
+  listRunPage: "capsule:listRunPage",
+  listLatestRuns: "capsule:listLatestRuns",
   listRunEvents: "capsule:listRunEvents",
   listRunEventPage: "capsule:listRunEventPage",
   verifyRun: "capsule:verifyRun",

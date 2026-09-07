@@ -90,9 +90,18 @@ summaries cannot establish a child-task roster or usage figures; the UI disclose
 this. No private runtime files are scanned and no agent loop is added. Only
 lifecycle events can settle a run, never a completed tool event.
 
-## Repository-aware PR reads
+## Retention and persistence
 
-PR list caches
+Control replies and core ACP snapshots use byte/entry budgets instead of
+unbounded concatenation. `ResultWriter` coalesces token deltas into segments,
+saves on 64 KiB growth or a one-second timer, and flushes at completion, Stop
+and engine shutdown. Result snapshots remain bounded to 1 MiB; this is batched
+SQLite persistence, not a durable per-token journal. A process crash may lose
+the unsaved tail. Completed ACP messages become authoritative so overlapping
+raw token updates cannot replace them at turn completion.
+
+Reply association and duplicate detection use targeted SQL lookups rather than
+materializing a conversation's entire message/run history. PR list caches
 include normalized cwd, remote configuration and invalidation epoch. Branch
 PR caches also include symbolic upstream identity. Identity reads and network
 results reject superseded requests, including requests finishing after cache

@@ -99,6 +99,39 @@ function seedSession(repos: CapsuleRepositories, sessionId: string): void {
 }
 
 describe("attention snapshots", () => {
+  it("pages run summaries without pulling saved answer bodies into memory", () => {
+    const db = new CapsuleDatabase(":memory:");
+    const repos = new CapsuleRepositories(db);
+    try {
+      seedSession(repos, "s1");
+      const at = "2026-01-01T00:00:00.000Z";
+      db.sqlite.transaction(() => {
+        for (let i = 0; i < 405; i++) repos.insertRun({
+          id: String(i).padStart(4, "0"), sessionId: "s1", projectId: "proj_p", agentId: "general",
+          prompt: "x".repeat(2000), result: "y".repeat(100_000), status: "completed", createdAt: at, updatedAt: at,
+        });
+      })();
+      const first = repos.listRunPage({ sessionId: "s1", limit: 1000 });
+      const second = repos.listRunPage({ sessionId: "s1", before: first.before, limit: 200 });
+      const last = repos.listRunPage({ sessionId: "s1", before: second.before, limit: 200 });
+      expect([first.runs.length, second.runs.length, last.runs.length]).toEqual([200, 200, 5]);
+      expect(new Set([...first.runs, ...second.runs, ...last.runs].map((run) => run.id)).size).toBe(405);
+      expect(last.hasMore).toBe(false);
+      expect(first.runs[0]).toMatchObject({ hasResult: true, prompt: "x".repeat(512) });
+      expect(first.runs[0]).not.toHaveProperty("result");
+      expect(repos.listLatestRuns()).toHaveLength(1);
+      expect(repos.listLatestRuns()[0]).not.toHaveProperty("result");
+      repos.insertMessage({ id: "reply", sessionId: "s1", runId: "0001", role: "assistant", content: "Done", createdAt: at });
+      expect(repos.hasRecordedReply("s1", "Done", "0001")).toBe(true);
+      expect(repos.hasRecordedReply("s1", "Done", "0002")).toBe(false);
+      expect(repos.readReplyText("s1", "0001")).toBe("Done");
+      repos.insertMessage({ id: "alphabetically-before-reply", sessionId: "s1", runId: "0001", role: "assistant", content: "Next", createdAt: at });
+      expect(repos.readReplyText("s1", "0001")).toBe("Done\nNext");
+      expect(repos.readReplyText("s1", "0002")).toBe("");
+      repos.insertMessage({ id: "oversized", sessionId: "s1", runId: "0002", role: "assistant", content: "x".repeat(2 * 1024 * 1024), createdAt: at });
+      expect(() => repos.readReplyText("s1", "0002")).toThrow("reply limit");
+    } finally { db.close(); }
+  });
   it("reads only each visible thread's latest run state, with stable same-time ordering", () => {
     const db = new CapsuleDatabase(":memory:");
     const repos = new CapsuleRepositories(db);

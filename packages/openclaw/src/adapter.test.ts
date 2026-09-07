@@ -28,6 +28,19 @@ describe("OpenClawAdapter live connect", () => {
 });
 
 describe("OpenClawAdapter ACP lifecycle", () => {
+  it("rejects oversized control replies and removes their listener", async () => {
+    const adapter = new OpenClawAdapter();
+    const emitter = (adapter as unknown as { emitter: import("node:events").EventEmitter }).emitter;
+    const reply = adapter.waitForReply("control", 1000);
+    const rejected = expect(reply).rejects.toThrow("reply limit");
+    emitter.emit("acp-reply", { sessionKey: "other", text: "ignored", done: true });
+    emitter.emit("acp-reply", { sessionKey: "control", text: "x".repeat(1024 * 1024 + 1) });
+    await rejected;
+    expect(emitter.listenerCount("acp-reply")).toBe(0);
+    const retry = adapter.waitForReply("control", 1000);
+    emitter.emit("acp-reply", { sessionKey: "control", text: "Ready", done: true });
+    expect(await retry).toBe("Ready");
+  });
   function replyToControl(adapter: OpenClawAdapter, text: string) {
     const emitter = (adapter as unknown as { emitter: { emit: (...args: unknown[]) => boolean } }).emitter;
     return vi.spyOn(adapter, "sendSlash").mockImplementation(async (sessionKey) => {
