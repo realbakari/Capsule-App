@@ -1,5 +1,6 @@
 import { inRepository } from "./git-process.js";
 import { spawn } from "node:child_process";
+import path from "node:path";
 import { avatarsFor } from "./avatars.js";
 import { INCOMPLETE_GITHUB_RESPONSE, isIncompleteResponse, readGhJson } from "./github-read.js";
 import type {
@@ -119,6 +120,8 @@ export function clearGhCache(): void {
   pullRequestListCache.clear();
   pullRequestListInFlight.clear();
   pullRequestListFailures.clear();
+  pullRequestListIdentities.clear();
+  pullRequestListReads.clear();
 }
 
 export function pushArgs(forceWithLease: boolean): string[] {
@@ -357,20 +360,32 @@ const pullRequestListFailures = new Map<string, string>();
  * own, so the first look ran the ten second command twice at once.
  */
 const pullRequestListInFlight = new Map<string, Promise<GitPullRequest[] | undefined>>();
+const pullRequestListIdentities = new Map<string, string>();
+const pullRequestListReads = new Map<string, object>();
 
-function refreshPullRequestList(cwd: string): Promise<GitPullRequest[] | undefined> {
-  const existing = pullRequestListInFlight.get(cwd);
+function refreshPullRequestList(cwd: string, key: string, epoch: number): Promise<GitPullRequest[] | undefined> {
+  const existing = pullRequestListInFlight.get(key);
   if (existing) return existing;
-  const started = listPullRequests(cwd)
+  const current = () => epoch === pullRequestEpoch && pullRequestListIdentities.get(cwd) === key;
+  const started = readPullRequestList(cwd).then((result) => {
+    if (!current()) return undefined;
+    if (result.value === undefined) {
+      pullRequestListFailures.set(cwd, listFailureReason(result.error));
+      return undefined;
+    }
+    pullRequestListFailures.delete(cwd);
+    pullRequestListCache.set(key, { value: result.value, at: Date.now() });
+    return result.value;
+  })
     .catch(() => undefined)
     .then((next) => {
-      pullRequestListInFlight.delete(cwd);
+      if (pullRequestListInFlight.get(key) === started) pullRequestListInFlight.delete(key);
       // A failed lookup must not erase a list that is merely old: a moment
       // offline should not empty the pane.
-      if (next) onPullRequestSettled?.();
+      if (next && current()) onPullRequestSettled?.();
       return next;
     });
-  pullRequestListInFlight.set(cwd, started);
+  pullRequestListInFlight.set(key, started);
   return started;
 }
 
@@ -381,15 +396,33 @@ function refreshPullRequestList(cwd: string): Promise<GitPullRequest[] | undefin
  * fetched yet" from "this repository has no open pull requests" and wait for
  * `pending` rather than showing an empty pane.
  */
-export function pollPullRequestList(cwd: string, force = false): {
+export async function pollPullRequestList(cwd: string, force = false): Promise<{
   value?: GitPullRequest[];
   known: boolean;
   stale: boolean;
   pending?: Promise<GitPullRequest[] | undefined>;
-} {
-  const cached = pullRequestListCache.get(cwd);
+}> {
+  cwd = path.resolve(cwd);
+  const epoch = pullRequestEpoch;
+  const read = {};
+  pullRequestListReads.set(cwd, read);
+  const remotes = await run("git", ["remote", "-v"], cwd, 3000);
+  if (epoch !== pullRequestEpoch || pullRequestListReads.get(cwd) !== read) return { known: false, stale: false };
+  pullRequestListReads.delete(cwd);
+  if (!remotes.ok) {
+    pullRequestListFailures.set(cwd, "Could not identify this repository's remotes.");
+    return { known: false, stale: false };
+  }
+  const key = JSON.stringify([cwd, remotes.stdout, epoch]);
+  const previous = pullRequestListIdentities.get(cwd);
+  if (previous !== key) {
+    if (previous) pullRequestListCache.delete(previous);
+    pullRequestListFailures.delete(cwd);
+    pullRequestListIdentities.set(cwd, key);
+  }
+  const cached = pullRequestListCache.get(key);
   const fresh = cached && Date.now() - cached.at < PR_LIST_TTL_MS;
-  const pending = fresh && !force ? undefined : refreshPullRequestList(cwd);
+  const pending = fresh && !force ? undefined : refreshPullRequestList(cwd, key, epoch);
   return {
     value: cached?.value,
     known: Boolean(cached),
@@ -399,7 +432,11 @@ export function pollPullRequestList(cwd: string, force = false): {
 }
 
 export async function listPullRequests(cwd: string): Promise<GitPullRequest[] | undefined> {
-  const result = await readGhJson(
+  return (await pollPullRequestList(cwd, true)).pending;
+}
+
+function readPullRequestList(cwd: string) {
+  return readGhJson(
     [
       "pr",
       "list",
@@ -413,19 +450,11 @@ export async function listPullRequests(cwd: string): Promise<GitPullRequest[] | 
     runAsync,
     30_000,
   );
-  if (result.value === undefined) {
-    pullRequestListFailures.set(cwd, listFailureReason(result.error));
-    return undefined;
-  }
-  pullRequestListFailures.delete(cwd);
-  const parsed = result.value;
-  pullRequestListCache.set(cwd, { value: parsed, at: Date.now() });
-  return parsed;
 }
 
 /** Why the last listing for `cwd` failed, if the last one did. */
 export function pullRequestListFailure(cwd: string): string | undefined {
-  return pullRequestListFailures.get(cwd);
+  return pullRequestListFailures.get(path.resolve(cwd));
 }
 
 function actorName(value: unknown): string | undefined {
@@ -770,14 +799,15 @@ export async function pollPullRequest(cwd: string): Promise<{ value?: GitPullReq
   const epoch = pullRequestEpoch;
   const read = (pullRequestReads.get(cwd) ?? 0) + 1;
   pullRequestReads.set(cwd, read);
-  const [branch, refs, remotes] = await Promise.all([
+  const [branch, refs, remotes, upstream] = await Promise.all([
     run("git", ["symbolic-ref", "--short", "HEAD"], cwd, 3000),
     run("git", ["rev-parse", "HEAD", "@{upstream}"], cwd, 3000),
     run("git", ["remote", "-v"], cwd, 3000),
+    run("git", ["rev-parse", "--symbolic-full-name", "@{upstream}"], cwd, 3000),
   ]);
   if (!branch.ok || epoch !== pullRequestEpoch || pullRequestReads.get(cwd) !== read) return { known: false };
   const name = branch.stdout.trim();
-  const key = JSON.stringify([cwd, name, refs.stdout, remotes.stdout, epoch]);
+  const key = JSON.stringify([path.resolve(cwd), name, refs.stdout, remotes.stdout, upstream.stdout, epoch]);
   const previous = pullRequestIdentities.get(cwd);
   if (previous !== key) {
     if (previous) { pullRequestCache.delete(previous); pullRequestAttempts.delete(previous); }

@@ -9,12 +9,18 @@ vi.mock("./avatars.js", () => ({ avatarsFor: async () => ({}) }));
 
 const row = { number: 3, url: "https://github.com/example/repo/pull/3", title: "Fix login" };
 let answers: { stdout?: string; stderr?: string; code?: number; wait?: Promise<void> }[];
+let remote = "origin https://github.com/example/repo.git (fetch)";
+let upstream = "refs/remotes/origin/main";
 
 beforeEach(() => {
   clearGhCache();
   answers = [];
-  mocks.spawn.mockReset().mockImplementation(() => {
-    const answer = answers.shift();
+  remote = "origin https://github.com/example/repo.git (fetch)";
+  upstream = "refs/remotes/origin/main";
+  mocks.spawn.mockReset().mockImplementation((command: string, args: string[]) => {
+    const answer = command === "git" && args[0] === "remote" ? { stdout: remote }
+      : command === "git" && args.includes("--symbolic-full-name") ? { stdout: upstream }
+        : answers.shift();
     if (!answer) throw new Error("Unexpected process call in test");
     const child = Object.assign(new EventEmitter(), {
       stdout: new PassThrough(), stderr: new PassThrough(), kill: vi.fn(),
@@ -31,10 +37,41 @@ beforeEach(() => {
 afterEach(() => clearGhCache());
 
 describe("GitHub read lifecycle", () => {
+  it("does not publish an old list after invalidation or a remote change", async () => {
+    let release!: () => void;
+    const wait = new Promise<void>((resolve) => { release = resolve; });
+    answers.push({ stdout: JSON.stringify([row]), wait });
+    const old = await pollPullRequestList("/repo");
+    clearGhCache();
+    remote = "origin https://github.com/example/new-repo.git (fetch)";
+    answers.push({ stdout: "[]" });
+    await (await pollPullRequestList("/repo")).pending;
+    release();
+    expect(await old.pending).toBeUndefined();
+    expect((await pollPullRequestList("/repo")).value).toEqual([]);
+
+    remote = "origin https://github.com/example/third-repo.git (fetch)";
+    answers.push({ stdout: JSON.stringify([row]) });
+    const changed = await pollPullRequestList("/repo");
+    expect(changed.known).toBe(false);
+    expect(changed.value).toBeUndefined();
+    await changed.pending;
+  });
+
+  it("invalidates the branch PR when its symbolic upstream changes at the same commit", async () => {
+    answers.push({ stdout: "main" }, { stdout: "same-sha" }, { stdout: JSON.stringify(row) });
+    await pollPullRequest("/repo");
+    await new Promise((resolve) => setImmediate(resolve));
+    upstream = "refs/remotes/other/main";
+    answers.push({ stdout: "main" }, { stdout: "same-sha" }, { stdout: JSON.stringify({ ...row, number: 4 }) });
+    expect((await pollPullRequest("/repo")).known).toBe(false);
+    await new Promise((resolve) => setImmediate(resolve));
+  });
+
   it("does not reuse a cached PR after a branch change or publish a late old-branch read", async () => {
     let release!: () => void;
     const wait = new Promise<void>((resolve) => { release = resolve; });
-    const identity = (branch: string) => [{ stdout: branch }, { stdout: `sha-${branch}` }, { stdout: "origin repo" }];
+    const identity = (branch: string) => [{ stdout: branch }, { stdout: `sha-${branch}` }];
     answers.push(...identity("first"), { stdout: JSON.stringify(row), wait });
     expect(await pollPullRequest("/branch-fixture")).toEqual({ known: false, value: undefined });
     answers.push(...identity("second"), { stdout: JSON.stringify({ ...row, number: 4, url: row.url.replace("/3", "/4") }) });
@@ -58,23 +95,26 @@ describe("GitHub read lifecycle", () => {
     expect(await listPullRequests("/repo")).toHaveLength(1);
     answers.push({ stdout: "[" }, { stdout: "[" });
     expect(await listPullRequests("/repo")).toBeUndefined();
-    expect(pollPullRequestList("/repo").value?.[0]?.number).toBe(3);
+    expect((await pollPullRequestList("/repo")).value?.[0]?.number).toBe(3);
     expect(pullRequestListFailure("/repo")).toMatch(/incomplete response/);
     answers.push({ stdout: "[]" });
-    expect(await pollPullRequestList("/repo", true).pending).toEqual([]);
+    expect(await (await pollPullRequestList("/repo", true)).pending).toEqual([]);
     expect(pullRequestListFailure("/repo")).toBeUndefined();
   });
 
   it("bypasses the cache only when requested and shares an in-flight refresh", async () => {
     answers.push({ stdout: JSON.stringify([row]) });
     await listPullRequests("/repo");
-    expect(pollPullRequestList("/repo").pending).toBeUndefined();
-    answers.push({ stdout: "[]" });
-    const first = pollPullRequestList("/repo", true);
-    const second = pollPullRequestList("/repo", true);
+    expect((await pollPullRequestList("/repo")).pending).toBeUndefined();
+    let release!: () => void;
+    const wait = new Promise<void>((resolve) => { release = resolve; });
+    answers.push({ stdout: "[]", wait });
+    const first = await pollPullRequestList("/repo", true);
+    const second = await pollPullRequestList("/repo", true);
     expect(second.pending).toBe(first.pending);
+    release();
     await first.pending;
-    expect(mocks.spawn).toHaveBeenCalledTimes(2);
+    expect(mocks.spawn.mock.calls.filter((call) => call[0] === "gh")).toHaveLength(2);
     expect(mocks.spawn.mock.calls[0]?.[1].join(",")).not.toContain("statusCheckRollup");
   });
 
@@ -97,12 +137,12 @@ describe("GitHub read lifecycle", () => {
   });
 
   it("does not mark the branch's PR as known absent after a failed read", async () => {
-    answers.push({ stdout: "main" }, { stdout: "sha" }, { stdout: "origin repo" }, { code: 1, stderr: "HTTP 401: Bad credentials" });
+    answers.push({ stdout: "main" }, { stdout: "sha" }, { code: 1, stderr: "HTTP 401: Bad credentials" });
     expect((await pollPullRequest("/repo")).known).toBe(false);
     await new Promise((resolve) => setImmediate(resolve));
-    answers.push({ stdout: "main" }, { stdout: "sha" }, { stdout: "origin repo" });
+    answers.push({ stdout: "main" }, { stdout: "sha" });
     expect((await pollPullRequest("/repo")).known).toBe(false);
-    expect(mocks.spawn).toHaveBeenCalledTimes(7);
+    expect(mocks.spawn).toHaveBeenCalledTimes(9);
   });
 
   it("reads the selected commit without changing the checkout", async () => {

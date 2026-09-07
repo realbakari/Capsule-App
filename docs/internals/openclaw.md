@@ -89,3 +89,11 @@ payload truncation and remains separate from lifecycle status. Textual tool
 summaries cannot establish a child-task roster or usage figures; the UI discloses
 this. No private runtime files are scanned and no agent loop is added. Only
 lifecycle events can settle a run, never a completed tool event.
+
+## Repository-aware PR reads
+
+PR list caches
+include normalized cwd, remote configuration and invalidation epoch. Branch
+PR caches also include symbolic upstream identity. Identity reads and network
+results reject superseded requests, including requests finishing after cache
+invalidation; old cleanup cannot remove a newer in-flight request.
