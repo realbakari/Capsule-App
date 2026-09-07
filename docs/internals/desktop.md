@@ -671,3 +671,13 @@ spawn order and label missing usage, partial history, and last-reported states
 after the parent ends. It is not a child-session orchestrator or workflow graph.
 At most 100 delegation rows are shown from the bounded event window. Internal
 subagents may be absent when a harness or route does not publish telemetry.
+
+### Safe workspace reads
+
+Filesystem reads validate type and size on the descriptor actually read, with
+nonblocking/no-follow opens, bounded allocation and a post-open identity check.
+Path resolution checks canonical containment, including existing parents of
+new files. Previews, configuration, icons, search and untracked-file statistics
+reuse this reader. These checks reject static symlink escapes and detected
+replacement races; they are not an OS sandbox against an adversary concurrently
+renaming parent directories, and do not constrain a coding CLI's own file access.

@@ -1,5 +1,4 @@
-import { constants } from "node:fs";
-import { open } from "node:fs/promises";
+import { readBoundedFile, FileTooLargeError } from "./bounded-read.js";
 import type { FilePreview } from "@capsule/shared";
 import {
   localTimings,
@@ -80,31 +79,20 @@ export function previewFromBytes(path: string, bytes: Buffer): FilePreview {
   };
 }
 
-export async function readPreviewFile(absolutePath: string, relative: string): Promise<FilePreview> {
+export async function readPreviewFile(absolutePath: string, relative: string, projectRoot?: string): Promise<FilePreview> {
   const end = localTimings.start("preview.read");
-  try { const result = await readPreview(absolutePath, relative); end(); return result; }
+  try { const result = await readPreview(absolutePath, relative, projectRoot); end(); return result; }
   catch (error) { end(true); throw error; }
 }
 
-async function readPreview(absolutePath: string, relative: string): Promise<FilePreview> {
-  // Non-blocking open also prevents a FIFO from waiting for a writer before
-  // we can inspect its type. All reads are from this same checked descriptor.
-  const handle = await open(absolutePath, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
+async function readPreview(absolutePath: string, relative: string, projectRoot?: string): Promise<FilePreview> {
+  const limit = previewKindFromFilename(relative) === "image" ? IMAGE_LIMIT : 1_000_000;
   try {
-    const stat = await handle.stat();
-    if (!stat.isFile()) throw new Error("Only regular files can be previewed.");
-    const limit = previewKindFromFilename(relative) === "image" ? IMAGE_LIMIT : 1_000_000;
-    if (stat.size > limit) {
-      return { path: relative, kind: "binary", truncated: true, size: stat.size, detail: "File is too large to preview." };
+    return previewFromBytes(relative, await readBoundedFile(absolutePath, limit, projectRoot));
+  } catch (error) {
+    if (error instanceof FileTooLargeError) {
+      return { path: relative, kind: "binary", truncated: true, size: error.size, detail: "File is too large to preview." };
     }
-    const bytes = Buffer.alloc(stat.size + 1);
-    let length = 0;
-    while (length < bytes.length) {
-      const result = await handle.read(bytes, length, bytes.length - length, length);
-      if (!result.bytesRead) break;
-      length += result.bytesRead;
-    }
-    if (length > stat.size) throw new Error("File changed while loading its preview. Try again.");
-    return previewFromBytes(relative, bytes.subarray(0, length));
-  } finally { await handle.close(); }
+    throw error;
+  }
 }

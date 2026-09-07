@@ -1,5 +1,6 @@
-import { existsSync, readFileSync } from "node:fs";
-import path from "node:path";
+import { existsSync } from "node:fs";
+import { readBoundedFileSync } from "./bounded-read.js";
+import { resolveProjectPath } from "./contained-path.js";
 
 import { parseProjectFile, PROJECT_FILE_NAME, type ProjectFileState } from "@capsule/shared";
 
@@ -12,11 +13,10 @@ import { parseProjectFile, PROJECT_FILE_NAME, type ProjectFileState } from "@cap
  */
 export function readProjectFile(workingDirectory: string | undefined): ProjectFileState {
   if (!workingDirectory) return { status: "missing" };
-  const file = path.join(workingDirectory, PROJECT_FILE_NAME);
-  if (!existsSync(file)) return { status: "missing" };
   try {
-    // A configuration file that needs a megabyte is not one.
-    return parseProjectFile(readFileSync(file, "utf8").slice(0, 256 * 1024));
+    const file = resolveProjectPath(workingDirectory, PROJECT_FILE_NAME);
+    if (!existsSync(file)) return { status: "missing" };
+    return parseProjectFile(readBoundedFileSync(file, 256 * 1024, workingDirectory).toString("utf8"));
   } catch (error) {
     return {
       status: "invalid",

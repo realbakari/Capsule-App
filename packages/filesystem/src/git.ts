@@ -1,10 +1,11 @@
 import { inRepository } from "./git-process.js";
 import fs from "node:fs";
-import { readFile, lstat, unlink, realpath } from "node:fs/promises";
+import { lstat, unlink, realpath } from "node:fs/promises";
 import path from "node:path";
 import type { GitChange, GitStatus } from "@capsule/shared";
 import { git } from "./git-process.js";
 import { parsePorcelain, parseNumstat } from "./git-output.js";
+import { readBoundedFile } from "./bounded-read.js";
 
 export async function readGitStatus(workingDirectory?: string): Promise<GitStatus> {
   return inRepository(workingDirectory, async () => {
@@ -88,7 +89,7 @@ async function applyLineStats(workingDirectory: string, files: GitChange[]): Pro
         const fullPath = path.join(workingDirectory, file.path);
         const info = await lstat(fullPath);
         if (info.isFile() && info.size <= 1_000_000) {
-          const content = await readFile(fullPath, "utf8");
+          const content = (await readBoundedFile(fullPath, 1_000_000, workingDirectory)).toString("utf8");
           if (content.includes("\0")) return file;
           const lineCount = content.length === 0 ? 0 : content.split("\n").length - (content.endsWith("\n") ? 1 : 0);
           return { ...file, added: lineCount, removed: 0 };

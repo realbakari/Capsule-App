@@ -3,6 +3,10 @@ import path from "node:path";
 
 import type { FileEntry } from "@capsule/shared";
 import { readPreviewFile } from "./preview.js";
+import { resolveProjectPath } from "./contained-path.js";
+import { readBoundedFileSync } from "./bounded-read.js";
+
+export { readBoundedFile, readBoundedFileSync, FileTooLargeError } from "./bounded-read.js";
 
 export type { FileEntry };
 export { inRepository } from "./git-process.js";
@@ -98,15 +102,7 @@ export class FilesystemAdapter {
     if (!this.projectRoot) {
       throw new Error("Project has no working directory");
     }
-    const root = path.resolve(this.projectRoot);
-    const resolved = path.resolve(root, target);
-    // A raw string prefix test also matches siblings that merely start with the
-    // root's name (`/x/app` vs `/x/app-private`). Compare on path segments.
-    const relative = path.relative(root, resolved);
-    if (relative.startsWith("..") || path.isAbsolute(relative)) {
-      throw new Error("Path is outside the project working directory");
-    }
-    return resolved;
+    return resolveProjectPath(this.projectRoot, target);
   }
 
   list(relative = "."): FileEntry[] {
@@ -139,16 +135,11 @@ export class FilesystemAdapter {
 
   read(relative: string): string {
     const file = this.resolve(relative);
-    const stat = fs.statSync(file);
-    if (!stat.isFile()) throw new Error("Only regular files can be read.");
-    if (stat.size > 1_000_000) {
-      throw new Error("File is too large to preview");
-    }
-    return fs.readFileSync(file, "utf8");
+    return readBoundedFileSync(file, 1_000_000, this.projectRoot).toString("utf8");
   }
 
   preview(relative: string) {
-    return readPreviewFile(this.resolve(relative), relative.replaceAll("\\", "/"));
+    return readPreviewFile(this.resolve(relative), relative.replaceAll("\\", "/"), this.projectRoot);
   }
 
   /*

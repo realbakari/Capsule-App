@@ -1,5 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
+import { readBoundedFileSync } from "./bounded-read.js";
+import { resolveProjectPath } from "./contained-path.js";
 
 const MIME_BY_EXTENSION: Record<string, string> = {
   ".svg": "image/svg+xml",
@@ -52,17 +54,20 @@ export function resolveProjectIconPath(
   customPath?: string,
 ): string | undefined {
   if (customPath) {
-    const candidate = path.isAbsolute(customPath)
-      ? path.normalize(customPath)
-      : projectRoot
-        ? path.resolve(projectRoot, customPath)
-        : undefined;
-    if (candidate) return existingIcon(candidate);
+    try {
+      // Absolute custom paths are explicit user selections. Repository-owned
+      // relative paths may not escape through traversal or a symlink.
+      const candidate = path.isAbsolute(customPath) ? path.normalize(customPath)
+        : projectRoot ? resolveProjectPath(projectRoot, customPath) : undefined;
+      if (candidate) return existingIcon(candidate);
+    } catch { return undefined; }
   }
   if (!projectRoot) return undefined;
   for (const relative of AUTOMATIC_ICON_PATHS) {
-    const icon = existingIcon(path.resolve(projectRoot, relative));
-    if (icon) return icon;
+    try {
+      const icon = existingIcon(resolveProjectPath(projectRoot, relative));
+      if (icon) return icon;
+    } catch { /* Ignore icons that do not belong to the project. */ }
   }
   return undefined;
 }
@@ -75,6 +80,10 @@ export function readProjectIconDataUrl(
   if (!resolved) return undefined;
   const mime = MIME_BY_EXTENSION[path.extname(resolved).toLowerCase()];
   if (!mime) return undefined;
-  return `data:${mime};base64,${fs.readFileSync(resolved).toString("base64")}`;
+  try {
+    const root = customPath && path.isAbsolute(customPath) ? undefined : projectRoot;
+    return `data:${mime};base64,${readBoundedFileSync(fs.realpathSync(resolved), 2_000_000, root).toString("base64")}`;
+  } catch {
+    return undefined;
+  }
 }
-

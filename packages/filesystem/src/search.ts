@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { ContentHit } from "@capsule/shared";
 import { projectFiles } from "./file-index.js";
+import { readBoundedFile } from "./bounded-read.js";
 
 const BINARY = /\.(png|jpe?g|gif|webp|ico|pdf|zip|gz|woff2?|ttf|mp4|mov|dylib|so|o)$/i;
 const MAX_FILE_BYTES = 400_000;
@@ -19,17 +20,7 @@ export async function searchContents(projectRoot: string | undefined, query: str
       const full = await fs.realpath(path.resolve(root, relative));
       const inside = path.relative(root, full);
       if (inside === ".." || inside.startsWith(`..${path.sep}`) || path.isAbsolute(inside)) return [];
-      const stat = await fs.stat(full);
-      if (!stat.isFile() || stat.size > MAX_FILE_BYTES) return [];
-      const handle = await fs.open(full, "r");
-      let text: string;
-      try {
-        // Files growing during a search must not cause an unbounded read.
-        const buffer = Buffer.alloc(stat.size + 1);
-        const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
-        if (bytesRead > stat.size) return [];
-        text = buffer.toString("utf8", 0, bytesRead);
-      } finally { await handle.close(); }
+      const text = (await readBoundedFile(full, MAX_FILE_BYTES, root)).toString("utf8");
       if (text.includes("\0")) return [];
       const matches: ContentHit[] = [];
       const lines = text.split("\n");

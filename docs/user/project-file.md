@@ -64,5 +64,10 @@ A `capsule.json` that is present but unreadable is reported on the project
 screen, with the parser's complaint, and everything it declares is ignored
 until it is fixed. Capsule does not silently skip it.
 
+The file must be a regular file no larger than 256 KiB. Pipes, devices and links
+that leave the project are rejected. File previews and project-scoped reads
+also refuse links outside the project; they do not expand Capsule's workspace
+access to the rest of the machine.
+
 An entry that is missing a name or a command is skipped on its own — one typo
 does not throw away the rest of the file.
