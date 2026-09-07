@@ -205,7 +205,7 @@ export function DesktopCard({ settings, onPatch }: SectionProps) {
   return (
     <div className="card">
       <h3>Desktop</h3>
-      <SettingRow label="Desktop companion" hint="A movable companion for activity across all projects, even outside chat. Click to open threads; drag its handle to move it. Size and motion controls are inside.">
+      <SettingRow label="Desktop companion" hint="An animated capsule for activity across all projects, even outside chat. Click to open threads; drag its handle to move it. Size and motion controls are inside.">
         <PetControl />
       </SettingRow>
       <SettingRow

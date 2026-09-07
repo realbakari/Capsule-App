@@ -29,6 +29,12 @@ export function PlusIcon(props: IconProps) {
   );
 }
 
+export function GripIcon(props: IconProps) {
+  return <Svg {...props}>{[5, 12, 19].flatMap((y) => [9, 15].map((x) =>
+    <circle key={`${x}-${y}`} cx={x} cy={y} r="1" fill="currentColor" stroke="none" />
+  ))}</Svg>;
+}
+
 export function FolderPlusIcon(props: IconProps) {
   return (
     <Svg {...props}>

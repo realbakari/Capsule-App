@@ -257,14 +257,16 @@ Touched-file chips are separate keyboard-operable buttons below the disclosure
 header, wrapping inside the card rather than overflowing the activity row.
 
 The desktop companion is a separate transparent, initially inactive window,
-available from General settings, the palette and the app menu. Its articulated
-SVG has CSS-driven walking, tail/ear/head/eye motion and explicit wave/play/stretch
-reactions. A dedicated drag region leaves the mascot keyboard/click accessible.
+available from General settings, the palette and the app menu. Its two-piece
+off-white/graphite capsule SVG has independent CSS tracks for shell float/rock,
+blinking eyes, shadow and working-state core rotation, plus greet/roll/bounce
+reactions. The glyph, caption and colour carry state without relying on motion.
+A dedicated SVG drag handle leaves the mascot keyboard/click accessible.
 The window expands upward for the tray, clamped to its display's work area.
 Size/pause preferences are renderer-local; reduced motion disables animation.
 Hidden-renderer regressions explicitly emulate both reduced motion and no
 preference in Chromium's CSS engine, independent of the host's accessibility
-settings. They check limb motion, wave/play/stretch reactions, pause/resume and
+settings. They check actual transform changes, greet/roll/bounce reactions, pause/resume and
 tray navigation in both modes; reduced motion must keep every part still.
 Activity reads coalesce at 250ms with only one outstanding request; tool-output
 frames do not trigger reads. An indexed lookup selects each non-archived thread's

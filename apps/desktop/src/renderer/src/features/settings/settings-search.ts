@@ -48,7 +48,7 @@ export const SETTINGS_SEARCH_ITEMS: SettingsSearchItem[] = [
   { title: "Launch at login", section: "general", keywords: ["startup", "boot", "open"] },
   { title: "Send key", section: "general", keywords: ["enter", "composer", "submit"] },
   { title: "Menu bar", section: "general", keywords: ["tray", "status bar", "extra"] },
-  { title: "Desktop companion", section: "general", keywords: ["pet", "mascot", "cat", "animation", "motion"] },
+  { title: "Desktop companion", section: "general", keywords: ["pet", "mascot", "capsule", "animation", "motion"] },
   { title: "Local performance", section: "diagnostics", keywords: ["freeze", "timings", "slow", "git", "preview"] },
   { title: "Keep computer awake", section: "general", keywords: ["sleep", "power", "running"] },
   { title: "Response completions", section: "general", keywords: ["notification", "alert", "run complete"] },

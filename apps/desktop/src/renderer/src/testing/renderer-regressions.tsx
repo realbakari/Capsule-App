@@ -112,30 +112,44 @@ window.runPetRegressions = async (motion) => {
     petReadFails = false; button("Retry status").click();
     await until(() => document.body.textContent?.includes("Example task"));
     for (const [selector, name] of [
-      [".pet-tail", "petTail"], [".pet-leg-front", "petStep"], [".pet-leg-back", "petStep"],
-      [".pet-head", "petLook"], [".pet-ear-left", "petEar"], [".pet-ear-right", "petEar"], [".pet-eye", "petBlink"],
+      [".capsule-motion", "capsuleFloat"], [".capsule-core", "capsuleSpin"],
+      [".capsule-eyes", "capsuleBlink"], [".capsule-shadow", "capsuleShadow"],
     ] as const) {
       animation(selector, reduced ? "none" : name);
     }
     if (reduced) still();
-    button("Wave").click();
+    assert(!document.querySelector(".pet-tail, .pet-ear, .pet-leg"), "Animal parts remain in the capsule mascot");
+    if (!reduced) {
+      const moving = document.querySelector(".capsule-motion")!;
+      const track = moving.getAnimations()[0]!;
+      track.pause(); track.currentTime = 0;
+      const initial = getComputedStyle(moving).transform;
+      track.currentTime = 2400;
+      assert(getComputedStyle(moving).transform !== initial, "Capsule animation does not change the rendered transform");
+      track.play();
+    }
+    button("Greet").click();
     await until(() => document.querySelector(".pet--greeting"));
-    animation(".pet-capsule", reduced ? "none" : "petWave");
+    animation(".capsule-motion", reduced ? "none" : "capsuleGreet");
     if (reduced) still();
-    button("Play").click();
-    await until(() => document.querySelector(".pet--pounce"));
-    animation(".pet-capsule", reduced ? "none" : "petPounce");
+    button("Roll").click();
+    await until(() => document.querySelector(".pet--roll"));
+    animation(".capsule-motion", reduced ? "none" : "capsuleRoll");
+    const firstRoll = document.querySelector(".capsule-motion");
+    button("Roll").click();
+    await until(() => document.querySelector(".capsule-motion") !== firstRoll);
+    animation(".capsule-motion", reduced ? "none" : "capsuleRoll");
     if (reduced) still();
-    button("Stretch").click();
-    await until(() => document.querySelector(".pet--stretch"));
-    animation(".pet-rig", reduced ? "none" : "petStretch");
+    button("Bounce").click();
+    await until(() => document.querySelector(".pet--bounce"));
+    animation(".capsule-motion", reduced ? "none" : "capsuleBounce");
     if (reduced) still();
     button("Pause motion").click();
     await until(() => document.querySelector(".pet--paused"));
     still();
     button("Resume motion").click();
     await until(() => !document.querySelector(".pet--paused"));
-    animation(".pet-tail", reduced ? "none" : "petTail");
+    animation(".capsule-core", reduced ? "none" : "capsuleSpin");
     if (reduced) still();
     (document.querySelector(".pet-tray-title")?.closest("button") as HTMLButtonElement).click();
     await until(() => petFocus === "pet-thread" && expandedPet.at(-1) === false);

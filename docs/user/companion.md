@@ -2,10 +2,12 @@
 
 Show the companion from Settings → General, the command palette, or the app
 menu. It floats above normal desktop windows, independently of the chat view.
-Drag its small handle to move it; click the animal to open its activity tray.
+Drag its small handle to move it; click the capsule to open its activity tray.
 
-The companion walks, blinks, looks around, flicks its ears and swishes its tail.
-Choose **Wave**, **Play** or **Stretch** for a reaction. Its caption still reports
+The companion is an off-white and graphite capsule. It floats, rocks gently,
+blinks and follows your pointer with its eyes. Its core rotates while work is
+running; a check, attention mark or cross distinguishes other activity states.
+Choose **Greet**, **Roll** or **Bounce** for a reaction. Its caption still reports
 workspace activity during play, and a missing status is labelled unavailable.
 Choose a thread in the tray to open that conversation.
 
