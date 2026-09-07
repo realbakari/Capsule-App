@@ -1,6 +1,7 @@
 import { harnessReadinessLabel, isFeaturedHarness } from "../../lib/harness";
 import { harnessCapabilities } from "@capsule/shared";
 import { CapabilityDetails } from "./CapabilityDetails";
+import { HarnessCatalogRow } from "./HarnessCatalogRow";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   PERMISSION_PROFILES,
@@ -149,21 +150,11 @@ export function RuntimesView() {
               <small>{available.length}</small>
             </div>
             {listed.map((harness) => (
-              <button
-                type="button"
-                className={`harness-catalog-row${selectedHarness?.id === harness.id ? " active" : ""}`}
-                key={harness.id}
-                onClick={() => setSelectedHarnessId(harness.id)}
-              >
-                <AgentGlyph id={harness.id} name={harness.name} size={17} />
-                <span>
-                  <b>{harness.name}</b>
-                  <small>{isInstalled(harness) ? harnessReadinessLabel(harness.readiness) : "Not installed"}</small>
-                </span>
-                {harnessSessions.some((item) => item.harnessId === harness.id) ? (
-                  <i className="dot on" aria-label="Session open" />
-                ) : null}
-              </button>
+              <HarnessCatalogRow key={harness.id} id={harness.id} name={harness.name}
+                detail={isInstalled(harness) ? harnessReadinessLabel(harness.readiness) : "Not installed"}
+                selected={selectedHarness?.id === harness.id}
+                sessionOpen={harnessSessions.some((item) => item.harnessId === harness.id)}
+                onSelect={() => setSelectedHarnessId(harness.id)} />
             ))}
             {uninstalled.length > 0 && (
               <button className="harness-show-all" type="button" onClick={() => setShowAll((value) => !value)}>

@@ -12,16 +12,19 @@ import { formatUserError } from "../../lib/errors";
 import { activityTime, reviewStateLabel } from "../../lib/pull-request-activity";
 import { DiffView } from "./DiffView";
 import { PagedFileDiffs } from "./PagedFileDiffs";
+import { HeaderPopover } from "./HeaderPopover";
 import { ChecksBadge, PullRequestChecks } from "./PullRequestChecks";
 import { Avatar, PullRequestComment, PullRequestTimeline } from "./PullRequestActivity";
 import {
   ChevronDownIcon,
+  BookOpenIcon,
   ChevronRightIcon,
   CopyIcon,
   ExternalLinkIcon,
   MessageSquareIcon,
   MoreHorizontalIcon,
   RefreshIcon,
+  WrenchIcon,
   XIcon,
 } from "./icons";
 
@@ -159,6 +162,7 @@ export function GitPullRequestDetail({
   const [split, setSplit] = useState(true);
   const [wrap, setWrap] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuAnchor = useRef<HTMLDivElement>(null);
   const [reviewDrawerOpen, setReviewDrawerOpen] = useState(false);
   const [reviewSummary, setReviewSummary] = useState("");
   const [stagedComments, setStagedComments] = useState<StagedComment[]>([]);
@@ -170,6 +174,8 @@ export function GitPullRequestDetail({
   const [commitLoading, setCommitLoading] = useState(false);
   const [commitError, setCommitError] = useState<string>();
   const commitRequest = useRef(0);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(toastTimer.current), []);
   useEffect(() => () => { commitRequest.current += 1; }, []);
 
   async function selectCommit(oid: string) {
@@ -204,14 +210,17 @@ export function GitPullRequestDetail({
     (activityTime(a.createdAt) - activityTime(b.createdAt)) * (newestFirst ? -1 : 1)), [detail?.activity, newestFirst]);
 
   const showToast = (msg: string) => {
+    clearTimeout(toastTimer.current);
     setCopiedNotification(msg);
-    setTimeout(() => setCopiedNotification(""), 2500);
+    toastTimer.current = setTimeout(() => setCopiedNotification(""), 2500);
   };
 
-  const handleCopyLink = () => {
-    if (summary.url) {
-      navigator.clipboard.writeText(summary.url);
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(summary.url);
       showToast("Link copied to clipboard");
+    } catch {
+      showToast("Could not copy the link. Try again.");
     }
     setMenuOpen(false);
   };
@@ -271,35 +280,22 @@ export function GitPullRequestDetail({
    */
   const safeTitle = sanitizeUntrusted(summary.title, { singleLine: true, maxChars: 200 });
 
-  const handleExplainPR = () => {
-    const prompt = `Please explain PR #${summary.number} (${safeTitle}) and walk through the diff. Highlight key architectural changes and what to review closely.`;
-    if (onSteerAgent) onSteerAgent(prompt);
-    else {
-      navigator.clipboard.writeText(prompt);
-      showToast("Prompt copied to clipboard");
+  const preparePrompt = async (prompt: string) => {
+    try {
+      if (onSteerAgent) onSteerAgent(prompt);
+      else {
+        await navigator.clipboard.writeText(prompt);
+        showToast("Prompt copied to clipboard");
+      }
+    } catch {
+      showToast("Could not prepare the prompt. Try again.");
     }
     setMenuOpen(false);
   };
 
-  const handleFixFindings = () => {
-    const prompt = `Please inspect PR #${summary.number} and fix any outstanding issues or review comments.`;
-    if (onSteerAgent) onSteerAgent(prompt);
-    else {
-      navigator.clipboard.writeText(prompt);
-      showToast("Prompt copied to clipboard");
-    }
-    setMenuOpen(false);
-  };
-
-  const handleAskQuestion = () => {
-    const prompt = `Regarding PR #${summary.number} (${safeTitle}): `;
-    if (onSteerAgent) onSteerAgent(prompt);
-    else {
-      navigator.clipboard.writeText(prompt);
-      showToast("Prompt copied to clipboard");
-    }
-    setMenuOpen(false);
-  };
+  const handleExplainPR = () => preparePrompt(`Please explain PR #${summary.number} (${safeTitle}) and walk through the diff. Highlight key architectural changes and what to review closely.`);
+  const handleFixFindings = () => preparePrompt(`Please inspect PR #${summary.number} and fix any outstanding issues or review comments.`);
+  const handleAskQuestion = () => preparePrompt(`Regarding PR #${summary.number} (${safeTitle}): `);
 
   return (
     <section className="pr-detail">
@@ -321,7 +317,7 @@ export function GitPullRequestDetail({
           <button className="pr-icon-btn" type="button" onClick={onOpenBrowser} title="Open on GitHub" aria-label="Open on GitHub">
             <ExternalLinkIcon size={15} />
           </button>
-          <div className="pr-menu-wrapper">
+          <div className="pr-menu-wrapper" ref={menuAnchor}>
             <button
               className="ghost pr-icon-btn"
               type="button"
@@ -329,31 +325,32 @@ export function GitPullRequestDetail({
               title="More options"
               aria-label="More pull request options"
               aria-expanded={menuOpen}
+              aria-haspopup="dialog"
             >
               <MoreHorizontalIcon size={15} />
             </button>
             {menuOpen && (
-              <div className="pr-action-menu">
+              <HeaderPopover anchor={menuAnchor} label="Pull request actions" className="pr-action-menu" onClose={() => setMenuOpen(false)}>
                 <button
                   type="button"
                   className="pr-action-item"
                   onClick={handleAskQuestion}
                 >
-                  <span>❓</span> Ask a question
+                  <MessageSquareIcon size={15} /> Ask a question
                 </button>
                 <button
                   type="button"
                   className="pr-action-item"
                   onClick={handleExplainPR}
                 >
-                  <span>📖</span> Explain this PR
+                  <BookOpenIcon size={15} /> Explain this PR
                 </button>
                 <button
                   type="button"
                   className="pr-action-item"
                   onClick={handleFixFindings}
                 >
-                  <span>🔨</span> Fix findings in this thread
+                  <WrenchIcon size={15} /> Fix findings in this thread
                 </button>
                 <hr className="pr-menu-divider" />
                 <button
@@ -361,7 +358,7 @@ export function GitPullRequestDetail({
                   className="pr-action-item"
                   onClick={handleCopyLink}
                 >
-                  <CopyIcon size={13} /> Copy link
+                  <CopyIcon size={15} /> Copy link
                 </button>
                 <button
                   type="button"
@@ -371,9 +368,9 @@ export function GitPullRequestDetail({
                     setMenuOpen(false);
                   }}
                 >
-                  <ExternalLinkIcon size={13} /> Open on GitHub
+                  <ExternalLinkIcon size={15} /> Open on GitHub
                 </button>
-              </div>
+              </HeaderPopover>
             )}
           </div>
         </div>

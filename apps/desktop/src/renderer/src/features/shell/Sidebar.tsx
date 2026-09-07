@@ -809,6 +809,7 @@ export function Sidebar() {
                   onClick={() => openProject(item.id)}
                   onDoubleClick={() => setEditing({ kind: "project", id: item.id, value: item.name })}
                   onKeyDown={(event) => {
+                    if (event.target !== event.currentTarget) return;
                     if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault();
                       openProject(item.id);
@@ -820,6 +821,7 @@ export function Sidebar() {
                     type="button"
                     className="project-toggle"
                     aria-label={isOpen ? "Collapse project" : "Expand project"}
+                    aria-expanded={isOpen}
                     onClick={(event) => toggleExpanded(item.id, event)}
                   >
                     {isOpen ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} />}

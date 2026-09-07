@@ -181,3 +181,12 @@ Web links in conversation Markdown also open in the embedded browser. Use the
 browser toolbar's external-open action only when you want the system browser.
 The same panel still owns changed files, commits, push, and creating a draft or
 ready pull request for the current branch.
+
+The Review panel keeps your commit message if a commit fails. While a commit
+is pending, the form prevents duplicate submissions. A successful commit clears
+the message; switching workspaces starts a separate draft. An empty message or
+a clean working tree leaves **Commit** unavailable with an explanation.
+
+The pull request action menu can prepare a question, explanation request or
+fix request in your thread draft. These actions do not send the message for you.
+Escape closes the menu and returns focus to its button.

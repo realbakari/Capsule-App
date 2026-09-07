@@ -11,6 +11,8 @@ import { ContentSearch } from "../features/shell/ContentSearch";
 import { TurnOutcome } from "../features/conversation/TurnOutcome";
 import { RunEventLog } from "../features/conversation/RunEventLog";
 import { Pet } from "../features/pet/Pet";
+import { runUiPolishRegressions } from "./ui-polish-regressions";
+import { ChevronRightIcon, FolderIcon, InboxIcon } from "../features/shell/icons";
 import { CapabilityDetails } from "../features/harness/CapabilityDetails";
 import { MenuSelect } from "../features/shell/MenuSelect";
 import { RunSummary } from "../features/conversation/RunSummary";
@@ -778,5 +780,49 @@ window.runRendererRegressions = async () => {
   window.testWorkspace = { ...window.testWorkspace, session: { id: "other" } }; root.render(<ThreadAgents />);
   await until(() => !document.querySelector('[aria-label="Delegated task"]'));
   root.unmount(); window.capsule = nativeApi;
+  root = createRoot(host);
+  const layoutStyles = document.querySelector<HTMLStyleElement>("#composer-test-styles")!;
+  layoutStyles.media = "all";
+  for (const size of [16, 20]) {
+    document.documentElement.style.fontSize = `${size}px`;
+    for (const width of [220, 264, 352]) {
+      root.render(<aside className="sidebar-scroll" style={{ width }}>
+        <div className="project-block">
+          <div className="project-row">
+            <button className="project-toggle"><ChevronRightIcon size={12} /></button>
+            <span className="row-slot project-icon"><FolderIcon size={14} /></span>
+            <span data-align="title">Project</span><span />
+          </div>
+          <div className="project-row"><button className="project-toggle"><ChevronRightIcon size={12} /></button>
+            <span className="row-slot project-icon"><InboxIcon size={14} /></span><span>Inbox</span><span /></div>
+          <input aria-label="Rename fixture" defaultValue="Project" />
+          <div className="session-list">
+            <div className="sidebar-empty"><span data-align="empty">No conversations</span></div>
+            <div className="session-label"><span data-align="label">Pinned</span></div>
+            <button className="show-more"><span data-align="more">Show more</span></button>
+          </div>
+        </div>
+      </aside>);
+      await until(() => document.querySelector<HTMLElement>(".sidebar-scroll")?.style.width === `${width}px`);
+      for (const slot of Array.from(document.querySelectorAll(".project-icon"))) {
+        const box = slot.getBoundingClientRect();
+        const glyph = slot.querySelector("svg")!.getBoundingClientRect();
+        assert(Math.abs(box.top + box.height / 2 - glyph.top - glyph.height / 2) < 1, "Sidebar glyph is not vertically centered");
+      }
+      const left = document.querySelector('[data-align="title"]')!.getBoundingClientRect().left;
+      for (const key of ["empty", "label", "more"]) {
+        const actual = document.querySelector(`[data-align="${key}"]`)!.getBoundingClientRect().left;
+        assert(Math.abs(actual - left) < 1, `${key} does not align at ${width}px / ${size}px type`);
+      }
+      const input = document.querySelector<HTMLInputElement>('[aria-label="Rename fixture"]')!;
+      const styles = getComputedStyle(input);
+      const textLeft = input.getBoundingClientRect().left + parseFloat(styles.paddingLeft) + parseFloat(styles.borderLeftWidth);
+      assert(Math.abs(textLeft - left) < 1, "Renaming moves the title out of alignment");
+    }
+  }
+  root.unmount();
+  document.documentElement.style.removeProperty("font-size");
+  await runUiPolishRegressions(host);
+  layoutStyles.media = "not all";
   return "Renderer regressions passed: recovery, editor ownership and memoization, browser navigation and discovery, bounded diff pages and review notes, terminal persistence, send admission, 1,000 stream frames without snapshot reloads, reconnect/history reconciliation.";
 };

@@ -21,6 +21,7 @@ import { FileTreePane, sortTreeEntries } from "./FileTree";
 import { ThreadAgents } from "./ThreadAgents";
 import { GitPullRequestDetail as PullRequestDetailView } from "./PullRequestDetail";
 import { PullRequestList } from "./PullRequestList";
+import { ReviewCommitForm } from "./ReviewCommitForm";
 import {
   ColumnsIcon,
   CpuIcon,
@@ -266,7 +267,6 @@ export function Inspector() {
   const [termOut, setTermOut] = useState("");
   const [termBusy, setTermBusy] = useState(false);
 
-  const [message, setMessage] = useState("");
 
   const harnesses = harnessList ?? [];
   const dedicated = harnesses.find((item) => item.id === project?.defaultAgentId);
@@ -818,7 +818,7 @@ export function Inspector() {
             <>
               <span>Git</span>
               <span className="codex-breadcrumb-sep">·</span>
-              <span className="mono">{git?.branch ?? "main"}</span>
+              <span className="mono" title={git?.branch}>{git?.branch ?? "No branch"}</span>
               {git?.changed ? (
                 <span className="codex-breadcrumb-count">{git.changed} changed</span>
               ) : null}
@@ -1074,37 +1074,8 @@ export function Inspector() {
               )}
             </div>
 
-            {git?.isRepo && (
-              <form
-                className="commit-form"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  if (!message.trim()) return;
-                  void gitCommit(message).then(() => setMessage(""));
-                }}
-              >
-                <input
-                  type="text"
-                  placeholder="Commit message"
-                  value={message}
-                  onChange={(event) => setMessage(event.target.value)}
-                />
-                <button
-                  className="send"
-                  type="submit"
-                  disabled={!git?.dirty || !message.trim()}
-                  title={
-                    !git?.dirty
-                      ? "Nothing to commit — the working tree is clean."
-                      : !message.trim()
-                        ? "Write a commit message first."
-                        : undefined
-                  }
-                >
-                  Commit
-                </button>
-              </form>
-            )}
+            {git?.isRepo && <ReviewCommitForm key={`${projectId}/${session?.id ?? ""}/${session?.workingDirectory ?? project?.workingDirectory ?? ""}`}
+              dirty={Boolean(git.dirty)} onCommit={gitCommit} />}
 
             <div className="codex-diff-section">
               <h4>Diff</h4>

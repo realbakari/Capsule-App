@@ -30,6 +30,10 @@ installed agents first. Select one to see its readiness, run **Check this
 agent**, make it the default for the current project, or start a persistent or
 one-turn session.
 
+A check and outlined row mark the selected harness. The readiness text and
+project-default label describe its setup separately; hovering another row does
+not select it or change the project default.
+
 The project folder and session lifetime are set once in the bar above the
 catalog. An open session appears in the selected agent's detail panel, where
 you can refresh status, cancel the current turn, or close it. Gateway sessions

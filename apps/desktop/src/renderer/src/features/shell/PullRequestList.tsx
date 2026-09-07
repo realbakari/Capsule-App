@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { GitPullRequest } from "@capsule/shared";
 import { visiblePullRequests, type PullRequestSort } from "../../lib/pull-requests";
-import { RefreshIcon } from "./icons";
+import { RefreshIcon, SearchIcon } from "./icons";
 
 export function PullRequestList({ items, loading, error, onRefresh, onSelect }: {
   items?: GitPullRequest[];
@@ -22,7 +22,10 @@ export function PullRequestList({ items, loading, error, onRefresh, onSelect }: 
         </button>
       </div>
       <div className="pr-list-filters">
-        <input type="search" aria-label="Filter pull requests" placeholder="Filter by title, author, branch, or number" value={query} onChange={(event) => setQuery(event.target.value)} />
+        <label className="pr-search-field">
+          <SearchIcon size={15} />
+          <input type="search" aria-label="Filter pull requests" placeholder="Search pull requests" title="Filter by title, author, branch, or number" value={query} onChange={(event) => setQuery(event.target.value)} />
+        </label>
         <select aria-label="Sort pull requests" value={sort} onChange={(event) => setSort(event.target.value as PullRequestSort)}>
           <option value="updated">Recently updated</option>
           <option value="created">Newest created</option>

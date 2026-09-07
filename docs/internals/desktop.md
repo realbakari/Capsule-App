@@ -274,6 +274,16 @@ newest run state without loading historical prompts, results or verification JSO
 Only that newest run contributes to attention; errors never imply idle success.
 Read-only remote viewers can query pet state but cannot toggle or resize it.
 
+Review search uses a scoped search-field surface rather than native browser
+input chrome. Search/sort and commit controls share a 2.25rem minimum height;
+branch actions wrap on narrow panels. The commit form owns its draft, admits
+one submission at a time and clears only after success. Its workspace key
+prevents a previous folder's response from clearing another draft. PR actions
+use the shared SVG icon set and portaled, keyboard-dismissable popover; clipboard
+success is reported only after the write resolves. Harness catalog rows expose
+selection through a check, border and aria-pressed, distinct from hover. Sidebar
+icon slots remain flex-centered instead of being overwritten by SVG block rules.
+
 Diagnostics exposes bounded process-local timings: 200 recent samples, 20
 slowest, and fixed-label aggregates for event handling, Git process/queue time
 and local preview reads. Samples contain no paths, prompts, output or arguments;
@@ -674,16 +684,6 @@ after the parent ends. It is not a child-session orchestrator or workflow graph.
 At most 100 delegation rows are shown from the bounded event window. Internal
 subagents may be absent when a harness or route does not publish telemetry.
 
-### Safe workspace reads
-
-Filesystem reads validate type and size on the descriptor actually read, with
-nonblocking/no-follow opens, bounded allocation and a post-open identity check.
-Path resolution checks canonical containment, including existing parents of
-new files. Previews, configuration, icons, search and untracked-file statistics
-reuse this reader. These checks reject static symlink escapes and detected
-replacement races; they are not an OS sandbox against an adversary concurrently
-renaming parent directories, and do not constrain a coding CLI's own file access.
-
 ### Scoped state and bounded history
 
 Workspace refresh reads one latest-run summary per visible thread. Selected
@@ -697,6 +697,17 @@ Harness status is keyed by thread, harness, live session key, effective cwd and
 closed state. A response can publish only while that identity and request are
 current. Repeated reads share a pending request; a forced refresh cannot be
 overwritten by its predecessor. Project skill IDs include their canonical root.
+
+Sidebar titles, empty messages, section labels, Show more and rename fields
+share a title inset. DOM tests cover 220–352px widths and enlarged text.
+
+Filesystem reads validate type and size on the descriptor actually read, with
+nonblocking/no-follow opens, bounded allocation and a post-open identity check.
+Path resolution checks canonical containment, including existing parents of
+new files. Previews, configuration, icons, search and untracked-file statistics
+reuse this reader. These checks reject static symlink escapes and detected
+replacement races; they are not an OS sandbox against an adversary concurrently
+renaming parent directories, and do not constrain a coding CLI's own file access.
 
 ### Public showcase
 
