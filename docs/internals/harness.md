@@ -3,6 +3,8 @@
 Capsule owns the workspace: projects, conversations, runs, contracts, approvals, and artifacts. Coding CLIs own their loops, reached through OpenClaw acpx or a thin direct ACP client. Capsule never ships or installs coding CLIs.
 
 See [OpenClaw ACP agents](https://docs.openclaw.ai/tools/acp-agents) and [setup](https://docs.openclaw.ai/tools/acp-agents-setup).
+The [ACP compatibility map](acp-compatibility.md) distinguishes implemented
+behavior from optional protocol surfaces that Capsule does not carry.
 
 ## Gateway lifecycle Capsule implements
 
@@ -17,6 +19,14 @@ Both runtime routes compact recorded diagnostic events before database and IPC
 publication. Raw incoming replies still feed authoritative message/result
 handling; the diagnostic size limit must not truncate the actual agent reply.
 The paged run log and recent-window labels describe this distinction in the UI.
+
+Assistant prose never determines a run's failure status. Both routes use runtime
+lifecycle outcomes; command-text failure classification stays in the Gateway
+adapter's actual control requests. Direct replies and results do not use the
+legacy Gateway status-dump heuristic, so an agent can quote diagnostics without
+losing its answer. Startup cancels all interrupted runs, including
+`approval_required`, and settles persisted pending approvals as cancelled on
+both routes. No approval callback survives the process that created it.
 
 | Action | What Capsule does |
 |--------|-------------------|
@@ -116,37 +126,110 @@ Presets with `acpxCommand` can use the direct route; others keep the Gateway.
 The `direct:acp:` key is authoritative for existing sessions regardless of later
 settings. Readiness and Doctor probe the local CLI/login without requiring a
 Gateway or acpx. Start is available in the composer and Harnesses alike.
+Initialization must select ACP protocol version 1 before `session/new` is sent.
+Missing, malformed, or unsupported versions fail startup with a compatibility
+error; the host closes only that failed session's owned process.
 
 Direct text and tool activity feed the owning run. Permission requests are
 persisted and delivered to Approvals; callbacks are exactly-once, approve-once
-or deny only. An absent/unknown denial option cancels rather than selecting an
-allow option. No consumer means deny, not an indefinitely blocked prompt.
+or deny for user decisions. An absent/unknown denial option cancels rather than
+selecting an allow option. No consumer, a terminal run, Stop, Close, and output
+budget failure resolve unanswered requests with ACP's `cancelled` outcome, not
+a selected rejection option. Core records these approvals as `cancelled`;
+explicit Deny remains `denied`. Requests arriving while cancellation is pending
+are cancelled without reopening an approval. Late callbacks cannot answer twice.
+Approval records settle when Stop or Close is requested, before waiting for
+the agent. They stay cancelled even if process cancellation times out; that
+timeout still leaves the run unconfirmed. Shutdown settles them before closing
+the database.
 Cancellation settles pending requests and waits for the active prompt to end;
 timeout does not pretend the process stopped. Close terminates only the owned
 child and awaits exit. Terminal run records reject late frames.
 
-Direct live model/permission/mode/timeout changes and Steer are not implemented:
-they throw before updating local settings. Models reported by a CLI remain
-readable; advertising a catalog is not evidence of live mutability. Cwd changes
-are refused for both routes. These are explicit limitations, not success text.
+Migration 17 stores the native session ID together with harness, resolved cwd and
+preset launch signature in `sessions.direct_session`. Recovery clears stale
+process keys but retains this identity. The next spawn prefers advertised
+`session/resume`, otherwise `session/load` when `loadSession` is true. Both receive
+the current MCP offer and exact saved ID/cwd. History/permission replay is ignored
+while restoring; configuration updates are retained. Unsupported or rejected
+restoration never falls back to `session/new`. A different folder, harness or
+launch command cannot reuse the identity. Legacy threads without native IDs
+cannot restore missing history. No agent session enumeration/delete is added.
+
+Direct select and boolean settings use `session/set_config_option` with exact
+reported IDs and values. A boolean request includes its type discriminator.
+Responses replace the complete configuration unless a newer notification arrived
+during the request; mismatched acknowledgement fails visibly. One setting request
+may be pending per process. Model/mode conveniences map only reported categories;
+generic permission profiles and timeouts are not guessed. Settings appear in
+Capabilities in both Composer and Harnesses. Config notifications refresh status
+without making chat messages and are coalesced to at most four notices per second.
+Steer and live cwd changes remain unavailable. Cwd changes are refused for both routes.
 Both routes reject overlapping turns and share local verification rules below.
+
+Direct prompts send native images or embedded text/blob resources only when the
+handshake advertises matching support. Main reopens explicitly attached regular
+files using bounded descriptor reads: eight files, 2 MiB/file and just under
+3 MiB combined raw bytes including text, then a final 4 MiB wire check including
+JSON/base64 overhead. Unsupported, special, missing and oversized files fail the
+turn instead of silently substituting paths. Encoded bytes are not persisted.
+Gateway delivery keeps its existing bridge and host semantics.
 
 ### Embedded browser tools
 
-The desktop offers direct sessions an authenticated loopback HTTP MCP server
-for `browser_status`, `browser_navigate`, and `browser_snapshot`. Availability
-depends on the CLI accepting HTTP MCP servers. The bearer token is minted per
-desktop launch, not per turn; it is not a per-thread isolation boundary.
-The server targets the desktop's currently registered guest. Do not describe
-these as thread-private browser sessions.
+The desktop offers direct sessions an authenticated loopback HTTP MCP server.
+Availability requires `mcpCapabilities.http === true` in the installed CLI's
+handshake. False, missing or malformed support omits the optional HTTP tools
+while keeping the conversation usable. Gateway browser setup remains
+Gateway-owned; Capsule does not inject these tools on that route.
 
-Navigation accepts only HTTP(S). If no guest exists, main requests the Browser
-panel and waits up to ten seconds for owned guest registration. The renderer
-starts the first navigation; the tool does not load the same first page twice.
-Snapshots bound text to 20,000 characters before crossing IPC, enumerate at
-most 200 interactive elements, omit password values and clear script watchdogs.
-There are no agent click/fill tools or arbitrary-script tool. Gateway sessions
-do not receive this MCP configuration; their browser setup stays Gateway-owned.
+Each native process receives a separate revocable token. The host disposes it
+on handshake failure, process exit and explicit close. A token resolves only
+the matching Capsule thread's Browser panel. The user must enable **Allow agent
+control** there; switching threads, hiding the inspector, leaving Chat or
+closing the panel revokes access. Browser cookies are still shared within the
+isolated foreground browser partition: thread targeting is not a private-profile feature.
+
+An explicit desktop `controlBackgroundBrowser` call can start one temporary hidden
+BrowserWindow per thread, capped at four pages with a fixed 30-minute expiry.
+Each uses a distinct non-persistent partition and the same page security rules.
+Background grants survive panel changes but are harness-scoped and revoked by
+owned-process disposal. While a background page exists, the agent targets it;
+an ungranted page fails closed rather than falling back to the foreground.
+Starting/changing background controls revokes foreground access.
+
+Desktop-only inspection and page mutations are write-scoped IPC. The separate
+read-scoped `readSharedBrowser` returns only explicitly shared snapshots, never
+private URLs/pixels. Capture is coalesced, cached for one second and invalidated
+by navigation, grants, close and crashes; an epoch check rejects in-flight stale
+captures. The renderer requests frames every two seconds only while expanded,
+visible and active. Remote clients can neither create nor operate the page.
+
+The implemented tools are status, HTTP(S) navigation, bounded DOM snapshots,
+click, text replacement, select-option choice, key press, vertical scroll,
+viewport screenshot and on-demand page diagnostics. DOM refs require the
+latest snapshot ID and live element identity. Navigation, replacement snapshots,
+changed labels/links, removed nodes, disabled/covered targets and credential
+inputs fail explicitly. Scripts run in an isolated guest world; no arbitrary
+JavaScript, uploads, rich-text editor automation, recording or interactive remote
+browser stream is exposed. Read-only shared snapshots are not remote control.
+Capture returns a bounded image, not a claim of verification.
+
+Navigation can create the first guest only for the granted, visible thread.
+Main waits up to ten seconds for matching DOM-ready registration; the initial
+page is not loaded twice. Scripts, navigation and screenshots have watchdogs.
+Text is limited to 20,000 characters, DOM walks to 5,000 nodes, elements to 200,
+snapshot results to 96 KB and screenshot JPEGs to 1.5 MB / 1280px longest edge.
+Password values are omitted. Console/load/crash diagnostics retain at most
+80 entries per guest and clear on full navigation, never persist and do not
+capture network headers or bodies.
+
+The transport checks token, Host, Origin, method, path and body type; caps
+bodies, clients and concurrent requests; rejects malformed/batched requests;
+and never executes a tool notification. Overlapping operations on a token fail
+without an unbounded queue. MCP calls also use desktop update admission.
+Local `browser.tool` timings record only operation duration/failure, not URLs,
+arguments or page contents. Runtime completion is distinct from UI verification.
 
 ### Turn evidence
 
@@ -227,6 +310,33 @@ assigning parent tokens to children. No child-control protocol is implemented.
 
 ## Completion and retained output
 
+Direct ACP retains bounded initialize metadata and config-option reports for
+the owning live session. Config-only model catalogs also use the `model`
+category. Reports disclose optional image, embedded-context, HTTP MCP and
+session-loading capabilities; they do not enable unsupported route mutations.
+Config notifications replace the complete option snapshot, including an empty
+list. Removing a config model selector removes its derived model catalog. Only
+a separately reported legacy `models` catalog can act as fallback; another
+session's configuration never changes the current catalog.
+Direct reports retain at most 16 select/boolean options and 32 choices per
+selector, flattening either flat choices or one level of named choice groups.
+Labels are bounded; oversized or unsafe identifiers are omitted, never clipped
+into a different selectable value. Gateway metadata remains explicitly unreported when its status route
+does not expose the handshake. No new agent runtime is introduced.
+
+Permission requests retain a bounded text/diff/command projection plus locations.
+The protocol's `allow_once` (or legacy one-time label) controls whether Approve
+once is offered. Core validates this before recording a decision; permanent-only
+options cannot masquerade as one-time approval. Approval details survive in the
+database through migration 16 and are rendered in both approval entry points.
+
+`usage_update` becomes a validated latest context snapshot; identical repeats
+are ignored within the session. Prompt-result usage becomes a separate turn
+report. Only updates for the owning ACP session are accepted. Core persists
+`usage.context` and `usage.turn` events for the active run. Historical event pages
+label these as reported values, not invoice totals or verification. They never
+feed the transcript-derived Usage totals, avoiding double counting.
+
 Direct prompt results and rejected sends emit the same terminal `lifecycle`
 event the engine consumes for Gateway runs. Tests cover normal completion,
 refusal, token-limit stops, transport failures and admitting the next turn.
@@ -241,3 +351,19 @@ Core shares a `TextBudget` across reply buffers: 1 MiB per entry, 8 MiB total,
 Budget violations preserve an accepted prefix, fail the run, request route-
 appropriate cancellation and suppress late replies until a new turn starts.
 Only confirmed cancellation updates the live harness back to waiting.
+
+Direct ACP uses optional v1 `messageId` values to separate consecutive assistant
+messages, including when no tool ran between them. One exact ID of at most
+1,024 characters is retained; absent, null or oversized IDs use the legacy
+boundary rules. An identified message stays contiguous across tool activity.
+For agents without IDs, new `tool_call` notifications separate prose segments.
+Permission requests and transitions to reasoning also flush preceding prose.
+The session emits a
+`message-end` signal that the host maps to reply `done`; it does not finish the
+run. Consecutive text chunks remain byte-for-byte contiguous. Background
+`tool_call_update`, usage and config telemetry do not split text. Prompt exit
+still flushes the last segment, including on rejection. Empty boundary flushes
+are ignored, but a genuine one-character answer is retained. Gateway completed
+message snapshots keep their existing boundaries. Both routes separate complete
+messages with blank lines in run results and history reconstruction. Old merged
+records are not heuristically rewritten.

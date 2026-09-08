@@ -166,6 +166,27 @@ Tools: **Launch**, **Review**, **Terminal**, **Browser**, **Files**, **Agents**,
   registration completes the request with a ten-second readiness timeout.
   The first page is not reloaded after registration. Gateway browser tools are
   not injected; see [harness.md](harness.md).
+  Browser addresses retain at most 20 thread/project entries in memory. The
+  inspector remounts the guest across owners; history entries validate URL,
+  timestamp and size before rendering and strip embedded credentials.
+  Public schemeless addresses default to HTTPS, loopback to HTTP. Toolbar controls
+  are DOM-ready-gated, wrap at narrow widths, offer recoverable crash/load errors
+  and provide fill/390px/768px preview widths (not device emulation).
+  Agent control is opt-in for the visible thread, revoked on hide/unmount or
+  leaving Chat, and never available in the paired viewer. Main routes first-open
+  readiness by thread identity. Per-process tokens, isolated-world element refs,
+  bounded interaction/screenshot/diagnostic tools and transport rules are described
+  in [harness.md](harness.md#embedded-browser-tools). Permission handlers deny device
+  and clipboard access; downloads and dialogs are disabled. Storage still belongs
+  to the shared foreground browser partition, not a per-thread browser profile.
+  **Background page** is a collapsed disclosure for explicitly starting a separate
+  temporary page from the address bar. Agent access and remote sharing are separate
+  switches; close is always available, including after failure. Pages survive panel
+  switches, but not their 30-minute expiry, thread archive/delete or app shutdown.
+  Close disposes the isolated profile's storage and connections. Update restart
+  admission asks the user to close background pages. Dock activation tests the
+  main workspace window, not the count of hidden/companion windows. The paired viewer gets
+  read-only, explicitly shared snapshots here, not a webview or write channel.
 - File editors capture immutable project/root/path and their own revision cell.
   Navigating flushes pending changes to that owner; late preview/listing reads
   are rejected after selection changes. Old save replies do not update a new
@@ -211,9 +232,23 @@ overlapping turns. Steer is shown only for active Gateway turns, never merely
 while a send is awaiting acknowledgement. Send-and-new-thread advances only on
 acceptance; read/refresh failure after acceptance cannot recreate the sent draft.
 Direct permissions become persisted approvals with approve-once/deny callbacks;
-session-wide approval is refused. Completion/cancellation settles pending
-requests. Unsupported live options fail before local persistence and their
+session-wide approval is refused. Completion, Stop, Close, and output-budget
+failure cancel pending requests rather than recording a user denial. Cancelled
+approvals leave both the conversation and Approvals queue; late decisions cannot
+reopen them. Unsupported live options fail before local persistence and their
 errors reach the UI.
+
+Capability details use the current session key as well as the thread ID. A
+direct agent reporting false or no HTTP MCP support shows browser tools as
+unavailable, explains why they were not attached, and preserves manual browsing.
+Model configuration snapshots replace previous choices, including removals.
+**Agent settings** renders reported select and boolean options in both Composer
+Capabilities and Harnesses. Values wait for agent acknowledgement, and failure
+of either the setting or follow-up refresh must release the pending UI. Provider/
+process changes remount the controls. Restorable direct identities also govern
+composer readiness after restart, even if the new-thread default is Gateway.
+The compact capabilities popover wraps both availability and settings in one
+bounded scrolling surface; nested disclosures do not expand the composer toolbar.
 
 Git projects expose **Local / Worktree** in the composer. The selected
 conversation’s worktree branch appears in the reference strip.
@@ -223,6 +258,11 @@ The filesystem adapter revalidates up to eight files at 50 MB each. Message
 metadata is persisted as `messages.attachments` JSON (schema v9), while the
 runtime prompt receives a clearly-delimited list of exact paths. An empty text
 prompt is valid when at least one file is attached.
+Direct delivery additionally materializes negotiated native image and embedded
+text/blob blocks with lower protocol bounds (2 MiB/file, about 3 MiB raw total,
+4 MiB encoded request). The general attachment-picker limit is not the transport
+limit. Failing direct delivery produces an explicit failed run. No binary prompt
+copies are stored in SQLite. See [harness.md](harness.md#direct-sessions).
 Paste/drop paths come from Electron `webUtils.getPathForFile` through the
 preload, not the removed `File.path` property. Remote attachment attempts show
 a desktop-only error and cannot invoke the host file picker or send.
@@ -341,16 +381,30 @@ stays in Review, not on a historical card.
 ### Saved-file previews and turn details
 
 Finished-file rows open an ephemeral saved-diff preview on hover or focus.
-`SavedDiffPreview` uses the owning `TurnOutcome` patch, never current repository
-status or live file contents. It scans file boundaries for an exact current or
+`TurnOutcome` initially requests only the saved file summary. Hover/focus and
+file selection request the owning checkpoint pair through `turnDiff` with a
+literal relative path, never current repository status or live file contents.
+The filesystem adapter caps each patch at 512 KiB and metadata commands at
+1 MiB, stops its Git child at the output limit, and keeps complete records only.
+The list is capped at 2,000 files; omitted rows/counts and partial patches are
+explicit. Unknown/binary line counts stay absent. `SavedDiffPreview` scans
+file boundaries for an exact current or
 renamed path and parses only a bounded prefix (48,000 characters, 84 patch
-lines, 600 displayed characters per code line). Full numstat counts come from
+lines, 600 displayed characters per code line). Numstat counts come from
 the saved outcome, not the excerpt. Binary, metadata-only and missing text
 states are explicit. One portal per card stays within the viewport, supports
 pointer traversal, keyboard focus/Down Arrow and Escape, and is disposed when
 the owning snapshot changes. Selecting a file opens that file's paged saved
-diff; the all-files view remains available. This introduces no IPC or writes
-and works with both runtime routes and read-only paired viewers.
+diff; the bounded all-files view remains available. These reads use the existing
+read-only turnDiff channel on both runtime routes and paired viewers. Late
+responses are discarded after owner changes; no unbounded patch cache is kept.
+
+Sent image attachments use `messageImage(messageId, index)`, a read-only channel
+whose source path comes only from persisted attachments. The engine reopens a
+regular, non-symlink file with a 20 MiB read limit. Main returns at most a
+320×180 raster thumbnail / 128 KiB data URI, never the original full image over
+IPC. Nearby message rows request it lazily and discard it on unmount. Missing or
+undecodable files retain an explicit fallback and open action.
 
 Conversation activity, paged diagnostics and verification share one
 `RunSummary` expansion per run. The collapsed summary still reports the actual
@@ -683,8 +737,97 @@ spawn order and label missing usage, partial history, and last-reported states
 after the parent ends. It is not a child-session orchestrator or workflow graph.
 At most 100 delegation rows are shown from the bounded event window. Internal
 subagents may be absent when a harness or route does not publish telemetry.
+The inspector has an Agents-specific icon and context strip. Scoped loading and
+error states distinguish missing telemetry from an empty report. Background
+tool completion is **Launch completed · child status unknown**, not proof that
+the child finished. Closed threads display their recorded runtime route rather
+than the current harness default. Card borders and typography are explicitly
+scoped so generic inspector heading rules cannot restyle the empty state.
+
+### In-app updates
+
+Both About surfaces and their clipboard summary read the running version from
+main's update status (`app.getVersion()`), never a UI literal or the latest
+release tag. A failed local read shows an unavailable state and disables copy.
+The packaged desktop and root release versions must match before packaging;
+internal workspace-package versions are not the desktop version.
+
+Sidebar, About and Settings share the same status/action hook. It subscribes
+before the initial snapshot and ignores older responses. Main owns six-hour
+checks (15-minute failure retry), canonical status and action reservations.
+Compatible releases download automatically unless disabled in General settings;
+restarts require an explicit confirmation. Native installation is admitted only
+after turns, checks, Inspector commands, restores, IPC writes and PTYs finish
+and pending checkpoint writes settle. A shared local/remote write reservation
+blocks new work throughout native staging, while status and history stay
+readable. Failed or timed-out staging releases admission without registering
+a future quit callback. Stale preparation completions cannot install a retry.
+Failures retain download/restart retry state and details rather than silently
+redirecting to a release page. See [Update delivery](updating.md).
 
 ### Scoped state and bounded history
+
+Startup cancels interrupted `approval_required` runs alongside running, waiting
+and queued runs, and cancels persisted pending approvals whose callbacks no
+longer exist. Closed harness sessions cannot leave an orphan approval blocking
+the next message or an update restart. Agent prose about errors is not a run
+failure signal: lifecycle outcomes own completion and failure on both routes.
+Machine-read local diffs force canonical prefixes and disable terminal colors,
+including metadata-only, empty-file and binary previews.
+
+Transcript retention is separate from event batching. The selected display
+window retains at most 300 messages / 4 MiB of estimated UTF-16 text and metadata.
+Message-page SQL selects a 65,536-character excerpt and an explicit truncation
+flag without modifying stored text. Virtual turn rows use stable IDs, measured
+heights, overscan, and focus/selection pinning. Prepending preserves the reading
+anchor; viewport-only updates must not restore an earlier scroll position.
+Once older-page navigation evicts newer rows, live replies stay in storage until
+Return to latest. That action replaces the window only after a successful read.
+Run receipts retain the visible time range plus 100 recent summaries (700 maximum).
+Recent/live merge maps also have a 1,000-record ceiling. These are display bounds,
+not deletion, provider token accounting, or an OS-wide memory guarantee.
+
+Submission ownership captures draft revision before project/thread creation.
+The revision covers prompt, attachments and skill. Promotion to a newly created
+thread uses an in-memory handoff as well as best-effort storage. Failed submissions
+use a recovery result that distinguishes durable Stash from temporary memory.
+Steering admits one pending request per thread and clears only its submitted
+revision; its independent draft store refuses new entries at 32 drafts / 2 MiB.
+
+File drafts retain their exact project/root/path and base revision independently
+of the preview component (32 dirty files / 16 MiB). Failed writes do not retry on
+navigation. Explicit retry and overwrite remain separate actions. Recovery text
+can be copied even if the original file is no longer readable. It is not durable
+across renderer shutdown. Directory caches belong to one workspace identity and
+refresh visible expansions on a five-second cadence; failure is not emptiness.
+Diff reads capture a workspace/branch request generation before I/O.
+
+PTY flow uses one sequenced frame in flight. The renderer sends readiness ACK 0,
+then acknowledges each frame only from the terminal emulator's write callback.
+Main pauses at 256 KiB, resumes at 64 KiB, and stops its owned shell at a 2 MiB
+hard limit instead of dropping ANSI fragments. Exit waits for queued output to
+drain. `terminalAcknowledge` is a write channel, denied to read-only viewers.
+The dock retains 1,000 scrollback lines per pane, eight panes per folder and
+16 folder docks; main permits at most 16 active/draining shell flows. Local
+`chat.commit` and `terminal.render` timings share the existing bounded diagnostic
+ring and contain no paths, commands or output.
+
+Ownership renderer regressions exercise delayed first-thread creation, failed
+storage and a 1,000-turn scroll/prepend fixture with fewer than 60 mounted rows.
+Unit tests independently assert retained byte/count ceilings, receipt ownership,
+draft conflict handling and PTY acknowledgement ordering.
+
+Message pagination converts SQLite's numeric `contentTruncated` expression to a
+boolean before IPC. The transcript uses an explicit conditional with a null
+fallback, so an older main process sending numeric false cannot print a stray
+zero. Actual message text, including a one-character `0`, is preserved.
+Agent prose around direct tool/reasoning boundaries appears as separate message
+rows in the same turn; a segment boundary is not run completion. Saved run
+results retain blank-line separation between those messages. Where the agent
+supplies ACP message IDs, changes in identity separate consecutive replies
+without requiring a tool call; repeated IDs keep token chunks contiguous across
+tool activity. Older agents keep the fallback boundaries. Reported model lists
+accept flat or grouped options, retaining at most 32 choices per selector.
 
 Workspace refresh reads one latest-run summary per visible thread. Selected
 conversations and History use `listRunPage`: keyset pagination by creation time

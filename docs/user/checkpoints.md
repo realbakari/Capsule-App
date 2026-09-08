@@ -16,9 +16,12 @@ the preview's **Open file diff** control.
 
 Select a file row (including on touch devices) to open that file's saved diff
 in place. Select **All changed files**, or the card's heading, for the entire
-turn. Large hover previews are labelled **Excerpt**; open the file diff to read
-the rest. Binary files and changes without a text diff are identified instead
+turn. Large hover previews are labelled **Excerpt**. File previews are limited
+to 512 KB; for larger files, inspect the saved checkpoints in Git for the complete
+change. Binary files and changes without a text diff are identified instead
 of showing a blank code panel.
+These previews retain their file names even when your Git preferences hide or
+customize diff prefixes. Your Git configuration is not changed.
 
 Later edits do not change these saved views. The Review panel still shows your
 current repository changes; use it to stage or discard current edits. Hovering
@@ -27,6 +30,9 @@ never changes files or restores a turn.
 If a saved diff cannot be read, the turn shows an error with **Retry** instead
 of looking unchanged. A missing base snapshot is never replaced with your live
 files. Large saved diffs have file and row pages so expanding them stays bounded.
+The file list loads separately from the patch. A large patch does not hide the
+list, and selecting a file loads just its saved changes. Very large lists show
+up to 2,000 files and explicitly label incomplete lists or totals.
 
 When both saved snapshots exist, an empty diff means no changed-files card.
 If a before-snapshot is unavailable (including the first saved turn), Capsule

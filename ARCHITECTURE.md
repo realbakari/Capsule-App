@@ -212,6 +212,13 @@ channel bindings. Unsent drafts and prompt stashes are renderer-local
 preferences, not Gateway sessions. Live project-action processes and their
 bounded output are intentionally in memory; they stop with the app.
 
+Direct threads also persist the native ACP session ID with its harness, cwd and
+launch identity. On the next send, a fresh owned process can restore that session
+only through advertised resume/load support. Capsule's transcript remains the
+record of work; replayed agent history is not inserted as a new turn. Background
+browser pages are separate, explicitly started temporary guests, never restored
+implicitly. Sharing their bounded snapshots does not grant remote write access.
+
 Secrets never go in SQLite or renderer settings. Gateway and catalog tokens use a `0600` file encrypted with Electron safeStorage when available, backed by the macOS Keychain. The adapter has a plaintext fallback when encryption is unavailable. Capsule's Ed25519 device identity and issued device tokens live as `0600` files under the user-data `identity/` directory.
 
 ---
@@ -243,7 +250,7 @@ Visual language is graphite and off-white, matching the Capsule mark. No purple 
 
 | # | Limitation | Detail |
 |---|-----------|--------|
-| 1 | Editor / direct controls | Files has a conflict-aware editor, not Monaco. Direct sessions do not support live tuning or steer; failed changes are not persisted. |
+| 1 | Editor / direct controls | Files has a conflict-aware editor, not Monaco. Direct live settings require reported config options; Steer and live cwd changes remain unsupported. Failed changes are not persisted. |
 | 2 | Execution replay UI | Events are stored; a dedicated replay viewer is not shipped. |
 | 3 | Remote pairing UI | Loopback auto-approves Capsule's persisted Ed25519 identity; remote/non-local pairing still needs `openclaw devices approve`. |
 | 4 | Bonjour discovery | Local TCP probe and config-file hints work; mDNS browsing is not wired. |

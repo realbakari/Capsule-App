@@ -14,6 +14,9 @@ Nothing is uploaded automatically, and timing samples contain no prompts, file
 paths, command arguments or output.
 
 Event timings measure processing, not screen painting or agent response time.
+Chat commit timings cover a virtual transcript's render-to-layout interval;
+terminal render timings end when the emulator acknowledges a frame. Neither is
+an FPS measurement or proof of correctness.
 Git queue wait is separate from command duration. Preview timings cover local
 reading and decoding, not loading a website. Non-zero Git probes count as errors
 even when an absent ref or repository is expected. These measurements help

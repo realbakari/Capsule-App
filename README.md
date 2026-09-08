@@ -67,6 +67,49 @@ Download the latest Apple Silicon DMG from GitHub Releases:
 2. Drag **Capsule** into your **Applications** folder.
 3. Launch Capsule!
 
+After installation, compatible updates download inside the app and offer
+**Restart & install**. Save your work before restarting. Unsigned or incompatible
+builds may require a manual download; see [Updating Capsule](docs/user/updating.md).
+
+## Start with one small task
+
+Install and sign in to your coding CLI, attach a disposable project folder,
+choose an available harness and ask for a small change. Review the resulting
+diff, run a saved check, then decide whether to commit. The
+[first-conversation guide](docs/user/getting-started.md) walks through the flow;
+[providers and credentials](docs/user/providers.md) explains route prerequisites.
+
+## Compatibility and limits
+
+Capsule is an ACP **client**, not an implementation of an agent's coding loop.
+Direct mode uses ACP v1 over stdio; the Gateway route uses OpenClaw's operator
+connection. Support depends on the installed harness, negotiated capabilities
+and selected route—not simply on an agent appearing in a directory.
+
+- Direct conversations resume the agent's saved session when it advertises
+  resume or load support. Agent-reported settings can be changed in place;
+  unsupported restores and settings fail explicitly.
+- Browser interaction requires a direct agent with HTTP MCP support and your
+  explicit grant. The Browser panel can also start a temporary background page
+  and separately share read-only snapshots with paired viewers.
+- The Agents panel shows reported delegation, not independently controlled
+  child processes. Missing activity or token data stays unknown.
+- Paired devices are read-only. Available downloads target macOS Apple Silicon;
+  other platforms are not supported release targets.
+
+See [supported behavior and current limits](docs/user/compatibility.md),
+[browser controls](docs/user/projects-and-previews.md) and the contributor-facing
+[ACP compatibility map](docs/internals/acp-compatibility.md) for specifics.
+
+## Report a problem
+
+Use the [bug report form](https://github.com/realbakari/Capsule-App/issues/new?template=bug_report.yml)
+with **About → Copy version info**, the selected agent and runtime route,
+reproduction steps, and a redacted screenshot when useful. For freezes, include
+the operation and repository size plus the relevant
+[local diagnostics](docs/user/diagnostics.md). Review exports for private paths
+before sharing. Report security issues through [SECURITY.md](SECURITY.md).
+
 ---
 
 ## Developing Capsule

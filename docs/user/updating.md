@@ -1,22 +1,48 @@
 # Updating Capsule
 
-Use the update control at the bottom of the sidebar to check for a newer release.
-Capsule also checks periodically. An update is not downloaded until you ask.
+Settings → About and **About Capsule** in the app menu show the version of the
+running app, not the newest release available online. **Copy version info** uses
+that same version. A downloaded update does not change it until the new app has
+started. If you still see an older version after installing, quit the old copy
+and open Capsule from Applications; check that you are not launching a copy from
+a mounted disk image. Version information remains available when release checks
+are offline. If the local status cannot be read, About says it is unavailable
+instead of displaying a placeholder version.
 
-When a compatible update feed is available, the control offers a download,
-shows progress, and then offers a restart to install. A downloaded update can
-also install when you quit. Finish active work and save files before either.
-Development builds, unsigned apps or releases without a compatible feed may
-not update in place; use the release page to download and replace the app.
-An update failure is not a successful install. Check the release notes and the
-signature of the particular download; do not disable system security checks to
-work around an unexplained warning.
+Capsule checks for compatible updates when it starts and periodically while it
+runs. By default, it downloads them in the background. Turn off **Download
+updates automatically** in Settings → General if you prefer to download on
+demand.
 
-## What the check can tell you
+The sidebar and Settings → About show the same download progress and
+**Restart & install** action. Save open files first. Capsule refuses the restart
+while turns, checks, commands, saved actions, Git operations or terminal sessions
+are active; finish or stop them, then try again. After you confirm the restart,
+new work and file saves pause while the system prepares the replacement.
+Status and conversation history remain readable. Background downloads alone
+never trigger a restart or install on quit.
+
+A failed download offers **Retry download**, keeping the update in the app.
+A failed or blocked restart keeps the downloaded update ready to try again.
+If preparation fails or times out, you can resume work. A late completion from
+that attempt cannot unexpectedly close the app; installing requires another
+explicit restart attempt. Once the native installer has staged an update after
+your restart request, it may apply it the next time the app starts.
+Reopening a window restores the current update state.
+
+Development builds and incompatible signatures cannot update in place.
+**Release notes and manual download** remains available as an explicit recovery
+link in About; checking for an update does not open it automatically. Do not
+disable system security checks to work around an unexplained signature warning.
+
+## Update states
 
 | What you see | What it means |
 |---|---|
-| Up to date | The newest published release matches the version you are running. |
-| Version *x* is available | A newer release exists. Click to open it. |
-| No releases have been published yet | Nothing has been published, or the repository is not public. |
-| Could not check | The request failed — usually no network. |
+| Checking for updates | A check is still in progress. |
+| You’re up to date | The compatible feed reports no newer update. |
+| Download update | A compatible version can be downloaded inside Capsule. |
+| Downloading update | The download is in progress; the percentage is shown. |
+| Restart & install | The downloaded update is ready; restarting requires confirmation. |
+| Retry download or retry restart | The previous attempt failed; its explanation remains visible. |
+| Retry update check | The check failed; retry without leaving the app. |

@@ -89,12 +89,54 @@ Returning home and reopening the same address reconnects browser tools to the
 new page. Web popup links stay inside the browser; page-supplied custom app
 schemes are blocked. Use the explicit system-browser button to leave Capsule.
 
-Direct agents that accept HTTP MCP servers are offered browser status,
-navigation, and a bounded text snapshot. Their first navigation opens Capsule's
-Browser panel automatically; it does not open the system browser. Password
-field values are omitted from snapshots. Automated click and fill tools are
-not included. These tools are not injected into Gateway sessions; their
-browser capabilities depend on the Gateway and agent setup.
+Browser addresses follow the selected thread. Public addresses without a scheme
+use HTTPS; loopback addresses use HTTP. **Fit panel**, **Phone** and **Tablet**
+adjust the preview width for responsive-layout checks, not device emulation.
+Narrow panels wrap their toolbar. Controls wait until the page is ready; a
+crashed or failed page offers **Retry page**. Invalid saved history is ignored.
+
+Direct agents that accept HTTP MCP can inspect, navigate, click, replace text,
+select options, press keys, scroll, capture the viewport and read recent page
+diagnostics. Open this thread's Browser panel and choose **Allow agent control**
+first. This permits access to visible signed-in pages, so enable it only when
+you want the agent to interact with them. **Revoke control**, switching threads,
+closing or hiding Browser, or leaving Chat ends access. Agents cannot silently
+control a different thread's page. Site cookies are shared between Capsule
+browser pages, not separate private profiles per thread.
+
+Element references expire when the page changes; the agent must inspect again
+instead of clicking a guessed target. Dispatching an action is not verification
+that the intended result happened. Password entry, uploads, rich-text editing,
+downloads, permission prompts and arbitrary scripts are not automated. Downloads
+and device permissions are blocked in the preview; use the explicit system
+browser button when needed. Screenshots and console messages can contain
+sensitive page content; diagnostics are requested explicitly and not saved.
+These tools are not injected into Gateway sessions, whose browser capabilities
+depend on the Gateway and agent setup. The paired viewer does not host or control
+an embedded browser.
+
+### Background pages and shared previews
+
+In **Browser**, expand **Background page**, enter an HTTP(S) address in the
+address bar, then choose **Start from address bar**. This starts a separate
+temporary page for this conversation. It does not copy sign-ins from the visible
+browser. You can keep using Capsule while it runs; it closes after 30 minutes,
+when you choose **Close page**, or when Capsule quits. At most four background
+pages can run at once. Archiving or deleting their conversation also closes them;
+close background pages before restarting to install an update.
+
+**Allow background agent control** lets a compatible direct agent target this
+page instead of the visible browser. This grant survives panel changes, but
+ends when revoked, when the page closes or when the owning agent process exits.
+An incompatible agent cannot use it; manual browsing remains available.
+
+**Share preview with paired viewers** separately exposes its URL and screenshots
+to your paired devices. Page content may be sensitive. **Stop sharing preview**
+blocks subsequent reads; it cannot erase a snapshot already received by a viewer.
+Paired viewers see periodic read-only snapshots while the Browser panel is open.
+They cannot navigate, type, grant access or start/close pages. This is not an
+interactive stream or a browser running on a remote host. Remote access uses
+your existing pairing and network settings.
 
 The system-browser action opens the currently committed page, including after
 redirects and in-page navigation. **Clear HTTP cache** clears browser cache;
@@ -107,6 +149,17 @@ or preferences. Errors remain visible if clearing fails.
 An open file keeps the project, folder and revision it was read from. Navigating
 elsewhere flushes its pending edit to that original file, never the new folder.
 Conflicts require an explicit reload or overwrite decision.
+
+An unsuccessful save keeps its text in this window, even after switching files.
+Reopen the file to retry, copy the draft, or explicitly discard it and reload.
+The Files panel also lists unsaved drafts so they can be copied if a file has
+been deleted or can no longer be previewed. Recovery is temporary until the app
+closes, not a disk backup. At 32 dirty files or 16 MB of draft text, further edits
+are refused until space is freed; existing drafts are not evicted.
+
+Expanded folders refresh while Files is visible. A failed listing shows an error
+and **Retry**, not an empty folder. Late file-diff responses cannot replace a
+newer selection or another workspace's review.
 
 A file deleted or grown beyond the editor’s read limit since you opened it
 also fails that check; an automatic save will not recreate or overwrite it.
@@ -125,6 +178,12 @@ The interactive terminal dock keeps a shell per opened folder. Hiding it,
 switching conversations or visiting Settings does not stop it. Close a shell's
 tab explicitly to stop it. Quitting Capsule closes its shells. The Inspector's
 Terminal remains a separate one-shot command runner.
+
+Noisy shell output slows its producer until the terminal has rendered the previous
+frame. If the producer exceeds the safety limit, that shell is stopped with an
+error rather than silently dropping output. Shell completion appears after queued
+output has been rendered. Scrollback keeps 1,000 lines per tab. You can retain
+eight tabs per folder and 16 terminal folders; close tabs to free space.
 
 Strict local-command policy blocks new commands, terminal starts and shell
 input. It does not terminate existing commands or sandbox the coding CLI.

@@ -47,6 +47,14 @@ An empty terminal output or a late send acknowledgement must not erase a reply.
 Several assistant snapshots remain separate messages, not a repeated aggregate
 on completion. Control output is filtered on both the reply and result paths.
 
+Run outcome comes from terminal state/status/phase, with errors and cancellation
+checked before successful completion. Nested lifecycle phases are read only
+on the lifecycle stream, never from an individual tool's status. Legacy
+protocol-prefixed failure frames still surface as errors; mentioning an error
+or quoting an ACP failure code inside ordinary prose does not end the turn.
+Thinking and command streams stay in diagnostics, not assistant replies.
+Control replies cannot emit a terminal outcome for a working parent run.
+
 Completed Gateway runs keep their completion status independently of Capsule's
 local verification result. Assistant text, including claims that tests passed,
 does not count as execution evidence. Saved local checks are explicit desktop

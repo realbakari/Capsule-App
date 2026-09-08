@@ -4,6 +4,14 @@ Capsule keeps an unfinished draft for each conversation on this Mac. Switching
 projects or conversations and returning later restores its prompt and selected
 attachments. A successful send clears that draft.
 
+Sent image attachments show a thumbnail in the conversation, including when
+you reopen older messages. Select it to open the local file. Previews load only
+near the visible conversation and are not a separate saved copy of the image.
+If the source was removed, replaced with an unreadable file, or is too large,
+the filename remains visible with **Image preview unavailable**. Other files
+keep their compact name and size. Read-only paired viewers can see these
+previews without getting write access.
+
 If a send fails, your draft and attachments return to the composer. Once the
 failed turn is recorded, its error appears once below the work log rather than
 also appearing at the top. Dismiss hides that attempt's error; a later attempt
@@ -12,13 +20,27 @@ Cancellation acknowledgements are controls, not replies, and do not appear as
 agent messages. Previous records remain stored.
 
 If you have already typed or attached something new while sending, that new
-draft stays untouched. The failed submission is saved in **Stash**, and a notice
-tells you where to recover it.
+draft stays untouched, including while the first conversation is being created.
+The failed submission goes to **Stash**, and a notice tells you where to recover
+it. If local storage fails, the entry is labelled **Temporary · until app closes**;
+copy or restore it before quitting. Capsule does not claim it was saved to disk.
 
 Live work-log updates are grouped into short batches while completion appears
 promptly. They do not reload the whole workspace on every event. Older messages
-you have opened remain in the conversation after a reconnect, and overlapping
-saved and live events are shown once.
+you have opened keep their associated run details after a reconnect, and
+overlapping saved and live events are shown once.
+
+Agent updates around tool steps stay as separate messages within the same turn,
+so progress does not run into the final answer. Consecutive streamed text stays
+intact, including words and code. This applies to new replies; previously saved
+text is not rewritten to guess where missing breaks belonged.
+
+Long conversations keep a bounded display window: up to 300 messages and about
+4 MB of text and attachment metadata. **Load older messages** moves through saved
+history without loading the whole thread. Once newer messages fall outside that
+window, **Return to latest** brings them back. Sending from an older window also
+returns to the latest page. Very large messages show a labelled excerpt; the full
+message remains in the local database. Only nearby turns are mounted on screen.
 
 Long runs keep a recent activity window so the conversation stays responsive.
 **Recent activity** means the visible counts do not cover the whole run. Open
@@ -35,8 +57,11 @@ updates the session without posting a message or a status
 banner, and leaves your draft untouched. This also applies to model changes in
 Harnesses when the runtime supports it. Unavailable model choices explain why
 they cannot be selected; Capsule does not invent a model list. Direct sessions
-cannot change models or permissions while running. Their permissions control
-shows **Agent-managed** and explains the approval limits when opened.
+can change a model when the agent reports a mutable model selector. Their
+permissions control shows **Agent-managed**: Capsule profiles are not agent
+policies. Open **Agent settings** inside Capabilities for the agent's exact
+reported selectors and switches, including mode or permission settings it exposes.
+Rejected changes keep the reported state and show an error without losing your draft.
 To inspect the session's raw status, open **Harnesses**, select the
 session with **Refresh**, and expand **Session diagnostics**. Diagnostics stay
 with that session and are collapsed by default.
@@ -48,6 +73,10 @@ The info control beside the paperclip explains the selected harness and runtime
 route's model, permission, steering and browser support. The same information
 is available in Harnesses, and Browser describes its agent-tool limitations.
 Manual browsing is separate from an agent's ability to control that browser.
+
+Expand **Reported by agent** to inspect bounded, negotiated capability and option
+metadata for the current session. A report does not enable a control that the
+runtime route cannot carry. Missing information stays labelled as not reported.
 
 The workspace strip below the prompt holds the folder, terminal, checkout mode
 and branch. For Git folders, **Current checkout** or **Worktree** also offers
@@ -87,12 +116,23 @@ Choose the paperclip or drop files onto the composer. Selected files appear as
 removable chips before you send and as openable attachments in the timeline.
 An attachment-only message is allowed.
 
+On the direct route, compatible agents receive image bytes as native image
+prompts and other files as embedded text or binary resources, including PDFs.
+The agent must advertise the matching support; otherwise the turn reports what
+could not be sent. Direct delivery reads at most 2 MiB per file and about 3 MiB
+combined with prompt text, with a final 4 MiB encoded-message limit. Choose smaller
+files if that limit is exceeded. Files are rechecked when read, so a missing,
+changed-to-special-file or oversized attachment cannot silently become a path-only
+substitute. Gateway attachment handling depends on its host and bridge.
+
 Pasting files uses the same attachment validation as dropping them. Pasted
 clipboard images are saved locally first. Attachments are desktop-only; a
 paired read-only viewer cannot attach files or send messages.
 
 Only one turn may run in a thread at a time. Wait or **Stop** before sending a
 follow-up; Gateway sessions offer **Steer** during a live turn when supported.
+Steering drafts stay with their conversation. A pending steer cannot be sent
+twice, and a newer draft is not cleared when the earlier steer finishes.
 Send-and-new-conversation stays put on a rejected send. A refresh failure after
 an accepted send does not restore an already-sent draft.
 

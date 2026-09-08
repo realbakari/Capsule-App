@@ -1,6 +1,6 @@
 # Privacy
 
-**Last updated: 5 September 2026 · Describes the current Capsule for macOS release**
+**Last updated: 9 September 2026 · Describes the accompanying Capsule for macOS build**
 
 Capsule runs on your Mac and keeps your work there. This page describes exactly
 what the app stores, what it sends, and when. It describes the software's real
@@ -51,11 +51,13 @@ recursively search the entire disk.
 
 Network activity depends on enabled features and the tools you run.
 
-**1. An update check, once a day.** A request to
-`api.github.com` asking for this project's latest release. It carries no
-identifier beyond a `capsule-desktop` user agent and whatever your network path
-reveals. The updater also reads release metadata. Requested downloads fetch
-release artifacts and may follow GitHub/CDN redirects. GitHub's logging applies.
+**1. Release checks and downloads.** Packaged builds check at startup and every
+six hours, retrying failed checks after fifteen minutes. Manual checks are also
+available. The updater reads GitHub release metadata; fallback discovery asks
+`api.github.com` for this project's latest release with a `capsule-desktop` user
+agent. Compatible updates download automatically unless you disable that setting.
+Downloads fetch release artifacts and may follow GitHub/CDN redirects. GitHub's
+logging applies, and your network path reveals the usual connection information.
 
 **2. The skills directory, when you open it.** Browsing or installing a skill
 queries GitHub's API and raw content hosts; an optional configured token enables
@@ -89,6 +91,32 @@ Search queries use the browser's search URL. Local-server discovery probes
 listening HTTP(S) endpoints. Browser screenshots or selected DOM context
 attached to a prompt become available to its runtime. External links use your
 system browser and its privacy settings when explicitly opened there.
+
+If you grant a compatible direct agent browser control, its browser-tool calls
+can read bounded page text, links, viewport screenshots and recent console/load
+diagnostics, and interact with page controls. Those results reach the agent and
+may be sent to its provider, including private content visible in a signed-in
+page. Access uses a per-process loopback credential and ends when revoked, when
+you leave the visible panel or switch threads, or when the owning process exits.
+Visible browser cookies are shared across threads. Recent page diagnostics are bounded
+in memory and clear on navigation; they are not a telemetry feed. Capsule denies
+embedded-page device permissions and downloads. These restrictions do not
+restrict the coding CLI's own tools or network access.
+
+Background pages are started explicitly, use separate temporary browser profiles,
+and close after 30 minutes, on explicit close or when Capsule quits. Their
+separate agent-control grant survives panel switches but is revoked on process
+exit. A separate sharing switch exposes a page's URL and bounded screenshots to
+paired viewers, including sensitive content on the page. Sharing is off by default;
+revocation prevents subsequent reads but cannot retract already received pixels.
+The viewer remains read-only and follows the pairing/network security described
+above. These pages do not import your system browser's profile.
+
+Native direct attachments send explicitly attached image or embedded-resource
+bytes to the coding agent when its negotiated capabilities support them. The
+agent may send that content to its provider. Capsule stores attachment metadata
+with the message, not a second copy of encoded prompt bytes. Files created by
+clipboard paste remain local files in the app profile.
 
 **7. Agents, commands and integrations.** Coding CLIs, saved actions and shells
 can read files and make their own network requests with your permissions.

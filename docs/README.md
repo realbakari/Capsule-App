@@ -8,6 +8,7 @@ need the shipped-product voice.
 ## Using Capsule
 
 - [Your first conversation](./user/getting-started.md)
+- [Supported behavior and current limits](./user/compatibility.md)
 - [Keyboard shortcuts](./user/keyboard-shortcuts.md)
 - [Skills](./user/skills.md)
 - [Restoring a turn](./user/checkpoints.md)
@@ -29,6 +30,8 @@ Setup is in the [root README](../README.md); agent rules in
 
 - [Desktop product spec](./internals/desktop.md) — the UI, kept in lockstep with the app
 - [ACP harnesses](./internals/harness.md)
+- [ACP compatibility map](./internals/acp-compatibility.md)
+- [Update delivery](./internals/updating.md)
 - [OpenClaw notes](./internals/openclaw.md)
 - [Architecture pointer](./internals/architecture.md)
 
