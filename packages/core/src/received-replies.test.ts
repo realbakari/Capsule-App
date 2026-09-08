@@ -28,17 +28,19 @@ it("keeps streamed and persisted replies once, including snapshots arriving afte
     internal.repos.insertRun(run);
     const reply = (text: string, extra = {}) => internal.handleAcpReply({ sessionKey: key, text, done: true, snapshot: true, timestamp: Date.parse("2026-09-04T07:46:00Z"), ...extra });
     reply("Partial ", { done: false, snapshot: false });
-    reply("First answer.");
-    reply("First answer.");
+    const progress = "The build reports an unknown command. I will fix the script.";
+    reply(progress);
+    reply(progress);
+    expect(engine.getRun(run.id)?.status).toBe("running");
     reply("Final answer.");
     await internal.handleRuntimeEvent(session, run, {
       id: "late-delta", runId: run.id, type: "assistant", message: "Final answer.", timestamp: createdAt,
     }, () => {});
-    expect(engine.listMessages(session.id).map((item) => item.content)).toEqual(["First answer.", "Final answer."]);
+    expect(engine.listMessages(session.id).map((item) => item.content)).toEqual([progress, "Final answer."]);
     await internal.handleRuntimeEvent(session, run, {
       id: "end", runId: run.id, type: "lifecycle", message: "Completed", timestamp: "2026-09-04T07:47:00Z", data: { status: "completed", output: "" },
     }, () => {});
-    expect(engine.getRun(run.id)?.result).toBe("First answer.\nFinal answer.");
+    expect(engine.getRun(run.id)?.result).toBe(`${progress}\n\nFinal answer.`);
     expect(engine.listMessages(session.id)).toHaveLength(2);
 
     const newer = { ...run, id: "newer", createdAt: "2026-09-04T07:49:00Z", status: "queued" as const, completedAt: undefined, result: undefined };

@@ -48,6 +48,7 @@ function sessionParams(session: Session) {
     acpMode: optional(session.acpMode),
     permissionProfile: optional(session.permissionProfile),
     modelOverride: optional(session.modelOverride),
+    directSession: session.directSession ? JSON.stringify(session.directSession) : null,
     pinned: session.pinned ? 1 : 0,
     pinOrder: session.pinOrder ?? null,
     workingDirectory: session.workingDirectory ?? null,
@@ -58,7 +59,9 @@ function sessionParams(session: Session) {
   };
 }
 
-function normalizeSession(row: Session): Session {
+type SessionRow = Omit<Session, "directSession"> & { directSession?: string | null };
+
+function normalizeSession(row: SessionRow): Session {
   const harnessId = isHarnessId(row.harnessId)
     ? row.harnessId
     : isHarnessId(row.agentId)
@@ -71,6 +74,7 @@ function normalizeSession(row: Session): Session {
     acpMode: (row.acpMode || undefined) as AcpMode | undefined,
     permissionProfile: row.permissionProfile || undefined,
     modelOverride: row.modelOverride || undefined,
+    directSession: parseJson<Session["directSession"]>(row.directSession, undefined),
     pinned: Boolean(row.pinned),
     pinOrder: typeof row.pinOrder === "number" ? row.pinOrder : undefined,
     openclawSessionKey: row.openclawSessionKey || undefined,
@@ -208,12 +212,12 @@ export class CapsuleRepositories {
           id, workspace_id, project_id, agent_id, title, mode, state,
           openclaw_session_key, harness_id, harness_state, acp_mode,
           permission_profile, model_override, pinned, pin_order, working_directory, workspace_mode,
-          worktree_branch, created_at, updated_at
+          worktree_branch, direct_session, created_at, updated_at
         ) VALUES (
           @id, @workspaceId, @projectId, @agentId, @title, @mode, @state,
           @openclawSessionKey, @harnessId, @harnessState, @acpMode,
           @permissionProfile, @modelOverride, @pinned, @pinOrder, @workingDirectory, @workspaceMode,
-          @worktreeBranch, @createdAt, @updatedAt
+          @worktreeBranch, @directSession, @createdAt, @updatedAt
         )`,
       )
       .run(sessionParams(session));
@@ -227,7 +231,7 @@ export class CapsuleRepositories {
          harness_state = @harnessState, acp_mode = @acpMode,
          permission_profile = @permissionProfile, model_override = @modelOverride,
          pinned = @pinned, pin_order = @pinOrder, working_directory = @workingDirectory, workspace_mode = @workspaceMode,
-         worktree_branch = @worktreeBranch, updated_at = @updatedAt WHERE id = @id`,
+         worktree_branch = @worktreeBranch, direct_session = @directSession, updated_at = @updatedAt WHERE id = @id`,
       )
       .run(sessionParams(session));
   }
@@ -265,7 +269,7 @@ export class CapsuleRepositories {
                 harness_id AS harnessId, harness_state AS harnessState, acp_mode AS acpMode,
                 permission_profile AS permissionProfile, model_override AS modelOverride,
                 pinned, pin_order AS pinOrder, working_directory AS workingDirectory, workspace_mode AS workspaceMode,
-                worktree_branch AS worktreeBranch, created_at AS createdAt, updated_at AS updatedAt`;
+                worktree_branch AS worktreeBranch, direct_session AS directSession, created_at AS createdAt, updated_at AS updatedAt`;
     const sql = projectId
       ? `SELECT ${columns} FROM sessions WHERE project_id = ?
          ORDER BY pinned DESC, COALESCE(pin_order, 2147483647) ASC, updated_at DESC`
@@ -273,7 +277,7 @@ export class CapsuleRepositories {
          ORDER BY pinned DESC, COALESCE(pin_order, 2147483647) ASC, updated_at DESC`;
     const rows = (
       projectId ? this.db.sqlite.prepare(sql).all(projectId) : this.db.sqlite.prepare(sql).all()
-    ) as Session[];
+    ) as SessionRow[];
     return rows.map(normalizeSession);
   }
 
@@ -705,7 +709,7 @@ export class CapsuleRepositories {
     const budget = new TextBudget();
     for (const row of rows) {
       const content = (row as { content: string }).content;
-      budget.append("reply", `${budget.sizeOf("reply") ? "\n" : ""}${content}`);
+      budget.append("reply", `${budget.sizeOf("reply") ? "\n\n" : ""}${content}`);
     }
     return budget.take("reply");
   }
@@ -878,12 +882,12 @@ export class CapsuleRepositories {
     this.db.sqlite
       .prepare(
         `INSERT INTO approvals (
-          id, run_id, agent_id, agent_name, action, target, reason, status, created_at, resolved_at
+          id, run_id, agent_id, agent_name, action, target, reason, status, created_at, resolved_at, details
         ) VALUES (
-          @id, @runId, @agentId, @agentName, @action, @target, @reason, @status, @createdAt, @resolvedAt
+          @id, @runId, @agentId, @agentName, @action, @target, @reason, @status, @createdAt, @resolvedAt, @details
         )`,
       )
-      .run({ ...approval, resolvedAt: approval.resolvedAt ?? null });
+      .run({ ...approval, resolvedAt: approval.resolvedAt ?? null, details: approval.details ? JSON.stringify(approval.details) : null });
   }
 
   updateApproval(approval: ApprovalRequest): void {
@@ -901,14 +905,15 @@ export class CapsuleRepositories {
   listApprovals(status?: ApprovalRequest["status"]): ApprovalRequest[] {
     const sql = status
       ? `SELECT id, run_id AS runId, agent_id AS agentId, agent_name AS agentName, action, target,
-                reason, status, created_at AS createdAt, resolved_at AS resolvedAt
+                reason, status, created_at AS createdAt, resolved_at AS resolvedAt, details
          FROM approvals WHERE status = ? ORDER BY created_at DESC`
       : `SELECT id, run_id AS runId, agent_id AS agentId, agent_name AS agentName, action, target,
-                reason, status, created_at AS createdAt, resolved_at AS resolvedAt
+                reason, status, created_at AS createdAt, resolved_at AS resolvedAt, details
          FROM approvals ORDER BY created_at DESC`;
-    return (status
+    const rows = (status
       ? this.db.sqlite.prepare(sql).all(status)
-      : this.db.sqlite.prepare(sql).all()) as ApprovalRequest[];
+      : this.db.sqlite.prepare(sql).all()) as Array<Omit<ApprovalRequest, "details"> & { details: string | null }>;
+    return rows.map(({ details, ...row }) => ({ ...row, ...(details ? { details: JSON.parse(details) as ApprovalRequest["details"] } : {}) }));
   }
 
   insertArtifact(artifact: Artifact): void {

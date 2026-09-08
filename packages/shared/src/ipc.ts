@@ -100,6 +100,7 @@ export const IPC_CHANNELS = {
   closeHarness: "capsule:closeHarness",
   harnessStatus: "capsule:harnessStatus",
   setHarnessOption: "capsule:setHarnessOption",
+  setHarnessConfig: "capsule:setHarnessConfig",
   listHarnessSessions: "capsule:listHarnessSessions",
   pinSession: "capsule:pinSession",
   reorderPinnedSessions: "capsule:reorderPinnedSessions",

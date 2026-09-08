@@ -80,8 +80,7 @@ import {
   extractGatewayText,
   isRuntimeFrame,
   isAssistantProse,
-  isGatewayAgentFailure,
-  isGatewayTurnDone,
+  gatewayTurnOutcome,
 } from "./events.js";
 
 /*
@@ -758,9 +757,10 @@ export class OpenClawAdapter implements AgentRuntime {
         if (chunks.sizeOf("reply") > 0) resolve(chunks.take("reply"));
         else reject(new Error("Timed out waiting for ACP reply"));
       }, timeoutMs);
-      const onReply = (payload: { sessionKey?: string; text?: string; done?: boolean }) => {
+      const onReply = (payload: { sessionKey?: string; text?: string; done?: boolean; error?: string }) => {
         if (payload.sessionKey && payload.sessionKey !== sessionKey) return;
         try {
+          if (payload.error) throw new Error(payload.error);
           if (payload.text) chunks.append("reply", `${chunks.sizeOf("reply") ? "\n" : ""}${payload.text}`);
         } catch (error) {
           clearTimeout(timer);
@@ -936,7 +936,7 @@ export class OpenClawAdapter implements AgentRuntime {
   }
 
   onAcpReply(
-    handler: (payload: { sessionKey?: string; text?: string; done?: boolean; control?: boolean; snapshot?: boolean; timestamp?: number }) => void,
+    handler: (payload: { sessionKey?: string; text?: string; done?: boolean; control?: boolean; snapshot?: boolean; timestamp?: number; error?: string }) => void,
   ): Unsubscribe {
     this.emitter.on("acp-reply", handler);
     return () => this.emitter.off("acp-reply", handler);
@@ -959,12 +959,14 @@ export class OpenClawAdapter implements AgentRuntime {
       const message = asRecord(payload.message);
       if (!sessionKey || message.role !== "assistant") return;
       const text = extractGatewayText({ message });
-      if (!text || isAcpFailureText(text)) return;
+      const control = this.isAcpControl(sessionKey);
+      if (!text || (!control && isAcpFailureText(text))) return;
       const timestamp = typeof message.timestamp === "number"
         ? message.timestamp : Date.parse(asString(message.timestamp));
       this.emitter.emit("acp-reply", {
         sessionKey, text, done: true, snapshot: true,
-        control: this.isAcpControl(sessionKey),
+        control,
+        ...(control && isAcpFailureText(text) ? { error: explainAcpFailure(text) } : {}),
         ...(Number.isFinite(timestamp) ? { timestamp } : {}),
       });
       return;
@@ -980,30 +982,38 @@ export class OpenClawAdapter implements AgentRuntime {
     // A runtime frame is telemetry whether or not its eventType is one we
     // recognise. Treating "unrecognised" as prose is what let "usage updated:
     // 87690/200000" and "tool call (completed):" into the agent's reply.
-    const isProseFrame =
-      !isRuntimeFrame(payload) && (runtimeKind === undefined || runtimeKind === "message");
+    const streamKind = runtimeKind ?? classifyAgentStream(asString(payload.stream, asString(payload.phase)));
+    const isProseFrame = !isRuntimeFrame(payload) && isAssistantProse(streamKind);
     // frameText is every frame's own text, for the activity log. text is the
     // subset that belongs in the agent's answer.
     const frameText = extractGatewayText(payload);
+    const outcome = isProseFrame && isAcpFailureText(frameText) ? "failed" : gatewayTurnOutcome(payload);
     // A protocol failure is not the agent speaking, however prose-shaped its
     // frame is. It reaches the user through the error path instead.
-    const text = isProseFrame && !isAcpFailureText(frameText) ? frameText : "";
     const control = sessionKey ? this.isAcpControl(sessionKey) : false;
+    const text = control || (isProseFrame && outcome !== "failed" && outcome !== "cancelled") ? frameText : "";
+    const controlError = control && (outcome === "failed" || outcome === "cancelled")
+      ? { error: explainAcpFailure(frameText) ?? "Control command did not complete." } : {};
     if (sessionKey && text) {
       this.emitter.emit("acp-reply", {
         sessionKey,
         text,
-        done: isGatewayTurnDone(payload),
+        done: outcome !== undefined,
         control,
+        ...controlError,
       });
-    } else if (sessionKey && isGatewayTurnDone(payload)) {
+    } else if (sessionKey && outcome !== undefined) {
       this.emitter.emit("acp-reply", {
         sessionKey,
         text: text || undefined,
         done: true,
         control,
+        ...controlError,
       });
     }
+    // Control replies are consumed by their request waiter, not by the parent
+    // run. A status refresh must not complete a concurrently working turn.
+    if (control) return;
     if (
       event.event === "exec.approval.requested" ||
       event.event === "plugin.approval.requested" ||
@@ -1027,32 +1037,19 @@ export class OpenClawAdapter implements AgentRuntime {
      * run's result, and the result is what becomes the assistant's message. So
      * the same status blob reached the thread by a second door.
      */
-    const agentText = control ? "" : frameSummary;
-    if (runId && isGatewayAgentFailure(agentText)) {
+    const agentText = frameSummary;
+    if (runId && outcome) {
       this.activeRunCount = Math.max(0, this.activeRunCount - 1);
-      const explained = explainAcpFailure(agentText) ?? agentText;
-      this.emit(runId, "lifecycle", explained, { status: "failed", error: explained });
+      const detail = outcome === "failed" ? explainAcpFailure(agentText) ?? "Run failed"
+        : agentText || (outcome === "cancelled" ? "Run cancelled" : "Run completed");
+      this.emit(runId, "lifecycle", detail, {
+        status: outcome,
+        ...(outcome === "completed" ? { output: agentText } : outcome === "failed" ? { error: detail } : {}),
+      });
       return;
     }
     if (event.event === "agent") {
       const stream = asString(payload.stream, asString(payload.phase, "lifecycle"));
-      const status = asString(payload.status);
-      if (status === "ok" || payload.phase === "end" || isGatewayTurnDone(payload)) {
-        this.activeRunCount = Math.max(0, this.activeRunCount - 1);
-        this.emit(runId, "lifecycle", agentText || "Run completed", {
-          status: "completed",
-          output: agentText,
-        });
-        return;
-      }
-      if (status === "error" || payload.phase === "error") {
-        this.activeRunCount = Math.max(0, this.activeRunCount - 1);
-        this.emit(runId, "lifecycle", agentText || "Run failed", {
-          status: "failed",
-          error: agentText,
-        });
-        return;
-      }
       // An ACP runtime frame's real kind lives in its nested eventType; the
       // outer stream is always "acp".
       const kind = classifyRuntimeEvent(payload) ?? classifyAgentStream(stream);
@@ -1060,19 +1057,12 @@ export class OpenClawAdapter implements AgentRuntime {
       const delegation = kind === "tool" ? readDelegationDetails(tool) : undefined;
       // "assistant" is the only type the engine folds into run.result, so
       // reasoning, plan text and command output must not use it.
-      this.emit(runId, isAssistantProse(kind) && !control ? "assistant" : kind, agentText, {
+      this.emit(runId, isAssistantProse(kind) ? "assistant" : kind, agentText, {
         ...(delegation && typeof tool.toolCallId === "string" ? { delegationTool: { toolCallId: tool.toolCallId, title: tool.title, status: tool.status, delegation } } : {}),
         ...payload,
         streamKind: kind,
       });
       return;
-    }
-    if (runId && isGatewayTurnDone(payload)) {
-      this.activeRunCount = Math.max(0, this.activeRunCount - 1);
-      this.emit(runId, "lifecycle", agentText || "Run completed", {
-        status: "completed",
-        output: agentText,
-      });
     }
   }
 

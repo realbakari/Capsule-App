@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { HarnessStatus } from "@capsule/shared";
+import type { HarnessStatus, SessionRef } from "@capsule/shared";
 import { harnessPreflightReason } from "./harness-preflight";
 
 const harness = (readiness: HarnessStatus["readiness"]): HarnessStatus => ({
@@ -18,6 +18,12 @@ const harness = (readiness: HarnessStatus["readiness"]): HarnessStatus => ({
 });
 
 describe("harness preflight", () => {
+  it("allows a saved direct session to resume without the new default Gateway", () => {
+    const selected = { ...harness("gateway_offline"), id: "grok" as const, runtimeRoute: "openclaw" as const };
+    const session = { directSession: { harnessId: "grok", sessionId: "native" } } as SessionRef;
+    expect(harnessPreflightReason({ harness: selected, session, connected: false, folder: "/x", live: false })).toBeUndefined();
+    expect(harnessPreflightReason({ harness: harness("gateway_offline"), session, connected: false, folder: "/x", live: false })).toMatch(/Gateway/);
+  });
   it("does not require a Gateway for direct mode but still checks login and binary", () => {
     const direct = (readiness: HarnessStatus["readiness"]) => ({ ...harness(readiness), runtimeRoute: "direct" as const });
     expect(harnessPreflightReason({ harness: direct("ready"), connected: false, folder: "/x", live: false })).toBeUndefined();

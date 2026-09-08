@@ -2,8 +2,8 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { StringDecoder } from "node:string_decoder";
 
-import type { AcpModelCatalog, DelegationDetails } from "@capsule/shared";
-import { TextBudget } from "@capsule/shared";
+import type { AcpModelCatalog, DelegationDetails, ApprovalToolDetails, AgentCapabilityReport, ReportedContextUsage, ReportedTurnUsage, AgentPromptBlock } from "@capsule/shared";
+import { TextBudget, readAgentCapabilities, readReportedTurnUsage } from "@capsule/shared";
 import { readCliError } from "./errors.js";
 import {
   ACP_PROTOCOL_VERSION,
@@ -27,8 +27,12 @@ import {
  */
 
 export interface DirectAcpEvents {
+  configuration: () => void;
+  usage: (payload: { context?: ReportedContextUsage; turn?: ReportedTurnUsage }) => void;
   /** Assistant text as it arrives. */
   text: (payload: { text: string; thought: boolean }) => void;
+  /** Finish the current prose segment, not the turn or the coding session. */
+  "message-end": () => void;
   /** A tool the agent is running, for the work log. */
   tool: (payload: { title: string; status?: string; toolCallId?: string; delegation?: DelegationDetails }) => void;
   /** The turn finished, with the agent's own reason. */
@@ -36,8 +40,12 @@ export interface DirectAcpEvents {
   /** The agent wants permission and is blocked until it is answered. */
   permission: (payload: {
     title: string;
+    details?: ApprovalToolDetails;
+    canApproveOnce?: boolean;
     allow: () => void;
     deny: () => void;
+    /** End an unanswered request without recording a user decision. */
+    cancel: () => void;
   }) => void;
   /** The process ended. */
   exit: (payload: { code: number | null; stderr: string }) => void;
@@ -56,9 +64,8 @@ export interface DirectAcpOptions {
   /*
    * MCP servers to offer the agent when the session opens.
    *
-   * Both agents Capsule spawns report `mcpCapabilities: {http: true}`, so
-   * these are HTTP entries rather than child processes. Sent as given: the
-   * caller knows what it is running and what it will let the agent reach.
+   * These optional HTTP tools are forwarded only if the installed agent
+   * advertises HTTP MCP support during initialization.
    */
   mcpServers?: AcpMcpServer[];
 }
@@ -84,12 +91,25 @@ export class DirectAcpSession {
   >();
   private acpSessionId: string | undefined;
   private acpModels: AcpModelCatalog | undefined;
+  private legacyModels: AcpModelCatalog | undefined;
+  private initialization: unknown;
+  private capabilityReport?: AgentCapabilityReport;
+  private contextReport?: ReportedContextUsage;
   private closed = false;
   private turn: Promise<unknown> | undefined;
+  private cancelling = false;
+  private restoring = false;
+  private setting = false;
+  private configurationRevision = 0;
+  private configurationNotice?: ReturnType<typeof setTimeout>;
+  private hasMessageText = false;
+  private messageId: string | undefined;
   private readonly permissions = new Map<number | string, () => void>();
   private readonly toolTitles = new Map<string, string>();
 
   get busy(): boolean { return Boolean(this.turn); }
+  get reportedCapabilities(): AgentCapabilityReport | undefined { return this.capabilityReport; }
+  get reportedContext(): ReportedContextUsage | undefined { return this.contextReport; }
 
   constructor(private readonly options: DirectAcpOptions) {}
 
@@ -127,7 +147,7 @@ export class DirectAcpSession {
    * throws before a turn is ever sent, so the failure names itself instead of
    * arriving mid-answer.
    */
-  async start(): Promise<string> {
+  async start(resumeSessionId?: string): Promise<string> {
     if (this.child) throw new Error("This session is already running.");
     const child = spawn(this.options.command, this.options.args, {
       cwd: this.options.cwd,
@@ -157,21 +177,49 @@ export class DirectAcpSession {
       this.emitter.emit("exit", { code, stderr: this.stderr.trim() });
     });
 
-    await this.request("initialize", {
+    this.initialization = await this.request("initialize", {
       protocolVersion: ACP_PROTOCOL_VERSION,
       clientCapabilities: { fs: { readTextFile: false, writeTextFile: false } },
     });
-
-    const created = await this.request("session/new", {
+    const version = (this.initialization as { protocolVersion?: unknown } | null)?.protocolVersion;
+    if (typeof version !== "number" || !Number.isSafeInteger(version) || version < 1) {
+      throw new Error("The agent returned an invalid ACP protocol version during initialization.");
+    }
+    if (version !== ACP_PROTOCOL_VERSION) {
+      throw new Error(`The agent selected ACP protocol version ${version}, but Capsule supports version ${ACP_PROTOCOL_VERSION}. Use a compatible agent version or update Capsule.`);
+    }
+    const capabilities = readAgentCapabilities(this.initialization);
+    const setup = {
       cwd: this.options.cwd ?? process.cwd(),
-      mcpServers: this.options.mcpServers ?? [],
-    });
-    const sessionId = (created as { sessionId?: unknown })?.sessionId;
-    if (typeof sessionId !== "string" || !sessionId) {
+      mcpServers: capabilities.httpMcp === true
+        ? (this.options.mcpServers ?? []).map((server) => ({ ...server, headers: server.headers ?? [] }))
+        : [],
+    };
+    let created: unknown;
+    if (resumeSessionId) {
+      if (resumeSessionId.length > 4096) throw new Error("Saved ACP session identity is invalid.");
+      const method = capabilities.resumeSession ? "session/resume" : capabilities.loadSession ? "session/load" : undefined;
+      if (!method) throw new Error("This agent cannot resume the saved session. Start a new conversation to begin a fresh agent session; the recorded history is unchanged.");
+      this.acpSessionId = resumeSessionId;
+      this.restoring = true;
+      // Capsule already owns its transcript. Loading must not replay old tools,
+      // approvals or messages as activity belonging to the new turn.
+      try { created = await this.request(method, { ...setup, sessionId: resumeSessionId }); }
+      finally { this.restoring = false; }
+    } else created = await this.request("session/new", setup);
+    const sessionId = resumeSessionId ?? (created as { sessionId?: unknown })?.sessionId;
+    if (typeof sessionId !== "string" || !sessionId || sessionId.length > 4096) {
       throw new Error("The agent started but did not open a session.");
     }
     this.acpSessionId = sessionId;
-    this.acpModels = readModelCatalog((created as { models?: unknown })?.models);
+    this.legacyModels = readModelCatalog((created as { models?: unknown })?.models);
+    const configuration = (created as { configOptions?: unknown })?.configOptions;
+    if (!this.capabilityReport || Array.isArray(configuration)) this.readConfiguration(configuration);
+    // Retain only normalized metadata, not the unbounded handshake response.
+    this.initialization = { agentInfo: { name: this.capabilityReport?.name, version: this.capabilityReport?.version },
+      agentCapabilities: { promptCapabilities: { image: this.capabilityReport?.images, embeddedContext: this.capabilityReport?.embeddedContext },
+        mcpCapabilities: { http: this.capabilityReport?.httpMcp }, loadSession: this.capabilityReport?.loadSession,
+        sessionCapabilities: { ...(capabilities.resumeSession ? { resume: {} } : {}), ...(capabilities.closeSession ? { close: {} } : {}) } } };
     return sessionId;
   }
 
@@ -181,29 +229,70 @@ export class DirectAcpSession {
    * No timeout: a turn takes as long as the work takes, and cutting one off
    * because it passed a clock would be the app inventing a failure.
    */
-  async prompt(text: string): Promise<{ stopReason?: string }> {
+  async prompt(text: string | AgentPromptBlock[]): Promise<{ stopReason?: string }> {
     if (!this.acpSessionId) throw new Error("This session has not started.");
     if (this.turn) throw new Error("This agent already has an active turn. Stop it or wait before sending another message.");
+    const blocks: AgentPromptBlock[] = typeof text === "string" ? [{ type: "text", text }] : text;
+    for (const block of blocks) {
+      if (block.type === "image" && this.capabilityReport?.images !== true) throw new Error("This agent did not advertise image prompts. Remove the image or choose a compatible agent.");
+      if (block.type === "resource" && this.capabilityReport?.embeddedContext !== true) throw new Error("This agent did not advertise embedded resources. Remove the attachment or choose a compatible agent.");
+    }
+    if (Buffer.byteLength(JSON.stringify(blocks)) > MAX_ACP_FRAME_BYTES - 8192) throw new Error("The direct prompt exceeds the 4 MB wire budget. Use smaller attachments or less text.");
+    this.cancelling = false;
     this.toolTitles.clear();
     const turn = this.request(
       "session/prompt",
-      { sessionId: this.acpSessionId, prompt: [{ type: "text", text }] },
+      { sessionId: this.acpSessionId, prompt: blocks },
       { timeoutMs: 0 },
     );
     this.turn = turn;
     try {
-      const stopReason = readStopReason(await turn);
+      const result = await turn;
+      const stopReason = readStopReason(result);
+      const usage = readReportedTurnUsage((result as { usage?: unknown })?.usage);
+      if (usage) this.emitter.emit("usage", { turn: usage });
       this.emitter.emit("done", { stopReason });
       return { stopReason };
     } finally {
-      if (this.turn === turn) this.turn = undefined;
+      this.endMessage();
       this.cancelPermissions();
+      if (this.turn === turn) {
+        this.turn = undefined;
+        this.cancelling = false;
+      }
     }
+  }
+
+  /** Use exact reported IDs and accept only the agent's acknowledged state. */
+  async setConfig(configId: string, value: string | boolean): Promise<void> {
+    if (!this.acpSessionId || !this.running) throw new Error("Start this agent before changing its settings.");
+    if (this.setting) throw new Error("Another agent setting is still being applied. Wait and try again.");
+    const option = this.capabilityReport?.configOptions.find((item) => item.id === configId);
+    if (!option) throw new Error("This agent no longer reports that setting. Refresh its status.");
+    if (option.type === "boolean" ? typeof value !== "boolean" : typeof value !== "string" || !option.choices.some((item) => item.value === value)) {
+      throw new Error("Choose one of the values reported by this agent.");
+    }
+    this.setting = true;
+    const revision = this.configurationRevision;
+    try {
+      const response = await this.request("session/set_config_option", { sessionId: this.acpSessionId, configId, value,
+        ...(option.type === "boolean" ? { type: "boolean" } : {}) });
+      const options = (response as { configOptions?: unknown } | null)?.configOptions;
+      if (!Array.isArray(options)) throw new Error("The agent did not return its configuration after the change. Refresh status before retrying.");
+      // A notification delivered during the request is newer authoritative
+      // state. Do not let a delayed response restore old dependent options.
+      if (revision === this.configurationRevision) this.readConfiguration(options);
+      const confirmed = this.capabilityReport?.configOptions.find((item) => item.id === configId);
+      if ((confirmed?.type === "boolean" ? confirmed.booleanValue : confirmed?.currentValue) !== value) {
+        throw new Error("The agent reports a different value. Its reported setting has been retained.");
+      }
+    } finally { this.setting = false; }
   }
 
   /** Ask the agent to stop the turn it is on. */
   async cancel(): Promise<void> {
     if (!this.acpSessionId || !this.child) return;
+    this.cancelling = true;
     this.cancelPermissions();
     this.notify("session/cancel", { sessionId: this.acpSessionId });
     const turn = this.turn;
@@ -223,6 +312,8 @@ export class DirectAcpSession {
 
   /** End the conversation and the process with it. */
   async close(): Promise<void> {
+    clearTimeout(this.configurationNotice);
+    this.configurationNotice = undefined;
     this.cancelPermissions();
     this.closed = true;
     const child = this.child;
@@ -300,7 +391,27 @@ export class DirectAcpSession {
     if (message.method === "session/update") {
       const update = readSessionUpdate(message.params);
       if (!update || (update.sessionId && update.sessionId !== this.acpSessionId)) return;
+      if (this.restoring) {
+        if (update.configOptions) this.readConfiguration(update.configOptions);
+        return;
+      }
+      // Prefer the agent's message identity. Older agents omit it, so new
+      // tools remain a fallback boundary. Background status updates never
+      // split a streamed word or code block.
+      if ((update.startsTool && this.messageId === undefined) || (update.thought && update.text)) this.endMessage();
+      if (update.sessionId === this.acpSessionId) {
+        if (update.configOptions) this.readConfiguration(update.configOptions);
+        if (update.contextUsage && JSON.stringify(update.contextUsage) !== JSON.stringify(this.contextReport)) {
+          this.contextReport = update.contextUsage;
+          this.emitter.emit("usage", { context: update.contextUsage });
+        }
+      }
       if (update.text !== undefined) {
+        if (!update.thought) {
+          if (update.messageId !== undefined && update.messageId !== this.messageId) this.endMessage();
+          if (update.messageId !== undefined) this.messageId = update.messageId;
+          if (update.text) this.hasMessageText = true;
+        }
         this.emitter.emit("text", { text: update.text, thought: Boolean(update.thought) });
       }
       if (update.tool) {
@@ -319,24 +430,33 @@ export class DirectAcpSession {
 
     if (message.method === "session/request_permission" && message.id !== undefined) {
       const request = readPermissionRequest(message.params);
-      if (!request || (request.sessionId && request.sessionId !== this.acpSessionId)) {
+      if (!request || this.closed || this.cancelling || this.restoring || (request.sessionId && request.sessionId !== this.acpSessionId)) {
         // An agent waits on this reply. Something we cannot read has to be
         // answered anyway, or the turn stops here for good.
         this.respond(message.id, { outcome: { outcome: "cancelled" } });
         return;
       }
-      const answer = (decision: "allow" | "deny") => {
-        if (!this.permissions.delete(message.id!)) return;
-        const optionId = chooseOption(request.options, decision);
+      let settled = false;
+      const answer = (decision: "allow" | "deny" | "cancel") => {
+        // A callback from a finished request must not settle a newer request
+        // even if the agent later reuses that JSON-RPC ID.
+        if (settled) return;
+        settled = true;
+        this.permissions.delete(message.id!);
+        const optionId = decision === "cancel" ? undefined : chooseOption(request.options, decision);
         this.respond(message.id!, { outcome: optionId ? { outcome: "selected", optionId } : { outcome: "cancelled" } });
       };
-      this.permissions.set(message.id, () => answer("deny"));
+      this.endMessage();
+      this.permissions.set(message.id, () => answer("cancel"));
       const handled = this.emitter.emit("permission", {
         title: request.title,
+        details: request.details,
+        canApproveOnce: request.details.canApproveOnce,
         allow: () => answer("allow"),
         deny: () => answer("deny"),
+        cancel: () => answer("cancel"),
       });
-      if (!handled) answer("deny");
+      if (!handled) answer("cancel");
       return;
     }
 
@@ -350,8 +470,37 @@ export class DirectAcpSession {
     }
   }
 
+  private endMessage(): void {
+    this.messageId = undefined;
+    // Reasoning may contain thousands of chunks. Only the first transition
+    // after prose needs a flush; empty boundaries must not read history again.
+    if (!this.hasMessageText) return;
+    this.hasMessageText = false;
+    this.emitter.emit("message-end");
+  }
+
+  private readConfiguration(options: unknown): void {
+    this.configurationRevision++;
+    this.capabilityReport = readAgentCapabilities(this.initialization, options);
+    const model = this.capabilityReport.configOptions.find((option) => option.type !== "boolean" && (option.id === "model" || option.category === "model"));
+    // Config notifications replace the entire snapshot, including removals.
+    // Only a catalog actually supplied by the legacy API is a valid fallback.
+    this.acpModels = model ? {
+      currentModelId: model.currentValue,
+      availableModels: model.choices.map((choice) => ({ modelId: choice.value, name: choice.name })),
+    } : this.legacyModels;
+    // Status consumers need the latest snapshot, not one IPC refresh per frame.
+    if (!this.restoring && !this.configurationNotice) {
+      this.configurationNotice = setTimeout(() => {
+        this.configurationNotice = undefined;
+        if (this.running) this.emitter.emit("configuration");
+      }, 250);
+      this.configurationNotice.unref();
+    }
+  }
+
   private cancelPermissions(): void {
-    for (const deny of this.permissions.values()) deny();
+    for (const cancel of this.permissions.values()) cancel();
   }
 
   private request(

@@ -53,7 +53,7 @@ import {
 import type { SettingsSectionId } from "../features/settings/settings-search";
 import { commandForEvent, parseChord, type Keymap } from "./keybindings";
 import { formatUserError } from "./errors";
-import { latestContextUsage, type ContextUsage } from "./context-window";
+import { contextUsageFromEvents, type ContextUsage } from "./context-window";
 import { harnessPreflightReason } from "./harness-preflight";
 import {
   promptDraftKey,
@@ -223,6 +223,7 @@ export interface WorkspaceValue {
   steeringPending: boolean;
   refresh: () => Promise<void>;
   loadSession: (id: string) => Promise<void>;
+  eventLoad?: { runId: string; state: "loading" | "loaded" | "error"; detail?: string };
   createTask: () => Promise<void>;
   send: () => Promise<boolean>;
   createProject: () => Promise<void>;
@@ -396,6 +397,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   const [loadingOlder, setLoadingOlder] = useScopedState(scope, false);
   const [runs, setRuns] = useScopedState<Run[]>(scope, []);
   const [events, setEvents] = useScopedState<RunEvent[]>(scope, []);
+  const [eventLoad, setEventLoad] = useScopedState<WorkspaceValue["eventLoad"]>(scope, undefined);
   const [artifacts, setArtifacts] = useScopedState<Artifact[]>(scope, []);
   const [agentId, setAgentId] = useState<string>("general");
   const [mode, setMode] = useState<AgentMode>("chat");
@@ -519,13 +521,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   const connected = status?.state === "connected" && status.kind === "openclaw";
   const selectedHarness = harnesses.find((item) => item.id === agentId);
   const harnessLive = Boolean(
-    session?.harnessId && session.harnessState && session.harnessState !== "closed",
+    session?.harnessId === selectedHarness?.id && session?.openclawSessionKey && ["spawning", "running", "waiting"].includes(session.harnessState ?? ""),
   );
   const sendBlockReason = harnessPreflightReason({
     harness: mode === "code" ? selectedHarness : undefined,
     connected,
     folder: session?.workingDirectory ?? project?.workingDirectory,
     live: harnessLive,
+    session,
   });
 
   /*
@@ -573,17 +576,23 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       const latest = nextRuns[0];
       liveRunState.latest = latest;
       if (latest) {
+        setEventLoad({ runId: latest.id, state: "loading" });
         const artifactsCurrent = requests.capture("artifacts");
-        const [eventPage, nextArtifacts] = await Promise.all([
+        const [eventResult, artifactResult] = await Promise.allSettled([
           api.listRunEventPage(latest.id),
           api.listArtifacts(latest.id),
         ]);
         if (generation !== loadGeneration.current || !current()) return;
         if (liveRunState.latest?.id === latest.id) {
-          setEvents((current) => mergeRunEvents(boundRunEvents(eventPage.events, eventPage.hasMore), mergeRunEvents(current, [...liveRunState.events.values()], latest.id), latest.id));
-          if (artifactsCurrent()) setArtifacts(nextArtifacts);
+          if (eventResult.status === "fulfilled") {
+            const eventPage = eventResult.value;
+            setEvents((current) => mergeRunEvents(boundRunEvents(eventPage.events, eventPage.hasMore), mergeRunEvents(current, [...liveRunState.events.values()], latest.id), latest.id));
+            setEventLoad({ runId: latest.id, state: "loaded" });
+          } else setEventLoad({ runId: latest.id, state: "error", detail: formatUserError(eventResult.reason) });
+          if (artifactsCurrent() && artifactResult.status === "fulfilled") setArtifacts(artifactResult.value);
         }
       } else {
+        setEventLoad(undefined);
         setEvents([]);
         setArtifacts([]);
       }
@@ -815,6 +824,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       api.on("approval", () => void refresh()),
       api.on("state", (payload) => {
         const command = (payload as { command?: string; }).command;
+        if (command === "harness-configuration") {
+          const target = (payload as { sessionId?: string }).sessionId;
+          if (target) void readHarnessStatus(target, true).catch(() => undefined);
+        }
         if (command === "palette") setPalette(true);
         if (command === "new-task") void createTask();
         if (command === "skills") setView("skills");
@@ -1882,7 +1895,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
 
   // The harness reports this as activity text; nothing else parses it.
   const contextUsage = useMemo(
-    () => latestContextUsage(events.map((event) => event.message)),
+    () => contextUsageFromEvents(events),
     [events],
   );
 
@@ -1920,6 +1933,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       loadOlderMessages,
       runs,
       events,
+      eventLoad,
       artifacts,
       approvals,
       harnesses,
@@ -2081,6 +2095,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       returnToLatest,
       runs,
       events,
+      eventLoad,
       artifacts,
       approvals,
       harnesses,

@@ -61,6 +61,11 @@ describe("CapsuleDatabase", () => {
     expect(session?.harnessId).toBe("claude");
     expect(session?.harnessState).toBe("running");
     expect(session?.pinOrder).toBe(0);
+    const identity = { sessionId: "native-session", harnessId: "grok", cwd: "/tmp/with space", launchSignature: "fixture" };
+    repos.updateSession({ ...session!, directSession: identity });
+    expect(repos.getSession("sess_1")?.directSession).toEqual(identity);
+    repos.updateSession({ ...session!, directSession: undefined });
+    expect(repos.getSession("sess_1")?.directSession).toBeUndefined();
     repos.insertSession({
       id: "sess_2",
       workspaceId: "ws_1",
@@ -126,7 +131,7 @@ describe("attention snapshots", () => {
       expect(repos.hasRecordedReply("s1", "Done", "0002")).toBe(false);
       expect(repos.readReplyText("s1", "0001")).toBe("Done");
       repos.insertMessage({ id: "alphabetically-before-reply", sessionId: "s1", runId: "0001", role: "assistant", content: "Next", createdAt: at });
-      expect(repos.readReplyText("s1", "0001")).toBe("Done\nNext");
+      expect(repos.readReplyText("s1", "0001")).toBe("Done\n\nNext");
       expect(repos.readReplyText("s1", "0002")).toBe("");
       repos.insertMessage({ id: "oversized", sessionId: "s1", runId: "0002", role: "assistant", content: "x".repeat(2 * 1024 * 1024), createdAt: at });
       expect(() => repos.readReplyText("s1", "0002")).toThrow("reply limit");

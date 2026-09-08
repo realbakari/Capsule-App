@@ -347,6 +347,8 @@ describe("a control command's output is not the agent's answer", () => {
     });
 
     const completed = events.find((event) => event.data?.status === "completed");
-    expect(completed?.data?.output).toBe("");
+    // Emptying the output is insufficient: a status check is not turn completion.
+    expect(completed).toBeUndefined();
+    expect(events).toEqual([]);
   });
 });

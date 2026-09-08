@@ -24,4 +24,5 @@ export {
   supportsDirectMode,
   type AcpReply,
   type DirectSpawnInput,
+  type DirectMcpOffer,
 } from "./host.js";

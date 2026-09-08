@@ -58,13 +58,13 @@ it("settles a rejected direct send as failed", async () => {
   }));
 });
 
-it("persists direct permission requests, resolves once, denies pending requests on Stop", async () => {
+it("persists direct permission requests, resolves once, and cancels pending requests on Stop", async () => {
   const { engine, internal, session, run } = await fixture();
   let activity!: Parameters<DirectAcpHost["onActivity"]>[0];
   vi.spyOn(internal.direct, "onActivity").mockImplementation((handler) => { activity = handler; return () => {}; });
   internal.bindAcpReplies();
-  const allow = vi.fn(); const deny = vi.fn();
-  activity({ type: "permission", sessionKey: session.openclawSessionKey!, request: { title: "Write fixture", allow, deny } });
+  const allow = vi.fn(); const deny = vi.fn(); const cancelPermission = vi.fn();
+  activity({ type: "permission", sessionKey: session.openclawSessionKey!, request: { title: "Write fixture", allow, deny, cancel: cancelPermission } });
   expect(engine.getRun(run.id)?.status).toBe("approval_required");
   const approval = engine.listApprovals("pending")[0]!;
   await expect(engine.resolveApproval(approval.id, "approved_session")).rejects.toThrow("approval once");
@@ -75,17 +75,20 @@ it("persists direct permission requests, resolves once, denies pending requests 
   expect(engine.getRun(run.id)?.status).toBe("running");
   activity({ type: "tool", sessionKey: session.openclawSessionKey!, tool: { title: "Write fixture", status: "completed" } });
   expect(engine.listRunEvents(run.id).some((event) => event.type === "tool" && event.message === "Write fixture")).toBe(true);
-  activity({ type: "permission", sessionKey: session.openclawSessionKey!, request: { title: "Second request", allow, deny } });
+  activity({ type: "permission", sessionKey: session.openclawSessionKey!, request: { title: "Second request", allow, deny, cancel: cancelPermission } });
   const cancel = vi.spyOn(internal.direct, "cancelAcp").mockResolvedValue();
   const gateway = vi.spyOn(internal.runtime, "cancelRun").mockResolvedValue();
   await engine.stopRun(run.id);
   expect(cancel).toHaveBeenCalledWith(session.openclawSessionKey);
   expect(gateway).not.toHaveBeenCalled();
-  expect(deny).toHaveBeenCalledOnce();
+  expect(deny).not.toHaveBeenCalled();
+  expect(cancelPermission).toHaveBeenCalledOnce();
+  expect(engine.listApprovals("cancelled")).toHaveLength(1);
   expect(engine.listApprovals("pending")).toEqual([]);
   expect(engine.getRun(run.id)?.status).toBe("cancelled");
-  activity({ type: "permission", sessionKey: session.openclawSessionKey!, request: { title: "Late request", allow, deny } });
-  expect(deny).toHaveBeenCalledTimes(2);
+  activity({ type: "permission", sessionKey: session.openclawSessionKey!, request: { title: "Late request", allow, deny, cancel: cancelPermission } });
+  expect(cancelPermission).toHaveBeenCalledTimes(2);
+  expect(deny).not.toHaveBeenCalled();
   expect(engine.listApprovals("pending")).toEqual([]);
 });
 
@@ -97,6 +100,74 @@ it("does not persist unsupported direct changes or accept overlapping turns", as
   expect(engine.getProject(project.id)?.workingDirectory).toBe(run.workingDirectory);
   await expect(engine.sendMessage({ sessionId: session.id, content: "overlap", mode: "chat" })).rejects.toThrow("active turn");
   expect(engine.listRuns(session.id)).toHaveLength(1);
+});
+
+it.each(["stop", "close"])("clears approval decisions before %s confirmation, including a timeout", async (action) => {
+  const { engine, internal, session, run } = await fixture();
+  let activity!: Parameters<DirectAcpHost["onActivity"]>[0];
+  vi.spyOn(internal.direct, "onActivity").mockImplementation((handler) => { activity = handler; return () => {}; });
+  internal.bindAcpReplies();
+  const allow = vi.fn(), deny = vi.fn(), cancel = vi.fn();
+  activity({ type: "permission", sessionKey: session.openclawSessionKey!, request: { title: "Pending write", allow, deny, cancel } });
+  const approval = engine.listApprovals("pending")[0]!;
+  let reject!: (error: Error) => void;
+  vi.spyOn(internal.direct, action === "stop" ? "cancelAcp" : "closeAcp")
+    .mockImplementation(() => new Promise((_resolve, fail) => { reject = fail; }));
+  const ending = action === "stop" ? engine.stopRun(run.id) : engine.closeHarness(session.id);
+  expect(engine.listApprovals("pending")).toEqual([]);
+  expect(engine.listApprovals("cancelled").map((item) => item.id)).toEqual([approval.id]);
+  expect(cancel).toHaveBeenCalledOnce();
+  await expect(engine.resolveApproval(approval.id, "approved_once")).rejects.toThrow("not found");
+  expect(allow).not.toHaveBeenCalled();
+  expect(deny).not.toHaveBeenCalled();
+  reject(new Error("Not confirmed"));
+  await expect(ending).rejects.toThrow("Not confirmed");
+  expect(engine.getRun(run.id)).toMatchObject({ status: "approval_required" });
+  expect(engine.getRun(run.id)?.completedAt ?? undefined).toBeUndefined();
+});
+
+it("persists cancelled approvals before closing the engine database", async () => {
+  const { engine, internal, session } = await fixture();
+  let activity!: Parameters<DirectAcpHost["onActivity"]>[0];
+  vi.spyOn(internal.direct, "onActivity").mockImplementation((handler) => { activity = handler; return () => {}; });
+  internal.bindAcpReplies();
+  const cancel = vi.fn(), deny = vi.fn();
+  activity({ type: "permission", sessionKey: session.openclawSessionKey!, request: { title: "Pending write", allow: vi.fn(), deny, cancel } });
+  const approval = engine.listApprovals("pending")[0]!;
+  const persisted: string[] = [];
+  engine.events.on("approval", () => { persisted.push(...engine.listApprovals("cancelled").map((item) => item.id)); });
+  await engine.stop();
+  expect(persisted).toEqual([approval.id]);
+  expect(cancel).toHaveBeenCalledOnce();
+  expect(deny).not.toHaveBeenCalled();
+});
+
+it("keeps unsupported one-time approvals pending and retains the proposed operation", async () => {
+  const { engine, internal, session } = await fixture();
+  let activity!: Parameters<DirectAcpHost["onActivity"]>[0];
+  vi.spyOn(internal.direct, "onActivity").mockImplementation((handler) => { activity = handler; return () => {}; });
+  internal.bindAcpReplies();
+  const allow = vi.fn();
+  const deny = vi.fn();
+  const details = { locations: ["src/fixture.ts"], preview: "command: inspect", truncated: false, canApproveOnce: false };
+  activity({ type: "permission", sessionKey: session.openclawSessionKey!, request: { title: "Inspect", details, canApproveOnce: false, allow, deny, cancel: vi.fn() } });
+  const approval = engine.listApprovals("pending")[0]!;
+  expect(approval.details).toEqual(details);
+  await expect(engine.resolveApproval(approval.id, "approved_once")).rejects.toThrow();
+  expect(engine.listApprovals("pending")).toHaveLength(1);
+  expect(allow).not.toHaveBeenCalled();
+  await engine.resolveApproval(approval.id, "denied");
+  expect(deny).toHaveBeenCalledOnce();
+});
+
+it("records context snapshots and turn usage separately from transcript accounting", async () => {
+  const { engine, internal, session, run } = await fixture();
+  let activity!: Parameters<DirectAcpHost["onActivity"]>[0];
+  vi.spyOn(internal.direct, "onActivity").mockImplementation((handler) => { activity = handler; return () => {}; });
+  internal.bindAcpReplies();
+  activity({ type: "usage", sessionKey: session.openclawSessionKey!, usage: { context: { source: "agent", used: 10, size: 100 } } });
+  activity({ type: "usage", sessionKey: session.openclawSessionKey!, usage: { turn: { source: "agent", inputTokens: 5 } } });
+  expect(engine.listRunEvents(run.id).map((event) => event.type)).toEqual(expect.arrayContaining(["usage.context", "usage.turn"]));
 });
 
 it("uses one local-command policy and excludes restore while a shell owns the folder", async () => {

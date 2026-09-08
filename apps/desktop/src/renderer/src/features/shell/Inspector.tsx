@@ -717,6 +717,8 @@ export function Inspector() {
 
   const renderToolIcon = (tool: InspectorTool) => {
     switch (tool) {
+      case "agents":
+        return <CpuIcon size={14} />;
       case "review":
         return <DiffIcon size={14} />;
       case "terminal":
@@ -854,6 +856,8 @@ export function Inspector() {
               <span className="codex-breadcrumb-sep">·</span>
               <span className="truncate">{browserUrl}</span>
             </>
+          ) : activeTool === "agents" ? (
+            <span>Current thread · reported activity</span>
           ) : activeTool === "chat" ? (
             <>
               <span>Side chat</span>

@@ -202,6 +202,9 @@ export interface AcpConfigChoice {
  */
 export interface AcpConfigOption {
   id: string;
+  type?: "select" | "boolean";
+  booleanValue?: boolean;
+  category?: string;
   name: string;
   description?: string;
   currentValue?: string;
@@ -209,6 +212,8 @@ export interface AcpConfigOption {
 }
 
 export interface AcpStatusSnapshot {
+  reported?: import("./agent-reports.js").AgentCapabilityReport;
+  contextUsage?: import("./agent-reports.js").ReportedContextUsage;
   backend?: string;
   mode?: string;
   state?: string;
@@ -236,6 +241,7 @@ export interface SessionRef {
   mode: string;
   state: string;
   openclawSessionKey?: string;
+  directSession?: { harnessId: string; sessionId: string };
   harnessId?: HarnessId;
   harnessState?: HarnessSessionState;
   acpMode?: AcpMode;

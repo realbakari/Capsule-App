@@ -24,6 +24,7 @@ import { runActivityLabel } from "@capsule/shared";
 import { summariseWork, extractTouchedFiles } from "../../lib/activity";
 import { outcomesByTurn } from "../../lib/turn-outcomes";
 import { threadFeedback } from "../../lib/thread-error";
+import { ApprovalDetails, APPROVE_ONCE_UNAVAILABLE } from "../harness/ApprovalDetails";
 import { TurnOutcome } from "./TurnOutcome";
 import { TurnVerification } from "./TurnVerification";
 import { TurnFilesCard } from "./TurnFilesCard";
@@ -590,9 +591,12 @@ export function Conversation() {
               </div>
               <div className="mono">{pendingApproval.target}</div>
               <div className="muted">{pendingApproval.reason}</div>
+              <ApprovalDetails approval={pendingApproval} />
               <div className="actions">
                 <button
                   className="send"
+                  disabled={pendingApproval.details?.canApproveOnce === false}
+                  title={pendingApproval.details?.canApproveOnce === false ? APPROVE_ONCE_UNAVAILABLE : undefined}
                   onClick={() => void api.resolveApproval(pendingApproval.id, "approved_once").catch((error) => setNotice(formatUserError(error)))}
                 >
                   Approve once

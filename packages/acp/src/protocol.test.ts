@@ -62,6 +62,17 @@ describe("encodeMessage", () => {
 });
 
 describe("readSessionUpdate", () => {
+  it("preserves opaque message IDs and treats absent or invalid IDs as legacy chunks", () => {
+    const read = (messageId: unknown) => readSessionUpdate({ sessionId: "s", update: {
+      sessionUpdate: "agent_message_chunk", messageId, content: { type: "text", text: "part" },
+    } });
+    expect(read("opaque:not-a-uuid")?.messageId).toBe("opaque:not-a-uuid");
+    expect(read("")?.messageId).toBe("");
+    for (const value of [undefined, null, 1, {}, "x".repeat(1025)]) {
+      expect(read(value)).toEqual({ sessionId: "s", text: "part", thought: false });
+    }
+  });
+
   it("lifts assistant text", () => {
     expect(
       readSessionUpdate({
@@ -87,7 +98,7 @@ describe("readSessionUpdate", () => {
       readSessionUpdate({
         update: { sessionUpdate: "tool_call", title: "Read package.json", status: "in_progress" },
       }),
-    ).toEqual({ sessionId: undefined, tool: { title: "Read package.json", status: "in_progress" } });
+    ).toEqual({ sessionId: undefined, startsTool: true, tool: { title: "Read package.json", status: "in_progress" } });
   });
 
   it("says nothing about updates a reader never sees", () => {
@@ -99,6 +110,9 @@ describe("readSessionUpdate", () => {
     expect(readSessionUpdate({ sessionId: "s", update: {
       sessionUpdate: "tool_call_update", toolCallId: "read-1", status: "completed",
     } })?.tool).toMatchObject({ toolCallId: "read-1", status: "completed" });
+    expect(readSessionUpdate({ sessionId: "s", update: {
+      sessionUpdate: "tool_call_update", toolCallId: "read-1", status: "completed",
+    } })?.startsTool).toBeUndefined();
   });
 });
 
@@ -110,6 +124,12 @@ describe("readStopReason", () => {
 });
 
 describe("readPermissionRequest", () => {
+  it("does not turn permanent permission into approval once and labels clipped previews", () => {
+    const request = readPermissionRequest({ options: [{ optionId: "forever", kind: "allow_always" }, { optionId: "no", kind: "reject_once" }],
+      toolCall: { title: "Run command", rawInput: { command: "x".repeat(10000) }, locations: [{ path: "src/fixture.ts" }] } });
+    expect(request?.details).toMatchObject({ canApproveOnce: false, truncated: true, locations: ["src/fixture.ts"] });
+    expect(request?.details.preview?.length).toBeLessThanOrEqual(8192);
+  });
   it("reads what is being asked and what may be answered", () => {
     expect(
       readPermissionRequest({
@@ -123,6 +143,7 @@ describe("readPermissionRequest", () => {
     ).toEqual({
       sessionId: "s1",
       title: "Write src/index.ts",
+      details: { locations: [], truncated: false, canApproveOnce: true },
       options: [
         { optionId: "a", name: "Allow", kind: "allow_once" },
         { optionId: "r", name: "Reject", kind: "reject_once" },

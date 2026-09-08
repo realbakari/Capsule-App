@@ -26,8 +26,8 @@ it("keeps completed messages authoritative and bounds their combined result", ()
   writer.append("a", "First ");
   const first = writer.recordReply("a", "First answer");
   writer.append("a", "late duplicate tokens");
-  expect(writer.recordReply("a", "Second", first)).toBe("First answer\nSecond");
+  expect(writer.recordReply("a", "Second", first)).toBe("First answer\n\nSecond");
   expect(() => writer.recordReply("a", "Too much", budget.text("run:a"))).toThrow("reply limit");
-  expect(writer.finish("a")).toBe("First answer\nSecond");
+  expect(writer.finish("a")).toBe("First answer\n\nSecond");
   expect(budget.retainedBytes).toBe(0);
 });

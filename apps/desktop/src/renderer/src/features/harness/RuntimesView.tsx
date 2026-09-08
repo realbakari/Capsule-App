@@ -359,7 +359,7 @@ function HarnessDetail({
               </div>
             </div>
           ))}
-          {activeSession && (
+          {activeSession && capabilities.route !== "direct" && (
             <fieldset className="harness-options" disabled={capabilities.tuning.state === "unavailable"} title={capabilities.tuning.detail}>
               <label>
                 <span>Permissions</span>

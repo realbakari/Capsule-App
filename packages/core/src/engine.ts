@@ -6,9 +6,10 @@ import { localTimings, TextBudget, OUTPUT_LIMIT_ERROR } from "@capsule/shared";
 import { ResultWriter } from "./result-writer.js";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { prepareDirectPrompt } from "./direct-prompt.js";
 import {
   DirectAcpHost,
-  type AcpMcpServer,
+  type DirectMcpOffer,
   isDirectSessionKey,
   supportsDirectMode,
   turnOutcome,
@@ -83,7 +84,6 @@ import {
 import {
   MockAgentRuntime,
   OpenClawAdapter,
-  acpCommandFailed,
   isAcpControlOutput,
   acpxModeIsNonFatal,
   defaultGatewayEndpoint,
@@ -246,12 +246,12 @@ export class CapsuleEngine {
    * exist before an agent can be told about it — and applies to sessions
    * started from then on, not ones already running.
    */
-  offerDirectMcpServers(servers: AcpMcpServer[]): void {
+  offerDirectMcpServers(servers: DirectMcpOffer): void {
     this.direct.offerMcpServers(servers);
   }
 
   private directUnsub?: () => void;
-  private directApprovals = new Map<string, { runId: string; allow: () => void; deny: () => void }>();
+  private directApprovals = new Map<string, { runId: string; canApproveOnce?: boolean; allow: () => void; deny: () => void; cancel: () => void }>();
   private admittingSessions = new Set<string>();
   private folderActivity = new FolderActivity();
   private settings: CapsuleSettings;
@@ -327,7 +327,7 @@ export class CapsuleEngine {
     this.loadSettings();
     this.bindInboxToProjectless();
     this.applyWorkspacePolicies();
-    this.failStaleRuns();
+    this.recoverInterruptedWork();
     for (const run of this.repos.listRuns()) {
       if (!run.verification?.inProgress) continue;
       run.verification = { ...run.verification, inProgress: false, passed: false, status: "unverified", summary: "Check interrupted; not verified." };
@@ -348,6 +348,10 @@ export class CapsuleEngine {
     // than throwing "The database connection is not open" from a detached
     // promise, which surfaces as an unhandled rejection with no run to blame.
     this.stopped = true;
+    // Resolve approval records while the database is still open. Closing the
+    // transport later cannot safely update those persisted requests.
+    const approvalRuns = new Set(Array.from(this.directApprovals.values(), (pending) => pending.runId));
+    for (const runId of approvalRuns) this.settleDirectApprovals(runId);
     for (const check of this.verificationPending.values()) check.controller.abort();
     setLoginStateListener(undefined);
     setPullRequestListener(undefined);
@@ -645,7 +649,9 @@ export class CapsuleEngine {
      * an unrunnable probe returns "unknown" and must not gate a working
      * harness.
      */
-    const direct = this.useDirectMode(harnessId);
+    const prior = input.sessionId ? this.requireSession(input.sessionId) : undefined;
+    const direct = prior?.directSession?.harnessId === harnessId || (prior?.harnessId === harnessId && isDirectSessionKey(prior.openclawSessionKey))
+      ? true : prior?.harnessId === harnessId && prior.openclawSessionKey ? false : this.useDirectMode(harnessId);
     if (!this.usingMock) {
       // Direct mode spawns the CLI here, so there is no Gateway config to
       // write and nothing to register a command with.
@@ -736,12 +742,14 @@ export class CapsuleEngine {
     try {
       const spawned = direct
         ? await this.direct.spawnAcpSession({
+          threadId: session.id,
           harnessId,
           cwd,
           title,
           prompt: input.prompt,
           sessionKey: session.openclawSessionKey,
           model: input.model,
+          resume: session.directSession?.harnessId === harnessId ? session.directSession : undefined,
         })
         : await this.openclaw.spawnAcpSession({
           harnessId,
@@ -754,6 +762,8 @@ export class CapsuleEngine {
           model: input.model,
         });
       session.openclawSessionKey = spawned.sessionKey;
+      if (direct && "directSession" in spawned && spawned.directSession) session.directSession = spawned.directSession as Session["directSession"];
+      else if (!direct) session.directSession = undefined;
       session.harnessState = "running";
       if (input.sessionId) this.repos.updateSession(session);
       else this.repos.insertSession(session);
@@ -837,6 +847,7 @@ export class CapsuleEngine {
       ["queued", "running", "waiting", "approval_required"].includes(run.status),
     );
     // Direct close can stop its owned child even when the agent ignores cancel.
+    if (active && isDirectSessionKey(session.openclawSessionKey)) this.settleDirectApprovals(active.id);
     if (active && !isDirectSessionKey(session.openclawSessionKey)) await this.stopRun(active.id);
     if (!this.usingMock && session.openclawSessionKey) {
       try {
@@ -932,6 +943,17 @@ export class CapsuleEngine {
     this.repos.updateSession(session);
     this.log(`Set harness ${patch.key}=${value} on ${session.id}`);
     return { session, detail: `Updated ${patch.key}.`, statusText };
+  }
+
+  async setHarnessConfig(sessionId: string, configId: string, value: string | boolean): Promise<HarnessLiveStatus> {
+    const session = this.requireHarnessSession(sessionId);
+    if (!session.openclawSessionKey || !isDirectSessionKey(session.openclawSessionKey)) {
+      throw new Error("Exact agent configuration is available on direct sessions. Use the Gateway's supported option controls for this route.");
+    }
+    if (typeof configId !== "string" || configId.length > 128 || (typeof value !== "boolean" && typeof value !== "string")) throw new Error("Invalid agent configuration value.");
+    await this.direct.setConfig(session.openclawSessionKey, configId, value);
+    this.events.emit("state", { command: "harness-updated" });
+    return this.harnessStatus(sessionId);
   }
 
   listHarnessSessions(projectId?: string): Session[] {
@@ -1761,8 +1783,12 @@ export class CapsuleEngine {
      */
     if (isDirectSessionKey(session.openclawSessionKey)) {
       const key = session.openclawSessionKey!;
-      void this.direct
-        .send(key, runtimeMessage.content)
+      void prepareDirectPrompt(runtimeMessage.content, attachments, this.direct.capabilities(key))
+        .then((blocks) => {
+          const currentRun = this.repos.getRun(run.id);
+          if (!currentRun || !["running", "waiting", "approval_required"].includes(currentRun.status)) throw new Error("The turn stopped before its attachments were sent.");
+          return this.direct.send(key, attachments.length ? blocks : runtimeMessage.content);
+        })
         .then((result) => {
           /*
            * How the turn ended, not merely that the call returned. A refusal
@@ -1836,6 +1862,9 @@ export class CapsuleEngine {
     if (run.completedAt) return run;
     const session = this.requireSession(run.sessionId);
     if (isDirectSessionKey(session.openclawSessionKey)) {
+      // The decision is cancelled now, even if the agent takes time to confirm
+      // that its work stopped. A timeout must not leave a clickable stale Allow.
+      this.settleDirectApprovals(run.id);
       await this.direct.cancelAcp(session.openclawSessionKey!);
       const latest = this.requireRun(runId);
       if (latest.completedAt) return latest;
@@ -1971,6 +2000,9 @@ export class CapsuleEngine {
     if (!approval) throw new Error("Approval not found");
     const direct = this.directApprovals.get(approvalId);
     if (direct && decision === "approved_session") throw new Error("Direct agents support approval once here, not approval for the entire session.");
+    if (decision === "approved_once" && (direct?.canApproveOnce === false || approval.details?.canApproveOnce === false)) {
+      throw new Error("This agent did not offer approval once. Deny this request or change the agent's settings outside Capsule.");
+    }
     approval.status = decision;
     approval.resolvedAt = nowIso();
     this.repos.updateApproval(approval);
@@ -2296,10 +2328,19 @@ export class CapsuleEngine {
     this.directUnsub?.();
     const replies = this.direct.onAcpReply((payload: AcpReply) => this.handleAcpReply(payload));
     const activity = this.direct.onActivity((payload) => {
-      if (this.stopped) { if (payload.type === "permission") payload.request.deny(); return; }
+      if (this.stopped) { if (payload.type === "permission") payload.request.cancel(); return; }
       const session = this.repos.listSessions().find((item) => item.openclawSessionKey === payload.sessionKey);
+      if (payload.type === "configuration") {
+        if (session) this.events.emit("state", { command: "harness-configuration", sessionId: session.id });
+        return;
+      }
       const run = session && this.repos.findReplyRun(session.id);
-      if (!run) { if (payload.type === "permission") payload.request.deny(); return; }
+      if (!run) { if (payload.type === "permission") payload.request.cancel(); return; }
+      if (payload.type === "usage") {
+        if (payload.usage.context) this.appendEvent(run.id, "usage.context", "Agent-reported context usage", { context: payload.usage.context });
+        if (payload.usage.turn) this.appendEvent(run.id, "usage.turn", "Agent-reported turn usage", { usage: payload.usage.turn });
+        return;
+      }
       if (payload.type === "tool") {
         this.appendEvent(run.id, "tool", payload.tool.title, { ...payload.tool });
         return;
@@ -2307,7 +2348,9 @@ export class CapsuleEngine {
       const approval: ApprovalRequest = {
         id: createId("approval"), runId: run.id, agentId: run.agentId,
         agentName: session?.harnessId ?? run.agentId, action: payload.request.title,
-        target: run.workingDirectory ?? "This thread", reason: "The direct agent is waiting for your approval.",
+        target: payload.request.details?.locations.join("\n") || "Target not reported by the agent",
+        reason: "The direct agent is waiting for your approval.",
+        details: payload.request.details,
         status: "pending", createdAt: nowIso(),
       };
       this.directApprovals.set(approval.id, { runId: run.id, ...payload.request });
@@ -2324,11 +2367,11 @@ export class CapsuleEngine {
   private settleDirectApprovals(runId: string): void {
     for (const [id, pending] of this.directApprovals) {
       if (pending.runId !== runId) continue;
-      pending.deny();
+      pending.cancel();
       this.directApprovals.delete(id);
       const approval = this.repos.listApprovals("pending").find((item) => item.id === id);
       if (approval) {
-        approval.status = "denied";
+        approval.status = "cancelled";
         approval.resolvedAt = nowIso();
         this.repos.updateApproval(approval);
         this.events.emit("approval", approval);
@@ -2349,7 +2392,7 @@ export class CapsuleEngine {
     if (payload.control) return;
     // Behind the control marking: a status dump is recognisable on its own, so
     // a frame that slips past the marking still cannot become a message.
-    if (isAcpControlOutput(payload.text)) return;
+    if (!isDirectSessionKey(payload.sessionKey) && isAcpControlOutput(payload.text)) return;
     const session = this.repos
       .listSessions()
       .find((item) => item.openclawSessionKey === payload.sessionKey);
@@ -2368,8 +2411,8 @@ export class CapsuleEngine {
     }
     if (!payload.done) return;
     const content = this.replyBuffers.take(bufferKey).trim();
-    if (isAcpControlOutput(content)) return;
-    if (content.length < 2) return;
+    if (!isDirectSessionKey(payload.sessionKey) && isAcpControlOutput(content)) return;
+    if (!content) return;
     const active = replyRun();
     if (isDirectSessionKey(payload.sessionKey) && !active) return;
     /*
@@ -2410,22 +2453,9 @@ export class CapsuleEngine {
     }
     this.repos.insertMessage(message);
     this.events.emit("message", message);
-    const failed = acpCommandFailed(content);
-    if (!failed) return;
-    const running = this.repos.findReplyRun(session.id);
-    if (!running) return;
-    this.resultWriter.discard(running.id);
-    running.status = "failed";
-    running.error = failed;
-    running.result = content;
-    running.updatedAt = nowIso();
-    running.completedAt = nowIso();
-    this.repos.updateRun(running);
-    this.appendEvent(running.id, "lifecycle", failed, {
-      status: "failed",
-      error: failed,
-    });
-    this.events.emit("run", running);
+    // Prose may describe a failed command while the agent is still fixing it.
+    // Only runtime outcomes end a turn. Control-command failures are handled
+    // by the Gateway adapter at the request that issued the command.
   }
 
   /*
@@ -2672,7 +2702,7 @@ export class CapsuleEngine {
             status: verification.status,
           });
         }
-        if (run.result && isAcpControlOutput(run.result)) {
+        if (!isDirectSessionKey(session.openclawSessionKey) && run.result && isAcpControlOutput(run.result)) {
           // The turn's own answer never looks like this; a control command's
           // does, and it is not something the reader asked for.
           run.result = undefined;
@@ -2747,14 +2777,19 @@ export class CapsuleEngine {
    * ever after — including threads whose answer had already arrived and whose
    * only problem was that Capsule was closed afterwards.
    */
-  private failStaleRuns(): void {
+  private recoverInterruptedWork(): void {
     for (const run of this.repos.listRuns()) {
-      if (!["running", "waiting", "queued"].includes(run.status)) continue;
+      if (!["running", "waiting", "queued", "approval_required"].includes(run.status)) continue;
       run.status = "cancelled";
       run.error = run.error ?? "Interrupted when Capsule last quit.";
       run.updatedAt = nowIso();
       run.completedAt = nowIso();
       this.repos.updateRun(run);
+    }
+    // Neither route can deliver a decision to a request from the previous
+    // process. Clear orphaned approvals as well as those on interrupted runs.
+    for (const approval of this.repos.listApprovals("pending")) {
+      this.repos.updateApproval({ ...approval, status: "cancelled", resolvedAt: nowIso() });
     }
     /*
      * And the sessions that were pointing at those runs. An ACP session does
@@ -3138,8 +3173,13 @@ export class CapsuleEngine {
 
   private async ensureHarnessSession(session: Session, harnessId: HarnessId): Promise<Session> {
     const current = this.requireSession(session.id);
-    const live = isLiveHarnessState(current.harnessState) && (this.usingMock || current.openclawSessionKey);
+    const live = isLiveHarnessState(current.harnessState) && (this.usingMock || (current.openclawSessionKey &&
+      (!isDirectSessionKey(current.openclawSessionKey) || this.direct.isRunning(current.openclawSessionKey))));
     if (live && current.harnessId === harnessId) {
+      const folder = current.workingDirectory ?? this.requireProject(current.projectId).workingDirectory;
+      if (isDirectSessionKey(current.openclawSessionKey) && current.directSession && folder && path.resolve(folder) !== current.directSession.cwd) {
+        throw new Error("This agent session belongs to a different working folder. Start a new conversation for the changed workspace.");
+      }
       return current;
     }
     /*

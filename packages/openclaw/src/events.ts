@@ -55,19 +55,21 @@ export function extractGatewayText(payload: Record<string, unknown>): string {
   return "";
 }
 
-export function isGatewayTurnDone(payload: Record<string, unknown>): boolean {
+export function gatewayTurnOutcome(payload: Record<string, unknown>): "completed" | "failed" | "cancelled" | undefined {
+  // Nested phase belongs to the parent only on the lifecycle stream. A tool's
+  // status must never terminate its owning turn.
+  const lifecycle = payload.stream === "lifecycle" ? asRecord(payload.data) : {};
   const state = asString(payload.state);
   const status = asString(payload.status);
-  const phase = asString(payload.phase);
-  return (
-    state === "final" ||
-    state === "aborted" ||
-    state === "error" ||
-    status === "ok" ||
-    status === "error" ||
-    phase === "end" ||
-    phase === "error"
-  );
+  const phase = asString(payload.phase, asString(lifecycle.phase));
+  if (state === "error" || status === "error" || phase === "error") return "failed";
+  if (state === "aborted" || phase === "aborted" || phase === "cancelled") return "cancelled";
+  if (state === "final" || status === "ok" || phase === "end") return "completed";
+  return undefined;
+}
+
+export function isGatewayTurnDone(payload: Record<string, unknown>): boolean {
+  return gatewayTurnOutcome(payload) !== undefined;
 }
 
 const ACP_FAIL = [
@@ -124,10 +126,6 @@ export function extractAcpSessionKey(text: string | undefined): string | undefin
   if (!text) return undefined;
   const match = text.match(/agent:[a-z0-9_-]+:acp:[a-z0-9-]+/i);
   return match?.[0];
-}
-
-export function isGatewayAgentFailure(text: string | undefined): boolean {
-  return Boolean(acpCommandFailed(text));
 }
 
 /*
@@ -235,7 +233,7 @@ const ACP_ERROR_GUIDANCE: Array<{ match: RegExp; guidance: string }> = [
 export function isAcpFailureText(text: string | undefined): boolean {
   const message = text?.trim();
   if (!message) return false;
-  return /^(acp\w*error\b|\[?ACP_[A-Z_]+\]?)|\bACP_TURN_FAILED\b/i.test(message);
+  return /^(?:acp(?:\w*| )error\b|\[?ACP_[A-Z_]+\]?(?::|\s|$))/i.test(message);
 }
 
 export function explainAcpFailure(text: string | undefined): string | undefined {

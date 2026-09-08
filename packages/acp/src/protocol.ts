@@ -1,4 +1,4 @@
-import { readDelegationDetails, sanitizeUntrusted, type AcpModelCatalog, type DelegationDetails } from "@capsule/shared";
+import { readDelegationDetails, readReportedContextUsage, sanitizeUntrusted, type AcpModelCatalog, type DelegationDetails, type ApprovalToolDetails, type ReportedContextUsage } from "@capsule/shared";
 
 /*
  * The wire, on its own.
@@ -53,11 +53,17 @@ export function encodeMessage(message: JsonRpcMessage): string {
 
 /** What a `session/update` notification is telling us about a turn. */
 export interface SessionUpdate {
+  contextUsage?: ReportedContextUsage;
+  configOptions?: unknown[];
   sessionId?: string;
   /** Assistant text to show, if this update carries any. */
   text?: string;
+  /** Optional opaque ACP v1 message identity; never infer it from the prose. */
+  messageId?: string;
   /** Reasoning rather than answer: shown, but not part of the reply. */
   thought?: boolean;
+  /** A new tool starts a new response segment; background tool updates do not. */
+  startsTool?: boolean;
   /** A tool the agent is running, if this update is about one. */
   tool?: { title?: string; status?: string; toolCallId?: string; delegation?: DelegationDetails };
 }
@@ -84,11 +90,21 @@ export function readSessionUpdate(params: unknown): SessionUpdate | undefined {
   const update = record.update;
   if (!update || typeof update !== "object") return undefined;
   const kind = (update as { sessionUpdate?: unknown }).sessionUpdate;
+  if (kind === "usage_update") return { sessionId, contextUsage: readReportedContextUsage(update) };
+  if (kind === "config_option_update") {
+    const options = (update as { configOptions?: unknown }).configOptions;
+    return Array.isArray(options) ? { sessionId, configOptions: options.slice(0, 32) } : undefined;
+  }
 
   if (kind === "agent_message_chunk" || kind === "agent_thought_chunk") {
     const text = textFromContent((update as { content?: unknown }).content);
     if (text === undefined) return undefined;
-    return { sessionId, text, thought: kind === "agent_thought_chunk" };
+    const messageId = (update as { messageId?: unknown }).messageId;
+    return {
+      sessionId, text, thought: kind === "agent_thought_chunk",
+      // Keep one bounded, exact identifier. Truncating IDs can merge messages.
+      ...(typeof messageId === "string" && messageId.length <= 1024 ? { messageId } : {}),
+    };
   }
 
   if (kind === "tool_call" || kind === "tool_call_update") {
@@ -99,6 +115,7 @@ export function readSessionUpdate(params: unknown): SessionUpdate | undefined {
     const delegation = readDelegationDetails(tool);
     return {
       sessionId,
+      ...(kind === "tool_call" ? { startsTool: true } : {}),
       tool: { title, status: typeof tool.status === "string" ? tool.status : undefined, toolCallId, ...(delegation ? { delegation } : {}) },
     };
   }
@@ -191,6 +208,7 @@ export interface PermissionRequest {
   sessionId?: string;
   title: string;
   options: PermissionOption[];
+  details: ApprovalToolDetails;
 }
 
 export function readPermissionRequest(params: unknown): PermissionRequest | undefined {
@@ -198,23 +216,54 @@ export function readPermissionRequest(params: unknown): PermissionRequest | unde
   const record = params as { sessionId?: unknown; toolCall?: unknown; options?: unknown };
   if (!Array.isArray(record.options)) return undefined;
   const options = record.options
+    .slice(0, 64)
     .map((option): PermissionOption | undefined => {
       if (!option || typeof option !== "object") return undefined;
       const row = option as { optionId?: unknown; name?: unknown; kind?: unknown };
-      if (typeof row.optionId !== "string") return undefined;
+      // Do not truncate an action identifier and accidentally choose another action.
+      if (typeof row.optionId !== "string" || row.optionId.length > 256) return undefined;
       return {
         optionId: row.optionId,
-        name: typeof row.name === "string" ? row.name : row.optionId,
-        ...(typeof row.kind === "string" ? { kind: row.kind } : {}),
+        name: typeof row.name === "string" ? row.name.slice(0, 256) : row.optionId,
+        ...(typeof row.kind === "string" ? { kind: row.kind.slice(0, 64) } : {}),
       };
     })
     .filter((option): option is PermissionOption => Boolean(option));
   if (options.length === 0) return undefined;
-  const tool = record.toolCall as { title?: unknown } | undefined;
+  const tool = record.toolCall as { title?: unknown; toolCallId?: unknown; kind?: unknown; locations?: unknown; content?: unknown; rawInput?: unknown } | undefined;
+  let truncated = false;
+  const excerpt = (value: unknown, limit: number): string => {
+    if (typeof value !== "string") return "";
+    if (value.length > limit) truncated = true;
+    return value.slice(0, limit);
+  };
+  const locations = (Array.isArray(tool?.locations) ? tool.locations : []).slice(0, 16)
+    .flatMap((value) => value && typeof value.path === "string" ? [sanitizeUntrusted(value.path.slice(0, 1024))] : []);
+  const pieces = (Array.isArray(tool?.content) ? tool.content : []).slice(0, 8).flatMap((value) => {
+    if (value?.type === "diff") return [`${excerpt(value.path, 1024)}\nBefore:\n${excerpt(value.oldText, 8192)}\nAfter:\n${excerpt(value.newText, 8192)}`];
+    if (value?.type === "content" && value.content?.type === "text") return [excerpt(value.content.text, 8192)];
+    return [];
+  });
+  if (tool?.rawInput && typeof tool.rawInput === "object") {
+    // Only simple, bounded operation fields. Never render HTML or serialize a
+    // whole provider object (which may contain credentials or cyclic values).
+    const input = tool.rawInput as Record<string, unknown>;
+    for (const key of ["command", "path", "filePath", "url", "description"]) {
+      if (typeof input[key] === "string") pieces.push(`${key}: ${excerpt(input[key], 4096)}`);
+    }
+  }
+  const preview = pieces.join("\n\n");
   return {
     sessionId: typeof record.sessionId === "string" ? record.sessionId : undefined,
-    title: typeof tool?.title === "string" ? tool.title : "Run a tool",
+    title: typeof tool?.title === "string" ? sanitizeUntrusted(tool.title.slice(0, 512)) : "Run a tool",
     options,
+    details: {
+      toolCallId: typeof tool?.toolCallId === "string" ? tool.toolCallId.slice(0, 256) : undefined,
+      kind: typeof tool?.kind === "string" ? tool.kind.slice(0, 64) : undefined,
+      locations, preview: preview ? sanitizeUntrusted(preview.slice(0, 8192)) : undefined,
+      truncated: truncated || preview.length > 8192 || (Array.isArray(tool?.content) && tool.content.length > 8),
+      canApproveOnce: chooseOption(options, "allow") !== undefined,
+    },
   };
 }
 

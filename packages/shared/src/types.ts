@@ -246,6 +246,8 @@ export interface Session {
   acpMode?: import("./harness.js").AcpMode;
   permissionProfile?: string;
   modelOverride?: string;
+  /** Native ACP identity, retained across process exits; never a live-process claim. */
+  directSession?: DirectSessionIdentity;
   pinned?: boolean;
   /** Stable ordering among pinned conversations; lower values appear first. */
   pinOrder?: number;
@@ -258,6 +260,19 @@ export interface Session {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface DirectSessionIdentity {
+  sessionId: string;
+  harnessId: string;
+  cwd: string;
+  /** Preset command identity, excluding user model overrides. */
+  launchSignature: string;
+}
+
+export type AgentPromptBlock =
+  | { type: "text"; text: string }
+  | { type: "image"; mimeType: string; data: string }
+  | { type: "resource"; resource: { uri: string; mimeType: string; text: string } | { uri: string; mimeType: string; blob: string } };
 
 export interface UpdateProjectInput {
   name?: string;
@@ -535,6 +550,7 @@ export interface PolicyDecision {
 }
 
 export interface ApprovalRequest {
+  details?: import("./agent-reports.js").ApprovalToolDetails;
   id: string;
   runId: string;
   agentId: string;
@@ -542,7 +558,7 @@ export interface ApprovalRequest {
   action: string;
   target: string;
   reason: string;
-  status: "pending" | "approved_once" | "approved_session" | "denied";
+  status: "pending" | "approved_once" | "approved_session" | "denied" | "cancelled";
   createdAt: string;
   resolvedAt?: string;
 }

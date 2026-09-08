@@ -25,6 +25,7 @@ describe("ipc scopes", () => {
       "terminalAcknowledge",
       "clearBrowserData",
       "registerBrowserView",
+      "setHarnessConfig",
       "execInProject",
       "runProjectAction",
       "verifyRun",

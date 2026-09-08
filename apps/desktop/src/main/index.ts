@@ -1462,6 +1462,10 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.setHarnessOption, (patch) =>
     requireEngine().setHarnessOption(patch as HarnessOptionPatch),
   );
+  handle(IPC_CHANNELS.setHarnessConfig, (sessionId, configId, value) => {
+    if (typeof sessionId !== "string" || typeof configId !== "string" || (typeof value !== "string" && typeof value !== "boolean")) throw new Error("Invalid agent setting.");
+    return requireEngine().setHarnessConfig(sessionId, configId, value);
+  });
   handle(IPC_CHANNELS.listHarnessSessions, (projectId) =>
     requireEngine().listHarnessSessions(projectId ? String(projectId) : undefined),
   );

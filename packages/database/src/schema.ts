@@ -329,4 +329,12 @@ export const MIGRATIONS: Array<{ version: number; sql: string; }> = [
       CREATE INDEX IF NOT EXISTS idx_messages_reply ON messages(session_id, run_id, role);
     `,
   },
+  {
+    version: 16,
+    sql: `ALTER TABLE approvals ADD COLUMN details TEXT;`,
+  },
+  {
+    version: 17,
+    sql: `ALTER TABLE sessions ADD COLUMN direct_session TEXT;`,
+  },
 ];

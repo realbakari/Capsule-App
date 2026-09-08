@@ -7,11 +7,27 @@
  * asking the harness for it — does not exist over this transport.
  */
 
+import { readReportedContextUsage, type RunEvent } from "@capsule/shared";
+
 export interface ContextUsage {
   used: number;
   limit: number;
   /** 0–1. Clamped, because a provider may report over its own limit. */
   fraction: number;
+}
+
+/** Structured reports are snapshots, never token deltas to add together. */
+export function contextUsageFromEvents(events: readonly RunEvent[]): ContextUsage | undefined {
+  for (let index = events.length - 1; index >= 0; index--) {
+    const event = events[index]!;
+    if (event.type === "usage.context") {
+      const report = readReportedContextUsage(event.data?.context);
+      if (report) return { used: report.used, limit: report.size, fraction: Math.min(1, report.used / report.size) };
+    }
+    const legacy = parseContextUsage(event.message);
+    if (legacy) return legacy;
+  }
+  return undefined;
 }
 
 // Tolerant of spacing and an optional colon, since the wording is the

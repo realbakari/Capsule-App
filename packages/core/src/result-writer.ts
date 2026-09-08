@@ -28,7 +28,7 @@ export class ResultWriter {
 
   recordReply(id: string, content: string, previous = ""): string {
     const result = !previous || content.startsWith(previous) ? content
-      : previous.endsWith(content) ? previous : `${previous}\n${content}`;
+      : previous.endsWith(content) ? previous : `${previous}\n\n${content}`;
     this.buffers.append(`run:${id}`, result, true);
     this.authoritativeReplies.add(id);
     this.pending.add(id);
