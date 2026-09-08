@@ -1,42 +1,18 @@
 import type { UpdateCheck } from "@capsule/shared";
 
-/*
- * Updating in place.
- *
- * Until now Capsule could only tell you a newer version existed and hand you a
- * disk image: quit, mount, drag, replace, reopen. That is a reinstall, not an
- * update, and someone who does it once will not do it often.
- *
- * A signed and notarized build can replace itself. The release carries an
- * update feed, this asks it what is current, downloads the difference when you
- * say so, and swaps the app on quit. It never downloads on its own — a hundred
- * megabytes without being asked is not a courtesy — and it never installs
- * mid-session, because the app being replaced underneath a running turn is
- * exactly the surprise this is meant to avoid.
- */
-
-export type UpdaterState =
-  | "idle"
-  | "checking"
-  | "available"
-  | "downloading"
-  | "ready"
-  | "unavailable";
-
+export type UpdaterState = "idle" | "checking" | "available" | "downloading" | "ready" | "installing" | "unavailable";
 export interface UpdaterStatus {
   state: UpdaterState;
   current: string;
-  /** The version being offered, once one is. */
   latest?: string;
-  /** 0–100 while downloading. */
   percent?: number;
-  /** What the release says about itself. */
   notes?: string;
-  /** Why the last attempt did not work. */
   detail?: string;
+  retry?: "check" | "download" | "install";
+  checked?: boolean;
 }
 
-/** The subset of electron-updater this needs, so it can be tested without one. */
+/** The library owns downloads and signature verification; this owns UI state. */
 export interface AutoUpdaterLike {
   autoDownload: boolean;
   autoInstallOnAppQuit: boolean;
@@ -45,169 +21,134 @@ export interface AutoUpdaterLike {
   quitAndInstall(isSilent?: boolean, isForceRunAfter?: boolean): void;
   on(event: string, handler: (...args: never[]) => void): unknown;
 }
-
 export interface UpdaterOptions {
   updater: AutoUpdaterLike;
   currentVersion: string;
-  /** False for a development run, where there is nothing to replace. */
   canInstall: boolean;
   onStatus: (status: UpdaterStatus) => void;
+  autoDownload?: () => boolean;
+  /** Check active work and flush persistence before native code closes windows. */
+  prepareInstall?: () => Promise<void>;
+  /** Synchronous admission, held until native quit or a cancelled attempt. */
+  reserveInstall?: () => () => void;
+  /** macOS local staging, without registering a future automatic quit. */
+  stageInstall?: (signal: AbortSignal) => Promise<void>;
 }
 
 export class Updater {
   private status: UpdaterStatus;
-
+  private checking?: Promise<UpdaterStatus>;
+  private installation?: { controller: AbortController; release?: () => void };
   constructor(private readonly options: UpdaterOptions) {
-    this.status = { state: "idle", current: options.currentVersion };
+    this.status = { state: "idle", current: options.currentVersion, checked: false };
     const updater = options.updater;
-    // Ask, then download. Never the other way round.
     updater.autoDownload = false;
-    updater.autoInstallOnAppQuit = true;
-
+    updater.autoInstallOnAppQuit = false;
     updater.on("update-available", ((info: { version?: string; releaseNotes?: unknown }) => {
-      this.set({
-        state: "available",
-        latest: typeof info?.version === "string" ? info.version : undefined,
-        notes: typeof info?.releaseNotes === "string" ? info.releaseNotes : undefined,
-      });
+      if (["downloading", "ready", "installing"].includes(this.status.state)) return;
+      this.set({ state: "available", latest: info.version, detail: undefined, retry: undefined, percent: undefined,
+        notes: typeof info.releaseNotes === "string" ? info.releaseNotes : undefined });
+      if (this.options.canInstall && this.options.autoDownload?.()) void this.download();
     }) as never);
-
     updater.on("update-not-available", (() => {
-      this.set({ state: "idle" });
+      if (["downloading", "ready", "installing"].includes(this.status.state)) return;
+      this.set({ state: "idle", checked: true, latest: undefined, notes: undefined, detail: undefined, retry: undefined, percent: undefined });
     }) as never);
-
     updater.on("download-progress", ((progress: { percent?: number }) => {
-      this.set({
-        state: "downloading",
-        percent: Math.round(progress?.percent ?? 0),
-      });
+      if (this.status.state === "ready" || this.status.state === "installing") return;
+      this.set({ state: "downloading", percent: Number.isFinite(progress.percent) ? Math.max(0, Math.min(100, Math.round(progress.percent!))) : 0 });
     }) as never);
-
     updater.on("update-downloaded", ((info: { version?: string }) => {
-      this.set({
-        state: "ready",
-        latest: typeof info?.version === "string" ? info.version : this.status.latest,
-        percent: 100,
-      });
+      if (this.status.state === "installing") return;
+      this.set({ state: "ready", latest: info.version ?? this.status.latest, percent: 100, detail: undefined, retry: undefined });
     }) as never);
-
-    updater.on("error", ((error: Error) => {
-      /*
-       * An unreachable feed, an unsigned build, a release published without
-       * update metadata: all of them arrive here, and none of them should look
-       * like the app is broken. The caller falls back to pointing at the
-       * download page.
-       */
-      this.set({ state: "unavailable", detail: error?.message ?? String(error) });
-    }) as never);
+    updater.on("error", ((error: Error) => this.fail(error)) as never);
   }
 
-  current(): UpdaterStatus {
-    return this.status;
-  }
+  current(): UpdaterStatus { return this.status; }
+  get installable(): boolean { return this.options.canInstall; }
 
-  /** Whether this build can replace itself at all. */
-  get installable(): boolean {
-    return this.options.canInstall;
-  }
-
-  async check(): Promise<UpdaterStatus> {
+  check(): Promise<UpdaterStatus> {
     if (!this.options.canInstall) {
-      this.set({ state: "unavailable", detail: "This build cannot update itself." });
-      return this.status;
+      this.set({ state: "unavailable", detail: "Development builds cannot update in place.", retry: undefined });
+      return Promise.resolve(this.status);
     }
-    /*
-     * A check must never interrupt work already under way.
-     *
-     * Checking mid-download reset the state to "checking", which threw away
-     * the percentage and, once the check answered, put the sidebar back on
-     * "Update available" — where the next click started the same download
-     * again. A download already running, or one already on disk waiting to be
-     * installed, is the more current answer than any check could give.
-     */
-    if (this.status.state === "downloading" || this.status.state === "ready") {
-      return this.status;
-    }
-    this.set({ state: "checking" });
-    try {
-      await this.options.updater.checkForUpdates();
-    } catch (error) {
-      this.set({
-        state: "unavailable",
-        detail: error instanceof Error ? error.message : String(error),
-      });
-    }
-    return this.status;
+    if (["downloading", "ready", "installing"].includes(this.status.state)) return Promise.resolve(this.status);
+    if (this.checking) return this.checking;
+    this.set({ state: "checking", detail: undefined, retry: undefined });
+    const operation = Promise.resolve().then(() => this.options.updater.checkForUpdates())
+      .catch((error) => this.fail(error)).then(() => this.status);
+    this.checking = operation;
+    void operation.finally(() => { if (this.checking === operation) this.checking = undefined; });
+    return operation;
   }
 
   async download(): Promise<UpdaterStatus> {
-    if (this.status.state !== "available") return this.status;
-    this.set({ state: "downloading", percent: 0 });
-    try {
-      await this.options.updater.downloadUpdate();
-    } catch (error) {
-      this.set({
-        state: "unavailable",
-        detail: error instanceof Error ? error.message : String(error),
-      });
-    }
+    if (!this.options.canInstall || this.status.state !== "available") return this.status;
+    this.set({ state: "downloading", percent: 0, detail: undefined, retry: undefined });
+    try { await this.options.updater.downloadUpdate(); }
+    catch (error) { this.fail(error, "download"); }
     return this.status;
   }
 
-  /** Replaces the app and reopens it. Only ever from an explicit click. */
-  install(): boolean {
-    if (this.status.state !== "ready") return false;
-    this.options.updater.quitAndInstall(false, true);
-    return true;
+  async install(): Promise<boolean> {
+    if (!this.options.canInstall || this.status.state !== "ready") return false;
+    const attempt = { controller: new AbortController(), release: undefined as (() => void) | undefined };
+    this.installation = attempt;
+    this.set({ state: "installing", detail: undefined, retry: undefined });
+    try {
+      attempt.release = this.options.reserveInstall?.();
+      await this.options.prepareInstall?.();
+      // Native updater errors can arrive while persistence is being flushed.
+      // A failed attempt must stay recoverable instead of closing the app.
+      if (this.installation !== attempt) return false;
+      await this.options.stageInstall?.(attempt.controller.signal);
+      if (this.installation !== attempt) return false;
+      this.options.updater.quitAndInstall(false, true);
+      return true;
+    } catch (error) {
+      // A native error can end this attempt while its preparation still awaits.
+      // Its late rejection must not release or overwrite a newer retry.
+      if (this.installation === attempt) this.fail(error, "install");
+      return false;
+    }
   }
 
+  private fail(error: unknown, operation?: "check" | "download" | "install"): void {
+    if (this.installation) {
+      const attempt = this.installation;
+      this.installation = undefined;
+      attempt.controller.abort();
+      attempt.release?.();
+    }
+    // Duplicate library error events must not discard the offer or downloaded file.
+    const hasDownloadedUpdate = this.status.state === "ready" || this.status.state === "installing";
+    const retry = hasDownloadedUpdate ? "install"
+      : this.status.retry ?? operation ?? (this.status.state === "downloading" ? "download" : "check");
+    this.set({
+      state: retry === "download" ? "available" : retry === "install" ? "ready" : "unavailable",
+      retry,
+      detail: error instanceof Error ? error.message : String(error),
+    });
+  }
   private set(patch: Partial<UpdaterStatus>): void {
     this.status = { ...this.status, ...patch, current: this.options.currentVersion };
     this.options.onStatus(this.status);
   }
 }
 
-/**
- * What the sidebar should say, given both routes.
- *
- * The in-place updater is the good path. The GitHub check is what answers when
- * there is no feed to read — an older release, an unsigned build, a run from
- * source — and it can still tell someone a version exists and hand them the
- * right file.
- */
-export function mergeUpdateStatus(
-  updater: UpdaterStatus,
-  fallback: UpdateCheck | undefined,
-): UpdateCheck {
-  const current = updater.current;
+/** One answer for action replies, startup snapshots and broadcasts. */
+export function mergeUpdateStatus(updater: UpdaterStatus, fallback?: UpdateCheck): UpdateCheck {
+  const common = { current: updater.current, latest: updater.latest ?? fallback?.latest, detail: updater.detail, retry: updater.retry,
+    notes: updater.notes, ...(fallback?.url ? { url: fallback.url, download: fallback.download } : {}) };
   switch (updater.state) {
-    case "available":
-      return {
-        state: "update-available",
-        current,
-        latest: updater.latest,
-        canInstall: true,
-        ...(updater.notes ? { notes: updater.notes } : {}),
-        ...(fallback?.url ? { url: fallback.url } : {}),
-      };
-    case "downloading":
-      return {
-        state: "downloading",
-        current,
-        latest: updater.latest,
-        percent: updater.percent ?? 0,
-      };
-    case "ready":
-      return { state: "ready-to-install", current, latest: updater.latest };
-    case "checking":
-      return fallback ?? { state: "up-to-date", current };
-    case "idle":
-      // The feed says there is nothing newer, which is the authoritative
-      // answer even when a fallback check has not run.
-      return fallback?.state === "update-available"
-        ? fallback
-        : { state: "up-to-date", current, ...(fallback?.latest ? { latest: fallback.latest } : {}) };
-    default:
-      return fallback ?? { state: "unreachable", current, detail: updater.detail };
+    case "available": return { ...common, state: "update-available", canInstall: true };
+    case "downloading": return { ...common, state: "downloading", percent: updater.percent ?? 0 };
+    case "ready": return { ...common, state: "ready-to-install" };
+    case "installing": return { ...common, state: "installing" };
+    case "checking": return { ...common, state: "checking" };
+    case "idle": return { current: updater.current, state: updater.checked === false ? "unknown" : "up-to-date" };
+    default: return updater.retry ? { ...common, state: "unreachable" }
+      : { ...(fallback ?? { state: "unreachable", current: updater.current }), detail: updater.detail ?? fallback?.detail };
   }
 }

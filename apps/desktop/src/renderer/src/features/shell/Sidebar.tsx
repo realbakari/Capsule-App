@@ -1,5 +1,6 @@
+import { useUpdates } from "../../lib/updates";
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
-import type { Session, UpdateCheck } from "@capsule/shared";
+import type { Session } from "@capsule/shared";
 import {
   buildProjectActionMenuItems,
   buildSessionActionMenuItems,
@@ -123,8 +124,8 @@ export function Sidebar() {
   const [editing, setEditing] = useState<{ kind: "project" | "session"; id: string; value: string }>();
   const [query, setQuery] = useState("");
   const [settingsQuery, setSettingsQuery] = useState("");
-  const [checkingUpdate, setCheckingUpdate] = useState(false);
-  const [updateResult, setUpdateResult] = useState<UpdateCheck | null>(null);
+  const update = useUpdates();
+  const { status: updateResult, busy: checkingUpdate, label: updateLabel, run: runUpdateCheck } = update;
   const [draggedPinnedId, setDraggedPinnedId] = useState<string>();
   const [cloneOpen, setCloneOpen] = useState<"git-url" | "github">();
   const [addProjectOpen, setAddProjectOpen] = useState(false);
@@ -135,144 +136,6 @@ export function Sidebar() {
     if (source === "folder") void createProjectFromFolder();
     else setCloneOpen(source);
   }
-
-  const [feedbackMessage, setFeedbackMessage] = useState<string>();
-  const feedbackTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-
-  function triggerFeedback(msg: string) {
-    setFeedbackMessage(msg);
-    if (feedbackTimer.current) clearTimeout(feedbackTimer.current);
-    feedbackTimer.current = setTimeout(() => {
-      setFeedbackMessage(undefined);
-    }, 4500);
-  }
-
-  const updateLabel = checkingUpdate
-    ? "Checking for updates…"
-    : updateResult?.state === "downloading"
-      ? `Downloading ${updateResult.latest ?? "the update"} — ${updateResult.percent ?? 0}%`
-      : updateResult?.state === "ready-to-install"
-        ? `Version ${updateResult.latest} is ready — click to restart and install`
-      : updateResult?.state === "update-available"
-        ? updateResult.canInstall
-          ? `Version ${updateResult.latest} is available — click to install it`
-          : `Version ${updateResult.latest} is available — click to download ${
-              updateResult.download?.name ?? "it"
-            }`
-      : updateResult?.state === "up-to-date"
-        ? `Up to date (${updateResult.current})`
-        : updateResult?.state === "no-releases"
-          ? "No releases published yet"
-          : updateResult?.state === "unreachable"
-            ? `Could not check: ${updateResult.detail ?? "unreachable"}`
-            : "Check for updates";
-
-  async function runUpdateCheck() {
-    /*
-     * Downloading a hundred megabytes is not something to do to someone
-     * unasked, and replacing the app under a running turn is worse. So each
-     * step is a click: offer, download, restart.
-     */
-    if (updateResult?.state === "ready-to-install") {
-      void api.installUpdate();
-      return;
-    }
-    if (updateResult?.state === "downloading") return;
-    if (updateResult?.state === "update-available") {
-      if (updateResult.canInstall) {
-        setUpdateResult({ ...updateResult, state: "downloading", percent: 0 });
-        const next = (await api.downloadUpdate()) as UpdateCheck;
-        setUpdateResult(next);
-        return;
-      }
-      // No update feed in that release, or a build that cannot replace itself:
-      // hand over the file for this Mac, or the page when there is not one.
-      const target = updateResult.download?.url ?? updateResult.url;
-      if (target) window.open(target, "_blank", "noreferrer");
-      return;
-    }
-    setCheckingUpdate(true);
-    try {
-      const res = (await api.checkForUpdates()) as UpdateCheck;
-      setUpdateResult(res);
-      if (res.state === "update-available") {
-        triggerFeedback(`Update v${res.latest} available — click to open`);
-      } else if (res.state === "up-to-date") {
-        triggerFeedback(`Capsule is up to date (v${res.current})`);
-      } else if (res.state === "no-releases") {
-        triggerFeedback("No published releases found");
-      } else if (res.state === "unreachable") {
-        triggerFeedback(`Check failed: ${res.detail ?? "unreachable"}`);
-      }
-    } catch (e) {
-      triggerFeedback(e instanceof Error ? e.message : "Update check failed");
-    } finally {
-      setCheckingUpdate(false);
-    }
-  }
-
-  /*
-   * A quiet check once a day, not once a launch.
-   *
-   * Unauthenticated GitHub allows sixty requests an hour for a whole IP, and
-   * this ran every time the app opened — on a shared network that is a check
-   * that silently starts failing. A release is not published often enough for
-   * the difference to cost anyone an update.
-   */
-  /*
-   * The updater reports progress from the main process; read it when it does.
-   *
-   * Read, not re-check. This answered the event with checkForUpdates(), which
-   * reaches GitHub and starts a fresh check — and progress events arrive many
-   * times a second while a download runs, so a single download issued hundreds
-   * of requests against a sixty-an-hour limit and kept resetting itself back
-   * to "update available", where the next click downloaded it all over again.
-   */
-  useEffect(() => {
-    const off = api.on("state", (payload) => {
-      if ((payload as { command?: string }).command !== "update-status") return;
-      void api
-        .updateStatus()
-        .then((res) => setUpdateResult(res as UpdateCheck))
-        .catch(() => {
-          // The status will be right at the next event; nothing to say here.
-        });
-    });
-    return () => {
-      off();
-    };
-  }, [api]);
-
-  useEffect(() => {
-    const LAST_CHECK_KEY = "capsule.updateCheckedAt";
-    const DAY_MS = 86_400_000;
-    const last = (() => {
-      try {
-        return Number(localStorage.getItem(LAST_CHECK_KEY)) || 0;
-      } catch {
-        return 0;
-      }
-    })();
-    if (Date.now() - last < DAY_MS) return undefined;
-    const timer = setTimeout(() => {
-      void api
-        .checkForUpdates()
-        .then((res) => {
-          try {
-            localStorage.setItem(LAST_CHECK_KEY, String(Date.now()));
-          } catch {
-            // A browser that refuses storage checks every launch, as before.
-          }
-          if (res && typeof res === "object" && (res as UpdateCheck).state === "update-available") {
-            setUpdateResult(res as UpdateCheck);
-          }
-        })
-        .catch(() => {
-          // Ignore background failure
-        });
-    }, 4000);
-    return () => clearTimeout(timer);
-  }, [api]);
 
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [restLimit, setRestLimit] = useState<Record<string, number>>({});
@@ -890,19 +753,10 @@ export function Sidebar() {
         })}
       </div>
       <div className="sidebar-footer">
-        {feedbackMessage ? (
-          <div
-            className={`update-feedback-bubble ${updateResult?.state === "update-available" ? "has-update" : ""}`}
-            onClick={() => {
-              if (updateResult?.state === "update-available" && updateResult.url) {
-                window.open(updateResult.url, "_blank", "noreferrer");
-              }
-              setFeedbackMessage(undefined);
-            }}
-            title={updateResult?.state === "update-available" ? "Click to open release" : "Dismiss"}
-          >
-            <span>{feedbackMessage}</span>
-          </div>
+        {update.error || updateResult?.detail || ["update-available", "downloading", "ready-to-install", "installing"].includes(updateResult?.state ?? "") ? (
+          <button type="button" className="update-feedback-bubble has-update" onClick={runUpdateCheck} disabled={checkingUpdate} title={updateLabel}>
+            <span>{update.error ?? updateResult?.detail ?? `${updateResult?.latest ? `v${updateResult.latest} · ` : ""}${updateLabel}`}</span>
+          </button>
         ) : null}
         <div className="sidebar-utils">
           <button
@@ -936,7 +790,7 @@ export function Sidebar() {
             type="button"
             className={`icon-btn ${checkingUpdate ? "is-spinning" : ""} ${updateResult?.state === "update-available" ? "has-update" : ""}`}
             title={updateLabel}
-            aria-label="Check for updates"
+            aria-label={updateLabel}
             disabled={checkingUpdate}
             onClick={() => void runUpdateCheck()}
           >

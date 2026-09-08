@@ -4,13 +4,22 @@ import { dirname, resolve } from "node:path";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const packagePath = resolve(scriptDirectory, "..", "package.json");
+const desktopPackagePath = resolve(scriptDirectory, "..", "apps", "desktop", "package.json");
+
+export function validateAppVersions(rootVersion, desktopVersion) {
+  if (typeof rootVersion !== "string" || typeof desktopVersion !== "string") {
+    throw new Error("Both app manifests must contain a string version");
+  }
+  if (rootVersion !== desktopVersion) {
+    throw new Error(`Root version ${rootVersion} does not match desktop version ${desktopVersion}`);
+  }
+  return rootVersion;
+}
 
 export function readPackageVersion() {
   const parsed = JSON.parse(readFileSync(packagePath, "utf8"));
-  if (typeof parsed.version !== "string") {
-    throw new Error("package.json does not contain a string version");
-  }
-  return parsed.version;
+  const desktop = JSON.parse(readFileSync(desktopPackagePath, "utf8"));
+  return validateAppVersions(parsed.version, desktop.version);
 }
 
 export function validateReleaseVersion(requested, packageVersion = readPackageVersion()) {

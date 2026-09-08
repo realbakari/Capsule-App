@@ -2,6 +2,11 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readPackageVersion, validateReleaseVersion } from "./check-release-version.mjs";
+
+// Electron reads the desktop manifest; release tags use the root manifest.
+// Refuse mismatches before building or replacing any release artifacts.
+validateReleaseVersion(undefined, readPackageVersion());
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
@@ -44,6 +49,6 @@ for (const file of files) {
 }
 
 console.log("\n===========================================");
-console.log("✅ Build, Code Signing, and Notarization complete!");
+console.log("Packaging complete. Verify signing and notarization before distribution.");
 console.log(`Artifacts available at: ${finalRelease}`);
 console.log("===========================================\n");

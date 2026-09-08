@@ -208,6 +208,9 @@ export function DesktopCard({ settings, onPatch }: SectionProps) {
       <SettingRow label="Desktop companion" hint="An animated capsule for activity across all projects, even outside chat. Click to open threads; drag its handle to move it. Size and motion controls are inside.">
         <PetControl />
       </SettingRow>
+      <SettingRow label="Download updates automatically" hint="Download compatible releases in the background. Capsule only restarts to install when you ask, after active work finishes.">
+        <Switch checked={settings.autoDownloadUpdates} label="Download updates automatically" onChange={(autoDownloadUpdates) => onPatch({ autoDownloadUpdates })} />
+      </SettingRow>
       <SettingRow
         label="Menu bar"
         hint="Show Capsule in the menu bar for Open, Settings, Approvals, and active runs."

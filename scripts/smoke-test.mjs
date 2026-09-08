@@ -14,11 +14,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { resolveElectronBinary } from "./electron-path.mjs";
+import { readPackageVersion } from "./check-release-version.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const desktop = path.join(root, "apps/desktop");
 const mainBundle = path.join(desktop, "out/main/index.js");
 const BOOT_WINDOW_MS = 12_000;
+const expectedVersion = readPackageVersion();
 
 /*
  * Things that mean the app is broken, not that the machine is offline. A
@@ -45,6 +47,7 @@ const FATAL_PATTERNS = [
  * whatever else appeared on the way.
  */
 const READY_MARKER = /capsule: window ready \((\d+)\)/u;
+const VERSION_MARKER = /capsule: app version ([^\r\n]+)/u;
 
 if (!fs.existsSync(mainBundle)) {
   console.error(`No build to smoke test at ${mainBundle}. Run: pnpm build`);
@@ -106,6 +109,8 @@ child.on("exit", (code) => {
   const ready = READY_MARKER.exec(output);
   if (!ready) failures.push("the window never finished loading");
   else if (ready[1] !== "1") failures.push(`the app opened ${ready[1]} windows, not 1`);
+  const version = VERSION_MARKER.exec(output)?.[1];
+  if (version !== expectedVersion) failures.push(`running version ${version ?? "unknown"} does not match ${expectedVersion}`);
   // Exiting on its own before the window is up is a failure too, however
   // quietly it happened.
   if (!timedOut && code !== 0) failures.push(`exited with code ${code}`);
@@ -116,6 +121,6 @@ child.on("exit", (code) => {
     console.error(`\n${output}`);
     process.exit(1);
   }
-  console.log("Smoke test passed: the app started and loaded one window.");
+  console.log(`Smoke test passed: Capsule ${expectedVersion} started and loaded one window.`);
   process.exit(0);
 });

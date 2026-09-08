@@ -31,6 +31,9 @@ export class FolderActivity {
   private readers = new Map<string, number>();
   private restoring = new Set<string>();
 
+  /** Includes command-runner leases and restores, not just tracked agent runs. */
+  get busy(): boolean { return this.readers.size > 0 || this.restoring.size > 0; }
+
   assertAvailable(cwd: string | undefined): void {
     if (cwd && [...this.restoring].some((root) => foldersOverlap(root, cwd))) {
       throw new Error("This folder is being restored. Wait before starting work or saving files.");

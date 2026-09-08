@@ -109,6 +109,7 @@ export const DEFAULT_CAPSULE_SETTINGS: CapsuleSettings = {
   bounceDockOnAttention: true,
   showMenuBarExtra: true,
   keepAwakeWhileRunning: false,
+  autoDownloadUpdates: true,
   autoClassifySessions: true,
   archiveInactiveAfter: "never",
   gitForceWithLease: false,
@@ -136,6 +137,7 @@ export const SETTINGS_SECTION_KEYS: Record<string, ReadonlyArray<keyof CapsuleSe
     "composerSendKey",
     "showMenuBarExtra",
     "keepAwakeWhileRunning",
+    "autoDownloadUpdates",
     "notifyRunComplete",
     "notifyApprovals",
     "bounceDockOnAttention",
@@ -233,6 +235,7 @@ export interface CapsuleSettings {
   bounceDockOnAttention: boolean;
   showMenuBarExtra: boolean;
   keepAwakeWhileRunning: boolean;
+  autoDownloadUpdates: boolean;
   autoClassifySessions: boolean;
   archiveInactiveAfter: ArchiveInactiveAfter;
   /** Prefixed onto new branches created from the inspector. */
@@ -445,6 +448,7 @@ export function normalizeCapsuleSettings(input: Partial<CapsuleSettings> = {}): 
       DEFAULT_CAPSULE_SETTINGS.bounceDockOnAttention,
     ),
     showMenuBarExtra: flag(input.showMenuBarExtra, DEFAULT_CAPSULE_SETTINGS.showMenuBarExtra),
+    autoDownloadUpdates: flag(input.autoDownloadUpdates, DEFAULT_CAPSULE_SETTINGS.autoDownloadUpdates),
     keepAwakeWhileRunning: flag(
       input.keepAwakeWhileRunning,
       DEFAULT_CAPSULE_SETTINGS.keepAwakeWhileRunning,

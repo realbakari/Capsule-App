@@ -16,6 +16,7 @@ import path from "node:path";
 import { BackgroundBrowsers } from "./background-browsers";
 import {
   app,
+  autoUpdater as nativeAutoUpdater,
   BrowserWindow,
   clipboard,
   dialog,
@@ -41,6 +42,8 @@ import { observeBrowser } from "./browser-diagnostics";
 import { secureBrowserSession } from "./browser-security";
 import { startBrowserMcpServer, type BrowserMcpServer } from "./browser-mcp";
 import { Updater, mergeUpdateStatus } from "./updater";
+import { UpdateAdmission } from "./update-admission";
+import { NativeUpdateStager } from "./native-update-stager";
 import {
   IPC_CHANNELS,
   isNewerRelease,
@@ -344,15 +347,6 @@ function applyDockIcon(): void {
 }
 
 
-/**
- * Ask GitHub whether a newer release has been published.
- *
- * A manual check, not an auto-updater: installing an update in place needs the
- * build to be signed and notarised with the same identity as the running app,
- * and this project has no signing identity configured, so an updater would
- * download something macOS then refuses to launch. This reports honestly and
- * sends the user to the release page.
- */
 /*
  * The in-place updater, when this build can be replaced.
  *
@@ -362,13 +356,35 @@ function applyDockIcon(): void {
  * update feed — every one before 0.3.0 — has nothing for the updater to read.
  */
 let updater: Updater | undefined;
+const updateAdmission = new UpdateAdmission();
 
 function ensureUpdater(): Updater {
   if (updater) return updater;
+  // Access the library first so its native downloaded listener is registered
+  // before our staging promise resolves. Use only the public native API.
+  const libraryUpdater = electronUpdater.autoUpdater;
+  const nativeStager = process.platform === "darwin" ? new NativeUpdateStager(nativeAutoUpdater) : undefined;
   updater = new Updater({
-    updater: electronUpdater.autoUpdater,
+    updater: libraryUpdater,
     currentVersion: app.getVersion(),
     canInstall: app.isPackaged,
+    autoDownload: () => engine?.getSettings().autoDownloadUpdates === true,
+    reserveInstall: () => {
+      const releaseWrites = updateAdmission.reserve();
+      try {
+        if (!engine) throw new Error("Capsule is still starting. Try again shortly.");
+        const releaseEngine = engine.reserveForUpdate();
+        return () => { releaseEngine(); releaseWrites(); };
+      } catch (error) { releaseWrites(); throw error; }
+    },
+    stageInstall: nativeStager ? (signal) => nativeStager.stage(signal) : undefined,
+    prepareInstall: async () => {
+      if (terminals.size > 0) throw new Error("Close terminal sessions before restarting to install.");
+      if (backgroundBrowsers.size > 0) throw new Error("Close background browser pages before restarting to install.");
+      if (!engine) throw new Error("Capsule is still starting. Try again shortly.");
+      await engine.prepareForUpdate();
+      if (terminals.size > 0) throw new Error("Close terminal sessions before restarting to install.");
+    },
     /*
      * Progress arrives as events, and the renderer asks for the status when
      * it hears one rather than being handed a payload it might race with.
@@ -383,6 +399,38 @@ function ensureUpdater(): Updater {
  * URL and notes to hand without asking for them again.
  */
 let lastUpdateCheck: UpdateCheck | undefined;
+let updateCheckPending: Promise<UpdateCheck> | undefined;
+let updateTimer: ReturnType<typeof setTimeout> | undefined;
+
+function currentUpdateStatus(): UpdateCheck {
+  return mergeUpdateStatus(ensureUpdater().current(), lastUpdateCheck);
+}
+
+function checkDesktopUpdates(): Promise<UpdateCheck> {
+  if (["downloading", "ready", "installing"].includes(ensureUpdater().current().state)) return Promise.resolve(currentUpdateStatus());
+  if (updateCheckPending) return updateCheckPending;
+  const operation = (async () => {
+    const status = await ensureUpdater().check();
+    if (status.state === "unavailable") await checkForUpdates();
+    send(IPC_EVENTS.state, { command: "update-status" });
+    return currentUpdateStatus();
+  })();
+  updateCheckPending = operation;
+  void operation.finally(() => { if (updateCheckPending === operation) updateCheckPending = undefined; });
+  return operation;
+}
+
+/** Lives with the app, not a sidebar which can unmount or stay open for days. */
+function scheduleUpdateCheck(delay = 4000): void {
+  if (!app.isPackaged) return;
+  clearTimeout(updateTimer);
+  updateTimer = setTimeout(() => {
+    void checkDesktopUpdates().then((status) => {
+      scheduleUpdateCheck(status.state === "unreachable" ? 15 * 60_000 : 6 * 60 * 60_000);
+    }, () => scheduleUpdateCheck(15 * 60_000));
+  }, delay);
+  updateTimer.unref();
+}
 
 async function checkForUpdates(): Promise<UpdateCheck> {
   const result = await fetchLatestRelease();
@@ -643,6 +691,7 @@ function createWindow(): BrowserWindow {
       // The count too: a second window nobody asked for is a startup bug the
       // smoke test can catch as easily as a crash.
       console.log(`capsule: window ready (${BrowserWindow.getAllWindows().length})`);
+      console.log(`capsule: app version ${app.getVersion()}`);
     }
   });
 
@@ -952,12 +1001,13 @@ function registerIpc(): void {
   };
 
   const handle = (channel: string, fn: (...args: unknown[]) => unknown) => {
-    handlers.set(channel, fn);
+    const guarded = (...args: unknown[]) => updateAdmission.run(channel, () => fn(...args));
+    handlers.set(channel, guarded);
     ipcMain.handle(channel, async (_event, ...args) => {
       try {
         // Startup, not an error: a call that beat the engine waits for it.
         if (!engine && engineStarted) await engineStarted;
-        return await fn(...args);
+        return await guarded(...args);
       } catch (error) {
         console.error(`IPC ${channel} failed`, error);
         throw error;
@@ -1533,12 +1583,7 @@ function registerIpc(): void {
    * itself; the GitHub check knows what the latest release is even when that
    * release shipped no update feed, which every one before 0.3.0 did.
    */
-  handle(IPC_CHANNELS.checkForUpdates, async () => {
-    const fallback = await checkForUpdates();
-    if (!app.isPackaged) return fallback;
-    const status = await ensureUpdater().check();
-    return mergeUpdateStatus(status, fallback);
-  });
+  handle(IPC_CHANNELS.checkForUpdates, checkDesktopUpdates);
   /*
    * What is already known, for the renderer that just heard the status change.
    *
@@ -1548,14 +1593,10 @@ function registerIpc(): void {
    * an API that allows sixty an hour, and each one reset the download it was
    * reporting on. This reads the state and nothing else.
    */
-  handle(IPC_CHANNELS.updateStatus, () =>
-    app.isPackaged
-      ? mergeUpdateStatus(ensureUpdater().current(), lastUpdateCheck)
-      : (lastUpdateCheck ?? { state: "up-to-date", current: app.getVersion() }),
-  );
+  handle(IPC_CHANNELS.updateStatus, currentUpdateStatus);
   handle(IPC_CHANNELS.downloadUpdate, async () => {
-    const status = await ensureUpdater().download();
-    return mergeUpdateStatus(status, undefined);
+    await ensureUpdater().download();
+    return currentUpdateStatus();
   });
   handle(IPC_CHANNELS.installUpdate, () => ensureUpdater().install());
   /*
@@ -1952,7 +1993,7 @@ async function startEngineOnce(): Promise<void> {
    * cannot use, not a Capsule that will not open.
    */
   try {
-    browserMcp = await startBrowserMcpServer();
+    browserMcp = await startBrowserMcpServer((operation) => updateAdmission.run(IPC_CHANNELS.setBrowserControl, operation));
     engine.offerDirectMcpServers(({ threadId, harnessId }) => {
       if (!threadId || !browserMcp) return { servers: [], dispose: () => {} };
       const connection = browserMcp.register(browserAccess.target(threadId, harnessId));
@@ -1968,6 +2009,7 @@ async function startEngineOnce(): Promise<void> {
   }
   bindEngineEvents();
   await applyDesktopSettings(engine.getSettings());
+  scheduleUpdateCheck();
   send(IPC_EVENTS.connection, await engine.getStatus());
 }
 
@@ -2114,6 +2156,7 @@ app.on("before-quit", (event) => {
   }
   applyKeepAwake(undefined);
   if (sampleTimer) clearInterval(sampleTimer);
+  clearTimeout(updateTimer);
   stopAllTerminals();
   backgroundBrowsers.closeAll();
   browserMcp?.close();

@@ -70,7 +70,8 @@ jobs:
             echo 'signed=true' >> "$GITHUB_OUTPUT"
           else
             echo 'signed=false' >> "$GITHUB_OUTPUT"
-            echo '::warning::MAC_CSC_LINK is not set - producing an UNSIGNED macOS build that Gatekeeper will block.'
+            echo '::error::MAC_CSC_LINK is required. Public update feeds must not distribute unsigned builds.'
+            exit 1
           fi
 
       - name: Validate notarization credentials
@@ -103,12 +104,6 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: pnpm package:mac
 
-      - name: Package macOS app (unsigned fallback)
-        if: steps.creds.outputs.signed != 'true'
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-        run: pnpm package:mac
-
       - name: Verify signature and notarization
         if: steps.creds.outputs.signed == 'true'
         run: |
@@ -125,6 +120,7 @@ jobs:
           path: |
             apps/desktop/release/*.dmg
             apps/desktop/release/*.zip
+            apps/desktop/release/*.blockmap
             apps/desktop/release/latest-mac.yml
           if-no-files-found: error
 

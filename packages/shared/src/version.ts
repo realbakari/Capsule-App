@@ -71,6 +71,9 @@ export function isNewerRelease(latest: string, current: string): boolean {
 }
 
 export type UpdateState =
+  | "unknown"
+  | "checking"
+  | "installing"
   | "up-to-date"
   | "update-available"
   | "downloading"
@@ -103,6 +106,7 @@ export interface UpdateCheck {
   canInstall?: boolean;
   /** 0-100 while the update is coming down. */
   percent?: number;
+  retry?: "check" | "download" | "install";
 }
 
 /**

@@ -22,12 +22,56 @@ function fakeUpdater() {
 }
 
 describe("updating in place", () => {
-  it("never downloads without being asked", () => {
-    // A hundred megabytes unannounced is not a courtesy.
+  it("downloads automatically only when enabled, and never installs on quit", async () => {
+    const api = fakeUpdater();
+    let automatic = false;
+    new Updater({ updater: api, currentVersion: "0.6.0", canInstall: true, onStatus: () => {}, autoDownload: () => automatic });
+    api.emit("update-available", { version: "0.7.0" });
+    expect(api.downloadUpdate).not.toHaveBeenCalled();
+    automatic = true;
+    api.emit("update-available", { version: "0.7.0" });
+    await Promise.resolve();
+    expect(api.downloadUpdate).toHaveBeenCalledTimes(1);
+    api.emit("update-available", { version: "0.7.0" });
+    expect(api.downloadUpdate).toHaveBeenCalledTimes(1);
+    expect(api.quitAndInstall).not.toHaveBeenCalled();
+    expect(api.autoInstallOnAppQuit).toBe(false);
+  });
+
+  it("preserves download retry and the failure when a fallback release exists", async () => {
+    const api = fakeUpdater();
+    const updater = new Updater({ updater: api, currentVersion: "0.6.0", canInstall: true, onStatus: () => {} });
+    api.emit("update-available", { version: "0.7.0" });
+    vi.mocked(api.downloadUpdate).mockRejectedValueOnce(new Error("Network interrupted"));
+    await updater.download();
+    api.emit("error", new Error("Network interrupted"));
+    expect(mergeUpdateStatus(updater.current(), { state: "update-available", current: "0.6.0", url: "https://example.test/release" })).toMatchObject({ state: "update-available", canInstall: true, retry: "download", detail: "Network interrupted" });
+    await updater.download();
+    expect(api.downloadUpdate).toHaveBeenCalledTimes(2);
+  });
+
+  it("reserves install once, blocks active work, and retains the downloaded update", async () => {
+    const api = fakeUpdater();
+    const prepare = vi.fn().mockRejectedValueOnce(new Error("A turn is running"));
+    const updater = new Updater({ updater: api, currentVersion: "0.6.0", canInstall: true, onStatus: () => {}, prepareInstall: prepare });
+    api.emit("update-downloaded", { version: "0.7.0" });
+    expect(await updater.install()).toBe(false);
+    expect(api.quitAndInstall).not.toHaveBeenCalled();
+    expect(updater.current()).toMatchObject({ state: "ready", latest: "0.7.0", retry: "install" });
+    let finish!: () => void;
+    prepare.mockImplementationOnce(() => new Promise<void>((resolve) => { finish = resolve; }));
+    const install = updater.install();
+    expect(await updater.install()).toBe(false);
+    expect(api.quitAndInstall).not.toHaveBeenCalled();
+    finish();
+    expect(await install).toBe(true);
+    expect(api.quitAndInstall).toHaveBeenCalledTimes(1);
+  });
+  it("leaves download scheduling to the preference-aware wrapper", () => {
     const api = fakeUpdater();
     new Updater({ updater: api, currentVersion: "0.2.0", canInstall: true, onStatus: () => {} });
     expect(api.autoDownload).toBe(false);
-    expect(api.autoInstallOnAppQuit).toBe(true);
+    expect(api.autoInstallOnAppQuit).toBe(false);
   });
 
   it("walks offer, download, restart — each on its own click", async () => {
@@ -45,7 +89,7 @@ describe("updating in place", () => {
     expect(updater.current()).toMatchObject({ state: "available", latest: "0.3.0" });
 
     // Nothing installs while only an offer has been made.
-    expect(updater.install()).toBe(false);
+    expect(await updater.install()).toBe(false);
     expect(api.quitAndInstall).not.toHaveBeenCalled();
 
     await updater.download();
@@ -54,9 +98,9 @@ describe("updating in place", () => {
 
     api.emit("update-downloaded", { version: "0.3.0" });
     expect(updater.current().state).toBe("ready");
-    expect(updater.install()).toBe(true);
+    expect(await updater.install()).toBe(true);
     expect(api.quitAndInstall).toHaveBeenCalled();
-    expect(seen.at(-1)?.state).toBe("ready");
+    expect(seen.at(-1)?.state).toBe("installing");
   });
 
   it("does not try to replace a build that cannot be replaced", async () => {
@@ -108,9 +152,15 @@ describe("what the sidebar is told", () => {
     };
     const merged = mergeUpdateStatus({ ...base, state: "unavailable" }, fallback);
     expect(merged.state).toBe("update-available");
-    // No in-place install to offer, so the sidebar hands over the file instead.
+    // Manual recovery remains secondary; the main control retries the check.
     expect(merged.canInstall).toBeUndefined();
     expect(merged.download?.name).toBe("Capsule-0.3.0-arm64.dmg");
+  });
+
+  it("keeps manual recovery metadata without disguising a failed check", () => {
+    expect(mergeUpdateStatus({ ...base, state: "unavailable", retry: "check", detail: "Feed unavailable" }, {
+      state: "update-available", current: "0.2.0", latest: "0.3.0", url: "https://example.test/release",
+    })).toMatchObject({ state: "unreachable", retry: "check", latest: "0.3.0", detail: "Feed unavailable" });
   });
 
   it("reports progress while it downloads", () => {
@@ -125,6 +175,46 @@ describe("what the sidebar is told", () => {
 });
 
 describe("a check that arrives while an update is already in hand", () => {
+  it("does not let a superseded preparation install or unlock a newer retry", async () => {
+    const api = fakeUpdater();
+    const releases = [vi.fn(), vi.fn()];
+    const finishes: Array<() => void> = [];
+    let reservations = 0;
+    const updater = new Updater({ updater: api, currentVersion: "0.6.0", canInstall: true, onStatus() {},
+      reserveInstall: () => releases[reservations++]!,
+      prepareInstall: () => new Promise<void>((resolve) => { finishes.push(resolve); }),
+    });
+    api.emit("update-downloaded", { version: "0.7.0" });
+    const first = updater.install();
+    api.emit("error", new Error("Preparation failed"));
+    expect(releases[0]).toHaveBeenCalledOnce();
+    const second = updater.install();
+    finishes[0]!();
+    expect(await first).toBe(false);
+    expect(api.quitAndInstall).not.toHaveBeenCalled();
+    expect(releases[1]).not.toHaveBeenCalled();
+    finishes[1]!();
+    expect(await second).toBe(true);
+    expect(api.quitAndInstall).toHaveBeenCalledOnce();
+    expect(releases[1]).not.toHaveBeenCalled();
+  });
+
+  it("retains a downloaded update on late errors and aborts a failed restart preparation", async () => {
+    const api = fakeUpdater();
+    let finish!: () => void;
+    const updater = new Updater({ updater: api, currentVersion: "0.6.0", canInstall: true, onStatus: () => {},
+      prepareInstall: () => new Promise<void>((resolve) => { finish = resolve; }) });
+    api.emit("update-downloaded", { version: "0.7.0" });
+    api.emit("error", new Error("Late transport error"));
+    expect(updater.current()).toMatchObject({ state: "ready", latest: "0.7.0", retry: "install" });
+    const installing = updater.install();
+    api.emit("error", new Error("Native updater unavailable"));
+    finish();
+    expect(await installing).toBe(false);
+    expect(api.quitAndInstall).not.toHaveBeenCalled();
+    expect(updater.current()).toMatchObject({ state: "ready", retry: "install", detail: "Native updater unavailable" });
+  });
+
   it("does not interrupt a download in progress", async () => {
     /*
      * Every progress event told the renderer the status had changed, and the

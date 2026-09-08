@@ -20,8 +20,8 @@ body:
     id: version
     attributes:
       label: Capsule version
-      description: Settings → About, or the version in the title bar.
-      placeholder: 0.1.0
+      description: Settings → About → Copy version info. This is the running app version, not the latest release tag.
+      placeholder: Paste the running Capsule version
     validations:
       required: true
   - type: dropdown

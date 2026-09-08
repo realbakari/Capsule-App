@@ -254,6 +254,7 @@ export class CapsuleEngine {
   private directApprovals = new Map<string, { runId: string; canApproveOnce?: boolean; allow: () => void; deny: () => void; cancel: () => void }>();
   private admittingSessions = new Set<string>();
   private folderActivity = new FolderActivity();
+  private updateReserved = false;
   private settings: CapsuleSettings;
   private logs: string[] = [];
   private stopped = false;
@@ -339,6 +340,43 @@ export class CapsuleEngine {
     await this.connectPreferredRuntime();
     this.bindAcpReplies();
     this.log("Capsule engine started");
+  }
+
+  /** Held across native staging, until quit or a fully abandoned install attempt. */
+  reserveForUpdate(): () => void {
+    this.assertWorkAllowed();
+    this.updateReserved = true;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.updateReserved = false;
+    };
+  }
+
+  private assertWorkAllowed(): void {
+    if (this.updateReserved) throw new Error("Capsule is preparing to restart for an update. Wait for it to finish before starting work.");
+  }
+
+  /** No destructive cancellation during an update: finish work first. */
+  async prepareForUpdate(): Promise<void> {
+    const assertIdle = () => {
+      if (this.repos.listRuns().some((run) => ["queued", "running", "waiting", "approval_required"].includes(run.status))
+        || this.actionProcesses.size > 0 || this.verificationPending.size > 0
+        || this.admittingSessions.size > 0 || this.folderActivity.busy) {
+        throw new Error("Finish or stop active turns and checks before restarting to install.");
+      }
+    };
+    assertIdle();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        Promise.all([...this.checkpointPending.values()]),
+        new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("A saved checkpoint is still being written. Try restarting after it finishes.")), 10_000); }),
+      ]);
+      assertIdle();
+      this.resultWriter.finishAll();
+    } finally { clearTimeout(timer); }
   }
 
   async stop(): Promise<void> {
@@ -640,6 +678,7 @@ export class CapsuleEngine {
   }
 
   async spawnHarness(input: SpawnHarnessInput): Promise<HarnessControlResult> {
+    this.assertWorkAllowed();
     const { projectId, harnessId } = input;
     const project = await this.dedicateHarness(projectId, harnessId);
     const preset = presetFor(harnessId)!;
@@ -818,6 +857,7 @@ export class CapsuleEngine {
   }
 
   async steerHarness(sessionId: string, instruction: string): Promise<HarnessControlResult> {
+    this.assertWorkAllowed();
     const session = this.requireHarnessSession(sessionId);
     const text = instruction.trim();
     if (!text) throw new Error("Steer instruction is empty");
@@ -1598,6 +1638,7 @@ export class CapsuleEngine {
   }
 
   async sendMessage(input: AgentMessage): Promise<{ session: Session; run: Run; userMessage: ChatMessage; }> {
+    this.assertWorkAllowed();
     if (this.admittingSessions.has(input.sessionId) || this.repos.findReplyRun(input.sessionId)) {
       throw new Error("This thread already has an active turn. Stop it or wait before sending another message.");
     }
@@ -1922,6 +1963,7 @@ export class CapsuleEngine {
   }
 
   verifyRun(runId: string, actionId?: string): Promise<VerificationResult> {
+    this.assertWorkAllowed();
     this.folderActivity.assertAvailable(this.requireRun(runId).workingDirectory);
     const pending = this.verificationPending.get(runId);
     if (pending) return pending.promise;
@@ -2084,6 +2126,7 @@ export class CapsuleEngine {
     content: string,
     options?: { origin?: "user" | "agent"; expectedRevision?: string; root?: string; },
   ): { revision: string; } {
+    this.assertWorkAllowed();
     const project = this.requireProject(projectId);
     this.folderActivity.assertAvailable(this.resolveProjectFolder(project, options?.root));
     const origin = options?.origin ?? "agent";
@@ -2121,6 +2164,7 @@ export class CapsuleEngine {
 
   /** Shared by every command entry point, including the embedded terminal. */
   assertLocalCommandsAllowed(): void {
+    this.assertWorkAllowed();
     if (this.settings.sandbox === "strict") throw new Error("Strict sandbox blocks local terminal commands. Existing commands are not stopped automatically; Stop remains available.");
   }
 
@@ -2296,7 +2340,7 @@ export class CapsuleEngine {
   getDiagnostics(): DiagnosticsSnapshot {
     return {
       performance: localTimings.snapshot(),
-      capsuleVersion: this.options.capsuleVersion ?? "0.1.0",
+      capsuleVersion: this.options.capsuleVersion ?? "unknown",
       electronVersion: process.versions.electron,
       macosVersion:
         process.platform === "darwin"
@@ -2883,17 +2927,28 @@ export class CapsuleEngine {
       this.stopPrWatch(projectId);
       return;
     }
+    if (this.updateReserved) return;
     const project = this.repos.getProject(projectId);
     if (!project?.workingDirectory) {
       this.stopPrWatch(projectId);
       return;
     }
+    let release: (() => void) | undefined;
+    try {
+      release = this.folderActivity.enter(project.workingDirectory);
+      await this.refreshWatchedPr(projectId, project.workingDirectory);
+    }
+    catch (error) { this.log(`Pull request watch failed: ${String(error)}`); }
+    finally { release?.(); }
+  }
+
+  private async refreshWatchedPr(projectId: string, cwd: string): Promise<void> {
     /*
      * Read what is known and let the refresh happen behind it. Asking GitHub
      * from here blocked the main process for about a second every forty-five,
      * for as long as watching stayed on.
      */
-    const { value: pullRequest, known } = await pollPullRequest(project.workingDirectory);
+    const { value: pullRequest, known } = await pollPullRequest(cwd);
     // Nothing has come back yet: that is not the same as "there is no pull
     // request", and stopping on it would end the watch before it began.
     if (!known) return;
@@ -2916,7 +2971,7 @@ export class CapsuleEngine {
       pullRequest.checks !== "failure" &&
       pullRequest.checks !== "pending"
     ) {
-      void mergeGithubPullRequest(project.workingDirectory, this.settings.prMergeMethod, false, pullRequest.url).catch((error) => this.log(`Automatic merge failed: ${String(error)}`));
+      await mergeGithubPullRequest(cwd, this.settings.prMergeMethod, false, pullRequest.url);
     }
     this.events.emit("state", { command: "git-updated" });
   }
@@ -3109,6 +3164,7 @@ export class CapsuleEngine {
 
   /** Put the worktree back to how a turn left it. */
   async restoreTurn(runId: string): Promise<{ ok: boolean; detail: string; }> {
+    this.assertWorkAllowed();
     const run = this.repos.getRun(runId);
     if (!run?.checkpointRef) return { ok: false, detail: "That turn has no checkpoint." };
     const session = this.repos.getSession(run.sessionId);

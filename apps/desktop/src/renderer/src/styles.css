@@ -1069,6 +1069,11 @@
 .message-image-preview { display: grid; place-items: center; min-height: 6rem; height: 11.25rem; background: var(--surface-1); }
 .message-image-preview img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }
 .message-attachments { max-width: 100%; }
+.app-update-control { display: flex; flex-direction: column; align-items: center; gap: 0.6rem; min-width: 0; }
+.app-update-control p { font-size: 0.8125rem; max-width: 28rem; overflow-wrap: anywhere; margin: 0; }
+.app-update-control p:empty { display: none; }
+.app-update-control progress { width: 100%; max-width: 18rem; }
+.sidebar-footer button.update-feedback-bubble { width: 100%; text-align: left; font-size: 0.75rem; line-height: 1.4; overflow-wrap: anywhere; }
 .msg-code {
   margin: 0.55rem 0;
   padding: 0.7rem 0.8rem;
