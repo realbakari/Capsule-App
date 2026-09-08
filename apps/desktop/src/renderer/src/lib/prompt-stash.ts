@@ -14,6 +14,8 @@ export interface PromptStashEntry extends PromptDraft {
   id: string;
   createdAt: string;
   projectId?: string;
+  /** Kept for this app session only because durable storage rejected the write. */
+  temporary?: boolean;
 }
 
 export interface PromptStorage {
@@ -107,4 +109,18 @@ export function stashPrompt(
   };
   const next = [entry, ...current].slice(0, MAX_PROMPT_STASH_ENTRIES);
   return writePromptStash(storage, next) ? next : current;
+}
+
+/** Failed submissions must remain recoverable even when local storage is full. */
+export function recoverFailedPrompt(
+  storage: PromptStorage,
+  current: PromptStashEntry[],
+  value: PromptDraft & { projectId?: string },
+): { entries: PromptStashEntry[]; persisted: boolean } {
+  const entry: PromptStashEntry = { ...value, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
+  const next = [entry, ...current].slice(0, MAX_PROMPT_STASH_ENTRIES);
+  // A successful write also makes any previous temporary entries durable.
+  const durable = next.map(({ temporary: _temporary, ...saved }) => saved);
+  if (writePromptStash(storage, durable)) return { entries: durable, persisted: true };
+  return { entries: [{ ...entry, temporary: true }, ...next.slice(1)], persisted: false };
 }

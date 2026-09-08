@@ -4,6 +4,33 @@ import { FileSaveCoordinator } from "./file-save.js";
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 
 describe("FileSaveCoordinator", () => {
+  it("flush waits for in-flight writes and the newer text before acknowledging", async () => {
+    let finish!: () => void;
+    const writes: string[] = [];
+    const saver = new FileSaveCoordinator({ debounceMs: 10000, persist: async (text) => {
+      writes.push(text);
+      if (writes.length === 1) await new Promise<void>((resolve) => { finish = resolve; });
+    } });
+    saver.change("first");
+    const first = saver.flush();
+    saver.change("newer");
+    let acknowledged = false;
+    const second = saver.flush().then((result) => { acknowledged = true; return result; });
+    await tick(); expect(acknowledged).toBe(false);
+    finish(); await first;
+    expect(await second).toEqual({ status: "saved" });
+    expect(writes).toEqual(["first", "newer"]);
+  });
+
+  it("reports failures and explicit discard prevents a queued write", async () => {
+    const persist = vi.fn(async () => { throw new Error("conflict"); });
+    const saver = new FileSaveCoordinator({ debounceMs: 10000, persist });
+    saver.change("unsaved");
+    expect((await saver.flush()).status).toBe("failed");
+    saver.change("discarded"); saver.discard(); saver.dispose();
+    expect((await saver.flush()).status).toBe("discarded");
+    expect(persist).toHaveBeenCalledTimes(1);
+  });
   it("coalesces a burst of keystrokes into one write", async () => {
     const persist = vi.fn(async () => {});
     const c = new FileSaveCoordinator({ debounceMs: 5, persist });

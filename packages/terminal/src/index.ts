@@ -218,6 +218,8 @@ export interface PtySession {
   write: (data: string) => void;
   resize: (cols: number, rows: number) => void;
   kill: () => void;
+  pause: () => void;
+  resume: () => void;
 }
 
 /** The shell to open. The login shell if the OS reports one, else zsh. */
@@ -244,6 +246,8 @@ export function startPty(
   return {
     pid: child.pid,
     write: (data) => child.write(data),
+    pause: () => child.pause(),
+    resume: () => child.resume(),
     resize: (cols, rows) => {
       // A zero column count is what a hidden pane reports; the shell treats it
       // as an error and stops redrawing.
@@ -258,3 +262,5 @@ export function startPty(
     },
   };
 }
+
+export { TerminalOutputFlow } from "./output-flow.js";

@@ -27,42 +27,62 @@ export interface FileSaveOptions {
   onError?: (error: unknown) => void;
 }
 
+export type FileSaveOutcome = { status: "saved" } | { status: "failed"; error: unknown } | { status: "discarded" };
+
 export class FileSaveCoordinator {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private latestContents = "";
   private revision = 0;
   private savedRevision = 0;
-  private saving = false;
+  private inFlight?: Promise<FileSaveOutcome>;
   private disposed = false;
+  private discarded = false;
+  private paused = false;
 
   constructor(private readonly options: FileSaveOptions) {}
 
   change(contents: string): void {
     if (this.disposed) return;
     this.latestContents = contents;
+    this.paused = false;
     this.revision += 1;
     this.options.onPendingChange?.(true);
     this.schedule(this.options.debounceMs);
   }
 
   /** Write immediately — for an explicit Save, or before switching files. */
-  async flush(): Promise<void> {
+  async flush(): Promise<FileSaveOutcome> {
     this.clearTimer();
-    await this.persistLatest();
+    this.paused = false;
+    // One promise owns the whole drain, including edits entered during a write.
+    if (this.inFlight) return this.inFlight;
+    this.inFlight = this.persistLatest();
+    try { return await this.inFlight; }
+    finally { this.inFlight = undefined; }
   }
 
   /** Stop scheduling, but never silently discard unsaved text. */
   dispose(): void {
     this.disposed = true;
     this.clearTimer();
-    if (this.revision !== this.savedRevision) void this.persistLatest();
+    if (!this.paused && this.revision !== this.savedRevision) void this.flush();
   }
+
+  /** Explicit discard stops queued edits; an acknowledged disk write is not undone. */
+  discard(): void {
+    this.discarded = true;
+    this.disposed = true;
+    this.clearTimer();
+  }
+
+  /** Expose recovered text without retrying a failed save before the user decides. */
+  pause(): void { this.paused = true; this.clearTimer(); }
 
   private schedule(delay: number): void {
     this.clearTimer();
     this.timer = setTimeout(() => {
       this.timer = null;
-      void this.persistLatest();
+      void this.flush();
     }, delay);
   }
 
@@ -72,34 +92,23 @@ export class FileSaveCoordinator {
     this.timer = null;
   }
 
-  private async persistLatest(): Promise<void> {
-    if (this.saving) return;
-    if (this.revision === this.savedRevision) return;
-
-    this.saving = true;
-    const contents = this.latestContents;
-    const revision = this.revision;
-    try {
-      await this.options.persist(contents);
-      this.savedRevision = revision;
-      this.options.onSaved?.(contents);
-    } catch (error) {
-      // Leave savedRevision behind so the next attempt retries this text
-      // rather than treating it as written.
-      this.options.onError?.(error);
-    } finally {
-      this.saving = false;
-    }
-
-    if (revision !== this.revision) {
-      // Typed again while that write was in flight: go round once more.
-      if (this.disposed) {
-        await this.persistLatest();
-      } else {
-        this.schedule(this.options.debounceMs);
+  private async persistLatest(): Promise<FileSaveOutcome> {
+    while (!this.discarded && this.revision !== this.savedRevision) {
+      const contents = this.latestContents;
+      const revision = this.revision;
+      try {
+        await this.options.persist(contents);
+        this.savedRevision = revision;
+        if (!this.discarded) this.options.onSaved?.(contents);
+      } catch (error) {
+        this.paused = true;
+        // Failed text remains owned by the draft store. A conflict must not spin.
+        if (!this.discarded) this.options.onError?.(error);
+        return { status: "failed", error };
       }
-      return;
     }
-    if (this.revision === this.savedRevision) this.options.onPendingChange?.(false);
+    if (this.discarded) return { status: "discarded" };
+    this.options.onPendingChange?.(false);
+    return { status: "saved" };
   }
 }

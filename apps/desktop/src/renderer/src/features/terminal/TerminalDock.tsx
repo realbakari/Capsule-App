@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { TerminalDataEvent, TerminalExitEvent, TerminalHandle } from "@capsule/shared";
+import { localTimings } from "@capsule/shared";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 
@@ -27,7 +28,7 @@ interface Pane {
  * keystrokes by id. Panes are kept mounted and hidden rather than unmounted,
  * because tearing down an xterm loses the scrollback and the running command.
  */
-export function TerminalDock({ cwd, onClose, visible = true }: { cwd: string; onClose: () => void; visible?: boolean }) {
+export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: string; onClose: () => void; onEmpty?: () => void; visible?: boolean }) {
   const { api } = useWorkspace();
   const [error, setError] = useState<string>();
   const alive = useRef(true);
@@ -40,6 +41,15 @@ export function TerminalDock({ cwd, onClose, visible = true }: { cwd: string; on
   const hosts = useRef(new Map<string, HTMLDivElement>());
   const panesRef = useRef<Pane[]>([]);
   panesRef.current = panes;
+  const readyPanes = useRef(new Set<string>());
+  const openingPanes = useRef(0);
+  useEffect(() => {
+    for (const pane of panes) {
+      if (readyPanes.current.has(pane.id)) continue;
+      readyPanes.current.add(pane.id);
+      void api.terminalAcknowledge?.(pane.id, 0).catch((error) => setError(String(error)));
+    }
+  }, [api, panes]);
 
   /** Starts a shell and its emulator. The caller decides where the pane goes. */
   const createPane = useCallback(async (): Promise<Pane> => {
@@ -50,6 +60,7 @@ export function TerminalDock({ cwd, onClose, visible = true }: { cwd: string; on
         "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace",
       fontSize: 12,
       lineHeight: 1.2,
+      scrollback: 1000,
       // The panel reads as part of the app, not a pasted-in black rectangle.
       theme: terminalTheme(),
     });
@@ -64,13 +75,20 @@ export function TerminalDock({ cwd, onClose, visible = true }: { cwd: string; on
   }, [api, cwd]);
 
   const openPane = useCallback(async () => {
+    if (panesRef.current.length + openingPanes.current >= 8) {
+      setError("This folder has eight shell tabs. Close a tab before opening another.");
+      return;
+    }
+    openingPanes.current++;
     try {
       const pane = await createPane();
       if (!alive.current) { void api.terminalStop(pane.id); pane.terminal.dispose(); return; }
       setError(undefined);
-      setPanes((current) => [...current, pane]);
+      panesRef.current = [...panesRef.current, pane];
+      setPanes(panesRef.current);
       setActiveId(pane.id);
     } catch (error) { if (alive.current) setError(String(error)); }
+    finally { openingPanes.current--; }
   }, [api, createPane]);
 
   const disposePane = useCallback(
@@ -78,6 +96,7 @@ export function TerminalDock({ cwd, onClose, visible = true }: { cwd: string; on
       void api.terminalStop(pane.id);
       pane.terminal.dispose();
       hosts.current.delete(pane.id);
+      readyPanes.current.delete(pane.id);
     },
     [api],
   );
@@ -95,18 +114,22 @@ export function TerminalDock({ cwd, onClose, visible = true }: { cwd: string; on
   useEffect(() => {
     alive.current = true;
     let unmounted = false;
+    openingPanes.current++;
     void createPane().then((pane) => {
       if (unmounted) {
         disposePane(pane);
         return;
       }
-      setPanes([pane]);
+      panesRef.current = [...panesRef.current, pane];
+      setPanes(panesRef.current);
       setActiveId(pane.id);
-    }).catch((error) => { if (!unmounted) setError(String(error)); });
+    }).catch((error) => { if (!unmounted) setError(String(error)); })
+      .finally(() => { openingPanes.current--; });
     return () => {
       alive.current = false;
       unmounted = true;
       for (const pane of panesRef.current) disposePane(pane);
+      panesRef.current = [];
       setPanes([]);
       setActiveId(undefined);
     };
@@ -123,10 +146,20 @@ export function TerminalDock({ cwd, onClose, visible = true }: { cwd: string; on
   useEffect(() => {
     const offData = api.on("terminalData", (payload) => {
       const event = payload as TerminalDataEvent;
-      panesRef.current.find((pane) => pane.id === event.id)?.terminal.write(event.data);
+      const pane = panesRef.current.find((pane) => pane.id === event.id);
+      if (!pane) return;
+      const rendered = localTimings.start("terminal.render");
+      pane.terminal.write(event.data, () => {
+        rendered();
+        if (alive.current && event.sequence !== undefined) {
+          void api.terminalAcknowledge(pane.id, event.sequence).catch((error) => setError(String(error)));
+        }
+      });
     });
     const offExit = api.on("terminalExit", (payload) => {
       const event = payload as TerminalExitEvent;
+      if (!panesRef.current.some((pane) => pane.id === event.id)) return;
+      if (event.error) setError(event.error);
       setPanes((current) =>
         current.map((pane) => (pane.id === event.id ? { ...pane, exited: true } : pane)),
       );
@@ -172,16 +205,16 @@ export function TerminalDock({ cwd, onClose, visible = true }: { cwd: string; on
 
   const closePane = useCallback(
     (id: string) => {
-      setPanes((current) => {
-        const pane = current.find((item) => item.id === id);
-        if (pane) disposePane(pane);
-        const rest = current.filter((item) => item.id !== id);
-        if (rest.length === 0) onClose();
-        else setActiveId((currentId) => (currentId === id ? rest[rest.length - 1]!.id : currentId));
-        return rest;
-      });
+      const pane = panesRef.current.find((item) => item.id === id);
+      if (!pane) return;
+      disposePane(pane);
+      const rest = panesRef.current.filter((item) => item.id !== id);
+      panesRef.current = rest;
+      setPanes(rest);
+      if (rest.length === 0) (onEmpty ?? onClose)();
+      else setActiveId((currentId) => currentId === id ? rest[rest.length - 1]!.id : currentId);
     },
-    [disposePane, onClose],
+    [disposePane, onClose, onEmpty],
   );
 
   const startResize = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -267,10 +300,14 @@ export function TerminalDock({ cwd, onClose, visible = true }: { cwd: string; on
 export function PersistentTerminals({ cwd, visible, onClose }: { cwd?: string; visible: boolean; onClose: () => void }) {
   const [roots, setRoots] = useState<string[]>([]);
   useEffect(() => {
-    if (visible && cwd) setRoots((current) => current.includes(cwd) ? current : [...current, cwd]);
+    if (visible && cwd) setRoots((current) => current.includes(cwd) || current.length >= 16 ? current : [...current, cwd]);
   }, [cwd, visible]);
-  return <>{roots.map((root) => <div key={root} hidden={!visible || root !== cwd}>
-    <TerminalDock cwd={root} visible={visible && root === cwd} onClose={onClose} />
+  return <>{visible && cwd && !roots.includes(cwd) && roots.length >= 16 && <p role="status">Terminal folder limit reached. Close all shell tabs in another folder before opening this one.</p>}
+  {roots.map((root) => <div key={root} hidden={!visible || root !== cwd}>
+    <TerminalDock cwd={root} visible={visible && root === cwd} onClose={onClose} onEmpty={() => {
+      setRoots((current) => current.filter((item) => item !== root));
+      if (root === cwd) onClose();
+    }} />
   </div>)}</>;
 }
 

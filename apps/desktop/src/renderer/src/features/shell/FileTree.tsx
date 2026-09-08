@@ -2,6 +2,7 @@ import type { FileEntry, GitChange } from "@capsule/shared";
 import { memo, useMemo } from "react";
 import { folderBasename } from "@capsule/shared";
 import { fileKind } from "../../lib/file-kind";
+import type { DirectoryListing } from "../../lib/directory-listings";
 import {
   ChevronDownIcon,
   ChevronRightIcon,
@@ -70,6 +71,8 @@ function TreeEntries({
   gitMarks,
   onToggleFolder,
   onPreviewFile,
+  directoryStates,
+  onRefreshDirectory,
 }: {
   entries: FileEntry[];
   depth: number;
@@ -79,6 +82,8 @@ function TreeEntries({
   gitMarks: ReturnType<typeof indexGitMarks>;
   onToggleFolder: (path: string) => void;
   onPreviewFile: (path: string) => void;
+  directoryStates?: Record<string, DirectoryListing>;
+  onRefreshDirectory?: (path: string) => void;
 }) {
   return (
     <>
@@ -112,6 +117,11 @@ function TreeEntries({
                 ) : null}
               </button>
               {open ? (
+                directoryStates?.[entry.path]?.error ? (
+                  <div role="status" className="codex-tree-empty">
+                    Could not read folder. <button className="ghost" onClick={() => onRefreshDirectory?.(entry.path)}>Retry</button>
+                  </div>
+                ) :
                 kids && kids.length > 0 ? (
                   <TreeEntries
                     entries={kids}
@@ -122,13 +132,15 @@ function TreeEntries({
                     gitMarks={gitMarks}
                     onToggleFolder={onToggleFolder}
                     onPreviewFile={onPreviewFile}
+                    directoryStates={directoryStates}
+                    onRefreshDirectory={onRefreshDirectory}
                   />
                 ) : (
                   <div
                     className="codex-tree-empty faint"
                     style={{ paddingLeft: `${1.2 + depth * 0.72}rem` }}
                   >
-                    {kids ? "Empty" : "…"}
+                    {kids ? "Empty" : "Loading…"}
                   </div>
                 )
               ) : null}
@@ -175,6 +187,8 @@ export const FileTreePane = memo(function FileTreePane({
   onOpenRoot,
   onToggleFolder,
   onPreviewFile,
+  directoryStates,
+  onRefreshDirectory,
 }: {
   listing: FileEntry[];
   expanded: Set<string>;
@@ -191,6 +205,8 @@ export const FileTreePane = memo(function FileTreePane({
   onOpenRoot: (root: string) => void;
   onToggleFolder: (path: string) => void;
   onPreviewFile: (path: string) => void;
+  directoryStates?: Record<string, DirectoryListing>;
+  onRefreshDirectory?: (path: string) => void;
 }) {
   const rootEntries = useMemo(() => sortTreeEntries(listing), [listing]);
   const gitMarks = useMemo(() => indexGitMarks(gitFiles), [gitFiles]);
@@ -235,6 +251,9 @@ export const FileTreePane = memo(function FileTreePane({
       ) : null}
 
       <div className="codex-tree-list">
+        {directoryStates?.[""]?.error && <div role="status" className="codex-tree-empty">
+          Could not refresh files. <button className="ghost" onClick={() => onRefreshDirectory?.("")}>Retry</button>
+        </div>}
         {searchHits ? (
           searchHits.length === 0 ? (
             <div className="codex-tree-empty faint">No matching files</div>
@@ -265,6 +284,8 @@ export const FileTreePane = memo(function FileTreePane({
             gitMarks={gitMarks}
             onToggleFolder={onToggleFolder}
             onPreviewFile={onPreviewFile}
+            directoryStates={directoryStates}
+            onRefreshDirectory={onRefreshDirectory}
           />
         )}
       </div>

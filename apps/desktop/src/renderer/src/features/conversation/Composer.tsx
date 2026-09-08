@@ -113,6 +113,7 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
     project,
     git,
     steerDraft,
+    steeringPending,
     setSteerDraft,
     steerHarness,
     pickProjectDirectory,
@@ -569,7 +570,7 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
                     }}
                   >
                     <span>{entry.prompt.trim().replace(/\s+/g, " ") || `${entry.attachments.length} attached files`}</span>
-                    <small>{entry.attachments.length ? `${entry.attachments.length} files` : "Prompt"}</small>
+                    <small>{entry.temporary ? "Temporary · until app closes" : entry.attachments.length ? `${entry.attachments.length} files` : "Prompt"}</small>
                   </button>
                   <button
                     type="button"
@@ -613,8 +614,8 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
                 }
               }}
             />
-            <button className="chip" disabled={!steerDraft.trim()} onClick={() => void steerHarness()}>
-              Steer
+            <button className="chip" disabled={steeringPending || !steerDraft.trim()} onClick={() => void steerHarness()}>
+              {steeringPending ? "Sending…" : "Steer"}
             </button>
           </div>
         )}

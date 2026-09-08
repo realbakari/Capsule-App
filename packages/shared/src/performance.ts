@@ -1,5 +1,5 @@
 /** Fixed labels only: never store paths, prompts, command arguments or output. */
-export const TIMING_OPERATIONS = ["events.main", "events.renderer", "git.process", "git.status", "git.diff", "git.show", "git.refs", "git.snapshot", "git.queue", "preview.read"] as const;
+export const TIMING_OPERATIONS = ["events.main", "events.renderer", "chat.commit", "terminal.render", "git.process", "git.status", "git.diff", "git.show", "git.refs", "git.snapshot", "git.queue", "preview.read", "browser.tool"] as const;
 export type TimingOperation = typeof TIMING_OPERATIONS[number];
 export interface TimingSample { operation: TimingOperation; milliseconds: number; at: string; failed: boolean }
 export interface TimingSnapshot {

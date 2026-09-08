@@ -474,6 +474,8 @@ export interface ChatMessage {
   sessionId: string;
   role: "user" | "assistant" | "system";
   content: string;
+  /** Display excerpt only; the full message remains in local history. */
+  contentTruncated?: boolean;
   attachments?: MessageAttachment[];
   /** Set when the turn is something other than a plain message, e.g. a steer
    *  sent into an in-flight run. Carries intent the content should not. */
@@ -749,11 +751,13 @@ export interface TerminalHandle {
 }
 
 export interface TerminalDataEvent {
+  sequence?: number;
   id: string;
   data: string;
 }
 
 export interface TerminalExitEvent {
+  error?: string;
   id: string;
   code: number;
 }

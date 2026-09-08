@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useMemo, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from "react";
 import type {
   FileEntry,
   FilePreview,
@@ -9,7 +9,11 @@ import type {
 import { folderBasename, projectFolderList } from "@capsule/shared";
 import { useRememberedScroll } from "../../lib/remembered-scroll";
 import { FileSaveCoordinator, isConflictError } from "../../lib/file-save";
-import { sameListing } from "../../lib/file-listing";
+import { fileDrafts, fileOwnerKey } from "../../lib/file-drafts";
+import { RecoverableFiles } from "./RecoverableFiles";
+import { RequestScope } from "../../lib/request-scope";
+import { useScopedState } from "../../lib/scoped-state";
+import { DirectoryListings } from "../../lib/directory-listings";
 import { formatUserError } from "../../lib/errors";
 import { clampPanelWidth, fitPanelWidth } from "../../lib/panel-size";
 import { formatProjectRoot, toWorkspaceRelative } from "../../lib/paths";
@@ -160,9 +164,11 @@ export function Inspector() {
     openPath,
     mentionFile,
     setDraft,
+    setNotice,
     setView,
     toggleInspector,
     setInspectorOpen,
+    inspectorOpen,
     api,
     projectId,
     inspectorTab,
@@ -229,18 +235,15 @@ export function Inspector() {
   });
 
   const [fileRoot, setFileRoot] = useState<string>();
-  const [listing, setListing] = useState<FileEntry[]>(files);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
-  const [childrenByDir, setChildrenByDir] = useState<Record<string, FileEntry[]>>({});
   const [fileSearch, setFileSearch] = useState("");
   const [searchHits, setSearchHits] = useState<FileEntry[] | null>(null);
-  const [diff, setDiff] = useState("");
   const [preview, setPreview] = useState("");
   const [previewDoc, setPreviewDoc] = useState<FilePreview>();
   const [previewEditing, setPreviewEditing] = useState(false);
   const [editing, setEditing] = useState<{ projectId: string; root: string; path: string; truncated: boolean; revision: string }>();
   const [saveState, setSaveState] = useState<
-    "idle" | "saving" | "saved" | "error" | "truncated" | "conflict"
+    "idle" | "pending" | "saving" | "saved" | "error" | "truncated" | "conflict"
   >("idle");
   const saverRef = useRef<FileSaveCoordinator | undefined>(undefined);
   const revisionRef = useRef<{ value?: string }>({});
@@ -282,6 +285,21 @@ export function Inspector() {
     (session?.workingDirectory ?? project?.workingDirectory);
   const conversationRoot = session?.workingDirectory ?? project?.workingDirectory;
   const scope = JSON.stringify([projectId, session?.id, activeRoot]);
+  const diffRequests = useRef(new RequestScope()).current;
+  const diffScope = diffRequests.select(JSON.stringify([scope, git?.branch]));
+  const [diff, setDiff] = useScopedState(diffScope, "");
+  const directoryCache = useMemo(() => new DirectoryListings(async (path) => {
+    if (!projectId || !activeRoot) return [];
+    return sortTreeEntries(await api.listFiles(projectId, path || undefined, activeRoot));
+  }), [api, projectId, activeRoot, scope]);
+  const directoryStates = useSyncExternalStore(directoryCache.subscribe, directoryCache.getSnapshot);
+  const refreshDirectory = useCallback((path: string) => { void directoryCache.load(path, true); }, [directoryCache]);
+  const listing = directoryStates[""]?.entries ?? files;
+  const childrenByDir = useMemo(() => Object.fromEntries(Object.entries(directoryStates)
+    .filter((entry): entry is [string, typeof entry[1] & { entries: FileEntry[] }] => Boolean(entry[1].entries))
+    .map(([path, value]) => [path, value.entries])), [directoryStates]);
+  const visibleDirectories = useRef(expanded);
+  visibleDirectories.current = expanded;
   if (fileScope.current !== scope) {
     fileScope.current = scope;
     fileRequest.current += 1;
@@ -309,10 +327,22 @@ export function Inspector() {
         });
         revision.value = written?.revision;
       },
-      onSaved: () => { if (mounted) setSaveState("saved"); },
-      onError: (error) => { if (mounted) setSaveState(isConflictError(error) ? "conflict" : "error"); },
+      onSaved: (contents) => {
+        fileDrafts.saved(owner, contents, revision.value);
+        if (mounted) setSaveState("saved");
+      },
+      onError: (error) => {
+        const conflict = isConflictError(error);
+        fileDrafts.failed(owner, conflict);
+        if (mounted) setSaveState(conflict ? "conflict" : "error");
+      },
     });
     saverRef.current = saver;
+    const recovered = fileDrafts.get(owner);
+    if (recovered) {
+      saver.change(recovered.contents);
+      if (recovered.state !== "pending") saver.pause();
+    }
     return () => { mounted = false; saver.dispose(); };
   }, [api, editing]);
 
@@ -328,7 +358,6 @@ export function Inspector() {
 
   useEffect(() => {
     setExpanded(new Set());
-    setChildrenByDir({});
   }, [projectId, project?.workingDirectory, session?.workingDirectory]);
 
   useEffect(() => {
@@ -428,29 +457,19 @@ export function Inspector() {
     setPreview("");
     setSaveState("idle");
     setExpanded(new Set());
-    setChildrenByDir({});
   }, [scope]);
 
   useEffect(() => {
-    if (!projectId || !activeRoot) {
-      setListing((current) => (sameListing(current, files) ? current : files));
-      return;
-    }
-    let ignore = false;
-    api
-      .listFiles(projectId, undefined, activeRoot)
-      // An unchanged listing keeps the array it already had: replacing it with
-      // an equal copy rebuilds the tree and flashes the rows on every frame.
-      .then((entries) => {
-        if (!ignore) setListing((current) => (sameListing(current, entries) ? current : entries));
-      })
-      .catch(() => {
-        if (!ignore) setListing((current) => (current.length === 0 ? current : []));
-      });
-    return () => {
-      ignore = true;
+    if (activeTool !== "files" || inspectorOpen === false) return;
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const refreshVisible = async () => {
+      if (!document.hidden) await directoryCache.refresh(["", ...visibleDirectories.current]);
+      if (!disposed) timer = setTimeout(() => void refreshVisible(), 5000);
     };
-  }, [activeRoot, api, files, projectId]);
+    void refreshVisible();
+    return () => { disposed = true; clearTimeout(timer); };
+  }, [directoryCache, activeTool, inspectorOpen, files]);
 
   useEffect(() => {
     const query = fileSearch.trim();
@@ -473,6 +492,7 @@ export function Inspector() {
   }, [activeRoot, api, fileSearch, projectId]);
 
   function selectTool(tool: InspectorTool) {
+    if (tool !== "review") diffRequests.capture("diff");
     setActiveTool(tool);
     if (tool !== "launcher") {
       setOpenTabs((current) => {
@@ -609,8 +629,8 @@ export function Inspector() {
   const openRoot = useCallback((root: string) => {
     setFileRoot(root);
     setExpanded(new Set());
-    setChildrenByDir({});
-  }, []);
+    void directoryCache.refresh([""]);
+  }, [directoryCache]);
 
   const toggleFolder = useCallback((path: string) => {
     const closing = expanded.has(path);
@@ -620,31 +640,22 @@ export function Inspector() {
       else next.add(path);
       return next;
     });
-    if (closing || childrenByDir[path] || !projectId) return;
-    const requestedScope = fileScope.current;
-    void api
-      .listFiles(projectId, path, activeRoot)
-      .then((entries) => {
-        if (fileScope.current !== requestedScope) return;
-        setChildrenByDir((current) => ({ ...current, [path]: sortTreeEntries(entries) }));
-      })
-      .catch(() => {
-        if (fileScope.current !== requestedScope) return;
-        setChildrenByDir((current) => ({ ...current, [path]: [] }));
-      });
-  }, [expanded, childrenByDir, projectId, api, activeRoot]);
+    if (!closing) void directoryCache.load(path, true);
+  }, [expanded, directoryCache]);
 
   const previewFile = useCallback(async (relative: string) => {
     if (!projectId || !activeRoot) return;
+    diffRequests.capture("diff");
     const request = ++fileRequest.current;
     const requestedScope = fileScope.current;
     const current = () => request === fileRequest.current && requestedScope === fileScope.current;
     try {
       const doc = await api.previewFile(projectId, relative, activeRoot);
       if (!current()) return;
+      const recovered = fileDrafts.get({ projectId, root: activeRoot, path: relative });
       setPreviewDoc(doc);
-      setPreview(doc.contents ?? "");
-      setPreviewEditing(false);
+      setPreview(recovered?.contents ?? doc.contents ?? "");
+      setPreviewEditing(Boolean(recovered));
       setEditing(
         doc.kind === "text" && !doc.truncated && Boolean(doc.revision)
           ? {
@@ -652,11 +663,11 @@ export function Inspector() {
               root: activeRoot,
               path: relative,
               truncated: false,
-              revision: doc.revision ?? "",
+              revision: recovered?.revision ?? doc.revision ?? "",
             }
           : undefined,
       );
-      setSaveState(doc.truncated ? "truncated" : "idle");
+      setSaveState(recovered?.state ?? (doc.truncated ? "truncated" : "idle"));
       setDiff("");
 
       setOpenTabs((current) => {
@@ -688,10 +699,14 @@ export function Inspector() {
 
   async function showFileDiff(relative: string) {
     if (!projectId) return;
+    const current = diffRequests.capture("diff");
+    setDiff("Loading diff…");
     try {
       const text = await api.gitDiff(projectId, relative, session?.id);
+      if (!current()) return;
       setDiff(text || "(no differences)");
     } catch {
+      if (!current()) return;
       setDiff("Failed to load diff.");
     }
     setPreviewDoc(undefined);
@@ -905,7 +920,12 @@ export function Inspector() {
                   contents={preview}
                   saveState={saveState}
                   onChange={(value) => {
+                    if (!editing || !fileDrafts.change(editing, value, revisionRef.current.value)) {
+                      setNotice("Unsaved file recovery is full. Save or discard another draft before continuing.");
+                      return;
+                    }
                     setPreview(value);
+                    setSaveState("pending");
                     saverRef.current?.change(value);
                   }}
                   onMention={() => {
@@ -927,7 +947,13 @@ export function Inspector() {
                       current?.kind === "text" ? { ...current, contents: preview } : current,
                     );
                   }}
-                  onReload={() => void previewFile(previewDoc.path)}
+                  onReload={() => {
+                    saverRef.current?.discard();
+                    if (editing) fileDrafts.discard(editing);
+                    void previewFile(previewDoc.path);
+                  }}
+                  onRetry={() => void saverRef.current?.flush()}
+                  onCopy={() => void navigator.clipboard.writeText(preview).catch((error) => setNotice(formatUserError(error)))}
                   onOverwrite={() => {
                     revisionRef.current.value = undefined;
                     void saverRef.current?.flush();
@@ -951,11 +977,23 @@ export function Inspector() {
               )}
             </div>
 
+            <RecoverableFiles onError={setNotice} onDiscard={(owner) => {
+              fileDrafts.discard(owner);
+              if (editing && fileOwnerKey(editing) === fileOwnerKey(owner)) {
+                saverRef.current?.discard();
+                setEditing(undefined);
+                setPreviewEditing(false);
+                setSaveState("idle");
+                void previewFile(owner.path);
+              }
+            }} />
             {showTree ? (
               <FileTreePane
                 listing={listing}
                 expanded={expanded}
                 childrenByDir={childrenByDir}
+                directoryStates={directoryStates}
+                onRefreshDirectory={refreshDirectory}
                 searchHits={searchHits}
                 fileSearch={fileSearch}
                 overlay={panelWidth < 480}

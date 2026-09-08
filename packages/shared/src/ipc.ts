@@ -42,6 +42,7 @@ export const IPC_CHANNELS = {
   windowBackground: "capsule:windowBackground",
   terminalStart: "capsule:terminalStart",
   terminalInput: "capsule:terminalInput",
+  terminalAcknowledge: "capsule:terminalAcknowledge",
   terminalResize: "capsule:terminalResize",
   terminalStop: "capsule:terminalStop",
   execInProject: "capsule:execInProject",

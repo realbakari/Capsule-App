@@ -2,8 +2,10 @@ import { applyAppearance } from "./appearance";
 import { RequestScope } from "./request-scope";
 import { HarnessStatusCache, harnessStatusIdentity } from "./harness-status-cache";
 import { batchRunFrames, mergeMessagePage, mergeRunEvents, mergeRuns } from "./run-updates";
+import { boundTranscript, retainRunReceipts } from "./transcript-window";
 import { boundRunEvents, compactRunEvent, runEventBytes, LIVE_EVENT_LIMIT, LIVE_EVENT_BYTES, localTimings, summarizeRun } from "@capsule/shared";
 import { useScopedState } from "./scoped-state";
+import { SteeringDrafts } from "./steering-drafts";
 import { activityFromEvents, type RunActivity } from "./activity";
 import {
   createContext,
@@ -57,10 +59,12 @@ import {
   promptDraftKey,
   readPromptDraft,
   readPromptStash,
+  recoverFailedPrompt,
   stashPrompt,
   writePromptDraft,
   writePromptStash,
   type PromptStashEntry,
+  type PromptDraft,
 } from "./prompt-stash";
 
 export type View =
@@ -165,6 +169,8 @@ export interface WorkspaceValue {
   hasOlderMessages: boolean;
   loadingOlder: boolean;
   loadOlderMessages: () => Promise<void>;
+  hasNewerMessages: boolean;
+  returnToLatest: () => Promise<void>;
   runs: Run[];
   events: RunEvent[];
   artifacts: Artifact[];
@@ -214,6 +220,7 @@ export interface WorkspaceValue {
   setPaletteQuery: (value: string) => void;
   setNewProjectName: (value: string) => void;
   setSteerDraft: (value: string) => void;
+  steeringPending: boolean;
   refresh: () => Promise<void>;
   loadSession: (id: string) => Promise<void>;
   createTask: () => Promise<void>;
@@ -369,7 +376,22 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   // Drafts belong to the thread, not its mutable folder configuration.
   const draftScopes = useRef(new RequestScope()).current;
   const draftScope = draftScopes.select(JSON.stringify([projectId, sessionId]));
-  const [messages, setMessages] = useScopedState<ChatMessage[]>(scope, []);
+  const [transcript, setTranscript] = useScopedState(scope, { messages: [] as ChatMessage[], olderEvicted: false, hasNewer: false });
+  const messages = transcript.messages;
+  const historyWindow = useMemo(() => ({ edge: "newest" as "newest" | "oldest", detached: false }), [scope]);
+  historyWindow.detached = transcript.hasNewer;
+  const setMessages = useCallback((update: ChatMessage[] | ((messages: ChatMessage[]) => ChatMessage[])) => {
+    const edge = historyWindow.edge;
+    setTranscript((current) => {
+      const next = typeof update === "function" ? update(current.messages) : update;
+      const bounded = boundTranscript(next, edge);
+      return {
+        messages: bounded.messages,
+        olderEvicted: current.olderEvicted || (bounded.trimmed && edge === "newest"),
+        hasNewer: current.hasNewer || (bounded.trimmed && edge === "oldest"),
+      };
+    });
+  }, [scope, historyWindow]);
   const [hasOlderMessages, setHasOlderMessages] = useScopedState(scope, false);
   const [loadingOlder, setLoadingOlder] = useScopedState(scope, false);
   const [runs, setRuns] = useScopedState<Run[]>(scope, []);
@@ -416,7 +438,18 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     return values;
   }, [sessions, projects, statusCache, statusVersion]);
   const [notice, setNotice] = useScopedState<string | undefined>(scope, undefined);
-  const [steerDraft, setSteerDraft] = useState("");
+  const steering = useRef(new SteeringDrafts()).current;
+  const [steeringVersion, renderSteering] = useState(0);
+  const steeringKey = JSON.stringify([projectId, sessionId]);
+  const steerDraft = steering.get(steeringKey).text;
+  const steeringPending = steering.get(steeringKey).pending;
+  const setSteerDraft = (value: string) => {
+    if (!steering.edit(steeringKey, value)) {
+      setNotice("Steering draft storage is full. Send or clear another thread's draft before adding more text.");
+      return;
+    }
+    renderSteering((version) => version + 1);
+  };
   const [git, setGit] = useScopedState<GitStatus | undefined>(scope, undefined);
   const [files, setFiles] = useScopedState<FileEntry[]>(scope, []);
   const [confirm, setConfirm] = useScopedState<ConfirmState | undefined>(scope, undefined);
@@ -470,6 +503,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   const project = projects.find((item) => item.id === projectId);
   const session = sessions.find((item) => item.id === sessionId && item.projectId === projectId);
   const currentDraftKey = promptDraftKey(projectId, sessionId);
+  const latestDraft = useRef({ key: currentDraftKey, value: { prompt: draft, attachments, skillId } });
+  latestDraft.current = { key: currentDraftKey, value: { prompt: draft, attachments, skillId } };
+  const promotedDrafts = useRef(new Map<string, PromptDraft>());
+  const latestStashes = useRef(promptStashes);
+  latestStashes.current = promptStashes;
   const activeRun = runs.find(
     (run) => run.sessionId === sessionId && ["running", "approval_required", "waiting"].includes(run.status),
   );
@@ -521,9 +559,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       const nextMessages = page.messages;
       if (generation !== loadGeneration.current || !current()) return;
       const nextRuns = mergeRuns(history.runs, [...liveRunState.runs.values()].filter((run) => run.sessionId === id));
-      setMessages((current) => mergeMessagePage(current, nextMessages));
+      if (!historyWindow.detached) {
+        historyWindow.edge = "newest";
+        setMessages((current) => mergeMessagePage(current, nextMessages));
+      }
       if (!liveRunState.loadedOlder || !page.hasMore) setHasOlderMessages(page.hasMore);
-      setRuns(nextRuns);
+      // Older message pages keep their run receipts when the newest page refreshes.
+      setRuns((current) => mergeRuns(current, nextRuns));
       if (runsCurrent()) setProjectRuns((current) => {
         const others = current.filter((item) => item.sessionId !== id);
         return [...nextRuns, ...others];
@@ -546,8 +588,30 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
         setArtifacts([]);
       }
     },
-    [api, scope, sessionId, liveRunState],
+    [api, scope, sessionId, liveRunState, historyWindow],
   );
+
+  const returnToLatest = useCallback(async () => {
+    if (!sessionId) return;
+    const current = requests.capture("older-messages");
+    // Keep the readable window until its replacement has actually arrived.
+    const page = await api.listMessagePage(sessionId, { limit: MESSAGE_PAGE_SIZE });
+    if (!current()) return;
+    historyWindow.edge = "newest";
+    historyWindow.detached = false;
+    liveRunState.loadedOlder = false;
+    const bounded = boundTranscript(page.messages, "newest");
+    setTranscript({ messages: bounded.messages, olderEvicted: bounded.trimmed, hasNewer: false });
+    setHasOlderMessages(page.hasMore);
+    await loadSession(sessionId);
+  }, [api, sessionId, scope, historyWindow, liveRunState, loadSession]);
+
+  useEffect(() => {
+    setRuns((current) => {
+      const retained = retainRunReceipts(current, messages);
+      return retained.length === current.length ? current : retained;
+    });
+  }, [messages, runs]);
 
   const loadOlderMessages = useCallback(async () => {
     if (!sessionId || loadingOlder) return;
@@ -562,17 +626,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       });
       const history = await api.listRunPage({ sessionId, before: { createdAt: oldest.createdAt, id: "\uffff" } });
       if (!current()) return;
+      historyWindow.edge = "oldest";
       setRuns((current) => mergeRuns(current, history.runs));
       liveRunState.loadedOlder = true;
-      setMessages((current) => {
-        const known = new Set(current.map((item) => item.id));
-        return [...page.messages.filter((item) => !known.has(item.id)), ...current];
-      });
+      setMessages((current) => mergeMessagePage(current, page.messages));
       setHasOlderMessages(page.hasMore);
+      setTranscript((current) => ({ ...current, olderEvicted: false }));
     } finally {
       setLoadingOlder(false);
     }
-  }, [api, scope, sessionId, messages, loadingOlder, liveRunState]);
+  }, [api, scope, sessionId, messages, loadingOlder, liveRunState, historyWindow]);
 
   const refresh = useCallback(async () => {
     if (!requests.isCurrent(scope)) return;
@@ -703,6 +766,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       api.on("message", (incoming) => {
         const message = incoming as ChatMessage;
         if (!sessionId || message?.sessionId !== sessionId) return;
+        if (historyWindow.detached) return;
+        historyWindow.edge = "newest";
         // Append the frame we were handed rather than re-reading the whole
         // conversation; a full reload per chunk is what made this quadratic.
         setMessages((current) => {
@@ -847,7 +912,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   useEffect(() => {
     skipDraftSave.current = true;
     try {
-      const saved = readPromptDraft(localStorage, currentDraftKey);
+      const saved = promotedDrafts.current.get(currentDraftKey) ?? readPromptDraft(localStorage, currentDraftKey);
+      promotedDrafts.current.delete(currentDraftKey);
       setDraft(saved.prompt);
       setAttachments(saved.attachments);
       setSkillId(saved.skillId);
@@ -980,6 +1046,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
 
   async function send(continueToNew = false) {
     const submissionKey = currentDraftKey;
+    const submittedRevision = draftRevision.current;
     const content = draft.trim() || (skillId ? `Use the ${skills.find((item) => item.id === skillId)?.name ?? "selected"} skill.` : "");
     const filesToSend = attachments;
     if ((!content && filesToSend.length === 0) || busy || submissions.current.has(submissionKey)) return false;
@@ -994,7 +1061,18 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     submissions.current.add(submissionKey);
     setBusy(true);
     setNotice(undefined);
+    let preparedThread = false;
+    const recoverSubmission = (error: unknown, targetProjectId = projectId) => {
+      const recovery = recoverFailedPrompt(localStorage, latestStashes.current, {
+        prompt: content, attachments: filesToSend, skillId, projectId: targetProjectId,
+      });
+      latestStashes.current = recovery.entries;
+      setPromptStashes(recovery.entries);
+      const location = recovery.persisted ? "saved in Stash" : "kept temporarily in Stash until the app closes; local storage could not save it";
+      setNotice(`The message was not sent and was ${location}. Your new draft is unchanged. ${formatUserError(error)}`);
+    };
     try {
+      if (historyWindow.detached) await returnToLatest();
       let currentSessionId = sessionId;
       let currentProjectId = projectId ?? projects[0]?.id;
       if (!currentProjectId) {
@@ -1014,6 +1092,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       }
       if (!currentSessionId) return false;
       if (!draftScopes.isCurrent(draftScope)) return false;
+      preparedThread = true;
       const optimisticId = `local-${Date.now()}`;
       setMessages((current) => [
         ...current.filter((item) => !item.id.startsWith("local-")),
@@ -1026,11 +1105,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
           createdAt: new Date().toISOString(),
         },
       ]);
-      setDraft("");
-      setAttachments([]);
-      setSkillId(undefined);
+      const unchanged = draftRevision.current === submittedRevision;
+      if (unchanged) {
+        setDraft("");
+        setAttachments([]);
+        setSkillId(undefined);
+      }
       let accepted = false;
-      const clearedRevision = draftRevision.current;
+      const clearedRevision = unchanged ? draftRevision.current : undefined;
       try {
         await api.sendMessage({
           sessionId: currentSessionId,
@@ -1054,6 +1136,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
           }) : undefined;
           if (draftScopes.isCurrent(draftScope)) {
             selectionChanged = Boolean(next) || projectId !== currentProjectId || sessionId !== currentSessionId;
+            if (selectionChanged) {
+              // Promote any follow-up typed during creation or sending with its
+              // new thread. Keep an in-memory handoff if storage is unavailable.
+              const targetKey = promptDraftKey(currentProjectId, next?.id ?? currentSessionId);
+              const followup = latestDraft.current.key === submissionKey
+                && draftRevision.current !== clearedRevision ? latestDraft.current.value : { prompt: "", attachments: [] };
+              promotedDrafts.current.set(targetKey, followup);
+              writePromptDraft(localStorage, targetKey, followup);
+              writePromptDraft(localStorage, submissionKey, { prompt: "", attachments: [] });
+            }
             setProjectId(currentProjectId);
             setSessionId(next?.id ?? currentSessionId);
             if (!next && currentSessionId === sessionId) await loadSession(currentSessionId);
@@ -1071,9 +1163,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
             setSkillId(skillId);
           } else {
             // Keep the new draft and preserve the failed submission separately.
-            setPromptStashes(stashPrompt(localStorage, readPromptStash(localStorage), { prompt: content, attachments: filesToSend, skillId, projectId: currentProjectId }));
             setMessages((current) => current.filter((item) => item.id !== optimisticId));
-            setNotice(`The message was not sent and was saved in Stash. Your new draft is unchanged. ${formatUserError(error)}`);
+            recoverSubmission(error, currentProjectId);
             return false;
           }
           setMessages((current) => current.filter((item) => item.id !== optimisticId));
@@ -1088,7 +1179,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
         throw error;
       }
     } catch (error) {
-      setNotice(formatUserError(error));
+      if (!preparedThread && draftRevision.current !== submittedRevision) recoverSubmission(error);
+      else setNotice(formatUserError(error));
       return false;
     } finally {
       submissions.current.delete(submissionKey);
@@ -1541,13 +1633,22 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   }
 
   async function steerHarness() {
-    if (!sessionId || !steerDraft.trim()) return;
+    if (!sessionId) return;
+    const submission = steering.begin(steeringKey);
+    if (!submission) return;
+    renderSteering((version) => version + 1);
+    let accepted = false;
     try {
-      await api.steerHarness(sessionId, steerDraft.trim());
-      setSteerDraft("");
+      await api.steerHarness(sessionId, submission.text);
+      accepted = true;
       await refresh();
       await loadSession(sessionId);
-    } catch (error) { setNotice(formatUserError(error)); }
+    } catch (error) {
+      setNotice(accepted ? `Steering was sent, but the view could not refresh: ${formatUserError(error)}` : formatUserError(error));
+    } finally {
+      submission.finish(accepted);
+      renderSteering((version) => version + 1);
+    }
   }
 
   async function closeHarness(id?: string) {
@@ -1812,7 +1913,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       aboutOpen,
       setAboutOpen,
       messages,
-      hasOlderMessages,
+      hasOlderMessages: hasOlderMessages || transcript.olderEvicted,
+      hasNewerMessages: transcript.hasNewer,
+      returnToLatest,
       loadingOlder,
       loadOlderMessages,
       runs,
@@ -1877,6 +1980,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       setPaletteQuery,
       setNewProjectName,
       setSteerDraft,
+      steeringPending,
       refresh,
       loadSession,
       createTask,
@@ -1971,6 +2075,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       agents,
       skills,
       messages,
+      transcript,
+      hasOlderMessages,
+      loadingOlder,
+      returnToLatest,
       runs,
       events,
       artifacts,
@@ -1996,6 +2104,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       notice,
       setNotice,
       steerDraft,
+      steeringPending,
+      steeringVersion,
       project,
       session,
       activeRun,

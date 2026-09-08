@@ -28,6 +28,7 @@ import { TurnOutcome } from "./TurnOutcome";
 import { TurnVerification } from "./TurnVerification";
 import { TurnFilesCard } from "./TurnFilesCard";
 import { MessageBody } from "./MessageBody";
+import { VirtualTurns } from "./VirtualTurns";
 
 /*
  * One message. Memoized because a streamed frame appends a message rather
@@ -226,6 +227,8 @@ export function Conversation() {
     hasOlderMessages,
     loadingOlder,
     loadOlderMessages,
+    hasNewerMessages,
+    returnToLatest,
     agents,
     agentId,
     activeRun: workspaceActiveRun,
@@ -294,7 +297,7 @@ export function Conversation() {
   }, [messages]);
   const visibleMessageCount = useMemo(() => turns.reduce((count, turn) => count + turn.messages.length, 0), [turns]);
   const turnOutcomes = useMemo(() => outcomesByTurn(turns, runs, session?.id, project?.id), [turns, runs, session?.id, project?.id]);
-  const summaryRun = [activeRun, ...runs].find((run) => run && run.sessionId === session?.id && run.projectId === project?.id);
+  const summaryRun = [activeRun, ...(hasNewerMessages ? [] : runs)].find((run) => run && run.sessionId === session?.id && run.projectId === project?.id);
 
   /*
    * Where each turn starts in the flat message list, so a row can tell whether
@@ -365,6 +368,10 @@ export function Conversation() {
      messages that arrive after the initial load, not the whole history. */
   const initialCountRef = useRef(visibleMessageCount);
   const [stick, setStick] = useState(true);
+  const historyNavigation = hasNewerMessages ? <div className="load-older" role="status">
+    <span>Browsing a bounded history window. Newer turns are saved.</span>
+    <button className="chip" onClick={() => { setStick(true); void returnToLatest().catch((error) => setNotice(formatUserError(error))); }}>Return to latest</button>
+  </div> : null;
 
   useEffect(() => {
     if (!stick) return;
@@ -455,7 +462,7 @@ export function Conversation() {
             <>
               {hasOlderMessages && (
                 <div className="load-older">
-                  <button className="ghost" disabled={loadingOlder} onClick={() => void loadOlderMessages()}>
+                  <button className="ghost" disabled={loadingOlder} onClick={() => { setStick(false); void loadOlderMessages().catch((error) => setNotice(formatUserError(error))); }}>
                     {loadingOlder ? "Loading…" : "Load older messages"}
                   </button>
                 </div>
@@ -466,7 +473,8 @@ export function Conversation() {
                   <div className="skeleton skeleton-line medium" />
                 </div>
               )}
-              {turns.map((turn) =>
+              {historyNavigation}
+              <VirtualTurns turns={turns} folded={folded} scroller={scroller} stick={stick}>{(turn) =>
                 folded.has(turn.id) ? (
                   <FoldedTurn key={turn.id} turn={turn} onOpen={openTurn} />
                 ) : (
@@ -488,8 +496,8 @@ export function Conversation() {
                       </RunSummary>}
                     </Fragment>)}
                   </Fragment>
-                ),
-              )}
+                )
+              }</VirtualTurns>
             </>
           )}
           {/* The work log belongs to the turn, not to the moment it is running.

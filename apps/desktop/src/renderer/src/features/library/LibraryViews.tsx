@@ -2,6 +2,7 @@ import { useWorkspace } from "../../lib/workspace";
 import { formatUserError } from "../../lib/errors";
 import { SkillsDirectory } from "./SkillsDirectory";
 import { TurnVerification } from "../conversation/TurnVerification";
+import { ApprovalDetails, APPROVE_ONCE_UNAVAILABLE } from "../harness/ApprovalDetails";
 import { useEffect, useRef, useState } from "react";
 import type { RunHistoryPage, RunHistoryCursor } from "@capsule/shared";
 
@@ -103,9 +104,12 @@ export function ApprovalsView() {
           <b>{item.action}</b>
           <div className="mono">{item.target}</div>
           <div className="muted">{item.reason}</div>
+          <ApprovalDetails approval={item} />
           {item.status === "pending" && (
             <div className="actions">
-              <button className="send" onClick={() => void api.resolveApproval(item.id, "approved_once").catch((error) => setNotice(formatUserError(error)))}>
+              <button className="send" disabled={item.details?.canApproveOnce === false}
+                title={item.details?.canApproveOnce === false ? APPROVE_ONCE_UNAVAILABLE : undefined}
+                onClick={() => void api.resolveApproval(item.id, "approved_once").catch((error) => setNotice(formatUserError(error)))}>
                 Approve once
               </button>
               <button className="ghost" onClick={() => void api.resolveApproval(item.id, "denied").catch((error) => setNotice(formatUserError(error)))}>

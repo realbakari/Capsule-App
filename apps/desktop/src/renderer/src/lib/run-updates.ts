@@ -8,7 +8,7 @@ export function mergeRuns(snapshot: Run[], live: Run[]): Run[] {
     const existing = merged.get(run.id);
     if (!existing || run.updatedAt >= existing.updatedAt) merged.set(run.id, run);
   }
-  return [...merged.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
+  return [...merged.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id)).slice(0, 1000);
 }
 
 export function mergeRunEvents(snapshot: RunEvent[], live: RunEvent[], runId: string): RunEvent[] {

@@ -13,11 +13,13 @@ export function FilePreviewView({
   onView,
   onReload,
   onOverwrite,
+  onRetry,
+  onCopy,
 }: {
   doc: FilePreview;
   editing: boolean;
   contents: string;
-  saveState: "idle" | "saving" | "saved" | "error" | "truncated" | "conflict";
+  saveState: "idle" | "pending" | "saving" | "saved" | "error" | "truncated" | "conflict";
   onChange: (value: string) => void;
   onMention: () => void;
   onOpen: () => void;
@@ -25,6 +27,8 @@ export function FilePreviewView({
   onView: () => void;
   onReload: () => void;
   onOverwrite: () => void;
+  onRetry?: () => void;
+  onCopy?: () => void;
 }) {
   const canEdit = doc.kind === "text" && !doc.truncated && Boolean(doc.revision);
   return (
@@ -53,7 +57,7 @@ export function FilePreviewView({
             </button>
           )
         ) : null}
-        {editing ? (
+        {saveState !== "idle" ? (
           <span className={`save-state ${saveState}`}>
             {saveState === "saving"
               ? "Saving…"
@@ -61,23 +65,25 @@ export function FilePreviewView({
                 ? "Saved"
                 : saveState === "error"
                   ? "Save failed"
-                  : ""}
+                  : saveState === "pending" ? "Unsaved" : ""}
           </span>
         ) : null}
       </div>
       {doc.truncated && doc.kind === "text" ? (
         <div className="faint file-editor-note">Showing the first part of a large file.</div>
       ) : null}
-      {saveState === "conflict" && editing ? (
+      {(saveState === "conflict" || saveState === "error") ? (
         <div className="file-conflict">
-          <span>This file changed on disk since you opened it — probably the agent.</span>
+          <span>{saveState === "conflict" ? "This file changed on disk since you opened it." : "The file could not be saved."} Your draft is retained until the app closes.</span>
           <span className="actions">
             <button className="chip" onClick={onReload}>
               Discard mine, reload
             </button>
-            <button className="danger" onClick={onOverwrite}>
+            <button className="chip" onClick={onCopy}>Copy draft</button>
+            {saveState === "error" && <button className="chip" onClick={onRetry}>Retry save</button>}
+            {saveState === "conflict" && <button className="danger" onClick={onOverwrite}>
               Keep mine, overwrite
-            </button>
+            </button>}
           </span>
         </div>
       ) : null}

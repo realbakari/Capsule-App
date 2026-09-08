@@ -130,6 +130,14 @@ describe("attention snapshots", () => {
       expect(repos.readReplyText("s1", "0002")).toBe("");
       repos.insertMessage({ id: "oversized", sessionId: "s1", runId: "0002", role: "assistant", content: "x".repeat(2 * 1024 * 1024), createdAt: at });
       expect(() => repos.readReplyText("s1", "0002")).toThrow("reply limit");
+      const excerpt = repos.listMessagesBefore("s1", 10).find((message) => message.id === "oversized");
+      expect(excerpt?.content).toHaveLength(65536);
+      expect(excerpt?.contentTruncated).toBe(true);
+      expect(repos.listMessagesBefore("s1", 10).find((message) => message.id === "reply")?.contentTruncated).toBe(false);
+      const older = repos.listMessagesBefore("s1", 10, { createdAt: at, id: "reply" });
+      expect(older.find((message) => message.id === "oversized")?.contentTruncated).toBe(true);
+      expect(older.find((message) => message.id === "alphabetically-before-reply")?.contentTruncated).toBe(false);
+      expect(repos.listMessages("s1").find((message) => message.id === "oversized")?.content).toHaveLength(2 * 1024 * 1024);
     } finally { db.close(); }
   });
   it("reads only each visible thread's latest run state, with stable same-time ordering", () => {

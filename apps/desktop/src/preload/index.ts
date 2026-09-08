@@ -100,6 +100,8 @@ const api = {
     ipcRenderer.invoke(IPC_CHANNELS.terminalStart, input),
   terminalInput: (id: string, data: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.terminalInput, id, data),
+  terminalAcknowledge: (id: string, sequence: number) =>
+    ipcRenderer.invoke(IPC_CHANNELS.terminalAcknowledge, id, sequence),
   terminalResize: (id: string, cols: number, rows: number) =>
     ipcRenderer.invoke(IPC_CHANNELS.terminalResize, id, cols, rows),
   terminalStop: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.terminalStop, id),

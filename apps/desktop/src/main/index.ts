@@ -63,7 +63,7 @@ import {
 } from "@capsule/shared";
 import { readAgentProcesses } from "@capsule/filesystem";
 import { startRemoteServer, type RemoteServerHandle } from "@capsule/remote";
-import { startPty, type PtySession } from "@capsule/terminal";
+import { startPty, TerminalOutputFlow, type PtySession } from "@capsule/terminal";
 import { popupContextMenu } from "./popup-menu";
 import { remoteReachFromArgs } from "./remote-args";
 import { RemoteAccessLifecycle } from "./remote-access";
@@ -652,6 +652,7 @@ function reportFullscreen(): void {
  * main process owns them and forwards their output by id.
  */
 const terminals = new Map<string, PtySession>();
+const terminalOutputs = new Map<string, TerminalOutputFlow>();
 
 /*
  * Resource sampling.
@@ -750,12 +751,14 @@ function startResourceSampling(): void {
 }
 
 function stopTerminal(id: string): void {
+  terminalOutputs.get(id)?.dispose();
+  terminalOutputs.delete(id);
   terminals.get(id)?.kill();
   terminals.delete(id);
 }
 
 function stopAllTerminals(): void {
-  for (const id of [...terminals.keys()]) stopTerminal(id);
+  for (const id of new Set([...terminals.keys(), ...terminalOutputs.keys()])) stopTerminal(id);
 }
 
 function send(channel: string, payload: unknown): void {
@@ -1092,25 +1095,44 @@ function registerIpc(): void {
   );
   handle(IPC_CHANNELS.terminalStart, (input) => {
     requireEngine().assertLocalCommandsAllowed();
+    if (terminalOutputs.size >= 16) throw new Error("Close a terminal before opening another (16 terminal limit).");
     const request = input as { cwd?: string; cols?: number; rows?: number; };
     const cwd = String(request.cwd ?? "");
     const id = `term_${Math.random().toString(36).slice(2, 10)}`;
     const release = requireEngine().beginLocalCommand(cwd);
+    let exitCode = 0;
+    const output = new TerminalOutputFlow({
+      data: (data, sequence) => send(IPC_EVENTS.terminalData, { id, data, sequence }),
+      pause: () => terminals.get(id)?.pause(),
+      resume: () => terminals.get(id)?.resume(),
+      drained: () => {
+        terminalOutputs.delete(id);
+        send(IPC_EVENTS.terminalExit, { id, code: exitCode });
+      },
+      overflow: () => {
+        stopTerminal(id);
+        send(IPC_EVENTS.terminalExit, { id, code: -1, error: "Terminal stopped because output exceeded the recovery buffer. Earlier output may be incomplete." });
+      },
+    });
+    terminalOutputs.set(id, output);
     try {
       const session = startPty(
         { cwd, cols: request.cols, rows: request.rows },
         {
-          onData: (data) => send(IPC_EVENTS.terminalData, { id, data }),
+          onData: (data) => output.push(data),
           onExit: (code) => {
             release();
             terminals.delete(id);
-            send(IPC_EVENTS.terminalExit, { id, code });
+            exitCode = code;
+            output.end();
           },
         },
       );
       terminals.set(id, session);
       return { id, pid: session.pid, cwd };
     } catch (error) {
+      output.dispose();
+      terminalOutputs.delete(id);
       release();
       throw error;
     }
@@ -1118,6 +1140,12 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.terminalInput, (id, data) => {
     requireEngine().assertLocalCommandsAllowed();
     terminals.get(String(id))?.write(String(data));
+    return true;
+  });
+  // A write channel: a paired read-only viewer cannot release PTY flow.
+  handle(IPC_CHANNELS.terminalAcknowledge, (id, sequence) => {
+    if (!Number.isSafeInteger(sequence) || Number(sequence) < 0) throw new Error("Invalid terminal acknowledgement");
+    terminalOutputs.get(String(id))?.acknowledge(Number(sequence));
     return true;
   });
   handle(IPC_CHANNELS.terminalResize, (id, cols, rows) => {

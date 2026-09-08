@@ -320,8 +320,14 @@ export class CapsuleRepositories {
     limit: number,
     before?: { createdAt: string; id: string; },
   ): ChatMessage[] {
-    const columns = `id, session_id AS sessionId, role, content, attachments, kind,
+    const columns = `id, session_id AS sessionId, role,
+                     substr(content, 1, 65536) AS content, length(content) > 65536 AS contentTruncated,
+                     attachments, kind,
                      run_id AS runId, created_at AS createdAt`;
+    type MessagePageRow = Omit<ChatMessage, "attachments" | "contentTruncated"> & {
+      attachments: string;
+      contentTruncated: number;
+    };
     const rows = before
       ? (this.db.sqlite
           .prepare(
@@ -330,21 +336,19 @@ export class CapsuleRepositories {
                AND (created_at < @createdAt OR (created_at = @createdAt AND id < @id))
              ORDER BY created_at DESC, id DESC LIMIT @limit`,
           )
-          .all({ sessionId, createdAt: before.createdAt, id: before.id, limit }) as Array<
-          Omit<ChatMessage, "attachments"> & { attachments: string; }
-        >)
+          .all({ sessionId, createdAt: before.createdAt, id: before.id, limit }) as MessagePageRow[])
       : (this.db.sqlite
           .prepare(
             `SELECT ${columns} FROM messages WHERE session_id = @sessionId
              ORDER BY created_at DESC, id DESC LIMIT @limit`,
           )
-          .all({ sessionId, limit }) as Array<
-          Omit<ChatMessage, "attachments"> & { attachments: string; }
-        >);
+          .all({ sessionId, limit }) as MessagePageRow[]);
     // Query is newest-first so LIMIT takes the right end; callers want reading order.
     return rows.reverse().map((row) => {
       const attachments = parseJson<NonNullable<ChatMessage["attachments"]>>(row.attachments, []);
-      return { ...row, attachments: attachments.length > 0 ? attachments : undefined };
+      // SQLite returns 0/1, not booleans. Normalize before crossing IPC so a
+      // false display flag cannot become a visible "0" in a React condition.
+      return { ...row, contentTruncated: Boolean(row.contentTruncated), attachments: attachments.length > 0 ? attachments : undefined };
     });
   }
 
