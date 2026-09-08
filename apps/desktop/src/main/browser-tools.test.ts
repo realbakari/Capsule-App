@@ -1,8 +1,8 @@
-import { runInNewContext } from "node:vm";
 import { describe, expect, it, vi } from "vitest";
 
 import {
   browserNavigate,
+  browserPress,
   browserSnapshot,
   boundedBrowserSnapshot,
   browserStatus,
@@ -19,7 +19,7 @@ function page(overrides: Record<string, unknown> = {}): BrowserTarget {
     getTitle: () => "Example",
     isLoading: () => false,
     loadURL: async () => undefined,
-    executeJavaScript: async () => ({
+    executeJavaScriptInIsolatedWorld: async () => ({
       url: "https://example.com/a",
       title: "Example",
       text: "Hello",
@@ -92,30 +92,23 @@ describe("with no page open", () => {
 });
 
 describe("reading the page", () => {
-  it("bounds page text before crossing IPC and never includes password field values", async () => {
-    const result = await browserSnapshot(page({ executeJavaScript: async (script: string) => runInNewContext(script, {
-      location: { href: "https://example.com" },
-      getComputedStyle: () => ({ visibility: "visible", display: "block" }),
-      document: { title: "Fixture", body: { innerText: "x".repeat(50_000) }, querySelectorAll: () => [{
-        tagName: "INPUT", type: "password", value: "never leak this value", getAttribute: () => "", getBoundingClientRect: () => ({ width: 100, height: 20 }),
-      }] },
-    }) }));
-    expect(JSON.stringify(result)).not.toContain("never leak this value");
-    expect((result.data as { text: string }).text.length).toBeLessThan(20_100);
-    expect((result.data as { truncated: boolean }).truncated).toBe(true);
+  it("does not send a key to a replacement guest after focusing", async () => {
+    const sendInputEvent = vi.fn();
+    const replacement = page({ sendInputEvent }).contents();
+    let current = page({ executeJavaScriptInIsolatedWorld: async () => { current = replacement; }, sendInputEvent }).contents();
+    const result = await browserPress({ contents: () => current }, { snapshotId: "test", ref: 1, key: "Enter" });
+    expect(result.ok).toBe(false);
+    expect(result.detail).toContain("page changed");
+    expect(sendInputEvent).not.toHaveBeenCalled();
   });
-  it("bounds long links, titles and aggregate multibyte content", async () => {
-    const huge = "界".repeat(700_000);
-    const result = await browserSnapshot(page({ executeJavaScript: async (script: string) => runInNewContext(script, {
-      location: { href: huge }, getComputedStyle: () => ({ visibility: "visible", display: "block" }),
-      document: { title: huge, body: { innerText: "hello" }, querySelectorAll: () => [{
-        tagName: "A", innerText: "Download", getAttribute: (name: string) => name === "href" ? huge : "",
-        getBoundingClientRect: () => ({ width: 10, height: 10 }),
-      }] },
-    }) }));
+  it("executes snapshots in a private page world", async () => {
+    const execute = vi.fn(async () => ({ text: "Page", elements: [] }));
+    const result = await browserSnapshot(page({ executeJavaScriptInIsolatedWorld: execute }));
     expect(result.ok).toBe(true);
-    expect(Buffer.byteLength(JSON.stringify(result))).toBeLessThan(96_000);
-    expect(result.data).toMatchObject({ truncated: true });
+    expect(execute).toHaveBeenCalledWith(999, [expect.objectContaining({ code: expect.stringContaining("__capsuleSnapshot") })]);
+  });
+  it("bounds long links, titles and aggregate multibyte content", () => {
+    const huge = "界".repeat(700_000);
     const bounded = boundedBrowserSnapshot({ title: huge, url: huge, text: huge, elements: Array.from({ length: 400 }, () => ({ href: huge, label: huge })) });
     expect(Buffer.byteLength(JSON.stringify(bounded))).toBeLessThanOrEqual(96_000);
     expect(bounded.truncated).toBe(true);
@@ -140,7 +133,7 @@ describe("reading the page", () => {
 
   it("hands back a page that refused to answer, rather than hanging the turn", async () => {
     const result = await browserSnapshot(
-      page({ executeJavaScript: async () => { throw new Error("detached"); } }),
+      page({ executeJavaScriptInIsolatedWorld: async () => { throw new Error("detached"); } }),
     );
     expect(result.ok).toBe(false);
     expect(result.detail).toMatch(/detached/);

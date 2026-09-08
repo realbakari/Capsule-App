@@ -3016,7 +3016,22 @@ select:focus,
   min-height: 0;
   overflow: hidden;
   position: relative;
+  container-type: inline-size;
   background: var(--bg);
+}
+
+.browser-access-row { display: flex; align-items: start; gap: .5rem; padding: .5rem; border-bottom: 1px solid var(--border-color); }
+.browser-access-row .browser-capability { flex: 1; min-width: 0; padding: .15rem 0; border: 0; }
+.browser-access-row > button { flex-shrink: 0; font-size: .75rem; }
+.preview-viewport { max-width: 7rem; min-height: 1.75rem; font-size: .75rem; border: 1px solid var(--border-color); border-radius: var(--control-radius); background: var(--surface-0); color: var(--text-muted); }
+.embedded-browser-frame:not([data-viewport="fill"]) { overflow: auto; background: var(--surface-0); }
+.embedded-browser-frame[data-viewport="phone"] .embedded-browser-webview { flex: 0 0 390px; width: 390px; margin-inline: auto; }
+.embedded-browser-frame[data-viewport="tablet"] .embedded-browser-webview { flex: 0 0 768px; width: 768px; margin-inline: auto; }
+@container (max-width: 540px) {
+  .codex-browser-pane .preview-chrome-row { height: auto; flex-wrap: wrap; padding-block: .35rem; }
+  .codex-browser-pane .preview-address-group { order: -1; flex: 1 0 100%; }
+  .codex-browser-pane .preview-actions-cluster { margin-left: auto; }
+  .browser-access-row { flex-wrap: wrap; }
 }
 
 .preview-chrome-row {
@@ -10215,3 +10230,9 @@ fieldset.harness-options:disabled { opacity: .7; }
 .agent-config-row > span { min-width: 0; overflow-wrap: anywhere; }
 .agent-config-row small { display: block; color: var(--text-muted); font-size: 0.75rem; }
 .agent-config-row select { min-width: 0; max-width: 52%; font-size: 0.8125rem; }
+.background-browser { padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--border-color); font-size: 0.8125rem; flex-shrink: 0; max-height: 65%; overflow-y: auto; }
+.background-browser > summary { cursor: pointer; color: var(--text-muted); }
+.background-browser p { margin: 0.65rem 0; line-height: 1.5; }
+.background-browser-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.background-browser-url { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.background-browser-image { display: block; width: 100%; max-height: 22rem; object-fit: contain; background: #111; border-radius: 0.4rem; }

@@ -3,6 +3,7 @@ import { useWorkspace } from "../../lib/workspace";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { LocalServer } from "@capsule/shared";
 import { harnessCapabilities } from "@capsule/shared";
+import { BackgroundBrowser } from "./BackgroundBrowser";
 // Electron's custom element reads a string attribute. React drops boolean
 // `true` on this non-standard attribute despite WebViewHTMLAttributes' type.
 const guestAttributes: Record<string, string> = { allowpopups: "true" };
@@ -10,13 +11,11 @@ import {
   ArrowLeftIcon,
   ArrowRightIcon,
   CameraIcon,
-  CheckIcon,
   ExternalLinkIcon,
   GlobeIcon,
   MinusIcon,
   MoreVerticalIcon,
   MousePointerClickIcon,
-  PictureInPictureIcon,
   PlusIcon,
   RefreshIcon,
 } from "./icons";
@@ -30,7 +29,7 @@ export interface BrowserRecent {
 const BROWSER_RECENTS_KEY = "capsule.browser.recents";
 const MAX_RECENTS = 6;
 
-const ELEMENT_PICKER_SCRIPT = `
+const ELEMENT_PICKER_SCRIPT = String.raw`
 (() => {
   if (window.__capsulePickerActive) {
     if (window.__capsulePickerCleanup) window.__capsulePickerCleanup();
@@ -96,11 +95,22 @@ const ELEMENT_PICKER_SCRIPT = `
       e.stopPropagation();
       if (currentTarget) {
         let tag = currentTarget.tagName.toLowerCase();
-        let id = currentTarget.id ? '#' + currentTarget.id : '';
+        let id = currentTarget.id ? '#' + CSS.escape(currentTarget.id) : '';
         let cls = currentTarget.className && typeof currentTarget.className === 'string'
-          ? '.' + currentTarget.className.trim().split(/\s+/).filter(Boolean).slice(0, 3).join('.')
+          ? '.' + currentTarget.className.trim().split(/\s+/).filter(Boolean).slice(0, 3).map(value => CSS.escape(value)).join('.')
           : '';
-        const selector = tag + id + cls;
+        let selector = tag + id + cls;
+        if (document.querySelectorAll(selector).length !== 1) {
+          const parts = [];
+          let element = currentTarget;
+          while (element && parts.length < 12) {
+            const tagName = element.tagName.toLowerCase();
+            const siblings = [...(element.parentElement?.children || [])].filter(item => item.tagName === element.tagName);
+            parts.unshift(tagName + ':nth-of-type(' + (siblings.indexOf(element) + 1) + ')');
+            element = element.parentElement;
+          }
+          selector = parts.join(' > ');
+        }
         cleanup();
         resolve({ selector, tag });
         return;
@@ -142,14 +152,16 @@ export function parseBrowserRecents(raw: string | null): BrowserRecent[] {
   try {
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (entry): entry is BrowserRecent =>
-        Boolean(entry) &&
-        typeof entry === "object" &&
-        typeof entry.url === "string" &&
-        typeof entry.title === "string" &&
-        typeof entry.lastUsedAt === "string",
-    );
+    return parsed.slice(0, 100).flatMap((entry): BrowserRecent[] => {
+      if (!entry || typeof entry !== "object" || typeof entry.url !== "string" || typeof entry.title !== "string" ||
+        typeof entry.lastUsedAt !== "string" || !Number.isFinite(Date.parse(entry.lastUsedAt))) return [];
+      try {
+        const url = new URL(entry.url);
+        if (!["http:", "https:"].includes(url.protocol) || url.href.length > 2048) return [];
+        url.username = ""; url.password = "";
+        return [{ url: url.href, title: entry.title.slice(0, 512), lastUsedAt: entry.lastUsedAt }];
+      } catch { return []; }
+    }).slice(0, MAX_RECENTS);
   } catch {
     return [];
   }
@@ -169,13 +181,14 @@ function recentAge(isoDate: string): string {
 
 export function normalizedBrowserUrl(raw: string): string {
   const trimmed = raw.trim();
-  if (!trimmed) return "";
+  if (!trimmed || trimmed.length > 2048) return "";
   if (/^[a-z][a-z0-9+.-]*:(?!\d)/i.test(trimmed) && !/^https?:/i.test(trimmed)) return "";
-  if (/\s/.test(trimmed)) return `https://www.google.com/search?q=${encodeURIComponent(trimmed)}`;
-  const candidate = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+  if (!/^https?:/i.test(trimmed) && /\s/.test(trimmed)) return `https://www.google.com/search?q=${encodeURIComponent(trimmed)}`;
+  const local = /^(localhost|127(?:\.\d{1,3}){3}|\[::1\]|0\.0\.0\.0)(?=[:/]|$)/i.test(trimmed);
+  const candidate = /^https?:\/\//i.test(trimmed) ? trimmed : `${local ? "http" : "https"}://${trimmed}`;
   try {
     const parsed = new URL(candidate);
-    return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed.toString() : "";
+    return !parsed.username && !parsed.password && (parsed.protocol === "http:" || parsed.protocol === "https:") ? parsed.toString() : "";
   } catch {
     return "";
   }
@@ -198,9 +211,15 @@ export function EmbeddedBrowser({
   onRetryServers?: () => void;
   onOpenExternal: (url: string) => void;
 }) {
-  const { api, session, agentId, harnesses } = useWorkspace();
-  const browserCapability = harnessCapabilities({ harness: harnesses?.find((item) => item.id === agentId), session }).browser;
-  const initialUrl = address !== "http://localhost:3000" ? normalizedBrowserUrl(address) : "";
+  const { api, session, agentId, harnesses, harnessStatuses, view: workspaceView, inspectorOpen } = useWorkspace();
+  const desktopBrowser = navigator.userAgent.includes("Electron/");
+  const browserCapability = harnessCapabilities({ harness: harnesses?.find((item) => item.id === agentId), session, status: session ? harnessStatuses?.[session.id] : undefined }).browser;
+  const initialUrl = normalizedBrowserUrl(address);
+  const [agentControl, setAgentControl] = useState(false);
+  const [controlBusy, setControlBusy] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [viewport, setViewport] = useState("fill");
+  const controlEpoch = useRef(0);
   const [currentUrl, setCurrentUrl] = useState(initialUrl);
   // Keep the guest's initial src stable across committed navigations.
   const [guestUrl, setGuestUrl] = useState(initialUrl);
@@ -227,8 +246,42 @@ export function EmbeddedBrowser({
     setMountedView(view);
   }, []);
   const publishedAddress = useRef(address);
+  const ownerId = session?.id;
   const moreMenuAnchorRef = useRef<HTMLDivElement>(null);
   const toastTimerRef = useRef<number | undefined>(undefined);
+
+  useEffect(() => {
+    if (!desktopBrowser) return;
+    let disposed = false;
+    void api.registerBrowserView?.(undefined, ownerId).catch((error) => {
+      if (!disposed) setError(String(error));
+    });
+    return () => {
+      disposed = true;
+      controlEpoch.current++;
+      if (ownerId) void api.setBrowserControl?.(ownerId, false).catch(() => undefined);
+      window.clearTimeout(toastTimerRef.current);
+    };
+  }, [api, ownerId, desktopBrowser]);
+
+  useEffect(() => {
+    if (!ownerId || !desktopBrowser || (workspaceView !== undefined && workspaceView !== "chat") || inspectorOpen === false) {
+      controlEpoch.current++;
+      setAgentControl(false);
+      if (ownerId && desktopBrowser) void api.setBrowserControl?.(ownerId, false).catch(() => undefined);
+    }
+  }, [api, ownerId, desktopBrowser, workspaceView, inspectorOpen]);
+
+  const toggleAgentControl = async () => {
+    if (!ownerId) return;
+    const epoch = controlEpoch.current;
+    setControlBusy(true);
+    try {
+      await api.setBrowserControl(ownerId, !agentControl);
+      if (epoch === controlEpoch.current) setAgentControl(!agentControl);
+    } catch (error) { setError(String(error)); }
+    finally { setControlBusy(false); }
+  };
 
   const showToast = useCallback((message: string) => {
     if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
@@ -301,6 +354,7 @@ export function EmbeddedBrowser({
     const view = mountedView;
     if (!view) return undefined;
     const started = () => {
+      setPickActive(false);
       setLoading(true);
       setError(undefined);
     };
@@ -323,6 +377,8 @@ export function EmbeddedBrowser({
       setLoading(false);
       setError(detail.errorDescription || "This page could not be loaded.");
     };
+    const crashed = () => { setLoading(false); setReady(false); setError("The page process stopped. Reload to recover it."); };
+    view.addEventListener("render-process-gone", crashed);
     view.addEventListener("did-start-loading", started);
     view.addEventListener("did-stop-loading", stopped);
     /*
@@ -330,30 +386,34 @@ export function EmbeddedBrowser({
      * tools can drive it directly. Registered on attach and cleared on unmount:
      * a stale id would point at a page nobody is looking at any more.
      */
-    const register = () => {
+    const register = (domReady = false) => {
       try {
-        void api.registerBrowserView?.(view.getWebContentsId()).catch((error) => setError(`Browser tools could not connect: ${String(error)}`));
+        if (domReady) { setReady(true); setZoomFactor(view.getZoomFactor()); }
+        void api.registerBrowserView?.(view.getWebContentsId(), ownerId, domReady).catch((error) => setError(`Browser tools could not connect: ${String(error)}`));
       } catch {
         // The guest is not attached yet; dom-ready will come round again.
       }
     };
-    view.addEventListener("dom-ready", register);
+    const onReady = () => register(true);
+    view.addEventListener("dom-ready", onReady);
     register();
     view.addEventListener("did-navigate", navigated);
     view.addEventListener("did-navigate-in-page", navigated);
     view.addEventListener("page-title-updated", rememberCurrentPage);
     view.addEventListener("did-fail-load", failed);
     return () => {
+      view.removeEventListener("render-process-gone", crashed);
       view.removeEventListener("did-start-loading", started);
       view.removeEventListener("did-stop-loading", stopped);
-      view.removeEventListener("dom-ready", register);
-      void api.registerBrowserView?.(undefined).catch(() => undefined);
+      view.removeEventListener("dom-ready", onReady);
+      setReady(false);
+      void api.registerBrowserView?.(undefined, ownerId).catch(() => undefined);
       view.removeEventListener("did-navigate", navigated);
       view.removeEventListener("did-navigate-in-page", navigated);
       view.removeEventListener("page-title-updated", rememberCurrentPage);
       view.removeEventListener("did-fail-load", failed);
     };
-  }, [mountedView, api, publishAddress]);
+  }, [mountedView, api, publishAddress, ownerId]);
 
   const navigate = (value: string) => {
     const next = normalizedBrowserUrl(value);
@@ -389,8 +449,9 @@ export function EmbeddedBrowser({
         await navigator.clipboard.writeText(result.selector);
         showToast(`Copied selector: ${result.selector}`);
       }
-    } catch {
+    } catch (error) {
       setPickActive(false);
+      showToast(`Element inspection failed: ${String(error)}`);
     }
   };
 
@@ -461,9 +522,21 @@ export function EmbeddedBrowser({
     setMoreMenuOpen(false);
   };
 
+  if (!desktopBrowser) return (
+    <div className="codex-tool-pane"><BackgroundBrowser desktop={false} url="" available={false} active={inspectorOpen !== false} /></div>
+  );
+
   return (
     <div className="codex-browser-pane">
-      <details className="capability-details browser-capability"><summary>Agent browser access · {browserCapability.state === "limited" ? "Limited" : "Unavailable"}</summary><p>{browserCapability.detail} Manual browsing is separate.</p></details>
+      <BackgroundBrowser desktop url={normalizedBrowserUrl(address)} available={browserCapability.state !== "unavailable"}
+        active={inspectorOpen !== false && (workspaceView === undefined || workspaceView === "chat")}
+        onControlChange={() => setAgentControl(false)} />
+      <div className="browser-access-row">
+        <details className="capability-details browser-capability"><summary>Agent access · {agentControl ? "On for this thread" : "Off"}</summary><p>{browserCapability.detail} Enabling control lets this thread’s direct agent read and interact with signed-in pages. Access ends when you leave this panel. Camera, microphone, location and clipboard permissions are blocked.</p></details>
+        <button className="chip" type="button" aria-pressed={agentControl} disabled={!ownerId || controlBusy || browserCapability.state === "unavailable"} onClick={() => void toggleAgentControl()}>
+          {agentControl ? "Revoke control" : "Allow agent control"}
+        </button>
+      </div>
       <div className="codex-browser-nav preview-chrome-row">
         <div className="preview-nav-cluster">
           <button
@@ -516,6 +589,7 @@ export function EmbeddedBrowser({
                 (event.target as HTMLInputElement).blur();
               }
             }}
+            aria-label="Browser address"
             placeholder="Search or enter URL"
             spellCheck={false}
           />
@@ -538,7 +612,7 @@ export function EmbeddedBrowser({
             type="button"
             aria-label="Inspect element"
             title={pickActive ? "Cancel inspection (Esc)" : "Inspect element"}
-            disabled={!currentUrl}
+            disabled={!ready}
             onClick={handlePickElement}
           >
             <MousePointerClickIcon size={14} />
@@ -549,22 +623,15 @@ export function EmbeddedBrowser({
             type="button"
             aria-label="Capture screenshot"
             title="Capture screenshot"
-            disabled={!currentUrl}
+            disabled={!ready}
             onClick={() => void handleCaptureScreenshot()}
           >
             <CameraIcon size={14} />
           </button>
 
-          <button
-            className="preview-chrome-btn"
-            type="button"
-            aria-label="Open in system browser"
-            title="Open in system browser"
-            disabled={!currentUrl}
-            onClick={() => onOpenExternal(currentUrl)}
-          >
-            <PictureInPictureIcon size={14} />
-          </button>
+          <select className="preview-viewport" aria-label="Preview viewport" value={viewport} onChange={(event) => setViewport(event.target.value)}>
+            <option value="fill">Fit panel</option><option value="phone">Phone · 390px</option><option value="tablet">Tablet · 768px</option>
+          </select>
 
           <div className="preview-menu-anchor" ref={moreMenuAnchorRef}>
             <button
@@ -582,7 +649,7 @@ export function EmbeddedBrowser({
                 <button
                   type="button"
                   className="preview-menu-item"
-                  disabled={!currentUrl}
+                  disabled={!ready}
                   onClick={() => {
                     webviewRef.current?.reloadIgnoringCache();
                     setMoreMenuOpen(false);
@@ -593,7 +660,7 @@ export function EmbeddedBrowser({
                 <button
                   type="button"
                   className="preview-menu-item"
-                  disabled={!currentUrl}
+                  disabled={!ready}
                   onClick={() => {
                     if (webviewRef.current?.isDevToolsOpened()) {
                       webviewRef.current.closeDevTools();
@@ -647,7 +714,7 @@ export function EmbeddedBrowser({
                 <button
                   type="button"
                   className="preview-menu-item"
-                  disabled={!currentUrl}
+                  disabled={!ready}
                   onClick={() => {
                     onOpenExternal(currentUrl);
                     setMoreMenuOpen(false);
@@ -660,6 +727,11 @@ export function EmbeddedBrowser({
                   className="preview-menu-item"
                   onClick={() => {
                     setCurrentUrl("");
+                    setGuestUrl("");
+                    setPickActive(false);
+                    setLoading(false);
+                    setError(undefined);
+                    publishAddress("");
                     setCanGoBack(false);
                     setCanGoForward(false);
                     setMoreMenuOpen(false);
@@ -676,7 +748,7 @@ export function EmbeddedBrowser({
                 <button
                   type="button"
                   className="preview-menu-item"
-                  disabled={!currentUrl}
+                  disabled={!ready}
                   onClick={() => void handleClearCache()}
                 >
                   Clear browser HTTP cache
@@ -684,7 +756,7 @@ export function EmbeddedBrowser({
                 <button
                   type="button"
                   className="preview-menu-item"
-                  disabled={!currentUrl}
+                  disabled={!ready}
                   onClick={() => void handleClearCookies()}
                 >
                   Clear browser cookies &amp; storage
@@ -697,24 +769,23 @@ export function EmbeddedBrowser({
         {loading && <div className="preview-loading-bar" />}
       </div>
 
-      {error ? <div className="browser-error">{error}</div> : null}
+      {error ? <div className="browser-error" role="alert"><span>{error}</span>{currentUrl && <button type="button" className="chip" onClick={() => navigate(currentUrl)}>Retry page</button>}</div> : null}
 
       {toast && (
-        <div className="preview-toast">
-          <CheckIcon size={12} />
+        <div className="preview-toast" role="status">
           <span>{toast}</span>
         </div>
       )}
 
       {currentUrl ? (
-        <div className="embedded-browser-frame">
+        <div className="embedded-browser-frame" data-viewport={viewport}>
           <webview
             ref={attachView}
             className="embedded-browser-webview"
             src={guestUrl}
             partition="persist:capsule-browser"
             {...guestAttributes}
-            webpreferences="contextIsolation=yes,nodeIntegration=no,sandbox=yes"
+            webpreferences="contextIsolation=true,nodeIntegration=false,sandbox=true"
           />
         </div>
       ) : (

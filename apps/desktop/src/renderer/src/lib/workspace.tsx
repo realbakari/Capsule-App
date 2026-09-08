@@ -470,7 +470,17 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   const [projectRuns, setProjectRuns] = useState<Run[]>([]);
   const [settings, setSettings] = useState<CapsuleSettings>();
   const [workspaceMode, setWorkspaceModeState] = useState<WorkspaceMode>("local");
-  const [browserUrl, setBrowserUrl] = useState("http://localhost:3000");
+  // A page address belongs to its thread. A small in-memory cache preserves
+  // recent tabs without keeping browser guests running in the background.
+  const [browserAddresses, setBrowserAddresses] = useState<Record<string, string>>({});
+  const browserOwner = sessionId ?? projectId ?? "inbox";
+  const browserUrl = browserAddresses[browserOwner] ?? "";
+  const setBrowserUrl = useCallback((url: string) => {
+    setBrowserAddresses((current) => Object.fromEntries([
+      ...Object.entries(current).filter(([key]) => key !== browserOwner).slice(-19),
+      [browserOwner, url],
+    ]));
+  }, [browserOwner]);
   const skipDraftSave = useRef(true);
   const settingsDefaultsApplied = useRef(false);
   /*
@@ -851,6 +861,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
         if (command === "open-folder") void pickProjectDirectory();
         if (command === "open-files") void pickFilesToMention();
         if (command === "open-browser") {
+          const owner = (payload as { threadId?: string }).threadId;
+          if (owner && owner !== sessionId) return;
           const url = (payload as { url?: string }).url;
           if (url && /^https?:\/\//i.test(url)) {
             setBrowserUrl(url);
@@ -912,7 +924,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       off.forEach((fn) => fn());
       window.removeEventListener("keydown", onKey, true);
     };
-  }, [api, loadGit, loadSession, projectId, refresh, sessionId, scope, liveRunState]);
+  }, [api, loadGit, loadSession, projectId, refresh, sessionId, scope, liveRunState, setBrowserUrl]);
 
   useEffect(() => {
     if (sessionId) void loadSession(sessionId).catch((error) => setNotice(formatUserError(error)));

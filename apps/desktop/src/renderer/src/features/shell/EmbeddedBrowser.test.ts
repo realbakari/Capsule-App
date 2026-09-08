@@ -9,6 +9,11 @@ describe("normalizedBrowserUrl", () => {
   it("keeps HTTP and HTTPS URLs", () => {
     expect(normalizedBrowserUrl("https://example.com/path")).toBe("https://example.com/path");
   });
+  it("defaults public hosts to HTTPS and rejects credential-bearing addresses", () => {
+    expect(normalizedBrowserUrl("example.com/a")).toBe("https://example.com/a");
+    expect(normalizedBrowserUrl("127.0.0.1:3000")).toBe("http://127.0.0.1:3000/");
+    expect(normalizedBrowserUrl("https://person:secret@example.com")).toBe("");
+  });
 
   it("turns multi-word input into a web search", () => {
     expect(normalizedBrowserUrl("react server components")).toBe(
@@ -27,6 +32,13 @@ describe("browser recents", () => {
   it("ignores malformed storage", () => {
     expect(parseBrowserRecents("not json")).toEqual([]);
     expect(parseBrowserRecents('{"url":"https://example.com"}')).toEqual([]);
+  });
+  it("discards unsafe history entries and bounds labels before rendering", () => {
+    const entries = ["not-url", "javascript:alert(1)", "file:///private", "https://person:secret@example.com"].map((url) => ({ url, title: "x".repeat(3000), lastUsedAt: "2026-01-01" }));
+    const saved = parseBrowserRecents(JSON.stringify(entries));
+    expect(saved).toHaveLength(1);
+    expect(saved[0]?.url).toBe("https://example.com/");
+    expect(saved[0]?.title).toHaveLength(512);
   });
 
   it("moves a revisited URL to the front without duplicating it", () => {

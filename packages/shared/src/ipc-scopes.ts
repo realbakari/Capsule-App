@@ -29,6 +29,7 @@ const READ_CHANNELS: ChannelName[] = [
   "listMessages",
   "listMessagePage",
   "messageImage",
+  "readSharedBrowser",
   "getRun",
   "listRuns",
   "listRunPage",

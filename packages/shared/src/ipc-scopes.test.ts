@@ -25,6 +25,9 @@ describe("ipc scopes", () => {
       "terminalAcknowledge",
       "clearBrowserData",
       "registerBrowserView",
+      "setBrowserControl",
+      "controlBackgroundBrowser",
+      "inspectBackgroundBrowser",
       "setHarnessConfig",
       "execInProject",
       "runProjectAction",
@@ -49,6 +52,7 @@ describe("ipc scopes", () => {
   it("lets a viewer read a conversation", () => {
     for (const channel of [
       "listSessions",
+      "readSharedBrowser",
       "listMessagePage",
       "gitDiff",
       "getPullRequest",

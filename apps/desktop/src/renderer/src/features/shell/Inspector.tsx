@@ -1194,6 +1194,7 @@ export function Inspector() {
 
         {activeTool === "browser" && (
           <EmbeddedBrowser
+            key={`${session?.id ?? projectId ?? "inbox"}:${session?.harnessId ?? ""}:${session?.openclawSessionKey ?? ""}`}
             address={browserUrl}
             onAddressChange={setBrowserUrl}
             localServers={localServers}

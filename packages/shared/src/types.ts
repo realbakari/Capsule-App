@@ -274,6 +274,18 @@ export type AgentPromptBlock =
   | { type: "image"; mimeType: string; data: string }
   | { type: "resource"; resource: { uri: string; mimeType: string; text: string } | { uri: string; mimeType: string; blob: string } };
 
+export type BackgroundBrowserCommand = { kind: "start"; url: string } | { kind: "close" } | { kind: "agent" | "share"; allowed: boolean };
+export interface BackgroundBrowserView {
+  exists: boolean;
+  agentAllowed?: boolean;
+  remoteShared?: boolean;
+  expiresAt?: number;
+  url?: string;
+  image?: string;
+  error?: string;
+  capturedAt?: number;
+}
+
 export interface UpdateProjectInput {
   name?: string;
   description?: string;

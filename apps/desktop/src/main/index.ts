@@ -13,6 +13,7 @@ import {
   type ArgParser,
 } from "@capsule/contracts";
 import path from "node:path";
+import { BackgroundBrowsers } from "./background-browsers";
 import {
   app,
   BrowserWindow,
@@ -35,6 +36,9 @@ import type { CapsuleEngine } from "@capsule/core";
 import { mergePath, readLoginShellEnvironment } from "@capsule/harness";
 import electronUpdater from "electron-updater";
 import { readNavigableUrl, type BrowserTarget } from "./browser-tools";
+import { BrowserAccess } from "./browser-access";
+import { observeBrowser } from "./browser-diagnostics";
+import { secureBrowserSession } from "./browser-security";
 import { startBrowserMcpServer, type BrowserMcpServer } from "./browser-mcp";
 import { Updater, mergeUpdateStatus } from "./updater";
 import {
@@ -183,8 +187,7 @@ function withThumbnails(attachments: MessageAttachment[]): MessageAttachment[] {
  */
 let browserViewId: number | undefined;
 const browserGuestIds = new Set<number>();
-const browserReady = new Set<(contents: Electron.WebContents) => void>();
-let openingBrowser: Promise<Electron.WebContents> | undefined;
+const browserReady = new Map<(contents: Electron.WebContents) => void, string | undefined>();
 
 let browserMcp: BrowserMcpServer | undefined;
 let petWindow: BrowserWindow | undefined;
@@ -285,22 +288,19 @@ export const browserTarget: BrowserTarget = {
     const contents = webContents.fromId(browserViewId);
     return contents && !contents.isDestroyed() ? contents : undefined;
   },
-  open: async (url) => {
+  open: async (url, owner) => {
     if (!mainWindow || mainWindow.isDestroyed()) throw new Error("Open the Capsule desktop window first.");
-    if (openingBrowser) {
-      const contents = await openingBrowser;
-      await contents.loadURL(url);
-      return contents;
-    }
-    openingBrowser = new Promise<Electron.WebContents>((resolve, reject) => {
+    return new Promise<Electron.WebContents>((resolve, reject) => {
       const ready = (contents: Electron.WebContents) => { clearTimeout(timer); browserReady.delete(ready); resolve(contents); };
       const timer = setTimeout(() => { browserReady.delete(ready); reject(new Error("The Browser panel did not become ready. Open it and retry.")); }, 10_000);
-      browserReady.add(ready);
-      send(IPC_EVENTS.state, { command: "open-browser", url });
-    }).finally(() => { openingBrowser = undefined; });
-    return openingBrowser;
+      browserReady.set(ready, owner);
+      send(IPC_EVENTS.state, { command: "open-browser", url, threadId: owner });
+    });
   },
 };
+
+const backgroundBrowsers = new BackgroundBrowsers();
+const browserAccess = new BrowserAccess(browserTarget, (owner, harnessId) => backgroundBrowsers.target(owner, harnessId));
 
 function userDataDir(): string {
   const dir = path.join(app.getPath("userData"), "state");
@@ -534,12 +534,21 @@ function createWindow(): BrowserWindow {
     }
     delete webPreferences.preload;
     webPreferences.nodeIntegration = false;
+    webPreferences.nodeIntegrationInSubFrames = false;
+    webPreferences.nodeIntegrationInWorker = false;
+    webPreferences.webSecurity = true;
+    webPreferences.allowRunningInsecureContent = false;
+    webPreferences.disableDialogs = true;
     webPreferences.contextIsolation = true;
     webPreferences.sandbox = true;
     webPreferences.partition = "persist:capsule-browser";
   });
 
   window.webContents.on("did-attach-webview", (_event, contents) => {
+    observeBrowser(contents);
+    // Sites never acquire camera, microphone, clipboard-read, geolocation or
+    // filesystem privileges through a preview. These rules cover redirects too.
+    secureBrowserSession(contents.session);
     browserGuestIds.add(contents.id);
     contents.once("destroyed", () => {
       browserGuestIds.delete(contents.id);
@@ -559,6 +568,9 @@ function createWindow(): BrowserWindow {
       } catch {
         event.preventDefault();
       }
+    });
+    contents.on("will-redirect", (event, url) => {
+      if (!readNavigableUrl(url).url) event.preventDefault();
     });
   });
 
@@ -1003,12 +1015,15 @@ function registerIpc(): void {
   handleArgs(IPC_CHANNELS.renameSession, [id, str], (sessionId: string, title: string) =>
     requireEngine().renameSession(sessionId, title),
   );
-  handleArgs(IPC_CHANNELS.archiveSession, [id], (sessionId: string) =>
-    requireEngine().archiveSession(sessionId),
-  );
-  handleArgs(IPC_CHANNELS.deleteSession, [id], (sessionId: string) =>
-    requireEngine().deleteSession(sessionId),
-  );
+  handleArgs(IPC_CHANNELS.archiveSession, [id], (sessionId: string) => {
+    const session = requireEngine().archiveSession(sessionId);
+    backgroundBrowsers.close(sessionId);
+    return session;
+  });
+  handleArgs(IPC_CHANNELS.deleteSession, [id], async (sessionId: string) => {
+    await requireEngine().deleteSession(sessionId);
+    backgroundBrowsers.close(sessionId);
+  });
   handleArgs(IPC_CHANNELS.listMessages, [id], (sessionId: string) =>
     requireEngine().listMessages(sessionId),
   );
@@ -1241,7 +1256,12 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.updateProject, (id, patch) =>
     requireEngine().updateProject(String(id), patch as UpdateProjectInput),
   );
-  handle(IPC_CHANNELS.deleteProject, (id) => requireEngine().deleteProject(String(id)));
+  handle(IPC_CHANNELS.deleteProject, async (id) => {
+    const projectId = String(id);
+    const sessions = requireEngine().listSessions(projectId);
+    await requireEngine().deleteProject(projectId);
+    for (const session of sessions) backgroundBrowsers.close(session.id);
+  });
   handle(IPC_CHANNELS.gitStatus, (projectId, sessionId) =>
     requireEngine().gitStatus(String(projectId), sessionId ? String(sessionId) : undefined),
   );
@@ -1404,14 +1424,38 @@ function registerIpc(): void {
     send(IPC_EVENTS.state, { command: "open-session", sessionId });
     return true;
   });
-  handle(IPC_CHANNELS.registerBrowserView, (webContentsId) => {
+  handle(IPC_CHANNELS.registerBrowserView, (webContentsId, threadId, domReady) => {
     if (webContentsId !== undefined && (typeof webContentsId !== "number" || !browserGuestIds.has(webContentsId))) {
       throw new Error("That browser page does not belong to Capsule.");
     }
     browserViewId = typeof webContentsId === "number" ? webContentsId : undefined;
+    browserAccess.select(typeof threadId === "string" ? threadId : undefined);
     const contents = browserTarget.contents();
-    if (contents) for (const ready of browserReady) ready(contents);
+    if (contents && domReady === true) for (const [ready, owner] of browserReady) {
+      if (owner === threadId) ready(contents);
+    }
     return true;
+  });
+  handle(IPC_CHANNELS.setBrowserControl, (threadId, allowed) => {
+    if (typeof threadId !== "string" || typeof allowed !== "boolean") throw new Error("Invalid browser control request.");
+    if (allowed && backgroundBrowsers.has(threadId)) throw new Error("This thread has a background page. Expand Background page to manage its agent access, or close it before controlling the visible page.");
+    browserAccess.allow(threadId, allowed);
+  });
+  handle(IPC_CHANNELS.controlBackgroundBrowser, (owner, command) => {
+    if (typeof owner !== "string" || !command || typeof command !== "object") throw new Error("Invalid background browser request.");
+    if ((command as { kind?: unknown }).kind === "close") { backgroundBrowsers.close(owner); return { exists: false }; }
+    const thread = requireEngine().listSessions().find((item) => item.id === owner && item.state === "active");
+    if (!thread) throw new Error("Select an active conversation first.");
+    browserAccess.revoke(owner);
+    return backgroundBrowsers.control(owner, command as import("@capsule/shared").BackgroundBrowserCommand, thread.harnessId);
+  });
+  handle(IPC_CHANNELS.inspectBackgroundBrowser, (owner) => {
+    if (typeof owner !== "string") throw new Error("Select a conversation first.");
+    return backgroundBrowsers.inspect(owner, false);
+  });
+  handle(IPC_CHANNELS.readSharedBrowser, (owner) => {
+    if (typeof owner !== "string") throw new Error("Select a conversation first.");
+    return backgroundBrowsers.inspect(owner, true);
   });
   handle(IPC_CHANNELS.clearBrowserData, async (id, kind) => {
     if (typeof id !== "number" || !browserGuestIds.has(id)) throw new Error("That browser page is no longer open.");
@@ -1908,15 +1952,17 @@ async function startEngineOnce(): Promise<void> {
    * cannot use, not a Capsule that will not open.
    */
   try {
-    browserMcp = await startBrowserMcpServer(browserTarget);
-    engine.offerDirectMcpServers([
-      {
+    browserMcp = await startBrowserMcpServer();
+    engine.offerDirectMcpServers(({ threadId, harnessId }) => {
+      if (!threadId || !browserMcp) return { servers: [], dispose: () => {} };
+      const connection = browserMcp.register(browserAccess.target(threadId, harnessId));
+      return { servers: [{
         type: "http",
         name: "capsule-browser",
-        url: browserMcp.url,
-        headers: Object.entries(browserMcp.headers).map(([name, value]) => ({ name, value })),
-      },
-    ]);
+        url: connection.url,
+        headers: Object.entries(connection.headers).map(([name, value]) => ({ name, value })),
+      }], dispose: () => { connection.dispose(); backgroundBrowsers.revokeAgent(threadId); browserAccess.revoke(threadId); } };
+    });
   } catch (error) {
     console.warn("Browser tools unavailable:", error instanceof Error ? error.message : error);
   }
@@ -2009,11 +2055,8 @@ app.whenReady().then(async () => {
   await announceRemoteAccess();
 
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      mainWindow = createWindow();
-    } else {
-      mainWindow?.show();
-    }
+    // Companions and hidden browser pages are not the workspace window.
+    revealWindow();
   });
 
   /*
@@ -2072,5 +2115,7 @@ app.on("before-quit", (event) => {
   applyKeepAwake(undefined);
   if (sampleTimer) clearInterval(sampleTimer);
   stopAllTerminals();
+  backgroundBrowsers.closeAll();
+  browserMcp?.close();
   void engine?.stop();
 });

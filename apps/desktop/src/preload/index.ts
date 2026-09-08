@@ -159,8 +159,10 @@ const api = {
   pickDirectory: () => ipcRenderer.invoke(IPC_CHANNELS.pickDirectory),
   pickFiles: () => ipcRenderer.invoke(IPC_CHANNELS.pickFiles),
   saveClipboardImage: () => ipcRenderer.invoke(IPC_CHANNELS.saveClipboardImage),
-  registerBrowserView: (webContentsId: number | undefined) =>
-    ipcRenderer.invoke(IPC_CHANNELS.registerBrowserView, webContentsId),
+  registerBrowserView: (webContentsId: number | undefined, threadId?: string, ready?: boolean) =>
+    ipcRenderer.invoke(IPC_CHANNELS.registerBrowserView, webContentsId, threadId, ready),
+  setBrowserControl: (threadId: string, allowed: boolean) =>
+    ipcRenderer.invoke(IPC_CHANNELS.setBrowserControl, threadId, allowed),
   clearBrowserData: (webContentsId: number, kind: "cache" | "storage") =>
     ipcRenderer.invoke(IPC_CHANNELS.clearBrowserData, webContentsId, kind),
   togglePet: (visible?: boolean) => ipcRenderer.invoke(IPC_CHANNELS.togglePet, visible),
@@ -182,6 +184,9 @@ const api = {
   closeHarness: (sessionId: string) => ipcRenderer.invoke(IPC_CHANNELS.closeHarness, sessionId),
   harnessStatus: (sessionId: string) => ipcRenderer.invoke(IPC_CHANNELS.harnessStatus, sessionId),
   setHarnessOption: (patch: unknown) => ipcRenderer.invoke(IPC_CHANNELS.setHarnessOption, patch),
+  controlBackgroundBrowser: (owner: string, command: import("@capsule/shared").BackgroundBrowserCommand) => ipcRenderer.invoke(IPC_CHANNELS.controlBackgroundBrowser, owner, command),
+  inspectBackgroundBrowser: (owner: string) => ipcRenderer.invoke(IPC_CHANNELS.inspectBackgroundBrowser, owner),
+  readSharedBrowser: (owner: string) => ipcRenderer.invoke(IPC_CHANNELS.readSharedBrowser, owner),
   setHarnessConfig: (sessionId: string, configId: string, value: string | boolean) => ipcRenderer.invoke(IPC_CHANNELS.setHarnessConfig, sessionId, configId, value),
   listHarnessSessions: (projectId?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.listHarnessSessions, projectId),

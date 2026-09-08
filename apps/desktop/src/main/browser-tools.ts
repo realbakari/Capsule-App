@@ -1,4 +1,7 @@
 import type { WebContents } from "electron";
+import { randomUUID } from "node:crypto";
+import { BROWSER_WORLD, snapshotScript, actionScript, type BrowserAction } from "./browser-page";
+import { browserLoadFailure } from "./browser-diagnostics";
 
 /*
  * The browser, as something an agent can use.
@@ -21,10 +24,12 @@ const MAX_SNAPSHOT_CHARS = 20_000;
 const MAX_SNAPSHOT_BYTES = 96_000;
 
 export interface BrowserTarget {
+  /** Recheck the thread grant after asynchronous work. */
+  check?(): void;
   /** The guest WebContents, or undefined when no page is open. */
   contents(): WebContents | undefined;
   /** Create the first guest and navigate it to this URL. Never launches the system browser. */
-  open?(url: string): Promise<WebContents | undefined>;
+  open?(url: string, owner?: string): Promise<WebContents | undefined>;
 }
 
 export interface ToolResult {
@@ -33,6 +38,7 @@ export interface ToolResult {
   detail: string;
   /** Structured payload, when the tool produces one. */
   data?: unknown;
+  image?: { data: string; mimeType: "image/jpeg" };
 }
 
 /** The answer when there is no page, which is a state and not a failure. */
@@ -68,27 +74,33 @@ export function readNavigableUrl(raw: unknown): { url?: string; detail: string }
       detail: `Capsule's browser opens http and https only, not ${parsed.protocol.replace(":", "")}.`,
     };
   }
+  if (parsed.username || parsed.password || raw.length > 2048) return { detail: "Use a URL under 2048 characters without embedded credentials." };
   return { url: parsed.toString(), detail: "" };
 }
 
-async function runScript(contents: WebContents, script: string): Promise<unknown> {
+export async function boundedBrowserOperation<T>(operation: Promise<T>, timeoutMs = SCRIPT_TIMEOUT_MS): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
-      contents.executeJavaScript(script, true),
-      new Promise((_resolve, reject) => {
-        timer = setTimeout(() => reject(new Error("The page did not answer in time.")), SCRIPT_TIMEOUT_MS);
+      operation,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error("The page did not answer in time.")), timeoutMs);
       }),
     ]);
   } finally { clearTimeout(timer); }
+}
+
+
+export function runBrowserScript(contents: WebContents, script: string): Promise<unknown> {
+  return boundedBrowserOperation(contents.executeJavaScriptInIsolatedWorld(BROWSER_WORLD, [{ code: script }]));
 }
 
 /** What is on screen, without pretending to know more than the page says. */
 export async function browserStatus(target: BrowserTarget): Promise<ToolResult> {
   const contents = target.contents();
   if (!contents) return noBrowser();
-  const url = contents.getURL();
-  const title = contents.getTitle();
+  const url = contents.getURL().slice(0, 2048);
+  const title = contents.getTitle().slice(0, 512);
   return {
     ok: true,
     detail: url ? `Showing ${title || "an untitled page"} at ${url}.` : "The browser is open with no page loaded.",
@@ -105,7 +117,10 @@ export async function browserNavigate(target: BrowserTarget, raw: unknown): Prom
     if (!contents) return { ok: false, detail: "Could not open the embedded browser. Open Capsule’s Browser panel, then retry navigation." };
     // Opening the first guest already navigates it. Do not reload that page
     // after dom-ready (which would repeat page-start side effects).
-    if (existing) await contents.loadURL(url);
+    if (existing) await boundedBrowserOperation(contents.loadURL(url));
+    target.check?.();
+    const failure = browserLoadFailure(contents);
+    if (failure) throw new Error(failure);
     return { ok: true, detail: `Opened ${url}.`, data: { url: contents.getURL() } };
   } catch (error) {
     /*
@@ -119,58 +134,6 @@ export async function browserNavigate(target: BrowserTarget, raw: unknown): Prom
   }
 }
 
-/*
- * The page as text, plus what can be clicked.
- *
- * Coordinates are the wrong currency for an agent: they change with every
- * resize and say nothing about what is under them. This returns the page's
- * visible text and a numbered list of its interactive elements, so a later
- * click names a thing rather than a pixel.
- */
-const SNAPSHOT_SCRIPT = `(() => {
-  const seen = [];
-  let truncated = false;
-  let elementChars = 0;
-  const clip = (value, limit) => {
-    const text = String(value || "");
-    if (text.length > limit) truncated = true;
-    return text.slice(0, limit);
-  };
-  const push = (el) => {
-    const rect = el.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return;
-    const style = getComputedStyle(el);
-    if (style.visibility === "hidden" || style.display === "none") return;
-    const label = (
-      el.getAttribute("aria-label") ||
-      el.getAttribute("title") ||
-      (el.type === "password" ? "" : el.value) ||
-      el.innerText ||
-      el.getAttribute("placeholder") ||
-      ""
-    ).trim().replace(/\\s+/g, " ").slice(0, 120);
-    const item = {
-      ref: seen.length + 1,
-      tag: el.tagName.toLowerCase(),
-      type: clip(el.getAttribute("type"), 40) || undefined,
-      label,
-      href: el.tagName === "A" ? clip(el.getAttribute("href"), 1024) || undefined : undefined,
-    };
-    elementChars += JSON.stringify(item).length;
-    if (elementChars <= 24000) seen.push(item);
-    else truncated = true;
-  };
-  for (const el of document.querySelectorAll(
-    'a[href], button, input, select, textarea, [role="button"], [role="link"], [role="tab"], [onclick]'
-  )) {
-    if (seen.length >= 200 || elementChars > 24000) { truncated = true; break; }
-    push(el);
-  }
-  const body = document.body ? document.body.innerText : "";
-  const text = body.slice(0, ${MAX_SNAPSHOT_CHARS}).replace(/\\n{3,}/g, "\\n\\n");
-  return { url: clip(location.href, 2048), title: clip(document.title, 512), text, truncated: truncated || body.length > ${MAX_SNAPSHOT_CHARS}, elements: seen };
-})()`;
-
 /** Validate and bound again at the process boundary; page script output is untrusted. */
 export function boundedBrowserSnapshot(raw: Record<string, unknown>) {
   let truncated = Boolean(raw.truncated);
@@ -182,10 +145,15 @@ export function boundedBrowserSnapshot(raw: Record<string, unknown>) {
   const source = Array.isArray(raw.elements) ? raw.elements : [];
   if (source.length > 200) truncated = true;
   const data = {
+    snapshotId: clip(raw.snapshotId, 64),
     url: clip(raw.url, 2048), title: clip(raw.title, 512), text: clip(raw.text, MAX_SNAPSHOT_CHARS),
     elements: source.slice(0, 200).map((value, index) => {
       const item = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
-      return { ref: index + 1, tag: clip(item.tag, 40), type: clip(item.type, 40) || undefined, label: clip(item.label, 120), href: clip(item.href, 1024) || undefined };
+      const options = Array.isArray(item.options) ? item.options.slice(0, 30).map((value) => {
+        const option = value && typeof value === "object" ? value as Record<string, unknown> : {};
+        return { value: clip(option.value, 120), label: clip(option.label, 120), disabled: option.disabled === true };
+      }) : undefined;
+      return { ref: index + 1, disabled: item.disabled === true, tag: clip(item.tag, 40), type: clip(item.type, 40) || undefined, label: clip(item.label, 120), href: clip(item.href, 1024) || undefined, options };
     }),
     truncated: false,
   };
@@ -202,7 +170,9 @@ export async function browserSnapshot(target: BrowserTarget): Promise<ToolResult
   const contents = target.contents();
   if (!contents) return noBrowser();
   try {
-    const raw = (await runScript(contents, SNAPSHOT_SCRIPT)) as Record<string, unknown>;
+    const raw = (await runBrowserScript(contents, snapshotScript(randomUUID()))) as Record<string, unknown>;
+    target.check?.();
+    if (!raw || typeof raw !== "object") throw new Error("The page returned an invalid snapshot.");
     const data = boundedBrowserSnapshot(raw);
     return {
       ok: true,
@@ -215,4 +185,58 @@ export async function browserSnapshot(target: BrowserTarget): Promise<ToolResult
       detail: `Could not read the page: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
+}
+
+/** Reference actions never resolve an old ref against a newly enumerated page. */
+export async function browserInteract(target: BrowserTarget, input: BrowserAction): Promise<ToolResult> {
+  const contents = target.contents();
+  if (!contents) return noBrowser();
+  if (typeof input.snapshotId !== "string" || !/^[a-zA-Z0-9-]{1,64}$/.test(input.snapshotId) || !Number.isInteger(input.ref) || input.ref < 1 || input.ref > 200) {
+    return { ok: false, detail: "Use snapshotId and ref from the latest browser_snapshot." };
+  }
+  if ((input.action === "type" || input.action === "select") && (typeof input.text !== "string" || input.text.length > 10_000)) {
+    return { ok: false, detail: "Provide text with at most 10,000 characters." };
+  }
+  await runBrowserScript(contents, actionScript(input));
+  target.check?.();
+  return { ok: true, detail: `Browser ${input.action} dispatched. Take a snapshot to check the result; dispatch is not verification.` };
+}
+
+export async function browserScroll(target: BrowserTarget, deltaY: unknown): Promise<ToolResult> {
+  if (typeof deltaY !== "number" || !Number.isFinite(deltaY) || Math.abs(deltaY) > 5000) return { ok: false, detail: "deltaY must be a number between -5000 and 5000 CSS pixels." };
+  const contents = target.contents();
+  if (!contents) return noBrowser();
+  await runBrowserScript(contents, `window.scrollBy({top:${deltaY},behavior:"instant"});`);
+  target.check?.();
+  return { ok: true, detail: "Scrolled the page. Take a new snapshot to inspect it." };
+}
+
+export async function browserPress(target: BrowserTarget, args: { snapshotId: string; ref: number; key: unknown }): Promise<ToolResult> {
+  const keys = ["Enter", "Escape", "Tab", "Backspace", "Delete", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"];
+  if (typeof args.key !== "string" || !keys.includes(args.key)) return { ok: false, detail: `key must be one of: ${keys.join(", ")}. Modifier shortcuts are not supported.` };
+  const contents = target.contents();
+  if (!contents) return noBrowser();
+  const result = await browserInteract(target, { ...args, action: "focus" });
+  if (!result.ok) return result;
+  // Focusing yields to the page. A replacement guest must not receive a key
+  // intended for the old one, even if it belongs to the same thread.
+  if (target.contents() !== contents) return { ok: false, detail: "The browser page changed before the key could be sent. Take a new snapshot." };
+  const keyCode = args.key === "Space" ? " " : args.key;
+  contents.sendInputEvent({ type: "keyDown", keyCode });
+  contents.sendInputEvent({ type: "keyUp", keyCode });
+  return { ok: true, detail: `Pressed ${args.key}. Take a snapshot to check the result.` };
+}
+
+export async function browserScreenshot(target: BrowserTarget): Promise<ToolResult> {
+  const contents = target.contents();
+  if (!contents) return noBrowser();
+  let image = await boundedBrowserOperation(contents.capturePage());
+  target.check?.();
+  if (image.isEmpty()) return { ok: false, detail: "The browser has no visible pixels to capture yet." };
+  const size = image.getSize();
+  const ratio = Math.min(1, 1280 / Math.max(size.width, size.height));
+  if (ratio < 1) image = image.resize({ width: Math.max(1, Math.round(size.width * ratio)), height: Math.max(1, Math.round(size.height * ratio)) });
+  const bytes = image.toJPEG(75);
+  if (bytes.length > 1_500_000) return { ok: false, detail: "Screenshot exceeded the image budget. Reduce the browser viewport and retry." };
+  return { ok: true, detail: "Captured the current viewport (not the full page). Visible page content may be sensitive.", data: image.getSize(), image: { data: bytes.toString("base64"), mimeType: "image/jpeg" } };
 }
