@@ -12,6 +12,9 @@ import { TurnOutcome } from "../features/conversation/TurnOutcome";
 import { RunEventLog } from "../features/conversation/RunEventLog";
 import { Pet } from "../features/pet/Pet";
 import { runUiPolishRegressions } from "./ui-polish-regressions";
+import { runOwnershipRegressions } from "./ownership-regressions";
+import { runScreenshotRegressions } from "./screenshot-regressions";
+import { runRuntimeExtensionRegressions } from "./runtime-extension-regressions";
 import { ChevronRightIcon, FolderIcon, InboxIcon } from "../features/shell/icons";
 import { CapabilityDetails } from "../features/harness/CapabilityDetails";
 import { MenuSelect } from "../features/shell/MenuSelect";
@@ -333,11 +336,33 @@ window.runRendererRegressions = async () => {
   root.unmount(); root = createRoot(host);
   const external: string[] = [];
   const registered: Array<number | undefined> = [];
-  window.testWorkspace = { api: { registerBrowserView: async (id?: number) => { registered.push(id); } } };
+  const browserGrants: Array<[string, boolean]> = [];
+  window.testWorkspace = {
+    session: { id: "browser-a", harnessId: "grok", openclawSessionKey: "direct:acp:grok:browser", harnessState: "waiting" },
+    agentId: "grok", harnesses: [{ id: "grok", runtimeRoute: "direct" }],
+    api: {
+      registerBrowserView: async (id?: number) => { registered.push(id); },
+      setBrowserControl: async (id: string, enabled: boolean) => { browserGrants.push([id, enabled]); },
+    },
+  };
   root.render(<BrowserFixture onOpenExternal={(url) => external.push(url)} />);
   await until(() => document.querySelector("webview"));
   const guest = document.querySelector("webview")!;
   Object.assign(guest, { canGoBack: () => true, canGoForward: () => false, getURL: () => "https://example.test/committed", getTitle: () => "Fixture", getWebContentsId: () => 1, getZoomFactor: () => 1 });
+  assert(document.querySelector<HTMLButtonElement>('button[aria-label="Capture screenshot"]')?.disabled, "Screenshot was enabled before guest readiness");
+  guest.dispatchEvent(new Event("dom-ready"));
+  await until(() => !document.querySelector<HTMLButtonElement>('button[aria-label="Capture screenshot"]')?.disabled);
+  button("Allow agent control").click();
+  await until(() => document.body.textContent?.includes("Revoke control"));
+  assert(browserGrants[0]?.[0] === "browser-a" && browserGrants[0]?.[1] === true, "Browser access was not granted to its thread");
+  assert(guest.getAttribute("webpreferences")?.includes("nodeIntegration=false"), "Guest integration flag was not a boolean string");
+  const browserStyles = document.getElementById("composer-test-styles") as HTMLStyleElement;
+  browserStyles.media = "all";
+  const browserPane = document.querySelector<HTMLElement>('.codex-browser-pane')!;
+  browserPane.style.width = "400px"; browserPane.style.height = "420px";
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  assert(document.querySelector('.preview-actions-cluster')!.getBoundingClientRect().right <= browserPane.getBoundingClientRect().right + 1, "Narrow browser toolbar overflowed");
+  browserStyles.media = "not all";
   guest.dispatchEvent(Object.assign(new Event("did-navigate"), { url: "https://example.test/committed", isMainFrame: true }));
   await until(() => document.querySelector<HTMLInputElement>('.browser-address-input')?.value === "https://example.test/committed" || document.querySelector<HTMLInputElement>('input')?.value === "https://example.test/committed");
   document.querySelector<HTMLButtonElement>('button[title="Open in system browser"]')!.click();
@@ -361,6 +386,7 @@ window.runRendererRegressions = async () => {
   await until(() => registered.includes(2) && document.querySelector<HTMLInputElement>('.preview-address-input')?.value === "https://example.test/returned");
   assert(registered.includes(undefined), "Browser home retained the old guest registration");
   root.unmount();
+  assert(browserGrants.some(([id, allowed]) => id === "browser-a" && !allowed), "Closing the Browser left agent control enabled");
   root = createRoot(host);
   let serverRetries = 0;
   root.render(<EmbeddedBrowser address="" onAddressChange={() => {}} localServers={[]} serversLoading={false}
@@ -536,6 +562,7 @@ window.runRendererRegressions = async () => {
   const handlers = new Map<string, Set<(payload: unknown) => void>>();
   const emit = (event: string, payload: unknown) => { for (const callback of handlers.get(event) ?? []) callback(payload); };
   const savedRuns: Run[] = [];
+  const olderRuns: Run[] = [];
   const savedEvents: RunEvent[] = [];
   const recent: ChatMessage[] = [];
   const older: ChatMessage[] = [];
@@ -549,7 +576,7 @@ window.runRendererRegressions = async () => {
     getSettings: async () => ({ ...DEFAULT_CAPSULE_SETTINGS, defaultMode: "chat", defaultAgentId: "general" }),
     listSessions: async () => [...threads], listHarnessSessions: async () => [], listRuns: async () => [...savedRuns],
     listLatestRuns: async () => [...savedRuns],
-    listRunPage: async () => ({ runs: [...savedRuns], hasMore: false }),
+    listRunPage: async (options?: { before?: unknown }) => ({ runs: [...(options?.before ? olderRuns : savedRuns)], hasMore: false }),
     listRunEventPage: async () => { eventReads += 1; const events = deferEvents ? await new Promise<RunEvent[]>((resolve) => { holdEvents = resolve; }) : [...savedEvents]; return { events, hasMore: false }; },
     listArtifacts: async () => { artifactReads += 1; return [{ id: "saved-output", runId: "stream-run" }]; },
     gitStatus: async () => ({ isRepo: false }), listFiles: async () => [],
@@ -626,7 +653,8 @@ window.runRendererRegressions = async () => {
 
   savedRuns.push(done); savedEvents.push(...streamed.slice(0, 10));
   recent.push({ id: "recent", sessionId: running.sessionId, role: "assistant", content: "Recent result", createdAt: "2026-01-01T00:30:00Z" });
-  older.push({ ...recent[0]!, id: "older", content: "Older result", createdAt: "2025-12-31T00:00:00Z" });
+  older.push({ ...recent[0]!, id: "older", runId: "older-run", content: "Older result", createdAt: "2025-12-31T00:00:00Z" });
+  olderRuns.push({ ...done, id: "older-run", createdAt: "2025-12-30T00:00:00Z", updatedAt: "2025-12-31T00:00:00Z" });
   emit("connection", {});
   await until(() => actualWorkspace.messages.some((message) => message.id === "recent"));
   await actualWorkspace.loadOlderMessages();
@@ -639,6 +667,18 @@ window.runRendererRegressions = async () => {
   assert(actualWorkspace.events.length === 1_000 && actualWorkspace.events[0]?.data?.earlierEvents, "Snapshot did not retain a bounded, disclosed live-event window");
   assert(actualWorkspace.messages.some((message) => message.id === "older") && !actualWorkspace.hasOlderMessages, "Reconnect discarded older pages or reset their cursor");
   assert(actualWorkspace.artifacts.length === 1, "Saved artifacts did not load");
+  assert(actualWorkspace.runs.some((run) => run.id === "older-run"), "Reconnect removed the older page's run receipt");
+
+  recent.push(...Array.from({ length: 600 }, (_, index) => ({ ...recent[0]!, id: `bulk-${index}`, content: `Saved ${index}`, createdAt: new Date(Date.UTC(2026, 0, 1, 1, 0, index)).toISOString() })));
+  await actualWorkspace.loadSession(running.sessionId);
+  await until(() => actualWorkspace.messages.some((message) => message.id === "bulk-599"));
+  assert(actualWorkspace.messages.length <= 300 && actualWorkspace.hasOlderMessages, "Newest history refresh did not enforce its retention window");
+  older.push(...Array.from({ length: 300 }, (_, index) => ({ ...older[0]!, id: `historic-${index}`, createdAt: new Date(Date.UTC(2024, 0, 1, 0, 0, index)).toISOString() })));
+  await actualWorkspace.loadOlderMessages();
+  await until(() => actualWorkspace.hasNewerMessages);
+  assert(actualWorkspace.messages.length <= 300, "Loading older history escaped the retention bound");
+  await actualWorkspace.returnToLatest();
+  await until(() => !actualWorkspace.hasNewerMessages && actualWorkspace.messages.some((message) => message.id === "bulk-599"));
   emit("run", { ...running, id: "next-run", createdAt: "2026-01-02T00:00:00Z", updatedAt: "2026-01-02T00:00:00Z" });
   await until(() => actualWorkspace.runs[0]?.id === "next-run" && actualWorkspace.events.length === 0);
   assert(actualWorkspace.artifacts.length === 0, "Previous turn artifacts followed the new run");
@@ -654,6 +694,9 @@ window.runRendererRegressions = async () => {
   assert(actualWorkspace.activeRun?.status === "running", "Rejected stop claimed the agent had ended");
   emit("state", { command: "open-browser", url: "https://example.test/agent" });
   await until(() => actualWorkspace.inspectorOpen && actualWorkspace.inspectorTab === "browser" && actualWorkspace.browserUrl === "https://example.test/agent");
+  emit("state", { command: "open-browser", threadId: "another-thread", url: "https://example.test/wrong-owner" });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert(actualWorkspace.browserUrl === "https://example.test/agent", "An agent in another thread changed this browser address");
   window.testWorkspace = { ...actualWorkspace, draft: "", attachments: [], activeRun: undefined, busy: false, session: undefined, sessionId: undefined,
     git: { isRepo: true, branch: "feature/a-deliberately-long-branch-name", branches: ["main", "feature/a-deliberately-long-branch-name"], dirty: true },
   };
@@ -691,7 +734,8 @@ window.runRendererRegressions = async () => {
     agents: pickerAgents, harnesses: pickerHarnesses, agentId: "claude", ready: true, connected: false,
     status: { state: "disconnected", kind: "openclaw" }, sendBlockReason: GATEWAY_CONNECTION_REQUIRED,
     runs: [completed], steps: [{ id: "command-1", label: "Ran a command", status: "complete" }], events: [], messages: [
-      { id: "details-prompt", runId: completed.id, sessionId: completed.sessionId, role: "user", content: completed.prompt, createdAt: completed.createdAt },
+      // An older main process can still send SQLite's numeric false over IPC.
+      { id: "details-prompt", runId: completed.id, sessionId: completed.sessionId, role: "user", content: completed.prompt, contentTruncated: 0 as unknown as boolean, createdAt: completed.createdAt },
       { id: "details-reply", runId: completed.id, sessionId: completed.sessionId, role: "assistant", content: completed.result, createdAt: completed.updatedAt },
     ],
     api: { ...actualWorkspace.api,
@@ -701,6 +745,9 @@ window.runRendererRegressions = async () => {
   };
   root.render(<Conversation />);
   await until(() => document.querySelector('.gateway-recovery') && document.querySelector('.run-summary-header'));
+  const promptRow = document.querySelector('.msg.user')!;
+  assert(!Array.from(promptRow.childNodes).some((node) => node.nodeType === Node.TEXT_NODE && node.textContent?.trim() === "0"), "A numeric display flag leaked a zero below the message");
+  assert(!promptRow.textContent?.includes("Display excerpt"), "An untruncated message was labelled as an excerpt");
   assert(document.querySelectorAll('.gateway-recovery').length === 1 && !document.querySelector('.composer-preflight'), "Gateway warning is duplicated across chat and composer");
   assert(!document.querySelector('.turn-verification') && !document.querySelector('.run-event-log'), "Completed turn still stacks unopened diagnostics and verification cards");
   assert(document.querySelector('.run-activity-state')?.textContent?.includes("not verified"), "Consolidation hid the unverified state");
@@ -823,6 +870,9 @@ window.runRendererRegressions = async () => {
   root.unmount();
   document.documentElement.style.removeProperty("font-size");
   await runUiPolishRegressions(host);
+  await runScreenshotRegressions(host);
+  await runOwnershipRegressions(host);
+  await runRuntimeExtensionRegressions(host);
   layoutStyles.media = "not all";
   return "Renderer regressions passed: recovery, editor ownership and memoization, browser navigation and discovery, bounded diff pages and review notes, terminal persistence, send admission, 1,000 stream frames without snapshot reloads, reconnect/history reconciliation.";
 };

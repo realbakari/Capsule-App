@@ -14,7 +14,7 @@ it("keeps renderer interactions recoverable and companion motion accessible", { 
       bundle: true, write: false, platform: "browser", format: "iife", jsx: "automatic",
       define: { "process.env.NODE_ENV": '"test"' },
       plugins: [{ name: "test-workspace", setup(builder) {
-        builder.onResolve({ filter: /\/lib\/workspace$/ }, () => ({ path: "workspace", namespace: "test" }));
+        builder.onResolve({ filter: /(?:\/lib\/workspace|^\.\/workspace)$/ }, () => ({ path: "workspace", namespace: "test" }));
         builder.onLoad({ filter: /.*/, namespace: "test" }, () => ({ contents: `export { MODES, PERMISSION_OPTIONS } from ${JSON.stringify(path.resolve("apps/desktop/src/renderer/src/lib/workspace.tsx"))}; export const useWorkspace = () => window.testWorkspace;`, loader: "js", resolveDir: process.cwd() }));
       } }],
     });
@@ -22,7 +22,7 @@ it("keeps renderer interactions recoverable and companion motion accessible", { 
     await writeFile(script, bundle.outputFiles[0].text);
     const petStyles = await readFile("apps/desktop/src/renderer/src/features/pet/pet.css", "utf8");
     const composerStyles = (await readFile("packages/ui/src/tokens.css", "utf8")) + (await readFile("apps/desktop/src/renderer/src/styles.css", "utf8")).replace('@import "@capsule/ui/tokens.css";', "");
-    await writeFile(path.join(directory, "index.html"), '<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'"><style id="pet-test-styles">' + petStyles + '</style><style id="composer-test-styles" media="not all">' + composerStyles + '</style><div id="root"></div>');
+    await writeFile(path.join(directory, "index.html"), '<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; img-src \'self\' data:"><style id="pet-test-styles">' + petStyles + '</style><style id="composer-test-styles" media="not all">' + composerStyles + '</style><div id="root"></div>');
     const env = { ...process.env };
     delete env.ELECTRON_RUN_AS_NODE;
     const result = await new Promise((resolve, reject) => {

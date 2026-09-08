@@ -6,6 +6,7 @@ export default tseslint.config(
     ignores: [
       "**/dist/**",
       "**/out/**",
+      "**/.vercel/**",
       "**/release/**",
       "**/node_modules/**",
       "apps/desktop/src/renderer/**",
