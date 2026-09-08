@@ -1,5 +1,8 @@
 import type { GitChange } from "@capsule/shared";
 
+/** Machine-read patches must not inherit terminal colors or custom prefixes. */
+export const CANONICAL_PATCH_FLAGS = ["--no-color", "--src-prefix=a/", "--dst-prefix=b/"];
+
 /** Porcelain v1 -z: renamed destination first, then original name. */
 export function parsePorcelain(text: string): GitChange[] {
   const fields = text.split("\0");

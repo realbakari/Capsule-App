@@ -4,7 +4,7 @@ import { lstat, unlink, realpath } from "node:fs/promises";
 import path from "node:path";
 import type { GitChange, GitStatus } from "@capsule/shared";
 import { git } from "./git-process.js";
-import { parsePorcelain, parseNumstat } from "./git-output.js";
+import { CANONICAL_PATCH_FLAGS, parsePorcelain, parseNumstat } from "./git-output.js";
 import { readBoundedFile } from "./bounded-read.js";
 
 export async function readGitStatus(workingDirectory?: string): Promise<GitStatus> {
@@ -132,7 +132,7 @@ export async function readGitDiff(workingDirectory: string, relative?: string): 
     const paths = relative ? ["--", relative] : [];
     const hasHead = (await git(workingDirectory, ["rev-parse", "--verify", "HEAD"])).ok;
     const result = hasHead
-      ? await git(workingDirectory, ["--literal-pathspecs", "diff", "--no-ext-diff", "--no-textconv", "HEAD", ...paths])
+      ? await git(workingDirectory, ["--literal-pathspecs", "diff", "--no-ext-diff", "--no-textconv", ...CANONICAL_PATCH_FLAGS, "HEAD", ...paths])
       : { ok: true, stdout: "", stderr: "" };
     if (!result.ok) throw new Error(result.stderr || "Could not read the combined working-tree diff.");
     const listing = await git(workingDirectory, ["--literal-pathspecs", "ls-files", "--others", "--exclude-standard", "-z", ...(!hasHead ? ["--cached"] : []), ...paths]);
@@ -147,7 +147,7 @@ export async function readGitDiff(workingDirectory: string, relative?: string): 
         if (!info) return ""; // Deleted before the first commit.
         if (!info.isFile() && !info.isSymbolicLink()) return "";
         if (info.size > 1_000_000) throw new Error(`New file ${name} is too large to review here. Inspect it before committing.`);
-        const patch = await git(workingDirectory, ["--literal-pathspecs", "diff", "--no-index", "--no-ext-diff", "--no-textconv", "--", "/dev/null", name]);
+        const patch = await git(workingDirectory, ["--literal-pathspecs", "diff", "--no-index", "--no-ext-diff", "--no-textconv", ...CANONICAL_PATCH_FLAGS, "--", "/dev/null", name]);
         // --no-index exits 1 when files differ, which is its successful result.
         if (!patch.stdout.startsWith("diff --git ")) throw new Error(patch.stderr || `Could not review ${name}.`);
         return patch.stdout;

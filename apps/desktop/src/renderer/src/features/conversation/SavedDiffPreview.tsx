@@ -3,11 +3,16 @@ import { createPortal } from "react-dom";
 import type { TouchedFile } from "../../lib/activity";
 import { highlight } from "../../lib/highlight";
 import { savedDiffPreview } from "../../lib/saved-diff-preview";
+import { formatUserError } from "../../lib/errors";
+
+export type SavedPatchReader = (path: string) => Promise<{ patch: string; patchTruncated?: boolean }>;
 
 /** One ephemeral preview per file list. No filesystem reads or retained cache. */
-export function useSavedDiffPreview(patch: string | undefined, onOpenDiff?: (path?: string) => void) {
+export function useSavedDiffPreview(patch: string | undefined, onOpenDiff?: (path?: string) => void, loadPatch?: SavedPatchReader) {
   const id = useId();
-  const [active, setActive] = useState<{ file: TouchedFile; anchor: HTMLElement; patch: string }>();
+  const [active, setActive] = useState<{ file: TouchedFile; anchor: HTMLElement; patch?: string; reader?: SavedPatchReader }>();
+  const [loaded, setLoaded] = useState<{ owner: typeof active; patch?: string; truncated?: boolean; error?: string }>();
+  const [retry, setRetry] = useState(0);
   const panel = useRef<HTMLDivElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const suppressedFocus = useRef<HTMLElement | undefined>(undefined);
@@ -16,8 +21,20 @@ export function useSavedDiffPreview(patch: string | undefined, onOpenDiff?: (pat
   const leave = () => { cancelTimer(); timer.current = setTimeout(() => setActive(undefined), 180); };
   useEffect(() => () => clearTimeout(timer.current), []);
   // An owner change cannot carry a preview into the next turn's snapshot.
-  const shown = active?.patch === patch ? active : undefined;
-  const content = useMemo(() => shown ? savedDiffPreview(shown.patch, shown.file.path) : undefined, [shown]);
+  const shown = active?.patch === patch && active?.reader === loadPatch ? active : undefined;
+  useEffect(() => {
+    if (!shown || shown.patch || !shown.reader) return;
+    let disposed = false;
+    setLoaded(undefined);
+    void shown.reader(shown.file.path).then((result) => {
+      if (!disposed) setLoaded({ owner: shown, patch: result.patch, truncated: result.patchTruncated });
+    }, (error) => { if (!disposed) setLoaded({ owner: shown, error: formatUserError(error) }); });
+    return () => { disposed = true; };
+  }, [shown, retry]);
+  const result = loaded?.owner === shown ? loaded : undefined;
+  const text = shown?.patch || result?.patch;
+  const loading = Boolean(shown?.reader && !shown.patch && !result);
+  const content = useMemo(() => shown && text ? savedDiffPreview(text, shown.file.path) : undefined, [shown, text]);
   const [position, setPosition] = useState({ left: 12, top: 12, maxHeight: 440, width: 720 });
 
   useLayoutEffect(() => {
@@ -71,11 +88,11 @@ export function useSavedDiffPreview(patch: string | undefined, onOpenDiff?: (pat
   }, [shown]);
 
   const triggerProps = (file: TouchedFile): HTMLAttributes<HTMLElement> => {
-    if (patch === undefined || !onOpenDiff) return {};
+    if ((!patch && !loadPatch) || !onOpenDiff) return {};
     const open = (anchor: HTMLElement, delay: number) => {
       cancelTimer();
       timer.current = setTimeout(() => {
-        if (anchor.isConnected) setActive({ file, anchor, patch });
+        if (anchor.isConnected) setActive({ file, anchor, patch, reader: loadPatch });
       }, delay);
     };
     return {
@@ -107,7 +124,9 @@ export function useSavedDiffPreview(patch: string | undefined, onOpenDiff?: (pat
         {typeof shown.file.added === "number" && <span className="diffstat"><span className="added">+{shown.file.added}</span><span className="removed">−{shown.file.removed ?? 0}</span></span>}
       </header>
       <div className="saved-diff-preview-code" tabIndex={0} aria-label="Saved diff excerpt">
-        {!content ? <p>No text diff is available for this file in this saved snapshot.</p>
+        {loading ? <p role="status">Loading saved changes…</p>
+          : result?.error ? <p role="alert">{result.error} <button type="button" className="ghost" onClick={() => setRetry((value) => value + 1)}>Retry preview</button></p>
+          : !content ? <p>{result?.truncated ? "This file exceeds the preview limit. Inspect the saved checkpoint in Git for the complete change." : "No text diff is available for this file in this saved snapshot."}</p>
           : content.file.binary ? <p>Binary file changed. There is no text preview.</p>
           : content.file.hunks.length === 0 ? <p>{content.truncated ? "Text is outside this excerpt. Open the file diff to inspect it." : content.file.status === "renamed" ? `Renamed from ${content.file.oldPath}. No text changes.` : "File metadata changed. No text changes."}</p>
           : content.file.hunks.map((hunk, index) => <Fragment key={index}>
@@ -120,7 +139,7 @@ export function useSavedDiffPreview(patch: string | undefined, onOpenDiff?: (pat
           </Fragment>)}
       </div>
       <footer className="saved-diff-preview-footer">
-        <span>{content?.truncated ? "Excerpt · saved at this turn" : "Saved at this turn"}</span>
+        <span>{content?.truncated || result?.truncated ? "Excerpt · saved at this turn" : "Saved at this turn"}</span>
         <button type="button" className="ghost" onClick={() => { close(); onOpenDiff?.(shown.file.path); }}>Open file diff</button>
       </footer>
     </div>, document.body,

@@ -39,7 +39,6 @@ import {
   inRepository,
   captureCheckpoint,
   checkoutBranch as checkoutGitBranch,
-  checkpointNumstat,
   checkpointRef,
   cloneRepository as cloneGitRepository,
   commitAll,
@@ -47,7 +46,8 @@ import {
   createBranch as createGitBranch,
   createPullRequest as openPullRequest,
   detectSourceControlTools,
-  diffCheckpoints,
+  previewCheckpoint,
+  readBoundedFile,
   hasCheckpoint,
   discardFile,
   clearFileIndex,
@@ -1511,6 +1511,16 @@ export class CapsuleEngine {
       this.repos.updateSession(session);
     });
     return this.repos.listSessions(projectId).filter((session) => session.pinned);
+  }
+
+  /** Only persisted attachments can be read through the transcript preview channel. */
+  async readMessageImage(messageId: string, index: number): Promise<Buffer | undefined> {
+    if (!Number.isSafeInteger(index) || index < 0 || index >= 8) return undefined;
+    const attachment = this.repos.getMessageAttachments(messageId)[index];
+    if (!attachment?.mimeType?.startsWith("image/")) return undefined;
+    // Recheck type/size on the open descriptor: the original file may have
+    // disappeared, grown or been replaced since this message was sent.
+    return readBoundedFile(attachment.path, 20 * 1024 * 1024);
   }
 
   validateAttachments(
@@ -3032,7 +3042,7 @@ export class CapsuleEngine {
   }
 
   /** The patch a single turn produced, from its checkpoint back to the previous one. */
-  async turnDiff(runId: string): Promise<import("@capsule/shared").TurnDiffResult> {
+  async turnDiff(runId: string, options?: import("@capsule/shared").TurnDiffOptions): Promise<import("@capsule/shared").TurnDiffResult> {
     const run = this.repos.getRun(runId);
     if (!run?.checkpointRef) return { patch: "", files: [], available: false };
     const session = this.repos.getSession(run.sessionId);
@@ -3059,11 +3069,7 @@ export class CapsuleEngine {
     if (!(await hasCheckpoint(cwd, previous)) || !(await hasCheckpoint(cwd, run.checkpointRef))) {
       throw new Error("A recorded checkpoint could not be read. Retry after checking that the repository and its checkpoint refs are available.");
     }
-    return {
-      available: true,
-      patch: await diffCheckpoints(cwd, run.checkpointRef, previous),
-      files: await checkpointNumstat(cwd, run.checkpointRef, previous),
-    };
+    return previewCheckpoint(cwd, run.checkpointRef, previous, options);
   }
 
   /** Put the worktree back to how a turn left it. */

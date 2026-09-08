@@ -41,7 +41,7 @@ const api = {
   hostState: () => ipcRenderer.invoke(IPC_CHANNELS.hostState),
   sourceControlTools: () => ipcRenderer.invoke(IPC_CHANNELS.sourceControlTools),
   usageSummary: (days: number) => ipcRenderer.invoke(IPC_CHANNELS.usageSummary, days),
-  turnDiff: (runId: string) => ipcRenderer.invoke(IPC_CHANNELS.turnDiff, runId),
+  turnDiff: (runId: string, options?: import("@capsule/shared").TurnDiffOptions): Promise<import("@capsule/shared").TurnDiffResult> => ipcRenderer.invoke(IPC_CHANNELS.turnDiff, runId, options),
   restoreTurn: (runId: string) => ipcRenderer.invoke(IPC_CHANNELS.restoreTurn, runId),
   fetchSkillDetail: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.fetchSkillDetail, id),
   listSessions: (projectId?: string) => ipcRenderer.invoke(IPC_CHANNELS.listSessions, projectId),
@@ -53,6 +53,7 @@ const api = {
   archiveSession: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.archiveSession, id),
   deleteSession: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.deleteSession, id),
   listMessages: (sessionId: string) => ipcRenderer.invoke(IPC_CHANNELS.listMessages, sessionId),
+  messageImage: (messageId: string, index: number): Promise<string | undefined> => ipcRenderer.invoke(IPC_CHANNELS.messageImage, messageId, index),
   listMessagePage: (
     sessionId: string,
     options?: { limit?: number; before?: { createdAt: string; id: string; }; },

@@ -1012,6 +1012,17 @@ function registerIpc(): void {
   handleArgs(IPC_CHANNELS.listMessages, [id], (sessionId: string) =>
     requireEngine().listMessages(sessionId),
   );
+  handleArgs(IPC_CHANNELS.messageImage, [id, num], async (messageId: string, index: number) => {
+    const bytes = await requireEngine().readMessageImage(messageId, index);
+    if (!bytes) return undefined;
+    const image = nativeImage.createFromBuffer(bytes);
+    if (image.isEmpty()) return undefined;
+    const { width, height } = image.getSize();
+    if (!width || !height) return undefined;
+    const ratio = Math.min(1, 320 / width, 180 / height);
+    const thumbnail = image.resize({ width: Math.max(1, Math.round(width * ratio)), height: Math.max(1, Math.round(height * ratio)), quality: "good" }).toDataURL();
+    return thumbnail.length <= 128 * 1024 ? thumbnail : undefined;
+  });
   handle(IPC_CHANNELS.listMessagePage, (sessionId, options) =>
     requireEngine().listMessagePage(
       String(sessionId),
@@ -1580,7 +1591,11 @@ function registerIpc(): void {
   handleArgs(IPC_CHANNELS.usageSummary, [num], (days: number) =>
     requireEngine().usageSummary(days),
   );
-  handleArgs(IPC_CHANNELS.turnDiff, [id], (runId: string) => requireEngine().turnDiff(runId));
+  handle(IPC_CHANNELS.turnDiff, (runId, options) => {
+    const value = options as { relative?: unknown; summaryOnly?: unknown } | undefined;
+    const channel = IPC_CHANNELS.turnDiff;
+    return requireEngine().turnDiff(id(runId, channel, 0), { relative: optStr(value?.relative, channel, 1), summaryOnly: optBool(value?.summaryOnly, channel, 1) });
+  });
   handleArgs(IPC_CHANNELS.restoreTurn, [id], (runId: string) =>
     requireEngine().restoreTurn(runId),
   );

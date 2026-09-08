@@ -18,6 +18,21 @@ export function git(cwd: string, args: string[], env = process.env): Promise<{ o
   });
 }
 
+/** Display-only reads may return an excerpt. Mutating Git operations must use git(). */
+export function gitExcerpt(cwd: string, args: string[], maxBytes: number): Promise<{ stdout: string; truncated: boolean }> {
+  const end = localTimings.start("git.diff");
+  return new Promise((resolve, reject) => {
+    execFile("git", args, { cwd, env: { ...process.env, GIT_TERMINAL_PROMPT: "0" }, encoding: "utf8", timeout: 30_000, maxBuffer: maxBytes }, (error, stdout, stderr) => {
+      // Node stops our child at the limit. A stderr overflow or a timeout is
+      // still a failure, never evidence of a successfully read patch.
+      const truncated = error?.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" && error.message.startsWith("stdout maxBuffer");
+      end(Boolean(error) && !truncated);
+      if (error && !truncated) reject(new Error(stderr.trim() || error.message));
+      else resolve({ stdout, truncated });
+    });
+  });
+}
+
 /** One queue per Git common directory: linked worktrees share refs and locks. */
 export class RepositoryQueue {
   private tails = new Map<string, Promise<unknown>>();

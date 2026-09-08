@@ -1,4 +1,4 @@
-import { parseUnifiedDiff, type Run, type RunEvent, type RunEventPage, type TurnDiffResult } from "@capsule/shared";
+import { parseUnifiedDiff, type Run, type RunEvent, type RunEventPage, type TurnDiffOptions, type TurnDiffResult } from "@capsule/shared";
 import { extractTouchedFiles, type TouchedFile } from "./activity";
 import type { Turn } from "./turns";
 
@@ -60,7 +60,7 @@ export function outcomeFiles(diff: TurnDiffResult | undefined, events: readonly 
     return diff.files.map((file) => ({
       ...file,
       // Removing lines does not mean the file was deleted.
-      action: statuses.get(file.path) === "deleted" ? "deleted" : statuses.get(file.path) === "added" ? "created" : "modified",
+      action: (file.status ?? statuses.get(file.path)) === "deleted" ? "deleted" : (file.status ?? statuses.get(file.path)) === "added" ? "created" : "modified",
     }));
   }
   // Repository status is deliberately not an input: even a read of a dirty
@@ -70,14 +70,16 @@ export function outcomeFiles(diff: TurnDiffResult | undefined, events: readonly 
 }
 
 export async function loadTurnOutcome(run: Run, cwd: string | undefined, reader: {
-  turnDiff: (runId: string) => Promise<TurnDiffResult>;
+  turnDiff: (runId: string, options?: TurnDiffOptions) => Promise<TurnDiffResult>;
   listRunEventPage: (runId: string) => Promise<RunEventPage>;
-}): Promise<{ files: TouchedFile[]; patch?: string; partial?: boolean }> {
-  const diff = run.checkpointRef ? await reader.turnDiff(run.id) : undefined;
+}): Promise<{ files: TouchedFile[]; patch?: string; partial?: boolean; saved?: boolean; filesTruncated?: boolean }> {
+  const diff = run.checkpointRef ? await reader.turnDiff(run.id, { summaryOnly: true }) : undefined;
   const page = !diff || diff.available === false ? await reader.listRunEventPage(run.id) : undefined;
   return {
     files: outcomeFiles(diff, page?.events ?? [], run.id, cwd),
     patch: diff?.available !== false ? diff?.patch : undefined,
+    saved: diff?.available === true,
+    filesTruncated: diff?.filesTruncated,
     partial: page ? page.hasMore || page.events.some((event) => event.data?.payloadTruncated === true) : false,
   };
 }

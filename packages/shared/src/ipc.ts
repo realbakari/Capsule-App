@@ -15,6 +15,7 @@ export const IPC_CHANNELS = {
   deleteSession: "capsule:deleteSession",
   listMessages: "capsule:listMessages",
   listMessagePage: "capsule:listMessagePage",
+  messageImage: "capsule:messageImage",
   sendMessage: "capsule:sendMessage",
   startRun: "capsule:startRun",
   stopRun: "capsule:stopRun",

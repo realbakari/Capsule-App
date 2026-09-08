@@ -69,7 +69,7 @@ describe("turn file evidence", () => {
   it("loads the named run only, and avoids event fallback for an empty diff", async () => {
     const reader = { turnDiff: vi.fn().mockResolvedValue({ patch: "", files: [], available: true }), listRunEventPage: vi.fn().mockResolvedValue({ events: [event("old")], hasMore: true }) };
     expect((await loadTurnOutcome(run("r", 1), "/repo", reader)).files).toEqual([]);
-    expect(reader.turnDiff).toHaveBeenCalledWith("r");
+    expect(reader.turnDiff).toHaveBeenCalledWith("r", { summaryOnly: true });
     expect(reader.listRunEventPage).not.toHaveBeenCalled();
     reader.turnDiff.mockResolvedValue({ patch: "", files: [], available: false });
     expect((await loadTurnOutcome(run("r", 1), "/repo", reader)).partial).toBe(true);

@@ -28,6 +28,7 @@ import { TurnOutcome } from "./TurnOutcome";
 import { TurnVerification } from "./TurnVerification";
 import { TurnFilesCard } from "./TurnFilesCard";
 import { MessageBody } from "./MessageBody";
+import { MessageAttachments } from "./MessageAttachments";
 import { VirtualTurns } from "./VirtualTurns";
 
 /*
@@ -64,23 +65,8 @@ const MessageRow = memo(function MessageRow({
         </span>
       </div>
       {message.content ? <MessageBody content={message.content} /> : null}
-      {message.attachments?.length ? (
-        <div className="message-attachments">
-          {message.attachments.map((attachment) => (
-            <button
-              type="button"
-              className="message-attachment"
-              key={attachment.path}
-              title={attachment.path}
-              onClick={() => onOpenAttachment(attachment.path)}
-            >
-              <FileIcon size={13} />
-              <span>{attachment.name}</span>
-              <small>{Math.max(1, Math.ceil(attachment.size / 1024))} KB</small>
-            </button>
-          ))}
-        </div>
-      ) : null}
+      {message.contentTruncated ? <p className="faint">Display excerpt. The full message is retained in local history.</p> : null}
+      <MessageAttachments message={message} onOpen={onOpenAttachment} />
     </div>
   );
 });

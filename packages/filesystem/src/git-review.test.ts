@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, it } from "vitest";
@@ -48,4 +48,23 @@ it("reviews new and staged files before the first commit", async () => {
   writeFileSync(path.join(root, "staged.ts"), "staged\n");
   await stageFile(root, "staged.ts");
   expect(parseUnifiedDiff(await readGitDiff(root)).map((file) => file.path).sort()).toEqual(["new.ts", "staged.ts"]);
+});
+
+it("preserves metadata paths for working-tree and untracked diffs under custom Git presentation", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "capsule-review-prefix-"));
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: root, stdio: "pipe" });
+  try {
+    git("init", "-q");
+    git("config", "user.name", "Test"); git("config", "user.email", "test@example.test");
+    git("config", "core.filemode", "true");
+    git("config", "diff.noprefix", "true"); git("config", "color.ui", "always");
+    writeFileSync(path.join(root, "script.sh"), "echo fixture\n");
+    git("add", "."); git("commit", "-qm", "initial");
+    chmodSync(path.join(root, "script.sh"), 0o755);
+    writeFileSync(path.join(root, "empty file.txt"), "");
+    writeFileSync(path.join(root, "binary.dat"), Buffer.from([0, 1, 0]));
+    const patch = await readGitDiff(root);
+    expect(parseUnifiedDiff(patch).map((file) => file.path).sort()).toEqual(["binary.dat", "empty file.txt", "script.sh"]);
+    expect(patch).not.toContain("\u001b[");
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });

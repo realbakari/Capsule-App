@@ -7,6 +7,7 @@ import { resolveProjectPath } from "./contained-path.js";
 import { readBoundedFileSync } from "./bounded-read.js";
 
 export { readBoundedFile, readBoundedFileSync, FileTooLargeError } from "./bounded-read.js";
+export { previewCheckpoint } from "./checkpoint-preview.js";
 
 export type { FileEntry };
 export { inRepository } from "./git-process.js";
@@ -107,7 +108,7 @@ export class FilesystemAdapter {
 
   list(relative = "."): FileEntry[] {
     const dir = this.resolve(relative);
-    if (!fs.existsSync(dir)) return [];
+    // Missing or inaccessible folders are failed reads, not empty listings.
     return fs.readdirSync(dir, { withFileTypes: true }).filter((entry) => entry.isDirectory() || entry.isFile()).map((entry) => ({
       name: entry.name,
       path: path.posix.join(relative === "." ? "" : relative.replaceAll("\\", "/"), entry.name).replace(/^\//, ""),

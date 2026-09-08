@@ -632,9 +632,18 @@ export interface EvaluationResult {
   createdAt: string;
 }
 
+export interface TurnDiffOptions {
+  /** Load only the bounded file list, without generating a patch. */
+  summaryOnly?: boolean;
+  /** A literal repository-relative filename, scoped to this saved turn. */
+  relative?: string;
+}
+
 export interface TurnDiffResult {
   patch: string;
-  files: Array<{ path: string; added: number; removed: number; }>;
+  files: Array<{ path: string; added?: number; removed?: number; status?: "added" | "deleted" | "modified" }>;
+  patchTruncated?: boolean;
+  filesTruncated?: boolean;
   /** False when a pair of saved snapshots is unavailable; never a live diff. */
   available?: boolean;
 }

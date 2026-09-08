@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { git } from "./git-process.js";
+import { CANONICAL_PATCH_FLAGS } from "./git-output.js";
 import type { WorkspaceRevision } from "@capsule/shared";
 
 /**
@@ -141,7 +142,7 @@ export async function diffCheckpoints(
   return inRepository(cwd, async () => {
 
     if (!(await hasCheckpoint(cwd, to))) throw new Error("The saved checkpoint is unavailable. Refresh and try again.");
-    const args = ["diff"];
+    const args = ["--literal-pathspecs", "diff", "--no-ext-diff", "--no-textconv", ...CANONICAL_PATCH_FLAGS];
     if (options?.ignoreWhitespace) args.push("-w");
     if (from && !(await hasCheckpoint(cwd, from))) throw new Error("The base checkpoint is unavailable. Refresh and try again.");
     if (from) args.push(from, to);

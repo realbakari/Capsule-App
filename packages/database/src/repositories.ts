@@ -295,6 +295,11 @@ export class CapsuleRepositories {
       });
   }
 
+  getMessageAttachments(messageId: string): NonNullable<ChatMessage["attachments"]> {
+    const row = this.db.sqlite.prepare("SELECT attachments FROM messages WHERE id = ?").get(messageId) as { attachments: string } | undefined;
+    return row ? parseJson(row.attachments, []) : [];
+  }
+
   listMessages(sessionId: string): ChatMessage[] {
     const rows = this.db.sqlite
       .prepare(
