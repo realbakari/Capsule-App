@@ -145,6 +145,15 @@ the database.
 Cancellation settles pending requests and waits for the active prompt to end;
 timeout does not pretend the process stopped. Close terminates only the owned
 child and awaits exit. Terminal run records reject late frames.
+Startup rereads the admitted run after awaiting a harness; a completed Stop is
+not overwritten by late startup success or failure. Switching agents must close
+the previous owned process successfully before replacing its identity. Closing
+for a switch excludes the new unsent turn from cancellation.
+Input-pipe errors reject pending ACP requests and close only that owned child;
+concurrent closes share teardown. Tool titles/status are normalized before
+emission, with 256-code-unit opaque IDs (oversized IDs are omitted, never
+truncated), 512-code-unit titles and 64-code-unit status labels. The recent-title
+cache retains at most 256 entries, below 768 KiB of UTF-8 string payload.
 
 Migration 17 stores the native session ID together with harness, resolved cwd and
 preset launch signature in `sessions.direct_session`. Recovery clears stale

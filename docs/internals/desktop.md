@@ -788,6 +788,29 @@ redirecting to a release page. See [Update delivery](updating.md).
 
 ### Scoped state and bounded history
 
+History loading/error state uses the same selection scope and request generation
+as message pages. Empty welcome UI appears only after a successful read; retry
+errors stay with the selected thread. Refreshes retain already visible messages.
+Timeline following resets on thread selection and virtual rows are keyed by
+thread so a previous scroll anchor cannot reposition a different conversation.
+Message and code copying share an acknowledged, retryable clipboard control
+with bounded feedback timers and stale completion guards.
+
+Command and file discovery share `SearchDialog`: grouped, scroll-bounded rows,
+combobox/listbox semantics, keyboard selection, focus containment/restoration,
+and recoverable asynchronous actions. Queries are debounced and stale replies
+are discarded. File results are scoped to project, active checkout and query;
+the checkout is passed through the file-search bridge. Desktop-only commands
+are labelled unavailable in paired viewers. Search errors do not masquerade as
+empty results.
+
+Saved turn diff base selection uses a single checkpoint-only SQL projection,
+scoped to session and recorded cwd. Equal timestamps use insertion order.
+Migration 18 indexes that lookup; it does not hydrate historical prompts/results.
+Atomic editor replacement preserves existing regular-file permission bits,
+including executable/private modes, unless the caller explicitly sets a mode.
+The temporary file is exclusively created beside the target before rename.
+
 Startup cancels interrupted `approval_required` runs alongside running, waiting
 and queued runs, and cancels persisted pending approvals whose callbacks no
 longer exist. Closed harness sessions cannot leave an orphan approval blocking
