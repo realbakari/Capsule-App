@@ -34,6 +34,7 @@ import {
   webContents,
 } from "electron";
 import type { CapsuleEngine } from "@capsule/core";
+import { isDirectSessionKey } from "@capsule/acp";
 import { mergePath, readLoginShellEnvironment } from "@capsule/harness";
 import electronUpdater from "electron-updater";
 import { readNavigableUrl, type BrowserTarget } from "./browser-tools";
@@ -1496,6 +1497,10 @@ function registerIpc(): void {
     if ((command as { kind?: unknown }).kind === "close") { backgroundBrowsers.close(owner); return { exists: false }; }
     const thread = requireEngine().listSessions().find((item) => item.id === owner && item.state === "active");
     if (!thread) throw new Error("Select an active conversation first.");
+    if ((command as { kind?: unknown; allowed?: unknown }).kind === "agent" && (command as { allowed?: unknown }).allowed === true
+      && (!thread.harnessId || !isDirectSessionKey(thread.openclawSessionKey))) {
+      throw new Error("Start a direct agent in this thread before allowing background control.");
+    }
     browserAccess.revoke(owner);
     return backgroundBrowsers.control(owner, command as import("@capsule/shared").BackgroundBrowserCommand, thread.harnessId);
   });
@@ -1514,6 +1519,14 @@ function registerIpc(): void {
     if (!guest || guest.isDestroyed()) throw new Error("That browser page is no longer open.");
     const { clearBrowserData } = await import("./browser-data.js");
     await clearBrowserData(guest.session, kind);
+    return true;
+  });
+  handle(IPC_CHANNELS.copyBrowserScreenshot, async (id) => {
+    if (typeof id !== "number" || !browserGuestIds.has(id)) throw new Error("That browser page is no longer open.");
+    const guest = webContents.fromId(id);
+    if (!guest || guest.isDestroyed()) throw new Error("That browser page is no longer open.");
+    const { copyBrowserScreenshot } = await import("./browser-clipboard.js");
+    await copyBrowserScreenshot(guest, (image) => clipboard.writeImage(image));
     return true;
   });
   handle(IPC_CHANNELS.saveClipboardImage, async () => {

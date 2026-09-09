@@ -79,7 +79,9 @@ in-app browser, or type another HTTP or HTTPS address above the list. The
 toolbar supports back, forward, reload, an interactive element inspector,
 screenshot capture to clipboard, opening in the system browser, zoom controls,
 DevTools, and cache/cookie clearing. The Browser home keeps recently used pages
-above the live-server list.
+above the live-server list. Screenshot capture copies an actual image that can
+be pasted into an image-aware app. If capture fails, it shows an error and leaves
+the clipboard unchanged; it never substitutes image data as text.
 
 If server discovery fails, the last successful list stays visible with an error
 and **Retry**. A failed scan is not reported as “no servers”. Page errors from
@@ -97,7 +99,9 @@ crashed or failed page offers **Retry page**. Invalid saved history is ignored.
 
 Direct agents that accept HTTP MCP can inspect, navigate, click, replace text,
 select options, press keys, scroll, capture the viewport and read recent page
-diagnostics. Open this thread's Browser panel and choose **Allow agent control**
+diagnostics. Open this thread's Browser panel, open **Page control off** (the shield
+at narrow widths) in its toolbar,
+and choose **Allow agent control**
 first. This permits access to visible signed-in pages, so enable it only when
 you want the agent to interact with them. **Revoke control**, switching threads,
 closing or hiding Browser, or leaving Chat ends access. Agents cannot silently
@@ -117,7 +121,8 @@ an embedded browser.
 
 ### Background pages and shared previews
 
-In **Browser**, expand **Background page**, enter an HTTP(S) address in the
+In **Browser**, open the **Page control off/on** toolbar menu and expand **Background
+page**, enter an HTTP(S) address in the
 address bar, then choose **Start from address bar**. This starts a separate
 temporary page for this conversation. It does not copy sign-ins from the visible
 browser. You can keep using Capsule while it runs; it closes after 30 minutes,
@@ -128,7 +133,9 @@ close background pages before restarting to install an update.
 **Allow background agent control** lets a compatible direct agent target this
 page instead of the visible browser. This grant survives panel changes, but
 ends when revoked, when the page closes or when the owning agent process exits.
+Start a compatible direct agent in this thread before enabling the grant.
 An incompatible agent cannot use it; manual browsing remains available.
+Background pages support WebSocket connections used by live apps and reloaders.
 
 **Share preview with paired viewers** separately exposes its URL and screenshots
 to your paired devices. Page content may be sensitive. **Stop sharing preview**

@@ -24,6 +24,7 @@ describe("ipc scopes", () => {
       "terminalInput",
       "terminalAcknowledge",
       "clearBrowserData",
+      "copyBrowserScreenshot",
       "registerBrowserView",
       "setBrowserControl",
       "controlBackgroundBrowser",

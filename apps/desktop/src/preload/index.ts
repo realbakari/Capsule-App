@@ -165,6 +165,8 @@ const api = {
     ipcRenderer.invoke(IPC_CHANNELS.setBrowserControl, threadId, allowed),
   clearBrowserData: (webContentsId: number, kind: "cache" | "storage") =>
     ipcRenderer.invoke(IPC_CHANNELS.clearBrowserData, webContentsId, kind),
+  copyBrowserScreenshot: (webContentsId: number) =>
+    ipcRenderer.invoke(IPC_CHANNELS.copyBrowserScreenshot, webContentsId),
   togglePet: (visible?: boolean) => ipcRenderer.invoke(IPC_CHANNELS.togglePet, visible),
   getPetState: (): Promise<{ visible: boolean; summary: import("@capsule/shared").AttentionSummary }> => ipcRenderer.invoke(IPC_CHANNELS.getPetState),
   setPetExpanded: (expanded: boolean) => ipcRenderer.invoke(IPC_CHANNELS.setPetExpanded, expanded),

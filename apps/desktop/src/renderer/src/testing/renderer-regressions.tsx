@@ -337,12 +337,15 @@ window.runRendererRegressions = async () => {
   const external: string[] = [];
   const registered: Array<number | undefined> = [];
   const browserGrants: Array<[string, boolean]> = [];
+  let copiedBrowserImage = 0;
+  let captureFails = false;
   window.testWorkspace = {
     session: { id: "browser-a", harnessId: "grok", openclawSessionKey: "direct:acp:grok:browser", harnessState: "waiting" },
     agentId: "grok", harnesses: [{ id: "grok", runtimeRoute: "direct" }],
     api: {
       registerBrowserView: async (id?: number) => { registered.push(id); },
       setBrowserControl: async (id: string, enabled: boolean) => { browserGrants.push([id, enabled]); },
+      copyBrowserScreenshot: async (id: number) => { assert(id === 1, "Screenshot used another page"); if (captureFails) throw new Error("Capture unavailable"); copiedBrowserImage++; },
     },
   };
   root.render(<BrowserFixture onOpenExternal={(url) => external.push(url)} />);
@@ -352,6 +355,13 @@ window.runRendererRegressions = async () => {
   assert(document.querySelector<HTMLButtonElement>('button[aria-label="Capture screenshot"]')?.disabled, "Screenshot was enabled before guest readiness");
   guest.dispatchEvent(new Event("dom-ready"));
   await until(() => !document.querySelector<HTMLButtonElement>('button[aria-label="Capture screenshot"]')?.disabled);
+  document.querySelector<HTMLButtonElement>('button[aria-label="Capture screenshot"]')!.click();
+  await until(() => copiedBrowserImage === 1 && document.body.textContent?.includes("Screenshot copied to clipboard"));
+  captureFails = true;
+  document.querySelector<HTMLButtonElement>('button[aria-label="Capture screenshot"]')!.click();
+  await until(() => document.body.textContent?.includes("Could not copy screenshot: Capture unavailable"));
+  document.querySelector<HTMLElement>('.browser-controls > summary')!.click();
+  await until(() => document.querySelector<HTMLDetailsElement>('.browser-controls')!.open);
   button("Allow agent control").click();
   await until(() => document.body.textContent?.includes("Revoke control"));
   assert(browserGrants[0]?.[0] === "browser-a" && browserGrants[0]?.[1] === true, "Browser access was not granted to its thread");
@@ -362,6 +372,12 @@ window.runRendererRegressions = async () => {
   browserPane.style.width = "400px"; browserPane.style.height = "420px";
   await new Promise((resolve) => requestAnimationFrame(resolve));
   assert(document.querySelector('.preview-actions-cluster')!.getBoundingClientRect().right <= browserPane.getBoundingClientRect().right + 1, "Narrow browser toolbar overflowed");
+  const chrome = document.querySelector<HTMLElement>('.preview-chrome-row')!;
+  const openHeight = chrome.getBoundingClientRect().height;
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  await until(() => !document.querySelector<HTMLDetailsElement>('.browser-controls')!.open);
+  assert(chrome.getBoundingClientRect().height === openHeight && openHeight < 90, `Browser permission details consumed page height: open=${openHeight}, closed=${chrome.getBoundingClientRect().height}, text=${getComputedStyle(document.documentElement).fontSize}`);
+  assert(!document.querySelector('.browser-access-row'), "Browser still reserves a full row for permission details");
   browserStyles.media = "not all";
   guest.dispatchEvent(Object.assign(new Event("did-navigate"), { url: "https://example.test/committed", isMainFrame: true }));
   await until(() => document.querySelector<HTMLInputElement>('.browser-address-input')?.value === "https://example.test/committed" || document.querySelector<HTMLInputElement>('input')?.value === "https://example.test/committed");

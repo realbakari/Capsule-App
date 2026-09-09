@@ -6,6 +6,8 @@ import { callBrowserTool } from "../browser-mcp";
 import { observeBrowser, browserDiagnostics } from "../browser-diagnostics";
 import { secureBrowserSession } from "../browser-security";
 import { BackgroundBrowsers } from "../background-browsers";
+import { copyBrowserScreenshot } from "../browser-clipboard";
+import { createHash } from "node:crypto";
 
 // No real project, profile, website, agent or sign-in is involved in this test.
 const fixture = `<!doctype html><html><body>
@@ -20,6 +22,14 @@ const fixture = `<!doctype html><html><body>
 
 void app.whenReady().then(async () => {
   const server = createServer((_request, response) => { response.setHeader("content-type", "text/html"); response.end(fixture); });
+  server.on("upgrade", (request, socket) => {
+    const key = request.headers["sec-websocket-key"];
+    if (!key) { socket.destroy(); return; }
+    const accept = createHash("sha1").update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`).digest("base64");
+    socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);
+    socket.on("error", () => socket.destroy());
+    socket.on("data", () => socket.end());
+  });
   const watchdog = setTimeout(() => app.exit(1), 20_000);
   const window = new BrowserWindow({ show: false, width: 900, height: 700, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
   const page = window.webContents;
@@ -58,6 +68,14 @@ void app.whenReady().then(async () => {
     const image = await browserScreenshot(target);
     assert(image.ok, image.detail);
     assert(image.image?.data && image.image.data.length < 2_000_000);
+    // Exercise the native image path without modifying the user's clipboard.
+    let copiedImage = false;
+    await copyBrowserScreenshot(page, (pixels) => {
+      assert(!pixels.isEmpty());
+      assert.equal(pixels.toPNG().subarray(1, 4).toString(), "PNG");
+      copiedImage = true;
+    });
+    assert(copiedImage, "Screenshot did not reach the native image clipboard path");
     await browserSnapshot(target);
     assert(!(await callBrowserTool(target, "browser_click", ref("Save"))).ok, "Old snapshot was reused");
     await page.loadURL(url + "next");
@@ -80,6 +98,8 @@ void app.whenReady().then(async () => {
     assert.deepEqual(await background.inspect("thread-a", true), { exists: true, remoteShared: false });
     assert.deepEqual(await background.inspect("thread-b", true), { exists: false });
     assert.throws(() => background.target("thread-a", "fixture-agent")!.contents(), /access is off/);
+    await assert.rejects(background.control("thread-a", { kind: "agent", allowed: true }), /Start a direct agent/);
+    assert.equal((await background.inspect("thread-a", false)).agentAllowed, false);
     await background.control("thread-a", { kind: "agent", allowed: true }, "fixture-agent");
     const backgroundTarget = background.target("thread-a", "fixture-agent")!;
     assert((await browserSnapshot(backgroundTarget)).ok, "Granted background page was not usable");
@@ -89,6 +109,13 @@ void app.whenReady().then(async () => {
     const shared = await background.inspect("thread-a", true);
     assert(shared.image && shared.url === url, "Explicit sharing did not expose a snapshot");
     const hiddenContents = backgroundTarget.contents()!;
+    const connected = await hiddenContents.executeJavaScript(`new Promise(resolve => {
+      const socket = new WebSocket(${JSON.stringify(url.replace("http:", "ws:"))});
+      const timer = setTimeout(() => { socket.close(); resolve(false); }, 2000);
+      socket.onopen = () => { clearTimeout(timer); socket.close(); resolve(true); };
+      socket.onerror = () => { clearTimeout(timer); resolve(false); };
+    })`);
+    assert(connected, "Background preview blocked its WebSocket connection");
     const hiddenPartition = hiddenContents.session;
     const capturePage = hiddenContents.capturePage.bind(hiddenContents);
     const pixels = await capturePage();

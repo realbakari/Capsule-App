@@ -72,6 +72,7 @@ export const IPC_CHANNELS = {
   inspectBackgroundBrowser: "capsule:inspectBackgroundBrowser",
   readSharedBrowser: "capsule:readSharedBrowser",
   clearBrowserData: "capsule:clearBrowserData",
+  copyBrowserScreenshot: "capsule:copyBrowserScreenshot",
   /* The floating pet: show or hide it, and open a thread from it. */
   togglePet: "capsule:togglePet",
   getPetState: "capsule:getPetState",

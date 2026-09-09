@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { LocalServer } from "@capsule/shared";
 import { harnessCapabilities } from "@capsule/shared";
 import { BackgroundBrowser } from "./BackgroundBrowser";
+import { BrowserControls } from "./BrowserControls";
 // Electron's custom element reads a string attribute. React drops boolean
 // `true` on this non-standard attribute despite WebViewHTMLAttributes' type.
 const guestAttributes: Record<string, string> = { allowpopups: "true" };
@@ -460,22 +461,10 @@ export function EmbeddedBrowser({
     if (!view || !currentUrl) return;
 
     try {
-      const image = await view.capturePage();
-      const dataUrl = image.toDataURL();
-      const res = await fetch(dataUrl);
-      const blob = await res.blob();
-      await navigator.clipboard.write([
-        new ClipboardItem({ [blob.type]: blob }),
-      ]);
+      await api.copyBrowserScreenshot(view.getWebContentsId());
       showToast("Screenshot copied to clipboard");
-    } catch {
-      try {
-        const image = await view.capturePage();
-        await navigator.clipboard.writeText(image.toDataURL());
-        showToast("Image clipboard unavailable — copied the screenshot’s data URL as text");
-      } catch {
-        showToast("Unable to capture screenshot");
-      }
+    } catch (failure) {
+      showToast(`Could not copy screenshot: ${failure instanceof Error ? failure.message : String(failure)}`);
     }
   };
 
@@ -528,15 +517,6 @@ export function EmbeddedBrowser({
 
   return (
     <div className="codex-browser-pane">
-      <BackgroundBrowser desktop url={normalizedBrowserUrl(address)} available={browserCapability.state !== "unavailable"}
-        active={inspectorOpen !== false && (workspaceView === undefined || workspaceView === "chat")}
-        onControlChange={() => setAgentControl(false)} />
-      <div className="browser-access-row">
-        <details className="capability-details browser-capability"><summary>Agent access · {agentControl ? "On for this thread" : "Off"}</summary><p>{browserCapability.detail} Enabling control lets this thread’s direct agent read and interact with signed-in pages. Access ends when you leave this panel. Camera, microphone, location and clipboard permissions are blocked.</p></details>
-        <button className="chip" type="button" aria-pressed={agentControl} disabled={!ownerId || controlBusy || browserCapability.state === "unavailable"} onClick={() => void toggleAgentControl()}>
-          {agentControl ? "Revoke control" : "Allow agent control"}
-        </button>
-      </div>
       <div className="codex-browser-nav preview-chrome-row">
         <div className="preview-nav-cluster">
           <button
@@ -607,6 +587,11 @@ export function EmbeddedBrowser({
         </form>
 
         <div className="preview-actions-cluster">
+          <BrowserControls allowed={agentControl} disabled={!ownerId || controlBusy || browserCapability.state === "unavailable"}
+            detail={browserCapability.detail} url={normalizedBrowserUrl(address)}
+            active={inspectorOpen !== false && (workspaceView === undefined || workspaceView === "chat")}
+            backgroundAvailable={browserCapability.state !== "unavailable" && Boolean(session?.harnessId && session.openclawSessionKey?.startsWith("direct:"))}
+            onToggle={() => void toggleAgentControl()} onBackgroundControl={() => setAgentControl(false)} />
           <button
             className={`preview-chrome-btn ${pickActive ? "active" : ""}`}
             type="button"

@@ -49,7 +49,9 @@ export class BackgroundBrowsers {
       window.webContents.on("will-navigate", guardNavigation);
       window.webContents.on("will-redirect", guardNavigation);
       window.webContents.session.webRequest.onBeforeRequest((details, callback) => {
-        callback({ cancel: !/^(https?:|data:|blob:)/.test(details.url) });
+        // WebSocket subresources carry live reload and app updates. Top-level
+        // navigation still goes through the separate HTTP(S)-only guards.
+        callback({ cancel: !/^(https?:|wss?:|data:|blob:)/.test(details.url) });
       });
       const entry: Page = { window, expiresAt: Date.now() + LIFETIME_MS, agentAllowed: false, remoteShared: false, epoch: 0,
         timer: setTimeout(() => { if (this.pages.get(owner) === entry) this.close(owner); }, LIFETIME_MS) };
@@ -78,6 +80,7 @@ export class BackgroundBrowsers {
       if (!page || page.window.isDestroyed()) throw new Error("No background page is running for this thread.");
       if (command.kind === "agent") {
         if (typeof command.allowed !== "boolean") throw new Error("Invalid agent grant.");
+        if (command.allowed && !harnessId) throw new Error("Start a direct agent in this thread before allowing background control.");
         page.agentAllowed = command.allowed; page.harnessId = harnessId;
       } else if (command.kind === "share") {
         if (typeof command.allowed !== "boolean") throw new Error("Invalid remote sharing grant.");

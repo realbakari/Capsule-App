@@ -159,6 +159,9 @@ Tools: **Launch**, **Review**, **Terminal**, **Browser**, **Files**, **Agents**,
   Cache/storage clearing awaits the isolated Electron session operation;
   application drafts/preferences are not touched. Clear-data and registration
   are write-scoped for paired viewers.
+  Screenshot copying uses the write-scoped `copyBrowserScreenshot` IPC, limited
+  to registered owned guests. Main captures a NativeImage and writes image pixels
+  to Electron's clipboard; capture failures never become text/data-URL fallback.
   Discovery polling is single-flight while mounted, retains the last good list
   on failure, and provides a retry. Guest registration failures are visible;
   subframe and aborted-load errors do not replace the main page. The direct
@@ -179,11 +182,18 @@ Tools: **Launch**, **Review**, **Terminal**, **Browser**, **Files**, **Agents**,
   in [harness.md](harness.md#embedded-browser-tools). Permission handlers deny device
   and clipboard access; downloads and dialogs are disabled. Storage still belongs
   to the shared foreground browser partition, not a per-thread browser profile.
+  A **Page control off/on** toolbar disclosure contains permission details and the
+  background-page controls in an out-of-flow, bounded popover. Opening it does
+  not reduce page height; Escape and outside clicks dismiss it. Background
+  polling pauses while its parent disclosure is closed.
   **Background page** is a collapsed disclosure for explicitly starting a separate
   temporary page from the address bar. Agent access and remote sharing are separate
   switches; close is always available, including after failure. Pages survive panel
   switches, but not their 30-minute expiry, thread archive/delete or app shutdown.
-  Close disposes the isolated profile's storage and connections. Update restart
+  Close disposes the isolated profile's storage and connections.
+  Background subresources permit WebSockets; main-frame navigation remains
+  HTTP(S)-only. Grants require a direct thread and a concrete harness identity.
+  Update restart
   admission asks the user to close background pages. Dock activation tests the
   main workspace window, not the count of hidden/companion windows. The paired viewer gets
   read-only, explicitly shared snapshots here, not a webview or write channel.

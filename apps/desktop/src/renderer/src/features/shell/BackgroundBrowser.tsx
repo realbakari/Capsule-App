@@ -80,6 +80,7 @@ export function BackgroundBrowser({ desktop, url, available, active, onControlCh
         </>}
       </div>}
       {desktop && page?.exists && <p className="faint">Agent control targets this background page instead of the visible page. Sharing exposes its URL and screenshots to paired viewers, including any sensitive page content.</p>}
+      {desktop && page?.exists && !available && !page.agentAllowed && <p className="faint">Start a compatible direct agent in this thread before allowing background control.</p>}
       {busy && <p role="status">Updating background page…</p>}
       {error && <p role="alert">{error}</p>}
       {!page && !error && <p className="faint" role="status">Checking for a page…</p>}
