@@ -15,6 +15,7 @@ import { runUiPolishRegressions } from "./ui-polish-regressions";
 import { runOwnershipRegressions } from "./ownership-regressions";
 import { runScreenshotRegressions } from "./screenshot-regressions";
 import { runRuntimeExtensionRegressions } from "./runtime-extension-regressions";
+import { runInterfaceRegressions } from "./interface-regressions";
 import { ChevronRightIcon, FolderIcon, InboxIcon } from "../features/shell/icons";
 import { CapabilityDetails } from "../features/harness/CapabilityDetails";
 import { MenuSelect } from "../features/shell/MenuSelect";
@@ -934,6 +935,7 @@ window.runRendererRegressions = async () => {
   await runScreenshotRegressions(host);
   await runOwnershipRegressions(host);
   await runRuntimeExtensionRegressions(host);
+  await runInterfaceRegressions(host, contextBase);
   layoutStyles.media = "not all";
   return "Renderer regressions passed: recovery, editor ownership and memoization, browser navigation and discovery, bounded diff pages and review notes, terminal persistence, send admission, 1,000 stream frames without snapshot reloads, reconnect/history reconciliation.";
 };
