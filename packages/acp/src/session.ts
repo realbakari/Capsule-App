@@ -53,6 +53,9 @@ export interface DirectAcpEvents {
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 export const MAX_ACP_FRAME_BYTES = 4 * 1024 * 1024;
+// Protocol normalization caps each key/title pair at 768 code units. Combined
+// with this count limit, cached string payloads stay below 768 KiB of UTF-8.
+export const MAX_CACHED_TOOL_TITLES = 256;
 
 export interface DirectAcpOptions {
   command: string;
@@ -96,6 +99,7 @@ export class DirectAcpSession {
   private capabilityReport?: AgentCapabilityReport;
   private contextReport?: ReportedContextUsage;
   private closed = false;
+  private closing?: Promise<void>;
   private turn: Promise<unknown> | undefined;
   private cancelling = false;
   private restoring = false;
@@ -163,6 +167,12 @@ export class DirectAcpSession {
       this.stderr = `${this.stderr}${chunk.toString()}`.slice(-4000);
     });
     child.on("error", (error) => this.fail(error));
+    // Writable errors are emitted asynchronously, outside write()'s try/catch.
+    // A live process with a broken input pipe cannot complete a prompt.
+    child.stdin.on("error", (error) => {
+      this.fail(new Error(`The agent input pipe failed: ${error.message}`));
+      void this.close().catch(() => undefined);
+    });
     child.on("close", (code) => {
       this.closed = true;
       this.lineBuffer.clear();
@@ -311,7 +321,15 @@ export class DirectAcpSession {
   }
 
   /** End the conversation and the process with it. */
-  async close(): Promise<void> {
+  close(): Promise<void> {
+    if (this.closing) return this.closing;
+    const closing = this.closeProcess();
+    this.closing = closing;
+    void closing.catch(() => { if (this.closing === closing) this.closing = undefined; });
+    return closing;
+  }
+
+  private async closeProcess(): Promise<void> {
     clearTimeout(this.configurationNotice);
     this.configurationNotice = undefined;
     this.cancelPermissions();
@@ -418,7 +436,7 @@ export class DirectAcpSession {
         const { toolCallId, title } = update.tool;
         if (toolCallId && title) {
           this.toolTitles.set(toolCallId, title);
-          while (this.toolTitles.size > 1000) this.toolTitles.delete(this.toolTitles.keys().next().value!);
+          while (this.toolTitles.size > MAX_CACHED_TOOL_TITLES) this.toolTitles.delete(this.toolTitles.keys().next().value!);
         }
         this.emitter.emit("tool", {
           ...update.tool,
@@ -509,7 +527,7 @@ export class DirectAcpSession {
     options?: { timeoutMs?: number },
   ): Promise<unknown> {
     const child = this.child;
-    if (!child) return Promise.reject(new Error("This session is not running."));
+    if (!child || this.closed || child.stdin.destroyed || child.stdin.writableEnded) return Promise.reject(new Error("This session is not running."));
     const id = this.nextId++;
     const timeoutMs = options?.timeoutMs ?? this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     return new Promise((resolve, reject) => {

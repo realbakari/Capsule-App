@@ -62,6 +62,15 @@ describe("encodeMessage", () => {
 });
 
 describe("readSessionUpdate", () => {
+  it("bounds tool metadata without aliasing oversized opaque IDs", () => {
+    const read = (toolCallId: string) => readSessionUpdate({ update: {
+      sessionUpdate: "tool_call", toolCallId, title: "界".repeat(100_000), status: "x".repeat(1000),
+    } })?.tool;
+    expect(read("normal-id")?.toolCallId).toBe("normal-id");
+    expect(read("x".repeat(257))?.toolCallId).toBeUndefined();
+    expect(read("normal-id")!.title!.length).toBeLessThanOrEqual(512);
+    expect(read("normal-id")!.status!.length).toBeLessThanOrEqual(64);
+  });
   it("preserves opaque message IDs and treats absent or invalid IDs as legacy chunks", () => {
     const read = (messageId: unknown) => readSessionUpdate({ sessionId: "s", update: {
       sessionUpdate: "agent_message_chunk", messageId, content: { type: "text", text: "part" },

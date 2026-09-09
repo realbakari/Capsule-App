@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
-import { DirectAcpSession } from "./session.js";
+import { DirectAcpSession, MAX_CACHED_TOOL_TITLES } from "./session.js";
 import { DirectAcpHost } from "./host.js";
 
 /*
@@ -64,6 +64,33 @@ const HAPPY = `
 `;
 
 describe("talking to an agent directly", () => {
+  it("bounds retained tool titles by both count and payload size", () => {
+    const session = new DirectAcpSession({ command: "unused", args: [] });
+    const internal = session as unknown as { handle(message: unknown): void; toolTitles: Map<string, string> };
+    for (let i = 0; i < 600; i++) internal.handle({ method: "session/update", params: { update: {
+      sessionUpdate: "tool_call", toolCallId: `tool-${i}`, title: "界".repeat(64_000),
+    } } });
+    expect(internal.toolTitles.size).toBe(MAX_CACHED_TOOL_TITLES);
+    const bytes = [...internal.toolTitles].reduce((total, [id, title]) => total + Buffer.byteLength(id) + Buffer.byteLength(title), 0);
+    expect(bytes).toBeLessThan(768 * 1024);
+    expect(internal.toolTitles.has("tool-599")).toBe(true);
+    expect(internal.toolTitles.has("tool-0")).toBe(false);
+  });
+  it("settles a pending prompt and closes its child after an asynchronous input-pipe error", async () => {
+    const agent = fakeAgent(HAPPY.replace('if (message.method === "session/prompt") {', 'if (message.method === "session/prompt") { return;'));
+    const session = new DirectAcpSession({ command: "node", args: [agent] });
+    try {
+      await session.start();
+      const prompt = session.prompt("Wait for a reply");
+      const rejected = expect(prompt).rejects.toThrow("agent input pipe failed: write EPIPE");
+      const child = (session as unknown as { child: import("node:child_process").ChildProcessWithoutNullStreams }).child;
+      child.stdin.emit("error", new Error("write EPIPE"));
+      await rejected;
+      await Promise.all([session.close(), session.close()]);
+      expect(session.running).toBe(false);
+      await expect(session.prompt("Do not hang")).rejects.toThrow("not running");
+    } finally { await session.close(); rmSync(path.dirname(agent), { recursive: true, force: true }); }
+  });
   it("retains acknowledged configuration on rejection and ignores an older response after a notification", async () => {
     const options = (value: string) => [{ id: "model-id", category: "model", name: "Model", type: "select", currentValue: value,
       options: ["one", "two"].map((value) => ({ value, name: value })) }];

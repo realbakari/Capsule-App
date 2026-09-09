@@ -11,6 +11,14 @@ import { readDelegationDetails, readReportedContextUsage, sanitizeUntrusted, typ
  */
 
 export const ACP_PROTOCOL_VERSION = 1;
+export const MAX_TOOL_ID_LENGTH = 256;
+export const MAX_TOOL_TITLE_LENGTH = 512;
+
+function toolLabel(value: unknown, limit: number): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const clean = sanitizeUntrusted(value.slice(0, limit));
+  return value.length > limit ? `${clean.slice(0, limit - 1)}…` : clean;
+}
 
 export interface JsonRpcMessage {
   jsonrpc: "2.0";
@@ -109,14 +117,16 @@ export function readSessionUpdate(params: unknown): SessionUpdate | undefined {
 
   if (kind === "tool_call" || kind === "tool_call_update") {
     const tool = update as { title?: unknown; status?: unknown; toolCallId?: unknown };
-    const title = typeof tool.title === "string" ? tool.title : undefined;
-    const toolCallId = typeof tool.toolCallId === "string" ? tool.toolCallId : undefined;
+    const title = toolLabel(tool.title, MAX_TOOL_TITLE_LENGTH);
+    // IDs are opaque. Dropping an oversized ID is safe; truncating it can
+    // merge unrelated tools. Bound display metadata before emitting it too.
+    const toolCallId = typeof tool.toolCallId === "string" && tool.toolCallId.length <= MAX_TOOL_ID_LENGTH ? tool.toolCallId : undefined;
     if (!title && !toolCallId) return undefined;
     const delegation = readDelegationDetails(tool);
     return {
       sessionId,
       ...(kind === "tool_call" ? { startsTool: true } : {}),
-      tool: { title, status: typeof tool.status === "string" ? tool.status : undefined, toolCallId, ...(delegation ? { delegation } : {}) },
+      tool: { title, status: toolLabel(tool.status, 64), toolCallId, ...(delegation ? { delegation } : {}) },
     };
   }
 
