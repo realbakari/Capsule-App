@@ -21,11 +21,15 @@ async function fixture(activeRun = true) {
     runtime: { cancelRun: (id: string) => Promise<void> };
     repos: { insertRun(run: Run): void; updateSession(session: Session): void };
     bindAcpReplies(): void;
+    ensureHarnessSession(session: Session, harnessId: string, admittingRunId?: string): Promise<Session>;
   };
   session.openclawSessionKey = "direct:acp:grok:fixture";
   session.harnessId = "grok";
   session.harnessState = "running";
   internal.repos.updateSession(session);
+  // A unit fixture must never launch the developer's installed coding CLI.
+  vi.spyOn(internal.direct, "spawnAcpSession").mockRejectedValue(new Error("Unexpected native spawn from boundary fixture"));
+  vi.spyOn(internal.direct, "isRunning").mockImplementation((key) => key === session.openclawSessionKey);
   const now = new Date().toISOString();
   const run: Run = { id: "boundary-run", projectId: project.id, sessionId: session.id, agentId: "grok", prompt: "Fixture", status: "running", workingDirectory: dir, createdAt: now, updatedAt: now };
   if (activeRun) internal.repos.insertRun(run);
@@ -47,6 +51,7 @@ it.each([
 
   const second = await engine.sendMessage({ sessionId: session.id, content: "Second turn", mode: "chat" });
   await vi.waitFor(() => expect(engine.getRun(second.run.id)?.status).toBe(status));
+  expect(internal.direct.spawnAcpSession).not.toHaveBeenCalled();
 });
 
 it("settles a rejected direct send as failed", async () => {
@@ -56,6 +61,55 @@ it("settles a rejected direct send as failed", async () => {
   await vi.waitFor(() => expect(engine.getRun(run.id)).toMatchObject({
     status: "failed", error: "Agent disconnected", completedAt: expect.any(String),
   }));
+  expect(internal.direct.spawnAcpSession).not.toHaveBeenCalled();
+});
+
+it.each(["resolves", "rejects"])("keeps Stop final when delayed startup %s", async (outcome) => {
+  const { engine, internal, session } = await fixture(false);
+  let finish!: () => void;
+  vi.spyOn(internal, "ensureHarnessSession").mockImplementation(() => new Promise((resolve, reject) => {
+    finish = () => outcome === "resolves" ? resolve(session) : reject(new Error("Late startup failure"));
+  }));
+  const send = vi.spyOn(internal.direct, "send");
+  const sending = engine.sendMessage({ sessionId: session.id, content: "Do not send after Stop", mode: "chat" });
+  await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
+  const pending = engine.listRuns(session.id)[0]!;
+  await engine.stopRun(pending.id);
+  finish();
+  const result = await sending;
+  expect(result.run.status).toBe("cancelled");
+  expect(engine.getRun(pending.id)).toMatchObject({ status: "cancelled", completedAt: expect.any(String) });
+  expect(send).not.toHaveBeenCalled();
+});
+
+it("can stop an unsent first turn before a native session key exists", async () => {
+  const { engine, internal, session } = await fixture(false);
+  session.openclawSessionKey = undefined;
+  session.harnessState = "closed";
+  internal.repos.updateSession(session);
+  let finish!: () => void;
+  vi.spyOn(internal, "ensureHarnessSession").mockImplementation(() => new Promise((resolve) => { finish = () => resolve(session); }));
+  const cancel = vi.spyOn(internal.runtime, "cancelRun").mockRejectedValue(new Error("No dispatched Gateway run"));
+  const send = vi.spyOn(internal.direct, "send");
+  const sending = engine.sendMessage({ sessionId: session.id, content: "Cancel startup", mode: "chat" });
+  await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
+  const pending = engine.listRuns(session.id)[0]!;
+  expect((await engine.stopRun(pending.id)).status).toBe("cancelled");
+  finish();
+  expect((await sending).run.status).toBe("cancelled");
+  expect(cancel).not.toHaveBeenCalled();
+  expect(send).not.toHaveBeenCalled();
+});
+
+it("preserves the previous agent identity when switching cannot close it", async () => {
+  const { engine, internal, session } = await fixture(false);
+  vi.spyOn(internal.direct, "closeAcp").mockRejectedValue(new Error("Agent has not exited"));
+  await expect(engine.sendMessage({ sessionId: session.id, agentId: "gemini", content: "Switch agent", mode: "chat" })).rejects.toThrow("Agent has not exited");
+  expect(internal.direct.spawnAcpSession).not.toHaveBeenCalled();
+  expect(engine.listSessions().find((item) => item.id === session.id)).toMatchObject({
+    harnessId: "grok", openclawSessionKey: session.openclawSessionKey, harnessState: "error",
+  });
+  expect(engine.listRuns(session.id)[0]?.status).toBe("failed");
 });
 
 it("persists direct permission requests, resolves once, and cancels pending requests on Stop", async () => {

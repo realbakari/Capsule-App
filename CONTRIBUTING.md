@@ -41,6 +41,11 @@ Connect a Gateway for Gateway-only harnesses, or use direct mode with a native
 ACP CLI. Tests select mock execution explicitly with `autoConnect: false`;
 the engine first-flow tests need no provider account.
 
+Direct-session unit fixtures must stub both process liveness and transport calls.
+Make unexpected native spawns fail immediately: a saved session key alone does
+not represent a running process. Protocol integration tests should launch only
+their own fixture process, never a signed-in CLI from the developer's PATH.
+
 Desktop icons are derived from `assets/logo.png` and given a macOS squircle mask. Do not edit that file to change the Dock, tray, or `.icns` — regenerate instead:
 
 ```bash

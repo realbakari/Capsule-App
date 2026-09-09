@@ -253,6 +253,7 @@ export class CapsuleEngine {
   private directUnsub?: () => void;
   private directApprovals = new Map<string, { runId: string; canApproveOnce?: boolean; allow: () => void; deny: () => void; cancel: () => void }>();
   private admittingSessions = new Set<string>();
+  private startingHarnessRuns = new Set<string>();
   private folderActivity = new FolderActivity();
   private updateReserved = false;
   private settings: CapsuleSettings;
@@ -882,9 +883,14 @@ export class CapsuleEngine {
   }
 
   async closeHarness(sessionId: string): Promise<HarnessControlResult> {
+    return this.closeHarnessSession(sessionId);
+  }
+
+  /** A replacement closes the old agent, not the unsent turn that requested it. */
+  private async closeHarnessSession(sessionId: string, admittingRunId?: string): Promise<HarnessControlResult> {
     const session = this.requireHarnessSession(sessionId);
     const active = this.listRuns(session.id).find((run) =>
-      ["queued", "running", "waiting", "approval_required"].includes(run.status),
+      run.id !== admittingRunId && ["queued", "running", "waiting", "approval_required"].includes(run.status),
     );
     // Direct close can stop its owned child even when the agent ignores cancel.
     if (active && isDirectSessionKey(session.openclawSessionKey)) this.settleDirectApprovals(active.id);
@@ -1728,8 +1734,12 @@ export class CapsuleEngine {
           streamKind: "lifecycle",
         });
       }
+      this.startingHarnessRuns.add(run.id);
       try {
-        session = await this.ensureHarnessSession(session, harnessId);
+        session = await this.ensureHarnessSession(session, harnessId, run.id);
+        const currentRun = this.requireRun(run.id);
+        if (currentRun.completedAt) return { session, run: currentRun, userMessage };
+        Object.assign(run, currentRun);
         run.workingDirectory = this.cwdFor(session, project);
         this.repos.updateRun(run);
         if (!this.usingMock && !isAcpSessionKey(session.openclawSessionKey)) {
@@ -1738,6 +1748,8 @@ export class CapsuleEngine {
           );
         }
       } catch (error) {
+        const currentRun = this.requireRun(run.id);
+        if (currentRun.completedAt) return { session, run: currentRun, userMessage };
         const detail = error instanceof Error ? error.message : String(error);
         run.status = "failed";
         run.error = detail;
@@ -1747,6 +1759,8 @@ export class CapsuleEngine {
         this.appendEvent(run.id, "lifecycle", detail, { status: "failed", error: detail });
         this.events.emit("run", run);
         throw new Error(detail);
+      } finally {
+        this.startingHarnessRuns.delete(run.id);
       }
       if (!alreadyLive) {
         this.appendEvent(run.id, "lifecycle", `${harnessName} is ready`, {
@@ -1902,7 +1916,12 @@ export class CapsuleEngine {
     const run = this.requireRun(runId);
     if (run.completedAt) return run;
     const session = this.requireSession(run.sessionId);
-    if (isDirectSessionKey(session.openclawSessionKey)) {
+    if (this.startingHarnessRuns.has(run.id)) {
+      // The prompt has not been dispatched. Cancel it locally; there may not
+      // yet be a native/Gateway session to send cancellation to. Startup can
+      // finish preparing an idle session, but the admission guard will not send.
+      this.settleDirectApprovals(run.id);
+    } else if (isDirectSessionKey(session.openclawSessionKey)) {
       // The decision is cancelled now, even if the agent takes time to confirm
       // that its work stopped. A timeout must not leave a clickable stale Allow.
       this.settleDirectApprovals(run.id);
@@ -3227,7 +3246,7 @@ export class CapsuleEngine {
     return undefined;
   }
 
-  private async ensureHarnessSession(session: Session, harnessId: HarnessId): Promise<Session> {
+  private async ensureHarnessSession(session: Session, harnessId: HarnessId, admittingRunId?: string): Promise<Session> {
     const current = this.requireSession(session.id);
     const live = isLiveHarnessState(current.harnessState) && (this.usingMock || (current.openclawSessionKey &&
       (!isDirectSessionKey(current.openclawSessionKey) || this.direct.isRunning(current.openclawSessionKey))));
@@ -3245,14 +3264,8 @@ export class CapsuleEngine {
      * answered. Close the old session before starting the new agent's.
      */
     if (live && current.harnessId && current.harnessId !== harnessId) {
-      try {
-        await this.closeHarness(current.id);
-      } catch (error) {
-        this.log(
-          `Could not close the ${current.harnessId} session before switching to ${harnessId}: ${error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      }
+      // Keep the old identity if shutdown fails: it may still own a process.
+      await this.closeHarnessSession(current.id, admittingRunId);
       // The key names the session we just closed. Leaving it behind would
       // point the new agent's turn at a dead session if the spawn failed.
       const closed = this.requireSession(session.id);
@@ -3261,6 +3274,7 @@ export class CapsuleEngine {
       closed.updatedAt = nowIso();
       this.repos.updateSession(closed);
     }
+    if (admittingRunId && this.repos.getRun(admittingRunId)?.completedAt) return this.requireSession(current.id);
     const result = await this.spawnHarness({
       projectId: current.projectId,
       harnessId,
