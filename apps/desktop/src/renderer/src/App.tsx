@@ -22,6 +22,8 @@ function Shell() {
     view,
     inspectorOpen,
     ready,
+    startupError,
+    refresh,
     sidebarCollapsed,
     sidebarWidth,
     setSidebarCollapsed,
@@ -40,11 +42,29 @@ function Shell() {
    */
   useEffect(() => {
     if (!ready) return;
+    let paintedFrame: number | undefined;
     const frame = requestAnimationFrame(() => {
-      requestAnimationFrame(() => void window.capsule.rendererReady?.());
+      paintedFrame = requestAnimationFrame(() => void window.capsule.rendererReady?.());
     });
-    return () => cancelAnimationFrame(frame);
+    return () => {
+      cancelAnimationFrame(frame);
+      if (paintedFrame !== undefined) cancelAnimationFrame(paintedFrame);
+    };
   }, [ready]);
+  if (!ready) {
+    return (
+      <main className="panel">
+        <div className="panel-inner">
+          <h1>{startupError ? "Could not open your workspace" : "Opening your workspace…"}</h1>
+          {startupError ? <>
+            <p role="alert">{startupError}</p>
+            <p className="muted">Your saved projects and conversations have not been reset.</p>
+            <button type="button" onClick={() => void refresh()}>Retry</button>
+          </> : <p className="muted" role="status">Loading saved projects and conversations.</p>}
+        </div>
+      </main>
+    );
+  }
   return (
     <div
       className={`app ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}

@@ -547,10 +547,22 @@ legacy copies migrate to the secret store before their database keys are removed
 
 The desktop pins Electron 43.4.1. Native SQLite and terminal modules must be
 rebuilt for this runtime; renderer and startup fixtures use isolated profiles.
+Persisted navigation IDs are hints: startup resolves them against the project
+and session indexes before issuing scoped skill, Git, file or history reads.
+A thread must belong to the selected project; a missing thread with no active
+fallback is cleared. An explicitly opened archived thread remains readable.
+Failed bootstrap does not mark the workspace ready or render a misleading empty
+sidebar: it exposes an error and retry action without resetting stored data.
+Superseded refresh errors cannot change the current selection's startup state.
 The startup smoke check can seed from `CAPSULE_SMOKE_SEED_DATABASE` using
 SQLite `VACUUM INTO`. Only the throwaway copy loses its settings. Smoke mode
 uses the mock runtime and profile-owned task directory, and skips host settings
-side effects; it must not connect copied sessions to live agents.
+side effects; it must not connect copied sessions to live agents. The check
+requires the renderer's post-bootstrap paint acknowledgement as well as loaded
+HTML, and fails on workspace initialization errors. Renderer fixtures separately
+exercise stale selections, startup failure and retry, and normal send flows.
+CI checks the built workspace; the release job repeats that check against the
+packaged executable via `CAPSULE_SMOKE_EXECUTABLE` before uploading artifacts.
 
 Main owns resource sampling every five seconds, sharing one in-flight async
 process-table read. History is bounded to fifteen minutes and a point limit.

@@ -578,12 +578,17 @@ window.runRendererRegressions = async () => {
   assert(stopped.length === 2, "Unmount did not close owned shells");
 
   localStorage.clear(); root = createRoot(host);
+  // A previous install or removed project can leave a stale navigation hint.
+  // It must not prevent the authoritative project list from reaching the UI.
+  localStorage.setItem("capsule.lastProjectId", "removed-project");
+  localStorage.setItem("capsule.lastSessionId", "removed-thread");
   const threads: Session[] = [];
   const project = { id: "send-project", name: "Send fixture", workingDirectory: "/fixture/send", defaultMode: "chat" };
   let sends = 0;
   let submittedSkill: string | undefined;
   let failSend = true;
   let failRead = false;
+  let failStartup = true;
   let finishSend!: () => void;
   let rejectSend: ((error: Error) => void) | undefined;
   let delayFailure = false;
@@ -600,15 +605,30 @@ window.runRendererRegressions = async () => {
   const nativeApi = window.capsule;
   window.capsule = {
     listProjects: async () => { projectReads += 1; return [project]; }, listAgents: async () => [{ id: "general", name: "Fixture" }],
-    listSkills: async () => [], listSkillPacks: async () => [], getStatus: async () => ({ kind: "openclaw", state: "connected" }),
+    listSkills: async (projectId?: string, sessionId?: string) => {
+      if (projectId && projectId !== project.id) throw new Error("Project not found");
+      if (sessionId && !threads.some((thread) => thread.id === sessionId && thread.projectId === projectId)) throw new Error("Session not found");
+      return [];
+    }, listSkillPacks: async () => [], getStatus: async () => ({ kind: "openclaw", state: "connected" }),
     getSubsystemStatus: async () => ({}), listApprovals: async () => [], listHarnesses: async () => [],
-    getSettings: async () => ({ ...DEFAULT_CAPSULE_SETTINGS, defaultMode: "chat", defaultAgentId: "general" }),
+    getSettings: async () => {
+      if (failStartup) throw new Error("Workspace settings could not be read");
+      return { ...DEFAULT_CAPSULE_SETTINGS, defaultMode: "chat", defaultAgentId: "general" };
+    },
     listSessions: async () => [...threads], listHarnessSessions: async () => [], listRuns: async () => [...savedRuns],
     listLatestRuns: async () => [...savedRuns],
     listRunPage: async (options?: { before?: unknown }) => ({ runs: [...(options?.before ? olderRuns : savedRuns)], hasMore: false }),
     listRunEventPage: async () => { eventReads += 1; const events = deferEvents ? await new Promise<RunEvent[]>((resolve) => { holdEvents = resolve; }) : [...savedEvents]; return { events, hasMore: false }; },
     listArtifacts: async () => { artifactReads += 1; return [{ id: "saved-output", runId: "stream-run" }]; },
-    gitStatus: async () => ({ isRepo: false }), listFiles: async () => [],
+    gitStatus: async (projectId: string, sessionId?: string) => {
+      assert(projectId === project.id, "Git read used a stale startup project");
+      assert(!sessionId || threads.some((thread) => thread.id === sessionId), "Git read used a stale startup thread");
+      return { isRepo: false };
+    },
+    listFiles: async (projectId: string) => {
+      assert(projectId === project.id, "File list used a stale startup project");
+      return [];
+    },
     validateAttachments: async (files: unknown[]) => files,
     on: (event: string, callback: (payload: unknown) => void) => {
       const callbacks = handlers.get(event) ?? new Set(); callbacks.add(callback); handlers.set(event, callbacks);
@@ -623,7 +643,22 @@ window.runRendererRegressions = async () => {
     sendMessage: async (input: { skillId?: string }) => { submittedSkill = input.skillId; sends += 1; if (failSend) throw new Error("Send rejected"); if (delayFailure) return new Promise<void>((_resolve, reject) => { rejectSend = reject; }); await new Promise<void>((resolve) => { finishSend = resolve; }); },
   } as unknown as typeof window.capsule;
   root.render(<WorkspaceProvider><CaptureWorkspace /></WorkspaceProvider>);
+  await until(() => actualWorkspace?.startupError?.includes("settings could not be read"));
+  assert(!actualWorkspace.ready, "Failed startup was reported as a ready, empty workspace");
+  assert(historyReads === 0, "History loaded an unvalidated startup thread");
+  failStartup = false;
+  await actualWorkspace.refresh();
   await until(() => actualWorkspace?.ready && actualWorkspace?.projectId === project.id);
+  assert(actualWorkspace.projects.length === 1 && !actualWorkspace.sessionId, "Stale startup selection hid projects or retained a missing thread");
+  assert(!actualWorkspace.startupError, "Successful retry retained its startup error");
+  await until(() => localStorage.getItem("capsule.lastProjectId") === project.id && !localStorage.getItem("capsule.lastSessionId"));
+  failStartup = true;
+  await actualWorkspace.refresh();
+  await until(() => Boolean(actualWorkspace.startupError));
+  assert(actualWorkspace.ready && actualWorkspace.projects.length === 1, "Failed refresh discarded an already loaded workspace");
+  failStartup = false;
+  await actualWorkspace.refresh();
+  await until(() => !actualWorkspace.startupError && !actualWorkspace.notice);
   actualWorkspace.setDraft("first draft"); await until(() => actualWorkspace.draft === "first draft");
   actualWorkspace.setSkillId("chosen-skill"); await until(() => actualWorkspace.skillId === "chosen-skill");
   await actualWorkspace.sendAndContinue();

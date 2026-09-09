@@ -3,6 +3,18 @@
 Settings → Diagnostics shows what Capsule is doing to your machine, and can
 export a sanitized report.
 
+## Opening your workspace
+
+Capsule restores the last project and conversation when they still exist. If a
+saved selection no longer exists, it opens an available project and an active
+conversation in that project, or a new conversation screen. This does not reset
+your saved projects, conversations or drafts.
+
+If the workspace cannot load, the startup screen shows the error and **Retry**
+instead of an empty sidebar. Retry loads the saved workspace again without
+clearing its data. An unavailable agent or Gateway is separate from loading
+your local workspace.
+
 ## Local performance
 
 Choose **Refresh timings** to inspect event processing, Git operations and local

@@ -52,3 +52,6 @@ jobs:
 
       - name: Build application
         run: pnpm build
+
+      - name: Verify workspace startup
+        run: node scripts/smoke-test.mjs

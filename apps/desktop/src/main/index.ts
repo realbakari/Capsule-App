@@ -1688,6 +1688,7 @@ function registerIpc(): void {
       return true;
     }
     if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) mainWindow.show();
+    if (process.env.CAPSULE_SMOKE_TEST) console.log("capsule: workspace ready");
     return true;
   });
   handleArgs(IPC_CHANNELS.usageSummary, [num], (days: number) =>

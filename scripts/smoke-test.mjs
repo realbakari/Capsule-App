@@ -19,6 +19,7 @@ import { readPackageVersion } from "./check-release-version.mjs";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const desktop = path.join(root, "apps/desktop");
 const mainBundle = path.join(desktop, "out/main/index.js");
+const packagedExecutable = process.env.CAPSULE_SMOKE_EXECUTABLE;
 const BOOT_WINDOW_MS = 12_000;
 const expectedVersion = readPackageVersion();
 
@@ -39,6 +40,7 @@ const FATAL_PATTERNS = [
   "Uncaught Error",
   "Uncaught TypeError",
   "Uncaught ReferenceError",
+  "Failed to load Capsule state",
 ];
 
 /*
@@ -47,14 +49,16 @@ const FATAL_PATTERNS = [
  * whatever else appeared on the way.
  */
 const READY_MARKER = /capsule: window ready \((\d+)\)/u;
+// Loading HTML is not enough: React must load the workspace and paint it.
+const WORKSPACE_MARKER = "capsule: workspace ready";
 const VERSION_MARKER = /capsule: app version ([^\r\n]+)/u;
 
-if (!fs.existsSync(mainBundle)) {
+if (!packagedExecutable && !fs.existsSync(mainBundle)) {
   console.error(`No build to smoke test at ${mainBundle}. Run: pnpm build`);
   process.exit(1);
 }
 
-const electron = resolveElectronBinary();
+const electron = packagedExecutable ?? resolveElectronBinary();
 // Its own user data directory: a smoke test must not touch the database, the
 // settings or the window state of the app you actually use.
 const userData = fs.mkdtempSync(path.join(os.tmpdir(), "capsule-smoke-"));
@@ -79,10 +83,14 @@ if (sourceDatabase) {
  * writing to the real profile — the database and window state of the app you
  * actually use.
  */
-const child = spawn(electron, [`--user-data-dir=${userData}`, desktop], {
+const env = { ...process.env, OPENCLAW_GATEWAY_TOKEN: "", VERCEL_OIDC_TOKEN: "", ELECTRON_ENABLE_LOGGING: "1", CAPSULE_SMOKE_TEST: "1" };
+// Test bundled assets, even when invoked from a development shell.
+delete env.ELECTRON_RUN_AS_NODE;
+delete env.ELECTRON_RENDERER_URL;
+const child = spawn(electron, [`--user-data-dir=${userData}`, ...(packagedExecutable ? [] : [desktop])], {
   cwd: desktop,
   stdio: ["ignore", "pipe", "pipe"],
-  env: { ...process.env, OPENCLAW_GATEWAY_TOKEN: "", VERCEL_OIDC_TOKEN: "", ELECTRON_ENABLE_LOGGING: "1", CAPSULE_SMOKE_TEST: "1" },
+  env,
 });
 
 let output = "";
@@ -106,6 +114,7 @@ child.on("exit", (code) => {
   fs.rmSync(userData, { recursive: true, force: true });
 
   const failures = FATAL_PATTERNS.filter((pattern) => output.includes(pattern));
+  if (!output.includes(WORKSPACE_MARKER)) failures.push("workspace never finished loading");
   const ready = READY_MARKER.exec(output);
   if (!ready) failures.push("the window never finished loading");
   else if (ready[1] !== "1") failures.push(`the app opened ${ready[1]} windows, not 1`);
@@ -121,6 +130,6 @@ child.on("exit", (code) => {
     console.error(`\n${output}`);
     process.exit(1);
   }
-  console.log(`Smoke test passed: Capsule ${expectedVersion} started and loaded one window.`);
+  console.log(`Smoke test passed: Capsule ${expectedVersion} loaded its workspace in one window.`);
   process.exit(0);
 });

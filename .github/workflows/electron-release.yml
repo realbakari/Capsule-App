@@ -113,6 +113,11 @@ jobs:
             spctl --assess --type execute --verbose=4 "$APP"
           done
 
+      - name: Verify packaged workspace startup
+        env:
+          CAPSULE_SMOKE_EXECUTABLE: ${{ github.workspace }}/apps/desktop/release/mac-arm64/Capsule.app/Contents/MacOS/Capsule
+        run: node scripts/smoke-test.mjs
+
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:

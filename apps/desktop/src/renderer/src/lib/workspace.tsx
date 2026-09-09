@@ -1,5 +1,6 @@
 import { applyAppearance } from "./appearance";
 import { RequestScope } from "./request-scope";
+import { resolveWorkspaceSelection } from "./workspace-selection";
 import { HarnessStatusCache, harnessStatusIdentity } from "./harness-status-cache";
 import { batchRunFrames, mergeMessagePage, mergeRunEvents, mergeRuns } from "./run-updates";
 import { boundTranscript, retainRunReceipts } from "./transcript-window";
@@ -274,6 +275,7 @@ export interface WorkspaceValue {
   ) => Promise<void>;
   exportDiagnostics: () => Promise<void>;
   ready: boolean;
+  startupError?: string;
   sidebarCollapsed: boolean;
   inspectorOpen: boolean;
   terminalOpen: boolean;
@@ -371,6 +373,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     }
   });
   const [ready, setReady] = useState(false);
+  const [startupError, setStartupError] = useState<string>();
+  const refreshError = useRef<{ scope: object; detail: string } | undefined>(undefined);
   const requests = useRef(new RequestScope()).current;
   const scope = requests.select(JSON.stringify([projectId, sessionId,
     projects.find((p) => p.id === projectId)?.workingDirectory,
@@ -516,6 +520,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
 
   const project = projects.find((item) => item.id === projectId);
   const session = sessions.find((item) => item.id === sessionId && item.projectId === projectId);
+  const selectionExists = Boolean(project && (!sessionId || session));
   const currentDraftKey = promptDraftKey(projectId, sessionId);
   const latestDraft = useRef({ key: currentDraftKey, value: { prompt: draft, attachments, skillId } });
   latestDraft.current = { key: currentDraftKey, value: { prompt: draft, attachments, skillId } };
@@ -667,9 +672,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   const refresh = useCallback(async () => {
     if (!requests.isCurrent(scope)) return;
     const current = requests.capture("workspace");
+    setStartupError(undefined);
     try {
+      // Resolve persisted navigation before calling APIs that require ownership.
+      // A deleted project or thread must not reject the entire startup snapshot.
+      const [nextProjects, nextSessions] = await Promise.all([api.listProjects(), api.listSessions()]);
+      if (!current()) return;
+      const selected = resolveWorkspaceSelection(nextProjects, nextSessions, projectId, sessionId);
+      const runsCurrent = requests.capture("project-runs");
       const [
-        nextProjects,
         nextAgents,
         nextSkills,
         nextSkillPacks,
@@ -678,19 +689,23 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
         nextApprovals,
         nextHarnesses,
         nextSettings,
+        nextHarnessSessions,
+        nextRuns,
       ] = await Promise.all([
-          api.listProjects(),
           api.listAgents(),
-          api.listSkills(projectId, sessionId),
+          api.listSkills(selected.projectId, selected.sessionId),
           api.listSkillPacks(),
           api.getStatus(),
           api.getSubsystemStatus(),
           api.listApprovals("pending"),
           api.listHarnesses(),
           api.getSettings(),
+          selected.projectId ? api.listHarnessSessions(selected.projectId) : Promise.resolve([]),
+          api.listLatestRuns(),
         ]);
       if (!current()) return;
       setProjects(nextProjects);
+      setSessions(nextSessions);
       setAgents(nextAgents);
       setSkills(nextSkills);
       setSkillPacks(nextSkillPacks);
@@ -716,47 +731,31 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
         const fallbackAgent = nextAgents[0]?.id;
         if (fallbackAgent) setAgentId(fallbackAgent);
       }
-      const selectedProject = nextProjects.some((item: Project) => item.id === projectId) ? projectId : nextProjects[0]?.id;
-      if (selectedProject && selectedProject !== projectId) {
-        applyProjectDefaults(nextProjects.find((item: Project) => item.id === selectedProject), nextHarnesses);
-        setProjectId(selectedProject);
+      if (selected.projectId !== projectId) {
+        applyProjectDefaults(nextProjects.find((item: Project) => item.id === selected.projectId), nextHarnesses);
+        setProjectId(selected.projectId);
       }
-      const runsCurrent = requests.capture("project-runs");
-      const [nextSessions, nextHarnessSessions, nextRuns] = await Promise.all([
-        api.listSessions(),
-        selectedProject ? api.listHarnessSessions(selectedProject) : Promise.resolve([]),
-        api.listLatestRuns(),
-      ]);
-      if (!current()) return;
-      setSessions(nextSessions);
+      if (selected.sessionId !== sessionId) setSessionId(selected.sessionId);
       setHarnessSessions(nextHarnessSessions);
       if (runsCurrent()) setProjectRuns(mergeRuns(nextRuns, [...liveRunState.runs.values()]));
-      if (!sessionId || !nextSessions.some((item: Session) => item.id === sessionId)) {
-        const savedSessionId = (() => {
-          try {
-            return localStorage.getItem(LAST_SESSION_ID_KEY) || undefined;
-          } catch {
-            return undefined;
-          }
-        })();
-        const validSaved = savedSessionId && nextSessions.find(
-          (item: Session) => item.id === savedSessionId && item.projectId === selectedProject && item.state === "active",
-        );
-        const first = validSaved ?? nextSessions.find(
-          (item: Session) => item.projectId === selectedProject && item.state === "active",
-        );
-        if (first) setSessionId(first.id);
+      const recoveredError = refreshError.current;
+      if (recoveredError?.scope === scope) {
+        setNotice((notice) => notice === recoveredError.detail ? undefined : notice);
+        refreshError.current = undefined;
       }
-    } catch (error) {
-      console.error("Failed to load Capsule state", error);
-      setNotice(formatUserError(error));
-    } finally {
       setReady(true);
+    } catch (error) {
+      if (!current()) return;
+      console.error("Failed to load Capsule state", error);
+      const detail = formatUserError(error);
+      refreshError.current = { scope, detail };
+      setStartupError(detail);
+      setNotice(detail);
     }
   }, [agentId, api, scope, projectId, sessionId, liveRunState]);
 
   const loadGit = useCallback(async () => {
-    if (!projectId || !requests.isCurrent(scope)) return;
+    if (!projectId || !selectionExists || !requests.isCurrent(scope)) return;
     const current = requests.capture("git");
     try {
       const result = await api.gitStatus(projectId, sessionId);
@@ -764,7 +763,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     } catch (error) {
       if (current()) { setGit(undefined); setNotice(formatUserError(error)); }
     }
-  }, [api, scope, projectId, sessionId]);
+  }, [api, scope, projectId, sessionId, selectionExists]);
 
   useEffect(() => {
     void refresh();
@@ -788,7 +787,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     const off = [
       api.on("connection", () => {
         void refresh();
-        if (sessionId) void loadSession(sessionId).catch(() => { /* History owns its loading and retry UI. */ });
+        if (sessionId && selectionExists) void loadSession(sessionId).catch(() => { /* History owns its loading and retry UI. */ });
       }),
       api.on("message", (incoming) => {
         const message = incoming as ChatMessage;
@@ -932,11 +931,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       off.forEach((fn) => fn());
       window.removeEventListener("keydown", onKey, true);
     };
-  }, [api, loadGit, loadSession, projectId, refresh, sessionId, scope, liveRunState, setBrowserUrl]);
+  }, [api, loadGit, loadSession, projectId, refresh, sessionId, scope, liveRunState, setBrowserUrl, selectionExists]);
 
   useEffect(() => {
-    if (sessionId) void loadSession(sessionId).catch(() => { /* History owns its loading and retry UI. */ });
-  }, [sessionId, loadSession]);
+    if (sessionId && selectionExists) void loadSession(sessionId).catch(() => { /* History owns its loading and retry UI. */ });
+  }, [sessionId, loadSession, selectionExists]);
 
   useEffect(() => {
     if (session?.workspaceMode) setWorkspaceModeState(session.workspaceMode);
@@ -1038,7 +1037,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   }
 
   useEffect(() => {
-    if (!projectId) {
+    if (!projectId || !selectionExists) {
       setGit(undefined);
       setFiles([]);
       return;
@@ -1058,7 +1057,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
         ),
       )
       .catch(() => setFiles([]));
-  }, [api, scope, loadGit, projectId, project?.workingDirectory, sessionId, session?.workingDirectory]);
+  }, [api, scope, loadGit, projectId, project?.workingDirectory, sessionId, session?.workingDirectory, selectionExists]);
 
   async function createTask() {
     const targetProject = projectId ?? projects[0]?.id;
@@ -2054,6 +2053,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       refreshHarnessStatus,
       setHarnessOption,
       ready,
+      startupError,
       exportDiagnostics,
       sidebarCollapsed,
       inspectorOpen,
@@ -2153,6 +2153,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       files,
       confirm,
       ready,
+      startupError,
       sidebarCollapsed,
       inspectorOpen,
       sidebarWidth,
