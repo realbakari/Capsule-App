@@ -300,5 +300,16 @@ describe("a run's checkpoint", () => {
 
     repos.updateRun({ ...run, checkpointRef: "refs/capsule/checkpoints/s1/turn/1" } as never);
     expect(repos.getRun("r1")?.checkpointRef).toBe("refs/capsule/checkpoints/s1/turn/1");
+    expect(repos.previousCheckpoint("r1")).toBeUndefined();
+    // Equal timestamps use insertion order, and unrelated folders never become
+    // a turn's base. Large result bodies are not part of the lookup projection.
+    repos.insertRun({ ...run, id: "r2", result: "x".repeat(1_000_000) } as never);
+    expect(repos.previousCheckpoint("r2")).toBe("refs/capsule/checkpoints/s1/turn/1");
+    repos.insertRun({ ...run, id: "other-folder", workingDirectory: "/another", checkpointRef: "other" } as never);
+    repos.insertRun({ ...run, id: "r3" } as never);
+    expect(repos.previousCheckpoint("r3")).toBe("refs/capsule/checkpoints/s1/turn/1");
+    repos.updateRun({ ...run, id: "r2", checkpointRef: "second" } as never);
+    expect(repos.previousCheckpoint("r3")).toBe("second");
+    db.close();
   });
 });

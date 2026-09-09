@@ -714,6 +714,18 @@ export class CapsuleRepositories {
     return budget.take("reply");
   }
 
+  /** Read one checkpoint identity, never the thread's accumulated prompt/results. */
+  previousCheckpoint(runId: string): string | undefined {
+    const row = this.db.sqlite.prepare(`SELECT older.checkpoint_ref AS ref
+      FROM runs current JOIN runs older ON older.session_id = current.session_id
+        AND older.working_directory IS current.working_directory
+      WHERE current.id = ? AND older.checkpoint_ref IS NOT NULL
+        AND (older.created_at < current.created_at
+          OR (older.created_at = current.created_at AND older.rowid < current.rowid))
+      ORDER BY older.created_at DESC, older.rowid DESC LIMIT 1`).get(runId) as { ref: string } | undefined;
+    return row?.ref;
+  }
+
   listRuns(sessionId?: string): Run[] {
     const sql = sessionId
       ? `SELECT id, session_id AS sessionId, project_id AS projectId, agent_id AS agentId,

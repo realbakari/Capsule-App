@@ -337,4 +337,10 @@ export const MIGRATIONS: Array<{ version: number; sql: string; }> = [
     version: 17,
     sql: `ALTER TABLE sessions ADD COLUMN direct_session TEXT;`,
   },
+  {
+    version: 18,
+    sql: `CREATE INDEX IF NOT EXISTS idx_runs_checkpoint_base
+      ON runs(session_id, working_directory, created_at)
+      WHERE checkpoint_ref IS NOT NULL;`,
+  },
 ];

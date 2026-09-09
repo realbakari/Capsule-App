@@ -3158,16 +3158,7 @@ export class CapsuleEngine {
     const project = session ? this.repos.getProject(session.projectId) : undefined;
     const cwd = run.workingDirectory ?? session?.workingDirectory ?? project?.workingDirectory;
     if (!cwd) return { patch: "", files: [], available: false };
-    /*
-     * The turn before this one, which is the first of the older runs — the
-     * list comes back newest first. Taking the last of them diffed against the
-     * oldest checkpoint in the thread instead, so "what changed in this turn"
-     * answered with everything since the conversation began.
-     */
-    const previous = this.repos
-      .listRuns(run.sessionId)
-      .filter((candidate) => candidate.checkpointRef && candidate.workingDirectory === run.workingDirectory && candidate.createdAt < run.createdAt)[0]
-      ?.checkpointRef;
+    const previous = this.repos.previousCheckpoint(run.id);
     // With no base, the low-level helper compares to the current worktree.
     // That is "since this turn", not "by this turn", and changes as the user
     // works. Older first checkpoints have no recorded before-state: be honest

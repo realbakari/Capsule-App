@@ -105,7 +105,10 @@ describe("captureCheckpoint", () => {
 });
 
 describe("diff between checkpoints", () => {
-  it.each(["diff.noprefix", "diff.mnemonicPrefix"])("keeps metadata-only file identities when %s is enabled", async (setting) => {
+  // These integration scenarios create two real snapshots and issue many Git
+  // reads (one also writes 18 MB). Their total runtime is not a unit benchmark;
+  // keep a bounded budget without racing five seconds on a loaded CI runner.
+  it.each(["diff.noprefix", "diff.mnemonicPrefix"])("keeps metadata-only file identities when %s is enabled", { timeout: 20_000 }, async (setting) => {
     const dir = repo();
     git(dir, ["config", setting, "true"]);
     git(dir, ["config", "core.filemode", "true"]);
@@ -134,7 +137,7 @@ describe("diff between checkpoints", () => {
     expect(git(dir, ["config", "--get", setting]).stdout.trim()).toBe("true");
   });
 
-  it("keeps large saved changes readable with bounded, lazy file previews", async () => {
+  it("keeps large saved changes readable with bounded, lazy file previews", { timeout: 20_000 }, async () => {
     const dir = repo();
     const from = checkpointRef("large", 1);
     const to = checkpointRef("large", 2);
