@@ -27,6 +27,7 @@ export function Pet() {
   const [play, setPlay] = useState<"roll" | "bounce">();
   const [reactionId, setReactionId] = useState(0);
   const [retry, setRetry] = useState(0);
+  const [hidden, setHidden] = useState(document.visibilityState === "hidden");
   const greetingTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const bodyRef = useRef<HTMLButtonElement>(null);
 
@@ -64,6 +65,11 @@ export function Pet() {
   }, [api, open]);
   useEffect(() => { try { localStorage.setItem("capsule.pet.paused", String(paused)); localStorage.setItem("capsule.pet.large", String(large)); } catch { /* Optional preferences. */ } }, [large, paused]);
   useEffect(() => () => clearTimeout(greetingTimer.current), []);
+  useEffect(() => {
+    const changed = () => setHidden(document.visibilityState === "hidden");
+    document.addEventListener("visibilitychange", changed);
+    return () => document.removeEventListener("visibilitychange", changed);
+  }, []);
 
   /*
    * Shown only once it has drawn. The window is transparent, so revealing it
@@ -94,7 +100,7 @@ export function Pet() {
   }
 
   return (
-    <div className={`pet pet--${state}${open ? " pet--open" : ""}${paused ? " pet--paused" : ""}${large ? " pet--large" : ""}${greeting ? " pet--greeting" : ""}${play ? ` pet--${play}` : ""}`} onKeyDown={(event) => { if (event.key === "Escape") { setOpen(false); bodyRef.current?.focus(); } }}>
+    <div className={`pet pet--${state}${open ? " pet--open" : ""}${paused || hidden ? " pet--paused" : ""}${large ? " pet--large" : ""}${greeting ? " pet--greeting" : ""}${play ? ` pet--${play}` : ""}`} onKeyDown={(event) => { if (event.key === "Escape") { setOpen(false); bodyRef.current?.focus(); } }}>
       {/*
         * The tray, above the capsule so the pet stays where it was put. It
         * lists what the menu bar lists, because they read the same summary.
@@ -140,12 +146,13 @@ export function Pet() {
         aria-controls="pet-tray"
         onPointerMove={(event) => {
           const rect = event.currentTarget.getBoundingClientRect();
-          event.currentTarget.style.setProperty("--pet-look", `${Math.max(-2, Math.min(2, (event.clientX - rect.left - rect.width / 2) / 16))}px`);
+          event.currentTarget.style.setProperty("--pet-look", `${Math.max(-4, Math.min(4, (event.clientX - rect.left - rect.width / 2) / 14))}px`);
+          event.currentTarget.style.setProperty("--pet-look-y", `${Math.max(-2, Math.min(3, (event.clientY - rect.top - rect.height / 2) / 18))}px`);
         }}
-        onPointerLeave={(event) => event.currentTarget.style.setProperty("--pet-look", "0px")}
+        onPointerLeave={(event) => { event.currentTarget.style.setProperty("--pet-look", "0px"); event.currentTarget.style.setProperty("--pet-look-y", "0px"); }}
         onClick={() => setOpen((value) => !value)}
       >
-        <CapsuleMascot key={reactionId} state={state} />
+        <CapsuleMascot key={reactionId} state={state} greeting={greeting} />
       </button>
       <button className="pet-wave" type="button" aria-label="Greet capsule" onClick={() => reactTo("greet")}>Greet</button>
       </div>

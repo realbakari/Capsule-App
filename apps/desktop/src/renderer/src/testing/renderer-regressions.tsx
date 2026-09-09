@@ -119,6 +119,8 @@ window.runPetRegressions = async (motion) => {
     for (const [selector, name] of [
       [".capsule-motion", "capsuleFloat"], [".capsule-core", "capsuleSpin"],
       [".capsule-eyes", "capsuleBlink"], [".capsule-shadow", "capsuleShadow"],
+      [".capsule-breathe", "capsuleBreathe"], [".capsule-head", "capsuleHead"],
+      [".capsule-arm--left", "capsuleLeftArm"], [".capsule-arm--right", "capsuleRightArm"],
     ] as const) {
       animation(selector, reduced ? "none" : name);
     }
@@ -132,10 +134,20 @@ window.runPetRegressions = async (motion) => {
       track.currentTime = 2400;
       assert(getComputedStyle(moving).transform !== initial, "Capsule animation does not change the rendered transform");
       track.play();
+      for (const [selector, time] of [[".capsule-breathe", 3000], [".capsule-head", 4800], [".capsule-arm--left", 2400], [".capsule-arm--right", 2400]] as const) {
+        const part = document.querySelector(selector)!;
+        const motion = part.getAnimations()[0]!;
+        motion.pause(); motion.currentTime = 0;
+        const before = getComputedStyle(part).transform;
+        motion.currentTime = time;
+        assert(getComputedStyle(part).transform !== before, `${selector} has no rendered articulation`);
+        motion.play();
+      }
     }
     button("Greet").click();
     await until(() => document.querySelector(".pet--greeting"));
     animation(".capsule-motion", reduced ? "none" : "capsuleGreet");
+    animation(".capsule-arm--right", reduced ? "none" : "capsuleWave");
     if (reduced) still();
     button("Roll").click();
     await until(() => document.querySelector(".pet--roll"));

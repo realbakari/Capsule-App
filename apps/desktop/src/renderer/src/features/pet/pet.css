@@ -72,12 +72,25 @@ html, body, #root {
   cursor: pointer;
 }
 .pet-wave:hover { background: #343436; }
-.pet-capsule { width: 132px; height: 119px; overflow: visible; filter: drop-shadow(0 4px 6px rgb(0 0 0 / .3)); }
+.pet-capsule { width: 132px; height: 119px; overflow: visible; filter: drop-shadow(0 4px 6px rgb(0 0 0 / .22)); }
 .pet--large .pet-capsule { width: 160px; height: 144px; }
 
 /* Independent shell, gaze and core tracks make the object feel alive without a JS animation loop. */
 .capsule-motion { transform-origin: 80px 72px; animation: capsuleFloat 4.8s ease-in-out infinite; }
-.capsule-gaze { transform: translateX(var(--pet-look, 0px)); }
+.capsule-gaze { transform: translate(var(--pet-look, 0px), var(--pet-look-y, 0px)); transition: transform 180ms ease-out; }
+.capsule-face { animation: capsuleLookAround 13s ease-in-out infinite; }
+.pet-body:hover .capsule-face, .pet-body:focus-visible .capsule-face { animation: none; transform: none; }
+.capsule-breathe { transform-origin: 80px 110px; animation: capsuleBreathe 6s ease-in-out infinite; }
+.capsule-head { transform-origin: 80px 68px; animation: capsuleHead 12s ease-in-out infinite; }
+.capsule-arm--left { transform-origin: 49px 79px; animation: capsuleLeftArm 4.8s ease-in-out infinite; }
+.capsule-arm--right { transform-origin: 110px 79px; animation: capsuleRightArm 4.8s ease-in-out infinite; }
+.capsule-seam { transition: stroke 250ms ease; }
+.pet--running .capsule-seam { animation: capsuleSignal 2.4s ease-in-out infinite; }
+.pet--greeting .capsule-arm--right { animation: capsuleWave 1.6s ease-in-out; }
+.pet--greeting .capsule-head { animation: capsuleHeadGreet 1.6s ease-in-out; }
+.pet--roll .capsule-arm--left, .pet--roll .capsule-arm--right { animation: none; transform: scale(.65); }
+.pet--bounce .capsule-arm--left { animation: capsuleJumpLeft 2.2s ease-in-out; }
+.pet--bounce .capsule-arm--right { animation: capsuleJumpRight 2.2s ease-in-out; }
 .capsule-eyes { transform-box: fill-box; transform-origin: center; animation: capsuleBlink 6.4s ease-in-out infinite; }
 .capsule-shadow { transform-origin: 80px 132px; animation: capsuleShadow 4.8s ease-in-out infinite; }
 .pet--running .capsule-core { transform-origin: 80px 96px; animation: capsuleSpin 3s linear infinite; }
@@ -89,14 +102,39 @@ html, body, #root {
 .pet--roll .capsule-motion { animation: capsuleRoll 1.8s ease-in-out; }
 .pet--bounce .capsule-motion { animation: capsuleBounce 2.2s ease-in-out; }
 @keyframes capsuleFloat {
-  0%, 100% { transform: translateY(0) rotate(-3deg); }
-  50% { transform: translateY(-6px) rotate(3deg); }
+  0%, 100% { transform: translate(0, 0) rotate(-3deg); }
+  35% { transform: translate(2px, -7px) rotate(2deg); }
+  65% { transform: translate(-1px, -5px) rotate(3deg); }
 }
+@keyframes capsuleBreathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(.985, 1.015); }
+}
+@keyframes capsuleHead {
+  0%, 30%, 65%, 100% { transform: translateY(0) rotate(0); }
+  40%, 52% { transform: translateY(-1.5px) rotate(3deg); }
+}
+@keyframes capsuleLookAround {
+  0%, 20%, 65%, 100% { transform: translate(0, 0); }
+  28%, 38% { transform: translate(-3px, -1px); }
+  48%, 55% { transform: translate(3px, 1px); }
+}
+@keyframes capsuleLeftArm { 0%, 100% { transform: rotate(-8deg); } 50% { transform: rotate(9deg); } }
+@keyframes capsuleRightArm { 0%, 100% { transform: rotate(8deg); } 50% { transform: rotate(-9deg); } }
+@keyframes capsuleSignal { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+@keyframes capsuleWave {
+  0%, 100% { transform: rotate(8deg); }
+  20%, 45%, 70% { transform: rotate(-115deg); }
+  32%, 57%, 82% { transform: rotate(-75deg); }
+}
+@keyframes capsuleHeadGreet { 0%, 100% { transform: translateY(0); } 25%, 65% { transform: translateY(-2px) rotate(-4deg); } 45%, 80% { transform: translateY(0) rotate(3deg); } }
+@keyframes capsuleJumpLeft { 0%, 100% { transform: rotate(-8deg); } 38%, 80% { transform: rotate(65deg); } }
+@keyframes capsuleJumpRight { 0%, 100% { transform: rotate(8deg); } 38%, 80% { transform: rotate(-65deg); } }
 @keyframes capsuleShadow {
   0%, 100% { transform: scaleX(1); opacity: .25; }
   50% { transform: scaleX(.82); opacity: .16; }
 }
-@keyframes capsuleBlink { 0%, 91%, 97%, 100% { transform: scaleY(1); } 94% { transform: scaleY(.1); } }
+@keyframes capsuleBlink { 0%, 88%, 92%, 96%, 100% { transform: scaleY(1); } 90%, 94% { transform: scaleY(.08); } }
 @keyframes capsuleSpin { to { transform: rotate(360deg); } }
 @keyframes capsuleNudge {
   0%, 65%, 100% { transform: translateY(0); }

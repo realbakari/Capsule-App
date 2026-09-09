@@ -308,12 +308,15 @@ header, wrapping inside the card rather than overflowing the activity row.
 
 The desktop companion is a separate transparent, initially inactive window,
 available from General settings, the palette and the app menu. Its two-piece
-off-white/graphite capsule SVG has independent CSS tracks for shell float/rock,
-blinking eyes, shadow and working-state core rotation, plus greet/roll/bounce
+off-white/graphite capsule SVG uses gradient shading and independent CSS tracks
+for breathing, head tilt, floating, looking around, blinking, arm articulation,
+shadow and working-state core rotation, plus coordinated greet/roll/bounce
 reactions. The glyph, caption and colour carry state without relying on motion.
 A dedicated SVG drag handle leaves the mascot keyboard/click accessible.
 The window expands upward for the tray, clamped to its display's work area.
-Size/pause preferences are renderer-local; reduced motion disables animation.
+Pointer gaze follows both axes without a JS frame loop. Greet changes expression
+and waves one arm. Size/pause preferences are renderer-local; reduced motion and
+hidden-window visibility disable animation.
 Hidden-renderer regressions explicitly emulate both reduced motion and no
 preference in Chromium's CSS engine, independent of the host's accessibility
 settings. They check actual transform changes, greet/roll/bounce reactions, pause/resume and
