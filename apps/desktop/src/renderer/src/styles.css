@@ -1069,10 +1069,12 @@
 .message-image-preview { display: grid; place-items: center; min-height: 6rem; height: 11.25rem; background: var(--surface-1); }
 .message-image-preview img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }
 .message-attachments { max-width: 100%; }
-.app-update-control { display: flex; flex-direction: column; align-items: center; gap: 0.6rem; min-width: 0; }
+.app-update-control { display: flex; flex-direction: column; align-items: center; gap: 0.6rem; min-width: 0; max-width: 100%; }
 .app-update-control p { font-size: 0.8125rem; max-width: 28rem; overflow-wrap: anywhere; margin: 0; }
 .app-update-control p:empty { display: none; }
 .app-update-control progress { width: 100%; max-width: 18rem; }
+.app-update-release-link { color: var(--text-muted); font-size: .8125rem; text-underline-offset: .2em; }
+.about-modal-actions > button { min-height: 2.4rem; margin: 0; }
 .sidebar-footer button.update-feedback-bubble { width: 100%; text-align: left; font-size: 0.75rem; line-height: 1.4; overflow-wrap: anywhere; }
 .msg-code {
   margin: 0.55rem 0;
@@ -5115,8 +5117,10 @@ div.changed-files-head { cursor: default; }
 
 .about-modal-card {
   position: relative;
-  width: 340px;
-  max-width: 90vw;
+  width: 26rem;
+  max-width: calc(100vw - 2rem);
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
   background: color-mix(in srgb, #121215 90%, transparent);
   -webkit-backdrop-filter: blur(16px) saturate(1.15);
   backdrop-filter: blur(16px) saturate(1.15);
@@ -5217,7 +5221,7 @@ div.changed-files-head { cursor: default; }
 
 .about-modal-actions {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: 0.5rem;
   flex-wrap: wrap;
   justify-content: center;

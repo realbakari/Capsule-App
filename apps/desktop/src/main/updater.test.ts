@@ -163,6 +163,12 @@ describe("what the sidebar is told", () => {
     })).toMatchObject({ state: "unreachable", retry: "check", latest: "0.3.0", detail: "Feed unavailable" });
   });
 
+  it("retains a failed release check alongside development installation limits", () => {
+    expect(mergeUpdateStatus({ ...base, state: "unavailable", detail: "Development build" }, {
+      state: "unreachable", current: base.current, detail: "Network unavailable",
+    })).toMatchObject({ state: "unreachable", detail: "Network unavailable Development build" });
+  });
+
   it("reports progress while it downloads", () => {
     expect(
       mergeUpdateStatus({ ...base, state: "downloading", percent: 12, latest: "0.3.0" }, undefined),

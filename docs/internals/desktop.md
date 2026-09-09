@@ -761,6 +761,9 @@ main's update status (`app.getVersion()`), never a UI literal or the latest
 release tag. A failed local read shows an unavailable state and disables copy.
 The packaged desktop and root release versions must match before packaging;
 internal workspace-package versions are not the desktop version.
+About groups Copy and Check/Download/Restart buttons in one wrapping row, with
+status and a secondary Release notes link beneath. Development installation
+limits do not replace release-check errors in the status projection.
 
 Sidebar, About and Settings share the same status/action hook. It subscribes
 before the initial snapshot and ignores older responses. Main owns six-hour

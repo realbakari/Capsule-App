@@ -31,9 +31,11 @@ your restart request, it may apply it the next time the app starts.
 Reopening a window restores the current update state.
 
 Development builds and incompatible signatures cannot update in place.
-**Release notes and manual download** remains available as an explicit recovery
-link in About; checking for an update does not open it automatically. Do not
-disable system security checks to work around an unexplained signature warning.
+The **Release notes** link in About opens the release page, where a manual
+download remains available for recovery. Checking for an update does not open
+that page automatically. A failed check keeps its error visible even in a
+development build. Do not disable system security checks to work around an
+unexplained signature warning.
 
 ## Update states
 

@@ -99,6 +99,12 @@ export async function runScreenshotRegressions(host: HTMLElement) {
         } };
         root.render(modal ? <AboutModal open onClose={() => {}} /> : <AboutCard />);
         await until(() => host.textContent?.includes("Version 1.8.2"));
+        const actions = host.querySelector('.about-modal-actions')!;
+        const [copyRect, updateRect] = Array.from(actions.querySelectorAll('button')).map((button) => button.getBoundingClientRect());
+        assert(copyRect && updateRect && Math.abs(copyRect.top - updateRect.top) <= 1,
+          `About action buttons are not aligned (${modal ? "modal" : "card"}): copy=${JSON.stringify(copyRect)}, update=${JSON.stringify(updateRect)}`);
+        const statusRect = host.querySelector('[role="status"]')!.getBoundingClientRect();
+        assert(statusRect.top >= copyRect.bottom, "About status is beside or overlapping the action row");
         click("Copy version info");
         await until(() => copied.length > 0);
         assert(copied.startsWith("Capsule: 1.8.2\nGateway protocol: 4\n"), "About copied a placeholder or available release instead of the running version");

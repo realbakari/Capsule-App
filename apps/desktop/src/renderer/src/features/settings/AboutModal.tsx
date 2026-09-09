@@ -18,10 +18,9 @@ function AboutContents() {
     <h2 className="about-app-name">Capsule</h2>
     <div className="about-app-version">{version ? `Version ${version}` : update.error ? "Version unavailable" : "Reading version…"}</div>
     <div className="about-app-copyright">Copyright © 2026 Capsule</div>
-    <div className="about-modal-actions">
+    <UpdateControl update={update}>
       <button type="button" className="about-copy-btn" disabled={!version} onClick={() => void copy()}>{copyState}</button>
-      <UpdateControl update={update} />
-    </div>
+    </UpdateControl>
   </>;
 }
 
