@@ -35,6 +35,16 @@ so progress does not run into the final answer. Consecutive streamed text stays
 intact, including words and code. This applies to new replies; previously saved
 text is not rewritten to guess where missing breaks belonged.
 
+Opening an existing conversation shows a loading placeholder until its history
+arrives, not the new-conversation welcome screen. A failed history read offers
+**Retry** and keeps any messages already on screen. Switching conversations
+opens at the latest loaded messages; reading an older turn in one conversation
+does not change that behavior in another.
+
+Message and code copy buttons confirm **Copied** only after the clipboard accepts
+the text. If copying fails, the button offers a retry. Copy controls appear on
+hover or keyboard focus and remain visible on touch devices.
+
 Long conversations keep a bounded display window: up to 300 messages and about
 4 MB of text and attachment metadata. **Load older messages** moves through saved
 history without loading the whole thread. Once newer messages fall outside that

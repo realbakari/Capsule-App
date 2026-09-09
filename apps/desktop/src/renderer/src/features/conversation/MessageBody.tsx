@@ -1,5 +1,5 @@
-import { Fragment, memo, useState, type ReactNode } from "react";
-import { CopyIcon } from "../shell/icons";
+import { Fragment, memo, type ReactNode } from "react";
+import { CopyButton } from "./CopyButton";
 import { highlight } from "../../lib/highlight";
 import { splitFences } from "../../lib/fences";
 import { parseTable } from "../../lib/tables";
@@ -203,24 +203,11 @@ function block(
  * keep identical props, so they neither re-render nor re-tokenise.
  */
 const CodeBlock = memo(function CodeBlock({ code, language }: { code: string; language?: string }) {
-  const [copied, setCopied] = useState(false);
   return (
     <div className="msg-code-wrap">
       <div className="msg-code-bar">
         <span className="msg-code-lang">{language || "code"}</span>
-        <button
-          className="icon-btn"
-          title="Copy code"
-          aria-label="Copy code"
-          onClick={() => {
-            void navigator.clipboard.writeText(code).then(() => {
-              setCopied(true);
-              window.setTimeout(() => setCopied(false), 1_200);
-            });
-          }}
-        >
-          {copied ? "Copied" : <CopyIcon size={13} />}
-        </button>
+        <CopyButton text={code} label="Copy code" />
       </div>
       <pre className="msg-code mono">{highlight(code, language)}</pre>
     </div>

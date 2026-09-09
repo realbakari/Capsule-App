@@ -964,6 +964,11 @@
 .msg .who:has(.tag) {
   opacity: 1;
 }
+.msg .who:has(.copy-action[data-feedback="true"]) { opacity: 1; }
+.copy-action { display: inline-flex; align-items: center; gap: 0.35rem; }
+.copy-action-feedback { font-size: 0.6875rem; color: var(--text-muted); font-weight: 400; }
+.copy-action-feedback:empty { display: none; }
+@media (hover: none) { .msg .who { opacity: 1; } }
 /* Pagination control sits above the oldest loaded message. */
 .load-older {
   display: flex;
@@ -9032,8 +9037,18 @@ details.card > summary {
 /* Holds the thread's place while the first load lands, so the composer does
    not start centred and then jump to the bottom. */
 .thread-hydrating {
-  min-height: 1px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 2rem 0;
 }
+.history-skeleton { display: block; width: 86%; height: 0.65rem; border-radius: 0.3rem; background: var(--bg-hover); }
+.history-skeleton-prompt { align-self: flex-end; width: 38%; height: 2.75rem; margin-bottom: 2.5rem; border-radius: 0.8rem; }
+.history-skeleton-short { width: 62%; }
+.history-loading-label { margin-top: 0.4rem; font-size: 0.75rem; color: var(--text-faint); }
+.thread-history-error { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding: 0.85rem 1rem; margin-bottom: 1rem; border: 1px solid var(--border-color); border-radius: 0.65rem; font-size: 0.8125rem; }
+.thread-history-error p { margin: 0.3rem 0 0; color: var(--text-muted); overflow-wrap: anywhere; }
+.thread-history-error .chip { flex: none; }
 
 /* An empty sidebar asks for the one thing it needs, in the middle of the space
    it would otherwise leave blank. */

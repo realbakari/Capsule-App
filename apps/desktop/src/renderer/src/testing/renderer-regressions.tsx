@@ -652,6 +652,7 @@ window.runRendererRegressions = async () => {
   await until(() => !actualWorkspace.busy && actualWorkspace.notice?.includes("was sent"));
   assert(actualWorkspace.draft === "", "Refresh failure recreated an accepted draft");
   assert(actualWorkspace.notice?.includes("was sent"), "Refresh failure did not distinguish accepted send");
+  assert(actualWorkspace.historyLoad.state === "error", "Failed history refresh looks like an empty conversation");
   actualWorkspace.setDraft("recover this submission"); await until(() => actualWorkspace.draft === "recover this submission");
   delayFailure = true;
   const failing = actualWorkspace.send(); await until(() => Boolean(rejectSend));
@@ -685,6 +686,7 @@ window.runRendererRegressions = async () => {
   olderRuns.push({ ...done, id: "older-run", createdAt: "2025-12-30T00:00:00Z", updatedAt: "2025-12-31T00:00:00Z" });
   emit("connection", {});
   await until(() => actualWorkspace.messages.some((message) => message.id === "recent"));
+  assert(actualWorkspace.historyLoad.state === "loaded", "Recovered history kept its error state");
   await actualWorkspace.loadOlderMessages();
   await until(() => actualWorkspace.messages.some((message) => message.id === "older"));
   deferEvents = true; emit("connection", {}); await until(() => Boolean(holdEvents));
@@ -797,6 +799,37 @@ window.runRendererRegressions = async () => {
   root.render(<Conversation />);
   await until(() => !document.querySelector('.gateway-recovery'));
   assert(!document.querySelector('.composer-preflight'), "Direct route is incorrectly blocked by Gateway recovery");
+  let historyRetries = 0;
+  window.testWorkspace = { ...window.testWorkspace, messages: [], runs: [], notice: undefined, historyLoad: { state: "loading" },
+    loadSession: async () => { historyRetries++; },
+  };
+  root.render(<Conversation />);
+  await until(() => document.querySelector('.thread-hydrating[role="status"]'));
+  assert(!document.querySelector('.conversation-empty, .empty-thread'), "Existing thread flashes new-conversation UI while loading");
+  window.testWorkspace = { ...window.testWorkspace, historyLoad: { state: "error", detail: "History unavailable" } };
+  root.render(<Conversation />);
+  await until(() => document.querySelector('.thread-history-error'));
+  assert(!document.querySelector('.empty-thread'), "History failure looks like an empty conversation");
+  document.querySelector<HTMLButtonElement>('.thread-history-error button')!.click();
+  await until(() => historyRetries === 1);
+  window.testWorkspace = { ...window.testWorkspace, historyLoad: { state: "loaded" } };
+  root.render(<Conversation />);
+  await until(() => document.querySelector('.empty-thread'));
+  const firstHistory = { ...window.testWorkspace, hasOlderMessages: true, loadOlderMessages: async () => {}, messages: [
+    { id: "history-position", sessionId: completed.sessionId, role: "assistant", content: "Saved reply", createdAt: completed.createdAt },
+  ] };
+  window.testWorkspace = firstHistory;
+  root.render(<Conversation />);
+  await until(() => document.querySelector('.load-older button'));
+  document.querySelector<HTMLButtonElement>('.load-older button')!.click();
+  await until(() => document.querySelector('.jump-latest'));
+  window.testWorkspace = { ...firstHistory, session: { id: "empty-between", projectId: project.id }, messages: [] };
+  root.render(<Conversation />);
+  await until(() => document.querySelector('.empty-thread'));
+  window.testWorkspace = firstHistory;
+  root.render(<Conversation />);
+  await until(() => document.querySelector('.msg.assistant'));
+  assert(!document.querySelector('.jump-latest'), "Returning through an empty thread restored another selection's paused following state");
   root.unmount(); host.style.width = ""; window.capsule = nativeApi;
   root = createRoot(host);
   const contextBase = { ...window.testWorkspace, ready: true, connected: true, busy: false, activeRun: undefined, sendBlockReason: undefined,

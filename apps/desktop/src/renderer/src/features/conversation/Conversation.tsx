@@ -3,8 +3,9 @@ import type { ChatMessage, Run } from "@capsule/shared";
 import { harnessDisplayName } from "../../lib/harness";
 import { AgentGlyph } from "../shell/AgentGlyph";
 import { formatTokens, type ContextUsage } from "../../lib/context-window";
-import { AlertTriangleIcon, CopyIcon, DiffIcon, FileIcon, SparkIcon, TerminalIcon, XIcon } from "../shell/icons";
+import { AlertTriangleIcon, DiffIcon, FileIcon, SparkIcon, TerminalIcon, XIcon } from "../shell/icons";
 import { useWorkspace } from "../../lib/workspace";
+import { useScopedState } from "../../lib/scoped-state";
 import { formatUserError } from "../../lib/errors";
 import { ViewErrorBoundary } from "../shell/ErrorBoundary";
 import { Composer } from "./Composer";
@@ -31,6 +32,7 @@ import { TurnFilesCard } from "./TurnFilesCard";
 import { MessageBody } from "./MessageBody";
 import { MessageAttachments } from "./MessageAttachments";
 import { VirtualTurns } from "./VirtualTurns";
+import { CopyButton } from "./CopyButton";
 
 /*
  * One message. Memoized because a streamed frame appends a message rather
@@ -55,14 +57,7 @@ const MessageRow = memo(function MessageRow({
         {message.kind === "steer" && <span className="tag">Steer</span>}
         <span className="when">{formatTime(message.createdAt)}</span>
         <span className="msg-actions">
-          <button
-            className="icon-btn"
-            title="Copy"
-            aria-label="Copy"
-            onClick={() => void navigator.clipboard.writeText(message.content)}
-          >
-            <CopyIcon size={13} />
-          </button>
+          <CopyButton text={message.content} />
         </span>
       </div>
       {message.content ? <MessageBody content={message.content} /> : null}
@@ -216,6 +211,8 @@ export function Conversation() {
     loadOlderMessages,
     hasNewerMessages,
     returnToLatest,
+    historyLoad,
+    loadSession,
     agents,
     agentId,
     activeRun: workspaceActiveRun,
@@ -283,6 +280,9 @@ export function Conversation() {
     return next;
   }, [messages]);
   const visibleMessageCount = useMemo(() => turns.reduce((count, turn) => count + turn.messages.length, 0), [turns]);
+  const historyPending = !ready || Boolean(session && historyLoad?.state === "loading");
+  const historyError = session && historyLoad?.state === "error" ? historyLoad.detail : undefined;
+  const retryHistory = () => { if (session) void loadSession(session.id).catch(() => { /* History owns its error state. */ }); };
   const turnOutcomes = useMemo(() => outcomesByTurn(turns, runs, session?.id, project?.id), [turns, runs, session?.id, project?.id]);
   const summaryRun = [activeRun, ...(hasNewerMessages ? [] : runs)].find((run) => run && run.sessionId === session?.id && run.projectId === project?.id);
 
@@ -354,7 +354,10 @@ export function Conversation() {
   /* Track the message count at mount time so entrance animations only fire for
      messages that arrive after the initial load, not the whole history. */
   const initialCountRef = useRef(visibleMessageCount);
-  const [stick, setStick] = useState(true);
+  // Following belongs to the selected thread. Reading an older turn must not
+  // leave the next thread stranded at an unrelated scroll offset.
+  const followingScope = useMemo(() => ({ sessionId: session?.id }), [session?.id]);
+  const [stick, setStick] = useScopedState(followingScope, true);
   const historyNavigation = hasNewerMessages ? <div className="load-older" role="status">
     <span>Browsing a bounded history window. Newer turns are saved.</span>
     <button className="chip" onClick={() => { setStick(true); void returnToLatest().catch((error) => setNotice(formatUserError(error))); }}>Return to latest</button>
@@ -367,7 +370,7 @@ export function Conversation() {
   }, [messages, activeRun, stick]);
 
   return (
-    <section className={`main page-content${ready && visibleMessageCount === 0 ? " conversation-empty" : ""}`}>
+    <section className={`main page-content${!historyPending && !historyError && visibleMessageCount === 0 ? " conversation-empty" : ""}`}>
       {shownNotice && (
         <div className="notice notice-dismissable" role="status">
           <span>{shownNotice}</span>
@@ -388,19 +391,22 @@ export function Conversation() {
         onScroll={(event) => {
           const node = event.currentTarget;
           const atBottom = node.scrollHeight - node.scrollTop - node.clientHeight < 80;
-          setStick((current) => (current === atBottom ? current : atBottom));
+          setStick((current) => current === atBottom ? current : atBottom);
         }}
       >
         <div className="thread">
-          {/*
-           * Nothing until the first load lands. Projects, conversations and
-           * messages all start empty, which is indistinguishable from a real
-           * empty workspace — so every launch flashed "What should we work
-           * on?" and an Attach folder button before the real thread appeared.
-           */}
-          {!ready ? (
-            <div className="thread-hydrating" aria-hidden />
-          ) : visibleMessageCount === 0 ? (
+          {historyError && <div className="thread-history-error" role="alert">
+            <div><strong>Could not load this conversation</strong><p>{historyError}</p></div>
+            <button className="chip" onClick={retryHistory}>Retry</button>
+          </div>}
+          {historyPending && visibleMessageCount === 0 ? (
+            <div className="thread-hydrating" role="status" aria-label="Loading conversation">
+              <span className="history-skeleton history-skeleton-prompt" aria-hidden />
+              <span className="history-skeleton" aria-hidden />
+              <span className="history-skeleton history-skeleton-short" aria-hidden />
+              <span className="history-loading-label">Loading conversation…</span>
+            </div>
+          ) : historyError && visibleMessageCount === 0 ? null : visibleMessageCount === 0 ? (
             <div className="empty-thread">
               {/*
                 * The mark, above the question. An empty thread was the one
@@ -461,7 +467,7 @@ export function Conversation() {
                 </div>
               )}
               {historyNavigation}
-              <VirtualTurns turns={turns} folded={folded} scroller={scroller} stick={stick}>{(turn) =>
+              <VirtualTurns key={session?.id} turns={turns} folded={folded} scroller={scroller} stick={stick}>{(turn) =>
                 folded.has(turn.id) ? (
                   <FoldedTurn key={turn.id} turn={turn} onOpen={openTurn} />
                 ) : (

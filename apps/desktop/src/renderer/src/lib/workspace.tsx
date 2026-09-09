@@ -166,6 +166,7 @@ export interface WorkspaceValue {
   agents: Agent[];
   skills: Skill[];
   messages: ChatMessage[];
+  historyLoad: { state: "loading" | "loaded" } | { state: "error"; detail: string };
   hasOlderMessages: boolean;
   loadingOlder: boolean;
   loadOlderMessages: () => Promise<void>;
@@ -379,6 +380,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   const draftScope = draftScopes.select(JSON.stringify([projectId, sessionId]));
   const [transcript, setTranscript] = useScopedState(scope, { messages: [] as ChatMessage[], olderEvicted: false, hasNewer: false });
   const messages = transcript.messages;
+  const [historyLoad, setHistoryLoad] = useScopedState<WorkspaceValue["historyLoad"]>(scope, { state: "loading" });
   const historyWindow = useMemo(() => ({ edge: "newest" as "newest" | "oldest", detached: false }), [scope]);
   historyWindow.detached = transcript.hasNewer;
   const setMessages = useCallback((update: ChatMessage[] | ((messages: ChatMessage[]) => ChatMessage[])) => {
@@ -563,14 +565,20 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       const current = requests.capture("messages");
       const generation = ++loadGeneration.current;
       const runsCurrent = requests.capture("project-runs");
+      setHistoryLoad((current) => current.state === "loaded" ? current : { state: "loading" });
       // Only the most recent page. Loading an entire conversation on every
       // streamed chunk made a long thread quadratic to render.
-      const [page, history] = await Promise.all([
+      const result = await Promise.all([
         api.listMessagePage(id, { limit: MESSAGE_PAGE_SIZE }),
         api.listRunPage({ sessionId: id }),
-      ]);
+      ]).catch((error: unknown) => {
+        if (generation === loadGeneration.current && current()) setHistoryLoad({ state: "error", detail: formatUserError(error) });
+        throw error;
+      });
+      const [page, history] = result;
       const nextMessages = page.messages;
       if (generation !== loadGeneration.current || !current()) return;
+      setHistoryLoad({ state: "loaded" });
       const nextRuns = mergeRuns(history.runs, [...liveRunState.runs.values()].filter((run) => run.sessionId === id));
       if (!historyWindow.detached) {
         historyWindow.edge = "newest";
@@ -780,7 +788,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     const off = [
       api.on("connection", () => {
         void refresh();
-        if (sessionId) void loadSession(sessionId).catch((error) => setNotice(formatUserError(error)));
+        if (sessionId) void loadSession(sessionId).catch(() => { /* History owns its loading and retry UI. */ });
       }),
       api.on("message", (incoming) => {
         const message = incoming as ChatMessage;
@@ -927,7 +935,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   }, [api, loadGit, loadSession, projectId, refresh, sessionId, scope, liveRunState, setBrowserUrl]);
 
   useEffect(() => {
-    if (sessionId) void loadSession(sessionId).catch((error) => setNotice(formatUserError(error)));
+    if (sessionId) void loadSession(sessionId).catch(() => { /* History owns its loading and retry UI. */ });
   }, [sessionId, loadSession]);
 
   useEffect(() => {
@@ -1938,6 +1946,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       aboutOpen,
       setAboutOpen,
       messages,
+      historyLoad,
       hasOlderMessages: hasOlderMessages || transcript.olderEvicted,
       hasNewerMessages: transcript.hasNewer,
       returnToLatest,
@@ -2101,6 +2110,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       agents,
       skills,
       messages,
+      historyLoad,
       transcript,
       hasOlderMessages,
       loadingOlder,
