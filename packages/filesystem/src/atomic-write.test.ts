@@ -1,7 +1,7 @@
-import { existsSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import fs, { chmodSync, existsSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { writeFileAtomic } from "./atomic-write.js";
 
@@ -22,10 +22,32 @@ describe("writeFileAtomic", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "capsule-atomic-"));
     const file = path.join(dir, "keep.txt");
     writeFileSync(file, "original");
-    // A directory where the temp file needs to be is a write that cannot work.
-    expect(() => writeFileAtomic(path.join(dir, "keep.txt"), "x".repeat(10), { mode: 0o000 }))
-      .not.toThrow();
-    expect(readFileSync(file, "utf8")).toBe("xxxxxxxxxx");
+    chmodSync(file, 0o600);
+    const rename = vi.spyOn(fs, "renameSync").mockImplementation(() => { throw new Error("Rename failed"); });
+    try { expect(() => writeFileAtomic(file, "replacement")).toThrow("Rename failed"); }
+    finally { rename.mockRestore(); }
+    expect(readFileSync(file, "utf8")).toBe("original");
+    expect(statSync(file).mode & 0o777).toBe(0o600);
+    expect(readdirSync(dir)).toEqual(["keep.txt"]);
+  });
+
+  it.each([0o755, 0o600, 0o000])("preserves existing permissions %i", (mode) => {
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-atomic-"));
+    const file = path.join(dir, "source");
+    writeFileSync(file, "old");
+    chmodSync(file, mode);
+    writeFileAtomic(file, "new");
+    expect(statSync(file).mode & 0o777).toBe(mode);
+    chmodSync(file, 0o600);
+    expect(readFileSync(file, "utf8")).toBe("new");
+  });
+
+  it("honors an explicit zero mode", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-atomic-"));
+    const file = path.join(dir, "private");
+    writeFileAtomic(file, "private", { mode: 0 });
+    expect(statSync(file).mode & 0o777).toBe(0);
+    chmodSync(file, 0o600);
   });
 
   it("keeps the mode a secret file needs", () => {

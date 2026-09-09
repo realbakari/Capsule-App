@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 
 /*
@@ -21,15 +22,36 @@ export function writeFileAtomic(
 ): void {
   const dir = path.dirname(file);
   fs.mkdirSync(dir, { recursive: true });
+  let mode = options?.mode;
+  if (mode === undefined) {
+    try {
+      const existing = fs.lstatSync(file);
+      if (existing.isFile()) mode = existing.mode & 0o777;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  }
   // Beside the target, because rename across filesystems is not atomic and a
   // temp directory may be on another one.
-  const temp = path.join(dir, `.${path.basename(file)}.${process.pid}.${Date.now()}.tmp`);
+  const temp = path.join(dir, `.${path.basename(file)}.${randomUUID()}.tmp`);
+  let descriptor: number | undefined;
+  let created = false;
   try {
-    fs.writeFileSync(temp, contents, { encoding: "utf8", ...(options?.mode ? { mode: options.mode } : {}) });
+    descriptor = fs.openSync(temp, "wx", mode ?? 0o666);
+    created = true;
+    fs.writeFileSync(descriptor, contents, "utf8");
+    // An existing file's permissions are not subject to the current umask.
+    // Explicit mode 000 is meaningful too; never test it by truthiness.
+    if (mode !== undefined) fs.fchmodSync(descriptor, mode);
+    fs.closeSync(descriptor);
+    descriptor = undefined;
     fs.renameSync(temp, file);
   } catch (error) {
+    if (descriptor !== undefined) {
+      try { fs.closeSync(descriptor); } catch { /* Preserve the original write failure. */ }
+    }
     try {
-      fs.rmSync(temp, { force: true });
+      if (created) fs.rmSync(temp, { force: true });
     } catch {
       // The write already failed; a leftover temp file is the smaller problem.
     }
