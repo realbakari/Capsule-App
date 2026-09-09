@@ -7411,6 +7411,31 @@ div.changed-files-head { cursor: default; }
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
 }
 
+/* Discovery uses one bounded surface, with secondary context below each name. */
+.palette-backdrop:has(> .search-dialog) { background: color-mix(in srgb, var(--bg) 64%, transparent); }
+.search-dialog { display: flex; flex-direction: column; max-height: calc(84dvh - 1rem); background: var(--bg-elevated, var(--bg)); color: var(--text); border-color: var(--border-color); box-shadow: 0 16px 48px rgb(0 0 0 / 24%); }
+.search-dialog .palette-list { flex: 1; max-height: 25rem; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.search-dialog .palette-search-row { border-color: var(--border-color); }
+.search-dialog .palette-search-row input { min-width: 0; font-size: .875rem; }
+.search-dialog .search-dialog-close { width: 1.75rem; height: 1.75rem; padding: .35rem; flex-shrink: 0; }
+.search-dialog-section { color: var(--text-faint); font-size: .6875rem; font-weight: 500; padding: .6rem .6rem .3rem; }
+.search-dialog .search-dialog-item { min-height: 2.35rem; align-items: center; padding: .45rem .6rem; color: var(--text); transition: none; }
+.search-dialog .search-dialog-item.active, .search-dialog button:hover { background: var(--bg-hover); color: var(--text); }
+.search-dialog .search-dialog-item[aria-disabled="true"] { color: var(--text-muted); }
+.search-dialog-icon { display: grid; place-items: center; flex: 0 0 1rem; color: var(--text-muted); }
+.search-dialog-copy { display: grid; gap: .12rem; min-width: 0; flex: 1; }
+.search-dialog-copy > span, .search-dialog-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-dialog-copy > span { font-size: .8125rem; font-weight: 450; }
+.search-dialog-copy small { color: var(--text-muted); font-size: .75rem; }
+.search-dialog-item > kbd { color: var(--text-faint); font: inherit; font-size: .6875rem; flex-shrink: 0; }
+.search-dialog .palette-hints { flex-wrap: wrap; gap: .75rem; border-color: var(--border-color); background: var(--bg-hover); flex-shrink: 0; }
+.search-dialog .palette-hints kbd { color: var(--text-muted); background: var(--bg); border-color: var(--border-color); box-shadow: none; }
+.search-dialog-feedback { display: flex; align-items: flex-start; gap: .5rem; padding: .6rem 1rem; font-size: .8125rem; color: var(--red); }
+.search-dialog-feedback > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.search-dialog .search-dialog-feedback button { width: auto; padding: .15rem .4rem; flex-shrink: 0; color: var(--text); }
+.search-dialog-status { padding: .5rem 1rem 0; margin: 0; font-size: .75rem; color: var(--text-muted); }
+@media (pointer: coarse) { .search-dialog .search-dialog-item { min-height: 2.75rem; } }
+
 .changed-files-actions {
   display: flex;
   /* Expanding sits at the reading edge, restoring at the far one: the safe

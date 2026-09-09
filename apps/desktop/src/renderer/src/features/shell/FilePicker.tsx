@@ -1,112 +1,49 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type { FileEntry } from "@capsule/shared";
 import { searchProjectFiles } from "../../lib/bridge";
+import { formatUserError } from "../../lib/errors";
 import { useWorkspace } from "../../lib/workspace";
-import { SearchIcon } from "./icons";
+import { FileIcon } from "./icons";
+import { SearchDialog } from "./SearchDialog";
 
 export function FilePicker() {
-  const { filePicker, setFilePicker, projectId, project, mentionFile, pickProjectDirectory, pickFilesToMention } =
-    useWorkspace();
+  const { api, filePicker, setFilePicker, projectId, project, session, mentionFile, pickProjectDirectory, pickFilesToMention } = useWorkspace();
   const [query, setQuery] = useState("");
-  const [index, setIndex] = useState(0);
-  const [files, setFiles] = useState<FileEntry[]>([]);
+  const [retry, setRetry] = useState(0);
+  const root = session && session.projectId === projectId ? session.workingDirectory ?? project?.workingDirectory : project?.workingDirectory;
+  const scope = JSON.stringify([projectId, root, query]);
+  const [result, setResult] = useState<{ scope: string; files?: FileEntry[]; error?: string }>();
+  const currentResult = result?.scope === scope ? result : undefined;
 
   useEffect(() => {
-    if (!filePicker || !projectId) {
-      setFiles([]);
-      return;
-    }
-    void searchProjectFiles(projectId, query)
-      .then((entries) => {
-        setFiles(entries);
-        setIndex(0);
-      })
-      .catch(() => setFiles([]));
-  }, [filePicker, projectId, query]);
+    if (!filePicker || !projectId || !root) return;
+    let current = true;
+    setResult(undefined);
+    const timer = setTimeout(() => {
+      void searchProjectFiles(projectId, query, root).then((files) => {
+        if (current) setResult({ scope, files });
+      }).catch((error) => {
+        if (current) setResult({ scope, error: formatUserError(error) });
+      });
+    }, 100);
+    return () => { current = false; clearTimeout(timer); };
+  }, [filePicker, projectId, root, query, scope, retry]);
 
-  const items = useMemo(() => files.slice(0, 40), [files]);
-
+  useEffect(() => { if (!filePicker) setQuery(""); }, [filePicker]);
   if (!filePicker) return null;
-  return (
-    <div
-      className="palette-backdrop"
-      onClick={() => {
-        setFilePicker(false);
-        setQuery("");
-      }}
-    >
-      <div className="palette" onClick={(event) => event.stopPropagation()}>
-        <div className="palette-search-row">
-          <SearchIcon size={16} />
-          <input
-            autoFocus
-            placeholder="Search project files…"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "ArrowDown") {
-                event.preventDefault();
-                setIndex((current) => Math.min(items.length - 1, current + 1));
-              }
-              if (event.key === "ArrowUp") {
-                event.preventDefault();
-                setIndex((current) => Math.max(0, current - 1));
-              }
-              if (event.key === "Enter" && items[index]) {
-                event.preventDefault();
-                mentionFile(items[index].path);
-                setFilePicker(false);
-                setQuery("");
-              }
-              if (event.key === "Escape") {
-                setFilePicker(false);
-              }
-            }}
-          />
-        </div>
-        {!project?.workingDirectory && (
-          <div className="sidebar-empty">
-            <p>Open a code folder first, then search files.</p>
-            <div className="actions" style={{ marginTop: 8 }}>
-              <button
-                className="send"
-                type="button"
-                onClick={() => {
-                  setFilePicker(false);
-                  void pickProjectDirectory();
-                }}
-              >
-                Open folder
-              </button>
-              <button
-                className="chip"
-                type="button"
-                onClick={() => {
-                  setFilePicker(false);
-                  void pickFilesToMention();
-                }}
-              >
-                Open files
-              </button>
-            </div>
-          </div>
-        )}
-        {project?.workingDirectory && items.length === 0 && <div className="sidebar-empty">No files</div>}
-        {items.map((item, itemIndex) => (
-          <button
-            key={item.path}
-            className={itemIndex === index ? "active" : ""}
-            onMouseEnter={() => setIndex(itemIndex)}
-            onClick={() => {
-              mentionFile(item.path);
-              setFilePicker(false);
-              setQuery("");
-            }}
-          >
-            {item.path}
-          </button>
-        ))}
-      </div>
+  const files = currentResult?.files?.filter((file) => file.type === "file").slice(0, 40) ?? [];
+  const empty = root ? "No matching files in this checkout." : <div>
+    <p>Attach a project folder to search its files.</p>
+    <div className="actions">
+      <button type="button" disabled={api.isDesktop === false} onClick={() => { setFilePicker(false); void pickProjectDirectory(); }}>Open folder</button>
+      <button type="button" disabled={api.isDesktop === false} onClick={() => { setFilePicker(false); void pickFilesToMention(); }}>Open files</button>
     </div>
-  );
+  </div>;
+  return <SearchDialog key={JSON.stringify([projectId, root])} title="Search files" placeholder="Search files in this checkout…" query={query} selectLabel="Mention"
+    onQueryChange={setQuery} status={projectId && root && !currentResult ? "Searching this checkout…" : undefined}
+    error={currentResult?.error} onRetry={() => setRetry((value) => value + 1)} empty={empty}
+    items={files.map((file) => ({
+      id: file.path, label: file.name, detail: file.path, group: "Current checkout", icon: <FileIcon size={15} />,
+      onSelect: () => mentionFile(file.path),
+    }))} onClose={() => { setFilePicker(false); setQuery(""); }} />;
 }

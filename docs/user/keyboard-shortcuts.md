@@ -35,3 +35,18 @@ Two things the editor will not let you do:
 - `$` to attach a skill
 - Paperclip or drop to attach local files
 - `⌘S` to stash the current prompt, or open the stash when the composer is empty
+
+## Finding your way around
+
+The command palette groups recent conversations, actions, projects, and matching
+messages. File search shows names with their paths and searches the current
+conversation's checkout, including a worktree. Loading and failed searches are
+labelled separately from no matches; failed searches offer **Retry**.
+
+Use the arrow keys to move through results, `Home` / `End` for the first or last
+result, `Enter` to select, and `Esc` to close. The selected result stays in view.
+Actions that need the desktop app explain that in a paired viewer.
+
+Searching the sidebar by project name keeps that project's conversations visible.
+Hiding the sidebar removes its controls from keyboard navigation; showing it
+restores them.

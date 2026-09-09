@@ -40,6 +40,11 @@ Capsule is a workspace, not a clone of any other agent product. Quality bars els
   Search, project, and thread rows are flat by default; hover supplies the
   surface and the active thread relies on text weight instead of stacked pills.
 - Hide with the traffic-light-adjacent control or `⌘B`. Width animates to 0; do not `display: none` the sidebar or the swipe-back target disappears.
+- Both normal and Settings sidebars are `inert` while collapsed. Close any
+  portaled menu and transfer focus to the visible titlebar toggle when needed.
+  Thread-row keyboard handlers ignore events from nested action buttons.
+- A project-name search retains that project's active conversations. A
+  thread-name search filters its children instead of implying the project is empty.
 - Two-finger swipe left on the sidebar hides it. A rightward swipe or drag from the left edge shows it (`useSidebarSwipe`).
 - `···` opens an in-app **portaled** action menu (the sidebar `backdrop-filter` creates a stacking context that traps `position: fixed` descendants). Right-click uses the native Electron menu (`capsule:showContextMenu`).
 - Project menu: rename, new conversation, change folder, **add folder**, open folder, copy path, delete.

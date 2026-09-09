@@ -1,175 +1,80 @@
 import { useEffect, useMemo, useState } from "react";
 import type { SearchResults } from "@capsule/shared";
 import { useWorkspace } from "../../lib/workspace";
-import { SearchIcon } from "./icons";
+import { formatUserError } from "../../lib/errors";
+import { CpuIcon, FolderIcon, MessageSquareIcon, PlusIcon, SearchIcon, SettingsIcon } from "./icons";
+import { SearchDialog, type SearchDialogItem } from "./SearchDialog";
 
 export function Palette() {
   const {
-    api,
-    palette,
-    paletteQuery,
-    setPalette,
-    setPaletteQuery,
-    setView,
-    createTask,
-    createProjectFromFolder,
-    pickProjectDirectory,
-    pickFilesToMention,
-    projects,
-    sessions,
-    setProjectId,
-    setAboutOpen,
-    openInspector,
+    api, palette, paletteQuery, setPalette, setPaletteQuery, setView, createTask,
+    createProjectFromFolder, pickProjectDirectory, pickFilesToMention, projects,
+    sessions, setProjectId, setAboutOpen, openInspector,
   } = useWorkspace();
-  const [index, setIndex] = useState(0);
-  const [hits, setHits] = useState<SearchResults>();
+  const query = paletteQuery.trim().toLowerCase();
+  const [retry, setRetry] = useState(0);
+  const [search, setSearch] = useState<{ query: string; hits?: SearchResults; error?: string }>();
+  const currentSearch = search?.query === query ? search : undefined;
 
   useEffect(() => {
-    if (!palette || paletteQuery.trim().length < 2) {
-      setHits(undefined);
-      return;
-    }
-    void api.search(paletteQuery).then((result: SearchResults) => setHits(result));
-  }, [api, palette, paletteQuery]);
+    if (!palette || query.length < 2) return;
+    let current = true;
+    setSearch(undefined);
+    const timer = setTimeout(() => {
+      void api.search(query).then((hits) => {
+        if (current) setSearch({ query, hits });
+      }).catch((error) => {
+        if (current) setSearch({ query, error: formatUserError(error) });
+      });
+    }, 150);
+    return () => { current = false; clearTimeout(timer); };
+  }, [api, palette, query, retry]);
 
-  const commands = useMemo(() => {
-    const query = paletteQuery.toLowerCase();
-    const actions = [
-      { id: "new", label: "New conversation", run: () => createTask() },
-      { id: "new-project", label: "New project from folder", run: () => createProjectFromFolder() },
-      { id: "open-folder", label: "Open folder", run: () => pickProjectDirectory() },
-      { id: "open-files", label: "Open files", run: () => pickFilesToMention() },
-      { id: "chat", label: "Open conversation", run: () => setView("chat") },
-      { id: "skills", label: "Open skills & packs", run: () => setView("skills") },
-      { id: "harness", label: "Open ACP harnesses", run: () => setView("runtimes") },
-      { id: "capabilities", label: "Inspect harness capabilities", run: () => setView("runtimes") },
-      { id: "runs", label: "Open active runs", run: () => setView("history") },
-      { id: "thread-agents", label: "Show thread agents", run: () => openInspector("agents") },
-      { id: "approvals", label: "Open approvals", run: () => setView("approvals") },
-      { id: "connect", label: "Connect OpenClaw", run: () => api.connectGateway() },
-      { id: "settings", label: "Open settings", run: () => setView("settings") },
+  const items = useMemo<SearchDialogItem[]>(() => {
+    const desktopOnly = api.isDesktop === false ? "Available in the desktop app." : undefined;
+    const actions: SearchDialogItem[] = [
+      { id: "new", label: "New conversation", group: "Actions", icon: <PlusIcon size={15} />, shortcut: "⌘N", disabledReason: desktopOnly, onSelect: createTask },
+      { id: "new-project", label: "New project from folder", group: "Actions", icon: <FolderIcon size={15} />, disabledReason: desktopOnly, onSelect: createProjectFromFolder },
+      { id: "open-folder", label: "Open folder", group: "Actions", icon: <FolderIcon size={15} />, disabledReason: desktopOnly, onSelect: pickProjectDirectory },
+      { id: "open-files", label: "Open files", group: "Actions", icon: <FolderIcon size={15} />, disabledReason: desktopOnly, onSelect: pickFilesToMention },
+      { id: "chat", label: "Open conversation", group: "Go to", icon: <MessageSquareIcon size={15} />, onSelect: () => setView("chat") },
+      { id: "skills", label: "Skills & packs", group: "Go to", onSelect: () => setView("skills") },
+      { id: "harness", label: "Agents, harnesses & capabilities", group: "Go to", icon: <CpuIcon size={15} />, onSelect: () => setView("runtimes") },
+      { id: "runs", label: "Run history", group: "Go to", onSelect: () => setView("history") },
+      { id: "thread-agents", label: "Thread agents", group: "Go to", onSelect: () => openInspector("agents") },
+      { id: "approvals", label: "Approvals", group: "Go to", onSelect: () => setView("approvals") },
+      { id: "settings", label: "Settings", group: "Go to", icon: <SettingsIcon size={15} />, onSelect: () => setView("settings") },
+      { id: "connect", label: "Connect OpenClaw", group: "Workspace", disabledReason: desktopOnly, onSelect: () => api.connectGateway() },
       ...(api.isDesktop === true ? [
-        { id: "pet-show", label: "Show desktop companion", run: () => api.togglePet(true) },
-        { id: "pet-hide", label: "Hide desktop companion", run: () => api.togglePet(false) },
+        { id: "pet-show", label: "Show desktop companion", group: "Workspace", onSelect: () => api.togglePet(true) },
+        { id: "pet-hide", label: "Hide desktop companion", group: "Workspace", onSelect: () => api.togglePet(false) },
       ] : []),
-      { id: "update", label: "Check for updates", run: () => setAboutOpen(true) },
-      { id: "about", label: "About Capsule", run: () => setAboutOpen(true) },
-    ].filter((command) => command.label.toLowerCase().includes(query));
-    const projectHits = projects
-      .filter((item) => item.name.toLowerCase().includes(query))
-      .map((item) => ({
-        id: `project-${item.id}`,
-        label: `Project · ${item.name}`,
-        run: () => {
-          setProjectId(item.id);
-          setView("chat");
-        },
-      }));
-    const sessionHits = sessions
-      .filter((item) => item.title.toLowerCase().includes(query) && item.state === "active")
-      .map((item) => ({
-        id: `session-${item.id}`,
-        label: `Thread · ${item.title}`,
-        run: () => {
-          setProjectId(item.projectId, item.id);
-          setView("chat");
-        },
-      }));
-    const messageHits =
-      hits?.messages.map((item) => ({
-        id: `msg-${item.id}`,
-        label: `Message · ${item.sessionTitle} — ${item.excerpt}`,
-        run: () => {
-          setProjectId(item.projectId, item.sessionId);
-          setView("chat");
-        },
-      })) ?? [];
-    return query ? [...actions, ...projectHits, ...sessionHits, ...messageHits] : actions;
-  }, [
-    api,
-    openInspector,
-    createProjectFromFolder,
-    pickProjectDirectory,
-    pickFilesToMention,
-    createTask,
-    hits,
-    paletteQuery,
-    projects,
-    sessions,
-    setProjectId,
-    setView,
-  ]);
-
-  useEffect(() => {
-    setIndex(0);
-  }, [paletteQuery, palette]);
-
-  function run(command: (typeof commands)[number]) {
-    void command.run();
-    setPalette(false);
-    setPaletteQuery("");
-  }
+      { id: "update", label: "Check for updates", group: "Workspace", onSelect: () => setAboutOpen(true) },
+      { id: "about", label: "About Capsule", group: "Workspace", onSelect: () => setAboutOpen(true) },
+    ].filter((item) => item.label.toLowerCase().includes(query));
+    const projectNames = new Map(projects.map((project) => [project.id, project.name]));
+    const matchingThreads = sessions.filter((session) => session.state === "active" && session.title.toLowerCase().includes(query))
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, query ? 30 : 5);
+    const threads: SearchDialogItem[] = matchingThreads.map((session) => ({
+      id: `session-${session.id}`, label: session.title, detail: projectNames.get(session.projectId),
+      group: query ? "Conversations" : "Recent conversations", icon: <MessageSquareIcon size={15} />,
+      onSelect: () => { setProjectId(session.projectId, session.id); setView("chat"); },
+    }));
+    if (!query) return [...threads, ...actions];
+    const projectItems: SearchDialogItem[] = projects.filter((project) => project.name.toLowerCase().includes(query)).slice(0, 20).map((project) => ({
+      id: `project-${project.id}`, label: project.name, group: "Projects", icon: <FolderIcon size={15} />,
+      onSelect: () => { setProjectId(project.id); setView("chat"); },
+    }));
+    const messages: SearchDialogItem[] = (currentSearch?.hits?.messages ?? []).slice(0, 30).map((message) => ({
+      id: `message-${message.id}`, label: message.sessionTitle, detail: message.excerpt, group: "Messages", icon: <SearchIcon size={15} />,
+      onSelect: () => { setProjectId(message.projectId, message.sessionId); setView("chat"); },
+    }));
+    return [...actions, ...projectItems, ...threads, ...messages];
+  }, [api, query, currentSearch, projects, sessions, createTask, createProjectFromFolder, pickProjectDirectory, pickFilesToMention, setView, setProjectId, setAboutOpen, openInspector]);
 
   if (!palette) return null;
-  return (
-    <div className="palette-backdrop" onClick={() => setPalette(false)}>
-      <div className="palette" onClick={(event) => event.stopPropagation()}>
-        <div className="palette-search-row">
-          <SearchIcon size={16} />
-          <input
-            autoFocus
-            placeholder="Search commands, projects, threads…"
-            value={paletteQuery}
-            onChange={(event) => setPaletteQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "ArrowDown") {
-                event.preventDefault();
-                setIndex((current) => Math.min(commands.length - 1, current + 1));
-              }
-              if (event.key === "ArrowUp") {
-                event.preventDefault();
-                setIndex((current) => Math.max(0, current - 1));
-              }
-              if (event.key === "Enter" && commands[index]) {
-                event.preventDefault();
-                run(commands[index]);
-              }
-              if (event.key === "Escape") {
-                setPalette(false);
-              }
-            }}
-          />
-        </div>
-        <div className="palette-list">
-          {commands.length === 0 && (
-            <p className="palette-empty">No command matches that.</p>
-          )}
-          {commands.map((command, commandIndex) => (
-            <button
-              key={command.id}
-              className={commandIndex === index ? "active" : ""}
-              onMouseEnter={() => setIndex(commandIndex)}
-              onClick={() => run(command)}
-            >
-              {command.label}
-            </button>
-          ))}
-        </div>
-        {/* The palette is keyboard-first, but nothing said so. These are the
-            keys the handler above already implements. */}
-        <div className="palette-hints" aria-hidden>
-          <span>
-            <kbd>↑</kbd>
-            <kbd>↓</kbd> Navigate
-          </span>
-          <span>
-            <kbd>Enter</kbd> Select
-          </span>
-          <span>
-            <kbd>Esc</kbd> Close
-          </span>
-        </div>
-      </div>
-    </div>
-  );
+  return <SearchDialog title="Search workspace" placeholder="Search commands, projects, conversations…" query={paletteQuery}
+    onQueryChange={setPaletteQuery} items={items} status={query.length >= 2 && !currentSearch ? "Searching messages…" : undefined}
+    error={currentSearch?.error} onRetry={() => setRetry((value) => value + 1)} empty="No matching commands, projects, or conversations."
+    onClose={() => { setPalette(false); setPaletteQuery(""); }} />;
 }

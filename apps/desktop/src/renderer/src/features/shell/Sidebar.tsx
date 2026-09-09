@@ -1,5 +1,5 @@
 import { useUpdates } from "../../lib/updates";
-import { useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import type { Session } from "@capsule/shared";
 import {
   buildProjectActionMenuItems,
@@ -111,6 +111,7 @@ export function Sidebar() {
     deleteSession,
     archiveSession,
     sidebarWidth,
+    sidebarCollapsed,
     setSidebarWidth,
     pinSession,
     reorderPinnedSessions,
@@ -121,6 +122,34 @@ export function Sidebar() {
     ready,
   } = useWorkspace();
   const [menu, setMenu] = useState<MenuState>();
+  const sidebarRef = useRef<HTMLElement>(null);
+  const focusedInside = useRef(false);
+  useLayoutEffect(() => {
+    if (!sidebarCollapsed) return;
+    setMenu(undefined);
+    const restoreFocus = focusedInside.current || sidebarRef.current?.contains(document.activeElement) ||
+      Boolean(menu && document.activeElement?.closest(".action-menu"));
+    focusedInside.current = false;
+    // Chromium may finish blurring an inert descendant after the DOM commit.
+    // Hand off on the next frame, once the titlebar has its visible toggle.
+    const frame = requestAnimationFrame(() => {
+      if (restoreFocus && (document.activeElement === document.body || sidebarRef.current?.contains(document.activeElement))) {
+        document.querySelector<HTMLElement>('.workspace [data-sidebar-control]')?.focus();
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [sidebarCollapsed]);
+  const focusProps = {
+    ref: sidebarRef,
+    inert: Boolean(sidebarCollapsed),
+    onFocusCapture: () => { focusedInside.current = true; },
+    onBlurCapture: (event: FocusEvent<HTMLElement>) => {
+      // Setting inert can blur the focused child during the DOM commit, before
+      // the layout effect hands focus to the visible titlebar control.
+      if (!event.currentTarget.inert && event.relatedTarget && event.relatedTarget !== document.body &&
+        !event.currentTarget.contains(event.relatedTarget)) focusedInside.current = false;
+    },
+  };
   const [editing, setEditing] = useState<{ kind: "project" | "session"; id: string; value: string }>();
   const [query, setQuery] = useState("");
   const [settingsQuery, setSettingsQuery] = useState("");
@@ -168,7 +197,7 @@ export function Sidebar() {
 
   function sessionsFor(projectIdValue: string) {
     const list = activeSessions.filter((session) => session.projectId === projectIdValue);
-    if (!needle) return list;
+    if (!needle || projects.find((project) => project.id === projectIdValue)?.name.toLowerCase().includes(needle)) return list;
     return list.filter((session) => session.title.toLowerCase().includes(needle));
   }
 
@@ -414,6 +443,7 @@ export function Sidebar() {
           setEditing({ kind: "session", id: session.id, value: session.title });
         }}
         onKeyDown={(event) => {
+          if (event.target !== event.currentTarget) return;
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
             setProjectId(session.projectId, session.id);
@@ -469,7 +499,7 @@ export function Sidebar() {
     const results = searchSettings(settingsQuery);
     const searching = settingsQuery.trim().length >= 2;
     return (
-      <aside className="sidebar" data-testid="app-sidebar">
+      <aside {...focusProps} className="sidebar" data-testid="app-sidebar">
         <div className="sidebar-header">
           <SidebarToggle />
           <span className="brand">Capsule</span>
@@ -550,7 +580,7 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="sidebar" data-testid="app-sidebar">
+    <aside {...focusProps} className="sidebar" data-testid="app-sidebar">
       <div className="sidebar-header">
         <SidebarToggle />
         <span className="brand">Capsule</span>
