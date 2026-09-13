@@ -20,6 +20,12 @@ export interface PanelSizeInput {
   minContent: number;
 }
 
+/** Stored widths follow the same limits as a drag, including legacy values. */
+export function restorePanelWidth(value: string | null, min: number, max: number, fallback: number): number {
+  const width = value?.trim() ? Number(value) : NaN;
+  return Number.isFinite(width) && width > 0 ? Math.round(Math.max(min, Math.min(max, width))) : fallback;
+}
+
 export function clampPanelWidth(input: PanelSizeInput): number {
   const bounded = Math.round(Math.max(input.min, Math.min(input.max, input.requested)));
   /*

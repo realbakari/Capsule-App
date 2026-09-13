@@ -19,6 +19,10 @@ Capsule is a workspace, not a clone of any other agent product. Quality bars els
 - Graphite and off-white. No purple. No app mark in the titlebar.
 - 52px titlebar is an Electron drag region. Interactive controls must be **no-drag children of the titlebar**, not `position: fixed` overlays. Fixed siblings are swallowed by `-webkit-app-region: drag`.
 - Centered chat column. Glass composer dock. Inspector closed until opened (`⌘\`, `/inspect`, or the titlebar control). Width persists as `capsule.inspectorWidth`.
+- Sidebar and inspector resizing share a pointer-owned interaction. Release
+  applies the final coordinate even without a move; cancellation, lost capture,
+  window blur, hiding and unmount remove its listeners. Inspector restore and
+  dragging share the 340–1080px limits, with room reserved for the conversation.
 - A persisted failed turn owns its inline error. A normalized duplicate IPC
   notice is suppressed at the top, including after dismissal. Notice-only
   failures and unrelated notices remain visible. Dismissal keys include the

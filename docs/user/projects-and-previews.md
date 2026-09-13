@@ -1,5 +1,11 @@
 # Projects, actions, and local previews
 
+Drag the sidebar or inspector edge to resize it. Releasing commits the final
+position; cancelling the drag or leaving the window ends resizing. Inspector
+width is remembered within its supported range, while keeping space for the
+conversation. Collapsed project rows prioritize waiting approvals over working
+or failed turns so a pending decision remains visible.
+
 The titlebar keeps common project setup close to the conversation.
 
 When saving an action, the editor stays open until the save is confirmed.

@@ -614,6 +614,7 @@
 }
 
 .sidebar-rail {
+  touch-action: none;
   position: absolute;
   top: 0;
   right: -3px;
@@ -2173,6 +2174,7 @@ select:focus,
 }
 
 .inspector-rail {
+  touch-action: none;
   position: absolute;
   left: 0;
   top: 0;

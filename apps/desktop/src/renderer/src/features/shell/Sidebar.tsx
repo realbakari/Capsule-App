@@ -1,5 +1,6 @@
 import { useUpdates } from "../../lib/updates";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type MouseEvent } from "react";
+import { usePanelResize } from "../../lib/panel-resize";
 import type { Session } from "@capsule/shared";
 import {
   buildProjectActionMenuItems,
@@ -355,20 +356,7 @@ export function Sidebar() {
     setEditing(undefined);
   }
 
-  function startResize(event: ReactPointerEvent<HTMLDivElement>) {
-    event.preventDefault();
-    const origin = event.clientX;
-    const start = sidebarWidth;
-    const move = (next: PointerEvent) => {
-      setSidebarWidth(start + next.clientX - origin);
-    };
-    const up = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-  }
+  const { startResize } = usePanelResize(!sidebarCollapsed);
 
   function renderThread(session: Session) {
     if (editing?.kind === "session" && editing.id === session.id) {
@@ -834,7 +822,7 @@ export function Sidebar() {
       </div>
       <div
         className="sidebar-rail"
-        onPointerDown={startResize}
+        onPointerDown={(event) => startResize(event, (delta) => setSidebarWidth(sidebarWidth + delta))}
         onDoubleClick={() => setSidebarWidth(264)}
         title="Drag to resize"
       />

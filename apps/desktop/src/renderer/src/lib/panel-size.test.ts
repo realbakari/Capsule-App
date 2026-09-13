@@ -1,8 +1,21 @@
 import { describe, expect, it } from "vitest";
 
-import { clampPanelWidth, fitPanelWidth } from "./panel-size";
+import { clampPanelWidth, fitPanelWidth, restorePanelWidth } from "./panel-size";
 
 const base = { current: 520, available: 1280, min: 340, max: 1080, minContent: 480 };
+
+describe("restorePanelWidth", () => {
+  it.each([340, 350, 360, 1080])("restores a saved drag width of %s", (width) => {
+    expect(restorePanelWidth(String(width), 340, 1080, 520)).toBe(width);
+  });
+  it("clamps legacy widths and rejects missing or malformed preferences", () => {
+    expect(restorePanelWidth("1200", 340, 1080, 520)).toBe(1080);
+    expect(restorePanelWidth("300", 340, 1080, 520)).toBe(340);
+    for (const value of [null, "", " ", "NaN", "Infinity", "0", "-2"]) {
+      expect(restorePanelWidth(value, 340, 1080, 520)).toBe(520);
+    }
+  });
+});
 
 describe("clampPanelWidth", () => {
   it("stops a drag before the conversation is crushed", () => {

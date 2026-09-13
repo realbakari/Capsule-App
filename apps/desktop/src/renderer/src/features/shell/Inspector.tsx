@@ -1,4 +1,5 @@
-import { useCallback, useMemo, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useMemo, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { usePanelResize } from "../../lib/panel-resize";
 import type {
   FileEntry,
   FilePreview,
@@ -15,7 +16,7 @@ import { RequestScope } from "../../lib/request-scope";
 import { useScopedState } from "../../lib/scoped-state";
 import { DirectoryListings } from "../../lib/directory-listings";
 import { formatUserError } from "../../lib/errors";
-import { clampPanelWidth, fitPanelWidth } from "../../lib/panel-size";
+import { clampPanelWidth, fitPanelWidth, restorePanelWidth } from "../../lib/panel-size";
 import { formatProjectRoot, toWorkspaceRelative } from "../../lib/paths";
 import { useWorkspace } from "../../lib/workspace";
 import { DiffView } from "./DiffView";
@@ -193,8 +194,7 @@ export function Inspector() {
 
   const [panelWidth, setPanelWidth] = useState<number>(() => {
     try {
-      const saved = Number(localStorage.getItem("capsule.inspectorWidth"));
-      return Number.isFinite(saved) && saved >= 360 && saved <= 1200 ? saved : 520;
+      return restorePanelWidth(localStorage.getItem("capsule.inspectorWidth"), PANEL_MIN_WIDTH, PANEL_MAX_WIDTH, 520);
     } catch {
       return 520;
     }
@@ -225,7 +225,11 @@ export function Inspector() {
       cancelAnimationFrame(second);
     };
   }, [isMaximized]);
-  const [resizing, setResizing] = useState(false);
+  const { resizing, startResize } = usePanelResize(inspectorOpen && !isMaximized);
+  useEffect(() => {
+    // Persist committed React state, never as a side effect of a state updater.
+    try { localStorage.setItem("capsule.inspectorWidth", String(panelWidth)); } catch { /* Optional preference. */ }
+  }, [panelWidth]);
   const [showTree, setShowTree] = useState(true);
 
   const [activeTool, setActiveTool] = useState<InspectorTool>(() => toolFromTab(inspectorTab));
@@ -558,36 +562,15 @@ export function Inspector() {
     }
   }
 
-  function startResize(event: ReactPointerEvent<HTMLDivElement>) {
-    event.preventDefault();
-    const origin = event.clientX;
-    const start = panelWidth;
-    setResizing(true);
-    const move = (next: PointerEvent) => {
-      setPanelWidth((current) => {
-        const nextWidth = clampPanelWidth({
-          requested: start + (origin - next.clientX),
-          current,
-          available: available(),
-          min: PANEL_MIN_WIDTH,
-          max: PANEL_MAX_WIDTH,
-          minContent: CONVERSATION_MIN_WIDTH,
-        });
-        try {
-          localStorage.setItem("capsule.inspectorWidth", String(nextWidth));
-        } catch {
-          // ignore
-        }
-        return nextWidth;
-      });
-    };
-    const up = () => {
-      setResizing(false);
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
+  function resizeBy(delta: number) {
+    setPanelWidth((current) => clampPanelWidth({
+      requested: panelWidth - delta,
+      current,
+      available: available(),
+      min: PANEL_MIN_WIDTH,
+      max: PANEL_MAX_WIDTH,
+      minContent: CONVERSATION_MIN_WIDTH,
+    }));
   }
 
   /*
@@ -740,7 +723,7 @@ export function Inspector() {
       data-resizing={resizing || sizing ? "true" : undefined}
       style={!isMaximized ? { width: `${panelWidth}px` } : undefined}
     >
-      <div className="inspector-rail" onPointerDown={startResize} title="Drag to resize pane" />
+      <div className="inspector-rail" onPointerDown={(event) => startResize(event, resizeBy)} title="Drag to resize pane" />
 
       <div className="codex-tab-bar">
         <div className="codex-tabs-list">
