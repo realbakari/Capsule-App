@@ -290,6 +290,13 @@ reported by main-process validation when a restored draft is sent.
 
 Usage lives in its own view, read from the CLIs' transcripts. It reports
 tokens only — prices are not in the transcripts.
+Transcript discovery honors inherited `CLAUDE_CONFIG_DIR` and `CODEX_HOME`
+before the default home directories. Home-relative paths expand locally;
+other relative paths report an error rather than guessing a project's cwd.
+The async summary returns at most two unavailable-source names for directory,
+stat or transcript-read failures. Missing CLI directories remain normal empty
+sources. Usable totals stay visible with a partial-coverage warning; a failed
+read is not cached as success. No transcript paths or contents enter the notice.
 
 The composer uses one agent/model picker with grouped, capability-aware choices.
 Permission and conversation mode controls collapse into an overflow menu below
@@ -786,6 +793,13 @@ scoped so generic inspector heading rules cannot restyle the empty state.
 Desktop completion notifications deduplicate terminal run IDs in a bounded
 4,096-entry set before checking focus/preferences. Later checkpoint or metadata
 events do not re-notify a recent settled turn.
+
+Usage scanning caches at most 256 files / 200,000 complete records. Per-file
+identity includes device/inode/size/mtime. Byte offsets advance only across LF,
+with CRLF and split UTF-8 preserved. A valid non-newline tail is provisional and
+reparsed without committing its model state. Incremental Codex reads restore
+the last complete model context. Lines are bounded to 8 MiB; aggregates compute
+date extrema iteratively. These bounds do not cap the entire selected history.
 
 ### In-app updates
 

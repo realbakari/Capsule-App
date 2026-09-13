@@ -15,6 +15,24 @@ instead of an empty sidebar. Retry loads the saved workspace again without
 clearing its data. An unavailable agent or Gateway is separate from loading
 your local workspace.
 
+## Usage coverage
+
+Usage reads local Claude Code and Codex transcripts, including sessions started
+outside Capsule. If you use a custom CLI home, Capsule honors
+`CLAUDE_CONFIG_DIR` and `CODEX_HOME` from its launch environment. Use an absolute
+path or a path starting with `~/`; other relative paths need a specific working
+folder and cannot be used for the global report.
+
+Unreadable sources show a warning alongside any available totals, not a claim
+that no work happened. Check access to the CLI's transcript folder, then choose
+**Refresh**. A CLI that has never created transcripts normally has no data.
+Usage remains token-only, not a bill or subscription-limit report.
+
+Refresh handles transcripts that are still being written: partial records are
+reread when complete, and model context is preserved across incremental reads.
+Replacing a transcript invalidates its cached records. Large histories do not
+depend on the JavaScript function-argument limit to calculate the date range.
+
 ## Closing Capsule
 
 Quit asks for confirmation when a turn is active. It gives owned agent processes

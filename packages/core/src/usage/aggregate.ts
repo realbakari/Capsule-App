@@ -24,6 +24,8 @@ export interface UsageBucket {
 }
 
 export interface UsageSummary {
+  /** Bounded provider names only; never disclose transcript paths or contents. */
+  unavailableSources?: UsageProvider[];
   totals: TokenTotals;
   requests: number;
   sessions: number;
@@ -69,7 +71,12 @@ export function summarise(input: Iterable<UsageRecord>, since?: number): UsageSu
     };
   }
 
-  const times = records.map((record) => record.at).filter((at) => at > 0);
+  let from: number | undefined;
+  let to: number | undefined;
+  for (const { at } of records) if (at > 0) {
+    from = from === undefined ? at : Math.min(from, at);
+    to = to === undefined ? at : Math.max(to, at);
+  }
   return {
     totals: records.reduce((acc, record) => addTotals(acc, record.totals), EMPTY_TOTALS),
     requests: records.length,
@@ -83,8 +90,8 @@ export function summarise(input: Iterable<UsageRecord>, since?: number): UsageSu
     byModel: group(records, (record) => record.model).sort(
       (a, b) => totalTokens(b.totals) - totalTokens(a.totals),
     ),
-    from: times.length > 0 ? Math.min(...times) : undefined,
-    to: times.length > 0 ? Math.max(...times) : undefined,
+    from,
+    to,
   };
 }
 

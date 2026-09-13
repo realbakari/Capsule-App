@@ -16,6 +16,13 @@ function record(over: Partial<UsageRecord> = {}): UsageRecord {
 }
 
 describe("summarise", () => {
+  it("aggregates a large history without spreading records into call arguments", () => {
+    const rows = Array.from({ length: 200_000 }, (_, index) => record({ at: index + 1 }));
+    const summary = summarise(rows);
+    expect(summary.requests).toBe(200_000);
+    expect(summary.from).toBe(1);
+    expect(summary.to).toBe(200_000);
+  });
   it("returns an empty summary rather than throwing on no data", () => {
     const summary = summarise([]);
     expect(summary.requests).toBe(0);

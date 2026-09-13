@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import fsp from "node:fs/promises";
-import readline from "node:readline";
 import os from "node:os";
 import path from "node:path";
 import { summarise, type UsageSummary } from "./aggregate.js";
@@ -9,6 +8,8 @@ import {
   parseClaudeLine,
   parseCodexLine,
   type UsageRecord,
+  type UsageProvider,
+  type CodexScanState,
 } from "./transcripts.js";
 
 /**
@@ -24,10 +25,20 @@ export interface UsageRoots {
   codex: string;
 }
 
-export function defaultUsageRoots(home = os.homedir()): UsageRoots {
+export function defaultUsageRoots(home = os.homedir(), env: NodeJS.ProcessEnv = process.env): UsageRoots {
+  function providerHome(variable: string, fallback: string): string {
+    const configured = env[variable];
+    if (!configured?.trim()) return path.join(home, fallback);
+    if (configured === "~") return home;
+    if (configured.startsWith("~/")) return path.join(home, configured.slice(2));
+    // A relative home belongs to a CLI's cwd, not Capsule's process cwd.
+    // This global report cannot pick one project's transcripts arbitrarily.
+    if (!path.isAbsolute(configured)) throw new Error(`Set ${variable} to an absolute path to read usage from that CLI home.`);
+    return configured;
+  }
   return {
-    claude: path.join(home, ".claude", "projects"),
-    codex: path.join(home, ".codex", "sessions"),
+    claude: path.join(providerHome("CLAUDE_CONFIG_DIR", ".claude"), "projects"),
+    codex: path.join(providerHome("CODEX_HOME", ".codex"), "sessions"),
   };
 }
 
@@ -111,9 +122,14 @@ export function readUsageSummary(sinceMs?: number, roots = defaultUsageRoots()):
 
 interface CachedFile {
   mtimeMs: number;
+  size: number;
+  dev: number;
+  ino: number;
   /** Bytes parsed so far, ending on a line boundary. */
   parsed: number;
   records: UsageRecord[];
+  tailRecords: UsageRecord[];
+  state: CodexScanState;
 }
 
 /*
@@ -127,6 +143,21 @@ interface CachedFile {
  * so a later scan reads only what was added since.
  */
 const fileCache = new Map<string, CachedFile>();
+const MAX_CACHED_FILES = 256;
+const MAX_CACHED_RECORDS = 200_000;
+const MAX_LINE_BYTES = 8 * 1024 * 1024;
+
+function cacheFile(file: string, value: CachedFile): void {
+  fileCache.delete(file);
+  if (value.records.length > MAX_CACHED_RECORDS) return;
+  fileCache.set(file, value);
+  let count = [...fileCache.values()].reduce((sum, item) => sum + item.records.length, 0);
+  for (const [key, item] of fileCache) {
+    if (fileCache.size <= MAX_CACHED_FILES && count <= MAX_CACHED_RECORDS) break;
+    fileCache.delete(key);
+    count -= item.records.length;
+  }
+}
 
 /** Forgets the parsed transcripts, for a test or a Doctor run. */
 export function clearUsageCache(): void {
@@ -136,25 +167,30 @@ export function clearUsageCache(): void {
 async function transcriptFilesAsync(
   root: string,
   sinceMs: number | undefined,
+  unavailable: () => void,
   out: string[] = [],
 ): Promise<string[]> {
   let entries: fs.Dirent[];
   try {
     entries = await fsp.readdir(root, { withFileTypes: true });
-  } catch {
+  } catch (error) {
+    // An uninstalled CLI has no directory; permission and I/O failures are
+    // unavailable coverage, not evidence that the user did no work.
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") unavailable();
     return out;
   }
   for (const entry of entries) {
     const full = path.join(root, entry.name);
     if (entry.isDirectory()) {
-      await transcriptFilesAsync(full, sinceMs, out);
+      await transcriptFilesAsync(full, sinceMs, unavailable, out);
       continue;
     }
-    if (!entry.name.endsWith(".jsonl")) continue;
+    if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
     if (sinceMs !== undefined) {
       try {
         if ((await fsp.stat(full)).mtimeMs < sinceMs) continue;
       } catch {
+        unavailable();
         continue;
       }
     }
@@ -180,62 +216,87 @@ async function parseFrom(
   file: string,
   from: number,
   parse: (line: string) => UsageRecord | undefined,
-): Promise<{ records: UsageRecord[]; parsed: number }> {
+  expected: fs.Stats,
+): Promise<{ records: UsageRecord[]; parsed: number; tail: string; failed?: boolean }> {
   const records: UsageRecord[] = [];
   let parsed = from;
   let handle: fsp.FileHandle | undefined;
   try {
-    handle = await fsp.open(file, "r");
-    const stream = handle.createReadStream({ start: from, encoding: "utf8" });
-    const lines = readline.createInterface({ input: stream, crlfDelay: Infinity });
-    for await (const line of lines) {
-      // The newline the reader consumed counts too, or the offset drifts back
-      // by one byte per line and every later scan re-reads from mid-file.
-      parsed += Buffer.byteLength(line, "utf8") + 1;
-      if (!line) continue;
-      const record = parse(line);
-      if (record) records.push(record);
+    handle = await fsp.open(file, fs.constants.O_RDONLY | fs.constants.O_NONBLOCK);
+    const opened = await handle.stat();
+    if (!opened.isFile()) throw new Error("Transcript is not a regular file.");
+    if (opened.dev !== expected.dev || opened.ino !== expected.ino || opened.size < from) throw new Error("Transcript changed before it could be read. Retry the scan.");
+    const stream = handle.createReadStream({ start: from });
+    let pending = Buffer.alloc(0);
+    for await (const chunk of stream) {
+      const bytes = pending.length ? Buffer.concat([pending, chunk]) : chunk as Buffer;
+      let start = 0;
+      let end: number;
+      while ((end = bytes.indexOf(10, start)) !== -1) {
+        if (end - start > MAX_LINE_BYTES) throw new Error("Transcript line exceeds the read budget.");
+        const record = parse(bytes.subarray(start, end).toString("utf8"));
+        if (record) records.push(record);
+        parsed += end - start + 1; // Exact byte offsets, including CRLF and UTF-8.
+        start = end + 1;
+      }
+      pending = Buffer.from(bytes.subarray(start));
+      if (pending.length > MAX_LINE_BYTES) throw new Error("Transcript line exceeds the read budget.");
     }
+    // EOF is not a line boundary: the writer may still be writing this JSON.
+    return { records, parsed, tail: pending.toString("utf8") };
   } catch {
-    // An unreadable transcript contributes nothing; it is not an error worth
-    // failing the whole reading over.
-    return { records, parsed };
+    return { records, parsed, tail: "", failed: true };
   } finally {
     await handle?.close().catch(() => undefined);
   }
-  return { records, parsed };
 }
 
 async function recordsFor(
   file: string,
-  parse: (line: string) => UsageRecord | undefined,
+  provider: UsageProvider,
+  unavailable: () => void,
 ): Promise<UsageRecord[]> {
   let stat: fs.Stats;
   try {
     stat = await fsp.stat(file);
   } catch {
+    unavailable();
     return [];
   }
-  const cached = fileCache.get(file);
-  if (cached && cached.mtimeMs === stat.mtimeMs && cached.parsed >= stat.size) {
-    return cached.records;
+  const cacheKey = JSON.stringify([provider, file]);
+  const cached = fileCache.get(cacheKey);
+  const sameFile = cached && cached.dev === stat.dev && cached.ino === stat.ino;
+  if (sameFile && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+    return cached.records.concat(cached.tailRecords);
   }
   /*
    * Resume where the last scan stopped, unless the file is now smaller than
    * what was read from it — rotated or rewritten, so the old records are no
    * longer this file's and the whole thing is read again.
    */
-  const from = cached && stat.size >= cached.parsed ? cached.parsed : 0;
+  const from = sameFile && stat.size > cached.size ? cached.parsed : 0;
   const previous = from > 0 && cached ? cached.records : [];
-  const { records: added, parsed } = await parseFrom(file, from, parse);
+  const state = from > 0 && cached ? { ...cached.state } : newCodexScanState();
+  const parse = (line: string, scanState = state) => provider === "claude" ? parseClaudeLine(line)
+    : parseCodexLine(line, path.basename(file, ".jsonl"), scanState);
+  const { records: added, parsed, tail, failed } = await parseFrom(file, from, parse, stat);
   const records = previous.length === 0 ? added : previous.concat(added);
-  fileCache.set(file, { mtimeMs: stat.mtimeMs, parsed, records });
-  return records;
+  // Valid unterminated JSON is visible, but stays provisional. Reparse it on
+  // append without caching either its record or model context as committed.
+  const tailRecord = tail ? parse(tail, { ...state }) : undefined;
+  const tailRecords = tailRecord ? [tailRecord] : [];
+  if (failed) {
+    unavailable();
+    // Retry from a known complete read; don't cache a failed read as success.
+    fileCache.delete(cacheKey);
+  } else cacheFile(cacheKey, { mtimeMs: stat.mtimeMs, size: stat.size, dev: stat.dev, ino: stat.ino, parsed, records, tailRecords, state });
+  return records.concat(tailRecords);
 }
 
 export async function collectUsageRecordsAsync(
   roots: UsageRoots,
   sinceMs?: number,
+  onUnavailable: (provider: UsageProvider) => void = () => {},
 ): Promise<UsageRecord[]> {
   const records: UsageRecord[] = [];
   /*
@@ -247,13 +308,13 @@ export async function collectUsageRecordsAsync(
   const append = (batch: UsageRecord[]) => {
     for (const record of batch) records.push(record);
   };
-  for (const file of await transcriptFilesAsync(roots.claude, sinceMs)) {
-    append(await recordsFor(file, parseClaudeLine));
+  const claudeUnavailable = () => onUnavailable("claude");
+  const codexUnavailable = () => onUnavailable("codex");
+  for (const file of await transcriptFilesAsync(roots.claude, sinceMs, claudeUnavailable)) {
+    append(await recordsFor(file, "claude", claudeUnavailable));
   }
-  for (const file of await transcriptFilesAsync(roots.codex, sinceMs)) {
-    const sessionId = path.basename(file, ".jsonl");
-    const state = newCodexScanState();
-    append(await recordsFor(file, (line) => parseCodexLine(line, sessionId, state)));
+  for (const file of await transcriptFilesAsync(roots.codex, sinceMs, codexUnavailable)) {
+    append(await recordsFor(file, "codex", codexUnavailable));
   }
   return records;
 }
@@ -262,5 +323,7 @@ export async function readUsageSummaryAsync(
   sinceMs?: number,
   roots = defaultUsageRoots(),
 ): Promise<UsageSummary> {
-  return summarise(await collectUsageRecordsAsync(roots, sinceMs), sinceMs);
+  const unavailable = new Set<UsageProvider>();
+  const records = await collectUsageRecordsAsync(roots, sinceMs, (provider) => unavailable.add(provider));
+  return { ...summarise(records, sinceMs), unavailableSources: [...unavailable] };
 }

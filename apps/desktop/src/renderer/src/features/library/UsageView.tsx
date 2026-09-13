@@ -16,6 +16,7 @@ interface Bucket {
 }
 
 interface Summary {
+  unavailableSources?: string[];
   totals: Record<string, number>;
   requests: number;
   sessions: number;
@@ -158,8 +159,12 @@ export function UsageView() {
 
           {loading && !summary && <p className="muted">Reading transcripts…</p>}
           {error && <p className="settings-keybind-error">Could not read usage: {error}</p>}
+          {Boolean(summary?.unavailableSources?.length) && <p role="status" className="settings-keybind-error">
+            Some transcripts could not be read ({summary!.unavailableSources!.map((provider) => PROVIDER_LABELS[provider] ?? provider).join(", ")}).
+            {" "}Totals may be incomplete. Check folder access and Refresh to retry.
+          </p>}
 
-          {summary && total === 0 && !loading && (
+          {summary && total === 0 && !loading && !error && !summary.unavailableSources?.length && (
             <p className="muted">
               No usage in this window. Transcripts appear once a session has run.
             </p>
