@@ -63,6 +63,12 @@ void app.whenReady().then(async () => {
     assert(!(await callBrowserTool(target, "browser_type", { snapshotId: data.snapshotId, ref: password.ref, text: "secret" })).ok);
     assert((await callBrowserTool(target, "browser_select", { ...ref("Choice"), text: "two" })).ok);
     assert.equal(await page.executeJavaScript("document.querySelector('select').value"), "two");
+    await page.executeJavaScript("window.observedKeys = []; document.addEventListener('keydown', e => window.observedKeys.push(e.key))");
+    for (const key of ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter", "Space"]) {
+      const pressed = await callBrowserTool(target, "browser_press", { ...ref("Name"), key });
+      assert(pressed.ok, pressed.detail);
+    }
+    assert.deepEqual(await page.executeJavaScript("window.observedKeys"), ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter", " "]);
     assert((await callBrowserTool(target, "browser_scroll", { deltaY: 500 })).ok);
     assert(await page.executeJavaScript("scrollY > 0"));
     const image = await browserScreenshot(target);

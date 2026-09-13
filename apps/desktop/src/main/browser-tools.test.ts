@@ -14,7 +14,10 @@ import {
 const noPage: BrowserTarget = { contents: () => undefined };
 
 function page(overrides: Record<string, unknown> = {}): BrowserTarget {
+  let attached = false;
   const contents = {
+    debugger: { attach: () => { attached = true; }, detach: () => { attached = false; }, isAttached: () => attached,
+      sendCommand: vi.fn(async () => ({})), on: vi.fn(), removeListener: vi.fn() },
     getURL: () => "https://example.com/a",
     getTitle: () => "Example",
     isLoading: () => false,
@@ -92,6 +95,15 @@ describe("with no page open", () => {
 });
 
 describe("reading the page", () => {
+  it.each([["ArrowUp", "ArrowUp"], ["ArrowDown", "ArrowDown"], ["ArrowLeft", "ArrowLeft"], ["ArrowRight", "ArrowRight"], ["Space", " "], ["Enter", "Enter"]])("dispatches %s as DOM key %s", async (key, domKey) => {
+    const target = page();
+    const transport = target.contents()!.debugger;
+    const result = await browserPress(target, { snapshotId: "fixture", ref: 1, key });
+    expect(result.ok).toBe(true);
+    expect(transport.sendCommand).toHaveBeenNthCalledWith(1, "Input.dispatchKeyEvent", expect.objectContaining({ type: "keyDown", key: domKey }));
+    expect(transport.sendCommand).toHaveBeenNthCalledWith(2, "Input.dispatchKeyEvent", expect.objectContaining({ type: "keyUp", key: domKey }));
+    expect(transport.isAttached()).toBe(false);
+  });
   it("does not send a key to a replacement guest after focusing", async () => {
     const sendInputEvent = vi.fn();
     const replacement = page({ sendInputEvent }).contents();

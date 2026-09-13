@@ -4,20 +4,22 @@ import type { BrowserTarget } from "./browser-tools";
 export class BrowserAccess {
   private owner?: string;
   private allowed = false;
+  private generation = 0;
 
   constructor(private readonly browser: BrowserTarget, private readonly background?: (owner: string, harnessId: string) => BrowserTarget | undefined) {}
 
   select(owner: string | undefined): void {
-    if (owner !== this.owner) this.allowed = false;
+    if (owner !== this.owner) { this.allowed = false; this.generation++; }
     this.owner = owner;
   }
 
   allow(owner: string, allowed: boolean): void {
     if (owner !== this.owner) throw new Error("Open this thread’s Browser panel first.");
+    if (this.allowed !== allowed) this.generation++;
     this.allowed = allowed;
   }
 
-  revoke(owner: string): void { if (owner === this.owner) this.allowed = false; }
+  revoke(owner: string): void { if (owner === this.owner) { this.allowed = false; this.generation++; } }
 
   target(owner: string, harnessId = ""): BrowserTarget {
     const background = () => this.background?.(owner, harnessId);
@@ -29,6 +31,28 @@ export class BrowserAccess {
       }
     };
     return {
+      acquire: () => {
+        const source = background();
+        if (source) return source.acquire?.() ?? source;
+        const generation = this.generation;
+        let contents = this.browser.contents();
+        const checkLease = () => {
+          if (generation !== this.generation || background()) throw new Error("Browser access changed during this operation. Retry with the current page grant.");
+          check();
+          if (this.browser.contents() !== contents) throw new Error("The browser page changed during this operation. Take a new snapshot.");
+        };
+        checkLease();
+        return {
+          check: checkLease,
+          contents: () => { checkLease(); return contents; },
+          open: async (url) => {
+            checkLease();
+            contents = await this.browser.open?.(url, owner);
+            checkLease();
+            return contents;
+          },
+        };
+      },
       check,
       contents: () => { check(); return (background() ?? this.browser).contents(); },
       open: async (url) => {

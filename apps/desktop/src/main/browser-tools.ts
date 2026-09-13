@@ -2,6 +2,7 @@ import type { WebContents } from "electron";
 import { randomUUID } from "node:crypto";
 import { BROWSER_WORLD, snapshotScript, actionScript, type BrowserAction } from "./browser-page";
 import { browserLoadFailure } from "./browser-diagnostics";
+import { browserKeys, pressBrowserKey } from "./browser-keys";
 
 /*
  * The browser, as something an agent can use.
@@ -24,6 +25,8 @@ const MAX_SNAPSHOT_CHARS = 20_000;
 const MAX_SNAPSHOT_BYTES = 96_000;
 
 export interface BrowserTarget {
+  /** Lease one page and its permission generation for a single operation. */
+  acquire?(): BrowserTarget;
   /** Recheck the thread grant after asynchronous work. */
   check?(): void;
   /** The guest WebContents, or undefined when no page is open. */
@@ -97,6 +100,7 @@ export function runBrowserScript(contents: WebContents, script: string): Promise
 
 /** What is on screen, without pretending to know more than the page says. */
 export async function browserStatus(target: BrowserTarget): Promise<ToolResult> {
+  target = target.acquire?.() ?? target;
   const contents = target.contents();
   if (!contents) return noBrowser();
   const url = contents.getURL().slice(0, 2048);
@@ -112,6 +116,7 @@ export async function browserNavigate(target: BrowserTarget, raw: unknown): Prom
   const { url, detail } = readNavigableUrl(raw);
   if (!url) return { ok: false, detail };
   try {
+    target = target.acquire?.() ?? target;
     const existing = target.contents();
     const contents = existing ?? await target.open?.(url);
     if (!contents) return { ok: false, detail: "Could not open the embedded browser. Open Capsule’s Browser panel, then retry navigation." };
@@ -167,6 +172,7 @@ export function boundedBrowserSnapshot(raw: Record<string, unknown>) {
 }
 
 export async function browserSnapshot(target: BrowserTarget): Promise<ToolResult> {
+  target = target.acquire?.() ?? target;
   const contents = target.contents();
   if (!contents) return noBrowser();
   try {
@@ -189,6 +195,7 @@ export async function browserSnapshot(target: BrowserTarget): Promise<ToolResult
 
 /** Reference actions never resolve an old ref against a newly enumerated page. */
 export async function browserInteract(target: BrowserTarget, input: BrowserAction): Promise<ToolResult> {
+  target = target.acquire?.() ?? target;
   const contents = target.contents();
   if (!contents) return noBrowser();
   if (typeof input.snapshotId !== "string" || !/^[a-zA-Z0-9-]{1,64}$/.test(input.snapshotId) || !Number.isInteger(input.ref) || input.ref < 1 || input.ref > 200) {
@@ -203,6 +210,7 @@ export async function browserInteract(target: BrowserTarget, input: BrowserActio
 }
 
 export async function browserScroll(target: BrowserTarget, deltaY: unknown): Promise<ToolResult> {
+  target = target.acquire?.() ?? target;
   if (typeof deltaY !== "number" || !Number.isFinite(deltaY) || Math.abs(deltaY) > 5000) return { ok: false, detail: "deltaY must be a number between -5000 and 5000 CSS pixels." };
   const contents = target.contents();
   if (!contents) return noBrowser();
@@ -212,22 +220,27 @@ export async function browserScroll(target: BrowserTarget, deltaY: unknown): Pro
 }
 
 export async function browserPress(target: BrowserTarget, args: { snapshotId: string; ref: number; key: unknown }): Promise<ToolResult> {
-  const keys = ["Enter", "Escape", "Tab", "Backspace", "Delete", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"];
+  target = target.acquire?.() ?? target;
+  const keys = browserKeys;
   if (typeof args.key !== "string" || !keys.includes(args.key)) return { ok: false, detail: `key must be one of: ${keys.join(", ")}. Modifier shortcuts are not supported.` };
   const contents = target.contents();
   if (!contents) return noBrowser();
-  const result = await browserInteract(target, { ...args, action: "focus" });
-  if (!result.ok) return result;
-  // Focusing yields to the page. A replacement guest must not receive a key
-  // intended for the old one, even if it belongs to the same thread.
-  if (target.contents() !== contents) return { ok: false, detail: "The browser page changed before the key could be sent. Take a new snapshot." };
-  const keyCode = args.key === "Space" ? " " : args.key;
-  contents.sendInputEvent({ type: "keyDown", keyCode });
-  contents.sendInputEvent({ type: "keyUp", keyCode });
+  let valid = true;
+  try {
+    await boundedBrowserOperation(pressBrowserKey(contents, args.key, async () => {
+      const result = await browserInteract(target, { ...args, action: "focus" });
+      if (!result.ok) throw new Error(result.detail);
+    }, () => {
+      if (!valid) throw new Error("The key operation expired. Take a new snapshot.");
+      if (target.contents() !== contents) throw new Error("The browser page changed before the key could be sent. Take a new snapshot.");
+    }));
+  } catch (error) { return { ok: false, detail: error instanceof Error ? error.message : String(error) }; }
+  finally { valid = false; }
   return { ok: true, detail: `Pressed ${args.key}. Take a snapshot to check the result.` };
 }
 
 export async function browserScreenshot(target: BrowserTarget): Promise<ToolResult> {
+  target = target.acquire?.() ?? target;
   const contents = target.contents();
   if (!contents) return noBrowser();
   let image = await boundedBrowserOperation(contents.capturePage());

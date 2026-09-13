@@ -1,7 +1,24 @@
 import { describe, expect, it } from "vitest";
 import { BrowserAccess } from "./browser-access";
+import { browserScreenshot } from "./browser-tools";
 
 describe("browser ownership", () => {
+  it.each(["regrant", "background", "replacement"])("rejects captured pixels after %s changes the original grant", async (change) => {
+    let finish!: (image: never) => void;
+    let foreground = { capturePage: () => new Promise((resolve) => { finish = resolve; }) } as never;
+    let background: never | undefined;
+    const access = new BrowserAccess({ contents: () => foreground }, () => background ? { contents: () => background } : undefined);
+    access.select("thread"); access.allow("thread", true);
+    const capture = browserScreenshot(access.target("thread"));
+    if (change === "replacement") foreground = {} as never;
+    else {
+      access.revoke("thread");
+      if (change === "regrant") access.allow("thread", true);
+      else background = {} as never;
+    }
+    finish({} as never);
+    await expect(capture).rejects.toThrow(/changed/);
+  });
   it("keeps a separately granted background page reachable across thread selection without falling back", () => {
     const foreground = {} as never;
     const background = {} as never;

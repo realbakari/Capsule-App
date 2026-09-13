@@ -12,6 +12,7 @@ interface Page {
   expiresAt: number;
   timer: ReturnType<typeof setTimeout>;
   agentAllowed: boolean;
+  agentGeneration: number;
   harnessId?: string;
   remoteShared: boolean;
   error?: string;
@@ -53,7 +54,7 @@ export class BackgroundBrowsers {
         // navigation still goes through the separate HTTP(S)-only guards.
         callback({ cancel: !/^(https?:|wss?:|data:|blob:)/.test(details.url) });
       });
-      const entry: Page = { window, expiresAt: Date.now() + LIFETIME_MS, agentAllowed: false, remoteShared: false, epoch: 0,
+      const entry: Page = { window, expiresAt: Date.now() + LIFETIME_MS, agentAllowed: false, agentGeneration: 0, remoteShared: false, epoch: 0,
         timer: setTimeout(() => { if (this.pages.get(owner) === entry) this.close(owner); }, LIFETIME_MS) };
       entry.timer.unref();
       window.on("closed", () => {
@@ -81,7 +82,7 @@ export class BackgroundBrowsers {
       if (command.kind === "agent") {
         if (typeof command.allowed !== "boolean") throw new Error("Invalid agent grant.");
         if (command.allowed && !harnessId) throw new Error("Start a direct agent in this thread before allowing background control.");
-        page.agentAllowed = command.allowed; page.harnessId = harnessId;
+        page.agentAllowed = command.allowed; page.harnessId = harnessId; page.agentGeneration++;
       } else if (command.kind === "share") {
         if (typeof command.allowed !== "boolean") throw new Error("Invalid remote sharing grant.");
         page.remoteShared = command.allowed;
@@ -99,7 +100,18 @@ export class BackgroundBrowsers {
         throw new Error("Background page access is off for this agent. Enable it in this thread's Browser panel.");
       }
     };
-    return { check, contents: () => { check(); return page.window.webContents; } };
+    return {
+      check, contents: () => { check(); return page.window.webContents; },
+      acquire: () => {
+        check();
+        const generation = page.agentGeneration;
+        const checkLease = () => {
+          check();
+          if (generation !== page.agentGeneration) throw new Error("Background page access changed during this operation. Retry with the current grant.");
+        };
+        return { check: checkLease, contents: () => { checkLease(); return page.window.webContents; } };
+      },
+    };
   }
 
   /** Shared reads cannot create pages, grant access, navigate, or expose private previews. */
@@ -140,7 +152,7 @@ export class BackgroundBrowsers {
   }
   revokeAgent(owner: string): void {
     const page = this.pages.get(owner);
-    if (page) { page.agentAllowed = false; page.harnessId = undefined; page.epoch++; page.cached = undefined; }
+    if (page) { page.agentAllowed = false; page.harnessId = undefined; page.agentGeneration++; page.epoch++; page.cached = undefined; }
   }
   closeAll(): void { for (const owner of this.pages.keys()) this.close(owner); }
 }

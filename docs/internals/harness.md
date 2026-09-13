@@ -195,6 +195,14 @@ Gateway delivery keeps its existing bridge and host semantics.
 
 ### Embedded browser tools
 
+Browser operations acquire one target and grant generation. Foreground
+re-grants, switching to a background target and guest replacement invalidate
+in-flight reads; background grants have their own generation independent of
+navigation/sharing epochs. Key presses use only fixed `Input.dispatchKeyEvent`
+packets over a temporary, bounded debugger attachment so hidden pages need no
+OS focus. An existing debugger is never reused or detached. The transport does
+not expose a debugging port or arbitrary CDP commands to agents.
+
 The desktop offers direct sessions an authenticated loopback HTTP MCP server.
 Availability requires `mcpCapabilities.http === true` in the installed CLI's
 handshake. False, missing or malformed support omits the optional HTTP tools

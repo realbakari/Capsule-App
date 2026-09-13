@@ -121,6 +121,11 @@ an embedded browser.
 
 ### Background pages and shared previews
 
+An operation started under an older control grant cannot return page data after
+that grant is revoked, even if control is enabled again. Key presses work in
+background pages without bringing a window to the front. If another debugger
+owns the page, the key operation asks you to retry instead of taking it over.
+
 In **Browser**, open the **Page control off/on** toolbar menu and expand **Background
 page**, enter an HTTP(S) address in the
 address bar, then choose **Start from address bar**. This starts a separate
