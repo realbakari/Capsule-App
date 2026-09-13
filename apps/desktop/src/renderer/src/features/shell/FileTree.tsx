@@ -176,6 +176,9 @@ export const FileTreePane = memo(function FileTreePane({
   expanded,
   childrenByDir,
   searchHits,
+  searchLoading,
+  searchError,
+  onRetrySearch,
   fileSearch,
   overlay,
   folderRoots,
@@ -194,6 +197,9 @@ export const FileTreePane = memo(function FileTreePane({
   expanded: Set<string>;
   childrenByDir: Record<string, FileEntry[]>;
   searchHits: FileEntry[] | null;
+  searchLoading?: boolean;
+  searchError?: string;
+  onRetrySearch?: () => void;
   fileSearch: string;
   overlay: boolean;
   folderRoots: string[];
@@ -254,7 +260,9 @@ export const FileTreePane = memo(function FileTreePane({
         {directoryStates?.[""]?.error && <div role="status" className="codex-tree-empty">
           Could not refresh files. <button className="ghost" onClick={() => onRefreshDirectory?.("")}>Retry</button>
         </div>}
-        {searchHits ? (
+        {searchLoading ? <div className="codex-tree-empty faint" role="status">Searching…</div>
+          : searchError ? <div className="codex-tree-empty" role="alert">Could not search files. {searchError} <button className="ghost" onClick={onRetrySearch}>Retry</button></div>
+          : searchHits ? (
           searchHits.length === 0 ? (
             <div className="codex-tree-empty faint">No matching files</div>
           ) : (

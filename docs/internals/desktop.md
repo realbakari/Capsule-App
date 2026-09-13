@@ -807,6 +807,13 @@ the child finished. Closed threads display their recorded runtime route rather
 than the current harness default. Card borders and typography are explicitly
 scoped so generic inspector heading rules cannot restyle the empty state.
 
+File-open requests carry project, thread and root rather than consulting the
+inspector's last folder. File-filter state is keyed by root and query, with
+loading/retry states and no stale interactive rows. The tree's retry callback is
+stable so editor keystrokes do not invalidate its memoization. Image previews
+offer a native modal with fit, 100%, bounded zoom, pointer/keyboard pan and focus
+restoration. The original source is not rewritten.
+
 Desktop completion notifications deduplicate terminal run IDs in a bounded
 4,096-entry set before checking focus/preferences. Later checkpoint or metadata
 events do not re-notify a recent settled turn.

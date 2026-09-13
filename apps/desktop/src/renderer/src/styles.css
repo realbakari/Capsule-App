@@ -3662,6 +3662,20 @@ select:focus,
     linear-gradient(45deg, transparent 75%, rgb(127 127 127 / 18%) 75%) 6px 6px / 12px 12px,
     linear-gradient(45deg, rgb(127 127 127 / 18%) 25%, transparent 25%) 6px 6px / 12px 12px;
 }
+.image-preview-open { cursor: zoom-in; width: 100%; }
+.image-inspector {
+  width: min(94vw, 90rem); height: 90vh; max-width: 96vw; max-height: 94vh;
+  padding: 0; border: 1px solid var(--border-color); border-radius: 0.75rem;
+  background: var(--bg); color: var(--text); overflow: hidden;
+}
+.image-inspector[open] { display: flex; flex-direction: column; }
+.image-inspector::backdrop { background: rgb(0 0 0 / 72%); }
+.image-inspector-toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; padding: 0.75rem; border-bottom: 1px solid var(--border-color); }
+.image-inspector-toolbar > span { min-width: 0; flex: 1 1 10rem; font-size: 0.8125rem; }
+.image-inspector-toolbar button { flex: none; font-size: 0.8125rem; }
+.image-inspector-viewport { min-height: 0; flex: 1; overflow: auto; padding: 0.75rem; touch-action: pan-x pan-y; }
+.image-inspector-viewport img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; margin: auto; }
+.image-inspector-viewport[data-fit="false"] { cursor: grab; touch-action: none; }
 .file-preview-code {
   margin: 0;
   padding: 0.75rem;

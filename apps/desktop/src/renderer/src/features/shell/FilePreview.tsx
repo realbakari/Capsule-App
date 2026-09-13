@@ -88,9 +88,7 @@ export function FilePreviewView({
         </div>
       ) : null}
       {doc.kind === "image" && doc.dataUrl ? (
-        <div className="file-preview-frame">
-          <img src={doc.dataUrl} alt={doc.path} className="file-preview-image" />
-        </div>
+        <ImagePreview key={doc.path} src={doc.dataUrl} name={doc.path} />
       ) : null}
       {doc.kind === "text" && editing ? (
         <textarea
@@ -111,3 +109,4 @@ export function FilePreviewView({
     </div>
   );
 }
+import { ImagePreview } from "./ImagePreview";

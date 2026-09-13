@@ -302,9 +302,9 @@ export interface WorkspaceValue {
   setInspectorTab: (tab: InspectorTab) => void;
   openInspector: (tab?: InspectorTab) => void;
   /** Opens a file from the transcript in the inspector's preview. */
-  openFile: (path: string) => void;
+  openFile: (path: string, root?: string) => void;
   /** The file the inspector has been asked to show, if any. */
-  requestedFile?: string;
+  requestedFile?: { path: string; root?: string; projectId?: string; sessionId?: string };
   clearRequestedFile: () => void;
   contentSearch: boolean;
   setContentSearch: (open: boolean) => void;
@@ -472,7 +472,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   const [filePicker, setFilePicker] = useState(false);
   const [contentSearch, setContentSearch] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("launcher");
-  const [requestedFile, setRequestedFile] = useState<string>();
+  const [requestedFile, setRequestedFile] = useState<WorkspaceValue["requestedFile"]>();
   const [projectRuns, setProjectRuns] = useState<Run[]>([]);
   const [settings, setSettings] = useState<CapsuleSettings>();
   const [workspaceMode, setWorkspaceModeState] = useState<WorkspaceMode>("local");
@@ -2079,8 +2079,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       checkoutBranch,
       inspectorTab,
       setInspectorTab,
-      openFile: (path: string) => {
-        setRequestedFile(path);
+      openFile: (path: string, root?: string) => {
+        setRequestedFile({ path, root: root ?? session?.workingDirectory ?? project?.workingDirectory, projectId, sessionId });
         setInspectorOpen(true);
         setInspectorTab("files");
       },
@@ -2132,6 +2132,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       draft,
       attachments,
       promptStashes,
+      requestedFile,
       busy,
       sendBlockReason,
       palette,

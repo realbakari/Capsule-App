@@ -168,6 +168,15 @@ An open file keeps the project, folder and revision it was read from. Navigating
 elsewhere flushes its pending edit to that original file, never the new folder.
 Conflicts require an explicit reload or overwrite decision.
 
+Files opened from chat or content-search results use that conversation's folder,
+even if the Files panel was showing an extra folder. File-filter results disappear
+while a different query or folder loads. Failed searches show **Retry**, not an
+empty result.
+
+Select a previewed image to inspect it at **Fit** or **100%**, then zoom in or out.
+Scroll, drag, or use arrow keys to pan at a fixed zoom. **Close** or Escape returns
+to the file preview. This does not edit the original image.
+
 An unsuccessful save keeps its text in this window, even after switching files.
 Reopen the file to retry, copy the draft, or explicitly discard it and reload.
 The Files panel also lists unsaved drafts so they can be copied if a file has

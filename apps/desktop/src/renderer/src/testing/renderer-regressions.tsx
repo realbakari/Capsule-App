@@ -308,6 +308,9 @@ window.runRendererRegressions = async () => {
   let finishWrite!: (value: { revision: string }) => void;
   const preview = (name: string) => ({ path: name, kind: "text", contents: `contents ${name}`, revision: "original", size: 10, truncated: false });
   let finishPreview!: (value: ReturnType<typeof preview>) => void;
+  const previewRoots: string[] = [];
+  let pendingFileSearch!: (value: unknown) => void;
+  let failFileSearch = true;
   let treeReads = 0;
   const treeFiles = Array.from({ length: 300 }, (_, index) => ({
     path: `file-${index}.ts`, type: "file", get name() { treeReads += 1; return `file-${index}.ts`; },
@@ -315,12 +318,17 @@ window.runRendererRegressions = async () => {
   window.testWorkspace = {
     project: { id: "owner-a", name: "Owner A", workingDirectory: "/fixture/a" }, projectId: "owner-a",
     session: { id: "thread-a" }, files: treeFiles, steps: [], artifacts: [], harnesses: [], harnessSessions: [],
-    inspectorTab: "files", settings: {}, requestedFile: "first.txt",
+    inspectorTab: "files", settings: {}, requestedFile: { path: "first.txt", root: "/fixture/a", projectId: "owner-a", sessionId: "thread-a" },
     setInspectorOpen: () => {},
     clearRequestedFile: () => { window.testWorkspace.requestedFile = undefined; },
     api: {
       listFiles: async () => treeFiles,
-      previewFile: async (_project: string, name: string) => name === "late.txt" ? new Promise((resolve) => { finishPreview = resolve; }) : preview(name),
+      previewFile: async (_project: string, name: string, root: string) => { previewRoots.push(root); return name === "late.txt" ? new Promise((resolve) => { finishPreview = resolve; }) : preview(name); },
+      searchFiles: async (_project: string, query: string) => {
+        if (query === "slow") return new Promise((resolve) => { pendingFileSearch = resolve; });
+        if (query === "retry" && failFileSearch) throw new Error("Search unavailable");
+        return [{ path: `${query}.ts`, name: `${query}.ts`, type: "file" }];
+      },
       writeFile: async (projectId: string, filePath: string, contents: string, options: { root: string }) => {
         writes.push({ projectId, path: filePath, contents, root: options.root });
         return new Promise((resolve) => { finishWrite = resolve; });
@@ -336,18 +344,40 @@ window.runRendererRegressions = async () => {
   await until(() => document.querySelector<HTMLTextAreaElement>(".file-editor-area")?.value === "owned edit");
   await new Promise((resolve) => setTimeout(resolve, 30));
   assert(treeReads === 0, `Typing rebuilt the file tree (${treeReads} entry reads)`);
-  window.testWorkspace = { ...window.testWorkspace, projectId: "owner-b", project: { id: "owner-b", name: "Owner B", workingDirectory: "/fixture/b" }, session: { id: "thread-b" }, requestedFile: "second.txt" };
+  window.testWorkspace = { ...window.testWorkspace, projectId: "owner-b", project: { id: "owner-b", name: "Owner B", workingDirectory: "/fixture/b" }, session: { id: "thread-b" }, requestedFile: { path: "second.txt", root: "/fixture/b", projectId: "owner-b", sessionId: "thread-b" } };
   root.render(<Inspector />);
   await until(() => writes.length === 1 && document.body.textContent?.includes("contents second.txt"));
   assert(writes[0]?.projectId === "owner-a" && writes[0]?.root === "/fixture/a" && writes[0]?.path === "first.txt" && writes[0]?.contents === "owned edit", "Navigation moved the pending save to another project");
   finishWrite({ revision: "saved-a" });
-  window.testWorkspace.requestedFile = "late.txt";
+  window.testWorkspace.requestedFile = { path: "late.txt", root: "/fixture/b", projectId: "owner-b", sessionId: "thread-b" };
   root.render(<Inspector />); await until(() => Boolean(finishPreview));
-  window.testWorkspace = { ...window.testWorkspace, projectId: "owner-c", project: { id: "owner-c", name: "Owner C", workingDirectory: "/fixture/c" }, session: { id: "thread-c" }, requestedFile: "current.txt" };
+  window.testWorkspace = { ...window.testWorkspace, projectId: "owner-c", project: { id: "owner-c", name: "Owner C", workingDirectory: "/fixture/c" }, session: { id: "thread-c" }, requestedFile: { path: "current.txt", root: "/fixture/c", projectId: "owner-c", sessionId: "thread-c" } };
   root.render(<Inspector />); await until(() => document.body.textContent?.includes("contents current.txt"));
   finishPreview(preview("late.txt"));
   await new Promise((resolve) => setTimeout(resolve, 30));
   assert(!document.body.textContent?.includes("contents late.txt"), "Late preview crossed the folder boundary");
+  window.testWorkspace = { ...window.testWorkspace, project: { id: "owner-c", name: "Owner C", workingDirectory: "/fixture/c", extraFolders: ["/fixture/extra"] } };
+  root.render(<Inspector />);
+  await until(() => document.querySelector(".files-roots"));
+  button("extra").click(); await until(() => document.querySelector(".files-roots .active")?.textContent === "extra");
+  window.testWorkspace.requestedFile = { path: "linked.txt", root: "/fixture/c", projectId: "owner-c", sessionId: "thread-c" };
+  root.render(<Inspector />);
+  await until(() => document.body.textContent?.includes("contents linked.txt"));
+  assert(previewRoots.at(-1) === "/fixture/c", "Chat file link was resolved in the inspector's other folder");
+  fill(".codex-tree-search", "ready");
+  await until(() => document.querySelector('.codex-tree-item[title="ready.ts"]'));
+  fill(".codex-tree-search", "slow");
+  await until(() => Boolean(pendingFileSearch) && !document.querySelector('.codex-tree-item[title="ready.ts"]'));
+  fill(".codex-tree-search", "newer");
+  await until(() => document.querySelector('.codex-tree-item[title="newer.ts"]'));
+  pendingFileSearch([{ path: "stale.ts", name: "stale.ts", type: "file" }]);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert(!document.querySelector('.codex-tree-item[title="stale.ts"]'), "Old file filter replaced the current query");
+  fill(".codex-tree-search", "retry");
+  await until(() => document.querySelector('[role="alert"]')?.textContent?.includes("Search unavailable"));
+  assert(!document.body.textContent?.includes("No matching files"), "Search failure looked like empty results");
+  failFileSearch = false; document.querySelector<HTMLButtonElement>('[role="alert"] button')!.click();
+  await until(() => document.querySelector('.codex-tree-item[title="retry.ts"]'));
   root.unmount(); root = createRoot(host);
   const external: string[] = [];
   const registered: Array<number | undefined> = [];

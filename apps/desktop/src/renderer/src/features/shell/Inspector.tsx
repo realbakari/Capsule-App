@@ -241,7 +241,9 @@ export function Inspector() {
   const [fileRoot, setFileRoot] = useState<string>();
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [fileSearch, setFileSearch] = useState("");
-  const [searchHits, setSearchHits] = useState<FileEntry[] | null>(null);
+  const [fileSearchResult, setFileSearchResult] = useState<{ key: string; hits: FileEntry[]; loading: boolean; error?: string }>();
+  const [fileSearchRetry, setFileSearchRetry] = useState(0);
+  const retryFileSearch = useCallback(() => setFileSearchRetry((value) => value + 1), []);
   const [preview, setPreview] = useState("");
   const [previewDoc, setPreviewDoc] = useState<FilePreview>();
   const [previewEditing, setPreviewEditing] = useState(false);
@@ -288,6 +290,11 @@ export function Inspector() {
     (fileRoot && folderRoots.find((root) => root.toLowerCase() === fileRoot.toLowerCase())) ||
     (session?.workingDirectory ?? project?.workingDirectory);
   const conversationRoot = session?.workingDirectory ?? project?.workingDirectory;
+  const fileSearchKey = JSON.stringify([projectId, activeRoot, fileSearch.trim()]);
+  const searchingFiles = Boolean(projectId && fileSearch.trim().length >= 2);
+  const currentFileSearch = fileSearchResult?.key === fileSearchKey ? fileSearchResult : undefined;
+  const searchHits = searchingFiles ? currentFileSearch?.hits ?? [] : null;
+  const fileSearchLoading = searchingFiles && (currentFileSearch?.loading ?? true);
   const scope = JSON.stringify([projectId, session?.id, activeRoot]);
   const diffRequests = useRef(new RequestScope()).current;
   const diffScope = diffRequests.select(JSON.stringify([scope, git?.branch]));
@@ -478,22 +485,23 @@ export function Inspector() {
   useEffect(() => {
     const query = fileSearch.trim();
     if (!projectId || query.length < 2) {
-      setSearchHits(null);
+      setFileSearchResult(undefined);
       return;
     }
     let ignore = false;
+    setFileSearchResult({ key: fileSearchKey, hits: [], loading: true });
     void api
       .searchFiles(projectId, query, activeRoot)
       .then((hits) => {
-        if (!ignore) setSearchHits(hits);
+        if (!ignore) setFileSearchResult({ key: fileSearchKey, hits, loading: false });
       })
-      .catch(() => {
-        if (!ignore) setSearchHits([]);
+      .catch((error) => {
+        if (!ignore) setFileSearchResult({ key: fileSearchKey, hits: [], loading: false, error: formatUserError(error) });
       });
     return () => {
       ignore = true;
     };
-  }, [activeRoot, api, fileSearch, projectId]);
+  }, [activeRoot, api, fileSearch, projectId, fileSearchKey, fileSearchRetry]);
 
   function selectTool(tool: InspectorTool) {
     if (tool !== "review") diffRequests.capture("diff");
@@ -600,7 +608,13 @@ export function Inspector() {
    */
   useEffect(() => {
     if (!requestedFile || !projectId) return;
-    const relative = toWorkspaceRelative(requestedFile, activeRoot);
+    if (requestedFile.projectId !== projectId || requestedFile.sessionId !== session?.id) { clearRequestedFile(); return; }
+    const root = requestedFile.root ?? conversationRoot;
+    if (!root || !folderRoots.includes(root)) { clearRequestedFile(); return; }
+    // Select the owning folder before starting a read; a relative path alone
+    // must never inherit whichever extra folder happens to be open.
+    if (activeRoot !== root) { setFileRoot(root); return; }
+    const relative = toWorkspaceRelative(requestedFile.path, root);
     clearRequestedFile();
     setActiveTool("files");
     void previewFile(relative);
@@ -982,6 +996,9 @@ export function Inspector() {
                 directoryStates={directoryStates}
                 onRefreshDirectory={refreshDirectory}
                 searchHits={searchHits}
+                searchLoading={fileSearchLoading}
+                searchError={currentFileSearch?.error}
+                onRetrySearch={retryFileSearch}
                 fileSearch={fileSearch}
                 overlay={panelWidth < 480}
                 folderRoots={folderRoots}
