@@ -7,7 +7,10 @@ app.whenReady().then(async () => {
   session.defaultSession.webRequest.onBeforeRequest((details, done) => {
     done({ cancel: /^https?:/i.test(details.url) });
   });
-  const window = new BrowserWindow({ show: false, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
+  // Hidden Windows windows receive roughly one animation frame per second,
+  // even with backgroundThrottling disabled. Layout assertions need an actual
+  // displayed frame source; this test owns its window and disposable profile.
+  const window = new BrowserWindow({ show: process.platform === "win32", webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
   window.webContents.on("console-message", (_event, ...details) => console.log("Renderer:", ...details));
   try {
     const bundlePath = process.argv.find((arg) => arg.startsWith("--renderer-test-bundle="))?.slice("--renderer-test-bundle=".length);
