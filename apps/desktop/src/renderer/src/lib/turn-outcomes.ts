@@ -5,7 +5,7 @@ import type { Turn } from "./turns";
 const IN_FLIGHT = new Set(["queued", "running", "waiting", "approval_required"]);
 
 /** One owner per run; never assign a checkpoint just because it is newest. */
-export function outcomesByTurn(turns: readonly Turn[], runs: readonly Run[], sessionId?: string, projectId?: string): Map<string, Run[]> {
+export function outcomesByTurn(turns: readonly Turn[], runs: readonly Run[], sessionId?: string, projectId?: string, options?: { includeInFlight: boolean }): Map<string, Run[]> {
   const result = new Map<string, Run[]>();
   if (!sessionId || !projectId) return result;
   const prompts = new Map<string, Turn>();
@@ -32,7 +32,7 @@ export function outcomesByTurn(turns: readonly Turn[], runs: readonly Run[], ses
     }
   }
   for (const run of runs) {
-    if (run.sessionId !== sessionId || run.projectId !== projectId || IN_FLIGHT.has(run.status)) continue;
+    if (run.sessionId !== sessionId || run.projectId !== projectId || (!options?.includeInFlight && IN_FLIGHT.has(run.status))) continue;
     let owner = prompts.get(run.id);
     // Older prompts did not carry runId. Use their time window and content,
     // not the position of a run in a newest-first array or a repeated prompt.

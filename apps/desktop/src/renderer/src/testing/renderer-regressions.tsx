@@ -870,6 +870,37 @@ window.runRendererRegressions = async () => {
   root.render(<Conversation />);
   await until(() => !document.querySelector('.gateway-recovery'));
   assert(!document.querySelector('.composer-preflight'), "Direct route is incorrectly blocked by Gateway recovery");
+  // The turn's clock precedes its progress, and a finished answer stays out of
+  // the folded work. Updating one invocation must not add another tool row.
+  const transcriptBase = window.testWorkspace;
+  const start = Date.parse(completed.createdAt);
+  const at = (seconds: number) => new Date(start + seconds * 1000).toISOString();
+  const timelineRun = { ...completed, status: "running", completedAt: undefined };
+  const timelineMessages = [
+    { id: "timeline-prompt", sessionId: completed.sessionId, runId: completed.id, role: "user", content: "Check the project", createdAt: at(0) },
+    { id: "timeline-progress", sessionId: completed.sessionId, runId: completed.id, role: "assistant", content: "Checking the project now", createdAt: at(1) },
+    { id: "timeline-answer", sessionId: completed.sessionId, runId: completed.id, role: "assistant", content: "The final answer", createdAt: at(4) },
+  ];
+  const timelineEvent = { id: "timeline-call", runId: completed.id, type: "tool", message: "Execute git status", timestamp: at(2), data: { toolCallId: "git", kind: "execute", status: "in_progress" } };
+  window.testWorkspace = { ...transcriptBase, activeRun: timelineRun, runs: [timelineRun], messages: timelineMessages, events: [timelineEvent] };
+  root.render(<Conversation />);
+  await until(() => document.querySelector('.inline-activity-toggle') && document.querySelector('.turn-status'));
+  assert(Boolean(document.querySelector('.turn-status')!.compareDocumentPosition(document.querySelector('.inline-activity')!) & Node.DOCUMENT_POSITION_FOLLOWING), "Turn clock appeared after the work");
+  assert(!document.querySelector('.inline-activity-tools'), "Raw tool details are open by default");
+  document.querySelector<HTMLButtonElement>('.inline-activity-toggle')!.click();
+  await until(() => document.querySelector('.inline-activity-tools li'));
+  window.testWorkspace = { ...window.testWorkspace, events: [timelineEvent, { ...timelineEvent, id: "timeline-complete", timestamp: at(3), data: { ...timelineEvent.data, status: "completed" } }] };
+  root.render(<Conversation />);
+  await until(() => document.querySelector('.inline-activity-state')?.textContent === "Completed");
+  assert(document.querySelectorAll('.inline-activity-tools li').length === 1, "Tool completion duplicated the invocation or lost expansion");
+  window.testWorkspace = { ...window.testWorkspace, activeRun: undefined, runs: [{ ...completed, completedAt: at(5) }] };
+  root.render(<Conversation />);
+  await until(() => document.querySelector('.turn-work-toggle')?.textContent?.includes("Worked for 5s"));
+  assert(!document.querySelector('.turn-status') && !document.querySelector('.inline-activity'), "Settled progress did not fold");
+  assert(document.body.textContent?.includes("The final answer") && !document.body.textContent?.includes("Checking the project now"), "Final answer folded with the work");
+  document.querySelector<HTMLButtonElement>('.turn-work-toggle')!.click();
+  await until(() => document.querySelector('.turn-work-body')?.textContent?.includes("Checking the project now"));
+  window.testWorkspace = transcriptBase;
   let historyRetries = 0;
   window.testWorkspace = { ...window.testWorkspace, messages: [], runs: [], notice: undefined, historyLoad: { state: "loading" },
     loadSession: async () => { historyRetries++; },

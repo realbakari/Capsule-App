@@ -74,7 +74,7 @@ export interface SessionUpdate {
   /** A new tool starts a new response segment; background tool updates do not. */
   startsTool?: boolean;
   /** A tool the agent is running, if this update is about one. */
-  tool?: { title?: string; status?: string; toolCallId?: string; delegation?: DelegationDetails };
+  tool?: { title?: string; status?: string; kind?: string; toolCallId?: string; delegation?: DelegationDetails };
 }
 
 function textFromContent(content: unknown): string | undefined {
@@ -118,7 +118,7 @@ export function readSessionUpdate(params: unknown): SessionUpdate | undefined {
   }
 
   if (kind === "tool_call" || kind === "tool_call_update") {
-    const tool = update as { title?: unknown; status?: unknown; toolCallId?: unknown };
+    const tool = update as { title?: unknown; status?: unknown; kind?: unknown; toolCallId?: unknown };
     const title = toolLabel(tool.title, MAX_TOOL_TITLE_LENGTH);
     // IDs are opaque. Dropping an oversized ID is safe; truncating it can
     // merge unrelated tools. Bound display metadata before emitting it too.
@@ -128,7 +128,9 @@ export function readSessionUpdate(params: unknown): SessionUpdate | undefined {
     return {
       sessionId,
       ...(kind === "tool_call" ? { startsTool: true } : {}),
-      tool: { title, status: toolLabel(tool.status, 64), toolCallId, ...(delegation ? { delegation } : {}) },
+      tool: { title, status: toolLabel(tool.status, 64), toolCallId,
+        ...(typeof tool.kind === "string" && /^(read|edit|delete|move|search|execute|think|fetch|switch_mode|other)$/u.test(tool.kind) ? { kind: tool.kind } : {}),
+        ...(delegation ? { delegation } : {}) },
     };
   }
 

@@ -34,7 +34,7 @@ export interface DirectAcpEvents {
   /** Finish the current prose segment, not the turn or the coding session. */
   "message-end": () => void;
   /** A tool the agent is running, for the work log. */
-  tool: (payload: { title: string; status?: string; toolCallId?: string; delegation?: DelegationDetails }) => void;
+  tool: (payload: { title: string; status?: string; kind?: string; toolCallId?: string; delegation?: DelegationDetails }) => void;
   /** The turn finished, with the agent's own reason. */
   done: (payload: { stopReason?: string }) => void;
   /** The agent wants permission and is blocked until it is answered. */

@@ -54,7 +54,7 @@ function workAction(kind: string, message: string | undefined): WorkAction | und
   const text = (message ?? "").trim().toLowerCase();
   if (/^(read|cat|open|view|get)[_\s-]|^read\b/.test(text)) return "read";
   if (/^(write|edit|apply|patch|create|update|replace)[_\s-]/.test(text)) return "changed";
-  if (/^(bash|run|exec|shell|sh)[_\s-]|^ls\b|^rg\b|^grep\b/.test(text)) return "ran";
+  if (/^(bash|run|exec|execute|shell|sh)[_\s-]|^(ls|rg|grep|git|gh)\b/.test(text)) return "ran";
   return "used";
 }
 
@@ -174,7 +174,7 @@ export function activityFromEvents(
       }
       continue;
     }
-    const action = workAction(kind, event.message);
+    const action = (event.data?.kind ?? nested.kind) === "execute" ? "ran" : workAction(kind, event.message);
     // Work phases group by action so `read_file a` and `read_file b` are one
     // "Read 2 files" row; everything else groups by kind as before.
     const groupId = action ? `work:${action}` : kind;
@@ -240,7 +240,7 @@ export function summariseWork(phases: readonly RunActivity[]): WorkSummary {
   let commands = 0;
   let tools = 0;
   for (const phase of phases) {
-    if (phase.id === "thinking") continue;
+    if (!phase.id.startsWith("work:")) continue;
     // The id carries the action; the label is display text and can be retitled
     // or translated without anyone remembering this depends on it.
     if (phase.id === "work:ran") commands += phase.count;

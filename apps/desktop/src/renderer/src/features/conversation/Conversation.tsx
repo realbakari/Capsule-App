@@ -1,7 +1,6 @@
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChatMessage, Run } from "@capsule/shared";
 import { harnessDisplayName } from "../../lib/harness";
-import { AgentGlyph } from "../shell/AgentGlyph";
 import { formatTokens, type ContextUsage } from "../../lib/context-window";
 import { AlertTriangleIcon, DiffIcon, FileIcon, SparkIcon, TerminalIcon, XIcon } from "../shell/icons";
 import { useWorkspace } from "../../lib/workspace";
@@ -33,6 +32,8 @@ import { MessageBody } from "./MessageBody";
 import { MessageAttachments } from "./MessageAttachments";
 import { VirtualTurns } from "./VirtualTurns";
 import { CopyButton } from "./CopyButton";
+import { turnTranscript } from "../../lib/turn-timeline";
+import { TurnTranscript } from "./TurnTranscript";
 
 /*
  * One message. Memoized because a streamed frame appends a message rather
@@ -135,14 +136,12 @@ function RunElapsed({ startedAt }: { startedAt: string; }) {
  */
 function TurnStatusLine({
   run,
-  agentId,
   agentName,
   usage,
   activity,
   stopping,
 }: {
   run: Run;
-  agentId?: string;
   agentName: string;
   usage?: ContextUsage;
   activity?: string;
@@ -153,8 +152,8 @@ function TurnStatusLine({
   const state = stopping ? "Stopping — waiting for the runtime" : `${runActivityLabel(run)} · ${activity?.trim() || `Waiting for ${agentName}`}`;
   return (
     <div className="turn-status">
-      {agentId ? <AgentGlyph id={agentId} name={agentName} size={14} /> : null}
-      {run.createdAt && <RunElapsed startedAt={run.createdAt} />}
+      <span>{stopping ? "Stopping" : run.status === "running" ? "Working" : runActivityLabel(run)}</span>
+      {run.createdAt && <><span>for</span><RunElapsed startedAt={run.createdAt} /></>}
       {usage ? (
         <>
           <span className="turn-status-dot" aria-hidden>·</span>
@@ -167,12 +166,7 @@ function TurnStatusLine({
         </>
       ) : null}
       <span className="turn-status-dot" aria-hidden>·</span>
-      <span className="shimmer-text turn-status-state" title={state}>
-        {state}…
-        <span className="shimmer-overlay" aria-hidden>
-          {state}…
-        </span>
-      </span>
+      <span className="turn-status-state" title={state}>{activity?.trim() || `Waiting for ${agentName}`}</span>
     </div>
   );
 }
@@ -287,6 +281,21 @@ export function Conversation() {
   const retryHistory = () => { if (session) void loadSession(session.id).catch(() => { /* History owns its error state. */ }); };
   const turnOutcomes = useMemo(() => outcomesByTurn(turns, runs, session?.id, project?.id), [turns, runs, session?.id, project?.id]);
   const summaryRun = [activeRun, ...(hasNewerMessages ? [] : runs)].find((run) => run && run.sessionId === session?.id && run.projectId === project?.id);
+  const transcripts = useMemo(() => {
+    const currentRuns = activeRun ? [activeRun, ...runs.filter((run) => run.id !== activeRun.id)] : runs;
+    const owners = outcomesByTurn(turns, currentRuns, session?.id, project?.id, { includeInFlight: true });
+    const byRun = new Map<string, typeof events>();
+    for (const event of events) {
+      const rows = byRun.get(event.runId) ?? [];
+      rows.push(event); byRun.set(event.runId, rows);
+    }
+    return new Map(turns.flatMap((turn) => {
+      const run = (owners.get(turn.id) ?? []).find((item) => item.id === turn.prompt?.runId)
+        ?? owners.get(turn.id)?.[0];
+      return run ? [[turn.id, { ...turnTranscript(turn.messages, byRun.get(run.id) ?? [], run), run }] as const] : [];
+    }));
+  }, [turns, runs, activeRun, events, session?.id, project?.id]);
+  const activeTurnId = activeRun && [...transcripts].find(([, transcript]) => transcript.run.id === activeRun.id)?.[0];
 
   /*
    * Where each turn starts in the flat message list, so a row can tell whether
@@ -298,12 +307,11 @@ export function Conversation() {
    * render, and renders happen on every streamed token. One pass over the
    * turns replaces O(messages x turns) with O(turns).
    */
-  const turnOffsets = useMemo(() => {
+  const messageOffsets = useMemo(() => {
     const offsets = new Map<string, number>();
     let total = 0;
     for (const turn of turns) {
-      offsets.set(turn.id, total);
-      total += turn.messages.length;
+      for (const message of turn.messages) offsets.set(message.id, total++);
     }
     return offsets;
   }, [turns]);
@@ -474,14 +482,19 @@ export function Conversation() {
                   <FoldedTurn key={turn.id} turn={turn} onOpen={openTurn} />
                 ) : (
                   <Fragment key={turn.id}>
-                  {turn.messages.map((message, messageIndex) => (
-                    <MessageRow
-                      key={message.id}
-                      message={message}
-                      isNew={(turnOffsets.get(turn.id) ?? 0) + messageIndex >= initialCountRef.current}
-                      onOpenAttachment={openAttachment}
-                    />
-                  ))}
+                  <TurnTranscript key={transcripts.get(turn.id)?.run.id ?? turn.id}
+                    rows={transcripts.get(turn.id)?.rows ?? turn.messages.map((message) => ({ kind: "message" as const, id: message.id, message }))}
+                    run={transcripts.get(turn.id)?.run} partial={transcripts.get(turn.id)?.partial}
+                    stopping={stoppingRunIds?.includes(transcripts.get(turn.id)?.run.id ?? "")}>
+                    {(message) => <>
+                        <MessageRow message={message}
+                          isNew={(messageOffsets.get(message.id) ?? 0) >= initialCountRef.current}
+                          onOpenAttachment={openAttachment} />
+                        {turn.id === activeTurnId && message === turn.prompt && activeRun && <TurnStatusLine
+                          run={activeRun} agentName={harnessDisplayName(harnesses, session?.harnessId, "the agent")}
+                          usage={contextUsage} activity={liveActivity} stopping={stoppingRunIds?.includes(activeRun.id)} />}
+                    </>}
+                  </TurnTranscript>
                     {(turnOutcomes.get(turn.id) ?? []).map((run) => <Fragment key={run.id}>
                       {run.status === "completed" && !run.hasResult && !run.result?.trim() && !turn.messages.some((message) => message.role === "assistant") && <p className="muted turn-missing-reply" role="status">No reply was received for this turn. Review the work log before retrying.</p>}
                       <TurnOutcome run={run} cwd={terminalCwd} />
@@ -502,10 +515,9 @@ export function Conversation() {
               start another one. */}
           {summaryRun && (
             <div className={`msg active-run-msg${activeRun ? "" : " settled"}`}>
-              {activeRun ? (
+              {activeRun && !activeTurnId ? (
                 <TurnStatusLine
                   run={activeRun}
-                  agentId={session?.harnessId ?? session?.agentId}
                   agentName={harnessDisplayName(
                     harnesses,
                     session?.harnessId,
@@ -518,7 +530,7 @@ export function Conversation() {
               ) : null}
               <RunSummary
                 key={summaryRun?.id}
-                label={`${events.some((event) => event.data?.earlierEvents) ? "Recent activity · " : ""}${summariseWork(steps).label}`}
+                label={[...transcripts.values()].some((item) => item.run.id === summaryRun.id && item.hasActivity) ? "Turn details" : `${events.some((event) => event.data?.earlierEvents) ? "Recent activity · " : ""}${summariseWork(steps).label}`}
                 run={summaryRun}
                 stopping={Boolean(activeRun && stoppingRunIds?.includes(activeRun.id))}
                 touchedFiles={touchedFiles}

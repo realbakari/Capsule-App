@@ -455,6 +455,16 @@ runtime route (including an existing thread's pinned route). It is absent for
 direct agents and the mock runtime. Connection errors are caught inline with
 retry, while distinct folder, login and installation blockers remain visible.
 
+The transcript also interleaves compact invocation groups with assistant
+segments. `turnTranscript` joins by owning run and tool ID, retaining the first
+observation position when an update arrives. Inline work is capped at 100 tools;
+truncated history is labelled. Message/plan/error frames are not tool counts.
+Each group expands independently; missing completion is not converted into
+success. On settlement, `TurnTranscript` folds work under an elapsed-time
+disclosure, leaving the last assistant segment visible and failures signposted.
+The live clock is above progress, not below it. Diagnostics and verification
+remain in the separate owning run's **Turn details** expansion.
+
 First-prompt titles are local previews of the first nonempty line, bounded at
 72 Unicode code points with a word boundary when possible. First-message lookup
 is a single bounded database row, with an attachment-name fallback. Automatic

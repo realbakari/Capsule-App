@@ -16,6 +16,13 @@ const event = (runId: string, text = "Edited src/app.ts"): RunEvent => ({
 });
 
 describe("turn ownership", () => {
+  it("includes live work only when requested, preserving project and session ownership", () => {
+    const turns = turnsFromMessages([message("u1", "user", 1, "r1")]);
+    const live = run("r1", 1, { status: "running" });
+    expect(outcomesByTurn(turns, [live], "s", "p").size).toBe(0);
+    expect(outcomesByTurn(turns, [live], "s", "p", { includeInFlight: true }).get("u1")).toEqual([live]);
+    expect(outcomesByTurn(turns, [live], "other", "p", { includeInFlight: true }).size).toBe(0);
+  });
   it("keeps newest-first runs attached to their prompts, not the conversation footer", () => {
     const turns = turnsFromMessages([message("u1", "user", 1, "r1"), message("a1", "assistant", 2, "r1"), message("u2", "user", 3, "r2"), message("a2", "assistant", 4, "r2")]);
     const mapped = outcomesByTurn(turns, [run("r2", 3), run("r1", 1)], "s", "p");

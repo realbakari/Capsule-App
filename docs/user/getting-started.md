@@ -28,6 +28,13 @@ without another agent request. Later prompts do not rename the conversation;
 your own title is preserved. **Generate title** in the conversation menu restores
 a title from that original prompt.
 
+During a turn, compact tool groups sit between the agent's progress updates.
+Expand a group for its reported steps. After the turn finishes, earlier work
+folds under **Worked for…** while the final answer remains visible. Expand it to
+read the progress again. Missing tool completion is shown as unknown rather
+than inferred from the turn finishing; **Turn details** retains diagnostics and
+verification. Only recently loaded activity is shown inline in long histories.
+
 Learn more: [Drafts and attachments](composer.md), [projects and previews](projects-and-previews.md),
 [checking a turn](verification.md), and [restoring a turn](checkpoints.md).
 

@@ -18,6 +18,14 @@ it("preserves bounded structured delegation metadata without retaining raw tool 
   expect(readSessionUpdate({ update: { sessionUpdate: "tool_call_update", toolCallId: "call", status: "completed", rawOutput: { usage: { total_tokens: 123 } } } })?.tool?.delegation).toEqual({ totalTokens: 123 });
 });
 
+it("carries supported tool kinds without retaining arbitrary metadata", () => {
+  const tool = (kind: unknown) => readSessionUpdate({ update: { sessionUpdate: "tool_call", toolCallId: "call", title: "Inspect project", kind } })?.tool;
+  expect(tool("execute")?.kind).toBe("execute");
+  expect(tool("read")?.kind).toBe("read");
+  expect(tool("unbounded unknown kind")?.kind).toBeUndefined();
+  expect(tool({ nested: "invalid" })?.kind).toBeUndefined();
+});
+
 describe("parseMessage", () => {
   it("reads a JSON-RPC line", () => {
     expect(parseMessage('{"jsonrpc":"2.0","id":1,"result":{"ok":true}}')).toEqual({

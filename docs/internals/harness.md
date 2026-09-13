@@ -1,5 +1,8 @@
 # ACP harnesses
 
+Tool observations carry the protocol's bounded `kind` field so command counts
+need not guess from a title.
+
 Capsule owns the workspace: projects, conversations, runs, contracts, approvals, and artifacts. Coding CLIs own their loops, reached through OpenClaw acpx or a thin direct ACP client. Capsule never ships or installs coding CLIs.
 
 Direct shutdown owns processes from before their initialization handshake.
