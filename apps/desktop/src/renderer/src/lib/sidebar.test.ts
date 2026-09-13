@@ -3,11 +3,21 @@ import {
   compactRelativeTime,
   formatWorkingDurationLabel,
   resolveSidebarThreadKind,
+  resolveProjectThreadKind,
   shouldRecedeThread,
   splitProjectThreads,
 } from "./sidebar.js";
 
 describe("sidebar thread status", () => {
+  it("keeps collapsed approvals prominent regardless of thread order", () => {
+    expect(resolveProjectThreadKind(["working", "approval", "failed"])).toBe("approval");
+    expect(resolveProjectThreadKind(["failed", "approval", "working"])).toBe("approval");
+    expect(resolveProjectThreadKind(["approval", "failed"])).toBe("approval");
+    expect(resolveProjectThreadKind(["failed", "working"])).toBe("working");
+    expect(resolveProjectThreadKind(["ready", "failed"])).toBe("failed");
+    expect(resolveProjectThreadKind(["ready"])).toBeUndefined();
+    expect(resolveProjectThreadKind([])).toBeUndefined();
+  });
   it("treats approval as the attention state", () => {
     expect(resolveSidebarThreadKind({ liveHarness: true, runStatus: "approval_required" })).toBe(
       "approval",

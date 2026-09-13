@@ -2,6 +2,14 @@ import { isInternalVerdict } from "./thread-error.js";
 
 export type SidebarThreadKind = "working" | "approval" | "failed" | "ready";
 
+/** A collapsed project must not hide a waiting decision behind another turn. */
+export function resolveProjectThreadKind(kinds: readonly SidebarThreadKind[]): SidebarThreadKind | undefined {
+  for (const kind of ["approval", "working", "failed"] as const) {
+    if (kinds.includes(kind)) return kind;
+  }
+  return undefined;
+}
+
 /** In-flight ACP only. `waiting` is an idle persistent session, not work. */
 export function isWorkingHarnessState(state: string | undefined): boolean {
   return state === "running" || state === "spawning";

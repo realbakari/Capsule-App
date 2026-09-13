@@ -36,6 +36,8 @@ Capsule is a workspace, not a clone of any other agent product. Quality bars els
 - Five-column grid: chevron, pin, title, overflow (`···`), status. Project rows
   show a discovered or user-selected icon when one is available.
 - Rows show the **project or thread name only**. Do not put folder paths under rows or in the titlebar.
+- Collapsed project status prioritizes waiting approvals, then working turns,
+  then failures, independently of thread order.
 - The sidebar titlebar carries a compact Capsule wordmark and hide control.
   Search, project, and thread rows are flat by default; hover supplies the
   surface and the active thread relies on text weight instead of stacked pills.

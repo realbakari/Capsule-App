@@ -15,6 +15,7 @@ import {
   isWorkingHarnessState,
   latestRunForSession,
   resolveSidebarThreadKind,
+  resolveProjectThreadKind,
   SETTLED_THREAD_PREVIEW,
   shouldRecedeThread,
   splitProjectThreads,
@@ -673,9 +674,7 @@ export function Sidebar() {
           const limit = restLimit[item.id] ?? SETTLED_THREAD_PREVIEW;
           const groups = splitProjectThreads(threads, kindOf, needle ? threads.length : limit);
           const ProjectGlyph = item.name === "Inbox" ? InboxIcon : FolderIcon;
-          const liveKind = threads
-            .map(kindOf)
-            .find((kind) => kind === "approval" || kind === "working" || kind === "failed");
+          const liveKind = resolveProjectThreadKind(threads.map(kindOf));
           return (
             <div key={item.id} className="project-block">
               {editing?.kind === "project" && editing.id === item.id ? (
