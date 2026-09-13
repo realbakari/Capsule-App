@@ -24,6 +24,7 @@ export default defineConfig({
       externalizeDepsPlugin({
         exclude: [
           "@capsule/core",
+          "@capsule/process",
           "@capsule/shared",
           "@capsule/database",
           "@capsule/projects",

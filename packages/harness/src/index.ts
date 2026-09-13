@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from "node:child_process";
+import { spawnCommand as spawn, spawnCommandSync as spawnSync, stopChild } from "@capsule/process";
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -64,7 +64,7 @@ export function extraBinDirs(): string[] {
 
 function whichOnPath(binary: string): string | undefined {
   const finder = process.platform === "win32" ? "where" : "which";
-  const result = spawnSync(finder, [binary], { encoding: "utf8" });
+  const result = spawnSync(finder, [binary], { encoding: "utf8", windowsHide: true });
   if (result.status !== 0) return undefined;
   return result.stdout
     .split(/\r?\n/)
@@ -222,6 +222,7 @@ export function probeLoginStateNow(
     const result = spawnSync(binaryPath, preset.loginProbeArgs, {
       encoding: "utf8",
       timeout: LOGIN_PROBE_TIMEOUT_MS,
+      windowsHide: true,
     });
     state = classifyLoginProbe({
       ok: result.status === 0,
@@ -248,11 +249,11 @@ function refreshLoginStateInBackground(preset: HarnessPreset, binaryPath: string
   if (inFlightProbes.has(key)) return;
   inFlightProbes.add(key);
   const previous = loginStateCache.get(key)?.state;
-  const child = spawn(binaryPath, preset.loginProbeArgs ?? [], { stdio: ["ignore", "pipe", "pipe"] });
+  const child = spawn(binaryPath, preset.loginProbeArgs ?? [], { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
   let stdout = "";
   let stderr = "";
   let settled = false;
-  const timer = setTimeout(() => child.kill(), LOGIN_PROBE_TIMEOUT_MS);
+  const timer = setTimeout(() => stopChild(child), LOGIN_PROBE_TIMEOUT_MS);
   child.stdout?.on("data", (chunk: Buffer) => {
     stdout += chunk.toString();
   });

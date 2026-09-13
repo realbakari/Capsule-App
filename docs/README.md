@@ -8,6 +8,7 @@ need the shipped-product voice.
 ## Using Capsule
 
 - [Your first conversation](./user/getting-started.md)
+- [Windows preview](./user/windows.md)
 - [Supported behavior and current limits](./user/compatibility.md)
 - [Keyboard shortcuts](./user/keyboard-shortcuts.md)
 - [Skills](./user/skills.md)

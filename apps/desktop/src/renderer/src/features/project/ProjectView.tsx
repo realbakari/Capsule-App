@@ -249,7 +249,7 @@ export function ProjectView() {
                   <CopyIcon size={12} />
                 </button>
                 <button className="ghost" type="button" onClick={() => void openPath(folder!)}>
-                  Show in Finder
+                  Show in folder
                 </button>
                 {index > 0 ? (
                   <>

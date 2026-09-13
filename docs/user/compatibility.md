@@ -15,7 +15,7 @@ install that adapter or guarantee compatibility with Capsule.
 
 | Area | Available behavior | Important limit |
 | --- | --- | --- |
-| Direct route | Start an installed native ACP agent on this Mac; send text and supported attachments, receive activity and handle reported approvals. | ACP v1 only. No automatic registry installation, sign-in, or provider subscription. |
+| Direct route | Start an installed native ACP agent on this computer; send text and supported attachments, receive activity and handle reported approvals. | ACP v1 only. No automatic registry installation, sign-in, or provider subscription. |
 | Gateway route | Use a configured OpenClaw Gateway and its ACP bridge. | The Gateway host owns execution; a remote Gateway does not use this Mac's files automatically. |
 | Session history | Keep recorded conversations and runs; resume native direct sessions when the agent supports resume or load. | A new process must acknowledge the saved identity. Expired or unsupported sessions require a new conversation; older threads without a saved native identity cannot restore agent history. |
 | Live settings | Request supported Gateway changes or change exact agent-reported direct settings. | Direct model/mode choices require a reported selector. Capsule permission profiles are not mapped to agent policies. Direct Steer and live folder changes remain unavailable. |
@@ -46,8 +46,10 @@ must not be silently treated as enabled.
 - **Remote access:** paired devices can read the workspace and explicitly shared
   background-page snapshots, not send messages, approve work or operate a browser.
   This is not a remote-hosted browser or an interactive video stream.
-- **Releases:** the supported download is macOS Apple Silicon. In-place updates
-  need compatible signing and release metadata, and restart requires consent.
+- **Releases:** macOS Apple Silicon is signed and notarized. Windows 10/11 x64
+  has an initial unsigned preview; see [Windows](windows.md) for security and
+  provider-testing limits. Updates need compatible release metadata, signing
+  where available, and consent before restarting.
 
 These are current boundaries, not release promises. Start with a disposable
 project when testing a new harness or permission mode. The

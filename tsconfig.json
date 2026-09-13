@@ -1,6 +1,7 @@
 {
   "files": [],
   "references": [
+    { "path": "packages/process" },
     { "path": "packages/shared" },
     { "path": "packages/database" },
     { "path": "packages/projects" },

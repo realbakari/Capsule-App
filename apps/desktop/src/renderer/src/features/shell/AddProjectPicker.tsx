@@ -19,7 +19,7 @@ interface ProjectSource {
  * a promise.
  */
 const SOURCES: ProjectSource[] = [
-  { id: "folder", label: "Local folder", detail: "Attach a folder on this Mac", icon: FolderPlusIcon },
+  { id: "folder", label: "Local folder", detail: "Attach a folder on this computer", icon: FolderPlusIcon },
   { id: "git-url", label: "Git URL", detail: "Clone from any remote — https or ssh", icon: GlobeIcon },
   {
     id: "github",

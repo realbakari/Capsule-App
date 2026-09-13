@@ -537,8 +537,8 @@ function createWindow(): BrowserWindow {
     minWidth: 960,
     minHeight: 640,
     title: "Capsule",
-    titleBarStyle: "hiddenInset",
-    trafficLightPosition: { x: 16, y: 18 },
+    // Keep native Windows caption controls, resize borders and snap layouts.
+    ...(process.platform === "darwin" ? { titleBarStyle: "hiddenInset" as const, trafficLightPosition: { x: 16, y: 18 } } : {}),
     /*
      * The frame the window paints before the renderer has drawn anything. It
      * was always the dark base, so opening the app in light mode flashed
@@ -2107,6 +2107,7 @@ app.on("open-url", (event, url) => {
 
 app.whenReady().then(async () => {
   app.setName("Capsule");
+  if (process.platform === "win32") app.setAppUserModelId("ai.capsule.desktop");
   app.setAsDefaultProtocolClient(APP_SCHEME);
   augmentPath();
   applyDockIcon();

@@ -2,7 +2,14 @@
 
 ## 1. Executive Summary
 
-Capsule is a local-first macOS workspace for AI agents.
+Capsule is a local-first desktop workspace for AI agents, with a macOS Apple
+Silicon release and an initial unsigned Windows x64 preview.
+
+Windows intentionally extends the original macOS-only host contract, not the
+runtime contract. `@capsule/process` owns portable command-shim launch and owned
+child termination; `@capsule/terminal` chooses PowerShell or the Unix shell.
+Native Windows caption controls remain OS-owned. No WSL bridge, remote browser
+host, agent loop or generic renderer shell channel is introduced.
 
 Coding CLIs own agent execution. Capsule owns the workspace: projects, conversations, runs, contracts, verification, policies, approvals, artifacts, and a native-feeling desktop UI. The Gateway route delegates to OpenClaw; direct mode is a thin native-CLI ACP client, not a model or tool loop.
 

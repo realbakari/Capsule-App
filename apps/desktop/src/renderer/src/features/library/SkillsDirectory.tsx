@@ -485,7 +485,7 @@ export function SkillsDirectory() {
             )}
           </div>
           <p>
-            Use skills already installed on this Mac, or add more from{" "}
+            Use skills already installed on this computer, or add more from{" "}
             <button
               type="button"
               className="skills-link skills-link-button"
@@ -565,7 +565,7 @@ export function SkillsDirectory() {
           </div>
 
           <InstalledSkillGroup
-            title="On this Mac"
+            title="On this computer"
             description="Read from global Agent Skills, Codex, Claude Code, and OpenCode folders. Capsule does not move or remove these files."
             skills={globalSkills}
             empty="No matching global skills were found. Global installs appear here automatically."

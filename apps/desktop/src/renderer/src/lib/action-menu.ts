@@ -108,7 +108,7 @@ export function buildProjectActionMenuItems(state: {
     { id: "add-folder", label: "Add folder", icon: "folder" },
     {
       id: "open-folder",
-      label: "Show in Finder",
+      label: "Show in folder",
       icon: "folder",
       enabled: state.hasFolder,
     },

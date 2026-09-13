@@ -141,7 +141,7 @@ export function SettingsView() {
     <section className="panel">
       <div className="panel-inner settings-page">
         <div className="panel-header">
-          <p>Gateway, appearance, agent defaults, and diagnostics for this Mac.</p>
+          <p>Gateway, appearance, agent defaults, and diagnostics for this computer.</p>
         </div>
         <div className="settings">
           <div className="settings-body">
@@ -172,7 +172,7 @@ export function SettingsView() {
                 <h3>General</h3>
                 <SettingRow
                   label="Launch at login"
-                  hint="Open Capsule when you sign in to this Mac. Requires the packaged app."
+                  hint="Open Capsule when you sign in to this computer. Requires the packaged app."
                 >
                   <Switch
                     checked={settings.launchAtLogin}
@@ -441,7 +441,7 @@ export function SettingsView() {
                           )
                         }
                       >
-                        Show in Finder
+                        Show in folder
                       </button>
                       {settings.projectlessFolder && (
                         <button

@@ -18,6 +18,8 @@ import "./styles.css";
  * public site, which is dark and stays dark.
  */
 applyStoredTheme(window.capsule ? undefined : "dark");
+// Windows uses a native caption above the renderer, not inset traffic lights.
+document.documentElement.dataset.platform = /Windows/u.test(navigator.userAgent) ? "windows" : "other";
 
 /*
  * The pet is the same bundle in a different window, chosen by the hash the

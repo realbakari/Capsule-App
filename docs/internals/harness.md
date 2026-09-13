@@ -1,5 +1,10 @@
 # ACP harnesses
 
+Direct ACP and login probes launch through `@capsule/process`. It handles
+Windows PATH/PATHEXT and npm `.cmd` shims with escaped arguments, and stops the
+captured Windows process tree so a shim cannot leave a CLI running behind it.
+No WSL translation or Capsule-owned agent loop is added.
+
 Tool observations carry the protocol's bounded `kind` field so command counts
 need not guess from a title.
 

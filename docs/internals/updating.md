@@ -45,6 +45,16 @@ macOS updater, even when the initial install used the DMG. Both the installed
 app and its replacement must have compatible signatures. Unsigned development
 builds are not evidence that native replacement works.
 
+The Windows x64 job is an explicitly unsigned NSIS preview. It runs native
+command/PTY/ACP and renderer fixtures, then installs into a disposable directory,
+smoke-tests the installed executable using its own profile, and uninstalls.
+Both platform jobs must succeed before creating the draft. Windows artifacts
+include `.exe`, its blockmap and `latest.yml`; macOS retains `latest-mac.yml`.
+Checksums include both installers. Hashes do not authenticate an unsigned
+publisher. This gate does not claim every provider login or an old-to-new
+Windows update was tested. Windows 10/11 x64 is the target; CI uses Windows
+Server 2022, so end-user OS coverage remains a preview limitation.
+
 Release validation and local packaging require the root and desktop manifest
 versions to match. Electron's `app.getVersion()` supplies the running version
 to update status, About and diagnostics; workspace-library versions do not.

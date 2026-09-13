@@ -99,7 +99,8 @@ describe("talking to an agent directly", () => {
       const closing = session.close();
       expect(session.close()).toBe(closing);
       await closing;
-      expect(child.signalCode).toBe("SIGKILL");
+      if (process.platform === "win32") expect(child.exitCode).not.toBeNull();
+      else expect(child.signalCode).toBe("SIGKILL");
       expect(session.running).toBe(false);
     } finally { await session.close(); rmSync(path.dirname(agent), { recursive: true, force: true }); }
   }, 8000);

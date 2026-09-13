@@ -1,7 +1,7 @@
 {
   "name": "@capsule/desktop",
-  "version": "0.6.2",
-  "description": "Capsule macOS desktop app",
+  "version": "0.6.3",
+  "description": "Capsule desktop workspace",
   "author": "Capsule",
   "license": "MIT",
   "main": "./out/main/index.js",
@@ -10,7 +10,8 @@
     "dev": "node ../../scripts/dev-desktop.mjs",
     "build": "node ../../scripts/ensure-electron.mjs && electron-vite build && node ../../scripts/build-policy-pages.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "package:mac": "node ../../scripts/package-mac.mjs"
+    "package:mac": "node ../../scripts/package-mac.mjs",
+    "package:windows": "node ../../scripts/package-windows.mjs"
   },
   "dependencies": {
     "@capsule/contracts": "workspace:*",

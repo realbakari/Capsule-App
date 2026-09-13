@@ -69,7 +69,7 @@
 /* Fullscreen hides the window controls, so the 90px reserved for them is dead
    space. Collapsing to the sidebar's own gutter lines the toggle up with the
    search field and the rows under it; the page header follows the same token. */
-:root[data-fullscreen="true"] {
+:root[data-fullscreen="true"], :root[data-platform="windows"] {
   --workspace-traffic-inset: var(--sidebar-content-inset);
 }
 

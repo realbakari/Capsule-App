@@ -1153,7 +1153,7 @@ export function Inspector() {
                 title={!projectId ? "Open a project first — there is no folder to run in." : undefined}
                 onClick={() => void openTerminal()}
               >
-                Open Terminal.app
+                Open external terminal
               </button>
             </div>
             <pre className="mono term-out codex-term-output">{termOut || "$ echo 'Capsule terminal ready'"}</pre>

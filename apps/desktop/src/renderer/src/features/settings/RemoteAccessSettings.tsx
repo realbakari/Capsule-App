@@ -56,7 +56,7 @@ export function RemoteAccessSettings({
           settings.remoteAccess === "network"
             ? "Anything on your network can load the page. Pairing is still required to see anything."
             : settings.remoteAccess === "loopback"
-              ? "This Mac only."
+              ? "This computer only."
               : "Off. Nothing is listening."
         }
       >
@@ -68,7 +68,7 @@ export function RemoteAccessSettings({
           }
         >
           <option value="off">Off</option>
-          <option value="loopback">This Mac</option>
+          <option value="loopback">This computer</option>
           <option value="network">This network</option>
         </select>
       </SettingRow>

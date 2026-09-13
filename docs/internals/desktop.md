@@ -470,6 +470,17 @@ First-prompt titles are local previews of the first nonempty line, bounded at
 is a single bounded database row, with an attachment-name fallback. Automatic
 naming only applies before the first user message; custom names survive sends.
 
+### Windows host preview
+
+The Windows x64 NSIS target is explicitly unsigned. macOS signing and
+notarization remain required. Windows keeps the native window caption and snap
+controls; the renderer removes the macOS traffic-light inset. Shell commands
+use PowerShell, PTYs use native ConPTY, and external terminals open at the
+requested cwd without interpolating its path into a command. The process
+adapter handles npm command shims and terminates only captured child trees.
+No WSL agent bridge is provided. See the release verification contract in
+`updating.md` and user-facing limits in `../user/windows.md`.
+
 ### Verification receipts and workspace ownership
 
 Completed turns and History render the same collapsed `TurnVerification`

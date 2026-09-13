@@ -23,7 +23,7 @@ function harness(readiness: HarnessStatus["readiness"]): HarnessStatus {
 describe("agentPickerDetail", () => {
   it("says what the agent is, not how it was installed", () => {
     expect(agentPickerDetail({ harness: harness("ready") })).toBe("Ready");
-    expect(agentPickerDetail({ harness: harness("missing_cli") })).toBe("Not installed on this Mac");
+    expect(agentPickerDetail({ harness: harness("missing_cli") })).toBe("Not installed on this computer");
   });
 
   it("marks the agent the thread is already running", () => {
@@ -37,7 +37,7 @@ describe("agentPickerDetail", () => {
 
 describe("harnessReadinessLabel", () => {
   it("says the situation rather than the name of the check", () => {
-    expect(harnessReadinessLabel("missing_cli")).toBe("Not installed on this Mac");
+    expect(harnessReadinessLabel("missing_cli")).toBe("Not installed on this computer");
     expect(harnessReadinessLabel("needs_login")).toBe("Signed out");
     expect(harnessReadinessLabel("dedicated")).toBe("Ready · project default");
   });

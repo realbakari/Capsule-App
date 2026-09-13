@@ -1,6 +1,8 @@
 import { existsSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { spawn as spawnPty } from "node-pty";
+import { stopChild } from "@capsule/process";
+import { commandShell, interactiveShellArgs, windowsPowerShell } from "./shell.js";
 
 export interface ExecResult {
   stdout: string;
@@ -64,9 +66,15 @@ function runOsascript(script: string, cwd: string): Promise<void> {
 export async function openNativeTerminal(cwd: string): Promise<void> {
   if (!cwd) throw new Error("Project has no working directory");
   if (!existsSync(cwd)) throw new Error(`Folder does not exist: ${cwd}`);
-  if (process.platform !== "darwin") {
-    throw new Error("Opening Terminal is available on macOS");
+  if (process.platform === "win32") {
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn(windowsPowerShell(), ["-NoLogo", "-NoExit"], { cwd, detached: true, stdio: "ignore", windowsHide: false });
+      child.once("error", reject);
+      child.once("spawn", () => { child.unref(); resolve(); });
+    });
+    return;
   }
+  if (process.platform !== "darwin") throw new Error("Opening an external terminal is supported on macOS and Windows.");
   const app = preferredMacTerminal();
   await runOsascript(terminalAppleScript(app), cwd);
 }
@@ -115,21 +123,20 @@ export function runInDirectory(
   if (!cwd || !existsSync(cwd)) throw new Error("Working directory is missing");
   return new Promise((resolve, reject) => {
     if (signal?.aborted) { reject(new Error("Check cancelled.")); return; }
-    const child = spawn("/bin/zsh", ["-lc", text], {
+    const shell = commandShell(text);
+    const child = spawn(shell.file, shell.args, {
       cwd,
       env: process.env,
       stdio: ["ignore", "pipe", "pipe"],
       detached: process.platform !== "win32",
+      windowsHide: true,
     });
     const stdout = outputTail(20_000);
     const stderr = outputTail(20_000);
     let failure: string | undefined;
     let killTimer: ReturnType<typeof setTimeout> | undefined;
     const kill = (kind: NodeJS.Signals) => {
-      try {
-        if (process.platform !== "win32" && child.pid) process.kill(-child.pid, kind);
-        else child.kill(kind);
-      } catch { /* The captured child has already exited. */ }
+      stopChild(child, kind, true);
     };
     const stop = (reason: string) => {
       if (failure) return;
@@ -173,10 +180,12 @@ export function startInDirectory(
   const text = command.trim();
   if (!text) throw new Error("Command is empty");
   if (!cwd || !existsSync(cwd)) throw new Error("Working directory is missing");
-  const child = spawn("/bin/zsh", ["-lc", text], {
+  const shell = commandShell(text);
+  const child = spawn(shell.file, shell.args, {
     cwd,
     env: process.env,
     detached: process.platform !== "win32",
+    windowsHide: true,
     stdio: ["ignore", "pipe", "pipe"],
   });
   child.stdout.on("data", (chunk: Buffer) => handlers.onOutput(chunk.toString("utf8")));
@@ -187,10 +196,7 @@ export function startInDirectory(
   const cleanup = () => { closed = true; clearTimeout(killTimer); };
   const signal = (value: NodeJS.Signals) => {
     if (closed) return;
-    if (process.platform !== "win32" && child.pid) {
-      try { process.kill(-child.pid, value); return; } catch { /* Group already exited. */ }
-    }
-    child.kill(value);
+    stopChild(child, value, true);
   };
   child.on("error", (error) => { cleanup(); handlers.onError(error); });
   child.on("close", (code, value) => { cleanup(); handlers.onExit(code, value); });
@@ -224,8 +230,9 @@ export interface PtySession {
 
 /** The shell to open. The login shell if the OS reports one, else zsh. */
 export function preferredShell(env: NodeJS.ProcessEnv = process.env): string {
+  if (process.platform === "win32") return windowsPowerShell(env);
   const shell = env.SHELL?.trim();
-  return shell && existsSync(shell) ? shell : "/bin/zsh";
+  return shell && existsSync(shell) ? shell : process.platform === "darwin" ? "/bin/zsh" : "/bin/sh";
 }
 
 export function startPty(
@@ -234,7 +241,7 @@ export function startPty(
 ): PtySession {
   if (!input.cwd || !existsSync(input.cwd)) throw new Error("Working directory is missing");
   const shell = input.shell ?? preferredShell();
-  const child = spawnPty(shell, ["-l"], {
+  const child = spawnPty(shell, interactiveShellArgs(shell), {
     name: "xterm-256color",
     cols: Math.max(2, input.cols ?? 80),
     rows: Math.max(1, input.rows ?? 24),

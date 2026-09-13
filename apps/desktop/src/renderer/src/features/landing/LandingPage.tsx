@@ -65,13 +65,13 @@ export function LandingPage({ demo = true }: { demo?: boolean }) {
         </p>
         <div className="site-cta">
           <a className="site-btn-primary" href={`${REPO}/releases`} target="_blank" rel="noreferrer">
-            Download for macOS
+            Download Capsule
           </a>
           <a className="site-btn-ghost" href={REPO} target="_blank" rel="noreferrer">
             Read the source ↗
           </a>
         </div>
-        <p className="site-note">macOS · See release assets for supported architectures</p>
+        <p className="site-note">macOS Apple Silicon · Windows 10/11 x64 unsigned preview</p>
       </section>
 
       {demo && (
@@ -133,7 +133,7 @@ export function LandingPage({ demo = true }: { demo?: boolean }) {
           <div>
             <h3>At least one harness</h3>
             <p>
-              A supported CLI, installed and signed in on this Mac for direct mode,
+              A supported CLI, installed and signed in on this computer for direct mode,
               or on the host running your Gateway.
             </p>
           </div>

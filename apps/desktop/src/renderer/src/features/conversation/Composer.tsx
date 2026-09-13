@@ -727,7 +727,7 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
           options={[
             { id: "local", label: "Current checkout", detail: workspaceMode === "local" && folderPath ? formatProjectRoot(folderPath, { home: window.capsule.homeDir }) : "Share the current checkout." },
             { id: "worktree", label: "Worktree", detail: "Use an isolated branch and folder for this conversation." },
-            { id: "folder", label: "Change folder…", detail: "Choose a working folder on this Mac." },
+            { id: "folder", label: "Change folder…", detail: "Choose a working folder on this computer." },
           ]}
           onChange={(id) => { if (id === "folder") void pickProjectDirectory(); else void setWorkspaceMode(id as "local" | "worktree"); }} /> : <button
           type="button"

@@ -7,7 +7,7 @@
 3. Choose the agent in the composer. Open **Harnesses** and **Check this agent**
    if it reports a missing prerequisite. Gateway-only agents need a connected
    OpenClaw Gateway with ACP enabled; direct-capable agents can use direct mode
-   on this Mac. See [Providers and credentials](providers.md).
+   on this computer. See [Providers and credentials](providers.md).
 4. Start a conversation. Choose **Local** for the existing checkout or
    **Worktree** for a separate Git branch and folder. Review the permission
    description before sending a small, specific task.

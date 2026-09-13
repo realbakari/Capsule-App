@@ -17,7 +17,7 @@ describe("terminal helpers", () => {
 
   it("runs a command in a directory", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "capsule-term-"));
-    const result = await runInDirectory(dir, "pwd");
+    const result = await runInDirectory(dir, process.platform === "win32" ? "(Get-Location).Path" : "pwd");
     expect(result.code).toBe(0);
     expect(result.stdout.trim()).toBe(realpathSync(dir));
   });

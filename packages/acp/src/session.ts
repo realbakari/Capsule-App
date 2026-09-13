@@ -1,4 +1,5 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawnCommand as spawn, stopChild } from "@capsule/process";
 import { EventEmitter } from "node:events";
 import { StringDecoder } from "node:string_decoder";
 
@@ -160,6 +161,7 @@ export class DirectAcpSession {
       cwd: this.options.cwd,
       env: this.options.env ?? process.env,
       stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
     }) as ChildProcessWithoutNullStreams;
     this.child = child;
 
@@ -347,13 +349,13 @@ export class DirectAcpSession {
       // Already gone; the kill below is what matters.
     }
     await new Promise<void>((resolve, reject) => {
-      const force = setTimeout(() => child.kill("SIGKILL"), 3000);
+      const force = setTimeout(() => stopChild(child, "SIGKILL"), 3000);
       const timeout = setTimeout(() => {
         clearTimeout(force);
         reject(new Error("The agent process has not exited. It may still be working."));
       }, 10_000);
       child.once("close", () => { clearTimeout(force); clearTimeout(timeout); resolve(); });
-      child.kill();
+      stopChild(child);
     });
   }
 

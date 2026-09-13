@@ -57,7 +57,7 @@ export function harnessReadinessLabel(readiness: HarnessStatus["readiness"]): st
     case "running":
       return "Running";
     case "missing_cli":
-      return "Not installed on this Mac";
+      return "Not installed on this computer";
     case "needs_login":
       return "Signed out";
     case "missing_acpx":

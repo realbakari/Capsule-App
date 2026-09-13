@@ -56,7 +56,7 @@ export function TurnVerification({ run }: { run: Run; }) {
         {actions.length > 0 && <>
           <label className="verification-action field">Saved project check<select aria-label="Verification action" value={selectedId} disabled={running || blocked || saving} onChange={(e) => setActionId(e.target.value)}><option value="">Choose a check…</option>{actions.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
           {action && <code className="verification-command">{action.command}</code>}
-          <p className="faint">Runs on this Mac. Only run a command you trust; it can modify files. Checks stop after two minutes.</p>
+          <p className="faint">Runs on this computer. Only run a command you trust; it can modify files. Checks stop after two minutes.</p>
         </>}
         {actions.length === 0 && <p className="muted">{project ? "Add a test or build action to this project, then run it here." : "This turn’s project is no longer available. Existing evidence is still shown below."}</p>}
         {adding && <form className="verification-add" onSubmit={(event) => { event.preventDefault(); void saveCheck(); }}>
@@ -73,7 +73,7 @@ export function TurnVerification({ run }: { run: Run; }) {
         </div>
         {evidence && <details className="verification-details"><summary>Check output · {new Date(evidence.completedAt).toLocaleString()}</summary><p><code>{evidence.command}</code> · Exit {evidence.exitCode ?? "not recorded"}</p><pre>{evidence.output || "No output."}</pre><p className="faint">Output shows the last 20,000 characters.</p></details>}
         <details className="verification-details"><summary>Evidence details</summary>
-          <p className="muted">Checks run on this Mac in this turn’s folder. They do not certify remote agent files or prove every requirement is correct.</p>
+          <p className="muted">Checks run on this computer in this turn’s folder. They do not certify remote agent files or prove every requirement is correct.</p>
           {run.workingDirectory && <code className="verification-path">{run.workingDirectory}</code>}
           {run.revision && <p className="faint">Saved tree <code>{run.revision.tree.slice(0, 12)}</code> · HEAD <code>{run.revision.head?.slice(0, 12) ?? "unborn"}</code></p>}
           {evidence && <p className="faint">Final tree: <code>{evidence.after?.tree.slice(0, 12) ?? "unavailable"}</code></p>}

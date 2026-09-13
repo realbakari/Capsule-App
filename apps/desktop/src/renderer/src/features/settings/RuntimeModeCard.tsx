@@ -17,7 +17,7 @@ const OPTIONS: Array<{ id: RuntimeMode; label: string; detail: string }> = [
     id: "auto",
     label: "Automatic",
     detail:
-      "Use the OpenClaw Gateway when one is running, and this Mac when none is. Nothing to set up either way.",
+      "Use the OpenClaw Gateway when available, or an installed native agent on this computer.",
   },
   {
     id: "direct",

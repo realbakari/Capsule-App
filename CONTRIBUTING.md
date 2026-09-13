@@ -1,6 +1,6 @@
 # Contributing to Capsule
 
-Thanks for wanting to help. Capsule is a local-first macOS workspace for AI agents, sitting above OpenClaw.
+Thanks for wanting to help. Capsule is a local-first desktop workspace for AI agents, sitting above OpenClaw.
 
 ## Before you open a PR
 
@@ -12,7 +12,7 @@ For anything beyond a small fix, say what problem you are solving and which pack
 
 | Tool | Version |
 |------|---------|
-| macOS | Apple Silicon preferred |
+| OS | macOS Apple Silicon or Windows 10/11 x64 (preview) |
 | Node.js | 22+ |
 | pnpm | 10+ |
 | Optional OpenClaw Gateway | `openclaw gateway` on `127.0.0.1:18789` |
@@ -60,9 +60,18 @@ pnpm lint
 pnpm typecheck
 pnpm build
 pnpm package:mac
+pnpm package:windows # Native Windows x64 host only
 ```
 
 ## Code style
+
+Windows native-module builds require Visual Studio C++ build tools, the Windows
+SDK and Python. Project actions use PowerShell on Windows and zsh on macOS;
+write actions for the host OS rather than assuming shell syntax is portable.
+Release CI tests command shims, native PTYs, ACP fixtures, a mock first flow,
+renderer interactions and an actual NSIS install/start/uninstall on Windows.
+The full macOS suite remains a separate gate. Windows credentials are not
+required for the explicitly unsigned preview; macOS signing remains mandatory.
 
 - TypeScript, strict, ESM
 - Renderer: no Node, no OpenClaw, no secrets

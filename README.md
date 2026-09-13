@@ -4,14 +4,14 @@
 
 # Capsule
 
-**A local-first macOS workspace for AI coding agents & harnesses.**
+**A local-first desktop workspace for AI coding agents & harnesses.**
 
 [![GitHub Release](https://img.shields.io/github/v/release/realbakari/Capsule-App?style=flat-square&color=black)](https://github.com/realbakari/Capsule-App/releases/latest)
 [![CI](https://img.shields.io/github/actions/workflow/status/realbakari/Capsule-App/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/realbakari/Capsule-App/actions)
 [![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon%20(arm64)-black?style=flat-square&logo=apple)](https://github.com/realbakari/Capsule-App/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
 
-[Download Latest .dmg](https://github.com/realbakari/Capsule-App/releases/latest) · [First conversation](docs/user/getting-started.md) · [User guide](docs/README.md) · [Architecture](ARCHITECTURE.md) · [Contributing](CONTRIBUTING.md)
+[Download for macOS or Windows](https://github.com/realbakari/Capsule-App/releases/latest) · [First conversation](docs/user/getting-started.md) · [User guide](docs/README.md) · [Architecture](ARCHITECTURE.md) · [Contributing](CONTRIBUTING.md)
 
 </div>
 
@@ -43,29 +43,34 @@ local check and matching revision evidence.
 **Reviews changes where you are.** Diffs, changed files, and pull requests read
 in the app instead of a browser tab.
 
-**Keeps your work on your Mac.** A local SQLite database, tokens encrypted in
-the Keychain when available, no analytics and no telemetry. Read
+**Keeps your work on your computer.** A local SQLite database, tokens encrypted
+with the operating system's credential protection when available, no analytics and no telemetry. Read
 [PRIVACY.md](PRIVACY.md) for browser, provider, catalog and remote-access data flows.
 
 **Works without a Gateway.** Direct mode spawns an ACP-capable CLI itself, so
 an install with nothing else running still gets a working turn.
 
-**Verifiable downloads.** Packaging supports Developer ID signing and Apple
-notarization, but can also produce unsigned builds when credentials are absent.
-Check release notes and verify the downloaded app with
-`spctl --assess --type execute -vv /Applications/Capsule.app`.
+**Verifiable downloads.** Public macOS releases require Developer ID signing
+and notarization. The initial Windows preview is unsigned and includes a SHA-256
+checksum; a checksum verifies file integrity, not publisher identity.
 
 ---
 
 ## Installation
 
-Download the latest Apple Silicon DMG from GitHub Releases:
+Download the Apple Silicon DMG or Windows 10/11 x64 installer from GitHub Releases:
 
 **[Download the latest release](https://github.com/realbakari/Capsule-App/releases/latest)**
 
 1. Open the downloaded `.dmg`.
 2. Drag **Capsule** into your **Applications** folder.
-3. Launch Capsule!
+3. Launch Capsule.
+
+On Windows, run the `Capsule-<version>-x64-setup.exe` installer. This first
+Windows preview is **unsigned**: Windows may show an unknown-publisher or
+SmartScreen warning. Download only from this repository's releases and review
+the release notes. Do not disable system security protections. Windows ARM and
+WSL-hosted agents are not covered. See [Windows preview](docs/user/windows.md).
 
 After installation, compatible updates download inside the app and offer
 **Restart & install**. Save your work before restarting. Unsigned or incompatible
@@ -94,8 +99,9 @@ and selected route—not simply on an agent appearing in a directory.
   and separately share read-only snapshots with paired viewers.
 - The Agents panel shows reported delegation, not independently controlled
   child processes. Missing activity or token data stays unknown.
-- Paired devices are read-only. Available downloads target macOS Apple Silicon;
-  other platforms are not supported release targets.
+- Paired devices are read-only. Downloads target macOS Apple Silicon and an
+  unsigned Windows 10/11 x64 preview. Native protocol fixtures are tested, not
+  every signed-in provider on Windows.
 
 See [supported behavior and current limits](docs/user/compatibility.md),
 [browser controls](docs/user/projects-and-previews.md) and the contributor-facing

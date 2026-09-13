@@ -41,6 +41,22 @@ mac:
   entitlementsInherit: entitlements.mac.plist
 npmRebuild: true
 
+# The first Windows release is explicitly unsigned. Do not disable signature
+# verification globally or weaken the signed macOS feed above.
+win:
+  icon: build/icon.png
+  target:
+    - target: nsis
+      arch: [x64]
+  artifactName: Capsule-${version}-${arch}-setup.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  deleteAppDataOnUninstall: false
+
 # The window Finder opens for the .dmg. Icon positions here and the arrow in
 # scripts/generate-dmg-background.py are drawn against the same coordinates —
 # move one and move the other.

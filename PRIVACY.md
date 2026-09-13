@@ -1,8 +1,8 @@
 # Privacy
 
-**Last updated: 9 September 2026 · Describes the accompanying Capsule for macOS build**
+**Last updated: 14 September 2026 · Describes the accompanying desktop build**
 
-Capsule runs on your Mac and keeps your work there. This page describes exactly
+Capsule runs on your computer and keeps your work there. This page describes exactly
 what the app stores, what it sends, and when. It describes the software's real
 behaviour, not an intention — every claim here is something you can check in the
 source or with a network monitor.
@@ -12,7 +12,7 @@ source or with a network monitor.
 - Capsule has no usage analytics, telemetry or automatic crash reporting to its
   authors. It does not operate a hosted conversation service.
 - Workspace history is stored locally. Prompts and selected context reach your
-  chosen runtime and may leave the Mac through a provider, remote Gateway or
+  chosen runtime and may leave the computer through a provider, remote Gateway or
   explicitly paired viewer.
 - Browsing, catalog requests, Git operations, release checks and optional
   background integrations create network traffic described below.
@@ -21,8 +21,10 @@ source or with a network monitor.
 
 ## What is stored, and where
 
-App-managed state lives primarily in your macOS Application Support folder, under
-`~/Library/Application Support/@capsule/desktop/`.
+App-managed state lives in Electron's per-user application-data folder. On macOS
+this is under `~/Library/Application Support/`; on Windows it is under `%APPDATA%`.
+The app folder is normally `Capsule` for an installed build, or `@capsule/desktop`
+for a development build. A custom profile uses the selected user-data directory.
 
 | What | Where | Notes |
 |---|---|---|
@@ -39,7 +41,8 @@ Removing that folder removes app-managed state, not project files, Git
 checkpoints or the coding CLIs' own history. Uninstalling does not erase those
 records. Quit before managing app files and back up anything you need. Token
 encryption depends on platform safeStorage; the adapter can fall back to a
-mode-0600 plaintext file when encryption is unavailable.
+a plaintext file when encryption is unavailable. On Unix this fallback requests
+mode 0600; Windows access follows the containing user profile's permissions.
 
 Workspace browsing is scoped to selected roots. Other features also read chosen
 attachments and icons, global skill directories, CLI transcripts for Usage,
@@ -47,7 +50,7 @@ installed binaries and runtime configuration. Skills are discovered in Agent
 Skills, Codex, Claude and OpenCode configuration folders; Capsule does not
 recursively search the entire disk.
 
-## What leaves your Mac
+## What leaves your computer
 
 Network activity depends on enabled features and the tools you run.
 
