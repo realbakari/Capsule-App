@@ -573,11 +573,10 @@ describe("project workspace tools", () => {
     await expect(engine.searchContents(project.id, "base", "another-thread")).rejects.toThrow(/does not belong/);
 
     engine.runProjectAction(project.id, "where", session.id);
-    for (let attempt = 0; attempt < 50; attempt += 1) {
-      const run = engine.listProjectActionRuns(project.id, session.id)[0];
-      if (run && run.status !== "running") break;
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
+    // Shell startup can exceed 500 ms while the build and Electron fixtures
+    // share this machine. Wait for completion, not a scheduling assumption.
+    await expect.poll(() => engine.listProjectActionRuns(project.id, session.id)[0]?.status,
+      { timeout: 3000 }).toBe("completed");
     const action = engine.listProjectActionRuns(project.id, session.id)[0];
     expect(action?.status).toBe("completed");
     expect(action?.output).toContain(session.workingDirectory);
