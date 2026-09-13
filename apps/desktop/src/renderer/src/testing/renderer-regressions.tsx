@@ -182,6 +182,9 @@ window.runPetRegressions = async (motion) => {
 };
 
 window.runRendererRegressions = async () => {
+  const startedAt = performance.now();
+  const phase = (name: string) => console.log(`Renderer phase: ${name} (${Math.round(performance.now() - startedAt)}ms)`);
+  phase("controls");
   const host = document.getElementById("root")!;
   let root = createRoot(host);
   let modelChanges = 0;
@@ -676,6 +679,7 @@ window.runRendererRegressions = async () => {
     createSession: async (input: Partial<Session>) => { const thread = { ...input, id: `send-thread-${threads.length}`, state: "active" } as Session; threads.push(thread); return thread; },
     sendMessage: async (input: { skillId?: string }) => { submittedSkill = input.skillId; sends += 1; if (failSend) throw new Error("Send rejected"); if (delayFailure) return new Promise<void>((_resolve, reject) => { rejectSend = reject; }); await new Promise<void>((resolve) => { finishSend = resolve; }); },
   } as unknown as typeof window.capsule;
+  phase("workspace recovery");
   root.render(<WorkspaceProvider><CaptureWorkspace /></WorkspaceProvider>);
   await until(() => actualWorkspace?.startupError?.includes("settings could not be read"));
   assert(!actualWorkspace.ready, "Failed startup was reported as a ready, empty workspace");
@@ -733,7 +737,9 @@ window.runRendererRegressions = async () => {
   await until(() => actualWorkspace.notice?.includes("saved in Stash"));
   assert(actualWorkspace.draft === "new work typed while waiting" && actualWorkspace.attachments[0]?.name === "new.txt", "Rejected send overwrote the new draft or attachments");
   assert(actualWorkspace.promptStashes.some((stash) => stash.prompt === "recover this submission"), "Failed submission was not recoverable");
+  phase("draft admission");
   await runDraftAdmissionRegressions(() => actualWorkspace, threads);
+  phase("streaming and history");
 
   await new Promise((resolve) => setTimeout(resolve, 100));
   const baseline = { projectReads, historyReads, eventReads, artifactReads };
@@ -1034,14 +1040,23 @@ window.runRendererRegressions = async () => {
   }
   root.unmount();
   document.documentElement.style.removeProperty("font-size");
+  phase("UI polish");
   await runUiPolishRegressions(host);
+  phase("screenshots");
   await runScreenshotRegressions(host);
+  phase("ownership");
   await runOwnershipRegressions(host);
+  phase("runtime extensions");
   await runRuntimeExtensionRegressions(host);
+  phase("interface");
   await runInterfaceRegressions(host, contextBase);
+  phase("panels");
   await runPanelRegressions(host, contextBase);
+  phase("saved previews");
   await runSavedPreviewRegressions(host);
+  phase("workspace extensions");
   await runWorkspaceExtensionRegressions(host, contextBase);
+  phase("complete");
   layoutStyles.media = "not all";
   return "Renderer regressions passed: recovery, editor ownership and memoization, browser navigation and discovery, bounded diff pages and review notes, terminal persistence, send admission, 1,000 stream frames without snapshot reloads, reconnect/history reconciliation.";
 };

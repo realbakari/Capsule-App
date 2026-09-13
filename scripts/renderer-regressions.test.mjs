@@ -6,7 +6,7 @@ import { build } from "esbuild";
 import { expect, it } from "vitest";
 import { resolveElectronBinary } from "./electron-path.mjs";
 
-it("keeps renderer interactions recoverable and companion motion accessible", { timeout: 30_000 }, async () => {
+it("keeps renderer interactions recoverable and companion motion accessible", { timeout: 60_000 }, async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "capsule-renderer-regressions-"));
   try {
     const bundle = await build({
@@ -32,7 +32,10 @@ it("keeps renderer interactions recoverable and companion motion accessible", { 
       child.stderr.on("data", (data) => { output += data; });
       // A wedged renderer can prevent graceful Electron shutdown. This PID
       // belongs to this test and uses its disposable profile.
-      const timer = setTimeout(() => { child.kill("SIGKILL"); }, 20_000);
+      // This runs the full interaction suite, not one screen. Windows hosted
+      // renderers can exceed 20 seconds; individual DOM waits still fail in
+      // 3–4 seconds. Phase markers identify any genuinely stalled section.
+      const timer = setTimeout(() => { child.kill("SIGKILL"); }, 45_000);
       child.on("error", (error) => { clearTimeout(timer); reject(error); });
       child.on("exit", (code, signal) => { clearTimeout(timer); resolve({ code, output: `${output}\nExit signal: ${signal ?? "none"}` }); });
     });
