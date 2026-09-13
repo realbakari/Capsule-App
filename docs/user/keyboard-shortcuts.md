@@ -45,6 +45,8 @@ labelled separately from no matches; failed searches offer **Retry**.
 
 Use the arrow keys to move through results, `Home` / `End` for the first or last
 result, `Enter` to select, and `Esc` to close. The selected result stays in view.
+Resizing or scrolling beneath a stationary mouse keeps your keyboard selection;
+moving the pointer over another result highlights it.
 Actions that need the desktop app explain that in a paired viewer.
 
 Searching the sidebar by project name keeps that project's conversations visible.

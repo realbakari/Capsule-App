@@ -124,7 +124,14 @@ export function SearchDialog({ title, placeholder, query, onQueryChange, items, 
             className={`search-dialog-item${index === itemIndex ? " active" : ""}`}
             title={item.disabledReason ?? [item.label, item.detail].filter(Boolean).join(" — ")}
             onPointerDown={(event) => event.preventDefault()}
-            onMouseEnter={() => setSelection({ query, id: item.id })} onClick={() => void select(item)}>
+            onPointerMove={(event) => {
+              // Scrolling and resizing can move a row beneath a stationary
+              // pointer. Only actual pointer movement should replace a choice
+              // made with the keyboard; tapping still selects via onClick.
+              if (event.pointerType === "touch" || (!event.movementX && !event.movementY)) return;
+              setSelection({ query, id: item.id });
+            }}
+            onClick={() => void select(item)}>
             <span className="search-dialog-icon" aria-hidden>{item.icon}</span>
             <span className="search-dialog-copy"><span>{item.label}</span>{(item.disabledReason || item.detail) && <small>{item.disabledReason ?? item.detail}</small>}</span>
             {item.shortcut && <kbd>{item.shortcut}</kbd>}

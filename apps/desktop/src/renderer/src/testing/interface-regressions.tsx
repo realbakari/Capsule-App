@@ -54,6 +54,13 @@ export async function runInterfaceRegressions(host: HTMLElement, base: Record<st
     assert(document.querySelector('[role="option"][aria-selected="true"]')?.textContent?.includes("Result 0"), "Empty search left a negative selection index");
     key(document.activeElement!, "End");
     await until(() => document.querySelector('[aria-selected="true"]')?.textContent?.includes("Result 39"));
+    // Scrolling or resizing rows beneath a stationary pointer must not steal
+    // the keyboard selection. Chromium can emit hover events during layout.
+    const firstResult = document.querySelector('[role="option"]')!;
+    firstResult.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    firstResult.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerType: "mouse" }));
+    await settle();
+    assert(document.querySelector('[aria-selected="true"]')?.textContent?.includes("Result 39"), "Stationary pointer replaced the keyboard search selection");
     for (const nextTheme of ["dark", "light"]) {
       document.documentElement.setAttribute("data-theme", nextTheme);
       for (const font of [16, 20]) {
@@ -63,6 +70,7 @@ export async function runInterfaceRegressions(host: HTMLElement, base: Record<st
           dialog.style.width = `${width}px`;
           renderSearch();
           await settle();
+          assert(document.querySelector('[aria-selected="true"]')?.textContent?.includes("Result 39"), `Layout changed the keyboard selection at ${width}px / ${font}px text`);
           const list = document.querySelector(".palette-list")!.getBoundingClientRect();
           const row = document.querySelector('[aria-selected="true"]')!.getBoundingClientRect();
           assert(row.top >= list.top - 1 && row.bottom <= list.bottom + 1, `Keyboard selection is clipped at ${width}px / ${font}px text: row ${row.top}–${row.bottom}, list ${list.top}–${list.bottom}`);
@@ -71,6 +79,10 @@ export async function runInterfaceRegressions(host: HTMLElement, base: Record<st
         }
       }
     }
+    firstResult.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerType: "mouse", movementY: 1 }));
+    await until(() => document.querySelector('[aria-selected="true"]')?.textContent?.includes("Result 0"));
+    key(document.activeElement!, "End");
+    await until(() => document.querySelector('[aria-selected="true"]')?.textContent?.includes("Result 39"));
     key(document.activeElement!, "Enter");
     await until(() => closed === 1);
     assert(selected === "39", "Keyboard search selected the wrong row");

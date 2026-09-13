@@ -922,7 +922,8 @@ and recoverable asynchronous actions. Queries are debounced and stale replies
 are discarded. File results are scoped to project, active checkout and query;
 the checkout is passed through the file-search bridge. Desktop-only commands
 are labelled unavailable in paired viewers. Search errors do not masquerade as
-empty results.
+empty results. Pointer selection requires nonzero movement, so layout-generated
+hover events cannot replace a keyboard choice during scrolling or resizing.
 
 Saved turn diff base selection uses a single checkpoint-only SQL projection,
 scoped to session and recorded cwd. Equal timestamps use insertion order.
