@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { outputTail, runInDirectory, terminalAppleScript } from "./index.js";
-import { mkdtempSync, realpathSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -17,9 +17,13 @@ describe("terminal helpers", () => {
 
   it("runs a command in a directory", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "capsule-term-"));
-    const result = await runInDirectory(dir, process.platform === "win32" ? "(Get-Location).Path" : "pwd");
-    expect(result.code).toBe(0);
-    expect(result.stdout.trim()).toBe(realpathSync(dir));
+    try {
+      const result = await runInDirectory(dir, process.platform === "win32" ? "(Get-Location).Path" : "pwd");
+      expect(result.code).toBe(0);
+      // PowerShell expands 8.3 aliases such as RUNNER~1. Compare native paths,
+      // not two spellings of the same directory.
+      expect(realpathSync.native(result.stdout.trim())).toBe(realpathSync.native(dir));
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });
 
