@@ -290,7 +290,7 @@ a desktop-only error and cannot invoke the host file picker or send.
 
 Unsent composer text and attachment metadata are saved in renderer-local
 storage under a project/session-specific key. Prompt stash is also local: `⌘S`
-stores the current draft, the bookmark restores or removes one of the 20 most
+stores the current draft; **Conversation tools → Prompt stash** restores or removes one of the 20 most
 recent entries, and sending clears only the active draft. Stale paths are
 reported by main-process validation when a restored draft is sent.
 
@@ -783,7 +783,7 @@ traffic and global skill discovery. Regenerate public policy pages after changes
 
 ### Composer context and thread agents
 
-Add context offers installed skills and project-file search. Its listbox uses
+Conversation tools offers installed skills and project-file search. Its listbox uses
 option IDs, active-descendant navigation and Escape dismissal. Explicit search
 supports multiword queries. Skill selection is a single structured draft field,
 scoped and persisted with draft/stash attachments, not duplicate `$name` prose.
@@ -806,6 +806,33 @@ tool completion is **Launch completed · child status unknown**, not proof that
 the child finished. Closed threads display their recorded runtime route rather
 than the current harness default. Card borders and typography are explicitly
 scoped so generic inspector heading rules cannot restyle the empty state.
+
+### Draft admission and inspection
+
+Failed durable prompt writes use an in-window recovery map: at most 32 drafts
+and 8 MiB of estimated UTF-16 JSON, without evicting another unsaved draft.
+Warnings distinguish temporary recovery from a full map; full-map edits must be
+copied before navigation. Successful writes remove the temporary entry.
+Attachment preparation reserves slots synchronously per draft scope before
+clipboard writes or validation. Send cannot pass a pending reservation; accepted
+results merge against the latest attachment state. Late completions cannot attach
+to another draft. PR steering appends through a functional draft update.
+
+Large pastes (32 KiB–2 MiB UTF-8) use desktop-only `saveTextAttachment`: private
+UUID-named files, exclusive creation, a 2 MiB byte limit, no caller-selected path.
+The channel is write-scoped for paired viewers. Direct conversion requires the
+reported embedded-context capability; unsupported routes/payloads remain inline.
+Shift–Cmd/Ctrl–V bypasses conversion. Failed conversion uses prompt-stash recovery;
+selection and caret update only when the original draft revision still matches.
+
+The composer groups file mentions, skills, stash, agent commands and capabilities
+under **Conversation tools**, leaving Attach and Send as direct actions. Existing
+keyboard shortcuts and narrow-layout permission/mode controls remain available.
+Capabilities open in a bounded panel without navigating away from the draft.
+Agent commands are discoverable from that menu and the command palette. They use
+normal turn admission with no draft attachments or skill, never an independent
+queue or agent loop. The current draft is preserved on success and rejection.
+See [harness.md](harness.md) for report ownership and protocol limits.
 
 File-open requests carry project, thread and root rather than consulting the
 inspector's last folder. File-filter state is keyed by root and query, with

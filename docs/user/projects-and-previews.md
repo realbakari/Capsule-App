@@ -218,6 +218,9 @@ Stop and close remain available; close shell tabs before restoring files.
 
 ## Pull requests
 
+Sending a PR question or suggested fix to the composer appends it after your
+existing draft. It does not discard unfinished text or send automatically.
+
 The current-changes diff combines staged, unstaged, and new files, matching the
 scope of **Commit all**. If a combined preview is too large, review individual
 files; Capsule reports the limit instead of presenting an incomplete patch as

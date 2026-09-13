@@ -1044,7 +1044,7 @@ export function Inspector() {
                   selectTool("browser");
                 }}
                 onSteerAgent={(prompt) => {
-                  setDraft(prompt);
+                  setDraft((current) => current.trim() ? `${current}\n\n${prompt}` : prompt);
                   setView("chat");
                 }}
               />

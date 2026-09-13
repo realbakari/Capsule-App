@@ -7,6 +7,7 @@ import { boundTranscript, retainRunReceipts } from "./transcript-window";
 import { boundRunEvents, compactRunEvent, runEventBytes, LIVE_EVENT_LIMIT, LIVE_EVENT_BYTES, localTimings, summarizeRun } from "@capsule/shared";
 import { useScopedState } from "./scoped-state";
 import { SteeringDrafts } from "./steering-drafts";
+import { DraftRecovery } from "./draft-recovery";
 import { activityFromEvents, type RunActivity } from "./activity";
 import {
   createContext,
@@ -58,11 +59,9 @@ import { contextUsageFromEvents, type ContextUsage } from "./context-window";
 import { harnessPreflightReason } from "./harness-preflight";
 import {
   promptDraftKey,
-  readPromptDraft,
   readPromptStash,
   recoverFailedPrompt,
   stashPrompt,
-  writePromptDraft,
   writePromptStash,
   type PromptStashEntry,
   type PromptDraft,
@@ -188,6 +187,7 @@ export interface WorkspaceValue {
   mode: AgentMode;
   draft: string;
   attachments: MessageAttachment[];
+  preparingAttachments: number;
   promptStashes: PromptStashEntry[];
   busy: boolean;
   sendBlockReason?: string;
@@ -210,9 +210,10 @@ export interface WorkspaceValue {
   setSessionId: (id?: string) => void;
   setAgentId: (id: string) => void;
   setMode: (mode: AgentMode) => void;
-  setDraft: (value: string) => void;
+  setDraft: (value: string | ((current: string) => string)) => void;
   pickAttachments: () => Promise<void>;
   attachClipboardImage: () => Promise<boolean>;
+  attachPastedText: (text: string) => Promise<boolean>;
   attachFiles: (paths: string[]) => Promise<boolean>;
   removeAttachment: (path: string) => void;
   stashCurrentPrompt: () => void;
@@ -228,6 +229,9 @@ export interface WorkspaceValue {
   eventLoad?: { runId: string; state: "loading" | "loaded" | "error"; detail?: string };
   createTask: () => Promise<void>;
   send: () => Promise<boolean>;
+  runAgentCommand: (name: string, input?: string) => Promise<boolean>;
+  agentCommandsOpen: boolean;
+  setAgentCommandsOpen: (open: boolean) => void;
   createProject: () => Promise<void>;
   git?: GitStatus;
   files: FileEntry[];
@@ -409,15 +413,22 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   const [mode, setMode] = useState<AgentMode>("chat");
   const [draft, setDraftValue] = useScopedState(draftScope, "");
   const [attachments, setAttachmentValues] = useScopedState<MessageAttachment[]>(draftScope, []);
+  const attachmentState = useRef({ scope: draftScope, value: attachments });
+  attachmentState.current = { scope: draftScope, value: attachments };
+  const attachmentReservations = useRef(new WeakMap<object, number>()).current;
+  const [preparingAttachments, setPreparingAttachments] = useScopedState(draftScope, 0);
   const draftRevision = useRef(0);
   const setDraft = useCallback((value: Parameters<typeof setDraftValue>[0]) => {
     draftRevision.current++;
     setDraftValue(value);
   }, [setDraftValue]);
   const setAttachments = useCallback((value: Parameters<typeof setAttachmentValues>[0]) => {
+    if (attachmentState.current.scope !== draftScope) return;
+    const next = typeof value === "function" ? value(attachmentState.current.value) : value;
+    attachmentState.current = { scope: draftScope, value: next };
     draftRevision.current++;
-    setAttachmentValues(value);
-  }, [setAttachmentValues]);
+    setAttachmentValues(next);
+  }, [setAttachmentValues, draftScope]);
   const [promptStashes, setPromptStashes] = useState<PromptStashEntry[]>(() => {
     try {
       return readPromptStash(localStorage);
@@ -426,6 +437,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     }
   });
   const [busy, setBusy] = useScopedState(scope, false);
+  const [agentCommandsOpen, setAgentCommandsOpen] = useScopedState(scope, false);
   const submissions = useRef(new Set<string>());
   const [palette, setPalette] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
@@ -525,6 +537,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   const latestDraft = useRef({ key: currentDraftKey, value: { prompt: draft, attachments, skillId } });
   latestDraft.current = { key: currentDraftKey, value: { prompt: draft, attachments, skillId } };
   const promotedDrafts = useRef(new Map<string, PromptDraft>());
+  const draftRecovery = useRef(new DraftRecovery()).current;
   const latestStashes = useRef(promptStashes);
   latestStashes.current = promptStashes;
   const activeRun = runs.find(
@@ -944,7 +957,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   useEffect(() => {
     skipDraftSave.current = true;
     try {
-      const saved = promotedDrafts.current.get(currentDraftKey) ?? readPromptDraft(localStorage, currentDraftKey);
+      const saved = promotedDrafts.current.get(currentDraftKey) ?? draftRecovery.read(localStorage, currentDraftKey);
       promotedDrafts.current.delete(currentDraftKey);
       setDraft(saved.prompt);
       setAttachments(saved.attachments);
@@ -962,7 +975,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       return;
     }
     try {
-      writePromptDraft(localStorage, currentDraftKey, { prompt: draft, attachments, skillId });
+      const result = draftRecovery.save(localStorage, currentDraftKey, { prompt: draft, attachments, skillId });
+      if (result !== "saved") setNotice(result === "temporary"
+        ? "This draft is kept temporarily until the app closes because local storage could not save it. Copy it before quitting."
+        : "Draft recovery storage is full. Copy this draft before switching threads or quitting; these edits could not be saved.");
     } catch {
       // Draft persistence is a convenience; storage policy must not break chat.
     }
@@ -1076,11 +1092,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     await refresh();
   }
 
-  async function send(continueToNew = false) {
+  async function send(continueToNew = false, command?: string) {
+    if (attachmentReservations.get(draftScope)) {
+      setNotice("Attachments are still being prepared. Wait for them before sending.");
+      return false;
+    }
     const submissionKey = currentDraftKey;
     const submittedRevision = draftRevision.current;
-    const content = draft.trim() || (skillId ? `Use the ${skills.find((item) => item.id === skillId)?.name ?? "selected"} skill.` : "");
-    const filesToSend = attachments;
+    const content = command ?? (draft.trim() || (skillId ? `Use the ${skills.find((item) => item.id === skillId)?.name ?? "selected"} skill.` : ""));
+    const filesToSend = command ? [] : attachmentState.current.value;
     if ((!content && filesToSend.length === 0) || busy || submissions.current.has(submissionKey)) return false;
     if (activeRun) {
       setNotice("This thread already has an active turn. Stop it or wait before sending a follow-up.");
@@ -1096,7 +1116,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     let preparedThread = false;
     const recoverSubmission = (error: unknown, targetProjectId = projectId) => {
       const recovery = recoverFailedPrompt(localStorage, latestStashes.current, {
-        prompt: content, attachments: filesToSend, skillId, projectId: targetProjectId,
+        prompt: content, attachments: filesToSend, skillId: command ? undefined : skillId, projectId: targetProjectId,
       });
       latestStashes.current = recovery.entries;
       setPromptStashes(recovery.entries);
@@ -1137,7 +1157,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
           createdAt: new Date().toISOString(),
         },
       ]);
-      const unchanged = draftRevision.current === submittedRevision;
+      const unchanged = !command && draftRevision.current === submittedRevision;
       if (unchanged) {
         setDraft("");
         setAttachments([]);
@@ -1151,7 +1171,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
           content,
           agentId,
           mode,
-          skillId,
+          skillId: command ? undefined : skillId,
           attachments: filesToSend,
         });
         accepted = true;
@@ -1175,8 +1195,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
               const followup = latestDraft.current.key === submissionKey
                 && draftRevision.current !== clearedRevision ? latestDraft.current.value : { prompt: "", attachments: [] };
               promotedDrafts.current.set(targetKey, followup);
-              writePromptDraft(localStorage, targetKey, followup);
-              writePromptDraft(localStorage, submissionKey, { prompt: "", attachments: [] });
+              draftRecovery.save(localStorage, targetKey, followup);
+              draftRecovery.save(localStorage, submissionKey, { prompt: "", attachments: [] });
             }
             setProjectId(currentProjectId);
             setSessionId(next?.id ?? currentSessionId);
@@ -1286,7 +1306,23 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   }
 
   async function attachFiles(paths: string[]) {
+    const existing = new Set(attachmentState.current.value.map((item) => item.path));
+    const unique = [...new Set(paths)].filter((path) => !existing.has(path));
+    return prepareAttachments(unique.length, async () => unique);
+  }
+
+  /** Reserve slots before clipboard writes or validation can yield. */
+  async function prepareAttachments(count: number, resolvePaths: () => Promise<string[]>) {
+    if (!draftScopes.isCurrent(draftScope) || !count) return false;
+    const pending = attachmentReservations.get(draftScope) ?? 0;
+    if (attachmentState.current.value.length + pending + count > 8) {
+      setNotice("You can attach up to 8 files. Remove one first.");
+      return false;
+    }
+    attachmentReservations.set(draftScope, pending + count);
+    setPreparingAttachments(pending + count);
     try {
+      const paths = await resolvePaths();
       if (!paths?.length) return false;
       const validated: MessageAttachment[] = await api.validateAttachments(
         paths.map((filePath) => ({
@@ -1295,18 +1331,22 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
         })),
       );
       if (!draftScopes.isCurrent(draftScope)) return false;
-      const existing = new Set(attachments.map((item) => item.path));
+      const existing = new Set(attachmentState.current.value.map((item) => item.path));
       if (new Set([...existing, ...validated.map((item) => item.path)]).size > 8) throw new Error("You can attach up to 8 files. Remove one first.");
       setAttachments((current) => {
         const byPath = new Map(current.map((item) => [item.path, item]));
         for (const item of validated) byPath.set(item.path, item);
-        return [...byPath.values()].slice(0, 8);
+        return [...byPath.values()];
       });
       setNotice(undefined);
       return true;
     } catch (error) {
       setNotice(formatUserError(error));
       return false;
+    } finally {
+      const remaining = Math.max(0, (attachmentReservations.get(draftScope) ?? count) - count);
+      attachmentReservations.set(draftScope, remaining);
+      setPreparingAttachments(remaining);
     }
   }
 
@@ -1319,19 +1359,28 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
    * ordinary text paste through untouched.
    */
   async function attachClipboardImage(): Promise<boolean> {
-    try {
+    return prepareAttachments(1, async () => {
       const saved = (await api.saveClipboardImage()) as string | undefined;
-      if (!saved) return false;
-      return await attachFiles([saved]);
-    } catch (error) {
-      setNotice(formatUserError(error));
-      return false;
+      return saved ? [saved] : [];
+    });
+  }
+
+  async function attachPastedText(text: string): Promise<boolean> {
+    const accepted = await prepareAttachments(1, async () => [await api.saveTextAttachment(text)]);
+    if (!accepted) {
+      const recovery = recoverFailedPrompt(localStorage, latestStashes.current, { prompt: text, attachments: [], projectId });
+      latestStashes.current = recovery.entries;
+      setPromptStashes(recovery.entries);
+      setNotice(`Pasted text could not be attached. It is ${recovery.persisted ? "saved" : "kept temporarily until the app closes"} in Stash; your draft is unchanged.`);
     }
+    return accepted;
   }
 
   async function pickAttachments() {
-    const paths = await api.pickFiles() as string[] | undefined;
-    if (paths?.length) await attachFiles(paths);
+    try {
+      const paths = await api.pickFiles() as string[] | undefined;
+      if (paths?.length && draftScopes.isCurrent(draftScope)) await attachFiles(paths);
+    } catch (error) { setNotice(formatUserError(error)); }
   }
 
   function removeAttachment(filePath: string) {
@@ -1967,9 +2016,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       mode,
       draft,
       attachments,
+      preparingAttachments,
+      attachPastedText,
       promptStashes,
       busy,
       sendBlockReason,
+      agentCommandsOpen,
       palette,
       paletteQuery,
       newProjectName,
@@ -2076,6 +2128,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       regenerateTitle,
       setPermissionProfile,
       sendAndContinue,
+      setAgentCommandsOpen,
+      runAgentCommand: async (name, input = "") => {
+        if (api.isDesktop === false) { setNotice("Agent commands can only be sent from the desktop app."); return false; }
+        const commands = sessionId ? harnessStatuses[sessionId]?.parsed?.availableCommands : undefined;
+        if (!session?.openclawSessionKey?.startsWith("direct:acp:") || !commands?.some((command) => command.name === name)) {
+          setNotice("This running agent has not reported that command on this runtime route."); return false;
+        }
+        if (input.length > 4000 || /[\r\n\0]/.test(input)) { setNotice("Command input must be one line of at most 4,000 characters."); return false; }
+        return send(false, `/${name}${input.trim() ? ` ${input.trim()}` : ""}`);
+      },
       checkoutBranch,
       inspectorTab,
       setInspectorTab,
@@ -2132,9 +2194,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       draft,
       attachments,
       promptStashes,
+      preparingAttachments,
       requestedFile,
       busy,
       sendBlockReason,
+      agentCommandsOpen,
       palette,
       paletteQuery,
       newProjectName,

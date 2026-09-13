@@ -9,7 +9,7 @@ export function Palette() {
   const {
     api, palette, paletteQuery, setPalette, setPaletteQuery, setView, createTask,
     createProjectFromFolder, pickProjectDirectory, pickFilesToMention, projects,
-    sessions, setProjectId, setAboutOpen, openInspector,
+    sessions, session, setProjectId, setAboutOpen, openInspector, setAgentCommandsOpen,
   } = useWorkspace();
   const query = paletteQuery.trim().toLowerCase();
   const [retry, setRetry] = useState(0);
@@ -42,6 +42,7 @@ export function Palette() {
       { id: "harness", label: "Agents, harnesses & capabilities", group: "Go to", icon: <CpuIcon size={15} />, onSelect: () => setView("runtimes") },
       { id: "runs", label: "Run history", group: "Go to", onSelect: () => setView("history") },
       { id: "thread-agents", label: "Thread agents", group: "Go to", onSelect: () => openInspector("agents") },
+      { id: "agent-commands", label: "Agent commands", group: "Go to", disabledReason: !session?.harnessId ? "Start an agent conversation first." : undefined, onSelect: () => { setView("chat"); setAgentCommandsOpen(true); } },
       { id: "approvals", label: "Approvals", group: "Go to", onSelect: () => setView("approvals") },
       { id: "settings", label: "Settings", group: "Go to", icon: <SettingsIcon size={15} />, onSelect: () => setView("settings") },
       { id: "connect", label: "Connect OpenClaw", group: "Workspace", disabledReason: desktopOnly, onSelect: () => api.connectGateway() },
@@ -70,7 +71,7 @@ export function Palette() {
       onSelect: () => { setProjectId(message.projectId, message.sessionId); setView("chat"); },
     }));
     return [...actions, ...projectItems, ...threads, ...messages];
-  }, [api, query, currentSearch, projects, sessions, createTask, createProjectFromFolder, pickProjectDirectory, pickFilesToMention, setView, setProjectId, setAboutOpen, openInspector]);
+  }, [api, query, currentSearch, projects, sessions, session, createTask, createProjectFromFolder, pickProjectDirectory, pickFilesToMention, setView, setProjectId, setAboutOpen, openInspector, setAgentCommandsOpen]);
 
   if (!palette) return null;
   return <SearchDialog title="Search workspace" placeholder="Search commands, projects, conversations…" query={paletteQuery}

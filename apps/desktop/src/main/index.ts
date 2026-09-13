@@ -1547,6 +1547,10 @@ function registerIpc(): void {
     await fsp.writeFile(file, image.toPNG());
     return file;
   });
+  handle(IPC_CHANNELS.saveTextAttachment, async (text) => {
+    const { saveTextAttachment } = await import("./text-attachments.js");
+    return saveTextAttachment(path.join(app.getPath("userData"), "attachments"), text);
+  });
   handle(IPC_CHANNELS.listHarnesses, () => requireEngine().listHarnesses());
   handle(IPC_CHANNELS.doctorHarness, (harnessId) =>
     requireEngine().doctorHarness(harnessId as HarnessId),

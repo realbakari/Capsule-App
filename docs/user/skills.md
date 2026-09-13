@@ -2,7 +2,7 @@
 
 A skill is a written procedure — a `SKILL.md` file — that you attach to a
 conversation so the agent follows it. Type `$` in the composer or choose
-**Add context → Skills** to attach one. Search by name, description or source;
+**Conversation tools → Attach a skill** to attach one. Search by name, description or source;
 the picker keeps similarly named skills from different sources distinct.
 
 The selected skill appears as a removable chip above your message. **Change**

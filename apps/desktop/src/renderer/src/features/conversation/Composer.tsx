@@ -1,12 +1,12 @@
 import { contextTone } from "../../lib/context-window";
 import { harnessCapabilities } from "@capsule/shared";
-import { CapabilityDetails } from "../harness/CapabilityDetails";
 import { ContextWindowMeter } from "./ContextWindowMeter";
+import { ComposerTools } from "./ComposerTools";
 import { agentSwitchNotice, harnessDisplayName } from "../../lib/harness";
 import { AgentModelPicker } from "./AgentModelPicker";
 import { GatewayBanner } from "../shell/GatewayBanner";
 import { GATEWAY_CONNECTION_REQUIRED } from "../../lib/harness-preflight";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { FileEntry } from "@capsule/shared";
 import { searchProjectFiles } from "../../lib/bridge";
 import { MODES, PERMISSION_OPTIONS, useWorkspace, type View } from "../../lib/workspace";
@@ -14,7 +14,6 @@ import { formatProjectRoot, projectFolderName } from "../../lib/paths";
 import { MenuSelect } from "../shell/MenuSelect";
 import {
   ArrowUpIcon,
-  BookmarkIcon,
   FileIcon,
   FolderIcon,
   GitBranchIcon,
@@ -154,6 +153,7 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
   } = workspace;
   const harnesses = workspace.harnesses ?? [];
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const inlinePasteUntil = useRef(0);
   const composerRef = useRef<HTMLDivElement>(null);
   const [menuIndex, setMenuIndex] = useState(0);
   const [files, setFiles] = useState<FileEntry[]>([]);
@@ -165,9 +165,21 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
   const [pickerQuery, setPickerQuery] = useState("");
   const [fileState, setFileState] = useState("Searching files…");
   const [picking, setPicking] = useState(false);
-  const selectionScope = `${projectId}/${session?.id}/${draft}`;
+  const selectionScope = JSON.stringify([projectId, session?.id, draft]);
   const selectionScopeRef = useRef(selectionScope);
   selectionScopeRef.current = selectionScope;
+  const [pendingSelection, setPendingSelection] = useState<{ scope: string; position: number }>();
+  useLayoutEffect(() => {
+    if (!pendingSelection) return;
+    // React must commit the controlled value before restoring its caret. An
+    // animation frame can run first under load and then lose the selection.
+    if (pendingSelection.scope === selectionScope) {
+      textareaRef.current?.focus();
+      textareaRef.current?.setSelectionRange(pendingSelection.position, pendingSelection.position);
+      setCaret(pendingSelection.position);
+    }
+    setPendingSelection(undefined);
+  }, [pendingSelection, selectionScope]);
   /*
    * Which models this agent will run is something only the running agent can
    * say, so it is asked once per live session and remembered. Without this the
@@ -323,10 +335,11 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
       await item.run?.();
       if (selectionScopeRef.current !== selectionScope) return;
       const position = !picker && trigger ? trigger.start + (item.insert?.length ?? 0) : caret;
-      if (!picker && trigger) setDraft(draft.slice(0, trigger.start) + (item.insert ?? "") + draft.slice(caret));
+      const nextDraft = !picker && trigger ? draft.slice(0, trigger.start) + (item.insert ?? "") + draft.slice(caret) : draft;
+      if (nextDraft !== draft) setDraft(nextDraft);
       setPicker(undefined);
       setMenuDismissed(true);
-      requestAnimationFrame(() => { textareaRef.current?.focus(); textareaRef.current?.setSelectionRange(position, position); setCaret(position); });
+      setPendingSelection({ scope: JSON.stringify([projectId, session?.id, nextDraft]), position });
     } catch (error) { workspace.setNotice(error instanceof Error ? error.message : String(error)); }
     finally { setPicking(false); }
   }
@@ -378,7 +391,8 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
          * simply dropped on the floor — Cmd+V after a screenshot did nothing.
          * Files that carry a path (pasted from Finder) go straight to
          * attachFiles; bitmap data has no path, so the main process writes it
-         * out first. Text paste is left alone.
+         * out first. Large text is folded only when the route supports resources;
+         * ordinary text and explicit inline pastes retain native editing behavior.
          */
         onPaste={(event) => {
           try {
@@ -395,7 +409,27 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
           const hasImage = Array.from(data.items).some((item) =>
             item.type.startsWith("image/"),
           );
-          if (!hasImage) return;
+          if (!hasImage) {
+            const text = data.getData("text/plain");
+            const bytes = new TextEncoder().encode(text).length;
+            // Do not turn a working plain prompt into an unsupported resource.
+            const supportsText = capabilities.route !== "direct" || harnessStatus?.parsed?.reported?.embeddedContext === true;
+            const inline = Date.now() <= inlinePasteUntil.current;
+            inlinePasteUntil.current = 0;
+            if (bytes >= 32 * 1024 && bytes <= 2 * 1024 * 1024 && supportsText && api.isDesktop !== false && !inline && event.target === textareaRef.current) {
+              event.preventDefault();
+              const start = textareaRef.current.selectionStart;
+              const end = textareaRef.current.selectionEnd;
+              const owner = selectionScope;
+              void workspace.attachPastedText(text).then((attached) => {
+                if (!attached || selectionScopeRef.current !== owner) return;
+                const nextDraft = draft.slice(0, start) + draft.slice(end);
+                setDraft(nextDraft);
+                setPendingSelection({ scope: JSON.stringify([projectId, session?.id, nextDraft]), position: start });
+              });
+            }
+            return;
+          }
           // Only swallow the keystroke once we know an image is there, or a
           // normal text paste would stop working.
           event.preventDefault();
@@ -433,6 +467,7 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
             }} />
           <ComposerMenu id={menuId} items={items} index={menuIndex} onHover={setMenuIndex} onPick={(item) => void applyItem(item)} empty={picker === "file" ? fileState : "No installed skills match. Browse Skills to install one."} />
         </div>}
+        {workspace.preparingAttachments > 0 && <div className="meta" role="status">Preparing {workspace.preparingAttachments} attachment{workspace.preparingAttachments === 1 ? "" : "s"}…</div>}
         {!picker && <ComposerMenu
           id={menuId}
           items={items}
@@ -469,6 +504,7 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
           onSelect={syncCaret}
           onKeyDown={(event) => {
             if (composing(event)) return;
+            if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "v") inlinePasteUntil.current = Date.now() + 2000;
             if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
               event.preventDefault();
               if (draft.trim() || attachments.length > 0 || skillId) {
@@ -645,19 +681,10 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
             </div>
           </div>
           <div className="composer-actions-right">
-            <button type="button" className="icon-btn" title="Attach a skill or project file ($ / @)" aria-label="Add context" aria-expanded={Boolean(picker)} onClick={() => picker ? (setPicker(undefined), setMenuDismissed(true)) : openPicker("skill")}><span aria-hidden>＋</span></button>
-            {capabilityHarness && <div className="composer-secondary-action"><CapabilityDetails compact harness={capabilityHarness} session={session} status={harnessStatus} /></div>}
+            <ComposerTools key={JSON.stringify([projectId, session?.id, agentId])} harness={capabilityHarness} session={session} status={harnessStatus}
+              stashCount={promptStashes.length} onContext={openPicker} onStash={() => setStashOpen((value) => !value)} />
             <button className="icon-btn" title="Attach files" aria-label="Attach files" onClick={() => void pickAttachments()}>
               <PaperclipIcon size={14} />
-            </button>
-            <button
-              className={`icon-btn composer-stash-button composer-secondary-action${stashOpen ? " active" : ""}`}
-              title={draft.trim() || attachments.length ? "Stash prompt (⌘S)" : "Open prompt stash (⌘S)"}
-              aria-label="Prompt stash"
-              onClick={() => setStashOpen((value) => !value)}
-            >
-              <BookmarkIcon size={13} />
-              {promptStashes.length > 0 ? <span>{promptStashes.length}</span> : null}
             </button>
             {contextUsage && (
               <ContextWindowMeter

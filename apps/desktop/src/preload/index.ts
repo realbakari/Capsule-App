@@ -159,6 +159,7 @@ const api = {
   pickDirectory: () => ipcRenderer.invoke(IPC_CHANNELS.pickDirectory),
   pickFiles: () => ipcRenderer.invoke(IPC_CHANNELS.pickFiles),
   saveClipboardImage: () => ipcRenderer.invoke(IPC_CHANNELS.saveClipboardImage),
+  saveTextAttachment: (text: string): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.saveTextAttachment, text),
   registerBrowserView: (webContentsId: number | undefined, threadId?: string, ready?: boolean) =>
     ipcRenderer.invoke(IPC_CHANNELS.registerBrowserView, webContentsId, threadId, ready),
   setBrowserControl: (threadId: string, allowed: boolean) =>

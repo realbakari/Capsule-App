@@ -17,6 +17,8 @@ import { runScreenshotRegressions } from "./screenshot-regressions";
 import { runRuntimeExtensionRegressions } from "./runtime-extension-regressions";
 import { runInterfaceRegressions } from "./interface-regressions";
 import { runPanelRegressions } from "./panel-regressions";
+import { runDraftAdmissionRegressions } from "./draft-admission-regressions";
+import { runWorkspaceExtensionRegressions } from "./workspace-extension-regressions";
 import { runSavedPreviewRegressions } from "./saved-preview-regressions";
 import { ChevronRightIcon, FolderIcon, InboxIcon } from "../features/shell/icons";
 import { CapabilityDetails } from "../features/harness/CapabilityDetails";
@@ -731,6 +733,7 @@ window.runRendererRegressions = async () => {
   await until(() => actualWorkspace.notice?.includes("saved in Stash"));
   assert(actualWorkspace.draft === "new work typed while waiting" && actualWorkspace.attachments[0]?.name === "new.txt", "Rejected send overwrote the new draft or attachments");
   assert(actualWorkspace.promptStashes.some((stash) => stash.prompt === "recover this submission"), "Failed submission was not recoverable");
+  await runDraftAdmissionRegressions(() => actualWorkspace, threads);
 
   await new Promise((resolve) => setTimeout(resolve, 100));
   const baseline = { projectReads, historyReads, eventReads, artifactReads };
@@ -924,7 +927,9 @@ window.runRendererRegressions = async () => {
   assert(document.querySelector('.composer-skill-chip')?.textContent?.includes("Review code"), "Skill selection did not render a removable chip");
   document.querySelector<HTMLButtonElement>('[aria-label="Remove selected skill"]')!.click();
   await until(() => !window.testWorkspace.skillId);
-  document.querySelector<HTMLButtonElement>('[aria-label="Add context"]')!.click();
+  document.querySelector<HTMLButtonElement>('[aria-label="Conversation tools"]')!.click();
+  await until(() => document.querySelector('[role="listbox"]'));
+  Array.from(document.querySelectorAll<HTMLButtonElement>('[role="option"]')).find((item) => item.textContent?.includes("Attach a skill"))!.click();
   await until(() => document.querySelector('input[aria-label="Search skills"]'));
   fill('input[aria-label="Search skills"]', "review code");
   await until(() => document.querySelectorAll('.suggest-menu [role="option"]').length === 2);
@@ -1005,6 +1010,7 @@ window.runRendererRegressions = async () => {
   await runInterfaceRegressions(host, contextBase);
   await runPanelRegressions(host, contextBase);
   await runSavedPreviewRegressions(host);
+  await runWorkspaceExtensionRegressions(host, contextBase);
   layoutStyles.media = "not all";
   return "Renderer regressions passed: recovery, editor ownership and memoization, browser navigation and discovery, bounded diff pages and review notes, terminal persistence, send admission, 1,000 stream frames without snapshot reloads, reconnect/history reconciliation.";
 };

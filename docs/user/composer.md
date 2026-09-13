@@ -4,6 +4,16 @@ Capsule keeps an unfinished draft for each conversation on this Mac. Switching
 projects or conversations and returning later restores its prompt and selected
 attachments. A successful send clears that draft.
 
+If local storage cannot save a draft, Capsule keeps a bounded temporary copy
+for switching conversations in this window. A warning asks you to copy it before
+quitting. If that temporary space is full, copy the current edits before switching
+conversations too; Capsule does not claim those edits were saved.
+
+Screen-reader heading navigation can move from the conversation title to each
+message's author, then through headings inside the reply. Steering messages and
+attachment-only prompts have author headings too; these labels do not add visual
+clutter or appear in copied message text.
+
 Sent image attachments show a thumbnail in the conversation, including when
 you reopen older messages. Select it to open the local file. Previews load only
 near the visible conversation and are not a separate saved copy of the image.
@@ -79,7 +89,7 @@ with that session and are collapsed by default.
 Switching to a different harness starts it with its own default model. A model
 override from the previous harness is not carried across.
 
-The info control beside the paperclip explains the selected harness and runtime
+Choose **Conversation tools → Agent settings and capabilities** to inspect the selected harness and runtime
 route's model, permission, steering and browser support. The same information
 is available in Harnesses, and Browser describes its agent-tool limitations.
 Manual browsing is separate from an agent's ability to control that browser.
@@ -115,7 +125,16 @@ Missing-login and installation guidance remain separate from connection recovery
 
 ## Attach local files
 
-Type `@` or choose **Add context → Project files** to search the current
+Send waits while attachments are being prepared. Concurrent pastes and file
+selections share the eight-file limit rather than silently dropping excess files.
+
+Pastes between 32 KiB and 2 MiB become text attachments when the runtime route
+supports them. The current selection is removed only after attachment succeeds.
+Use **Shift–⌘V** (or **Shift–Ctrl–V**) to keep a paste inline. Smaller, larger and
+unsupported pastes stay inline. If saving or validating the attachment fails,
+the pasted text goes to **Stash** and the existing draft stays untouched.
+
+Type `@` or choose **Conversation tools → Mention a project file** to search the current
 conversation’s folder. Results show the file name and parent path. Enter or Tab
 attaches the selected file without sending your draft; Escape closes the picker.
 File paths with spaces are preserved. Search failures and empty results are
@@ -154,7 +173,7 @@ applies the conversation's permission mode when it reads those paths.
 ## Stash a prompt
 
 Press `⌘S` while the composer contains text or attachments to move that draft
-into the prompt stash. Choose the bookmark beside the paperclip to restore or
+into the prompt stash. Choose **Conversation tools → Prompt stash** to restore or
 delete a stash. When the composer is empty, `⌘S` opens the stash instead.
 
 The most recent 20 stashes are kept locally. Restoring a stash removes it from
@@ -164,7 +183,9 @@ the stash list and puts its text, attachments and selected skill back in the com
 
 Open **Agents** from the inspector’s launcher or **Show thread agents** in the
 command palette. It shows the primary agent for this thread’s latest turn and
-any structured delegated tasks reported by the runtime, in stable order.
+any structured delegated tasks reported by the runtime, in stable order. Use
+**Turn** to inspect an earlier loaded turn, then choose **Latest turn** to return.
+Historical activity is read only when selected; loading failures offer **Retry**.
 
 This is not a complete roster of the agent’s internal subagents. Some harnesses
 and Gateway versions do not report delegation details or task token usage.
@@ -175,3 +196,15 @@ does not mark every child complete. Task status is not verification.
 The panel uses a bounded recent event window and labels partial history. It
 does not start agents or control child sessions. **Manage harnesses** opens the
 harness manager; **Side chat** remains a separate surface.
+
+## Agent commands
+
+Choose **Conversation tools → Agent commands**, or open **Agent commands** from the command palette.
+Direct agents can advertise commands and optional input hints. Choose one and
+press **Run command** to send a separate turn; your prompt, attachments and skill
+selection remain in the composer. Commands wait for any active turn to finish.
+Rejected commands show an error and are recoverable in **Stash**.
+
+The list belongs to the current agent session. An empty or unreported list is
+labelled explicitly. Gateway command discovery is not available through this
+control, and paired viewers cannot send commands.

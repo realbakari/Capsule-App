@@ -3676,6 +3676,13 @@ select:focus,
 .image-inspector-viewport { min-height: 0; flex: 1; overflow: auto; padding: 0.75rem; touch-action: pan-x pan-y; }
 .image-inspector-viewport img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; margin: auto; }
 .image-inspector-viewport[data-fit="false"] { cursor: grab; touch-action: none; }
+.agent-command-control { position: relative; font-size: 0.8125rem; }
+.agent-command-control > summary { list-style: none; cursor: pointer; padding: 0.35rem 0.6rem; color: var(--text-muted); }
+.agent-command-control > summary::-webkit-details-marker { display: none; }
+.agent-command-popover { display: grid; gap: 0.65rem; }
+.agent-command-popover p { margin: 0; }
+.agent-command-popover > header { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
+.agent-command-popover select, .agent-command-popover input { min-width: 0; width: 100%; font-size: 0.8125rem; }
 .file-preview-code {
   margin: 0;
   padding: 0.75rem;
@@ -6778,12 +6785,24 @@ div.changed-files-head { cursor: default; }
    ========================================================================== */
 
 .composer-actions-right {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0.5rem;
   margin-left: auto;
   flex-shrink: 0;
 }
+.composer-tools { display: flex; align-items: center; }
+.composer-tools .agent-command-control { position: static; }
+.composer-tools .agent-command-control[hidden], .agent-command-control > summary[hidden] { display: none; }
+.composer-tools-popover, .agent-command-popover {
+  z-index: 160; overflow-y: auto; box-sizing: border-box;
+  padding: 0.875rem; border: 1px solid var(--border-color); border-radius: 0.75rem;
+  background: var(--surface-0); color: var(--text); box-shadow: 0 0.75rem 2rem rgb(0 0 0 / 24%);
+  font-size: 0.8125rem;
+}
+.composer-tools-popover > header { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
+.composer-tools-popover .capability-details { margin: 0.5rem 0 0; }
 @container composer-row (max-width: 36rem) {
   .composer-controls { flex: 1; }
   .composer-options-inline { display: none; }

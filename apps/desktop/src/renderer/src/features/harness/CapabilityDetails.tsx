@@ -2,7 +2,7 @@ import { harnessCapabilities, type HarnessLiveStatus, type HarnessStatus, type S
 import { useEffect, useRef } from "react";
 import { AgentConfiguration } from "./AgentConfiguration";
 
-export function CapabilityDetails(props: { harness?: HarnessStatus; session?: SessionRef; status?: HarnessLiveStatus; compact?: boolean }) {
+export function CapabilityDetails(props: { harness?: HarnessStatus; session?: SessionRef; status?: HarnessLiveStatus; compact?: boolean; initiallyOpen?: boolean }) {
   const capabilities = harnessCapabilities(props);
   const report = props.status?.session.id === props.session?.id
     && props.status?.session.openclawSessionKey === props.session?.openclawSessionKey ? props.status?.parsed?.reported : undefined;
@@ -14,7 +14,7 @@ export function CapabilityDetails(props: { harness?: HarnessStatus; session?: Se
     window.addEventListener("pointerdown", close);
     return () => window.removeEventListener("pointerdown", close);
   }, [props.compact]);
-  return <details ref={root} className={`capability-details${props.compact ? " capability-details--compact" : ""}`} onKeyDown={(event) => { if (event.key === "Escape") { root.current?.removeAttribute("open"); root.current?.querySelector("summary")?.focus(); } }}>
+  return <details ref={root} open={props.initiallyOpen} className={`capability-details${props.compact ? " capability-details--compact" : ""}`} onKeyDown={(event) => { if (event.key === "Escape") { root.current?.removeAttribute("open"); root.current?.querySelector("summary")?.focus(); } }}>
     <summary aria-label={label} title={label}>{props.compact ? <span aria-hidden>ⓘ</span> : label}</summary>
     <div className="capability-details-body">
     <dl>{([
