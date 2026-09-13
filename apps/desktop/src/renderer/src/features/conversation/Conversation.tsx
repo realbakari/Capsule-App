@@ -50,9 +50,11 @@ const MessageRow = memo(function MessageRow({
 }) {
   return (
     <div className={`msg ${message.role}${isNew ? " motion-enter-conversation" : ""}`}>
-      {/* No author label: a right-aligned bubble already says "you", and the
-          reply is the timeline — naming it "Agent" on every turn is chrome.
-          Timestamp and copy appear on hover. */}
+      <h2 className="sr-only">
+        {message.role === "user" ? (message.kind === "steer" ? "You, steering" : "You") : "Agent"}
+      </h2>
+      {/* Visual alignment carries authorship; the heading exposes it to
+          assistive navigation without adding repeated visible chrome. */}
       <div className="who">
         {message.kind === "steer" && <span className="tag">Steer</span>}
         <span className="when">{formatTime(message.createdAt)}</span>

@@ -78,6 +78,7 @@ export function Titlebar() {
 
   return (
     <header className={`page-header ${sidebarCollapsed ? "with-traffic" : ""}`}>
+      {view === "chat" ? <h1 className="sr-only">{sessionTitle || projectName}</h1> : null}
       {sidebarCollapsed ? <SidebarToggle /> : null}
       <div className="header-actions header-lead">
         <div className="page-title breadcrumb-title">

@@ -31,6 +31,20 @@ beforeEach(() => {
 });
 
 describe("saved outcome placement", () => {
+  it("names each message for heading navigation, including steer and attachment-only prompts", () => {
+    workspace.value.runs = [];
+    workspace.value.messages = [
+      { id: "u", sessionId: "s", role: "user", kind: "steer", content: "Follow this", createdAt: "2026-09-04T00:00:01Z" },
+      { id: "a", sessionId: "s", role: "assistant", content: "# Result\n## Details", createdAt: "2026-09-04T00:00:02Z" },
+      { id: "f", sessionId: "s", role: "user", content: "", attachments: [{ path: "/repo/a.txt", name: "a.txt", size: 1 }], createdAt: "2026-09-04T00:00:03Z" },
+    ];
+    const html = renderToStaticMarkup(createElement(Conversation));
+    expect(html).toContain('<h2 class="sr-only">You, steering</h2>');
+    expect(html).toContain('<h2 class="sr-only">Agent</h2>');
+    expect(html).toContain('<h2 class="sr-only">You</h2>');
+    expect(html).toContain('<h3 class="md-h">Result</h3>');
+    expect(html).toContain('<h4 class="md-h">Details</h4>');
+  });
   it("keeps one collapsed activity and evidence entry per owning turn", () => {
     workspace.value.events = [{ id: "e", runId: "r2", type: "tool", message: "read_file source.ts", timestamp: "2026-09-04T00:00:04Z" }];
     workspace.value.steps = [{ id: "work:read", label: "Read 1 file", count: 1, status: "complete" }];

@@ -365,6 +365,10 @@ renderer timings are separate; this is diagnostic evidence, not freeze preventio
 Replies render fenced code, headings, bullets, links, inline code and
 GitHub-style pipe tables. A wide table scrolls inside the message rather than
 widening the transcript column.
+The conversation title has a hidden level-one heading; each rendered message
+has a hidden level-two author heading (including steering and attachment-only
+messages). Reply headings remain below those boundaries. Hidden labels are
+nonselectable and do not change copied message text or visible layout.
 
 A running turn shows elapsed time, not just that it is running: a turn can go
 for minutes and "working" alone gives no way to tell a slow one from a stuck
