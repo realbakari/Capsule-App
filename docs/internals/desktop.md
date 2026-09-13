@@ -791,8 +791,11 @@ File selection validates the exact path in the thread folder through the existin
 attachment channel. Debounced search rejects stale responses; no new IPC is added.
 
 Inspector **Agents** is distinct from **Side chat** (now the `chat` tab key).
-Agents and the palette’s Show thread agents entry project the latest turn’s
-events read-only. Only structured delegation inputs create task rows. Rows retain
+Agents and the palette’s Show thread agents entry default to the latest turn's
+events. A selector opens earlier loaded runs through `listRunEventPage`, retaining
+one bounded page with independent loading, error and partial-history states.
+Reads are scoped by project/thread/run and never replace the live event window.
+Only structured delegation inputs create task rows. Rows retain
 spawn order and label missing usage, partial history, and last-reported states
 after the parent ends. It is not a child-session orchestrator or workflow graph.
 At most 100 delegation rows are shown from the bounded event window. Internal
