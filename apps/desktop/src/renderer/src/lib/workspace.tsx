@@ -8,6 +8,7 @@ import { boundRunEvents, compactRunEvent, runEventBytes, LIVE_EVENT_LIMIT, LIVE_
 import { useScopedState } from "./scoped-state";
 import { SteeringDrafts } from "./steering-drafts";
 import { DraftRecovery } from "./draft-recovery";
+import { fileMentionTarget, parentFolder } from "./file-context";
 import { activityFromEvents, type RunActivity } from "./activity";
 import {
   createContext,
@@ -22,6 +23,7 @@ import {
 } from "react";
 import {
   addFolderToProject,
+  folderBasename,
   projectActionOverrides,
   makePrimaryFolder as promoteProjectFolder,
   removeFolderFromProject,
@@ -1249,7 +1251,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   }
 
   function folderName(directory: string): string {
-    return directory.split("/").filter(Boolean).pop() || "Project";
+    return folderBasename(directory) || "Project";
   }
 
   async function pickProjectDirectory(id = projectId) {
@@ -1281,7 +1283,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       if (!first) return;
       let root = project?.workingDirectory;
       if (!root) {
-        const parent = first.split("/").slice(0, -1).join("/") || "/";
+        const parent = parentFolder(first);
         const target = projectId ?? projects[0]?.id;
         if (!target) {
           const created = await api.createProject({
@@ -1295,9 +1297,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
         root = parent;
         await refresh();
       }
-      const prefix = `${root.replace(/\/$/, "")}/`;
       for (const absolute of paths) {
-        mentionFile(absolute.startsWith(prefix) ? absolute.slice(prefix.length) : (absolute.split("/").pop() ?? absolute));
+        mentionFile(fileMentionTarget(root, absolute));
       }
       setView("chat");
     } catch (error) {
@@ -1326,7 +1327,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       if (!paths?.length) return false;
       const validated: MessageAttachment[] = await api.validateAttachments(
         paths.map((filePath) => ({
-          name: filePath.split("/").filter(Boolean).pop() ?? filePath,
+          name: folderBasename(filePath) ?? filePath,
           path: filePath,
         })),
       );

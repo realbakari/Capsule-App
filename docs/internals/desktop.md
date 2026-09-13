@@ -8,6 +8,10 @@ Capsule is a workspace, not a clone of any other agent product. Quality bars els
 
 ## Shell
 
+Folder selection, file mentions, and attachment labels accept Windows and Unix
+separators. The renderer normalizes only derived display/mention strings;
+attachment validation still receives the original native path.
+
 ```
 ┌ Sidebar ┐┌ Titlebar ──────────────────────────────── Inspector toggle ┐
 │         │├ Conversation / other views ┐┌ Inspector (optional)        ┤

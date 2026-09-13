@@ -738,6 +738,11 @@ window.runRendererRegressions = async () => {
   assert(actualWorkspace.draft === "new work typed while waiting" && actualWorkspace.attachments[0]?.name === "new.txt", "Rejected send overwrote the new draft or attachments");
   assert(actualWorkspace.promptStashes.some((stash) => stash.prompt === "recover this submission"), "Failed submission was not recoverable");
   phase("draft admission");
+  await actualWorkspace.attachFiles(["C:\\Work\\Demo\\notes.txt"]);
+  await until(() => actualWorkspace.attachments.some((item) => item.path === "C:\\Work\\Demo\\notes.txt"));
+  assert(actualWorkspace.attachments.find((item) => item.path === "C:\\Work\\Demo\\notes.txt")?.name === "notes.txt", "Windows attachment displayed its whole path");
+  actualWorkspace.removeAttachment("C:\\Work\\Demo\\notes.txt");
+  await until(() => !actualWorkspace.attachments.some((item) => item.path === "C:\\Work\\Demo\\notes.txt"));
   await runDraftAdmissionRegressions(() => actualWorkspace, threads);
   phase("streaming and history");
 

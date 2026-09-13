@@ -32,6 +32,8 @@ every signed-in provider has not been verified there.
 Project actions and the built-in terminal use PowerShell. Existing actions
 written in zsh or Bash may need a Windows-specific command. File paths with
 spaces are supported; changing shell syntax automatically would be unsafe.
+Folder and attachment labels show their names, not the full Windows path.
+File mentions inside the selected project use project-relative paths.
 
 Compatible Windows updates use the Windows release feed and ask before
 restarting. This initial unsigned release does not establish publisher identity

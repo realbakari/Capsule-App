@@ -147,7 +147,7 @@ jobs:
       - name: Check types
         run: pnpm typecheck
       - name: Verify Windows commands, protocol fixtures, first flow and renderer
-        run: pnpm test packages/process packages/terminal packages/acp packages/sessions packages/harness/src/binary-path.test.ts packages/core/src/platform-flow.test.ts apps/desktop/src/renderer/src/lib/turn-timeline.test.ts scripts/renderer-regressions.test.mjs
+        run: pnpm test packages/process packages/terminal packages/acp packages/sessions packages/harness/src/binary-path.test.ts packages/core/src/platform-flow.test.ts apps/desktop/src/renderer/src/lib/turn-timeline.test.ts apps/desktop/src/renderer/src/lib/file-context.test.ts scripts/renderer-regressions.test.mjs
       - name: Build unsigned Windows x64 installer
         run: pnpm package:windows
       - name: Install, launch and uninstall the packaged app
