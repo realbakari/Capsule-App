@@ -1,0 +1,16 @@
+diff --git a/lib/parse.js b/lib/parse.js
+index 14d9a29..63f96e7 100644
+--- a/lib/parse.js
++++ b/lib/parse.js
+@@ -9,2 +9,2 @@
+ const isExecutableRegExp = /\.(?:com|exe)$/i;
+-const isCmdShimRegExp = /node_modules[\\/].bin[\\/][^\\/]+\.cmd$/i;
++const isCmdShimRegExp = /\.(?:cmd|bat)$/i;
+@@ -39,6 +39,6 @@
+     // Note that `forceShell` is an hidden option used only in tests
+     if (parsed.options.forceShell || needsShell) {
+-        // Need to double escape meta chars if the command is a cmd-shim located in `node_modules/.bin/`
++        // All batch wrappers parse arguments again, including globally installed CLI shims.
+         // The cmd-shim simply calls execute the package bin file with NodeJS, proxying any argument
+         // Because the escape of metachars with ^ gets interpreted when the cmd.exe is first called,
+         // we need to double escape them

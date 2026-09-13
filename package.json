@@ -25,6 +25,9 @@
     "policies": "node scripts/build-policy-pages.mjs"
   },
   "pnpm": {
+    "patchedDependencies": {
+      "cross-spawn@7.0.6": "patches/cross-spawn@7.0.6.patch"
+    },
     "onlyBuiltDependencies": [
       "better-sqlite3",
       "electron",

@@ -73,6 +73,10 @@ renderer interactions and an actual NSIS install/start/uninstall on Windows.
 The full macOS suite remains a separate gate. Windows credentials are not
 required for the explicitly unsigned preview; macOS signing remains mandatory.
 
+The pinned command-launch dependency has a small patch so global `.cmd` and
+`.bat` wrappers receive the same second-pass escaping as local npm shims. Keep
+the native async/sync argument tests when updating it.
+
 - TypeScript, strict, ESM
 - Renderer: no Node, no OpenClaw, no secrets
 - Explicit IPC only

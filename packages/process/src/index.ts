@@ -3,6 +3,8 @@ import crossSpawn from "cross-spawn";
 
 // Handles PATH/PATHEXT and npm's .cmd shims without passing unescaped arguments
 // through shell:true. Callers still own cwd, environment, output and lifetime.
+// The pinned package patch also escapes global batch wrappers on their second
+// parsing pass. Native Windows argv tests cover both global and local shims.
 export const spawnCommand = crossSpawn;
 export const spawnCommandSync = crossSpawn.sync;
 
