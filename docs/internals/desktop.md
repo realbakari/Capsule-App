@@ -433,6 +433,10 @@ the owning snapshot changes. Selecting a file opens that file's paged saved
 diff; the bounded all-files view remains available. These reads use the existing
 read-only turnDiff channel on both runtime routes and paired viewers. Late
 responses are discarded after owner changes; no unbounded patch cache is kept.
+Re-entering the same active row preserves the preview owner, loaded patch and
+code nodes instead of starting another lazy read. Position updates are deduplicated.
+Scroll dismissal applies only to ancestors of the file row, not independent
+Inspector/terminal scrollers; focus-driven scrolling keeps keyboard previews anchored.
 
 Sent image attachments use `messageImage(messageId, index)`, a read-only channel
 whose source path comes only from persisted attachments. The engine reopens a

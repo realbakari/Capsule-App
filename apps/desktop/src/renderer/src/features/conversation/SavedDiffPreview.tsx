@@ -7,7 +7,7 @@ import { formatUserError } from "../../lib/errors";
 
 export type SavedPatchReader = (path: string) => Promise<{ patch: string; patchTruncated?: boolean }>;
 
-/** One ephemeral preview per file list. No filesystem reads or retained cache. */
+/** One ephemeral preview per file list; discard its bounded patch on dismissal. */
 export function useSavedDiffPreview(patch: string | undefined, onOpenDiff?: (path?: string) => void, loadPatch?: SavedPatchReader) {
   const id = useId();
   const [active, setActive] = useState<{ file: TouchedFile; anchor: HTMLElement; patch?: string; reader?: SavedPatchReader }>();
@@ -23,7 +23,8 @@ export function useSavedDiffPreview(patch: string | undefined, onOpenDiff?: (pat
   // An owner change cannot carry a preview into the next turn's snapshot.
   const shown = active?.patch === patch && active?.reader === loadPatch ? active : undefined;
   useEffect(() => {
-    if (!shown || shown.patch || !shown.reader) return;
+    if (!shown) { setLoaded(undefined); return; }
+    if (shown.patch || !shown.reader) return;
     let disposed = false;
     setLoaded(undefined);
     void shown.reader(shown.file.path).then((result) => {
@@ -47,8 +48,10 @@ export function useSavedDiffPreview(patch: string | undefined, onOpenDiff?: (pat
       const maxHeight = Math.max(100, Math.min(440, up ? above : below, window.innerHeight - 24));
       const width = Math.min(720, window.innerWidth - 24);
       const height = Math.min(panel.current?.getBoundingClientRect().height ?? maxHeight, maxHeight);
-      setPosition({ width, maxHeight, left: Math.max(12, Math.min(rect.left, window.innerWidth - width - 12)),
-        top: Math.max(12, Math.min(up ? rect.top - height - 8 : rect.bottom + 8, window.innerHeight - height - 12)) });
+      const next = { width, maxHeight, left: Math.max(12, Math.min(rect.left, window.innerWidth - width - 12)),
+        top: Math.max(12, Math.min(up ? rect.top - height - 8 : rect.bottom + 8, window.innerHeight - height - 12)) };
+      setPosition((current) => current.width === next.width && current.maxHeight === next.maxHeight
+        && current.left === next.left && current.top === next.top ? current : next);
     };
     place();
     const observer = new ResizeObserver(place);
@@ -56,6 +59,9 @@ export function useSavedDiffPreview(patch: string | undefined, onOpenDiff?: (pat
     const dismiss = () => { clearTimeout(timer.current); setActive(undefined); };
     const scroll = (event: Event) => {
       if (panel.current?.contains(event.target as Node)) return;
+      // Inspector, terminal and other independent scrollers cannot move this
+      // anchor. Their events must not dismiss a preview in the conversation.
+      if (event.target instanceof Element && !event.target.contains(shown.anchor)) return;
       // Focusing a file can scroll it into view after the preview mounts.
       // Keep that keyboard preview anchored instead of immediately losing it.
       const rect = shown.anchor.getBoundingClientRect();
@@ -91,8 +97,12 @@ export function useSavedDiffPreview(patch: string | undefined, onOpenDiff?: (pat
     if ((!patch && !loadPatch) || !onOpenDiff) return {};
     const open = (anchor: HTMLElement, delay: number) => {
       cancelTimer();
+      // Pointer traversal and keyboard focus can both enter the same row.
+      // Preserve the open owner so its lazy read and code DOM stay intact.
+      if (shown?.anchor === anchor && shown.file.path === file.path) return;
       timer.current = setTimeout(() => {
-        if (anchor.isConnected) setActive({ file, anchor, patch, reader: loadPatch });
+        if (anchor.isConnected) setActive((current) => current?.anchor === anchor && current.file.path === file.path
+          && current.patch === patch && current.reader === loadPatch ? current : { file, anchor, patch, reader: loadPatch });
       }, delay);
     };
     return {

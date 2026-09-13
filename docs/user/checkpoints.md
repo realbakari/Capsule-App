@@ -13,6 +13,9 @@ diff without leaving the conversation. The preview shows line numbers, syntax
 colouring, and additions and removals. Move the pointer into it to scroll;
 press Escape to dismiss it. With the file row focused, Down Arrow moves into
 the preview's **Open file diff** control.
+Moving between the file row and its open preview keeps the code loaded. Scrolling
+another panel does not close it; scrolling the conversation dismisses the hover
+preview so it cannot become detached from its file.
 
 Select a file row (including on touch devices) to open that file's saved diff
 in place. Select **All changed files**, or the card's heading, for the entire
