@@ -212,6 +212,7 @@ export interface AcpConfigOption {
 }
 
 export interface AcpStatusSnapshot {
+  availableCommands?: import("./agent-commands.js").AgentCommand[];
   reported?: import("./agent-reports.js").AgentCapabilityReport;
   contextUsage?: import("./agent-reports.js").ReportedContextUsage;
   backend?: string;

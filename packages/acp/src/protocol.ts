@@ -1,4 +1,4 @@
-import { readDelegationDetails, readReportedContextUsage, sanitizeUntrusted, type AcpModelCatalog, type DelegationDetails, type ApprovalToolDetails, type ReportedContextUsage } from "@capsule/shared";
+import { readAgentCommands, readDelegationDetails, readReportedContextUsage, sanitizeUntrusted, type AgentCommand, type AcpModelCatalog, type DelegationDetails, type ApprovalToolDetails, type ReportedContextUsage } from "@capsule/shared";
 
 /*
  * The wire, on its own.
@@ -61,6 +61,7 @@ export function encodeMessage(message: JsonRpcMessage): string {
 
 /** What a `session/update` notification is telling us about a turn. */
 export interface SessionUpdate {
+  availableCommands?: AgentCommand[];
   contextUsage?: ReportedContextUsage;
   configOptions?: unknown[];
   sessionId?: string;
@@ -98,6 +99,7 @@ export function readSessionUpdate(params: unknown): SessionUpdate | undefined {
   const update = record.update;
   if (!update || typeof update !== "object") return undefined;
   const kind = (update as { sessionUpdate?: unknown }).sessionUpdate;
+  if (kind === "available_commands_update") return { sessionId, availableCommands: readAgentCommands((update as { availableCommands?: unknown }).availableCommands) };
   if (kind === "usage_update") return { sessionId, contextUsage: readReportedContextUsage(update) };
   if (kind === "config_option_update") {
     const options = (update as { configOptions?: unknown }).configOptions;

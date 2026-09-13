@@ -64,6 +64,32 @@ const HAPPY = `
 `;
 
 describe("talking to an agent directly", () => {
+  it("retains early advertised commands and applies only this session's later reports", async () => {
+    const agent = fakeAgent(`
+      function update(sessionId, availableCommands) { send({ method: "session/update", params: { sessionId, update: { sessionUpdate: "available_commands_update", availableCommands } } }); }
+      function handle(message) {
+        if (message.method === "initialize") send({ id: message.id, result: { protocolVersion: 1 } });
+        if (message.method === "session/new") {
+          update("s", [{ name: "compact", description: "Compact context" }]);
+          send({ id: message.id, result: { sessionId: "s" } });
+        }
+        if (message.method === "session/prompt") {
+          update("other", [{ name: "foreign", description: "Wrong session" }]);
+          if (message.params.prompt[0].text === "clear") update("s", []);
+          send({ id: message.id, result: { stopReason: "end_turn" } });
+        }
+      }
+    `);
+    const session = new DirectAcpSession({ command: "node", args: [agent] });
+    try {
+      await session.start();
+      expect(session.reportedCommands).toEqual([{ name: "compact", description: "Compact context" }]);
+      await session.prompt("keep");
+      expect(session.reportedCommands?.[0]?.name).toBe("compact");
+      await session.prompt("clear");
+      expect(session.reportedCommands).toEqual([]);
+    } finally { await session.close(); rmSync(path.dirname(agent), { recursive: true, force: true }); }
+  });
   it("waits for its own child to exit, escalating when termination is ignored", async () => {
     const agent = fakeAgent(`process.on("SIGTERM", () => {}); setInterval(() => {}, 1000); ${HAPPY}`);
     const session = new DirectAcpSession({ command: "node", args: [agent] });

@@ -257,6 +257,7 @@ export class DirectAcpHost {
         reported: session?.reportedCapabilities,
         configOptions: session?.reportedCapabilities?.configOptions,
         contextUsage: session?.reportedContext,
+        availableCommands: session?.reportedCommands,
         ...(models ? { models, ...(models.currentModelId ? { model: models.currentModelId } : {}) } : {}),
       },
     };

@@ -336,6 +336,15 @@ assigning parent tokens to children. No child-control protocol is implemented.
 
 ## Completion and retained output
 
+Direct `available_commands_update` reports are scoped to the owning session,
+including a bounded pending report during session creation. Reports retain at
+most 64 safe exact names (128 characters), 256-character descriptions and
+128-character input hints. An empty report clears commands; an absent or invalid
+report does not claim support. Changes refresh the existing live-status channel.
+The UI sends an advertised command as a normal separate prompt turn, with at most
+4,000 single-line input characters. It does not invent a Gateway command list or
+implement an agent's command semantics.
+
 Direct ACP retains bounded initialize metadata and config-option reports for
 the owning live session. Config-only model catalogs also use the `model`
 category. Reports disclose optional image, embedded-context, HTTP MCP and

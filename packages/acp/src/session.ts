@@ -2,7 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { StringDecoder } from "node:string_decoder";
 
-import type { AcpModelCatalog, DelegationDetails, ApprovalToolDetails, AgentCapabilityReport, ReportedContextUsage, ReportedTurnUsage, AgentPromptBlock } from "@capsule/shared";
+import type { AcpModelCatalog, DelegationDetails, ApprovalToolDetails, AgentCapabilityReport, ReportedContextUsage, ReportedTurnUsage, AgentPromptBlock, AgentCommand } from "@capsule/shared";
 import { TextBudget, readAgentCapabilities, readReportedTurnUsage } from "@capsule/shared";
 import { readCliError } from "./errors.js";
 import {
@@ -98,6 +98,8 @@ export class DirectAcpSession {
   private initialization: unknown;
   private capabilityReport?: AgentCapabilityReport;
   private contextReport?: ReportedContextUsage;
+  private commandReport?: AgentCommand[];
+  private pendingCommands?: { sessionId: string; commands: AgentCommand[] };
   private closed = false;
   private closing?: Promise<void>;
   private turn: Promise<unknown> | undefined;
@@ -114,6 +116,7 @@ export class DirectAcpSession {
   get busy(): boolean { return Boolean(this.turn); }
   get reportedCapabilities(): AgentCapabilityReport | undefined { return this.capabilityReport; }
   get reportedContext(): ReportedContextUsage | undefined { return this.contextReport; }
+  get reportedCommands() { return this.commandReport; }
 
   constructor(private readonly options: DirectAcpOptions) {}
 
@@ -222,6 +225,8 @@ export class DirectAcpSession {
       throw new Error("The agent started but did not open a session.");
     }
     this.acpSessionId = sessionId;
+    if (this.pendingCommands?.sessionId === sessionId) this.commandReport = this.pendingCommands.commands;
+    this.pendingCommands = undefined;
     this.legacyModels = readModelCatalog((created as { models?: unknown })?.models);
     const configuration = (created as { configOptions?: unknown })?.configOptions;
     if (!this.capabilityReport || Array.isArray(configuration)) this.readConfiguration(configuration);
@@ -408,7 +413,18 @@ export class DirectAcpSession {
 
     if (message.method === "session/update") {
       const update = readSessionUpdate(message.params);
+      // Notifications can share the session/new response's stdout chunk. The
+      // response promise has not resumed yet, so retain just this bounded list
+      // until the returned session identity can be checked.
+      if (!this.acpSessionId && update?.sessionId && update.availableCommands) {
+        this.pendingCommands = { sessionId: update.sessionId, commands: update.availableCommands };
+        return;
+      }
       if (!update || (update.sessionId && update.sessionId !== this.acpSessionId)) return;
+      if (update.sessionId === this.acpSessionId && update.availableCommands) {
+        this.commandReport = update.availableCommands;
+        this.scheduleConfigurationNotice();
+      }
       if (this.restoring) {
         if (update.configOptions) this.readConfiguration(update.configOptions);
         return;
@@ -507,6 +523,10 @@ export class DirectAcpSession {
       currentModelId: model.currentValue,
       availableModels: model.choices.map((choice) => ({ modelId: choice.value, name: choice.name })),
     } : this.legacyModels;
+    this.scheduleConfigurationNotice();
+  }
+
+  private scheduleConfigurationNotice(): void {
     // Status consumers need the latest snapshot, not one IPC refresh per frame.
     if (!this.restoring && !this.configurationNotice) {
       this.configurationNotice = setTimeout(() => {
