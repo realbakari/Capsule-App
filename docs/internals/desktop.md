@@ -783,6 +783,10 @@ the child finished. Closed threads display their recorded runtime route rather
 than the current harness default. Card borders and typography are explicitly
 scoped so generic inspector heading rules cannot restyle the empty state.
 
+Desktop completion notifications deduplicate terminal run IDs in a bounded
+4,096-entry set before checking focus/preferences. Later checkpoint or metadata
+events do not re-notify a recent settled turn.
+
 ### In-app updates
 
 Both About surfaces and their clipboard summary read the running version from

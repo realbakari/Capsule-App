@@ -39,6 +39,7 @@ import { mergePath, readLoginShellEnvironment } from "@capsule/harness";
 import electronUpdater from "electron-updater";
 import { readNavigableUrl, type BrowserTarget } from "./browser-tools";
 import { BrowserAccess } from "./browser-access";
+import { RunNotifications } from "./run-notifications";
 import { observeBrowser } from "./browser-diagnostics";
 import { secureBrowserSession } from "./browser-security";
 import { startBrowserMcpServer, type BrowserMcpServer } from "./browser-mcp";
@@ -859,8 +860,9 @@ function notifyApproval(approval: ApprovalRequest): void {
   if (settings?.bounceDockOnAttention) bounceDock();
 }
 
+const runNotifications = new RunNotifications();
 function notifyRunSettled(run: Run): void {
-  if (!["completed", "failed", "cancelled"].includes(run.status)) return;
+  if (!runNotifications.firstSettlement(run)) return;
   const settings = engine?.getSettings();
   if (!settings?.notifyRunComplete) return;
   if (windowFocused()) return;
