@@ -1,4 +1,5 @@
 import { spawnCommand as spawn, spawnCommandSync as spawnSync, stopChild } from "@capsule/process";
+import { firstExecutablePath } from "./binary-path.js";
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -66,10 +67,7 @@ function whichOnPath(binary: string): string | undefined {
   const finder = process.platform === "win32" ? "where" : "which";
   const result = spawnSync(finder, [binary], { encoding: "utf8", windowsHide: true });
   if (result.status !== 0) return undefined;
-  return result.stdout
-    .split(/\r?\n/)
-    .map((part) => part.trim())
-    .find(Boolean);
+  return firstExecutablePath(result.stdout, process.platform);
 }
 
 function whichViaLoginShell(binary: string): string | undefined {

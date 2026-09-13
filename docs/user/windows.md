@@ -17,7 +17,8 @@ disable Windows security protections to install Capsule.
 ## Agents and terminals
 
 Install and sign in to a Windows-compatible coding CLI separately. Capsule
-detects native executables and command launchers on your PATH. Restart Capsule
+detects native executables and command launchers on your PATH, preferring the
+Windows launcher when npm installs a Unix shim alongside it. Restart Capsule
 after changing PATH. The agent still owns its coding loop and credentials;
 Capsule does not install it, supply a subscription, or make a macOS-only CLI
 Windows-compatible.

@@ -3,6 +3,9 @@
 Direct ACP and login probes launch through `@capsule/process`. It handles
 Windows PATH/PATHEXT and npm `.cmd` shims with escaped arguments, and stops the
 captured Windows process tree so a shim cannot leave a CLI running behind it.
+Harness discovery prefers executable or batch results from `where` over npm's
+accompanying extensionless Unix shim. Native Windows tests cover PATH discovery
+without a Unix shell as well as the transport fixtures.
 No WSL translation or Capsule-owned agent loop is added.
 
 Tool observations carry the protocol's bounded `kind` field so command counts
