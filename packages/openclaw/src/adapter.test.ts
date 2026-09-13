@@ -1,29 +1,42 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { OpenClawAdapter } from "./adapter.js";
-import { DEFAULT_GATEWAY_HOST, DEFAULT_GATEWAY_PORT, probeTcp } from "./discovery.js";
 
-describe("OpenClawAdapter live connect", () => {
-  it("presents a device identity to a running local Gateway", async () => {
-    const reachable = await probeTcp(DEFAULT_GATEWAY_HOST, DEFAULT_GATEWAY_PORT);
-    if (!reachable) return;
+// Never discover or modify the developer's live Gateway during ordinary tests.
+// This opt-in check requires a disposable Gateway with acpx configured.
+describe.skipIf(!process.env.CAPSULE_TEST_GATEWAY_URL)("OpenClawAdapter live connect", () => {
+  it("presents a device identity to the explicit test Gateway", { timeout: 30_000 }, async () => {
+    const identityDir = mkdtempSync(path.join(tmpdir(), "capsule-gw-"));
     const adapter = new OpenClawAdapter({
-      identityDir: mkdtempSync(path.join(tmpdir(), "capsule-gw-")),
+      gatewayUrl: process.env.CAPSULE_TEST_GATEWAY_URL,
+      token: process.env.CAPSULE_TEST_GATEWAY_TOKEN ?? "",
+      identityDir,
       clientVersion: "0.1.0-test",
     });
-    await adapter.connect();
-    const status = await adapter.getStatus();
-    expect(status.state).toBe("connected");
-    expect(status.error).toBeUndefined();
-    expect(await adapter.hasAcpxPlugin()).toBe(true);
-    const key = await adapter.ensureOperatorSession({
-      requestedAgentId: "general",
-      label: `capsule-agent-map-${Date.now()}`,
-    });
-    expect(key.startsWith("agent:main:") || key === "main").toBe(true);
-    await adapter.disconnect();
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const check = async () => {
+        await adapter.connect();
+        const status = await adapter.getStatus();
+        expect(status.state).toBe("connected");
+        expect(status.error).toBeUndefined();
+        expect(await adapter.hasAcpxPlugin()).toBe(true);
+        const key = await adapter.ensureOperatorSession({
+          requestedAgentId: "general",
+          label: `capsule-agent-map-${Date.now()}`,
+        });
+        expect(key.startsWith("agent:main:") || key === "main").toBe(true);
+      };
+      await Promise.race([check(), new Promise<never>((_resolve, reject) => {
+        deadline = setTimeout(() => reject(new Error("Test Gateway did not respond within 20 seconds")), 20_000);
+      })]);
+    } finally {
+      clearTimeout(deadline);
+      await adapter.disconnect();
+      rmSync(identityDir, { recursive: true, force: true });
+    }
   });
 });
 

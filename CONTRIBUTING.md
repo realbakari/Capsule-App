@@ -41,6 +41,12 @@ Connect a Gateway for Gateway-only harnesses, or use direct mode with a native
 ACP CLI. Tests select mock execution explicitly with `autoConnect: false`;
 the engine first-flow tests need no provider account.
 
+The live Gateway integration test is opt-in. Set `CAPSULE_TEST_GATEWAY_URL`
+and, when required, `CAPSULE_TEST_GATEWAY_TOKEN` for a disposable test Gateway
+with acpx configured. It creates an operator session there. Ordinary `pnpm test`
+does not discover or connect to the developer's running Gateway; transport and
+ACP fixtures remain enabled without credentials.
+
 Direct-session unit fixtures must stub both process liveness and transport calls.
 Make unexpected native spawns fail immediately: a saved session key alone does
 not represent a running process. Protocol integration tests should launch only

@@ -13,6 +13,10 @@ Pin the **beta** dist-tag until OpenClaw publishes a non-reserved `latest`:
 
 ## Handshake
 
+Live handshake testing requires an explicit `CAPSULE_TEST_GATEWAY_URL` pointing
+to a disposable Gateway, plus `CAPSULE_TEST_GATEWAY_TOKEN` when needed. Normal
+tests never auto-discover the developer's Gateway or create sessions there.
+
 1. Connect WebSocket to `ws://127.0.0.1:18789` (or configured URL).
 2. Wait for `connect.challenge` (`nonce`, integer `ts`).
 3. Persist an Ed25519 device identity, sign the challenge-bound payload (`signedAt` = challenge `ts`), and send `connect` with `minProtocol: 4`, `maxProtocol: 4`, `role: "operator"`, plus the shared Gateway token on loopback.
