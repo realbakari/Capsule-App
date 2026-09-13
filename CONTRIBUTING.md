@@ -77,6 +77,10 @@ The pinned command-launch dependency has a small patch so global `.cmd` and
 `.bat` wrappers receive the same second-pass escaping as local npm shims. Keep
 the native async/sync argument tests when updating it.
 
+Executable script modules use LF checkouts on every host: CRLF shebangs break
+the test runner's import transform before renderer tests can start. Patch files
+also keep LF so their lockfile integrity hash is stable across platforms.
+
 - TypeScript, strict, ESM
 - Renderer: no Node, no OpenClaw, no secrets
 - Explicit IPC only

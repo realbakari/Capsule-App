@@ -1,0 +1,5 @@
+# Keep executable module headers intact on Windows checkouts too.
+*.mjs text eol=lf
+*.cjs text eol=lf
+*.sh text eol=lf
+*.patch text eol=lf
