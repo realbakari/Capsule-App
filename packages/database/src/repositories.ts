@@ -304,6 +304,17 @@ export class CapsuleRepositories {
     return row ? parseJson(row.attachments, []) : [];
   }
 
+  /** Title regeneration needs one bounded seed, not the entire transcript. */
+  firstUserTitleSeed(sessionId: string): string | undefined {
+    const row = this.db.sqlite.prepare(`
+      SELECT substr(content, 1, 4096) AS content,
+             CASE WHEN json_valid(attachments) THEN json_extract(attachments, '$[0].name') END AS attachmentName
+      FROM messages WHERE session_id = ? AND role = 'user'
+      ORDER BY created_at ASC, id ASC LIMIT 1
+    `).get(sessionId) as { content: string; attachmentName: string | null } | undefined;
+    return row ? row.content.trim() || row.attachmentName || "New conversation" : undefined;
+  }
+
   listMessages(sessionId: string): ChatMessage[] {
     const rows = this.db.sqlite
       .prepare(

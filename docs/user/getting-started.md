@@ -22,6 +22,12 @@ A failed send keeps your draft. Sending and starting another conversation only
 advances after the send is accepted. Review the diff and relevant checks before
 committing or pushing.
 
+New conversations take a short, readable title from the first prompt's first
+line, or the first attachment's name when no text was sent. This happens locally
+without another agent request. Later prompts do not rename the conversation;
+your own title is preserved. **Generate title** in the conversation menu restores
+a title from that original prompt.
+
 Learn more: [Drafts and attachments](composer.md), [projects and previews](projects-and-previews.md),
 [checking a turn](verification.md), and [restoring a turn](checkpoints.md).
 

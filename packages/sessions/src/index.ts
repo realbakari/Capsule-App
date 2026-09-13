@@ -29,7 +29,18 @@ export function createSessionRecord(
 }
 
 export function titleFromPrompt(prompt: string): string {
-  const cleaned = prompt.replace(/\s+/g, " ").trim();
+  // A title is a local first-line preview, not another agent turn. Bound the
+  // work even when the prompt is a long pasted log, and keep words intact.
+  const firstLine = prompt.slice(0, 4096).trim().split(/\r?\n/u)[0] ?? "";
+  const cleaned = firstLine
+    .replace(/^\s*(?:#{1,6}\s+|[-*+]\s+|\d+[.)]\s+)/u, "")
+    .replace(/\[([^\]]+)\]\([^)]*\)/gu, "$1")
+    .replace(/`|\*\*/gu, "")
+    .replace(/\s+/gu, " ").trim();
   if (!cleaned) return "New conversation";
-  return cleaned.length > 72 ? `${cleaned.slice(0, 69)}…` : cleaned;
+  const characters = Array.from(cleaned);
+  if (characters.length <= 72) return cleaned;
+  const prefix = characters.slice(0, 71).join("");
+  const wordEnd = prefix.lastIndexOf(" ");
+  return `${wordEnd >= 40 ? prefix.slice(0, wordEnd) : prefix}…`;
 }

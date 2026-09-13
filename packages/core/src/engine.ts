@@ -1613,8 +1613,7 @@ export class CapsuleEngine {
 
   regenerateTitle(id: string): Session {
     const session = this.requireSession(id);
-    const first = this.repos.listMessages(id).find((message) => message.role === "user");
-    session.title = titleFromPrompt(first?.content ?? session.title);
+    session.title = titleFromPrompt(this.repos.firstUserTitleSeed(id) ?? session.title);
     session.updatedAt = nowIso();
     this.repos.updateSession(session);
     return session;
@@ -1695,7 +1694,7 @@ export class CapsuleEngine {
     const activeSkill = skillId ? await this.requireSkill(skillId, project.id, session.id) : undefined;
     if (activeSkill && activeSkill.status !== "installed") throw new Error("The selected skill is not installed or has been disabled. Choose an installed skill.");
     if (activeSkill && !activeSkill.content?.trim()) throw new Error("The selected skill has no readable SKILL.md instructions. Rescan or choose another skill.");
-    if (session.title === "New conversation") {
+    if (session.title === "New conversation" && this.repos.firstUserTitleSeed(session.id) === undefined) {
       session.title = titleFromPrompt(input.content.trim() || attachments[0]?.name || "New conversation");
     }
     session.agentId = agentId;

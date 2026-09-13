@@ -455,6 +455,11 @@ runtime route (including an existing thread's pinned route). It is absent for
 direct agents and the mock runtime. Connection errors are caught inline with
 retry, while distinct folder, login and installation blockers remain visible.
 
+First-prompt titles are local previews of the first nonempty line, bounded at
+72 Unicode code points with a word boundary when possible. First-message lookup
+is a single bounded database row, with an attachment-name fallback. Automatic
+naming only applies before the first user message; custom names survive sends.
+
 ### Verification receipts and workspace ownership
 
 Completed turns and History render the same collapsed `TurnVerification`
