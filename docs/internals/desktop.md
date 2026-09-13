@@ -547,6 +547,13 @@ legacy copies migrate to the secret store before their database keys are removed
 
 The desktop pins Electron 43.4.1. Native SQLite and terminal modules must be
 rebuilt for this runtime; renderer and startup fixtures use isolated profiles.
+Quit defers Electron exit until owned cleanup settles, with a 12-second desktop
+deadline and one idempotent shutdown request. Further IPC calls are refused
+during cleanup. Direct-process closes, checkpoint writes and cancelled checks
+settle before the database closes; other providers' Gateway processes remain
+outside Capsule's ownership. Failed or timed-out cleanup is logged, including
+failures arriving after the deadline. Confirmation still precedes stopping an
+active turn, and update-triggered quits use the same cleanup path.
 Persisted navigation IDs are hints: startup resolves them against the project
 and session indexes before issuing scoped skill, Git, file or history reads.
 A thread must belong to the selected project; a missing thread with no active
@@ -561,6 +568,8 @@ side effects; it must not connect copied sessions to live agents. The check
 requires the renderer's post-bootstrap paint acknowledgement as well as loaded
 HTML, and fails on workspace initialization errors. Renderer fixtures separately
 exercise stale selections, startup failure and retry, and normal send flows.
+After that acknowledgement, smoke mode requests normal Quit and requires its
+cleanup marker and successful process exit; a forced timeout is never a pass.
 CI checks the built workspace; the release job repeats that check against the
 packaged executable via `CAPSULE_SMOKE_EXECUTABLE` before uploading artifacts.
 

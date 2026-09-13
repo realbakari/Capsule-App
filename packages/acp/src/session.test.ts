@@ -64,6 +64,19 @@ const HAPPY = `
 `;
 
 describe("talking to an agent directly", () => {
+  it("waits for its own child to exit, escalating when termination is ignored", async () => {
+    const agent = fakeAgent(`process.on("SIGTERM", () => {}); setInterval(() => {}, 1000); ${HAPPY}`);
+    const session = new DirectAcpSession({ command: "node", args: [agent] });
+    try {
+      await session.start();
+      const child = (session as unknown as { child: import("node:child_process").ChildProcessWithoutNullStreams }).child;
+      const closing = session.close();
+      expect(session.close()).toBe(closing);
+      await closing;
+      expect(child.signalCode).toBe("SIGKILL");
+      expect(session.running).toBe(false);
+    } finally { await session.close(); rmSync(path.dirname(agent), { recursive: true, force: true }); }
+  }, 8000);
   it("bounds retained tool titles by both count and payload size", () => {
     const session = new DirectAcpSession({ command: "unused", args: [] });
     const internal = session as unknown as { handle(message: unknown): void; toolTitles: Map<string, string> };

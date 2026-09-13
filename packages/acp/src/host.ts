@@ -98,6 +98,7 @@ export class DirectAcpHost {
   private readonly sessions = new Map<string, DirectAcpSession>();
   private readonly harnessBySession = new Map<string, HarnessId>();
   private counter = 0;
+  private closing?: Promise<void>;
 
   isRunning(key: string): boolean { return this.sessions.get(key)?.running === true; }
   capabilities(key: string) { return this.sessions.get(key)?.reportedCapabilities; }
@@ -122,6 +123,7 @@ export class DirectAcpHost {
   async spawnAcpSession(
     input: DirectSpawnInput,
   ): Promise<{ sessionKey: string; usedSlashCommand: boolean; command: string; directSession?: DirectSessionIdentity }> {
+    if (this.closing) throw new Error("The direct agent host is shutting down.");
     const preset = PRESET_HARNESSES.find((item) => item.id === input.harnessId);
     if (!preset?.acpxCommand) {
       throw new Error(
@@ -170,9 +172,17 @@ export class DirectAcpHost {
     const key = directSessionKey(input.harnessId, `${Date.now().toString(36)}${this.counter++}`);
     this.mcpDisposers.set(key, offer.dispose);
     this.wire(key, session);
-    try { await session.start(input.resume?.sessionId); } catch (error) { offer.dispose(); this.mcpDisposers.delete(key); await session.close(); throw error; }
+    // Track ownership before the handshake: Quit must also close a process
+    // that has started but has not answered initialize/session-new yet.
     this.sessions.set(key, session);
     this.harnessBySession.set(key, input.harnessId);
+    try {
+      await session.start(input.resume?.sessionId);
+      if (this.closing) throw new Error("The direct agent host is shutting down.");
+    } catch (error) {
+      await this.closeAcp(key);
+      throw error;
+    }
 
     if (input.prompt) void this.send(key, input.prompt);
     return {
@@ -216,9 +226,16 @@ export class DirectAcpHost {
     this.harnessBySession.delete(sessionKey);
   }
 
-  async closeAll(): Promise<void> {
+  closeAll(): Promise<void> {
+    this.closing ??= this.closeOwnedSessions();
+    return this.closing;
+  }
+
+  private async closeOwnedSessions(): Promise<void> {
     const keys = [...this.sessions.keys()];
-    await Promise.all(keys.map((key) => this.closeAcp(key)));
+    const results = await Promise.allSettled(keys.map((key) => this.closeAcp(key)));
+    const failures = results.filter((result) => result.status === "rejected");
+    if (failures.length) throw new AggregateError(failures.map((result) => result.reason), "Some agent processes could not close.");
   }
 
   async statusAcp(sessionKey: string): Promise<{ text: string; parsed: ReturnType<typeof parseAcpStatus> }> {

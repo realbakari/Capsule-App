@@ -15,6 +15,14 @@ instead of an empty sidebar. Retry loads the saved workspace again without
 clearing its data. An unavailable agent or Gateway is separate from loading
 your local workspace.
 
+## Closing Capsule
+
+Quit asks for confirmation when a turn is active. It gives owned agent processes
+time to stop before closing the workspace, with a short deadline so a stalled
+process cannot keep the app open indefinitely. Capsule disconnects from your
+Gateway; it does not terminate the Gateway process or guarantee that work hosted
+there has stopped. Files already written by an agent remain on disk.
+
 ## Local performance
 
 Choose **Refresh timings** to inspect event processing, Git operations and local

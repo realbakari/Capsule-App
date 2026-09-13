@@ -83,6 +83,7 @@ import {
   type WindowState,
 } from "./window-state";
 import { ensureSqliteAbi } from "./sqlite-abi";
+import { Shutdown } from "./shutdown";
 
 let mainWindow: BrowserWindow | undefined;
 let tray: Tray | undefined;
@@ -1002,7 +1003,10 @@ function registerIpc(): void {
   };
 
   const handle = (channel: string, fn: (...args: unknown[]) => unknown) => {
-    const guarded = (...args: unknown[]) => updateAdmission.run(channel, () => fn(...args));
+    const guarded = (...args: unknown[]) => {
+      if (shutdown.started) throw new Error("Capsule is shutting down.");
+      return updateAdmission.run(channel, () => fn(...args));
+    };
     handlers.set(channel, guarded);
     ipcMain.handle(channel, async (_event, ...args) => {
       try {
@@ -1688,7 +1692,12 @@ function registerIpc(): void {
       return true;
     }
     if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) mainWindow.show();
-    if (process.env.CAPSULE_SMOKE_TEST) console.log("capsule: workspace ready");
+    if (process.env.CAPSULE_SMOKE_TEST) {
+      console.log("capsule: workspace ready");
+      // Exercise normal shutdown after acknowledging the renderer, not a
+      // signal that bypasses before-quit and leaves cleanup untested.
+      setImmediate(() => app.quit());
+    }
     return true;
   });
   handleArgs(IPC_CHANNELS.usageSummary, [num], (days: number) =>
@@ -2147,13 +2156,31 @@ app.on("window-all-closed", () => {
  * app is a dialog that teaches people to dismiss dialogs.
  */
 let quitConfirmed = false;
+const shutdown = new Shutdown(async () => {
+  applyKeepAwake(undefined);
+  if (sampleTimer) clearInterval(sampleTimer);
+  clearTimeout(updateTimer);
+  stopAllTerminals();
+  backgroundBrowsers.closeAll();
+  const results = await Promise.allSettled([
+    engine?.stop(), browserMcp?.close(), remoteAccess.set("off"),
+  ]);
+  for (const result of results) {
+    if (result.status === "rejected") console.error("Capsule shutdown cleanup failed", result.reason);
+  }
+}, (error) => console.error("Capsule shutdown", error));
 
 app.on("before-quit", (event) => {
+  if (shutdown.ready) {
+    if (process.env.CAPSULE_SMOKE_TEST) console.log("capsule: shutdown complete");
+    return;
+  }
+  event.preventDefault();
+  if (shutdown.started) return;
   const running = engine?.listRuns().filter((run) =>
     ["running", "queued", "waiting", "approval_required"].includes(run.status),
   ).length ?? 0;
   if (running > 0 && !quitConfirmed && mainWindow && !mainWindow.isDestroyed()) {
-    event.preventDefault();
     revealWindow();
     const choice = dialog.showMessageBoxSync(mainWindow, {
       type: "question",
@@ -2161,18 +2188,10 @@ app.on("before-quit", (event) => {
       defaultId: 1,
       cancelId: 1,
       message: running === 1 ? "A turn is still running." : `${running} turns are still running.`,
-      detail: "Quitting stops the agent where it is. Anything it has already written stays.",
+      detail: "Quitting stops agents started directly by Capsule and disconnects from the Gateway. Gateway-hosted work may continue. Anything already written stays.",
     });
     if (choice !== 0) return;
     quitConfirmed = true;
-    app.quit();
-    return;
   }
-  applyKeepAwake(undefined);
-  if (sampleTimer) clearInterval(sampleTimer);
-  clearTimeout(updateTimer);
-  stopAllTerminals();
-  backgroundBrowsers.closeAll();
-  browserMcp?.close();
-  void engine?.stop();
+  void shutdown.request().then(() => app.quit());
 });

@@ -2,6 +2,15 @@
 
 Capsule owns the workspace: projects, conversations, runs, contracts, approvals, and artifacts. Coding CLIs own their loops, reached through OpenClaw acpx or a thin direct ACP client. Capsule never ships or installs coding CLIs.
 
+Direct shutdown owns processes from before their initialization handshake.
+Closing the host rejects new spawns and cannot publish a late initialized
+session or send its initial prompt. Concurrent closes share one promise and
+wait for every owned session, including failures. A session first requests
+termination, escalates its own child to SIGKILL after three seconds, and reports
+failure if no exit arrives within ten seconds. The desktop retains a separate
+12-second quit deadline; disconnecting the Gateway client does not terminate
+the user's Gateway process.
+
 See [OpenClaw ACP agents](https://docs.openclaw.ai/tools/acp-agents) and [setup](https://docs.openclaw.ai/tools/acp-agents-setup).
 The [ACP compatibility map](acp-compatibility.md) distinguishes implemented
 behavior from optional protocol surfaces that Capsule does not carry.

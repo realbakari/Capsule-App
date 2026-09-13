@@ -64,6 +64,19 @@ it("settles a rejected direct send as failed", async () => {
   expect(internal.direct.spawnAcpSession).not.toHaveBeenCalled();
 });
 
+it("waits for owned direct sessions before closing the database and refuses new work", async () => {
+  const { engine, internal, session } = await fixture(false);
+  let close!: () => void;
+  const closeAll = vi.spyOn(internal.direct, "closeAll").mockImplementation(() => new Promise<void>((resolve) => { close = resolve; }));
+  const stopping = engine.stop();
+  expect(engine.stop()).toBe(stopping);
+  expect(engine.listSessions().some((item) => item.id === session.id)).toBe(true);
+  await expect(engine.sendMessage({ sessionId: session.id, content: "Too late", mode: "chat" })).rejects.toThrow("shutting down");
+  close(); await stopping;
+  expect(closeAll).toHaveBeenCalledOnce();
+  expect(() => engine.listSessions()).toThrow();
+});
+
 it.each(["resolves", "rejects"])("keeps Stop final when delayed startup %s", async (outcome) => {
   const { engine, internal, session } = await fixture(false);
   let finish!: () => void;

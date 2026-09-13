@@ -83,6 +83,29 @@ it("closes a failed handshake without retaining the session or sending a turn", 
   } finally { start.mockRestore(); close.mockRestore(); prompt.mockRestore(); }
 });
 
+it("owns initializing sessions during shutdown and refuses a late handshake or new spawn", async () => {
+  let initialized!: (id: string) => void;
+  const start = vi.spyOn(DirectAcpSession.prototype, "start").mockImplementation(() => new Promise((resolve) => { initialized = resolve; }));
+  const close = vi.spyOn(DirectAcpSession.prototype, "close").mockResolvedValue();
+  const prompt = vi.spyOn(DirectAcpSession.prototype, "prompt");
+  const dispose = vi.fn();
+  const host = new DirectAcpHost();
+  host.offerMcpServers(() => ({ servers: [], dispose }));
+  try {
+    const spawning = host.spawnAcpSession({ harnessId: "grok", prompt: "Do not send" });
+    const rejected = expect(spawning).rejects.toThrow("shutting down");
+    const stopping = host.closeAll();
+    expect(host.closeAll()).toBe(stopping);
+    await stopping;
+    initialized("late-session"); await rejected;
+    expect(close).toHaveBeenCalledOnce();
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(prompt).not.toHaveBeenCalled();
+    await expect(host.spawnAcpSession({ harnessId: "grok" })).rejects.toThrow("shutting down");
+    expect(start).toHaveBeenCalledOnce();
+  } finally { start.mockRestore(); close.mockRestore(); prompt.mockRestore(); }
+});
+
 describe("options in direct mode", () => {
   it("refuses options for a process that is no longer running", async () => {
     // Accepting the change and doing nothing is the failure mode worth avoiding:

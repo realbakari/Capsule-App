@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Boots the built app and fails if it dies on the way up.
+ * Boots the built app, waits for its workspace, and requires a normal quit.
  *
  * Nothing else in the gate runs the app. Typecheck, lint, the unit tests and
  * the production build all passed on a main bundle that could not load
@@ -20,7 +20,8 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const desktop = path.join(root, "apps/desktop");
 const mainBundle = path.join(desktop, "out/main/index.js");
 const packagedExecutable = process.env.CAPSULE_SMOKE_EXECUTABLE;
-const BOOT_WINDOW_MS = 12_000;
+// Allow startup and the desktop's 12-second shutdown deadline.
+const SMOKE_WINDOW_MS = 25_000;
 const expectedVersion = readPackageVersion();
 
 /*
@@ -41,6 +42,8 @@ const FATAL_PATTERNS = [
   "Uncaught TypeError",
   "Uncaught ReferenceError",
   "Failed to load Capsule state",
+  "Capsule shutdown cleanup failed",
+  "Capsule shutdown Error",
 ];
 
 /*
@@ -51,6 +54,7 @@ const FATAL_PATTERNS = [
 const READY_MARKER = /capsule: window ready \((\d+)\)/u;
 // Loading HTML is not enough: React must load the workspace and paint it.
 const WORKSPACE_MARKER = "capsule: workspace ready";
+const SHUTDOWN_MARKER = "capsule: shutdown complete";
 const VERSION_MARKER = /capsule: app version ([^\r\n]+)/u;
 
 if (!packagedExecutable && !fs.existsSync(mainBundle)) {
@@ -101,7 +105,7 @@ let timedOut = false;
 const timer = setTimeout(() => {
   timedOut = true;
   child.kill();
-}, BOOT_WINDOW_MS);
+}, SMOKE_WINDOW_MS);
 
 child.on("error", (error) => {
   clearTimeout(timer);
@@ -115,6 +119,8 @@ child.on("exit", (code) => {
 
   const failures = FATAL_PATTERNS.filter((pattern) => output.includes(pattern));
   if (!output.includes(WORKSPACE_MARKER)) failures.push("workspace never finished loading");
+  if (!output.includes(SHUTDOWN_MARKER)) failures.push("normal shutdown never finished");
+  if (timedOut) failures.push("startup or shutdown exceeded its deadline");
   const ready = READY_MARKER.exec(output);
   if (!ready) failures.push("the window never finished loading");
   else if (ready[1] !== "1") failures.push(`the app opened ${ready[1]} windows, not 1`);
@@ -130,6 +136,6 @@ child.on("exit", (code) => {
     console.error(`\n${output}`);
     process.exit(1);
   }
-  console.log(`Smoke test passed: Capsule ${expectedVersion} loaded its workspace in one window.`);
+  console.log(`Smoke test passed: Capsule ${expectedVersion} loaded its workspace in one window and quit cleanly.`);
   process.exit(0);
 });

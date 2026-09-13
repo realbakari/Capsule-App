@@ -259,6 +259,7 @@ export class CapsuleEngine {
   private settings: CapsuleSettings;
   private logs: string[] = [];
   private stopped = false;
+  private stopping?: Promise<void>;
   /** True only for the in-process test double. Never in a shipped app. */
   private readonly usingMock: boolean;
   private readonly replyBuffers = new TextBudget();
@@ -356,6 +357,7 @@ export class CapsuleEngine {
   }
 
   private assertWorkAllowed(): void {
+    if (this.stopped) throw new Error("Capsule is shutting down. Reopen it before starting work.");
     if (this.updateReserved) throw new Error("Capsule is preparing to restart for an update. Wait for it to finish before starting work.");
   }
 
@@ -380,7 +382,12 @@ export class CapsuleEngine {
     } finally { clearTimeout(timer); }
   }
 
-  async stop(): Promise<void> {
+  stop(): Promise<void> {
+    this.stopping ??= this.stopOnce();
+    return this.stopping;
+  }
+
+  private async stopOnce(): Promise<void> {
     // Runtime subscriptions can outlive stop() — a cancelled or failed turn
     // keeps draining queued events — and every handler writes to the database.
     // Mark the engine stopped before closing so late events are dropped rather
@@ -395,8 +402,6 @@ export class CapsuleEngine {
     setLoginStateListener(undefined);
     setPullRequestListener(undefined);
     this.directUnsub?.();
-    // Agents Capsule spawned are Capsule's to stop; nothing else will.
-    void this.direct.closeAll();
     this.stopAllPrWatch();
     for (const process of this.actionProcesses.values()) process.stop();
     this.actionProcesses.clear();
@@ -404,8 +409,17 @@ export class CapsuleEngine {
     this.resultWriter.finishAll();
     this.replyBuffers.clear();
     this.ignoredReplySessions.clear();
-    await this.runtime.disconnect().catch(() => undefined);
+    // Keep the database alive while owned sessions and saved work finish.
+    // Disconnecting the Gateway client never stops the user's Gateway process.
+    const cleanup = await Promise.allSettled([
+      this.direct.closeAll(),
+      this.runtime.disconnect(),
+      ...this.checkpointPending.values(),
+      ...Array.from(this.verificationPending.values(), (check) => check.promise),
+    ]);
     this.db.close();
+    const failures = cleanup.filter((result) => result.status === "rejected");
+    if (failures.length) throw new AggregateError(failures.map((result) => result.reason), "Some workspace resources could not close.");
   }
 
   async getSubsystemStatus(): Promise<SubsystemStatus> {
