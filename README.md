@@ -20,13 +20,18 @@
 ## What is Capsule?
 
 Capsule is a desktop workspace for the coding agents you already run. Claude
-Code, Codex, Grok Build and other ACP harnesses do the work; Capsule gives them
+Code, Codex, Grok Build, Muse Code and other supported harnesses do the work; Capsule gives them
 a window — projects, conversations, diffs, approvals and a record of what each
 turn changed, on your own machine.
 
 It does not install coding CLIs or hold their provider API keys. Install and
 sign in to a supported CLI, then choose its available runtime route. Some
 harnesses require an OpenClaw Gateway and its ACP adapter.
+
+Muse Code uses its native local session connection. Install and sign in to a
+Muse CLI build with session SDK support, then select it from the agent picker.
+See [setup and limits](docs/user/providers.md#muse-code). Its integration is
+covered by protocol fixtures, not a signed-in provider certification.
 
 ### What it does
 

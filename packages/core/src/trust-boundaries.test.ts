@@ -125,6 +125,23 @@ it("preserves the previous agent identity when switching cannot close it", async
   expect(engine.listRuns(session.id)[0]?.status).toBe("failed");
 });
 
+it("settles an approval withdrawn by its direct agent without deciding it again", async () => {
+  const { engine, internal, session, run } = await fixture();
+  let activity!: Parameters<DirectAcpHost["onActivity"]>[0];
+  vi.spyOn(internal.direct, "onActivity").mockImplementation((handler) => { activity = handler; return () => {}; });
+  internal.bindAcpReplies();
+  let finish!: () => void;
+  const settled = new Promise<void>((resolve) => { finish = resolve; });
+  const allow = vi.fn(); const deny = vi.fn(); const cancel = vi.fn();
+  activity({ type: "permission", sessionKey: session.openclawSessionKey!, request: { title: "Replaced tool request", allow, deny, cancel, settled } });
+  const approval = engine.listApprovals("pending")[0]!;
+  finish();
+  await vi.waitFor(() => expect(engine.listApprovals("pending")).toHaveLength(0));
+  expect(engine.getRun(run.id)?.status).toBe("running");
+  await expect(engine.resolveApproval(approval.id, "approved_once")).rejects.toThrow("not found");
+  expect(allow).not.toHaveBeenCalled(); expect(deny).not.toHaveBeenCalled();
+});
+
 it("persists direct permission requests, resolves once, and cancels pending requests on Stop", async () => {
   const { engine, internal, session, run } = await fixture();
   let activity!: Parameters<DirectAcpHost["onActivity"]>[0];

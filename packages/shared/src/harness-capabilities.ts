@@ -6,7 +6,7 @@ export function harnessCapabilities(input: { harness?: HarnessStatus; session?: 
   const live = Boolean(session?.harnessId === harness?.id && session?.openclawSessionKey && session.harnessState !== "closed");
   // An existing thread keeps its route, regardless of changed defaults.
   const savedDirect = session?.directSession?.harnessId === harness?.id && Boolean(session?.directSession);
-  const route = live ? session!.openclawSessionKey!.startsWith("direct:acp:") ? "direct" : "openclaw" : savedDirect ? "direct" : harness?.runtimeRoute;
+  const route = live ? session!.openclawSessionKey!.startsWith("direct:") ? "direct" : "openclaw" : savedDirect ? "direct" : harness?.runtimeRoute;
   const unavailable = (detail: string): FeatureAvailability => ({ state: "unavailable", detail });
   const available = (detail: string): FeatureAvailability => ({ state: "available", detail });
   const limited = (detail: string): FeatureAvailability => ({ state: "limited", detail });

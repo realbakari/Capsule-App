@@ -1,5 +1,48 @@
 # ACP harnesses
 
+## Native Muse transport
+
+`@capsule/muse` is a thin `DirectAgentSession` implementation injected into
+`DirectAcpHost` by Core. It uses `@muse-code/sdk` 1.3.0 framing and UUID command
+identities on an owned `muse serve` process. It is native MSP schema version 1,
+not ACP and not an acpx target. Schema fingerprints are advisory for additive
+changes. No renderer dependency, new IPC channel, credential reader or agent
+loop is introduced. The remote viewer remains read-only.
+
+The harness is discoverable in the composer and Harnesses. Its route is always
+direct, including when new Gateway threads are the default; existing threads
+retain their route. Doctor reports executable readiness, not authentication or
+SDK entitlement. Live status carries the session's model catalog and exact
+mutable model selector. A model change requires an acknowledgement. Other
+live configuration, forms, steering and browser MCP injection are unsupported.
+
+The adapter implements initialize/start/resume, text and image inputs, bounded
+item projections, message boundaries, tool activity, usage, one-time approval
+choices and interrupt. Wake-up requests are acknowledged separately from
+permission decisions. A requirement can only be decided once; refreshed or
+withdrawn prompts settle their persisted Capsule approval without recording a
+user denial. Concurrent Stop paths share one interrupt. Changed shell stages
+display their current command, not the original stage's arguments.
+
+Resume requires the saved native ID, canonical folder equality and an idle
+session without pending requests. Unavailable projections, gaps, unknown turn
+outcomes and lost admission acknowledgements fail explicitly. Early activity
+before turn admission is bounded to 256 events / 1 MiB. Active projections have
+limits of 2,048 items, 32,768 cursors and 4 MiB text. They are cleared at turn end.
+SDK command replay caching is not used: it would retain submitted images and
+prompts for the process lifetime. Uncertain writes are never blindly retried.
+
+Owned process exit fails a waiting turn even if a descendant still holds pipes.
+Transport shutdown signals the owned process group, waits up to 500 ms for pipe
+closure, then escalates and waits up to three more seconds for exit. Missing
+exit confirmation is an error. Windows uses the captured process tree while
+its leader is alive. Native tests cover framing, ordering, approvals, attachment
+mapping, configuration, cancellation and process failure. An engine fixture
+covers admission, transcript storage and database-reopen resume. Signed-in
+provider behavior and Windows Muse execution are not certified by these tests.
+
+## Shared transport lifecycle
+
 Direct ACP and login probes launch through `@capsule/process`. It handles
 Windows PATH/PATHEXT and npm `.cmd` shims with escaped arguments, and stops the
 captured Windows process tree so a shim cannot leave a CLI running behind it.

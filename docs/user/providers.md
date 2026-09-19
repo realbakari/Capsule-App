@@ -29,7 +29,7 @@ Gateway sessions continue to use the information that route actually carries.
 ## Installed agents
 
 Capsule drives coding CLIs that are already installed and signed in on the
-machine running the selected route: the Gateway host or this Mac for direct
+machine running the selected route: the Gateway host or this computer for direct
 mode. It does not install them, does not sign
 you in, and never resells tokens.
 
@@ -38,6 +38,7 @@ you in, and never resells tokens.
 | Claude Code | `claude` |
 | Codex | `codex` |
 | Grok Build | `grok` |
+| Muse Code | `muse` |
 | Cursor | `cursor-agent` |
 | OpenCode | `opencode` |
 | Gemini Flash | `gemini` |
@@ -50,6 +51,33 @@ If a CLI reports an unsupported sign-in or account, check that tool's setup on
 the machine running it. Capsule reports the error; changing its UI settings
 cannot repair provider access. Gemini Flash and Gemini CLI use the same binary;
 the first pins the Flash model, the second takes the CLI default.
+
+## Muse Code
+
+Install [Muse Code](https://dev.meta.ai/docs/muse-code) and complete its sign-in
+in a terminal. Your CLI build must support native session connections through
+`muse serve`; Capsule cannot unlock a build or account that lacks this support.
+Choose **Muse Code** from the composer or **Harnesses**, and select a project
+folder. Muse runs locally even when your default route is Gateway. Existing
+threads keep their original agent and route.
+
+Text, supported images, streamed replies, tool activity, one-time approvals,
+Stop and reported model choices are connected. Model choices appear after the
+session starts and come from that session, not a fixed global list. Capsule can
+resume a saved idle session when the installed CLI supports durable sessions
+and confirms the same folder and identity. A folder alias resolving to the
+same location is accepted; another folder is not.
+
+The setup check finds the executable; it does not verify Muse sign-in or SDK
+access. Connection errors explain those requirements. Sign-in stays with the
+CLI, and Capsule never reads its credentials.
+
+This integration has fixture-based protocol and workspace tests, not validation
+against every signed-in account. Interactive questionnaire forms, live steering,
+reasoning/permission setting changes, and Capsule browser-tool injection are
+not supported for Muse yet. Manual browsing remains available. Unsupported
+content or an unavailable activity stream produces an error, not a successful
+empty reply.
 
 ## Choose and check a harness
 

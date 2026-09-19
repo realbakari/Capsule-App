@@ -19,6 +19,7 @@
     { "path": "packages/remote" },
     { "path": "packages/openclaw" },
     { "path": "packages/acp" },
+    { "path": "packages/muse" },
     { "path": "packages/harness" },
     { "path": "packages/buzz" },
     { "path": "packages/core" },

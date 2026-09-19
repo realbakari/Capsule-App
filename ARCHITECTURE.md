@@ -13,6 +13,13 @@ host, agent loop or generic renderer shell channel is introduced.
 
 Coding CLIs own agent execution. Capsule owns the workspace: projects, conversations, runs, contracts, verification, policies, approvals, artifacts, and a native-feeling desktop UI. The Gateway route delegates to OpenClaw; direct mode is a thin native-CLI ACP client, not a model or tool loop.
 
+Muse Code intentionally extends the transport contract: `@capsule/muse` uses
+the official Muse session SDK over `muse serve` stdio, not an ACP adapter or a
+Gateway target. The existing direct host injects this session implementation
+and retains lifecycle ownership. Its `direct:msp:muse:` keys cannot be confused
+with ACP sessions. Muse still owns authentication, policy and tool execution;
+Capsule adds no provider API or agent loop.
+
 The OpenClaw Gateway owns its sessions and channel connections. Capsule connects to it as an operator client over WebSocket. Direct sessions belong to the local ACP host; a thread keeps the route encoded in its session key. Messaging surfaces reach Capsule only as Gateway channels — Capsule never speaks those protocols itself.
 
 Capsule is a TypeScript pnpm workspace, licensed MIT.
@@ -113,6 +120,7 @@ packages/
   filesystem          Project-scoped file access
   terminal            Project commands, native terminal open, embedded PTY
   acp                 Native CLI ACP stdio client and direct session host
+  muse                Native Muse session SDK adapter behind the direct host
   openclaw            Gateway adapter + mock runtime
   harness             Claude Code / Codex / Grok ACP lifecycle (doctor, spawn, steer, cancel, close)
   buzz                Gateway channel mapping

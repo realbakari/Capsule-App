@@ -305,11 +305,11 @@ export function describeReadiness(input: {
   if (input.live) {
     return {
       readiness: "running",
-      detail: `${input.preset.name} is on a live ACP session.`,
+      detail: `${input.preset.name} is on a live ${input.preset.nativeCommand?.protocol.toUpperCase() ?? "ACP"} session.`,
     };
   }
   if (input.direct && !input.binaryPath) {
-    return { readiness: "missing_cli", detail: `Install ${input.preset.name} on this Mac before using direct mode. ${input.preset.installHint}` };
+    return { readiness: "missing_cli", detail: `Install ${input.preset.name} on this computer before using direct mode. ${input.preset.installHint}` };
   }
   if (input.direct || (input.gatewayConnected && input.acpxEnabled)) {
     if (input.loginState === "config_invalid") {
@@ -419,14 +419,14 @@ export function localDoctorChecks(input: {
   return [
     {
       id: "cli",
-      label: `${input.preset.name} on this Mac`,
+      label: `${input.preset.name} on this computer`,
       ok: input.direct
         ? Boolean(input.binaryPath)
         : Boolean(input.binaryPath) || (input.gatewayConnected && input.acpxEnabled),
       detail: input.binaryPath
         ? `Picked up ${input.binaryPath}`
         : input.direct
-          ? `${input.preset.installHint} Direct mode runs it from this Mac, so it has to be on PATH.`
+          ? `${input.preset.installHint} Direct mode runs it from this computer, so it has to be on PATH.`
           : input.gatewayConnected && input.acpxEnabled
             ? "No local binary on PATH. OpenClaw can still spawn it on the Gateway host."
             : input.preset.installHint,
@@ -469,9 +469,9 @@ export function localDoctorChecks(input: {
             label: "Direct mode",
             ok: true,
             detail: `Capsule runs \`${[
-              input.preset.acpxCommand?.command ?? input.preset.binaries[0],
-              ...(input.preset.acpxCommand?.args ?? []),
-            ].join(" ")}\` on this Mac and speaks ACP to it. No Gateway, no acpx.`,
+              input.preset.nativeCommand?.command ?? input.preset.acpxCommand?.command ?? input.preset.binaries[0],
+              ...(input.preset.nativeCommand?.args ?? input.preset.acpxCommand?.args ?? []),
+            ].join(" ")}\` on this computer and speaks ${input.preset.nativeCommand?.protocol.toUpperCase() ?? "ACP"} to it. No Gateway, no acpx.`,
           },
         ]
       : [
@@ -536,9 +536,10 @@ export function buildDoctorReport(input: {
   const gateway = input.checks.find((check) => check.id === "gateway")?.ok ?? false;
   const acpx = input.checks.find((check) => check.id === "acpx")?.ok ?? false;
   const acpxAgent = input.checks.find((check) => check.id === "acpx-agent")?.ok ?? true;
+  const direct = input.checks.some((check) => check.id === "direct");
   return {
     harnessId: input.harnessId,
-    ready: gateway && acpx && acpxAgent,
+    ready: direct ? input.checks.every((check) => check.ok) : gateway && acpx && acpxAgent,
     checks: input.checks,
     gatewayOutput: input.gatewayOutput,
   };
@@ -552,7 +553,7 @@ export function harnessAgentRecord(preset: HarnessPreset) {
     runtime: "openclaw" as const,
     model: preset.openclawAgentId,
     skills: ["coding"],
-    tools: ["acp"],
+    tools: [preset.nativeCommand?.protocol ?? "acp"],
     permissions: {
       filesystem: "approval" as const,
       terminal: "approval" as const,

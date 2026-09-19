@@ -25,4 +25,6 @@ export {
   type AcpReply,
   type DirectSpawnInput,
   type DirectMcpOffer,
+  type DirectAgentSession,
+  type NativeSessionFactory,
 } from "./host.js";

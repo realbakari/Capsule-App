@@ -8,6 +8,8 @@ import {
   acpStatusCommand,
   acpSteerCommand,
   describeReadiness,
+  localDoctorChecks,
+  buildDoctorReport,
   isLiveHarnessState,
   parseAcpStatus,
   probeLoginState,
@@ -15,6 +17,16 @@ import {
 } from "./index.js";
 
 describe("harness catalog", () => {
+  it("checks native Muse setup without requiring a Gateway or claiming a login probe", () => {
+    const preset = PRESET_HARNESSES.find((item) => item.id === "muse")!;
+    const checks = localDoctorChecks({ preset, binaryPath: "/fixture/muse", direct: true, gatewayConnected: false, acpxEnabled: false });
+    expect(checks.find((check) => check.id === "direct")?.detail).toContain("muse serve");
+    expect(checks.find((check) => check.id === "direct")?.detail).toContain("MSP");
+    expect(checks.some((check) => ["gateway", "acpx", "login"].includes(check.id))).toBe(false);
+    expect(buildDoctorReport({ harnessId: "muse", checks }).ready).toBe(true);
+    const missing = localDoctorChecks({ preset, direct: true, gatewayConnected: false, acpxEnabled: false });
+    expect(buildDoctorReport({ harnessId: "muse", checks: missing }).ready).toBe(false);
+  });
   it("ships Claude Code, Codex, and Grok Build first, then the official acpx catalog", () => {
     expect(PRESET_HARNESSES.map((item) => item.id).slice(0, 3)).toEqual([
       "claude",

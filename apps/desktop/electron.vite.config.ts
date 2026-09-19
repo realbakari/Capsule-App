@@ -24,6 +24,9 @@ export default defineConfig({
       externalizeDepsPlugin({
         exclude: [
           "@capsule/core",
+          "@capsule/acp",
+          "@capsule/muse",
+          "@muse-code/sdk",
           "@capsule/process",
           "@capsule/shared",
           "@capsule/database",

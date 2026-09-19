@@ -45,6 +45,8 @@ export interface DirectAcpEvents {
     title: string;
     details?: ApprovalToolDetails;
     canApproveOnce?: boolean;
+    /** Agent-side resolution or replacement invalidates an unanswered UI request. */
+    settled?: Promise<void>;
     allow: () => void;
     deny: () => void;
     /** End an unanswered request without recording a user decision. */

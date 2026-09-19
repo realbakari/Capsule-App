@@ -20,7 +20,8 @@ export const ACP_HARNESS_IDS = [
   "trae",
 ] as const;
 
-export type HarnessId = (typeof ACP_HARNESS_IDS)[number];
+export const HARNESS_IDS = [...ACP_HARNESS_IDS, "muse"] as const;
+export type HarnessId = (typeof HARNESS_IDS)[number];
 
 export const PRIMARY_HARNESS_IDS: HarnessId[] = ["claude", "codex", "grok"];
 
@@ -123,6 +124,8 @@ export interface HarnessPreset {
    * or Spawn; the coding loop still belongs to the CLI and acpx.
    */
   acpxCommand?: { command: string; args?: string[] };
+  /** Native direct-only transport; never register it as an ACP command. */
+  nativeCommand?: { protocol: "msp"; command: string; args: string[] };
 }
 
 export interface HarnessDoctorCheck {
@@ -264,6 +267,7 @@ function preset(
     providerLocked?: boolean;
     featured?: boolean;
     acpxCommand?: { command: string; args?: string[] };
+    nativeCommand?: HarnessPreset["nativeCommand"];
   },
 ): HarnessPreset {
   return {
@@ -329,6 +333,12 @@ export const PRESET_HARNESSES: HarnessPreset[] = [
       featured: true,
       acpxCommand: { command: "grok", args: ["agent", "stdio"] },
     },
+  ),
+  preset(
+    "muse", "Muse Code", "Muse Code through its native session protocol. Muse owns the coding loop and authentication.",
+    ["muse"], "Install Muse Code, sign in in a terminal, and use a build that supports `muse serve`.",
+    "https://dev.meta.ai/docs/muse-code", undefined,
+    { featured: true, nativeCommand: { protocol: "msp", command: "muse", args: ["serve"] } },
   ),
   preset(
     "copilot",
@@ -483,7 +493,7 @@ export const HARNESS_PERMISSION_PROFILES: HarnessPermissionProfile[] = [
 
 export const ACP_MODES: AcpMode[] = ["persistent", "oneshot"];
 
-const HARNESS_ID_SET = new Set<string>(ACP_HARNESS_IDS);
+const HARNESS_ID_SET = new Set<string>(HARNESS_IDS);
 
 export function isHarnessId(value: string | undefined): value is HarnessId {
   return Boolean(value && HARNESS_ID_SET.has(value));
@@ -721,7 +731,8 @@ export function parseAcpStatus(text: string): AcpStatusSnapshot {
 }
 
 export function isAcpSessionKey(key: string | undefined): boolean {
-  return Boolean(key && (key.includes(":acp:") || key.startsWith("acp:")));
+  // Historical name: engine callers use this for all dedicated harness sessions.
+  return Boolean(key && (key.includes(":acp:") || key.startsWith("acp:") || key.startsWith("direct:msp:")));
 }
 
 /**

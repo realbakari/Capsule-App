@@ -7,6 +7,7 @@ import { ResultWriter } from "./result-writer.js";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { prepareDirectPrompt } from "./direct-prompt.js";
+import { DirectMuseSession } from "@capsule/muse";
 import {
   DirectAcpHost,
   type DirectMcpOffer,
@@ -238,7 +239,7 @@ export class CapsuleEngine {
    * Everything from `spawnHarness` down calls this, not the adapter, so the
    * turn pipeline does not branch on which route carried it.
    */
-  private direct = new DirectAcpHost();
+  private direct = new DirectAcpHost((options) => new DirectMuseSession(options));
 
   /**
    * MCP servers to offer agents Capsule spawns itself.
@@ -823,13 +824,13 @@ export class CapsuleEngine {
       session.harnessState = "running";
       if (input.sessionId) this.repos.updateSession(session);
       else this.repos.insertSession(session);
-      this.log(`Spawned OpenClaw ACP session for ${harnessId} (${spawned.sessionKey})`);
+      this.log(`Spawned ${direct ? "direct" : "Gateway ACP"} session for ${harnessId} (${spawned.sessionKey})`);
       this.events.emit("state", { command: "harness-updated" });
       return {
         session,
         command: spawned.command,
         usedSlashCommand: spawned.usedSlashCommand,
-        detail: `ACP session ${spawned.sessionKey}`,
+        detail: `${preset.name} session started.`,
       };
     } catch (error) {
       session.harnessState = "error";
@@ -2446,6 +2447,22 @@ export class CapsuleEngine {
       this.appendEvent(run.id, "approval.requested", approval.action, { approval });
       this.events.emit("approval", approval);
       this.events.emit("run", run);
+      void payload.request.settled?.then(() => {
+        if (!this.directApprovals.delete(approval.id)) return;
+        const pending = this.repos.listApprovals("pending").find((item) => item.id === approval.id);
+        if (!pending) return;
+        pending.status = "cancelled";
+        pending.resolvedAt = nowIso();
+        this.repos.updateApproval(pending);
+        this.events.emit("approval", pending);
+        const current = this.requireRun(run.id);
+        if (!current.completedAt && current.status === "approval_required"
+          && !this.repos.listApprovals("pending").some((item) => item.runId === current.id)) {
+          current.status = "running";
+          this.repos.updateRun(current);
+          this.events.emit("run", current);
+        }
+      });
     });
     this.directUnsub = () => { replies(); activity(); };
   }
@@ -2564,6 +2581,8 @@ export class CapsuleEngine {
   /** Whether this turn should be carried by the CLI directly. */
   private useDirectMode(harnessId?: HarnessId): boolean {
     if (this.usingMock) return false;
+    // Native session protocols are local-only; never send an MSP CLI to acpx.
+    if (harnessId && presetFor(harnessId)?.nativeCommand) return true;
     const mode = this.settings.runtimeMode;
     if (mode === "openclaw") return false;
     // Direct mode can only drive an agent that speaks ACP itself.

@@ -623,8 +623,8 @@ export function Conversation() {
                 </button>
                 <button
                   className="chip"
-                  disabled={session?.openclawSessionKey?.startsWith("direct:acp:")}
-                  title={session?.openclawSessionKey?.startsWith("direct:acp:") ? "Direct agents support approval once here." : undefined}
+                  disabled={session?.openclawSessionKey?.startsWith("direct:")}
+                  title={session?.openclawSessionKey?.startsWith("direct:") ? "Direct agents support approval once here." : undefined}
                   onClick={() => void api.resolveApproval(pendingApproval.id, "approved_session").catch((error) => setNotice(formatUserError(error)))}
                 >
                   Approve session

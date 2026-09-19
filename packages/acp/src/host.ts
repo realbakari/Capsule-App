@@ -12,7 +12,13 @@ import {
 } from "@capsule/shared";
 
 import { explainDirectFailure, readCliError } from "./errors.js";
-import { DirectAcpSession, type AcpMcpServer, type DirectAcpEvents } from "./session.js";
+import { DirectAcpSession, type DirectAcpOptions, type AcpMcpServer, type DirectAcpEvents } from "./session.js";
+
+/** Protocol-neutral surface used by the workspace; transports own their wire formats. */
+export type DirectAgentSession = Pick<DirectAcpSession,
+  "on" | "busy" | "running" | "sessionId" | "models" | "reportedCapabilities" |
+  "reportedContext" | "reportedCommands" | "start" | "prompt" | "cancel" | "close" | "setConfig">;
+export type NativeSessionFactory = (options: DirectAcpOptions & { model?: string }) => DirectAgentSession;
 
 export type DirectActivity =
   | { type: "configuration"; sessionKey: string }
@@ -29,10 +35,8 @@ export type DirectActivity =
  * engine already makes for a coding turn and emits the same replies, so the
  * turn pipeline above it does not know or care which route carried it.
  *
- * It can only drive an agent that speaks ACP on its own — a preset with an
- * `acpxCommand`. That is a real limit, not an oversight: Claude Code and Codex
- * have no ACP mode of their own today and reach it through an adapter that
- * OpenClaw supplies, so they stay on the Gateway route.
+ * Native non-ACP transports are supplied by core through a narrow factory.
+ * This host owns their lifetime, but never translates or registers them as ACP.
  */
 
 export interface DirectSpawnInput {
@@ -61,25 +65,27 @@ export interface AcpReply {
 }
 
 /** The key a direct session is known by, so it cannot be mistaken for a Gateway one. */
-export function directSessionKey(harnessId: string, id: string): string {
-  return `direct:acp:${harnessId}:${id}`;
+export function directSessionKey(harnessId: string, id: string, protocol = "acp"): string {
+  return `direct:${protocol}:${harnessId}:${id}`;
 }
 
 export function isDirectSessionKey(key: string | undefined): boolean {
-  return Boolean(key?.startsWith("direct:acp:"));
+  return Boolean(key?.startsWith("direct:acp:") || key?.startsWith("direct:msp:"));
 }
 
 /** Whether this harness can be driven without the Gateway. */
 export function supportsDirectMode(harnessId: string): boolean {
-  return Boolean(PRESET_HARNESSES.find((preset) => preset.id === harnessId)?.acpxCommand);
+  const preset = PRESET_HARNESSES.find((preset) => preset.id === harnessId);
+  return Boolean(preset?.acpxCommand || preset?.nativeCommand);
 }
 
 /** The harnesses direct mode can drive, for a settings screen to name them. */
 export function directCapableHarnesses(): HarnessId[] {
-  return PRESET_HARNESSES.filter((preset) => preset.acpxCommand).map((preset) => preset.id);
+  return PRESET_HARNESSES.filter((preset) => supportsDirectMode(preset.id)).map((preset) => preset.id);
 }
 
 export class DirectAcpHost {
+  constructor(private readonly nativeSession?: NativeSessionFactory) {}
   /*
    * MCP servers offered to every agent this host spawns. Set by the
    * application once its servers are listening, because the URL has to exist
@@ -96,7 +102,7 @@ export class DirectAcpHost {
   readonly kind = "direct" as const;
 
   private readonly emitter = new EventEmitter();
-  private readonly sessions = new Map<string, DirectAcpSession>();
+  private readonly sessions = new Map<string, DirectAgentSession>();
   private readonly harnessBySession = new Map<string, HarnessId>();
   private counter = 0;
   private closing?: Promise<void>;
@@ -117,8 +123,8 @@ export class DirectAcpHost {
   /** What a user would run to get the same thing in a terminal. */
   acpCommandFor(harnessId: HarnessId): string {
     const preset = PRESET_HARNESSES.find((item) => item.id === harnessId);
-    if (!preset?.acpxCommand) return "";
-    return [preset.acpxCommand.command, ...(preset.acpxCommand.args ?? [])].join(" ");
+    const command = preset?.nativeCommand ?? preset?.acpxCommand;
+    return command ? [command.command, ...(command.args ?? [])].join(" ") : "";
   }
 
   async spawnAcpSession(
@@ -126,7 +132,8 @@ export class DirectAcpHost {
   ): Promise<{ sessionKey: string; usedSlashCommand: boolean; command: string; directSession?: DirectSessionIdentity }> {
     if (this.closing) throw new Error("The direct agent host is shutting down.");
     const preset = PRESET_HARNESSES.find((item) => item.id === input.harnessId);
-    if (!preset?.acpxCommand) {
+    const command = preset?.nativeCommand ?? preset?.acpxCommand;
+    if (!command) {
       throw new Error(
         `${preset?.name ?? input.harnessId} has no ACP mode of its own, so direct mode cannot drive it. Switch this thread to the OpenClaw Gateway, or pick an agent that does.`,
       );
@@ -142,9 +149,10 @@ export class DirectAcpHost {
       };
     }
 
-    const args = [...(preset.acpxCommand.args ?? [])];
+    if (preset?.nativeCommand && !this.nativeSession) throw new Error("The native session transport is unavailable.");
+    const args = [...(command.args ?? [])];
     const cwd = path.resolve(input.cwd ?? process.cwd());
-    const launchSignature = JSON.stringify(preset.acpxCommand);
+    const launchSignature = JSON.stringify(command);
     if (input.resume && (typeof input.resume.sessionId !== "string" || !input.resume.sessionId.trim() || input.resume.sessionId.length > 4096)) {
       throw new Error("The saved agent session identity is invalid. Start a new conversation; Capsule will not silently replace its history.");
     }
@@ -152,7 +160,7 @@ export class DirectAcpHost {
       throw new Error("The saved agent session belongs to a different harness, working folder or launch command. Start a new conversation; Capsule will not resume it in another workspace.");
     }
     // A model asked for at spawn time wins over the preset's own choice.
-    if (input.model && !input.resume) {
+    if (input.model && !input.resume && !preset?.nativeCommand) {
       const flag = args.indexOf("--model");
       if (flag >= 0) args[flag + 1] = input.model;
       else args.push("--model", input.model);
@@ -162,15 +170,19 @@ export class DirectAcpHost {
      * Whatever the host wants this agent to be able to reach. Capsule passes
      * its browser tools here; an empty list is the old behaviour.
      */
-    const offer = typeof this.mcpServers === "function" ? this.mcpServers(input) : { servers: this.mcpServers, dispose: () => {} };
-    const session = new DirectAcpSession({
-      command: preset.acpxCommand.command,
+    const offer = preset?.nativeCommand ? { servers: [], dispose: () => {} }
+      : typeof this.mcpServers === "function" ? this.mcpServers(input) : { servers: this.mcpServers, dispose: () => {} };
+    const options = {
+      command: command.command,
       args,
       cwd,
       ...(offer.servers.length > 0 ? { mcpServers: offer.servers } : {}),
-    });
+    };
+    const session = preset?.nativeCommand
+      ? this.nativeSession!({ ...options, model: input.resume ? undefined : input.model })
+      : new DirectAcpSession(options);
 
-    const key = directSessionKey(input.harnessId, `${Date.now().toString(36)}${this.counter++}`);
+    const key = directSessionKey(input.harnessId, `${Date.now().toString(36)}${this.counter++}`, preset?.nativeCommand?.protocol);
     this.mcpDisposers.set(key, offer.dispose);
     this.wire(key, session);
     // Track ownership before the handshake: Quit must also close a process
@@ -189,7 +201,7 @@ export class DirectAcpHost {
     return {
       sessionKey: key,
       usedSlashCommand: false,
-      command: [preset.acpxCommand.command, ...args].join(" "),
+      command: [command.command, ...args].join(" "),
       directSession: { sessionId: session.sessionId!, harnessId: input.harnessId, cwd, launchSignature },
     };
   }
@@ -267,7 +279,7 @@ export class DirectAcpHost {
   async doctorAcp(sessionKey: string): Promise<string> {
     const session = this.sessions.get(sessionKey);
     return session?.running
-      ? "Direct mode: the agent is running on this Mac and answering."
+      ? "Direct mode: the agent is running on this computer and answering."
       : "Direct mode: no agent is running for this thread.";
   }
 
@@ -288,7 +300,7 @@ export class DirectAcpHost {
     await session.setConfig(configId, value);
   }
 
-  private wire(key: string, session: DirectAcpSession): void {
+  private wire(key: string, session: DirectAgentSession): void {
     session.on("configuration", () => this.emitter.emit("activity", { type: "configuration", sessionKey: key }));
     session.on("message-end", () => this.emitter.emit("acp-reply", { sessionKey: key, done: true }));
     session.on("usage", (usage) => this.emitter.emit("activity", { type: "usage", sessionKey: key, usage }));

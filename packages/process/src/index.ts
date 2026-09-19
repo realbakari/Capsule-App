@@ -10,7 +10,11 @@ export const spawnCommandSync = crossSpawn.sync;
 
 /** Only terminate a child captured at spawn time, never a process name. */
 export function stopChild(child: ChildProcess, signal: NodeJS.Signals = "SIGTERM", group = false): void {
-  if (!child.pid || child.exitCode !== null || child.signalCode !== null) return;
+  if (!child.pid) return;
+  // A detached POSIX group can outlive its leader while tools still hold its
+  // pipes. Callers must capture this child themselves and request group cleanup.
+  const ownedGroup = group && process.platform !== "win32";
+  if (!ownedGroup && (child.exitCode !== null || child.signalCode !== null)) return;
   if (process.platform === "win32") {
     // A .cmd wrapper owns the CLI beneath it. Killing just cmd.exe leaks the
     // agent. /T follows this captured PID's children; /F is needed for consoles.

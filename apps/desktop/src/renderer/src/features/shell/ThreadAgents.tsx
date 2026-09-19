@@ -58,7 +58,7 @@ export function ThreadAgents() {
   const tasks = useMemo(() => run ? delegatedTasks(run, events) : [], [run, events]);
   const harness = harnesses.find((item) => item.id === session?.harnessId);
   const route = session?.openclawSessionKey
-    ? session.openclawSessionKey.startsWith("direct:acp:") ? "direct" : "openclaw"
+    ? session.openclawSessionKey.startsWith("direct:") ? "direct" : "openclaw"
     : session?.harnessState === "closed" ? undefined : harnessCapabilities({ harness, session }).route;
   const report = historical ? currentHistory ?? { state: "loading", detail: undefined } : eventLoad?.runId === run?.id ? eventLoad : undefined;
   const name = harness?.name ?? agents.find((item) => item.id === run?.agentId)?.name ?? run?.agentId ?? "Agent";
