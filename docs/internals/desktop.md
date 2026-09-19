@@ -401,8 +401,11 @@ cover the transcript. Plan entries are sanitised and capped.
 
 A running turn shows elapsed time, not just that it is running: a turn can go
 for minutes and "working" alone gives no way to tell a slow one from a stuck
-one. Activity rows carry an icon for the kind of work — command, read, edit,
-reasoning — so a list can be skimmed without reading every label. Turns that
+one. Activity rows sit tight under the reply they belong to. The row shows
+icons for the kinds of work in that group — read, edit, search, command,
+fetch, and the rest — taken from the ACP tool kind when the agent reports
+one, otherwise from the title. Expanding the row repeats that icon on each
+step. A generic wrench is only the fallback. Turns that
 touch, create, or modify files surface interactive file chips (`[+] Created`,
 `[~] Modified`, `[-] Deleted`) directly in the run summary and `TurnFilesCard`,
 linking immediately to file previews or diffs in the Inspector.

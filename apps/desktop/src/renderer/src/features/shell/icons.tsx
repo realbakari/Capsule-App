@@ -222,6 +222,18 @@ export function FileIcon(props: IconProps) {
   );
 }
 
+export function ListTodoIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="3" y="4.5" width="4" height="4" rx="0.6" />
+      <path d="m4 6.5 1 1 1.8-1.8" />
+      <rect x="3" y="10.5" width="4" height="4" rx="0.6" />
+      <rect x="3" y="16.5" width="4" height="4" rx="0.6" />
+      <path d="M11 6.5h9M11 12.5h9M11 18.5h9" />
+    </Svg>
+  );
+}
+
 export function DiffIcon(props: IconProps) {
   return (
     <Svg {...props}>

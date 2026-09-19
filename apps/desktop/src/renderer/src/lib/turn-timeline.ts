@@ -1,11 +1,14 @@
 import type { ChatMessage, Run, RunEvent } from "@capsule/shared";
 import { cleanActivityDetail } from "./activity";
 
+export type ToolKind = "read" | "edit" | "delete" | "search" | "execute" | "think" | "fetch" | "todo" | "other";
+
 export interface ToolObservation {
   id: string;
   timestamp: string;
   title: string;
   command: boolean;
+  kind: ToolKind;
   status: "running" | "waiting" | "completed" | "failed" | "reported";
 }
 
@@ -36,10 +39,12 @@ export function turnTranscript(messages: ChatMessage[], events: RunEvent[], run:
       : /^(completed|done)$/u.test(status) ? "completed"
         : /^(in_progress|running)$/u.test(status) ? "running"
           : status === "pending" ? "waiting" : previous?.status ?? "reported";
+    const command = data.kind === "execute" || stream === "command" || previous?.command === true
+      || /^(execute|run|ran|exec|bash|shell|sh|git|gh|ls|rg|grep)\b/iu.test(title);
+    const inferred = toolKindFrom(data.kind, title, command);
     calls.set(id, {
-      id, timestamp: previous?.timestamp ?? event.timestamp, title,
-      command: data.kind === "execute" || stream === "command" || previous?.command === true
-        || /^(execute|run|ran|exec|bash|shell|sh|git|gh|ls|rg|grep)\b/iu.test(title),
+      id, timestamp: previous?.timestamp ?? event.timestamp, title, command,
+      kind: inferred !== "other" ? inferred : previous?.kind ?? inferred,
       status: reported,
     });
   }
@@ -78,4 +83,37 @@ export function toolGroupLabel(tools: ToolObservation[]): string {
   const commands = tools.filter((tool) => tool.command).length;
   const others = tools.length - commands;
   return [commands ? `${commands} command${commands === 1 ? "" : "s"}` : "", others ? `${others} tool${others === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · ");
+}
+
+export function toolKindFrom(kind: unknown, title: string, command: boolean): ToolKind {
+  const reported = typeof kind === "string" ? kind.toLowerCase() : "";
+  if (reported === "read") return "read";
+  if (reported === "edit") return "edit";
+  if (reported === "delete") return "delete";
+  if (reported === "search") return "search";
+  if (reported === "execute") return "execute";
+  if (reported === "think") return "think";
+  if (reported === "fetch") return "fetch";
+  if (command) return "execute";
+  const text = title.toLowerCase();
+  if (text.includes("todo") || /\bplan\b/.test(text)) return "todo";
+  if (/^read\b|\bread_file\b|\bfileread\b/.test(text)) return "read";
+  if (/\b(edit|write|patch|strreplace|apply_patch)\b/.test(text)) return "edit";
+  if (/\b(grep|glob|search|find)\b/.test(text)) return "search";
+  if (/\b(web|fetch|http|browse)\b/.test(text)) return "fetch";
+  if (/\b(bash|shell|exec|command|terminal)\b/.test(text)) return "execute";
+  if (/\bthink\b/.test(text)) return "think";
+  if (/\b(delete|unlink)\b/.test(text)) return "delete";
+  return "other";
+}
+
+export function toolKindOrder(tools: ToolObservation[]): ToolKind[] {
+  const seen = new Set<ToolKind>();
+  const order: ToolKind[] = [];
+  for (const tool of tools) {
+    if (seen.has(tool.kind)) continue;
+    seen.add(tool.kind);
+    order.push(tool.kind);
+  }
+  return order;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ChatMessage, Run, RunEvent } from "@capsule/shared";
-import { turnTranscript, toolGroupLabel, toolObservationState } from "./turn-timeline.js";
+import { turnTranscript, toolGroupLabel, toolKindFrom, toolKindOrder, toolObservationState } from "./turn-timeline.js";
 
 const run = { id: "run", status: "running" } as Run;
 const time = (second: number) => new Date(1_000_000 + second * 1000).toISOString();
@@ -38,6 +38,19 @@ describe("turn transcript", () => {
     expect(toolObservationState(tool, { ...run, status: "cancelled" })).toBe("Stopped");
     expect(toolObservationState(tool, run, true)).toBe("Stopping");
   });
+  it("classifies tool kinds from the ACP kind and the title", () => {
+    expect(toolKindFrom("read", "anything", false)).toBe("read");
+    expect(toolKindFrom("execute", "git status", true)).toBe("execute");
+    expect(toolKindFrom(undefined, "todo_write", false)).toBe("todo");
+    expect(toolKindFrom(undefined, "Read README.md", false)).toBe("read");
+    expect(toolKindFrom(undefined, "grep src", false)).toBe("search");
+    expect(toolKindOrder([
+      { id: "a", timestamp: time(1), title: "Read", command: false, kind: "read", status: "completed" },
+      { id: "b", timestamp: time(2), title: "Edit", command: false, kind: "edit", status: "completed" },
+      { id: "c", timestamp: time(3), title: "Read again", command: false, kind: "read", status: "completed" },
+    ])).toEqual(["read", "edit"]);
+  });
+
   it("bounds inline work and does not double-count anonymous completions", () => {
     const result = turnTranscript([], [...Array.from({ length: 140 }, (_, i) => event(String(i), i)),
       { ...event("end", 200), type: "tool.completed", data: undefined }], run);
