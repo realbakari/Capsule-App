@@ -123,6 +123,38 @@ describe("readSessionUpdate", () => {
     expect(readSessionUpdate(undefined)).toBeUndefined();
   });
 
+  it("lifts a plan snapshot and todo-writing tools, not other raw input", () => {
+    expect(readSessionUpdate({
+      sessionId: "s",
+      update: {
+        sessionUpdate: "plan",
+        entries: [
+          { content: "Map the Review panel", status: "completed" },
+          { content: "Add stack reads", status: "in_progress" },
+        ],
+      },
+    })?.plan).toEqual([
+      { id: "0", content: "Map the Review panel", status: "completed" },
+      { id: "1", content: "Add stack reads", status: "inProgress" },
+    ]);
+    expect(readSessionUpdate({
+      update: {
+        sessionUpdate: "tool_call",
+        title: "todo_write",
+        toolCallId: "t1",
+        status: "completed",
+        rawInput: { todos: [{ content: "Chip paths", status: "pending" }] },
+      },
+    })?.plan).toEqual([{ id: "0", content: "Chip paths", status: "pending" }]);
+    expect(readSessionUpdate({
+      update: {
+        sessionUpdate: "tool_call",
+        title: "Read file",
+        rawInput: { path: "secret.ts", todos: [{ content: "should not leak", status: "pending" }] },
+      },
+    })?.plan).toBeUndefined();
+  });
+
   it("retains status-only updates by tool call id", () => {
     expect(readSessionUpdate({ sessionId: "s", update: {
       sessionUpdate: "tool_call_update", toolCallId: "read-1", status: "completed",

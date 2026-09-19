@@ -18,6 +18,7 @@ export type DirectActivity =
   | { type: "configuration"; sessionKey: string }
   | { type: "usage"; sessionKey: string; usage: Parameters<DirectAcpEvents["usage"]>[0] }
   | { type: "tool"; sessionKey: string; tool: Parameters<DirectAcpEvents["tool"]>[0] }
+  | { type: "plan"; sessionKey: string; plan: Parameters<DirectAcpEvents["plan"]>[0] }
   | { type: "permission"; sessionKey: string; request: Parameters<DirectAcpEvents["permission"]>[0] };
 
 /*
@@ -292,6 +293,7 @@ export class DirectAcpHost {
     session.on("message-end", () => this.emitter.emit("acp-reply", { sessionKey: key, done: true }));
     session.on("usage", (usage) => this.emitter.emit("activity", { type: "usage", sessionKey: key, usage }));
     session.on("tool", (tool) => this.emitter.emit("activity", { type: "tool", sessionKey: key, tool }));
+    session.on("plan", (plan) => this.emitter.emit("activity", { type: "plan", sessionKey: key, plan }));
     session.on("permission", (request) => {
       if (!this.emitter.emit("activity", { type: "permission", sessionKey: key, request })) request.cancel();
     });

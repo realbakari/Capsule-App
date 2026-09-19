@@ -2424,6 +2424,13 @@ export class CapsuleEngine {
         this.appendEvent(run.id, "tool", payload.tool.title, { ...payload.tool });
         return;
       }
+      if (payload.type === "plan") {
+        this.appendEvent(run.id, "plan", payload.plan.entries[0]?.content ?? "Plan", {
+          streamKind: "plan",
+          entries: payload.plan.entries,
+        });
+        return;
+      }
       const approval: ApprovalRequest = {
         id: createId("approval"), runId: run.id, agentId: run.agentId,
         agentName: session?.harnessId ?? run.agentId, action: payload.request.title,

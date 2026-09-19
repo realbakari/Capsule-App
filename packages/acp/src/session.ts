@@ -3,7 +3,7 @@ import { spawnCommand as spawn, stopChild } from "@capsule/process";
 import { EventEmitter } from "node:events";
 import { StringDecoder } from "node:string_decoder";
 
-import type { AcpModelCatalog, DelegationDetails, ApprovalToolDetails, AgentCapabilityReport, ReportedContextUsage, ReportedTurnUsage, AgentPromptBlock, AgentCommand } from "@capsule/shared";
+import type { AcpModelCatalog, DelegationDetails, ApprovalToolDetails, AgentCapabilityReport, ReportedContextUsage, ReportedTurnUsage, AgentPromptBlock, AgentCommand, RunTask } from "@capsule/shared";
 import { TextBudget, readAgentCapabilities, readReportedTurnUsage } from "@capsule/shared";
 import { readCliError } from "./errors.js";
 import {
@@ -36,6 +36,8 @@ export interface DirectAcpEvents {
   "message-end": () => void;
   /** A tool the agent is running, for the work log. */
   tool: (payload: { title: string; status?: string; kind?: string; toolCallId?: string; delegation?: DelegationDetails }) => void;
+  /** A plan or todo list the agent reported for this turn. */
+  plan: (payload: { entries: RunTask[] }) => void;
   /** The turn finished, with the agent's own reason. */
   done: (payload: { stopReason?: string }) => void;
   /** The agent wants permission and is blocked until it is answered. */
@@ -450,6 +452,7 @@ export class DirectAcpSession {
         }
         this.emitter.emit("text", { text: update.text, thought: Boolean(update.thought) });
       }
+      if (update.plan) this.emitter.emit("plan", { entries: update.plan });
       if (update.tool) {
         const { toolCallId, title } = update.tool;
         if (toolCallId && title) {

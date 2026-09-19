@@ -24,7 +24,9 @@ import {
   XIcon,
 } from "../shell/icons";
 import { ComposerMenu, detectTrigger, type SuggestItem } from "./ComposerMenu";
+import { ComposerTasks } from "./ComposerTasks";
 import { searchComposerSkills, skillSource } from "../../lib/composer-skills";
+import { tasksFromRunEvents } from "@capsule/shared";
 
 const SUGGESTIONS = [
   {
@@ -141,6 +143,7 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
     doctorHarness,
     workspaceMode,
     setWorkspaceMode,
+    events,
     attachments,
     promptStashes,
     pickAttachments,
@@ -358,6 +361,8 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
   const modeOptions = MODES.map((item) => ({ id: item, label: item.charAt(0).toUpperCase() + item.slice(1) }));
   const sendOnEnter = settings?.composerSendKey !== "cmd-enter";
   const selectedHarness = harnesses.find((item) => item.id === agentId);
+  const taskEvents = useMemo(() => activeRun ? (events ?? []).filter((event) => event.runId === activeRun.id) : events ?? [], [events, activeRun?.id]);
+  const tasks = useMemo(() => tasksFromRunEvents(taskEvents), [taskEvents]);
 
   return (
     <div ref={composerRef} className={`composer composer-dock composer-overlay-corner-masks${busy ? " composer-dock--with-activity" : ""}`}>
@@ -377,6 +382,7 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
           ))}
         </div>
       )}
+      <ComposerTasks tasks={tasks} running={Boolean(activeRun)} />
       <div
         className={`composer-glass ${dropping ? "dropping" : ""}`}
         onDragOver={(event) => {

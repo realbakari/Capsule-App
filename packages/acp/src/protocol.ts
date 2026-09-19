@@ -1,4 +1,4 @@
-import { readAgentCommands, readDelegationDetails, readReportedContextUsage, sanitizeUntrusted, type AgentCommand, type AcpModelCatalog, type DelegationDetails, type ApprovalToolDetails, type ReportedContextUsage } from "@capsule/shared";
+import { readAgentCommands, readDelegationDetails, readPlanEntries, readReportedContextUsage, sanitizeUntrusted, type AgentCommand, type AcpModelCatalog, type DelegationDetails, type ApprovalToolDetails, type ReportedContextUsage, type RunTask } from "@capsule/shared";
 
 /*
  * The wire, on its own.
@@ -75,6 +75,8 @@ export interface SessionUpdate {
   startsTool?: boolean;
   /** A tool the agent is running, if this update is about one. */
   tool?: { title?: string; status?: string; kind?: string; toolCallId?: string; delegation?: DelegationDetails };
+  /** A plan or todo list the agent reported for this turn. */
+  plan?: RunTask[];
 }
 
 function textFromContent(content: unknown): string | undefined {
@@ -117,20 +119,29 @@ export function readSessionUpdate(params: unknown): SessionUpdate | undefined {
     };
   }
 
+  if (kind === "plan") {
+    const plan = readPlanEntries(update);
+    return plan ? { sessionId, plan } : undefined;
+  }
+
   if (kind === "tool_call" || kind === "tool_call_update") {
-    const tool = update as { title?: unknown; status?: unknown; kind?: unknown; toolCallId?: unknown };
+    const tool = update as { title?: unknown; status?: unknown; kind?: unknown; toolCallId?: unknown; rawInput?: unknown; rawOutput?: unknown };
     const title = toolLabel(tool.title, MAX_TOOL_TITLE_LENGTH);
     // IDs are opaque. Dropping an oversized ID is safe; truncating it can
     // merge unrelated tools. Bound display metadata before emitting it too.
     const toolCallId = typeof tool.toolCallId === "string" && tool.toolCallId.length <= MAX_TOOL_ID_LENGTH ? tool.toolCallId : undefined;
     if (!title && !toolCallId) return undefined;
     const delegation = readDelegationDetails(tool);
+    const todo = /todo/i.test(title ?? "")
+      ? readPlanEntries(tool.rawInput) ?? readPlanEntries(tool.rawOutput)
+      : undefined;
     return {
       sessionId,
       ...(kind === "tool_call" ? { startsTool: true } : {}),
       tool: { title, status: toolLabel(tool.status, 64), toolCallId,
         ...(typeof tool.kind === "string" && /^(read|edit|delete|move|search|execute|think|fetch|switch_mode|other)$/u.test(tool.kind) ? { kind: tool.kind } : {}),
         ...(delegation ? { delegation } : {}) },
+      ...(todo ? { plan: todo } : {}),
     };
   }
 

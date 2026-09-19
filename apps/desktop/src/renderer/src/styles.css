@@ -1262,6 +1262,85 @@
   box-shadow: 0 12px 28px -18px rgb(0 0 0 / 55%);
   overflow: visible;
 }
+.composer-tasks {
+  max-width: var(--chat-max);
+  margin: 0 auto 0.55rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--control-radius);
+  background: var(--surface-0);
+  overflow: hidden;
+  position: relative;
+  z-index: 1;
+}
+.composer-tasks-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  padding: 0.5rem 0.7rem;
+  text-align: left;
+  font-size: 0.75rem;
+}
+.composer-tasks-toggle svg.open { transform: rotate(90deg); }
+.composer-tasks-current {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 550;
+}
+.composer-tasks-count {
+  flex-shrink: 0;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.6875rem;
+}
+.composer-tasks-count.is-complete { color: var(--green); }
+.composer-tasks-segments {
+  display: flex;
+  width: 3.5rem;
+  gap: 0.15rem;
+  flex-shrink: 0;
+}
+.composer-tasks-segment {
+  flex: 1;
+  height: 3px;
+  border-radius: 99px;
+  background: rgb(255 255 255 / 12%);
+}
+.composer-tasks-segment.is-completed { background: var(--green); }
+.composer-tasks-segment.is-inProgress { background: var(--text); }
+.composer-tasks-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0.35rem 0.4rem;
+  max-height: 12rem;
+  overflow: auto;
+}
+.composer-tasks-item {
+  display: grid;
+  grid-template-columns: 0.9rem minmax(0, 1fr) auto auto;
+  gap: 0.4rem;
+  align-items: center;
+  padding: 0.28rem 0.4rem;
+  font-size: 0.75rem;
+}
+.composer-tasks-item.is-completed { color: var(--text-faint); }
+.composer-tasks-item.is-inProgress { color: var(--text); }
+.composer-tasks-mark {
+  font-size: 0.65rem;
+  text-align: center;
+}
+.composer-tasks-item.is-completed .composer-tasks-mark { color: var(--green); }
+.composer-tasks-copy {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
 .suggest-menu {
   position: absolute;
   left: 0.55rem;

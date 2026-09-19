@@ -1,5 +1,8 @@
 # Drafts, attachments, and prompt stash
 
+Task lists reflect the agent's latest plan, including a cleared plan. After a
+turn ends, tasks it did not finish are labelled **Incomplete**, not **Running**.
+
 Capsule keeps an unfinished draft for each conversation on this Mac. Switching
 projects or conversations and returning later restores its prompt and selected
 attachments. A successful send clears that draft.

@@ -248,6 +248,8 @@ transcript remains the primary reading surface.
 
 HTTP and HTTPS links in rendered Markdown open the Inspector's embedded Browser
 surface. Non-web schemes keep the platform handler fallback.
+Task plans accept an empty replacement;
+unfinished tasks in ended turns are labelled Incomplete, not Running.
 Remote command failures map to safe guidance rather than displaying raw output
 that may contain authentication URLs.
 
@@ -377,6 +379,11 @@ The conversation title has a hidden level-one heading; each rendered message
 has a hidden level-two author heading (including steering and attachment-only
 messages). Reply headings remain below those boundaries. Hidden labels are
 nonselectable and do not change copied message text or visible layout.
+
+ACP `plan` updates and todo-writing tools become a **Tasks** card above the
+composer: current step, `n/m complete`, and an expandable list. Empty plan
+payloads stay off-screen. The card is in the composer column so it does not
+cover the transcript. Plan entries are sanitised and capped.
 
 A running turn shows elapsed time, not just that it is running: a turn can go
 for minutes and "working" alone gives no way to tell a slow one from a stuck
