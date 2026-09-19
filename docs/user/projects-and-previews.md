@@ -164,6 +164,11 @@ or preferences. Errors remain visible if clearing fails.
 
 ## Files and terminal ownership
 
+In a narrow Files panel, the file list fills the panel. Select a file to see its
+preview; **Toggle workspace tree** returns to the list. Wider panels show both
+side by side. A slow preview will not pull you back after you switch tools or
+close the panel, and changing folders never shows the previous folder's files.
+
 An open file keeps the project, folder and revision it was read from. Navigating
 elsewhere flushes its pending edit to that original file, never the new folder.
 Conflicts require an explicit reload or overwrite decision.

@@ -113,6 +113,13 @@ Tools: **Launch**, **Review**, **Terminal**, **Browser**, **Files**, **Agents**,
 
 - `+` opens Launch. Tabs are not nested buttons. Maximize, tree toggle, and close live in the chrome.
 - **Files** is a split: preview on the left, expandable tree on the right. Folders expand **in place**. There is no navigate-into-directory / `← ..` stack and no `dir` current-path state.
+  Below 480 CSS pixels of actual panel width, the tree becomes full-width
+  navigation rather than a translucent preview overlay. Opening a file shows its
+  preview; the tree toggle returns to navigation. Maximizing uses the measured
+  width, not the saved drag width. Empty previews stay within their own pane.
+  Root listings never borrow another folder's rows while loading or failing.
+  Leaving Files, closing its tab or unmounting the inspector invalidates pending
+  preview requests so their completion cannot reopen the panel.
 - Click a file to preview it. Images render as `data:` URLs (`img-src 'self' data:`). Text is highlighted and can be edited with conflict-aware save. Binary files show a notice. Mention / Open / Edit live on the preview bar.
 - Hidden tree names: `node_modules`, `.git`, `dist`, `out`, `.next`, `coverage`, `build`, `Pods`, `.DS_Store`.
 - **Review** is git status, stage / discard / commit, diff, push, open-PR

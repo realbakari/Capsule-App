@@ -3,6 +3,7 @@ import { useState } from "react";
 import { ProjectActionDialog } from "../features/shell/ProjectActionDialog";
 import { SkillsDirectory } from "../features/library/SkillsDirectory";
 import { Inspector } from "../features/shell/Inspector";
+import { runFilesRegressions } from "./files-regressions";
 import { EmbeddedBrowser } from "../features/shell/EmbeddedBrowser";
 import { PersistentTerminals } from "../features/terminal/TerminalDock";
 import { FileDiff } from "../features/shell/FileDiff";
@@ -343,6 +344,12 @@ window.runRendererRegressions = async () => {
   };
   root.render(<Inspector />);
   await until(() => document.querySelector(".file-preview-code"));
+  // This ownership/memoization fixture needs both panes. Compact navigation
+  // and real stylesheet geometry are exercised separately below.
+  document.querySelector<HTMLElement>(".codex-inspector")!.style.minWidth = "520px";
+  if (!document.querySelector(".codex-file-tree-pane")) {
+    document.querySelector<HTMLButtonElement>('[aria-label="Toggle workspace tree"]')!.click();
+  }
   button("Edit").click(); await until(() => document.querySelector(".file-editor-area"));
   await until(() => document.querySelectorAll(".codex-tree-item").length >= 300);
   treeReads = 0;
@@ -1106,6 +1113,8 @@ window.runRendererRegressions = async () => {
   await runSavedPreviewRegressions(host);
   phase("workspace extensions");
   await runWorkspaceExtensionRegressions(host, contextBase);
+  phase("files layout and navigation");
+  await runFilesRegressions(host, contextBase);
   phase("complete");
   layoutStyles.media = "not all";
   return "Renderer regressions passed: recovery, editor ownership and memoization, browser navigation and discovery, bounded diff pages and review notes, terminal persistence, send admission, 1,000 stream frames without snapshot reloads, reconnect/history reconciliation.";

@@ -2661,7 +2661,20 @@ select:focus,
   letter-spacing: 0.02em;
 }
 
-/* State 2: Files Split Workspace (matching Screenshot 2) */
+/* Files keep navigation separate from preview content at every panel width. */
+.codex-files-surface {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.codex-files-surface > .advanced {
+  flex-shrink: 0;
+  max-height: 40%;
+  overflow: auto;
+  overflow-wrap: anywhere;
+}
 .codex-files-workspace {
   position: relative;
   flex: 1;
@@ -2689,6 +2702,7 @@ select:focus,
 }
 .codex-empty-file-state {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2696,6 +2710,7 @@ select:focus,
   padding: 3rem 1.5rem;
   text-align: center;
   color: var(--text-muted);
+  overflow-wrap: anywhere;
 }
 .codex-empty-file-icon {
   color: var(--text-faint);
@@ -2733,20 +2748,19 @@ select:focus,
   border-left: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
-  background: color-mix(in srgb, var(--surface-0) 45%, transparent);
+  background: var(--surface-0);
   flex-shrink: 0;
   overflow: hidden;
 }
-.codex-file-tree-pane.overlay {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 14.5rem;
+.codex-files-workspace.compact.tree-visible .codex-file-preview-pane {
+  display: none;
+}
+.codex-files-workspace.compact .codex-file-tree-pane {
+  flex: 1;
+  width: 100%;
   max-width: none;
-  min-width: 12rem;
-  z-index: 3;
-  box-shadow: -12px 0 24px rgb(0 0 0 / 28%);
+  min-width: 0;
+  border-left: 0;
 }
 .codex-tree-search-wrap {
   display: flex;
@@ -2771,7 +2785,7 @@ select:focus,
 .codex-tree-search-icon svg {
   display: block;
 }
-.codex-tree-search {
+.codex-tree-search-wrap .codex-tree-search {
   flex: 1;
   min-width: 0;
   height: 1.25rem;

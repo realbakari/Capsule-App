@@ -180,7 +180,6 @@ export const FileTreePane = memo(function FileTreePane({
   searchError,
   onRetrySearch,
   fileSearch,
-  overlay,
   folderRoots,
   activeRoot,
   previewPath,
@@ -201,7 +200,6 @@ export const FileTreePane = memo(function FileTreePane({
   searchError?: string;
   onRetrySearch?: () => void;
   fileSearch: string;
-  overlay: boolean;
   folderRoots: string[];
   activeRoot?: string;
   previewPath?: string;
@@ -217,7 +215,7 @@ export const FileTreePane = memo(function FileTreePane({
   const rootEntries = useMemo(() => sortTreeEntries(listing), [listing]);
   const gitMarks = useMemo(() => indexGitMarks(gitFiles), [gitFiles]);
   return (
-    <div className={`codex-file-tree-pane${overlay ? " overlay" : ""}`}>
+    <div className="codex-file-tree-pane">
       <div className="codex-tree-search-wrap">
         <span className="codex-tree-search-icon" aria-hidden>
           <SearchIcon size={14} />
@@ -225,6 +223,7 @@ export const FileTreePane = memo(function FileTreePane({
         <input
           type="text"
           className="codex-tree-search"
+          aria-label="Filter workspace files"
           placeholder="Filter files..."
           value={fileSearch}
           onChange={(event) => onFileSearchChange(event.target.value)}
@@ -281,7 +280,11 @@ export const FileTreePane = memo(function FileTreePane({
             ))
           )
         ) : rootEntries.length === 0 ? (
-          <div className="codex-tree-empty faint">Folder is empty</div>
+          directoryStates?.[""]?.error ? null : (
+            <div className="codex-tree-empty faint" role="status">
+              {directoryStates?.[""]?.loading || !directoryStates?.[""] ? "Loading files…" : "Folder is empty"}
+            </div>
+          )
         ) : (
           <TreeEntries
             entries={rootEntries}

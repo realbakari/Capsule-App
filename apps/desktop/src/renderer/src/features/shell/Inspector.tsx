@@ -144,6 +144,7 @@ const TOOL_SHORTCUTS: Record<InspectorTool, string> = {
 const PANEL_MIN_WIDTH = 340;
 const PANEL_MAX_WIDTH = 1080;
 const CONVERSATION_MIN_WIDTH = 480;
+const FILES_SPLIT_MIN_WIDTH = 480;
 
 /** The width the panel and the conversation share. */
 function available(): number {
@@ -236,6 +237,19 @@ export function Inspector() {
     try { localStorage.setItem("capsule.inspectorWidth", String(panelWidth)); } catch { /* Optional preference. */ }
   }, [panelWidth]);
   const [showTree, setShowTree] = useState(true);
+  const inspectorElement = useRef<HTMLElement>(null);
+  const [compactFiles, setCompactFiles] = useState(false);
+  useLayoutEffect(() => {
+    const element = inspectorElement.current;
+    if (!element) return;
+    // Use the rendered width: the saved drag width is wrong when maximized
+    // or constrained by a smaller window.
+    const measure = () => setCompactFiles(element.clientWidth < FILES_SPLIT_MIN_WIDTH);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
 
   const [activeTool, setActiveTool] = useState<InspectorTool>(() => toolFromTab(inspectorTab));
   const [openTabs, setOpenTabs] = useState<OpenTabItem[]>(() => {
@@ -313,7 +327,9 @@ export function Inspector() {
   }), [api, projectId, activeRoot, scope]);
   const directoryStates = useSyncExternalStore(directoryCache.subscribe, directoryCache.getSnapshot);
   const refreshDirectory = useCallback((path: string) => { void directoryCache.load(path, true); }, [directoryCache]);
-  const listing = directoryStates[""]?.entries ?? files;
+  // Only this cache knows which root owns its entries. The workspace's latest
+  // listing may still belong to the previous conversation or another folder.
+  const listing = directoryStates[""]?.entries ?? [];
   const childrenByDir = useMemo(() => Object.fromEntries(Object.entries(directoryStates)
     .filter((entry): entry is [string, typeof entry[1] & { entries: FileEntry[] }] => Boolean(entry[1].entries))
     .map(([path, value]) => [path, value.entries])), [directoryStates]);
@@ -515,6 +531,7 @@ export function Inspector() {
 
   useLayoutEffect(() => {
     setPreviewDoc(undefined);
+    setShowTree(true);
     setPreviewEditing(false);
     setEditing(undefined);
     setPreview("");
@@ -557,6 +574,7 @@ export function Inspector() {
 
   function selectTool(tool: InspectorTool) {
     if (tool !== "review") diffRequests.capture("diff");
+    if (tool !== "files") fileRequest.current += 1;
     setActiveTool(tool);
     if (tool !== "launcher") {
       setOpenTabs((current) => {
@@ -581,6 +599,7 @@ export function Inspector() {
 
   useEffect(() => {
     const next = toolFromTab(inspectorTab);
+    if (next !== "files") fileRequest.current += 1;
     setActiveTool((current) => (current === next ? current : next));
     if (next === "launcher") return;
     setOpenTabs((current) => {
@@ -588,6 +607,8 @@ export function Inspector() {
       return [...current, { id: next, title: toolTitle(next) }];
     });
   }, [inspectorTab]);
+
+  useEffect(() => () => { fileRequest.current += 1; }, []);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -611,6 +632,7 @@ export function Inspector() {
   }, []);
 
   function closeTab(id: InspectorTool) {
+    if (id === "files") fileRequest.current += 1;
     const nextTabs = openTabs.filter((tab) => tab.id !== id);
     setOpenTabs(nextTabs);
     if (activeTool !== id) return;
@@ -678,8 +700,7 @@ export function Inspector() {
   const openRoot = useCallback((root: string) => {
     setFileRoot(root);
     setExpanded(new Set());
-    void directoryCache.refresh([""]);
-  }, [directoryCache]);
+  }, []);
 
   const toggleFolder = useCallback((path: string) => {
     const closing = expanded.has(path);
@@ -744,6 +765,9 @@ export function Inspector() {
     }
     setActiveTool("files");
     setInspectorOpen(true);
+    if (inspectorElement.current && inspectorElement.current.clientWidth < FILES_SPLIT_MIN_WIDTH) {
+      setShowTree(false);
+    }
   }, [api, projectId, activeRoot, setInspectorOpen]);
 
   async function showFileDiff(relative: string) {
@@ -785,6 +809,7 @@ export function Inspector() {
 
   return (
     <aside
+      ref={inspectorElement}
       className={`inspector codex-inspector${isMaximized ? " maximized" : ""}`}
       data-resizing={resizing || sizing ? "true" : undefined}
       style={!isMaximized ? { width: `${panelWidth}px` } : undefined}
@@ -843,6 +868,7 @@ export function Inspector() {
               className={`icon-btn${showTree ? " active" : ""}`}
               title="Toggle workspace tree"
               aria-label="Toggle workspace tree"
+              aria-expanded={showTree}
               onClick={() => setShowTree((prev) => !prev)}
             >
               <ColumnsIcon size={13} />
@@ -964,72 +990,7 @@ export function Inspector() {
         )}
 
         {activeTool === "files" && (
-          <div className="codex-files-workspace">
-            <div className="codex-file-preview-pane">
-              {previewDoc ? (
-                <FilePreviewView
-                  doc={previewEditing ? { ...previewDoc, contents: preview } : previewDoc}
-                  editing={previewEditing}
-                  contents={preview}
-                  saveState={saveState}
-                  onChange={(value) => {
-                    if (!editing || !fileDrafts.change(editing, value, revisionRef.current.value)) {
-                      setNotice("Unsaved file recovery is full. Save or discard another draft before continuing.");
-                      return;
-                    }
-                    setPreview(value);
-                    setSaveState("pending");
-                    saverRef.current?.change(value);
-                  }}
-                  onMention={() => {
-                    const prefix =
-                      activeRoot && activeRoot !== conversationRoot
-                        ? `${folderBasename(activeRoot)}/`
-                        : "";
-                    mentionFile(`${prefix}${previewDoc.path}`);
-                  }}
-                  onOpen={() => {
-                    if (!activeRoot) return;
-                    void openPath(`${activeRoot.replace(/\/$/, "")}/${previewDoc.path}`);
-                  }}
-                  onEdit={() => setPreviewEditing(true)}
-                  onView={() => {
-                    void saverRef.current?.flush();
-                    setPreviewEditing(false);
-                    setPreviewDoc((current) =>
-                      current?.kind === "text" ? { ...current, contents: preview } : current,
-                    );
-                  }}
-                  onReload={() => {
-                    saverRef.current?.discard();
-                    if (editing) fileDrafts.discard(editing);
-                    void previewFile(previewDoc.path);
-                  }}
-                  onRetry={() => void saverRef.current?.flush()}
-                  onCopy={() => void navigator.clipboard.writeText(preview).catch((error) => setNotice(formatUserError(error)))}
-                  onOverwrite={() => {
-                    revisionRef.current.value = undefined;
-                    void saverRef.current?.flush();
-                  }}
-                />
-              ) : (
-                <div className="codex-empty-file-state">
-                  <div className="codex-empty-file-icon" aria-hidden>
-                    <FileIcon size={46} />
-                  </div>
-                  <h3>Open file</h3>
-                  <p>Select a file from the workspace tree</p>
-                  {!activeRoot && (
-                    <div className="actions" style={{ marginTop: 14 }}>
-                      <button className="send-btn-pill" onClick={() => void pickProjectDirectory()}>
-                        Attach folder
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
+          <div className="codex-files-surface">
             <RecoverableFiles onError={setNotice} onDiscard={(owner) => {
               fileDrafts.discard(owner);
               if (editing && fileOwnerKey(editing) === fileOwnerKey(owner)) {
@@ -1040,30 +1001,96 @@ export function Inspector() {
                 void previewFile(owner.path);
               }
             }} />
-            {showTree ? (
-              <FileTreePane
-                listing={listing}
-                expanded={expanded}
-                childrenByDir={childrenByDir}
-                directoryStates={directoryStates}
-                onRefreshDirectory={refreshDirectory}
-                searchHits={searchHits}
-                searchLoading={fileSearchLoading}
-                searchError={currentFileSearch?.error}
-                onRetrySearch={retryFileSearch}
-                fileSearch={fileSearch}
-                overlay={panelWidth < 480}
-                folderRoots={folderRoots}
-                activeRoot={activeRoot}
-                previewPath={previewDoc?.path}
-                gitFiles={git?.files}
-                onFileSearchChange={setFileSearch}
-                onClearSearch={clearFileSearch}
-                onOpenRoot={openRoot}
-                onToggleFolder={toggleFolder}
-                onPreviewFile={previewFile}
-              />
-            ) : null}
+            <div className={`codex-files-workspace${compactFiles ? " compact" : ""}${showTree && activeRoot ? " tree-visible" : ""}`}>
+              <div className="codex-file-preview-pane">
+                {previewDoc ? (
+                  <FilePreviewView
+                    doc={previewEditing ? { ...previewDoc, contents: preview } : previewDoc}
+                    editing={previewEditing}
+                    contents={preview}
+                    saveState={saveState}
+                    onChange={(value) => {
+                      if (!editing || !fileDrafts.change(editing, value, revisionRef.current.value)) {
+                        setNotice("Unsaved file recovery is full. Save or discard another draft before continuing.");
+                        return;
+                      }
+                      setPreview(value);
+                      setSaveState("pending");
+                      saverRef.current?.change(value);
+                    }}
+                    onMention={() => {
+                      const prefix =
+                        activeRoot && activeRoot !== conversationRoot
+                          ? `${folderBasename(activeRoot)}/`
+                          : "";
+                      mentionFile(`${prefix}${previewDoc.path}`);
+                    }}
+                    onOpen={() => {
+                      if (!activeRoot) return;
+                      void openPath(`${activeRoot.replace(/\/$/, "")}/${previewDoc.path}`);
+                    }}
+                    onEdit={() => setPreviewEditing(true)}
+                    onView={() => {
+                      void saverRef.current?.flush();
+                      setPreviewEditing(false);
+                      setPreviewDoc((current) =>
+                        current?.kind === "text" ? { ...current, contents: preview } : current,
+                      );
+                    }}
+                    onReload={() => {
+                      saverRef.current?.discard();
+                      if (editing) fileDrafts.discard(editing);
+                      void previewFile(previewDoc.path);
+                    }}
+                    onRetry={() => void saverRef.current?.flush()}
+                    onCopy={() => void navigator.clipboard.writeText(preview).catch((error) => setNotice(formatUserError(error)))}
+                    onOverwrite={() => {
+                      revisionRef.current.value = undefined;
+                      void saverRef.current?.flush();
+                    }}
+                  />
+                ) : (
+                  <div className="codex-empty-file-state">
+                    <div className="codex-empty-file-icon" aria-hidden>
+                      <FileIcon size={46} />
+                    </div>
+                    <h3>Open file</h3>
+                    <p>Select a file from the workspace tree</p>
+                    {!activeRoot && (
+                      <div className="actions" style={{ marginTop: 14 }}>
+                        <button className="send-btn-pill" onClick={() => void pickProjectDirectory()}>
+                          Attach folder
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {showTree && activeRoot ? (
+                <FileTreePane
+                  listing={listing}
+                  expanded={expanded}
+                  childrenByDir={childrenByDir}
+                  directoryStates={directoryStates}
+                  onRefreshDirectory={refreshDirectory}
+                  searchHits={searchHits}
+                  searchLoading={fileSearchLoading}
+                  searchError={currentFileSearch?.error}
+                  onRetrySearch={retryFileSearch}
+                  fileSearch={fileSearch}
+                  folderRoots={folderRoots}
+                  activeRoot={activeRoot}
+                  previewPath={previewDoc?.path}
+                  gitFiles={git?.files}
+                  onFileSearchChange={setFileSearch}
+                  onClearSearch={clearFileSearch}
+                  onOpenRoot={openRoot}
+                  onToggleFolder={toggleFolder}
+                  onPreviewFile={previewFile}
+                />
+              ) : null}
+            </div>
           </div>
         )}
 
