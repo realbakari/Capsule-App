@@ -1,5 +1,10 @@
 # Providers and credentials
 
+If saving settings fails, Capsule keeps the previous settings and attempts to
+restore any changed saved credentials. Check storage access before retrying. If
+Capsule reports that credentials could not be restored, re-enter them in
+Settings; do not assume the failed save signed you out successfully.
+
 ## Agent approvals and reported usage
 
 Direct-agent approvals include the reported target and an expandable proposed

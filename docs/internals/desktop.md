@@ -688,6 +688,14 @@ side effect of reconnecting, and read-only authorization is unchanged.
 
 ## Settings
 
+Settings writes are serialized. New values and client credentials are published
+only after persistence succeeds. Settings, derived policies, Inbox binding and
+automatic archive changes share one SQLite transaction. Secure-store changes
+snapshot the stored values and compensate on a rejected write; ambient tokens
+are not written back as rollback values. A failed compensation explicitly asks
+the user to re-enter credentials. This protects against reported write failures,
+not a process or machine crash between the secure store and SQLite commits.
+
 Settings takes over the sidebar: the section list, a search box, and Back.
 The panel shows one section with a `Settings / <Section>` breadcrumb and, for
 sections that own settings, a **Restore defaults** control that resets only

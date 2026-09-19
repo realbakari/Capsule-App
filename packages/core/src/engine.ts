@@ -179,6 +179,7 @@ import {
   type ManagedCommand,
 } from "@capsule/terminal";
 import { verifyContract } from "@capsule/verification";
+import { commitWithSecrets, type SecretChange } from "./settings-secrets.js";
 import {
   CAPSULE_KEYCHAIN_SERVICE,
   GATEWAY_TOKEN_ACCOUNT,
@@ -257,6 +258,7 @@ export class CapsuleEngine {
   private folderActivity = new FolderActivity();
   private updateReserved = false;
   private settings: CapsuleSettings;
+  private settingsWrite: Promise<unknown> = Promise.resolve();
   private logs: string[] = [];
   private stopped = false;
   private stopping?: Promise<void>;
@@ -412,6 +414,7 @@ export class CapsuleEngine {
     // Keep the database alive while owned sessions and saved work finish.
     // Disconnecting the Gateway client never stops the user's Gateway process.
     const cleanup = await Promise.allSettled([
+      this.settingsWrite,
       this.direct.closeAll(),
       this.runtime.disconnect(),
       ...this.checkpointPending.values(),
@@ -440,8 +443,7 @@ export class CapsuleEngine {
 
   async connectGateway(url?: string): Promise<void> {
     if (url) {
-      this.settings.gatewayUrl = url;
-      this.persistSettings();
+      await this.updateSettings({ gatewayUrl: url });
     }
     this.openclaw = this.createOpenClawAdapter();
     try {
@@ -2331,40 +2333,41 @@ export class CapsuleEngine {
     return this.updateSettings(patch as Partial<CapsuleSettings>);
   }
 
-  async updateSettings(patch: Partial<CapsuleSettings>): Promise<CapsuleSettings> {
-    const { gatewayToken, skillsShToken, ...rest } = patch;
-    this.settings = normalizeCapsuleSettings({ ...this.settings, ...rest });
-    if (gatewayToken === TOKEN_PRESENT_MASK) {
-      // Renderer round-trip of a stored token — keep the secret in Keychain.
-    } else if (gatewayToken === "") {
-      delete this.settings.gatewayToken;
-      await this.keychain.delete(CAPSULE_KEYCHAIN_SERVICE, GATEWAY_TOKEN_ACCOUNT);
-    } else if (typeof gatewayToken === "string") {
-      this.settings.gatewayToken = gatewayToken;
-      await this.keychain.set(CAPSULE_KEYCHAIN_SERVICE, GATEWAY_TOKEN_ACCOUNT, gatewayToken);
+  updateSettings(patch: Partial<CapsuleSettings>): Promise<CapsuleSettings> {
+    const requested = { ...patch };
+    // A failed credential rollback must finish before the next save starts.
+    // Merge each patch against the last committed settings, not a stale copy.
+    const write = this.settingsWrite.then(() => this.saveSettings(requested));
+    this.settingsWrite = write.catch(() => undefined);
+    return write;
+  }
+
+  private async saveSettings(patch: Partial<CapsuleSettings>): Promise<CapsuleSettings> {
+    if (this.stopped) throw new Error("Capsule is closing. Settings were not saved.");
+    const { gatewayToken: _gatewayToken, skillsShToken: _skillsToken, ...rest } = patch;
+    const next = normalizeCapsuleSettings({ ...this.settings, ...rest });
+    const secrets: SecretChange[] = [];
+    for (const [key, account] of [["gatewayToken", GATEWAY_TOKEN_ACCOUNT], ["skillsShToken", SKILLS_SH_TOKEN_ACCOUNT]] as const) {
+      const value = patch[key];
+      if (typeof value !== "string" || value === TOKEN_PRESENT_MASK) continue;
+      if (value) next[key] = value;
+      else delete next[key];
+      secrets.push({ account, value: value || undefined });
     }
-    if (skillsShToken === TOKEN_PRESENT_MASK) {
-      // Renderer round-trip of the stored token — leave the secret alone.
-    } else if (skillsShToken === "") {
-      delete this.settings.skillsShToken;
-      this.skillsShClient.setToken(undefined);
-      await this.keychain.delete(CAPSULE_KEYCHAIN_SERVICE, SKILLS_SH_TOKEN_ACCOUNT);
-    } else if (typeof skillsShToken === "string") {
-      this.settings.skillsShToken = skillsShToken;
-      this.skillsShClient.setToken(skillsShToken);
-      await this.keychain.set(CAPSULE_KEYCHAIN_SERVICE, SKILLS_SH_TOKEN_ACCOUNT, skillsShToken);
-    }
-    if (Object.hasOwn(patch, "projectlessFolder")) this.bindInboxToProjectless();
-    if (
-      patch.webAccess !== undefined ||
-      patch.sandbox !== undefined ||
-      patch.defaultPermission !== undefined
-    ) {
-      this.applyWorkspacePolicies();
-    }
-    if (patch.archiveInactiveAfter !== undefined) this.archiveInactiveSessions();
-    if (!pullRequestWatchEnabled(this.settings)) this.stopAllPrWatch();
-    this.persistSettings();
+    const archived = await commitWithSecrets(this.keychain, secrets, () => this.db.sqlite.transaction(() => {
+      this.persistSettings(next);
+      if (Object.hasOwn(patch, "projectlessFolder")) this.bindInboxToProjectless(next);
+      if (patch.webAccess !== undefined || patch.sandbox !== undefined || patch.defaultPermission !== undefined) {
+        this.applyWorkspacePolicies(next);
+      }
+      return patch.archiveInactiveAfter !== undefined ? this.archiveInactiveSessions(next, false) : 0;
+    })());
+    // Publish only after every persistent write succeeded. Observers and
+    // clients never see settings from a rejected save.
+    this.settings = next;
+    this.skillsShClient.setToken(next.skillsShToken);
+    if (!pullRequestWatchEnabled(next)) this.stopAllPrWatch();
+    this.notifyArchivedSessions(archived);
     this.events.emit("state", { command: "settings-updated" });
     return this.getSettings();
   }
@@ -2819,8 +2822,8 @@ export class CapsuleEngine {
     this.events.emit("run-event", { ...event, sessionId: this.repos.getRun(runId)?.sessionId });
   }
 
-  private projectlessRoot(): string {
-    if (this.settings.projectlessFolder?.trim()) return this.settings.projectlessFolder.trim();
+  private projectlessRoot(settings = this.settings): string {
+    if (settings.projectlessFolder?.trim()) return settings.projectlessFolder.trim();
     if (process.env.VITEST || process.env.CAPSULE_SMOKE_TEST) return path.join(this.options.userDataDir, "tasks");
     return defaultProjectlessFolder();
   }
@@ -2829,8 +2832,8 @@ export class CapsuleEngine {
     return session.workingDirectory || project.workingDirectory;
   }
 
-  private bindInboxToProjectless(): void {
-    const root = ensureProjectlessFolder(this.projectlessRoot());
+  private bindInboxToProjectless(settings = this.settings): void {
+    const root = ensureProjectlessFolder(this.projectlessRoot(settings));
     const inbox = this.repos.listProjects().find((project) => isInboxProject(project));
     if (!inbox) {
       this.createProject({
@@ -3054,25 +3057,25 @@ export class CapsuleEngine {
     return true;
   }
 
-  private persistSettings(): void {
-    const stored = { ...this.settings };
+  private persistSettings(settings = this.settings): void {
+    const stored = { ...settings };
     delete stored.gatewayToken;
     delete stored.skillsShToken;
     this.repos.setSetting("settings", JSON.stringify(stored));
   }
 
-  private applyWorkspacePolicies(): void {
+  private applyWorkspacePolicies(settings = this.settings): void {
     for (const rule of policiesFromSettings({
-      webAccess: this.settings.webAccess,
-      sandbox: this.settings.sandbox,
+      webAccess: settings.webAccess,
+      sandbox: settings.sandbox,
     })) {
       this.repos.upsertPolicy(rule);
     }
   }
 
-  private archiveInactiveSessions(): void {
-    const cutoffMs = ARCHIVE_INACTIVE_MS[this.settings.archiveInactiveAfter];
-    if (cutoffMs == null) return;
+  private archiveInactiveSessions(settings = this.settings, notify = true): number {
+    const cutoffMs = ARCHIVE_INACTIVE_MS[settings.archiveInactiveAfter];
+    if (cutoffMs == null) return 0;
     const now = Date.now();
     const activeRunIds = new Set(
       this.repos
@@ -3100,6 +3103,11 @@ export class CapsuleEngine {
       this.repos.updateSession(session);
       archived += 1;
     }
+    if (notify) this.notifyArchivedSessions(archived);
+    return archived;
+  }
+
+  private notifyArchivedSessions(archived: number): void {
     if (archived > 0) {
       this.log(`Archived ${archived} inactive session${archived === 1 ? "" : "s"}`);
       this.events.emit("state", { command: "sessions-updated" });
