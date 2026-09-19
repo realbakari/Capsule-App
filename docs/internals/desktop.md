@@ -262,6 +262,9 @@ File chips inside a link belong to that link and cannot also activate a local
 file. Emphasis scanning is linear for unmatched marker runs and uses bounded
 nesting rather than recursive tails. Task plans accept an empty replacement;
 unfinished tasks in ended turns are labelled Incomplete, not Running.
+
+Review diff identity includes old path, new path, status and occurrence. A
+file-to-symlink replacement's delete/add blocks at one path collapse separately.
 Remote command failures map to safe guidance rather than displaying raw output
 that may contain authentication URLs.
 

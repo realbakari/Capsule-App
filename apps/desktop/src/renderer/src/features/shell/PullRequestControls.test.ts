@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { parseUnifiedDiff } from "@capsule/shared";
 import { FileDiff } from "./FileDiff";
-import { PagedFileDiffs } from "./PagedFileDiffs";
+import { PagedFileDiffs, diffBlockKeys } from "./PagedFileDiffs";
 import { DiffView } from "./DiffView";
 import { DIFF_PAGE_ROWS, DIFF_PAGE_FILES } from "./DiffPager";
 import { PullRequestList } from "./PullRequestList";
@@ -11,6 +11,12 @@ import { PullRequestChecks } from "./PullRequestChecks";
 import { PullRequestComment } from "./PullRequestActivity";
 
 describe("pull request read controls", () => {
+  it("assigns independent identities to same-path type changes and repeated blocks", () => {
+    const files = parseUnifiedDiff("diff --git a/link.txt b/link.txt\ndeleted file mode 100644\n--- a/link.txt\n+++ /dev/null\n@@ -1 +0,0 @@\n-old\n"
+      + "diff --git a/link.txt b/link.txt\nnew file mode 120000\n--- /dev/null\n+++ b/link.txt\n@@ -0,0 +1 @@\n+target\n");
+    expect(files).toHaveLength(2);
+    expect(new Set(diffBlockKeys([...files, ...files])).size).toBe(4);
+  });
   it.each([true, false])("bounds a 20,000-line expanded diff in split=%s", (split) => {
     const file = parseUnifiedDiff(`diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -0,0 +1,20000 @@\n${Array.from({ length: 20_000 }, (_, i) => `+const item${i} = ${i};`).join("\n")}\n`)[0]!;
     const html = renderToStaticMarkup(createElement(FileDiff, { file, split, expanded: true }));

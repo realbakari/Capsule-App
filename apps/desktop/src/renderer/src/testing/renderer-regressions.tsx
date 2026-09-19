@@ -489,6 +489,19 @@ window.runRendererRegressions = async () => {
   assert(document.querySelectorAll(".file-diff-head").length === 10, "File navigation mounted every file");
   root.unmount(); root = createRoot(host);
   const searchApi = window.capsule;
+  const samePath: DiffFile[] = [
+    { path: "link.ts", oldPath: "link.ts", status: "deleted", binary: false, additions: 0, deletions: 1,
+      hunks: [{ header: "@@ -1 +0,0 @@", oldStart: 1, newStart: 0, lines: [{ kind: "del", text: "old body", oldLine: 1 }] }] },
+    { path: "link.ts", status: "added", binary: false, additions: 1, deletions: 0,
+      hunks: [{ header: "@@ -0,0 +1 @@", oldStart: 0, newStart: 1, lines: [{ kind: "add", text: "new target", newLine: 1 }] }] },
+  ];
+  for (const split of [false, true]) {
+    root.render(<PagedFileDiffs files={[...samePath]} split={split} />);
+    await until(() => document.querySelectorAll(".file-diff-body").length === 2);
+    document.querySelector<HTMLButtonElement>(".file-diff-head")!.click();
+    await until(() => document.querySelectorAll(".file-diff-body").length === 1);
+    assert(document.querySelector(".file-diff-body")!.textContent?.includes("new target"), "Same-path diff blocks share their collapse state");
+  }
   const plan = [{ id: "task", content: "An unfinished task", status: "inProgress" as const }];
   root.render(<ComposerTasks tasks={plan} running />);
   await until(() => document.querySelector(".composer-tasks-list")?.textContent?.includes("Running"));
