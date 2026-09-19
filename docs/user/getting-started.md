@@ -29,7 +29,9 @@ your own title is preserved. **Generate title** in the conversation menu restore
 a title from that original prompt.
 
 During a turn, compact tool groups sit between the agent's progress updates.
-Expand a group for its reported steps. After the turn finishes, earlier work
+Expand a group for its reported steps. If the agent reports a plan or todo
+list, a **Tasks** card sits above the composer with the current step, a
+completed count, and an expandable list. After the turn finishes, earlier work
 folds under **Worked for…** while the final answer remains visible. Expand it to
 read the progress again. Missing tool completion is shown as unknown rather
 than inferred from the turn finishing; **Turn details** retains diagnostics and

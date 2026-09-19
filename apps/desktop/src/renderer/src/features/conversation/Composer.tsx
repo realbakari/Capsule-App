@@ -26,6 +26,7 @@ import {
 import { ComposerMenu, detectTrigger, type SuggestItem } from "./ComposerMenu";
 import { ComposerTasks } from "./ComposerTasks";
 import { searchComposerSkills, skillSource } from "../../lib/composer-skills";
+import { shouldRestComposer } from "../../lib/composer-rest";
 import { tasksFromRunEvents } from "@capsule/shared";
 
 const SUGGESTIONS = [
@@ -95,7 +96,14 @@ function slashCommands(input: {
   ].filter((item) => item.label.toLowerCase().includes(input.query.toLowerCase()));
 }
 
-export function Composer({ showSuggestions = false }: { showSuggestions?: boolean }) {
+export function Composer({
+  showSuggestions = false,
+  awayFromLatest = false,
+}: {
+  showSuggestions?: boolean;
+  /** True while the thread is scrolled away from the latest messages. */
+  awayFromLatest?: boolean;
+}) {
   const workspace = useWorkspace();
   const { contextUsage } = workspace;
   const {
@@ -220,6 +228,13 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
   const folder = projectFolderName(folderPath);
   const trigger = detectTrigger(draft, caret);
   const menuOpen = Boolean(picker || trigger) && !menuDismissed;
+  const resting = shouldRestComposer({
+    awayFromLatest,
+    blocking: Boolean(picker || stashOpen || dropping || menuOpen),
+    multiline: draft.includes("\n"),
+    hasAttachments: attachments.length > 0,
+    hasSkill: Boolean(skillId),
+  });
   const searchKind = picker ?? trigger?.kind;
   const searchQuery = picker ? pickerQuery : trigger?.query ?? "";
   useEffect(() => {
@@ -232,12 +247,21 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
   }, [menuOpen]);
   useEffect(() => { setPicker(undefined); setPickerQuery(""); setMenuDismissed(true); }, [projectId, session?.id]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
+    if (resting) {
+      el.style.setProperty("height", "2.35rem", "important");
+      el.style.setProperty("min-height", "2.35rem", "important");
+      el.style.setProperty("max-height", "2.35rem", "important");
+      return;
+    }
+    el.style.removeProperty("height");
+    el.style.removeProperty("min-height");
+    el.style.removeProperty("max-height");
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 176)}px`;
-  }, [draft]);
+  }, [draft, resting]);
 
   useEffect(() => {
     setFiles([]);
@@ -365,7 +389,7 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
   const tasks = useMemo(() => tasksFromRunEvents(taskEvents), [taskEvents]);
 
   return (
-    <div ref={composerRef} className={`composer composer-dock composer-overlay-corner-masks${busy ? " composer-dock--with-activity" : ""}`}>
+    <div ref={composerRef} className={`composer composer-dock composer-overlay-corner-masks${busy ? " composer-dock--with-activity" : ""}${resting ? " composer--resting" : ""}`}>
       {showSuggestions && (
         <div className="suggestions">
           {SUGGESTIONS.map((item) => (
@@ -384,7 +408,8 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
       )}
       <ComposerTasks tasks={tasks} running={Boolean(activeRun)} />
       <div
-        className={`composer-glass ${dropping ? "dropping" : ""}`}
+        className={`composer-glass${dropping ? " dropping" : ""}${resting ? " composer-glass--resting" : ""}`}
+        aria-expanded={!resting}
         onDragOver={(event) => {
           event.preventDefault();
           setDropping(true);
@@ -489,8 +514,10 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
           </span>
           <button type="button" className="ghost" onClick={() => openPicker("skill")}>Change</button>
         </div>}
+        <div className="composer-prompt">
         <textarea
           ref={textareaRef}
+          className={resting ? "composer-field composer-field--resting" : "composer-field"}
           rows={1}
           value={draft}
           aria-label="Message"
@@ -565,6 +592,7 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
             }
           }}
         />
+        </div>
         {attachments.length > 0 && (
           <div className="composer-attachments" aria-label="Attached files">
             {attachments.map((attachment) => (
@@ -686,7 +714,7 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
               ]} onChange={(id) => { if (id.startsWith("permission:")) void setPermissionProfile(id.slice(11)); else if (id.startsWith("mode:")) setMode(id.slice(5) as typeof mode); else if (id === "stash") setStashOpen(true); else if (id === "capabilities") setView("runtimes"); }} />
             </div>
           </div>
-          <div className="composer-actions-right">
+        <div className="composer-prompt-actions">
             <ComposerTools key={JSON.stringify([projectId, session?.id, agentId])} harness={capabilityHarness} session={session} status={harnessStatus}
               stashCount={promptStashes.length} onContext={openPicker} onStash={() => setStashOpen((value) => !value)} />
             <button className="icon-btn" title="Attach files" aria-label="Attach files" onClick={() => void pickAttachments()}>
@@ -720,7 +748,7 @@ export function Composer({ showSuggestions = false }: { showSuggestions?: boolea
                 <ArrowUpIcon size={14} />
               </button>
             )}
-          </div>
+        </div>
         </div>
         {switchNotice && !sendBlockReason && (
           <p className="composer-switch-note" role="status">

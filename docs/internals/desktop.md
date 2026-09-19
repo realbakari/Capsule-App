@@ -241,6 +241,16 @@ below it is reference (folder, branch, terminal), not state. The steer field
 appears only while a turn is running, which is the only time it means
 anything. Permission options carry a line saying what each one does, because
 "Supervised" does not say that it refuses rather than asks.
+Attach and send share the controls row in the expanded layout at both narrow
+and wide widths. In compact mode those actions share the prompt line; checkout
+controls remain entirely below the glass surface. Geometry is tested in the
+real renderer rather than inferred from CSS selectors. A selected skill keeps
+the expanded composer visible so hidden context cannot be submitted unnoticed.
+Reading older messages rests that box to a single prompt line (attach and
+send on the same row) so the dock shrinks instead of covering the
+transcript. Focus does not expand it; the live edge, a multiline draft,
+attachments, or an open picker does. Layout height from rest must not
+rejoin live-edge following on its own.
 
 An empty conversation centers its project-aware heading and composer as one
 unit. After the first turn, the composer returns to the bottom dock so the

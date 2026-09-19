@@ -1,5 +1,15 @@
 # Drafts, attachments, and prompt stash
 
+Scrolling up through a conversation rests the composer to a single prompt
+line with attach and send on that same row, so the dock does not cover the
+transcript. The workspace strip (folder, terminal, branch) stays under it.
+Agent, mode, and steer chrome tuck away. Scrolling back to the latest
+messages restores the full composer. A multiline draft, attachments, an
+open picker, a selected skill, or a file drop keeps it expanded. Focusing the field while
+reading history does not grow it back.
+
+Attachment and send controls stay beside the agent controls in the expanded
+composer. The compact prompt keeps the checkout controls entirely below it.
 Task lists reflect the agent's latest plan, including a cleared plan. After a
 turn ends, tasks it did not finish are labelled **Incomplete**, not **Running**.
 

@@ -24,6 +24,7 @@ import { runActivityLabel } from "@capsule/shared";
 import { summariseWork, extractTouchedFiles } from "../../lib/activity";
 import { outcomesByTurn } from "../../lib/turn-outcomes";
 import { threadFeedback } from "../../lib/thread-error";
+import { shouldFollowLatest } from "../../lib/composer-rest";
 import { ApprovalDetails, APPROVE_ONCE_UNAVAILABLE } from "../harness/ApprovalDetails";
 import { TurnOutcome } from "./TurnOutcome";
 import { TurnVerification } from "./TurnVerification";
@@ -368,11 +369,15 @@ export function Conversation() {
   // leave the next thread stranded at an unrelated scroll offset.
   const followingScope = useMemo(() => ({ sessionId: session?.id }), [session?.id]);
   const [stick, setStick] = useScopedState(followingScope, true);
+  const lastScrollTop = useRef(0);
   const historyNavigation = hasNewerMessages ? <div className="load-older" role="status">
     <span>Browsing a bounded history window. Newer turns are saved.</span>
     <button className="chip" onClick={() => { setStick(true); void returnToLatest().catch((error) => setNotice(formatUserError(error))); }}>Return to latest</button>
   </div> : null;
 
+  useEffect(() => {
+    lastScrollTop.current = scroller.current?.scrollTop ?? 0;
+  }, [session?.id]);
   useEffect(() => {
     if (!stick) return;
     const node = scroller.current;
@@ -400,8 +405,13 @@ export function Conversation() {
         ref={scroller}
         onScroll={(event) => {
           const node = event.currentTarget;
-          const atBottom = node.scrollHeight - node.scrollTop - node.clientHeight < 80;
-          setStick((current) => current === atBottom ? current : atBottom);
+          const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight;
+          const scrollDelta = node.scrollTop - lastScrollTop.current;
+          lastScrollTop.current = node.scrollTop;
+          setStick((current) => {
+            const next = shouldFollowLatest({ following: current, distanceFromBottom, scrollDelta });
+            return next === current ? current : next;
+          });
         }}
       >
         <div className="thread">
@@ -654,7 +664,7 @@ export function Conversation() {
         </button>
       )}
       <ViewErrorBoundary compact label="Composer">
-        <Composer showSuggestions={false} />
+        <Composer showSuggestions={false} awayFromLatest={!stick && visibleMessageCount > 0} />
       </ViewErrorBoundary>
       <ViewErrorBoundary compact label="Terminal">
         <PersistentTerminals cwd={terminalCwd} visible={terminalOpen && view === "chat"} onClose={() => setTerminalOpen(false)} />

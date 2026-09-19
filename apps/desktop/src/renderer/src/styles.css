@@ -1224,6 +1224,7 @@
 }
 
 .composer {
+  --composer-field-min: 3.5rem;
   position: relative;
   container-type: inline-size;
   container-name: composer;
@@ -1261,6 +1262,74 @@
   padding: 0.85rem 0.9rem 0.6rem;
   box-shadow: 0 12px 28px -18px rgb(0 0 0 / 55%);
   overflow: visible;
+  transition: padding var(--motion-standard) var(--motion-ease);
+}
+.composer-prompt {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.35rem;
+  position: relative;
+  z-index: 1;
+}
+.composer-prompt textarea {
+  flex: 1;
+  min-width: 0;
+}
+.composer-prompt-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  flex-shrink: 0;
+}
+.composer.composer--resting {
+  --composer-field-min: 2.35rem;
+}
+.composer.composer--resting .composer-glass {
+  padding: 0.15rem 0.2rem 0.15rem 0.95rem;
+  border-radius: 1.35rem;
+}
+.composer.composer--resting .composer-prompt {
+  align-items: center;
+  min-height: 2.35rem;
+}
+.composer.composer--resting .composer-controls,
+.composer.composer--resting .composer-tools,
+.composer.composer--resting .context-meter-wrapper,
+.composer.composer--resting .steer-row,
+.composer.composer--resting .composer-preflight,
+.composer.composer--resting .capability-hint,
+.composer.composer--resting .composer-stash,
+.composer.composer--resting .composer-context-chips,
+.composer.composer--resting .composer-context-picker,
+.composer.composer--resting .composer-switch-note,
+.composer.composer--resting .gateway-recovery,
+.composer.composer--resting .composer-attachments {
+  display: none;
+}
+.composer.composer--resting textarea,
+textarea.composer-field--resting {
+  --composer-field-min: 2.35rem;
+  min-height: 2.35rem;
+  max-height: 2.35rem;
+  height: 2.35rem;
+  line-height: 2.35rem;
+  padding: 0 4.8rem 0 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  resize: none;
+}
+.composer.composer--resting .composer-context {
+  margin-top: -0.6rem;
+  padding: 1rem 0.85rem 0.4rem;
+}
+.composer.composer--resting .composer-row { display: contents; }
+.composer.composer--resting .composer-prompt-actions {
+  position: absolute;
+  right: 0.2rem;
+  top: 0.15rem;
+  min-height: 2.35rem;
+  z-index: 2;
 }
 .composer-tasks {
   max-width: var(--chat-max);
@@ -1445,10 +1514,11 @@
   position: relative;
   z-index: 1;
   width: 100%;
-  min-height: 3.5rem;
+  min-height: var(--composer-field-min);
   max-height: 11rem;
   resize: none;
   border: 0;
+  transition: min-height var(--motion-standard) var(--motion-ease);
   background: transparent;
   outline: none;
   line-height: 1.45;
@@ -5013,7 +5083,9 @@ div.changed-files-head { cursor: default; }
   .composer-dock,
   .composer-overlay-corner-masks::before,
   .composer-overlay-corner-masks::after,
-  .composer-dock-activity {
+  .composer-dock-activity,
+  .composer-glass,
+  .composer textarea {
     transition: none;
   }
 }

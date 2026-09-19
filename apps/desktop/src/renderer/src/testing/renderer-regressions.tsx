@@ -827,8 +827,11 @@ window.runRendererRegressions = async () => {
   root.render(<Composer />);
   await until(() => document.querySelector('.composer-options-overflow') && getComputedStyle(document.querySelector('.composer-options-overflow')!).display === "block");
   const controls = document.querySelector('.composer-controls')!.getBoundingClientRect();
-  const actions = document.querySelector('.composer-actions-right')!.getBoundingClientRect();
-  assert(controls.right <= actions.left + 1, "Compact composer controls overlap send/attachment actions");
+  const actions = document.querySelector('.composer-prompt-actions')!.getBoundingClientRect();
+  const overlap = controls.left < actions.right && controls.right > actions.left && controls.top < actions.bottom && controls.bottom > actions.top;
+  assert(!overlap, "Compact composer controls overlap send/attachment actions");
+  assert(Math.abs((controls.top + controls.bottom) / 2 - (actions.top + actions.bottom) / 2) < 2,
+    "Composer actions sit above the agent controls instead of sharing their row");
   assert(getComputedStyle(document.querySelector('.composer-options-inline')!).display === "none", "Compact composer left redundant settings in the toolbar");
   const glass = document.querySelector('.composer-glass')!.getBoundingClientRect();
   const context = document.querySelector('.composer-context')!.getBoundingClientRect();
@@ -843,9 +846,30 @@ window.runRendererRegressions = async () => {
   host.style.width = "900px";
   await until(() => getComputedStyle(document.querySelector('.composer-options-overflow')!).display === "none");
   assert(getComputedStyle(document.querySelector('.composer-options-inline')!).display === "flex", "Wide composer did not restore its controls");
+  const wideControls = document.querySelector('.composer-controls')!.getBoundingClientRect();
+  const wideActions = document.querySelector('.composer-prompt-actions')!.getBoundingClientRect();
+  assert(Math.abs((wideControls.top + wideControls.bottom) / 2 - (wideActions.top + wideActions.bottom) / 2) < 2,
+    "Wide composer actions do not share the controls row");
   (document.querySelector('[aria-label="Conversation workspace"]') as HTMLButtonElement).click();
   await until(() => document.querySelector('[role="listbox"]'));
   assert(document.querySelector('[role="listbox"]')!.textContent?.includes("Change folder"), "Repository context lost the folder chooser");
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+  root.render(<Composer awayFromLatest />);
+  await until(() => {
+    const field = document.querySelector<HTMLTextAreaElement>(".composer.composer--resting textarea");
+    return field && field.getBoundingClientRect().height <= 48;
+  });
+  const restComposer = document.querySelector(".composer.composer--resting")!;
+  const restControls = restComposer.querySelector(".composer-controls");
+  const restField = restComposer.querySelector<HTMLTextAreaElement>("textarea")!;
+  assert(restControls && getComputedStyle(restControls).display === "none", "Scrolled composer kept agent chrome");
+  const restGlass = restComposer.querySelector(".composer-glass")!.getBoundingClientRect();
+  const restCheckout = restComposer.querySelector('[aria-label="Conversation workspace"]')!.getBoundingClientRect();
+  const restSend = restComposer.querySelector('.composer-prompt-actions')!.getBoundingClientRect();
+  assert(restCheckout.top >= restGlass.bottom, "Compact composer covers the checkout control");
+  assert(restSend.width > 0 && restSend.top >= restGlass.top && restSend.bottom <= restGlass.bottom + 1,
+    "Compact composer clips or hides its send controls");
+  assert(restField.getBoundingClientRect().height <= 48, `Scrolled composer kept a tall prompt field (${restField.getBoundingClientRect().height}px, min=${getComputedStyle(restField).minHeight}, class=${restComposer.className})`);
   root.unmount(); root = createRoot(host); host.style.width = "360px";
   let connectionCalls = 0, detailReads = 0;
   const completed = { ...running, id: "completed-details", status: "completed", result: "Saved the requested changes." } as Run;
