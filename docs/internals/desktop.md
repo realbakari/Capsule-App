@@ -399,6 +399,10 @@ Each finished turn captures the worktree as a hidden Git ref under
 offer **Restore this turn**: the project folder goes back to how that turn left
 it. Capture uses a throwaway index, so a half-staged change is untouched, and
 writes a parentless commit that appears in no branch and no `git log`.
+Snapshot-only index commands and ref updates retry known lock-contention or
+disappearing-file failures at most twice, after 100 and 200 ms. A numeric Git
+exit is required; process start failures, timeouts and unknown errors are never
+retried. Restore and other workspace mutations do not use this retry helper.
 Restore also uses a private index (`git restore --worktree`), preserving the
 real staging area. Canonical folder activity excludes admitted turns, active
 runs, checks, saved actions and PTYs during restore, including overlapping parent

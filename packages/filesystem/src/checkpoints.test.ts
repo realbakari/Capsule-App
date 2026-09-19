@@ -51,6 +51,21 @@ describe("checkpointRef", () => {
 });
 
 describe("captureCheckpoint", () => {
+  it("waits for a transient ref lock without changing the user's staging area", async () => {
+    const dir = repo();
+    git(dir, ["config", "core.filesRefLockTimeout", "0"]);
+    const ref = checkpointRef("lock-fixture", 1);
+    const lock = path.join(dir, ".git", ref + ".lock");
+    fs.mkdirSync(path.dirname(lock), { recursive: true });
+    fs.writeFileSync(lock, "owned by fixture");
+    const before = git(dir, ["write-tree"]).stdout;
+    const release = setTimeout(() => fs.rmSync(lock, { force: true }), 250);
+    try {
+      expect((await captureCheckpoint(dir, ref)).ok).toBe(true);
+      expect(git(dir, ["write-tree"]).stdout).toBe(before);
+      expect(await hasCheckpoint(dir, ref)).toBe(true);
+    } finally { clearTimeout(release); }
+  });
   it("captures the worktree without disturbing the user's index", async () => {
     const dir = repo();
     fs.writeFileSync(path.join(dir, "staged.txt"), "s\n");

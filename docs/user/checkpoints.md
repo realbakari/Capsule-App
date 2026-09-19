@@ -1,5 +1,10 @@
 # Restoring a turn
 
+Capsule briefly retries temporary Git lock contention while recording a turn.
+It does not remove another process's lock or alter your staging area. If the
+lock remains busy, recording fails visibly; a retry is not proof that a
+checkpoint was saved.
+
 Every turn that finishes captures the state of your project folder. When a turn
 changes files, the changed-files card under the reply offers **Restore this
 turn**, which puts the folder back to how that turn left it.

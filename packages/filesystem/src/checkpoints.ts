@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { git } from "./git-process.js";
 import { CANONICAL_PATCH_FLAGS } from "./git-output.js";
+import { checkpointGit } from "./checkpoint-retry.js";
 import type { WorkspaceRevision } from "@capsule/shared";
 
 /**
@@ -71,7 +72,7 @@ export async function captureCheckpoint(cwd: string, ref: string): Promise<{ ok:
       const env = { ...process.env, GIT_AUTHOR_NAME: "Capsule", GIT_AUTHOR_EMAIL: "capsule@localhost", GIT_COMMITTER_NAME: "Capsule", GIT_COMMITTER_EMAIL: "capsule@localhost" };
       const commit = await git(cwd, ["commit-tree", revision.tree, "-m", `capsule checkpoint ${ref}`], env);
       if (!commit.ok) return { ok: false, detail: commit.stderr };
-      const updated = await git(cwd, ["update-ref", ref, commit.stdout.trim()]);
+      const updated = await checkpointGit(cwd, ["update-ref", ref, commit.stdout.trim()]);
       return { ok: updated.ok, detail: updated.ok ? commit.stdout.trim() : updated.stderr, revision };
     } catch (error) {
       return { ok: false, detail: error instanceof Error ? error.message : String(error) };
@@ -101,14 +102,14 @@ export async function readWorktreeRevision(cwd: string): Promise<WorkspaceRevisi
       const headResult = await git(cwd, ["rev-parse", "--verify", "HEAD"]);
       const head = headResult.ok ? headResult.stdout.trim() : null;
       if (head) {
-        const seeded = await git(cwd, ["read-tree", head], env);
+        const seeded = await checkpointGit(cwd, ["read-tree", head], env);
         if (!seeded.ok) throw new Error(seeded.stderr || "read-tree failed.");
       }
 
-      const staged = await git(cwd, ["add", "-A", "--", "."], env);
+      const staged = await checkpointGit(cwd, ["add", "-A", "--", "."], env);
       if (!staged.ok) throw new Error(staged.stderr || "add failed.");
 
-      const tree = await git(cwd, ["write-tree"], env);
+      const tree = await checkpointGit(cwd, ["write-tree"], env);
       const treeOid = tree.stdout.trim();
       if (!tree.ok || !treeOid) throw new Error(tree.stderr || "write-tree failed.");
       const afterHead = await git(cwd, ["rev-parse", "--verify", "HEAD"]);
