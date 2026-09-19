@@ -258,7 +258,9 @@ transcript remains the primary reading surface.
 
 HTTP and HTTPS links in rendered Markdown open the Inspector's embedded Browser
 surface. Non-web schemes keep the platform handler fallback.
-Task plans accept an empty replacement;
+File chips inside a link belong to that link and cannot also activate a local
+file. Emphasis scanning is linear for unmatched marker runs and uses bounded
+nesting rather than recursive tails. Task plans accept an empty replacement;
 unfinished tasks in ended turns are labelled Incomplete, not Running.
 Remote command failures map to safe guidance rather than displaying raw output
 that may contain authentication URLs.
@@ -382,9 +384,11 @@ export is explicit. Event timing excludes browser paint and agent latency.
 Non-zero Git probes count as failures even when absence is expected. Host and
 renderer timings are separate; this is diagnostic evidence, not freeze prevention.
 
-Replies render fenced code, headings, bullets, links, inline code and
-GitHub-style pipe tables. A wide table scrolls inside the message rather than
-widening the transcript column.
+Replies render fenced code, headings, bullets, task lists, italics,
+strikethrough, links, inline code and GitHub-style pipe tables. A backtick
+path such as `github-stacks.ts` becomes a labelled chip that opens the file.
+A line that is only bold is a section heading. A wide table scrolls inside
+the message rather than widening the transcript column.
 The conversation title has a hidden level-one heading; each rendered message
 has a hidden level-two author heading (including steering and attachment-only
 messages). Reply headings remain below those boundaries. Hidden labels are

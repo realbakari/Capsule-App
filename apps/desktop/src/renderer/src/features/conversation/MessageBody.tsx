@@ -6,6 +6,7 @@ import { parseTable } from "../../lib/tables";
 import { stripHtmlComments, stripInlineTags } from "../../lib/markdown-html";
 import { normalizeGitHubMarkdown } from "../../lib/github-markdown";
 import { splitGitHubDetails } from "../../lib/github-details";
+import { fileKind } from "../../lib/file-kind";
 import { useWorkspace } from "../../lib/workspace";
 
 /**
@@ -20,39 +21,126 @@ function isFilePath(value: string): boolean {
   if (value.includes(" ") || value.includes("\n")) return false;
   if (value.startsWith("-") || value.startsWith("http")) return false;
   if (FILE_EXT_RE.test(value)) return true;
-  return value.includes("/") && /\w/.test(value[0] ?? "");
+  // `3/16` is a fraction, not a path. A path needs a letter somewhere.
+  if (/^\d+\/\d+$/.test(value)) return false;
+  return value.includes("/") && /[A-Za-z]/.test(value);
+}
+
+function nameOf(path: string): string {
+  const cut = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+  return cut < 0 ? path : path.slice(cut + 1);
+}
+
+function FileChip({
+  path,
+  onOpen,
+}: {
+  path: string;
+  onOpen?: (path: string) => void;
+}) {
+  const kind = fileKind(nameOf(path));
+  const chip = (
+    <>
+      <span className="file-chip-kind" style={{ color: `var(${kind.tone})` }} aria-hidden>
+        {kind.label}
+      </span>
+      <span className="file-chip-name">{path}</span>
+    </>
+  );
+  if (!onOpen) return <code className="file-chip">{chip}</code>;
+  return (
+    <code
+      className="file-chip file-mention"
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpen(path)}
+      onKeyDown={(event) => { if (event.key === "Enter") onOpen(path); }}
+      title={path}
+    >
+      {chip}
+    </code>
+  );
+}
+
+function isWordChar(ch: string | undefined): boolean {
+  return Boolean(ch && /[A-Za-z0-9]/.test(ch));
+}
+
+function canOpenEmphasis(text: string, index: number): boolean {
+  const next = text[index + 1];
+  if (!next || /\s/.test(next)) return false;
+  return !isWordChar(text[index - 1]);
+}
+
+function canCloseEmphasis(text: string, index: number): boolean {
+  const prev = text[index - 1];
+  if (!prev || /\s/.test(prev)) return false;
+  return !isWordChar(text[index + 1]);
+}
+
+/** Pair flanking markers in linear time; unmatched identifiers stay literal. */
+function emphasisRanges(text: string): Array<{ start: number; end: number }> {
+  const closers: Record<string, number[]> = { "*": [], "_": [] };
+  for (let index = 0; index < text.length; index++) {
+    const marker = text[index]!;
+    if (closers[marker] && text[index + 1] !== marker && canCloseEmphasis(text, index)) {
+      closers[marker]!.push(index);
+    }
+  }
+  const positions: Record<string, number> = { "*": 0, "_": 0 };
+  const ranges: Array<{ start: number; end: number }> = [];
+  for (let start = 0; start < text.length; start++) {
+    const marker = text[start]!;
+    const candidates = closers[marker];
+    if (!candidates || text[start + 1] === marker || !canOpenEmphasis(text, start)) continue;
+    let position = positions[marker]!;
+    while (position < candidates.length && candidates[position]! < start + 2) position++;
+    positions[marker] = position;
+    const end = candidates[position];
+    if (end === undefined) continue;
+    ranges.push({ start, end: end + 1 });
+    start = end;
+  }
+  return ranges;
+}
+
+function emphasize(
+  text: string,
+  onOpenFile?: (path: string) => void,
+  onOpenLink?: (href: string) => void,
+  depth = 0,
+): ReactNode {
+  const out: ReactNode[] = [];
+  let position = 0;
+  for (const match of emphasisRanges(text)) {
+    out.push(stripInlineTags(text.slice(position, match.start)));
+    out.push(<em key={match.start}>{inline(text.slice(match.start + 1, match.end - 1), onOpenFile, onOpenLink, depth + 1)}</em>);
+    position = match.end;
+  }
+  out.push(stripInlineTags(text.slice(position)));
+  return out;
 }
 
 function inline(
   text: string,
   onOpenFile?: (path: string) => void,
   onOpenLink?: (href: string) => void,
+  depth = 0,
 ): ReactNode {
-  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/g);
+  // Agent output is untrusted; pathological nesting must not exhaust the stack.
+  if (depth >= 16) return stripInlineTags(text);
+  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|~~[^~]+~~|\[[^\]]+\]\([^)]+\))/g);
   return parts.map((part, index) => {
     if (part.startsWith("`") && part.endsWith("`") && part.length >= 2) {
       const inner = part.slice(1, -1);
-      // File paths: render as inline code that is clickable (cursor changes on
-      // hover) — no icon, no border, no button chrome.
-      if (isFilePath(inner) && onOpenFile) {
-        return (
-          <code
-            key={index}
-            className="file-mention"
-            role="button"
-            tabIndex={0}
-            onClick={() => onOpenFile(inner)}
-            onKeyDown={(e) => { if (e.key === "Enter") onOpenFile(inner); }}
-            title={inner}
-          >
-            {inner}
-          </code>
-        );
-      }
+      if (isFilePath(inner)) return <FileChip key={index} path={inner} onOpen={onOpenFile} />;
       return <code key={index}>{inner}</code>;
     }
     if (part.startsWith("**") && part.endsWith("**") && part.length >= 4) {
-      return <strong key={index}>{part.slice(2, -2)}</strong>;
+      return <strong key={index}>{inline(part.slice(2, -2), onOpenFile, onOpenLink, depth + 1)}</strong>;
+    }
+    if (part.startsWith("~~") && part.endsWith("~~") && part.length >= 4) {
+      return <s key={index}>{inline(part.slice(2, -2), onOpenFile, onOpenLink, depth + 1)}</s>;
     }
     const link = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(part);
     if (link?.[1] && link[2]) {
@@ -67,11 +155,11 @@ function inline(
             else window.open(href, "_blank", "noopener");
           }}
         >
-          {link[1]}
+          {inline(link[1], undefined, onOpenLink, depth + 1)}
         </a>
       );
     }
-    return <Fragment key={index}>{stripInlineTags(part)}</Fragment>;
+    return <Fragment key={index}>{emphasize(part, onOpenFile, onOpenLink, depth)}</Fragment>;
   });
 }
 
@@ -167,10 +255,36 @@ function block(
       continue;
     }
 
+    // A line that is only bold is a section title, not emphasis inside a sentence.
+    const titled = /^\s*\*\*([^*]+)\*\*\s*$/.exec(line);
+    if (titled?.[1]) {
+      out.push(
+        <h4 key={`${key}-${index}`} className="md-h">
+          {inline(titled[1], onOpenFile, onOpenLink)}
+        </h4>,
+      );
+      continue;
+    }
+
+    const indent = Math.min(3, Math.floor((/^\s*/.exec(line)?.[0].length ?? 0) / 2));
+    const indentStyle = indent > 0 ? { paddingLeft: `${0.85 + indent * 0.85}rem` } : undefined;
+
+    const task = /^\s*[-*]\s+\[([ xX])\]\s+(.*)$/.exec(line);
+    if (task) {
+      const done = task[1] !== " ";
+      out.push(
+        <div key={`${key}-${index}`} className={`md-task${done ? " is-done" : ""}`} style={indentStyle}>
+          <span className="md-task-mark" aria-hidden>{done ? "✓" : ""}</span>
+          <span>{inline(task[2] ?? "", onOpenFile, onOpenLink)}</span>
+        </div>,
+      );
+      continue;
+    }
+
     // Unordered list
     if (/^\s*[-*]\s+/.test(line)) {
       out.push(
-        <div key={`${key}-${index}`} className="md-li">
+        <div key={`${key}-${index}`} className="md-li" style={indentStyle}>
           {inline(line.replace(/^\s*[-*]\s+/, ""), onOpenFile, onOpenLink)}
         </div>,
       );
@@ -181,7 +295,7 @@ function block(
     const num = /^\s*(\d+)\.\s+(.*)$/.exec(line);
     if (num?.[1] && num[2]) {
       out.push(
-        <div key={`${key}-${index}`} className="md-li-num">
+        <div key={`${key}-${index}`} className="md-li-num" style={indentStyle}>
           <span className="md-num">{num[1]}.</span>
           <span>{inline(num[2], onOpenFile, onOpenLink)}</span>
         </div>,

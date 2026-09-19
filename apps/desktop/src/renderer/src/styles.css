@@ -1021,6 +1021,54 @@
   padding: 0.05rem 0.3rem;
   border-radius: 0.25rem;
 }
+.body code.file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  max-width: 100%;
+  vertical-align: baseline;
+  padding: 0.05rem 0.4rem 0.05rem 0.28rem;
+  border-radius: 0.35rem;
+}
+.file-chip-kind {
+  font-size: 0.7em;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+.file-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.body code.file-chip.file-mention:hover {
+  text-decoration: none;
+  background: rgb(255 255 255 / 12%);
+}
+.md-task {
+  display: grid;
+  grid-template-columns: 0.85rem minmax(0, 1fr);
+  gap: 0.45rem;
+  align-items: start;
+}
+.md-task-mark {
+  width: 0.75rem;
+  height: 0.75rem;
+  margin-top: 0.28em;
+  border: 1px solid var(--border-color);
+  border-radius: 0.2rem;
+  display: grid;
+  place-items: center;
+  font-size: 0.55rem;
+  line-height: 1;
+  color: var(--green);
+}
+.md-task.is-done {
+  color: var(--text-faint);
+}
+.md-task.is-done .md-task-mark {
+  background: rgb(255 255 255 / 8%);
+}
 .body a {
   color: var(--text);
   text-decoration: underline;
@@ -3753,6 +3801,19 @@ select:focus,
   position: absolute;
   left: 0;
   color: var(--text-faint);
+}
+.md-li-num {
+  display: grid;
+  grid-template-columns: 1.75rem minmax(0, 1fr);
+  column-gap: 0.45rem;
+  align-items: start;
+}
+.md-li-num + .md-li-num { margin-top: 0.2rem; }
+.md-num {
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  user-select: none;
 }
 .composer-glass.dropping::before {
   box-shadow: inset 0 0 0 1px rgb(255 255 255 / 28%);
