@@ -236,6 +236,16 @@ metadata, comments and commits, or full patch without leaving Capsule. Use
 **Open on GitHub** from that view to load its canonical URL in Capsule's
 embedded browser.
 
+When GitHub reports a stack, the list shows that pull request's layer
+(`3/16`). The detail view lists every layer with the stack base at the bottom.
+**Merge stack** merges the open pull request you are reading and every open
+layer below it, then GitHub rebases whatever remains. **Rebase stack** is
+available on the top layer and updates remote branches without changing your
+local checkout. Both ask for confirmation. A draft in the merge set, a stack
+that changed since it was loaded, or GitHub.com not reporting stacks hides
+those actions. Merging the current branch's pull request from the Review header
+is unchanged.
+
 Filter the loaded list by title, author, branch, or PR number, and sort by recent
 updates or creation time. The list shows up to 50 open pull requests. **Refresh**
 asks GitHub for a new result. If a read fails, **Retry** tries again and any last

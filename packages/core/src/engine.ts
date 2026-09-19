@@ -64,6 +64,8 @@ import {
   readPullRequestDetail,
   readCommitDiff,
   mergePullRequest as mergeGithubPullRequest,
+  mergePullRequestStack as mergeGithubPullRequestStack,
+  rebasePullRequestStack as rebaseGithubPullRequestStack,
   pushCurrentBranch,
   readGitDiff,
   readGitStatus,
@@ -134,6 +136,7 @@ import {
   type GitStatus,
   type GitPullRequest,
   type GitPullRequestDetail,
+  type GitPullRequestStackAction,
   type HarnessControlResult,
   type HarnessDoctorReport,
   type HarnessId,
@@ -1309,6 +1312,38 @@ export class CapsuleEngine {
       this.log(result.detail);
       return await this.gitStatus(projectId, sessionId);
 
+    });
+  }
+
+  async gitMergePullRequestStack(
+    projectId: string,
+    action: GitPullRequestStackAction,
+    sessionId?: string,
+  ): Promise<GitStatus> {
+    const project = this.requireProject(projectId);
+    const cwd = this.workingDirectoryFor(project, sessionId);
+    return inRepository(cwd, async () => {
+      if (!cwd) throw new Error("Project has no working directory");
+      const result = await mergeGithubPullRequestStack(cwd, this.settings.prMergeMethod, action);
+      if (!result.ok) throw new Error(result.detail);
+      this.log(result.detail);
+      return await this.gitStatus(projectId, sessionId);
+    });
+  }
+
+  async gitRebasePullRequestStack(
+    projectId: string,
+    action: GitPullRequestStackAction,
+    sessionId?: string,
+  ): Promise<GitStatus> {
+    const project = this.requireProject(projectId);
+    const cwd = this.workingDirectoryFor(project, sessionId);
+    return inRepository(cwd, async () => {
+      if (!cwd) throw new Error("Project has no working directory");
+      const result = await rebaseGithubPullRequestStack(cwd, action);
+      if (!result.ok) throw new Error(result.detail);
+      this.log(result.detail);
+      return await this.gitStatus(projectId, sessionId);
     });
   }
 

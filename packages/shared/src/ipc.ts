@@ -93,6 +93,8 @@ export const IPC_CHANNELS = {
   gitPush: "capsule:gitPush",
   gitCreatePullRequest: "capsule:gitCreatePullRequest",
   gitMergePullRequest: "capsule:gitMergePullRequest",
+  gitMergePullRequestStack: "capsule:gitMergePullRequestStack",
+  gitRebasePullRequestStack: "capsule:gitRebasePullRequestStack",
   searchContents: "capsule:searchContents",
   listLocalServers: "capsule:listLocalServers",
   openPath: "capsule:openPath",

@@ -1,4 +1,5 @@
 import type { GitPullRequest } from "@capsule/shared";
+import { stackSearchText } from "./pull-request-stack";
 
 export type PullRequestSort = "updated" | "created";
 
@@ -9,7 +10,7 @@ export function visiblePullRequests(
 ): GitPullRequest[] {
   const terms = query.toLowerCase().trim().split(/\s+/).filter(Boolean);
   return items.filter((item) => {
-    const text = `#${item.number} ${item.title} ${item.author ?? ""} ${item.headRefName ?? ""}`.toLowerCase();
+    const text = `#${item.number} ${item.title} ${item.author ?? ""} ${item.headRefName ?? ""} ${stackSearchText(item)}`.toLowerCase();
     return terms.every((term) => text.includes(term));
   }).sort((a, b) => {
     const stamp = (item: GitPullRequest) => {

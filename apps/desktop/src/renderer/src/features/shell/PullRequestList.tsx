@@ -52,10 +52,19 @@ export function PullRequestList({ items, loading, error, onRefresh, onSelect }: 
             * every row, which says nothing to anyone. A checks chip with no
             * checks behind it is better left out.
             */}
-          {item.isDraft ? (
-            <span className="codex-pr-checks draft">Draft</span>
-          ) : item.checks && item.checks !== "none" ? (
-            <span className={`codex-pr-checks ${item.checks}`}>{item.checks}</span>
+          {item.stack || item.isDraft || (item.checks && item.checks !== "none") ? (
+          <span className="codex-pr-meta">
+            {item.stack ? (
+              <span className="codex-pr-checks" title={`Stack layer ${item.stack.position} of ${item.stack.size}, base ${item.stack.base}`}>
+                {item.stack.position}/{item.stack.size}
+              </span>
+            ) : null}
+            {item.isDraft ? (
+              <span className="codex-pr-checks draft">Draft</span>
+            ) : item.checks && item.checks !== "none" ? (
+              <span className={`codex-pr-checks ${item.checks}`}>{item.checks}</span>
+            ) : null}
+          </span>
           ) : null}
         </button>
       ))}

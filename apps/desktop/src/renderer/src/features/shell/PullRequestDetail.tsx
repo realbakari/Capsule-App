@@ -5,7 +5,9 @@ import {
   type GitPullRequest,
   type GitPullRequestDetail as PullRequestDetail,
   type GitPullRequestLabel,
+  type GitPullRequestStackAction,
 } from "@capsule/shared";
+import { mergeLayersThrough, mergePrompt, rebasePrompt, stackActionFromDetail } from "../../lib/pull-request-stack";
 import { MessageBody } from "../conversation/MessageBody";
 import { compactRelativeTime } from "../../lib/sidebar";
 import { formatUserError } from "../../lib/errors";
@@ -145,6 +147,10 @@ export function GitPullRequestDetail({
   onOpenBrowser,
   onSteerAgent,
   onOpenUrl,
+  onSelectLayer,
+  onMergeStack,
+  onRebaseStack,
+  stackBusy,
 }: {
   summary: GitPullRequest;
   detail?: PullRequestDetail;
@@ -156,6 +162,10 @@ export function GitPullRequestDetail({
   onOpenBrowser: () => void;
   onSteerAgent?: (prompt: string) => void;
   onOpenUrl: (url: string) => void;
+  onSelectLayer?: (number: number) => void;
+  onMergeStack?: (action: GitPullRequestStackAction) => void;
+  onRebaseStack?: (action: GitPullRequestStackAction) => void;
+  stackBusy?: boolean;
 }) {
   const [tab, setTab] = useState<PullRequestTab>("summary");
   const [newestFirst, setNewestFirst] = useState(true);
@@ -279,6 +289,17 @@ export function GitPullRequestDetail({
    * carrying invisible characters or shaped like the app's own scaffolding.
    */
   const safeTitle = sanitizeUntrusted(summary.title, { singleLine: true, maxChars: 200 });
+  const stack = detail?.stackDetail;
+  const membership = detail?.stack ?? summary.stack;
+  const mergeLayers = stack ? mergeLayersThrough(stack, summary.number) : undefined;
+  const mergeAction = stack && mergeLayers && onMergeStack
+    ? stackActionFromDetail(summary.url, summary.number, stack, mergeLayers)
+    : undefined;
+  const rebaseAction = stack && onRebaseStack && stack.layers.at(-1)?.number === summary.number
+    ? stackActionFromDetail(summary.url, summary.number, stack, stack.layers.filter((layer) => layer.state.toLowerCase() === "open"))
+    : undefined;
+  const canMergeStack = Boolean(mergeAction);
+  const canRebaseStack = Boolean(rebaseAction);
 
   const preparePrompt = async (prompt: string) => {
     try {
@@ -410,6 +431,66 @@ export function GitPullRequestDetail({
             </span>
           ) : null}
         </div>
+        {membership ? (
+          <p className="pr-stack-kicker faint">
+            Stack {membership.position}/{membership.size} · {membership.base}
+          </p>
+        ) : null}
+        {stack && stack.layers.length >= 2 ? (
+          <div className="pr-stack">
+            <ol className="pr-stack-layers">
+              {[...stack.layers].reverse().map((layer) => {
+                const current = layer.number === summary.number;
+                const label = layer.title ?? layer.headBranch;
+                return (
+                  <li key={layer.number}>
+                    <button
+                      type="button"
+                      className={current ? "pr-stack-layer is-current" : "pr-stack-layer"}
+                      aria-current={current ? "page" : undefined}
+                      disabled={current || !onSelectLayer}
+                      onClick={() => onSelectLayer?.(layer.number)}
+                    >
+                      <span className="codex-pr-number">#{layer.number}</span>
+                      <span className="truncate">{label}</span>
+                      {layer.isDraft ? <span className="codex-pr-checks draft">Draft</span> : null}
+                      {layer.state.toLowerCase() !== "open" ? (
+                        <span className="faint">{layer.state.toLowerCase()}</span>
+                      ) : null}
+                    </button>
+                  </li>
+                );
+              })}
+            </ol>
+            <p className="faint">The stack base is at the bottom. Merge includes this pull request and every open layer below it.</p>
+            {canMergeStack || canRebaseStack ? (
+              <div className="pr-stack-actions">
+                {canMergeStack && mergeAction && stack ? (
+                  <button
+                    className="chip"
+                    type="button"
+                    disabled={stackBusy}
+                    title={mergePrompt(stack, summary.number)}
+                    onClick={() => onMergeStack?.(mergeAction)}
+                  >
+                    {stackBusy ? "Working…" : "Merge stack"}
+                  </button>
+                ) : null}
+                {canRebaseStack && rebaseAction && stack ? (
+                  <button
+                    className="chip"
+                    type="button"
+                    disabled={stackBusy}
+                    title={rebasePrompt(stack)}
+                    onClick={() => onRebaseStack?.(rebaseAction)}
+                  >
+                    Rebase stack
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       <div className="pr-tabrow">

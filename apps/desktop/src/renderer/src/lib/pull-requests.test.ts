@@ -20,4 +20,8 @@ describe("pull request list controls", () => {
     expect(visiblePullRequests(items, "missing", "updated")).toEqual([]);
     expect(visiblePullRequests(items, "  ", "updated")).toHaveLength(2);
   });
+  it("filters stacked pull requests by layer label", () => {
+    const stacked = [{ ...items[0]!, stack: { number: 9, size: 16, position: 3, base: "main" } }, items[1]!];
+    expect(visiblePullRequests(stacked, "3/16", "updated").map((item) => item.number)).toEqual([1]);
+  });
 });

@@ -7,6 +7,7 @@ import { PagedFileDiffs, diffBlockKeys } from "./PagedFileDiffs";
 import { DiffView } from "./DiffView";
 import { DIFF_PAGE_ROWS, DIFF_PAGE_FILES } from "./DiffPager";
 import { PullRequestList } from "./PullRequestList";
+import { GitPullRequestDetail } from "./PullRequestDetail";
 import { PullRequestChecks } from "./PullRequestChecks";
 import { PullRequestComment } from "./PullRequestActivity";
 
@@ -45,6 +46,126 @@ describe("pull request read controls", () => {
     expect(html).toContain('role="alert"');
     expect(html).not.toContain("No open pull requests");
     expect(html).not.toContain("(0)");
+  });
+
+  it("shows a stack layer badge without changing a failed list into an empty one", () => {
+    const html = renderToStaticMarkup(createElement(PullRequestList, {
+      items: [{
+        number: 3,
+        title: "Service restart",
+        url: "https://github.com/example/repo/pull/3",
+        state: "OPEN",
+        isDraft: false,
+        stack: { number: 9, size: 16, position: 3, base: "main" },
+      }],
+      loading: false,
+      onRefresh() {},
+      onSelect() {},
+    }));
+    expect(html).toContain("3/16");
+    expect(html).toContain("Stack layer 3 of 16");
+  });
+
+  it("renders the stack from the base up and offers merge from an open layer", () => {
+    const html = renderToStaticMarkup(createElement(GitPullRequestDetail, {
+      summary: {
+        number: 1,
+        title: "Base",
+        url: "https://github.com/example/repo/pull/1",
+        state: "OPEN",
+        isDraft: false,
+        stack: { number: 9, size: 2, position: 1, base: "main" },
+      },
+      detail: {
+        number: 1,
+        title: "Base",
+        url: "https://github.com/example/repo/pull/1",
+        state: "OPEN",
+        isDraft: false,
+        body: "",
+        additions: 1,
+        deletions: 0,
+        changedFiles: 1,
+        labels: [],
+        reviewers: [],
+        activity: [],
+        commits: [],
+        files: [],
+        checkRuns: [],
+        diff: "",
+        stack: { number: 9, size: 2, position: 1, base: "main" },
+        stackDetail: {
+          number: 9,
+          base: "main",
+          layers: [
+            { number: 1, title: "Base", headBranch: "feat/one", headSha: "a".repeat(40), state: "open" },
+            { number: 2, title: "Middle", headBranch: "feat/two", headSha: "b".repeat(40), state: "open" },
+          ],
+        },
+      },
+      loading: false,
+      onRefresh() {},
+      onLoadCommitDiff: async () => "",
+      onBack() {},
+      onOpenBrowser() {},
+      onOpenUrl() {},
+      onMergeStack() {},
+      onRebaseStack() {},
+    }));
+    expect(html).toContain("Merge stack");
+    expect(html).not.toContain("Rebase stack");
+    const layers = html.slice(html.indexOf("pr-stack-layers"));
+    expect(layers.indexOf("#2")).toBeLessThan(layers.indexOf("#1"));
+    expect(html).toContain("The stack base is at the bottom");
+  });
+
+  it("does not offer merge stack when a closed layer sits below the selection", () => {
+    const html = renderToStaticMarkup(createElement(GitPullRequestDetail, {
+      summary: {
+        number: 2,
+        title: "Top",
+        url: "https://github.com/example/repo/pull/2",
+        state: "OPEN",
+        isDraft: false,
+        stack: { number: 9, size: 2, position: 2, base: "main" },
+      },
+      detail: {
+        number: 2,
+        title: "Top",
+        url: "https://github.com/example/repo/pull/2",
+        state: "OPEN",
+        isDraft: false,
+        body: "",
+        additions: 1,
+        deletions: 0,
+        changedFiles: 1,
+        labels: [],
+        reviewers: [],
+        activity: [],
+        commits: [],
+        files: [],
+        checkRuns: [],
+        diff: "",
+        stack: { number: 9, size: 2, position: 2, base: "main" },
+        stackDetail: {
+          number: 9,
+          base: "main",
+          layers: [
+            { number: 1, title: "Base", headBranch: "feat/one", headSha: "a".repeat(40), state: "closed" },
+            { number: 2, title: "Top", headBranch: "feat/two", headSha: "b".repeat(40), state: "open" },
+          ],
+        },
+      },
+      loading: false,
+      onRefresh() {},
+      onLoadCommitDiff: async () => "",
+      onBack() {},
+      onOpenBrowser() {},
+      onOpenUrl() {},
+      onMergeStack() {},
+      onRebaseStack() {},
+    }));
+    expect(html).not.toContain("Merge stack");
   });
 
   it("renders check rows without requiring a second nested disclosure", () => {

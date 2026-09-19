@@ -40,6 +40,8 @@ describe("ipc scopes", () => {
       "spawnHarness",
       "gitCommit",
       "gitPush",
+      "gitMergePullRequestStack",
+      "gitRebasePullRequestStack",
       "updateSettings",
       "deleteProject",
       "resolveApproval",

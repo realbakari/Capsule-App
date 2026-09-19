@@ -10,9 +10,16 @@ import type {
   GitPullRequestCheck,
   GitPullRequestLabel,
   GitPullRequestDetail,
+  GitPullRequestStackAction,
   GitStatus,
   PrMergeMethod,
 } from "@capsule/shared";
+import {
+  enrichPullRequestsWithStacks,
+  mergePullRequestStack as mergeGithubPullRequestStack,
+  readPullRequestStack,
+  rebasePullRequestStack as rebaseGithubPullRequestStack,
+} from "./github-stacks.js";
 
 function run(
   command: string,
@@ -368,15 +375,17 @@ function refreshPullRequestList(cwd: string, key: string, epoch: number): Promis
   const existing = pullRequestListInFlight.get(key);
   if (existing) return existing;
   const current = () => epoch === pullRequestEpoch && pullRequestListIdentities.get(cwd) === key;
-  const started = readPullRequestList(cwd).then((result) => {
+  const started = readPullRequestList(cwd).then(async (result) => {
     if (!current()) return undefined;
     if (result.value === undefined) {
       pullRequestListFailures.set(cwd, listFailureReason(result.error));
       return undefined;
     }
     pullRequestListFailures.delete(cwd);
-    pullRequestListCache.set(key, { value: result.value, at: Date.now() });
-    return result.value;
+    const value = await enrichPullRequestsWithStacks(cwd, result.value, runAsync);
+    if (!current()) return undefined;
+    pullRequestListCache.set(key, { value, at: Date.now() });
+    return value;
   })
     .catch(() => undefined)
     .then((next) => {
@@ -659,7 +668,24 @@ export async function readPullRequestDetail(
     ...parsed.activity.map((item) => item.author),
     ...parsed.commits.flatMap((commit) => commit.authors),
   ].filter((value): value is string => Boolean(value));
-  return { ...parsed, avatars: await avatarsFor(logins) };
+  const [avatars, stackDetail] = await Promise.all([
+    avatarsFor(logins),
+    readPullRequestStack(cwd, parsed.url, parsed.number, runAsync),
+  ]);
+  const position = stackDetail?.layers.findIndex((layer) => layer.number === parsed.number) ?? -1;
+  const stack = stackDetail && position >= 0 && stackDetail.layers.length >= 2
+    ? {
+        number: stackDetail.number,
+        size: stackDetail.layers.length,
+        position: position + 1,
+        base: stackDetail.base,
+      }
+    : undefined;
+  return {
+    ...parsed,
+    avatars,
+    ...(stack ? { stack, stackDetail } : {}),
+  };
 }
 
 export function commitDiffArgs(oid: string): string[] {
@@ -869,5 +895,27 @@ export async function mergePullRequest(
     if (result.ok) return { ok: true, detail: "Merge started." };
     return { ok: false, detail: remoteCommandFailure(result.stderr || result.stdout, "Could not merge pull request. Review its current checks and merge requirements.") };
 
+  });
+}
+
+export async function mergePullRequestStack(
+  cwd: string,
+  method: PrMergeMethod,
+  action: GitPullRequestStackAction,
+): Promise<{ ok: boolean; detail: string; }> {
+  return inRepository(cwd, async () => {
+    try { return await mergeGithubPullRequestStack(cwd, method, action, runAsync); }
+    finally { clearGhCache(); }
+  });
+}
+
+export async function rebasePullRequestStack(
+  cwd: string,
+  action: GitPullRequestStackAction,
+): Promise<{ ok: boolean; detail: string; }> {
+  return inRepository(cwd, async () => {
+    // A later layer can fail after earlier branches changed.
+    try { return await rebaseGithubPullRequestStack(cwd, action, runAsync); }
+    finally { clearGhCache(); }
   });
 }

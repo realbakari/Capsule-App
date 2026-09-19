@@ -36,6 +36,7 @@ import {
   type ChatMessage,
   type FileEntry,
   type GitStatus,
+  type GitPullRequestStackAction,
   type HarnessDoctorReport,
   type HarnessLiveStatus,
   type HarnessPermissionProfile,
@@ -321,6 +322,8 @@ export interface WorkspaceValue {
   gitPush: () => Promise<boolean>;
   gitCreatePullRequest: (input?: { title?: string; body?: string; }) => Promise<boolean>;
   gitMergePullRequest: () => Promise<void>;
+  gitMergePullRequestStack: (action: GitPullRequestStackAction) => Promise<boolean>;
+  gitRebasePullRequestStack: (action: GitPullRequestStackAction) => Promise<boolean>;
   skillPacks: SkillPack[];
   installSkill: (skill: Skill) => Promise<Skill>;
   installSkillPack: (packId: string) => Promise<SkillPack>;
@@ -1914,6 +1917,18 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     if (projectId) await performGit(() => api.gitMergePullRequest(projectId, sessionId, git?.pullRequest?.url));
   }
 
+  async function gitMergePullRequestStack(action: GitPullRequestStackAction) {
+    return projectId
+      ? performGit(() => api.gitMergePullRequestStack(projectId, action, sessionId) as Promise<GitStatus>)
+      : false;
+  }
+
+  async function gitRebasePullRequestStack(action: GitPullRequestStackAction) {
+    return projectId
+      ? performGit(() => api.gitRebasePullRequestStack(projectId, action, sessionId) as Promise<GitStatus>)
+      : false;
+  }
+
   const installSkill = useCallback(
     async (skill: Skill) => {
       const result = await api.installSkill(skill) as Skill;
@@ -2159,6 +2174,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       gitPush,
       gitCreatePullRequest,
       gitMergePullRequest,
+      gitMergePullRequestStack,
+      gitRebasePullRequestStack,
       settings,
       updateSettings,
     }),

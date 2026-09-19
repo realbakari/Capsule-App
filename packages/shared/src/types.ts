@@ -358,6 +358,45 @@ export interface ContentHit {
   text: string;
 }
 
+export interface GitPullRequestStackMembership {
+  /** Host stack id, not a pull request number. */
+  number: number;
+  size: number;
+  /** 1-based position from the stack base. */
+  position: number;
+  base: string;
+}
+
+export interface GitPullRequestStackLayer {
+  number: number;
+  title?: string;
+  isDraft?: boolean;
+  headSha?: string;
+  headBranch: string;
+  state: string;
+}
+
+/** Host-native stack, layers ordered from the base up. */
+export interface GitPullRequestStack {
+  number: number;
+  url?: string;
+  base: string;
+  layers: GitPullRequestStackLayer[];
+}
+
+export interface GitPullRequestStackHead {
+  number: number;
+  headSha: string;
+}
+
+/** The stack Capsule showed, so a merge or rebase can refuse a stale reading. */
+export interface GitPullRequestStackAction {
+  number: number;
+  url: string;
+  stackNumber: number;
+  heads: GitPullRequestStackHead[];
+}
+
 export interface GitPullRequest {
   number: number;
   url: string;
@@ -372,6 +411,7 @@ export interface GitPullRequest {
   headRefName?: string;
   createdAt?: string;
   updatedAt?: string;
+  stack?: GitPullRequestStackMembership;
 }
 
 export interface GitPullRequestActivity {
@@ -452,6 +492,8 @@ export interface GitPullRequestDetail extends GitPullRequest {
    * GitHub already sends it in the same response.
    */
   checkRuns: GitPullRequestCheck[];
+  /** Full stack, when GitHub reports this pull request as a layer. */
+  stackDetail?: GitPullRequestStack;
   diff: string;
   /*
    * Why there is no patch, when there is none. GitHub refuses a diff of more

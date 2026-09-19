@@ -3016,6 +3016,47 @@ select:focus,
 .codex-pr-checks.pending { color: var(--yellow); }
 /* A draft is not ready, whatever its checks came back as. */
 .codex-pr-checks.draft { color: var(--text-faint); }
+.codex-pr-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+.pr-stack-kicker { margin: 0.45rem 0 0; font-size: 0.625rem; }
+.pr-stack {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 0.75rem;
+}
+.pr-stack-layers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--control-radius);
+  overflow: hidden;
+}
+.pr-stack-layer {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text);
+  padding: 0.4rem 0.55rem;
+  text-align: left;
+  font-size: 0.75rem;
+}
+.pr-stack-layers li:first-child .pr-stack-layer { border-top: 0; }
+.pr-stack-layer:hover:not(:disabled) { background: var(--bg-hover); }
+.pr-stack-layer.is-current {
+  background: var(--bg-hover);
+  font-weight: 550;
+}
+.pr-stack-layer:disabled { color: var(--text); }
+.pr-stack-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .pr-detail {
   display: grid;
   gap: 0;

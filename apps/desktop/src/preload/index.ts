@@ -152,6 +152,10 @@ const api = {
   ) => ipcRenderer.invoke(IPC_CHANNELS.gitCreatePullRequest, projectId, input),
   gitMergePullRequest: (projectId: string, sessionId?: string, target?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.gitMergePullRequest, projectId, sessionId, target),
+  gitMergePullRequestStack: (projectId: string, action: unknown, sessionId?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.gitMergePullRequestStack, projectId, action, sessionId),
+  gitRebasePullRequestStack: (projectId: string, action: unknown, sessionId?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.gitRebasePullRequestStack, projectId, action, sessionId),
   searchContents: (projectId: string, query: string, sessionId?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.searchContents, projectId, query, sessionId),
   listLocalServers: () => ipcRenderer.invoke(IPC_CHANNELS.listLocalServers),

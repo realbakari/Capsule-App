@@ -128,6 +128,15 @@ Tools: **Launch**, **Review**, **Terminal**, **Browser**, **Files**, **Agents**,
   and a refresh that bypasses the two-minute cache. It loads up to 50 open PRs;
   filters are explicitly scoped to those loaded results. Listing reads omit the
   heavyweight check rollup; individual checks load in the detail view.
+  GitHub.com stacks appear as a `3/16` badge on list rows. Opening a stacked
+  pull request shows every layer with the base at the bottom. **Merge stack**
+  lands the selected pull request and every unmerged layer below it through
+  GitHub's async merge, using the Review merge method from Settings, and GitHub
+  rebases the rest. **Rebase stack** is offered on the top layer and rewrites
+  remote branches from the bottom up without changing the local checkout. Both
+  confirm the scope first. Stack membership is github.com-only; a failed stack
+  read leaves the rest of the pull request visible. Stack merge and rebase are
+  write channels. The current-branch **Merge PR** control is unchanged.
   Empty or malformed JSON is a failed read, not an empty list. Idempotent JSON
   reads retry incomplete responses and transient 502/503/504 failures once within
   one timeout budget. Writes are never automatically retried. Failed refreshes
@@ -265,6 +274,9 @@ unfinished tasks in ended turns are labelled Incomplete, not Running.
 
 Review diff identity includes old path, new path, status and occurrence. A
 file-to-symlink replacement's delete/add blocks at one path collapse separately.
+Stack actions validate against all repository remotes and use explicit remote
+owner/repository API paths. Their completion refreshes the current selection,
+not the PR selected before the request; partial failures also invalidate cache.
 Remote command failures map to safe guidance rather than displaying raw output
 that may contain authentication URLs.
 

@@ -153,5 +153,45 @@ export async function runWorkspaceExtensionRegressions(host: HTMLElement, base: 
     await until(() => button("Explain this PR"));
     button("Explain this PR").click();
     assert(draft.startsWith("Unfinished implementation notes\n\n") && draft.includes("Please explain PR #42"), "PR action replaced the existing draft");
+
+    // A slow stack action must refresh the PR now being reviewed, not switch
+    // back to its original selection and discard the new review draft.
+    let finishMerge!: (value: boolean) => void;
+    let confirmation: { onConfirm(): void } | undefined;
+    const other = { ...pr, number: 43, title: "Next layer", url: "https://example.test/pull/43" };
+    const stack = { number: 1, base: "main", layers: [pr, other].map((item) => ({
+      number: item.number, title: item.title, state: "open" as const,
+      headBranch: "layer-" + item.number, headSha: String(item.number).repeat(20),
+    })) };
+    let detailReads = 0;
+    window.testWorkspace = { ...window.testWorkspace,
+      setConfirm: (value: typeof confirmation) => { confirmation = value; },
+      gitMergePullRequestStack: () => new Promise<boolean>((resolve) => { finishMerge = resolve; }),
+      api: { ...(base.api as object), listPullRequests: async () => ({ items: [pr, other] }),
+        getPullRequest: async (_project: string, number: number) => {
+          detailReads++;
+          return { ...(number === 42 ? pr : other), stackDetail: stack,
+            body: "Fixture", labels: [], checkRuns: [], activity: [], commits: [], reviewers: [], files: [], diff: "", additions: 0, deletions: 0 };
+        } },
+    };
+    root.render(<Inspector />);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    document.querySelector<HTMLButtonElement>('[aria-label="Retry loading pull request"], [aria-label="Refresh pull request"]')!.click();
+    await until(() => button("Merge stack"));
+    button("Merge stack").click();
+    await until(() => confirmation);
+    confirmation!.onConfirm();
+    await until(() => finishMerge);
+    Array.from(document.querySelectorAll<HTMLButtonElement>(".pr-stack-layer")).find((item) => item.textContent?.includes("#43"))!.click();
+    await until(() => document.querySelector('.pr-stack-layer[aria-current="page"]')?.textContent?.includes("#43"));
+    const comment = document.querySelector<HTMLTextAreaElement>('[aria-label="Comment draft for the thread"]')!;
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(comment, "Keep this new review draft");
+    comment.dispatchEvent(new Event("input", { bubbles: true }));
+    const beforeRefresh = detailReads;
+    finishMerge(false); // Partial failure must also refresh current state.
+    await until(() => detailReads > beforeRefresh);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert(document.querySelector('.pr-stack-layer[aria-current="page"]')?.textContent?.includes("#43"), "Stack completion reselected the original PR");
+    assert(document.querySelector<HTMLTextAreaElement>('[aria-label="Comment draft for the thread"]')?.value === "Keep this new review draft", "Stack refresh discarded another PR's draft");
   } finally { root.unmount(); window.capsule = originalApi; }
 }

@@ -125,7 +125,7 @@ describe("GitHub read lifecycle", () => {
     expect(second.pending).toBe(first.pending);
     release();
     await first.pending;
-    expect(mocks.spawn.mock.calls.filter((call) => call[0] === "gh")).toHaveLength(2);
+    expect(mocks.spawn.mock.calls.filter((call) => call[0] === "gh" && call[1]?.[0] === "pr")).toHaveLength(2);
     expect(mocks.spawn.mock.calls[0]?.[1].join(",")).not.toContain("statusCheckRollup");
   });
 
@@ -138,6 +138,7 @@ describe("GitHub read lifecycle", () => {
   it("keeps readable detail when only the patch fails", async () => {
     answers.push({ stdout: JSON.stringify(row) }, { code: 1, stderr: "maximum number of files" });
     expect(await readPullRequestDetail("/repo", 3)).toMatchObject({ number: 3, diff: "", diffUnavailable: expect.stringMatching(/this large/) });
+    expect(mocks.spawn.mock.calls.some((call) => call[0] === "gh" && call[1]?.[0] === "pr" && call[1]?.[1] === "view")).toBe(true);
   });
 
   it("distinguishes a missing current-branch PR from a failed read", async () => {

@@ -68,6 +68,7 @@ import {
   type ResourceSample,
   type Run,
   type SpawnHarnessInput,
+  type GitPullRequestStackAction,
   type UpdateProjectInput,
 } from "@capsule/shared";
 import { readAgentProcesses } from "@capsule/filesystem";
@@ -1392,6 +1393,20 @@ function registerIpc(): void {
       String(projectId),
       sessionId ? String(sessionId) : undefined,
       target ? String(target) : undefined,
+    ),
+  );
+  handle(IPC_CHANNELS.gitMergePullRequestStack, (projectId, action, sessionId) =>
+    requireEngine().gitMergePullRequestStack(
+      String(projectId),
+      action as GitPullRequestStackAction,
+      sessionId ? String(sessionId) : undefined,
+    ),
+  );
+  handle(IPC_CHANNELS.gitRebasePullRequestStack, (projectId, action, sessionId) =>
+    requireEngine().gitRebasePullRequestStack(
+      String(projectId),
+      action as GitPullRequestStackAction,
+      sessionId ? String(sessionId) : undefined,
     ),
   );
   handle(IPC_CHANNELS.searchContents, (projectId, query, sessionId) =>

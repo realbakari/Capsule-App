@@ -48,6 +48,8 @@ export {
   readCommitDiff,
   mergePullRequest,
   mergePullRequestArgs,
+  mergePullRequestStack,
+  rebasePullRequestStack,
   pushArgs,
   pushCurrentBranch,
   parsePullRequestList,

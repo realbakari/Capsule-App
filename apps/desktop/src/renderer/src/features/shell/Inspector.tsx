@@ -5,8 +5,10 @@ import type {
   FilePreview,
   GitPullRequest,
   GitPullRequestDetail,
+  GitPullRequestStackAction,
   LocalServer,
 } from "@capsule/shared";
+import { mergePrompt, rebasePrompt } from "../../lib/pull-request-stack";
 import { folderBasename, projectFolderList } from "@capsule/shared";
 import { useRememberedScroll } from "../../lib/remembered-scroll";
 import { FileSaveCoordinator, isConflictError } from "../../lib/file-save";
@@ -180,6 +182,9 @@ export function Inspector() {
     gitPush,
     gitCreatePullRequest,
     gitMergePullRequest,
+    gitMergePullRequestStack,
+    gitRebasePullRequestStack,
+    setConfirm,
     settings,
     spawnHarness,
     cancelHarness,
@@ -270,6 +275,9 @@ export function Inspector() {
   const [pullRequestDetail, setPullRequestDetail] = useState<GitPullRequestDetail>();
   const [pullRequestDetailLoading, setPullRequestDetailLoading] = useState(false);
   const [pullRequestDetailError, setPullRequestDetailError] = useState<string>();
+  const [stackBusy, setStackBusy] = useState(false);
+  const reviewScope = JSON.stringify([projectId, session?.id]);
+  const latestReview = useRef({ scope: reviewScope, refresh: () => {} });
   const pullRequestRequest = useRef(0);
 
   const [termCmd, setTermCmd] = useState("");
@@ -459,6 +467,50 @@ export function Inspector() {
       .finally(() => {
         if (pullRequestRequest.current === request) setPullRequestDetailLoading(false);
       });
+  }
+
+  function refreshReview() {
+    forceNextListRead.current = true;
+    setListRefreshVersion((value) => value + 1);
+    if (selectedPullRequest) openPullRequest(selectedPullRequest, true);
+  }
+
+  useLayoutEffect(() => {
+    latestReview.current = { scope: reviewScope, refresh: refreshReview };
+  });
+  useEffect(() => { setStackBusy(false); }, [reviewScope]);
+
+  function runStackAction(
+    title: string,
+    detail: string,
+    confirmLabel: string,
+    danger: boolean,
+    operate: (action: GitPullRequestStackAction) => Promise<boolean>,
+    action: GitPullRequestStackAction,
+  ) {
+    setConfirm({
+      title,
+      detail,
+      confirmLabel,
+      danger,
+      onConfirm: () => {
+        void (async () => {
+          setConfirm(undefined);
+          if (latestReview.current.scope !== reviewScope) return;
+          setStackBusy(true);
+          try {
+            await operate(action);
+          } finally {
+            if (latestReview.current.scope === reviewScope) {
+              // Refresh even after partial writes, without reselecting the PR
+              // captured before the user navigated to another review.
+              latestReview.current.refresh();
+              setStackBusy(false);
+            }
+          }
+        })();
+      },
+    });
   }
 
   useLayoutEffect(() => {
@@ -1046,6 +1098,46 @@ export function Inspector() {
                 onSteerAgent={(prompt) => {
                   setDraft((current) => current.trim() ? `${current}\n\n${prompt}` : prompt);
                   setView("chat");
+                }}
+                stackBusy={stackBusy}
+                onSelectLayer={(number) => {
+                  const listed = pullRequests?.find((item) => item.number === number);
+                  if (listed) {
+                    openPullRequest(listed);
+                    return;
+                  }
+                  const url = selectedPullRequest.url.replace(/\/pull\/\d+/, `/pull/${number}`);
+                  openPullRequest({
+                    number,
+                    url,
+                    title: `Pull request #${number}`,
+                    isDraft: false,
+                    state: "OPEN",
+                  });
+                }}
+                onMergeStack={(action) => {
+                  const stack = pullRequestDetail?.stackDetail;
+                  if (!stack) return;
+                  runStackAction(
+                    "Merge this stack?",
+                    mergePrompt(stack, action.number),
+                    "Merge stack",
+                    false,
+                    gitMergePullRequestStack,
+                    action,
+                  );
+                }}
+                onRebaseStack={(action) => {
+                  const stack = pullRequestDetail?.stackDetail;
+                  if (!stack) return;
+                  runStackAction(
+                    "Rebase this stack?",
+                    rebasePrompt(stack),
+                    "Rebase stack",
+                    true,
+                    gitRebasePullRequestStack,
+                    action,
+                  );
                 }}
               />
             ) : (
