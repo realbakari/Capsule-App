@@ -168,6 +168,9 @@ An open file keeps the project, folder and revision it was read from. Navigating
 elsewhere flushes its pending edit to that original file, never the new folder.
 Conflicts require an explicit reload or overwrite decision.
 
+If a branch disappears after you opened the branch picker, checkout fails without
+restoring a same-named file over your local edits.
+
 Files opened from chat or content-search results use that conversation's folder,
 even if the Files panel was showing an extra folder. File-filter results disappear
 while a different query or folder loads. Failed searches show **Retry**, not an

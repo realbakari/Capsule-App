@@ -119,7 +119,9 @@ export async function checkoutBranch(workingDirectory: string, branch: string): 
 
     const name = branch.trim();
     if (!name || name.startsWith("-")) return { ok: false, detail: "Choose a valid branch name." };
-    const result = await git(workingDirectory, ["checkout", name]);
+    // A branch deleted since the menu loaded must fail, never become a
+    // same-named path checkout that silently discards working-tree edits.
+    const result = await git(workingDirectory, ["checkout", name, "--"]);
     if (result.ok) return { ok: true, detail: `Checked out ${name}.` };
     return { ok: false, detail: result.stderr || result.stdout || "Checkout failed." };
 

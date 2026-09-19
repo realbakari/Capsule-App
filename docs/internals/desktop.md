@@ -122,6 +122,8 @@ Tools: **Launch**, **Review**, **Terminal**, **Browser**, **Files**, **Agents**,
   Markdown description, Timeline interleaves commits, comments, and reviews,
   and Code shows file stats plus the host patch. **Open on GitHub** moves the
   canonical URL into Capsule's Browser surface.
+  Branch checkout ends its revision arguments with `--`: a stale branch name
+  cannot be interpreted as a file path and discard local edits.
   The list has local title/author/branch/number filtering, update/creation sorting,
   and a refresh that bypasses the two-minute cache. It loads up to 50 open PRs;
   filters are explicitly scoped to those loaded results. Listing reads omit the
