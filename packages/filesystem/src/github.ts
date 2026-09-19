@@ -2,6 +2,7 @@ import { inRepository } from "./git-process.js";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { avatarsFor } from "./avatars.js";
+import { remoteCommandFailure } from "./remote-errors.js";
 import { INCOMPLETE_GITHUB_RESPONSE, isIncompleteResponse, readGhJson } from "./github-read.js";
 import type {
   GitPullRequest,
@@ -161,8 +162,8 @@ export async function pushCurrentBranch(
   return inRepository(cwd, async () => {
 
     const result = await runAsync("git", pushArgs(forceWithLease), cwd, 30_000);
-    if (result.ok) return { ok: true, detail: result.stdout.trim() || "Pushed." };
-    return { ok: false, detail: result.stderr || result.stdout.trim() || "Push failed." };
+    if (result.ok) return { ok: true, detail: "Pushed." };
+    return { ok: false, detail: remoteCommandFailure(result.stderr || result.stdout, "Push failed. Check the remote branch and your Git setup.") };
 
   });
 }
@@ -843,9 +844,9 @@ export async function createPullRequest(
 
     const result = await runAsync("gh", createPullRequestArgs(input), cwd, 30_000);
     const text = `${result.stdout}\n${result.stderr}`.trim();
-    const url = text.match(/https:\/\/github\.com\/\S+/)?.[0];
-    if (result.ok) return { ok: true, detail: text || "Opened pull request.", url };
-    return { ok: false, detail: result.stderr || result.stdout.trim() || "Could not create pull request." };
+    const url = text.match(/https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+(?=\s|$)/)?.[0];
+    if (result.ok) return { ok: true, detail: "Opened pull request.", url };
+    return { ok: false, detail: remoteCommandFailure(result.stderr || result.stdout, "Could not create pull request.") };
 
   });
 }
@@ -865,8 +866,8 @@ export async function mergePullRequest(
     }
     const result = await runAsync("gh", args, cwd, 30_000);
     if (result.ok) clearGhCache();
-    if (result.ok) return { ok: true, detail: result.stdout.trim() || "Merge started." };
-    return { ok: false, detail: result.stderr || result.stdout.trim() || "Could not merge pull request." };
+    if (result.ok) return { ok: true, detail: "Merge started." };
+    return { ok: false, detail: remoteCommandFailure(result.stderr || result.stdout, "Could not merge pull request. Review its current checks and merge requirements.") };
 
   });
 }

@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { remoteCommandFailure } from "./remote-errors.js";
 
 export interface CloneRepositoryResult {
   ok: boolean;
@@ -60,7 +61,7 @@ export async function cloneRepository(
     };
     child.stdout.on("data", append);
     child.stderr.on("data", append);
-    child.on("error", (error) => resolve({ ok: false, detail: error.message }));
+    child.on("error", () => resolve({ ok: false, detail: "Could not start Git. Check that it is installed and available on PATH." }));
     child.on("close", (code) => {
       if (code === 0) {
         resolve({ ok: true, detail: `Cloned ${name}.`, path: destination, name });
@@ -69,8 +70,7 @@ export async function cloneRepository(
       // Git owns this newly-created destination. Remove only that exact path
       // after a failed clone so retrying does not hit a half-populated folder.
       if (fs.existsSync(destination)) fs.rmSync(destination, { recursive: true, force: true });
-      resolve({ ok: false, detail: output.trim() || `Git clone exited with code ${code ?? "unknown"}.` });
+      resolve({ ok: false, detail: remoteCommandFailure(output, "Could not clone the repository. Check its address and your Git setup.") });
     });
   });
 }
-

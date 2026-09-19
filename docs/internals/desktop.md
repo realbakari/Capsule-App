@@ -248,6 +248,8 @@ transcript remains the primary reading surface.
 
 HTTP and HTTPS links in rendered Markdown open the Inspector's embedded Browser
 surface. Non-web schemes keep the platform handler fallback.
+Remote command failures map to safe guidance rather than displaying raw output
+that may contain authentication URLs.
 
 For a selected coding harness, the composer shows its live readiness detail and
 blocks send before spawn when the selected route, folder, or CLI login is known

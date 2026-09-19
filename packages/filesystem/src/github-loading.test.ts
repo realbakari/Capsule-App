@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { clearGhCache, listPullRequests, mergePullRequest, pollPullRequest, pollPullRequestList, pullRequestListFailure, readPullRequestDetail, readCommitDiff, viewPullRequest } from "./github.js";
+import { clearGhCache, listPullRequests, mergePullRequest, pollPullRequest, pollPullRequestList, pullRequestListFailure, readPullRequestDetail, readCommitDiff, viewPullRequest, pushCurrentBranch, createPullRequest } from "./github.js";
 
 const mocks = vi.hoisted(() => ({ spawn: vi.fn() }));
 vi.mock("node:child_process", async (original) => ({ ...await original<typeof import("node:child_process")>(), spawn: mocks.spawn }));
@@ -37,6 +37,17 @@ beforeEach(() => {
 afterEach(() => clearGhCache());
 
 describe("GitHub read lifecycle", () => {
+  it("does not send raw credential-bearing command failures to the renderer", async () => {
+    const failure = { code: 1, stderr: "Authentication failed for https://user:fixture-secret@host.test/repo" };
+    answers.push(failure);
+    const pushed = await pushCurrentBranch("/remote-failure-fixture", false);
+    expect(pushed).toMatchObject({ ok: false, detail: expect.stringContaining("access was denied") });
+    expect(pushed.detail).not.toContain("fixture-secret");
+    answers.push(failure);
+    const created = await createPullRequest("/remote-failure-fixture", { title: "Fixture", body: "Fixture", draft: true });
+    expect(created.detail).not.toContain("fixture-secret");
+    expect(created.url).toBeUndefined();
+  });
   it("does not publish an old list after invalidation or a remote change", async () => {
     let release!: () => void;
     const wait = new Promise<void>((resolve) => { release = resolve; });
