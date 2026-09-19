@@ -40,6 +40,8 @@ declare global {
     testWorkspace: Record<string, unknown>;
     runPetRegressions: (motion: "reduce" | "no-preference") => Promise<string>;
     runRendererRegressions: () => Promise<string>;
+    renderComposerPreview: (resting: boolean) => Promise<void>;
+    renderFilesPreview: (width: number, openFile: boolean) => Promise<void>;
   }
 }
 
@@ -1005,6 +1007,45 @@ window.runRendererRegressions = async () => {
       { id: "review-project", name: "Review code", description: "Project conventions", status: "installed", source: "This project", tags: ["project-claude"] },
       { id: "disabled", name: "Disabled review", description: "", status: "disabled", source: "Local" },
     ],
+  };
+  // Optional visual evidence from the same renderer/CSS as the interaction
+  // checks. The fixture contains no user's conversations or file paths.
+  let previewRoot: ReturnType<typeof createRoot> | undefined;
+  window.renderComposerPreview = async (resting) => {
+    window.capsule = (contextBase as Record<string, unknown>).api as typeof window.capsule;
+    (document.getElementById("composer-test-styles") as HTMLStyleElement).media = "all";
+    host.style.cssText = "width:100%;padding:32px;box-sizing:border-box";
+    document.documentElement.style.setProperty("font-size", "16px");
+    const preset = PRESET_HARNESSES.find((item) => item.id === "grok")!;
+    window.testWorkspace = { ...contextBase, draft: "", attachments: [], skillId: undefined, events: [],
+      session: undefined, sessionId: undefined, agentId: "grok", mode: "code", workspaceMode: "local",
+      agents: [{ id: preset.id, name: preset.name }],
+      harnesses: [{ ...preset, runtimeRoute: "direct", readiness: "ready", detail: "", liveSessionIds: [], dedicatedProjectIds: [] }],
+      git: { isRepo: true, branch: "main", branches: ["main"], dirty: false },
+    };
+    previewRoot ??= createRoot(host);
+    previewRoot.render(<Composer awayFromLatest={resting} />);
+    await until(() => Boolean(document.querySelector(".composer--resting")) === resting && document.querySelector(".composer-context"));
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  };
+  window.renderFilesPreview = async (width, openFile) => {
+    (document.getElementById("composer-test-styles") as HTMLStyleElement).media = "all";
+    host.style.cssText = `width:${width}px;height:600px;position:relative;display:flex`;
+    document.documentElement.style.fontSize = "16px";
+    const files = ["README.md", "ARCHITECTURE.md", "CONTRIBUTING.md", "package.json", "pnpm-lock.yaml"].map((name) => ({ name, path: name, type: "file" }));
+    window.testWorkspace = { ...contextBase, inspectorTab: "files", inspectorOpen: true,
+      projectId: "files-preview", project: { id: "files-preview", workingDirectory: "/fixture/workspace" },
+      session: { id: "files-preview-thread" }, files,
+      requestedFile: openFile ? { path: "README.md", root: "/fixture/workspace", projectId: "files-preview", sessionId: "files-preview-thread" } : undefined,
+      clearRequestedFile: () => { window.testWorkspace.requestedFile = undefined; },
+      api: { ...((contextBase as Record<string, unknown>).api as object), listFiles: async () => files,
+        previewFile: async () => ({ path: "README.md", kind: "text", contents: "# Workspace\n\nKeep related work in one place.\n\n## Getting started\n\nOpen a project and start a conversation.\n", revision: "fixture", size: 120, truncated: false }),
+      },
+    };
+    previewRoot ??= createRoot(host);
+    previewRoot.render(<Inspector key={`${width}-${openFile}`} />);
+    await until(() => openFile ? document.querySelector(".file-preview") : document.querySelector(".codex-tree-item"));
+    await new Promise((resolve) => setTimeout(resolve, 250));
   };
   let slowFiles!: (files: unknown[]) => void;
   let contextSearchCalls = 0;

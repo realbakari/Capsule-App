@@ -29,6 +29,24 @@ app.whenReady().then(async () => {
     const result = await window.webContents.executeJavaScript("window.runRendererRegressions().then(value => ({ value }), error => ({ error: String(error.stack || error) }))");
     if (result.error) throw new Error(result.error);
     console.log(result.value);
+    const screenshots = process.env.CAPSULE_RENDERER_SCREENSHOTS_DIRECTORY;
+    if (screenshots) {
+      fs.mkdirSync(screenshots, { recursive: true });
+      window.setContentSize(1000, 500);
+      for (const resting of [false, true]) {
+        await window.webContents.executeJavaScript(`window.renderComposerPreview(${resting})`);
+        const bounds = await window.webContents.executeJavaScript("(() => { const r = document.querySelector('.composer').getBoundingClientRect(); return {x: Math.floor(r.x), y: Math.floor(r.y), width: Math.ceil(r.width), height: Math.ceil(r.height)}; })()");
+        const capture = await window.webContents.capturePage(bounds);
+        fs.writeFileSync(path.join(screenshots, resting ? "composer-compact.png" : "composer-expanded.png"), capture.toPNG());
+      }
+      window.setContentSize(1000, 650);
+      for (const [width, openFile, name] of [[420, false, "files-narrow-tree"], [420, true, "files-narrow-preview"], [800, false, "files-split"]]) {
+        await window.webContents.executeJavaScript(`window.renderFilesPreview(${width}, ${openFile})`);
+        const bounds = await window.webContents.executeJavaScript("(() => { const r = document.querySelector('.codex-inspector').getBoundingClientRect(); return {x: Math.floor(r.x), y: Math.floor(r.y), width: Math.ceil(r.width), height: Math.ceil(r.height)}; })()");
+        const capture = await window.webContents.capturePage(bounds);
+        fs.writeFileSync(path.join(screenshots, `${name}.png`), capture.toPNG());
+      }
+    }
     app.exit(0);
   } catch (error) {
     console.error(error);
