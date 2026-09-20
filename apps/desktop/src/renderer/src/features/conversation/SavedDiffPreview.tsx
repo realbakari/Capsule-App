@@ -1,7 +1,7 @@
-import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type HTMLAttributes } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type HTMLAttributes } from "react";
 import { createPortal } from "react-dom";
 import type { TouchedFile } from "../../lib/activity";
-import { highlight } from "../../lib/highlight";
+import { SavedDiffExcerpt } from "./SavedDiffExcerpt";
 import { savedDiffPreview } from "../../lib/saved-diff-preview";
 import { formatUserError } from "../../lib/errors";
 
@@ -36,7 +36,7 @@ export function useSavedDiffPreview(patch: string | undefined, onOpenDiff?: (pat
   const text = shown?.patch || result?.patch;
   const loading = Boolean(shown?.reader && !shown.patch && !result);
   const content = useMemo(() => shown && text ? savedDiffPreview(text, shown.file.path) : undefined, [shown, text]);
-  const [position, setPosition] = useState({ left: 12, top: 12, maxHeight: 440, width: 720 });
+  const [position, setPosition] = useState({ left: 12, top: 12, maxHeight: 360, width: 720 });
 
   useLayoutEffect(() => {
     if (!shown || !panel.current) return;
@@ -45,7 +45,7 @@ export function useSavedDiffPreview(patch: string | undefined, onOpenDiff?: (pat
       const above = rect.top - 20;
       const below = window.innerHeight - rect.bottom - 20;
       const up = above >= 220 || above >= below;
-      const maxHeight = Math.max(100, Math.min(440, up ? above : below, window.innerHeight - 24));
+      const maxHeight = Math.max(100, Math.min(360, up ? above : below, window.innerHeight - 24));
       const width = Math.min(720, window.innerWidth - 24);
       const height = Math.min(panel.current?.getBoundingClientRect().height ?? maxHeight, maxHeight);
       const next = { width, maxHeight, left: Math.max(12, Math.min(rect.left, window.innerWidth - width - 12)),
@@ -130,23 +130,21 @@ export function useSavedDiffPreview(patch: string | undefined, onOpenDiff?: (pat
       onPointerEnter={cancelTimer} onPointerLeave={leave} onFocus={cancelTimer}
       onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node) && event.relatedTarget !== shown.anchor) leave(); }}>
       <header className="saved-diff-preview-head">
-        <span className="saved-diff-preview-path" title={shown.file.path}>{shown.file.path}</span>
+        <span className="saved-diff-preview-path" title={shown.file.path}>
+          <span className="saved-diff-preview-dir">{shown.file.path.slice(0, shown.file.path.lastIndexOf("/") + 1)}</span>
+          <span className="saved-diff-preview-name">{shown.file.path.slice(shown.file.path.lastIndexOf("/") + 1)}</span>
+        </span>
         {typeof shown.file.added === "number" && <span className="diffstat"><span className="added">+{shown.file.added}</span><span className="removed">−{shown.file.removed ?? 0}</span></span>}
       </header>
-      <div className="saved-diff-preview-code" tabIndex={0} aria-label="Saved diff excerpt">
+      {/* A different file starts at its first column and hunk. Re-entering the
+          same file keeps its scroll position, loaded text and focused node. */}
+      <div key={shown.file.path} className="saved-diff-preview-code" tabIndex={0} role="region" aria-label="Saved diff excerpt">
         {loading ? <p role="status">Loading saved changes…</p>
           : result?.error ? <p role="alert">{result.error} <button type="button" className="ghost" onClick={() => setRetry((value) => value + 1)}>Retry preview</button></p>
           : !content ? <p>{result?.truncated ? "This file exceeds the preview limit. Inspect the saved checkpoint in Git for the complete change." : "No text diff is available for this file in this saved snapshot."}</p>
           : content.file.binary ? <p>Binary file changed. There is no text preview.</p>
           : content.file.hunks.length === 0 ? <p>{content.truncated ? "Text is outside this excerpt. Open the file diff to inspect it." : content.file.status === "renamed" ? `Renamed from ${content.file.oldPath}. No text changes.` : "File metadata changed. No text changes."}</p>
-          : content.file.hunks.map((hunk, index) => <Fragment key={index}>
-            <div className="saved-diff-preview-hunk">{hunk.header}</div>
-            {hunk.lines.map((line, row) => <div className={`saved-diff-preview-line ${line.kind}`} key={row}>
-              <span className="preview-line-number">{line.oldLine ?? ""}</span><span className="preview-line-number">{line.newLine ?? ""}</span>
-              <span className="preview-line-sign">{line.kind === "add" ? "+" : line.kind === "del" ? "−" : " "}</span>
-              <code>{highlight(line.text, shown.file.path.split(".").pop())}</code>
-            </div>)}
-          </Fragment>)}
+          : <SavedDiffExcerpt file={content.file} />}
       </div>
       <footer className="saved-diff-preview-footer">
         <span>{content?.truncated || result?.truncated ? "Excerpt · saved at this turn" : "Saved at this turn"}</span>

@@ -21,7 +21,7 @@ import { runInterfaceRegressions } from "./interface-regressions";
 import { runPanelRegressions } from "./panel-regressions";
 import { runDraftAdmissionRegressions } from "./draft-admission-regressions";
 import { runWorkspaceExtensionRegressions } from "./workspace-extension-regressions";
-import { runSavedPreviewRegressions } from "./saved-preview-regressions";
+import { runSavedPreviewRegressions, runSavedPreviewLayoutRegressions, SavedDiffFixture, focusSavedPreview } from "./saved-preview-regressions";
 import { ChevronRightIcon, FolderIcon, InboxIcon } from "../features/shell/icons";
 import { CapabilityDetails } from "../features/harness/CapabilityDetails";
 import { MenuSelect } from "../features/shell/MenuSelect";
@@ -43,6 +43,8 @@ declare global {
     runRendererRegressions: () => Promise<string>;
     renderComposerPreview: (resting: boolean) => Promise<void>;
     renderFilesPreview: (width: number, openFile: boolean) => Promise<void>;
+    runDiffPreviewRegressions: () => Promise<void>;
+    renderDiffPreview: (theme: "dark" | "light", scrolled: boolean) => Promise<void>;
   }
 }
 
@@ -1012,6 +1014,24 @@ window.runRendererRegressions = async () => {
   // Optional visual evidence from the same renderer/CSS as the interaction
   // checks. The fixture contains no user's conversations or file paths.
   let previewRoot: ReturnType<typeof createRoot> | undefined;
+  window.runDiffPreviewRegressions = async () => {
+    (document.getElementById("composer-test-styles") as HTMLStyleElement).media = "all";
+    host.style.cssText = "width:100%;padding:24px;box-sizing:border-box";
+    await runSavedPreviewLayoutRegressions(host);
+  };
+  window.renderDiffPreview = async (theme, scrolled) => {
+    (document.getElementById("composer-test-styles") as HTMLStyleElement).media = "all";
+    host.style.cssText = "width:100%;padding:380px 24px 0;box-sizing:border-box";
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.style.fontSize = "16px";
+    previewRoot ??= createRoot(host);
+    const identity = `${theme}-${innerWidth}-${scrolled}`;
+    previewRoot.render(<div data-diff-preview={identity}><SavedDiffFixture key={identity} /></div>);
+    await until(() => host.querySelector(`[data-diff-preview="${identity}"] .changed-file-row`));
+    const scroller = await focusSavedPreview(host);
+    if (scrolled) scroller.scrollLeft = 180;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  };
   window.renderComposerPreview = async (resting) => {
     window.capsule = (contextBase as Record<string, unknown>).api as typeof window.capsule;
     (document.getElementById("composer-test-styles") as HTMLStyleElement).media = "all";
@@ -1153,6 +1173,7 @@ window.runRendererRegressions = async () => {
   await runPanelRegressions(host, contextBase);
   phase("saved previews");
   await runSavedPreviewRegressions(host);
+  await runSavedPreviewLayoutRegressions(host);
   phase("workspace extensions");
   await runWorkspaceExtensionRegressions(host, contextBase);
   phase("files layout and navigation");

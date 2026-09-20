@@ -29,6 +29,10 @@ app.whenReady().then(async () => {
     const result = await window.webContents.executeJavaScript("window.runRendererRegressions().then(value => ({ value }), error => ({ error: String(error.stack || error) }))");
     if (result.error) throw new Error(result.error);
     console.log(result.value);
+    // Exercise a real narrow viewport as well as the default desktop width.
+    window.setContentSize(380, 650);
+    const narrowDiff = await window.webContents.executeJavaScript("window.runDiffPreviewRegressions().then(() => ({}), error => ({ error: String(error.stack || error) }))");
+    if (narrowDiff.error) throw new Error(narrowDiff.error);
     const screenshots = process.env.CAPSULE_RENDERER_SCREENSHOTS_DIRECTORY;
     if (screenshots) {
       fs.mkdirSync(screenshots, { recursive: true });
@@ -45,6 +49,13 @@ app.whenReady().then(async () => {
         const bounds = await window.webContents.executeJavaScript("(() => { const r = document.querySelector('.codex-inspector').getBoundingClientRect(); return {x: Math.floor(r.x), y: Math.floor(r.y), width: Math.ceil(r.width), height: Math.ceil(r.height)}; })()");
         const capture = await window.webContents.capturePage(bounds);
         fs.writeFileSync(path.join(screenshots, `${name}.png`), capture.toPNG());
+      }
+      for (const [width, theme, scrolled] of [[1000, "dark", false], [1000, "dark", true], [1000, "light", false], [380, "dark", true], [380, "light", false]]) {
+        window.setContentSize(width, 650);
+        await window.webContents.executeJavaScript(`window.renderDiffPreview(${JSON.stringify(theme)}, ${scrolled})`);
+        const bounds = await window.webContents.executeJavaScript("(() => { const r = document.querySelector('.saved-diff-preview').getBoundingClientRect(); return {x: Math.floor(r.x), y: Math.floor(r.y), width: Math.ceil(r.width), height: Math.ceil(r.height)}; })()");
+        const capture = await window.webContents.capturePage(bounds);
+        fs.writeFileSync(path.join(screenshots, `diff-${theme}-${width}${scrolled ? "-scrolled" : ""}.png`), capture.toPNG());
       }
     }
     app.exit(0);

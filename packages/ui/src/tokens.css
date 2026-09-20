@@ -56,6 +56,10 @@
   --code-header: light-dark(#eef0f2, #202326);
   --code-border: light-dark(#d5d9dd, #34383d);
   --code-muted: light-dark(#59636e, #a0a6ad);
+  /* Opaque diff surfaces keep syntax contrast stable over custom palettes
+     and prevent scrolled code showing through pinned line numbers. */
+  --diff-added-bg: light-dark(#edf5ed, #202b23);
+  --diff-removed-bg: light-dark(#fbeded, #302325);
   --syntax-keyword: light-dark(#305d8a, #91b8e5);
   --syntax-string: light-dark(#40632d, #a8c990);
   --syntax-number: light-dark(#73550d, #dbc18a);
@@ -275,6 +279,7 @@ button:disabled, [aria-disabled="true"] { cursor: default; }
 /* Scrollbars: auto-fading thumbs — transparent at rest, visible on interaction. */
 ::-webkit-scrollbar { width: var(--app-scrollbar-width); height: var(--app-scrollbar-width); }
 ::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-corner { background: transparent; }
 ::-webkit-scrollbar-thumb {
   background: rgb(255 255 255 / 0%);
   border-radius: 99px;

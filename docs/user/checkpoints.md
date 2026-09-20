@@ -21,6 +21,10 @@ the preview's **Open file diff** control.
 Moving between the file row and its open preview keeps the code loaded. Scrolling
 another panel does not close it; scrolling the conversation dismisses the hover
 preview so it cannot become detached from its file.
+Each file opens at the start of its saved diff. Line numbers stay visible when
+you scroll sideways, and returning to the same open preview keeps your place.
+Diff previews use a compact layout and the same readable code colours in both
+themes, with subtle full-width backgrounds for additions and removals.
 
 Select a file row (including on touch devices) to open that file's saved diff
 in place. Select **All changed files**, or the card's heading, for the entire

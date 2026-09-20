@@ -505,6 +505,13 @@ read-only turnDiff channel on both runtime routes and paired viewers. Late
 responses are discarded after owner changes; no unbounded patch cache is kept.
 Re-entering the same active row preserves the preview owner, loaded patch and
 code nodes instead of starting another lazy read. Position updates are deduplicated.
+The preview scroller is keyed by file path so switching files resets both axes;
+unrelated renders preserve the current file's scroll and focus. A memoized excerpt
+uses one intrinsic grid for all hunks, with digit-sized sticky line-number gutters
+and opaque backgrounds. Short and long lines share the same painted width.
+Hover panels are capped at 360px high and clamped to the available viewport.
+Saved, unified, split and raw diffs share theme-aware code and change tokens;
+scrollbar corners do not introduce an unthemed white square.
 Scroll dismissal applies only to ancestors of the file row, not independent
 Inspector/terminal scrollers; focus-driven scrolling keeps keyboard previews anchored.
 
