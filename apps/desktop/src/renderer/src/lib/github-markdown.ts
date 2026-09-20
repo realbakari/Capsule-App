@@ -18,7 +18,7 @@ function attribute(text: string, name: string): string {
 export function githubMarkdownHref(raw: string, baseUrl: string): string | undefined {
   if (!raw.trim()) return undefined;
   try {
-    const url = new URL(entities(raw.trim()), baseUrl);
+    const url = new URL(entities(raw.trim()), baseUrl || undefined);
     return /^https?:$/.test(url.protocol)
       ? url.href.replaceAll("(", "%28").replaceAll(")", "%29")
       : undefined;
@@ -29,9 +29,10 @@ export function githubMarkdownHref(raw: string, baseUrl: string): string | undef
 
 /**
  * Convert GitHub's presentation HTML to readable Markdown, never executable HTML.
- * Run on prose segments only; fenced code stays byte-for-byte intact upstream.
+ * Run on presentation-HTML tokens only; code stays literal upstream.
  * Inline code is protected here. Remote images become labelled links so reading
  * a review does not load trackers or expand a badge into a wall of markup.
+ * Markdown links stay untouched for the parser and safe link renderer.
  */
 export function normalizeGitHubMarkdown(text: string, baseUrl: string): string {
   let marker = "CAPSULEINLINECODE";
@@ -59,7 +60,6 @@ export function normalizeGitHubMarkdown(text: string, baseUrl: string): string {
     .replace(/<li\b[^>]*>/gi, "\n- ")
     .replace(/<\/?(?:p|div|ul|ol|details)\b[^>]*>/gi, "\n\n")
     .replace(/<\/?[a-z][^>]*>/gi, "")
-    .replace(/!?\[([^\]]+)\]\(([^)]+)\)/g, (_match, title: string, href: string) => link(title, href))
     .replace(/\n[ \t]+\n/g, "\n\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();

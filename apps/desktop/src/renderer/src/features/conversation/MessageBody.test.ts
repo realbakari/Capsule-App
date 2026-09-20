@@ -58,10 +58,8 @@ describe("chat markdown", () => {
     const html = renderToStaticMarkup(createElement(MarkdownBody, {
       content: "1. First item\n2. Second item with `github-stacks.ts`\n3. Third",
     }));
-    expect(html).toContain('class="md-li-num"');
-    expect(html.match(/class="md-num"/g)).toHaveLength(3);
-    expect(html).toContain(">1.</span>");
-    expect(html).toContain(">2.</span>");
+    expect(html).toContain('<ol class="md-list" start="1">');
+    expect(html.match(/<li>/g)).toHaveLength(3);
     expect(html).toContain("First item");
     expect(html).toContain("Third");
   });

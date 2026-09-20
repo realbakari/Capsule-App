@@ -68,6 +68,15 @@ Message and code copy buttons confirm **Copied** only after the clipboard accept
 the text. If copying fails, the button offers a retry. Copy controls appear on
 hover or keyboard focus and remain visible on touch devices.
 
+Replies support nested lists, read-only task lists, tables, quotes, and code
+examples inside quotes. Wide tables scroll inside the message. Code uses
+language-aware colors in dark and light themes, follows the conversation text
+size, and wraps long lines. Unknown languages and very large code blocks remain
+readable as plain text. Copying a code block copies its source, not its colors.
+Completed code blocks and open review disclosures stay in place as more text
+arrives. Unusually deep Markdown nesting is shown as readable source instead of
+preventing the conversation from opening.
+
 Long conversations keep a bounded display window: up to 300 messages and about
 4 MB of text and attachment metadata. **Load older messages** moves through saved
 history without loading the whole thread. Once newer messages fall outside that

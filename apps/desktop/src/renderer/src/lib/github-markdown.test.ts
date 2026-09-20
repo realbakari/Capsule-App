@@ -18,8 +18,10 @@ describe("host review Markdown", () => {
 
   it("does not produce executable links, markup, or remote image loads", () => {
     const text = normalizeGitHubMarkdown('<script>alert(1)</script><a href="javascript:alert(1)">Unsafe</a> [Bad](data:text/html,bad) <img src="https://example.com/tracker.png" alt="Diagram" onerror="alert(1)">', base);
-    expect(text).not.toMatch(/javascript:|data:text\/html|script|onerror|alert/);
+    expect(text).not.toMatch(/javascript:|script|onerror|alert/);
     expect(text).toContain("[Diagram](https://example.com/tracker.png)");
+    const html = renderToStaticMarkup(createElement(MarkdownBody, { content: text, githubBaseUrl: base }));
+    expect(html).not.toMatch(/href="data:|<img|<script/);
     expect(githubMarkdownHref("&#106;avascript:alert(1)", base)).toBeUndefined();
   });
 
@@ -27,7 +29,7 @@ describe("host review Markdown", () => {
     expect(normalizeGitHubMarkdown('Use `<Widget />` and `<!-- example -->`; 2 < 3.', base)).toBe('Use `<Widget />` and `<!-- example -->`; 2 < 3.');
   });
 
-  it("resolves relative web links and encodes parentheses for the inline parser", () => {
+  it("resolves relative web links and safely serializes HTML destinations", () => {
     expect(githubMarkdownHref("/example/repo/issues/2", base)).toBe("https://github.com/example/repo/issues/2");
     expect(githubMarkdownHref("https://example.com/a(b)", base)).toBe("https://example.com/a%28b%29");
   });
@@ -45,7 +47,7 @@ describe("host review Markdown", () => {
   it("keeps fenced HTML examples literal while hiding prose metadata", () => {
     const html = renderToStaticMarkup(createElement(MarkdownBody, { content: '<!-- prose-metadata -->\n```html\n<a href="/example">sample</a>\n<!-- literal -->\n```', githubBaseUrl: base }));
     expect(html).not.toContain("prose-metadata");
-    expect(html).toContain("&lt;a");
+    expect(html.replace(/<[^>]*>/g, "")).toContain("&lt;a");
     expect(html).toContain("literal");
   });
 

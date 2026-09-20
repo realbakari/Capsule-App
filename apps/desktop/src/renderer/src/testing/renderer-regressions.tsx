@@ -4,6 +4,7 @@ import { ProjectActionDialog } from "../features/shell/ProjectActionDialog";
 import { SkillsDirectory } from "../features/library/SkillsDirectory";
 import { Inspector } from "../features/shell/Inspector";
 import { runFilesRegressions } from "./files-regressions";
+import { runMarkdownRegressions } from "./markdown-regressions";
 import { EmbeddedBrowser } from "../features/shell/EmbeddedBrowser";
 import { PersistentTerminals } from "../features/terminal/TerminalDock";
 import { FileDiff } from "../features/shell/FileDiff";
@@ -1156,6 +1157,8 @@ window.runRendererRegressions = async () => {
   await runWorkspaceExtensionRegressions(host, contextBase);
   phase("files layout and navigation");
   await runFilesRegressions(host, contextBase);
+  phase("Markdown rendering and themes");
+  await runMarkdownRegressions(host);
   phase("complete");
   layoutStyles.media = "not all";
   return "Renderer regressions passed: recovery, editor ownership and memoization, browser navigation and discovery, bounded diff pages and review notes, terminal persistence, send admission, 1,000 stream frames without snapshot reloads, reconnect/history reconciliation.";

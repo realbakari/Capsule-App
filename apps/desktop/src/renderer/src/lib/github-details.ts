@@ -1,4 +1,4 @@
-import { codeFences } from "./fences";
+import { parseMarkdown } from "./markdown";
 
 export type GitHubBodySection =
   | { kind: "markdown"; text: string }
@@ -11,13 +11,15 @@ export type GitHubBodySection =
  */
 export function splitGitHubDetails(content: string): GitHubBodySection[] {
   // Keep offsets stable while hiding code so example tags cannot open panels.
-  let masked = "";
-  let offset = 0;
-  for (const fence of codeFences(content)) {
-    masked += content.slice(offset, fence.start) + " ".repeat(fence.end - fence.start);
-    offset = fence.end;
+  const lines = content.split("\n");
+  // Parser source maps include quoted and list-contained fences, unlike a
+  // top-level delimiter scan. Example disclosure tags must stay code there too.
+  for (const token of parseMarkdown(content).tokens) {
+    if ((token.type === "fence" || token.type === "code_block") && token.map) {
+      for (let line = token.map[0]; line < token.map[1]; line++) lines[line] = " ".repeat(lines[line]?.length ?? 0);
+    }
   }
-  masked = (masked + content.slice(offset)).replace(
+  const masked = lines.join("\n").replace(
     /(`+)[^\n]*?\1|<!--[\s\S]*?(?:-->|$)/g,
     (text) => text.replace(/[^\n]/g, " "),
   );

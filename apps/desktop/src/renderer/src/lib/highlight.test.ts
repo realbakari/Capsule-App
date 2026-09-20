@@ -6,6 +6,17 @@ const render = (code: string, lang?: string) =>
   renderToStaticMarkup(highlight(code, lang) as never);
 
 describe("highlight", () => {
+  it("uses CSS syntax rather than treating selectors and hex colors as comments", () => {
+    const html = render('#app { color: #b0b0aa; display: grid; }', "css");
+    expect(html).not.toContain('class="tok-com"');
+    expect(html).toContain('class="tok-attr"');
+  });
+
+  it("recognizes SQL and diff syntax, and leaves unknown languages plain", () => {
+    expect(render('SELECT name FROM users; -- note', "sql")).toContain('class="tok-kw"');
+    expect(render('-old\n+new', "diff")).toContain('class="tok-add"');
+    expect(render('const value = 1;', "not-a-language")).toBe('const value = 1;');
+  });
   it("colours strings, comments, numbers and keywords", () => {
     const html = render('const x = "hi"; // note\nconst n = 42;', "js");
     expect(html).toContain('class="tok-kw"');

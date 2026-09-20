@@ -1,93 +1,62 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { parseTable } from "./tables.js";
+import { MarkdownBody } from "../features/conversation/MarkdownBody";
 
-const lines = (text: string) => text.trim().split("\n");
+const render = (content: string) => renderToStaticMarkup(createElement(MarkdownBody, { content }));
 
-describe("parseTable", () => {
-  it("reads a table with a leading and trailing pipe", () => {
-    const result = parseTable(
-      lines(`
-| Path | What it is |
-|------|------------|
-| agent-gateway/ | Cloudflare Worker |
-| robots.txt | Stopgap robots |
-`),
-      0,
-    )!;
-    expect(result.table.headers).toEqual(["Path", "What it is"]);
-    expect(result.table.rows).toEqual([
-      ["agent-gateway/", "Cloudflare Worker"],
-      ["robots.txt", "Stopgap robots"],
-    ]);
-    expect(result.consumed).toBe(4);
+describe("rendered Markdown tables", () => {
+  it("reads a table with outer pipes", () => {
+    const html = render('| Path | Description |\n| --- | --- |\n| src/ | Source |');
+    expect(html).toContain('<table class="md-table">');
+    expect(html).toContain('<th>Path</th>');
+    expect(html).toContain('<td>src/</td><td>Source</td>');
   });
 
-  it("reads a table written without outer pipes", () => {
-    const result = parseTable(lines(`
-Path | What
---- | ---
-a | b
-`), 0)!;
-    expect(result.table.headers).toEqual(["Path", "What"]);
-    expect(result.table.rows).toEqual([["a", "b"]]);
+  it("reads a table without outer pipes", () => {
+    expect(render('Path | Description\n--- | ---\nsrc/ | Source')).toContain('<td>src/</td><td>Source</td>');
   });
 
-  it("reads column alignment", () => {
-    const result = parseTable(lines(`
-| L | C | R |
-|:--|:-:|--:|
-| 1 | 2 | 3 |
-`), 0)!;
-    expect(result.table.align).toEqual(["left", "center", "right"]);
+  it("preserves column alignment", () => {
+    const html = render('| Left | Center | Right |\n| :--- | :---: | ---: |\n| 1 | 2 | 3 |');
+    for (const alignment of ['left', 'center', 'right']) expect(html).toContain(`style="text-align:${alignment}"`);
   });
 
-  it("leaves prose that merely contains a pipe alone", () => {
-    expect(parseTable(lines(`
-Run a | b to pipe them
-and then continue
-`), 0)).toBeUndefined();
-    expect(parseTable(["| not a table |", "still not one"], 0)).toBeUndefined();
+  it("leaves prose pipes alone", () => {
+    expect(render('Run alpha | beta\nthen continue')).not.toContain('<table');
   });
 
-  it("requires as many delimiter cells as headers", () => {
-    // Two headers, one delimiter: not a table, and guessing would mangle it.
-    expect(parseTable(["| a | b |", "| --- |", "| 1 | 2 |"], 0)).toBeUndefined();
+  it("requires matching header and delimiter counts", () => {
+    expect(render('| a | b |\n| --- |\n| 1 | 2 |')).not.toContain('<table');
   });
 
-  it("keeps an escaped pipe inside a cell", () => {
-    const result = parseTable(["| cmd | note |", "| --- | --- |", String.raw`| a \| b | piped |`], 0)!;
-    expect(result.table.rows[0]).toEqual(["a | b", "piped"]);
+  it("preserves escaped pipes in the middle and at the end of cells", () => {
+    const html = render('Command | Note\n--- | ---\na \\| b | ends\\|');
+    expect(html).toContain('<td>a | b</td><td>ends|</td>');
   });
 
-  it("pads a short row rather than dropping it", () => {
-    const result = parseTable(["| a | b | c |", "| --- | --- | --- |", "| 1 |"], 0)!;
-    expect(result.table.rows[0]).toEqual(["1", "", ""]);
+  it("pads short rows", () => {
+    expect(render('| a | b | c |\n| --- | --- | --- |\n| 1 |')).toContain('<td>1</td><td></td><td></td>');
   });
 
-  it("trims a row longer than the header", () => {
-    const result = parseTable(["| a | b |", "| --- | --- |", "| 1 | 2 | 3 |"], 0)!;
-    expect(result.table.rows[0]).toEqual(["1", "2"]);
+  it("ignores extra cells only within a table row", () => {
+    expect(render('| a | b |\n| --- | --- |\n| 1 | 2 | 3 |')).toContain('<td>1</td><td>2</td></tr>');
   });
 
-  it("stops at a blank line so following prose is not swallowed", () => {
-    const result = parseTable(lines(`
-| a |
-| --- |
-| 1 |
-
-after the table
-`), 0)!;
-    expect(result.table.rows).toEqual([["1"]]);
-    expect(result.consumed).toBe(3);
+  it("stops at blank lines and block interruptions", () => {
+    for (const following of ['\nAfter', '- After | more | text', '> After | more | text']) {
+      const html = render('| a | b |\n| --- | --- |\n| 1 | 2 |\n' + following);
+      expect(html.indexOf('After')).toBeGreaterThan(html.indexOf('</table>'));
+    }
   });
 
-  it("handles a header-only table with no rows", () => {
-    const result = parseTable(["| a | b |", "| --- | --- |"], 0)!;
-    expect(result.table.rows).toEqual([]);
+  it("renders a header-only table", () => {
+    const html = render('| a | b |\n| --- | --- |');
+    expect(html).toContain('<th>a</th>');
+    expect(html).not.toContain('<td>');
   });
 
-  it("finds a table that does not start at the first line", () => {
-    const result = parseTable(["intro", "| a |", "| --- |", "| 1 |"], 1)!;
-    expect(result.table.headers).toEqual(["a"]);
+  it("finds a table after introductory prose", () => {
+    expect(render('Intro\n\n| a |\n| --- |\n| 1 |')).toContain('<td>1</td>');
   });
 });

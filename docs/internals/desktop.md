@@ -168,6 +168,18 @@ Tools: **Launch**, **Review**, **Terminal**, **Browser**, **Files**, **Agents**,
   are discarded, nested sections are bounded to 12 levels, and code/comment ranges
   are excluded from structure parsing. Backtick and tilde code fences preserve
   shorter fences inside examples. Markdown tables scroll within the body.
+  Chat, review and skill previews share a bounded Markdown token parser and an
+  explicit React renderer: semantic lists, nested quotes/fences, task-state
+  labels, safe links and heading levels below conversation/author headings.
+  The 24-level parsing limit falls back to escaped source rather than silently
+  dropping over-nested content. HTML is converted only in HTML tokens; inline
+  code and Markdown destinations are not rewritten by the HTML normalizer.
+  Syntax highlighting uses an explicit bundled language set with safe React
+  spans, a 20,000-character per-block cutoff and a 24-entry LRU. Unsupported
+  languages remain plain text; there is no automatic language detection or
+  remote grammar fetch. Dedicated light/dark syntax tokens are independent of
+  interface accent colors. Code typography scales with the transcript, while
+  memoized fences preserve DOM and copy state when following content changes.
   Summary comments are collapsible cards with shared newest/oldest ordering.
   Timeline groups adjacent comments/reviews without grouping across a commit;
   commit titles open the single-commit diff. Optional mergedAt/closedAt fields

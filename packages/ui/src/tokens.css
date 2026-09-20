@@ -49,6 +49,28 @@
   --yellow: #d6c37a;
   --red: #d98989;
 
+  /* Code has its own restrained palette, independent of interface accents.
+     light-dark follows explicit themes and the system color-scheme. */
+  --code-bg: light-dark(#f5f6f7, #1b1d1f);
+  --code-text: light-dark(#24292f, #e4e6e8);
+  --code-header: light-dark(#eef0f2, #202326);
+  --code-border: light-dark(#d5d9dd, #34383d);
+  --code-muted: light-dark(#59636e, #a0a6ad);
+  --syntax-keyword: light-dark(#305d8a, #91b8e5);
+  --syntax-string: light-dark(#40632d, #a8c990);
+  --syntax-number: light-dark(#73550d, #dbc18a);
+  --syntax-function: light-dark(#28646a, #91c2c6);
+  --syntax-type: light-dark(#365f82, #a8c5df);
+  --syntax-attribute: light-dark(#705b2e, #c9b994);
+  --syntax-added: light-dark(#31643a, #a0c59a);
+  --syntax-removed: light-dark(#9b3d3d, #dda0a0);
+  --inline-code-bg: light-dark(rgb(0 0 0 / 5%), rgb(255 255 255 / 6%));
+  --markdown-note: light-dark(#305d8a, #91b8e5);
+  --markdown-tip: light-dark(#40632d, #a8c990);
+  --markdown-important: light-dark(#28646a, #91c2c6);
+  --markdown-warning: light-dark(#73550d, #dbc18a);
+  --markdown-caution: light-dark(#9b3d3d, #dda0a0);
+
   --background: 0 0% 3.9%;
   --foreground: 60 14% 95%;
   --card: 0 0% 6.7%;
