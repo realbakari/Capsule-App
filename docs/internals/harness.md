@@ -6,15 +6,35 @@
 `DirectAcpHost` by Core. It uses `@muse-code/sdk` 1.3.0 framing and UUID command
 identities on an owned `muse serve` process. It is native MSP schema version 1,
 not ACP and not an acpx target. Schema fingerprints are advisory for additive
-changes. No renderer dependency, new IPC channel, credential reader or agent
-loop is introduced. The remote viewer remains read-only.
+changes. No renderer SDK dependency, credential reader or agent loop is
+introduced. The remote viewer remains read-only.
 
 The harness is discoverable in the composer and Harnesses. Its route is always
 direct, including when new Gateway threads are the default; existing threads
 retain their route. Doctor reports executable readiness, not authentication or
 SDK entitlement. Live status carries the session's model catalog and exact
-mutable model selector. A model change requires an acknowledgement. Other
-live configuration, forms, steering and browser MCP injection are unsupported.
+mutable model selector. Model and reasoning changes require acknowledgement.
+Forms, permission settings, steering and browser MCP injection are unsupported.
+
+Reasoning exposes the eight exact native tiers through the existing
+`setHarnessConfig` write channel and shared Agent settings component. An accepted
+`session/setReasoningEffort` must echo its command ID. Session notifications are
+handled before turn filtering, with a 16-entry pre-identity buffer. Resume reads
+one backward `view/page` of at most 100 events with a three-second deadline.
+Unknown values remain absent. Accepted writes and newer notifications take
+precedence over recovery; late responses are discarded. Optional reads are
+one-shot, never retried, and do not tear down a working session on failure.
+
+Subscription reports use one optional `usage/read` per owned connection and
+global `usage/changed` notifications, not session-scoped turn usage. Older
+observations are rejected; a notification wins an equal-timestamp initial read.
+The closed allowlist's read-only `providerUsage` channel returns only cached
+observations mapped to active Capsule conversations, at most 128 sources. It
+cannot spawn, send or poll the provider. The dedicated `provider-usage` state
+invalidation fires on reports, persisted source identity, close and idle exit.
+The renderer coalesces snapshot reads, discards invalidated in-flight results
+and keeps failed reads visibly stale. No reports are persisted or account
+identifiers read; per-connection sources are never merged into a balance.
 
 The adapter implements initialize/start/resume, text and image inputs, bounded
 item projections, message boundaries, tool activity, usage, one-time approval
@@ -42,6 +62,22 @@ covers admission, transcript storage and database-reopen resume. Signed-in
 provider behavior and Windows Muse execution are not certified by these tests.
 
 ## Shared transport lifecycle
+
+New profiles select direct execution; saved `auto` and `openclaw` preferences
+remain unchanged. Direct startup does not call Gateway connect or probe acpx.
+The disconnected production adapter remains distinct from the explicit test
+mock. Gateway availability uses actual connection state, not the adapter's
+kind. Explicit connection and existing Gateway session keys remain supported.
+
+Claude Code and Codex have separate `directCommand` metadata for user-installed
+`claude-agent-acp` and `codex-acp`. Unlike `acpxCommand`, these entries never
+rewrite Gateway agent mappings. Direct readiness and Doctor check the adapter
+executable; login probes still target the provider CLI, never the adapter.
+Spawn gates a missing adapter before recording a new harness session. Model
+selection uses the adapter's reported protocol control after initialization,
+not an invented launch flag. Existing owned-session resume validates the saved
+command identity as well as cwd and harness. No automatic package installation,
+credential reader or new agent loop is added.
 
 Direct ACP and login probes launch through `@capsule/process`. It handles
 Windows PATH/PATHEXT and npm `.cmd` shims with escaped arguments, and stops the
@@ -185,7 +221,8 @@ the same route limitations; none of these affordances adds runtime support.
 
 ### Direct sessions
 
-Presets with `acpxCommand` can use the direct route; others keep the Gateway.
+Presets with `directCommand`, `acpxCommand` or `nativeCommand` can use the direct
+route; others keep the Gateway.
 The `direct:acp:` key is authoritative for existing sessions regardless of later
 settings. Readiness and Doctor probe the local CLI/login without requiring a
 Gateway or acpx. Start is available in the composer and Harnesses alike.

@@ -8,6 +8,30 @@ Capsule is a workspace, not a clone of any other agent product. Quality bars els
 
 ## Shell
 
+New profiles default to Direct execution and do not attempt a Gateway connection
+on startup. Settings → Agents owns the runtime selector (ACP and native session
+transports); Settings → Gateway presents the optional connection. Saved defaults
+and existing conversation routes are preserved. The readiness display uses
+actual connection state, never just the presence of a Gateway adapter.
+Shell indicators describe the optional Gateway without calling local agents
+offline. Harnesses shows Gateway recovery only for a Gateway-routed selection;
+ready local agents remain startable without that connection.
+The settings search and section reset target Agents for the runtime preference.
+Local Claude Code/Codex readiness checks the separately installed ACP adapter;
+native Muse is included in the direct-capable list. Sidebar approval badges use
+their own styling and cannot inherit conversation-card spacing.
+
+Native Muse reasoning defaults appear in the shared Agent settings surface in
+the composer and Harnesses. Unknown, pending and rejected values remain
+distinct; accepted native settings apply to future turns. Paired viewers cannot
+write them. Usage displays separate provider subscription observations through
+the read-only cached `providerUsage` channel. It labels stale/clock-skewed/reset
+observations, preserves failed reads with a warning, selects rather than merges
+conversation sources, and clears closed sources. Its one-minute timer ages the
+display only; it never polls the CLI or provider. Reconnection and dedicated
+`provider-usage` invalidations refresh the snapshot without reloading workspace
+state.
+
 Folder selection, file mentions, and attachment labels accept Windows and Unix
 separators. The renderer normalizes only derived display/mention strings;
 attachment validation still receives the original native path.
@@ -40,6 +64,15 @@ attachment validation still receives the original native path.
 ---
 
 ## Sidebar
+
+- **Group conversations** switches between project grouping (default) and status
+  grouping. The validated, local-only `capsule.sidebarGrouping` preference falls
+  back to project grouping on invalid or denied storage. Status groups use the
+  existing all-project latest-run summaries: Needs you, Working, Ready for review,
+  Other conversations. Each active thread appears once, with project-name context.
+  Completed with a result is reviewable, not unread or verified. Live groups are
+  uncapped; settled groups show 20 rows plus expansion, keeping selection visible.
+  Pinned rows precede recency/ID ordering; drag reorder is project-mode only.
 
 - Five-column grid: chevron, pin, title, overflow (`···`), status. Project rows
   show a discovered or user-selected icon when one is available.
@@ -274,6 +307,10 @@ and wide widths. In compact mode those actions share the prompt line; checkout
 controls remain entirely below the glass surface. Geometry is tested in the
 real renderer rather than inferred from CSS selectors. A selected skill keeps
 the expanded composer visible so hidden context cannot be submitted unnoticed.
+Composer geometry is covered at 320, 360, 640 and 900 CSS pixels, in both themes
+and at 16/20px root text sizes. The empty expanded field remains 3.5rem; its
+growth cap comes from CSS rather than a fixed pixel constant. Narrow docks
+reduce padding, not text size, and retain the existing overflow controls.
 Reading older messages rests that box to a single prompt line (attach and
 send on the same row) so the dock shrinks instead of covering the
 transcript. Focus does not expand it; the live edge, a multiline draft,

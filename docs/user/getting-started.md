@@ -6,8 +6,10 @@
    disposable repository when trying a new agent or permission mode.
 3. Choose the agent in the composer. Open **Harnesses** and **Check this agent**
    if it reports a missing prerequisite. Gateway-only agents need a connected
-   OpenClaw Gateway with ACP enabled; direct-capable agents can use direct mode
-   on this computer. See [Providers and credentials](providers.md).
+   OpenClaw Gateway with ACP enabled. New installations default to local agents
+   in Direct mode, without a Gateway connection. Existing preferences are kept;
+   choose **Settings → Agents → Runtime** to change the default for new
+   conversations. See [Providers and credentials](providers.md).
 4. Start a conversation. Choose **Local** for the existing checkout or
    **Worktree** for a separate Git branch and folder. Review the permission
    description before sending a small, specific task.
@@ -39,6 +41,24 @@ verification. Only recently loaded activity is shown inline in long histories.
 
 Learn more: [Drafts and attachments](composer.md), [projects and previews](projects-and-previews.md),
 [checking a turn](verification.md), and [restoring a turn](checkpoints.md).
+
+## Organize conversations
+
+Use **Group conversations** above the sidebar list to switch between **By project**
+(the default) and **By status**. This view preference stays on this device.
+
+- **Needs you** collects approvals, blocked turns and failed conversations.
+  Each row still distinguishes an approval from a failure.
+- **Working** includes running, queued and waiting turns.
+- **Ready for review** means the latest turn completed with an answer, not that
+  its work was verified or that you have not read it.
+- **Other conversations** includes new, cancelled and other settled threads.
+
+Status rows include their project names. Search matches either the project or
+conversation name. Waiting and working groups stay fully visible; settled groups
+offer **Show more** and **Show fewer**, keeping the selected conversation visible.
+Pins sort first within a status group. Return to **By project** to drag pinned
+conversations into a custom order; switching views keeps project expansion state.
 
 ## Public preview
 

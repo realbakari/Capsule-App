@@ -26,11 +26,32 @@ reported cumulative session cost. These are separate measures and are not added
 to the Usage page's transcript estimates. Missing values remain **not reported**.
 Gateway sessions continue to use the information that route actually carries.
 
+### Subscription observations
+
+**Usage → Subscription usage** shows the latest allowance reported by a running
+native Muse session: its plan, current window, weekly window and reset times.
+This is separate from transcript tokens and cost. Missing data means **Not
+reported**, not unused allowance. Old observations, clock differences and reset
+times that have passed are labelled; passing a reset time does not invent a new
+balance. Values above 100% remain visible.
+
+When several conversations report usage, choose the source conversation. Their
+accounts may differ, so Capsule never adds their allowances together. Closing
+the source removes its report. **Refresh report** rereads the cached observation;
+it does not start an agent or contact a provider. Failed reads preserve the last
+observation with a warning and a retry button. Paired read-only devices can view
+these reports too.
+
 ## Installed agents
 
 Capsule drives coding CLIs that are already installed and signed in on the
-machine running the selected route: the Gateway host or this computer for direct
-mode. It does not install them, does not sign
+machine running the selected route. New installations default to **Direct · local
+agents**, which needs no Gateway. Gateway-backed agents and messaging channels
+remain optional. Saved route preferences and existing conversations are not
+migrated: change the default under **Settings → Agents → Runtime** for new
+conversations. In Direct mode startup does not attempt a Gateway connection;
+use **Settings → Gateway** to connect explicitly when needed.
+Capsule does not install CLIs, does not sign
 you in, and never resells tokens.
 
 | Provider | Executable |
@@ -47,6 +68,26 @@ you in, and never resells tokens.
 
 Sign in with each tool's own flow — `claude`, `codex login`, `grok login`, and so on.
 
+### Local Claude Code and Codex
+
+Direct mode uses the installed `claude-agent-acp` or `codex-acp` adapter. Install
+the matching adapter yourself before starting the agent:
+
+```sh
+npm install -g @agentclientprotocol/claude-agent-acp
+npm install -g @agentclientprotocol/codex-acp
+```
+
+Only install the adapter you intend to use. Complete the provider's own sign-in,
+then run **Check this agent** in Harnesses. Capsule does not download adapters
+automatically or register these local commands in Gateway configuration. A
+missing adapter is reported before a conversation starts; a provider CLI alone
+does not prove that its ACP adapter is installed. Existing Gateway conversations
+stay on that route; start a new conversation to use Direct mode.
+
+Protocol fixtures cover local startup, replies, configuration and resume. They
+do not certify every installed adapter version or signed-in provider account.
+
 If a CLI reports an unsupported sign-in or account, check that tool's setup on
 the machine running it. Capsule reports the error; changing its UI settings
 cannot repair provider access. Gemini Flash and Gemini CLI use the same binary;
@@ -62,11 +103,19 @@ folder. Muse runs locally even when your default route is Gateway. Existing
 threads keep their original agent and route.
 
 Text, supported images, streamed replies, tool activity, one-time approvals,
-Stop and reported model choices are connected. Model choices appear after the
+Stop, reported model choices and reasoning defaults are connected. Model choices appear after the
 session starts and come from that session, not a fixed global list. Capsule can
 resume a saved idle session when the installed CLI supports durable sessions
 and confirms the same folder and identity. A folder alias resolving to the
 same location is accepted; another folder is not.
+
+The reasoning default is in **Agent settings**, in both the composer and
+Harnesses. Its eight levels range from **None** through **Ultra** and apply to
+future turns; they do not control whether reasoning text is visible. An unknown
+current value stays unknown until the session reports it or accepts your change.
+On resume Capsule makes one bounded attempt to recover the saved default;
+missing history does not block conversation. A rejected change preserves the
+previous value.
 
 The setup check finds the executable; it does not verify Muse sign-in or SDK
 access. Connection errors explain those requirements. Sign-in stays with the
@@ -74,7 +123,7 @@ CLI, and Capsule never reads its credentials.
 
 This integration has fixture-based protocol and workspace tests, not validation
 against every signed-in account. Interactive questionnaire forms, live steering,
-reasoning/permission setting changes, and Capsule browser-tool injection are
+permission setting changes, and Capsule browser-tool injection are
 not supported for Muse yet. Manual browsing remains available. Unsupported
 content or an unavailable activity stream produces an error, not a successful
 empty reply.
