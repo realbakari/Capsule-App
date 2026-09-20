@@ -3,7 +3,7 @@
   "version": "0.6.3",
   "private": true,
   "type": "module",
-  "description": "Local-first desktop workspace for AI agents, built on OpenClaw.",
+  "description": "Local-first desktop workspace for AI coding agents.",
   "license": "MIT",
   "packageManager": "pnpm@10.33.0",
   "engines": {

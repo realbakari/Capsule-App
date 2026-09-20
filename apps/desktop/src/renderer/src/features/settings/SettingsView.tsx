@@ -267,6 +267,7 @@ export function SettingsView() {
                     </select>
                   </SettingRow>
                 </div>
+                <RuntimeModeCard settings={settings} onPatch={patch} />
                 <HarnessProvidersCard />
                 <AgentDefaultsCard settings={settings} onPatch={(next) => void patch(next)} />
                 <HarnessCredentialsCard settings={settings} onPatch={(next) => void patch(next)} />
@@ -288,13 +289,12 @@ export function SettingsView() {
 
             {tab === "gateway" && (
               <>
-                <RuntimeModeCard settings={settings} onPatch={patch} />
                 <div className="card">
-                  <h3>OpenClaw Gateway</h3>
+                  <h3>OpenClaw Gateway · optional</h3>
                   <p className="muted">
-                    Capsule is an operator client (protocol {status?.protocol ?? 4}). It signs a
-                    device identity on connect. Claude Code and Codex are spawned on the Gateway —
-                    they are not installed in this app.
+                    Connect for Gateway-backed agents, plugins and messaging channels.
+                    Local agents do not need this connection. Capsule uses operator protocol {status?.protocol ?? 4}
+                    {" "}and signs a device identity when you connect.
                   </p>
                   <label className="field">
                     <span>URL</span>

@@ -11,6 +11,12 @@ import {
 } from "./runtime.js";
 
 describe("normalizeCapsuleSettings", () => {
+  it("defaults new profiles to local agents without migrating saved route preferences", () => {
+    expect(normalizeCapsuleSettings({}).runtimeMode).toBe("direct");
+    for (const runtimeMode of ["auto", "openclaw", "direct"] as const) {
+      expect(normalizeCapsuleSettings({ runtimeMode }).runtimeMode).toBe(runtimeMode);
+    }
+  });
   it("fills configuration defaults without dropping false flags", () => {
     const settings = normalizeCapsuleSettings({
       notifyRunComplete: false,

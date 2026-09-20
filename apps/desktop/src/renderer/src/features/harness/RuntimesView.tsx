@@ -61,6 +61,7 @@ export function RuntimesView() {
     cancelHarness,
     refreshHarnessStatus,
     connected,
+    settings,
     api,
   } = useWorkspace();
   const [spawnMode, setSpawnMode] = useState<AcpMode>("persistent");
@@ -86,7 +87,8 @@ export function RuntimesView() {
   const selectedHarness =
     listed.find((harness) => harness.id === selectedHarnessId) ?? listed[0];
   const routeAvailable = connected || selectedHarness?.runtimeRoute === "direct";
-  const blockReason = spawnBlockReason(routeAvailable, projectId, project?.workingDirectory);
+  const blockReason = selectedHarness ? spawnBlockReason(routeAvailable, projectId, project?.workingDirectory) : undefined;
+  const needsGateway = selectedHarness ? selectedHarness.runtimeRoute !== "direct" : settings?.runtimeMode !== "direct";
   const selectedSessions = selectedHarness
     ? harnessSessions.filter((item) => item.harnessId === selectedHarness.id)
     : [];
@@ -112,10 +114,10 @@ export function RuntimesView() {
         <div className="panel-header">
           <h2>Harnesses</h2>
           <p>
-            Coding agents Capsule can start through the OpenClaw Gateway.
+            Coding agents Capsule can start locally or through an optional Gateway.
           </p>
         </div>
-        <GatewayBanner />
+        {needsGateway && <GatewayBanner />}
         {blockReason && <p className="notice">{blockReason}</p>}
 
         <div className="harness-context-bar">
@@ -123,7 +125,7 @@ export function RuntimesView() {
             <span>Project folder</span>
             <strong className="mono">
               {formatProjectRoot(project?.workingDirectory, {
-                home: window.capsule.homeDir,
+                home: api.homeDir,
                 fallback: "No folder chosen",
               })}
             </strong>

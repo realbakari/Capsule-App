@@ -7,6 +7,9 @@ import {
 } from "./settings-search.js";
 
 describe("searchSettings", () => {
+  it("finds the local runtime preference under Agents", () => {
+    expect(searchSettings("Runtime")[0]).toMatchObject({ title: "Runtime", section: "agents" });
+  });
   it("waits for two characters rather than listing everything", () => {
     expect(searchSettings("")).toEqual([]);
     expect(searchSettings("t")).toEqual([]);

@@ -1,4 +1,5 @@
 import { useUpdates } from "../../lib/updates";
+import { gatewayConnectionLabel } from "../../lib/harness";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type MouseEvent } from "react";
 import { usePanelResize } from "../../lib/panel-resize";
 import type { Session } from "@capsule/shared";
@@ -115,6 +116,7 @@ export function Sidebar() {
     addProjectFolder,
     connected,
     status,
+    settings,
     renameProject,
     deleteProject,
     renameSession,
@@ -852,8 +854,8 @@ export function Sidebar() {
             {updateResult?.state === "update-available" ? <span className="update-dot" /> : null}
           </button>
           <span
-            className={`dot ${connected ? "on" : status?.state === "connecting" ? "warn live" : "off"}`}
-            title={connected ? "OpenClaw connected" : status?.state === "connecting" ? "Connecting" : "Offline"}
+            className={`dot ${connected ? "on" : status?.state === "connecting" ? "warn live" : settings?.runtimeMode === "direct" ? "" : "off"}`}
+            title={gatewayConnectionLabel(settings?.runtimeMode, connected, status?.state)}
           />
         </div>
       </div>

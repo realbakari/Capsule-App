@@ -124,6 +124,9 @@ export interface HarnessPreset {
    * or Spawn; the coding loop still belongs to the CLI and acpx.
    */
   acpxCommand?: { command: string; args?: string[] };
+  /** User-installed local ACP adapter. Never registered in Gateway config. */
+  directCommand?: { command: string; args?: string[] };
+  directInstallHint?: string;
   /** Native direct-only transport; never register it as an ACP command. */
   nativeCommand?: { protocol: "msp"; command: string; args: string[] };
 }
@@ -267,6 +270,8 @@ function preset(
     providerLocked?: boolean;
     featured?: boolean;
     acpxCommand?: { command: string; args?: string[] };
+    directCommand?: HarnessPreset["directCommand"];
+    directInstallHint?: string;
     nativeCommand?: HarnessPreset["nativeCommand"];
   },
 ): HarnessPreset {
@@ -296,13 +301,15 @@ export const PRESET_HARNESSES: HarnessPreset[] = [
   preset(
     "claude",
     "Claude Code",
-    "Anthropic Claude Code through OpenClaw ACP (acpx). Capsule owns the workspace; Claude owns the coding loop.",
+    "Claude Code through a local ACP adapter or the optional Gateway. Claude owns the coding loop.",
     ["claude"],
-    "Authenticate Claude Code on the OpenClaw Gateway host. Capsule does not install it.",
+    "Install and sign in to Claude Code on the computer running the agent. Direct mode also needs claude-agent-acp on PATH.",
     "https://claude.ai/code",
     { probeArgs: ["auth", "status"], hint: "Run `claude` and complete sign-in" },
     {
       underlyingCli: "claude",
+      directCommand: { command: "claude-agent-acp" },
+      directInstallHint: "Install @agentclientprotocol/claude-agent-acp so claude-agent-acp is on PATH, then complete the agent's sign-in.",
       configFilePath: "~/.claude/settings.json",
       providerLocked: true,
       featured: true,
@@ -311,12 +318,15 @@ export const PRESET_HARNESSES: HarnessPreset[] = [
   preset(
     "codex",
     "Codex",
-    "Explicit Codex ACP fallback. Prefer native /codex on the Gateway when that plugin is enabled; dedicate Codex here to force the ACP path.",
+    "Codex through a local ACP adapter or the optional Gateway. Codex owns the coding loop.",
     ["codex"],
-    "Authenticate the Codex CLI on the Gateway host. Native /codex is a different route from /acp spawn codex.",
+    "Install and sign in to Codex on the computer running the agent. Direct mode needs codex-acp on PATH.",
     "https://developers.openai.com/codex/cli",
     { probeArgs: ["login", "status"], hint: "Run `codex login`" },
-    { underlyingCli: "codex", configFilePath: "~/.codex/config.toml", featured: true },
+    { underlyingCli: "codex", configFilePath: "~/.codex/config.toml", featured: true,
+      directCommand: { command: "codex-acp" },
+      directInstallHint: "Install @agentclientprotocol/codex-acp so codex-acp is on PATH, then complete the agent's sign-in.",
+    },
   ),
   preset(
     "grok",

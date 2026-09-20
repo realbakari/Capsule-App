@@ -1,4 +1,11 @@
-import type { HarnessStatus } from "@capsule/shared";
+import type { HarnessStatus, RuntimeMode } from "@capsule/shared";
+
+/** The optional Gateway's state is not the health of a local agent. */
+export function gatewayConnectionLabel(mode: RuntimeMode | undefined, connected: boolean, state?: string): string {
+  if (connected) return "OpenClaw connected";
+  if (state === "connecting") return "Gateway connecting";
+  return mode === "direct" ? "Local agents · optional Gateway disconnected" : "Gateway disconnected";
+}
 
 /*
  * Renderer-side projections of harness catalog facts.

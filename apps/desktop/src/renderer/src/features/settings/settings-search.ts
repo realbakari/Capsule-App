@@ -77,7 +77,7 @@ export const SETTINGS_SEARCH_ITEMS: SettingsSearchItem[] = [
 
   {
     title: "Runtime",
-    section: "gateway",
+    section: "agents",
     keywords: ["direct", "standalone", "openclaw", "gateway", "daemon", "acp", "offline"],
   },
   { title: "URL", section: "gateway", keywords: ["openclaw", "websocket", "connect", "gateway"] },

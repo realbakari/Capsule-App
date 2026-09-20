@@ -13,6 +13,14 @@ host, agent loop or generic renderer shell channel is introduced.
 
 Coding CLIs own agent execution. Capsule owns the workspace: projects, conversations, runs, contracts, verification, policies, approvals, artifacts, and a native-feeling desktop UI. The Gateway route delegates to OpenClaw; direct mode is a thin native-CLI ACP client, not a model or tool loop.
 
+Local agents are the default for new profiles. This intentionally changes the
+former Gateway-first startup: Direct mode neither connects to the Gateway nor
+waits for its plugin discovery. The Gateway remains an optional integration for
+its agents and channels. Saved route preferences and existing conversation
+identities are preserved; no runtime is replaced or agent loop added.
+Local Claude Code/Codex use user-installed ACP adapters through the existing
+direct host, without changing Gateway mappings or silently installing packages.
+
 Muse Code intentionally extends the transport contract: `@capsule/muse` uses
 the official Muse session SDK over `muse serve` stdio, not an ACP adapter or a
 Gateway target. The existing direct host injects this session implementation

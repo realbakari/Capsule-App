@@ -25,8 +25,10 @@ a window — projects, conversations, diffs, approvals and a record of what each
 turn changed, on your own machine.
 
 It does not install coding CLIs or hold their provider API keys. Install and
-sign in to a supported CLI, then choose its available runtime route. Some
-harnesses require an OpenClaw Gateway and its ACP adapter.
+sign in to a supported CLI, then select it in Capsule. New installations run
+supported local agents directly; no Gateway is required. OpenClaw remains an
+optional route for Gateway-only agents and messaging channels. Existing route
+preferences and conversations stay unchanged.
 
 Muse Code uses its native local session connection. Install and sign in to a
 Muse CLI build with session SDK support, then select it from the agent picker.

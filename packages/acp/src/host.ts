@@ -80,7 +80,7 @@ export function isDirectSessionKey(key: string | undefined): boolean {
 /** Whether this harness can be driven without the Gateway. */
 export function supportsDirectMode(harnessId: string): boolean {
   const preset = PRESET_HARNESSES.find((preset) => preset.id === harnessId);
-  return Boolean(preset?.acpxCommand || preset?.nativeCommand);
+  return Boolean(preset?.directCommand || preset?.acpxCommand || preset?.nativeCommand);
 }
 
 /** The harnesses direct mode can drive, for a settings screen to name them. */
@@ -137,7 +137,7 @@ export class DirectAcpHost {
   /** What a user would run to get the same thing in a terminal. */
   acpCommandFor(harnessId: HarnessId): string {
     const preset = PRESET_HARNESSES.find((item) => item.id === harnessId);
-    const command = preset?.nativeCommand ?? preset?.acpxCommand;
+    const command = preset?.nativeCommand ?? preset?.directCommand ?? preset?.acpxCommand;
     return command ? [command.command, ...(command.args ?? [])].join(" ") : "";
   }
 
@@ -146,7 +146,7 @@ export class DirectAcpHost {
   ): Promise<{ sessionKey: string; usedSlashCommand: boolean; command: string; directSession?: DirectSessionIdentity }> {
     if (this.closing) throw new Error("The direct agent host is shutting down.");
     const preset = PRESET_HARNESSES.find((item) => item.id === input.harnessId);
-    const command = preset?.nativeCommand ?? preset?.acpxCommand;
+    const command = preset?.nativeCommand ?? preset?.directCommand ?? preset?.acpxCommand;
     if (!command) {
       throw new Error(
         `${preset?.name ?? input.harnessId} has no ACP mode of its own, so direct mode cannot drive it. Switch this thread to the OpenClaw Gateway, or pick an agent that does.`,
@@ -174,7 +174,7 @@ export class DirectAcpHost {
       throw new Error("The saved agent session belongs to a different harness, working folder or launch command. Start a new conversation; Capsule will not resume it in another workspace.");
     }
     // A model asked for at spawn time wins over the preset's own choice.
-    if (input.model && !input.resume && !preset?.nativeCommand) {
+    if (input.model && !input.resume && !preset?.nativeCommand && !preset?.directCommand) {
       const flag = args.indexOf("--model");
       if (flag >= 0) args[flag + 1] = input.model;
       else args.push("--model", input.model);
@@ -206,6 +206,9 @@ export class DirectAcpHost {
     try {
       await session.start(input.resume?.sessionId);
       if (this.closing) throw new Error("The direct agent host is shutting down.");
+      // Local adapters have different launch flags. Their reported protocol
+      // selector is authoritative; never invent a --model CLI argument.
+      if (preset?.directCommand && input.model && !input.resume) await session.setConfig("model", input.model);
     } catch (error) {
       await this.closeAcp(key);
       throw error;

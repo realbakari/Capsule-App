@@ -19,15 +19,19 @@ describe("which harnesses direct mode can drive", () => {
     expect(supportsDirectMode("gemini-flash")).toBe(true);
   });
 
-  it("is not Claude Code or Codex, which reach ACP through an adapter", () => {
-    expect(supportsDirectMode("claude")).toBe(false);
-    expect(supportsDirectMode("codex")).toBe(false);
+  it("includes user-installed local adapters without changing Gateway commands", () => {
+    for (const id of ["claude", "codex"] as const) {
+      expect(supportsDirectMode(id)).toBe(true);
+      const preset = PRESET_HARNESSES.find((item) => item.id === id)!;
+      expect(preset.directCommand).toBeDefined();
+      expect(preset.acpxCommand).toBeUndefined();
+    }
   });
 
   it("names them for a settings screen rather than making one up", () => {
     const capable = directCapableHarnesses();
     expect(capable).toContain("grok");
-    expect(capable).not.toContain("claude");
+    expect(capable).toContain("claude");
   });
 });
 
@@ -58,10 +62,24 @@ describe("session keys", () => {
 describe("spawning an agent that has no ACP mode", () => {
   it("says so instead of starting something that cannot answer", async () => {
     const host = new DirectAcpHost();
-    await expect(host.spawnAcpSession({ harnessId: "claude" })).rejects.toThrow(
+    await expect(host.spawnAcpSession({ harnessId: "droid" })).rejects.toThrow(
       /no ACP mode of its own/,
     );
   });
+});
+
+it.each(["claude", "codex"] as const)("starts the local %s adapter and sets its model over the protocol", async (harnessId) => {
+  const start = vi.spyOn(DirectAcpSession.prototype, "start").mockResolvedValue("fixture");
+  const configure = vi.spyOn(DirectAcpSession.prototype, "setConfig").mockResolvedValue();
+  const close = vi.spyOn(DirectAcpSession.prototype, "close").mockResolvedValue();
+  const host = new DirectAcpHost();
+  try {
+    const result = await host.spawnAcpSession({ harnessId, model: "reported-model", cwd: process.cwd() });
+    expect(result.command).toBe(harnessId === "claude" ? "claude-agent-acp" : "codex-acp");
+    expect(result.sessionKey).toMatch(new RegExp(`^direct:acp:${harnessId}:`));
+    expect(configure).toHaveBeenCalledWith("model", "reported-model");
+    expect(start).toHaveBeenCalledOnce();
+  } finally { await host.closeAll(); start.mockRestore(); configure.mockRestore(); close.mockRestore(); }
 });
 
 it("closes a failed handshake without retaining the session or sending a turn", async () => {

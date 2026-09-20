@@ -2,17 +2,12 @@ import type { CapsuleSettings, RuntimeMode } from "@capsule/shared";
 
 import { useWorkspace } from "../../lib/workspace";
 
-/*
- * Which route carries a coding turn.
- *
- * Capsule has always gone through OpenClaw's ACP bridge, which is what unlocks
- * the Gateway's plugins, channels and remote workers. It is also a daemon to
- * install, run and keep configured before the first turn can happen. An agent
- * that speaks ACP on its own does not need any of that: Capsule can spawn it
- * here and talk to it over its own stdin and stdout.
- */
-
 const OPTIONS: Array<{ id: RuntimeMode; label: string; detail: string }> = [
+  {
+    id: "direct",
+    label: "Direct · local agents",
+    detail: "Default for new installations. Run a supported CLI on this computer using its own sign-in. No Gateway required.",
+  },
   {
     id: "auto",
     label: "Automatic",
@@ -20,16 +15,10 @@ const OPTIONS: Array<{ id: RuntimeMode; label: string; detail: string }> = [
       "Use the OpenClaw Gateway when available, or an installed native agent on this computer.",
   },
   {
-    id: "direct",
-    label: "Direct",
-    detail:
-      "Run the agent's CLI here and speak ACP to it. No daemon, no plugin, and it uses the sign-in that CLI already has.",
-  },
-  {
     id: "openclaw",
     label: "OpenClaw Gateway",
     detail:
-      "Always route through the Gateway. Needed for its plugins, its messaging channels, and agents with no ACP mode of their own.",
+      "Use a configured Gateway for supported agents, plugins and messaging channels. Native-only agents still run locally.",
   },
 ];
 
@@ -43,18 +32,14 @@ export function RuntimeModeCard({
   const { harnesses } = useWorkspace();
   const mode = settings.runtimeMode;
 
-  /*
-   * Named from the catalog rather than written down here: a harness can be
-   * driven directly exactly when it has an ACP command of its own, and a list
-   * typed into the UI would drift the moment one is added.
-   */
-  const directCapable = harnesses.filter((harness) => harness.acpxCommand);
-  const gatewayOnly = harnesses.filter((harness) => !harness.acpxCommand && harness.featured);
+  // Both ACP adapters and native session protocols are local transports.
+  const directCapable = harnesses.filter((harness) => harness.directCommand || harness.acpxCommand || harness.nativeCommand);
+  const gatewayOnly = harnesses.filter((harness) => !harness.directCommand && !harness.acpxCommand && !harness.nativeCommand && harness.featured);
 
   return (
     <div className="card">
       <h3>Runtime</h3>
-      <p className="muted">Who carries a coding turn to the agent.</p>
+      <p className="muted">Choose the route for new conversations. Existing conversations keep their route.</p>
       <div className="runtime-modes" role="radiogroup" aria-label="Runtime">
         {OPTIONS.map((option) => (
           <label
@@ -82,13 +67,12 @@ export function RuntimeModeCard({
               {gatewayOnly.length > 0 && (
                 <>
                   {" "}
-                  {gatewayOnly.map((harness) => harness.name).join(" and ")} have no ACP mode of
-                  their own, so they still go through the Gateway.
+                  {gatewayOnly.map((harness) => harness.name).join(" and ")} require a configured Gateway.
                 </>
               )}
             </>
           ) : (
-            <>No installed agent speaks ACP on its own yet, so turns go through the Gateway.</>
+            <>Choose an agent with a supported local connection in Harnesses, or connect a Gateway for Gateway-only agents.</>
           )}
         </p>
       )}

@@ -323,7 +323,7 @@ export class CapsuleEngine {
       gatewayUrl: options.gatewayUrl ?? defaultGatewayEndpoint().url,
     });
     this.openclaw = this.createOpenClawAdapter();
-    this.runtime = this.mock;
+    this.runtime = this.usingMock ? this.mock : this.openclaw;
   }
 
   async start(): Promise<void> {
@@ -349,6 +349,7 @@ export class CapsuleEngine {
     this.archiveInactiveSessions();
     await this.hydrateSecrets();
     this.openclaw = this.createOpenClawAdapter();
+    if (!this.usingMock) this.runtime = this.openclaw;
     await this.connectPreferredRuntime();
     this.bindAcpReplies();
     this.log("Capsule engine started");
@@ -551,7 +552,7 @@ export class CapsuleEngine {
   private static readonly ACPX_CACHE_TTL_MS = 30_000;
 
   private async acpxEnabled(): Promise<boolean> {
-    if (this.usingMock) return false;
+    if (this.usingMock || !this.openclaw.connected) return false;
     const cached = this.acpxEnabledCache;
     if (cached && Date.now() - cached.at < CapsuleEngine.ACPX_CACHE_TTL_MS) return cached.value;
     const value = await this.openclaw.hasAcpxPlugin().catch(() => false);
@@ -592,7 +593,7 @@ export class CapsuleEngine {
     }
     const acpxEnabled = await this.acpxEnabled();
     return probeHarnesses({
-      gatewayConnected: !this.usingMock && this.runtime.kind === "openclaw",
+      gatewayConnected: !this.usingMock && this.openclaw.connected,
       acpxEnabled,
       dedicatedByHarness,
       liveByHarness,
@@ -611,7 +612,8 @@ export class CapsuleEngine {
     this.forgetAcpxState();
     const direct = this.useDirectMode(harnessId);
     const acpxEnabled = direct ? false : await this.acpxEnabled();
-    const binaryPath = whichBinary(preset.binaries);
+    const loginBinaryPath = whichBinary(preset.binaries);
+    const binaryPath = direct && preset.directCommand ? whichBinary([preset.directCommand.command]) : loginBinaryPath;
     let acpxPermissionModeValue: string | undefined;
     let acpxPolicyKnown = false;
     let acpxAgentConfigured: boolean | undefined = preset.acpxCommand ? false : undefined;
@@ -641,9 +643,9 @@ export class CapsuleEngine {
     const checks = localDoctorChecks({
       preset,
       binaryPath,
-      gatewayConnected: !this.usingMock && this.runtime.kind === "openclaw",
+      gatewayConnected: !this.usingMock && this.openclaw.connected,
       acpxEnabled,
-      loginState: this.usingMock ? undefined : probeLoginStateNow(preset, binaryPath),
+      loginState: this.usingMock ? undefined : probeLoginStateNow(preset, loginBinaryPath),
       acpxPermissionMode: acpxPermissionModeValue,
       acpxPolicyKnown,
       acpxAgentConfigured,
@@ -717,6 +719,9 @@ export class CapsuleEngine {
     const direct = prior?.directSession?.harnessId === harnessId || (prior?.harnessId === harnessId && isDirectSessionKey(prior.openclawSessionKey))
       ? true : prior?.harnessId === harnessId && prior.openclawSessionKey ? false : this.useDirectMode(harnessId);
     if (!this.usingMock) {
+      if (direct && preset.directCommand && !whichBinary([preset.directCommand.command])) {
+        throw new Error(preset.directInstallHint ?? `Install ${preset.directCommand.command} on this computer before starting this agent.`);
+      }
       // Direct mode spawns the CLI here, so there is no Gateway config to
       // write and nothing to register a command with.
       if (preset.acpxCommand && !direct) {
@@ -734,7 +739,7 @@ export class CapsuleEngine {
       const loginState = probeLoginStateNow(preset, whichBinary(preset.binaries));
       if (loginState === "logged_out") {
         throw new Error(
-          `${preset.name} is installed but not signed in. ${preset.loginHint ?? "Sign in to its CLI"} on the Gateway host, then run Doctor.`,
+          `${preset.name} is installed but not signed in. ${preset.loginHint ?? "Sign in to its CLI"} ${direct ? "on this computer" : "on the Gateway host"}, then run Doctor.`,
         );
       }
       if (loginState === "config_invalid") {
@@ -1531,7 +1536,8 @@ export class CapsuleEngine {
     if (session.workspaceMode === "worktree") {
       await this.attachSessionWorktree(session, project);
     }
-    if (!this.usingMock) {
+    const direct = isHarnessId(agentId) && this.useDirectMode(agentId);
+    if (!this.usingMock && !direct) {
       try {
         const remote = await this.openclaw.createSession({
           ...input,
@@ -2422,7 +2428,7 @@ export class CapsuleEngine {
         process.platform === "darwin"
           ? (process as NodeJS.Process & { getSystemVersion?: () => string; }).getSystemVersion?.()
           : undefined,
-      gatewayStatus: this.usingMock || this.runtime.kind !== "openclaw" ? "disconnected" : "connected",
+      gatewayStatus: !this.usingMock && this.openclaw.connected ? "connected" : "disconnected",
       databaseStatus: "connected",
       connectionLogs: [...this.logs].slice(-200),
     };
@@ -2631,11 +2637,11 @@ export class CapsuleEngine {
     if (harnessId && presetFor(harnessId)?.nativeCommand) return true;
     const mode = this.settings.runtimeMode;
     if (mode === "openclaw") return false;
-    // Direct mode can only drive an agent that speaks ACP itself.
+    // Other harnesses need a configured Gateway; never substitute a mock.
     if (harnessId && !supportsDirectMode(harnessId)) return false;
     if (mode === "direct") return true;
     // auto: the Gateway when there is one, this Mac when there is not.
-    return this.runtime.kind !== "openclaw";
+    return !this.openclaw.connected;
   }
 
   private async connectPreferredRuntime(): Promise<void> {
@@ -2647,6 +2653,9 @@ export class CapsuleEngine {
       await this.syncRuntimeCatalog();
       return;
     }
+    // A local workspace must not wait for or contact an optional Gateway.
+    // Explicit Connect still works, including for existing Gateway threads.
+    if (this.settings.runtimeMode === "direct") return;
     try {
       await this.connectGateway();
     } catch (error) {

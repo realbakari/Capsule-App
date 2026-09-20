@@ -146,6 +146,7 @@ function mapChannel(id: string): ChannelName {
 
 export class OpenClawAdapter implements AgentRuntime {
   readonly kind = "openclaw" as const;
+  get connected(): boolean { return this.connectionState === "connected"; }
   private client: GatewayClient | undefined;
   private hello: HelloOk | undefined;
   private connectionState: ConnectionState = "disconnected";

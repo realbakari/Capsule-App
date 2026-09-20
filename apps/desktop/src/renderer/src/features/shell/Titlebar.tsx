@@ -5,6 +5,7 @@ import { ProjectActionsControl } from "./ProjectActionsControl";
 import { CommitControl } from "./CommitControl";
 import { HeaderPopover } from "./HeaderPopover";
 import { formatUserError } from "../../lib/errors";
+import { gatewayConnectionLabel } from "../../lib/harness";
 import {
   ChevronDownIcon,
   FolderIcon,
@@ -30,6 +31,7 @@ export function Titlebar() {
   const {
     connected,
     status,
+    settings,
     setView,
     view,
     project,
@@ -68,7 +70,7 @@ export function Titlebar() {
     }
   }
 
-  const label = connected ? "OpenClaw connected" : (status?.state ?? "Offline");
+  const label = gatewayConnectionLabel(settings?.runtimeMode, connected, status?.state);
 
   const projectName = project?.name ?? "Inbox";
   // Whatever the thread is actually called. Substituting a nicer-sounding
@@ -221,7 +223,7 @@ export function Titlebar() {
           aria-label={label}
         >
           <span
-            className={`dot ${connected ? "on" : status?.state === "connecting" ? "warn live" : "off"}`}
+            className={`dot ${connected ? "on" : status?.state === "connecting" ? "warn live" : settings?.runtimeMode === "direct" ? "" : "off"}`}
           />
         </button>
       </div>

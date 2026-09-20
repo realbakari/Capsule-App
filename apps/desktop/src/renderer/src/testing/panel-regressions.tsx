@@ -7,6 +7,8 @@ import { usePanelResize } from "../lib/panel-resize";
 import { SIDEBAR_GROUPING_KEY } from "../lib/sidebar";
 import type { ProviderUsageSnapshot } from "@capsule/shared";
 import { ProviderQuota } from "../features/library/ProviderQuota";
+import { RuntimesView } from "../features/harness/RuntimesView";
+import { PRESET_HARNESSES } from "@capsule/shared";
 
 function assert(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
 async function settle() { await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))); }
@@ -111,6 +113,22 @@ export async function runPanelRegressions(host: HTMLElement, base: Record<string
     root.render(null); await settle(); localStorage.setItem(SIDEBAR_GROUPING_KEY, "malformed");
     root.render(<SidebarFixture base={groupedBase} />); await settle();
     assert(document.querySelector('.project-row'), "Invalid saved grouping did not fall back to projects");
+
+    const localHarness = { ...PRESET_HARNESSES.find((item) => item.id === "claude"), runtimeRoute: "direct",
+      readiness: "ready", binaryPath: "/fixture/claude-agent-acp", liveSessionIds: [], dedicatedProjectIds: [] };
+    const runtimeBase = { ...base, ready: true, connected: false, settings: { runtimeMode: "direct" },
+      api: { homeDir: "/fixture", isDesktop: true },
+      project: { id: "p", name: "Workspace", workingDirectory: "/fixture" }, projectId: "p",
+      harnesses: [localHarness], harnessSessions: [], harnessStatuses: {}, doctors: {}, busy: false,
+    };
+    window.testWorkspace = runtimeBase;
+    root.render(<RuntimesView />); await settle();
+    assert(!document.querySelector('.gateway-recovery'), "Local agent setup demanded an optional Gateway connection");
+    const start = Array.from(document.querySelectorAll('button')).find((button) => button.textContent === "Start a session");
+    assert(start && !start.disabled, "Ready local agent was blocked by a disconnected Gateway");
+    window.testWorkspace = { ...runtimeBase, harnesses: [{ ...localHarness, runtimeRoute: "gateway" }] };
+    root.render(<RuntimesView />); await settle();
+    assert(document.querySelector('.gateway-recovery'), "Gateway agent lost its connection recovery control");
 
     window.testWorkspace = { ...base, project: undefined, projectId: undefined, session: undefined,
       files: [], steps: [], artifacts: [], harnesses: [], harnessSessions: [], inspectorTab: "launcher", inspectorOpen: true, settings: {},

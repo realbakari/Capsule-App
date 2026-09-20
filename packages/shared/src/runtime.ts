@@ -83,8 +83,9 @@ export const ARCHIVE_INACTIVE_MS: Record<ArchiveInactiveAfter, number | null> = 
 
 export const DEFAULT_CAPSULE_SETTINGS: CapsuleSettings = {
   gatewayUrl: "ws://127.0.0.1:18789",
-  // Existing installs are on the Gateway and stay there until asked otherwise.
-  runtimeMode: "auto",
+  // New profiles need only a supported local CLI. Persisted route preferences
+  // still win during normalization; existing conversations keep their route.
+  runtimeMode: "direct",
   launchAtLogin: false,
   composerSendKey: "enter",
   defaultMode: "chat",
@@ -153,6 +154,7 @@ export const SETTINGS_SECTION_KEYS: Record<string, ReadonlyArray<keyof CapsuleSe
     "customCodeFont",
   ],
   agents: [
+    "runtimeMode",
     "defaultMode",
     "defaultWorkspaceMode",
     "defaultAgentId",
@@ -190,8 +192,8 @@ export type RemoteAccess = "off" | "loopback" | "network";
  *
  * `openclaw` goes through the Gateway's ACP bridge, which is what unlocks its
  * plugins, its channels and its remote workers. `direct` spawns the CLI from
- * Capsule and speaks ACP to it over its own stdin and stdout — nothing to
- * install, nothing running in the background, and the CLI's own logins. `auto`
+ * Capsule and uses its supported session protocol over stdin and stdout,
+ * with the CLI's own installation and login. `auto`
  * takes the Gateway when one is reachable and direct mode when none is.
  */
 export type RuntimeMode = "auto" | "openclaw" | "direct";

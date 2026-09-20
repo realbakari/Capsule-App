@@ -62,6 +62,10 @@ describe("classifyLoginProbe", () => {
 });
 
 describe("readiness gating on sign-in", () => {
+  it("requires the local adapter, not just the provider CLI, in direct mode", () => {
+    expect(describeReadiness({ ...base, preset: codex, direct: true, binaryPath: undefined })).toMatchObject({ readiness: "missing_cli", detail: expect.stringContaining("codex-acp") });
+    expect(describeReadiness({ ...base, preset: codex, direct: true, binaryPath: "/fixture/codex-acp", gatewayConnected: false, acpxEnabled: false }).readiness).toBe("ready");
+  });
   it("blocks a signed-out CLI with the hint for that harness", () => {
     const result = describeReadiness({ ...base, loginState: "logged_out" });
     expect(result.readiness).toBe("needs_login");

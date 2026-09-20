@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { HarnessStatus } from "@capsule/shared";
 
-import { agentPickerDetail, agentSwitchNotice, harnessReadinessLabel } from "./harness";
+import { agentPickerDetail, agentSwitchNotice, gatewayConnectionLabel, harnessReadinessLabel } from "./harness";
+
+it("does not describe local agents as offline when the optional Gateway is disconnected", () => {
+  expect(gatewayConnectionLabel("direct", false, "disconnected")).toBe("Local agents · optional Gateway disconnected");
+  expect(gatewayConnectionLabel("auto", false, "disconnected")).toBe("Gateway disconnected");
+  expect(gatewayConnectionLabel("direct", false, "connecting")).toBe("Gateway connecting");
+  expect(gatewayConnectionLabel("direct", true, "connected")).toBe("OpenClaw connected");
+});
 
 function harness(readiness: HarnessStatus["readiness"]): HarnessStatus {
   return {

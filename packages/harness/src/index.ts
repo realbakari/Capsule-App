@@ -309,7 +309,7 @@ export function describeReadiness(input: {
     };
   }
   if (input.direct && !input.binaryPath) {
-    return { readiness: "missing_cli", detail: `Install ${input.preset.name} on this computer before using direct mode. ${input.preset.installHint}` };
+    return { readiness: "missing_cli", detail: input.preset.directInstallHint ?? `Install ${input.preset.name} on this computer before using direct mode. ${input.preset.installHint}` };
   }
   if (input.direct || (input.gatewayConnected && input.acpxEnabled)) {
     if (input.loginState === "config_invalid") {
@@ -369,12 +369,14 @@ export function probeHarnesses(input: {
   directHarnessIds?: string[];
 }): HarnessStatus[] {
   return PRESET_HARNESSES.map((preset) => {
-    const binaryPath = whichBinary(preset.binaries);
+    const direct = input.directHarnessIds?.includes(preset.id);
+    const loginBinaryPath = whichBinary(preset.binaries);
+    const binaryPath = direct && preset.directCommand ? whichBinary([preset.directCommand.command]) : loginBinaryPath;
     const dedicatedProjectIds = input.dedicatedByHarness[preset.id] ?? [];
     const liveSessionIds = input.liveByHarness?.[preset.id] ?? [];
     // A live session already proves auth, so do not pay for a probe.
     const loginState =
-      liveSessionIds.length > 0 ? undefined : probeLoginState(preset, binaryPath);
+      liveSessionIds.length > 0 ? undefined : probeLoginState(preset, loginBinaryPath);
     const { readiness, detail } = describeReadiness({
       preset,
       binaryPath,
@@ -426,7 +428,7 @@ export function localDoctorChecks(input: {
       detail: input.binaryPath
         ? `Picked up ${input.binaryPath}`
         : input.direct
-          ? `${input.preset.installHint} Direct mode runs it from this computer, so it has to be on PATH.`
+          ? `${input.preset.directInstallHint ?? input.preset.installHint} Direct mode runs it from this computer, so it has to be on PATH.`
           : input.gatewayConnected && input.acpxEnabled
             ? "No local binary on PATH. OpenClaw can still spawn it on the Gateway host."
             : input.preset.installHint,
@@ -469,8 +471,8 @@ export function localDoctorChecks(input: {
             label: "Direct mode",
             ok: true,
             detail: `Capsule runs \`${[
-              input.preset.nativeCommand?.command ?? input.preset.acpxCommand?.command ?? input.preset.binaries[0],
-              ...(input.preset.nativeCommand?.args ?? input.preset.acpxCommand?.args ?? []),
+              input.preset.nativeCommand?.command ?? input.preset.directCommand?.command ?? input.preset.acpxCommand?.command ?? input.preset.binaries[0],
+              ...(input.preset.nativeCommand?.args ?? input.preset.directCommand?.args ?? input.preset.acpxCommand?.args ?? []),
             ].join(" ")}\` on this computer and speaks ${input.preset.nativeCommand?.protocol.toUpperCase() ?? "ACP"} to it. No Gateway, no acpx.`,
           },
         ]
