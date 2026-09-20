@@ -260,7 +260,9 @@ export function Composer({
     el.style.removeProperty("min-height");
     el.style.removeProperty("max-height");
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 176)}px`;
+    // Let the CSS text scale own the cap rather than freezing it at 176px.
+    const maximumHeight = Number.parseFloat(getComputedStyle(el).maxHeight);
+    el.style.height = `${Number.isFinite(maximumHeight) ? Math.min(el.scrollHeight, maximumHeight) : el.scrollHeight}px`;
   }, [draft, resting]);
 
   useEffect(() => {

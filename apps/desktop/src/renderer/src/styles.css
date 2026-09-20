@@ -1313,7 +1313,7 @@
   max-width: var(--chat-max);
   margin: 0 auto;
   border-radius: var(--composer-radius);
-  padding: 0.85rem 0.9rem 0.6rem;
+  padding: 0.875rem 0.875rem 0.625rem;
   box-shadow: 0 12px 28px -18px rgb(0 0 0 / 55%);
   overflow: visible;
   transition: padding var(--motion-standard) var(--motion-ease);
@@ -1332,7 +1332,7 @@
 .composer-prompt-actions {
   display: flex;
   align-items: center;
-  gap: 0.15rem;
+  gap: 0.25rem;
   flex-shrink: 0;
 }
 .composer.composer--resting {
@@ -1587,8 +1587,8 @@ textarea.composer-field--resting {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
-  margin-top: 0.45rem;
+  gap: 0.625rem;
+  margin-top: 0.5rem;
   container-type: inline-size;
   container-name: composer-row;
 }
@@ -1871,7 +1871,7 @@ textarea.composer-field--resting {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 1rem .8rem .5rem;
+  padding: 1rem 0.875rem 0.5rem;
   font-size: .75rem;
   background: color-mix(in srgb, var(--surface-0) 65%, transparent);
   border: 1px solid var(--border-color);
@@ -1919,6 +1919,12 @@ textarea.composer-field--resting {
 @container composer (max-width: 28rem) {
   .composer-context .menu-select-trigger > span { display: none; }
   .composer-context .menu-select-trigger { min-height: 1.5rem; }
+}
+@container composer (max-width: 22rem) {
+  .composer-glass { padding: 0.75rem 0.625rem 0.5rem; }
+  .composer-row { gap: 0.25rem; }
+  .composer-prompt-actions { gap: 0.125rem; }
+  .composer-context { width: calc(100% - 1rem); gap: 0.5rem; }
 }
 .folder-chip-wrap {
   position: relative;

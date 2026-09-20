@@ -10,6 +10,8 @@ reading history does not grow it back.
 
 Attachment and send controls stay beside the agent controls in the expanded
 composer. The compact prompt keeps the checkout controls entirely below it.
+The prompt and toolbar use consistent spacing as the pane narrows or text size
+increases. Secondary settings move into named menus; text does not shrink to fit.
 Task lists reflect the agent's latest plan, including a cleared plan. After a
 turn ends, tasks it did not finish are labelled **Incomplete**, not **Running**.
 

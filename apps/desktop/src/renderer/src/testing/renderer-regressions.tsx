@@ -19,6 +19,7 @@ import { runScreenshotRegressions } from "./screenshot-regressions";
 import { runRuntimeExtensionRegressions } from "./runtime-extension-regressions";
 import { runInterfaceRegressions } from "./interface-regressions";
 import { runPanelRegressions } from "./panel-regressions";
+import { runComposerLayoutRegressions } from "./composer-layout-regressions";
 import { runDraftAdmissionRegressions } from "./draft-admission-regressions";
 import { runWorkspaceExtensionRegressions } from "./workspace-extension-regressions";
 import { runSavedPreviewRegressions, runSavedPreviewLayoutRegressions, SavedDiffFixture, focusSavedPreview } from "./saved-preview-regressions";
@@ -1171,6 +1172,8 @@ window.runRendererRegressions = async () => {
   await runInterfaceRegressions(host, contextBase);
   phase("panels");
   await runPanelRegressions(host, contextBase);
+  phase("composer layout matrix");
+  await runComposerLayoutRegressions(host, contextBase);
   phase("saved previews");
   await runSavedPreviewRegressions(host);
   await runSavedPreviewLayoutRegressions(host);
