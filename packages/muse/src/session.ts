@@ -6,6 +6,8 @@ import type { DirectAcpEvents, DirectAcpOptions, DirectAgentSession } from "@cap
 import { readReportedTurnUsage, type AgentCapabilityReport, type AgentPromptBlock, type AcpModelCatalog } from "@capsule/shared";
 import { approvalChoices, identifier, label, museInput, object, readModels, type MuseModel } from "./protocol.js";
 import { openMuseTransport } from "./transport.js";
+import { REASONING_HISTORY_LIMIT, readReasoningEffort, reasoningFromPage, reasoningOption, type ReasoningEffort } from "./configuration.js";
+import { OptionalQuery } from "./optional-query.js";
 
 interface Item { kind: string; text: string; revision: number; ended: boolean }
 interface Turn {
@@ -38,6 +40,10 @@ export class DirectMuseSession implements DirectAgentSession {
   private setting = false;
   private catalogue?: AcpModelCatalog;
   private modelRows: MuseModel[] = [];
+  private reasoningEffort?: ReasoningEffort;
+  private reasoningGeneration = 0;
+  private readonly reasoningRecovery = new OptionalQuery();
+  private readonly earlyReasoning: Array<{ sessionId: string; effort: ReasoningEffort }> = [];
   private readonly approvals = new Map<string, { stage: string; params: Record<string, unknown>; cancel(): void }>();
   private readonly decidedRequirements = new Set<string>();
   private report: AgentCapabilityReport = {
@@ -112,10 +118,14 @@ export class DirectMuseSession implements DirectAgentSession {
         throw new Error("This Muse session has unfinished work. Resolve it in the Muse CLI before resuming it here.");
       }
       this.id = id;
+      for (const report of this.earlyReasoning.splice(0)) {
+        if (report.sessionId === id) this.acceptReasoning(report.effort);
+      }
       const models = readModels(await this.request("model/list", { sessionId: id }));
       this.modelRows = models.models;
       this.catalogue = { ...models.catalog, currentModelId: identifier(session.modelId) ?? models.catalog.currentModelId };
       this.refreshConfiguration();
+      if (resumeSessionId && this.reasoningEffort === undefined) void this.recoverReasoning(id);
       return id;
     } catch (error) {
       await this.close();
@@ -178,6 +188,28 @@ export class DirectMuseSession implements DirectAgentSession {
 
   async setConfig(id: string, value: string | boolean): Promise<void> {
     if (!this.running || this.busy || this.setting) throw new Error("Wait for Muse to finish before changing its settings.");
+    if (id === "reasoning_effort") {
+      const effort = readReasoningEffort(value);
+      if (!effort) throw new Error("Choose a reasoning effort reported by this Muse session.");
+      this.setting = true;
+      try {
+        // Recovery describes the pre-write default. Fence it immediately so
+        // a history response during the acknowledgement wait cannot win.
+        const generation = ++this.reasoningGeneration;
+        const commandId = this.connection.mintCommandId();
+        const ack = await this.command("session/setReasoningEffort", { sessionId: this.id, reasoningEffort: effort }, commandId);
+        if (ack.commandId !== commandId || ack.status !== "accepted") {
+          throw new Error("Muse did not confirm the reasoning setting. Refresh its status before trying again.");
+        }
+        // An accepted write invalidates pending recovery even without a push
+        // notification. A newer native notification still wins over this ack.
+        if (generation === this.reasoningGeneration) this.acceptReasoning(effort);
+        else this.reasoningGeneration++;
+      } finally {
+        this.setting = false;
+      }
+      return;
+    }
     const selected = this.modelRows.find((model) => model.modelId === value);
     if (id !== "model" || !selected) throw new Error("Choose a model reported by this Muse session.");
     this.setting = true;
@@ -195,6 +227,8 @@ export class DirectMuseSession implements DirectAgentSession {
   close(): Promise<void> {
     this.closing ??= (async () => {
       this.closed = true;
+      this.reasoningRecovery.close();
+      this.earlyReasoning.length = 0;
       this.finish(undefined, new Error("Muse session closed."));
       this.clearApprovals();
       await this.transport?.close();
@@ -238,11 +272,40 @@ export class DirectMuseSession implements DirectAgentSession {
       id: "model", category: "model", name: "Model", currentValue: this.catalogue.currentModelId,
       choices: this.catalogue.availableModels.map((model) => ({ value: model.modelId, name: model.name })),
     }] : [];
+    this.report.configOptions.push(reasoningOption(this.reasoningEffort));
     this.emitter.emit("configuration");
   }
 
+  private acceptReasoning(effort: ReasoningEffort) {
+    this.reasoningGeneration++;
+    this.reasoningEffort = effort;
+    this.refreshConfiguration();
+  }
+
+  private async recoverReasoning(sessionId: string) {
+    const generation = this.reasoningGeneration;
+    const page = await this.reasoningRecovery.run(() => this.connection.request("view/page", {
+      sessionId, direction: "backward", limit: REASONING_HISTORY_LIMIT,
+    }));
+    if (this.closed || this.id !== sessionId || generation !== this.reasoningGeneration) return;
+    const effort = reasoningFromPage(page, sessionId);
+    if (effort) this.acceptReasoning(effort);
+  }
+
   private notification(method: string, params: Record<string, unknown>) {
-    if (!this.id || params.sessionId !== this.id || this.closed) return;
+    if (this.closed) return;
+    if (method === "session/reasoningEffortChanged") {
+      const effort = readReasoningEffort(params.reasoningEffort);
+      const sessionId = identifier(params.sessionId);
+      if (!effort || !sessionId) return;
+      if (!this.id) {
+        // Initialization may deliver session facts before its identity reply.
+        if (this.earlyReasoning.length === 16) this.earlyReasoning.shift();
+        this.earlyReasoning.push({ sessionId, effort });
+      } else if (sessionId === this.id) this.acceptReasoning(effort);
+      return;
+    }
+    if (!this.id || params.sessionId !== this.id) return;
     if (method === "session/modelChanged" && this.catalogue) {
       this.catalogue.currentModelId = identifier(params.modelId);
       this.refreshConfiguration();

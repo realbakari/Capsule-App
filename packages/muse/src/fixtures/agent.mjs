@@ -3,9 +3,13 @@ import readline from "node:readline";
 import process from "node:process";
 import { spawn } from "node:child_process";
 import { setTimeout } from "node:timers";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 const scenario = process.argv[2] || "normal";
 const schema = process.env.MUSE_TEST_SCHEMA;
 let model = "model-one";
+const statePath = process.env.MUSE_TEST_STATE;
+let reasoningEffort = statePath && existsSync(statePath) ? JSON.parse(readFileSync(statePath, "utf8")).reasoningEffort : undefined;
+let historyReads = 0;
 let turnId;
 let sequence = 0;
 let decisions = 0;
@@ -31,15 +35,43 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
   if (method === "initialized") return;
   if (method === "session/start" || method === "session/resume") {
     if (method === "session/start" && p.approvalMode !== "promptUnmatched") process.exit(9);
+    if (scenario === "reasoning-early") {
+      notify("session/reasoningEffortChanged", { reasoningEffort: "low" });
+      notify("session/reasoningEffortChanged", { sessionId: "foreign", reasoningEffort: "ultra" });
+    }
     return reply(id, { session: {
       sessionId: scenario === "wrong-id" ? "another-session" : sessionId,
       workspaceRoot: scenario === "wrong-folder" ? "/" : process.cwd(),
       status: scenario === "unfinished" ? "running" : "idle", activeTurnId: null, modelId: model,
     }, pendingRequests: [], history: { mode: "none", ...(scenario === "unavailable" ? { noneReason: "projectionUnavailable" } : {}) } });
   }
-  if (method === "model/list") return reply(id, { models: ["model-one", "model-two"].map((modelId) => ({
-    modelId, displayLabel: modelId, providerId: "fixture", isActive: modelId === model,
-  })) });
+  if (method === "model/list") {
+    reply(id, { models: (scenario === "no-models" ? [] : ["model-one", "model-two"]).map((modelId) => ({
+      modelId, displayLabel: modelId, providerId: "fixture", isActive: modelId === model,
+    })) });
+    return;
+  }
+  if (method === "session/setReasoningEffort") {
+    if (scenario === "reasoning-reject") return emit({ id, error: { code: -32602, message: "Reasoning setting is unavailable" } });
+    if (scenario === "reasoning-mismatch") return reply(id, { status: "accepted" });
+    reasoningEffort = p.reasoningEffort;
+    if (statePath) writeFileSync(statePath, JSON.stringify({ reasoningEffort }));
+    if (scenario === "reasoning-notification") notify("session/reasoningEffortChanged", { reasoningEffort: "ultra" });
+    notify("session/reasoningEffortChanged", { sessionId: "foreign", reasoningEffort: "minimal" });
+    notify("session/reasoningEffortChanged", { reasoningEffort: true });
+    if (scenario === "reasoning-history-first") return setTimeout(() => reply(id, { commandId: p.commandId, status: "accepted" }), 150);
+    return reply(id, { commandId: p.commandId, status: "accepted" });
+  }
+  if (method === "view/page") {
+    if (++historyReads > 1 || p.limit !== 100 || p.direction !== "backward" || p.sessionId !== sessionId) process.exit(13);
+    const effort = scenario.startsWith("reasoning-delayed") || scenario === "reasoning-history-first" ? "low" : reasoningEffort;
+    const result = { events: effort ? [{ method: "session/reasoningEffortChanged", params: { sessionId, reasoningEffort: effort } }] : [], nextCursor: null };
+    if (scenario === "reasoning-delayed") return setTimeout(() => reply(id, result), 250);
+    if (scenario === "reasoning-history-first") return setTimeout(() => reply(id, result), 50);
+    if (scenario === "reasoning-delayed-timeout") return setTimeout(() => reply(id, result), 3_200);
+    if (scenario === "reasoning-unsupported") return emit({ id, error: { code: -32601, message: "Unknown method" } });
+    return reply(id, result);
+  }
   if (method === "session/setModel") {
     model = p.model.modelId;
     notify("session/modelChanged", { modelId: model });

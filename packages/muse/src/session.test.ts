@@ -1,4 +1,7 @@
 import { fileURLToPath } from "node:url";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { EXPECTED_SCHEMA_FINGERPRINT } from "@muse-code/sdk";
 import { DirectAcpHost, type DirectAcpEvents } from "@capsule/acp";
@@ -8,10 +11,10 @@ import { approvalChoices, museInput } from "./protocol.js";
 
 const fixture = fileURLToPath(new URL("./fixtures/agent.mjs", import.meta.url));
 const sessions: DirectMuseSession[] = [];
-function create(scenario = "normal", timeoutMs = 3000) {
+function create(scenario = "normal", timeoutMs = 3000, env: Record<string, string> = {}) {
   const session = new DirectMuseSession({
     command: process.execPath, args: [fixture, scenario], cwd: process.cwd(), timeoutMs,
-    env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", MUSE_TEST_SCHEMA: EXPECTED_SCHEMA_FINGERPRINT },
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", MUSE_TEST_SCHEMA: EXPECTED_SCHEMA_FINGERPRINT, ...env },
   });
   sessions.push(session);
   return session;
@@ -19,6 +22,75 @@ function create(scenario = "normal", timeoutMs = 3000) {
 afterEach(async () => { await Promise.all(sessions.splice(0).map((session) => session.close())); });
 
 describe("native Muse sessions", () => {
+  const effort = (session: DirectMuseSession) => session.reportedCapabilities.configOptions.find((option) => option.id === "reasoning_effort")?.currentValue;
+
+  it("reports an unknown reasoning default independently of model choices and accepts exact tiers", async () => {
+    const session = create("no-models");
+    await session.start();
+    expect(session.reportedCapabilities.configOptions).toHaveLength(1);
+    expect(effort(session)).toBeUndefined();
+    for (const tier of ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"]) {
+      await session.setConfig("reasoning_effort", tier);
+      expect(effort(session)).toBe(tier);
+    }
+    await expect(session.setConfig("reasoning_effort", "auto")).rejects.toThrow("Choose a reasoning effort");
+  });
+
+  it("preserves native notifications before identity and acknowledgement, ignoring foreign or invalid reports", async () => {
+    const early = create("reasoning-early");
+    await early.start();
+    expect(effort(early)).toBe("low");
+    const session = create("reasoning-notification");
+    await session.start();
+    await session.setConfig("reasoning_effort", "high");
+    expect(effort(session)).toBe("ultra");
+    expect(session.busy).toBe(false);
+  });
+
+  it.each(["reasoning-reject", "reasoning-mismatch"])("requires an exact accepted acknowledgement (%s)", async (scenario) => {
+    const session = create(scenario);
+    await session.start();
+    await expect(session.setConfig("reasoning_effort", "high")).rejects.toThrow();
+    expect(effort(session)).toBeUndefined();
+    await expect(session.prompt("Next")).resolves.toEqual({ stopReason: "end_turn" });
+  });
+
+  it.each(["reasoning-delayed", "reasoning-history-first"])("does not let recovery replace an accepted write without a notification (%s)", async (scenario) => {
+    const session = create(scenario);
+    await session.start("fixture-session");
+    await session.setConfig("reasoning_effort", "max");
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    expect(effort(session)).toBe("max");
+    expect(session.running).toBe(true);
+  });
+
+  it("discards a timed-out recovery even without a newer write", async () => {
+    const session = create("reasoning-delayed-timeout");
+    await session.start("fixture-session");
+    await new Promise((resolve) => setTimeout(resolve, 3_350));
+    expect(effort(session)).toBeUndefined();
+    await expect(session.prompt("Still usable")).resolves.toEqual({ stopReason: "end_turn" });
+  });
+
+  it("recovers a durable setting from one bounded page after process restart", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "capsule-muse-setting-"));
+    const env = { MUSE_TEST_STATE: path.join(directory, "state.json") };
+    try {
+      const first = create("normal", 3000, env);
+      await first.start();
+      await first.setConfig("reasoning_effort", "max");
+      await first.close();
+      const restored = create("normal", 3000, env);
+      await restored.start("fixture-session");
+      await expect.poll(() => effort(restored)).toBe("max");
+      await restored.close();
+      const unsupported = create("reasoning-unsupported", 3000, env);
+      await unsupported.start("fixture-session");
+      await unsupported.prompt("No history support");
+      expect(effort(unsupported)).toBeUndefined();
+    } finally { await rm(directory, { recursive: true, force: true }); }
+  });
+
   it.each(["normal", "early"])("streams each message once and settles consecutive %s turns", async (scenario) => {
     const session = create(scenario);
     const text: string[] = [];
@@ -163,6 +235,7 @@ describe("native Muse sessions", () => {
     await host.closeAll();
     expect(host.isRunning(result.sessionKey)).toBe(false);
   });
+
 });
 
 it("does not map persistent approvals or resources to unsupported native actions", () => {
