@@ -1,4 +1,76 @@
 import { isInternalVerdict } from "./thread-error.js";
+import type { Run, Session } from "@capsule/shared";
+
+export type SidebarGrouping = "project" | "status";
+export const SIDEBAR_GROUPING_KEY = "capsule.sidebarGrouping";
+
+export function readSidebarGrouping(read: () => string | null): SidebarGrouping {
+  try { return read() === "status" ? "status" : "project"; }
+  catch { return "project"; }
+}
+
+export function latestSidebarRuns(runs: readonly Run[]): Map<string, Run> {
+  const latest = new Map<string, Run>();
+  for (const run of runs) {
+    const previous = latest.get(run.sessionId);
+    if (!previous || run.createdAt > previous.createdAt) latest.set(run.sessionId, run);
+  }
+  return latest;
+}
+
+export type SidebarStatusGroupId = "attention" | "working" | "review" | "other";
+export interface SidebarStatusGroup {
+  id: SidebarStatusGroupId;
+  label: string;
+  threads: Session[];
+}
+
+/** Group only lightweight summaries; a settled row does not imply verification. */
+export function groupSidebarThreads(
+  sessions: readonly Session[],
+  projects: readonly { id: string; name: string }[],
+  latestRuns: ReadonlyMap<string, Run>,
+  query = "",
+): SidebarStatusGroup[] {
+  const groups: SidebarStatusGroup[] = [
+    { id: "attention", label: "Needs you", threads: [] },
+    { id: "working", label: "Working", threads: [] },
+    { id: "review", label: "Ready for review", threads: [] },
+    { id: "other", label: "Other conversations", threads: [] },
+  ];
+  const projectNames = new Map(projects.map((project) => [project.id, project.name]));
+  const seen = new Set<string>();
+  const needle = query.trim().toLowerCase();
+  for (const session of sessions) {
+    const projectName = projectNames.get(session.projectId);
+    if (session.state !== "active" || projectName === undefined || seen.has(session.id)) continue;
+    seen.add(session.id);
+    if (needle && !session.title.toLowerCase().includes(needle) && !projectName.toLowerCase().includes(needle)) continue;
+    const run = latestRuns.get(session.id);
+    const answered = run?.hasResult ?? Boolean(run?.result?.trim());
+    const kind = resolveSidebarThreadKind({
+      liveHarness: isWorkingHarnessState(session.harnessState),
+      runStatus: run?.status, runAnswered: answered, runError: run?.error,
+    });
+    const group = kind === "approval" || kind === "failed" ? groups[0]!
+      : kind === "working" ? groups[1]!
+      : run?.status === "completed" && answered ? groups[2]! : groups[3]!;
+    group.threads.push(session);
+  }
+  for (const group of groups) {
+    group.threads.sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned))
+      || b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id));
+  }
+  return groups.filter((group) => group.threads.length);
+}
+
+export const STATUS_THREAD_PREVIEW = 20;
+
+export function visibleStatusThreads(group: SidebarStatusGroup, expanded: boolean, selectedId?: string): Session[] {
+  if (expanded || group.id === "attention" || group.id === "working") return group.threads;
+  const selectedIndex = group.threads.findIndex((session) => session.id === selectedId);
+  return group.threads.slice(0, Math.max(STATUS_THREAD_PREVIEW, selectedIndex + 1));
+}
 
 export type SidebarThreadKind = "working" | "approval" | "failed" | "ready";
 

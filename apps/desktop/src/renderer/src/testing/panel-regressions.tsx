@@ -4,6 +4,7 @@ import { Sidebar } from "../features/shell/Sidebar";
 import { Inspector } from "../features/shell/Inspector";
 import { UsageView } from "../features/library/UsageView";
 import { usePanelResize } from "../lib/panel-resize";
+import { SIDEBAR_GROUPING_KEY } from "../lib/sidebar";
 
 function assert(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
 async function settle() { await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))); }
@@ -24,6 +25,8 @@ function SidebarFixture({ base }: { base: Record<string, unknown> }) {
 export async function runPanelRegressions(host: HTMLElement, base: Record<string, unknown>) {
   const previous = window.testWorkspace;
   const savedWidth = localStorage.getItem("capsule.inspectorWidth");
+  const savedGrouping = localStorage.getItem(SIDEBAR_GROUPING_KEY);
+  localStorage.removeItem(SIDEBAR_GROUPING_KEY);
   const root = createRoot(host);
   try {
     const deltas: number[] = [];
@@ -70,6 +73,43 @@ export async function runPanelRegressions(host: HTMLElement, base: Record<string
     await settle();
     assert(project.querySelector('.thread-status')?.textContent === "Approval", "Collapsed project hid a waiting approval behind working status");
 
+    const navigated: string[] = [];
+    const groupedBase = { ...sidebarBase, projects: [...sidebarBase.projects, { id: "other", name: "Second workspace" }],
+      sessions: [...sidebarBase.sessions, { id: "other-approval", projectId: "other", title: "Review access", state: "active", pinned: true, updatedAt: "2026-09-02T00:00:00Z" }],
+      projectRuns: [...sidebarBase.projectRuns, { id: "other-run", sessionId: "other-approval", status: "approval_required", createdAt: "2026-09-02T00:00:00Z" }],
+      setProjectId: (projectId: string, threadId: string) => navigated.push(`${projectId}/${threadId}`), setView: () => {},
+    };
+    const chooseGrouping = async (label: string) => {
+      document.querySelector<HTMLButtonElement>('[aria-label="Group conversations"]')!.click(); await settle();
+      Array.from(document.querySelectorAll<HTMLButtonElement>('[role="option"]')).find((option) => option.textContent === label)!.click(); await settle();
+      assert(document.activeElement?.getAttribute("aria-label") === "Group conversations", "Grouping selector lost keyboard focus");
+    };
+    root.render(<SidebarFixture base={groupedBase} />); await settle();
+    await chooseGrouping("By status");
+    assert(localStorage.getItem(SIDEBAR_GROUPING_KEY) === "status", "Status grouping was not saved");
+    assert(document.querySelectorAll('[data-thread-item]').length === 3, "Status grouping duplicated or lost a thread");
+    const attention = document.querySelector('section[aria-label="Needs you"]')!;
+    assert(attention.textContent?.includes("Review access") && attention.textContent?.includes("Second workspace"), "Status grouping omitted the other project's approval or context");
+    const badge = attention.querySelector<HTMLElement>(".thread-status.approval")!;
+    assert(parseFloat(getComputedStyle(badge).paddingTop) === 0 && badge.getBoundingClientRect().height < 24, "Sidebar approval inherited the conversation card's padding");
+    const otherRow = attention.querySelector<HTMLElement>('[aria-label="Review access"]')!;
+    assert(otherRow.draggable === false, "Derived groups allowed pinned drag reorder");
+    otherRow.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    assert(navigated[0] === "other/other-approval", "Status navigation opened the wrong project");
+    root.render(<SidebarFixture base={{ ...groupedBase, projectRuns: groupedBase.projectRuns.map((run) => run.id === "other-run" ? { ...run, status: "completed", hasResult: true } : run) }} />); await settle();
+    assert(document.querySelector('section[aria-label="Ready for review"]')?.textContent?.includes("Review access"), "Live summaries did not move the thread between groups");
+    const search = document.querySelector<HTMLInputElement>('.sidebar input[placeholder]')!;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(search, "Second workspace");
+    search.dispatchEvent(new Event("input", { bubbles: true })); await settle();
+    assert(document.querySelectorAll('[data-thread-item]').length === 1, "Status search did not match project context");
+    root.render(null); await settle(); root.render(<SidebarFixture base={groupedBase} />); await settle();
+    assert(document.querySelector('section[aria-label="Needs you"]'), "Status preference did not survive remount");
+    await chooseGrouping("By project");
+    assert(document.querySelectorAll('.project-row').length === 2 && !document.querySelector('.sidebar-status-group'), "Project grouping could not be restored");
+    root.render(null); await settle(); localStorage.setItem(SIDEBAR_GROUPING_KEY, "malformed");
+    root.render(<SidebarFixture base={groupedBase} />); await settle();
+    assert(document.querySelector('.project-row'), "Invalid saved grouping did not fall back to projects");
+
     window.testWorkspace = { ...base, project: undefined, projectId: undefined, session: undefined,
       files: [], steps: [], artifacts: [], harnesses: [], harnessSessions: [], inspectorTab: "launcher", inspectorOpen: true, settings: {},
     };
@@ -92,9 +132,12 @@ export async function runPanelRegressions(host: HTMLElement, base: Record<string
     unavailable = false;
     Array.from(document.querySelectorAll("button")).find((button) => button.textContent === "Refresh")!.click(); await settle();
     assert(!document.body.textContent?.includes("Some transcripts could not be read") && document.body.textContent?.includes("No usage in this window"), "Usage coverage did not recover on Refresh");
+
   } finally {
     root.unmount(); window.testWorkspace = previous;
     if (savedWidth === null) localStorage.removeItem("capsule.inspectorWidth");
     else localStorage.setItem("capsule.inspectorWidth", savedWidth);
+    if (savedGrouping === null) localStorage.removeItem(SIDEBAR_GROUPING_KEY);
+    else localStorage.setItem(SIDEBAR_GROUPING_KEY, savedGrouping);
   }
 }

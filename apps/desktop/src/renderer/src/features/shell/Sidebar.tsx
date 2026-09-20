@@ -14,7 +14,14 @@ import {
   compactRelativeTime,
   formatWorkingDurationLabel,
   isWorkingHarnessState,
-  latestRunForSession,
+  latestSidebarRuns,
+  groupSidebarThreads,
+  readSidebarGrouping,
+  SIDEBAR_GROUPING_KEY,
+  STATUS_THREAD_PREVIEW,
+  visibleStatusThreads,
+  type SidebarGrouping,
+  type SidebarStatusGroupId,
   resolveSidebarThreadKind,
   resolveProjectThreadKind,
   SETTLED_THREAD_PREVIEW,
@@ -26,6 +33,7 @@ import { SETTINGS_TABS } from "../settings/SettingsView";
 import { searchSettings } from "../settings/settings-search";
 import { useWorkspace, type View } from "../../lib/workspace";
 import { ActionMenu } from "./ActionMenu";
+import { MenuSelect } from "./MenuSelect";
 import { AddProjectPicker, type ProjectSourceId } from "./AddProjectPicker";
 import { CloneRepositoryDialog } from "./CloneRepositoryDialog";
 import { SidebarToggle } from "./SidebarControl";
@@ -170,13 +178,16 @@ export function Sidebar() {
 
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [restLimit, setRestLimit] = useState<Record<string, number>>({});
+  const [grouping, setGrouping] = useState(() => readSidebarGrouping(() => localStorage.getItem(SIDEBAR_GROUPING_KEY)));
+  const [expandedGroups, setExpandedGroups] = useState<Set<SidebarStatusGroupId>>(new Set());
+  const latestRuns = useMemo(() => latestSidebarRuns(projectRuns), [projectRuns]);
   const pendingApprovals = approvals.filter((item) => item.status === "pending").length;
 
   const activeSessions = sessions.filter((item) => item.state === "active");
   const needle = query.trim().toLowerCase();
 
   const kindOf = (session: Session): SidebarThreadKind => {
-    const run = latestRunForSession(projectRuns, session.id);
+    const run = latestRuns.get(session.id);
     return resolveSidebarThreadKind({
       liveHarness: isWorkingHarnessState(session.harnessState),
       runStatus: run?.status,
@@ -184,6 +195,16 @@ export function Sidebar() {
       runError: run?.error,
     });
   };
+
+  const statusGroups = useMemo(() => groupSidebarThreads(sessions, projects, latestRuns, needle), [sessions, projects, latestRuns, needle]);
+
+  function changeGrouping(value: string) {
+    const next: SidebarGrouping = value === "status" ? "status" : "project";
+    setGrouping(next);
+    setDraggedPinnedId(undefined);
+    try { localStorage.setItem(SIDEBAR_GROUPING_KEY, next); }
+    catch { /* This view preference remains usable when storage is denied. */ }
+  }
 
   const filteredProjects = useMemo(() => {
     if (!needle) return projects;
@@ -381,7 +402,7 @@ export function Sidebar() {
     const kind = kindOf(session);
     const active = session.id === sessionId;
     const recede = shouldRecedeThread(kind, active);
-    const run = latestRunForSession(projectRuns, session.id);
+    const run = latestRuns.get(session.id);
     const startedAt =
       kind === "working" && run && ["running", "queued", "waiting"].includes(run.status)
         ? run.createdAt
@@ -397,21 +418,21 @@ export function Sidebar() {
            every conversation in the sidebar read as an unnamed control. */
         aria-label={session.title}
         className={`thread-row ${active ? "active" : ""} ${recede ? "recede" : ""}`}
-        draggable={Boolean(session.pinned)}
+        draggable={grouping === "project" && Boolean(session.pinned)}
         onDragStart={(event) => {
-          if (!session.pinned) return;
+          if (grouping !== "project" || !session.pinned) return;
           setDraggedPinnedId(session.id);
           event.dataTransfer.effectAllowed = "move";
           event.dataTransfer.setData("text/plain", session.id);
         }}
         onDragEnd={() => setDraggedPinnedId(undefined)}
         onDragOver={(event) => {
-          if (!session.pinned || !draggedPinnedId || draggedPinnedId === session.id) return;
+          if (grouping !== "project" || !session.pinned || !draggedPinnedId || draggedPinnedId === session.id) return;
           event.preventDefault();
           event.dataTransfer.dropEffect = "move";
         }}
         onDrop={(event) => {
-          if (!session.pinned) return;
+          if (grouping !== "project" || !session.pinned) return;
           event.preventDefault();
           const sourceId = draggedPinnedId || event.dataTransfer.getData("text/plain");
           if (!sourceId || sourceId === session.id) return;
@@ -445,7 +466,10 @@ export function Sidebar() {
         <span className="row-slot">
           {session.pinned ? <PinIcon size={11} /> : <MessageSquareIcon size={12} />}
         </span>
-        <span className="truncate">{session.title}</span>
+        <span className="thread-title">
+          <span className="truncate">{session.title}</span>
+          {grouping === "status" && <small className="thread-project">{projects.find((project) => project.id === session.projectId)?.name}</small>}
+        </span>
         <span className="thread-meta">
           {kind === "working" ? (
             <span className="thread-status working">
@@ -618,13 +642,9 @@ export function Sidebar() {
           end, where the tree's own controls already are. With nothing to scope
           it says nothing — the prompt below is the whole story then. */}
       <div className={`sidebar-scope${projects.length === 0 ? " empty" : ""}`}>
-        <span className="sidebar-scope-label">
-          {!ready || projects.length === 0
-            ? ""
-            : projects.length === 1
-              ? projects[0]!.name
-              : "All projects"}
-        </span>
+        {ready && projects.length > 0 && <MenuSelect ariaLabel="Group conversations" value={grouping}
+          options={[{ id: "project", label: "By project" }, { id: "status", label: "By status" }]}
+          onChange={changeGrouping} />}
         <div className="sidebar-scope-actions">
           <button
             type="button"
@@ -646,7 +666,7 @@ export function Sidebar() {
             <span className="skeleton skeleton-line short" />
             <span className="skeleton skeleton-line medium" />
           </div>
-        ) : filteredProjects.length === 0 && needle ? (
+        ) : grouping === "project" && filteredProjects.length === 0 && needle ? (
           <div className="sidebar-empty">No project matches “{needle}”.</div>
         ) : projects.length === 0 ? (
           <div className="sidebar-onboarding">
@@ -656,7 +676,24 @@ export function Sidebar() {
             </button>
           </div>
         ) : null}
-        {filteredProjects.map((item) => {
+        {grouping === "status" ? <>
+          {statusGroups.map((group) => {
+            const expanded = expandedGroups.has(group.id);
+            const visible = visibleStatusThreads(group, expanded, sessionId);
+            const hidden = group.threads.length - visible.length;
+            return <section className="sidebar-status-group" key={group.id} aria-label={group.label}>
+              <h3 className="session-label">{group.label}<span>{group.threads.length}</span></h3>
+              {visible.map(renderThread)}
+              {hidden > 0 || (expanded && group.threads.length > STATUS_THREAD_PREVIEW) ? <button type="button" className="show-more" onClick={() => setExpandedGroups((current) => {
+                const next = new Set(current);
+                if (next.has(group.id)) next.delete(group.id);
+                else next.add(group.id);
+                return next;
+              })}>{hidden > 0 ? `Show ${hidden} more` : "Show fewer"}</button> : null}
+            </section>;
+          })}
+          {ready && projects.length > 0 && statusGroups.length === 0 && <div className="sidebar-empty">{needle ? "No conversations match this search." : "No conversations"}</div>}
+        </> : filteredProjects.map((item) => {
           const threads = sessionsFor(item.id);
           const isOpen = needle ? threads.length > 0 || item.id === projectId : !collapsed.has(item.id);
           const limit = restLimit[item.id] ?? SETTLED_THREAD_PREVIEW;

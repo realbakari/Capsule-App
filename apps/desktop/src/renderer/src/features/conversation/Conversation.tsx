@@ -614,7 +614,7 @@ export function Conversation() {
             </div>
           ) : null}
           {pendingApproval && (
-            <div className="approval">
+            <div className="conversation-approval">
               <h3>Approval required</h3>
               <div>
                 {pendingApproval.agentName} wants to <b>{pendingApproval.action}</b>

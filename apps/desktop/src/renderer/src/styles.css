@@ -431,6 +431,26 @@
 .thread-row .truncate {
   min-width: 0;
 }
+.thread-title { min-width: 0; display: grid; }
+.thread-project {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-faint);
+  font-size: 0.6875rem;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.sidebar-status-group { margin-bottom: 0.75rem; }
+.sidebar-status-group > .session-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.sidebar-status-group > .session-label > span { font-variant-numeric: tabular-nums; opacity: 0.7; }
 .thread-meta {
   display: inline-flex;
   align-items: center;
@@ -2335,7 +2355,7 @@ select:focus,
   color: #ffffff;
 }
 
-.approval {
+.conversation-approval {
   border: 1px solid rgb(255 255 255 / 10%);
   background: rgb(255 255 255 / 4%);
   border-radius: 0.85rem;
@@ -2343,7 +2363,7 @@ select:focus,
   margin: 1rem auto;
   max-width: var(--chat-max);
 }
-.approval h3 {
+.conversation-approval h3 {
   margin: 0 0 0.5rem;
   font-size: 0.9375rem;
 }

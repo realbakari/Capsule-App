@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { Run, Session } from "@capsule/shared";
 import {
   compactRelativeTime,
   formatWorkingDurationLabel,
@@ -6,7 +7,71 @@ import {
   resolveProjectThreadKind,
   shouldRecedeThread,
   splitProjectThreads,
+  groupSidebarThreads,
+  latestSidebarRuns,
+  readSidebarGrouping,
+  visibleStatusThreads,
 } from "./sidebar.js";
+
+describe("cross-project status groups", () => {
+  const projects = [{ id: "a", name: "Alpha" }, { id: "b", name: "Beta" }];
+  const thread = (id: string, extra: Partial<Session> = {}): Session => ({
+    id, title: id, projectId: "a", state: "active", updatedAt: "2026-09-01T00:00:00Z", ...extra,
+  } as Session);
+  const run = (sessionId: string, status: Run["status"], extra: Partial<Run> = {}): Run => ({
+    id: `run-${sessionId}`, sessionId, status, createdAt: "2026-09-01T00:00:00Z", ...extra,
+  } as Run);
+
+  it("classifies all projects once, retaining distinct failure and approval semantics", () => {
+    const sessions = [thread("approval", { pinned: true, projectId: "b" }), thread("failed"), thread("queued"),
+      thread("ready"), thread("empty"), thread("cancelled"), thread("idle", { harnessState: "waiting" }),
+      thread("verdict"), thread("archived", { state: "archived" }), thread("orphan", { projectId: "missing" })];
+    const latest = latestSidebarRuns([
+      run("approval", "blocked"), run("failed", "failed", { error: "Agent exited" }), run("queued", "queued"),
+      run("ready", "completed", { hasResult: true }), run("cancelled", "cancelled"),
+      run("verdict", "failed", { error: "Verification failed" }),
+    ]);
+    const groups = groupSidebarThreads([...sessions, sessions[0]!], projects, latest);
+    expect(groups.map((group) => [group.id, group.threads.map((item) => item.id)])).toEqual([
+      ["attention", ["approval", "failed"]], ["working", ["queued"]], ["review", ["ready"]],
+      ["other", ["cancelled", "empty", "idle", "verdict"]],
+    ]);
+    expect(groupSidebarThreads(sessions, projects, latest, " beta ")[0]?.threads.map((item) => item.id)).toEqual(["approval"]);
+    expect(groupSidebarThreads(sessions, projects, latest, "ready")[0]?.id).toBe("review");
+    expect(groupSidebarThreads(sessions, projects, latest, "absent")).toEqual([]);
+  });
+
+  it("uses latest summaries and updates groups without loading transcripts", () => {
+    const sessions = [thread("one")];
+    const old = run("one", "running");
+    const ended = run("one", "completed", { createdAt: "2026-09-02", hasResult: true });
+    expect(groupSidebarThreads(sessions, projects, latestSidebarRuns([old]))[0]?.id).toBe("working");
+    expect(groupSidebarThreads(sessions, projects, latestSidebarRuns([ended, old]))[0]?.id).toBe("review");
+    expect(groupSidebarThreads(sessions, projects, latestSidebarRuns([{ ...ended, hasResult: false }]))[0]?.id).toBe("other");
+  });
+
+  it("sorts pinned first, then recency and stable ID without mutating input", () => {
+    const sessions = [thread("z"), thread("b"), thread("new", { updatedAt: "2026-09-02" }), thread("pin", { pinned: true })];
+    const original = [...sessions];
+    expect(groupSidebarThreads(sessions, projects, new Map())[0]?.threads.map((item) => item.id)).toEqual(["pin", "new", "b", "z"]);
+    expect(sessions).toEqual(original);
+  });
+
+  it("never hides live work and keeps a selected settled thread visible", () => {
+    const threads = Array.from({ length: 30 }, (_, i) => thread(String(i)));
+    for (const id of ["attention", "working"] as const) expect(visibleStatusThreads({ id, label: id, threads }, false)).toHaveLength(30);
+    const settled = { id: "other" as const, label: "Other", threads };
+    expect(visibleStatusThreads(settled, false)).toHaveLength(20);
+    expect(visibleStatusThreads(settled, false, "25")).toHaveLength(26);
+    expect(visibleStatusThreads(settled, true)).toHaveLength(30);
+  });
+
+  it("defaults safely when the local preference is absent, invalid or denied", () => {
+    for (const value of [null, "", "unexpected", "project"]) expect(readSidebarGrouping(() => value)).toBe("project");
+    expect(readSidebarGrouping(() => "status")).toBe("status");
+    expect(readSidebarGrouping(() => { throw new Error("Denied"); })).toBe("project");
+  });
+});
 
 describe("sidebar thread status", () => {
   it("keeps collapsed approvals prominent regardless of thread order", () => {
