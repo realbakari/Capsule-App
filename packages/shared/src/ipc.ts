@@ -132,6 +132,7 @@ export const IPC_CHANNELS = {
   hostState: "capsule:hostState",
   sourceControlTools: "capsule:sourceControlTools",
   usageSummary: "capsule:usageSummary",
+  providerUsage: "capsule:providerUsage",
   turnDiff: "capsule:turnDiff",
   restoreTurn: "capsule:restoreTurn",
   fetchSkillDetail: "capsule:fetchSkillDetail",

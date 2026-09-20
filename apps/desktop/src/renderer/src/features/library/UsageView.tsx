@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useWorkspace } from "../../lib/workspace";
+import { ProviderQuota } from "./ProviderQuota";
 
 /**
  * Token accounting, read from the coding CLIs' own session transcripts.
@@ -147,6 +148,7 @@ export function UsageView() {
           </div>
         </div>
 
+        <ProviderQuota refreshNonce={nonce} />
         <div className="card">
           <h3>Tokens</h3>
           {/* One line. Where the numbers come from is in the docs; what a

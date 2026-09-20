@@ -10,6 +10,11 @@ let model = "model-one";
 const statePath = process.env.MUSE_TEST_STATE;
 let reasoningEffort = statePath && existsSync(statePath) ? JSON.parse(readFileSync(statePath, "utf8")).reasoningEffort : undefined;
 let historyReads = 0;
+let usageReads = 0;
+const quota = (usedPercent, observedAtMs = 1_800_000_000_000) => ({ observedAtMs, tier: "Standard",
+  window: { usedPercent, resetsAtMs: observedAtMs + 18_000_000, windowDurationMins: 300 },
+  weekly: { usedPercent: 125, resetsAtMs: observedAtMs + 604_800_000 } });
+const usageChanged = (value) => emit({ method: "usage/changed", params: value });
 let turnId;
 let sequence = 0;
 let decisions = 0;
@@ -33,6 +38,19 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
       ...(scenario === "default-durable" ? {} : { sessionDurability: scenario === "ephemeral" ? "ephemeral" : "durable" }) });
   }
   if (method === "initialized") return;
+  if (method === "usage/read") {
+    if (++usageReads > 1) process.exit(14);
+    if (scenario === "usage-unsupported") return emit({ id, error: { code: -32601, message: "Unknown method" } });
+    if (scenario === "usage-timeout") return setTimeout(() => reply(id, { usage: quota(10) }), 3_200);
+    if (scenario === "usage-race") {
+      usageChanged(quota(80));
+      usageChanged(quota(80)); // duplicate does not emit twice
+      usageChanged(quota(20, 1_700_000_000_000)); // older report
+      usageChanged({ ...quota(90), window: {} }); // malformed report
+      return setTimeout(() => reply(id, { usage: quota(10) }), 200); // tied timestamp, older read
+    }
+    return reply(id, scenario.startsWith("usage-") ? { usage: quota(0) } : {});
+  }
   if (method === "session/start" || method === "session/resume") {
     if (method === "session/start" && p.approvalMode !== "promptUnmatched") process.exit(9);
     if (scenario === "reasoning-early") {
@@ -49,6 +67,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     reply(id, { models: (scenario === "no-models" ? [] : ["model-one", "model-two"]).map((modelId) => ({
       modelId, displayLabel: modelId, providerId: "fixture", isActive: modelId === model,
     })) });
+    if (scenario === "usage-idle-exit") setTimeout(() => process.exit(0), 200);
     return;
   }
   if (method === "session/setReasoningEffort") {

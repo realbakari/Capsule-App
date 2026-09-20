@@ -164,6 +164,10 @@ import {
   type WorkspaceMode,
   FENCE_LABELS,
   fenceUntrusted,
+  sanitizeUntrusted,
+  MAX_PROVIDER_USAGE_SOURCES,
+  type ProviderUsageSnapshot,
+  type ProviderUsageSource,
 } from "@capsule/shared";
 import {
   DEFAULT_SKILLS,
@@ -829,6 +833,7 @@ export class CapsuleEngine {
       else this.repos.insertSession(session);
       this.log(`Spawned ${direct ? "direct" : "Gateway ACP"} session for ${harnessId} (${spawned.sessionKey})`);
       this.events.emit("state", { command: "harness-updated" });
+      if (direct) this.events.emit("state", { command: "provider-usage" });
       return {
         session,
         command: spawned.command,
@@ -2444,6 +2449,12 @@ export class CapsuleEngine {
     const replies = this.direct.onAcpReply((payload: AcpReply) => this.handleAcpReply(payload));
     const activity = this.direct.onActivity((payload) => {
       if (this.stopped) { if (payload.type === "permission") payload.request.cancel(); return; }
+      if (payload.type === "subscription-usage") {
+        // Source removal must invalidate the view even after its thread was
+        // deleted. Early reports are re-announced after identity persistence.
+        this.events.emit("state", { command: "provider-usage" });
+        return;
+      }
       const session = this.repos.listSessions().find((item) => item.openclawSessionKey === payload.sessionKey);
       if (payload.type === "configuration") {
         if (session) this.events.emit("state", { command: "harness-configuration", sessionId: session.id });
@@ -3230,6 +3241,23 @@ export class CapsuleEngine {
    */
   async usageSummary(days: number): Promise<UsageSummary> {
     return await readUsageSummaryAsync(sinceDaysAgo(days));
+  }
+
+  /** Read cached native observations only; no provider requests or process starts. */
+  providerUsage(): ProviderUsageSnapshot {
+    const sessions = new Map(this.repos.listSessions()
+      .filter((session) => session.state === "active" && session.harnessId === "muse")
+      .map((session) => [session.openclawSessionKey, session]));
+    const reports: ProviderUsageSource[] = [];
+    for (const { sessionKey, report } of this.direct.subscriptionUsage()) {
+      const session = sessions.get(sessionKey);
+      if (!session || !sessionKey.startsWith("direct:msp:muse:") || report.providerId !== "muse") continue;
+      reports.push({ sessionId: session.id,
+        title: sanitizeUntrusted(session.title.slice(0, 512), { singleLine: true, maxChars: 160 }) || "Untitled conversation",
+        report });
+    }
+    reports.sort((a, b) => b.report.observedAtMs - a.report.observedAtMs || a.sessionId.localeCompare(b.sessionId));
+    return { reports: reports.slice(0, MAX_PROVIDER_USAGE_SOURCES), truncated: reports.length > MAX_PROVIDER_USAGE_SOURCES };
   }
 
   /** The patch a single turn produced, from its checkpoint back to the previous one. */

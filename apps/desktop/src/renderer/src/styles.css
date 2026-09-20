@@ -8057,6 +8057,26 @@ button.shortcut-keys.capturing {
 }
 
 /* Usage dashboard. */
+.provider-quotas { container-type: inline-size; }
+.provider-quotas-heading { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
+.provider-quotas-heading h3 { margin: 0; }
+.provider-quota-card { border: 1px solid var(--border-color); border-radius: 0.625rem; padding: 0.875rem; margin-top: 0.75rem; }
+.provider-quota-card header { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.375rem 1rem; font-size: 0.8125rem; }
+.provider-quota-card header > span, .provider-quota-card strong > span { color: var(--text-muted); font-weight: 400; }
+.provider-quota-source, .provider-quota-observed { color: var(--text-muted); font-size: 0.75rem; margin: 0.375rem 0; overflow-wrap: anywhere; }
+.provider-quota-windows { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-top: 1rem; }
+.provider-quota-window-heading { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.375rem; font-size: 0.8125rem; }
+.provider-quota-window p { font-size: 0.75rem; color: var(--text-muted); margin: 0.375rem 0 0; overflow-wrap: anywhere; }
+.provider-quota-track { height: 0.375rem; border-radius: 1rem; overflow: hidden; background: var(--border-color); margin-top: 0.5rem; }
+.provider-quota-track > span { display: block; height: 100%; background: var(--text-muted); }
+.provider-quota-track > span[data-over-limit="true"] { background: var(--yellow); }
+.provider-quota-select { display: grid; gap: 0.375rem; font-size: 0.8125rem; margin-top: 0.75rem; }
+.provider-quota-select select { width: 100%; min-width: 0; font-size: inherit; }
+.provider-quota-select small { font-size: 0.75rem; color: var(--text-muted); }
+@container (max-width: 28rem) {
+  .provider-quota-windows { grid-template-columns: minmax(0, 1fr); }
+  .provider-quotas-heading { flex-wrap: wrap; }
+}
 .usage-top {
   display: grid;
   grid-template-columns: minmax(0, 20rem) minmax(0, 1fr);

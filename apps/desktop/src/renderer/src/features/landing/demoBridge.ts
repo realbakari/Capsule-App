@@ -129,6 +129,7 @@ export function createDemoBridge(): CapsuleApi {
     listRuns: () => ok([RUN]),
     getRun: (id: string) => ok(id === RUN.id ? RUN : undefined),
     listLatestRuns: () => ok([summarizeRun(RUN)]),
+    providerUsage: () => ok({ reports: [], truncated: false }),
     listRunPage: () => ok({ runs: [summarizeRun(RUN)], hasMore: false }),
     listRunEvents: () => ok(EVENTS),
     listRunEventPage: () => ok({ events: EVENTS, hasMore: false }),

@@ -24,6 +24,41 @@ afterEach(async () => { await Promise.all(sessions.splice(0).map((session) => se
 describe("native Muse sessions", () => {
   const effort = (session: DirectMuseSession) => session.reportedCapabilities.configOptions.find((option) => option.id === "reasoning_effort")?.currentValue;
 
+  it("reads one cached quota observation before a turn and clears it on close", async () => {
+    const session = create("usage-initial");
+    let reports = 0;
+    session.on("subscription-usage", () => { reports++; });
+    await session.start();
+    await expect.poll(() => session.reportedSubscriptionUsage?.window.usedPercent).toBe(0);
+    expect(session.reportedSubscriptionUsage?.weekly.usedPercent).toBe(125);
+    await session.prompt("First");
+    await session.prompt("Second"); // The fixture rejects repeated usage/read calls.
+    expect(reports).toBe(1);
+    await session.close();
+    expect(session.reportedSubscriptionUsage).toBeUndefined();
+  });
+
+  it("accepts global notifications and ignores duplicate, invalid and older quota observations", async () => {
+    const session = create("usage-race");
+    let reports = 0;
+    session.on("subscription-usage", () => { reports++; });
+    await session.start();
+    await expect.poll(() => session.reportedSubscriptionUsage?.window.usedPercent).toBe(80);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(session.reportedSubscriptionUsage?.window.usedPercent).toBe(80);
+    expect(reports).toBe(1);
+    expect(session.running).toBe(true);
+  });
+
+  it.each(["normal", "usage-unsupported", "usage-timeout"])("keeps missing optional quota unknown without blocking work (%s)", async (scenario) => {
+    const session = create(scenario);
+    await session.start();
+    await session.prompt("Continue without quotas");
+    if (scenario === "usage-timeout") await new Promise((resolve) => setTimeout(resolve, 3_350));
+    expect(session.reportedSubscriptionUsage).toBeUndefined();
+    expect(session.running).toBe(true);
+  });
+
   it("reports an unknown reasoning default independently of model choices and accepts exact tiers", async () => {
     const session = create("no-models");
     await session.start();
@@ -236,6 +271,19 @@ describe("native Muse sessions", () => {
     expect(host.isRunning(result.sessionKey)).toBe(false);
   });
 
+  it("invalidates host quota snapshots when an idle source exits unexpectedly", async () => {
+    const host = new DirectAcpHost(() => create("usage-idle-exit"));
+    let invalidations = 0;
+    host.onActivity((event) => { if (event.type === "subscription-usage") invalidations++; });
+    try {
+      const result = await host.spawnAcpSession({ harnessId: "muse", cwd: process.cwd() });
+      await expect.poll(() => host.subscriptionUsage().length).toBe(1);
+      const beforeExit = invalidations;
+      await expect.poll(() => host.isRunning(result.sessionKey)).toBe(false);
+      expect(host.subscriptionUsage()).toEqual([]);
+      expect(invalidations).toBeGreaterThan(beforeExit);
+    } finally { await host.closeAll(); }
+  });
 });
 
 it("does not map persistent approvals or resources to unsupported native actions", () => {

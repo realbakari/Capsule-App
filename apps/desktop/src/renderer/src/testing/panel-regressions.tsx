@@ -5,6 +5,8 @@ import { Inspector } from "../features/shell/Inspector";
 import { UsageView } from "../features/library/UsageView";
 import { usePanelResize } from "../lib/panel-resize";
 import { SIDEBAR_GROUPING_KEY } from "../lib/sidebar";
+import type { ProviderUsageSnapshot } from "@capsule/shared";
+import { ProviderQuota } from "../features/library/ProviderQuota";
 
 function assert(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
 async function settle() { await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))); }
@@ -133,6 +135,55 @@ export async function runPanelRegressions(host: HTMLElement, base: Record<string
     Array.from(document.querySelectorAll("button")).find((button) => button.textContent === "Refresh")!.click(); await settle();
     assert(!document.body.textContent?.includes("Some transcripts could not be read") && document.body.textContent?.includes("No usage in this window"), "Usage coverage did not recover on Refresh");
 
+    root.render(null); await settle();
+    let snapshot: ProviderUsageSnapshot = { reports: [], truncated: false };
+    let failure = false;
+    let reads = 0;
+    let deferred: Promise<ProviderUsageSnapshot> | undefined;
+    const listeners = new Map<string, (payload: unknown) => void>();
+    window.testWorkspace = { ...base, readOnly: true, api: {
+      isDesktop: false,
+      providerUsage: async () => { reads++; if (failure) throw new Error("Snapshot unavailable"); return deferred ?? snapshot; },
+      on: (name: string, handler: (payload: unknown) => void) => { listeners.set(name, handler); return () => listeners.delete(name); },
+    } };
+    root.render(<ProviderQuota />); await settle(); await settle();
+    assert(document.body.textContent?.includes("Not reported yet"), "Absent quota looked like zero usage");
+    const observedAtMs = Date.now();
+    const source = (sessionId: string, usedPercent: number) => ({ sessionId, title: `Conversation ${sessionId}`, report: {
+      providerId: "muse" as const, tier: "Standard", observedAtMs,
+      window: { usedPercent, windowDurationMins: 300, resetsAtMs: observedAtMs + 300 * 60_000 },
+      weekly: { usedPercent: 125, resetsAtMs: observedAtMs - 60_000 },
+    } });
+    snapshot = { reports: [source("one", 0), source("two", 80)], truncated: false };
+    const invalidate = () => listeners.get("state")?.({ command: "provider-usage" });
+    const before = reads;
+    for (let index = 0; index < 20; index++) invalidate();
+    await settle(); await settle();
+    assert(reads === before + 1, "Quota invalidations were not coalesced");
+    assert(document.body.textContent?.includes("0% used") && document.body.textContent?.includes("125% used"), "Quota values were clamped or hidden in the read-only viewer");
+    assert(document.body.textContent?.includes("Reset time passed"), "Quota reset was presented as a new balance");
+    const sourceSelect = document.querySelector<HTMLSelectElement>('.provider-quota-select select')!;
+    sourceSelect.value = "two"; sourceSelect.dispatchEvent(new Event("change", { bubbles: true })); await settle();
+    assert(document.querySelector('.provider-quota-source')?.textContent === "From Conversation two", "Quota selection combined accounts");
+    failure = true; invalidate(); await settle(); await settle();
+    assert(document.querySelector('[role="alert"]')?.textContent?.includes("Snapshot unavailable"), "Quota failure was hidden");
+    assert(document.body.textContent?.includes("Last reported · may be out of date"), "Failed refresh discarded the last observation or left it looking fresh");
+    failure = false;
+    Array.from(document.querySelectorAll("button")).find((button) => button.textContent === "Refresh report")!.click();
+    await settle(); await settle();
+    assert(!document.querySelector('[role="alert"]'), "Quota retry could not recover");
+
+    let resolveRead!: (value: ProviderUsageSnapshot) => void;
+    deferred = new Promise((resolve) => { resolveRead = resolve; });
+    invalidate(); await settle();
+    snapshot = { reports: [], truncated: false };
+    invalidate(); // Source closed while an older snapshot was in flight.
+    deferred = undefined;
+    resolveRead({ reports: [source("closed", 99)], truncated: false });
+    await settle(); await settle();
+    assert(document.body.textContent?.includes("Not reported yet") && !document.querySelector('.provider-quota-card'), "An in-flight snapshot resurrected a closed quota source");
+    root.render(null); await settle();
+    assert(listeners.size === 0, "Quota unmount retained event subscriptions");
   } finally {
     root.unmount(); window.testWorkspace = previous;
     if (savedWidth === null) localStorage.removeItem("capsule.inspectorWidth");

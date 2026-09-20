@@ -69,6 +69,8 @@ const READ_CHANNELS: ChannelName[] = [
   "hostState",
   "sourceControlTools",
   "usageSummary",
+  // Cached native observations only: no spawn, refresh request or provider I/O.
+  "providerUsage",
   "turnDiff",
   "rendererReady",
   "windowBackground",

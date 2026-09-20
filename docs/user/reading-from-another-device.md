@@ -3,6 +3,10 @@
 Capsule can serve the workspace to a browser on your phone or another Mac, so
 you can watch a long run without sitting at the machine doing it.
 
+The Usage page can read cached subscription observations from running native
+Muse conversations on the host. Refreshing this view does not start an agent or
+query a provider. Changing an agent's reasoning default remains host-only.
+
 If the connection drops while a request is waiting, Capsule reports the lost
 connection and discards that request. It does not repeat it on reconnect.
 After reconnecting, the viewer refreshes saved workspace and conversation data

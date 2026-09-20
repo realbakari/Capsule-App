@@ -7,6 +7,7 @@ import {
   type FileReadResult,
   type MessagePage,
   type PopupMenuRequest,
+  type ProviderUsageSnapshot,
 } from "@capsule/shared";
 
 const api = {
@@ -41,6 +42,7 @@ const api = {
   hostState: () => ipcRenderer.invoke(IPC_CHANNELS.hostState),
   sourceControlTools: () => ipcRenderer.invoke(IPC_CHANNELS.sourceControlTools),
   usageSummary: (days: number) => ipcRenderer.invoke(IPC_CHANNELS.usageSummary, days),
+  providerUsage: (): Promise<ProviderUsageSnapshot> => ipcRenderer.invoke(IPC_CHANNELS.providerUsage),
   turnDiff: (runId: string, options?: import("@capsule/shared").TurnDiffOptions): Promise<import("@capsule/shared").TurnDiffResult> => ipcRenderer.invoke(IPC_CHANNELS.turnDiff, runId, options),
   restoreTurn: (runId: string) => ipcRenderer.invoke(IPC_CHANNELS.restoreTurn, runId),
   fetchSkillDetail: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.fetchSkillDetail, id),

@@ -3,7 +3,7 @@ import path from "node:path";
 import { realpath } from "node:fs/promises";
 import { checkServedFingerprint, type Connection } from "@muse-code/sdk";
 import type { DirectAcpEvents, DirectAcpOptions, DirectAgentSession } from "@capsule/acp";
-import { readReportedTurnUsage, type AgentCapabilityReport, type AgentPromptBlock, type AcpModelCatalog } from "@capsule/shared";
+import { readReportedTurnUsage, readMuseSubscriptionUsage, type ProviderSubscriptionUsage, type AgentCapabilityReport, type AgentPromptBlock, type AcpModelCatalog } from "@capsule/shared";
 import { approvalChoices, identifier, label, museInput, object, readModels, type MuseModel } from "./protocol.js";
 import { openMuseTransport } from "./transport.js";
 import { REASONING_HISTORY_LIMIT, readReasoningEffort, reasoningFromPage, reasoningOption, type ReasoningEffort } from "./configuration.js";
@@ -44,6 +44,9 @@ export class DirectMuseSession implements DirectAgentSession {
   private reasoningGeneration = 0;
   private readonly reasoningRecovery = new OptionalQuery();
   private readonly earlyReasoning: Array<{ sessionId: string; effort: ReasoningEffort }> = [];
+  private subscriptionUsage?: ProviderSubscriptionUsage;
+  private usageGeneration = 0;
+  private readonly usageRead = new OptionalQuery();
   private readonly approvals = new Map<string, { stage: string; params: Record<string, unknown>; cancel(): void }>();
   private readonly decidedRequirements = new Set<string>();
   private report: AgentCapabilityReport = {
@@ -57,6 +60,7 @@ export class DirectMuseSession implements DirectAgentSession {
   get sessionId() { return this.id; }
   get models() { return this.catalogue; }
   get reportedCapabilities() { return this.report; }
+  get reportedSubscriptionUsage() { return this.closed ? undefined : this.subscriptionUsage; }
 
   constructor(private readonly options: DirectAcpOptions & { model?: string }) {}
   on<K extends keyof DirectAcpEvents>(event: K, handler: DirectAcpEvents[K]): () => void {
@@ -98,6 +102,7 @@ export class DirectMuseSession implements DirectAgentSession {
       this.report.resumeSession = initialized.sessionDurability === undefined || initialized.sessionDurability === "durable";
       if (resumeSessionId && !this.report.resumeSession) throw new Error("This Muse build cannot resume durable sessions. Start a new conversation.");
       connection.notify("initialized");
+      void this.readInitialUsage();
       const result = resumeSessionId
         ? await this.command("session/resume", { sessionId: resumeSessionId, excludeItems: true })
         : await this.command("session/start", {
@@ -228,6 +233,8 @@ export class DirectMuseSession implements DirectAgentSession {
     this.closing ??= (async () => {
       this.closed = true;
       this.reasoningRecovery.close();
+      this.usageRead.close();
+      this.subscriptionUsage = undefined;
       this.earlyReasoning.length = 0;
       this.finish(undefined, new Error("Muse session closed."));
       this.clearApprovals();
@@ -292,8 +299,32 @@ export class DirectMuseSession implements DirectAgentSession {
     if (effort) this.acceptReasoning(effort);
   }
 
+  private async readInitialUsage() {
+    const generation = this.usageGeneration;
+    const result = await this.usageRead.run(() => this.connection.request("usage/read", {}));
+    if (!this.closed) this.acceptSubscriptionUsage(object(result).usage, generation);
+  }
+
+  private acceptSubscriptionUsage(value: unknown, readGeneration?: number) {
+    const report = readMuseSubscriptionUsage(value);
+    if (!report) return;
+    const previous = this.subscriptionUsage;
+    if (previous && report.observedAtMs < previous.observedAtMs) return;
+    if (readGeneration !== undefined && readGeneration !== this.usageGeneration
+      && previous && report.observedAtMs <= previous.observedAtMs) return;
+    // Even a duplicate notification establishes precedence over an older read.
+    if (readGeneration === undefined) this.usageGeneration++;
+    if (previous && JSON.stringify(report) === JSON.stringify(previous)) return;
+    this.subscriptionUsage = report;
+    this.emitter.emit("subscription-usage");
+  }
+
   private notification(method: string, params: Record<string, unknown>) {
     if (this.closed) return;
+    if (method === "usage/changed") {
+      this.acceptSubscriptionUsage(params);
+      return;
+    }
     if (method === "session/reasoningEffortChanged") {
       const effort = readReasoningEffort(params.reasoningEffort);
       const sessionId = identifier(params.sessionId);

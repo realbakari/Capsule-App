@@ -1724,6 +1724,7 @@ function registerIpc(): void {
   handleArgs(IPC_CHANNELS.usageSummary, [num], (days: number) =>
     requireEngine().usageSummary(days),
   );
+  handle(IPC_CHANNELS.providerUsage, () => requireEngine().providerUsage());
   handle(IPC_CHANNELS.turnDiff, (runId, options) => {
     const value = options as { relative?: unknown; summaryOnly?: unknown } | undefined;
     const channel = IPC_CHANNELS.turnDiff;

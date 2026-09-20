@@ -9,6 +9,7 @@ import {
   type Unsubscribe,
   type DirectSessionIdentity,
   type AgentPromptBlock,
+  type ProviderSubscriptionUsage,
 } from "@capsule/shared";
 
 import { explainDirectFailure, readCliError } from "./errors.js";
@@ -17,10 +18,13 @@ import { DirectAcpSession, type DirectAcpOptions, type AcpMcpServer, type Direct
 /** Protocol-neutral surface used by the workspace; transports own their wire formats. */
 export type DirectAgentSession = Pick<DirectAcpSession,
   "on" | "busy" | "running" | "sessionId" | "models" | "reportedCapabilities" |
-  "reportedContext" | "reportedCommands" | "start" | "prompt" | "cancel" | "close" | "setConfig">;
+  "reportedContext" | "reportedCommands" | "start" | "prompt" | "cancel" | "close" | "setConfig"> & {
+    readonly reportedSubscriptionUsage?: ProviderSubscriptionUsage;
+  };
 export type NativeSessionFactory = (options: DirectAcpOptions & { model?: string }) => DirectAgentSession;
 
 export type DirectActivity =
+  | { type: "subscription-usage"; sessionKey: string }
   | { type: "configuration"; sessionKey: string }
   | { type: "usage"; sessionKey: string; usage: Parameters<DirectAcpEvents["usage"]>[0] }
   | { type: "tool"; sessionKey: string; tool: Parameters<DirectAcpEvents["tool"]>[0] }
@@ -109,6 +113,16 @@ export class DirectAcpHost {
 
   isRunning(key: string): boolean { return this.sessions.get(key)?.running === true; }
   capabilities(key: string) { return this.sessions.get(key)?.reportedCapabilities; }
+
+  /** Snapshot only: never spawns a session or asks a provider for fresh data. */
+  subscriptionUsage(): Array<{ sessionKey: string; report: ProviderSubscriptionUsage }> {
+    const reports: Array<{ sessionKey: string; report: ProviderSubscriptionUsage }> = [];
+    for (const [sessionKey, session] of this.sessions) {
+      const report = session.running ? session.reportedSubscriptionUsage : undefined;
+      if (report) reports.push({ sessionKey, report });
+    }
+    return reports;
+  }
 
   onAcpReply(handler: (payload: AcpReply) => void): Unsubscribe {
     this.emitter.on("acp-reply", handler);
@@ -234,9 +248,16 @@ export class DirectAcpHost {
     const session = this.sessions.get(sessionKey);
     this.mcpDisposers.get(sessionKey)?.();
     this.mcpDisposers.delete(sessionKey);
-    await session?.close();
-    this.sessions.delete(sessionKey);
-    this.harnessBySession.delete(sessionKey);
+    try {
+      await session?.close();
+      this.sessions.delete(sessionKey);
+      this.harnessBySession.delete(sessionKey);
+    } finally {
+      // A failed process cleanup must not keep a closed source's quota visible.
+      if (session && "reportedSubscriptionUsage" in session) {
+        this.emitter.emit("activity", { type: "subscription-usage", sessionKey });
+      }
+    }
   }
 
   closeAll(): Promise<void> {
@@ -301,6 +322,7 @@ export class DirectAcpHost {
   }
 
   private wire(key: string, session: DirectAgentSession): void {
+    session.on("subscription-usage", () => this.emitter.emit("activity", { type: "subscription-usage", sessionKey: key }));
     session.on("configuration", () => this.emitter.emit("activity", { type: "configuration", sessionKey: key }));
     session.on("message-end", () => this.emitter.emit("acp-reply", { sessionKey: key, done: true }));
     session.on("usage", (usage) => this.emitter.emit("activity", { type: "usage", sessionKey: key, usage }));
@@ -320,6 +342,9 @@ export class DirectAcpHost {
       const harnessId = this.harnessBySession.get(key);
       this.sessions.delete(key);
       this.harnessBySession.delete(key);
+      if ("reportedSubscriptionUsage" in session) {
+        this.emitter.emit("activity", { type: "subscription-usage", sessionKey: key });
+      }
       /*
        * One sentence, and one worth reading. This used to append the whole of
        * stderr to the thread, so a failure arrived as a usage block and a

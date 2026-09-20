@@ -28,6 +28,8 @@ import {
  */
 
 export interface DirectAcpEvents {
+  /** A native adapter's cached subscription observation changed. Not turn usage. */
+  "subscription-usage": () => void;
   configuration: () => void;
   usage: (payload: { context?: ReportedContextUsage; turn?: ReportedTurnUsage }) => void;
   /** Assistant text as it arrives. */

@@ -60,6 +60,23 @@ describe("paired commands across disconnects", () => {
     await expect(request).resolves.toEqual([]);
   });
 
+  it("carries quota snapshots and invalidations without granting desktop writes", async () => {
+    const bridge = createRemoteBridge("pairing-token");
+    const socket = TestSocket.connections[0]!;
+    socket.open(); socket.frame({ type: "ready" });
+    const request = bridge.providerUsage();
+    expect(socket.sent[1]?.channel).toBe("providerUsage");
+    const report = { reports: [], truncated: false };
+    socket.frame({ type: "result", id: socket.sent[1]?.id, result: report });
+    await expect(request).resolves.toEqual(report);
+    const changed = vi.fn();
+    const off = bridge.on("state", changed);
+    socket.frame({ type: "event", event: "state", payload: { command: "provider-usage" } });
+    expect(changed).toHaveBeenCalledWith({ command: "provider-usage" });
+    off();
+    expect(bridge.isDesktop).toBe(false);
+  });
+
   it("never replays a rejected queued write after reconnecting", async () => {
     const bridge = createRemoteBridge("pairing-token");
     const socket = TestSocket.connections[0]!;

@@ -62,6 +62,7 @@ describe("ipc scopes", () => {
       "getPullRequest",
       "getCommitDiff",
       "listRunEvents",
+      "providerUsage",
     ]) {
       expect(isChannelAllowed(channel, ["read"])).toBe(true);
     }

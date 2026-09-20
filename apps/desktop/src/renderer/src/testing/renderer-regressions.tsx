@@ -31,11 +31,14 @@ import { RunSummary } from "../features/conversation/RunSummary";
 import { AgentModelPicker } from "../features/conversation/AgentModelPicker";
 import { Composer } from "../features/conversation/Composer";
 import { ComposerTasks } from "../features/conversation/ComposerTasks";
+import { Sidebar } from "../features/shell/Sidebar";
+import { ProviderQuota } from "../features/library/ProviderQuota";
+import { RuntimeModeCard } from "../features/settings/RuntimeModeCard";
 import { Conversation } from "../features/conversation/Conversation";
 import { ThreadAgents } from "../features/shell/ThreadAgents";
 import { GATEWAY_CONNECTION_REQUIRED } from "../lib/harness-preflight";
 import { WorkspaceProvider, useWorkspace as useRealWorkspace } from "../lib/workspace.js";
-import { DEFAULT_CAPSULE_SETTINGS, PRESET_HARNESSES, type Session, type Run, type RunEvent, type ChatMessage, type DiffFile } from "@capsule/shared";
+import { appearanceCssVars, DEFAULT_DARK_PALETTE, DEFAULT_LIGHT_PALETTE, DEFAULT_CAPSULE_SETTINGS, PRESET_HARNESSES, type Session, type Run, type RunEvent, type ChatMessage, type DiffFile } from "@capsule/shared";
 import type { Skill, Agent, HarnessStatus } from "@capsule/shared";
 
 declare global {
@@ -43,15 +46,22 @@ declare global {
     testWorkspace: Record<string, unknown>;
     runPetRegressions: (motion: "reduce" | "no-preference") => Promise<string>;
     runRendererRegressions: () => Promise<string>;
-    renderComposerPreview: (resting: boolean) => Promise<void>;
+    renderComposerPreview: (resting: boolean, theme?: "dark" | "light") => Promise<void>;
     renderFilesPreview: (width: number, openFile: boolean) => Promise<void>;
     runDiffPreviewRegressions: () => Promise<void>;
     renderDiffPreview: (theme: "dark" | "light", scrolled: boolean) => Promise<void>;
+    renderWorkspacePreview: (surface: "sidebar" | "quota" | "runtime", theme: "dark" | "light") => Promise<void>;
   }
 }
 
 function assert(condition: unknown, message: string): void {
   if (!condition) throw new Error(message);
+}
+function applyPreviewPalette(theme: "dark" | "light") {
+  const root = document.documentElement;
+  root.dataset.theme = theme;
+  for (const [name, value] of Object.entries(appearanceCssVars(theme === "light" ? DEFAULT_LIGHT_PALETTE : DEFAULT_DARK_PALETTE))) root.style.setProperty(name, value);
+  root.style.background = "var(--bg)";
 }
 async function until(check: () => unknown) {
   const deadline = Date.now() + 4000;
@@ -1016,6 +1026,42 @@ window.runRendererRegressions = async () => {
   // Optional visual evidence from the same renderer/CSS as the interaction
   // checks. The fixture contains no user's conversations or file paths.
   let previewRoot: ReturnType<typeof createRoot> | undefined;
+  window.renderWorkspacePreview = async (surface, theme) => {
+    (document.getElementById("composer-test-styles") as HTMLStyleElement).media = "all";
+    host.style.cssText = `width:100%;height:100vh;padding:${surface === "sidebar" ? 0 : 16}px;box-sizing:border-box`;
+    applyPreviewPalette(theme);
+    document.documentElement.style.fontSize = "16px";
+    const timestamp = new Date().toISOString();
+    const projects = [{ id: "app", name: "Desktop app" }, { id: "site", name: "Website" }];
+    const sessions = [
+      { id: "approval", projectId: "app", title: "Review file permissions" },
+      { id: "working", projectId: "site", title: "Improve the landing page" },
+      { id: "done", projectId: "app", title: "Fix keyboard navigation" },
+    ].map((session) => ({ ...session, state: "active", updatedAt: timestamp }));
+    const observedAtMs = Date.now() - 60_000;
+    window.testWorkspace = { ...contextBase, ready: true, sidebarCollapsed: false, sidebarWidth: 300,
+      projects, sessions, projectId: "app", sessionId: "approval", approvals: [], harnessSessions: [],
+      projectRuns: [
+        { id: "a", sessionId: "approval", status: "approval_required", createdAt: timestamp },
+        { id: "w", sessionId: "working", status: "running", createdAt: timestamp },
+        { id: "d", sessionId: "done", status: "completed", hasResult: true, createdAt: timestamp },
+      ], settings: DEFAULT_CAPSULE_SETTINGS, harnesses: PRESET_HARNESSES,
+      api: { ...(contextBase as Record<string, unknown>).api as object, on: () => () => {}, updateStatus: async () => ({ state: "current" }),
+        providerUsage: async () => ({ reports: [{ sessionId: "done", title: "Fix keyboard navigation", report: {
+          providerId: "muse", tier: "Standard", observedAtMs,
+          window: { usedPercent: 42, windowDurationMins: 300, resetsAtMs: observedAtMs + 3_600_000 },
+          weekly: { usedPercent: 65, resetsAtMs: observedAtMs + 86_400_000 },
+        } }], truncated: false }),
+      },
+    };
+    localStorage.setItem("capsule.sidebarGrouping", "status");
+    previewRoot ??= createRoot(host);
+    previewRoot.render(surface === "sidebar" ? <Sidebar key={`${surface}-${theme}`} />
+      : surface === "quota" ? <ProviderQuota /> : <RuntimeModeCard settings={DEFAULT_CAPSULE_SETTINGS} onPatch={() => {}} />);
+    await until(() => surface === "sidebar" ? document.querySelector(".sidebar")
+      : surface === "quota" ? document.querySelector(".provider-quota-card") : document.querySelector(".runtime-modes"));
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  };
   window.runDiffPreviewRegressions = async () => {
     (document.getElementById("composer-test-styles") as HTMLStyleElement).media = "all";
     host.style.cssText = "width:100%;padding:24px;box-sizing:border-box";
@@ -1034,7 +1080,8 @@ window.runRendererRegressions = async () => {
     if (scrolled) scroller.scrollLeft = 180;
     await new Promise((resolve) => setTimeout(resolve, 100));
   };
-  window.renderComposerPreview = async (resting) => {
+  window.renderComposerPreview = async (resting, theme = "dark") => {
+    applyPreviewPalette(theme);
     window.capsule = (contextBase as Record<string, unknown>).api as typeof window.capsule;
     (document.getElementById("composer-test-styles") as HTMLStyleElement).media = "all";
     host.style.cssText = "width:100%;padding:32px;box-sizing:border-box";
