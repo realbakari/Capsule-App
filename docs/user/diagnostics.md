@@ -15,6 +15,11 @@ instead of an empty sidebar. Retry loads the saved workspace again without
 clearing its data. An unavailable agent or Gateway is separate from loading
 your local workspace.
 
+When you quit, **Closing Capsule…** replaces the workspace while owned services
+stop. Closing is not a loading error and does not offer Retry. Open Capsule again
+after it exits. Opening another copy while Capsule is running brings the existing
+workspace forward instead of starting another workspace against the same data.
+
 ## Usage coverage
 
 Usage reads local Claude Code and Codex transcripts, including sessions started

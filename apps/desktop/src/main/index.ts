@@ -86,6 +86,7 @@ import {
 } from "./window-state";
 import { ensureSqliteAbi } from "./sqlite-abi";
 import { Shutdown } from "./shutdown";
+import { Startup } from "./startup";
 
 let mainWindow: BrowserWindow | undefined;
 let tray: Tray | undefined;
@@ -675,7 +676,7 @@ function createWindow(): BrowserWindow {
   });
 
   const showWhenPainted = () => {
-    if (!window.isDestroyed() && !window.isVisible()) window.show();
+    if (startup.canOpenWindow && !window.isDestroyed() && !window.isVisible()) window.show();
   };
   // The renderer signals rendererReady once React has settled data and completed two
   // animation frames. If the renderer crashes or fails to signal, fallback after 1500ms.
@@ -1014,7 +1015,7 @@ function registerIpc(): void {
     ipcMain.handle(channel, async (_event, ...args) => {
       try {
         // Startup, not an error: a call that beat the engine waits for it.
-        if (!engine && engineStarted) await engineStarted;
+        if (engineStarted) await engineStarted;
         return await guarded(...args);
       } catch (error) {
         console.error(`IPC ${channel} failed`, error);
@@ -1713,6 +1714,8 @@ function registerIpc(): void {
       return true;
     }
     if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) mainWindow.show();
+    rendererReady = true;
+    deliverDeepLink();
     if (process.env.CAPSULE_SMOKE_TEST) {
       console.log("capsule: workspace ready");
       // Exercise normal shutdown after acknowledging the renderer, not a
@@ -2030,6 +2033,7 @@ async function startEngineOnce(): Promise<void> {
     },
   });
   await engine.start();
+  if (shutdown.started) return;
   /*
    * The browser tools, offered to agents Capsule spawns itself.
    *
@@ -2052,8 +2056,10 @@ async function startEngineOnce(): Promise<void> {
   } catch (error) {
     console.warn("Browser tools unavailable:", error instanceof Error ? error.message : error);
   }
+  if (shutdown.started) return;
   bindEngineEvents();
   await applyDesktopSettings(engine.getSettings());
+  if (shutdown.started) return;
   scheduleUpdateCheck();
   send(IPC_EVENTS.connection, await engine.getStatus());
 }
@@ -2068,9 +2074,15 @@ async function startEngineOnce(): Promise<void> {
  * forward rather than failing silently.
  */
 const APP_SCHEME = "capsule";
+const ownsProfile = app.requestSingleInstanceLock();
+const startup = new Startup(ownsProfile);
+let pendingDeepLink: string | undefined;
+let rendererReady = false;
 
 function revealWindow(): void {
+  if (!startup.canOpenWindow) return;
   if (!mainWindow || mainWindow.isDestroyed()) {
+    rendererReady = false;
     mainWindow = createWindow();
     return;
   }
@@ -2080,7 +2092,7 @@ function revealWindow(): void {
 }
 
 function handleDeepLink(raw: string): void {
-  revealWindow();
+  if (!ownsProfile || shutdown.started) return;
   let parsed: URL;
   try {
     parsed = new URL(raw);
@@ -2092,7 +2104,15 @@ function handleDeepLink(raw: string): void {
   // menu sends, named the same way.
   const route = (parsed.hostname || parsed.pathname.replace(/^\/+/, "")).toLowerCase();
   const allowed = ["settings", "skills", "approvals", "runs", "harness", "palette", "about"];
-  if (allowed.includes(route)) send(IPC_EVENTS.state, { command: route });
+  if (allowed.includes(route)) pendingDeepLink = route;
+  revealWindow();
+  deliverDeepLink();
+}
+
+function deliverDeepLink(): void {
+  if (!startup.canOpenWindow || !rendererReady || !pendingDeepLink) return;
+  send(IPC_EVENTS.state, { command: pendingDeepLink });
+  pendingDeepLink = undefined;
 }
 
 /*
@@ -2104,7 +2124,7 @@ function handleDeepLink(raw: string): void {
  * and neither said a word. The second instance now hands its argv to the first
  * and quits.
  */
-if (!app.requestSingleInstanceLock()) {
+if (!ownsProfile) {
   app.quit();
 } else {
   app.on("second-instance", (_event, argv) => {
@@ -2115,13 +2135,13 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 // macOS delivers a link through open-url, which can fire before the app is
-// ready; the window is created on demand, so it does not need to wait.
+// ready. Queue the route until the owning instance has painted its workspace.
 app.on("open-url", (event, url) => {
   event.preventDefault();
   handleDeepLink(url);
 });
 
-app.whenReady().then(async () => {
+app.whenReady().then(() => startup.run(async () => {
   app.setName("Capsule");
   if (process.platform === "win32") app.setAppUserModelId("ai.capsule.desktop");
   app.setAsDefaultProtocolClient(APP_SCHEME);
@@ -2135,11 +2155,14 @@ app.whenReady().then(async () => {
   createMenu();
   createTray();
   mainWindow = createWindow();
+  const launchLink = process.argv.find((arg) => arg.startsWith(`${APP_SCHEME}://`));
+  if (launchLink) handleDeepLink(launchLink);
   try {
     await starting;
   } catch (error) {
     console.error("Capsule engine failed to start", error);
   }
+  if (shutdown.started) return;
   await announceRemoteAccess();
 
   app.on("activate", () => {
@@ -2156,6 +2179,7 @@ app.whenReady().then(async () => {
   powerMonitor.on("resume", () => {
     void (async () => {
       try {
+        if (shutdown.started) return;
         const status = await engine?.getStatus();
         if (!status || status.state === "connected") return;
         if (!engine?.getSettings().gatewayUrl) return;
@@ -2167,7 +2191,7 @@ app.whenReady().then(async () => {
       }
     })();
   });
-});
+})).catch((error) => console.error("Capsule startup failed", error));
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
@@ -2180,6 +2204,9 @@ app.on("window-all-closed", () => {
  */
 let quitConfirmed = false;
 const shutdown = new Shutdown(async () => {
+  // Startup may be opening the database or a server when Quit arrives. Stop
+  // those resources after they exist, rather than leaking a late completion.
+  await startup.settled();
   applyKeepAwake(undefined);
   if (sampleTimer) clearInterval(sampleTimer);
   clearTimeout(updateTimer);
@@ -2194,6 +2221,7 @@ const shutdown = new Shutdown(async () => {
 }, (error) => console.error("Capsule shutdown", error));
 
 app.on("before-quit", (event) => {
+  if (!ownsProfile) return;
   if (shutdown.ready) {
     if (process.env.CAPSULE_SMOKE_TEST) console.log("capsule: shutdown complete");
     return;
@@ -2216,5 +2244,8 @@ app.on("before-quit", (event) => {
     if (choice !== 0) return;
     quitConfirmed = true;
   }
+  startup.cancel();
+  pendingDeepLink = undefined;
+  send(IPC_EVENTS.state, { command: "app-shutting-down" });
   void shutdown.request().then(() => app.quit());
 });

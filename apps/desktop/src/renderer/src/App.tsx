@@ -16,6 +16,7 @@ import { AboutModal } from "./features/settings/AboutModal";
 import { ViewErrorBoundary } from "./features/shell/ErrorBoundary";
 import { useSidebarSwipe } from "./lib/useSidebarSwipe";
 import { WorkspaceProvider, useWorkspace } from "./lib/workspace";
+import { StartupScreen, useAppClosing } from "./features/shell/StartupScreen";
 
 function Shell() {
   const {
@@ -30,6 +31,7 @@ function Shell() {
     aboutOpen,
     setAboutOpen,
   } = useWorkspace();
+  const closing = useAppClosing(startupError);
   useSidebarSwipe(sidebarCollapsed, setSidebarCollapsed);
   const style = { "--sidebar-width": `${sidebarWidth}px` } as CSSProperties;
 
@@ -41,7 +43,7 @@ function Shell() {
    * committed and the browser has drawn it.
    */
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || closing) return;
     let paintedFrame: number | undefined;
     const frame = requestAnimationFrame(() => {
       paintedFrame = requestAnimationFrame(() => void window.capsule.rendererReady?.());
@@ -50,20 +52,9 @@ function Shell() {
       cancelAnimationFrame(frame);
       if (paintedFrame !== undefined) cancelAnimationFrame(paintedFrame);
     };
-  }, [ready]);
-  if (!ready) {
-    return (
-      <main className="panel">
-        <div className="panel-inner">
-          <h1>{startupError ? "Could not open your workspace" : "Opening your workspace…"}</h1>
-          {startupError ? <>
-            <p role="alert">{startupError}</p>
-            <p className="muted">Your saved projects and conversations have not been reset.</p>
-            <button type="button" onClick={() => void refresh()}>Retry</button>
-          </> : <p className="muted" role="status">Loading saved projects and conversations.</p>}
-        </div>
-      </main>
-    );
+  }, [ready, closing]);
+  if (!ready || closing) {
+    return <StartupScreen error={startupError} closing={closing} retry={() => void refresh()} />;
   }
   return (
     <div
