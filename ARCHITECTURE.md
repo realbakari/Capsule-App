@@ -238,7 +238,9 @@ pair using platform-backed encryption without a plaintext fallback. Opening
 Channels restores it once; Disconnect and engine shutdown abort owned operations
 and drop active credentials, while Forget also removes the encrypted record.
 Text is sent on stdin. Remote origins require HTTPS; HTTP is loopback-only.
-Profile pictures use a bounded main-process raster loader; untrusted non-relay
+Profile pictures use a bounded main-process raster loader; fixed-format inline
+emoji artwork is decoded to inert text and a hex color, never rendered as SVG.
+Untrusted non-relay
 hosts must resolve to public addresses. Every related IPC method, including
 reads and image lookup, is denied to read-only paired viewers.
 

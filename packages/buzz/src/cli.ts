@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 
 export interface RelayCredentials { url: string; privateKey: string }
 export type RelayCommand = (connection: RelayCredentials, args: string[], signal: AbortSignal, input?: string) => Promise<unknown>;
+export type RelayBytes = (connection: RelayCredentials, args: string[], signal: AbortSignal) => Promise<Buffer>;
 
 /** Use the installed client's signing/authorization, not a second protocol implementation.
  * No shell, secret argv, inherited agent identity, or raw child errors in logs. */
@@ -27,4 +28,23 @@ export const runRelayCommand: RelayCommand = (connection, args, signal, input) =
   });
   child.stdin?.on("error", () => { /* The exit callback owns reporting; never log message content. */ });
   child.stdin?.end(input ?? "");
+});
+
+/** Signed relay media is binary. Do not JSON-parse it or put the key on argv. */
+export const runRelayBytes: RelayBytes = (connection, args, signal) => new Promise((resolve, reject) => {
+  const env: NodeJS.ProcessEnv = {};
+  for (const name of ["PATH", "Path", "HOME", "USERPROFILE", "SystemRoot", "SYSTEMROOT", "TEMP", "TMP", "TMPDIR"]) {
+    if (process.env[name]) env[name] = process.env[name];
+  }
+  env.BUZZ_PRIVATE_KEY = connection.privateKey;
+  const child = execFile(process.platform === "win32" ? "buzz.exe" : "buzz", ["--relay", connection.url, ...args], {
+    env, signal, timeout: 20_000, maxBuffer: 256 * 1024, windowsHide: true, encoding: "buffer",
+  }, (error, stdout) => {
+    if (error) {
+      reject(new Error(signal.aborted ? "The channel connection was closed." : "The relay could not load this profile image."));
+      return;
+    }
+    resolve(Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout));
+  });
+  child.stdin?.end();
 });

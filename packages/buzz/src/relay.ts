@@ -1,9 +1,10 @@
 import type { ChannelInvitation, ChannelMember, ChannelMessage, ChannelPost, NewSharedChannel, RelayConnectionInput, RelayConnectionStatus, SharedChannel, SharedChannelDetails, ChannelUpdate, ChannelManagementAction, ChannelReaction } from "@capsule/shared";
-import { runRelayCommand, type RelayCommand, type RelayCredentials } from "./cli.js";
-import { RelayAvatars } from "./avatars.js";
+import { runRelayBytes, runRelayCommand, type RelayBytes, type RelayCommand, type RelayCredentials } from "./cli.js";
+import { RelayAvatars, rasterData, relayMediaTarget } from "./avatars.js";
 import { createHash } from "node:crypto";
 import { RequestSlots } from "./request-slots.js";
 import { setMaxListeners } from "node:events";
+import { emojiAvatar } from "./emoji-avatar.js";
 
 export interface RelayCredentialStore {
   available(): boolean;
@@ -47,6 +48,28 @@ export function relayUrl(value: unknown): string {
   }
   return url.origin;
 }
+function profileRecord(value: unknown): Record<string, unknown> {
+  const row = record(value);
+  if (typeof row.content !== "string") return row;
+  try {
+    const parsed = JSON.parse(row.content) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return { ...(parsed as Record<string, unknown>), pubkey: row.pubkey };
+  } catch { /* The row is already a profile object. */ }
+  return row;
+}
+
+function profilePicture(profile: Record<string, unknown> | undefined): string | undefined {
+  if (!profile) return;
+  for (const key of ["picture", "image", "avatar_url"]) {
+    const value = profile[key];
+    if (typeof value === "string" && value.trim() && value.length <= 360_000 && !value.includes("\0")) return value.trim();
+  }
+}
+
+function rasterDataFromBytes(bytes: Buffer): string | undefined {
+  return rasterData(bytes, "");
+}
+
 function accepted(value: unknown): Record<string, unknown> {
   const result = record(value);
   // Exit zero does not mean the relay accepted the signed event.
@@ -68,9 +91,12 @@ export class SharedRelayClient {
   private warning?: string;
   private generation = 0;
   private pictures = new Map<string, string>();
+  private decoded = new Map<string, string>();
+  private avatarLoads = new Map<string, Promise<string | undefined>>();
+  private avatarSlots = new RequestSlots(2, 64);
   private avatars = new RelayAvatars();
   private identity?: Promise<string | undefined>;
-  constructor(private readonly execute: RelayCommand = runRelayCommand, private readonly storage?: RelayCredentialStore) {}
+  constructor(private readonly execute: RelayCommand = runRelayCommand, private readonly storage?: RelayCredentialStore, private readonly bytes: RelayBytes = runRelayBytes) {}
 
   status(): RelayConnectionStatus {
     return { connected: this.connected, url: this.connection?.url ?? this.saved?.url,
@@ -119,7 +145,7 @@ export class SharedRelayClient {
     this.clearConnection();
   }
   private clearConnection(): void {
-    this.pictures.clear(); this.avatars.clear();
+    this.pictures.clear(); this.decoded.clear(); this.avatarLoads.clear(); this.avatars.clear();
     this.identity = undefined;
     this.reads.clear();
     this.controller.abort();
@@ -263,26 +289,52 @@ export class SharedRelayClient {
       return { pubkey, name: `${pubkey.slice(0, 12)}…`, role: text(row.role, 40, "member role") };
     });
     if (!members.length) return members;
-    const profiles = rows(await this.command(["users", "get", ...members.flatMap((member) => ["--pubkey", member.pubkey])]), 200).map(record);
+    const profiles = rows(await this.command(["users", "get", ...members.flatMap((member) => ["--pubkey", member.pubkey])]), 200).map(profileRecord);
     return members.map((member) => {
-      const profile = profiles.find((profile) => profile.pubkey === member.pubkey);
+      const profile = profiles.find((profile) => String(profile.pubkey ?? "").toLowerCase() === member.pubkey);
       const name = profile?.display_name || profile?.name;
-      const picture = typeof profile?.picture === "string" && profile.picture.length <= 360_000 ? profile.picture : undefined;
-      if (picture) this.pictures.set(member.pubkey, picture); else this.pictures.delete(member.pubkey);
+      const picture = profilePicture(profile);
+      const emoji = emojiAvatar(picture);
+      if (picture && !emoji) this.pictures.set(member.pubkey, picture); else this.pictures.delete(member.pubkey);
       let pictureBytes = [...this.pictures.values()].reduce((total, value) => total + value.length, 0);
       while (this.pictures.size > 200 || pictureBytes > 2 * 1024 * 1024) {
         const oldest = this.pictures.keys().next().value!;
         pictureBytes -= this.pictures.get(oldest)!.length; this.pictures.delete(oldest);
       }
-      return { ...member, name: typeof name === "string" && name.trim() ? name.slice(0, 160) : member.name, ...(picture ? { picture } : {}) };
+      return { ...member, name: typeof name === "string" && name.trim() ? name.slice(0, 160) : member.name, ...(emoji ? { emojiAvatar: emoji } : picture ? { picture } : {}) };
     });
   }
   async avatar(pubkey: string): Promise<string | undefined> {
     const picture = this.pictures.get(identifier(pubkey, "identity"));
     const connection = this.connection;
     if (!this.connected || !connection || !picture) return;
-    const image = await this.avatars.get(picture, connection.url, this.controller.signal);
-    return this.connection === connection ? image : undefined;
+    const ready = this.decoded.get(picture);
+    if (ready) return ready;
+    const existing = this.avatarLoads.get(picture);
+    if (existing) return existing;
+    const load = this.loadAvatar(picture, connection).finally(() => {
+      if (this.avatarLoads.get(picture) === load) this.avatarLoads.delete(picture);
+    });
+    this.avatarLoads.set(picture, load);
+    return load;
+  }
+  private async loadAvatar(picture: string, connection: RelayCredentials): Promise<string | undefined> {
+    let release: () => void;
+    try { release = await this.avatarSlots.acquire(this.controller.signal); }
+    catch { return undefined; }
+    try {
+      const cached = this.decoded.get(picture);
+      if (cached) return cached;
+      if (!this.connected || this.connection !== connection) return;
+      const media = relayMediaTarget(picture, connection.url);
+      const image = media
+        ? await this.bytes(connection, ["media", "get", media], this.controller.signal).then(rasterDataFromBytes, () => undefined)
+        : await this.avatars.get(picture, connection.url, this.controller.signal);
+      if (!image || this.connection !== connection) return;
+      if (this.decoded.size >= 200) this.decoded.delete(this.decoded.keys().next().value!);
+      this.decoded.set(picture, image);
+      return image;
+    } finally { release(); }
   }
   async messages(channelId: string, parent?: string): Promise<ChannelMessage[]> {
     const channel = identifier(channelId, "channel");

@@ -2,7 +2,7 @@
 export interface RelayConnectionInput { url: string; privateKey: string; remember?: boolean }
 export interface RelayConnectionStatus { connected: boolean; url?: string; remembered?: boolean; hasSaved?: boolean; canRemember?: boolean; warning?: string }
 export interface SharedChannel { id: string; name: string; description: string; joined: boolean }
-export interface ChannelMember { pubkey: string; name: string; role: string; picture?: string }
+export interface ChannelMember { pubkey: string; name: string; role: string; picture?: string; emojiAvatar?: { emoji: string; color: string } }
 export interface SharedChannelDetails {
   id: string; name: string; description: string; visibility?: "public" | "private";
   channelType?: string; archived: boolean; topic?: string; purpose?: string;

@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { once } from "node:events";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { RelayAvatars, avatarUrl, publicAvatarAddress, rasterData } from "./avatars.js";
+import { RelayAvatars, avatarUrl, publicAvatarAddress, rasterData, relayMediaTarget } from "./avatars.js";
 
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9WQAAAAASUVORK5CYII=", "base64");
 const stops: (() => Promise<void>)[] = [];
@@ -31,6 +31,10 @@ describe("relay profile images", () => {
     expect(publicAvatarAddress("1.1.1.1")).toBe(true);
     expect(publicAvatarAddress("2606:4700:4700::1111")).toBe(true);
     expect(avatarUrl("/photo", "https://relay.example").href).toBe("https://relay.example/photo");
+    const hash = "ab".repeat(32);
+    expect(relayMediaTarget(`https://relay.example/media/${hash}.jpg`, "https://relay.example")).toBe(`https://relay.example/media/${hash}.jpg`);
+    expect(relayMediaTarget(`/media/${hash}.png`, "https://relay.example")).toBe(`https://relay.example/media/${hash}.png`);
+    expect(relayMediaTarget(`https://cdn.example/media/${hash}.jpg`, "https://relay.example")).toBeUndefined();
     for (const value of ["file:///etc/passwd", "javascript:alert(1)", "https://user:pass@example.test/p", "https://127.0.0.1/p", "http://cdn.example/p"]) {
       expect(() => avatarUrl(value, "https://relay.example")).toThrow();
     }

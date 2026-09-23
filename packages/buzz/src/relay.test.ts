@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { SharedRelayClient, relayUrl, type RelayCredentialStore } from "./relay.js";
-import type { RelayCommand } from "./cli.js";
+import type { RelayBytes, RelayCommand } from "./cli.js";
 
 const channelId = "11111111-2222-3333-4444-555555555555";
 const publicKey = "a".repeat(64);
@@ -14,6 +14,14 @@ async function fixture() {
   return { client, command };
 }
 describe("shared relay boundary", () => {
+  it("carries inert emoji artwork from raw profile events without requesting image bytes", async () => {
+    const { client, command } = await fixture();
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512"><rect width="512" height="512" fill="#FFE75C"/><text x="50%" y="56%" dominant-baseline="middle" text-anchor="middle" font-size="258">😆</text></svg>';
+    command.mockResolvedValueOnce([{ pubkey: publicKey, role: "owner" }]).mockResolvedValueOnce([{ pubkey: publicKey, content: JSON.stringify({ name: "Alex", picture: `data:image/svg+xml,${encodeURIComponent(svg)}` }) }]);
+    expect(await client.members(channelId)).toEqual([{ pubkey: publicKey, name: "Alex", role: "owner", emojiAvatar: { emoji: "😆", color: "#FFE75C" } }]);
+    expect(await client.avatar(publicKey)).toBeUndefined();
+    expect(command).toHaveBeenCalledTimes(2);
+  });
   it("coalesces duplicate reads and queues a fifth distinct request instead of dropping members", async () => {
     const { client, command } = await fixture();
     const completions: Array<(value: unknown) => void> = [];
@@ -165,6 +173,25 @@ describe("shared relay boundary", () => {
     command.mockResolvedValueOnce([{ pubkey: publicKey, role: "bot" }]).mockResolvedValueOnce([{ pubkey: publicKey, display_name: "Reviewer", picture }]);
     expect(await client.members(channelId)).toEqual([{ pubkey: publicKey, name: "Reviewer", role: "bot", picture }]);
     expect(await client.avatar(publicKey)).toBe(picture);
+  });
+  it("reads avatar_url from a raw profile event and loads relay media through the signed client", async () => {
+    const hash = "ab".repeat(32);
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+    const bytes = vi.fn<RelayBytes>().mockResolvedValue(png);
+    const command = vi.fn<RelayCommand>().mockResolvedValue([]);
+    const client = new SharedRelayClient(command, undefined, bytes);
+    await client.connect({ url: "https://relay.example", privateKey });
+    command.mockClear();
+    const media = `https://relay.example/media/${hash}.jpg`;
+    command.mockResolvedValueOnce([{ pubkey: publicKey.toUpperCase(), role: "member" }]).mockResolvedValueOnce([{
+      pubkey: publicKey.toUpperCase(),
+      content: JSON.stringify({ display_name: "Reviewer", avatar_url: media }),
+    }]);
+    expect(await client.members(channelId)).toEqual([{ pubkey: publicKey, name: "Reviewer", role: "member", picture: media }]);
+    expect(await client.avatar(publicKey)).toMatch(/^data:image\/png;base64,/);
+    expect(await client.avatar(publicKey)).toMatch(/^data:image\/png;base64,/);
+    expect(bytes).toHaveBeenCalledTimes(1);
+    expect(bytes).toHaveBeenCalledWith(expect.objectContaining({ url: "https://relay.example" }), ["media", "get", media], expect.any(AbortSignal));
     expect(await client.avatar("d".repeat(64))).toBeUndefined();
     client.disconnect(); expect(await client.avatar(publicKey)).toBeUndefined();
   });

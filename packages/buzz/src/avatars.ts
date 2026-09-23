@@ -32,14 +32,39 @@ export function avatarUrl(picture: string, relay: string): URL {
   return url;
 }
 
+function rasterType(bytes: Buffer): string | undefined {
+  if (bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return "image/png";
+  if (bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255) return "image/jpeg";
+  if (["GIF87a", "GIF89a"].includes(bytes.subarray(0, 6).toString())) return "image/gif";
+  if (bytes.subarray(0, 4).toString() === "RIFF" && bytes.subarray(8, 12).toString() === "WEBP") return "image/webp";
+}
+
 export function rasterData(bytes: Buffer, contentType: string): string | undefined {
   if (!bytes.length || bytes.length > MAX_BYTES) return;
-  const type = contentType.split(";")[0]!.trim().toLowerCase();
-  const valid = type === "image/png" ? bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
-    : type === "image/jpeg" ? bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255
-      : type === "image/gif" ? ["GIF87a", "GIF89a"].includes(bytes.subarray(0, 6).toString())
-        : type === "image/webp" && bytes.subarray(0, 4).toString() === "RIFF" && bytes.subarray(8, 12).toString() === "WEBP";
-  return valid ? `data:${type};base64,${bytes.toString("base64")}` : undefined;
+  const declared = contentType.split(";")[0]!.trim().toLowerCase();
+  const sniffed = rasterType(bytes);
+  if (!sniffed) return;
+  if (declared && declared !== "application/octet-stream" && !declared.startsWith("image/")) return;
+  const jpeg = sniffed === "image/jpeg" && (declared === "image/jpeg" || declared === "image/jpg");
+  if (declared.startsWith("image/") && declared !== sniffed && !jpeg) return;
+  return `data:${sniffed};base64,${bytes.toString("base64")}`;
+}
+
+const RELAY_MEDIA = /^\/media\/[a-f0-9]{64}(?:\.thumb\.jpg|\.[a-z0-9]{1,8})?$/;
+
+/** Relay-hosted Blossom blob, or undefined when the picture is some other host. */
+export function relayMediaTarget(picture: string, relay: string): string | undefined {
+  let url: URL;
+  let origin: string;
+  try {
+    url = new URL(picture, relay);
+    origin = new URL(relay).origin;
+  } catch {
+    return;
+  }
+  if (url.origin !== origin || url.username || url.password || url.search || url.hash) return;
+  if (!RELAY_MEDIA.test(url.pathname)) return;
+  return url.href;
 }
 
 async function download(picture: string, relay: string, signal: AbortSignal, redirects = 0): Promise<string | undefined> {
