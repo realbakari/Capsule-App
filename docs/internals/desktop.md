@@ -486,6 +486,9 @@ waits for in-flight startup before cleanup, and publishes a closing state rather
 than a retryable load error. Deep-link routes wait for renderer readiness. IPC waits
 for the complete engine startup, not merely construction of the engine object.
 
+Search ranks exact conversation titles first, then recent activity, consistently
+in the palette and the search API without changing sidebar pin order.
+
 A folded turn shows how long it took beside its message count, and hovering it
 previews the prompt and the start of the answer, so it can be identified
 without unfolding. Activity rows

@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 import { checkRun } from "./run-verification.js";
 import { FolderActivity, foldersOverlap } from "./folder-activity.js";
 import type { VerificationResult } from "@capsule/shared";
-import { localTimings, TextBudget, OUTPUT_LIMIT_ERROR } from "@capsule/shared";
+import { localTimings, TextBudget, OUTPUT_LIMIT_ERROR, searchSessionTitles } from "@capsule/shared";
 import { ResultWriter } from "./result-writer.js";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -2439,7 +2439,7 @@ export class CapsuleEngine {
     if (!needle) return { projects: [], sessions: [], runs: [], messages: [] };
     return {
       projects: this.listProjects().filter((project) => project.name.toLowerCase().includes(needle)),
-      sessions: this.listSessions().filter((session) => session.title.toLowerCase().includes(needle)),
+      sessions: searchSessionTitles(this.listSessions(), needle),
       runs: this.listRuns().filter((run) => run.prompt.toLowerCase().includes(needle)),
       messages: this.repos.searchMessages(needle),
     };

@@ -27,3 +27,4 @@ export * from "./agent-reports.js";
 export * from "./provider-usage.js";
 export * from "./agent-commands.js";
 export * from "./delegation.js";
+export * from "./session-search.js";

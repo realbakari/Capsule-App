@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { SearchResults } from "@capsule/shared";
+import { searchSessionTitles, type SearchResults } from "@capsule/shared";
 import { useWorkspace } from "../../lib/workspace";
 import { formatUserError } from "../../lib/errors";
 import { CpuIcon, FolderIcon, MessageSquareIcon, PlusIcon, SearchIcon, SettingsIcon } from "./icons";
@@ -54,8 +54,7 @@ export function Palette() {
       { id: "about", label: "About Capsule", group: "Workspace", onSelect: () => setAboutOpen(true) },
     ].filter((item) => item.label.toLowerCase().includes(query));
     const projectNames = new Map(projects.map((project) => [project.id, project.name]));
-    const matchingThreads = sessions.filter((session) => session.state === "active" && session.title.toLowerCase().includes(query))
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, query ? 30 : 5);
+    const matchingThreads = searchSessionTitles(sessions.filter((session) => session.state === "active"), query).slice(0, query ? 30 : 5);
     const threads: SearchDialogItem[] = matchingThreads.map((session) => ({
       id: `session-${session.id}`, label: session.title, detail: projectNames.get(session.projectId),
       group: query ? "Conversations" : "Recent conversations", icon: <MessageSquareIcon size={15} />,

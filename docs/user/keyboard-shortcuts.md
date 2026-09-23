@@ -43,6 +43,10 @@ messages. File search shows names with their paths and searches the current
 conversation's checkout, including a worktree. Loading and failed searches are
 labelled separately from no matches; failed searches offer **Retry**.
 
+An exact conversation-title match comes first. Other matching conversation titles
+are ordered by recent activity, independently of sidebar pins, before message-body
+matches. With no query, the palette shows your most recently active conversations.
+
 Use the arrow keys to move through results, `Home` / `End` for the first or last
 result, `Enter` to select, and `Esc` to close. The selected result stays in view.
 Resizing or scrolling beneath a stationary mouse keeps your keyboard selection;
