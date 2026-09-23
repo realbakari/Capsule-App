@@ -79,6 +79,10 @@ Completed code blocks and open review disclosures stay in place as more text
 arrives. Unusually deep Markdown nesting is shown as readable source instead of
 preventing the conversation from opening.
 
+Paragraph spacing, list markers and medium-weight emphasis keep long replies
+readable without changing your chosen conversation text size or rewriting
+saved messages.
+
 Long conversations keep a bounded display window: up to 300 messages and about
 4 MB of text and attachment metadata. **Load older messages** moves through saved
 history without loading the whole thread. Once newer messages fall outside that

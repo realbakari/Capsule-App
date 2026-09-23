@@ -1023,12 +1023,13 @@
  * the stylesheet.
  */
 .body {
-  line-height: 1.55;
+  line-height: 1.65;
   white-space: normal;
   /* Long paths and URLs must wrap rather than widen the panel they sit in. */
   overflow-wrap: anywhere;
 }
-.md-p { margin: 0.65em 0; white-space: pre-wrap; }
+.md-p { margin: 0.85em 0; white-space: pre-wrap; }
+.body strong { font-weight: 600; }
 .body > :first-child { margin-top: 0; }
 .body > :last-child { margin-bottom: 0; }
 .md-literal { white-space: pre-wrap; }
@@ -3882,10 +3883,10 @@ select:focus,
   letter-spacing: normal;
   text-transform: none;
 }
-.body .md-list { margin: 0.6em 0; padding-left: 1.6em; }
+.body .md-list { margin: 0.8em 0; padding-left: 1.6em; }
 .body .md-list .md-list { margin: 0.25em 0; }
 .md-list > li { margin: 0.3em 0; padding-left: 0.15em; }
-.md-list > li::marker { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.md-list > li::marker { color: inherit; font-variant-numeric: tabular-nums; }
 .md-list > .md-task { padding-left: 0; margin-left: -1.15em; }
 .md-list .md-p { margin: 0.3em 0; }
 .composer-glass.dropping::before {

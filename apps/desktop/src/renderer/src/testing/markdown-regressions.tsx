@@ -52,6 +52,11 @@ export async function runMarkdownRegressions(host: HTMLElement) {
             </div>);
             await until(() => document.querySelector("[data-markdown-fixture]")?.getAttribute("data-markdown-fixture") === identity);
             const fixture = document.querySelector<HTMLElement>("[data-markdown-fixture]")!;
+            const paragraph = fixture.querySelector<HTMLElement>(".body > .md-p")!;
+            const paragraphStyle = getComputedStyle(paragraph);
+            assert(parseFloat(paragraphStyle.lineHeight) / parseFloat(paragraphStyle.fontSize) >= 1.6, "Prose lost its readable line spacing");
+            assert(parseFloat(paragraphStyle.marginBottom) >= size * .8, "Paragraph separation became too tight");
+            assert(getComputedStyle(paragraph.querySelector("strong")!).fontWeight === "600", "Inline emphasis became excessively heavy");
             assert(fixture.scrollWidth <= width + 1, `Markdown overflows at ${identity}`);
             const code = fixture.querySelector<HTMLElement>(".msg-code")!;
             const styles = getComputedStyle(code);

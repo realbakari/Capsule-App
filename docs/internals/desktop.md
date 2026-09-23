@@ -6,6 +6,14 @@ Capsule is a workspace, not a clone of any other agent product. Quality bars els
 
 ---
 
+## Conversation typography
+
+Markdown prose uses a 1.65 line-height, .85em paragraph spacing and 600-weight
+emphasis. List markers inherit the prose color. Existing user text-size settings
+remain authoritative; this changes layout, not stored messages. Dark/light,
+narrow/wide and enlarged-text fixtures exercise Markdown independently of
+which runtime carried a turn.
+
 ## Shell
 
 New profiles default to Direct execution and do not attempt a Gateway connection
