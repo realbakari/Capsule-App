@@ -493,3 +493,13 @@ are ignored, but a genuine one-character answer is retained. Gateway completed
 message snapshots keep their existing boundaries. Both routes separate complete
 messages with blank lines in run results and history reconstruction. Old merged
 records are not heuristically rewritten.
+
+## Reported tool previews
+
+Direct ACP tool calls retain bounded command input, text content/output and file
+locations. Omitted fields preserve previous observations; explicit empty content
+and location arrays clear them. Display previews are capped before persistence and
+again by the event budget. Gateway tool frames use the same normalization. Native
+session adapters that report only title/status remain readable but do not invent
+command output. This does not add client filesystem or terminal execution APIs,
+and tool reports never grant permission or become assistant replies.

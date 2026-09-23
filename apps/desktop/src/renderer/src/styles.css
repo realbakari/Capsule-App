@@ -9652,11 +9652,23 @@ details.card > summary {
 }
 .inline-activity-state { color: var(--text-faint); font-size: 0.75rem; }
 .inline-activity[data-state="Failed"] > button > .inline-activity-state { color: var(--danger, #e08a8a); }
-.inline-activity-tools { list-style: none; padding: 0 0 0 0.15rem; margin: 0.25rem 0 0.1rem; max-height: 16rem; overflow: auto; }
-.inline-activity-tools > li { display: grid; grid-template-columns: 0.9rem minmax(0, 1fr) auto; gap: 0.45rem; align-items: start; padding: 0.2rem 0; font-size: 0.8125rem; }
-.inline-activity-tools > li > svg { margin-top: 0.15rem; color: var(--text-muted); }
-.inline-activity-tools > li > span:nth-child(2) { min-width: 0; overflow-wrap: anywhere; }
+.inline-activity-tools { list-style: none; padding: 0; margin: 0.35rem 0; max-height: 24rem; overflow: auto; overscroll-behavior: contain; }
+.inline-activity-tools > li { min-width: 0; padding: 0.15rem 0; font-size: 0.8125rem; }
 .inline-activity-tools .inline-activity-state { flex: 0 0 auto; }
+.activity-step-toggle { display: grid; grid-template-columns: 1rem minmax(0, 1fr) auto 0.75rem; gap: 0.5rem; align-items: center; width: 100%; padding: 0.45rem 0.35rem; background: transparent; border: 0; border-radius: 0.35rem; text-align: left; color: var(--text-muted); font-size: 0.8125rem; }
+.activity-step-toggle:hover { color: var(--text); background: var(--bg-hover); }
+.activity-step-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activity-step-toggle .open { transform: rotate(90deg); }
+.activity-step[data-state="Failed"] .inline-activity-state { color: var(--red); }
+.activity-step-body { margin: 0.2rem 0.25rem 0.65rem 1.85rem; min-width: 0; }
+.activity-step-body > p { font-size: 0.75rem; line-height: 1.5; margin: 0.5rem 0; }
+.activity-tool-text { min-width: 0; margin: 0.35rem 0; border: 1px solid var(--border-color); border-radius: 0.55rem; overflow: hidden; background: var(--bg); }
+.activity-tool-text-heading { display: flex; align-items: center; justify-content: space-between; min-height: 2rem; gap: 0.5rem; padding: 0.25rem 0.65rem; color: var(--text-muted); font-size: 0.75rem; }
+.activity-tool-text pre { margin: 0; padding: 0.65rem; max-height: 12rem; overflow: auto; overscroll-behavior: contain; font-family: var(--mono); font-size: 0.8125rem; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); }
+.activity-step-files { display: flex; flex-direction: column; gap: 0.25rem; }
+.activity-file { display: flex; align-items: start; gap: 0.35rem; max-width: 100%; width: fit-content; border: 0; background: none; padding: 0.25rem 0; color: var(--text-muted); font-size: 0.8125rem; text-align: left; overflow-wrap: anywhere; }
+.activity-file svg { flex: none; margin-top: 0.15rem; }
+.activity-file:hover { color: var(--text); text-decoration: underline; }
 .run-summary-card.expanded { border-color: var(--border-color); }
 .turn-work { margin: 1rem 0; }
 .turn-work-toggle { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; padding: 0.5rem 0; border: 0; background: none; color: var(--text-muted); font-size: 0.8125rem; cursor: pointer; }

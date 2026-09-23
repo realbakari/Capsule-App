@@ -489,6 +489,13 @@ touch, create, or modify files surface interactive file chips (`[+] Created`,
 `[~] Modified`, `[-] Deleted`) directly in the run summary and `TurnFilesCard`,
 linking immediately to file previews or diffs in the Inspector.
 
+Each inline tool step has a keyboard-operable disclosure with bounded literal
+command/output previews, truthful missing-data and truncation labels, copy controls,
+and reported file locations scoped to the run's working directory. Details mount
+only when opened. Nested output and group scrollers contain overscroll; nested
+scroll events cannot change timeline following. Both runtime routes normalize the
+same display facts; no raw image data or arbitrary JSON is rendered as prose.
+
 Startup is owned by the profile-lock winner. Quit cancels pending window reveals,
 waits for in-flight startup before cleanup, and publishes a closing state rather
 than a retryable load error. Deep-link routes wait for renderer readiness. IPC waits

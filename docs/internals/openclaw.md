@@ -118,3 +118,10 @@ include normalized cwd, remote configuration and invalidation epoch. Branch
 PR caches also include symbolic upstream identity. Identity reads and network
 results reject superseded requests, including requests finishing after cache
 invalidation; old cleanup cannot remove a newer in-flight request.
+
+## Tool display facts
+
+The adapter extracts bounded command text, text output and reported file paths
+from ACP tool frames before event compaction. The transcript merges updates by
+tool-call identity and shows these details only on expansion. They remain tool
+observations, never assistant messages, execution requests or authorization.

@@ -19,6 +19,7 @@ import { runScreenshotRegressions } from "./screenshot-regressions";
 import { runRuntimeExtensionRegressions } from "./runtime-extension-regressions";
 import { runInterfaceRegressions } from "./interface-regressions";
 import { runPanelRegressions } from "./panel-regressions";
+import { runActivityRegressions, renderActivityPreview } from "./activity-regressions";
 import { runComposerLayoutRegressions } from "./composer-layout-regressions";
 import { runMuseSettingsRegressions } from "./muse-settings-regressions";
 import { runDraftAdmissionRegressions } from "./draft-admission-regressions";
@@ -50,6 +51,7 @@ declare global {
     renderFilesPreview: (width: number, openFile: boolean) => Promise<void>;
     runDiffPreviewRegressions: () => Promise<void>;
     renderDiffPreview: (theme: "dark" | "light", scrolled: boolean) => Promise<void>;
+    renderActivityPreview: (closing: boolean, theme: "dark" | "light") => Promise<void>;
     renderWorkspacePreview: (surface: "sidebar" | "quota" | "runtime", theme: "dark" | "light") => Promise<void>;
   }
 }
@@ -1026,6 +1028,13 @@ window.runRendererRegressions = async () => {
   // Optional visual evidence from the same renderer/CSS as the interaction
   // checks. The fixture contains no user's conversations or file paths.
   let previewRoot: ReturnType<typeof createRoot> | undefined;
+  window.renderActivityPreview = async (closing, theme) => {
+    (document.getElementById("composer-test-styles") as HTMLStyleElement).media = "all";
+    applyPreviewPalette(theme);
+    host.style.cssText = "width:100%;padding:0;box-sizing:border-box";
+    previewRoot ??= createRoot(host);
+    await renderActivityPreview(previewRoot, host, closing);
+  };
   window.renderWorkspacePreview = async (surface, theme) => {
     (document.getElementById("composer-test-styles") as HTMLStyleElement).media = "all";
     host.style.cssText = `width:100%;height:100vh;padding:${surface === "sidebar" ? 0 : 16}px;box-sizing:border-box`;
@@ -1220,6 +1229,8 @@ window.runRendererRegressions = async () => {
   await runInterfaceRegressions(host, contextBase);
   phase("panels");
   await runPanelRegressions(host, contextBase);
+  phase("activity and startup");
+  await runActivityRegressions(host);
   phase("composer layout matrix");
   await runComposerLayoutRegressions(host, contextBase);
   phase("native settings");

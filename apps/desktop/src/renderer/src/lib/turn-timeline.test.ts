@@ -11,6 +11,14 @@ const event = (id: string, second: number, status = "in_progress"): RunEvent => 
 });
 
 describe("turn transcript", () => {
+  it("merges direct and nested gateway details without duplicating a tool or losing input", () => {
+    const started = { ...event("a", 1), data: { toolCallId: "a", details: { input: "git status", locations: ["README.md"] } } };
+    const completed = { ...event("a", 2), data: { data: { toolCallId: "a", status: "completed", rawOutput: "clean" } } };
+    const rows = turnTranscript([], [started, completed], run).rows;
+    expect(rows).toMatchObject([{ kind: "activity", tools: [{ id: "a", status: "completed", details: { input: "git status", output: "clean", locations: ["README.md"] } }] }]);
+    expect(turnTranscript([], [started, completed, { ...event("a", 3), data: { toolCallId: "a", content: [], locations: [] } }], run).rows)
+      .toMatchObject([{ tools: [{ details: { input: "git status", output: "", locations: [] } }] }]);
+  });
   it("intersperses work and replies, retaining the invocation position after completion", () => {
     const messages = [message("prompt", 0), message("checking", 1), message("summary", 4)];
     const result = turnTranscript(messages, [event("a", 2), event("b", 3), event("a", 5, "completed")], run);

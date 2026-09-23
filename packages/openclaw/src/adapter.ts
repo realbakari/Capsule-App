@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { GatewayClient, GatewayClientRequestError } from "@openclaw/gateway-client";
-import { readDelegationDetails, TextBudget } from "@capsule/shared";
+import { readDelegationDetails, readToolActivityDetails, TextBudget } from "@capsule/shared";
 import {
   GATEWAY_CLIENT_CAPS,
   GATEWAY_CLIENT_IDS,
@@ -1059,6 +1059,7 @@ export class OpenClawAdapter implements AgentRuntime {
       // "assistant" is the only type the engine folds into run.result, so
       // reasoning, plan text and command output must not use it.
       this.emit(runId, isAssistantProse(kind) ? "assistant" : kind, agentText, {
+        ...(kind === "tool" ? { details: readToolActivityDetails(tool) } : {}),
         ...(delegation && typeof tool.toolCallId === "string" ? { delegationTool: { toolCallId: tool.toolCallId, title: tool.title, status: tool.status, delegation } } : {}),
         ...payload,
         streamKind: kind,

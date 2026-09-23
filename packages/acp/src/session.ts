@@ -4,7 +4,7 @@ import { EventEmitter } from "node:events";
 import { StringDecoder } from "node:string_decoder";
 
 import type { AcpModelCatalog, DelegationDetails, ApprovalToolDetails, AgentCapabilityReport, ReportedContextUsage, ReportedTurnUsage, AgentPromptBlock, AgentCommand, RunTask } from "@capsule/shared";
-import { TextBudget, readAgentCapabilities, readReportedTurnUsage } from "@capsule/shared";
+import { TextBudget, readAgentCapabilities, readReportedTurnUsage, type ToolActivityDetails } from "@capsule/shared";
 import { readCliError } from "./errors.js";
 import {
   ACP_PROTOCOL_VERSION,
@@ -37,7 +37,7 @@ export interface DirectAcpEvents {
   /** Finish the current prose segment, not the turn or the coding session. */
   "message-end": () => void;
   /** A tool the agent is running, for the work log. */
-  tool: (payload: { title: string; status?: string; kind?: string; toolCallId?: string; delegation?: DelegationDetails }) => void;
+  tool: (payload: { title: string; status?: string; kind?: string; toolCallId?: string; delegation?: DelegationDetails; details?: ToolActivityDetails }) => void;
   /** A plan or todo list the agent reported for this turn. */
   plan: (payload: { entries: RunTask[] }) => void;
   /** The turn finished, with the agent's own reason. */

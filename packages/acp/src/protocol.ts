@@ -1,4 +1,5 @@
 import { readAgentCommands, readDelegationDetails, readPlanEntries, readReportedContextUsage, sanitizeUntrusted, type AgentCommand, type AcpModelCatalog, type DelegationDetails, type ApprovalToolDetails, type ReportedContextUsage, type RunTask } from "@capsule/shared";
+import { readToolActivityDetails, type ToolActivityDetails } from "@capsule/shared";
 
 /*
  * The wire, on its own.
@@ -74,7 +75,7 @@ export interface SessionUpdate {
   /** A new tool starts a new response segment; background tool updates do not. */
   startsTool?: boolean;
   /** A tool the agent is running, if this update is about one. */
-  tool?: { title?: string; status?: string; kind?: string; toolCallId?: string; delegation?: DelegationDetails };
+  tool?: { title?: string; status?: string; kind?: string; toolCallId?: string; delegation?: DelegationDetails; details?: ToolActivityDetails };
   /** A plan or todo list the agent reported for this turn. */
   plan?: RunTask[];
 }
@@ -132,6 +133,7 @@ export function readSessionUpdate(params: unknown): SessionUpdate | undefined {
     const toolCallId = typeof tool.toolCallId === "string" && tool.toolCallId.length <= MAX_TOOL_ID_LENGTH ? tool.toolCallId : undefined;
     if (!title && !toolCallId) return undefined;
     const delegation = readDelegationDetails(tool);
+    const details = readToolActivityDetails(tool);
     const todo = /todo/i.test(title ?? "")
       ? readPlanEntries(tool.rawInput) ?? readPlanEntries(tool.rawOutput)
       : undefined;
@@ -140,7 +142,7 @@ export function readSessionUpdate(params: unknown): SessionUpdate | undefined {
       ...(kind === "tool_call" ? { startsTool: true } : {}),
       tool: { title, status: toolLabel(tool.status, 64), toolCallId,
         ...(typeof tool.kind === "string" && /^(read|edit|delete|move|search|execute|think|fetch|switch_mode|other)$/u.test(tool.kind) ? { kind: tool.kind } : {}),
-        ...(delegation ? { delegation } : {}) },
+        ...(delegation ? { delegation } : {}), ...(Object.keys(details).length ? { details } : {}) },
       ...(todo ? { plan: todo } : {}),
     };
   }

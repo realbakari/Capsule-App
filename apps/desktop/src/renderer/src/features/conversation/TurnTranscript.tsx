@@ -10,15 +10,17 @@ interface Props {
   run?: Run;
   stopping?: boolean;
   partial?: boolean;
+  onOpenFile?: (path: string, root?: string) => void;
   children: (message: ChatMessage) => ReactNode;
 }
 
 /** Live work stays chronological; settled work folds without hiding the answer. */
-export function TurnTranscript({ rows, run, stopping, partial, children }: Props) {
+export function TurnTranscript({ rows, run, stopping, partial, onOpenFile, children }: Props) {
   const [expanded, setExpanded] = useState(false);
   const renderRow = (row: TranscriptRow) => <Fragment key={row.id}>{row.kind === "message"
     ? children(row.message)
-    : run && <InlineActivity tools={row.tools} run={run} stopping={stopping} />}</Fragment>;
+    : run && <InlineActivity tools={row.tools} run={run} stopping={stopping}
+      onOpenFile={onOpenFile ? (path) => onOpenFile(path, run.workingDirectory) : undefined} />}</Fragment>;
   const settled = run && ["completed", "failed", "cancelled", "blocked"].includes(run.status);
   const finalIndex = rows.reduce((last, row, index) => row.kind === "message" && row.message.role === "assistant" ? index : last, -1);
   const promptEnd = rows[0]?.kind === "message" && rows[0].message.role === "user" ? 1 : 0;

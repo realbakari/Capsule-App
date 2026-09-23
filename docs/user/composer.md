@@ -139,6 +139,15 @@ focus to its trigger.
 Expand the activity row to see its steps, **Run log** and **Verification** in
 one place. Collapsing it preserves your check inputs and current log page.
 
+Between progress messages, expand a tool group, then a step, to inspect its
+reported command, text output and files. **Copy command preview** and **Copy output
+preview** copy only the displayed text. Large previews are shortened and labelled.
+Reported files open in that turn's checkout; workspace file-access checks still
+apply. Scrolling long output stays inside the tool details. These controls inspect
+work; they do not rerun commands or grant agent permissions. If the runtime did not
+report readable details, the step says so. Images and opaque provider objects are
+not shown as raw data.
+
 **Sending** means Capsule is submitting the prompt, not that the agent is
 already running. **Stopping** means a cancellation request is pending; a failed
 stop returns to the reported run state and shows its error. **Completed** does

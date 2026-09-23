@@ -223,6 +223,7 @@ export function Conversation() {
     ready,
     runs: workspaceRuns,
     setNotice,
+    openFile,
     createTask,
     createProjectFromFolder,
     pickProjectDirectory,
@@ -404,6 +405,7 @@ export function Conversation() {
         className="conversation"
         ref={scroller}
         onScroll={(event) => {
+          if (event.target !== event.currentTarget) return;
           const node = event.currentTarget;
           const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight;
           const scrollDelta = node.scrollTop - lastScrollTop.current;
@@ -493,6 +495,7 @@ export function Conversation() {
                 ) : (
                   <Fragment key={turn.id}>
                   <TurnTranscript key={transcripts.get(turn.id)?.run.id ?? turn.id}
+                    onOpenFile={openFile}
                     rows={transcripts.get(turn.id)?.rows ?? turn.messages.map((message) => ({ kind: "message" as const, id: message.id, message }))}
                     run={transcripts.get(turn.id)?.run} partial={transcripts.get(turn.id)?.partial}
                     stopping={stoppingRunIds?.includes(transcripts.get(turn.id)?.run.id ?? "")}>

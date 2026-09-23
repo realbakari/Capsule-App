@@ -113,6 +113,17 @@ describe("persisted Gateway replies", () => {
     expect(received[0]?.data?.status).toBeUndefined();
     expect(delegatedTasks({ id: "remote-run", sessionId: "s" } as Run, received)[0]).toMatchObject({ title: "Review changes", status: "completed", totalTokens: 123 });
   });
+  it("preserves readable tool previews through the gateway event budget", () => {
+    const { adapter, internal } = fixture();
+    const received: RunEvent[] = [];
+    adapter.subscribeToRun("remote-run", (event) => received.push(compactRunEvent(event)));
+    internal.handleEvent({ type: "event", event: "agent", payload: { runId: "remote-run", sessionKey: key, stream: "acp", data: {
+      phase: "runtime_event", eventType: "tool_call", toolCallId: "command", title: "Check status", status: "completed",
+      rawInput: { command: "git status" }, content: [{ type: "content", content: { type: "text", text: "clean" } }], locations: [{ path: "README.md" }],
+    } } });
+    expect(received[0]?.data?.details).toEqual({ input: "git status", output: "clean", locations: ["README.md"] });
+    expect(received[0]?.type).toBe("tool");
+  });
   it("subscribes with supported parameters before sending the prompt", async () => {
     const { adapter, request } = fixture();
     await adapter.sendMessage({ sessionId: key, content: "Hello", agentId: "claude" });

@@ -1,4 +1,5 @@
 import type { ChatMessage, Run, RunEvent } from "@capsule/shared";
+import { readToolActivityDetails, type ToolActivityDetails } from "@capsule/shared";
 import { cleanActivityDetail } from "./activity";
 
 export type ToolKind = "read" | "edit" | "delete" | "search" | "execute" | "think" | "fetch" | "todo" | "other";
@@ -10,6 +11,7 @@ export interface ToolObservation {
   command: boolean;
   kind: ToolKind;
   status: "running" | "waiting" | "completed" | "failed" | "reported";
+  details?: ToolActivityDetails;
 }
 
 export type TranscriptRow =
@@ -32,7 +34,7 @@ export function turnTranscript(messages: ChatMessage[], events: RunEvent[], run:
     if (!callId && /\.(completed|failed|done)$/u.test(event.type)) continue;
     const id = callId ?? event.id;
     const previous = calls.get(id);
-    const text = event.message || (typeof data.text === "string" ? data.text : "");
+    const text = typeof data.title === "string" ? data.title : previous?.title || event.message || (typeof data.text === "string" ? data.text : "");
     const title = cleanActivityDetail(text) ?? previous?.title ?? "Tool activity";
     const status = String(data.status ?? event.type.split(".")[1] ?? "");
     const reported = status === "failed" ? "failed"
@@ -46,6 +48,7 @@ export function turnTranscript(messages: ChatMessage[], events: RunEvent[], run:
       id, timestamp: previous?.timestamp ?? event.timestamp, title, command,
       kind: inferred !== "other" ? inferred : previous?.kind ?? inferred,
       status: reported,
+      details: { ...previous?.details, ...readToolActivityDetails(data) },
     });
   }
   const partial = calls.size > MAX_VISIBLE_TOOLS || events.some((event) => event.runId === run.id && event.data?.earlierEvents);

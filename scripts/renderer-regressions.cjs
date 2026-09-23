@@ -57,6 +57,11 @@ app.whenReady().then(async () => {
         const capture = await window.webContents.capturePage(bounds);
         fs.writeFileSync(path.join(screenshots, `diff-${theme}-${width}${scrolled ? "-scrolled" : ""}.png`), capture.toPNG());
       }
+      for (const [width, theme, closing] of [[1000, "dark", false], [380, "light", false], [1000, "dark", true]]) {
+        window.setContentSize(width, 650);
+        await window.webContents.executeJavaScript(`window.renderActivityPreview(${closing}, ${JSON.stringify(theme)})`);
+        fs.writeFileSync(path.join(screenshots, `activity-${theme}-${width}${closing ? "-closing" : ""}.png`), (await window.webContents.capturePage()).toPNG());
+      }
     }
     app.exit(0);
   } catch (error) {

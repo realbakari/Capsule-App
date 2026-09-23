@@ -304,3 +304,7 @@ describe("turnOutcome", () => {
     }
   });
 });
+it("retains bounded tool details on initial and completion-only reports", () => {
+  expect(readSessionUpdate({ update: { sessionUpdate: "tool_call", toolCallId: "details", title: "Run command", rawInput: { command: "git status" } } })?.tool?.details).toEqual({ input: "git status" });
+  expect(readSessionUpdate({ update: { sessionUpdate: "tool_call_update", toolCallId: "details", status: "completed", content: [{ type: "content", content: { type: "text", text: "clean" } }] } })?.tool?.details).toEqual({ output: "clean" });
+});
