@@ -1,5 +1,6 @@
 import { useEffect, type CSSProperties } from "react";
 import { Conversation } from "./features/conversation/Conversation";
+import { ChannelsView } from "./features/channels/ChannelsView";
 import { ProjectView } from "./features/project/ProjectView";
 import { RuntimesView } from "./features/harness/RuntimesView";
 import { ApprovalsView, HistoryView, SkillsView } from "./features/library/LibraryViews";
@@ -70,6 +71,7 @@ function Shell() {
             <ViewErrorBoundary label="Conversation"><Conversation /></ViewErrorBoundary>
           </div>
           <ViewErrorBoundary key={view} label="This view">
+            {view === "channels" && <ChannelsView />}
             {view === "project" && <ProjectView />}
             {view === "runtimes" && <RuntimesView />}
             {view === "skills" && <SkillsView />}

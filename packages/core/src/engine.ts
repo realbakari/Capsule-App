@@ -32,7 +32,7 @@ import {
   whichBinary,
 } from "@capsule/harness";
 
-import { createBuzzAdapter } from "@capsule/buzz";
+import { createBuzzAdapter, SharedRelayClient } from "@capsule/buzz";
 import { buildContract } from "@capsule/contracts";
 import { readUsageSummaryAsync, sinceDaysAgo, type UsageSummary } from "./usage/index.js";
 import { CapsuleDatabase, CapsuleRepositories } from "@capsule/database";
@@ -188,6 +188,7 @@ import {
 } from "@capsule/terminal";
 import { verifyContract } from "@capsule/verification";
 import { commitWithSecrets, type SecretChange } from "./settings-secrets.js";
+import { createRelayCredentialStore } from "./relay-credentials.js";
 import {
   CAPSULE_KEYCHAIN_SERVICE,
   GATEWAY_TOKEN_ACCOUNT,
@@ -232,6 +233,7 @@ export interface EngineState {
 }
 
 export class CapsuleEngine {
+  readonly sharedChannels: SharedRelayClient;
   readonly events = new EventEmitter();
   readonly db: CapsuleDatabase;
   readonly repos: CapsuleRepositories;
@@ -318,6 +320,7 @@ export class CapsuleEngine {
     });
     this.repos = new CapsuleRepositories(this.db);
     this.keychain = createKeychainAdapter(options.userDataDir, options.secretEncryptor);
+    this.sharedChannels = new SharedRelayClient(undefined, createRelayCredentialStore(options.userDataDir, options.secretEncryptor));
     this.settings = normalizeCapsuleSettings({
       ...DEFAULT_CAPSULE_SETTINGS,
       gatewayUrl: options.gatewayUrl ?? defaultGatewayEndpoint().url,
@@ -399,6 +402,7 @@ export class CapsuleEngine {
   }
 
   private async stopOnce(): Promise<void> {
+    this.sharedChannels.disconnect();
     // Runtime subscriptions can outlive stop() — a cancelled or failed turn
     // keeps draining queued events — and every handler writes to the database.
     // Mark the engine stopped before closing so late events are dropped rather

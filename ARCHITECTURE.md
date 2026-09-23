@@ -28,7 +28,7 @@ and retains lifecycle ownership. Its `direct:msp:muse:` keys cannot be confused
 with ACP sessions. Muse still owns authentication, policy and tool execution;
 Capsule adds no provider API or agent loop.
 
-The OpenClaw Gateway owns its sessions and channel connections. Capsule connects to it as an operator client over WebSocket. Direct sessions belong to the local ACP host; a thread keeps the route encoded in its session key. Messaging surfaces reach Capsule only as Gateway channels — Capsule never speaks those protocols itself.
+The OpenClaw Gateway owns its sessions and channel connections. Capsule connects to it as an operator client over WebSocket. Direct sessions belong to the local ACP host; a thread keeps the route encoded in its session key. Gateway channel integrations remain Gateway-owned. An optional shared-channel workspace uses an installed relay CLI; Capsule does not implement the messaging protocol or host agents for that relay.
 
 Capsule is a TypeScript pnpm workspace, licensed MIT.
 
@@ -131,7 +131,7 @@ packages/
   muse                Native Muse session SDK adapter behind the direct host
   openclaw            Gateway adapter + mock runtime
   harness             Claude Code / Codex / Grok ACP lifecycle (doctor, spawn, steer, cancel, close)
-  buzz                Gateway channel mapping
+  buzz                Gateway channel mapping and optional relay CLI adapter
   ui                  Shared tokens
 ```
 
@@ -223,6 +223,31 @@ Channel room
 
 Capsule shows source metadata (channel, room, thread, sender) and links it to a Capsule run. It does not speak those channel protocols, hold their identities, or store their private keys.
 
+### Optional shared-channel workspace
+
+This intentionally extends the former Gateway-only channel contract. The
+desktop Channels view connects to a self-hosted relay through the installed
+`buzz` CLI, independently of either local runtime route. `SharedRelayClient`
+owns validated, bounded operations; the upstream CLI owns signing, identity
+authorization, membership and protocol details. No Capsule messaging server,
+provider loop or channel-triggered local execution is added.
+
+The identity key is passed to the CLI through an explicit environment variable,
+never argv or ordinary settings. Remember on this device stores the URL/key
+pair using platform-backed encryption without a plaintext fallback. Opening
+Channels restores it once; Disconnect and engine shutdown abort owned operations
+and drop active credentials, while Forget also removes the encrypted record.
+Text is sent on stdin. Remote origins require HTTPS; HTTP is loopback-only.
+Profile pictures use a bounded main-process raster loader; untrusted non-relay
+hosts must resolve to public addresses. Every related IPC method, including
+reads and image lookup, is denied to read-only paired viewers.
+
+The renderer polls recent text and thread windows while visible. Relay events
+remain on the relay, separate from local conversations and runs. Mentioning an
+existing agent relies on its separately configured host; Capsule does not
+provision that host, grant repository access, or claim to track its execution
+as a local run. See [shared channels](docs/internals/channels.md).
+
 ---
 
 ## 7. Persistence and Secrets
@@ -277,7 +302,7 @@ Visual language is graphite and off-white, matching the Capsule mark. No purple 
 | 2 | Execution replay UI | Events are stored; a dedicated replay viewer is not shipped. |
 | 3 | Remote pairing UI | Loopback auto-approves Capsule's persisted Ed25519 identity; remote/non-local pairing still needs `openclaw devices approve`. |
 | 4 | Bonjour discovery | Local TCP probe and config-file hints work; mDNS browsing is not wired. |
-| 5 | Channel-to-run live ingest | Channel status is listed; inbound channel messages are not a live Capsule inbox yet. |
+| 5 | Channel-to-run live ingest | Shared relay text has its own workspace; inbound messages do not auto-create local runs. Gateway channel status remains metadata-only. |
 | 6 | Release assurance | Apple Silicon packaging supports signing/notarization with configured credentials and an unsigned fallback. In-place updates require a compatible build/feed; verify each release artifact. |
 | 7 | Dual Node/Electron native ABI | `better-sqlite3` is rebuilt for Electron. `pnpm test` runs Vitest under Electron so SQLite loads. |
 

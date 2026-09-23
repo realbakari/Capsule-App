@@ -1041,6 +1041,27 @@ function registerIpc(): void {
   };
 
   handle(IPC_CHANNELS.listProjects, () => requireEngine().listProjects());
+  // Deliberately absent from the remote read allowlist: a paired viewer is
+  // not the relay identity and must not inherit its private channel access.
+  handle(IPC_CHANNELS.relayStatus, () => requireEngine().sharedChannels.restore());
+  handle(IPC_CHANNELS.connectRelay, (input) => requireEngine().sharedChannels.connect(input as import("@capsule/shared").RelayConnectionInput));
+  handle(IPC_CHANNELS.disconnectRelay, () => { const relay = requireEngine().sharedChannels; relay.disconnect(); return relay.status(); });
+  handle(IPC_CHANNELS.rememberRelay, () => requireEngine().sharedChannels.remember());
+  handle(IPC_CHANNELS.forgetRelay, () => requireEngine().sharedChannels.forget());
+  handle(IPC_CHANNELS.channelAvatar, (pubkey) => requireEngine().sharedChannels.avatar(pubkey as string));
+  handle(IPC_CHANNELS.sharedChannelDetails, (channel, name) => requireEngine().sharedChannels.details(channel as string, name as string));
+  handle(IPC_CHANNELS.updateSharedChannel, (input) => requireEngine().sharedChannels.update(input as import("@capsule/shared").ChannelUpdate));
+  handle(IPC_CHANNELS.manageSharedChannel, (channel, action) => requireEngine().sharedChannels.manage(channel as string, action as import("@capsule/shared").ChannelManagementAction));
+  handle(IPC_CHANNELS.channelReactions, (message) => requireEngine().sharedChannels.reactions(message as string));
+  handle(IPC_CHANNELS.reactToChannelMessage, (message, emoji, action) => requireEngine().sharedChannels.react(message as string, emoji as string, action as "add" | "remove"));
+  handle(IPC_CHANNELS.listSharedChannels, () => requireEngine().sharedChannels.channels());
+  handle(IPC_CHANNELS.createSharedChannel, (input) => requireEngine().sharedChannels.create(input as import("@capsule/shared").NewSharedChannel));
+  handle(IPC_CHANNELS.channelMembership, (channel, action) => requireEngine().sharedChannels.membership(channel as string, action as "join" | "leave"));
+  handle(IPC_CHANNELS.channelMembers, (channel) => requireEngine().sharedChannels.members(channel as string));
+  handle(IPC_CHANNELS.inviteChannelMember, (input) => requireEngine().sharedChannels.invite(input as import("@capsule/shared").ChannelInvitation));
+  handle(IPC_CHANNELS.removeChannelMember, (channel, pubkey) => requireEngine().sharedChannels.removeMember(channel as string, pubkey as string));
+  handle(IPC_CHANNELS.channelMessages, (channel, parent) => requireEngine().sharedChannels.messages(channel as string, parent as string | undefined));
+  handle(IPC_CHANNELS.postChannelMessage, (input) => requireEngine().sharedChannels.post(input as import("@capsule/shared").ChannelPost));
   handle(IPC_CHANNELS.createProject, (input) =>
     requireEngine().createProject(input as Parameters<CapsuleEngine["createProject"]>[0]),
   );
@@ -2027,7 +2048,7 @@ async function startEngineOnce(): Promise<void> {
     // The Gateway operator token and the skills.sh token; the settings screen
     // calls this the Keychain and now it is one.
     secretEncryptor: {
-      isAvailable: () => safeStorage.isEncryptionAvailable(),
+      isAvailable: () => safeStorage.isEncryptionAvailable() && (process.platform !== "linux" || safeStorage.getSelectedStorageBackend() !== "basic_text"),
       encryptString: (value) => safeStorage.encryptString(value),
       decryptString: (value) => safeStorage.decryptString(value),
     },

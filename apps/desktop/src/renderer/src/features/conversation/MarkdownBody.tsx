@@ -11,6 +11,7 @@ interface MarkdownActions {
   githubBaseUrl?: string;
   onOpenFile?: (path: string) => void;
   onOpenLink?: (href: string) => void;
+  renderText?: (text: string) => ReactNode;
 }
 
 interface MarkdownNode {
@@ -116,7 +117,7 @@ function withoutPrefix(node: MarkdownNode, prefix: RegExp): MarkdownNode {
 function renderNode(node: MarkdownNode, actions: MarkdownActions): ReactNode {
   const { token, children } = node;
   switch (token.type) {
-    case "text": return node.text ?? token.content;
+    case "text": return actions.renderText ? actions.renderText(node.text ?? token.content) : node.text ?? token.content;
     case "inline": return renderNodes(children, actions);
     case "softbreak": return "\n";
     case "hardbreak": return <br />;
@@ -124,7 +125,7 @@ function renderNode(node: MarkdownNode, actions: MarkdownActions): ReactNode {
     case "fence":
     case "code_block": return <CodeBlock code={token.content} language={token.info.trim().split(/\s+/)[0]} />;
     case "link_open": return <WebLink href={attribute(token, "href") ?? ""} title={attribute(token, "title")} actions={actions}>
-      {renderNodes(children, { ...actions, onOpenFile: undefined })}
+      {renderNodes(children, { ...actions, onOpenFile: undefined, renderText: undefined })}
     </WebLink>;
     case "image": return <WebLink href={attribute(token, "src") ?? ""} title={attribute(token, "title")} actions={actions}>
       {token.content || "Image"}
@@ -197,7 +198,7 @@ function markdownSections(content: string, actions: MarkdownActions, depth = 0):
 
 /** Safe React nodes shared by chat, review, skills and read-only paired views. */
 export function MarkdownBody({ content, ...actions }: MarkdownActions & { content: string }) {
-  const { githubBaseUrl, onOpenFile, onOpenLink } = actions;
-  const body = useMemo(() => markdownSections(content, { githubBaseUrl, onOpenFile, onOpenLink }), [content, githubBaseUrl, onOpenFile, onOpenLink]);
+  const { githubBaseUrl, onOpenFile, onOpenLink, renderText } = actions;
+  const body = useMemo(() => markdownSections(content, { githubBaseUrl, onOpenFile, onOpenLink, renderText }), [content, githubBaseUrl, onOpenFile, onOpenLink, renderText]);
   return <div className="body">{body}</div>;
 }

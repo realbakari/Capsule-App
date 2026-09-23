@@ -71,6 +71,7 @@ import {
  * all three, so dropping them from the rail costs nothing but the clutter.
  */
 const LIBRARY: Array<{ id: View; label: string; icon: typeof CpuIcon }> = [
+  { id: "channels", label: "Channels", icon: MessageSquareIcon },
   { id: "approvals", label: "Approvals", icon: ShieldIcon },
   { id: "usage", label: "Usage", icon: ChartIcon },
 ];

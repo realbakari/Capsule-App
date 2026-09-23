@@ -38,6 +38,7 @@ export function Palette() {
       { id: "open-folder", label: "Open folder", group: "Actions", icon: <FolderIcon size={15} />, disabledReason: desktopOnly, onSelect: pickProjectDirectory },
       { id: "open-files", label: "Open files", group: "Actions", icon: <FolderIcon size={15} />, disabledReason: desktopOnly, onSelect: pickFilesToMention },
       { id: "chat", label: "Open conversation", group: "Go to", icon: <MessageSquareIcon size={15} />, onSelect: () => setView("chat") },
+      { id: "channels", label: "Shared channels", group: "Go to", icon: <MessageSquareIcon size={15} />, disabledReason: desktopOnly, onSelect: () => setView("channels") },
       { id: "skills", label: "Skills & packs", group: "Go to", onSelect: () => setView("skills") },
       { id: "harness", label: "Agents, harnesses & capabilities", group: "Go to", icon: <CpuIcon size={15} />, onSelect: () => setView("runtimes") },
       { id: "runs", label: "Run history", group: "Go to", onSelect: () => setView("history") },

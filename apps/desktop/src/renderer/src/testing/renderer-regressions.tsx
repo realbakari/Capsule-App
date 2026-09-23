@@ -20,6 +20,7 @@ import { runRuntimeExtensionRegressions } from "./runtime-extension-regressions"
 import { runInterfaceRegressions } from "./interface-regressions";
 import { runPanelRegressions } from "./panel-regressions";
 import { runActivityRegressions, renderActivityPreview } from "./activity-regressions";
+import { runChannelRegressions, renderChannelPreview } from "./channel-regressions";
 import { runComposerLayoutRegressions } from "./composer-layout-regressions";
 import { runMuseSettingsRegressions } from "./muse-settings-regressions";
 import { runDraftAdmissionRegressions } from "./draft-admission-regressions";
@@ -52,6 +53,7 @@ declare global {
     runDiffPreviewRegressions: () => Promise<void>;
     renderDiffPreview: (theme: "dark" | "light", scrolled: boolean) => Promise<void>;
     renderActivityPreview: (closing: boolean, theme: "dark" | "light") => Promise<void>;
+    renderChannelPreview: (surface: "channel" | "thread" | "members" | "empty" | "settings" | "mentions" | "reactions", theme: "dark" | "light") => Promise<void>;
     renderWorkspacePreview: (surface: "sidebar" | "quota" | "runtime", theme: "dark" | "light") => Promise<void>;
   }
 }
@@ -1035,6 +1037,13 @@ window.runRendererRegressions = async () => {
     previewRoot ??= createRoot(host);
     await renderActivityPreview(previewRoot, host, closing);
   };
+  window.renderChannelPreview = async (surface, theme) => {
+    (document.getElementById("composer-test-styles") as HTMLStyleElement).media = "all";
+    host.style.cssText = "width:100%;padding:0;box-sizing:border-box";
+    previewRoot ??= createRoot(host);
+    applyPreviewPalette(theme);
+    await renderChannelPreview(previewRoot, host, surface);
+  };
   window.renderWorkspacePreview = async (surface, theme) => {
     (document.getElementById("composer-test-styles") as HTMLStyleElement).media = "all";
     host.style.cssText = `width:100%;height:100vh;padding:${surface === "sidebar" ? 0 : 16}px;box-sizing:border-box`;
@@ -1231,6 +1240,7 @@ window.runRendererRegressions = async () => {
   await runPanelRegressions(host, contextBase);
   phase("activity and startup");
   await runActivityRegressions(host);
+  await runChannelRegressions(host);
   phase("composer layout matrix");
   await runComposerLayoutRegressions(host, contextBase);
   phase("native settings");

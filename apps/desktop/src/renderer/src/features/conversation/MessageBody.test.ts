@@ -4,6 +4,16 @@ import { describe, expect, it } from "vitest";
 import { MarkdownBody } from "./MessageBody";
 
 describe("chat markdown", () => {
+  it("limits optional text decorations to prose, leaving code and link labels intact", () => {
+    const html = renderToStaticMarkup(createElement(MarkdownBody, {
+      content: "Hello @Alex.\n\n`@Alex` [@Alex](https://example.test)\n\n```text\n@Alex\n```",
+      renderText: (text: string) => createElement("mark", {}, text),
+    }));
+    expect(html).toContain("<mark>Hello @Alex.</mark>");
+    expect(html).toContain("<code>@Alex</code>");
+    expect(html).toContain('href="https://example.test/">@Alex</a>');
+    expect(html).not.toContain("<mark>@Alex</mark>");
+  });
   it("keeps long unmatched markers literal and renders many emphasis spans without recursive tails", () => {
     const unmatched = "_identifier ".repeat(8000);
     const html = renderToStaticMarkup(createElement(MarkdownBody, { content: unmatched }));

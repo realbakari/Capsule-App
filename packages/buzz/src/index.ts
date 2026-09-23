@@ -1,4 +1,6 @@
 import type { ChannelBinding, ConnectionState } from "@capsule/shared";
+export { SharedRelayClient } from "./relay.js";
+export type { RelayCredentialStore } from "./relay.js";
 
 export interface BuzzAdapter {
   listBindings(): Promise<ChannelBinding[]>;

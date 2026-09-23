@@ -19,6 +19,7 @@ need the shipped-product voice.
 - [capsule.json — project config in the repository](./user/project-file.md)
 - [Providers and credentials](./user/providers.md)
 - [Reading from another device](./user/reading-from-another-device.md)
+- [Shared channels](./user/channels.md)
 - [Updating](./user/updating.md)
 - [Diagnostics](./user/diagnostics.md)
 - [Desktop companion](./user/companion.md)
@@ -34,6 +35,7 @@ Setup is in the [root README](../README.md); agent rules in
 - [ACP compatibility map](./internals/acp-compatibility.md)
 - [Update delivery](./internals/updating.md)
 - [OpenClaw notes](./internals/openclaw.md)
+- [Shared-channel adapter](./internals/channels.md)
 - [Architecture pointer](./internals/architecture.md)
 
 ## Where a change belongs

@@ -71,6 +71,7 @@ import {
 } from "./prompt-stash";
 
 export type View =
+  | "channels"
   | "chat"
   | "project"
   | "runtimes"

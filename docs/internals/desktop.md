@@ -6,6 +6,54 @@ Capsule is a workspace, not a clone of any other agent product. Quality bars els
 
 ---
 
+## Shared channels
+
+**Channels** in the library navigation and **Shared channels** in the command
+palette open a relay workspace independently of local conversations. A compact
+directory contains community origin, search, joined filtering and creation.
+Connection details, refresh limits, Remember, Disconnect and Forget live behind **Connection
+options**, not above the transcript. The relay integration boundary and limits
+are documented in [channels.md](channels.md).
+
+The channel header shows name, description, membership and member controls.
+Messages use relay profile pictures (initials on failure), compact author rows,
+separate agent labels and day separators. Threads, members and mentions share
+the same profile image. No generated identities or substitute avatars are used.
+Reply, reaction and copy controls appear on hover or keyboard focus, remaining visible on touch;
+loaded reply counts, participant avatars and last-reply times link to a thread.
+Reaction counts load on demand with add/remove feedback. Threads, searchable members
+and channel settings share the
+right-hand pane. Narrow layouts replace the message pane until closed, rather
+than squeezing two unreadable columns together. Create uses a native modal
+dialog with focus containment and restoration.
+
+The composer grows with text, has an explicit-identity searchable mention
+picker triggered by @ or its toolbar button, and a circular send control.
+Arrow keys navigate suggestions; Enter/Tab selects; Escape dismisses. Selected
+names retain their identity only while the inserted token survives editing.
+Tagged, unambiguous names render as inline prose chips, never inside code or links.
+Enter sends, Shift–Enter inserts a line, and
+IME confirmation does not send. Channel/root drafts are temporary in memory.
+New polling results preserve a reader's position unless already near the end;
+**Latest messages** returns to the bottom. Members can invite or explicitly
+confirm removal of existing identities; relay permissions are authoritative.
+Channel settings show relay-reported visibility, type, archive state and ID,
+without inferred presence or ownership. Name/description edits, archive/unarchive,
+leave and delete use explicit controls. Archive/leave require confirmation;
+deletion additionally requires typing the channel name. Missing metadata stays unknown.
+
+Shared-channel reads and writes are unavailable to paired previews. There is
+no Capsule agent provisioning, hosted runtime, channel-to-local-run dispatch,
+or implicit repository access behind these controls.
+
+Remember on this device is available only with protected credential storage.
+Saved URL/key pairs are restored on opening Channels after restart. Disconnect
+stops the current connection without deleting saved details; Forget removes
+them. A connected user can save without entering their key again. Failed
+restores retain the saved URL and offer reconnect/forget; keys are never sent
+back to the renderer. Temporary credentials stay available if a save fails,
+with a visible warning rather than a false saved indicator.
+
 ## Conversation typography
 
 Markdown prose uses a 1.65 line-height, .85em paragraph spacing and 600-weight
@@ -500,7 +548,6 @@ Startup is owned by the profile-lock winner. Quit cancels pending window reveals
 waits for in-flight startup before cleanup, and publishes a closing state rather
 than a retryable load error. Deep-link routes wait for renderer readiness. IPC waits
 for the complete engine startup, not merely construction of the engine object.
-
 Search ranks exact conversation titles first, then recent activity, consistently
 in the palette and the search API without changing sidebar pin order.
 

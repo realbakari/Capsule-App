@@ -12,6 +12,25 @@ import {
 
 const api = {
   isDesktop: true,
+  relayStatus: (): Promise<import("@capsule/shared").RelayConnectionStatus> => ipcRenderer.invoke(IPC_CHANNELS.relayStatus),
+  connectRelay: (input: import("@capsule/shared").RelayConnectionInput): Promise<import("@capsule/shared").RelayConnectionStatus> => ipcRenderer.invoke(IPC_CHANNELS.connectRelay, input),
+  disconnectRelay: (): Promise<import("@capsule/shared").RelayConnectionStatus> => ipcRenderer.invoke(IPC_CHANNELS.disconnectRelay),
+  rememberRelay: (): Promise<import("@capsule/shared").RelayConnectionStatus> => ipcRenderer.invoke(IPC_CHANNELS.rememberRelay),
+  forgetRelay: (): Promise<import("@capsule/shared").RelayConnectionStatus> => ipcRenderer.invoke(IPC_CHANNELS.forgetRelay),
+  channelAvatar: (pubkey: string): Promise<string | undefined> => ipcRenderer.invoke(IPC_CHANNELS.channelAvatar, pubkey),
+  sharedChannelDetails: (channel: string, name: string): Promise<import("@capsule/shared").SharedChannelDetails | undefined> => ipcRenderer.invoke(IPC_CHANNELS.sharedChannelDetails, channel, name),
+  updateSharedChannel: (input: import("@capsule/shared").ChannelUpdate): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.updateSharedChannel, input),
+  manageSharedChannel: (channel: string, action: import("@capsule/shared").ChannelManagementAction): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.manageSharedChannel, channel, action),
+  channelReactions: (message: string): Promise<import("@capsule/shared").ChannelReaction[]> => ipcRenderer.invoke(IPC_CHANNELS.channelReactions, message),
+  reactToChannelMessage: (message: string, emoji: string, action: "add" | "remove"): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.reactToChannelMessage, message, emoji, action),
+  listSharedChannels: (): Promise<import("@capsule/shared").SharedChannel[]> => ipcRenderer.invoke(IPC_CHANNELS.listSharedChannels),
+  createSharedChannel: (input: import("@capsule/shared").NewSharedChannel): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.createSharedChannel, input),
+  channelMembership: (channel: string, action: "join" | "leave"): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.channelMembership, channel, action),
+  channelMembers: (channel: string): Promise<import("@capsule/shared").ChannelMember[]> => ipcRenderer.invoke(IPC_CHANNELS.channelMembers, channel),
+  inviteChannelMember: (input: import("@capsule/shared").ChannelInvitation): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.inviteChannelMember, input),
+  removeChannelMember: (channel: string, pubkey: string): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.removeChannelMember, channel, pubkey),
+  channelMessages: (channel: string, parent?: string): Promise<import("@capsule/shared").ChannelMessage[]> => ipcRenderer.invoke(IPC_CHANNELS.channelMessages, channel, parent),
+  postChannelMessage: (input: import("@capsule/shared").ChannelPost): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.postChannelMessage, input),
   /* Resolved once at preload time so path display can abbreviate the home
      directory without an IPC round trip on every render. */
   homeDir: os.homedir(),

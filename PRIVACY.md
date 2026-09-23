@@ -1,6 +1,6 @@
 # Privacy
 
-**Last updated: 14 September 2026 · Describes the accompanying desktop build**
+**Last updated: 23 September 2026 · Describes the accompanying desktop build**
 
 Capsule runs on your computer and keeps your work there. This page describes exactly
 what the app stores, what it sends, and when. It describes the software's real
@@ -32,6 +32,7 @@ for a development build. A custom profile uses the selected user-data directory.
 | Window size and position, appearance | `state/window-state.json` | |
 | Skills directory cache | `state/skill-catalog.json` | Public listings, cached so the app does not refetch on every launch. |
 | Gateway and skills.sh tokens | `state/secrets/secrets.json` | Encrypted when platform secure storage is available; see the fallback below. |
+| Remembered shared-channel connection | `state/secrets/shared-relay.json` | Relay URL and identity key, encrypted with platform protected storage. No plaintext fallback. |
 | Per-turn checkpoints | Inside your project's own `.git` | Hidden refs under `refs/capsule/checkpoints/`, excluded from Capsule's normal pushes. |
 | Drafts, stashes, browser history and site data | Electron profile storage | Browser pages use an isolated partition; clearing their data does not clear drafts. |
 | Pasted clipboard images | `attachments/` | Local files retained for message attachments. |
@@ -43,6 +44,9 @@ records. Quit before managing app files and back up anything you need. Token
 encryption depends on platform safeStorage; the adapter can fall back to a
 a plaintext file when encryption is unavailable. On Unix this fallback requests
 mode 0600; Windows access follows the containing user profile's permissions.
+Shared-channel keys do not use this fallback: remembering a connection requires
+protected storage. Disconnect keeps remembered details; Forget connection
+removes them. Saved channel details are not sent to paired viewers.
 
 Workspace browsing is scoped to selected roots. Other features also read chosen
 attachments and icons, global skill directories, CLI transcripts for Usage,
@@ -125,6 +129,19 @@ clipboard paste remain local files in the app profile.
 can read files and make their own network requests with your permissions.
 Gateway plugins and connected services have their own policies. Capsule's
 local-command and web preferences are not an operating-system network sandbox.
+
+**8. Shared channels, when you connect.** The installed relay CLI authenticates
+to the relay you choose. Channel messages, replies, mentions and membership
+changes go to that relay and are available according to its access rules.
+Messages remain on the relay, not in Capsule's local conversation database.
+A remembered connection reconnects when you open Channels after restarting.
+Incoming messages do not start local agents or grant file access.
+
+Visible profile pictures may be fetched from the connected relay or a public
+HTTPS host named in a member's profile. Those hosts receive normal network
+connection information, including your IP address. Capsule sends no relay key,
+cookies or referrer with image requests. Profile images are cached in memory,
+not saved to disk, and missing or unsupported images use initials.
 
 ## What Capsule does *not* do
 

@@ -19,6 +19,7 @@ import {
 } from "./icons";
 
 const VIEW_TITLE: Record<string, string> = {
+  channels: "Channels",
   runtimes: "Harnesses",
   skills: "Skills",
   history: "History",
