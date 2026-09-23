@@ -515,3 +515,67 @@ export function MinusIcon(props: IconProps) {
     </Svg>
   );
 }
+
+export function HashIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M5 9h14M5 15h14M10 3 8 21M16 3l-2 18" />
+    </Svg>
+  );
+}
+
+export function LockIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="5" y="11" width="14" height="10" rx="2" />
+      <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+    </Svg>
+  );
+}
+
+export function StarIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="m12 3 2.6 5.4 6 .8-4.3 4.2 1 5.9L12 16.8 6.7 19.3l1-5.9L3.4 9.2l6-.8z" />
+    </Svg>
+  );
+}
+
+export function UsersIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="9" cy="8" r="3" />
+      <path d="M3 19c0-2.8 2.7-5 6-5s6 2.2 6 5" />
+      <circle cx="17" cy="9" r="2.5" />
+      <path d="M21 19c0-2.2-1.8-4-4.2-4.6" />
+    </Svg>
+  );
+}
+
+export function SmilePlusIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M8.5 10h.01M15.5 10h.01M8.5 14.5s1.5 2 3.5 2 3.5-2 3.5-2" />
+    </Svg>
+  );
+}
+
+export function BellIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M6 9a6 6 0 1 1 12 0c0 7 3 7 3 9H3c0-2 3-2 3-9" />
+      <path d="M10 21a2 2 0 0 0 4 0" />
+    </Svg>
+  );
+}
+
+export function BellOffIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M6 9a6 6 0 0 1 11.3-2.8" />
+      <path d="M18 13v5H4c0-2 3-2 3-9" />
+      <path d="M10 21a2 2 0 0 0 4 0M3 3l18 18" />
+    </Svg>
+  );
+}

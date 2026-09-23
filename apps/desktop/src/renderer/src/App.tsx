@@ -59,7 +59,7 @@ function Shell() {
   }
   return (
     <div
-      className={`app ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}
+      className={`app ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${view === "channels" ? "channels-shell" : ""}`}
       style={style}
     >
       <Sidebar />

@@ -10,7 +10,11 @@ export type ActionMenuIcon =
   | "plus"
   | "folder"
   | "copy"
-  | "settings";
+  | "settings"
+  | "star"
+  | "star-off"
+  | "bell"
+  | "bell-off";
 
 export type SessionActionId =
   | "rename"

@@ -10,6 +10,8 @@ import {
 } from "../../lib/action-menu";
 import {
   ArchiveIcon,
+  BellIcon,
+  BellOffIcon,
   CopyIcon,
   FolderIcon,
   PencilIcon,
@@ -18,6 +20,7 @@ import {
   PlusIcon,
   RefreshIcon,
   SettingsIcon,
+  StarIcon,
   TrashIcon,
 } from "./icons";
 
@@ -32,6 +35,10 @@ const ICONS: Record<ActionMenuIcon, typeof PencilIcon> = {
   folder: FolderIcon,
   copy: CopyIcon,
   settings: SettingsIcon,
+  star: StarIcon,
+  "star-off": StarIcon,
+  bell: BellIcon,
+  "bell-off": BellOffIcon,
 };
 
 export function ActionMenu({

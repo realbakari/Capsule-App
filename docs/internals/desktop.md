@@ -8,32 +8,52 @@ Capsule is a workspace, not a clone of any other agent product. Quality bars els
 
 ## Shared channels
 
+Relay emoji avatars retain their published glyph and color across messages,
+mentions, member lists and thread stacks. Author, mention and member names open
+a keyboard-accessible profile dialog with identity copy and external-agent host
+explanation. Channel and thread composers share selection-aware Markdown
+formatting and a searchable common-emoji picker. No host management or local
+channel-triggered execution is implied by these controls.
+
 **Channels** in the library navigation and **Shared channels** in the command
 palette open a relay workspace independently of local conversations. A compact
 directory contains community origin, search, joined filtering and creation.
+It replaces the project sidebar in this view, without unmounting local work.
+The titlebar offers Back to conversations and toggles the channel directory.
+Browse opens a focus-contained native dialog searching loaded names and descriptions.
+The introduction remains above history with browse, create and membership actions.
 Connection details, refresh limits, Remember, Disconnect and Forget live behind **Connection
 options**, not above the transcript. The relay integration boundary and limits
 are documented in [channels.md](channels.md).
 
-The channel header shows name, description, membership and member controls.
+The channel header shows name, description, membership and a member stack.
 Messages use relay profile pictures (initials on failure), compact author rows,
-separate agent labels and day separators. Threads, members and mentions share
-the same profile image. No generated identities or substitute avatars are used.
-Reply, reaction and copy controls appear on hover or keyboard focus, remaining visible on touch;
-loaded reply counts, participant avatars and last-reply times link to a thread.
-Reaction counts load on demand with add/remove feedback. Threads, searchable members
-and channel settings share the
-right-hand pane. Narrow layouts replace the message pane until closed, rather
-than squeezing two unreadable columns together. Create uses a native modal
-dialog with focus containment and restoration.
+and collapse consecutive posts from the same author. Separate agent labels and
+day separators stay. Threads, members and mentions share the same profile image.
+No generated identities or substitute avatars are used. Reply, reaction and copy
+controls appear on hover or keyboard focus, remaining visible on touch. React
+opens a quick-reaction strip; counts stay as pills under the message and toggle
+the same reaction. Mentions open a compact people list anchored to the composer.
+Threads, members and settings use a side-by-side pane without dimming on wide
+layouts. Thread width, stars, mutes and read markers are local to this device.
+Narrow layouts hide the main channel while the auxiliary pane is open.
+Create uses a native modal dialog with focus
+containment and restoration. `⌥↑` / `⌥↓` walks the visible directory. Header
+search filters only the loaded message window.
 
 The composer grows with text, has an explicit-identity searchable mention
-picker triggered by @ or its toolbar button, and a circular send control.
+picker triggered by @ or its toolbar button, and a separate bottom toolbar with
+mention on the left and circular send on the right. Duplicate names expose
+shortened public identities. Settings use grouped details and spacious action rows.
 Arrow keys navigate suggestions; Enter/Tab selects; Escape dismisses. Selected
 names retain their identity only while the inserted token survives editing.
 Tagged, unambiguous names render as inline prose chips, never inside code or links.
 Enter sends, Shift–Enter inserts a line, and
-IME confirmation does not send. Channel/root drafts are temporary in memory.
+IME confirmation does not send. Channel/root drafts and pending-send admission
+live in a view-owned observable store, not in individual composers. Remounting
+cannot resubmit a pending post; success clears only the submitted revision.
+Both picker entry points prevent Enter from implicitly submitting the form.
+Identical polling snapshots and callback changes do not acknowledge unread again.
 New polling results preserve a reader's position unless already near the end;
 **Latest messages** returns to the bottom. Members can invite or explicitly
 confirm removal of existing identities; relay permissions are authoritative.

@@ -66,6 +66,13 @@ app.whenReady().then(async () => {
         window.setContentSize(width, 800);
         await window.webContents.executeJavaScript(`window.renderChannelPreview(${JSON.stringify(surface)}, ${JSON.stringify(theme)})`);
         fs.writeFileSync(path.join(screenshots, `channels-${surface}-${theme}-${width}.png`), (await window.webContents.capturePage()).toPNG());
+        if (surface === "channel") {
+          await window.webContents.executeJavaScript(`document.querySelector('[aria-label="View Alex profile"]').click(); new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
+          await window.webContents.executeJavaScript(`(() => { const box = document.querySelector('.channel-profile-heading .channel-avatar').getBoundingClientRect(); if (Math.abs(box.width - box.height) > 1) throw new Error('Profile avatar is not square'); })()`);
+          fs.writeFileSync(path.join(screenshots, "channel-profile.png"), (await window.webContents.capturePage()).toPNG());
+          await window.webContents.executeJavaScript(`document.querySelector('[aria-label="Close profile"]').click(); document.querySelector('[aria-label="Formatting options"]').click(); new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
+          fs.writeFileSync(path.join(screenshots, "channel-formatting.png"), (await window.webContents.capturePage()).toPNG());
+        }
       }
     }
     app.exit(0);

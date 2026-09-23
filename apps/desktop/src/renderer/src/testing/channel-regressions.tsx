@@ -27,6 +27,7 @@ function fixture() {
   const actions: string[] = [];
   let reacted = false, archived = false;
   let connected = true, remembered = false, reject = false, rejectReads = false, reads = 0;
+  let pendingPost: Promise<void> | undefined;
   const connections: RelayConnectionInput[] = [];
   const status = () => ({ connected, remembered, hasSaved: remembered, canRemember: true, url: connected || remembered ? "https://relay.example" : undefined });
   const api = {
@@ -45,16 +46,16 @@ function fixture() {
     listSharedChannels: async () => channels.map((channel) => ({ ...channel })),
     createSharedChannel: async () => first,
     channelMembership: async (id: string, action: string) => { channels.find((channel) => channel.id === id)!.joined = action === "join"; },
-    channelMembers: async () => [{ pubkey: human, name: "Alex", role: "member" }, { pubkey: agent, name: "Reviewer", role: "bot" }],
+    channelMembers: async () => [{ pubkey: human, name: "Alex", role: "member", emojiAvatar: { emoji: "😆", color: "#FFE75C" } }, { pubkey: agent, name: "Reviewer", role: "bot" }],
     channelMessages: async (channelId: string, root?: string) => { if (rejectReads) throw new Error("Refresh unavailable"); return channelId === second ? [] : [
       { id: parent, author: human, content: "Please review the keyboard navigation before we release.\n\n- Check focus order.\n- Keep the changes scoped to the dialog.", createdAt: 1_790_170_000 },
       ...(root ? [{ id: "d".repeat(64), author: agent, content: "I’ll check the dialog and report the results here.\n\n```ts\nconst canClose = !pending;\n```", createdAt: 1_790_170_010, rootId: parent, replyTo: parent }] : []),
     ]; },
-    postChannelMessage: async (post: ChannelPost) => { if (reject) throw new Error("The relay did not accept this change."); posts.push(post); return "e".repeat(64); },
+    postChannelMessage: async (post: ChannelPost) => { if (reject) throw new Error("The relay did not accept this change."); posts.push(post); await pendingPost; return "e".repeat(64); },
     inviteChannelMember: async () => {},
     removeChannelMember: async () => {},
   };
-  return { api, posts, actions, connections, fail: (value: boolean) => { reject = value; }, failReads: (value: boolean) => { rejectReads = value; }, reads: () => reads };
+  return { api, posts, actions, connections, deferPost: (promise?: Promise<void>) => { pendingPost = promise; }, fail: (value: boolean) => { reject = value; }, failReads: (value: boolean) => { rejectReads = value; }, reads: () => reads };
 }
 
 export async function runChannelRegressions(host: HTMLElement) {
@@ -66,6 +67,20 @@ export async function runChannelRegressions(host: HTMLElement) {
     root.render(<ChannelsView />);
     await until(() => host.querySelector(".channel-post"));
     const draft = host.querySelector<HTMLTextAreaElement>("textarea")!;
+    assert(host.querySelector(".channel-post .channel-avatar")?.textContent === "😆", "Published emoji avatar was replaced with initials");
+    host.querySelector<HTMLButtonElement>('[aria-label="View Alex profile"]')!.click();
+    await until(() => document.querySelector(".channel-profile-dialog[open]"));
+    assert(document.querySelector(".channel-profile-dialog .channel-avatar")?.textContent === "😆", "Profile avatar differs from the transcript");
+    document.querySelector<HTMLButtonElement>('[aria-label="Close profile"]')!.click(); await settle();
+    fill(draft, "format me"); await settle(); draft.setSelectionRange(0, 6);
+    host.querySelector<HTMLButtonElement>('[aria-label="Formatting options"]')!.click(); await settle();
+    host.querySelector<HTMLButtonElement>('[aria-label="Bold"]')!.click(); await settle();
+    assert(String(draft.value) === "**format** me", "Formatting lost the selected text");
+    host.querySelector<HTMLButtonElement>('[aria-label="Hide formatting"]')!.click(); await settle();
+    draft.setSelectionRange(draft.value.length, draft.value.length);
+    host.querySelector<HTMLButtonElement>('[aria-label="Insert emoji"]')!.click(); await settle();
+    host.querySelector<HTMLButtonElement>('[aria-label="Insert 👍"]')!.click(); await settle();
+    assert(draft.value.endsWith("👍") && Number(test.posts.length) === 0, "Emoji insertion submitted the form or lost the caret");
     fill(draft, "A draft for this channel"); await settle();
     host.querySelector<HTMLButtonElement>('[aria-label="Mention a channel member"]')!.click(); await settle();
     host.querySelectorAll<HTMLButtonElement>(".channel-mention-menu button")[1]!.click(); await settle();
@@ -114,6 +129,35 @@ export async function runChannelRegressions(host: HTMLElement) {
     await until(() => test.posts.length === 4);
     assert(test.posts[3]!.mentions.length === 0, "Deleted mention still notified its identity");
 
+    fill(currentDraft, "Select a recipient"); await settle();
+    host.querySelector<HTMLButtonElement>('[aria-label="Mention a channel member"]')!.click(); await settle();
+    const memberInput = host.querySelector<HTMLInputElement>('[aria-label="Search members"]')!;
+    fill(memberInput, "Reviewer"); await settle();
+    const enter = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+    memberInput.dispatchEvent(enter); await settle();
+    assert(enter.defaultPrevented && Number(test.posts.length) === 4 && currentDraft.value.includes("@Reviewer"), "Picker Enter did not prevent form submission and select the recipient");
+
+    let finishPost!: () => void;
+    test.deferPost(new Promise<void>((resolve) => { finishPost = resolve; }));
+    host.querySelector<HTMLFormElement>(".channel-composer")!.requestSubmit(); await settle();
+    host.querySelectorAll<HTMLButtonElement>(".channel-link")[1]!.click(); await settle();
+    host.querySelectorAll<HTMLButtonElement>(".channel-link")[0]!.click(); await settle();
+    const restoredDraft = host.querySelector<HTMLTextAreaElement>("textarea")!;
+    assert(restoredDraft.disabled && restoredDraft.value.includes("@Reviewer"), "Remount lost pending send admission");
+    host.querySelector<HTMLFormElement>(".channel-composer")!.requestSubmit(); await settle();
+    assert(Number(test.posts.length) === 5, "Remount submitted a duplicate message");
+    finishPost(); test.deferPost();
+    await until(() => !restoredDraft.disabled && !restoredDraft.value);
+
+    const browse = host.querySelector<HTMLButtonElement>(".channel-browse")!;
+    browse.focus(); browse.click(); await settle();
+    const browser = document.querySelector<HTMLDialogElement>('[aria-label="Browse channels"]')!;
+    assert(browser.open && browser.contains(document.activeElement), "Channel browser did not receive modal focus");
+    fill(browser.querySelector<HTMLInputElement>('[aria-label="Find channels"]')!, "Interface reviews"); await settle();
+    assert(browser.querySelectorAll(".channel-browser-results button").length === 1, "Browser did not search descriptions");
+    browser.dispatchEvent(new Event("cancel", { cancelable: true })); await settle();
+    assert(document.activeElement === browse, "Channel browser failed to restore focus");
+
     host.querySelector<HTMLButtonElement>('[aria-label="Reactions"]')!.click();
     await until(() => host.querySelector<HTMLButtonElement>('[aria-label="Add 👍 reaction"]')?.disabled === false);
     test.fail(true); host.querySelector<HTMLButtonElement>('[aria-label="Add 👍 reaction"]')!.click();
@@ -130,6 +174,10 @@ export async function runChannelRegressions(host: HTMLElement) {
     const memberSearch = host.querySelector<HTMLInputElement>('[aria-label="Search channel members"]')!;
     fill(memberSearch, "review"); await settle();
     assert(host.querySelectorAll(".channel-members li").length === 1 && host.querySelector(".channel-members li")?.textContent?.includes("Reviewer"), "Member search did not filter profiles");
+    host.querySelector<HTMLButtonElement>('.channel-members [aria-label="View Reviewer profile"]')!.click();
+    await until(() => document.querySelector(".channel-profile-dialog[open]"));
+    assert(document.querySelector(".channel-profile-dialog")?.textContent?.includes("not your local Capsule harness"), "Agent profile implied local execution");
+    document.querySelector<HTMLButtonElement>('[aria-label="Close profile"]')!.click(); await settle();
     host.querySelector<HTMLButtonElement>('[aria-label="Close members"]')!.click(); await settle();
 
     host.querySelector<HTMLButtonElement>('[aria-label="Channel settings"]')!.click();
@@ -148,11 +196,11 @@ export async function runChannelRegressions(host: HTMLElement) {
     settingsButton("Cancel").click(); await settle();
     host.querySelector<HTMLButtonElement>('[aria-label="Close channel settings"]')!.click(); await settle();
 
-    test.failReads(true); fill(currentDraft, "Keep the last successful snapshot"); await settle();
+    test.failReads(true); fill(restoredDraft, "Keep the last successful snapshot"); await settle();
     host.querySelector<HTMLFormElement>(".channel-composer")!.requestSubmit();
     await until(() => host.textContent?.includes("Refresh unavailable"));
     assert(host.querySelector(".channel-post") && !host.querySelector(".channel-welcome"), "A failed refresh erased loaded messages or claimed an empty channel");
-    test.failReads(false); fill(currentDraft, "Refresh again"); await settle();
+    test.failReads(false); fill(restoredDraft, "Refresh again"); await settle();
     host.querySelector<HTMLFormElement>(".channel-composer")!.requestSubmit();
     await until(() => !host.textContent?.includes("Refresh unavailable"));
 
@@ -196,8 +244,12 @@ export async function runChannelRegressions(host: HTMLElement) {
 
     // Repeated server snapshots must not jump a reader to the bottom.
     const messages = Array.from({ length: 30 }, (_, index) => ({ id: String(index), author: human, content: `Message ${index}`, createdAt: 1_790_170_000 + index }));
-    const renderFeed = () => root.render(<div style={{ display: "flex", height: 200 }}><ChannelFeed messages={[...messages]} members={[]} /></div>);
+    let acknowledgments = 0;
+    const renderFeed = () => root.render(<div style={{ display: "flex", height: 200 }}><ChannelFeed messages={[...messages]} members={[]} onCaughtUp={() => { acknowledgments++; }} /></div>);
     renderFeed(); await settle();
+    assert(acknowledgments === 1, "Opening history did not acknowledge the latest message");
+    renderFeed(); await settle();
+    assert(acknowledgments === 1, "Unrelated rerender or identical poll would undo manual unread");
     const feed = host.querySelector<HTMLDivElement>(".channel-feed")!;
     assert(feed.scrollTop > 0, "Initial channel history did not open at the latest message");
     feed.scrollTop = 0; feed.dispatchEvent(new Event("scroll", { bubbles: true })); await settle();
@@ -230,4 +282,14 @@ export async function renderChannelPreview(root: ReturnType<typeof createRoot>, 
   assert(host.scrollWidth <= host.clientWidth + 1, "Channel preview overflows horizontally");
   const compose = host.querySelector<HTMLElement>(surface === "thread" ? ".channel-thread .channel-composer" : ".channel-main .channel-composer")!;
   assert(compose.getBoundingClientRect().bottom <= window.innerHeight + 1, "Composer is outside the viewport");
+  const field = compose.querySelector<HTMLTextAreaElement>("textarea")!;
+  const tools = compose.querySelector<HTMLElement>(".channel-composer-tools")!;
+  assert(tools.getBoundingClientRect().top >= field.getBoundingClientRect().bottom, "Composer toolbar overlaps the writing area");
+  if (!field.value) assert(compose.getBoundingClientRect().height < 150, "Empty composer retained its hidden placeholder measurement");
+  if (surface === "thread") {
+    const main = host.querySelector<HTMLElement>(".channel-main")!;
+    const thread = host.querySelector<HTMLElement>(".channel-thread")!;
+    if (window.innerWidth >= 1280) assert(main.getBoundingClientRect().right <= thread.getBoundingClientRect().left + 1, "Desktop thread overlays the channel instead of splitting it");
+    else assert(getComputedStyle(main).display === "none", "Narrow thread leaves hidden channel controls focusable");
+  }
 }

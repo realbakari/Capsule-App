@@ -42,10 +42,23 @@ The view polls every five seconds without overlapping its own polling loop;
 hidden views pause polling and unmount cancels timers. Histories are bounded
 recent windows, not a durable local mirror. Markdown uses the existing safe
 renderer; files and images from remote text do not acquire local file access.
-The upstream profile `picture` is the only avatar source; missing/failed images
-use initials for people and agents. Visible avatars request bytes by public key
-over desktop-only IPC, from the main-owned set of known member profiles. No
-generic URL fetch is exposed. Raster PNG/JPEG/WebP/GIF is signature-checked,
+The upstream profile `picture`, `image`, or `avatar_url` is the only avatar
+source, including when `users get` still returns a raw kind 0 event. Missing or
+unsupported images fall back to initials. The fixed inline emoji SVG format is
+decoded in main into an allowlisted emoji string and six-digit hex color; SVG
+markup is never rendered or passed as image bytes. The shared member descriptor
+carries that inert representation to every avatar surface. Raster cache updates
+notify all mounted avatars, and visible failed requests retry after the cache TTL.
+Author, mention and member triggers open an accessible native profile dialog
+with the public key and explicit external-host explanation for agents. It never
+infers a host model, presence or execution state.
+Failed images use initials for people and agents. Visible avatars request bytes
+by public key over desktop-only IPC, from the main-owned set of known member
+profiles. Relay `/media/` blobs are loaded with `buzz media get`, which signs
+the request. One picture is fetched once per connection and reused everywhere
+it appears; two downloads run at a time so they do not stampede the transcript.
+Other hosts stay anonymous public HTTPS. No generic URL fetch is
+exposed. Raster PNG/JPEG/WebP/GIF is signature-checked,
 limited to 256 KiB, six concurrent requests, four seconds per request and two
 redirects. Profile metadata and the session-local cache are bounded. Downloads
 carry no credentials/cookies/referrer. Non-relay hosts must use public HTTPS;
@@ -56,10 +69,18 @@ data URLs, so its image CSP stays closed to remote origins. Disconnect cancels
 downloads and drops profile/cache data. No photos are written to disk.
 
 Unsent text and explicit public-key mention ranges are memory-only, keyed by room and
-root message while the view is mounted. An acknowledged post clears its draft;
+root message while the view is mounted. A view-owned observable draft store
+also owns pending admission and errors, so navigating away and back cannot
+admit duplicate posts. An acknowledged post clears only its submitted revision;
 a rejected post preserves it. The renderer does not auto-retry ambiguous writes.
 Edits inside a selected mention invalidate its recipient; surrounding edits shift
-the range. Typed autocomplete respects IME, selection, Escape and arrow keys.
+the range. Both typed and toolbar autocomplete respect IME, selection, Escape
+and arrow keys; Enter selects rather than implicitly submitting a form.
+Colliding names carry shortened identity hints. The channel and thread composer toolbar inserts Markdown
+using selection-aware edits and retains untouched signed mention ranges. Emoji
+insertion is local text editing, not a relay command. History acknowledges catch-up
+only when the latest message changes or the user chooses Latest, not on every
+callback rerender or identical poll.
 Only unambiguous names from signed message p-tags receive prose decorations;
 Markdown code and link labels stay literal. Reply-marked references route replies
 back to their root, even outside the recent window. Root-only references remain

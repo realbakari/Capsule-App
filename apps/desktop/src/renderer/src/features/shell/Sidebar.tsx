@@ -11,6 +11,7 @@ import {
   type MenuAnchor,
 } from "../../lib/action-menu";
 import { showNativeContextMenu } from "../../lib/bridge";
+import { CHANNEL_PREFS_EVENT, loadChannelPrefs, unreadChannelCount } from "../../lib/channel-prefs";
 import {
   compactRelativeTime,
   formatWorkingDurationLabel,
@@ -185,6 +186,12 @@ export function Sidebar() {
   const [expandedGroups, setExpandedGroups] = useState<Set<SidebarStatusGroupId>>(new Set());
   const latestRuns = useMemo(() => latestSidebarRuns(projectRuns), [projectRuns]);
   const pendingApprovals = approvals.filter((item) => item.status === "pending").length;
+  const [channelUnread, setChannelUnread] = useState(() => unreadChannelCount(loadChannelPrefs()));
+  useEffect(() => {
+    const sync = () => setChannelUnread(unreadChannelCount(loadChannelPrefs()));
+    window.addEventListener(CHANNEL_PREFS_EVENT, sync);
+    return () => window.removeEventListener(CHANNEL_PREFS_EVENT, sync);
+  }, []);
 
   const activeSessions = sessions.filter((item) => item.state === "active");
   const needle = query.trim().toLowerCase();
@@ -827,7 +834,7 @@ export function Sidebar() {
           </button>
           {LIBRARY.map((item) => {
             const Icon = item.icon;
-            const badge = item.id === "approvals" && pendingApprovals > 0 ? pendingApprovals : 0;
+            const badge = item.id === "approvals" && pendingApprovals > 0 ? pendingApprovals : item.id === "channels" ? channelUnread : 0;
             return (
               <button
                 key={item.id}

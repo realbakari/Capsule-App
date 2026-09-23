@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ChannelManagementAction, ChannelMember, SharedChannel, SharedChannelDetails } from "@capsule/shared";
 import { ChannelAvatar } from "./ChannelMessages";
 import { formatUserError } from "../../lib/errors";
-import { XIcon } from "../shell/icons";
+import { ArchiveIcon, HashIcon, LockIcon, TrashIcon, XIcon } from "../shell/icons";
 
 type Api = typeof window.capsule;
 export function ChannelDetails({ api, channel, members, close, showMembers, changed }: {
@@ -49,7 +49,7 @@ export function ChannelDetails({ api, channel, members, close, showMembers, chan
   return <aside className="channel-thread channel-details" aria-label="Channel settings">
     <header className="channel-room-header"><h3>Channel settings</h3><button ref={closeButton} className="icon-btn" disabled={busy} aria-label="Close channel settings" onClick={close}><XIcon size={16} /></button></header>
     <div className="channel-member-content">
-      <div className="channel-details-heading"><span className="channel-welcome-mark" aria-hidden="true">#</span><h2>{channel.name}</h2><p>{channel.description}</p></div>
+      <div className="channel-details-heading"><span className="channel-welcome-mark" aria-hidden="true">{details?.visibility === "private" ? <LockIcon size={30} /> : <HashIcon size={30} />}</span><h2>{channel.name}</h2><p>{channel.description}</p></div>
       {error && <p className="channels-error" role="alert">{error}</p>}{notice && <p className="channels-hint" role="status">{notice}</p>}
       {!loaded ? <p className="channels-hint" role="status">Loading channel details…</p> : <dl className="channel-facts">
         <div><dt>Visibility</dt><dd>{details?.visibility === "private" ? "Private" : details?.visibility === "public" ? "Public" : "Not reported by the relay"}</dd></div>
@@ -67,8 +67,8 @@ export function ChannelDetails({ api, channel, members, close, showMembers, chan
       </form> : <div className="channel-management">
         <button disabled={busy || !!confirm} onClick={() => { setName(channel.name); setDescription(channel.description); setEditing(true); }}>Edit details</button>
         {channel.joined && <button disabled={busy || !!confirm} onClick={() => setConfirm("leave")}>Leave channel</button>}
-        {details && <button disabled={busy || !!confirm} onClick={() => setConfirm(details.archived ? "unarchive" : "archive")}>{details.archived ? "Unarchive channel" : "Archive channel"}</button>}
-        <button className="channel-destructive" disabled={busy || !!confirm} onClick={() => { setConfirmation(""); setConfirm("delete"); }}>Delete channel</button>
+        {details && <button disabled={busy || !!confirm} onClick={() => setConfirm(details.archived ? "unarchive" : "archive")}><ArchiveIcon size={18} />{details.archived ? "Unarchive channel" : "Archive channel"}</button>}
+        <button className="channel-destructive" disabled={busy || !!confirm} onClick={() => { setConfirmation(""); setConfirm("delete"); }}><TrashIcon size={18} />Delete channel</button>
       </div>}
       {confirm && <form className="channel-form channel-remove-confirm" onSubmit={(event) => {
         event.preventDefault();

@@ -80,9 +80,9 @@ export function Titlebar() {
   const sessionTitle = session?.title ?? "";
 
   return (
-    <header className={`page-header ${sidebarCollapsed ? "with-traffic" : ""}`}>
+    <header className={`page-header ${sidebarCollapsed || view === "channels" ? "with-traffic" : ""}`}>
       {view === "chat" ? <h1 className="sr-only">{sessionTitle || projectName}</h1> : null}
-      {sidebarCollapsed ? <SidebarToggle /> : null}
+      {sidebarCollapsed || view === "channels" ? <SidebarToggle /> : null}
       <div className="header-actions header-lead">
         <div className="page-title breadcrumb-title">
           {view === "chat" ? (
@@ -100,7 +100,7 @@ export function Titlebar() {
               ) : null}
             </div>
           ) : (
-            <b>{VIEW_TITLE[view] ?? ""}</b>
+            <div className="topbar-breadcrumb">{view === "channels" && <button className="ghost" onClick={() => setView("chat")}>Back to conversations</button>}<b>{VIEW_TITLE[view] ?? ""}</b></div>
           )}
         </div>
       </div>
