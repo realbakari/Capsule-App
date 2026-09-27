@@ -28,6 +28,13 @@ app.whenReady().then(async () => {
   const errors = [];
   window.webContents.on("console-message", (_event, level, message) => { if (level === 3) errors.push(message); });
   async function evaluate(script) { return window.webContents.executeJavaScript(script); }
+  async function capture(name) {
+    const destination = process.env.CAPSULE_SHOWCASE_SCREENSHOTS;
+    if (!destination) return;
+    fs.mkdirSync(destination, { recursive: true });
+    const screenshot = await window.webContents.capturePage();
+    fs.writeFileSync(path.join(destination, `${name}.png`), screenshot.toPNG());
+  }
   async function waitFor(expression) {
     for (let i = 0; i < 100; i++) {
       if (await evaluate(expression)) return;
@@ -38,17 +45,48 @@ app.whenReady().then(async () => {
   try {
     await window.loadURL(origin);
     await waitFor("Boolean(document.querySelector('.site-preview'))");
+    assert.match(await evaluate("document.title"), /Your coding agents/);
+    assert.match(await evaluate("document.querySelector('meta[name=description]').content"), /review diffs/);
+    assert.match(await evaluate("document.querySelector('meta[property=\"og:image\"]').content"), /^https:\/\//);
+    assert.equal(await evaluate("document.querySelectorAll('main h1').length"), 1);
+    assert.equal(await evaluate("[...document.querySelectorAll('.site a[href^=\"#\"]')].every(a => document.querySelector(a.getAttribute('href')))"), true);
+    const downloads = await evaluate("[...document.querySelectorAll('.site-download-grid a[class]')].map(a => a.href)");
+    assert.equal(downloads.length, 2);
+    assert.match(downloads[0], /\/releases\/download\/v0\.7\.0\/Capsule-0\.7\.0-arm64\.dmg$/);
+    assert.match(downloads[1], /\/releases\/download\/v0\.7\.0\/Capsule-0\.7\.0-x64-setup\.exe$/);
     await evaluate("document.querySelector('.site-preview').scrollIntoView()");
     // A lazy iframe can have a document without a body while navigation starts.
     await waitFor("document.querySelector('.site-preview')?.contentDocument?.body?.textContent?.includes('Two columns were reserved')");
+    await capture("public-desktop-preview");
+    await evaluate("document.querySelector('.site').scrollTo({top:0,behavior:'instant'})");
+    await capture("public-desktop");
     assert.equal(await evaluate("Boolean(document.querySelector('.app'))"), false, "Desktop shell leaked into marketing document");
     assert.equal(await evaluate("document.querySelector('.site-preview').contentDocument.querySelector('.showcase-preview').inert"), true);
-    assert.equal(await evaluate("document.querySelectorAll('a[href=\"/privacy\"]').length"), 1);
+    assert.equal(await evaluate("document.querySelectorAll('footer a[href=\"/privacy\"]').length"), 1);
     // Renderer-only operations must not pretend to succeed in the sample bridge.
     assert.match(await evaluate("window.capsule.sendMessage({}).then(() => 'unexpected success', error => error.message)"), /sample workspace/);
     window.setContentSize(390, 844);
     await waitFor("!document.querySelector('.site-preview')");
+    assert.equal(await evaluate("Boolean(document.querySelector('.site-compact-preview'))"), true);
+    assert.match(await evaluate("document.querySelector('.site-compact-preview').textContent"), /not a live agent session/);
+    await evaluate("document.querySelector('.site').scrollTo({top:0,behavior:'instant'})");
+    await capture("public-mobile");
     assert.equal(await evaluate("document.querySelector('.site').scrollWidth <= innerWidth"), true, "Mobile page overflows horizontally");
+    await evaluate("document.querySelector('.site-compact-preview').scrollIntoView({behavior:'instant'})");
+    await capture("public-mobile-preview");
+    await evaluate("document.querySelector('.site-nav a[href=\"#download\"]').click()");
+    await waitFor("location.hash === '#download' && document.querySelector('#download').getBoundingClientRect().top < innerHeight");
+    await capture("public-downloads");
+    await evaluate("document.querySelector('.site-source summary').click()");
+    assert.equal(await evaluate("document.querySelector('.site-source').open"), true);
+    await evaluate("document.querySelector('.site-copy').click()");
+    await waitFor("document.querySelector('.site-source [role=status]').textContent !== 'The command downloads dependencies and starts the desktop app.'");
+    assert.equal(await evaluate("document.querySelector('.site').scrollWidth <= innerWidth"), true, "Expanded source command overflows mobile");
+    window.setContentSize(320, 740);
+    assert.equal(await evaluate("document.querySelector('.site').scrollWidth <= innerWidth"), true, "Narrow mobile page overflows");
+    window.setContentSize(1440, 1000);
+    await waitFor("Boolean(document.querySelector('.site-preview'))");
+    assert.equal(await evaluate("Boolean(document.querySelector('.site-compact-preview'))"), false);
     for (const slug of ["privacy", "security", "terms"]) {
       await window.loadURL(`${origin}/${slug}`);
       await waitFor("Boolean(document.querySelector('.policy-body h2'))");

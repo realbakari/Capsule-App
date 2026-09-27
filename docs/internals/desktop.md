@@ -1252,7 +1252,16 @@ mounting the desktop shell into its own document. The sample subtree is inert;
 the surrounding copy explicitly labels it read-only. Desktop shortcuts,
 full-height layout and overlays stay in the preview document. A sample bridge
 returns shaped read results and rejects unsupported operations. It does not
-connect to a Gateway or agent. Mobile omits the preview below 900px.
+connect to a Gateway or agent. Below 900px a labelled task-and-diff illustration
+replaces the iframe, so mobile visitors still see a readable example.
+
+The public page leads with the task-to-review workflow, then supported agents,
+direct-first setup, data handling, and platform downloads. Download URLs are
+pinned to an explicitly published version in `LandingPage.tsx`, independent of
+the workspace package version. Update that version only after verifying the
+release assets. Unreleased channel routing is not advertised. Provider data
+handling is distinguished from local workspace storage. Static HTML includes
+search and social metadata plus a no-script download link.
 
 `scripts/showcase-regressions.test.mjs` exercises the real public entry point
 in an isolated Electron profile with external traffic blocked: desktop sample,

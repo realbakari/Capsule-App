@@ -65,4 +65,10 @@ conversations into a custom order; switching views keeps project expansion state
 The website shows a read-only sample of the interface, not a running agent or
 your own workspace. Its displayed project, conversation and connection state
 are sample data. Download the desktop app to send messages or use workspace
-controls. On smaller screens, the website omits this desktop preview.
+controls. Smaller screens show a labelled task-and-diff illustration instead
+of the desktop preview. Neither preview executes code.
+
+The download section offers separate macOS Apple Silicon and Windows x64
+downloads, with release notes and checksums. The Windows download is an unsigned
+preview. Read its installation guidance before running the installer. Agent
+accounts and usage costs are separate from Capsule.

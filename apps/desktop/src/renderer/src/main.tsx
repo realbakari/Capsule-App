@@ -71,6 +71,7 @@ window.addEventListener("unhandledrejection", (event) => {
  * itself cannot tell the difference.
  */
 const isDesktop = Boolean(window.capsule);
+if (isDesktop) document.title = "Capsule";
 const remoteToken = isDesktop ? undefined : await resolveRemoteToken();
 const isShowcase = !isDesktop && !remoteToken && new URLSearchParams(window.location.search).get("showcase") === "1";
 if (!isDesktop) {

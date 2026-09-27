@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { build } from "esbuild";
@@ -15,11 +15,10 @@ it("loads the public showcase without leaking desktop controls or overflowing mo
       define: { "process.env.NODE_ENV": '"test"' },
       loader: { ".woff2": "file", ".woff": "file", ".ttf": "file", ".png": "file" },
     });
-    await writeFile(path.join(directory, "index.html"), `<!doctype html><html><head>
-      <meta name="viewport" content="width=device-width, initial-scale=1">
-      <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'">
-      <link rel="stylesheet" href="/main.css"></head><body><div id="root"></div>
-      <script type="module" src="/main.js"></script></body></html>`);
+    const shell = await readFile("apps/desktop/src/renderer/index.html", "utf8");
+    await writeFile(path.join(directory, "index.html"), shell
+      .replace('src="./src/main.tsx"', 'src="/main.js"')
+      .replace("</head>", '<link rel="stylesheet" href="/main.css"></head>'));
     const env = { ...process.env };
     delete env.ELECTRON_RUN_AS_NODE;
     const result = await new Promise((resolve, reject) => {

@@ -3,8 +3,8 @@ import { LandingPage } from "./LandingPage";
 
 /*
  * The demo shot embeds the real app, and Capsule's shell is a three-column
- * desktop layout — on a phone it collapses into something that misrepresents
- * the product. Below the breakpoint the page renders without it.
+ * desktop layout. Below the breakpoint, use a labelled task-and-diff
+ * illustration rather than shrinking the app until its text is unreadable.
  */
 const WIDE = "(min-width: 900px)";
 
