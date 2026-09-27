@@ -208,7 +208,12 @@ export class DirectAcpHost {
       if (this.closing) throw new Error("The direct agent host is shutting down.");
       // Local adapters have different launch flags. Their reported protocol
       // selector is authoritative; never invent a --model CLI argument.
-      if (preset?.directCommand && input.model && !input.resume) await session.setConfig("model", input.model);
+      if (preset?.directCommand && input.model && !input.resume) {
+        const option = session.reportedCapabilities?.configOptions.find((item) => item.type !== "boolean" && item.category === "model")
+          ?? session.reportedCapabilities?.configOptions.find((item) => item.type !== "boolean" && item.id === "model");
+        if (!option) throw new Error("This agent does not report a mutable model option. Start it with its default model or update its adapter.");
+        await session.setConfig(option.id, input.model);
+      }
     } catch (error) {
       await this.closeAcp(key);
       throw error;

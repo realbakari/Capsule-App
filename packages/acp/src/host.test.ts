@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { DirectAcpSession } from "./session.js";
-import { PRESET_HARNESSES, type DirectSessionIdentity } from "@capsule/shared";
+import { PRESET_HARNESSES, readAgentCapabilities, type DirectSessionIdentity } from "@capsule/shared";
 import path from "node:path";
 
 import {
@@ -71,15 +71,31 @@ describe("spawning an agent that has no ACP mode", () => {
 it.each(["claude", "codex"] as const)("starts the local %s adapter and sets its model over the protocol", async (harnessId) => {
   const start = vi.spyOn(DirectAcpSession.prototype, "start").mockResolvedValue("fixture");
   const configure = vi.spyOn(DirectAcpSession.prototype, "setConfig").mockResolvedValue();
+  const capabilities = vi.spyOn(DirectAcpSession.prototype, "reportedCapabilities", "get").mockReturnValue(readAgentCapabilities({}, [
+    { id: "provider-model", category: "model", name: "Model", type: "select", currentValue: "default", options: [{ value: "default" }, { value: "reported-model" }] },
+  ]));
   const close = vi.spyOn(DirectAcpSession.prototype, "close").mockResolvedValue();
   const host = new DirectAcpHost();
   try {
     const result = await host.spawnAcpSession({ harnessId, model: "reported-model", cwd: process.cwd() });
     expect(result.command).toBe(harnessId === "claude" ? "claude-agent-acp" : "codex-acp");
     expect(result.sessionKey).toMatch(new RegExp(`^direct:acp:${harnessId}:`));
-    expect(configure).toHaveBeenCalledWith("model", "reported-model");
+    expect(configure).toHaveBeenCalledWith("provider-model", "reported-model");
     expect(start).toHaveBeenCalledOnce();
-  } finally { await host.closeAll(); start.mockRestore(); configure.mockRestore(); close.mockRestore(); }
+  } finally { await host.closeAll(); start.mockRestore(); configure.mockRestore(); capabilities.mockRestore(); close.mockRestore(); }
+});
+
+it("closes an adapter without a reported model control instead of silently ignoring a requested model", async () => {
+  const start = vi.spyOn(DirectAcpSession.prototype, "start").mockResolvedValue("fixture");
+  const configure = vi.spyOn(DirectAcpSession.prototype, "setConfig").mockResolvedValue();
+  const capabilities = vi.spyOn(DirectAcpSession.prototype, "reportedCapabilities", "get").mockReturnValue(readAgentCapabilities({}, []));
+  const close = vi.spyOn(DirectAcpSession.prototype, "close").mockResolvedValue();
+  const host = new DirectAcpHost();
+  try {
+    await expect(host.spawnAcpSession({ harnessId: "codex", model: "requested-model" })).rejects.toThrow("does not report a mutable model option");
+    expect(configure).not.toHaveBeenCalled();
+    expect(close).toHaveBeenCalledOnce();
+  } finally { await host.closeAll(); start.mockRestore(); configure.mockRestore(); capabilities.mockRestore(); close.mockRestore(); }
 });
 
 it("closes a failed handshake without retaining the session or sending a turn", async () => {

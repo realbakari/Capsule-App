@@ -75,7 +75,10 @@ rewrite Gateway agent mappings. Direct readiness and Doctor check the adapter
 executable; login probes still target the provider CLI, never the adapter.
 Spawn gates a missing adapter before recording a new harness session. Model
 selection uses the adapter's reported protocol control after initialization,
-not an invented launch flag. Existing owned-session resume validates the saved
+not an invented launch flag. Startup resolves the model-category option's exact
+ID (falling back to a reported `model` ID), rather than assuming the wire ID is
+literally `model`. An absent control fails explicitly and closes the owned
+session; it does not silently ignore the selected model. Existing owned-session resume validates the saved
 command identity as well as cwd and harness. No automatic package installation,
 credential reader or new agent loop is added.
 
