@@ -7,8 +7,69 @@ unchanged. `SharedRelayClient` in `@capsule/buzz` supplies the new desktop view.
 
 Main owns the client. Named IPC methods validate origins, IDs, message sizes,
 roles and acknowledgments. The renderer imports shared types only. Both local
-runtime routes can coexist with this view; no ACP/provider messages are injected
-into either route. An incoming message is display data, never a command.
+runtime routes can coexist with this view. Incoming messages are display data
+unless the authenticated user explicitly enables the local route below.
+
+## Persistent channel routes
+
+`ChannelRoutes` bridges the installed relay CLI to the existing session/run
+pipeline. It does not implement an agent loop, ACP server or channel protocol.
+`configureChannelRoute` records origin, authenticated public identity, channel,
+project and harness in the local settings repository. `channelRouteStatus`
+exposes run links, runtime errors, approval waits and delivery state. Both IPC
+methods are denied to paired viewers, including the read.
+
+The five-second, non-overlapping main-process poll admits only new messages
+authored by the authenticated identity and starting with `@capsule`. Enabling
+records a baseline; existing messages and other members' messages never run.
+Polling continues while the app is open after Channels restores credentials.
+Each relay root maps to a saved project conversation; its continuation uses
+that session's established direct or Gateway route. New conversations use
+Supervised permissions and the local project folder, without setup actions.
+
+Admissions are persisted before launch, serialize per channel, and retain a
+timestamp watermark and deduplication ledger. Restart does not replay queued or
+interrupted work. A completed result is published to the original root as the
+connected identity with a Capsule/harness label and no agent notification tags.
+Delivery is persisted as pending before sending; missing acknowledgments and
+restarts during sending become uncertain, never automatic retries. Empty or
+oversize results stay local with a visible explanation. Errors pause admission;
+approval waits remain inspectable in the conversation. Pause suppresses new
+work and replies, not an already running agent. Stop run remains explicit.
+
+Bounds: 16 saved routes, 200 local turns per route, ten pending turns, recent
+100 relay messages. A full history window beyond the saved watermark pauses
+rather than claiming everything was consumed. Re-enabling skips the current
+window and preserves prior thread sessions for the same project/harness.
+Future-dated events cannot advance the watermark. Identity changes fence all
+in-flight work; stored routes never transfer to another relay identity.
+
+## Explicit harness delegation
+
+`ChannelHarness` in Core admits **Run with Capsule** on a selected message. Main
+re-fetches the joined channel and bounded message window, validates the source
+ID, then creates a Supervised, local-folder conversation through `createSession`
+and `sendMessage`. There is no second agent loop or relay agent provisioning.
+Every harness uses its existing route and capability checks. Gateway prompt
+limitations and direct approval handling remain unchanged. Project worktree
+setup actions are not triggered by this entry point.
+
+Concurrent admission for the same message shares one promise. At most 100
+connection-scoped jobs are retained; terminal jobs can be evicted, but their
+normal sessions and runs remain persisted. Jobs bind to the relay connection
+generation, so reconnecting even to the same URL cannot reuse publication rights.
+Opening or polling never starts execution. A disconnect during an admitted run
+does not cancel that local conversation, but blocks later relay publication.
+
+Completed results require explicit reviewed sharing. Main fixes the destination
+to the original channel/thread and sends no mention recipients. Publication is
+labelled with the harness and uses the connected human identity. Pending sends
+cannot be duplicated; uncertain sends cannot be retried automatically. The
+renderer cannot supply a different source prompt or destination to these APIs.
+`runChannelHarness`, `listChannelHarnessJobs` and `shareChannelHarnessReply` are
+all write-scoped and denied to paired viewers, including job/result reads.
+Selected source text and results enter the normal local conversation database;
+unselected channel history remains a memory-only recent window.
 
 ## Process and identity boundary
 

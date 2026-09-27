@@ -98,6 +98,9 @@ export class SharedRelayClient {
   private identity?: Promise<string | undefined>;
   constructor(private readonly execute: RelayCommand = runRelayCommand, private readonly storage?: RelayCredentialStore, private readonly bytes: RelayBytes = runRelayBytes) {}
 
+  /** Changes even when reconnecting to the same relay with a different identity. */
+  get connectionRevision(): number { return this.generation; }
+
   status(): RelayConnectionStatus {
     return { connected: this.connected, url: this.connection?.url ?? this.saved?.url,
       remembered: !!this.saved && (!this.connection || (this.saved.url === this.connection.url && this.saved.digest === keyDigest(this.connection.privateKey))),
@@ -253,16 +256,24 @@ export class SharedRelayClient {
     const connection = this.connection;
     const response = record(await this.command(["reactions", "get", "--event", id]));
     // The CLI resolves its own public identity; never send the private key to the renderer.
-    const identity = await (this.identity ??= this.command(["users", "get"]).then((value) => {
-      const profiles = rows(value, 1);
-      return profiles.length ? identifier(record(profiles[0]).pubkey, "identity") : undefined;
-    }).catch(() => undefined));
+    const identity = await this.currentIdentity().catch(() => undefined);
     if (this.connection !== connection) throw new Error("The channel connection changed.");
     return rows(response.reactions, 200).map((value) => {
       const row = record(value);
       const pubkeys = new Set(rows(row.pubkeys, 2000).map((key) => identifier(key, "identity")));
       return { emoji: text(row.emoji, 64, "reaction"), count: pubkeys.size, ...(identity ? { mine: pubkeys.has(identity) } : {}) };
     }).filter((reaction) => reaction.count > 0);
+  }
+  /** Resolve the authenticated public identity, never a renderer-supplied author. */
+  async currentIdentity(): Promise<string> {
+    const generation = this.generation;
+    const identity = await (this.identity ??= this.command(["users", "get"]).then((value) => {
+      const profiles = rows(value, 1);
+      return profiles.length ? identifier(record(profiles[0]).pubkey, "identity") : undefined;
+    }).catch((error) => { if (generation === this.generation) this.identity = undefined; throw error; }));
+    if (generation !== this.generation || !this.connected) throw new Error("The channel connection changed.");
+    if (!identity) { this.identity = undefined; throw new Error("The relay could not confirm your public identity."); }
+    return identity;
   }
   async react(messageId: string, emoji: string, action: "add" | "remove"): Promise<void> {
     const id = identifier(messageId, "message");

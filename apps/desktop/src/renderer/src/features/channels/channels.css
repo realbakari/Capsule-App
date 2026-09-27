@@ -327,3 +327,38 @@
   .channel-link { width: auto; flex: 0 0 auto; max-width: 12rem; }
   .channel-post-content { padding-right: 0; }
 }
+.channel-harness-dialog {
+  box-sizing: border-box;
+  width: min(38rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 3rem);
+  overflow: auto;
+  padding: 1.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 1rem;
+  background: var(--surface-0);
+  color: var(--text);
+  font-size: .875rem;
+}
+.channel-harness-dialog::backdrop { background: #0009; }
+.channel-harness-dialog > header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.channel-harness-dialog h2 { margin: 0; font-size: 1.125rem; }
+.channel-run-permissions summary { cursor: pointer; color: var(--text-muted); font-size: .8125rem; }
+.channel-harness-dialog blockquote { margin: 1rem 0; padding: .75rem; border-left: 2px solid var(--border-color); overflow-wrap: anywhere; white-space: pre-wrap; max-height: 9rem; overflow: auto; }
+.channel-run-result { display: grid; gap: .75rem; }
+.channel-run-result label { display: grid; gap: .5rem; }
+.channel-run-result textarea { box-sizing: border-box; width: 100%; resize: vertical; min-height: 8rem; padding: .75rem; border: 1px solid var(--border-color); border-radius: .5rem; background: var(--bg); color: inherit; font: inherit; }
+.channel-route-control { min-width: 0; padding: 0.65rem 0.35rem; border-bottom: 1px solid var(--border-color); margin-bottom: 0.5rem; font-size: 0.8125rem; }
+.channel-route-heading, .channel-route-run { display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem; min-width: 0; }
+.channel-route-heading > svg { flex: none; color: var(--text-muted); }
+.channel-route-heading > button { text-align: start; white-space: normal; }
+.channel-route-heading select, .channel-route-settings select { max-width: 100%; min-width: 0; background: var(--surface-0); color: var(--text); border: 1px solid var(--border-color); border-radius: 0.5rem; padding: 0.35rem 0.5rem; font: inherit; }
+.channel-route-settings { display: grid; gap: 0.9rem; padding-block: 0.65rem; font-size: 0.875rem; }
+.channel-route-dialog { width: min(32rem, calc(100vw - 2rem)); }
+.channel-harness-dialog .primary { border: 1px solid transparent; border-radius: 0.6rem; background: var(--text); color: var(--bg); padding: 0.6rem 0.85rem; font: inherit; font-weight: 600; cursor: pointer; }
+.channel-harness-dialog .primary:disabled { opacity: 0.45; cursor: not-allowed; }
+.channel-harness-dialog .primary:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
+.channel-route-settings > .primary { justify-self: start; margin-top: 0.5rem; white-space: normal; }
+.channel-route-settings label { display: grid; gap: 0.25rem; }
+.channel-route-settings p, .channel-route-control > p { margin: 0.4rem 0 0; }
+.channel-route-run { margin-top: 0.45rem; }
+.channel-route-run > span { color: var(--text-muted); }

@@ -3,12 +3,13 @@ import type { ChannelMessage, ChannelReaction } from "@capsule/shared";
 import { useWorkspace } from "../../lib/workspace";
 import { formatUserError } from "../../lib/errors";
 import { CopyIcon, MessageSquareIcon, SmilePlusIcon, XIcon } from "../shell/icons";
+import { ChannelHarnessAction } from "./ChannelHarnessAction";
 
 const reactionCache = new Map<string, ChannelReaction[]>();
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "🎉", "👀"];
 
 /** Fetch on explicit interaction, never one subprocess per post on render. */
-export function ChannelMessageActions({ message, reply, author }: { message: ChannelMessage; reply?: () => void; author: string }) {
+export function ChannelMessageActions({ message, reply, author, channelId }: { message: ChannelMessage; reply?: () => void; author: string; channelId?: string }) {
   const { api } = useWorkspace();
   const [open, setOpen] = useState(false);
   const [reactions, setReactions] = useState<ChannelReaction[] | undefined>(() => reactionCache.get(message.id));
@@ -46,6 +47,7 @@ export function ChannelMessageActions({ message, reply, author }: { message: Cha
   const extras = reactions?.filter((reaction) => !QUICK_REACTIONS.includes(reaction.emoji)) ?? [];
   return <>
     <div className={`channel-message-actions${open ? " open" : ""}`} aria-label="Message actions">
+      {channelId && <ChannelHarnessAction channelId={channelId} message={message} />}
       <button ref={trigger} className="icon-btn" aria-label="Reactions" title="React" aria-expanded={open} onClick={() => { setOpen((value) => !value); if (!open) void perform(); }}><SmilePlusIcon size={15} /></button>
       {reply && <button className="icon-btn" aria-label={`Reply to ${author} in thread`} title="Reply in thread" onClick={reply}><MessageSquareIcon size={15} /></button>}
       <button className="icon-btn" aria-label="Copy message" title="Copy message" onClick={() => { void navigator.clipboard.writeText(message.content).catch(() => { if (mounted.current) setError("Could not copy the message."); }); }}><CopyIcon size={15} /></button>

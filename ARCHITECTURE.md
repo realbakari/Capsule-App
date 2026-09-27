@@ -230,7 +230,8 @@ desktop Channels view connects to a self-hosted relay through the installed
 `buzz` CLI, independently of either local runtime route. `SharedRelayClient`
 owns validated, bounded operations; the upstream CLI owns signing, identity
 authorization, membership and protocol details. No Capsule messaging server,
-provider loop or channel-triggered local execution is added.
+provider loop is added. An opt-in local route can dispatch the authenticated
+user's new `@capsule` messages through the existing workspace pipeline.
 
 The identity key is passed to the CLI through an explicit environment variable,
 never argv or ordinary settings. Remember on this device stores the URL/key
@@ -245,10 +246,25 @@ hosts must resolve to public addresses. Every related IPC method, including
 reads and image lookup, is denied to read-only paired viewers.
 
 The renderer polls recent text and thread windows while visible. Relay events
-remain on the relay, separate from local conversations and runs. Mentioning an
+remain on the relay unless explicitly delegated to a local conversation. Mentioning an
 existing agent relies on its separately configured host; Capsule does not
 provision that host, grant repository access, or claim to track its execution
-as a local run. See [shared channels](docs/internals/channels.md).
+as a local run. **Run with Capsule** deliberately extends this boundary: the
+desktop user selects a message, project and harness; main validates the source
+against the connected relay and delegates to the existing session/run pipeline.
+The new conversation is Supervised and uses the project folder, not worktree
+setup. Results stay private until explicit reviewed publication to the original
+thread. Separately, **Connect a Capsule harness** enables a persistent route
+scoped to relay origin, authenticated public identity and channel. Core polls
+the installed CLI's bounded message window; only that identity's new messages
+starting with `@capsule` are admitted. Each root thread reuses a Supervised
+conversation, queues serially, and automatically publishes a labelled result
+under the connected identity. This intentionally extends the former ban on
+automatic channel dispatch, not the agent or protocol boundaries. Other members
+cannot start local work. Saved admission and delivery state prevents replay;
+uncertain sends are never retried. Pause and disconnect stop new admission and
+publication without killing a running agent.
+See [shared channels](docs/internals/channels.md).
 
 ---
 

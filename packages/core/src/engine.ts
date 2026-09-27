@@ -4,6 +4,8 @@ import { FolderActivity, foldersOverlap } from "./folder-activity.js";
 import type { VerificationResult } from "@capsule/shared";
 import { localTimings, TextBudget, OUTPUT_LIMIT_ERROR, searchSessionTitles } from "@capsule/shared";
 import { ResultWriter } from "./result-writer.js";
+import { ChannelHarness } from "./channel-harness.js";
+import { ChannelRoutes } from "./channel-routes.js";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { prepareDirectPrompt } from "./direct-prompt.js";
@@ -234,6 +236,8 @@ export interface EngineState {
 
 export class CapsuleEngine {
   readonly sharedChannels: SharedRelayClient;
+  readonly channelHarness: ChannelHarness;
+  readonly channelRoutes: ChannelRoutes;
   readonly events = new EventEmitter();
   readonly db: CapsuleDatabase;
   readonly repos: CapsuleRepositories;
@@ -321,6 +325,8 @@ export class CapsuleEngine {
     this.repos = new CapsuleRepositories(this.db);
     this.keychain = createKeychainAdapter(options.userDataDir, options.secretEncryptor);
     this.sharedChannels = new SharedRelayClient(undefined, createRelayCredentialStore(options.userDataDir, options.secretEncryptor));
+    this.channelHarness = new ChannelHarness(this.sharedChannels, this);
+    this.channelRoutes = new ChannelRoutes(this.sharedChannels, this, this.repos);
     this.settings = normalizeCapsuleSettings({
       ...DEFAULT_CAPSULE_SETTINGS,
       gatewayUrl: options.gatewayUrl ?? defaultGatewayEndpoint().url,
@@ -355,6 +361,7 @@ export class CapsuleEngine {
     if (!this.usingMock) this.runtime = this.openclaw;
     await this.connectPreferredRuntime();
     this.bindAcpReplies();
+    this.channelRoutes.start();
     this.log("Capsule engine started");
   }
 
@@ -409,6 +416,7 @@ export class CapsuleEngine {
     // than throwing "The database connection is not open" from a detached
     // promise, which surfaces as an unhandled rejection with no run to blame.
     this.stopped = true;
+    const channelRoutesStopped = this.channelRoutes.stop();
     // Resolve approval records while the database is still open. Closing the
     // transport later cannot safely update those persisted requests.
     const approvalRuns = new Set(Array.from(this.directApprovals.values(), (pending) => pending.runId));
@@ -427,6 +435,7 @@ export class CapsuleEngine {
     // Keep the database alive while owned sessions and saved work finish.
     // Disconnecting the Gateway client never stops the user's Gateway process.
     const cleanup = await Promise.allSettled([
+      channelRoutesStopped,
       this.settingsWrite,
       this.direct.closeAll(),
       this.runtime.disconnect(),

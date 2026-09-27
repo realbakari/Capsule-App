@@ -10,6 +10,7 @@ import { editMentions, mentionLabel, mentionQuery, mentionedText } from "./menti
 import { ChannelDrafts } from "./channel-drafts";
 import { ChannelProfile } from "./ChannelProfile";
 import { ChannelComposerTools } from "./ChannelComposerTools";
+import { ChannelRouteControl } from "./ChannelRouteControl";
 
 export { ChannelDrafts } from "./channel-drafts";
 type Api = typeof window.capsule;
@@ -77,7 +78,7 @@ export function MemberStack({ members }: { members: ChannelMember[] }) {
   );
 }
 
-function ChannelPostView({ message, members, reply, replies, compact }: { message: ChannelMessage; members: ChannelMember[]; reply?: () => void; replies: ChannelMessage[]; compact?: boolean }) {
+function ChannelPostView({ message, members, reply, replies, compact, channelId }: { message: ChannelMessage; members: ChannelMember[]; reply?: () => void; replies: ChannelMessage[]; compact?: boolean; channelId?: string }) {
   const member = members.find((item) => item.pubkey === message.author);
   const time = new Date(message.createdAt * 1000);
   const stamp = time.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
@@ -94,7 +95,7 @@ function ChannelPostView({ message, members, reply, replies, compact }: { messag
       </header>}
       <MarkdownBody content={message.content} renderText={(text) => mentionedText(text, members, message.mentions ?? []).map((part, index) => part.member ? <ChannelProfile key={index} className="channel-inline-mention" member={part.member} avatar={<ChannelAvatar member={part.member} identity={part.member.pubkey} />}><ChannelAvatar member={part.member} identity={part.member.pubkey} />{part.text}</ChannelProfile> : part.text)} />
       {reply && replies.length > 0 && <button className="channel-replies" onClick={reply} title="Replies in the loaded recent windows; not the complete history"><span className="channel-reply-avatars">{participants.map((identity) => <ChannelAvatar key={identity} identity={identity} member={members.find((item) => item.pubkey === identity)} />)}</span><strong>{replies.length} {replies.length === 1 ? "reply" : "replies"}</strong><span>Last reply {new Date(latest * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span></button>}
-      <ChannelMessageActions message={message} reply={reply} author={member?.name ?? "message"} />
+      <ChannelMessageActions channelId={channelId} message={message} reply={reply} author={member?.name ?? "message"} />
     </div>
   </article>;
 }
@@ -128,9 +129,10 @@ export function ChannelLoadingFeed({ label = "Loading messages" }: { label?: str
 }
 
 /** Keep the reader's place on polling; follow only when already near the end. */
-export function ChannelFeed({ messages, members, loaded = true, reply, empty, intro, threadMessages = [], lastRead, filter, onCaughtUp }: {
+export function ChannelFeed({ messages, members, loaded = true, reply, empty, intro, threadMessages = [], lastRead, filter, onCaughtUp, channelId }: {
   messages: ChannelMessage[]; members: ChannelMember[]; loaded?: boolean;
   threadMessages?: ChannelMessage[];
+  channelId?: string;
   lastRead?: number;
   filter?: string;
   onCaughtUp?: () => void;
@@ -170,7 +172,7 @@ export function ChannelFeed({ messages, members, loaded = true, reply, empty, in
         return <Fragment key={message.id}>
           {newDay && <div className="channel-day" aria-hidden="true"><span>{date.toLocaleDateString([], { month: "short", day: "numeric" })}</span></div>}
           {lastRead && previous && previous.createdAt <= lastRead && message.createdAt > lastRead && <div className="channel-unread-rule" role="status">New messages</div>}
-          <ChannelPostView message={message} members={members} compact={shouldGroupChannelPosts(previous, message) && !newDay} reply={reply ? () => reply(message) : undefined} replies={summaryMessages.filter((item) => item.rootId === message.id && item.id !== message.id)} />
+          <ChannelPostView channelId={channelId} message={message} members={members} compact={shouldGroupChannelPosts(previous, message) && !newDay} reply={reply ? () => reply(message) : undefined} replies={summaryMessages.filter((item) => item.rootId === message.id && item.id !== message.id)} />
         </Fragment>;
       })}
     </div>
@@ -181,6 +183,7 @@ export function ChannelFeed({ messages, members, loaded = true, reply, empty, in
 export function ChannelComposer({ api, channel, members, parentId, sent, drafts, hold = false }: {
   api: Api; channel: SharedChannel; members: ChannelMember[]; parentId?: string; sent: () => void; drafts: ChannelDrafts; hold?: boolean;
 }) {
+  const [useHarness, setUseHarness] = useState(false);
   const draftKey = `${channel.id}:${parentId ?? "main"}`;
   const { content, mentions, pending: busy, error } = useSyncExternalStore(drafts.subscribe, () => drafts.get(draftKey));
   const setContent = (value: string) => drafts.edit(draftKey, { content: value });
@@ -236,11 +239,12 @@ export function ChannelComposer({ api, channel, members, parentId, sent, drafts,
   return <form className={`channel-composer${hold ? " is-holding" : ""}`} onSubmit={(event) => {
     event.preventDefault(); if (!canSend) return;
     setPicking(false);
-    void drafts.send(draftKey, (draft) => api.postChannelMessage({ channelId: channel.id, content: draft.content, replyTo: parentId, mentions: [...new Set(draft.mentions.map((item) => item.pubkey))] }), formatUserError)
+    void drafts.send(draftKey, (draft) => api.postChannelMessage({ channelId: channel.id, content: useHarness && !/^@capsule(?:\s|$)/i.test(draft.content) ? `@capsule ${draft.content}` : draft.content, replyTo: parentId, mentions: useHarness ? [] : [...new Set(draft.mentions.map((item) => item.pubkey))] }), formatUserError)
       .then((accepted) => { if (accepted && active.current) sent(); });
   }}>
+    {channel.joined && <ChannelRouteControl key={channel.id} channelId={channel.id} useHarness={useHarness} change={setUseHarness} disabled={busy || hold} />}
     <label className="sr-only" htmlFor={`channel-draft-${parentId ?? "main"}`}>{parentId ? "Reply in thread" : `Message #${channel.name}`}</label>
-    <textarea ref={textarea} id={`channel-draft-${parentId ?? "main"}`} value={content} onChange={(event) => { drafts.edit(draftKey, { mentions: editMentions(content, event.target.value, mentions), content: event.target.value }); if (!event.nativeEvent.isTrusted || !(event.nativeEvent as InputEvent).isComposing) updateQuery(event.currentTarget); }} disabled={busy || hold || !channel.joined} maxLength={16000} rows={1}
+    <textarea ref={textarea} id={`channel-draft-${parentId ?? "main"}`} value={content} onChange={(event) => { drafts.edit(draftKey, { mentions: editMentions(content, event.target.value, mentions), content: event.target.value }); if (!event.nativeEvent.isTrusted || !(event.nativeEvent as InputEvent).isComposing) updateQuery(event.currentTarget); }} disabled={busy || hold || !channel.joined} maxLength={useHarness ? 15990 : 16000} rows={1}
       aria-expanded={picking && !!range} aria-controls={picking ? `mention-list-${parentId ?? "main"}` : undefined} aria-activedescendant={picking && range && candidates[selected] ? `mention-${parentId ?? "main"}-${selected}` : undefined}
       onClick={(event) => updateQuery(event.currentTarget)} onCompositionEnd={(event) => updateQuery(event.currentTarget)}
       onKeyDown={(event) => {

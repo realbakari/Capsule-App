@@ -62,9 +62,29 @@ without inferred presence or ownership. Name/description edits, archive/unarchiv
 leave and delete use explicit controls. Archive/leave require confirmation;
 deletion additionally requires typing the channel name. Missing metadata stays unknown.
 
-Shared-channel reads and writes are unavailable to paired previews. There is
-no Capsule agent provisioning, hosted runtime, channel-to-local-run dispatch,
-or implicit repository access behind these controls.
+Shared-channel reads and writes are unavailable to paired previews. Message
+action bars in both channel and thread feeds offer **Run with Capsule** on
+joined channels. Its native dialog selects project/harness and explicitly starts
+a Supervised conversation through the existing runtime route. Route and permission
+details sit behind an expansion before starting. The dialog then shows status,
+Open conversation, Stop run and an editable result preview with explicit Share
+reply to thread. Admission is deduplicated in main, not by the mounted dialog.
+Focus returns to the action on close; stale polls cannot replace an action's
+response. There is no agent provisioning, hosted runtime,
+or implicit repository access from other members. Manual connection-scoped run links
+are not durable; project conversations are.
+
+Both channel and thread composers expose **Connect a Capsule harness**. Its
+native dialog selects project/harness, explains automatic reply publication and
+Supervised permissions, and requires explicit enablement. The collapsed control
+shows the destination, project, Ask Capsule / Chat only selector, latest active
+run, Open conversation, approval access, Stop run and errors. Ask Capsule sends
+the reserved `@capsule` prefix without notifying unrelated hosted agents.
+Bindings and thread contexts persist; Pause is available in the same control.
+Only the connected identity's new addressed messages execute, including those
+sent from its other clients while the desktop is connected. Other channel
+members cannot invoke the local harness. See the channel adapter for restart,
+queue and bounded history semantics.
 
 Remember on this device is available only with protected credential storage.
 Saved URL/key pairs are restored on opening Channels after restart. Disconnect

@@ -1,7 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { ChannelsView } from "../features/channels/ChannelsView";
 import { ChannelAvatar, ChannelFeed } from "../features/channels/ChannelMessages";
-import type { ChannelPost, ChannelUpdate, RelayConnectionInput, SharedChannel } from "@capsule/shared";
+import type { ChannelHarnessInput, ChannelHarnessJob, ChannelPost, ChannelRouteInput, ChannelUpdate, RelayConnectionInput, SharedChannel } from "@capsule/shared";
 
 const first = "11111111-2222-3333-4444-555555555555";
 const second = "22222222-2222-3333-4444-555555555555";
@@ -25,6 +25,10 @@ function fixture() {
   ];
   const posts: ChannelPost[] = [];
   const actions: string[] = [];
+  const runs: ChannelHarnessInput[] = [];
+  const shares: string[] = [];
+  let job: ChannelHarnessJob | undefined;
+  let route: ChannelRouteInput | undefined;
   let reacted = false, archived = false;
   let connected = true, remembered = false, reject = false, rejectReads = false, reads = 0;
   let pendingPost: Promise<void> | undefined;
@@ -32,6 +36,19 @@ function fixture() {
   const status = () => ({ connected, remembered, hasSaved: remembered, canRemember: true, url: connected || remembered ? "https://relay.example" : undefined });
   const api = {
     isDesktop: true,
+    channelRouteStatus: async () => ({ configuration: route, jobs: [] }),
+    configureChannelRoute: async (input: ChannelRouteInput) => {
+      if (reject) throw new Error("Harness unavailable");
+      route = { ...input }; return { configuration: route, jobs: [] };
+    },
+    listChannelHarnessJobs: async () => job ? [job] : [],
+    runChannelHarness: async (input: ChannelHarnessInput) => {
+      if (reject) throw new Error("Harness unavailable");
+      runs.push(input);
+      job = { ...input, id: "channel-job", sessionId: "channel-session", runId: "channel-run", status: "completed", result: "Reviewed locally", publication: "unshared" };
+      return job;
+    },
+    shareChannelHarnessReply: async (_id: string, content: string) => { shares.push(content); job = { ...job!, publication: "shared" }; return job; },
     relayStatus: async () => { reads++; return status(); },
     connectRelay: async (input: RelayConnectionInput) => { connections.push(input); connected = true; remembered = !!input.remember; return status(); },
     disconnectRelay: async () => { connected = false; return status(); },
@@ -55,19 +72,42 @@ function fixture() {
     inviteChannelMember: async () => {},
     removeChannelMember: async () => {},
   };
-  return { api, posts, actions, connections, deferPost: (promise?: Promise<void>) => { pendingPost = promise; }, fail: (value: boolean) => { reject = value; }, failReads: (value: boolean) => { rejectReads = value; }, reads: () => reads };
+  return { api, posts, actions, connections, runs, shares, deferPost: (promise?: Promise<void>) => { pendingPost = promise; }, fail: (value: boolean) => { reject = value; }, failReads: (value: boolean) => { rejectReads = value; }, reads: () => reads };
 }
+
+const harnessWorkspace = { projectId: "channel-project", projects: [{ id: "channel-project", name: "Example project" }], harnesses: [{ id: "codex", name: "Codex", runtimeRoute: "direct" }] };
 
 export async function runChannelRegressions(host: HTMLElement) {
   const previous = window.testWorkspace;
   const root = createRoot(host);
   const test = fixture();
-  window.testWorkspace = { ...previous, api: test.api };
+  window.testWorkspace = { ...previous, ...harnessWorkspace, api: test.api };
   try {
     root.render(<ChannelsView />);
     await until(() => host.querySelector(".channel-post"));
     const draft = host.querySelector<HTMLTextAreaElement>("textarea")!;
     assert(host.querySelector(".channel-post .channel-avatar")?.textContent === "😆", "Published emoji avatar was replaced with initials");
+    const harnessAction = host.querySelector<HTMLButtonElement>('[aria-label="Run with Capsule"]')!;
+    harnessAction.focus(); harnessAction.click();
+    await until(() => document.querySelector(".channel-harness-dialog form"));
+    const harnessDialog = document.querySelector<HTMLDialogElement>(".channel-harness-dialog")!;
+    assert(harnessDialog.open && harnessDialog.contains(document.activeElement), "Harness dialog did not contain focus");
+    fill(harnessDialog.querySelectorAll<HTMLSelectElement>("select")[1]!, "codex"); await settle();
+    test.fail(true); harnessDialog.querySelector("form")!.requestSubmit();
+    await until(() => harnessDialog.querySelector('[role="alert"]'));
+    assert(test.runs.length === 0 && harnessDialog.querySelectorAll<HTMLSelectElement>("select")[1]!.value === "codex", "Failed admission lost the harness selection");
+    test.fail(false); harnessDialog.querySelector("form")!.requestSubmit();
+    await until(() => harnessDialog.querySelector("textarea"));
+    assert(Number(test.runs.length) === 1 && test.runs[0]!.projectId === "channel-project" && test.runs[0]!.messageId === parent && test.shares.length === 0, "Running a message changed its identity or published without consent");
+    fill(harnessDialog.querySelector("textarea")!, "Reviewed safe reply"); await settle();
+    Array.from(harnessDialog.querySelectorAll("button")).find((button) => button.textContent === "Share reply to thread")!.click();
+    await until(() => harnessDialog.textContent?.includes("Reply shared"));
+    assert(test.shares[0] === "Reviewed safe reply", "Sharing ignored the reviewed reply");
+    document.querySelector<HTMLButtonElement>('[aria-label="Close channel run"]')!.click(); await settle();
+    assert(document.activeElement === harnessAction, "Harness dialog did not restore focus");
+    harnessAction.click(); await until(() => document.querySelector(".channel-harness-dialog")?.textContent?.includes("Reply shared"));
+    assert(Number(test.runs.length) === 1, "Reopening a run started another agent");
+    document.querySelector<HTMLButtonElement>('[aria-label="Close channel run"]')!.click(); await settle();
     host.querySelector<HTMLButtonElement>('[aria-label="View Alex profile"]')!.click();
     await until(() => document.querySelector(".channel-profile-dialog[open]"));
     assert(document.querySelector(".channel-profile-dialog .channel-avatar")?.textContent === "😆", "Profile avatar differs from the transcript");
@@ -100,6 +140,7 @@ export async function runChannelRegressions(host: HTMLElement) {
     await until(() => host.querySelector('[aria-label="Reply to Alex in thread"]'));
     host.querySelector<HTMLButtonElement>('[aria-label="Reply to Alex in thread"]')!.click();
     await until(() => host.querySelectorAll(".channel-thread .channel-post").length === 2);
+    assert(host.querySelectorAll('.channel-thread [aria-label="Run with Capsule"]').length === 2, "Thread replies lost the harness entry point");
     fill(host.querySelector<HTMLTextAreaElement>(".channel-thread textarea")!, "Thanks, reviewer"); await settle();
     host.querySelector<HTMLFormElement>(".channel-thread .channel-composer")!.requestSubmit();
     await until(() => test.posts.length === 2);
@@ -211,6 +252,32 @@ export async function runChannelRegressions(host: HTMLElement) {
     dialog.dispatchEvent(new Event("cancel", { cancelable: true })); await settle();
     assert(!document.querySelector(".channel-dialog") && document.activeElement === create, "Closing the dialog did not return focus");
 
+    const routeButton = () => host.querySelector<HTMLButtonElement>(".channel-route-heading button")!;
+    const routeAction = (text: string) => Array.from(document.querySelectorAll<HTMLButtonElement>(".channel-route-settings button")).find((button) => button.textContent === text)!;
+    routeButton().click(); await settle();
+    const routeSelectors = document.querySelectorAll<HTMLSelectElement>(".channel-route-settings select");
+    const routeDialog = document.querySelector<HTMLDialogElement>(".channel-route-dialog")!;
+    assert(routeDialog.open && routeDialog.contains(document.activeElement), "Channel harness setup did not contain keyboard focus");
+    fill(routeSelectors[1]!, "codex"); await settle();
+    test.fail(true); routeAction("Enable harness and automatic replies").click();
+    await until(() => host.querySelector(".channel-route-control [role=alert]"));
+    assert(routeSelectors[1]!.value === "codex" && !host.querySelector('[aria-label="Channel message destination"]'), "Failed route setup lost selections or enabled execution");
+    test.fail(false); routeAction("Enable harness and automatic replies").click();
+    await until(() => host.querySelector('[aria-label="Channel message destination"]'));
+    const postsBeforeRoute = test.posts.length;
+    fill(restoredDraft, "Run locally"); await settle();
+    host.querySelector<HTMLFormElement>(".channel-composer")!.requestSubmit();
+    await until(() => test.posts.length === postsBeforeRoute + 1);
+    assert(test.posts.at(-1)!.content === "@capsule Run locally" && test.posts.at(-1)!.mentions.length === 0, "Ask Capsule did not address the local route or notified another agent");
+    fill(host.querySelector<HTMLSelectElement>('[aria-label="Channel message destination"]')!, "channel"); await settle();
+    fill(restoredDraft, "Just chat"); await settle();
+    host.querySelector<HTMLFormElement>(".channel-composer")!.requestSubmit();
+    await until(() => test.posts.length === postsBeforeRoute + 2);
+    assert(test.posts.at(-1)!.content === "Just chat", "Chat only still routed an ordinary message to the harness");
+    await until(() => !routeButton().disabled);
+    routeButton().click(); await until(() => routeAction("Pause channel harness")); routeAction("Pause channel harness").click();
+    await until(() => !host.querySelector('[aria-label="Channel message destination"]'));
+
     host.querySelector<HTMLElement>(".channel-connection-menu summary")!.click(); await settle();
     const remember = Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent === "Remember on this device")!;
     remember.click(); await until(() => host.textContent?.includes("Remembered securely"));
@@ -261,9 +328,9 @@ export async function runChannelRegressions(host: HTMLElement) {
   } finally { root.unmount(); window.testWorkspace = previous; }
 }
 
-export async function renderChannelPreview(root: ReturnType<typeof createRoot>, host: HTMLElement, surface: "channel" | "thread" | "members" | "empty" | "settings" | "mentions" | "reactions") {
+export async function renderChannelPreview(root: ReturnType<typeof createRoot>, host: HTMLElement, surface: "channel" | "thread" | "members" | "empty" | "settings" | "mentions" | "reactions" | "harness" | "route") {
   root.render(null); await settle();
-  window.testWorkspace = { ...window.testWorkspace, api: fixture().api };
+  window.testWorkspace = { ...window.testWorkspace, ...harnessWorkspace, api: fixture().api };
   root.render(<div style={{ height: "100vh", display: "flex", minWidth: 0 }}><ChannelsView /></div>);
   await until(() => host.querySelector('[aria-label="Reply to Alex in thread"]'));
   if (surface === "thread") {
@@ -271,6 +338,17 @@ export async function renderChannelPreview(root: ReturnType<typeof createRoot>, 
     await until(() => host.querySelectorAll(".channel-thread .channel-post").length === 2);
   }
   if (surface === "settings") { host.querySelector<HTMLButtonElement>('[aria-label="Channel settings"]')!.click(); await until(() => host.querySelector(".channel-facts")); }
+  if (surface === "harness") {
+    host.querySelector<HTMLButtonElement>('[aria-label="Run with Capsule"]')!.click();
+    await until(() => document.querySelector(".channel-harness-dialog form"));
+    const dialog = document.querySelector<HTMLDialogElement>(".channel-harness-dialog")!;
+    assert(dialog.scrollWidth <= dialog.clientWidth + 1, "Harness dialog overflows horizontally");
+  }
+  if (surface === "route") {
+    host.querySelector<HTMLButtonElement>(".channel-route-heading button")!.click();
+    await until(() => document.querySelector(".channel-route-settings"));
+    fill(document.querySelectorAll<HTMLSelectElement>(".channel-route-settings select")[1]!, "codex");
+  }
   if (surface === "mentions") { fill(host.querySelector<HTMLTextAreaElement>("textarea")!, "Please @"); await until(() => host.querySelector(".channel-mention-menu")); }
   if (surface === "reactions") { host.querySelector<HTMLButtonElement>('[aria-label="Reactions"]')!.click(); await until(() => host.querySelector<HTMLButtonElement>('[aria-label="Add 👍 reaction"]')?.disabled === false); }
   if (surface === "members") {
@@ -285,7 +363,7 @@ export async function renderChannelPreview(root: ReturnType<typeof createRoot>, 
   const field = compose.querySelector<HTMLTextAreaElement>("textarea")!;
   const tools = compose.querySelector<HTMLElement>(".channel-composer-tools")!;
   assert(tools.getBoundingClientRect().top >= field.getBoundingClientRect().bottom, "Composer toolbar overlaps the writing area");
-  if (!field.value) assert(compose.getBoundingClientRect().height < 150, "Empty composer retained its hidden placeholder measurement");
+  if (!field.value) assert(field.getBoundingClientRect().height < 80, "Empty composer retained its hidden placeholder measurement");
   if (surface === "thread") {
     const main = host.querySelector<HTMLElement>(".channel-main")!;
     const thread = host.querySelector<HTMLElement>(".channel-thread")!;

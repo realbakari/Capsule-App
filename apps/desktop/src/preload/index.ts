@@ -31,6 +31,11 @@ const api = {
   removeChannelMember: (channel: string, pubkey: string): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.removeChannelMember, channel, pubkey),
   channelMessages: (channel: string, parent?: string): Promise<import("@capsule/shared").ChannelMessage[]> => ipcRenderer.invoke(IPC_CHANNELS.channelMessages, channel, parent),
   postChannelMessage: (input: import("@capsule/shared").ChannelPost): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.postChannelMessage, input),
+  channelRouteStatus: (channelId: string): Promise<import("@capsule/shared").ChannelRouteStatus> => ipcRenderer.invoke(IPC_CHANNELS.channelRouteStatus, channelId),
+  configureChannelRoute: (input: import("@capsule/shared").ChannelRouteInput): Promise<import("@capsule/shared").ChannelRouteStatus> => ipcRenderer.invoke(IPC_CHANNELS.configureChannelRoute, input),
+  runChannelHarness: (input: import("@capsule/shared").ChannelHarnessInput): Promise<import("@capsule/shared").ChannelHarnessJob> => ipcRenderer.invoke(IPC_CHANNELS.runChannelHarness, input),
+  listChannelHarnessJobs: (channelId: string, messageId: string): Promise<import("@capsule/shared").ChannelHarnessJob[]> => ipcRenderer.invoke(IPC_CHANNELS.listChannelHarnessJobs, channelId, messageId),
+  shareChannelHarnessReply: (id: string, content: string): Promise<import("@capsule/shared").ChannelHarnessJob> => ipcRenderer.invoke(IPC_CHANNELS.shareChannelHarnessReply, id, content),
   /* Resolved once at preload time so path display can abbreviate the home
      directory without an IPC round trip on every render. */
   homeDir: os.homedir(),

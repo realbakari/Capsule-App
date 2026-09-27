@@ -1061,7 +1061,17 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.inviteChannelMember, (input) => requireEngine().sharedChannels.invite(input as import("@capsule/shared").ChannelInvitation));
   handle(IPC_CHANNELS.removeChannelMember, (channel, pubkey) => requireEngine().sharedChannels.removeMember(channel as string, pubkey as string));
   handle(IPC_CHANNELS.channelMessages, (channel, parent) => requireEngine().sharedChannels.messages(channel as string, parent as string | undefined));
-  handle(IPC_CHANNELS.postChannelMessage, (input) => requireEngine().sharedChannels.post(input as import("@capsule/shared").ChannelPost));
+  handle(IPC_CHANNELS.postChannelMessage, async (input) => {
+    const engine = requireEngine();
+    const message = await engine.sharedChannels.post(input as import("@capsule/shared").ChannelPost);
+    void engine.channelRoutes.tick();
+    return message;
+  });
+  handle(IPC_CHANNELS.channelRouteStatus, (channel) => requireEngine().channelRoutes.status(channel as string));
+  handle(IPC_CHANNELS.configureChannelRoute, (input) => requireEngine().channelRoutes.configure(input));
+  handle(IPC_CHANNELS.runChannelHarness, (input) => requireEngine().channelHarness.start(input as import("@capsule/shared").ChannelHarnessInput));
+  handle(IPC_CHANNELS.listChannelHarnessJobs, (channel, message) => requireEngine().channelHarness.list(channel as string, message as string));
+  handle(IPC_CHANNELS.shareChannelHarnessReply, (id, content) => requireEngine().channelHarness.share(id as string, content as string));
   handle(IPC_CHANNELS.createProject, (input) =>
     requireEngine().createProject(input as Parameters<CapsuleEngine["createProject"]>[0]),
   );

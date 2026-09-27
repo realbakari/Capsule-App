@@ -133,9 +133,23 @@ local-command and web preferences are not an operating-system network sandbox.
 **8. Shared channels, when you connect.** The installed relay CLI authenticates
 to the relay you choose. Channel messages, replies, mentions and membership
 changes go to that relay and are available according to its access rules.
-Messages remain on the relay, not in Capsule's local conversation database.
+Ordinary channel history remains on the relay, not in Capsule's local conversation database.
 A remembered connection reconnects when you open Channels after restarting.
-Incoming messages do not start local agents or grant file access.
+Incoming messages do not start local agents or grant file access by default.
+If you enable a channel's Capsule harness and automatic replies, your own new
+messages beginning with `@capsule` are saved locally and sent to the selected
+project harness and its provider. Capsule automatically publishes the resulting
+answer to the same channel thread as your relay identity. Answers can contain
+private project information; enable this only in channels where you intend to
+share that information. Other members cannot trigger local work. Bindings,
+pending prompts, run links and delivery state are saved in the local database.
+Pausing stops new work and automatic replies, but does not stop an active run.
+Choosing **Run with Capsule** copies the selected message into a saved local
+project conversation and sends it to the chosen harness and its provider under
+the normal project permissions. Other members cannot trigger this manual action. Generated
+results remain local until you explicitly choose **Share reply to thread**;
+review them for private project information before publishing under your relay
+identity. Disconnecting does not delete that saved local conversation.
 
 Visible profile pictures may be fetched from the connected relay or a public
 HTTPS host named in a member's profile. Those hosts receive normal network

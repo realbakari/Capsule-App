@@ -62,7 +62,7 @@ app.whenReady().then(async () => {
         await window.webContents.executeJavaScript(`window.renderActivityPreview(${closing}, ${JSON.stringify(theme)})`);
         fs.writeFileSync(path.join(screenshots, `activity-${theme}-${width}${closing ? "-closing" : ""}.png`), (await window.webContents.capturePage()).toPNG());
       }
-      for (const [width, theme, surface] of [[1280, "dark", "channel"], [1280, "dark", "thread"], [1280, "dark", "members"], [1280, "dark", "empty"], [1280, "dark", "settings"], [1280, "dark", "mentions"], [1280, "dark", "reactions"], [380, "light", "thread"], [380, "dark", "mentions"], [380, "light", "settings"]]) {
+      for (const [width, theme, surface] of [[1280, "dark", "channel"], [1280, "dark", "thread"], [1280, "dark", "members"], [1280, "dark", "empty"], [1280, "dark", "settings"], [1280, "dark", "mentions"], [1280, "dark", "reactions"], [380, "light", "thread"], [380, "dark", "mentions"], [380, "light", "settings"], [1280, "dark", "harness"], [380, "light", "harness"], [1280, "dark", "route"], [380, "light", "route"]]) {
         window.setContentSize(width, 800);
         await window.webContents.executeJavaScript(`window.renderChannelPreview(${JSON.stringify(surface)}, ${JSON.stringify(theme)})`);
         fs.writeFileSync(path.join(screenshots, `channels-${surface}-${theme}-${width}.png`), (await window.webContents.capturePage()).toPNG());

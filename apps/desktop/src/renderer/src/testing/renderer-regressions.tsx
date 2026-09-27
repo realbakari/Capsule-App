@@ -53,7 +53,7 @@ declare global {
     runDiffPreviewRegressions: () => Promise<void>;
     renderDiffPreview: (theme: "dark" | "light", scrolled: boolean) => Promise<void>;
     renderActivityPreview: (closing: boolean, theme: "dark" | "light") => Promise<void>;
-    renderChannelPreview: (surface: "channel" | "thread" | "members" | "empty" | "settings" | "mentions" | "reactions", theme: "dark" | "light") => Promise<void>;
+    renderChannelPreview: (surface: "channel" | "thread" | "members" | "empty" | "settings" | "mentions" | "reactions" | "harness" | "route", theme: "dark" | "light") => Promise<void>;
     renderWorkspacePreview: (surface: "sidebar" | "quota" | "runtime", theme: "dark" | "light") => Promise<void>;
   }
 }

@@ -27,3 +27,37 @@ export interface ChannelPost {
 }
 export interface NewSharedChannel { name: string; description: string; visibility: "private" | "open" }
 export interface ChannelInvitation { channelId: string; pubkey: string; role: "member" | "bot" }
+
+/** Explicit desktop delegation, not an unattended subscription to a room. */
+export interface ChannelHarnessInput {
+  channelId: string;
+  messageId: string;
+  rootId?: string;
+  projectId: string;
+  harnessId: import("./harness.js").HarnessId;
+}
+export interface ChannelHarnessJob {
+  id: string;
+  channelId: string;
+  messageId: string;
+  projectId: string;
+  harnessId: import("./harness.js").HarnessId;
+  sessionId?: string;
+  runId?: string;
+  status: import("./types.js").RunStatus | "starting";
+  result?: string;
+  error?: string;
+  publication: "unshared" | "sharing" | "shared" | "uncertain";
+}
+
+export interface ChannelRouteInput {
+  channelId: string;
+  projectId: string;
+  harnessId: import("./harness.js").HarnessId;
+  enabled: boolean;
+}
+export interface ChannelRouteStatus {
+  configuration?: ChannelRouteInput;
+  error?: string;
+  jobs: ChannelHarnessJob[];
+}
