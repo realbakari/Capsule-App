@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import type { HarnessLiveStatus, HarnessStatus, SessionRef } from "@capsule/shared";
 import { useWorkspace } from "../../lib/workspace";
 import { MenuSelect } from "../shell/MenuSelect";
-import { XIcon } from "../shell/icons";
+import { FileIcon, HistoryIcon, SettingsIcon, SparkIcon, TerminalIcon, WrenchIcon, XIcon } from "../shell/icons";
 import { CapabilityDetails } from "../harness/CapabilityDetails";
 import { AgentCommandsControl } from "./AgentCommandsControl";
 import { useAnchoredPopover } from "../../lib/anchored-popover";
@@ -31,12 +31,12 @@ export function ComposerTools({ harness, session, status, stashCount, onContext,
     return () => document.removeEventListener("pointerdown", dismiss);
   }, [capabilitiesOpen]);
   return <div className="composer-tools" ref={root}>
-    <MenuSelect ariaLabel="Conversation tools" value="" placeholder="Conversation tools" iconOnly options={[
-      { id: "file", label: "Mention a project file", detail: "@ · Search files in this workspace", group: "Context" },
-      { id: "skill", label: "Attach a skill", detail: "$ · Choose an installed skill", group: "Context" },
-      { id: "stash", label: "Prompt stash", detail: stashCount ? `${stashCount} saved prompts` : "Save or restore a draft", group: "Conversation" },
-      ...(session?.harnessId ? [{ id: "commands", label: "Agent commands", detail: "Commands reported by this session", group: "Conversation" }] : []),
-      ...(harness ? [{ id: "capabilities", label: "Agent settings and capabilities", detail: "Available controls and runtime limitations", group: "Conversation" }] : []),
+    <MenuSelect ariaLabel="Conversation tools" value="" placeholder="Context and agent controls" icon={<WrenchIcon size={15} />} iconOnly options={[
+      { id: "file", label: "Mention a project file", detail: "@ · Search files in this workspace", icon: <FileIcon size={14} />, group: "Context" },
+      { id: "skill", label: "Attach a skill", detail: "$ · Choose an installed skill", icon: <SparkIcon size={14} />, group: "Context" },
+      { id: "stash", label: "Prompt stash", detail: stashCount ? `${stashCount} saved prompts` : "Save or restore a draft", icon: <HistoryIcon size={14} />, group: "Conversation" },
+      ...(session?.harnessId ? [{ id: "commands", label: "Agent commands", detail: "Commands reported by this session", icon: <TerminalIcon size={14} />, group: "Agent" }] : []),
+      ...(harness ? [{ id: "capabilities", label: "Agent settings and capabilities", detail: "Supported controls · tools are managed by the agent", icon: <SettingsIcon size={14} />, group: "Agent" }] : []),
     ]} onChange={(id) => {
       setCapabilitiesOpen(id === "capabilities");
       if (id === "commands") setAgentCommandsOpen(true);

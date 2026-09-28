@@ -144,6 +144,46 @@ export async function runPanelRegressions(host: HTMLElement, base: Record<string
     assert(document.querySelector('section[aria-label="Needs you"]'), "Status preference did not survive remount");
     await chooseGrouping("By project");
     assert(document.querySelectorAll('.project-row').length === 2 && !document.querySelector('.sidebar-status-group'), "Project grouping could not be restored");
+    const quickActions: string[] = [];
+    root.render(<SidebarFixture base={{ ...groupedBase,
+      pinSession: (id: string, pinned: boolean) => quickActions.push(`pin:${id}:${pinned}`),
+      archiveSession: (id: string) => quickActions.push(`archive:${id}`),
+    }} />); await settle();
+    const previewRow = document.querySelector<HTMLElement>('[data-thread-item][aria-label="Review access"]')!;
+    previewRow.focus({ preventScroll: true });
+    await new Promise((resolve) => setTimeout(resolve, 500)); await settle();
+    const preview = document.querySelector<HTMLElement>('[role="tooltip"]');
+    assert(preview && preview.textContent?.includes("Review access") && preview.textContent.includes("Second workspace"), "Focused conversation omitted its full preview");
+    const previewBox = preview.getBoundingClientRect();
+    assert(previewBox.left >= 0 && previewBox.right <= innerWidth && previewBox.bottom <= innerHeight, "Preview escaped the viewport");
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })); await settle();
+    assert(!document.querySelector('[role="tooltip"]'), "Escape left the sidebar preview open");
+    const navigationCount = navigated.length;
+    previewRow.querySelector<HTMLButtonElement>('[aria-label="Unpin conversation"]')!.click();
+    previewRow.querySelector<HTMLButtonElement>('[aria-label="Archive conversation"]')!.click();
+    assert(quickActions.join() === "pin:other-approval:false,archive:other-approval" && navigated.length === navigationCount, "Quick actions navigated or changed the wrong thread");
+    const recent = document.querySelector<HTMLElement>('.sidebar-recent-row')!;
+    assert(recent.textContent?.includes("Review access"), "Recents did not start with the latest conversation");
+    const selectedRecent = document.querySelector<HTMLElement>('.sidebar-recents [aria-current="page"]');
+    assert(selectedRecent?.getAttribute("aria-label") === "Working turn", "Recents lost its selected conversation");
+    recent.querySelector<HTMLButtonElement>('[aria-label="Unpin conversation"]')!.click();
+    recent.querySelector<HTMLButtonElement>('[aria-label="Archive conversation"]')!.click();
+    assert(quickActions.slice(-2).join() === "pin:other-approval:false,archive:other-approval" && navigated.length === navigationCount, "Recent quick actions navigated or targeted another conversation");
+    assert(recent.getAttribute("aria-describedby") !== previewRow.getAttribute("aria-describedby"), "Recent and project rows share a tooltip ID");
+    recent.click();
+    assert(navigated.at(-1) === "other/other-approval", "Recents opened the wrong project or thread");
+    recent.focus({ preventScroll: true });
+    previewRow.focus({ preventScroll: true });
+    await new Promise((resolve) => setTimeout(resolve, 500)); await settle();
+    window.dispatchEvent(new Event("scroll")); await settle();
+    assert(!document.querySelector('[role="tooltip"]'), "Scrolling left a detached preview");
+    recent.querySelector<HTMLButtonElement>('[aria-label="Conversation actions"]')!.click(); await settle();
+    const rename = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')).find((item) => item.textContent?.includes("Rename"));
+    assert(rename, "Recent conversation omitted rename");
+    rename.click(); await settle();
+    const renameInput = document.querySelector<HTMLInputElement>('.sidebar-recents input[aria-label="Conversation title"]');
+    assert(renameInput?.value === "Review access" && document.querySelectorAll('input[aria-label="Conversation title"]').length === 1, "Rename opened in another section or duplicated its input");
+    renameInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); await settle();
     root.render(null); await settle(); localStorage.setItem(SIDEBAR_GROUPING_KEY, "malformed");
     root.render(<SidebarFixture base={groupedBase} />); await settle();
     assert(document.querySelector('.project-row'), "Invalid saved grouping did not fall back to projects");

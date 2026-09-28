@@ -156,12 +156,13 @@ export function shouldRecedeThread(kind: SidebarThreadKind, isActive: boolean): 
   return kind === "ready";
 }
 
-export const SETTLED_THREAD_PREVIEW = 8;
+export const SETTLED_THREAD_PREVIEW = 3;
 
 export function splitProjectThreads<T extends { pinned?: boolean; updatedAt: string }>(
   threads: readonly T[],
   kindOf: (thread: T) => SidebarThreadKind,
   preview = SETTLED_THREAD_PREVIEW,
+  selected?: T,
 ): {
   pinned: T[];
   live: T[];
@@ -178,10 +179,24 @@ export function splitProjectThreads<T extends { pinned?: boolean; updatedAt: str
     else settled.push(thread);
   }
   settled.sort((left, right) => (left.updatedAt < right.updatedAt ? 1 : -1));
+  const rest = settled.slice(0, preview);
+  if (selected && settled.includes(selected) && !rest.includes(selected)) rest.push(selected);
   return {
     pinned,
     live,
-    rest: settled.slice(0, preview),
-    hidden: Math.max(0, settled.length - preview),
+    rest,
+    hidden: settled.length - rest.length,
   };
+}
+
+/** Index once per snapshot rather than scanning every thread for each project. */
+export function indexSidebarThreads(sessions: readonly Session[]) {
+  const byProject = new Map<string, Session[]>();
+  for (const session of sessions) {
+    if (session.state !== "active") continue;
+    const list = byProject.get(session.projectId);
+    if (list) list.push(session);
+    else byProject.set(session.projectId, [session]);
+  }
+  return byProject;
 }

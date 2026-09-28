@@ -170,14 +170,26 @@ attachment validation still receives the original native path.
   uncapped; settled groups show 20 rows plus expansion, keeping selection visible.
   Pinned rows precede recency/ID ordering; drag reorder is project-mode only.
 
-- Five-column grid: chevron, pin, title, overflow (`···`), status. Project rows
+- Four-column grid: chevron or indent, icon or pin, title, status. Hover actions
+  sit outside the grid. Project rows
   show a discovered or user-selected icon when one is available.
 - Rows show the **project or thread name only**. Do not put folder paths under rows or in the titlebar.
 - Collapsed project status prioritizes waiting approvals, then working turns,
   then failures, independently of thread order.
 - The sidebar titlebar carries a compact Capsule wordmark and hide control.
-  Search, project, and thread rows are flat by default; hover supplies the
-  surface and the active thread relies on text weight instead of stacked pills.
+  New conversation has a text label. Search and project rows are flat by default;
+  the active thread has a muted background. Settled, unpinned threads have no glyph.
+- Hover or focus reveals pin, archive, and overflow actions without navigating.
+  Delayed, portaled previews show full thread titles, project names, and recency;
+  project previews show conversation counts and the working folder. Escape,
+  scrolling, resizing, collapse, and menus dismiss previews.
+- Project mode includes six recent active conversations across projects, ordered
+  by activity. Search and status mode omit this duplicate navigation list.
+  Each project initially shows three settled threads, alongside all pins and
+  live work. Both lists expand in batches and have a Show fewer control.
+  A selected older thread remains visible beyond its project's settled preview.
+- Active threads are indexed by project once per session snapshot. Status groups
+  are calculated only in status mode. Previews read existing metadata without I/O.
 - Hide with the traffic-light-adjacent control or `⌘B`. Width animates to 0; do not `display: none` the sidebar or the swipe-back target disappears.
 - Both normal and Settings sidebars are `inert` while collapsed. Close any
   portaled menu and transfer focus to the visible titlebar toggle when needed.
@@ -459,6 +471,18 @@ process changes remount the controls. Restorable direct identities also govern
 composer readiness after restart, even if the new-thread default is Gateway.
 The compact capabilities popover wraps both availability and settings in one
 bounded scrolling surface; nested disclosures do not expand the composer toolbar.
+The wrench-marked Conversation tools control owns context, drafts, commands and
+capabilities at every composer width. The narrow options menu contains only
+permissions and mode; it never redirects capabilities to another view. Tools and
+tool servers remain agent-owned; the popover explicitly distinguishes reported
+session configuration from individual tool selection.
+
+Menu, header, capability, context and sidebar preview surfaces share semantic
+background, foreground, border, radius and raised-shadow rules. Dialogs use a
+separate shared radius and modal shadow on the same theme-aware surface. Explicit
+Light and System-following-Light use identical elevation tokens. Recents reuses
+the project thread-row renderer, including selection, keyboard navigation and
+quick actions, with distinct preview IDs and no pinned drag reordering there.
 
 Git projects expose **Local / Worktree** in the composer. The selected
 conversation’s worktree branch appears in the reference strip.

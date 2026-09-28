@@ -709,9 +709,7 @@ export function Composer({
               <MenuSelect ariaLabel="Composer options" value="" placeholder="More options" iconOnly options={[
                 ...permissionOptions.map((item) => ({ ...item, id: `permission:${item.id}`, group: `Permissions · ${permissionOptions.find((option) => option.id === permissionValue)?.label ?? "Standard"}` })),
                 ...modeOptions.map((item) => ({ ...item, id: `mode:${item.id}`, group: `Mode · ${modeOptions.find((option) => option.id === mode)?.label}` })),
-                { id: "stash", label: "Prompt stash", group: "Workspace" },
-                ...(capabilityHarness ? [{ id: "capabilities", label: "Harness capabilities", detail: "Inspect this agent's runtime support and limitations.", group: "Workspace" }] : []),
-              ]} onChange={(id) => { if (id.startsWith("permission:")) void setPermissionProfile(id.slice(11)); else if (id.startsWith("mode:")) setMode(id.slice(5) as typeof mode); else if (id === "stash") setStashOpen(true); else if (id === "capabilities") setView("runtimes"); }} />
+              ]} onChange={(id) => { if (id.startsWith("permission:")) void setPermissionProfile(id.slice(11)); else if (id.startsWith("mode:")) setMode(id.slice(5) as typeof mode); }} />
             </div>
           </div>
         <div className="composer-prompt-actions">

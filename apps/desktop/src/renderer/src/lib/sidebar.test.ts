@@ -11,6 +11,7 @@ import {
   latestSidebarRuns,
   readSidebarGrouping,
   visibleStatusThreads,
+  indexSidebarThreads,
 } from "./sidebar.js";
 
 describe("cross-project status groups", () => {
@@ -21,6 +22,19 @@ describe("cross-project status groups", () => {
   const run = (sessionId: string, status: Run["status"], extra: Partial<Run> = {}): Run => ({
     id: `run-${sessionId}`, sessionId, status, createdAt: "2026-09-01T00:00:00Z", ...extra,
   } as Run);
+
+  it("indexes active conversations by project without reordering pins", () => {
+    const sessions = [thread("first"), thread("pin", { pinned: true }), thread("other", { projectId: "b" }), thread("old", { state: "archived" })];
+    expect([...indexSidebarThreads(sessions)].map(([project, threads]) => [project, threads.map((item) => item.id)]))
+      .toEqual([["a", ["first", "pin"]], ["b", ["other"]]]);
+  });
+
+  it("keeps an older selected conversation visible without expanding its entire project", () => {
+    const threads = Array.from({ length: 50 }, (_, index) => thread(String(index), { updatedAt: new Date(Date.UTC(2026, 8, 28) - index * 86_400_000).toISOString() }));
+    const result = splitProjectThreads(threads, () => "ready", 3, threads[49]);
+    expect(result.rest.map((item) => item.id)).toEqual(["0", "1", "2", "49"]);
+    expect(result.hidden).toBe(46);
+  });
 
   it("classifies all projects once, retaining distinct failure and approval semantics", () => {
     const sessions = [thread("approval", { pinned: true, projectId: "b" }), thread("failed"), thread("queued"),

@@ -17,6 +17,7 @@ import {
   formatWorkingDurationLabel,
   isWorkingHarnessState,
   latestSidebarRuns,
+  indexSidebarThreads,
   groupSidebarThreads,
   readSidebarGrouping,
   SIDEBAR_GROUPING_KEY,
@@ -39,7 +40,9 @@ import { MenuSelect } from "./MenuSelect";
 import { AddProjectPicker, type ProjectSourceId } from "./AddProjectPicker";
 import { CloneRepositoryDialog } from "./CloneRepositoryDialog";
 import { SidebarToggle } from "./SidebarControl";
+import { SidebarThreadPreview } from "./SidebarThreadPreview";
 import {
+  ArchiveIcon,
   CpuIcon,
   FolderIcon,
   FolderPlusIcon,
@@ -84,6 +87,7 @@ interface MenuState {
   point: { x: number; y: number };
   anchor?: MenuAnchor;
   keyboard?: boolean;
+  location: "recent" | "project";
 }
 
 function WorkingDuration({ startedAt }: { startedAt: string }) {
@@ -164,7 +168,7 @@ export function Sidebar() {
         !event.currentTarget.contains(event.relatedTarget)) focusedInside.current = false;
     },
   };
-  const [editing, setEditing] = useState<{ kind: "project" | "session"; id: string; value: string }>();
+  const [editing, setEditing] = useState<{ kind: "project" | "session"; id: string; value: string; location?: "recent" | "project" }>();
   const [query, setQuery] = useState("");
   const [settingsQuery, setSettingsQuery] = useState("");
   const update = useUpdates();
@@ -182,6 +186,7 @@ export function Sidebar() {
 
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [restLimit, setRestLimit] = useState<Record<string, number>>({});
+  const [recentLimit, setRecentLimit] = useState(6);
   const [grouping, setGrouping] = useState(() => readSidebarGrouping(() => localStorage.getItem(SIDEBAR_GROUPING_KEY)));
   const [expandedGroups, setExpandedGroups] = useState<Set<SidebarStatusGroupId>>(new Set());
   const latestRuns = useMemo(() => latestSidebarRuns(projectRuns), [projectRuns]);
@@ -193,7 +198,11 @@ export function Sidebar() {
     return () => window.removeEventListener(CHANNEL_PREFS_EVENT, sync);
   }, []);
 
-  const activeSessions = sessions.filter((item) => item.state === "active");
+  const threadsByProject = useMemo(() => indexSidebarThreads(sessions), [sessions]);
+  const projectNames = useMemo(() => new Map(projects.map((project) => [project.id, project.name])), [projects]);
+  const recentThreads = useMemo(() => grouping === "project" ? [...threadsByProject.values()].flat()
+    .filter((thread) => projectNames.has(thread.projectId))
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)) : [], [grouping, threadsByProject, projectNames]);
   const needle = query.trim().toLowerCase();
 
   const kindOf = (session: Session): SidebarThreadKind => {
@@ -206,7 +215,7 @@ export function Sidebar() {
     });
   };
 
-  const statusGroups = useMemo(() => groupSidebarThreads(sessions, projects, latestRuns, needle), [sessions, projects, latestRuns, needle]);
+  const statusGroups = useMemo(() => grouping === "status" ? groupSidebarThreads(sessions, projects, latestRuns, needle) : [], [grouping, sessions, projects, latestRuns, needle]);
 
   function changeGrouping(value: string) {
     const next: SidebarGrouping = value === "status" ? "status" : "project";
@@ -221,20 +230,20 @@ export function Sidebar() {
     return projects.filter(
       (project) =>
         project.name.toLowerCase().includes(needle) ||
-        activeSessions.some(
+        threadsByProject.get(project.id)?.some(
           (session) =>
             session.projectId === project.id && session.title.toLowerCase().includes(needle),
         ),
     );
-  }, [activeSessions, needle, projects]);
+  }, [threadsByProject, needle, projects]);
 
   function sessionsFor(projectIdValue: string) {
-    const list = activeSessions.filter((session) => session.projectId === projectIdValue);
-    if (!needle || projects.find((project) => project.id === projectIdValue)?.name.toLowerCase().includes(needle)) return list;
+    const list = threadsByProject.get(projectIdValue) ?? [];
+    if (!needle || projectNames.get(projectIdValue)?.toLowerCase().includes(needle)) return list;
     return list.filter((session) => session.title.toLowerCase().includes(needle));
   }
 
-  function runAction(kind: MenuState["kind"], id: string, action: string) {
+  function runAction(kind: MenuState["kind"], id: string, action: string, location: MenuState["location"]) {
     setMenu(undefined);
     if (kind === "project") {
       const project = projects.find((item) => item.id === id);
@@ -278,7 +287,7 @@ export function Sidebar() {
       session?.workingDirectory ||
       projects.find((item) => item.id === session?.projectId)?.workingDirectory;
     if (action === "rename") {
-      setEditing({ kind: "session", id, value: session?.title ?? "" });
+      setEditing({ kind: "session", id, value: session?.title ?? "", location });
       return;
     }
     if (action === "pin") {
@@ -337,6 +346,7 @@ export function Sidebar() {
     event.stopPropagation();
     const items = itemsFor(kind, id);
     const target = event.currentTarget as HTMLElement;
+    const location = target.closest(".sidebar-recents") ? "recent" : "project";
     const rect = target.getBoundingClientRect();
     const point = { x: event.clientX ?? rect.right, y: event.clientY ?? rect.bottom };
     const fromTrigger = event.type !== "contextmenu";
@@ -346,11 +356,11 @@ export function Sidebar() {
     if (event.type === "contextmenu") {
       const native = await showNativeContextMenu(items, point);
       if (native !== "unavailable") {
-        if (native) runAction(kind, id, native);
+        if (native) runAction(kind, id, native, location);
         return;
       }
     }
-    setMenu({ kind, id, items, point, anchor, keyboard });
+    setMenu({ kind, id, items, point, anchor, keyboard, location });
   }
 
   function toggleExpanded(id: string, event: MouseEvent) {
@@ -389,8 +399,9 @@ export function Sidebar() {
 
   const { startResize } = usePanelResize(!sidebarCollapsed);
 
-  function renderThread(session: Session) {
-    if (editing?.kind === "session" && editing.id === session.id) {
+  function renderThread(session: Session, location: "recent" | "project" = "project") {
+    const previewId = `${location}-thread-preview-${session.id}`;
+    if (editing?.kind === "session" && editing.id === session.id && (editing.location ?? "project") === location) {
       return (
         <input
           key={session.id}
@@ -418,8 +429,9 @@ export function Sidebar() {
         ? run.createdAt
         : undefined;
     return (
+      <SidebarThreadPreview key={session.id} id={previewId} title={session.title}
+        project={projectNames.get(session.projectId)} updatedAt={session.updatedAt} disabled={sidebarCollapsed || Boolean(menu) || Boolean(editing)}>
       <div
-        key={session.id}
         role="button"
         tabIndex={0}
         data-thread-item
@@ -427,8 +439,10 @@ export function Sidebar() {
         /* The row is a button made of divs, so it has no name of its own —
            every conversation in the sidebar read as an unnamed control. */
         aria-label={session.title}
-        className={`thread-row ${active ? "active" : ""} ${recede ? "recede" : ""}`}
-        draggable={grouping === "project" && Boolean(session.pinned)}
+        aria-current={active ? "page" : undefined}
+        aria-describedby={previewId}
+        className={`thread-row ${location === "recent" ? "sidebar-recent-row" : ""} ${active ? "active" : ""} ${recede ? "recede" : ""}`}
+        draggable={location === "project" && grouping === "project" && Boolean(session.pinned)}
         onDragStart={(event) => {
           if (grouping !== "project" || !session.pinned) return;
           setDraggedPinnedId(session.id);
@@ -437,12 +451,12 @@ export function Sidebar() {
         }}
         onDragEnd={() => setDraggedPinnedId(undefined)}
         onDragOver={(event) => {
-          if (grouping !== "project" || !session.pinned || !draggedPinnedId || draggedPinnedId === session.id) return;
+          if (location !== "project" || grouping !== "project" || !session.pinned || !draggedPinnedId || draggedPinnedId === session.id) return;
           event.preventDefault();
           event.dataTransfer.dropEffect = "move";
         }}
         onDrop={(event) => {
-          if (grouping !== "project" || !session.pinned) return;
+          if (location !== "project" || grouping !== "project" || !session.pinned) return;
           event.preventDefault();
           const sourceId = draggedPinnedId || event.dataTransfer.getData("text/plain");
           if (!sourceId || sourceId === session.id) return;
@@ -459,8 +473,9 @@ export function Sidebar() {
         }}
         onClick={(event) => openThread(session, event)}
         onDoubleClick={(event) => {
+          if (event.target instanceof Element && event.target.closest("button")) return;
           event.preventDefault();
-          setEditing({ kind: "session", id: session.id, value: session.title });
+          setEditing({ kind: "session", id: session.id, value: session.title, location });
         }}
         onKeyDown={(event) => {
           if (event.target !== event.currentTarget) return;
@@ -474,11 +489,11 @@ export function Sidebar() {
       >
         <span className="row-slot" aria-hidden />
         <span className="row-slot">
-          {session.pinned ? <PinIcon size={11} /> : <MessageSquareIcon size={12} />}
+          {session.pinned ? <PinIcon size={11} /> : null}
         </span>
         <span className="thread-title">
           <span className="truncate">{session.title}</span>
-          {grouping === "status" && <small className="thread-project">{projects.find((project) => project.id === session.projectId)?.name}</small>}
+          {grouping === "status" && <small className="thread-project">{projectNames.get(session.projectId)}</small>}
         </span>
         <span className="thread-meta">
           {kind === "working" ? (
@@ -494,6 +509,12 @@ export function Sidebar() {
             <span className="thread-time">{compactRelativeTime(session.updatedAt)}</span>
           )}
         </span>
+        <span className="thread-quick-actions">
+        <button type="button" className="thread-quick-action" aria-label={session.pinned ? "Unpin conversation" : "Pin conversation"}
+          title={session.pinned ? "Unpin conversation" : "Pin conversation"}
+          onClick={(event) => { event.stopPropagation(); void pinSession(session.id, !session.pinned); }}><PinIcon size={13} /></button>
+        <button type="button" className="thread-quick-action" aria-label="Archive conversation" title="Archive conversation"
+          onClick={(event) => { event.stopPropagation(); void archiveSession(session.id); }}><ArchiveIcon size={13} /></button>
         <button
           type="button"
           className="thread-more"
@@ -508,7 +529,9 @@ export function Sidebar() {
         >
           <MoreHorizontalIcon size={13} />
         </button>
+        </span>
       </div>
+      </SidebarThreadPreview>
     );
   }
 
@@ -645,6 +668,7 @@ export function Sidebar() {
           }}
         >
           <PlusIcon size={16} />
+          <span>New conversation</span>
         </button>
       </div>
       {/* A scope row rather than a full-width button: the label says what the
@@ -693,7 +717,7 @@ export function Sidebar() {
             const hidden = group.threads.length - visible.length;
             return <section className="sidebar-status-group" key={group.id} aria-label={group.label}>
               <h3 className="session-label">{group.label}<span>{group.threads.length}</span></h3>
-              {visible.map(renderThread)}
+              {visible.map((session) => renderThread(session))}
               {hidden > 0 || (expanded && group.threads.length > STATUS_THREAD_PREVIEW) ? <button type="button" className="show-more" onClick={() => setExpandedGroups((current) => {
                 const next = new Set(current);
                 if (next.has(group.id)) next.delete(group.id);
@@ -707,9 +731,10 @@ export function Sidebar() {
           const threads = sessionsFor(item.id);
           const isOpen = needle ? threads.length > 0 || item.id === projectId : !collapsed.has(item.id);
           const limit = restLimit[item.id] ?? SETTLED_THREAD_PREVIEW;
-          const groups = splitProjectThreads(threads, kindOf, needle ? threads.length : limit);
+          const groups = splitProjectThreads(threads, kindOf, needle ? threads.length : limit, threads.find((thread) => thread.id === sessionId));
           const ProjectGlyph = item.name === "Inbox" ? InboxIcon : FolderIcon;
           const liveKind = resolveProjectThreadKind(threads.map(kindOf));
+          const conversationCount = threadsByProject.get(item.id)?.length ?? 0;
           return (
             <div key={item.id} className="project-block">
               {editing?.kind === "project" && editing.id === item.id ? (
@@ -727,10 +752,14 @@ export function Sidebar() {
                   }}
                 />
               ) : (
+                <SidebarThreadPreview id={`project-preview-${item.id}`} title={item.name}
+                  project={`${conversationCount} ${conversationCount === 1 ? "conversation" : "conversations"}`}
+                  detail={item.workingDirectory} disabled={sidebarCollapsed || Boolean(menu) || Boolean(editing)}>
                 <div
                   role="button"
                   tabIndex={0}
                   className={`project-row ${item.id === projectId ? "active" : ""}`}
+                  aria-describedby={`project-preview-${item.id}`}
                   data-menu-open={menu?.kind === "project" && menu.id === item.id ? "true" : undefined}
                   aria-label={item.name}
                   onClick={() => openProject(item.id)}
@@ -783,6 +812,7 @@ export function Sidebar() {
                     <MoreHorizontalIcon size={13} />
                   </button>
                 </div>
+                </SidebarThreadPreview>
               )}
               {isOpen && (
                 <div className="session-list">
@@ -808,6 +838,8 @@ export function Sidebar() {
                           Show {groups.hidden} more
                         </button>
                       )}
+                      {!needle && limit > SETTLED_THREAD_PREVIEW && <button type="button" className="show-more"
+                        onClick={() => setRestLimit((current) => ({ ...current, [item.id]: SETTLED_THREAD_PREVIEW }))}>Show fewer</button>}
                     </>
                   )}
                 </div>
@@ -815,6 +847,12 @@ export function Sidebar() {
             </div>
           );
         })}
+        {grouping === "project" && !needle && recentThreads.length > 0 && <section className="sidebar-recents" aria-label="Recent conversations">
+          <h3>Recents</h3>
+          {recentThreads.slice(0, recentLimit).map((thread) => renderThread(thread, "recent"))}
+          {recentThreads.length > recentLimit && <button type="button" className="show-more" onClick={() => setRecentLimit((limit) => limit + 6)}>Show more</button>}
+          {recentLimit > 6 && <button type="button" className="show-more" onClick={() => setRecentLimit(6)}>Show fewer</button>}
+        </section>}
       </div>
       <div className="sidebar-footer">
         {update.error || updateResult?.detail || ["update-available", "downloading", "ready-to-install", "installing"].includes(updateResult?.state ?? "") ? (
@@ -880,7 +918,7 @@ export function Sidebar() {
           anchor={menu.anchor}
           keyboard={menu.keyboard}
           onClose={() => setMenu(undefined)}
-          onSelect={(action) => runAction(menu.kind, menu.id, action)}
+          onSelect={(action) => runAction(menu.kind, menu.id, action, menu.location)}
         />
       ) : null}
       {addProjectOpen ? (

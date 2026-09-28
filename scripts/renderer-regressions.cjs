@@ -31,10 +31,32 @@ app.whenReady().then(async () => {
     const result = await window.webContents.executeJavaScript("window.runRendererRegressions().then(value => ({ value }), error => ({ error: String(error.stack || error) }))");
     if (result.error) throw new Error(result.error);
     console.log(result.value);
+    for (const scheme of ["dark", "light"]) {
+      await window.webContents.debugger.sendCommand("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: scheme }] });
+      await window.webContents.executeJavaScript("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
+      for (const theme of [scheme, "system"]) {
+        const surface = await window.webContents.executeJavaScript(`window.runSurfaceRegressions(${JSON.stringify(theme)}).then(value => ({ value }), error => ({ error: String(error.stack || error) }))`);
+        if (surface.error) throw new Error(surface.error);
+        console.log(surface.value);
+      }
+    }
     // Exercise a real narrow viewport as well as the default desktop width.
     window.setContentSize(380, 650);
+    // A native resize arrives asynchronously. Opening the preview before that
+    // event races its intentional resize dismissal.
+    await window.webContents.executeJavaScript("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
     const narrowDiff = await window.webContents.executeJavaScript("window.runDiffPreviewRegressions().then(() => ({}), error => ({ error: String(error.stack || error) }))");
     if (narrowDiff.error) throw new Error(narrowDiff.error);
+    const sidebarScreenshots = process.env.CAPSULE_SIDEBAR_SCREENSHOTS_DIRECTORY;
+    if (sidebarScreenshots) {
+      fs.mkdirSync(sidebarScreenshots, { recursive: true });
+      for (const theme of ["dark", "light"]) {
+        window.setContentSize(720, 740);
+        await window.webContents.executeJavaScript(`window.renderWorkspacePreview("sidebar", ${JSON.stringify(theme)})`);
+        await window.webContents.executeJavaScript(`document.querySelector('[data-thread-item]').focus({preventScroll: true}); new Promise(resolve => setTimeout(resolve, 550))`);
+        fs.writeFileSync(path.join(sidebarScreenshots, `sidebar-${theme}.png`), (await window.webContents.capturePage()).toPNG());
+      }
+    }
     const screenshots = process.env.CAPSULE_RENDERER_SCREENSHOTS_DIRECTORY;
     if (screenshots) {
       fs.mkdirSync(screenshots, { recursive: true });

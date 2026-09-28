@@ -65,6 +65,27 @@ offer **Show more** and **Show fewer**, keeping the selected conversation visibl
 Pins sort first within a status group. Return to **By project** to drag pinned
 conversations into a custom order; switching views keeps project expansion state.
 
+In project view, **Recents** opens conversations across projects in activity order.
+It highlights the selected conversation and offers the same pin, archive, and
+more actions as conversations under a project.
+Hover over a conversation or focus it with the keyboard to reveal pin, archive,
+and more actions. Pause on the row to see its full title and project. A project
+preview shows its folder and conversation count. Press Escape to dismiss a preview.
+The selected conversation stays visible even when older conversations are collapsed.
+
+## Conversation controls and activity
+
+The wrench button opens **Conversation tools**: file and skill context, saved
+drafts, and the selected agent's reported commands and settings. These controls
+stay in the same place in narrow windows. Individual tools and connected tool
+servers are managed by your agent, not toggled by this menu.
+
+While work is running, the activity summary shows the current tool even when the
+group is collapsed. Select that step to open its reported input, output, and
+files in one click. Earlier failures remain marked without hiding ongoing work.
+Expand the summary to inspect all reported steps. Missing output is labelled,
+not treated as a successful result.
+
 ## Public preview
 
 The website shows a read-only sample of the interface, not a running agent or

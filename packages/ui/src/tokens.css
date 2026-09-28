@@ -131,6 +131,8 @@
   --border-color: rgb(255 255 255 / 8%);
   --shadow-raised: 0 4px 16px -2px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.2);
   --shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.55), 0 4px 12px -2px rgba(0, 0, 0, 0.35);
+  --popover-radius: 0.65rem;
+  --dialog-radius: 1rem;
   --glass: color-mix(in srgb, var(--surface-0) var(--glass-opacity), transparent);
 
   /* Sidebar: optional gradient (graphite depth, not color) and active row
@@ -210,6 +212,7 @@ html[data-theme="light"] {
     --text-faint: var(--overlay-1);
     --bg-elevated: var(--surface-0);
     --bg-sidebar: #ecece8;
+    --shadow-raised: 0 8px 24px -12px rgb(0 0 0 / 0.12);
     --bg-hover: rgb(0 0 0 / 5%);
     --bg-active: rgb(0 0 0 / 8%);
     --border-color: rgb(0 0 0 / 8%);

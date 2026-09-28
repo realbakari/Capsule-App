@@ -130,7 +130,7 @@ export function MenuSelect({
           if (!open && !unavailableReason && (event.key === "ArrowDown" || event.key === "ArrowUp")) { event.preventDefault(); setOpen(true); }
         }}
       >
-        {iconOnly ? <span aria-hidden>⋯</span> : <>{icon}<span>{current?.label ?? placeholder ?? "Select"}</span><ChevronDownIcon size={12} /></>}
+        {iconOnly ? <span aria-hidden>{icon ?? "⋯"}</span> : <>{icon}<span>{current?.label ?? placeholder ?? "Select"}</span><ChevronDownIcon size={12} /></>}
       </button>
       {open && !unavailableReason &&
         createPortal(

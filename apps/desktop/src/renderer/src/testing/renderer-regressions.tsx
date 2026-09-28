@@ -22,6 +22,7 @@ import { runPanelRegressions } from "./panel-regressions";
 import { runActivityRegressions, renderActivityPreview } from "./activity-regressions";
 import { runChannelRegressions, renderChannelPreview } from "./channel-regressions";
 import { runComposerLayoutRegressions } from "./composer-layout-regressions";
+import { runSurfaceRegressions } from "./surface-regressions";
 import { runMuseSettingsRegressions } from "./muse-settings-regressions";
 import { runDraftAdmissionRegressions } from "./draft-admission-regressions";
 import { runWorkspaceExtensionRegressions } from "./workspace-extension-regressions";
@@ -48,6 +49,7 @@ declare global {
     testWorkspace: Record<string, unknown>;
     runPetRegressions: (motion: "reduce" | "no-preference") => Promise<string>;
     runRendererRegressions: () => Promise<string>;
+    runSurfaceRegressions: typeof runSurfaceRegressions;
     renderComposerPreview: (resting: boolean, theme?: "dark" | "light") => Promise<void>;
     renderFilesPreview: (width: number, openFile: boolean) => Promise<void>;
     runDiffPreviewRegressions: () => Promise<void>;
@@ -57,6 +59,8 @@ declare global {
     renderWorkspacePreview: (surface: "sidebar" | "quota" | "runtime", theme: "dark" | "light") => Promise<void>;
   }
 }
+
+window.runSurfaceRegressions = runSurfaceRegressions;
 
 function assert(condition: unknown, message: string): void {
   if (!condition) throw new Error(message);
@@ -970,7 +974,11 @@ window.runRendererRegressions = async () => {
   await until(() => document.querySelector('[role="listbox"]'));
   const popup = document.querySelector('[role="listbox"]')!.getBoundingClientRect();
   assert(popup.left >= 0 && popup.top >= 0 && popup.right <= innerWidth + 1 && popup.bottom <= innerHeight + 1, "Overflow menu escaped the viewport");
-  assert(document.querySelector('[role="listbox"]')!.textContent?.includes("Prompt stash"), "Compact composer lost prompt stash");
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+  await until(() => !document.querySelector('[role="listbox"]'));
+  document.querySelector<HTMLButtonElement>('[aria-label="Conversation tools"]')!.click();
+  await until(() => document.querySelector('[role="listbox"]'));
+  assert(document.querySelector('[role="listbox"]')!.textContent?.includes("Prompt stash"), "Compact composer lost prompt stash from its shared tools menu");
   window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
   host.style.width = "900px";
   await until(() => getComputedStyle(document.querySelector('.composer-options-overflow')!).display === "none");
@@ -1160,9 +1168,9 @@ window.runRendererRegressions = async () => {
         } }], truncated: false }),
       },
     };
-    localStorage.setItem("capsule.sidebarGrouping", "status");
+    localStorage.setItem("capsule.sidebarGrouping", "project");
     previewRoot ??= createRoot(host);
-    previewRoot.render(surface === "sidebar" ? <Sidebar key={`${surface}-${theme}`} />
+    previewRoot.render(surface === "sidebar" ? <div className="app" style={{ height: "100vh" }}><Sidebar key={`${surface}-${theme}`} /></div>
       : surface === "quota" ? <ProviderQuota /> : <RuntimeModeCard settings={DEFAULT_CAPSULE_SETTINGS} onPatch={() => {}} />);
     await until(() => surface === "sidebar" ? document.querySelector(".sidebar")
       : surface === "quota" ? document.querySelector(".provider-quota-card") : document.querySelector(".runtime-modes"));
