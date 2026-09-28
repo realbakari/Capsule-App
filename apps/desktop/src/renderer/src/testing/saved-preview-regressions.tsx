@@ -148,7 +148,25 @@ export async function runSavedPreviewLayoutRegressions(host: HTMLElement) {
           </div>);
           await until(() => host.querySelector(`[data-diff-case="${identity}"] .file-diff-body`));
           const body = host.querySelector<HTMLElement>(".file-diff-body")!;
-          if (wrap) assert(body.scrollWidth <= body.clientWidth + 1, "Wrapped diff overflows its surface");
+          if (wrap) {
+            const overflowDetails = () => JSON.stringify({
+              identity, width: body.clientWidth, scrollWidth: body.scrollWidth,
+              font: getComputedStyle(body).font, columns: getComputedStyle(body).gridTemplateColumns,
+              cells: Array.from(body.querySelectorAll<HTMLElement>(".diff-text")).filter((cell) => cell.scrollWidth > cell.clientWidth + 1)
+                .map((cell) => ({ text: cell.textContent, width: cell.clientWidth, scrollWidth: cell.scrollWidth })),
+            });
+            assert(body.scrollWidth <= body.clientWidth + 1, `Wrapped diff overflows its surface: ${overflowDetails()}`);
+            for (const font of ["", '"Courier New", monospace']) {
+              body.style.fontFamily = font;
+              for (let width = 260; width <= 360; width += 5) {
+                body.style.width = `${width}px`;
+                assert(body.scrollWidth <= body.clientWidth + 1, `Wrapped diff overflows its surface (${identity}, ${font}, ${width}px: ${body.scrollWidth}/${body.clientWidth})`);
+              }
+            }
+            body.style.removeProperty("font-family");
+            body.style.removeProperty("width");
+            assert(body.scrollWidth <= body.clientWidth + 1, `Wrapped diff overflows its surface (${identity}: ${body.scrollWidth}/${body.clientWidth})`);
+          }
           for (const code of Array.from(body.querySelectorAll(".diff-text"))) {
             const background = getComputedStyle(code).backgroundColor;
             assertCodeContrast(code, background === "rgba(0, 0, 0, 0)" ? getComputedStyle(body).backgroundColor : background);
