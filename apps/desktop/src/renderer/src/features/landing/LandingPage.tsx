@@ -5,7 +5,7 @@ import "./landing.css";
 const REPO = "https://github.com/realbakari/Capsule-App";
 const DOCS = `${REPO}/blob/main/docs/user`;
 // Pin downloads to a published release, not the unreleased workspace version.
-const RELEASE = "0.7.0";
+const RELEASE = "0.8.1";
 const RELEASE_URL = `${REPO}/releases/tag/v${RELEASE}`;
 const ASSETS = `${REPO}/releases/download/v${RELEASE}`;
 const CLONE_COMMAND = "git clone https://github.com/realbakari/Capsule-App.git && cd Capsule-App && pnpm install && pnpm dev";
