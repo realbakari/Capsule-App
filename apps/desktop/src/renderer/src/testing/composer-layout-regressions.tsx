@@ -69,10 +69,12 @@ export async function runComposerLayoutRegressions(host: HTMLElement, base: Reco
             }
             assert(document.documentElement.scrollWidth <= innerWidth + 1, `${label}: document overflows horizontally`);
             if (scenario === "menu") {
+              assert(host.querySelector('[aria-label="Conversation tools"] svg'), `${label}: tools control became an indistinguishable overflow icon`);
               host.querySelector<HTMLButtonElement>('[aria-label="Conversation tools"]')!.click(); await settle();
               const menu = document.querySelector<HTMLElement>('[role="listbox"]')!;
               const rect = menu.getBoundingClientRect();
               assert(rect.left >= 0 && rect.top >= 0 && rect.right <= innerWidth + 1 && rect.bottom <= innerHeight + 1, `${label}: menu escaped viewport`);
+              assert(menu.querySelectorAll('[role="option"] svg').length >= 3, `${label}: context menu lost its action icons`);
               window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })); await settle();
               assert(document.activeElement?.getAttribute("aria-label") === "Conversation tools", `${label}: menu lost trigger focus`);
             }

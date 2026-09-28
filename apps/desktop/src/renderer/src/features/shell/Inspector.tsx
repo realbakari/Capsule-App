@@ -63,7 +63,7 @@ function toolFromTab(tab: string): InspectorTool {
 function toolTitle(tool: InspectorTool, fileName?: string): string {
   if (tool === "files") return fileName || "Open file";
   if (tool === "review") return "Review";
-  if (tool === "terminal") return "Terminal";
+  if (tool === "terminal") return "Commands";
   if (tool === "browser") return "Browser";
   if (tool === "chat") return "Side chat";
   if (tool === "agents") return "Agents";
@@ -102,8 +102,8 @@ export const SURFACES: Array<{
   },
   {
     tool: "terminal",
-    label: "Terminal",
-    detail: "Run a command in the project folder.",
+    label: "Commands",
+    detail: "Run a single command and inspect its output. Interactive shells open in the bottom terminal.",
     icon: TerminalIcon,
     blockedBy: ({ projectId }) => (projectId ? undefined : "Open a project first."),
   },
@@ -164,6 +164,7 @@ export function Inspector() {
     files,
     pickProjectDirectory,
     openTerminal,
+    setTerminalOpen,
     execInProject,
     openPath,
     mentionFile,
@@ -917,7 +918,7 @@ export function Inspector() {
             </>
           ) : activeTool === "terminal" ? (
             <>
-              <span>Terminal</span>
+              <span>Commands</span>
               <span className="codex-breadcrumb-sep">·</span>
               <span className="mono truncate">
                 {conversationRoot
@@ -1264,7 +1265,10 @@ export function Inspector() {
         {activeTool === "terminal" && (
           <div className="codex-terminal-pane">
             <div className="codex-terminal-top">
-              <span className="faint">Runs inside project folder.</span>
+              <span className="faint">One command at a time, in this conversation’s folder.</span>
+              <button className="chip" type="button" disabled={!conversationRoot || api.isDesktop === false} onClick={() => setTerminalOpen(true)}>
+                Open interactive terminal
+              </button>
               <button
                 className="chip"
                 type="button"
@@ -1275,7 +1279,7 @@ export function Inspector() {
                 Open external terminal
               </button>
             </div>
-            <pre className="mono term-out codex-term-output">{termOut || "$ echo 'Capsule terminal ready'"}</pre>
+            <pre className="mono term-out codex-term-output">{termOut || "Command output will appear here."}</pre>
             <form
               className="term-form"
               onSubmit={(event) => {

@@ -1,5 +1,10 @@
 # Your first conversation
 
+The **Terminal** button in the conversation header opens a bottom drawer in the
+conversation’s folder. You can also use **Show terminal** in the command palette
+or `⌘J`. Hiding the drawer preserves running shells; closing a shell tab ends it.
+For a single command with captured output, use **Commands** in the inspector.
+
 1. Install and sign in to a supported coding CLI using that tool's own setup.
    Capsule does not supply a subscription or install the CLI.
 2. Add a project folder with the sidebar's folder-plus control. Start with a

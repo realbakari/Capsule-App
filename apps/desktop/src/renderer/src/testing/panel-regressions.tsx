@@ -2,6 +2,8 @@ import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Sidebar } from "../features/shell/Sidebar";
 import { Inspector } from "../features/shell/Inspector";
+import { Titlebar } from "../features/shell/Titlebar";
+import { Palette } from "../features/shell/Palette";
 import { UsageView } from "../features/library/UsageView";
 import { usePanelResize } from "../lib/panel-resize";
 import { SIDEBAR_GROUPING_KEY } from "../lib/sidebar";
@@ -33,6 +35,38 @@ export async function runPanelRegressions(host: HTMLElement, base: Record<string
   localStorage.removeItem(SIDEBAR_GROUPING_KEY);
   const root = createRoot(host);
   try {
+    const terminalToggles: boolean[] = [];
+    const terminalViews: string[] = [];
+    const terminalBase = { ...base, view: "chat", project: undefined, session: { workingDirectory: "/fixture/worktree" },
+      api: { ...base.api as object, isDesktop: true }, terminalOpen: false,
+      setTerminalOpen: (open: boolean) => terminalToggles.push(open), setView: (view: string) => terminalViews.push(view),
+      palette: true, paletteQuery: "", projects: [], sessions: [], setPalette: () => {}, setPaletteQuery: () => {},
+    };
+    window.testWorkspace = terminalBase;
+    root.render(<Titlebar />); await settle();
+    const terminalToggle = () => host.querySelector<HTMLButtonElement>('[aria-label="Toggle terminal (⌘J)"]')!;
+    assert(!terminalToggle().disabled && terminalToggle().getAttribute("aria-pressed") === "false", "Thread folder did not enable the header terminal");
+    terminalToggle().click();
+    assert(terminalToggles.join() === "true", "Header terminal did not open the bottom dock");
+    window.testWorkspace = { ...terminalBase, terminalOpen: true };
+    root.render(<Titlebar />); await settle();
+    assert(terminalToggle().getAttribute("aria-pressed") === "true", "Header terminal lost its active state");
+    terminalToggle().click();
+    assert(terminalToggles.join() === "true,false", "Header terminal could not hide the dock");
+    window.testWorkspace = { ...terminalBase, session: undefined };
+    root.render(<Titlebar />); await settle();
+    assert(terminalToggle().disabled, "Terminal opened without a folder");
+    window.testWorkspace = { ...terminalBase, api: { ...terminalBase.api, isDesktop: false } };
+    root.render(<Titlebar />); await settle();
+    assert(terminalToggle().disabled, "Read-only viewer offered an interactive shell");
+    window.testWorkspace = terminalBase;
+    root.render(<Palette />); await settle();
+    const terminalAction = Array.from(document.querySelectorAll<HTMLElement>('[role="option"]')).find((node) => node.textContent?.includes("Show terminal"));
+    assert(terminalAction, "Command palette omitted the terminal");
+    terminalAction.click(); await settle();
+    assert(terminalToggles.join() === "true,false,true" && terminalViews.includes("chat"), "Palette did not open the terminal in conversation context");
+    root.render(null); await settle();
+    window.testWorkspace = base;
     const deltas: number[] = [];
     root.render(<ResizeFixture change={(delta) => deltas.push(delta)} />); await settle();
     const rail = () => document.querySelector<HTMLElement>("[data-resize-active]")!;

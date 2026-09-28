@@ -232,13 +232,13 @@ Helpers: `projectFolderList`, `addFolderToProject`, `removeFolderFromProject`, `
 
 ## Inspector
 
-Opening the panel with no surface chosen shows the chooser: Review, Terminal,
+Opening the panel with no surface chosen shows the chooser: Review, Commands,
 Files, Browser, Agents and Side chat, each with what it opens and its shortcut. A
 surface that cannot open is disabled and says why — "Available for Git
 repositories", "Open a project first" — rather than being a control that does
 nothing when clicked.
 
-Tools: **Launch**, **Review**, **Terminal**, **Browser**, **Files**, **Agents**, **Side chat**.
+Tools: **Launch**, **Review**, **Commands**, **Browser**, **Files**, **Agents**, **Side chat**.
 
 - `+` opens Launch. Tabs are not nested buttons. Maximize, tree toggle, and close live in the chrome.
 - **Files** is a split: preview on the left, expandable tree on the right. Folders expand **in place**. There is no navigate-into-directory / `← ..` stack and no `dir` current-path state.
@@ -316,7 +316,7 @@ Tools: **Launch**, **Review**, **Terminal**, **Browser**, **Files**, **Agents**,
   Thread-resolution state is not fetched or inferred; collapsed is not resolved.
   Timeline avatars sit on the event rail beside the author; heading contrast,
   wrapping and type scale are scoped to the PR reader rather than chat.
-- **Terminal** in the Inspector is a command form (`execInProject`) plus “Open Terminal.app”. The separate xterm dock is an interactive PTY. `PersistentTerminals` retains panes by folder; the chat host stays mounted but hidden in other views. Hide and Settings do not kill shells; closing a pane or quitting does. Main checks strict command policy on start and input, not just on the command runner. Existing processes are not retroactively stopped. PTYs hold a folder activity lease until exit, excluding checkpoint restore.
+- **Commands** in the Inspector is a command form (`execInProject`) plus interactive and external terminal actions. Its internal `term` tab key remains compatible. **Terminal** means the separate bottom xterm dock, opened from the conversation header, command palette, or `⌘J`, not a navigation destination or a duplicate composer button. `PersistentTerminals` retains panes by folder; the chat host stays mounted but hidden in other views. Hide and Settings do not kill shells; closing a pane or quitting does. Main checks strict command policy on start and input, not just on the command runner. Existing processes are not retroactively stopped. PTYs hold a folder activity lease until exit, excluding checkpoint restore.
 - **Browser** polls `capsule:listLocalServers` while open. The filesystem adapter
   reads loopback listeners with `lsof`, performs bounded HTTP/HTTPS probes, and
   returns only endpoints that answer like web apps. Selecting one opens it in
@@ -382,7 +382,7 @@ Inspector-only shortcuts (ignored while typing, do not steal global `⌘P`):
 | Action | Keys |
 |--------|------|
 | Review | `⌃⇧G` |
-| Terminal | `⌃\`` |
+| Commands | `⌃\`` |
 | Side chat | `⌥⌘S` |
 | Close / toggle inspector | `⌘\` |
 

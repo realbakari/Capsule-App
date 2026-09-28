@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { searchSessionTitles, type SearchResults } from "@capsule/shared";
 import { useWorkspace } from "../../lib/workspace";
 import { formatUserError } from "../../lib/errors";
-import { CpuIcon, FolderIcon, MessageSquareIcon, PlusIcon, SearchIcon, SettingsIcon } from "./icons";
+import { CpuIcon, FolderIcon, MessageSquareIcon, PlusIcon, SearchIcon, SettingsIcon, TerminalIcon } from "./icons";
 import { SearchDialog, type SearchDialogItem } from "./SearchDialog";
 
 export function Palette() {
@@ -10,6 +10,7 @@ export function Palette() {
     api, palette, paletteQuery, setPalette, setPaletteQuery, setView, createTask,
     createProjectFromFolder, pickProjectDirectory, pickFilesToMention, projects,
     sessions, session, setProjectId, setAboutOpen, openInspector, setAgentCommandsOpen,
+    project, terminalOpen, setTerminalOpen,
   } = useWorkspace();
   const query = paletteQuery.trim().toLowerCase();
   const [retry, setRetry] = useState(0);
@@ -37,6 +38,8 @@ export function Palette() {
       { id: "new-project", label: "New project from folder", group: "Actions", icon: <FolderIcon size={15} />, disabledReason: desktopOnly, onSelect: createProjectFromFolder },
       { id: "open-folder", label: "Open folder", group: "Actions", icon: <FolderIcon size={15} />, disabledReason: desktopOnly, onSelect: pickProjectDirectory },
       { id: "open-files", label: "Open files", group: "Actions", icon: <FolderIcon size={15} />, disabledReason: desktopOnly, onSelect: pickFilesToMention },
+      { id: "terminal", label: terminalOpen ? "Hide terminal" : "Show terminal", group: "Workspace", icon: <TerminalIcon size={15} />, shortcut: "⌘J", disabledReason: desktopOnly ?? (!(session?.workingDirectory ?? project?.workingDirectory) ? "Open a folder first." : undefined), onSelect: () => { setView("chat"); setTerminalOpen(!terminalOpen); } },
+      { id: "commands", label: "Run a project command", group: "Workspace", icon: <TerminalIcon size={15} />, disabledReason: desktopOnly ?? (!project ? "Open a project first." : undefined), onSelect: () => { setView("chat"); openInspector("term"); } },
       { id: "chat", label: "Open conversation", group: "Go to", icon: <MessageSquareIcon size={15} />, onSelect: () => setView("chat") },
       { id: "channels", label: "Shared channels", group: "Go to", icon: <MessageSquareIcon size={15} />, disabledReason: desktopOnly, onSelect: () => setView("channels") },
       { id: "skills", label: "Skills & packs", group: "Go to", onSelect: () => setView("skills") },
@@ -71,7 +74,7 @@ export function Palette() {
       onSelect: () => { setProjectId(message.projectId, message.sessionId); setView("chat"); },
     }));
     return [...actions, ...projectItems, ...threads, ...messages];
-  }, [api, query, currentSearch, projects, sessions, session, createTask, createProjectFromFolder, pickProjectDirectory, pickFilesToMention, setView, setProjectId, setAboutOpen, openInspector, setAgentCommandsOpen]);
+  }, [api, query, currentSearch, projects, sessions, session, project, terminalOpen, setTerminalOpen, createTask, createProjectFromFolder, pickProjectDirectory, pickFilesToMention, setView, setProjectId, setAboutOpen, openInspector, setAgentCommandsOpen]);
 
   if (!palette) return null;
   return <SearchDialog title="Search workspace" placeholder="Search commands, projects, conversations…" query={paletteQuery}

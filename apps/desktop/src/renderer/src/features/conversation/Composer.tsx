@@ -20,7 +20,6 @@ import {
   PaperclipIcon,
   ShieldIcon,
   StopIcon,
-  TerminalIcon,
   XIcon,
 } from "../shell/icons";
 import { ComposerMenu, detectTrigger, type SuggestItem } from "./ComposerMenu";
@@ -144,9 +143,8 @@ export function Composer({
     ready,
     checkoutBranch,
     openInspector,
-    terminalOpen,
-    setTerminalOpen,
     settings,
+    setTerminalOpen,
     sendBlockReason,
     doctorHarness,
     workspaceMode,
@@ -778,20 +776,6 @@ export function Composer({
           <FolderIcon size={12} />
           {folder ?? "No folder"}
         </button>}
-        {/* The panel inside Capsule, not Terminal.app: the shell people want is
-            the one already pointed at this conversation's folder. */}
-        <button
-          type="button"
-          className={terminalOpen ? "active" : ""}
-          onClick={() => setTerminalOpen(!terminalOpen)}
-          title="Terminal (⌘J)"
-          aria-label="Toggle terminal"
-          aria-pressed={terminalOpen}
-        >
-          <span className="inline-icon">
-            <TerminalIcon size={12} />
-          </span>
-        </button>
         {git?.isRepo && git.branches.length > 0 && (
           <span className="inline-icon composer-branch">
             <GitBranchIcon size={12} />

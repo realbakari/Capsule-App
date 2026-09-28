@@ -10,7 +10,6 @@ import {
   ChevronDownIcon,
   FolderIcon,
   GitBranchIcon,
-  PanelBottomIcon,
   PanelRightIcon,
   PlusIcon,
   StopIcon,
@@ -197,12 +196,13 @@ export function Titlebar() {
             className={`icon-btn ${terminalOpen ? "active" : ""}`}
             /* A shell needs a folder to open in, so the control says why it is
                unavailable instead of toggling nothing. */
-            disabled={!terminalCwd}
-            title={terminalCwd ? "Toggle terminal (⌘J)" : "Open a folder to use the terminal"}
+            disabled={!terminalCwd || api.isDesktop === false}
+            title={api.isDesktop === false ? "Available in the desktop app" : terminalCwd ? "Toggle terminal (⌘J)" : "Open a folder to use the terminal"}
             aria-label="Toggle terminal (⌘J)"
+            aria-pressed={terminalOpen}
             onClick={() => setTerminalOpen(!terminalOpen)}
           >
-            <PanelBottomIcon size={14} />
+            <TerminalIcon size={14} />
           </button>
         )}
 
