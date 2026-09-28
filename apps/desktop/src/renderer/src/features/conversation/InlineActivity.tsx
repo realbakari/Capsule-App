@@ -3,11 +3,13 @@ import type { Run } from "@capsule/shared";
 import { toolGroupLabel, toolKindOrder, toolObservationState, type ToolKind, type ToolObservation } from "../../lib/turn-timeline";
 import {
   ChevronRightIcon,
+  ArrowRightIcon,
   DiffIcon,
   FileIcon,
   GlobeIcon,
   ListTodoIcon,
   SearchIcon,
+  SettingsIcon,
   SparkIcon,
   TerminalIcon,
   TrashIcon,
@@ -21,6 +23,8 @@ const KIND_ICON: Record<ToolKind, Glyph> = {
   read: FileIcon,
   edit: DiffIcon,
   delete: TrashIcon,
+  move: ArrowRightIcon,
+  switch_mode: SettingsIcon,
   search: SearchIcon,
   execute: TerminalIcon,
   think: SparkIcon,
@@ -37,27 +41,40 @@ function ToolKindIcon({ kind, size = 14 }: { kind: ToolKind; size?: number }) {
 /** Compact observed work, never a claim that the turn was verified. */
 export function InlineActivity({ tools, run, stopping, onOpenFile }: { tools: ToolObservation[]; run: Run; stopping?: boolean; onOpenFile?: (path: string) => void }) {
   const [open, setOpen] = useState(false);
-  const failed = tools.some((tool) => tool.status === "failed");
-  const pending = [...tools].reverse().find((tool) => tool.status !== "completed" && tool.status !== "failed");
-  const state = failed ? "Failed" : pending ? toolObservationState(pending, run, stopping) : "Completed";
-  const kinds = toolKindOrder(tools);
+  const [expandedToolId, setExpandedToolId] = useState<string>();
+  const failedCount = tools.filter((tool) => tool.status === "failed").length;
+  const newest = [...tools].reverse();
+  const pending = newest.find((tool) => tool.status !== "completed" && tool.status !== "failed");
+  const active = newest.find((tool) => toolObservationState(tool, run, stopping) === "Running")
+    ?? newest.find((tool) => ["Waiting", "Stopping"].includes(toolObservationState(tool, run, stopping)));
+  const state = active ? toolObservationState(active, run, stopping) : failedCount ? "Failed" : pending ? toolObservationState(pending, run, stopping) : "Completed";
+  const kinds = toolKindOrder(active ? [active, ...tools] : tools);
   return <div className="inline-activity" data-state={state}>
     <button type="button" className="inline-activity-toggle" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
       <span className="inline-activity-kinds" aria-hidden>
         {kinds.slice(0, 3).map((kind) => <ToolKindIcon key={kind} kind={kind} />)}
       </span>
+      {kinds.length > 3 && <span className="inline-activity-overflow" title={`${kinds.length} tool categories`}>+{kinds.length - 3}</span>}
       <span>{toolGroupLabel(tools)}</span>
       <span className="inline-activity-state">{state}</span>
+      {active && failedCount > 0 && <span className="inline-activity-failures">{failedCount} failed</span>}
       <ChevronRightIcon size={12} className={open ? "open" : ""} aria-hidden />
     </button>
+    {!open && active && <div className="inline-activity-current">
+      <button type="button" className="activity-step-toggle" aria-expanded={false}
+        onClick={() => { setExpandedToolId(active.id); setOpen(true); }}>
+        <ToolKindIcon kind={active.kind} /><span className="activity-step-title" title={active.title}>{active.title}</span>
+        <span className="inline-activity-state">{toolObservationState(active, run, stopping)}</span><ChevronRightIcon size={12} aria-hidden />
+      </button>
+    </div>}
     {open && <ul className="inline-activity-tools">{tools.map((tool) => <li key={tool.id}>
-      <ToolStep tool={tool} state={toolObservationState(tool, run, stopping)} onOpenFile={onOpenFile} />
+      <ToolStep tool={tool} initiallyOpen={tool.id === expandedToolId} state={toolObservationState(tool, run, stopping)} onOpenFile={onOpenFile} />
     </li>)}</ul>}
   </div>;
 }
 
-function ToolStep({ tool, state, onOpenFile }: { tool: ToolObservation; state: string; onOpenFile?: (path: string) => void }) {
-  const [open, setOpen] = useState(false);
+function ToolStep({ tool, state, initiallyOpen = false, onOpenFile }: { tool: ToolObservation; state: string; initiallyOpen?: boolean; onOpenFile?: (path: string) => void }) {
+  const [open, setOpen] = useState(initiallyOpen);
   const details = tool.details;
   const hasDetails = details?.input || details?.output || details?.locations?.length;
   return <div className="activity-step" data-state={state}>

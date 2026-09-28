@@ -611,6 +611,13 @@ touch, create, or modify files surface interactive file chips (`[+] Created`,
 `[~] Modified`, `[-] Deleted`) directly in the run summary and `TurnFilesCard`,
 linking immediately to file previews or diffs in the Inspector.
 
+Move and mode-switch events retain their reported tool categories. Live activity
+prioritizes a running step, then waiting/stopping, ahead of historical failures;
+earlier failures remain a separate count. The active category leads the bounded
+icon summary, with an overflow count for additional categories. A collapsed
+group still exposes the active step; selecting it opens that step's details in
+one action. Completion does not remount an already-open detail panel.
+
 Each inline tool step has a keyboard-operable disclosure with bounded literal
 command/output previews, truthful missing-data and truncation labels, copy controls,
 and reported file locations scoped to the run's working directory. Details mount

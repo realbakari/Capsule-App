@@ -2,7 +2,7 @@ import type { ChatMessage, Run, RunEvent } from "@capsule/shared";
 import { readToolActivityDetails, type ToolActivityDetails } from "@capsule/shared";
 import { cleanActivityDetail } from "./activity";
 
-export type ToolKind = "read" | "edit" | "delete" | "search" | "execute" | "think" | "fetch" | "todo" | "other";
+export type ToolKind = "read" | "edit" | "delete" | "move" | "switch_mode" | "search" | "execute" | "think" | "fetch" | "todo" | "other";
 
 export interface ToolObservation {
   id: string;
@@ -93,6 +93,8 @@ export function toolKindFrom(kind: unknown, title: string, command: boolean): To
   if (reported === "read") return "read";
   if (reported === "edit") return "edit";
   if (reported === "delete") return "delete";
+  if (reported === "move") return "move";
+  if (reported === "switch_mode") return "switch_mode";
   if (reported === "search") return "search";
   if (reported === "execute") return "execute";
   if (reported === "think") return "think";
@@ -107,6 +109,7 @@ export function toolKindFrom(kind: unknown, title: string, command: boolean): To
   if (/\b(bash|shell|exec|command|terminal)\b/.test(text)) return "execute";
   if (/\bthink\b/.test(text)) return "think";
   if (/\b(delete|unlink)\b/.test(text)) return "delete";
+  if (/\b(move|rename)\b/.test(text)) return "move";
   return "other";
 }
 

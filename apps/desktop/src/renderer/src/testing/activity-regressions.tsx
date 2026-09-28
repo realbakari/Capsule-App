@@ -40,8 +40,8 @@ export async function runActivityRegressions(host: HTMLElement) {
     host.style.width = "320px";
     renderTool(tool); await settle();
     assert(!host.querySelector("pre"), "Collapsed tool group eagerly mounted output");
-    host.querySelector<HTMLButtonElement>(".inline-activity-toggle")!.click(); await settle();
-    host.querySelector<HTMLButtonElement>(".activity-step-toggle")!.click(); await settle();
+    assert(host.querySelector(".inline-activity-current")?.textContent?.includes("Run checks"), "Current tool was hidden behind its group");
+    host.querySelector<HTMLButtonElement>(".inline-activity-current .activity-step-toggle")!.click(); await settle();
     const output = host.querySelector<HTMLElement>('[aria-label="Output preview"]')!;
     assert(output.textContent?.includes("<script>example</script>") && !host.querySelector("script"), "Tool output was interpreted as markup");
     assert(host.scrollWidth <= host.clientWidth + 1, "Expanded activity overflowed the narrow transcript");
@@ -54,8 +54,7 @@ export async function runActivityRegressions(host: HTMLElement) {
     assert(!host.querySelector("pre"), "Collapsing a tool retained its output DOM");
     host.querySelector<HTMLButtonElement>(".inline-activity-toggle")!.click(); await settle();
     renderTool({ ...tool, details: undefined }); await settle();
-    host.querySelector<HTMLButtonElement>(".inline-activity-toggle")!.click(); await settle();
-    host.querySelector<HTMLButtonElement>(".activity-step-toggle")!.click(); await settle();
+    host.querySelector<HTMLButtonElement>(".inline-activity-current .activity-step-toggle")!.click(); await settle();
     assert(host.textContent?.includes("No additional details were reported"), "Missing provider data was presented as an empty successful result");
   } finally {
     root.unmount();

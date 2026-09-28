@@ -49,6 +49,8 @@ describe("turn transcript", () => {
   it("classifies tool kinds from the ACP kind and the title", () => {
     expect(toolKindFrom("read", "anything", false)).toBe("read");
     expect(toolKindFrom("execute", "git status", true)).toBe("execute");
+    expect(toolKindFrom("move", "Organize module", false)).toBe("move");
+    expect(toolKindFrom("switch_mode", "Use planning mode", false)).toBe("switch_mode");
     expect(toolKindFrom(undefined, "todo_write", false)).toBe("todo");
     expect(toolKindFrom(undefined, "Read README.md", false)).toBe("read");
     expect(toolKindFrom(undefined, "grep src", false)).toBe("search");
@@ -57,6 +59,16 @@ describe("turn transcript", () => {
       { id: "b", timestamp: time(2), title: "Edit", command: false, kind: "edit", status: "completed" },
       { id: "c", timestamp: time(3), title: "Read again", command: false, kind: "read", status: "completed" },
     ])).toEqual(["read", "edit"]);
+  });
+
+  it.each([false, true])("preserves move and mode changes through route metadata (nested: %s)", (nested) => {
+    const events = ["move", "switch_mode"].map((kind, index) => {
+      const data = { toolCallId: kind, kind, title: "Agent operation", status: "in_progress" };
+      return { ...event(kind, index), data: nested ? { data } : data };
+    });
+    expect(turnTranscript([], events, run).rows).toMatchObject([
+      { kind: "activity", tools: [{ kind: "move" }, { kind: "switch_mode" }] },
+    ]);
   });
 
   it("bounds inline work and does not double-count anonymous completions", () => {

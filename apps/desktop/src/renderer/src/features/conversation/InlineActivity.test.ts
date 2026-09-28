@@ -21,4 +21,27 @@ describe("inline activity icons", () => {
     expect(html).toContain("1 command");
     expect(html).toContain("1 tool");
   });
+
+  it("keeps the active tool visible after earlier categories and failures", () => {
+    const html = renderToStaticMarkup(createElement(InlineActivity, {
+      tools: [tool("read", "Read files"), tool("search", "Search files"), { ...tool("edit", "Patch files"), status: "failed" },
+        { ...tool("move", "Move module"), status: "running" }],
+      run: { ...run, status: "running" },
+    }));
+    expect(html).toContain('data-state="Running"');
+    expect(html).toContain('data-kind="move"');
+    expect(html).toContain("Move module");
+    expect(html).toContain("1 failed");
+    expect(html).toContain(">+1</span>");
+  });
+
+  it("does not display a live tool after cancellation", () => {
+    const html = renderToStaticMarkup(createElement(InlineActivity, {
+      tools: [{ ...tool("switch_mode", "Change mode"), status: "running" }],
+      run: { ...run, status: "cancelled" },
+    }));
+    expect(html).toContain('data-state="Stopped"');
+    expect(html).toContain('data-kind="switch_mode"');
+    expect(html).not.toContain("inline-activity-current");
+  });
 });

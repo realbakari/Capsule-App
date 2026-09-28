@@ -9633,7 +9633,7 @@ details.card > summary {
 .workspace-startup-card [role="alert"] { color: var(--text); }
 .inline-activity { margin: 0.05rem 0 0.35rem; min-width: 0; }
 .inline-activity-toggle {
-  display: flex; align-items: center; gap: 0.45rem; max-width: 100%;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 0.45rem; max-width: 100%;
   border: 0; background: transparent; padding: 0.15rem 0;
   color: var(--text-muted); font-size: 0.8125rem; text-align: left;
 }
@@ -9651,6 +9651,9 @@ details.card > summary {
   flex: none;
 }
 .inline-activity-state { color: var(--text-faint); font-size: 0.75rem; }
+.inline-activity-overflow { color: var(--text-faint); font-size: 0.75rem; }
+.inline-activity-failures { color: var(--red); font-size: 0.75rem; }
+.inline-activity-current { margin-top: 0.25rem; border-left: 2px solid var(--border-strong); padding-left: 0.4rem; }
 .inline-activity[data-state="Failed"] > button > .inline-activity-state { color: var(--danger, #e08a8a); }
 .inline-activity-tools { list-style: none; padding: 0; margin: 0.35rem 0; max-height: 24rem; overflow: auto; overscroll-behavior: contain; }
 .inline-activity-tools > li { min-width: 0; padding: 0.15rem 0; font-size: 0.8125rem; }
