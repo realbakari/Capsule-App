@@ -18,13 +18,10 @@ console.log("==> Preparing packaging environment outside iCloud FileProvider..."
 fs.rmSync(tmpRelease, { recursive: true, force: true });
 fs.mkdirSync(tmpRelease, { recursive: true });
 
-// 1. Ensure Electron and native modules
-console.log("==> Ensuring electron binary...");
-execSync("node scripts/ensure-electron.mjs", { cwd: repoRoot, stdio: "inherit" });
-
-// 2. Build renderer, preload, and main
-console.log("==> Building application bundle with electron-vite...");
-execSync("npx electron-vite build", { cwd: desktopDir, stdio: "inherit" });
+// Use the same build entry point as development so native helpers and policy
+// pages are prepared before the app bundle is signed.
+console.log("==> Building application and native helpers...");
+execSync("pnpm build", { cwd: repoRoot, stdio: "inherit" });
 
 // 3. Run electron-builder with output in /tmp/capsule-release to prevent iCloud FileProvider detritus
 console.log("==> Running electron-builder with signing and notarization in /tmp...");

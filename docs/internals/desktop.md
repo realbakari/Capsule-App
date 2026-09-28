@@ -576,6 +576,9 @@ The saved `capsule.pet.autonomous` preference controls these local gestures,
 not agent execution.
 
 Companion voice uses a packaged macOS Swift helper over bounded JSON lines.
+macOS packaging runs the full application build, including native helper
+compilation, before collecting resources and signing; it must not call the
+renderer bundler directly and omit those resources on a clean checkout.
 It checks `supportsOnDeviceRecognition` and sets `requiresOnDeviceRecognition`
 before capture, with no online fallback. The helper requests microphone and
 speech permissions only after Talk, limits capture to ten seconds, and exits
