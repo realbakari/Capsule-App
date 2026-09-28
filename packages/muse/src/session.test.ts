@@ -281,7 +281,7 @@ describe("native Muse sessions", () => {
       const beforeExit = invalidations;
       await expect.poll(() => host.isRunning(result.sessionKey)).toBe(false);
       expect(host.subscriptionUsage()).toEqual([]);
-      expect(invalidations).toBeGreaterThan(beforeExit);
+      await expect.poll(() => invalidations).toBeGreaterThan(beforeExit);
     } finally { await host.closeAll(); }
   });
 });
