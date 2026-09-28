@@ -1,8 +1,8 @@
 /** Shared collaboration is separate from local agent sessions and paired viewers. */
 export interface RelayConnectionInput { url: string; privateKey: string; remember?: boolean }
-export interface RelayConnectionStatus { connected: boolean; url?: string; remembered?: boolean; hasSaved?: boolean; canRemember?: boolean; warning?: string }
+export interface RelayConnectionStatus { connected: boolean; url?: string; remembered?: boolean; hasSaved?: boolean; canRemember?: boolean; warning?: string; preferenceScope?: string; connectionId?: string }
 export interface SharedChannel { id: string; name: string; description: string; joined: boolean }
-export interface ChannelMember { pubkey: string; name: string; role: string; picture?: string; emojiAvatar?: { emoji: string; color: string } }
+export interface ChannelMember { pubkey: string; name: string; role: string; picture?: string; about?: string; handle?: string; emojiAvatar?: { emoji: string; color: string } }
 export interface SharedChannelDetails {
   id: string; name: string; description: string; visibility?: "public" | "private";
   channelType?: string; archived: boolean; topic?: string; purpose?: string;
@@ -30,6 +30,7 @@ export interface ChannelInvitation { channelId: string; pubkey: string; role: "m
 
 /** Explicit desktop delegation, not an unattended subscription to a room. */
 export interface ChannelHarnessInput {
+  retryOf?: string;
   channelId: string;
   messageId: string;
   rootId?: string;
@@ -61,3 +62,4 @@ export interface ChannelRouteStatus {
   error?: string;
   jobs: ChannelHarnessJob[];
 }
+export interface SavedChannelRoute { id: string; url: string; identity: string; configuration: ChannelRouteInput; removable: boolean }

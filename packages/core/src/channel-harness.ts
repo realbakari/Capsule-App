@@ -15,7 +15,8 @@ const MESSAGE_ID = /^[a-f0-9]{64}$/i;
 function parse(value: ChannelHarnessInput): ChannelHarnessInput {
   if (!value || typeof value !== "object" || typeof value.channelId !== "string" || !ID.test(value.channelId)
     || typeof value.projectId !== "string" || !ID.test(value.projectId) || typeof value.messageId !== "string"
-    || !MESSAGE_ID.test(value.messageId) || (value.rootId !== undefined && (typeof value.rootId !== "string" || !MESSAGE_ID.test(value.rootId))) || !isHarnessId(value.harnessId)) {
+    || !MESSAGE_ID.test(value.messageId) || (value.rootId !== undefined && (typeof value.rootId !== "string" || !MESSAGE_ID.test(value.rootId)))
+    || (value.retryOf !== undefined && (typeof value.retryOf !== "string" || !ID.test(value.retryOf))) || !isHarnessId(value.harnessId)) {
     throw new Error("Choose a channel message, project and installed harness.");
   }
   return { ...value, messageId: value.messageId.toLowerCase(), rootId: value.rootId?.toLowerCase() };
@@ -35,10 +36,10 @@ export class ChannelHarness {
     const run = job.runId ? this.workspace.getRun(job.runId) : job.sessionId ? this.workspace.listRuns(job.sessionId)[0] : undefined;
     return { ...job, ...(run ? { runId: run.id, status: run.status, result: run.result, error: run.error } : {}) };
   }
-  list(channelId: string, messageId: string): ChannelHarnessJob[] {
-    if (typeof channelId !== "string" || typeof messageId !== "string") throw new Error("Invalid channel message.");
+  list(channelId: string, messageId?: string): ChannelHarnessJob[] {
+    if (typeof channelId !== "string" || (messageId !== undefined && typeof messageId !== "string")) throw new Error("Invalid channel message.");
     this.connected(this.relay.connectionRevision);
-    return [...this.jobs.values()].filter((entry) => entry.revision === this.relay.connectionRevision && entry.job.channelId === channelId && entry.job.messageId === messageId).map((entry) => this.snapshot(entry));
+    return [...this.jobs.values()].reverse().filter((entry) => entry.revision === this.relay.connectionRevision && entry.job.channelId === channelId && (messageId === undefined || entry.job.messageId === messageId)).map((entry) => this.snapshot(entry));
   }
   start(value: ChannelHarnessInput): Promise<ChannelHarnessJob> {
     const input = parse(value);
@@ -47,8 +48,13 @@ export class ChannelHarness {
     const key = `${revision}:${input.channelId}:${input.messageId}`;
     const admitted = this.admissions.get(key);
     if (admitted) return admitted;
-    const prior = this.list(input.channelId, input.messageId)[0];
-    if (prior) return Promise.resolve(prior);
+    const attempts = this.list(input.channelId, input.messageId);
+    const prior = attempts[0];
+    if (input.retryOf && !attempts.some((job) => job.id === input.retryOf)) throw new Error("The previous attempt is no longer available. Reopen the message.");
+    if (prior) {
+      if (!input.retryOf || input.retryOf !== prior.id) return Promise.resolve(prior);
+      if (!["failed", "cancelled"].includes(prior.status) || prior.publication !== "unshared") throw new Error("Only a failed or cancelled, unshared run can be retried.");
+    }
     const pending = this.admit(input, revision).finally(() => this.admissions.delete(key));
     this.admissions.set(key, pending);
     return pending;

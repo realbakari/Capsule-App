@@ -1,6 +1,7 @@
 import type { DraftMention } from "./mentions";
 
 interface Draft {
+  destination?: "channel" | "capsule";
   content: string;
   mentions: DraftMention[];
   pending: boolean;
@@ -28,9 +29,13 @@ export class ChannelDrafts {
     this.entries.set(key, draft);
     for (const listener of this.listeners) listener();
   }
-  edit(key: string, value: Partial<Pick<Draft, "content" | "mentions">>) {
+  edit(key: string, value: Partial<Pick<Draft, "content" | "mentions" | "destination">>) {
     const draft = this.get(key);
+    if (Object.entries(value).every(([field, next]) => draft[field as keyof Draft] === next)) return;
     this.publish(key, { ...draft, ...value, revision: draft.revision + 1 });
+  }
+  initializeDestination(key: string, enabled: boolean) {
+    if (this.get(key).destination === undefined) this.edit(key, { destination: enabled ? "capsule" : "channel" });
   }
   setError(key: string, error?: string) {
     this.publish(key, { ...this.get(key), error });

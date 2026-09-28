@@ -1,8 +1,10 @@
-const STORAGE_KEY = "capsule.channelPrefs";
+const STORAGE_KEY = "capsule.channelPrefs.v2";
+let activeScope: string | undefined;
 export const CHANNEL_PREFS_EVENT = "capsule-channel-prefs";
 const GROUP_WINDOW_SECONDS = 7 * 60;
 
 export interface ChannelPrefs {
+  scope?: string;
   starred: string[];
   muted: string[];
   lastRead: Record<string, number>;
@@ -50,19 +52,27 @@ export function parseChannelPrefs(value: unknown): ChannelPrefs {
   };
 }
 
-export function loadChannelPrefs(): ChannelPrefs {
+export function setActiveChannelScope(scope?: string) {
+  activeScope = scope;
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(CHANNEL_PREFS_EVENT));
+}
+
+export function loadChannelPrefs(scope: string | null | undefined = activeScope): ChannelPrefs {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return parseChannelPrefs(raw ? JSON.parse(raw) : {});
+    const raw = scope ? localStorage.getItem(`${STORAGE_KEY}:${scope}`) : null;
+    const layout = localStorage.getItem(`${STORAGE_KEY}:layout`);
+    return { ...parseChannelPrefs(raw ? JSON.parse(raw) : {}), scope: scope ?? undefined,
+      threadWidth: clampThreadWidth(Number(layout) || DEFAULT_CHANNEL_PREFS.threadWidth) };
   } catch {
-    return { ...DEFAULT_CHANNEL_PREFS, lastRead: {}, lastActivity: {}, starred: [], muted: [] };
+    return { ...DEFAULT_CHANNEL_PREFS, scope: scope ?? undefined, lastRead: {}, lastActivity: {}, starred: [], muted: [] };
   }
 }
 
 export function saveChannelPrefs(prefs: ChannelPrefs): ChannelPrefs {
-  const next = parseChannelPrefs(prefs);
+  const next = { ...parseChannelPrefs(prefs), scope: prefs.scope };
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    if (next.scope) localStorage.setItem(`${STORAGE_KEY}:${next.scope}`, JSON.stringify(next));
+    localStorage.setItem(`${STORAGE_KEY}:layout`, String(next.threadWidth));
     if (typeof window !== "undefined") window.dispatchEvent(new Event(CHANNEL_PREFS_EVENT));
   } catch {
     /* quota */

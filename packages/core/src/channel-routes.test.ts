@@ -75,6 +75,46 @@ async function fixture(direct = false) {
   };
 }
 
+it("reclaims saved route slots across previous identities without deleting conversations", async () => {
+  const f = await fixture();
+  for (let index = 1; index <= 16; index++) {
+    await f.reconnect(eventId(index));
+    await f.routes.configure(f.input);
+    await f.routes.configure({ ...f.input, enabled: false });
+  }
+  expect(f.routes.saved()).toHaveLength(16);
+  await f.reconnect(eventId(17));
+  await expect(f.routes.configure(f.input)).rejects.toThrow("limit");
+  const old = f.routes.saved()[0]!;
+  await f.routes.remove(old.id);
+  await f.routes.remove(old.id);
+  expect(f.routes.saved()).toHaveLength(15);
+  await f.routes.configure(f.input);
+  expect(f.routes.saved()).toHaveLength(16);
+  await f.restart();
+  expect(f.routes.saved().some((route) => route.id === old.id)).toBe(false);
+});
+
+it("does not retire a route with an in-flight turn", async () => {
+  const f = await fixture();
+  await f.routes.configure(f.input);
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => { release = resolve; });
+  const original = f.engine.sendMessage.bind(f.engine);
+  vi.spyOn(f.engine, "sendMessage").mockImplementation(async (input) => { await pending; return original(input); });
+  f.add("@capsule Review");
+  const ticking = f.routes.tick();
+  await expect.poll(() => f.routes.saved()[0]?.removable).toBe(false);
+  const id = f.routes.saved()[0]!.id;
+  await expect(f.routes.remove(id)).rejects.toThrow("active run");
+  release(); await ticking; await f.finish();
+  const sessionId = (await f.routes.status(channel)).jobs[0]!.sessionId;
+  await f.routes.remove(id);
+  expect(f.engine.listSessions().some((session) => session.id === sessionId)).toBe(true);
+  await f.routes.tick();
+  expect(f.sent).toHaveLength(1);
+});
+
 it("carries a channel turn through a spawned ACP process, then continues the same native session", async () => {
   const f = await fixture(true); await f.routes.configure(f.input);
   const root = f.add("@capsule First prompt"); await f.finish();

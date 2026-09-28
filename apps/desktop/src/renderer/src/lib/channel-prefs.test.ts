@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   channelIsUnread,
   markChannelRead,
@@ -9,9 +9,26 @@ import {
   toggleMuted,
   toggleStarred,
   unreadChannelCount,
+  loadChannelPrefs,
+  setActiveChannelScope,
 } from "./channel-prefs";
+afterEach(() => { setActiveChannelScope(undefined); vi.unstubAllGlobals(); });
 
 describe("channel prefs", () => {
+  it("isolates identities and relays without adopting unidentified legacy preferences", () => {
+    const storage = new Map<string, string>([["capsule.channelPrefs", JSON.stringify({ muted: ["shared"] })]]);
+    vi.stubGlobal("localStorage", { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value) });
+    expect(loadChannelPrefs("relay:alice").muted).toEqual([]);
+    toggleMuted(loadChannelPrefs("relay:alice"), "shared");
+    expect(loadChannelPrefs("relay:alice").muted).toEqual(["shared"]);
+    expect(loadChannelPrefs("relay:bob").muted).toEqual([]);
+    expect(loadChannelPrefs("other:alice").muted).toEqual([]);
+    setActiveChannelScope("relay:alice");
+    expect(loadChannelPrefs().muted).toEqual(["shared"]);
+    expect(loadChannelPrefs(null).muted).toEqual([]);
+    setActiveChannelScope(undefined);
+    expect(unreadChannelCount(loadChannelPrefs())).toBe(0);
+  });
   it("parses stored stars, mutes, and read markers", () => {
     const prefs = parseChannelPrefs({
       starred: ["a", "a", ""],

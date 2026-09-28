@@ -11,6 +11,7 @@ import {
   markChannelUnread,
   recordChannelActivity,
   saveChannelPrefs,
+  setActiveChannelScope,
   toggleMuted,
   toggleStarred,
   type ChannelPrefs,
@@ -21,6 +22,9 @@ import { PlusIcon, MessageSquareIcon, XIcon, SearchIcon, MoreHorizontalIcon, Ref
 import { ChannelAvatar, ChannelComposer, ChannelFeed, ChannelLoadingFeed, MemberStack, usePendingReveal, warmChannelAvatars, ChannelDrafts } from "./ChannelMessages";
 import { ChannelDetails } from "./ChannelDetails";
 import { ChannelProfile } from "./ChannelProfile";
+import { ChannelConnectionState } from "./ChannelConnectionState";
+import { SavedChannelRoutes } from "./SavedChannelRoutes";
+import { ChannelJobs } from "./ChannelJobs";
 import "./channels.css";
 
 type Api = typeof window.capsule;
@@ -32,17 +36,26 @@ export function ChannelsView() {
   const [error, setError] = useState<string>();
   const [revision, setRevision] = useState(0);
   useEffect(() => {
+    if (connection) setActiveChannelScope(connection.connected ? connection.preferenceScope : undefined);
+  }, [connection]);
+  useEffect(() => {
     if (!api.isDesktop) return;
     let active = true;
     void api.relayStatus().then((status) => { if (active) setConnection(status); }, (reason) => { if (active) setError(formatUserError(reason)); });
     return () => { active = false; };
   }, [api, revision]);
   if (!api.isDesktop) return <section className="channels-setup"><h2>Shared channels</h2><p>Open Channels in the desktop app to connect your own relay identity. Paired previews do not inherit private channel access.</p></section>;
+  if (!connection) return <section className="channels-view" aria-label="Shared channels">
+    <div className="channels-connection-state"><div role={error ? "alert" : "status"}>
+      <MessageSquareIcon size={24} />
+      <h2>{error ? "Could not check your connection" : "Checking connection…"}</h2>
+      <p>{error ?? "Looking for your saved relay connection."}</p>
+      {error && <button className="ghost" onClick={() => { setError(undefined); setRevision((value) => value + 1); }}>Retry connection status</button>}
+    </div></div>
+  </section>;
   return <section className="channels-view" aria-label="Shared channels">
-    <Failure error={error} />
-    {error && <button className="ghost" onClick={() => { setError(undefined); setRevision((value) => value + 1); }}>Retry connection status</button>}
-    {!connection ? <p role="status">Checking connection…</p> : connection.connected
-      ? <ConnectedChannels api={api} connection={connection} changed={setConnection} />
+    {connection.connected
+      ? <ChannelConnectionState key={`${connection.connectionId ?? connection.url}:${connection.preferenceScope ?? "temporary"}`}><ConnectedChannels api={api} connection={connection} changed={setConnection} /></ChannelConnectionState>
       : <RelaySetup key={connection.url ?? "new"} api={api} connection={connection} connected={setConnection} />}
   </section>;
 }
@@ -68,6 +81,7 @@ function RelaySetup({ api, connection, connected }: { api: Api; connection: Rela
     <p className="channels-hint">{connection.canRemember ? "Your relay address and identity key are encrypted using this device’s protected credential storage. Otherwise, new credentials last only for this app session." : "Protected credential storage is unavailable. New credentials can only be used for this app session."} Use a dedicated identity admitted by your relay administrator.</p>
     {connection.hasSaved && <p className="channels-hint">Disconnect keeps saved details. Forget connection removes them from this device.</p>}
     <Failure error={error ?? connection.warning} /><button className="primary" disabled={busy || (!key.trim() && !savedIdentity)}>{busy ? "Connecting…" : savedIdentity ? "Reconnect" : "Connect"}</button>
+    <SavedChannelRoutes />
     {connection.hasSaved && <button type="button" className="ghost" disabled={busy} onClick={() => { setBusy(true); void api.forgetRelay().then(connected, (reason) => setError(formatUserError(reason))).finally(() => setBusy(false)); }}>Forget connection</button>}
     <details><summary>Before connecting</summary><p>Install the relay CLI (<code>buzz</code>) on this computer and make it available on PATH. Use HTTPS for a remote relay. Agent hosts and their repository permissions are configured separately; joining a channel never starts a local agent.</p></details>
   </form>;
@@ -84,7 +98,7 @@ function ConnectedChannels({ api, connection, changed }: { api: Api; connection:
   const [creating, setCreating] = useState(false);
   const [browsing, setBrowsing] = useState(false);
   const [loaded, setLoaded] = useState(false);
-  const [prefs, setPrefs] = useState<ChannelPrefs>(() => loadChannelPrefs());
+  const [prefs, setPrefs] = useState<ChannelPrefs>(() => loadChannelPrefs(connection.preferenceScope ?? null));
   const [menu, setMenu] = useState<{ id: string; point: { x: number; y: number } }>();
   const drafts = useRef(new ChannelDrafts());
   const search = useRef<HTMLInputElement>(null);
@@ -171,6 +185,7 @@ function ConnectedChannels({ api, connection, changed }: { api: Api; connection:
             {!connection.canRemember && <p>Protected credential storage is unavailable.</p>}
             <button disabled={busy} onClick={() => void perform(async () => changed(await api.disconnectRelay()))}>Disconnect</button>
             {connection.hasSaved && <button disabled={busy} onClick={() => void perform(async () => changed(await api.forgetRelay()))}>Forget connection</button>}
+            <SavedChannelRoutes />
           </div></details>
         </div>
         <label className="channel-search"><SearchIcon size={15} /><input ref={search} type="search" aria-label="Search channels" placeholder="Find a channel" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
@@ -309,7 +324,7 @@ function ChannelRoom({ api, channel, changed, drafts, prefs, setPrefs, browse, c
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
   }
-  return <div className={`channel-room ${parent || invite || settings ? "has-thread" : ""}`}>
+  return <ChannelJobs channelId={channel.id}><div className={`channel-room ${parent || invite || settings ? "has-thread" : ""}`}>
     <section className="channel-main" aria-label={`Channel ${channel.name}`}>
       <header className="channel-room-header"><div><h3><HashIcon size={16} />{channel.name}<button className="icon-btn" title="Copy channel name" aria-label="Copy channel name" onClick={() => void navigator.clipboard.writeText(channel.name)}><CopyIcon size={13} /></button></h3>{channel.description && <p>{channel.description}</p>}</div>
         <div className="channel-actions">
@@ -321,14 +336,14 @@ function ChannelRoom({ api, channel, changed, drafts, prefs, setPrefs, browse, c
       </header>
       <Failure error={error} />
       <Failure error={memberError} />
-      <ChannelFeed channelId={channel.joined ? channel.id : undefined} messages={messages} members={members} threadMessages={threadMessages} loaded={loaded} filter={messageQuery} lastRead={prefs.lastRead[channel.id]} onCaughtUp={catchUp} reply={(message) => { setInvite(false); setSettings(false); setThreadMessages([]); setParent(message.rootId ? { ...message, id: message.rootId } : message); }} intro={!error && <div className="channel-welcome"><span className="channel-welcome-mark" aria-hidden="true"><HashIcon size={28} /></span><h2>#{channel.name}</h2>{channel.description ? <p>{channel.description}</p> : null}<div className="channel-welcome-actions"><button onClick={browse}><SearchIcon size={20} />Browse channels</button><button onClick={create}><PlusIcon size={20} />Create a channel</button><button disabled={!channel.joined} onClick={() => { setSettings(false); setInvite(true); }}><MessageSquareIcon size={20} />People and agents</button></div></div>} />
+      <ChannelFeed channelId={channel.joined ? channel.id : undefined} messages={messages} members={members} threadMessages={threadMessages} loaded={loaded} filter={messageQuery} lastRead={prefs.lastRead[channel.id]} onCaughtUp={catchUp} reply={(message) => { setInvite(false); setSettings(false); setThreadMessages([]); setParent(messages.find((item) => item.id === message.rootId) ?? (message.rootId ? { ...message, id: message.rootId, content: "" } : message)); }} intro={!error && <div className="channel-welcome"><span className="channel-welcome-mark" aria-hidden="true"><HashIcon size={28} /></span><h2>#{channel.name}</h2>{channel.description ? <p>{channel.description}</p> : null}<div className="channel-welcome-actions"><button onClick={browse}><SearchIcon size={20} />Browse channels</button><button onClick={create}><PlusIcon size={20} />Create a channel</button><button disabled={!channel.joined} onClick={() => { setSettings(false); setInvite(true); }}><MessageSquareIcon size={20} />People and agents</button></div></div>} />
       {showComposerPlaceholder ? <ComposerSkeleton /> : null}
       <ChannelComposer api={api} channel={channel} members={members} drafts={drafts} hold={!loaded} sent={() => { catchUp(); setRefreshCount((value) => value + 1); }} />
     </section>
     {parent && <ChannelThread key={parent.id} api={api} channel={channel} members={members} drafts={drafts} parent={parent} loadedMessages={threadLoaded} width={threadWidth} resize={startThreadResize} close={() => setParent(undefined)} />}
     {invite && <MemberDrawer close={() => setInvite(false)}><MemberPanel api={api} channelId={channel.id} members={members} changed={() => setRefreshCount((value) => value + 1)} /></MemberDrawer>}
     {settings && <ChannelDetails api={api} channel={channel} members={members} changed={changed} close={() => setSettings(false)} showMembers={() => { setSettings(false); setInvite(true); }} />}
-  </div>;
+  </div></ChannelJobs>;
 }
 
 function ChannelListSkeleton() {

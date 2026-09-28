@@ -1049,10 +1049,10 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.listProjects, () => requireEngine().listProjects());
   // Deliberately absent from the remote read allowlist: a paired viewer is
   // not the relay identity and must not inherit its private channel access.
-  handle(IPC_CHANNELS.relayStatus, () => requireEngine().sharedChannels.restore());
-  handle(IPC_CHANNELS.connectRelay, (input) => requireEngine().sharedChannels.connect(input as import("@capsule/shared").RelayConnectionInput));
+  handle(IPC_CHANNELS.relayStatus, async () => { const relay = requireEngine().sharedChannels; await relay.restore(); return relay.viewStatus(); });
+  handle(IPC_CHANNELS.connectRelay, async (input) => { const relay = requireEngine().sharedChannels; await relay.connect(input as import("@capsule/shared").RelayConnectionInput); return relay.viewStatus(); });
   handle(IPC_CHANNELS.disconnectRelay, () => { const relay = requireEngine().sharedChannels; relay.disconnect(); return relay.status(); });
-  handle(IPC_CHANNELS.rememberRelay, () => requireEngine().sharedChannels.remember());
+  handle(IPC_CHANNELS.rememberRelay, () => { const relay = requireEngine().sharedChannels; relay.remember(); return relay.viewStatus(); });
   handle(IPC_CHANNELS.forgetRelay, () => requireEngine().sharedChannels.forget());
   handle(IPC_CHANNELS.channelAvatar, (pubkey) => requireEngine().sharedChannels.avatar(pubkey as string));
   handle(IPC_CHANNELS.sharedChannelDetails, (channel, name) => requireEngine().sharedChannels.details(channel as string, name as string));
@@ -1075,6 +1075,8 @@ function registerIpc(): void {
   });
   handle(IPC_CHANNELS.channelRouteStatus, (channel) => requireEngine().channelRoutes.status(channel as string));
   handle(IPC_CHANNELS.configureChannelRoute, (input) => requireEngine().channelRoutes.configure(input));
+  handle(IPC_CHANNELS.listSavedChannelRoutes, () => requireEngine().channelRoutes.saved());
+  handle(IPC_CHANNELS.removeChannelRoute, (id) => requireEngine().channelRoutes.remove(id));
   handle(IPC_CHANNELS.runChannelHarness, (input) => requireEngine().channelHarness.start(input as import("@capsule/shared").ChannelHarnessInput));
   handle(IPC_CHANNELS.listChannelHarnessJobs, (channel, message) => requireEngine().channelHarness.list(channel as string, message as string));
   handle(IPC_CHANNELS.shareChannelHarnessReply, (id, content) => requireEngine().channelHarness.share(id as string, content as string));

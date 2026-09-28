@@ -16,6 +16,7 @@ export function ChannelProfile({ member, avatar, children, className = "" }: { m
     {open && createPortal(<dialog ref={dialog} className="channel-profile-dialog" aria-label={`${member.name} profile`} onCancel={(event) => { event.preventDefault(); close(); }} onClick={(event) => { if (event.target === event.currentTarget) close(); }}>
       <section><header><strong>Profile</strong><button autoFocus type="button" className="icon-btn" aria-label="Close profile" onClick={close}><XIcon size={18} /></button></header>
         <div className="channel-profile-heading">{avatar}<h2>{member.name}</h2><span>{member.role === "bot" ? "Agent · External host" : member.role}</span></div>
+        {(member.handle || member.about) && <section className="channel-profile-about" aria-label="Published profile"><small>Published profile</small>{member.handle && <p>@{member.handle}</p>}{member.about && <p>{member.about}</p>}</section>}
         <dl className="channel-facts"><div><dt>Public key</dt><dd className="channel-id">{member.pubkey}</dd></div></dl>
         <button type="button" className="ghost" onClick={() => { void navigator.clipboard.writeText(member.pubkey).then(() => setCopied("Public key copied."), () => setCopied("Could not copy the public key.")); }}>Copy public key</button>
         {copied && <p role="status">{copied}</p>}

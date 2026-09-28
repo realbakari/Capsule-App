@@ -20,6 +20,8 @@ export const IPC_CHANNELS = {
   postChannelMessage: "capsule:postChannelMessage",
   channelRouteStatus: "capsule:channelRouteStatus",
   configureChannelRoute: "capsule:configureChannelRoute",
+  listSavedChannelRoutes: "capsule:listSavedChannelRoutes",
+  removeChannelRoute: "capsule:removeChannelRoute",
   runChannelHarness: "capsule:runChannelHarness",
   listChannelHarnessJobs: "capsule:listChannelHarnessJobs",
   shareChannelHarnessReply: "capsule:shareChannelHarnessReply",

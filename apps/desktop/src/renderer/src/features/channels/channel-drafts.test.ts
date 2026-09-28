@@ -9,6 +9,16 @@ function deferred() {
 }
 
 describe("channel send ownership", () => {
+  it("restores an explicit chat destination independently for each channel and thread", () => {
+    const drafts = new ChannelDrafts();
+    drafts.initializeDestination("room:main", true);
+    drafts.edit("room:main", { content: "Just chatting", destination: "channel" });
+    drafts.initializeDestination("other:main", true);
+    drafts.initializeDestination("room:root", true);
+    drafts.initializeDestination("room:main", true);
+    expect(drafts.get("room:main")).toMatchObject({ content: "Just chatting", destination: "channel" });
+    expect(drafts.get("room:root").destination).toBe("capsule");
+  });
   it("rejects duplicate sends even when a new composer reads the same draft", async () => {
     const drafts = new ChannelDrafts();
     drafts.edit("room:main", { content: "Hello" });

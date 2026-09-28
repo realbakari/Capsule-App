@@ -1,7 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { ChannelsView } from "../features/channels/ChannelsView";
 import { ChannelAvatar, ChannelFeed } from "../features/channels/ChannelMessages";
-import type { ChannelHarnessInput, ChannelHarnessJob, ChannelPost, ChannelRouteInput, ChannelUpdate, RelayConnectionInput, SharedChannel } from "@capsule/shared";
+import type { ChannelHarnessInput, ChannelHarnessJob, ChannelPost, ChannelRouteInput, ChannelUpdate, RelayConnectionInput, SavedChannelRoute, SharedChannel } from "@capsule/shared";
 
 const first = "11111111-2222-3333-4444-555555555555";
 const second = "22222222-2222-3333-4444-555555555555";
@@ -29,11 +29,12 @@ function fixture() {
   const shares: string[] = [];
   let job: ChannelHarnessJob | undefined;
   let route: ChannelRouteInput | undefined;
+  let savedRoutes: SavedChannelRoute[] = [{ id: "old-route", url: "https://old-relay.example", identity: human, configuration: { channelId: second, projectId: "channel-project", harnessId: "codex", enabled: false }, removable: true }];
   let reacted = false, archived = false;
   let connected = true, remembered = false, reject = false, rejectReads = false, reads = 0;
   let pendingPost: Promise<void> | undefined;
   const connections: RelayConnectionInput[] = [];
-  const status = () => ({ connected, remembered, hasSaved: remembered, canRemember: true, url: connected || remembered ? "https://relay.example" : undefined });
+  const status = () => ({ connected, remembered, hasSaved: remembered, canRemember: true, preferenceScope: connected ? `https://relay.example:${human}` : undefined, url: connected || remembered ? "https://relay.example" : undefined });
   const api = {
     isDesktop: true,
     channelRouteStatus: async () => ({ configuration: route, jobs: [] }),
@@ -41,7 +42,9 @@ function fixture() {
       if (reject) throw new Error("Harness unavailable");
       route = { ...input }; return { configuration: route, jobs: [] };
     },
-    listChannelHarnessJobs: async () => job ? [job] : [],
+    listChannelHarnessJobs: async (channelId: string, messageId?: string) => job && job.channelId === channelId && (!messageId || job.messageId === messageId) ? [job] : [],
+    listSavedChannelRoutes: async () => savedRoutes,
+    removeChannelRoute: async (id: string) => { savedRoutes = savedRoutes.filter((item) => item.id !== id); actions.push("remove-route"); },
     runChannelHarness: async (input: ChannelHarnessInput) => {
       if (reject) throw new Error("Harness unavailable");
       runs.push(input);
@@ -83,6 +86,17 @@ export async function runChannelRegressions(host: HTMLElement) {
   const test = fixture();
   window.testWorkspace = { ...previous, ...harnessWorkspace, api: test.api };
   try {
+    let rejectStatus: (error: Error) => void = () => {};
+    window.testWorkspace = { ...previous, ...harnessWorkspace, api: { ...test.api, relayStatus: () => new Promise((_, reject) => { rejectStatus = reject; }) } };
+    root.render(<div style={{ height: "100vh", display: "flex" }}><ChannelsView /></div>);
+    await until(() => host.querySelector(".channels-connection-state [role=status]"));
+    rejectStatus(new Error("Connection unavailable"));
+    await until(() => host.querySelector(".channels-connection-state [role=alert]"));
+    assert(!host.textContent?.includes("Checking connection"), "Failed connection still announced loading");
+    window.testWorkspace = { ...previous, ...harnessWorkspace, api: test.api };
+    host.querySelector<HTMLButtonElement>(".channels-connection-state button")!.click();
+    await until(() => host.querySelector(".channel-post"));
+    root.render(null); await settle();
     root.render(<ChannelsView />);
     await until(() => host.querySelector(".channel-post"));
     const draft = host.querySelector<HTMLTextAreaElement>("textarea")!;
@@ -105,9 +119,22 @@ export async function runChannelRegressions(host: HTMLElement) {
     assert(test.shares[0] === "Reviewed safe reply", "Sharing ignored the reviewed reply");
     document.querySelector<HTMLButtonElement>('[aria-label="Close channel run"]')!.click(); await settle();
     assert(document.activeElement === harnessAction, "Harness dialog did not restore focus");
-    harnessAction.click(); await until(() => document.querySelector(".channel-harness-dialog")?.textContent?.includes("Reply shared"));
+    await until(() => host.querySelector(".channel-job-status")?.textContent?.includes("Reply shared"));
+    host.querySelector<HTMLButtonElement>(".channel-job-status")!.click(); await until(() => document.querySelector(".channel-harness-dialog")?.textContent?.includes("Reply shared"));
     assert(Number(test.runs.length) === 1, "Reopening a run started another agent");
     document.querySelector<HTMLButtonElement>('[aria-label="Close channel run"]')!.click(); await settle();
+    host.querySelector<HTMLElement>('[aria-label="Connection options"]')!.click(); await settle();
+    Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent === "Saved channel harnesses")!.click();
+    await until(() => document.querySelector(".channel-saved-routes li"));
+    const savedDialog = document.querySelector<HTMLDialogElement>('[aria-label="Saved channel harnesses"]')!;
+    assert(savedDialog.open && savedDialog.contains(document.activeElement), "Saved harness dialog did not contain focus");
+    Array.from(savedDialog.querySelectorAll("button")).find((button) => button.textContent === "Remove local connection")!.click(); await settle();
+    assert(!test.actions.includes("remove-route"), "Saved harness removal skipped confirmation");
+    Array.from(savedDialog.querySelectorAll("button")).find((button) => button.textContent === "Confirm removal")!.click();
+    await until(() => savedDialog.textContent?.includes("No saved channel harnesses."));
+    assert(test.actions.filter((action) => action === "remove-route").length === 1, "Saved harness was not removed exactly once");
+    savedDialog.querySelector<HTMLButtonElement>('[aria-label="Close saved harnesses"]')!.click(); await settle();
+    host.querySelector<HTMLElement>('[aria-label="Connection options"]')!.click(); await settle();
     host.querySelector<HTMLButtonElement>('[aria-label="View Alex profile"]')!.click();
     await until(() => document.querySelector(".channel-profile-dialog[open]"));
     assert(document.querySelector(".channel-profile-dialog .channel-avatar")?.textContent === "😆", "Profile avatar differs from the transcript");
@@ -254,6 +281,8 @@ export async function runChannelRegressions(host: HTMLElement) {
 
     const routeButton = () => host.querySelector<HTMLButtonElement>(".channel-route-heading button")!;
     const routeAction = (text: string) => Array.from(document.querySelectorAll<HTMLButtonElement>(".channel-route-settings button")).find((button) => button.textContent === text)!;
+    host.querySelector<HTMLButtonElement>('[aria-label="Reply to Alex in thread"]')!.click();
+    await until(() => host.querySelectorAll(".channel-route-control").length === 2);
     routeButton().click(); await settle();
     const routeSelectors = document.querySelectorAll<HTMLSelectElement>(".channel-route-settings select");
     const routeDialog = document.querySelector<HTMLDialogElement>(".channel-route-dialog")!;
@@ -264,6 +293,11 @@ export async function runChannelRegressions(host: HTMLElement) {
     assert(routeSelectors[1]!.value === "codex" && !host.querySelector('[aria-label="Channel message destination"]'), "Failed route setup lost selections or enabled execution");
     test.fail(false); routeAction("Enable harness and automatic replies").click();
     await until(() => host.querySelector('[aria-label="Channel message destination"]'));
+    await until(() => host.querySelector(".channel-thread .channel-route-heading")?.textContent?.includes("Capsule ·"));
+    host.querySelector<HTMLButtonElement>(".channel-thread .channel-route-heading button")!.click(); await settle();
+    assert(document.querySelectorAll<HTMLSelectElement>(".channel-route-settings select")[1]?.value === "codex" && !routeAction("Pause channel harness").disabled, "Thread control did not synchronize enabled harness configuration");
+    document.querySelector<HTMLButtonElement>('[aria-label="Close channel harness setup"]')!.click(); await settle();
+    host.querySelector<HTMLButtonElement>('[aria-label="Close thread"]')!.click(); await settle();
     const postsBeforeRoute = test.posts.length;
     fill(restoredDraft, "Run locally"); await settle();
     host.querySelector<HTMLFormElement>(".channel-composer")!.requestSubmit();
@@ -274,6 +308,14 @@ export async function runChannelRegressions(host: HTMLElement) {
     host.querySelector<HTMLFormElement>(".channel-composer")!.requestSubmit();
     await until(() => test.posts.length === postsBeforeRoute + 2);
     assert(test.posts.at(-1)!.content === "Just chat", "Chat only still routed an ordinary message to the harness");
+    fill(restoredDraft, "Still just chatting"); await settle();
+    host.querySelectorAll<HTMLButtonElement>(".channel-link")[1]!.click(); await settle();
+    host.querySelectorAll<HTMLButtonElement>(".channel-link")[0]!.click();
+    await until(() => host.querySelector('[aria-label="Channel message destination"]'));
+    assert(host.querySelector<HTMLSelectElement>('[aria-label="Channel message destination"]')!.value === "channel", "Restoring a draft silently changed its destination");
+    host.querySelector<HTMLFormElement>(".channel-composer")!.requestSubmit();
+    await until(() => test.posts.length === postsBeforeRoute + 3);
+    assert(test.posts.at(-1)!.content === "Still just chatting", "Restored chat draft started local execution");
     await until(() => !routeButton().disabled);
     routeButton().click(); await until(() => routeAction("Pause channel harness")); routeAction("Pause channel harness").click();
     await until(() => !host.querySelector('[aria-label="Channel message destination"]'));
@@ -323,14 +365,35 @@ export async function runChannelRegressions(host: HTMLElement) {
     messages.push({ id: "new", author: human, content: "New message", createdAt: 1_790_170_099 });
     renderFeed(); await settle();
     assert(feed.scrollTop === 0 && host.querySelector(".channel-latest"), "Polling pulled the reader away from older messages");
+    feed.scrollTop = feed.scrollHeight; feed.dispatchEvent(new Event("scroll", { bubbles: true })); await settle();
+    assert(Number(acknowledgments) === 2, "Manually reaching the bottom did not acknowledge unread activity");
+    feed.scrollTop = 0; feed.dispatchEvent(new Event("scroll", { bubbles: true })); await settle();
     host.querySelector<HTMLButtonElement>(".channel-latest")!.click(); await settle();
     assert(feed.scrollTop > 0, "Latest messages did not return to the end");
+    root.render(null); await settle();
+    const history = [{ id: "root", author: human, content: "Root", createdAt: 10 }, { id: "child", rootId: "root", author: human, content: "Needle in reply", createdAt: 12 }];
+    root.render(<ChannelFeed messages={history} members={[]} reply={() => {}} filter="needle" />); await settle();
+    assert(host.querySelectorAll(".channel-post").length === 1 && host.querySelector(".channel-post")?.textContent?.includes("Needle in reply"), "Search hid an already loaded reply");
+    root.render(null); await settle();
+    root.render(<ChannelFeed messages={history} members={[]} lastRead={11} onCaughtUp={() => {}} />); await settle();
+    root.render(<ChannelFeed messages={history} members={[]} lastRead={12} onCaughtUp={() => {}} />); await settle();
+    assert(host.querySelector(".channel-unread-rule"), "Acknowledging a room erased its opening unread boundary");
   } finally { root.unmount(); window.testWorkspace = previous; }
 }
 
-export async function renderChannelPreview(root: ReturnType<typeof createRoot>, host: HTMLElement, surface: "channel" | "thread" | "members" | "empty" | "settings" | "mentions" | "reactions" | "harness" | "route") {
+export async function renderChannelPreview(root: ReturnType<typeof createRoot>, host: HTMLElement, surface: "channel" | "thread" | "members" | "empty" | "settings" | "mentions" | "reactions" | "harness" | "route" | "connecting" | "connection-error") {
   root.render(null); await settle();
   window.testWorkspace = { ...window.testWorkspace, ...harnessWorkspace, api: fixture().api };
+  if (surface === "connecting" || surface === "connection-error") {
+    window.testWorkspace.api = { ...fixture().api, relayStatus: () => surface === "connecting" ? new Promise(() => {}) : Promise.reject(new Error(`The saved relay connection could not be restored: ${"unavailable-".repeat(25)}`)) };
+    root.render(<div style={{ height: "100vh", display: "flex", minWidth: 0 }}><ChannelsView /></div>);
+    await until(() => host.querySelector(`.channels-connection-state [role=${surface === "connecting" ? "status" : "alert"}]`));
+    const state = host.querySelector<HTMLElement>(".channels-connection-state > div")!.getBoundingClientRect();
+    assert(state.left >= 16 && state.right <= window.innerWidth - 16, "Connection status lost its horizontal inset");
+    assert(Math.abs((state.left + state.right) / 2 - window.innerWidth / 2) < 2, "Connection status is not centered");
+    assert(host.scrollWidth <= host.clientWidth + 1, "Connection status overflows the window");
+    return;
+  }
   root.render(<div style={{ height: "100vh", display: "flex", minWidth: 0 }}><ChannelsView /></div>);
   await until(() => host.querySelector('[aria-label="Reply to Alex in thread"]'));
   if (surface === "thread") {

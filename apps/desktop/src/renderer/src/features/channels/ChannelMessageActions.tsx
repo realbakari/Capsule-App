@@ -1,22 +1,21 @@
-import { useEffect, useRef, useState } from "react";
-import type { ChannelMessage, ChannelReaction } from "@capsule/shared";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import type { ChannelMessage } from "@capsule/shared";
 import { useWorkspace } from "../../lib/workspace";
 import { formatUserError } from "../../lib/errors";
 import { CopyIcon, MessageSquareIcon, SmilePlusIcon, XIcon } from "../shell/icons";
 import { ChannelHarnessAction } from "./ChannelHarnessAction";
+import { useChannelReactions } from "./ChannelConnectionState";
 
-const reactionCache = new Map<string, ChannelReaction[]>();
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "🎉", "👀"];
 
 /** Fetch on explicit interaction, never one subprocess per post on render. */
 export function ChannelMessageActions({ message, reply, author, channelId }: { message: ChannelMessage; reply?: () => void; author: string; channelId?: string }) {
   const { api } = useWorkspace();
   const [open, setOpen] = useState(false);
-  const [reactions, setReactions] = useState<ChannelReaction[] | undefined>(() => reactionCache.get(message.id));
-  const [busy, setBusy] = useState(false);
+  const store = useChannelReactions();
+  const { reactions, busy, error: reactionError } = useSyncExternalStore(store.subscribe, () => store.get(message.id));
   const [error, setError] = useState<string>();
   const mounted = useRef(true);
-  const inFlight = useRef(false);
   const panel = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -28,24 +27,14 @@ export function ChannelMessageActions({ message, reply, author, channelId }: { m
     return () => document.removeEventListener("pointerdown", close);
   }, [open]);
   async function perform(action?: { emoji: string; kind: "add" | "remove" }) {
-    if (inFlight.current || !api.isDesktop) return;
-    inFlight.current = true; setBusy(true); setError(undefined);
-    let accepted = false;
-    try {
-      if (action) {
-        await api.reactToChannelMessage(message.id, action.emoji, action.kind); accepted = true;
-        if (mounted.current) setReactions(undefined);
-      }
-      const next = await api.channelReactions(message.id);
-      reactionCache.set(message.id, next);
-      if (mounted.current) setReactions(next);
-    } catch (reason) { if (mounted.current) setError(`${accepted ? "Change accepted, but counts could not be refreshed. " : ""}${formatUserError(reason)}`); }
-    finally { inFlight.current = false; if (mounted.current) setBusy(false); }
+    if (!api.isDesktop) return;
+    await store.perform(message.id, () => api.channelReactions(message.id), action ? () => api.reactToChannelMessage(message.id, action.emoji, action.kind) : undefined, formatUserError);
   }
   function close() { setOpen(false); trigger.current?.focus(); }
   if (!api.isDesktop) return null;
   const extras = reactions?.filter((reaction) => !QUICK_REACTIONS.includes(reaction.emoji)) ?? [];
   return <>
+    {channelId && <ChannelHarnessAction channelId={channelId} message={message} statusOnly />}
     <div className={`channel-message-actions${open ? " open" : ""}`} aria-label="Message actions">
       {channelId && <ChannelHarnessAction channelId={channelId} message={message} />}
       <button ref={trigger} className="icon-btn" aria-label="Reactions" title="React" aria-expanded={open} onClick={() => { setOpen((value) => !value); if (!open) void perform(); }}><SmilePlusIcon size={15} /></button>
@@ -71,11 +60,11 @@ export function ChannelMessageActions({ message, reply, author, channelId }: { m
             {reaction.mine ? <span className="sr-only">You reacted</span> : null}
           </div>)}
         </div>
-        {!reactions && !error && <p className="sr-only" role="status">Loading reactions…</p>}
+        {!reactions && !reactionError && <p className="sr-only" role="status">Loading reactions…</p>}
         <button type="button" className="icon-btn channel-reaction-close" aria-label="Close reactions" onClick={close}><XIcon size={13} /></button>
       </div>}
     </div>
-    {error && <p className="channel-action-notice channels-error" role="alert">{error}</p>}
+    {(error ?? reactionError) && <p className="channel-action-notice channels-error" role="alert">{error ?? reactionError}</p>}
     {!!reactions?.length && <div className="channel-reaction-counts">{reactions.map((reaction) => <button key={reaction.emoji} type="button" className={reaction.mine ? "mine" : ""} aria-pressed={!!reaction.mine} aria-label={`${reaction.emoji}, ${reaction.count} reactions`} title={reaction.mine ? "You reacted" : `${reaction.count}`} disabled={busy} onClick={() => void perform({ emoji: reaction.emoji, kind: reaction.mine ? "remove" : "add" })}><span>{reaction.emoji}</span><span>{reaction.count}</span></button>)}</div>}
   </>;
 }

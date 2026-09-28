@@ -96,6 +96,25 @@ it("reports harness startup failures without discarding the new conversation", a
   expect(f.post).not.toHaveBeenCalled();
 });
 
+it("explicitly retries a failed attempt once and keeps the previous conversation", async () => {
+  const f = await fixture();
+  const send = vi.spyOn(f.engine, "sendMessage").mockRejectedValueOnce(new Error("Sign in first"));
+  await f.engine.channelHarness.start(f.input);
+  await expect.poll(() => f.job().status).toBe("failed");
+  const failed = f.job();
+  expect((await f.engine.channelHarness.start(f.input)).id).toBe(failed.id);
+  const retry = { ...f.input, retryOf: failed.id };
+  const [one, two] = await Promise.all([f.engine.channelHarness.start(retry), f.engine.channelHarness.start(retry)]);
+  expect(one.id).toBe(two.id);
+  expect(one.id).not.toBe(failed.id);
+  await expect.poll(() => f.job().status, { timeout: 5000 }).toBe("completed");
+  expect(send).toHaveBeenCalledTimes(2);
+  expect(f.engine.channelHarness.list(channelId, messageId)).toHaveLength(2);
+  expect((await f.engine.channelHarness.start(retry)).id).toBe(one.id);
+  expect(() => f.engine.channelHarness.start({ ...retry, retryOf: one.id })).toThrow("Only a failed");
+  expect(f.post).not.toHaveBeenCalled();
+});
+
 it("admits only one publication while the relay acknowledgement is pending", async () => {
   const f = await fixture();
   await f.engine.channelHarness.start(f.input);

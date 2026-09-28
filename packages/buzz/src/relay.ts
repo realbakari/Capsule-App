@@ -106,6 +106,16 @@ export class SharedRelayClient {
       remembered: !!this.saved && (!this.connection || (this.saved.url === this.connection.url && this.saved.digest === keyDigest(this.connection.privateKey))),
       hasSaved: this.hasSaved, canRemember: this.storage?.available() ?? false, warning: this.warning };
   }
+  async viewStatus(): Promise<RelayConnectionStatus> {
+    const revision = this.generation;
+    const status = this.status();
+    if (!status.connected) return status;
+    const identity = await this.currentIdentity().catch(() => undefined);
+    if (revision !== this.generation) throw new Error("The channel connection changed.");
+    return { ...status, connectionId: String(revision),
+      preferenceScope: identity ? `${status.url}:${identity}` : undefined,
+      warning: status.warning ?? (!identity ? "Your public identity could not be confirmed. Channel preferences are temporary until you reconnect." : undefined) };
+  }
   /** Restore once when Channels is opened, not during app startup. A manual
    * disconnect stays disconnected for the remainder of this process. */
   async restore(): Promise<RelayConnectionStatus> {
@@ -304,6 +314,8 @@ export class SharedRelayClient {
     return members.map((member) => {
       const profile = profiles.find((profile) => String(profile.pubkey ?? "").toLowerCase() === member.pubkey);
       const name = profile?.display_name || profile?.name;
+      const about = typeof profile?.about === "string" ? profile.about.replaceAll("\0", "").trim().slice(0, 2000) : "";
+      const handle = typeof profile?.name === "string" ? profile.name.replaceAll("\0", "").trim().slice(0, 160) : "";
       const picture = profilePicture(profile);
       const emoji = emojiAvatar(picture);
       if (picture && !emoji) this.pictures.set(member.pubkey, picture); else this.pictures.delete(member.pubkey);
@@ -312,7 +324,9 @@ export class SharedRelayClient {
         const oldest = this.pictures.keys().next().value!;
         pictureBytes -= this.pictures.get(oldest)!.length; this.pictures.delete(oldest);
       }
-      return { ...member, name: typeof name === "string" && name.trim() ? name.slice(0, 160) : member.name, ...(emoji ? { emojiAvatar: emoji } : picture ? { picture } : {}) };
+      return { ...member, name: typeof name === "string" && name.trim() ? name.slice(0, 160) : member.name,
+        ...(about ? { about } : {}), ...(handle && handle !== name ? { handle } : {}),
+        ...(emoji ? { emojiAvatar: emoji } : picture ? { picture } : {}) };
     });
   }
   async avatar(pubkey: string): Promise<string | undefined> {

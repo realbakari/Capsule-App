@@ -41,6 +41,8 @@ describe("ipc scopes", () => {
       "postChannelMessage",
       "channelRouteStatus",
       "configureChannelRoute",
+      "listSavedChannelRoutes",
+      "removeChannelRoute",
       "runChannelHarness",
       "listChannelHarnessJobs",
       "shareChannelHarnessReply",

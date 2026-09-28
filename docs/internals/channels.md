@@ -18,6 +18,11 @@ pipeline. It does not implement an agent loop, ACP server or channel protocol.
 project and harness in the local settings repository. `channelRouteStatus`
 exposes run links, runtime errors, approval waits and delivery state. Both IPC
 methods are denied to paired viewers, including the read.
+`listSavedChannelRoutes` and `removeChannelRoute` are desktop-only local
+management capabilities. Removal is serialized with configuration writes,
+refuses unsettled execution/publication, and fences future polling by removing
+the route object. It never removes normal sessions or runs. The manager includes
+old identities and unavailable channels so their saved slots can be reclaimed.
 
 The five-second, non-overlapping main-process poll admits only new messages
 authored by the authenticated identity and starting with `@capsule`. Enabling
@@ -60,6 +65,11 @@ normal sessions and runs remain persisted. Jobs bind to the relay connection
 generation, so reconnecting even to the same URL cannot reuse publication rights.
 Opening or polling never starts execution. A disconnect during an admitted run
 does not cancel that local conversation, but blocks later relay publication.
+An explicit `retryOf` identifies a failed/cancelled unshared attempt. Duplicate
+retry admission returns the next attempt rather than launching again. Completed,
+shared and uncertain attempts cannot be retried. Channel-level job polling reads
+the bounded in-memory jobs once for both transcript surfaces, keeping source
+message status visible outside the run dialog.
 
 Completed results require explicit reviewed sharing. Main fixes the destination
 to the original channel/thread and sends no mention recipients. Publication is
@@ -84,7 +94,9 @@ unselected channel history remains a memory-only recent window.
   `basic_text` backend does not qualify. Restore runs once on opening Channels,
   never during engine startup. Disconnect preserves the encrypted record;
   Forget deletes it. Restore errors preserve it and permit explicit retry.
-  Status only carries the URL and capability/state flags, never the saved key.
+  View status also carries a connection generation and a preference scope formed
+  from the relay origin and CLI-confirmed public identity, never the saved key.
+  Identity lookup failure uses temporary preferences and a visible warning.
 - Commands have a 20-second execution timeout and 2 MiB output bound; at most four run
   concurrently, with a bounded 64-entry FIFO queue. Ordinary overlapping reads
   wait for a slot; identical in-flight reads share a promise. Writes are never
@@ -130,7 +142,9 @@ data URLs, so its image CSP stays closed to remote origins. Disconnect cancels
 downloads and drops profile/cache data. No photos are written to disk.
 
 Unsent text and explicit public-key mention ranges are memory-only, keyed by room and
-root message while the view is mounted. A view-owned observable draft store
+root message while the view is mounted. The message destination is part of that
+draft and is initialized only once; restoring text never re-enables local routing.
+A view-owned observable draft store
 also owns pending admission and errors, so navigating away and back cannot
 admit duplicate posts. An acknowledged post clears only its submitted revision;
 a rejected post preserves it. The renderer does not auto-retry ambiguous writes.
@@ -140,8 +154,11 @@ and arrow keys; Enter selects rather than implicitly submitting a form.
 Colliding names carry shortened identity hints. The channel and thread composer toolbar inserts Markdown
 using selection-aware edits and retains untouched signed mention ranges. Emoji
 insertion is local text editing, not a relay command. History acknowledges catch-up
-only when the latest message changes or the user chooses Latest, not on every
-callback rerender or identical poll.
+when the latest message changes while following, the user chooses Latest, or
+the user transitions from reading older content to the bottom. The opening
+unread frontier is separate from acknowledgement, so its divider remains visible.
+Identical polls do not undo an explicit mark-unread action. Search projects all
+loaded channel/thread messages before collapsing replies.
 Only unambiguous names from signed message p-tags receive prose decorations;
 Markdown code and link labels stay literal. Reply-marked references route replies
 back to their root, even outside the recent window. Root-only references remain
@@ -155,6 +172,12 @@ exact ID matching, with absent metadata shown as unknown. Editing, archive,
 unarchive and deletion use named CLI operations and accepted acknowledgments.
 Destructive confirmations live in the renderer; relay authorization remains final.
 No owner or presence state is inferred from profile metadata.
+Reaction snapshots and pending mutations are observable and owned by the
+connected view; channel/thread copies subscribe to the same bounded store.
+Read/star/mute preferences are persisted under the verified relay/identity scope,
+while panel width remains device-wide. Unscoped legacy preferences are retained
+but not migrated to an arbitrary account. Published profile biography/handle
+fields are bounded inert text, never runtime or ownership claims.
 
 Protocol fixtures cover validation, acceptance, cancellation, memberships and
 normalization. Isolated Electron tests cover failed/successful sends, mention

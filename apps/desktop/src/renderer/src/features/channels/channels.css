@@ -1,4 +1,10 @@
 .channels-view { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg); }
+.channels-connection-state { display: flex; flex: 1; min-width: 0; min-height: 0; padding: 1.5rem; overflow: auto; }
+.channels-connection-state > div { width: min(100%, 24rem); margin: auto; text-align: center; overflow-wrap: anywhere; }
+.channels-connection-state svg { color: var(--text-muted); }
+.channels-connection-state h2 { margin: .85rem 0 .4rem; font-size: 1rem; font-weight: 600; line-height: 1.4; letter-spacing: -.015em; }
+.channels-connection-state p { margin: 0; color: var(--text-muted); font-size: .8125rem; line-height: 1.5; }
+.channels-connection-state button { margin-top: 1rem; max-width: 100%; white-space: normal; }
 .app.channels-shell > .sidebar { display: none; }
 .app.channels-shell.sidebar-collapsed .channel-directory { display: none; }
 .channels-layout { display: flex; flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
@@ -362,3 +368,24 @@
 .channel-route-settings p, .channel-route-control > p { margin: 0.4rem 0 0; }
 .channel-route-run { margin-top: 0.45rem; }
 .channel-route-run > span { color: var(--text-muted); }
+
+.channel-connection-menu > div, .channel-mention-menu, .channel-emoji-picker {
+  border-color: var(--border-strong);
+  border-radius: var(--popover-radius);
+  box-shadow: var(--shadow-raised);
+}
+.channel-dialog, .channel-profile-dialog, .channel-harness-dialog {
+  background: var(--bg-elevated);
+  border-color: var(--border-strong);
+  border-radius: var(--dialog-radius);
+  box-shadow: var(--shadow);
+}
+.channel-dialog::backdrop, .channel-profile-dialog::backdrop, .channel-harness-dialog::backdrop { background: rgb(0 0 0 / 45%); }
+.channel-job-status { display: inline-flex; align-items: center; gap: .4rem; margin-top: .45rem; padding: .3rem .6rem; border: 1px solid var(--border-color); border-radius: .6rem; background: var(--bg-hover); color: var(--text-muted); font-size: .75rem; }
+.channel-job-status:hover { color: var(--text); }
+.channel-saved-routes { list-style: none; padding: 0; font-size: .8125rem; }
+.channel-saved-routes li { padding: .8rem 0; border-top: 1px solid var(--border-color); overflow-wrap: anywhere; }
+.channel-saved-routes p { margin: .35rem 0; }
+.channel-dialog > header { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+.channel-profile-about { font-size: .875rem; line-height: 1.5; overflow-wrap: anywhere; white-space: pre-wrap; }
+.channel-profile-about small { color: var(--text-muted); }

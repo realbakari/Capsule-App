@@ -1,5 +1,9 @@
 # Shared channels
 
+Opening Channels checks your saved connection in a centered status view. If
+the check fails, the same view shows the error and **Retry connection status**;
+it does not keep displaying a loading message after a failure.
+
 Open **Channels** in the sidebar, or **Shared channels** in the command palette,
 to collaborate with people and existing coding agents on your relay. These
 channels are separate from your local project conversations.
@@ -56,6 +60,9 @@ dimming it; drag its edge to resize it. The width is remembered on this device.
 On narrow windows it fills the pane. **Close thread** brings the channel back. New messages follow the bottom only
 while you are already there. **Latest messages** returns from older content.
 A search field in the channel header filters the messages already loaded.
+Search includes replies loaded in the channel or its open thread. Matching replies
+can be opened in their original thread. The opening **New messages** boundary
+stays visible after catching up; scrolling back to the bottom clears the unread count.
 
 Type **@** to find a person or agent, or use **Mention**. Arrow keys move through
 suggestions; Enter or Tab selects without sending. Escape closes suggestions.
@@ -134,6 +141,10 @@ private project information before sharing. A failed or uncertain publication
 is never automatically retried.
 
 Reopening the action shows the existing run during the current connection.
+Its status stays below the source message after the dialog closes, including
+approval waits and replies ready to review. A failed or cancelled, unshared run
+offers **Retry** after you fix the harness. Retrying creates a new attempt and
+keeps the earlier conversation; it never retries uncertain publication.
 Disconnecting or restarting clears those links; the project conversation remains
 saved. A running agent can continue locally after disconnect, but its old channel
 action cannot publish under a new connection. Other channel members cannot
@@ -154,6 +165,21 @@ Use **Chat only** for ordinary conversation. When enabled, you can also type
 `@capsule` at the beginning of a message from another client using your same
 relay identity. Other people's messages cannot execute local code. Mentioning
 an existing hosted agent still uses that agent's host, not this route.
+Your chosen destination stays with each draft when switching channels or
+closing and reopening threads. **Ask Capsule** includes selected mentions as
+text only; it does not notify hosted agents.
+
+**Connection options → Saved channel harnesses** lists local connections,
+including those from earlier relay identities. It is also available on the
+connection screen. Remove an unused connection to reclaim one of the 16 saved
+slots. Active work must be paused and finished or stopped first. Removing a
+connection does not delete relay messages, projects, or saved conversations.
+
+Read markers, stars and mutes are saved separately for each confirmed relay
+identity. Older unscoped preferences are not assigned to an account automatically.
+Reactions update together in the channel and thread, and reset on disconnect.
+Profiles show published descriptions and handles when available; this text is
+not proof of an agent's capabilities, ownership or runtime readiness.
 
 The project, harness and thread context are saved. Reply in the same thread to
 continue its local conversation; a new top-level message starts a new one.

@@ -141,13 +141,14 @@ export function ChannelFeed({ messages, members, loaded = true, reply, empty, in
   const scroller = useRef<HTMLDivElement>(null);
   const follow = useRef(true);
   const [away, setAway] = useState(false);
+  const [openingRead] = useState(lastRead);
   const caughtUp = useRef(onCaughtUp);
   caughtUp.current = onCaughtUp;
   const newestId = messages.at(-1)?.id;
   const needle = filter?.trim().toLowerCase();
-  const visible = (reply ? messages.filter((message) => !message.rootId || !messages.some((other) => other.id === message.rootId)) : messages)
-    .filter((message) => !needle || message.content.toLowerCase().includes(needle));
   const summaryMessages = [...new Map([...messages, ...threadMessages].map((message) => [message.id, message])).values()];
+  const visible = needle ? summaryMessages.filter((message) => message.content.toLowerCase().includes(needle))
+    : reply ? messages.filter((message) => !message.rootId || !messages.some((other) => other.id === message.rootId)) : messages;
   useLayoutEffect(() => {
     const element = scroller.current;
     if (element && follow.current) {
@@ -160,7 +161,9 @@ export function ChannelFeed({ messages, members, loaded = true, reply, empty, in
   return <div className="channel-feed-wrap">
     <div className="channel-feed" ref={scroller} onScroll={() => {
       const element = scroller.current!;
+      const wasFollowing = follow.current;
       follow.current = element.scrollHeight - element.clientHeight - element.scrollTop < 48;
+      if (!wasFollowing && follow.current) caughtUp.current?.();
       setAway(!follow.current);
     }} aria-label="Channel messages" tabIndex={0}>
       {!needle ? intro : null}
@@ -171,7 +174,7 @@ export function ChannelFeed({ messages, members, loaded = true, reply, empty, in
         const newDay = !previous || new Date(previous.createdAt * 1000).toDateString() !== date.toDateString();
         return <Fragment key={message.id}>
           {newDay && <div className="channel-day" aria-hidden="true"><span>{date.toLocaleDateString([], { month: "short", day: "numeric" })}</span></div>}
-          {lastRead && previous && previous.createdAt <= lastRead && message.createdAt > lastRead && <div className="channel-unread-rule" role="status">New messages</div>}
+          {openingRead !== undefined && message.createdAt > openingRead && (!previous || previous.createdAt <= openingRead) && <div className="channel-unread-rule" role="status">New messages</div>}
           <ChannelPostView channelId={channelId} message={message} members={members} compact={shouldGroupChannelPosts(previous, message) && !newDay} reply={reply ? () => reply(message) : undefined} replies={summaryMessages.filter((item) => item.rootId === message.id && item.id !== message.id)} />
         </Fragment>;
       })}
@@ -183,9 +186,10 @@ export function ChannelFeed({ messages, members, loaded = true, reply, empty, in
 export function ChannelComposer({ api, channel, members, parentId, sent, drafts, hold = false }: {
   api: Api; channel: SharedChannel; members: ChannelMember[]; parentId?: string; sent: () => void; drafts: ChannelDrafts; hold?: boolean;
 }) {
-  const [useHarness, setUseHarness] = useState(false);
   const draftKey = `${channel.id}:${parentId ?? "main"}`;
-  const { content, mentions, pending: busy, error } = useSyncExternalStore(drafts.subscribe, () => drafts.get(draftKey));
+  const { content, mentions, destination, pending: busy, error } = useSyncExternalStore(drafts.subscribe, () => drafts.get(draftKey));
+  const useHarness = destination === "capsule";
+  const setUseHarness = (value: boolean) => drafts.edit(draftKey, { destination: value ? "capsule" : "channel" });
   const setContent = (value: string) => drafts.edit(draftKey, { content: value });
   const setMentions = (value: typeof mentions) => drafts.edit(draftKey, { mentions: value });
   const setError = (value?: string) => drafts.setError(draftKey, value);
@@ -242,7 +246,8 @@ export function ChannelComposer({ api, channel, members, parentId, sent, drafts,
     void drafts.send(draftKey, (draft) => api.postChannelMessage({ channelId: channel.id, content: useHarness && !/^@capsule(?:\s|$)/i.test(draft.content) ? `@capsule ${draft.content}` : draft.content, replyTo: parentId, mentions: useHarness ? [] : [...new Set(draft.mentions.map((item) => item.pubkey))] }), formatUserError)
       .then((accepted) => { if (accepted && active.current) sent(); });
   }}>
-    {channel.joined && <ChannelRouteControl key={channel.id} channelId={channel.id} useHarness={useHarness} change={setUseHarness} disabled={busy || hold} />}
+    {channel.joined && <ChannelRouteControl key={channel.id} channelId={channel.id} useHarness={useHarness} change={setUseHarness} initialize={(enabled) => drafts.initializeDestination(draftKey, enabled)} disabled={busy || hold} />}
+    {useHarness && mentions.length > 0 && <p className="channels-hint">Mentions are included as text only. Ask Capsule does not notify hosted agents.</p>}
     <label className="sr-only" htmlFor={`channel-draft-${parentId ?? "main"}`}>{parentId ? "Reply in thread" : `Message #${channel.name}`}</label>
     <textarea ref={textarea} id={`channel-draft-${parentId ?? "main"}`} value={content} onChange={(event) => { drafts.edit(draftKey, { mentions: editMentions(content, event.target.value, mentions), content: event.target.value }); if (!event.nativeEvent.isTrusted || !(event.nativeEvent as InputEvent).isComposing) updateQuery(event.currentTarget); }} disabled={busy || hold || !channel.joined} maxLength={useHarness ? 15990 : 16000} rows={1}
       aria-expanded={picking && !!range} aria-controls={picking ? `mention-list-${parentId ?? "main"}` : undefined} aria-activedescendant={picking && range && candidates[selected] ? `mention-${parentId ?? "main"}-${selected}` : undefined}

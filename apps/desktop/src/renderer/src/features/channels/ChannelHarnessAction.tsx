@@ -4,12 +4,15 @@ import type { ChannelHarnessJob, ChannelMessage, HarnessId } from "@capsule/shar
 import { useWorkspace } from "../../lib/workspace";
 import { formatUserError } from "../../lib/errors";
 import { TerminalIcon, XIcon } from "../shell/icons";
+import { useChannelJob } from "./ChannelJobs";
 
-export function ChannelHarnessAction({ channelId, message }: { channelId: string; message: ChannelMessage }) {
+export function ChannelHarnessAction({ channelId, message, statusOnly = false }: { channelId: string; message: ChannelMessage; statusOnly?: boolean }) {
   const [open, setOpen] = useState(false);
   const { api } = useWorkspace();
+  const job = useChannelJob(message.id);
   if (!api.isDesktop || !api.runChannelHarness) return null;
-  return <><button type="button" className="icon-btn" aria-label="Run with Capsule" title="Run with Capsule" onClick={() => setOpen(true)}><TerminalIcon size={15} /></button>
+  if (statusOnly && !job) return null;
+  return <><button type="button" className={statusOnly ? "channel-job-status" : "icon-btn"} aria-label={statusOnly && job ? `Open local run: ${job.status.replaceAll("_", " ")}` : "Run with Capsule"} title="Run with Capsule" onClick={() => setOpen(true)}><TerminalIcon size={15} />{statusOnly && job && <span>{job.status === "completed" && job.publication === "unshared" ? "Reply ready to review" : job.publication === "shared" ? "Reply shared" : job.status.replaceAll("_", " ")}</span>}</button>
     {open && <ChannelHarnessDialog channelId={channelId} message={message} close={() => setOpen(false)} />}</>;
 }
 
@@ -76,6 +79,10 @@ function ChannelHarnessDialog({ channelId, message, close }: { channelId: string
       {job.sessionId && <button className="ghost" disabled={busy} onClick={() => void perform(async () => { await refresh(); if (alive.current) { setProjectId(job.projectId, job.sessionId); setView("chat"); close(); } })}>Open conversation{job.status === "approval_required" ? " to approve" : ""}</button>}
       {running && job.runId && <button className="ghost" disabled={busy} onClick={() => void perform(async () => { await api.stopRun(job.runId!); })}>Stop run</button>}
       {job.error && <p role="alert" className="channels-error">{job.error}</p>}
+      {["failed", "cancelled"].includes(job.status) && job.publication === "unshared" && <button className="ghost" disabled={busy} onClick={() => void perform(async () => {
+        const next = await api.runChannelHarness({ channelId, messageId: message.id, rootId: message.rootId, projectId: job.projectId, harnessId: job.harnessId, retryOf: job.id });
+        if (alive.current) { edited.current = false; setReply(""); setJob(next); }
+      })}>Retry with {job.harnessId}</button>}
       {job.status === "completed" && <>
         <label>Reply preview<textarea aria-label="Channel harness reply" rows={8} value={reply} disabled={job.publication !== "unshared" || busy} onChange={(event) => { edited.current = true; setReply(event.target.value); }} /></label>
         <p className="channels-hint">Sharing publishes this text to the channel thread as your connected identity, labelled with the harness name. Review it for private project information.</p>

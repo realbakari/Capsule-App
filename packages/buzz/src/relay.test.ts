@@ -14,6 +14,25 @@ async function fixture() {
   return { client, command };
 }
 describe("shared relay boundary", () => {
+  it("scopes view preferences to the authenticated public identity without exposing credentials", async () => {
+    const { client, command } = await fixture();
+    command.mockResolvedValue([{ pubkey: publicKey }]);
+    const first = await client.viewStatus();
+    expect(first.preferenceScope).toBe(`https://relay.example:${publicKey}`);
+    expect(JSON.stringify(first)).not.toContain(privateKey);
+    command.mockResolvedValueOnce([]).mockResolvedValueOnce([{ pubkey: messageId }]);
+    await client.connect({ url: "https://relay.example", privateKey: messageId });
+    const second = await client.viewStatus();
+    expect(second.preferenceScope).not.toBe(first.preferenceScope);
+    expect(second.connectionId).not.toBe(first.connectionId);
+    client.disconnect();
+    expect((await client.viewStatus()).preferenceScope).toBeUndefined();
+  });
+  it("retains bounded public biography and handle as inert display text", async () => {
+    const { client, command } = await fixture();
+    command.mockResolvedValueOnce([{ pubkey: publicKey, role: "bot" }]).mockResolvedValueOnce([{ pubkey: publicKey, content: JSON.stringify({ display_name: "Reviewer", name: "review", about: "<script>not executable</script>", model: "unverified" }) }]);
+    expect(await client.members(channelId)).toEqual([{ pubkey: publicKey, role: "bot", name: "Reviewer", handle: "review", about: "<script>not executable</script>" }]);
+  });
   it("carries inert emoji artwork from raw profile events without requesting image bytes", async () => {
     const { client, command } = await fixture();
     const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512"><rect width="512" height="512" fill="#FFE75C"/><text x="50%" y="56%" dominant-baseline="middle" text-anchor="middle" font-size="258">😆</text></svg>';

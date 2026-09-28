@@ -5,8 +5,8 @@ import { useWorkspace } from "../../lib/workspace";
 import { formatUserError } from "../../lib/errors";
 import { TerminalIcon, XIcon } from "../shell/icons";
 
-export function ChannelRouteControl({ channelId, useHarness, change, disabled }: {
-  channelId: string; useHarness: boolean; change: (value: boolean) => void; disabled: boolean;
+export function ChannelRouteControl({ channelId, useHarness, change, initialize, disabled }: {
+  channelId: string; useHarness: boolean; change: (value: boolean) => void; initialize: (value: boolean) => void; disabled: boolean;
 }) {
   const { api, projects, harnesses, projectId: activeProject, setProjectId, setView, refresh } = useWorkspace();
   const [state, setState] = useState<ChannelRouteStatus>();
@@ -20,8 +20,10 @@ export function ChannelRouteControl({ channelId, useHarness, change, disabled }:
   const mutation = useRef(false);
   const revision = useRef(0);
   const initialized = useRef(false);
+  const configurationKey = useRef<string | undefined>(undefined);
   const alive = useRef(true);
   const changed = useRef(change); changed.current = change;
+  const initializeDraft = useRef(initialize); initializeDraft.current = initialize;
   useEffect(() => {
     if (!open) return;
     const prior = trigger.current;
@@ -40,7 +42,12 @@ export function ChannelRouteControl({ channelId, useHarness, change, disabled }:
           setState(next);
           if (!initialized.current) {
             initialized.current = true;
-            if (next.configuration) { setProject(next.configuration.projectId); setHarness(next.configuration.harnessId); changed.current(next.configuration.enabled); }
+            initializeDraft.current(!!next.configuration?.enabled);
+          }
+          const key = JSON.stringify(next.configuration);
+          if (key !== configurationKey.current) {
+            configurationKey.current = key;
+            if (next.configuration) { setProject(next.configuration.projectId); setHarness(next.configuration.harnessId); }
           }
           if (!next.configuration?.enabled) changed.current(false);
         }

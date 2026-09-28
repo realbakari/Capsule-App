@@ -1310,6 +1310,22 @@ reuse this reader. These checks reject static symlink escapes and detected
 replacement races; they are not an OS sandbox against an adversary concurrently
 renaming parent directories, and do not constrain a coding CLI's own file access.
 
+### Shared-channel consistency
+
+Initial relay-status loading and failure occupy a centered, width-bounded
+state inside the Channels pane. Long errors wrap; failures replace the loading
+announcement and offer retry without overflowing narrow windows.
+
+Channel and thread drafts retain their explicit Chat only/Ask Capsule destination.
+Both composers synchronize saved route configuration without replacing that
+choice. Loaded search includes replies; the opening unread divider survives
+acknowledgement and manual catch-up clears unread activity. Preferences are
+relay/identity-scoped, while reactions share a connection-owned observable store.
+Selected-message local runs expose persistent status and explicit failed-attempt
+retry. Saved channel harnesses can be retired without deleting conversations.
+Channel dialogs and popovers use the workspace surface tokens. Profile biographies
+and handles are displayed as bounded published text, not verified capabilities.
+
 ### Public showcase
 
 The marketing page embeds a lazy, same-origin `?showcase=1` iframe instead of

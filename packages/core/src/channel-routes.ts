@@ -1,4 +1,4 @@
-import { createId, isHarnessId, type AgentMessage, type ChannelHarnessJob, type ChannelRouteInput, type ChannelRouteStatus, type CreateSessionInput, type Project, type Run, type Session } from "@capsule/shared";
+import { createId, isHarnessId, type AgentMessage, type ChannelHarnessJob, type ChannelRouteInput, type ChannelRouteStatus, type CreateSessionInput, type Project, type Run, type Session, type SavedChannelRoute } from "@capsule/shared";
 import type { SharedRelayClient } from "@capsule/buzz";
 
 interface Workspace {
@@ -95,6 +95,29 @@ export class ChannelRoutes {
     const identity = await this.identity();
     const route = this.routes.find((route) => route.url === identity.url && route.author === identity.author && route.configuration.channelId === channelId);
     return { configuration: route?.configuration, error: route?.error, jobs: route?.turns.slice(-20).reverse().map((turn) => this.snapshot(turn)) ?? [] };
+  }
+  private removable(route: Route): boolean {
+    return !route.turns.some((turn) => turn.phase !== "done" || turn.job.publication === "sharing"
+      || this.snapshot(turn).status === "starting" || ACTIVE.has(this.snapshot(turn).status));
+  }
+  saved(): SavedChannelRoute[] {
+    if (this.recoveryError) throw new Error(this.recoveryError);
+    return this.routes.map((route) => ({ id: route.id, url: route.url, identity: route.author,
+      configuration: { ...route.configuration }, removable: this.removable(route) }));
+  }
+  remove(id: unknown): Promise<void> {
+    if (typeof id !== "string" || !ID.test(id)) return Promise.reject(new Error("Invalid saved route."));
+    const write = this.writes.then(() => {
+      if (this.closed || this.recoveryError) throw new Error(this.recoveryError ?? "Capsule is shutting down.");
+      const route = this.routes.find((item) => item.id === id);
+      if (!route) return;
+      if (!this.removable(route)) throw new Error("Pause this route and finish or stop its active run before removing it.");
+      route.configuration.enabled = false;
+      this.routes = this.routes.filter((item) => item !== route);
+      this.save();
+    });
+    this.writes = write.catch(() => undefined);
+    return write;
   }
   configure(input: unknown): Promise<ChannelRouteStatus> {
     const parsed = config(input);
