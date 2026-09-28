@@ -101,6 +101,11 @@ export const IPC_CHANNELS = {
   /* The floating pet: show or hide it, and open a thread from it. */
   togglePet: "capsule:togglePet",
   getPetState: "capsule:getPetState",
+  getPetVoiceStatus: "capsule:getPetVoiceStatus",
+  listenPetCommand: "capsule:listenPetCommand",
+  finishPetCommand: "capsule:finishPetCommand",
+  cancelPetVoice: "capsule:cancelPetVoice",
+  speakPetStatus: "capsule:speakPetStatus",
   setPetExpanded: "capsule:setPetExpanded",
   focusSession: "capsule:focusSession",
   gitStatus: "capsule:gitStatus",
@@ -163,6 +168,7 @@ export const IPC_CHANNELS = {
 } as const;
 
 export const IPC_EVENTS = {
+  petVoice: "capsule:event:petVoice",
   state: "capsule:event:state",
   run: "capsule:event:run",
   message: "capsule:event:message",

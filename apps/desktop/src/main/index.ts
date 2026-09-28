@@ -14,6 +14,7 @@ import {
 } from "@capsule/contracts";
 import path from "node:path";
 import { BackgroundBrowsers } from "./background-browsers";
+import { PetVoice } from "./pet-voice";
 import {
   app,
   autoUpdater as nativeAutoUpdater,
@@ -199,6 +200,7 @@ const browserReady = new Map<(contents: Electron.WebContents) => void, string | 
 
 let browserMcp: BrowserMcpServer | undefined;
 let petWindow: BrowserWindow | undefined;
+const petVoice = new PetVoice(app.isPackaged ? path.join(process.resourcesPath, "capsule-voice") : path.join(__dirname, "../../native/capsule-voice"));
 
 /*
  * The pet: a small window that floats over everything and says whether
@@ -273,8 +275,12 @@ function openPetWindow(): void {
     fallback.unref?.();
   });
   petWindow.on("closed", () => {
+    petVoice.cancel();
     petWindow = undefined;
   });
+  petWindow.on("hide", () => petVoice.cancel());
+  petWindow.webContents.on("render-process-gone", () => petVoice.cancel());
+  petWindow.webContents.on("did-start-navigation", () => petVoice.cancel());
 
   const rendererURL = process.env.ELECTRON_RENDERER_URL;
   if (rendererURL) void petWindow.loadURL(`${rendererURL}#pet`);
@@ -1512,6 +1518,23 @@ function registerIpc(): void {
     // never deserialize every historical prompt/result just to animate a pet.
     return { visible: isPetOpen(), summary: summariseAttention({ sessions: engine.listSessions(), runs: engine.listLatestRunStates() }) };
   });
+  // Voice is local to the companion. These handlers are deliberately absent
+  // from the remote handler map, including for paired viewers with write access.
+  const voiceHandler = (channel: string, action: () => unknown, focused = false) => ipcMain.handle(channel, (event) => {
+    if (shutdown.started || !petWindow || petWindow.isDestroyed() || event.sender !== petWindow.webContents || event.senderFrame !== petWindow.webContents.mainFrame) throw new Error("Voice is available only from the companion.");
+    if (focused && (!petWindow.isVisible() || !petWindow.isFocused())) throw new Error("Focus the companion to use voice.");
+    return action();
+  });
+  voiceHandler(IPC_CHANNELS.getPetVoiceStatus, () => petVoice.status());
+  voiceHandler(IPC_CHANNELS.listenPetCommand, () => petVoice.listen(() => {
+    if (petWindow && !petWindow.isDestroyed()) petWindow.webContents.send(IPC_EVENTS.petVoice, { phase: "listening" });
+  }), true);
+  voiceHandler(IPC_CHANNELS.finishPetCommand, () => petVoice.finish());
+  voiceHandler(IPC_CHANNELS.cancelPetVoice, () => petVoice.cancel());
+  voiceHandler(IPC_CHANNELS.speakPetStatus, () => {
+    const engine = requireEngine();
+    return petVoice.speak(summariseAttention({ sessions: engine.listSessions(), runs: engine.listLatestRunStates() }));
+  });
   handle(IPC_CHANNELS.setPetExpanded, (expanded) => {
     if (typeof expanded !== "boolean") throw new Error("Invalid companion layout.");
     if (!petWindow || petWindow.isDestroyed()) return;
@@ -2179,6 +2202,7 @@ app.whenReady().then(() => startup.run(async () => {
   augmentPath();
   applyDockIcon();
   registerIpc();
+  powerMonitor.on("suspend", () => petVoice.cancel());
   // Started before the window so the renderer's first calls have a promise to
   // wait on, and awaited after so the window still appears while it opens.
   const starting = startEngine();
@@ -2235,6 +2259,7 @@ app.on("window-all-closed", () => {
  */
 let quitConfirmed = false;
 const shutdown = new Shutdown(async () => {
+  petVoice.cancel();
   // Startup may be opening the database or a server when Quit arrives. Stop
   // those resources after they exist, rather than leaking a late completion.
   await startup.settled();

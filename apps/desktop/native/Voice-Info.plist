@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleIdentifier</key><string>ai.capsule.desktop.voice</string>
+  <key>CFBundleName</key><string>Capsule Voice</string>
+  <key>NSMicrophoneUsageDescription</key><string>Capsule listens only when you press Talk to control the desktop companion.</string>
+  <key>NSSpeechRecognitionUsageDescription</key><string>Capsule recognizes short companion commands on this device. Audio is not sent to a speech service.</string>
+</dict></plist>

@@ -30,6 +30,12 @@ node scripts/ensure-electron.mjs
 pnpm rebuild electron
 ```
 
+On macOS, development and production builds compile the companion's native
+voice helper with `xcrun swiftc`. Install the Xcode command-line tools if the
+compiler is missing. The helper targets macOS 12 or later and the host CPU.
+Its generated binary and compiler cache are ignored. Windows builds skip it.
+Voice tests use fixture processes and do not request microphone permission.
+
 If the app opens but the engine fails with `NODE_MODULE_VERSION`, rebuild SQLite for Electron:
 
 ```bash

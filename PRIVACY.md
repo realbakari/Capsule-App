@@ -1,6 +1,6 @@
 # Privacy
 
-**Last updated: 23 September 2026 · Describes the accompanying desktop build**
+**Last updated: 28 September 2026 · Describes the accompanying desktop build**
 
 Capsule runs on your computer and keeps your work there. This page describes exactly
 what the app stores, what it sends, and when. It describes the software's real
@@ -156,6 +156,23 @@ HTTPS host named in a member's profile. Those hosts receive normal network
 connection information, including your IP address. Capsule sends no relay key,
 cookies or referrer with image requests. Profile images are cached in memory,
 not saved to disk, and missing or unsupported images use initials.
+
+## Companion voice
+
+On macOS, pressing **Talk** starts one short microphone session after system
+permission is granted. Capture lasts at most ten seconds. **Stop**, closing the
+tray, hiding the companion, or quitting cancels capture. The microphone is not
+active between commands.
+
+The companion requires on-device English speech recognition and does not fall
+back to a network speech service. Capsule holds the transcript in memory only
+long enough to match a fixed companion command. It does not save audio or
+transcripts, send them to an agent, or include them in diagnostic logs.
+
+**Read status** uses the system voice to speak aggregate workspace counts. It
+does not read thread titles or message contents. Automatic spoken status is off
+by default and can be enabled for the open tray. Paired viewers and embedded
+browser pages cannot access companion voice.
 
 ## What Capsule does *not* do
 

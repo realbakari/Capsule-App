@@ -70,6 +70,11 @@ describe("ipc scopes", () => {
       "deleteProject",
       "resolveApproval",
       "togglePet",
+      "getPetVoiceStatus",
+      "listenPetCommand",
+      "finishPetCommand",
+      "cancelPetVoice",
+      "speakPetStatus",
       "setPetExpanded",
     ]) {
       expect(scopeForChannel(channel)).toBe("write");

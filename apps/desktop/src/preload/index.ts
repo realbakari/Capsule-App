@@ -199,6 +199,11 @@ const api = {
   copyBrowserScreenshot: (webContentsId: number) =>
     ipcRenderer.invoke(IPC_CHANNELS.copyBrowserScreenshot, webContentsId),
   togglePet: (visible?: boolean) => ipcRenderer.invoke(IPC_CHANNELS.togglePet, visible),
+  getPetVoiceStatus: (): Promise<import("@capsule/shared").PetVoiceStatus> => ipcRenderer.invoke(IPC_CHANNELS.getPetVoiceStatus),
+  listenPetCommand: (): Promise<string | undefined> => ipcRenderer.invoke(IPC_CHANNELS.listenPetCommand),
+  finishPetCommand: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.finishPetCommand),
+  cancelPetVoice: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.cancelPetVoice),
+  speakPetStatus: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.speakPetStatus),
   getPetState: (): Promise<{ visible: boolean; summary: import("@capsule/shared").AttentionSummary }> => ipcRenderer.invoke(IPC_CHANNELS.getPetState),
   setPetExpanded: (expanded: boolean) => ipcRenderer.invoke(IPC_CHANNELS.setPetExpanded, expanded),
   focusSession: (sessionId: string) => ipcRenderer.invoke(IPC_CHANNELS.focusSession, sessionId),

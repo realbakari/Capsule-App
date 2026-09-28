@@ -9,6 +9,7 @@ const desktop = path.join(root, "apps/desktop");
 
 await import("./ensure-electron.mjs");
 await import("./ensure-native.mjs");
+await import("./ensure-voice.mjs");
 
 // electron-vite only exposes VITE_-prefixed vars, and only to the renderer, so
 // nothing in .env.local reaches the main process where the engine runs. The

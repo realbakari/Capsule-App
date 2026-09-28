@@ -518,12 +518,21 @@ available from General settings, the palette and the app menu. Its two-piece
 off-white/graphite capsule SVG uses gradient shading and independent CSS tracks
 for breathing, head tilt, floating, looking around, blinking, arm articulation,
 shadow and working-state core rotation, plus coordinated greet/roll/bounce
-reactions. The glyph, caption and colour carry state without relying on motion.
+reactions. Idle tracks have long resting intervals and restrained movement.
+Gesture transforms wrap the idle body; a separate shadow wrapper follows the
+same greeting, roll or bounce timing. Repeating a gesture resets only its CSS
+animation tracks, without remounting the SVG or restarting blinking and breathing.
+Each attention state has its own eye, brow or mouth shape. Ready uses smiling
+eyes; its check glyph indicates a finished turn, not verified output.
+The glyph, caption and colour carry state without relying on motion.
 A dedicated SVG drag handle leaves the mascot keyboard/click accessible.
 The window expands upward for the tray, clamped to its display's work area.
 Pointer gaze follows both axes without a JS frame loop. Greet changes expression
 and waves one arm. Size/pause preferences are renderer-local; reduced motion and
 hidden-window visibility disable animation.
+The drag handle and Greet button reveal on hover, focus within the companion,
+or an open tray. Non-hover devices keep these controls visible. Captions follow
+the same rule, except attention, error and greeting captions remain visible.
 Hidden-renderer regressions explicitly emulate both reduced motion and no
 preference in Chromium's CSS engine, independent of the host's accessibility
 settings. They check actual transform changes, greet/roll/bounce reactions, pause/resume and
@@ -533,6 +542,31 @@ frames do not trigger reads. An indexed lookup selects each non-archived thread'
 newest run state without loading historical prompts, results or verification JSON.
 Only that newest run contributes to attention; errors never imply idle success.
 Read-only remote viewers can query pet state but cannot toggle or resize it.
+
+Companion idle behaviour is a bounded timer sequence: stretch at 45 seconds,
+yawn at 90 seconds, then rest at 120 seconds. Pointer entry and manual gestures
+restart the sequence. Only idle, visible, unpaused companions with a working
+status source schedule it. The tray and reduced motion suppress automatic
+gestures. A running-to-ready transition can trigger a four-second dance.
+The saved `capsule.pet.autonomous` preference controls these local gestures,
+not agent execution.
+
+Companion voice uses a packaged macOS Swift helper over bounded JSON lines.
+It checks `supportsOnDeviceRecognition` and sets `requiresOnDeviceRecognition`
+before capture, with no online fallback. The helper requests microphone and
+speech permissions only after Talk, limits capture to ten seconds, and exits
+within forty seconds including permission prompts. Main enforces a second
+deadline, a 4 KiB output limit, one active input, and a 256-character transcript
+limit. A fixed phrase parser accepts only companion gestures, tray navigation,
+motion controls, and spoken status. Transcripts never reach the engine.
+
+`PetVoice` owns the native processes. Closing or hiding the window, navigating
+its renderer, a renderer crash, system sleep, and shutdown cancel them. Read
+status invokes the system speech utility with aggregate attention counts, not
+thread text. Opt-in announcements last for the open tray and are rate-limited.
+Voice IPC validates the companion's top-level sender; it is absent from the
+remote handler map even for write-scoped viewers. Windows reports unsupported
+voice explicitly. Tests use fixture processes, never live microphone capture.
 
 Review search uses a scoped search-field surface rather than native browser
 input chrome. Search/sort and commit controls share a 2.25rem minimum height;

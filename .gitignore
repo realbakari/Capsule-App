@@ -22,3 +22,4 @@ data
 thumbs.db
 .vercel
 .env*
+apps/desktop/native/capsule-voice

@@ -39,6 +39,14 @@ mac:
   gatekeeperAssess: false
   entitlements: entitlements.mac.plist
   entitlementsInherit: entitlements.mac.plist
+  extraResources:
+    - from: native/capsule-voice
+      to: capsule-voice
+  binaries:
+    - Contents/Resources/capsule-voice
+  extendInfo:
+    NSMicrophoneUsageDescription: Capsule listens only when you press Talk to control the desktop companion.
+    NSSpeechRecognitionUsageDescription: Capsule recognizes short companion commands on this device. Audio is not sent to a speech service.
 npmRebuild: true
 
 # The first Windows release is explicitly unsigned. Do not disable signature

@@ -41,7 +41,7 @@ import { ThreadAgents } from "../features/shell/ThreadAgents";
 import { GATEWAY_CONNECTION_REQUIRED } from "../lib/harness-preflight";
 import { WorkspaceProvider, useWorkspace as useRealWorkspace } from "../lib/workspace.js";
 import { appearanceCssVars, DEFAULT_DARK_PALETTE, DEFAULT_LIGHT_PALETTE, DEFAULT_CAPSULE_SETTINGS, PRESET_HARNESSES, type Session, type Run, type RunEvent, type ChatMessage, type DiffFile } from "@capsule/shared";
-import type { Skill, Agent, HarnessStatus } from "@capsule/shared";
+import type { Skill, Agent, HarnessStatus, AttentionState } from "@capsule/shared";
 
 declare global {
   interface Window {
@@ -127,13 +127,23 @@ window.runPetRegressions = async (motion) => {
   localStorage.removeItem("capsule.pet.paused");
   let petReadFails = true;
   let petFocus = "";
+  let petState: AttentionState | undefined = "running";
+  let refreshPet = () => {};
+  let voiceEvent: (payload: unknown) => void = () => {};
+  let completeVoice: (text: string | undefined) => void = () => {};
+  let spokenStatuses = 0;
+  let cancelledVoice = 0;
   const expandedPet: boolean[] = [];
   window.capsule = {
     getPetState: async () => {
       if (petReadFails) throw new Error("offline");
-      return { visible: true, summary: { state: "running", items: [{ sessionId: "pet-thread", title: "Example task", state: "running" }], counts: { running: 1, ready: 0, blocked: 0, "needs-input": 0 } } };
+      return { visible: true, summary: { state: petState, items: petState ? [{ sessionId: "pet-thread", title: "Example task", state: petState }] : [], counts: { running: 0, ready: 0, blocked: 0, "needs-input": 0, ...(petState ? { [petState]: 1 } : {}) } } };
     },
-    on: () => () => {}, rendererReady: async () => {},
+    on: (event: string, listener: (payload?: unknown) => void) => { if (event === "state") refreshPet = listener; if (event === "petVoice") voiceEvent = listener; return () => {}; }, rendererReady: async () => {},
+    getPetVoiceStatus: async () => ({ inputAvailable: true, outputAvailable: true }),
+    listenPetCommand: () => new Promise<string | undefined>(resolve => { completeVoice = resolve; voiceEvent({ phase: "listening" }); }),
+    finishPetCommand: async () => {}, cancelPetVoice: async () => { cancelledVoice++; },
+    speakPetStatus: async () => { spokenStatuses++; },
     setPetExpanded: async (value: boolean) => { expandedPet.push(value); },
     focusSession: async (id: string) => { petFocus = id; }, togglePet: async () => false,
   } as unknown as typeof window.capsule;
@@ -159,10 +169,12 @@ window.runPetRegressions = async (motion) => {
       const track = moving.getAnimations()[0]!;
       track.pause(); track.currentTime = 0;
       const initial = getComputedStyle(moving).transform;
-      track.currentTime = 2400;
+      track.currentTime = 6000;
+      assert(getComputedStyle(moving).transform === initial, "Idle motion no longer has a resting interval");
+      track.currentTime = 9120;
       assert(getComputedStyle(moving).transform !== initial, "Capsule animation does not change the rendered transform");
       track.play();
-      for (const [selector, time] of [[".capsule-breathe", 3000], [".capsule-head", 4800], [".capsule-arm--left", 2400], [".capsule-arm--right", 2400]] as const) {
+      for (const [selector, time] of [[".capsule-breathe", 4000], [".capsule-head", 12480], [".capsule-arm--left", 11200], [".capsule-arm--right", 11620]] as const) {
         const part = document.querySelector(selector)!;
         const motion = part.getAnimations()[0]!;
         motion.pause(); motion.currentTime = 0;
@@ -172,23 +184,78 @@ window.runPetRegressions = async (motion) => {
         motion.play();
       }
     }
+    const originalMascot = document.querySelector(".pet-capsule");
+    const eyes = document.querySelector(".capsule-eyes")!;
+    const blink = eyes.getAnimations()[0];
+    if (blink) { blink.pause(); blink.currentTime = 1000; }
     button("Greet").click();
     await until(() => document.querySelector(".pet--greeting"));
-    animation(".capsule-motion", reduced ? "none" : "capsuleGreet");
+    animation(".capsule-reaction", reduced ? "none" : "capsuleGreet");
+    animation(".capsule-shadow-reaction", reduced ? "none" : "capsuleGreetShadow");
     animation(".capsule-arm--right", reduced ? "none" : "capsuleWave");
     if (reduced) still();
     button("Roll").click();
     await until(() => document.querySelector(".pet--roll"));
-    animation(".capsule-motion", reduced ? "none" : "capsuleRoll");
-    const firstRoll = document.querySelector(".capsule-motion");
+    animation(".capsule-reaction", reduced ? "none" : "capsuleRoll");
+    animation(".capsule-shadow-reaction", reduced ? "none" : "capsuleRollShadow");
+    const roll = document.querySelector(".capsule-reaction")!.getAnimations()[0];
+    if (roll) roll.currentTime = 900;
     button("Roll").click();
-    await until(() => document.querySelector(".capsule-motion") !== firstRoll);
-    animation(".capsule-motion", reduced ? "none" : "capsuleRoll");
+    if (roll) await until(() => Number(roll.currentTime) < 300);
+    assert(document.querySelector(".pet-capsule") === originalMascot, "Replaying a gesture replaced the mascot");
+    assert(document.querySelector(".capsule-eyes") === eyes, "Replaying a gesture replaced the eyes");
+    if (blink) assert(eyes.getAnimations()[0] === blink && blink.currentTime === 1000, "Gesture reset the blink phase");
+    animation(".capsule-reaction", reduced ? "none" : "capsuleRoll");
     if (reduced) still();
     button("Bounce").click();
     await until(() => document.querySelector(".pet--bounce"));
-    animation(".capsule-motion", reduced ? "none" : "capsuleBounce");
+    animation(".capsule-reaction", reduced ? "none" : "capsuleBounce");
+    animation(".capsule-shadow-reaction", reduced ? "none" : "capsuleBounceShadow");
+    if (!reduced) {
+      const shadow = document.querySelector(".capsule-shadow-reaction")!;
+      const track = shadow.getAnimations()[0]!;
+      track.pause(); track.currentTime = 396;
+      const grounded = Number(getComputedStyle(shadow).opacity);
+      track.currentTime = 836;
+      assert(Number(getComputedStyle(shadow).opacity) < grounded, "Jump shadow does not lighten at the apex");
+      track.play();
+    }
     if (reduced) still();
+    button("Dance").click();
+    await until(() => document.querySelector(".pet--dance"));
+    animation(".capsule-reaction", reduced ? "none" : "capsuleDance");
+    animation(".capsule-shadow-reaction", reduced ? "none" : "capsuleDanceShadow");
+    animation(".capsule-arm--left", reduced ? "none" : "capsuleDanceLeft");
+    animation(".capsule-arm--right", reduced ? "none" : "capsuleDanceRight");
+    if (!reduced) {
+      const dancer = document.querySelector(".capsule-reaction")!;
+      const track = dancer.getAnimations()[0]!;
+      track.pause(); track.currentTime = 504;
+      const left = getComputedStyle(dancer).transform;
+      track.currentTime = 1008;
+      assert(getComputedStyle(dancer).transform !== left, "Dance does not alternate its pose");
+      track.play();
+    } else still();
+    (document.querySelector(".pet-voice summary") as HTMLElement).click();
+    button("Talk").click();
+    await until(() => document.body.textContent?.includes("Microphone on"));
+    completeVoice("roll");
+    await until(() => document.querySelector(".pet--roll"));
+    await until(() => button("Talk"));
+    button("Talk").click();
+    await until(() => document.body.textContent?.includes("Microphone on"));
+    completeVoice("write code and push it");
+    await until(() => document.body.textContent?.includes("Try “dance”"));
+    button("Read status").click();
+    await until(() => spokenStatuses === 1);
+    await until(() => !button("Talk").disabled);
+    button("Talk").click();
+    await until(() => document.body.textContent?.includes("Microphone on"));
+    button("Stop").click();
+    await until(() => cancelledVoice > 0);
+    completeVoice("dance");
+    await new Promise(resolve => setTimeout(resolve, 30));
+    assert(!document.querySelector(".pet--dance"), "A cancelled command still triggered a gesture");
     button("Pause motion").click();
     await until(() => document.querySelector(".pet--paused"));
     still();
@@ -198,6 +265,27 @@ window.runPetRegressions = async (motion) => {
     if (reduced) still();
     (document.querySelector(".pet-tray-title")?.closest("button") as HTMLButtonElement).click();
     await until(() => petFocus === "pet-thread" && expandedPet.at(-1) === false);
+    await until(() => !document.querySelector(".pet--bounce"));
+    const expressions = new Set<string | null>();
+    for (const state of [undefined, "running", "ready", "needs-input", "blocked"] as const) {
+      petState = state; refreshPet();
+      await until(() => document.querySelector(`.pet--${state ?? "idle"}`));
+      expressions.add(document.querySelector(".capsule-mouth")!.getAttribute("d"));
+      if (state && state !== "running") {
+        await until(() => getComputedStyle(document.querySelector(".pet-caption")!).opacity === "1");
+      }
+    }
+    assert(expressions.size === 5, "Attention states have indistinguishable expressions");
+    const body = document.querySelector<HTMLButtonElement>(".pet-body")!;
+    body.focus();
+    await until(() => getComputedStyle(button("Greet")).opacity === "1");
+    assert(getComputedStyle(button("Greet")).pointerEvents === "auto", "Keyboard focus does not reveal controls");
+    body.click();
+    await until(() => document.querySelector(".pet--open"));
+    button("Greet").focus();
+    button("Greet").dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await until(() => !document.querySelector(".pet--open"));
+    assert(document.activeElement === body, "Escape did not restore mascot focus");
     return `Companion regressions passed (${motion})`;
   } finally {
     root.unmount(); window.capsule = petApi; localStorage.clear();

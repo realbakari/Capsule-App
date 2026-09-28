@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   attentionLabel,
   type AttentionItem,
@@ -7,6 +7,9 @@ import {
 } from "@capsule/shared";
 import { CapsuleMascot } from "./CapsuleMascot";
 import { GripIcon } from "../shell/icons";
+import { REACTION_DURATION, REACTION_TRACKS, type PetReaction, type PetCommand } from "./behavior";
+import { usePetBehavior } from "./usePetBehavior";
+import { PetVoiceControls } from "./PetVoiceControls";
 
 const STATE_WORD: Record<AttentionState, string> = {
   "needs-input": "Needs you",
@@ -23,13 +26,23 @@ export function Pet() {
   const [open, setOpen] = useState(false);
   const [paused, setPaused] = useState(() => readPreference("capsule.pet.paused") === "true");
   const [large, setLarge] = useState(() => readPreference("capsule.pet.large") !== "false");
-  const [greeting, setGreeting] = useState(false);
-  const [play, setPlay] = useState<"roll" | "bounce">();
-  const [reactionId, setReactionId] = useState(0);
+  const [reaction, setReaction] = useState<{ kind: PetReaction }>();
+  const [autonomous, setAutonomous] = useState(() => readPreference("capsule.pet.autonomous") !== "false");
+  const [reducedMotion, setReducedMotion] = useState(() => matchMedia("(prefers-reduced-motion: reduce)").matches);
   const [retry, setRetry] = useState(0);
   const [hidden, setHidden] = useState(document.visibilityState === "hidden");
-  const greetingTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const bodyRef = useRef<HTMLButtonElement>(null);
+  const state: AttentionState | "idle" = error ? "idle" : summary?.state ?? "idle";
+  const idleReaction = useCallback((kind: PetReaction) => setReaction(current => current ?? { kind }), []);
+  const behavior = usePetBehavior({ state, available: Boolean(summary) && !error, autonomous, motionPaused: paused || reducedMotion, hidden, open, react: idleReaction });
+  useEffect(() => { if (error || state === "needs-input" || state === "blocked") setReaction(undefined); }, [error, state]);
+  useEffect(() => {
+    const query = matchMedia("(prefers-reduced-motion: reduce)");
+    const changed = () => setReducedMotion(query.matches);
+    query.addEventListener("change", changed);
+    return () => query.removeEventListener("change", changed);
+  }, []);
+  useEffect(() => { try { localStorage.setItem("capsule.pet.autonomous", String(autonomous)); } catch { /* Optional preference. */ } }, [autonomous]);
 
   useEffect(() => {
     if (!api) return undefined;
@@ -64,7 +77,15 @@ export function Pet() {
     void api?.setPetExpanded?.(open).catch(() => setError(true));
   }, [api, open]);
   useEffect(() => { try { localStorage.setItem("capsule.pet.paused", String(paused)); localStorage.setItem("capsule.pet.large", String(large)); } catch { /* Optional preferences. */ } }, [large, paused]);
-  useEffect(() => () => clearTimeout(greetingTimer.current), []);
+  useLayoutEffect(() => {
+    if (!reaction) return;
+    // Replay only the gesture. Eyes, breathing and idle motion keep their phase.
+    for (const track of bodyRef.current?.getAnimations({ subtree: true }) ?? []) {
+      if (track instanceof CSSAnimation && REACTION_TRACKS.has(track.animationName)) track.currentTime = 0;
+    }
+    const timer = setTimeout(() => setReaction(undefined), REACTION_DURATION[reaction.kind]);
+    return () => clearTimeout(timer);
+  }, [reaction]);
   useEffect(() => {
     const changed = () => setHidden(document.visibilityState === "hidden");
     document.addEventListener("visibilitychange", changed);
@@ -82,25 +103,29 @@ export function Pet() {
     return () => { cancelAnimationFrame(id); cancelAnimationFrame(second); };
   }, [api]);
 
-  const state: AttentionState | "idle" = error ? "idle" : summary?.state ?? "idle";
   const label = error ? "Status unavailable" : summary ? attentionLabel(summary) ?? "Nothing waiting" : "Checking activity…";
 
   const openSession = (item: AttentionItem) => {
     void api?.focusSession?.(item.sessionId).then(() => setOpen(false)).catch(() => setError(true));
   };
 
-  function reactTo(action: "greet" | "roll" | "bounce") {
-    clearTimeout(greetingTimer.current);
-    setGreeting(action === "greet");
-    setPlay(action === "greet" ? undefined : action);
-    // Restart even when the same reaction is requested before it finishes.
-    setReactionId((value) => value + 1);
-    const duration = action === "greet" ? 1600 : action === "roll" ? 1800 : 2200;
-    greetingTimer.current = setTimeout(() => { setGreeting(false); setPlay(undefined); }, duration);
+  const greeting = reaction?.kind === "greet";
+  const play = reaction?.kind === "greet" ? undefined : reaction?.kind;
+  function reactTo(kind: PetReaction) { behavior.wake(); setReaction({ kind }); }
+  function onCommand(command: PetCommand) {
+    switch (command.kind) {
+      case "gesture": reactTo(command.reaction); break;
+      case "tasks": setOpen(true); break;
+      case "pause": setPaused(true); break;
+      case "resume": setPaused(false); behavior.wake(); break;
+      case "sleep": setReaction(undefined); behavior.rest(); break;
+      case "wake": behavior.wake(); break;
+      case "status": break; // The voice control reads counts through main.
+    }
   }
 
   return (
-    <div className={`pet pet--${state}${open ? " pet--open" : ""}${paused || hidden ? " pet--paused" : ""}${large ? " pet--large" : ""}${greeting ? " pet--greeting" : ""}${play ? ` pet--${play}` : ""}`} onKeyDown={(event) => { if (event.key === "Escape") { setOpen(false); bodyRef.current?.focus(); } }}>
+    <div className={`pet pet--${state}${error ? " pet--error" : ""}${open ? " pet--open" : ""}${paused || hidden ? " pet--paused" : ""}${large ? " pet--large" : ""}${greeting ? " pet--greeting" : ""}${play ? ` pet--${play}` : ""}${behavior.resting ? " pet--resting" : ""}`} onPointerEnter={behavior.wake} onKeyDown={(event) => { if (event.key === "Escape") { setOpen(false); bodyRef.current?.focus(); } }}>
       {/*
         * The tray, above the capsule so the pet stays where it was put. It
         * lists what the menu bar lists, because they read the same summary.
@@ -126,10 +151,13 @@ export function Pet() {
           <div className="pet-tray-controls">
             <button type="button" onClick={() => reactTo("roll")}>Roll</button>
             <button type="button" onClick={() => reactTo("bounce")}>Bounce</button>
+            <button type="button" onClick={() => reactTo("dance")}>Dance</button>
             <button type="button" aria-pressed={paused} onClick={() => setPaused((value) => !value)}>{paused ? "Resume motion" : "Pause motion"}</button>
             <button type="button" aria-pressed={large} onClick={() => setLarge((value) => !value)}>{large ? "Smaller" : "Larger"}</button>
             <button type="button" onClick={() => void api.togglePet(false).catch(() => setError(true))}>Hide companion</button>
           </div>
+          <label className="pet-option"><input type="checkbox" checked={autonomous} onChange={event => setAutonomous(event.target.checked)} /> Idle gestures and celebrations</label>
+          <PetVoiceControls onCommand={onCommand} state={state} available={Boolean(summary) && !error} />
           <p className="pet-tray-empty">Restore from Settings → General or the command palette.</p>
         </div>
       ) : null}
@@ -150,13 +178,13 @@ export function Pet() {
           event.currentTarget.style.setProperty("--pet-look-y", `${Math.max(-2, Math.min(3, (event.clientY - rect.top - rect.height / 2) / 18))}px`);
         }}
         onPointerLeave={(event) => { event.currentTarget.style.setProperty("--pet-look", "0px"); event.currentTarget.style.setProperty("--pet-look-y", "0px"); }}
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => { behavior.wake(); setOpen((value) => !value); }}
       >
-        <CapsuleMascot key={reactionId} state={state} greeting={greeting} />
+        <CapsuleMascot state={state} greeting={greeting} resting={behavior.resting} yawning={play === "yawn"} />
       </button>
       <button className="pet-wave" type="button" aria-label="Greet capsule" onClick={() => reactTo("greet")}>Greet</button>
       </div>
-      <div className="pet-caption" role="status">{label}{greeting ? " · Hello!" : play === "roll" ? " · Rolling" : play === "bounce" ? " · Bouncing" : ""}</div>
+      <div className="pet-caption" role="status">{label}{greeting ? " · Hello!" : ""}</div>
     </div>
   );
 }
