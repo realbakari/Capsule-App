@@ -146,11 +146,12 @@ export async function runSavedPreviewLayoutRegressions(host: HTMLElement) {
             <FileDiff file={previewFile} split={split} wrap={wrap} />
             <DiffView text={previewPatch} />
           </div>);
-          await until(() => host.querySelector(`[data-diff-case="${identity}"] .file-diff-body`));
+          await until(() => host.querySelector(`[data-diff-case="${identity}"] .file-diff-body.${split ? "is-split" : "is-unified"}.${wrap ? "is-wrapped" : "is-scrollable"}`));
+          await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
           const body = host.querySelector<HTMLElement>(".file-diff-body")!;
           if (wrap) {
             const overflowDetails = () => JSON.stringify({
-              identity, width: body.clientWidth, scrollWidth: body.scrollWidth,
+              identity, classes: body.className, width: body.clientWidth, scrollWidth: body.scrollWidth,
               font: getComputedStyle(body).font, columns: getComputedStyle(body).gridTemplateColumns,
               cells: Array.from(body.querySelectorAll<HTMLElement>(".diff-text")).filter((cell) => cell.scrollWidth > cell.clientWidth + 1)
                 .map((cell) => ({ text: cell.textContent, width: cell.clientWidth, scrollWidth: cell.scrollWidth })),
