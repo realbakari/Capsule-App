@@ -29,6 +29,8 @@ it.each(["grok", "claude", "codex"] as const)("resumes the local %s identity aft
   const preset = PRESET_HARNESSES.find((item) => item.id === harnessId)!;
   const commandKey = harnessId === "grok" ? "acpxCommand" : "directCommand";
   const originalCommand = preset[commandKey];
+  const nativeCommand = preset.nativeCommand;
+  preset.nativeCommand = undefined; // Create a session using the previous ACP-only release.
   preset[commandKey] = { command: process.execPath, args: [agent] };
   vi.stubEnv("ELECTRON_RUN_AS_NODE", "1");
   vi.spyOn(harness, "probeLoginStateNow").mockReturnValue("unknown");
@@ -46,6 +48,7 @@ it.each(["grok", "claude", "codex"] as const)("resumes the local %s identity aft
     expect(identity).toMatchObject({ sessionId: "native-fixture", cwd: directory, harnessId });
     await vi.waitFor(() => expect(engine.getRun(initial.run.id)?.status).toBe("completed"));
     await engine.stop();
+    preset.nativeCommand = nativeCommand; // Upgrade transport defaults before restoring the saved identity.
     engine = new CapsuleEngine(options);
     await engine.start();
     await engine.updateSettings({ runtimeMode: "openclaw" }); // Existing direct threads must not be rerouted.
@@ -62,6 +65,7 @@ it.each(["grok", "claude", "codex"] as const)("resumes the local %s identity aft
   } finally {
     await engine.stop();
     preset[commandKey] = originalCommand;
+    preset.nativeCommand = nativeCommand;
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
     rmSync(directory, { recursive: true, force: true });

@@ -23,6 +23,7 @@
     { "path": "../openclaw" },
     { "path": "../acp" },
     { "path": "../muse" },
+    { "path": "../codex" },
     { "path": "../harness" },
     { "path": "../buzz" }
   ]

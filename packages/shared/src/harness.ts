@@ -128,7 +128,7 @@ export interface HarnessPreset {
   directCommand?: { command: string; args?: string[] };
   directInstallHint?: string;
   /** Native direct-only transport; never register it as an ACP command. */
-  nativeCommand?: { protocol: "msp"; command: string; args: string[] };
+  nativeCommand?: { protocol: "msp" | "codex"; command: string; args: string[] };
 }
 
 export interface HarnessDoctorCheck {
@@ -318,14 +318,15 @@ export const PRESET_HARNESSES: HarnessPreset[] = [
   preset(
     "codex",
     "Codex",
-    "Codex through a local ACP adapter or the optional Gateway. Codex owns the coding loop.",
+    "Codex through its native app-server or the optional Gateway. Codex owns the coding loop.",
     ["codex"],
-    "Install and sign in to Codex on the computer running the agent. Direct mode needs codex-acp on PATH.",
+    "Install and sign in to the Codex CLI on the computer running the agent. New direct conversations use its built-in app-server.",
     "https://developers.openai.com/codex/cli",
     { probeArgs: ["login", "status"], hint: "Run `codex login`" },
     { underlyingCli: "codex", configFilePath: "~/.codex/config.toml", featured: true,
+      nativeCommand: { protocol: "codex", command: "codex", args: ["app-server", "--listen", "stdio://"] },
       directCommand: { command: "codex-acp" },
-      directInstallHint: "Install @agentclientprotocol/codex-acp so codex-acp is on PATH, then complete the agent's sign-in.",
+      directInstallHint: "Install the Codex CLI so codex is on PATH, then run codex login. Existing ACP conversations still need their original codex-acp adapter.",
     },
   ),
   preset(
@@ -353,10 +354,13 @@ export const PRESET_HARNESSES: HarnessPreset[] = [
   preset(
     "copilot",
     "GitHub Copilot",
-    "GitHub Copilot CLI through the acpx Copilot ACP adapter.",
+    "GitHub Copilot CLI through its native ACP mode or the optional Gateway.",
     ["copilot"],
-    "Install and authenticate Copilot CLI on the Gateway host.",
+    "Install and sign in to Copilot CLI on the computer running the agent. Direct mode uses its built-in ACP server.",
     "https://docs.github.com/en/copilot/concepts/agents/copilot-cli/about-copilot-cli",
+    undefined,
+    { directCommand: { command: "copilot", args: ["--acp", "--stdio"] },
+      directInstallHint: "Install a Copilot CLI version with ACP support and sign in using its own CLI. No separate adapter is needed." },
   ),
   preset(
     "cursor",
@@ -742,7 +746,7 @@ export function parseAcpStatus(text: string): AcpStatusSnapshot {
 
 export function isAcpSessionKey(key: string | undefined): boolean {
   // Historical name: engine callers use this for all dedicated harness sessions.
-  return Boolean(key && (key.includes(":acp:") || key.startsWith("acp:") || key.startsWith("direct:msp:")));
+  return Boolean(key && (key.includes(":acp:") || key.startsWith("acp:") || key.startsWith("direct:msp:") || key.startsWith("direct:codex:")));
 }
 
 /**

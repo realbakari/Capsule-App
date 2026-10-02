@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { SharedRelayClient, type RelayCommand } from "@capsule/buzz";
 import { CapsuleEngine } from "./engine.js";
 import { ChannelRoutes } from "./channel-routes.js";
@@ -12,11 +13,13 @@ const channel = "11111111-2222-3333-4444-555555555555", author = "a".repeat(64);
 const eventId = (n: number) => n.toString(16).padStart(64, "0");
 const disposals: Array<() => Promise<void>> = [];
 afterEach(async () => { for (const dispose of disposals.splice(0)) await dispose(); vi.restoreAllMocks(); vi.unstubAllEnvs(); });
-async function fixture(direct = false) {
+async function fixture(direct: boolean | "native" = false) {
   const directory = mkdtempSync(path.join(tmpdir(), "capsule-route-"));
   const preset = PRESET_HARNESSES.find((item) => item.id === "codex")!;
   const original = preset.directCommand;
+  const originalNative = preset.nativeCommand;
   if (direct) {
+    preset.nativeCommand = direct === "native" ? { protocol: "codex", command: process.execPath, args: [fileURLToPath(new URL("../../codex/src/fixtures/agent.mjs", import.meta.url))] } : undefined;
     preset.directCommand = { command: process.execPath, args: ["-e", `
       const readline = require('node:readline');
       const send = message => process.stdout.write(JSON.stringify({jsonrpc:'2.0', ...message})+'\\n');
@@ -35,7 +38,7 @@ async function fixture(direct = false) {
     vi.spyOn(harness, "probeLoginStateNow").mockReturnValue("unknown");
     vi.spyOn(harness, "whichBinary").mockImplementation((names) => names.includes(process.execPath) ? process.execPath : undefined);
   }
-  const options = { databasePath: path.join(directory, "state.sqlite"), userDataDir: directory, autoConnect: direct };
+  const options = { databasePath: path.join(directory, "state.sqlite"), userDataDir: directory, autoConnect: Boolean(direct) };
   let engine = new CapsuleEngine(options);
   await engine.start();
   const project = engine.createProject({ name: "Channel fixture", workingDirectory: directory });
@@ -57,7 +60,7 @@ async function fixture(direct = false) {
   await relay.connect({ url: "https://relay.example", privateKey: "b".repeat(64) });
   const store = { getSetting: (key: string) => engine.repos.getSetting(key), setSetting: (key: string, value: string) => engine.repos.setSetting(key, value) };
   let routes = new ChannelRoutes(relay, engine, store);
-  disposals.push(async () => { relay.disconnect(); await routes.stop(); await engine.stop(); preset.directCommand = original; rmSync(directory, { recursive: true, force: true }); });
+  disposals.push(async () => { relay.disconnect(); await routes.stop(); await engine.stop(); preset.directCommand = original; preset.nativeCommand = originalNative; rmSync(directory, { recursive: true, force: true }); });
   function add(content: string, pubkey = author, root?: string) {
     const id = eventId(messages.length + 1);
     messages.push({ id, pubkey, kind: 9, content, created_at: Math.floor(Date.now() / 1000), tags: [["h", channel], ...(root ? [["e", root, "", "root"], ["e", root, "", "reply"]] : [])] });
@@ -124,6 +127,17 @@ it("carries a channel turn through a spawned ACP process, then continues the sam
   await f.restartEngine();
   f.add("@capsule Continue", author, root); await f.finish();
   expect(f.sent[1]?.content).toBe("Capsule · codex\n\nNative reply 2");
+  expect((await f.routes.status(channel)).jobs[0]?.sessionId).toBe(first.sessionId);
+});
+
+it("routes shared channel messages through the workspace's native Codex session", async () => {
+  const f = await fixture("native"); await f.routes.configure(f.input);
+  const root = f.add("@capsule First"); await f.finish();
+  const first = (await f.routes.status(channel)).jobs[0]!;
+  expect(f.sent[0]?.content).toBe("Capsule · codex\n\nHello model-one");
+  expect(f.engine.listSessions(f.input.projectId)[0]?.openclawSessionKey).toMatch(/^direct:codex:codex:/);
+  await f.restartEngine(); f.add("@capsule Continue", author, root); await f.finish();
+  expect(f.sent[1]?.content).toBe("Capsule · codex\n\nHello model-one");
   expect((await f.routes.status(channel)).jobs[0]?.sessionId).toBe(first.sessionId);
 });
 

@@ -68,17 +68,34 @@ you in, and never resells tokens.
 
 Sign in with each tool's own flow — `claude`, `codex login`, `grok login`, and so on.
 
-### Local Claude Code and Codex
+### Local Codex
 
-Direct mode uses the installed `claude-agent-acp` or `codex-acp` adapter. Install
-the matching adapter yourself before starting the agent:
+New Direct conversations use your installed `codex` CLI. No ACP adapter is
+needed. Complete `codex login`, then use **Check this agent** in Harnesses. Your
+CLI must support app-server; update it if startup reports an unsupported method
+or model. Model choices come from that installation, not a fixed list.
+
+Existing Gateway and ACP conversations keep their original route and history.
+An older ACP conversation still needs its `codex-acp` adapter to resume. Start a
+new Direct conversation to use the native transport; Capsule does not migrate
+conversation identities or install packages automatically.
+
+The native route supports replies, images, tool activity, plans, model selection
+and once-only command/file approvals. It starts conservatively with read-only
+sandboxing and user-reviewed approvals. Native steering, reasoning controls,
+browser tools and interactive question forms are not supported in this route;
+unsupported interactions report an error instead of silently waiting.
+
+### Local Claude Code
+
+Direct mode uses the installed `claude-agent-acp` adapter. Install it before
+starting the agent:
 
 ```sh
 npm install -g @agentclientprotocol/claude-agent-acp
-npm install -g @agentclientprotocol/codex-acp
 ```
 
-Only install the adapter you intend to use. Complete the provider's own sign-in,
+Complete the provider's own sign-in,
 then run **Check this agent** in Harnesses. Capsule does not download adapters
 automatically or register these local commands in Gateway configuration. A
 missing adapter is reported before a conversation starts; a provider CLI alone
@@ -87,6 +104,14 @@ stay on that route; start a new conversation to use Direct mode.
 
 Protocol fixtures cover local startup, replies, configuration and resume. They
 do not certify every installed adapter version or signed-in provider account.
+
+### Other local agents
+
+Copilot uses the installed CLI's ACP server directly; a separate adapter is not
+needed. Gemini and Grok also use their own ACP commands. Muse uses its native
+session transport. Each CLI still needs its own installation and sign-in; an
+installed binary does not guarantee that your version or account supports every
+model. Other presets retain their existing Gateway configuration.
 
 If a CLI reports an unsupported sign-in or account, check that tool's setup on
 the machine running it. Capsule reports the error; changing its UI settings

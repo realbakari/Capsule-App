@@ -16,7 +16,7 @@ it.each(["auto", "openclaw"] as const)("preserves explicit %s startup and manual
     expect(connect).not.toHaveBeenCalled();
     vi.spyOn(harness, "whichBinary").mockReturnValue(undefined);
     const project = engine.createProject({ name: "Local prerequisites", workingDirectory: directory });
-    await expect(engine.spawnHarness({ projectId: project.id, harnessId: "codex" })).rejects.toThrow("Install @agentclientprotocol/codex-acp");
+    await expect(engine.spawnHarness({ projectId: project.id, harnessId: "codex" })).rejects.toThrow("Install the Codex CLI");
     expect(connect).not.toHaveBeenCalled();
     await expect(engine.connectGateway()).rejects.toThrow("Offline fixture");
     expect(connect).toHaveBeenCalledTimes(1);

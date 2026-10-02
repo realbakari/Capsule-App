@@ -153,6 +153,18 @@ importers:
         specifier: workspace:*
         version: link:../shared
 
+  packages/codex:
+    dependencies:
+      '@capsule/acp':
+        specifier: workspace:*
+        version: link:../acp
+      '@capsule/process':
+        specifier: workspace:*
+        version: link:../process
+      '@capsule/shared':
+        specifier: workspace:*
+        version: link:../shared
+
   packages/contracts:
     dependencies:
       '@capsule/shared':
@@ -173,6 +185,9 @@ importers:
       '@capsule/buzz':
         specifier: workspace:*
         version: link:../buzz
+      '@capsule/codex':
+        specifier: workspace:*
+        version: link:../codex
       '@capsule/contracts':
         specifier: workspace:*
         version: link:../contracts

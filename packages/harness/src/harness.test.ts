@@ -17,6 +17,16 @@ import {
 } from "./index.js";
 
 describe("harness catalog", () => {
+  it.each(["codex", "copilot", "gemini", "grok"] as const)("checks %s's installed native transport without demanding an adapter", (id) => {
+    const preset = PRESET_HARNESSES.find((item) => item.id === id)!;
+    const command = preset.nativeCommand ?? preset.directCommand ?? preset.acpxCommand;
+    const checks = localDoctorChecks({ preset, binaryPath: `/fixture/${id}`, direct: true, gatewayConnected: false, acpxEnabled: false });
+    expect(checks.find((check) => check.id === "direct")?.detail).toContain([command!.command, ...(command!.args ?? [])].join(" "));
+    expect(checks.some((check) => ["gateway", "acpx"].includes(check.id))).toBe(false);
+    expect(buildDoctorReport({ harnessId: id, checks }).ready).toBe(true);
+    const missing = localDoctorChecks({ preset, direct: true, gatewayConnected: false, acpxEnabled: false });
+    expect(buildDoctorReport({ harnessId: id, checks: missing }).ready).toBe(false);
+  });
   it("checks native Muse setup without requiring a Gateway or claiming a login probe", () => {
     const preset = PRESET_HARNESSES.find((item) => item.id === "muse")!;
     const checks = localDoctorChecks({ preset, binaryPath: "/fixture/muse", direct: true, gatewayConnected: false, acpxEnabled: false });

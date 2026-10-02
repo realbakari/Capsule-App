@@ -18,7 +18,7 @@ it("runs Muse through the engine, persists its transcript, and resumes without a
   vi.stubEnv("MUSE_TEST_SCHEMA", "0".repeat(64)); // Additive fingerprint differences are advisory.
   vi.stubEnv("MUSE_TEST_STATE", path.join(directory, "native-state.json"));
   vi.spyOn(harness, "probeLoginStateNow").mockReturnValue("unknown");
-  vi.spyOn(harness, "whichBinary").mockReturnValue(undefined);
+  vi.spyOn(harness, "whichBinary").mockReturnValue(process.execPath);
   const gatewayConnect = vi.spyOn(OpenClawAdapter.prototype, "connect").mockRejectedValue(new Error("Gateway must not be contacted"));
   const options = { databasePath: path.join(directory, "state.sqlite"), userDataDir: directory };
   let engine = new CapsuleEngine(options);

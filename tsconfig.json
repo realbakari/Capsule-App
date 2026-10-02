@@ -20,6 +20,7 @@
     { "path": "packages/openclaw" },
     { "path": "packages/acp" },
     { "path": "packages/muse" },
+    { "path": "packages/codex" },
     { "path": "packages/harness" },
     { "path": "packages/buzz" },
     { "path": "packages/core" },

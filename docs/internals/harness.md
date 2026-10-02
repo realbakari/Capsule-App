@@ -69,7 +69,7 @@ The disconnected production adapter remains distinct from the explicit test
 mock. Gateway availability uses actual connection state, not the adapter's
 kind. Explicit connection and existing Gateway session keys remain supported.
 
-Claude Code and Codex have separate `directCommand` metadata for user-installed
+Claude Code and legacy Codex sessions have separate `directCommand` metadata for user-installed
 `claude-agent-acp` and `codex-acp`. Unlike `acpxCommand`, these entries never
 rewrite Gateway agent mappings. Direct readiness and Doctor check the adapter
 executable; login probes still target the provider CLI, never the adapter.
@@ -81,6 +81,43 @@ literally `model`. An absent control fails explicitly and closes the owned
 session; it does not silently ignore the selected model. Existing owned-session resume validates the saved
 command identity as well as cwd and harness. No automatic package installation,
 credential reader or new agent loop is added.
+
+### Native local session transports
+
+New direct Codex sessions use `@capsule/codex` and the installed CLI's
+`app-server --listen stdio://` command. Core injects it into the existing direct
+host; `direct:codex:codex:` keys distinguish it from ACP and Gateway sessions.
+Saved ACP identities and launch signatures continue to select the legacy adapter.
+They are never reinterpreted as native session IDs.
+
+The client initializes the server, reads its model catalog, and starts or resumes
+the exact durable thread in the requested folder. It explicitly requests
+read-only sandboxing, untrusted-command approvals and a user reviewer on both
+start and resume, rather than inheriting an unrestricted saved policy. Busy or
+ephemeral threads are refused. The CLI owns sign-in, inference and tools.
+
+Text, images, tool activity, plans and reported context usage map to existing
+run events. Context occupancy uses the latest usage snapshot, not cumulative
+session tokens. Model selection uses only CLI-reported IDs. Command and file
+approvals expose once-only decisions and fail closed without a listener.
+Unsupported interactive requests fail visibly; native steering, arbitrary
+configuration, reasoning controls and browser MCP attachment are not carried.
+Interrupt waits for terminal confirmation before accepting another turn.
+
+Frames, pending requests and early turn activity are bounded. Timeouts and
+malformed output close the owned process; uncertain writes are never replayed.
+Discovery resolves the actual executable before spawning it, including known
+user-local binary locations outside the desktop process's PATH. Doctor checks
+the selected transport binary, while sign-in probes still target the agent CLI.
+
+Copilot uses its installed `copilot --acp --stdio` transport directly. Gemini
+and Grok retain their native ACP commands; Muse retains MSP. Claude retains its
+separate ACP adapter. Remaining presets retain their existing Gateway/acpx
+configuration rather than guessing a new native protocol.
+
+`node scripts/verify-harness-transports.mjs` exercises protocol fixtures and
+route recovery. `node scripts/probe-codex-app-server.mjs` checks the installed
+CLI handshake and model catalog without creating a thread or sending a prompt.
 
 Direct ACP and login probes launch through `@capsule/process`. It handles
 Windows PATH/PATHEXT and npm `.cmd` shims with escaped arguments, and stops the

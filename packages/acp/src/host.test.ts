@@ -68,7 +68,7 @@ describe("spawning an agent that has no ACP mode", () => {
   });
 });
 
-it.each(["claude", "codex"] as const)("starts the local %s adapter and sets its model over the protocol", async (harnessId) => {
+it.each(["claude", "codex"] as const)("keeps an existing %s ACP thread on its adapter and sets its model", async (harnessId) => {
   const start = vi.spyOn(DirectAcpSession.prototype, "start").mockResolvedValue("fixture");
   const configure = vi.spyOn(DirectAcpSession.prototype, "setConfig").mockResolvedValue();
   const capabilities = vi.spyOn(DirectAcpSession.prototype, "reportedCapabilities", "get").mockReturnValue(readAgentCapabilities({}, [
@@ -77,7 +77,7 @@ it.each(["claude", "codex"] as const)("starts the local %s adapter and sets its 
   const close = vi.spyOn(DirectAcpSession.prototype, "close").mockResolvedValue();
   const host = new DirectAcpHost();
   try {
-    const result = await host.spawnAcpSession({ harnessId, model: "reported-model", cwd: process.cwd() });
+    const result = await host.spawnAcpSession({ harnessId, sessionKey: `direct:acp:${harnessId}:old`, model: "reported-model", cwd: process.cwd() });
     expect(result.command).toBe(harnessId === "claude" ? "claude-agent-acp" : "codex-acp");
     expect(result.sessionKey).toMatch(new RegExp(`^direct:acp:${harnessId}:`));
     expect(configure).toHaveBeenCalledWith("provider-model", "reported-model");
@@ -92,7 +92,7 @@ it("closes an adapter without a reported model control instead of silently ignor
   const close = vi.spyOn(DirectAcpSession.prototype, "close").mockResolvedValue();
   const host = new DirectAcpHost();
   try {
-    await expect(host.spawnAcpSession({ harnessId: "codex", model: "requested-model" })).rejects.toThrow("does not report a mutable model option");
+    await expect(host.spawnAcpSession({ harnessId: "claude", model: "requested-model" })).rejects.toThrow("does not report a mutable model option");
     expect(configure).not.toHaveBeenCalled();
     expect(close).toHaveBeenCalledOnce();
   } finally { await host.closeAll(); start.mockRestore(); configure.mockRestore(); capabilities.mockRestore(); close.mockRestore(); }

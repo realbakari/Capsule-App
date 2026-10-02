@@ -13,6 +13,7 @@
     "@capsule/artifacts": "workspace:*",
     "@capsule/buzz": "workspace:*",
     "@capsule/contracts": "workspace:*",
+    "@capsule/codex": "workspace:*",
     "@capsule/database": "workspace:*",
     "@capsule/filesystem": "workspace:*",
     "@capsule/harness": "workspace:*",

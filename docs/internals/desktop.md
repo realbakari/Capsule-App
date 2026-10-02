@@ -113,8 +113,10 @@ Shell indicators describe the optional Gateway without calling local agents
 offline. Harnesses shows Gateway recovery only for a Gateway-routed selection;
 ready local agents remain startable without that connection.
 The settings search and section reset target Agents for the runtime preference.
-Local Claude Code/Codex readiness checks the separately installed ACP adapter;
-native Muse is included in the direct-capable list. Sidebar approval badges use
+Local Claude Code readiness checks its separately installed ACP adapter. New
+local Codex sessions check the CLI itself and use native app-server; legacy ACP
+threads retain their adapter. Copilot, Gemini and Grok use their CLI's ACP
+commands; native Muse is included in the direct-capable list. Sidebar approval badges use
 their own styling and cannot inherit conversation-card spacing.
 
 Native Muse reasoning defaults appear in the shared Agent settings surface in

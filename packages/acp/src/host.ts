@@ -21,7 +21,7 @@ export type DirectAgentSession = Pick<DirectAcpSession,
   "reportedContext" | "reportedCommands" | "start" | "prompt" | "cancel" | "close" | "setConfig"> & {
     readonly reportedSubscriptionUsage?: ProviderSubscriptionUsage;
   };
-export type NativeSessionFactory = (options: DirectAcpOptions & { model?: string }) => DirectAgentSession;
+export type NativeSessionFactory = (options: DirectAcpOptions & { model?: string; protocol: "msp" | "codex" }) => DirectAgentSession;
 
 export type DirectActivity =
   | { type: "subscription-usage"; sessionKey: string }
@@ -74,7 +74,7 @@ export function directSessionKey(harnessId: string, id: string, protocol = "acp"
 }
 
 export function isDirectSessionKey(key: string | undefined): boolean {
-  return Boolean(key?.startsWith("direct:acp:") || key?.startsWith("direct:msp:"));
+  return Boolean(key?.startsWith("direct:acp:") || key?.startsWith("direct:msp:") || key?.startsWith("direct:codex:"));
 }
 
 /** Whether this harness can be driven without the Gateway. */
@@ -89,7 +89,7 @@ export function directCapableHarnesses(): HarnessId[] {
 }
 
 export class DirectAcpHost {
-  constructor(private readonly nativeSession?: NativeSessionFactory) {}
+  constructor(private readonly nativeSession?: NativeSessionFactory, private readonly executable: (command: string) => string = (command) => command) {}
   /*
    * MCP servers offered to every agent this host spawns. Set by the
    * application once its servers are listening, because the URL has to exist
@@ -146,7 +146,11 @@ export class DirectAcpHost {
   ): Promise<{ sessionKey: string; usedSlashCommand: boolean; command: string; directSession?: DirectSessionIdentity }> {
     if (this.closing) throw new Error("The direct agent host is shutting down.");
     const preset = PRESET_HARNESSES.find((item) => item.id === input.harnessId);
-    const command = preset?.nativeCommand ?? preset?.directCommand ?? preset?.acpxCommand;
+    const legacy = Boolean(preset?.nativeCommand && preset.directCommand && (
+      input.sessionKey?.startsWith("direct:acp:") || input.resume?.launchSignature === JSON.stringify(preset.directCommand)
+    ));
+    const native = legacy ? undefined : preset?.nativeCommand;
+    const command = native ?? preset?.directCommand ?? preset?.acpxCommand;
     if (!command) {
       throw new Error(
         `${preset?.name ?? input.harnessId} has no ACP mode of its own, so direct mode cannot drive it. Switch this thread to the OpenClaw Gateway, or pick an agent that does.`,
@@ -163,7 +167,7 @@ export class DirectAcpHost {
       };
     }
 
-    if (preset?.nativeCommand && !this.nativeSession) throw new Error("The native session transport is unavailable.");
+    if (native && !this.nativeSession) throw new Error("The native session transport is unavailable.");
     const args = [...(command.args ?? [])];
     const cwd = path.resolve(input.cwd ?? process.cwd());
     const launchSignature = JSON.stringify(command);
@@ -174,7 +178,7 @@ export class DirectAcpHost {
       throw new Error("The saved agent session belongs to a different harness, working folder or launch command. Start a new conversation; Capsule will not resume it in another workspace.");
     }
     // A model asked for at spawn time wins over the preset's own choice.
-    if (input.model && !input.resume && !preset?.nativeCommand && !preset?.directCommand) {
+    if (input.model && !input.resume && !native && !preset?.directCommand) {
       const flag = args.indexOf("--model");
       if (flag >= 0) args[flag + 1] = input.model;
       else args.push("--model", input.model);
@@ -184,19 +188,19 @@ export class DirectAcpHost {
      * Whatever the host wants this agent to be able to reach. Capsule passes
      * its browser tools here; an empty list is the old behaviour.
      */
-    const offer = preset?.nativeCommand ? { servers: [], dispose: () => {} }
+    const offer = native ? { servers: [], dispose: () => {} }
       : typeof this.mcpServers === "function" ? this.mcpServers(input) : { servers: this.mcpServers, dispose: () => {} };
     const options = {
-      command: command.command,
+      command: this.executable(command.command),
       args,
       cwd,
       ...(offer.servers.length > 0 ? { mcpServers: offer.servers } : {}),
     };
-    const session = preset?.nativeCommand
-      ? this.nativeSession!({ ...options, model: input.resume ? undefined : input.model })
+    const session = native
+      ? this.nativeSession!({ ...options, protocol: native.protocol, model: input.resume ? undefined : input.model })
       : new DirectAcpSession(options);
 
-    const key = directSessionKey(input.harnessId, `${Date.now().toString(36)}${this.counter++}`, preset?.nativeCommand?.protocol);
+    const key = directSessionKey(input.harnessId, `${Date.now().toString(36)}${this.counter++}`, native?.protocol);
     this.mcpDisposers.set(key, offer.dispose);
     this.wire(key, session);
     // Track ownership before the handshake: Quit must also close a process
@@ -208,7 +212,7 @@ export class DirectAcpHost {
       if (this.closing) throw new Error("The direct agent host is shutting down.");
       // Local adapters have different launch flags. Their reported protocol
       // selector is authoritative; never invent a --model CLI argument.
-      if (preset?.directCommand && input.model && !input.resume) {
+      if (!native && preset?.directCommand && input.model && !input.resume) {
         const option = session.reportedCapabilities?.configOptions.find((item) => item.type !== "boolean" && item.category === "model")
           ?? session.reportedCapabilities?.configOptions.find((item) => item.type !== "boolean" && item.id === "model");
         if (!option) throw new Error("This agent does not report a mutable model option. Start it with its default model or update its adapter.");

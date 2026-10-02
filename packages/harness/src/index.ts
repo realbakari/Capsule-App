@@ -371,7 +371,8 @@ export function probeHarnesses(input: {
   return PRESET_HARNESSES.map((preset) => {
     const direct = input.directHarnessIds?.includes(preset.id);
     const loginBinaryPath = whichBinary(preset.binaries);
-    const binaryPath = direct && preset.directCommand ? whichBinary([preset.directCommand.command]) : loginBinaryPath;
+    const directCommand = preset.nativeCommand ?? preset.directCommand ?? preset.acpxCommand;
+    const binaryPath = direct && directCommand ? whichBinary([directCommand.command]) : loginBinaryPath;
     const dedicatedProjectIds = input.dedicatedByHarness[preset.id] ?? [];
     const liveSessionIds = input.liveByHarness?.[preset.id] ?? [];
     // A live session already proves auth, so do not pay for a probe.
@@ -457,7 +458,7 @@ export function localDoctorChecks(input: {
               input.loginState === "logged_in"
                 ? "Signed in."
                 : input.loginState === "logged_out"
-                  ? `${input.preset.loginHint ?? "Sign in to its CLI"} on the Gateway host.`
+                  ? `${input.preset.loginHint ?? "Sign in to its CLI"} ${input.direct ? "on this computer" : "on the Gateway host"}.`
                   : input.loginState === "config_invalid"
                     ? "The CLI reported a broken config file."
                     : `Not checked (\`${input.preset.binaries[0]} ${(input.preset.loginProbeArgs ?? []).join(" ")}\` did not run).`,

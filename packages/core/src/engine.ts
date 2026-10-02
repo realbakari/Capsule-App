@@ -10,6 +10,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { prepareDirectPrompt } from "./direct-prompt.js";
 import { DirectMuseSession } from "@capsule/muse";
+import { DirectCodexSession } from "@capsule/codex";
 import {
   DirectAcpHost,
   type DirectMcpOffer,
@@ -252,7 +253,10 @@ export class CapsuleEngine {
    * Everything from `spawnHarness` down calls this, not the adapter, so the
    * turn pipeline does not branch on which route carried it.
    */
-  private direct = new DirectAcpHost((options) => new DirectMuseSession(options));
+  private direct = new DirectAcpHost(
+    (options) => options.protocol === "codex" ? new DirectCodexSession(options) : new DirectMuseSession(options),
+    (command) => whichBinary([command]) ?? command,
+  );
 
   /**
    * MCP servers to offer agents Capsule spawns itself.
@@ -626,7 +630,8 @@ export class CapsuleEngine {
     const direct = this.useDirectMode(harnessId);
     const acpxEnabled = direct ? false : await this.acpxEnabled();
     const loginBinaryPath = whichBinary(preset.binaries);
-    const binaryPath = direct && preset.directCommand ? whichBinary([preset.directCommand.command]) : loginBinaryPath;
+    const command = preset.nativeCommand ?? preset.directCommand ?? preset.acpxCommand;
+    const binaryPath = direct && command ? whichBinary([command.command]) : loginBinaryPath;
     let acpxPermissionModeValue: string | undefined;
     let acpxPolicyKnown = false;
     let acpxAgentConfigured: boolean | undefined = preset.acpxCommand ? false : undefined;
@@ -732,8 +737,12 @@ export class CapsuleEngine {
     const direct = prior?.directSession?.harnessId === harnessId || (prior?.harnessId === harnessId && isDirectSessionKey(prior.openclawSessionKey))
       ? true : prior?.harnessId === harnessId && prior.openclawSessionKey ? false : this.useDirectMode(harnessId);
     if (!this.usingMock) {
-      if (direct && preset.directCommand && !whichBinary([preset.directCommand.command])) {
-        throw new Error(preset.directInstallHint ?? `Install ${preset.directCommand.command} on this computer before starting this agent.`);
+      const legacy = preset.nativeCommand && preset.directCommand && (prior?.openclawSessionKey?.startsWith("direct:acp:") || prior?.directSession?.launchSignature === JSON.stringify(preset.directCommand));
+      const command = legacy ? preset.directCommand : preset.nativeCommand ?? preset.directCommand;
+      if (direct && command && !whichBinary([command.command])) {
+        throw new Error(legacy
+          ? `This conversation uses ${command.command}. Restore that adapter to continue its saved session, or start a new conversation to use the installed CLI directly.`
+          : preset.directInstallHint ?? `Install ${command.command} on this computer before starting this agent.`);
       }
       // Direct mode spawns the CLI here, so there is no Gateway config to
       // write and nothing to register a command with.
@@ -2647,7 +2656,7 @@ export class CapsuleEngine {
   private useDirectMode(harnessId?: HarnessId): boolean {
     if (this.usingMock) return false;
     // Native session protocols are local-only; never send an MSP CLI to acpx.
-    if (harnessId && presetFor(harnessId)?.nativeCommand) return true;
+    if (harnessId && presetFor(harnessId)?.nativeCommand?.protocol === "msp") return true;
     const mode = this.settings.runtimeMode;
     if (mode === "openclaw") return false;
     // Other harnesses need a configured Gateway; never substitute a mock.
