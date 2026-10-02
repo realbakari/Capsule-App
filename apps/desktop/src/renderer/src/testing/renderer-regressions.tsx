@@ -12,6 +12,7 @@ import { PagedFileDiffs } from "../features/shell/PagedFileDiffs";
 import { ContentSearch } from "../features/shell/ContentSearch";
 import { TurnOutcome } from "../features/conversation/TurnOutcome";
 import { RunEventLog } from "../features/conversation/RunEventLog";
+import { TurnVerification } from "../features/conversation/TurnVerification";
 import { Pet } from "../features/pet/Pet";
 import { runUiPolishRegressions } from "./ui-polish-regressions";
 import { runOwnershipRegressions } from "./ownership-regressions";
@@ -56,6 +57,7 @@ declare global {
     runDiffPreviewRegressions: () => Promise<void>;
     renderDiffPreview: (theme: "dark" | "light", scrolled: boolean) => Promise<void>;
     renderActivityPreview: (closing: boolean, theme: "dark" | "light") => Promise<void>;
+    renderTurnDetailsPreview: (expanded: boolean, theme: "dark" | "light") => Promise<void>;
     renderChannelPreview: (surface: "channel" | "thread" | "members" | "empty" | "settings" | "mentions" | "reactions" | "harness" | "route" | "connecting" | "connection-error", theme: "dark" | "light") => Promise<void>;
     renderWorkspacePreview: (surface: "sidebar" | "quota" | "runtime", theme: "dark" | "light") => Promise<void>;
   }
@@ -1032,7 +1034,10 @@ window.runRendererRegressions = async () => {
   assert(!promptRow.textContent?.includes("Display excerpt"), "An untruncated message was labelled as an excerpt");
   assert(document.querySelectorAll('.gateway-recovery').length === 1 && !document.querySelector('.composer-preflight'), "Gateway warning is duplicated across chat and composer");
   assert(!document.querySelector('.turn-verification') && !document.querySelector('.run-event-log'), "Completed turn still stacks unopened diagnostics and verification cards");
-  assert(document.querySelector('.run-activity-state')?.textContent?.includes("not verified"), "Consolidation hid the unverified state");
+  const detailsToggle = document.querySelector<HTMLButtonElement>('.run-summary-header')!;
+  assert(detailsToggle.title.includes("not verified"), "Compact details falsely implied verified work");
+  assert(!detailsToggle.querySelector('.run-summary-state'), "Routine completion still adds a redundant status badge");
+  assert(detailsToggle.getBoundingClientRect().height <= 36 && detailsToggle.getBoundingClientRect().width < host.clientWidth, "Turn details is still a full-width oversized card");
   button("Connect").click();
   await until(() => document.querySelector('.gateway-recovery-error'));
   assert(connectionCalls === 1 && !button("Retry connection").disabled, "Failed connection was not recoverable");
@@ -1127,6 +1132,31 @@ window.runRendererRegressions = async () => {
   // Optional visual evidence from the same renderer/CSS as the interaction
   // checks. The fixture contains no user's conversations or file paths.
   let previewRoot: ReturnType<typeof createRoot> | undefined;
+  window.renderTurnDetailsPreview = async (expanded, theme) => {
+    const settle = () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    (document.getElementById("composer-test-styles") as HTMLStyleElement).media = "all";
+    applyPreviewPalette(theme);
+    host.style.cssText = "width:100%;padding:24px;box-sizing:border-box";
+    previewRoot ??= createRoot(host);
+    window.testWorkspace = { ...window.testWorkspace, api: { ...actualWorkspace.api, listRunEventPage: async () => ({ hasMore: false, events: [
+      { id: "context", runId: "receipt", type: "usage.context", timestamp: "2026-01-01T12:00:00Z", message: "Agent-reported context usage", data: { context: { source: "agent", used: 21000, size: 258000 } } },
+      { id: "tokens", runId: "receipt", type: "usage.turn", timestamp: "2026-01-01T12:00:00Z", message: "Agent-reported turn usage", data: { usage: { inputTokens: 21000, outputTokens: 14, totalTokens: 21014 } } },
+      ...Array.from({ length: 50 }, (_, index) => ({ id: String(index), runId: "receipt", type: "lifecycle", timestamp: "2026-01-01T12:00:00Z", message: "Recorded agent activity" })),
+    ] }) } };
+    const run = { id: "receipt", status: "completed" } as Run;
+    previewRoot.render(<div style={{ maxWidth: "44rem", margin: "auto" }}><p>Hi! What would you like to work on?</p><RunSummary key={`${expanded}-${theme}`} run={run} label="Turn details"><RunEventLog runId={run.id} /><TurnVerification run={run} /></RunSummary></div>);
+    await settle();
+    if (expanded) {
+      host.querySelector<HTMLButtonElement>(".run-summary-header")!.click(); await settle();
+      host.querySelector<HTMLElement>(".run-event-log summary")!.click();
+      await until(() => host.querySelector(".reported-usage"));
+      host.querySelector<HTMLDetailsElement>(".reported-usage")!.open = true; await settle();
+      const log = host.querySelector<HTMLElement>(".event-log")!;
+      assert(log.scrollHeight > log.clientHeight && log.clientHeight <= 300, "Long run log does not have a bounded scrolling region");
+      assert(!host.querySelector(".run-log-pages"), "Single-page log renders useless pagination");
+      assert(host.scrollWidth <= host.clientWidth, "Usage details overflow a narrow conversation");
+    }
+  };
   window.renderActivityPreview = async (closing, theme) => {
     (document.getElementById("composer-test-styles") as HTMLStyleElement).media = "all";
     applyPreviewPalette(theme);

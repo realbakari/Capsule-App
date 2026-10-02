@@ -26,6 +26,11 @@ reported cumulative session cost. These are separate measures and are not added
 to the Usage page's transcript estimates. Missing values remain **not reported**.
 Gateway sessions continue to use the information that route actually carries.
 
+Open the compact **Turn details** disclosure beneath a reply for the run log
+and verification. A completed reply does not mean checks passed: expand
+**Verification** to see the evidence. Failed or stale checks remain labelled
+beside the disclosure. Long event pages scroll without expanding the entire chat.
+
 ### Subscription observations
 
 **Usage → Subscription usage** shows the latest allowance reported by a running

@@ -25,6 +25,8 @@ export function RunSummary({
 }: RunSummaryProps) {
   const [expanded, setExpanded] = useState(false);
   const [visited, setVisited] = useState(false);
+  const activity = runActivityLabel(run, stopping);
+  const showActivity = activity !== "Completed · not verified";
 
   if (!run && !label && !duration && (!touchedFiles || touchedFiles.length === 0)) return null;
 
@@ -35,12 +37,13 @@ export function RunSummary({
         className="run-summary-header"
         onClick={() => { setVisited(true); setExpanded((prev) => !prev); }}
         aria-expanded={expanded}
+        title={activity}
       >
         <span className="run-summary-lead">
           <TerminalIcon size={13} className="run-summary-icon" />
           <span className="run-summary-label">{label || "Turn details"}</span>
           {duration && <span className="run-summary-duration">· {duration}</span>}
-          <span className="run-activity-state" data-state={run?.status} title={run?.verification?.summary}>{runActivityLabel(run, stopping)}</span>
+          {showActivity && <span className="run-summary-state" data-state={run?.status} title={run?.verification?.summary}>{activity}</span>}
         </span>
         <span className={`run-summary-chevron ${expanded ? "open" : ""}`}>
           <ChevronDownIcon size={13} />

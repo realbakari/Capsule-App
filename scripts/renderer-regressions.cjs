@@ -48,6 +48,15 @@ app.whenReady().then(async () => {
     const narrowDiff = await window.webContents.executeJavaScript("window.runDiffPreviewRegressions().then(() => ({}), error => ({ error: String(error.stack || error) }))");
     if (narrowDiff.error) throw new Error(narrowDiff.error);
     const sidebarScreenshots = process.env.CAPSULE_SIDEBAR_SCREENSHOTS_DIRECTORY;
+    const turnScreenshots = process.env.CAPSULE_TURN_SCREENSHOTS_DIRECTORY;
+    if (turnScreenshots) {
+      fs.mkdirSync(turnScreenshots, { recursive: true });
+      for (const [width, expanded, theme] of [[900, false, "dark"], [900, true, "dark"], [380, true, "light"]]) {
+        window.setContentSize(width, 650);
+        await window.webContents.executeJavaScript(`window.renderTurnDetailsPreview(${expanded}, ${JSON.stringify(theme)})`);
+        fs.writeFileSync(path.join(turnScreenshots, `turn-${width}-${expanded ? "expanded" : "compact"}-${theme}.png`), (await window.webContents.capturePage()).toPNG());
+      }
+    }
     if (sidebarScreenshots) {
       fs.mkdirSync(sidebarScreenshots, { recursive: true });
       for (const theme of ["dark", "light"]) {

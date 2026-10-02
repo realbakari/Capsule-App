@@ -25,9 +25,8 @@ export function RunEventLog({ runId, failed = false }: { runId: string; failed?:
     return () => { generation.current++; };
   }, [api, runId, open, cursors, retry]);
   return <details className="advanced run-event-log" onToggle={(event) => setOpen(event.currentTarget.open)}>
-    <summary>{failed ? "What the agent reported" : "Run log"}</summary>
+    <summary title="Recorded events, one page at a time. Oversized diagnostic payloads are marked as truncated.">{failed ? "What the agent reported" : "Run log"}</summary>
     {open && <>
-      <p className="faint">Recorded events, one page at a time. Oversized diagnostic payloads are marked as truncated.</p>
       {loading && <p role="status">Loading events…</p>}
       {page && <ReportedUsage events={page.events} />}
       {error && <p role="alert">{error} <button onClick={() => setRetry((value) => value + 1)}>Retry</button></p>}
@@ -37,10 +36,10 @@ export function RunEventLog({ runId, failed = false }: { runId: string; failed?:
         <span className="event-text">{event.message}{event.data?.payloadTruncated ? "\n[Diagnostic payload truncated]" : ""}</span>
       </div>)}</div>
       {page?.events.length === 0 && <p className="faint">No recorded events.</p>}
-      <div className="run-log-pages">
+      {page && (page.hasMore || cursors.length > 1) && <div className="run-log-pages">
         <button disabled={loading || cursors.length === 1} onClick={() => setCursors((values) => values.slice(0, -1))}>Newer events</button>
         <button disabled={loading || !page?.hasMore} onClick={() => setCursors((values) => [...values, page?.before])}>Older events</button>
-      </div>
+      </div>}
     </>}
   </details>;
 }

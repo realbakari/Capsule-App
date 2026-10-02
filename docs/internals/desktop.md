@@ -207,6 +207,12 @@ attachment validation still receives the original native path.
   messages and runtime identity; paired devices cannot archive or restore.
 - Header popovers and model menus clamp to viewport edges and flip above their
   anchor when needed. Resize and scroll recompute placement without moving focus.
+- Turn details is a content-width, borderless disclosure, not a full-width
+  status card. Routine completed/unverified turns omit the redundant badge;
+  the tooltip and expanded Verification section retain that distinction. Failed,
+  blocked, stopped, pending and checked states remain visible. Logs scroll inside
+  a bounded region, pagination appears only when needed, and usage expands into
+  compact metrics without an extra bordered card.
 - Pinned threads sort by `sessions.pin_order` (schema v9) and can be reordered
   with drag and drop. Unpinning clears the order value.
 - The folder-plus control adds a local project. The adjacent Git control opens
