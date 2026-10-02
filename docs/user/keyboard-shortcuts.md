@@ -12,6 +12,7 @@
 | Toggle the sidebar | `⌘B` |
 | Toggle the inspector | `⌘\` |
 | Stash the current prompt | `⌘S` |
+| Undo the latest archive while its notice is visible | `⌘Z` / `Ctrl+Z`, outside an editor or dialog |
 | Send | `Enter`, or `⌘Enter` if you changed the send key |
 
 ## Changing a shortcut
@@ -37,6 +38,10 @@ Two things the editor will not let you do:
 - `⌘S` to stash the current prompt, or open the stash when the composer is empty
 
 ## Finding your way around
+
+Archiving a conversation offers **Undo** for ten seconds. After that, open
+**History** and choose **Restore** on an archived conversation. Messages and the
+agent's session identity are preserved. These actions are desktop-only.
 
 The command palette groups recent conversations, actions, projects, and matching
 messages. File search shows names with their paths and searches the current

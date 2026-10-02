@@ -1595,6 +1595,15 @@ export class CapsuleEngine {
     return session;
   }
 
+  restoreSession(id: string): Session {
+    const session = this.requireSession(id);
+    if (session.state === "active") return session;
+    session.state = "active";
+    session.updatedAt = nowIso();
+    this.repos.updateSession(session);
+    return session;
+  }
+
   async deleteSession(id: string): Promise<void> {
     const session = this.requireSession(id);
     const project = this.requireProject(session.projectId);

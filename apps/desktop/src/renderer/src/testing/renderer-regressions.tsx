@@ -24,6 +24,7 @@ import { runChannelRegressions, renderChannelPreview } from "./channel-regressio
 import { runComposerLayoutRegressions } from "./composer-layout-regressions";
 import { runSurfaceRegressions } from "./surface-regressions";
 import { runMuseSettingsRegressions } from "./muse-settings-regressions";
+import { runNavigationRecoveryRegressions } from "./navigation-recovery-regressions";
 import { runDraftAdmissionRegressions } from "./draft-admission-regressions";
 import { runWorkspaceExtensionRegressions } from "./workspace-extension-regressions";
 import { runSavedPreviewRegressions, runSavedPreviewLayoutRegressions, SavedDiffFixture, focusSavedPreview } from "./saved-preview-regressions";
@@ -1341,6 +1342,7 @@ window.runRendererRegressions = async () => {
   await runComposerLayoutRegressions(host, contextBase);
   phase("native settings");
   await runMuseSettingsRegressions(host, contextBase);
+  await runNavigationRecoveryRegressions(host);
   phase("saved previews");
   await runSavedPreviewRegressions(host);
   await runSavedPreviewLayoutRegressions(host);

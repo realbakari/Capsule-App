@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
+import { floatingPlacement } from "../../lib/floating-placement";
 
 /** Header controls are clipped and inside a drag region. Their popovers aren't. */
 export function HeaderPopover({ anchor, label, className = "", onClose, children }: {
@@ -19,10 +20,11 @@ export function HeaderPopover({ anchor, label, className = "", onClose, children
     if (!node || !trigger) return;
     const place = () => {
       const rect = trigger.getBoundingClientRect();
-      const top = Math.min(rect.bottom + 6, window.innerHeight - 16);
-      node.style.maxHeight = `${Math.max(0, window.innerHeight - top - 8)}px`;
-      node.style.top = `${top}px`;
-      node.style.left = `${Math.max(8, Math.min(rect.right - node.offsetWidth, window.innerWidth - node.offsetWidth - 8))}px`;
+      const position = floatingPlacement(rect, { width: node.offsetWidth, height: node.scrollHeight }, { width: window.innerWidth, height: window.innerHeight }, { align: "right" });
+      node.style.maxWidth = `${position.maxWidth}px`;
+      node.style.maxHeight = `${position.maxHeight}px`;
+      node.style.top = `${position.top}px`;
+      node.style.left = `${position.left}px`;
     };
     place();
     const observer = new ResizeObserver(place);
@@ -44,12 +46,14 @@ export function HeaderPopover({ anchor, label, className = "", onClose, children
       if (!node.contains(event.target as Node) && !trigger.contains(event.target as Node)) close.current();
     };
     window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
     document.addEventListener("pointerdown", outside);
     document.addEventListener("keydown", key, true);
     document.addEventListener("focusin", blur);
     return () => {
       observer.disconnect();
       window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
       document.removeEventListener("pointerdown", outside);
       document.removeEventListener("keydown", key, true);
       document.removeEventListener("focusin", blur);

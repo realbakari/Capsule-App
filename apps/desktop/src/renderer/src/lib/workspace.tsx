@@ -253,6 +253,9 @@ export interface WorkspaceValue {
   renameSession: (id: string, title: string) => Promise<void>;
   deleteSession: (id: string) => void;
   archiveSession: (id: string) => Promise<void>;
+  restoreSession: (id: string) => Promise<void>;
+  archiveUndo?: { id: string; title: string };
+  dismissArchiveUndo: () => void;
   openTerminal: () => Promise<void>;
   execInProject: (command: string) => Promise<{ stdout: string; stderr: string; code: number; }>;
   initializeGit: () => Promise<void>;
@@ -464,6 +467,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     return values;
   }, [sessions, projects, statusCache, statusVersion]);
   const [notice, setNotice] = useScopedState<string | undefined>(scope, undefined);
+  const [archiveUndo, setArchiveUndo] = useState<{ id: string; title: string }>();
+  const archiving = useRef(new Set<string>());
+  const restoring = useRef(new Set<string>());
+  const currentSelection = useRef({ projectId, sessionId });
+  currentSelection.current = { projectId, sessionId };
   const steering = useRef(new SteeringDrafts()).current;
   const [steeringVersion, renderSteering] = useState(0);
   const steeringKey = JSON.stringify([projectId, sessionId]);
@@ -1570,9 +1578,26 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   }
 
   async function archiveSession(id: string) {
-    await api.archiveSession(id);
-    if (sessionId === id) setSessionId(undefined);
-    await refresh();
+    if (archiving.current.has(id)) return;
+    archiving.current.add(id);
+    try {
+      const archived = await api.archiveSession(id);
+      if (currentSelection.current.sessionId === id) setSessionId(undefined);
+      setArchiveUndo({ id, title: archived.title });
+      await refresh();
+    } catch (error) { setNotice(formatUserError(error)); }
+    finally { archiving.current.delete(id); }
+  }
+
+  async function restoreSession(id: string) {
+    if (restoring.current.has(id)) return;
+    restoring.current.add(id);
+    try {
+      await api.restoreSession(id);
+      setArchiveUndo((current) => current?.id === id ? undefined : current);
+      await refresh();
+    } catch (error) { setNotice(formatUserError(error)); }
+    finally { restoring.current.delete(id); }
   }
 
   async function openTerminal() {
@@ -2101,6 +2126,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       renameSession,
       deleteSession,
       archiveSession,
+      restoreSession,
+      archiveUndo,
+      dismissArchiveUndo: () => setArchiveUndo(undefined),
       openTerminal,
       execInProject,
       initializeGit,
@@ -2224,6 +2252,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       diagnostics,
       notice,
       setNotice,
+      archiveUndo,
       steerDraft,
       steeringPending,
       steeringVersion,

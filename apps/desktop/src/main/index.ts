@@ -1118,6 +1118,7 @@ function registerIpc(): void {
     backgroundBrowsers.close(sessionId);
     return session;
   });
+  handleArgs(IPC_CHANNELS.restoreSession, [id], (sessionId: string) => requireEngine().restoreSession(sessionId));
   handleArgs(IPC_CHANNELS.deleteSession, [id], async (sessionId: string) => {
     await requireEngine().deleteSession(sessionId);
     backgroundBrowsers.close(sessionId);

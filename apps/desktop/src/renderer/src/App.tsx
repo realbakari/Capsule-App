@@ -13,6 +13,7 @@ import { Inspector, INSPECTOR_REVISION } from "./features/shell/Inspector";
 import { Palette } from "./features/shell/Palette";
 import { Sidebar } from "./features/shell/Sidebar";
 import { Titlebar } from "./features/shell/Titlebar";
+import { ArchiveUndoNotice } from "./features/shell/ArchiveUndoNotice";
 import { AboutModal } from "./features/settings/AboutModal";
 import { ViewErrorBoundary } from "./features/shell/ErrorBoundary";
 import { useSidebarSwipe } from "./lib/useSidebarSwipe";
@@ -63,6 +64,7 @@ function Shell() {
       style={style}
     >
       <Sidebar />
+      <ArchiveUndoNotice />
       <div className="sidebar-swipe-edge" aria-hidden />
       <div className="workspace">
         <Titlebar />

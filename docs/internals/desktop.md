@@ -202,6 +202,11 @@ attachment validation still receives the original native path.
 - `···` opens an in-app **portaled** action menu (the sidebar `backdrop-filter` creates a stacking context that traps `position: fixed` descendants). Right-click uses the native Electron menu (`capsule:showContextMenu`).
 - Project menu: rename, new conversation, change folder, **add folder**, open folder, copy path, delete.
 - Thread menu: rename, pin, generate title, open/copy folder when one exists, archive, delete.
+- Archiving offers a ten-second Undo notice and Cmd/Ctrl-Z outside text inputs
+  and dialogs. History offers a permanent Restore action. Restore preserves
+  messages and runtime identity; paired devices cannot archive or restore.
+- Header popovers and model menus clamp to viewport edges and flip above their
+  anchor when needed. Resize and scroll recompute placement without moving focus.
 - Pinned threads sort by `sessions.pin_order` (schema v9) and can be reordered
   with drag and drop. Unpinning clears the order value.
 - The folder-plus control adds a local project. The adjacent Git control opens

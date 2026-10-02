@@ -2,6 +2,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } f
 import { createPortal } from "react-dom";
 
 import { ChevronDownIcon } from "./icons";
+import { floatingPlacement } from "../../lib/floating-placement";
 
 export interface MenuOption {
   id: string;
@@ -44,7 +45,7 @@ export function MenuSelect({
   const trigger = useRef<HTMLButtonElement>(null);
   const listId = useId();
   const current = options.find((item) => item.id === value);
-  const [pos, setPos] = useState({ left: 0, top: 0, minWidth: 140, maxHeight: 256 });
+  const [pos, setPos] = useState({ left: 0, top: 0, minWidth: 140, maxWidth: 400, maxHeight: 256 });
 
   useLayoutEffect(() => {
     if (!open || !root.current) return;
@@ -54,22 +55,14 @@ export function MenuSelect({
       if (!rect.width) { setOpen(false); return; }
       const minWidth = Math.min(Math.max(rect.width, 148), window.innerWidth - 16);
       const width = Math.max(minWidth, pop.current?.getBoundingClientRect().width ?? 0);
-      const above = rect.top - 14;
-      const below = window.innerHeight - rect.bottom - 14;
-      const useAbove = above >= Math.min(256, below);
-      const maxHeight = Math.max(40, Math.min(256, useAbove ? above : below));
-      const height = Math.min(pop.current?.scrollHeight ?? maxHeight, maxHeight);
-      const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
-      setPos({
-        left,
-        top: useAbove ? Math.max(8, rect.top - height - 6) : rect.bottom + 6,
-        minWidth,
-        maxHeight,
-      });
+      const next = { ...floatingPlacement(rect, { width, height: pop.current?.scrollHeight ?? 256 },
+        { width: window.innerWidth, height: window.innerHeight }, { preferAbove: true, maxHeight: 256 }), minWidth };
+      setPos((current) => Object.keys(next).every((key) => current[key as keyof typeof next] === next[key as keyof typeof next]) ? current : next);
     };
     place();
     const observer = new ResizeObserver(place);
     observer.observe(root.current);
+    if (pop.current) observer.observe(pop.current);
     window.addEventListener("resize", place);
     window.addEventListener("scroll", place, true);
     return () => {

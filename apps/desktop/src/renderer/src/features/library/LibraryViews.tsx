@@ -17,7 +17,8 @@ export function SkillsView() {
 }
 
 export function HistoryView() {
-  const { api, sessions, projectId, setSessionId, setView } = useWorkspace();
+  const { api, sessions, projectId, setSessionId, setView, restoreSession, notice } = useWorkspace();
+  const archived = sessions.filter((session) => session.state === "archived" && (!projectId || session.projectId === projectId));
   const [page, setPage] = useState<RunHistoryPage>({ runs: [], hasMore: false });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
@@ -48,6 +49,15 @@ export function HistoryView() {
   return (
     <section className="panel">
       <div className="panel-inner">
+      {archived.length > 0 && <details className="archived-conversations">
+        <summary>Archived conversations · {archived.length}</summary>
+        {!api.isDesktop && <p className="muted">Restore conversations on your Capsule host.</p>}
+        {archived.map((session) => <div className="row" key={session.id}>
+          <span>{session.title}</span>
+          <button className="ghost" disabled={!api.isDesktop} onClick={() => void restoreSession(session.id)}>Restore</button>
+        </div>)}
+        {notice && <p role="status">{notice}</p>}
+      </details>}
       <div className="panel-header">
         <p>Runs in the current project.</p>
       </div>

@@ -39,6 +39,10 @@ it.each(["normal", "approval"])("carries %s native turns through runs and approv
     }
     await vi.waitFor(() => expect(engine.getRun(next.run.id)?.status).toBe("completed"));
     expect(engine.listMessages(session.id).filter((message) => message.role === "assistant").map((message) => message.content)).toEqual(["Hello model-one", "Hello model-one"]);
+    const before = engine.listSessions().find((item) => item.id === session.id)!;
+    engine.archiveSession(session.id); engine.restoreSession(session.id); engine.restoreSession(session.id);
+    expect(engine.listSessions().find((item) => item.id === session.id)).toMatchObject({ state: "active", directSession: before.directSession, openclawSessionKey: before.openclawSessionKey });
+    expect(engine.listMessages(session.id).filter((message) => message.role === "assistant")).toHaveLength(2);
   } finally {
     await engine.stop(); preset.nativeCommand = original;
     vi.restoreAllMocks(); vi.unstubAllEnvs(); rmSync(directory, { recursive: true, force: true });

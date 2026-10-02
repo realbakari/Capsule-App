@@ -10854,3 +10854,15 @@ fieldset.harness-options:disabled { opacity: .7; }
 .background-browser-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .background-browser-url { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .background-browser-image { display: block; width: 100%; max-height: 22rem; object-fit: contain; background: #111; border-radius: 0.4rem; }
+.archive-undo-notice {
+  position: fixed; z-index: 100; bottom: 1rem; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: .5rem; max-width: calc(100vw - 2rem);
+  padding: .5rem .75rem; border: 1px solid var(--border); border-radius: var(--radius-md, 12px);
+  background: var(--bg-elevated); box-shadow: var(--shadow-raised);
+  font-size: .8125rem;
+}
+.archive-undo-notice > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.archive-undo-notice > button { flex-shrink: 0; }
+.archived-conversations { margin-bottom: 1.5rem; }
+.archived-conversations summary { cursor: pointer; padding-block: .5rem; }
+.archived-conversations .row { padding-block: .375rem; gap: 1rem; }

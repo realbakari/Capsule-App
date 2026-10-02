@@ -79,6 +79,7 @@ const api = {
   renameSession: (id: string, title: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.renameSession, id, title),
   archiveSession: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.archiveSession, id),
+  restoreSession: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.restoreSession, id),
   deleteSession: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.deleteSession, id),
   listMessages: (sessionId: string) => ipcRenderer.invoke(IPC_CHANNELS.listMessages, sessionId),
   messageImage: (messageId: string, index: number): Promise<string | undefined> => ipcRenderer.invoke(IPC_CHANNELS.messageImage, messageId, index),
