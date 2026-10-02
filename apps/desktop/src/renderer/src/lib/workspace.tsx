@@ -567,7 +567,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   const harnessLive = Boolean(
     session?.harnessId === selectedHarness?.id && session?.openclawSessionKey && ["spawning", "running", "waiting"].includes(session.harnessState ?? ""),
   );
-  const sendBlockReason = harnessPreflightReason({
+  const sendBlockReason = api.isDesktop === false && api.remoteMode !== "control"
+    ? "This browser is read-only. Create a conversation-control pairing link from the desktop to send messages."
+    : harnessPreflightReason({
     harness: mode === "code" ? selectedHarness : undefined,
     connected,
     folder: session?.workingDirectory ?? project?.workingDirectory,
@@ -813,6 +815,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     });
     const off = [
       api.on("connection", () => {
+        if (!api.isDesktop && api.remoteMode === "connecting") return;
         void refresh();
         if (sessionId && selectionExists) void loadSession(sessionId).catch(() => { /* History owns its loading and retry UI. */ });
       }),
@@ -1090,6 +1093,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   }, [api, scope, loadGit, projectId, project?.workingDirectory, sessionId, session?.workingDirectory, selectionExists]);
 
   async function createTask() {
+    if (api.isDesktop === false && api.remoteMode !== "control") {
+      setNotice("This browser is read-only. Pair with conversation control to create a thread.");
+      return;
+    }
     const targetProject = projectId ?? projects[0]?.id;
     if (!targetProject) return;
     const created = await api.createSession({

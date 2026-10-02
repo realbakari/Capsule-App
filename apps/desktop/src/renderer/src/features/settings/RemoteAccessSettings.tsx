@@ -12,14 +12,6 @@ function ago(timestamp: number): string {
   return `${Math.round(minutes / 60)}h ago`;
 }
 
-/**
- * Devices that can read this Capsule.
- *
- * A paired device gets one scope: read. It can follow a conversation, a diff
- * and a run — and it cannot send a prompt, run a command, write a file or open
- * a shell, because those channels are a different scope that nothing here
- * hands out.
- */
 export function RemoteAccessSettings({
   settings,
   patch,
@@ -30,8 +22,11 @@ export function RemoteAccessSettings({
   const { api } = useWorkspace();
   const [status, setStatus] = useState<RemoteAccessStatus>();
   const [error, setError] = useState<string>();
+  const [access, setAccess] = useState<"read" | "control">("read");
+  const [creating, setCreating] = useState(false);
 
   const load = useCallback(() => {
+    if (!api.isDesktop) return;
     void (api.remoteStatus() as Promise<RemoteAccessStatus>)
       .then(setStatus)
       .catch((caught: unknown) =>
@@ -40,14 +35,21 @@ export function RemoteAccessSettings({
   }, [api]);
 
   useEffect(load, [load, settings.remoteAccess]);
+  useEffect(() => {
+    const off = api.on("state", (event) => {
+      if (event && typeof event === "object" && "command" in event && event.command === "remote-updated") load();
+    });
+    return () => { off(); };
+  }, [api, load]);
+
+  if (!api.isDesktop) return <div className="card"><h3>Browser access</h3><p className="muted">Manage pairing and revoke devices on the host computer.</p></div>;
 
   return (
     <div className="card">
-      <h3>Read from another device</h3>
+      <h3>Browser access</h3>
       <p className="muted">
-        Serves this workspace to a browser you pair. A paired device can read — conversations,
-        diffs, runs — and nothing else: sending, terminals and commands are not part of what it is
-        given.
+        Pair a browser with this workspace. Read-only access is the default. Conversation control
+        can send work to this computer’s agents and answer approvals. This computer must stay awake with Capsule running.
       </p>
 
       <SettingRow
@@ -82,22 +84,34 @@ export function RemoteAccessSettings({
             <span className="mono">{status.url}</span>
           </SettingRow>
           <SettingRow
+            label="Device permission"
+            hint={status.controlAvailable ? "Conversation control can cause agents to edit files and run commands under the thread’s permissions. Only pair a device you trust." : "Network HTTP is read-only. For control from another device, use This computer behind a trusted HTTPS proxy."}
+          >
+            <select className="field-select" aria-label="Device permission" value={access}
+              onChange={(event) => setAccess(event.target.value === "control" ? "control" : "read")}>
+              <option value="read">Read only</option>
+              <option value="control" disabled={!status.controlAvailable}>Conversation control</option>
+            </select>
+          </SettingRow>
+          <SettingRow
             label="Pairing link"
-            hint="Single use, valid for five minutes. Anyone holding it can read this workspace."
+            hint="Single use, valid for five minutes. The holder receives the selected permission for twelve hours. Keep the link private."
           >
             <div className="actions" style={{ marginTop: 0 }}>
               <button
                 className="chip"
                 type="button"
+                disabled={creating || access === "control" && !status.controlAvailable}
                 onClick={() => {
-                  void (api.remotePair() as Promise<string>)
-                    .then((url) => {
+                  setCreating(true); setError(undefined);
+                  void (api.remotePair(access) as Promise<string>)
+                    .then(async (url) => {
                       setStatus((current) => (current ? { ...current, pairingUrl: url } : current));
-                      void navigator.clipboard.writeText(url);
+                      await navigator.clipboard.writeText(url);
                     })
                     .catch((caught: unknown) =>
                       setError(caught instanceof Error ? caught.message : String(caught)),
-                    );
+                    ).finally(() => setCreating(false));
                 }}
               >
                 Create link
@@ -108,7 +122,7 @@ export function RemoteAccessSettings({
             <p className="faint mono remote-pairing-url">
               {status.pairingUrl}
               <br />
-              Copied. It works once — create another for a second device.
+              It works once — create another for a second device.
             </p>
           )}
 
@@ -130,7 +144,7 @@ export function RemoteAccessSettings({
                   className="danger"
                   type="button"
                   onClick={() => {
-                    void api.remoteRevoke(device.id).then(load);
+                    void api.remoteRevoke(device.id).then(load).catch(() => setError("Could not revoke this device. Try again."));
                   }}
                 >
                   Revoke

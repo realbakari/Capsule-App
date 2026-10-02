@@ -33,13 +33,20 @@ class TestSocket {
 }
 
 describe("paired commands across disconnects", () => {
+  it("shows server-issued control only while the authenticated socket is ready", () => {
+    const bridge = createRemoteBridge("token");
+    expect(bridge.remoteMode).toBe("connecting");
+    const socket = TestSocket.connections[0]!; socket.open(); socket.frame({ type: "ready", scopes: ["read", "control"] });
+    expect(bridge.remoteMode).toBe("control");
+    socket.close(); expect(bridge.remoteMode).toBe("connecting");
+  });
   it("announces readiness again after a disconnect so the workspace can resnapshot", async () => {
     const bridge = createRemoteBridge("pairing-token");
     const connected = vi.fn(); bridge.on("connection", connected);
     const first = TestSocket.connections[0]!; first.open(); first.frame({ type: "ready" });
     first.close(); await vi.advanceTimersByTimeAsync(1_500);
     const next = TestSocket.connections[1]!; next.open(); next.frame({ type: "ready" });
-    expect(connected).toHaveBeenCalledTimes(2);
+    expect(connected.mock.calls.map(([value]) => value.state)).toEqual(["connected", "disconnected", "connected"]);
   });
   beforeEach(() => {
     vi.useFakeTimers(); TestSocket.connections = [];
@@ -116,5 +123,18 @@ describe("paired commands across disconnects", () => {
     await rejected;
     await vi.advanceTimersByTimeAsync(1500);
     expect(TestSocket.connections).toHaveLength(2);
+  });
+
+  it("times out an incomplete handshake and backs off repeated failed connections", async () => {
+    const bridge = createRemoteBridge("token");
+    const failed = expect(bridge.listProjects()).rejects.toThrow("did not finish connecting");
+    await vi.advanceTimersByTimeAsync(10_000); await failed;
+    await vi.advanceTimersByTimeAsync(1_500);
+    expect(TestSocket.connections).toHaveLength(2);
+    TestSocket.connections[1]!.close();
+    await vi.advanceTimersByTimeAsync(1_500); expect(TestSocket.connections).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(1_500); expect(TestSocket.connections).toHaveLength(3);
+    const socket = TestSocket.connections[2]!; socket.open(); socket.frame({ type: "ready", scopes: ["read"] });
+    expect(bridge.remoteMode).toBe("read");
   });
 });

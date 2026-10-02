@@ -51,7 +51,7 @@ local check and matching revision evidence.
 in the app instead of a browser tab.
 
 **Keeps your work on your computer.** A local SQLite database, tokens encrypted
-with the operating system's credential protection when available, no analytics and no telemetry. Read
+with the operating system's credential protection when available, and optional usage reports off by default. Read
 [PRIVACY.md](PRIVACY.md) for browser, provider, catalog and remote-access data flows.
 
 **Works without a Gateway.** Direct mode spawns an ACP-capable CLI itself, so

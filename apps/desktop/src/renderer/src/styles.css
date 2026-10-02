@@ -10876,6 +10876,18 @@ fieldset.harness-options:disabled { opacity: .7; }
 .background-browser-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .background-browser-url { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .background-browser-image { display: block; width: 100%; max-height: 22rem; object-fit: contain; background: #111; border-radius: 0.4rem; }
+/* Browser access belongs to the workspace, not to a chat message. */
+.remote-session-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.45rem 1rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+.remote-session-banner span { min-width: 0; overflow-wrap: anywhere; }
 .archive-undo-notice {
   position: fixed; z-index: 100; bottom: 1rem; left: 50%; transform: translateX(-50%);
   display: flex; align-items: center; gap: .5rem; max-width: calc(100vw - 2rem);

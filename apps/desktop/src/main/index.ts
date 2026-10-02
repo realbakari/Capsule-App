@@ -15,6 +15,7 @@ import {
 import path from "node:path";
 import { BackgroundBrowsers } from "./background-browsers";
 import { PetVoice } from "./pet-voice";
+import { remoteControlArgs } from "./remote-control";
 import {
   app,
   autoUpdater as nativeAutoUpdater,
@@ -937,12 +938,21 @@ async function applyDesktopSettings(settings?: CapsuleSettings): Promise<void> {
 const remoteAccess = new RemoteAccessLifecycle<RemoteServerHandle>(
   (reach) => startRemoteServer({
     serveDir: path.join(__dirname, "../renderer"), reach,
-    invoke: (channel, args) => forwardToHandler(channel, args),
+    publicUrl: process.env.CAPSULE_REMOTE_PUBLIC_URL,
+    port: remotePort(process.env.CAPSULE_REMOTE_PORT),
+    invoke: (channel, args) => forwardToHandler(channel, remoteControlArgs(channel, args)),
     subscribe: (emit) => subscribeRemote(emit),
     onChange: () => send(IPC_EVENTS.state, { command: "remote-updated" }),
   }),
   () => send(IPC_EVENTS.state, { command: "remote-updated" }),
 );
+
+function remotePort(value?: string): number | undefined {
+  if (!value) return undefined;
+  const port = Number(value);
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error("Remote port must be between 1024 and 65535.");
+  return port;
+}
 
 async function applyRemoteAccess(reach: RemoteAccess): Promise<void> {
   await remoteAccess.set(reach);
@@ -956,6 +966,7 @@ async function applyRemoteAccess(reach: RemoteAccess): Promise<void> {
 const handlers = new Map<string, (...args: unknown[]) => unknown>();
 
 async function forwardToHandler(channel: string, args: unknown[]): Promise<unknown> {
+  if (channel === "rendererReady" || channel === "windowBackground") return true;
   /*
    * A paired device names a channel the way the bridge does — "listSessions",
    * the same word the scope table uses. The handlers are keyed by the wire
@@ -1735,6 +1746,7 @@ function registerIpc(): void {
   });
   handle(IPC_CHANNELS.remoteStatus, () => ({
     reach: remoteAccess.reach,
+    controlAvailable: remoteAccess.handle?.controlAvailable ?? false,
     ...(remoteAccess.handle ? { url: remoteAccess.handle.url } : {}),
     ...(remoteAccess.pairingUrl ? { pairingUrl: remoteAccess.pairingUrl } : {}),
     ...(remoteAccess.error ? { error: remoteAccess.error } : {}),
@@ -1747,12 +1759,11 @@ function registerIpc(): void {
       expiresAt: session.expiresAt,
     })),
   }));
-  handle(IPC_CHANNELS.remotePair, () => {
+  handle(IPC_CHANNELS.remotePair, (access = "read") => {
     const remote = remoteAccess.handle;
-    if (!remote) throw new Error("Turn on reading from another device first.");
-    // Read only. Nothing in this build hands out a scope that can send a
-    // prompt or run a command from another device.
-    remoteAccess.pairingUrl = remote.pair(["read"]);
+    if (!remote) throw new Error("Turn on browser access first.");
+    if (access !== "read" && access !== "control") throw new Error("Choose read or conversation control.");
+    remoteAccess.pairingUrl = remote.pair(access === "control" ? ["read", "control"] : ["read"]);
     send(IPC_EVENTS.state, { command: "remote-updated" });
     return remoteAccess.pairingUrl;
   });

@@ -123,7 +123,9 @@ const api = {
   processHistory: () => ipcRenderer.invoke(IPC_CHANNELS.processHistory),
   rendererReady: (surface?: "pet") => ipcRenderer.invoke(IPC_CHANNELS.rendererReady, surface),
   remoteStatus: () => ipcRenderer.invoke(IPC_CHANNELS.remoteStatus),
-  remotePair: () => ipcRenderer.invoke(IPC_CHANNELS.remotePair),
+  remoteMode: "desktop" as "desktop" | "read" | "control" | "connecting",
+  remoteError: undefined as string | undefined,
+  remotePair: (access: "read" | "control" = "read") => ipcRenderer.invoke(IPC_CHANNELS.remotePair, access),
   remoteRevoke: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.remoteRevoke, id),
   windowBackground: (color: string) => ipcRenderer.invoke(IPC_CHANNELS.windowBackground, color),
   terminalStart: (input: { cwd: string; cols?: number; rows?: number; }) =>

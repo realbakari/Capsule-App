@@ -8,7 +8,7 @@ import { IPC_CHANNELS } from "./ipc.js";
  * action, writing a file, picking a folder — is a separate scope, because a
  * peer holding "read" must not be one flag away from a remote shell.
  */
-export type IpcScope = "read" | "write";
+export type IpcScope = "read" | "control" | "write";
 
 type ChannelName = keyof typeof IPC_CHANNELS;
 
@@ -78,6 +78,12 @@ const READ_CHANNELS: ChannelName[] = [
 
 const READ_SET = new Set<string>(READ_CHANNELS);
 
+// Paired conversation control is not desktop administration or a generic shell.
+export const CONTROL_CHANNELS = [
+  "createSession", "sendMessage", "stopRun", "resolveApproval",
+] satisfies ChannelName[];
+const CONTROL_SET = new Set<string>(CONTROL_CHANNELS);
+
 /** The scope a channel needs. Anything not named above is a write. */
 export function scopeForChannel(channel: string): IpcScope {
   return READ_SET.has(channel) ? "read" : "write";
@@ -85,8 +91,11 @@ export function scopeForChannel(channel: string): IpcScope {
 
 /** Whether a client holding these scopes may call this channel. */
 export function isChannelAllowed(channel: string, scopes: readonly IpcScope[]): boolean {
+  if (!Object.hasOwn(IPC_CHANNELS, channel)) return false;
   const required = scopeForChannel(channel);
-  return required === "read" ? scopes.includes("read") || scopes.includes("write") : scopes.includes("write");
+  return required === "read"
+    ? scopes.includes("read") || scopes.includes("control") || scopes.includes("write")
+    : scopes.includes("write") || (scopes.includes("control") && CONTROL_SET.has(channel));
 }
 
 export const READ_ONLY_CHANNELS: readonly string[] = READ_CHANNELS;

@@ -1,4 +1,9 @@
-# Reading from another device
+# Using Capsule in a browser
+
+Pairing failures show a recovery page instead of opening a demonstration
+workspace. Get a fresh pairing link from the host and keep it running. If an
+established connection drops, loaded conversations stay visible while Capsule
+retries with increasing delays. Pending actions are not repeated automatically.
 
 Capsule can serve the workspace to a browser on your phone or another Mac, so
 you can watch a long run without sitting at the machine doing it.
@@ -15,13 +20,22 @@ closed and reconnected rather than building an unlimited queue on the desktop.
 An individual response too large for the viewer shows an error; open that
 content on the desktop instead.
 
-A paired device can **read**. It cannot send a prompt, open a terminal, run a
-project action, write a file, or change a setting. Those are a separate scope,
-and nothing in the app hands one out.
+A paired device can **read** by default. Existing pairings stay read-only.
+To send prompts, create a new **Conversation control** pairing on the host.
+Control also permits new threads in existing projects, stopping runs, and
+once-only approval decisions. New threads are Supervised and use the project's
+local folder. Existing threads keep their permissions and runtime route.
+Your installed agents still own execution; no agent runs inside the browser.
+
+Control does not include terminals, direct file writes, local attachments,
+opening new project folders, shared channels, or changing host settings. Agents
+may still edit files and run commands under their thread's permissions. Only
+give control to a device you trust. Supervised agents may refuse tools; adjust
+a thread's permissions from the desktop if you need a different policy.
 
 ## Turning it on
 
-**Settings → Gateway → Read from another device.**
+**Settings → Gateway → Browser access.**
 
 | Setting | What it does |
 | --- | --- |
@@ -74,6 +88,14 @@ CAPSULE_REMOTE=loopback pnpm dev
 
 The page pairs itself and the workspace appears.
 
+The permission selector defaults to **Read only**. **Conversation control** is
+available on This computer, or through an HTTPS address configured by the host
+administrator. A plain HTTP local-network connection stays read-only. The
+browser banner shows which permission it received. On the same computer, open
+the generated loopback link in your browser. From another device, the host needs
+a trusted HTTPS proxy or private tunnel configured before creating the link.
+The proxy must serve the full workspace, not just the marketing website.
+
 A link is **single use** and lasts **five minutes**. Pairing a second device
 means creating a second link. A paired device stays paired for twelve hours of
 elapsed time since pairing, then has to pair again, even if it stayed connected.
@@ -86,7 +108,11 @@ event delivery. Replies still being read are not delivered after revocation.
 
 Setting the reach back to **Off** revokes everything at once.
 
-## What a paired device can do
+**Disconnect** in the browser forgets that tab's credential. To invalidate a
+copied credential too, use **Revoke** on the host. Neither action cancels work
+already accepted by an agent; stop that run separately if needed.
+
+## What a read-only paired device can do
 
 It runs the same app you are looking at, so it looks familiar, but the parts
 that act on your machine refuse. Concretely, it can read:
@@ -103,7 +129,7 @@ stop a project action, write or stage a file, commit, push, create or merge a
 pull request, resolve an approval, change settings, pick a folder, or install
 a skill.
 
-A refusal comes back as an error naming the channel, so a viewer that tries
+A read-only refusal comes back as an error naming the channel, so a viewer that tries
 gets told rather than silently ignored.
 
 ## What to know before using "This network"

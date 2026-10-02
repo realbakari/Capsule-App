@@ -25,9 +25,11 @@ async function exchange(token: string): Promise<string | undefined> {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ token, label: navigator.userAgent.slice(0, 60) }),
+    signal: AbortSignal.timeout(10_000),
   });
-  if (!response.ok) return undefined;
+  if (!response.ok) throw new Error("This pairing link expired or was already used. Create a new link in Capsule’s web access settings on the host computer.");
   const body = (await response.json()) as { token?: string };
+  if (typeof body.token !== "string" || !body.token) throw new Error("The host did not return a pairing session. Create a new link on the host computer.");
   return body.token;
 }
 
@@ -35,10 +37,10 @@ async function exchange(token: string): Promise<string | undefined> {
 export async function resolveRemoteToken(): Promise<string | undefined> {
   const pairing = readPairingToken(window.location.hash);
   if (pairing) {
-    const token = await exchange(pairing);
     // The link is spent either way; drop it from the address bar so a reload
     // does not retry a token that can no longer work.
     history.replaceState(null, "", window.location.pathname);
+    const token = await exchange(pairing);
     if (token) {
       try {
         sessionStorage.setItem(TOKEN_KEY, token);
@@ -64,17 +66,24 @@ export function createRemoteBridge(token: string): CapsuleApi {
   let socket: WebSocket | undefined;
   let queue: string[] = [];
   let ready = false;
+  let control = false;
+  let authError: string | undefined;
+  let failures = 0;
+  let handshake: ReturnType<typeof setTimeout> | undefined;
 
-  function disconnect(connection: WebSocket, message = "Disconnected from Capsule. Check the result before retrying an action."): void {
+  function disconnect(connection: WebSocket, message = "Disconnected from Capsule. Check the result before retrying an action.", retry = true): void {
     if (socket !== connection) return;
+    clearTimeout(handshake);
     ready = false;
+    control = false;
     socket = undefined;
     // Rejected work has no owner waiting for its result. Never replay it on a
     // later connection: it may create another turn or repeat a file write.
     queue = [];
     for (const waiting of pending.values()) waiting.reject(new Error(message));
     pending.clear();
-    setTimeout(connect, 1_500);
+    for (const listener of listeners.get("connection") ?? []) listener({ state: "disconnected" });
+    if (retry) setTimeout(connect, Math.min(30_000, 1_500 * 2 ** Math.min(failures++, 5)));
   }
 
   function sendFrame(connection: WebSocket, message: string) {
@@ -90,6 +99,10 @@ export function createRemoteBridge(token: string): CapsuleApi {
     const connection = new WebSocket(url);
     socket = connection;
     ready = false;
+    handshake = setTimeout(() => {
+      disconnect(connection, "The Capsule host did not finish connecting. Check that it is running and reachable.");
+      connection.close();
+    }, 10_000);
     connection.addEventListener("open", () => {
       if (socket === connection) sendFrame(connection, JSON.stringify({ token }));
     });
@@ -114,6 +127,8 @@ export function createRemoteBridge(token: string): CapsuleApi {
         return;
       }
       if (frame.type === "ready") {
+        clearTimeout(handshake); failures = 0;
+        control = Array.isArray(frame.scopes) && frame.scopes.includes("control");
         ready = true;
         const messages = queue;
         queue = [];
@@ -137,11 +152,20 @@ export function createRemoteBridge(token: string): CapsuleApi {
         else waiting.resolve(frame.result);
       }
     });
-    connection.addEventListener("close", () => disconnect(connection));
+    connection.addEventListener("close", (event) => {
+      if (socket !== connection) return;
+      if (event.code === 4401) {
+        authError = "This pairing expired or was revoked. Create a new pairing link on the Capsule host.";
+        try { sessionStorage.removeItem(TOKEN_KEY); } catch { /* No storage in restricted browsers. */ }
+        disconnect(connection, authError, false);
+      } else disconnect(connection);
+    });
   }
   connect();
 
   function call(channel: string, args: unknown[]): Promise<unknown> {
+    if (authError) return Promise.reject(new Error(authError));
+    if (pending.size >= 64) return Promise.reject(new Error("Too many pending requests. Wait for the connection to recover."));
     const id = nextId++;
     const message = JSON.stringify({ id, channel, args });
     const promise = new Promise<unknown>((resolve, reject) => {
@@ -161,7 +185,9 @@ export function createRemoteBridge(token: string): CapsuleApi {
     {
       homeDir: "",
       isDesktop: false,
-      getPathForFile: () => { throw new Error("File attachments are available in the desktop app, not the read-only viewer."); },
+      get remoteMode() { return !ready ? "connecting" : control ? "control" : "read"; },
+      get remoteError() { return authError; },
+      getPathForFile: () => { throw new Error("File attachments are available in the desktop app, not the browser workspace."); },
       on: (channel: string, handler: (payload: unknown) => void) => {
         const set = listeners.get(channel) ?? new Set();
         set.add(handler);

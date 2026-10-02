@@ -13,6 +13,7 @@ import { Inspector, INSPECTOR_REVISION } from "./features/shell/Inspector";
 import { Palette } from "./features/shell/Palette";
 import { Sidebar } from "./features/shell/Sidebar";
 import { Titlebar } from "./features/shell/Titlebar";
+import { RemoteSessionBanner } from "./features/shell/RemoteSessionBanner";
 import { ArchiveUndoNotice } from "./features/shell/ArchiveUndoNotice";
 import { AboutModal } from "./features/settings/AboutModal";
 import { ViewErrorBoundary } from "./features/shell/ErrorBoundary";
@@ -68,6 +69,7 @@ function Shell() {
       <div className="sidebar-swipe-edge" aria-hidden />
       <div className="workspace">
         <Titlebar />
+        <RemoteSessionBanner />
         <div className="workspace-body">
           <div className="conversation-host" hidden={view !== "chat"}>
             <ViewErrorBoundary label="Conversation"><Conversation /></ViewErrorBoundary>

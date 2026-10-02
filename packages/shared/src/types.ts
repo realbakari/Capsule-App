@@ -881,6 +881,7 @@ export interface RemoteAccessStatus {
   url?: string;
   /** Undefined until someone asks for a link; it is only shown once. */
   pairingUrl?: string;
+  controlAvailable?: boolean;
   devices: Array<{
     id: string;
     label: string;

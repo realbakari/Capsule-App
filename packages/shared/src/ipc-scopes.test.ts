@@ -4,6 +4,10 @@ import { IPC_CHANNELS } from "./ipc.js";
 import { isChannelAllowed, READ_ONLY_CHANNELS, scopeForChannel } from "./ipc-scopes.js";
 
 describe("ipc scopes", () => {
+  it("limits conversation control to named operations, never administration", () => {
+    for (const channel of ["sendMessage", "createSession", "stopRun", "resolveApproval", "listSessions"]) expect(isChannelAllowed(channel, ["control"])).toBe(true);
+    for (const channel of ["terminalStart", "updateSettings", "remotePair", "remoteRevoke", "writeFile", "restoreSession", "connectRelay", "analyticsStatus", "constructor"]) expect(isChannelAllowed(channel, ["control"])).toBe(false);
+  });
   it("classifies every channel, so a new one cannot arrive unscoped", () => {
     for (const channel of Object.keys(IPC_CHANNELS)) {
       expect(["read", "write"]).toContain(scopeForChannel(channel));

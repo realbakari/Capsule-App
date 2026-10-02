@@ -6,6 +6,7 @@ import path from "node:path";
 import { isChannelAllowed, type IpcScope } from "@capsule/shared";
 import { WebSocketServer, type WebSocket } from "ws";
 import { MAX_OUTBOUND_BYTES, outboundFrame } from "./outbound.js";
+import { publicOrigin, secureControl, trustedOrigin } from "./origin.js";
 
 import {
   exchangeGrant,
@@ -30,6 +31,8 @@ export interface RemoteServerOptions {
   /** "loopback" is this Mac only. "network" is any device that can reach it. */
   reach: "loopback" | "network";
   port?: number;
+  /** Explicit HTTPS reverse-proxy origin. The listener must remain loopback. */
+  publicUrl?: string;
   /** Calls the same handlers the desktop window calls. */
   invoke: (channel: string, args: unknown[]) => Promise<unknown>;
   /** Subscribes to the events the desktop window receives. */
@@ -40,6 +43,7 @@ export interface RemoteServerOptions {
 export interface RemoteServerHandle {
   url: string;
   port: number;
+  controlAvailable: boolean;
   /** Mints a single-use link. The token is only ever returned here. */
   pair: (scopes: IpcScope[]) => string;
   sessions: () => RemoteSession[];
@@ -96,6 +100,9 @@ export async function startRemoteServer(
   options: RemoteServerOptions,
 ): Promise<RemoteServerHandle> {
   const grants: PairingGrant[] = [];
+  const external = publicOrigin(options.publicUrl);
+  if (external && options.reach !== "loopback") throw new Error("Use This computer with an HTTPS proxy; do not expose its plaintext listener to the network.");
+  let localOrigin = "";
   let sessions: RemoteSession[] = [];
   const sockets = new Set<WebSocket>();
   const disconnectBySocket = new Map<WebSocket, { sessionId: string; disconnect: () => void }>();
@@ -126,6 +133,14 @@ export async function startRemoteServer(
   }
 
   const server: Server = createServer((request, response) => {
+    response.setHeader("referrer-policy", "no-referrer");
+    response.setHeader("x-content-type-options", "nosniff");
+    response.setHeader("x-frame-options", "DENY");
+    const expectedHosts = [localOrigin, external].filter(Boolean).map((value) => new URL(value!).host);
+    if (!expectedHosts.includes(request.headers.host ?? "") || !trustedOrigin(request.headers.origin, localOrigin, external)) {
+      sendJson(response, 403, { error: "untrusted-origin" });
+      return;
+    }
     if (request.method === "POST" && request.url === "/pair") {
       void readBody(request)
         .then((body) => {
@@ -134,8 +149,10 @@ export async function startRemoteServer(
               (payload.label !== undefined && typeof payload.label !== "string")) {
             throw new Error("Invalid pairing request");
           }
+          const eligibleGrants = secureControl(request.headers.origin, localOrigin, external, request.socket.remoteAddress)
+            ? grants : grants.filter((grant) => !grant.scopes.includes("control"));
           const result = exchangeGrant({
-            grants: pruneExpired(grants),
+            grants: pruneExpired(eligibleGrants),
             token: String(payload.token ?? ""),
             label: String(payload.label ?? "Paired device"),
           });
@@ -166,11 +183,17 @@ export async function startRemoteServer(
     stream.pipe(response);
   });
 
-  const wss = new WebSocketServer({ server, path: "/rpc", maxPayload: 64 * 1024 });
+  const wss = new WebSocketServer({ server, path: "/rpc", maxPayload: 64 * 1024,
+    verifyClient: ({ req }: { req: IncomingMessage }) => {
+      const hosts = [localOrigin, external].filter(Boolean).map((value) => new URL(value!).host);
+      return hosts.includes(req.headers.host ?? "") && trustedOrigin(req.headers.origin, localOrigin, external);
+    },
+  });
   // The HTTP listener owns startup errors. ws also re-emits them; leaving its
   // error event unhandled would crash instead of rejecting startRemoteServer.
   wss.on("error", () => {});
-  wss.on("connection", (socket) => {
+  wss.on("connection", (socket, request) => {
+    let inFlight = 0;
     let session: RemoteSession | undefined;
     /*
      * The token arrives in the first frame rather than the URL: a query string
@@ -219,7 +242,8 @@ export async function startRemoteServer(
       if (!session) {
         const candidate = typeof frame.token === "string"
           ? resolveSession(pruneExpired(sessions), frame.token) : undefined;
-        if (!candidate) {
+        if (!candidate || candidate.scopes.includes("control") &&
+            !secureControl(request.headers.origin, localOrigin, external, request.socket.remoteAddress)) {
           socket.close(4401, "unauthenticated");
           return;
         }
@@ -250,6 +274,11 @@ export async function startRemoteServer(
         return;
       }
       const args = frame.args;
+      if (inFlight >= 32) {
+        send({ type: "result", id, error: "Too many pending requests. Wait for them to finish." });
+        return;
+      }
+      inFlight++;
       void Promise.resolve()
         .then(() => authorized() ? options.invoke(channel, args) : undefined)
         .then((result) => send({ type: "result", id, result }))
@@ -259,7 +288,7 @@ export async function startRemoteServer(
               id,
               error: error instanceof Error ? error.message : String(error),
             }),
-        );
+        ).finally(() => { inFlight--; });
     });
 
     socket.on("close", () => {
@@ -284,16 +313,22 @@ export async function startRemoteServer(
 
   const displayHost = options.reach === "network" ? (lanAddress() ?? "127.0.0.1") : "127.0.0.1";
   const url = `http://${displayHost}:${port}`;
+  localOrigin = url;
 
   return {
-    url,
+    url: external ?? url,
     port,
+    controlAvailable: options.reach === "loopback",
     pair: (scopes) => {
+      if (scopes.some((scope) => scope !== "read" && scope !== "control")) throw new Error("Unsupported remote scope.");
+      if (scopes.includes("control") && options.reach !== "loopback") throw new Error("Control requires a loopback connection or an HTTPS proxy.");
+      const active = pruneExpired(grants).filter((grant) => !grant.consumedAt);
+      grants.splice(0, grants.length, ...active.slice(-63));
       const { grant, token } = issueGrant({ scopes });
       grants.push(grant);
       // The secret rides in the fragment: a fragment is never sent to the
       // server, so it stays out of logs and out of any proxy in between.
-      return `${url}/#pair=${token}`;
+      return `${external ?? url}/#pair=${token}`;
     },
     sessions: () => {
       sessions = pruneExpired(sessions);

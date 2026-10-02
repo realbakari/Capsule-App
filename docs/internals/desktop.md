@@ -1023,12 +1023,14 @@ result names the section it lives in.
 | Diagnostics | Process monitor, subsystem versions, export |
 | About | App icon squircle, version, copyright, copy version info |
 
-Gateway also owns **Read from another device**: off, this Mac, or this
+Gateway also owns **Browser access**: off, this computer, or this
 network. It shows the address, a Create link button that mints a single-use
 pairing link, and the list of paired devices with a Revoke beside each. A
-paired device is granted the `read` scope only — every channel is classified
-in `packages/shared/src/ipc-scopes.ts`, an unclassified channel counts as a
-write, and the socket checks the scope before the handler runs.
+paired device receives `read` by default. An explicitly issued `control` pairing
+can create supervised conversations, send text, stop runs and answer approvals
+once. Control requires loopback or an explicitly configured same-host HTTPS
+proxy. Every channel is classified in `packages/shared/src/ipc-scopes.ts`;
+unclassified channels are denied, and the socket checks scope before dispatch.
 Revocation disconnects existing sockets and removes subscriptions immediately;
 absolute session expiry closes them too. Every request, event and delayed reply
 rechecks authorization. JSON primitives, malformed RPC shapes, oversized frames,
@@ -1364,3 +1366,13 @@ search and social metadata plus a no-script download link.
 in an isolated Electron profile with external traffic blocked: desktop sample,
 mobile overflow, unsupported writes and policy routes. It is a DOM check,
 not a deployment or a live-harness verification.
+# Browser access and usage reports
+
+Settings → Gateway → Browser access serves the existing renderer. Read-only is
+the default pairing permission. Conversation control adds new supervised/local
+threads in existing projects, text prompts, stopping runs and once-only approval
+decisions. The permission explanation warns that agents can edit files and run
+commands under their existing permissions. Plain LAN HTTP cannot issue control
+grants. The paired browser shows its connection/permission banner and a local
+Disconnect action; host settings list devices with Revoke. Remote settings,
+terminals, local file attachments and channel identities remain host-only.

@@ -41,19 +41,19 @@ afterAll(async () => {
   await handle?.stop();
 });
 
-async function pair(token: string): Promise<{ status: number; token?: string }> {
+async function pair(token: string, origin?: string): Promise<{ status: number; token?: string }> {
   const response = await fetch(`${base}/pair`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...(origin ? { origin } : {}) },
     body: JSON.stringify({ token, label: "Test device" }),
   });
   const body = (await response.json()) as { token?: string };
   return { status: response.status, ...(body.token ? { token: body.token } : {}) };
 }
 
-function rpc(token: string, frames: Array<Record<string, unknown>>): Promise<unknown[]> {
+function rpc(token: string, frames: Array<Record<string, unknown>>, origin?: string): Promise<unknown[]> {
   return new Promise((resolve, reject) => {
-    const socket = new WebSocket(`ws://127.0.0.1:${handle.port}/rpc`);
+    const socket = new WebSocket(`ws://127.0.0.1:${handle.port}/rpc`, { origin });
     const received: unknown[] = [];
     const timer = setTimeout(() => {
       socket.close();
@@ -84,6 +84,52 @@ function rpc(token: string, frames: Array<Record<string, unknown>>): Promise<unk
 }
 
 describe("pairing a device", () => {
+  it("grants conversation control only to the approved browser origin, not arbitrary writes", async () => {
+    const token = handle.pair(["read", "control"]).split("#pair=")[1]!;
+    expect((await pair(token)).status).toBe(401);
+    expect((await pair(token, "https://untrusted.example")).status).toBe(403);
+    const session = await pair(token, base);
+    expect(session.status).toBe(200);
+    expect(await rpc(session.token!, [{ id: 1, channel: "sendMessage", args: [] }])).toEqual([{ closed: 4401 }]);
+    const frames = await rpc(session.token!, [
+      { id: 2, channel: "sendMessage", args: [] },
+      { id: 3, channel: "remotePair", args: ["control"] },
+      { id: 4, channel: "terminalStart", args: [] },
+    ], base) as Array<{ id: number; result?: unknown; error?: string }>;
+    expect(frames.find((frame) => frame.id === 2)?.result).toEqual({ channel: "sendMessage" });
+    expect(frames.find((frame) => frame.id === 3)?.error).toBe("This device may not call remotePair.");
+    expect(frames.find((frame) => frame.id === 4)?.error).toBe("This device may not call terminalStart.");
+    handle.revoke(handle.sessions().at(-1)!.id);
+    expect(await rpc(session.token!, [{ id: 5, channel: "sendMessage", args: [] }], base)).toEqual([{ closed: 4401 }]);
+  });
+
+  it("refuses cross-origin websocket upgrades", async () => {
+    const code = await new Promise<number>((resolve, reject) => {
+      const socket = new WebSocket(`ws://127.0.0.1:${handle.port}/rpc`, { origin: "https://untrusted.example" });
+      socket.on("unexpected-response", (_request, response) => { response.resume(); socket.terminate(); resolve(response.statusCode ?? 0); });
+      socket.on("error", () => {});
+      socket.on("open", () => { socket.close(); reject(new Error("Cross-origin socket was admitted")); });
+    });
+    expect(code).toBe(401);
+  });
+
+  it("serves HTTPS pairing links behind a loopback proxy and disallows plaintext network control", async () => {
+    const serveDir = mkdtempSync(path.join(tmpdir(), "capsule-proxy-test-"));
+    writeFileSync(path.join(serveDir, "index.html"), "Capsule");
+    const options = { serveDir, invoke: async () => "ok", subscribe: () => () => {} };
+    const proxied = await startRemoteServer({ ...options, reach: "loopback", publicUrl: "https://capsule.example" });
+    try {
+      expect(proxied.url).toBe("https://capsule.example");
+      const token = proxied.pair(["control"]).split("#pair=")[1]!;
+      const response = await fetch(`http://127.0.0.1:${proxied.port}/pair`, { method: "POST", headers: { origin: "https://capsule.example" }, body: JSON.stringify({ token }) });
+      expect(response.status).toBe(200);
+      expect((await response.json() as { scopes: string[] }).scopes).toEqual(["control"]);
+    } finally { await proxied.stop(); }
+    await expect(startRemoteServer({ ...options, reach: "network", publicUrl: "https://capsule.example" })).rejects.toThrow("plaintext listener");
+    const network = await startRemoteServer({ ...options, reach: "network" });
+    try { expect(() => network.pair(["control"])).toThrow("HTTPS proxy"); }
+    finally { await network.stop(); }
+  });
   it("returns an oversized read error by request ID and keeps the connection usable", async () => {
     const session = await pair(handle.pair(["read"]).split("#pair=")[1]!);
     const frames = await rpc(session.token!, [

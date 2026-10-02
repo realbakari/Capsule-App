@@ -88,6 +88,7 @@ describe("the catalog against the panels", () => {
     "SourceControlTools.tsx",
     "ProcessMonitor.tsx",
     "PerformanceDiagnostics.tsx",
+    "RemoteAccessSettings.tsx",
   ]
     .map((name) => {
       const path = new URL(`./${name}`, import.meta.url);

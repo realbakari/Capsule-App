@@ -72,7 +72,12 @@ window.addEventListener("unhandledrejection", (event) => {
  */
 const isDesktop = Boolean(window.capsule);
 if (isDesktop) document.title = "Capsule";
-const remoteToken = isDesktop ? undefined : await resolveRemoteToken();
+let pairingError: string | undefined;
+const remoteToken = isDesktop ? undefined : await resolveRemoteToken().catch((error: unknown) => {
+  pairingError = error instanceof Error && !["TypeError", "TimeoutError", "AbortError"].includes(error.name)
+    ? error.message : "Could not reach your Capsule host. Check that it is running, then create a fresh pairing link.";
+  return undefined;
+});
 const isShowcase = !isDesktop && !remoteToken && new URLSearchParams(window.location.search).get("showcase") === "1";
 if (!isDesktop) {
   window.capsule = remoteToken ? createRemoteBridge(remoteToken) : createDemoBridge();
@@ -92,6 +97,10 @@ if (!isPet) {
   createRoot(root).render(
     <React.StrictMode>
       {policy ? <PolicyPage slug={policy.slug} />
+        : pairingError ? <main className="workspace-startup"><section className="workspace-startup-card">
+          <h1>Could not pair this browser</h1><p role="alert">{pairingError}</p>
+          <p className="muted">Your workspace is still on the host computer. No settings were changed.</p>
+        </section></main>
         : isShowcase ? <div className="showcase-preview" inert><App /></div>
           : isDesktop || remoteToken ? <App /> : <WebRoot />}
     </React.StrictMode>,
