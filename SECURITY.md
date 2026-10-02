@@ -44,15 +44,25 @@ commands and interactive shells through named IPC channels. Main enforces local
 command policy; read-only viewers cannot invoke them. Renderer JavaScript has
 no Node integration and no arbitrary main-process RPC bridge.
 
-**Remote access is read-only and off by default.** When enabled it binds to
+**Remote access defaults to read-only and is off by default.** When enabled it binds to
 loopback unless you choose your local network, requires a one-time pairing token
 that expires in five minutes, stores only a hash of that token, compares it in
-constant time, and refuses every channel classified as a write. A channel is
+constant time, and refuses every channel classified as a write for readers. A channel is
 classified as a write unless it is explicitly listed as a read, so a new one is
 refused by default rather than exposed by accident.
 Revocation and absolute twelve-hour expiry disconnect existing sockets, not
 just future logins. Requests, events and delayed replies recheck access. Network
 mode is plain HTTP/WebSocket; pairing does not encrypt the transport.
+
+The host may explicitly issue conversation-control grants over loopback or a
+configured HTTPS proxy on the same host. Only new supervised conversations,
+text prompts, stopping runs, and once-only approvals are added. Administrative
+settings, terminal IPC, file writes and further pairing stay denied. Existing
+threads retain their permissions; their agents can perform work with those
+permissions. Control requires an approved browser Origin and a loopback peer;
+forwarded-protocol headers are not trusted. Cross-origin requests and upgrades
+are rejected. Do not expose the proxy's upstream HTTP listener to the network.
+Revoking a browser blocks further requests, but does not stop an accepted run.
 
 **Filesystem access is scoped.** File operations refuse paths outside the
 project folders you added. Attachment, skill discovery, transcript and

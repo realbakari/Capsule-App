@@ -88,6 +88,7 @@ describe("the catalog against the panels", () => {
     "SourceControlTools.tsx",
     "ProcessMonitor.tsx",
     "PerformanceDiagnostics.tsx",
+    "AnalyticsSettings.tsx",
     "RemoteAccessSettings.tsx",
   ]
     .map((name) => {

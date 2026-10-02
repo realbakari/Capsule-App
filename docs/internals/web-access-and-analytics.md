@@ -1,4 +1,4 @@
-# Browser control
+# Browser control and product measurements
 
 ## Host boundary
 
@@ -49,3 +49,46 @@ This is a host-served web workspace, not a centrally hosted account portal.
 Managed tunnels, automatic host discovery, a background service independent of
 Electron, and multi-host account login are not part of this change. Hosting the
 marketing renderer alone does not expose a user's machine.
+
+## Analytics boundary
+
+`ProductAnalytics` is main-process-only and defaults off. Its methods construct
+fixed event properties rather than accepting arbitrary renderer capture data.
+The public ingestion configuration is in `analytics-config.ts`; it is not a
+personal or management credential. No management key belongs in a distributed
+build. `CAPSULE_ANALYTICS_DISABLED=1` overrides saved consent; smoke tests also
+disable delivery. The install UUID is persisted only after consent, inside the
+profile's state folder, and removed on withdrawal.
+
+Delivery uses HTTPS, rejects redirects, times out after five seconds, batches at
+most twenty events, and bounds the memory queue to one hundred. No disk spool,
+raw-error logging, autocapture, replay, or historical backfill. Failed batches
+are dropped. The startup event also occurs after opt-in during an open app;
+interpret it as analytics-session start rather than an exact launch counter.
+
+## Owner dashboard setup
+
+In the analytics project's dashboard, create these trends using the emitted
+events. This requires project access, not changes to the app or a private key
+in the client:
+
+| Chart | Event / aggregation | Breakdown |
+|---|---|---|
+| Active installations | `installation_active`, unique distinct IDs per day | `app_version`, `platform` |
+| Harness adoption | `run_started`, total events | `harness`, `route` |
+| Run outcomes | `run_finished`, total events | `outcome`, `harness` |
+| Turn duration | `run_finished`, median and p95 of `duration_ms` | `harness`, `route` |
+| App memory | `performance_sample`, median and p95 of `app_memory_mb` | `app_version`, `platform` |
+| App CPU | `performance_sample`, median of `app_cpu_percent` | `app_version`, `platform` |
+
+Filter failure rate to failed/blocked outcomes; do not label user cancellations
+as failures. A run can finish after the app or consent session ends, so do not
+assume starts equal finishes. Installations are not people. These samples cover
+consenting installations only; no universal user count is available. Run duration
+includes waiting and approvals, not just model inference. Tokens and costs are
+not emitted. Do not turn on provider-side enrichments that contradict the policy.
+
+Verify with `node scripts/verify-web-access.mjs`. This runs real local-server
+pairing/authorization tests, analytics payload/withdrawal tests with an injected
+transport, and renderer interaction regressions. Tests never contact the live
+analytics project.

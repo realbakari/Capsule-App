@@ -96,6 +96,7 @@ export const DEFAULT_CAPSULE_SETTINGS: CapsuleSettings = {
   // Reading Capsule from another device is off until someone says otherwise,
   // and reaching it from the network is a second, separate choice.
   remoteAccess: "off",
+  analyticsEnabled: false,
   appearanceTheme: "system",
   appearanceLight: DEFAULT_LIGHT_PALETTE,
   appearanceDark: DEFAULT_DARK_PALETTE,
@@ -221,6 +222,7 @@ export interface CapsuleSettings {
   /** Root folder for Inbox / tasks started without opening a project. */
   projectlessFolder?: string;
   remoteAccess: RemoteAccess;
+  analyticsEnabled: boolean;
   appearanceTheme: AppearanceTheme;
   appearanceLight: AppearancePalette;
   appearanceDark: AppearancePalette;
@@ -429,6 +431,7 @@ export function normalizeCapsuleSettings(input: Partial<CapsuleSettings> = {}): 
     defaultAgentId: defaultAgentId || undefined,
     projectlessFolder: input.projectlessFolder?.trim() || undefined,
     remoteAccess: pick(input.remoteAccess, REMOTE_ACCESS, DEFAULT_CAPSULE_SETTINGS.remoteAccess),
+    analyticsEnabled: input.analyticsEnabled === true,
     appearanceTheme: pick(input.appearanceTheme, THEMES, DEFAULT_CAPSULE_SETTINGS.appearanceTheme),
     appearanceLight: normalizeAppearancePalette(input.appearanceLight, DEFAULT_LIGHT_PALETTE),
     appearanceDark: normalizeAppearancePalette(input.appearanceDark, DEFAULT_DARK_PALETTE),

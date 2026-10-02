@@ -47,6 +47,7 @@ export const SETTINGS_SECTION_LABELS: Record<SettingsSectionId, string> = {
 export const SETTINGS_SEARCH_ITEMS: SettingsSearchItem[] = [
   { title: "Launch at login", section: "general", keywords: ["startup", "boot", "open"] },
   { title: "Send key", section: "general", keywords: ["enter", "composer", "submit"] },
+  { title: "Share usage reports", section: "general", keywords: ["analytics", "privacy", "telemetry", "consent"] },
   { title: "Browser access", section: "gateway", keywords: ["remote", "pairing", "web", "control", "devices"] },
   { title: "Menu bar", section: "general", keywords: ["tray", "status bar", "extra"] },
   { title: "Desktop companion", section: "general", keywords: ["pet", "mascot", "capsule", "animation", "motion"] },

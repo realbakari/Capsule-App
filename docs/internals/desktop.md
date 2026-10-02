@@ -1376,3 +1376,11 @@ commands under their existing permissions. Plain LAN HTTP cannot issue control
 grants. The paired browser shows its connection/permission banner and a local
 Disconnect action; host settings list devices with Revoke. Remote settings,
 terminals, local file attachments and channel identities remain host-only.
+
+Settings → General → Help improve Capsule offers an unchecked usage-report
+switch with exact data categories and US destination disclosure. Turning it off
+drops pending reports and removes the installation identifier. The card shows
+queue size, last delivery and sanitized errors. Browser clients cannot consent
+on behalf of the host. Settings search includes analytics/privacy and browser
+pairing/control. See [implementation](web-access-and-analytics.md) and
+[user documentation](../user/usage-reports.md).

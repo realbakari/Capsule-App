@@ -65,6 +65,7 @@ export const IPC_CHANNELS = {
   openTerminal: "capsule:openTerminal",
   rendererReady: "capsule:rendererReady",
   remoteStatus: "capsule:remoteStatus",
+  analyticsStatus: "capsule:analyticsStatus",
   remotePair: "capsule:remotePair",
   remoteRevoke: "capsule:remoteRevoke",
   windowBackground: "capsule:windowBackground",

@@ -1,6 +1,6 @@
 # Privacy
 
-**Last updated: 28 September 2026 · Describes the accompanying desktop build**
+**Last updated: 2 October 2026 · Describes the accompanying desktop build**
 
 Capsule runs on your computer and keeps your work there. This page describes exactly
 what the app stores, what it sends, and when. It describes the software's real
@@ -9,8 +9,8 @@ source or with a network monitor.
 
 ## The short version
 
-- Capsule has no usage analytics, telemetry or automatic crash reporting to its
-  authors. It does not operate a hosted conversation service.
+- Optional usage reports are off until you explicitly enable them. Capsule has
+  no automatic crash reporting or hosted conversation service.
 - Workspace history is stored locally. Prompts and selected context reach your
   chosen runtime and may leave the computer through a provider, remote Gateway or
   explicitly paired viewer.
@@ -82,11 +82,16 @@ operations run `git` and `gh` using existing credentials. Enabled review watchin
 can poll in the background. Repository contents and review text travel according
 to the operation. Capsule does not store a separate GitHub account token.
 
-**5. Remote access, only if you turn it on.** Capsule can serve a read-only view
-of itself to another device on your network. It is off by default. When on, it
+**5. Remote access, only if you turn it on.** Capsule can serve its workspace
+to a browser you pair. It is off by default. When on, it
 listens on loopback or your local network, requires a one-time pairing token
-that expires in five minutes, stores only a hash of that token, and refuses
-every write. Turning it off stops the server.
+that expires in five minutes and stores only a hash of that token. Read-only is
+the default. A separate desktop-issued conversation-control link permits new
+supervised conversations, text prompts, stopping runs, and once-only approvals.
+Existing conversations keep their permissions; their agents may edit files and
+run commands. Control requires loopback or an explicitly configured HTTPS proxy
+on the same host. It does not grant desktop administration or raw terminal
+access. Turning remote access off stops the server and revokes devices.
 
 Paired sessions expire twelve hours after pairing. Revoke immediately closes
 live connections. Network mode uses plain HTTP/WebSocket, not end-to-end
@@ -178,10 +183,29 @@ browser pages cannot access companion voice.
 
 - It does not send your prompts, code, file contents or conversation history to
   its authors. There is no Capsule server.
-- It does not include analytics, telemetry, session recording, crash reporting
-  or A/B testing. There is no such code in the repository.
+- It does not include session recording, automatic click tracking, crash
+  reporting or A/B testing.
 - It does not sell workspace data. The feature-related transfers above are not
   a promise that no information leaves the device.
+
+## Optional usage reports
+
+Settings → General → Help improve Capsule controls reports to the maintainers'
+US analytics project at `us.i.posthog.com`. New and existing profiles default
+off. Opting in sends a random installation ID, app version, platform, analytics
+session starts, daily installation activity, harness category, runtime route,
+run outcomes/duration, and aggregate Capsule CPU/memory samples at most once per
+ten minutes. Unknown values are not guessed. No prompts, responses, code, titles,
+paths, credentials, raw logs or errors, or token/cost data are included. The
+receiving service sees the network address; geographic lookup and person-profile
+processing are disabled. An installation ID is not a user account.
+
+The ID is saved in the profile's `state/analytics-id` file only after consent.
+Queued events stay in bounded memory, are sent over HTTPS, and are discarded on
+delivery failure or shutdown. Turning reports off discards the queue, aborts
+pending delivery and removes the local ID; it cannot recall already received
+events. Enabling later creates a new ID. Previously delivered reports are not
+automatically deleted. Browser clients cannot change host consent.
 
 ## Your AI provider is a separate relationship
 

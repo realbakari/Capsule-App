@@ -126,6 +126,7 @@ const api = {
   remoteMode: "desktop" as "desktop" | "read" | "control" | "connecting",
   remoteError: undefined as string | undefined,
   remotePair: (access: "read" | "control" = "read") => ipcRenderer.invoke(IPC_CHANNELS.remotePair, access),
+  analyticsStatus: (): Promise<{ enabled: boolean; configured: boolean; host: string; pending: number; lastSentAt?: string; error?: string }> => ipcRenderer.invoke(IPC_CHANNELS.analyticsStatus),
   remoteRevoke: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.remoteRevoke, id),
   windowBackground: (color: string) => ipcRenderer.invoke(IPC_CHANNELS.windowBackground, color),
   terminalStart: (input: { cwd: string; cols?: number; rows?: number; }) =>

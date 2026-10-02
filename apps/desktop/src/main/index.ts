@@ -15,6 +15,7 @@ import {
 import path from "node:path";
 import { BackgroundBrowsers } from "./background-browsers";
 import { PetVoice } from "./pet-voice";
+import { ProductAnalytics } from "./analytics";
 import { remoteControlArgs } from "./remote-control";
 import {
   app,
@@ -93,6 +94,7 @@ import { Startup } from "./startup";
 let mainWindow: BrowserWindow | undefined;
 let tray: Tray | undefined;
 let engine: CapsuleEngine | undefined;
+let analytics: ProductAnalytics | undefined;
 /*
  * The window is shown before the engine has opened its database, so the
  * renderer's first calls can arrive first. They used to be answered with
@@ -794,6 +796,8 @@ async function collectResourceSample(): Promise<ResourceSample> {
     inaccessibleCount: 0,
   };
   latestSample = sample;
+  analytics?.performance(appProcesses.reduce((total, item) => total + item.cpuPercent, 0),
+    appProcesses.reduce((total, item) => total + item.memoryBytes, 0));
   resourceHistory.push({
     sampledAt: now,
     appCpuPercent: appProcesses.reduce((total, item) => total + item.cpuPercent, 0),
@@ -917,6 +921,7 @@ function applyMenuBar(settings?: CapsuleSettings): void {
 }
 
 async function applyDesktopSettings(settings?: CapsuleSettings): Promise<void> {
+  analytics?.setConsent(settings?.analyticsEnabled === true);
   // A throwaway startup fixture must not change this Mac's login item,
   // power state, menu-bar preference, or remote-access listener.
   if (process.env.CAPSULE_SMOKE_TEST) return;
@@ -1759,6 +1764,7 @@ function registerIpc(): void {
       expiresAt: session.expiresAt,
     })),
   }));
+  handle(IPC_CHANNELS.analyticsStatus, () => analytics?.status());
   handle(IPC_CHANNELS.remotePair, (access = "read") => {
     const remote = remoteAccess.handle;
     if (!remote) throw new Error("Turn on browser access first.");
@@ -1825,6 +1831,7 @@ function bindEngineEvents(): void {
   if (!engine) return;
   engine.events.on("connection", (status) => send(IPC_EVENTS.connection, status));
   engine.events.on("run", (run: Run) => {
+    analytics?.observeRun(run, () => engine?.repos.getSession(run.sessionId));
     send(IPC_EVENTS.run, run);
     notifyRunSettled(run);
     applyKeepAwake(engine?.getSettings());
@@ -2101,6 +2108,10 @@ async function startEngineOnce(): Promise<void> {
     },
   });
   await engine.start();
+  analytics = new ProductAnalytics({ identityPath: path.join(userDataDir(), "analytics-id"),
+    version: app.getVersion(), platform: process.platform,
+    disabled: Boolean(process.env.CAPSULE_SMOKE_TEST || process.env.CAPSULE_ANALYTICS_DISABLED === "1"),
+  });
   if (shutdown.started) return;
   /*
    * The browser tools, offered to agents Capsule spawns itself.
@@ -2277,6 +2288,7 @@ const shutdown = new Shutdown(async () => {
   // Startup may be opening the database or a server when Quit arrives. Stop
   // those resources after they exist, rather than leaking a late completion.
   await startup.settled();
+  analytics?.stop();
   applyKeepAwake(undefined);
   if (sampleTimer) clearInterval(sampleTimer);
   clearTimeout(updateTimer);

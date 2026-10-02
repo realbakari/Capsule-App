@@ -19,6 +19,7 @@ need the shipped-product voice.
 - [capsule.json — project config in the repository](./user/project-file.md)
 - [Providers and credentials](./user/providers.md)
 - [Reading from another device](./user/reading-from-another-device.md)
+- [Optional usage reports](./user/usage-reports.md)
 - [Shared channels](./user/channels.md)
 - [Updating](./user/updating.md)
 - [Diagnostics](./user/diagnostics.md)
@@ -37,6 +38,7 @@ Setup is in the [root README](../README.md); agent rules in
 - [OpenClaw notes](./internals/openclaw.md)
 - [Shared-channel adapter](./internals/channels.md)
 - [Architecture pointer](./internals/architecture.md)
+- [Browser control and analytics](./internals/web-access-and-analytics.md)
 
 ## Where a change belongs
 

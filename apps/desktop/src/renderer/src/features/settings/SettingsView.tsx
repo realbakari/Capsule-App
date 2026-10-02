@@ -24,6 +24,7 @@ import {
 } from "./ConfigurationSettings";
 import { AboutCard } from "./AboutModal";
 import { RemoteAccessSettings } from "./RemoteAccessSettings";
+import { AnalyticsSettings } from "./AnalyticsSettings";
 import { SettingRow, Switch } from "./controls";
 import { formatProjectRoot } from "../../lib/paths";
 import { MODES, useWorkspace } from "../../lib/workspace";
@@ -208,6 +209,7 @@ export function SettingsView() {
                 <DesktopCard settings={settings} onPatch={(next) => void patch(next)} />
                 <NotificationsCard settings={settings} onPatch={(next) => void patch(next)} />
                 <SessionsCard settings={settings} onPatch={(next) => void patch(next)} />
+                <AnalyticsSettings settings={settings} patch={patch} />
               </div>
             )}
 

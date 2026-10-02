@@ -79,6 +79,14 @@ The diagram shows the Gateway route. Direct turns instead follow Core → `Direc
 
 ## 2. Process Model
 
+Browser conversation control intentionally extends the former read-only remote
+contract. Desktop-issued `control` pairings may create supervised conversations,
+send prompts, stop runs and answer once-only approvals; no generic `write` grant
+is issued. Control requires loopback or a configured HTTPS proxy on the host.
+Existing read grants stay read-only. Optional, consent-gated product measurements
+also extend the former no-analytics contract; no workspace content is collected.
+See [browser control and analytics](docs/internals/web-access-and-analytics.md).
+
 Electron main owns everything privileged. The React renderer is a view.
 
 ```
