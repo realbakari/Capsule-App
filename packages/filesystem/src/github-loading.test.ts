@@ -34,9 +34,37 @@ beforeEach(() => {
     return child;
   });
 });
-afterEach(() => clearGhCache());
+afterEach(() => { clearGhCache(); vi.useRealTimers(); });
 
 describe("GitHub read lifecycle", () => {
+  it("preserves the last list and pauses background and manual refreshes after rate limiting", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(0);
+    answers.push({ stdout: JSON.stringify([row]) });
+    await listPullRequests("/repo");
+    answers.push({ code: 1, stderr: "API rate limit exceeded" });
+    expect(await listPullRequests("/repo")).toBeUndefined();
+    for (const force of [false, true, true]) {
+      const poll = await pollPullRequestList("/repo", force);
+      expect(poll.value?.[0]?.number).toBe(3);
+      expect(poll.pending).toBeUndefined();
+    }
+    expect(mocks.spawn.mock.calls.filter((call) => call[0] === "gh" && call[1]?.[0] === "pr" && call[1]?.[1] === "list")).toHaveLength(2);
+    expect(pullRequestListFailure("/repo")).toMatch(/rate limiting/);
+    vi.setSystemTime(60_000);
+    answers.push({ stdout: "[]" });
+    expect(await listPullRequests("/repo")).toEqual([]);
+    expect(pullRequestListFailure("/repo")).toBeUndefined();
+  });
+
+  it("does not repeatedly spawn a failed automatic listing, while allowing an explicit retry", async () => {
+    answers.push({ code: 1, stderr: "Could not connect" });
+    await listPullRequests("/repo");
+    expect((await pollPullRequestList("/repo")).pending).toBeUndefined();
+    expect(mocks.spawn.mock.calls.filter((call) => call[0] === "gh")).toHaveLength(1);
+    answers.push({ stdout: "[]" });
+    expect(await listPullRequests("/repo")).toEqual([]);
+  });
   it("does not send raw credential-bearing command failures to the renderer", async () => {
     const failure = { code: 1, stderr: "Authentication failed for https://user:fixture-secret@host.test/repo" };
     answers.push(failure);

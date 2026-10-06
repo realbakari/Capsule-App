@@ -292,9 +292,10 @@ export class CapsuleEngine {
     this.repos.updateRun(run);
   });
   private acpUnsub?: () => void;
-  private prWatchers = new Map<string, ReturnType<typeof setInterval>>();
+  private prWatchers = new Map<string, { timer: ReturnType<typeof setInterval>; busy: boolean; cwd: string; ownerSessionId?: string }>();
   private prFixFingerprints = new Map<string, string>();
   private prWatchSessions = new Map<string, string>();
+  private pausedPrWatches = new Set<string>();
   private actionProcesses = new Map<string, ManagedCommand>();
   private actionRuns = new Map<string, ProjectActionRun>();
   private checkpointPending = new Map<string, Promise<void>>();
@@ -1117,6 +1118,8 @@ export class CapsuleEngine {
 
   async deleteProject(id: string): Promise<void> {
     const project = this.requireProject(id);
+    this.stopPrWatch(id);
+    this.pausedPrWatches.delete(id);
     for (const run of this.listProjectActionRuns(id)) {
       if (run.status === "running") this.stopProjectAction(id, run.actionId, run.sessionId);
     }
@@ -1142,8 +1145,8 @@ export class CapsuleEngine {
         cwd,
       );
       if (status.pullRequest && pullRequestWatchEnabled(this.settings)) {
-        this.schedulePrWatch(projectId);
-      } else if (!status.pullRequest) {
+        this.schedulePrWatch(projectId, sessionId);
+      } else if (!status.pullRequest && this.prWatchSessions.get(projectId) === sessionId) {
         this.stopPrWatch(projectId);
       }
       return status;
@@ -1313,7 +1316,6 @@ export class CapsuleEngine {
       });
       if (!opened.ok) throw new Error(opened.detail);
       this.log(opened.detail);
-      if (input?.sessionId) this.prWatchSessions.set(projectId, input.sessionId);
       if (this.settings.prAutoMerge && opened.url) {
         const queued = await mergeGithubPullRequest(
           cwd,
@@ -1323,7 +1325,7 @@ export class CapsuleEngine {
         );
         this.log(queued.detail);
       }
-      if (pullRequestWatchEnabled(this.settings)) this.schedulePrWatch(projectId, input?.sessionId);
+      if (pullRequestWatchEnabled(this.settings)) this.schedulePrWatch(projectId, input?.sessionId, true);
       return await this.gitStatus(projectId, input?.sessionId);
 
     });
@@ -1608,6 +1610,10 @@ export class CapsuleEngine {
   async deleteSession(id: string): Promise<void> {
     const session = this.requireSession(id);
     const project = this.requireProject(session.projectId);
+    if (this.prWatchSessions.get(project.id) === id || this.prWatchers.get(project.id)?.ownerSessionId === id) {
+      this.pausedPrWatches.add(project.id);
+      this.stopPrWatch(project.id);
+    }
     for (const run of this.listProjectActionRuns(project.id, id)) {
       if (run.status === "running") this.stopProjectAction(project.id, run.actionId, id);
     }
@@ -2008,8 +2014,12 @@ export class CapsuleEngine {
 
   async stopRun(runId: string): Promise<Run> {
     const run = this.requireRun(runId);
-    if (run.completedAt) return run;
     const session = this.requireSession(run.sessionId);
+    if (this.prWatchSessions.get(session.projectId) === session.id || this.prWatchers.get(session.projectId)?.ownerSessionId === session.id) {
+      this.pausedPrWatches.add(session.projectId);
+      this.stopPrWatch(session.projectId);
+    }
+    if (run.completedAt) return run;
     if (this.startingHarnessRuns.has(run.id)) {
       // The prompt has not been dispatched. Cancel it locally; there may not
       // yet be a native/Gateway session to send cancellation to. Startup can
@@ -2449,7 +2459,7 @@ export class CapsuleEngine {
     // clients never see settings from a rejected save.
     this.settings = next;
     this.skillsShClient.setToken(next.skillsShToken);
-    if (!pullRequestWatchEnabled(next)) this.stopAllPrWatch();
+    if (!pullRequestWatchEnabled(next)) { this.stopAllPrWatch(); this.pausedPrWatches.clear(); }
     this.notifyArchivedSessions(archived);
     this.events.emit("state", { command: "settings-updated" });
     return this.getSettings();
@@ -3050,24 +3060,30 @@ export class CapsuleEngine {
     }
   }
 
-  private schedulePrWatch(projectId: string, sessionId?: string): void {
-    if (sessionId) this.prWatchSessions.set(projectId, sessionId);
+  private schedulePrWatch(projectId: string, sessionId?: string, restart = false): void {
+    if (restart) { this.stopPrWatch(projectId); this.pausedPrWatches.delete(projectId); }
+    if (this.pausedPrWatches.has(projectId)) return;
     if (!pullRequestWatchEnabled(this.settings)) {
       this.stopPrWatch(projectId);
       return;
     }
     if (this.prWatchers.has(projectId)) return;
+    const cwd = this.workingDirectoryFor(this.requireProject(projectId), sessionId);
+    if (!cwd) return;
+    if (sessionId) this.prWatchSessions.set(projectId, sessionId);
     const timer = setInterval(() => {
       void this.tickPrWatch(projectId);
     }, 45_000);
-    this.prWatchers.set(projectId, timer);
+    this.prWatchers.set(projectId, { timer, busy: false, cwd, ownerSessionId: sessionId });
     void this.tickPrWatch(projectId);
   }
 
   private stopPrWatch(projectId: string): void {
-    const timer = this.prWatchers.get(projectId);
-    if (timer) clearInterval(timer);
+    const watch = this.prWatchers.get(projectId);
+    if (watch) clearInterval(watch.timer);
     this.prWatchers.delete(projectId);
+    this.prWatchSessions.delete(projectId);
+    this.prFixFingerprints.delete(projectId);
   }
 
   private stopAllPrWatch(): void {
@@ -3075,11 +3091,15 @@ export class CapsuleEngine {
   }
 
   private async tickPrWatch(projectId: string): Promise<void> {
+    const watch = this.prWatchers.get(projectId);
+    if (!watch || watch.busy) return;
     if (this.stopped) {
       this.stopPrWatch(projectId);
       return;
     }
     if (this.updateReserved) return;
+    watch.busy = true;
+    const current = () => !this.stopped && !this.updateReserved && this.prWatchers.get(projectId) === watch;
     const project = this.repos.getProject(projectId);
     if (!project?.workingDirectory) {
       this.stopPrWatch(projectId);
@@ -3087,20 +3107,22 @@ export class CapsuleEngine {
     }
     let release: (() => void) | undefined;
     try {
-      release = this.folderActivity.enter(project.workingDirectory);
-      await this.refreshWatchedPr(projectId, project.workingDirectory);
+      const cwd = watch.cwd;
+      release = this.folderActivity.enter(cwd);
+      await this.refreshWatchedPr(projectId, cwd, current);
     }
     catch (error) { this.log(`Pull request watch failed: ${String(error)}`); }
-    finally { release?.(); }
+    finally { watch.busy = false; release?.(); }
   }
 
-  private async refreshWatchedPr(projectId: string, cwd: string): Promise<void> {
+  private async refreshWatchedPr(projectId: string, cwd: string, current: () => boolean): Promise<void> {
     /*
      * Read what is known and let the refresh happen behind it. Asking GitHub
      * from here blocked the main process for about a second every forty-five,
      * for as long as watching stayed on.
      */
     const { value: pullRequest, known } = await pollPullRequest(cwd);
+    if (!current()) return;
     // Nothing has come back yet: that is not the same as "there is no pull
     // request", and stopping on it would end the watch before it began.
     if (!known) return;
@@ -3114,12 +3136,12 @@ export class CapsuleEngine {
     if (this.settings.prWatchAndFix && pullRequest.checks === "failure") {
       const fingerprint = `${pullRequest.number}:${pullRequest.checksSummary ?? "failed"}`;
       if (this.prFixFingerprints.get(projectId) !== fingerprint) {
-        const sent = await this.requestPrFix(projectId, pullRequest.url, pullRequest.number, pullRequest.checksSummary);
-        if (sent) this.prFixFingerprints.set(projectId, fingerprint);
+        const sent = await this.requestPrFix(projectId, cwd, pullRequest.url, pullRequest.number, pullRequest.checksSummary, current);
+        if (sent && current()) this.prFixFingerprints.set(projectId, fingerprint);
       }
     }
     if (
-      this.settings.prAutoMerge &&
+      current() && this.settings.prAutoMerge &&
       pullRequest.checks !== "failure" &&
       pullRequest.checks !== "pending"
     ) {
@@ -3130,18 +3152,25 @@ export class CapsuleEngine {
 
   private async requestPrFix(
     projectId: string,
+    cwd: string,
     url: string,
     number: number,
     summary?: string,
+    current: () => boolean = () => true,
   ): Promise<boolean> {
     let sessionId = this.prWatchSessions.get(projectId);
     if (!sessionId || this.settings.prReviewDelivery === "new-chat") {
+      const owner = sessionId ? this.repos.getSession(sessionId) : undefined;
       const session = await this.createSession({
         projectId,
         title: `PR #${number} checks`,
         mode: "code",
+        agentId: owner?.agentId,
+        workspaceMode: "local",
+        workingDirectory: cwd,
       });
       sessionId = session.id;
+      if (!current() || !this.settings.prWatchAndFix) return false;
       this.prWatchSessions.set(projectId, sessionId);
     }
     const busy = this.listRuns(sessionId).some((run) =>
@@ -3169,6 +3198,7 @@ export class CapsuleEngine {
       "",
       "Fix the failures in this repository, then push. Do not merge.",
     ].join("\n");
+    if (!current() || !this.settings.prWatchAndFix) return false;
     await this.sendMessage({ sessionId, content: prompt, mode: "code" });
     this.events.emit("state", { command: "sessions-updated" });
     return true;
@@ -3480,6 +3510,10 @@ export class CapsuleEngine {
 
   private async cleanupSessionWorktree(session: Session, project: Project): Promise<boolean> {
     if (session.workspaceMode !== "worktree" || !session.workingDirectory) return true;
+    if (this.repos.listSessions(project.id).some((other) => other.id !== session.id && other.workingDirectory === session.workingDirectory)) {
+      this.log(`Kept worktree ${session.workingDirectory}; another conversation uses it.`);
+      return false;
+    }
     if (!project.workingDirectory) {
       this.log(`Kept worktree ${session.workingDirectory}; project folder is unavailable.`);
       return false;

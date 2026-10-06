@@ -264,6 +264,18 @@ asks GitHub for a new result. If a read fails, **Retry** tries again and any las
 successful result stays visible; a connection failure is not shown as an empty
 repository.
 
+Repeated failed background reads back off. A rate-limit response pauses both
+automatic reads and manual retries for at least a minute, increasing the delay
+if the service keeps rejecting requests. Your last successful result stays visible.
+
+Pull request watching uses the conversation's checkout, including its worktree,
+and waits for an in-progress check before starting another. Stopping that
+conversation's turn also stops its watch; late check results cannot start a repair
+or merge. Repairs delivered to a new conversation use the same checkout, not a
+fresh worktree. A worktree still used by another conversation is kept when you
+delete its original conversation. Creating a new pull request explicitly starts a new watch when watching
+is enabled. Turning watching off and back on also clears the stop.
+
 In **Code**, choose **All commits** or an individual commit to inspect its
 changes without checking out another branch. Switch between split and unified
 diffs, collapse a file, or expand and collapse the current page. **Summary** renders

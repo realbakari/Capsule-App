@@ -308,6 +308,19 @@ Tools: **Launch**, **Review**, **Commands**, **Browser**, **Files**, **Agents**,
   reads retry incomplete responses and transient 502/503/504 failures once within
   one timeout budget. Writes are never automatically retried. Failed refreshes
   retain the last successful result and show an actionable error with Retry.
+  PR list and current-branch reads use per-checkout/identity backoff: 30 seconds
+  for ordinary failures, 60 seconds for rate limits, exponentially capped at
+  15 minutes. Explicit refresh bypasses ordinary failure cooldown, not rate-limit
+  cooldown. Success and cache invalidation clear the failure state.
+  A PR watch holds one in-flight operation per project and polls its owning
+  conversation's checkout. Stop invalidates its generation, so pending results
+  cannot dispatch repairs or merges. Ordinary status reads cannot restart a
+  stopped watch; explicit PR creation or toggling watch settings can. An already
+  admitted merge stays inside update/restart admission until it finishes.
+  New-chat repairs inherit the watched checkout without creating a second
+  worktree; the watch retains its original checkout and owner. Deleting either
+  its owner or repair conversation stops it. Cleanup keeps any worktree still
+  referenced by another saved conversation.
   Code's commit selector uses the read-scoped `getCommitDiff` IPC, a validated
   full SHA, and `gh api` in the thread's checkout. It does not switch branches.
   Both full-PR and single-commit diffs support split/unified display and working

@@ -103,7 +103,7 @@ it("counts restores and prompts still being admitted before any run is recorded"
 
 it("keeps background pull-request operations inside restart admission", async () => {
   const { engine, project, directory } = await fixture();
-  const internal = engine as unknown as { settings: CapsuleSettings; folderActivity: FolderActivity; tickPrWatch(projectId: string): Promise<void> };
+  const internal = engine as unknown as { settings: CapsuleSettings; folderActivity: FolderActivity; schedulePrWatch(projectId: string): void; tickPrWatch(projectId: string): Promise<void> };
   internal.settings.prAutoMerge = true;
   const poll = vi.spyOn(filesystem, "pollPullRequest").mockResolvedValue({ known: true, value: {
     number: 1, url: "https://example.test/pull/1", state: "OPEN", checks: "success",
@@ -112,12 +112,11 @@ it("keeps background pull-request operations inside restart admission", async ()
   vi.spyOn(filesystem, "mergePullRequest").mockImplementationOnce(() => new Promise((resolve) => {
     finish = () => resolve({ ok: true, detail: "Merged fixture" });
   }));
-  const watching = internal.tickPrWatch(project.id);
+  internal.schedulePrWatch(project.id);
   await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
   await expect(engine.prepareForUpdate()).rejects.toThrow("Finish or stop");
   finish();
-  await watching;
-  await engine.prepareForUpdate();
+  await vi.waitFor(() => expect(engine.prepareForUpdate()).resolves.toBeUndefined());
   const release = engine.reserveForUpdate();
   await internal.tickPrWatch(project.id);
   expect(poll).toHaveBeenCalledOnce();

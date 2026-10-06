@@ -1,4 +1,5 @@
 import { inRepository } from "./git-process.js";
+import { ReadBackoff } from "./read-backoff.js";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { avatarsFor } from "./avatars.js";
@@ -104,6 +105,7 @@ const pullRequestAttempts = new Map<string, number>();
 const pullRequestIdentities = new Map<string, string>();
 const pullRequestReads = new Map<string, number>();
 let pullRequestEpoch = 0;
+const readBackoff = new ReadBackoff();
 
 export async function ghAvailable(): Promise<boolean> {
   if (ghPresent === undefined) {
@@ -118,6 +120,7 @@ export async function ghAvailable(): Promise<boolean> {
 
 /** Forgets the cached answer, for a Doctor run that re-checks the environment. */
 export function clearGhCache(): void {
+  readBackoff.clear();
   ghPresent = undefined;
   ghProbe = undefined;
   pullRequestCache.clear();
@@ -378,10 +381,12 @@ function refreshPullRequestList(cwd: string, key: string, epoch: number): Promis
   const started = readPullRequestList(cwd).then(async (result) => {
     if (!current()) return undefined;
     if (result.value === undefined) {
+      readBackoff.failed(key, result.error);
       pullRequestListFailures.set(cwd, listFailureReason(result.error));
       return undefined;
     }
     pullRequestListFailures.delete(cwd);
+    readBackoff.clear(key);
     const value = await enrichPullRequestsWithStacks(cwd, result.value, runAsync);
     if (!current()) return undefined;
     pullRequestListCache.set(key, { value, at: Date.now() });
@@ -426,13 +431,13 @@ export async function pollPullRequestList(cwd: string, force = false): Promise<{
   const key = JSON.stringify([cwd, remotes.stdout, epoch]);
   const previous = pullRequestListIdentities.get(cwd);
   if (previous !== key) {
-    if (previous) pullRequestListCache.delete(previous);
+    if (previous) { pullRequestListCache.delete(previous); readBackoff.clear(previous); }
     pullRequestListFailures.delete(cwd);
     pullRequestListIdentities.set(cwd, key);
   }
   const cached = pullRequestListCache.get(key);
   const fresh = cached && Date.now() - cached.at < PR_LIST_TTL_MS;
-  const pending = fresh && !force ? undefined : refreshPullRequestList(cwd, key, epoch);
+  const pending = (fresh && !force) || !readBackoff.ready(key, force) ? undefined : refreshPullRequestList(cwd, key, epoch);
   return {
     value: cached?.value,
     known: Boolean(cached),
@@ -784,6 +789,7 @@ export function setPullRequestListener(listener: (() => void) | undefined): void
 
 function cachedPullRequest(cwd: string, key: string, branch: string): GitPullRequest | undefined {
   const cached = pullRequestCache.get(key);
+  if (!readBackoff.ready(key)) return cached?.value;
   if (cached && Date.now() - cached.at < PR_CACHE_TTL_MS) return cached.value;
   const attempted = pullRequestAttempts.get(key);
   if (attempted !== undefined && Date.now() - attempted < PR_CACHE_TTL_MS) return cached?.value;
@@ -800,6 +806,7 @@ function cachedPullRequest(cwd: string, key: string, branch: string): GitPullReq
     void viewPullRequest(cwd, branch)
       .then((next) => {
         if (pullRequestIdentities.get(cwd) !== key) return;
+        readBackoff.clear(key);
         const previous = pullRequestCache.get(key)?.value;
         pullRequestCache.set(key, { value: next, at: Date.now() });
         if (JSON.stringify(previous) !== JSON.stringify(next)) {
@@ -807,7 +814,9 @@ function cachedPullRequest(cwd: string, key: string, branch: string): GitPullReq
         }
       })
       // Failure neither erases a prior reading nor marks an unknown PR as absent.
-      .catch(() => undefined)
+      .catch((error: unknown) => {
+        if (pullRequestIdentities.get(cwd) === key) readBackoff.failed(key, error instanceof Error ? error.message : "Read failed");
+      })
       .finally(() => pullRequestInFlight.delete(key));
   }
   return cached?.value;
@@ -837,7 +846,7 @@ export async function pollPullRequest(cwd: string): Promise<{ value?: GitPullReq
   const key = JSON.stringify([path.resolve(cwd), name, refs.stdout, remotes.stdout, upstream.stdout, epoch]);
   const previous = pullRequestIdentities.get(cwd);
   if (previous !== key) {
-    if (previous) { pullRequestCache.delete(previous); pullRequestAttempts.delete(previous); }
+    if (previous) { pullRequestCache.delete(previous); pullRequestAttempts.delete(previous); readBackoff.clear(previous); }
     pullRequestIdentities.set(cwd, key);
   }
   const value = cachedPullRequest(cwd, key, name);
