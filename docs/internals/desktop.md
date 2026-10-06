@@ -771,6 +771,8 @@ regular, non-symlink file with a 20 MiB read limit. Main returns at most a
 320×180 raster thumbnail / 128 KiB data URI, never the original full image over
 IPC. Nearby message rows request it lazily and discard it on unmount. Missing or
 undecodable files retain an explicit fallback and open action.
+Clipboard image writes use exclusive UUID-named files with owner-only file
+permissions, so concurrent pastes cannot overwrite each other.
 
 Conversation activity, paged diagnostics and verification share one
 `RunSummary` expansion per run. The collapsed summary still reports the actual

@@ -1,5 +1,4 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import fsp from "node:fs/promises";
 
 /** Where releases are published. */
 const UPDATE_REPO = "realbakari/Capsule-App";
@@ -1628,13 +1627,8 @@ function registerIpc(): void {
     const image = clipboard.readImage();
     if (image.isEmpty()) return undefined;
     const dir = path.join(app.getPath("userData"), "attachments");
-    await fsp.mkdir(dir, { recursive: true });
-    // Seconds are not enough: two screenshots pasted in the same second would
-    // otherwise land on the same name and the first would be lost.
-    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const file = path.join(dir, `Pasted image ${stamp}.png`);
-    await fsp.writeFile(file, image.toPNG());
-    return file;
+    const { saveImageAttachment } = await import("./image-attachments.js");
+    return saveImageAttachment(dir, image.toPNG());
   });
   handle(IPC_CHANNELS.saveTextAttachment, async (text) => {
     const { saveTextAttachment } = await import("./text-attachments.js");
