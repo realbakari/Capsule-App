@@ -90,6 +90,7 @@ export const DEFAULT_CAPSULE_SETTINGS: CapsuleSettings = {
   composerSendKey: "enter",
   defaultMode: "chat",
   defaultWorkspaceMode: "local",
+  worktreesDirectory: "",
   defaultPermission: "default",
   // Follows the Mac. A first run that ignores a light system and opens dark
   // is the app deciding something it was never asked to decide.
@@ -168,6 +169,7 @@ export const SETTINGS_SECTION_KEYS: Record<string, ReadonlyArray<keyof CapsuleSe
   gateway: ["gatewayUrl"],
   projects: ["projectlessFolder"],
   sourceControl: [
+    "worktreesDirectory",
     "branchPrefix",
     "gitForceWithLease",
     "prDraft",
@@ -244,6 +246,8 @@ export interface CapsuleSettings {
   archiveInactiveAfter: ArchiveInactiveAfter;
   /** Prefixed onto new branches created from the inspector. */
   branchPrefix?: string;
+  /** Host-local parent for new worktrees; empty keeps the profile default. */
+  worktreesDirectory: string;
   gitForceWithLease: boolean;
   prDraft: boolean;
   prMergeMethod: PrMergeMethod;
@@ -468,6 +472,7 @@ export function normalizeCapsuleSettings(input: Partial<CapsuleSettings> = {}): 
       DEFAULT_CAPSULE_SETTINGS.archiveInactiveAfter,
     ),
     branchPrefix: normalizeBranchPrefix(input.branchPrefix),
+    worktreesDirectory: typeof input.worktreesDirectory === "string" ? input.worktreesDirectory.trim() : "",
     gitForceWithLease: flag(input.gitForceWithLease, DEFAULT_CAPSULE_SETTINGS.gitForceWithLease),
     prDraft: flag(input.prDraft, DEFAULT_CAPSULE_SETTINGS.prDraft),
     prMergeMethod: pick(input.prMergeMethod, PR_MERGE, DEFAULT_CAPSULE_SETTINGS.prMergeMethod),

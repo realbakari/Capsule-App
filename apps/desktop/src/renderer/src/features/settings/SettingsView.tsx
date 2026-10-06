@@ -7,6 +7,7 @@ import { ProcessMonitor } from "./ProcessMonitor";
 import { PerformanceDiagnostics } from "./PerformanceDiagnostics";
 import { RuntimeModeCard } from "./RuntimeModeCard";
 import { SourceControlTools } from "./SourceControlTools";
+import { WorktreeStorage } from "./WorktreeStorage";
 import {
   SETTINGS_SECTION_LABELS,
   SECTIONS_WITH_DEFAULTS,
@@ -279,6 +280,7 @@ export function SettingsView() {
             {tab === "sourceControl" && (
               <div className="appearance-page">
                 <SourceControlTools />
+                <WorktreeStorage settings={settings} chooseFolder={() => api.pickDirectory()} save={updateSettings} editable={api.isDesktop} />
                 <GitCard settings={settings} onPatch={(next) => void patch(next)} />
               </div>
             )}

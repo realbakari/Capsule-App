@@ -45,6 +45,7 @@ export const SETTINGS_SECTION_LABELS: Record<SettingsSectionId, string> = {
 };
 
 export const SETTINGS_SEARCH_ITEMS: SettingsSearchItem[] = [
+  { title: "Worktree location", section: "sourceControl", keywords: ["storage", "folder", "drive", "directory", "worktrees"] },
   { title: "Launch at login", section: "general", keywords: ["startup", "boot", "open"] },
   { title: "Send key", section: "general", keywords: ["enter", "composer", "submit"] },
   { title: "Share usage reports", section: "general", keywords: ["analytics", "privacy", "telemetry", "consent"] },

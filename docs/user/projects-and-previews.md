@@ -58,6 +58,13 @@ uncommitted changes, Capsule keeps it on disk rather than deleting the work.
 Choose the default for new conversations in **Settings → Agents → Conversation
 workspace**.
 
+Choose **Settings → Source control → Worktree location** to store new worktrees
+in another folder or on another drive. The location belongs to the computer
+running Capsule. **Use default** restores Capsule's application-data location.
+Changing this setting does not move existing worktrees or change their agents'
+working folders. Existing worktrees still follow the same clean/dirty deletion
+rules. Both local and Gateway conversations use their saved working folder.
+
 Pinned conversations stay above the rest of the project. Drag one pinned
 conversation over another to save a new pinned order.
 

@@ -86,6 +86,7 @@ describe("the catalog against the panels", () => {
     "AppearanceSettings.tsx",
     "KeybindingsSettings.tsx",
     "SourceControlTools.tsx",
+    "WorktreeStorage.tsx",
     "ProcessMonitor.tsx",
     "PerformanceDiagnostics.tsx",
     "AnalyticsSettings.tsx",

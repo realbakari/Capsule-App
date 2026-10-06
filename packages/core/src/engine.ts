@@ -4,6 +4,7 @@ import { FolderActivity, foldersOverlap } from "./folder-activity.js";
 import type { VerificationResult } from "@capsule/shared";
 import { localTimings, TextBudget, OUTPUT_LIMIT_ERROR, searchSessionTitles } from "@capsule/shared";
 import { ResultWriter } from "./result-writer.js";
+import { worktreesDirectory } from "./worktree-location.js";
 import { ChannelHarness } from "./channel-harness.js";
 import { ChannelRoutes } from "./channel-routes.js";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -2424,6 +2425,10 @@ export class CapsuleEngine {
     if (this.stopped) throw new Error("Capsule is closing. Settings were not saved.");
     const { gatewayToken: _gatewayToken, skillsShToken: _skillsToken, ...rest } = patch;
     const next = normalizeCapsuleSettings({ ...this.settings, ...rest });
+    if (Object.hasOwn(patch, "worktreesDirectory")) {
+      if (typeof patch.worktreesDirectory !== "string") throw new Error("The worktree location must be a folder path.");
+      next.worktreesDirectory = next.worktreesDirectory ? worktreesDirectory(next.worktreesDirectory, this.options.userDataDir) : "";
+    }
     const secrets: SecretChange[] = [];
     for (const [key, account] of [["gatewayToken", GATEWAY_TOKEN_ACCOUNT], ["skillsShToken", SKILLS_SH_TOKEN_ACCOUNT]] as const) {
       const value = patch[key];
@@ -3442,7 +3447,7 @@ export class CapsuleEngine {
       .slice(0, 36) || "conversation";
     const suffix = session.id.replace(/[^a-zA-Z0-9]/g, "").slice(-8).toLowerCase();
     const branch = applyBranchPrefix(this.settings.branchPrefix ?? "capsule", `${slug}-${suffix}`);
-    const destination = path.join(this.options.userDataDir, "worktrees", project.id, session.id);
+    const destination = path.join(worktreesDirectory(this.settings.worktreesDirectory, this.options.userDataDir), project.id, session.id);
     const result = await createWorktree(project.workingDirectory, destination, branch);
     if (!result.ok || !result.path || !result.branch) throw new Error(result.detail);
     session.workingDirectory = result.path;

@@ -26,6 +26,8 @@ import { runComposerLayoutRegressions } from "./composer-layout-regressions";
 import { runSurfaceRegressions } from "./surface-regressions";
 import { runMuseSettingsRegressions } from "./muse-settings-regressions";
 import { runWebAccessRegressions } from "./web-access-regressions";
+import { runWorktreeStorageRegressions } from "./worktree-storage-regressions";
+import { WorktreeStorage } from "../features/settings/WorktreeStorage";
 import { runNavigationRecoveryRegressions } from "./navigation-recovery-regressions";
 import { runDraftAdmissionRegressions } from "./draft-admission-regressions";
 import { runWorkspaceExtensionRegressions } from "./workspace-extension-regressions";
@@ -58,6 +60,7 @@ declare global {
     runDiffPreviewRegressions: () => Promise<void>;
     renderDiffPreview: (theme: "dark" | "light", scrolled: boolean) => Promise<void>;
     renderActivityPreview: (closing: boolean, theme: "dark" | "light") => Promise<void>;
+    renderWorktreeStoragePreview: (theme: "dark" | "light") => Promise<void>;
     renderTurnDetailsPreview: (expanded: boolean, theme: "dark" | "light") => Promise<void>;
     renderChannelPreview: (surface: "channel" | "thread" | "members" | "empty" | "settings" | "mentions" | "reactions" | "harness" | "route" | "connecting" | "connection-error", theme: "dark" | "light") => Promise<void>;
     renderWorkspacePreview: (surface: "sidebar" | "quota" | "runtime", theme: "dark" | "light") => Promise<void>;
@@ -1165,6 +1168,15 @@ window.runRendererRegressions = async () => {
     previewRoot ??= createRoot(host);
     await renderActivityPreview(previewRoot, host, closing);
   };
+  window.renderWorktreeStoragePreview = async (theme) => {
+    (document.getElementById("composer-test-styles") as HTMLStyleElement).media = "all";
+    applyPreviewPalette(theme);
+    host.style.cssText = "width:100%;padding:1rem;box-sizing:border-box";
+    previewRoot ??= createRoot(host);
+    previewRoot.render(<WorktreeStorage settings={{ ...DEFAULT_CAPSULE_SETTINGS, worktreesDirectory: "/Volumes/Development/Isolated workspaces" }} editable chooseFolder={async () => undefined} save={async () => {}} />);
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    assert(host.scrollWidth <= host.clientWidth, "Worktree setting overflows a narrow panel");
+  };
   window.renderChannelPreview = async (surface, theme) => {
     (document.getElementById("composer-test-styles") as HTMLStyleElement).media = "all";
     host.style.cssText = "width:100%;padding:0;box-sizing:border-box";
@@ -1374,6 +1386,7 @@ window.runRendererRegressions = async () => {
   phase("native settings");
   await runMuseSettingsRegressions(host, contextBase);
   await runWebAccessRegressions(host);
+  await runWorktreeStorageRegressions(host);
   await runNavigationRecoveryRegressions(host);
   phase("saved previews");
   await runSavedPreviewRegressions(host);

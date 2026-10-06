@@ -4694,6 +4694,10 @@ select:focus,
   white-space: nowrap;
   max-width: 22rem;
 }
+.worktree-storage .setting { grid-template-columns: minmax(0, 1fr); align-items: start; }
+.worktree-storage .setting-control { min-width: 0; justify-content: flex-start; }
+.worktree-storage .setting-stack { min-width: 0; max-width: 100%; justify-items: start; }
+.worktree-storage .setting-path { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 .project-settings-row {
   align-items: center;
 }

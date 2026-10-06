@@ -248,7 +248,13 @@ Helpers: `projectFolderList`, `addFolderToProject`, `removeFolderFromProject`, `
 - A worktree conversation uses its own folder as the active primary root. File
   picker (`⌘P`), `@` mentions, Inspector, Terminal, Git, saved actions, and ACP
   spawn all resolve against it. Extra project folders remain available.
-- Worktree creation uses `git worktree add -b` below the app data directory.
+- Worktree creation uses `git worktree add -b` below the app data directory by
+  default. Settings → Source control → Worktree location selects a host-local
+  parent (`worktreesDirectory`) for new worktrees, still namespaced by project
+  and session IDs. The main process validates absolute paths and rejects drive
+  roots, including symlink aliases. Existing session paths are not migrated;
+  cleanup uses the recorded path, not the current setting. The source-control
+  section reset clears the override, and Settings search indexes the control.
   Switching modes is allowed only before messages, runs, or a live harness.
   Clean worktrees are removed with their conversation; dirty worktrees are
   retained and named in the engine log.
