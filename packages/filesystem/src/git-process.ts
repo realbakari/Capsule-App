@@ -11,7 +11,7 @@ export function git(cwd: string, args: string[], env = process.env): Promise<{ o
     : ["write-tree", "read-tree", "add"].includes(operation ?? "") ? "git.snapshot" : "git.process";
   const end = localTimings.start(label);
   return new Promise((resolve) => {
-    execFile("git", args, { cwd, env: { ...env, GIT_TERMINAL_PROMPT: "0" }, encoding: "utf8", timeout: 30_000, maxBuffer: 16 * 1024 * 1024 }, (error, stdout, stderr) => {
+    execFile("git", args, { cwd, env: { ...env, GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0" }, encoding: "utf8", timeout: 30_000, maxBuffer: 16 * 1024 * 1024 }, (error, stdout, stderr) => {
       end(Boolean(error));
       resolve({ ok: !error, stdout, stderr: (stderr || error?.message || "").trim(),
         // Missing binaries, timeouts and output limits are not safe retry signals.
@@ -24,7 +24,7 @@ export function git(cwd: string, args: string[], env = process.env): Promise<{ o
 export function gitExcerpt(cwd: string, args: string[], maxBytes: number): Promise<{ stdout: string; truncated: boolean }> {
   const end = localTimings.start("git.diff");
   return new Promise((resolve, reject) => {
-    execFile("git", args, { cwd, env: { ...process.env, GIT_TERMINAL_PROMPT: "0" }, encoding: "utf8", timeout: 30_000, maxBuffer: maxBytes }, (error, stdout, stderr) => {
+    execFile("git", args, { cwd, env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0" }, encoding: "utf8", timeout: 30_000, maxBuffer: maxBytes }, (error, stdout, stderr) => {
       // Node stops our child at the limit. A stderr overflow or a timeout is
       // still a failure, never evidence of a successfully read patch.
       const truncated = error?.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" && error.message.startsWith("stdout maxBuffer");

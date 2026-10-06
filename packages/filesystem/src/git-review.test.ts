@@ -1,11 +1,34 @@
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, it } from "vitest";
 import { parseUnifiedDiff } from "@capsule/shared";
 import { readGitDiff, readGitStatus, stageFile } from "./git.js";
 import { parseNumstat, parsePorcelain } from "./git-output.js";
+
+it("polls changed files without refreshing the user's index or disturbing staging", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "capsule-index-read-"));
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: root, stdio: "pipe" });
+  try {
+    git("init", "-q"); git("config", "user.name", "Test"); git("config", "user.email", "test@example.test");
+    writeFileSync(path.join(root, "unchanged.txt"), "same\n");
+    writeFileSync(path.join(root, "changed.txt"), "before\n");
+    git("add", "."); git("commit", "-qm", "initial");
+    writeFileSync(path.join(root, "changed.txt"), "staged\n"); git("add", "changed.txt");
+    writeFileSync(path.join(root, "changed.txt"), "working\n");
+    utimesSync(path.join(root, "unchanged.txt"), new Date(0), new Date(0));
+    const index = path.join(root, ".git", "index");
+    const before = readFileSync(index); const modified = statSync(index).mtimeMs;
+    const status = await readGitStatus(root);
+    expect(status.files).toEqual([{ code: "MM", path: "changed.txt", added: 1, removed: 1 }]);
+    expect(readFileSync(index).equals(before)).toBe(true);
+    expect(statSync(index).mtimeMs).toBe(modified);
+    expect(git("show", ":changed.txt").toString()).toBe("staged\n");
+    await stageFile(root, "changed.txt");
+    expect(git("show", ":changed.txt").toString()).toBe("working\n");
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
 
 it("keeps NUL-delimited rename destinations and literal whitespace", () => {
   expect(parsePorcelain("R  new\tname\n.ts\0old.ts\0 M spaced name \0")).toEqual([

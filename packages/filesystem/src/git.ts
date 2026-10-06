@@ -74,7 +74,7 @@ async function applyLineStats(workingDirectory: string, files: GitChange[]): Pro
   const stats = new Map<string, { added: number; removed: number; }>();
   const hasHead = (await git(workingDirectory, ["rev-parse", "--verify", "HEAD"])).ok;
   if (hasHead) {
-    const out = await git(workingDirectory, ["diff", "--numstat", "-z", "--no-ext-diff", "--no-textconv", "HEAD"]);
+    const out = await git(workingDirectory, ["diff-index", "-M", "--numstat", "-z", "--no-ext-diff", "--no-textconv", "HEAD", "--"]);
     if (!out.ok) throw new Error(out.stderr || "Could not read changed-line counts.");
     for (const entry of parseNumstat(out.stdout)) {
       if (entry.added === undefined || entry.removed === undefined) continue;

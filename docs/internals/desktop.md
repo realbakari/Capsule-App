@@ -830,6 +830,11 @@ answer; a queued write invalidates that sharing before a later read. There is
 no time-based cache of Git status. A composite push/create-PR operation keeps
 its lock through both steps. External Git processes are not governed by this
 queue; Git's own locking and pre/post revision checks remain necessary.
+Git children disable optional locks; status line counts use `diff-index -M`
+rather than porcelain `diff`, which can refresh the real index. Required locks
+for writes remain enabled. Polling must leave index bytes and staged content
+unchanged.
+
 Inline tool steps expand only when readable input, output or file locations
 exist. Command previews use the bounded syntax renderer; output stays literal,
 muted and independently scrollable. Native command, file-change and MCP text
