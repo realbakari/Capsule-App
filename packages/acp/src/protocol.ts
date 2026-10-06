@@ -1,5 +1,20 @@
 import { readAgentCommands, readDelegationDetails, readPlanEntries, readReportedContextUsage, sanitizeUntrusted, type AgentCommand, type AcpModelCatalog, type DelegationDetails, type ApprovalToolDetails, type ReportedContextUsage, type RunTask } from "@capsule/shared";
-import { readToolActivityDetails, type ToolActivityDetails } from "@capsule/shared";
+import { readAgentCapabilities, readToolActivityDetails, type ToolActivityDetails, type AcpConfigOption } from "@capsule/shared";
+
+export const LEGACY_MODE_CONFIG_ID = "capsule:session-mode";
+
+/** Adapt the older mode catalog to the same bounded selector as config options. */
+export function readModeOption(value: unknown): AcpConfigOption | undefined {
+  if (!value || typeof value !== "object" || !("availableModes" in value) || !Array.isArray(value.availableModes)) return;
+  const options = value.availableModes.slice(0, 32).flatMap((mode: unknown) => {
+    if (!mode || typeof mode !== "object" || !("id" in mode)) return [];
+    return [{ value: mode.id, name: "name" in mode ? mode.name : undefined,
+      description: "description" in mode ? mode.description : undefined }];
+  });
+  const option = readAgentCapabilities({}, [{ id: LEGACY_MODE_CONFIG_ID, category: "mode", name: "Agent mode", type: "select",
+    currentValue: "currentModeId" in value ? value.currentModeId : undefined, options }]).configOptions[0];
+  return option?.choices.length ? option : undefined;
+}
 
 /*
  * The wire, on its own.
@@ -62,6 +77,7 @@ export function encodeMessage(message: JsonRpcMessage): string {
 
 /** What a `session/update` notification is telling us about a turn. */
 export interface SessionUpdate {
+  currentModeId?: string;
   availableCommands?: AgentCommand[];
   contextUsage?: ReportedContextUsage;
   configOptions?: unknown[];
@@ -102,6 +118,10 @@ export function readSessionUpdate(params: unknown): SessionUpdate | undefined {
   const update = record.update;
   if (!update || typeof update !== "object") return undefined;
   const kind = (update as { sessionUpdate?: unknown }).sessionUpdate;
+  if (kind === "current_mode_update") {
+    const mode = (update as { currentModeId?: unknown }).currentModeId;
+    return typeof mode === "string" && mode.length > 0 && mode.length <= 128 ? { sessionId, currentModeId: mode } : undefined;
+  }
   if (kind === "available_commands_update") return { sessionId, availableCommands: readAgentCommands((update as { availableCommands?: unknown }).availableCommands) };
   if (kind === "usage_update") return { sessionId, contextUsage: readReportedContextUsage(update) };
   if (kind === "config_option_update") {

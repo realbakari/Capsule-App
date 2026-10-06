@@ -63,6 +63,79 @@ const HAPPY = `
   }
 `;
 
+describe("legacy agent modes", () => {
+  const agent = (modern = false) => fakeAgent(`
+    function handle(message) {
+      if (message.method === "initialize") send({ id: message.id, result: { protocolVersion: 1 } });
+      if (message.method === "session/new") send({ id: message.id, result: { sessionId: "modes",
+        modes: { currentModeId: "ask", availableModes: [{ id: "ask", name: "Ask", description: null }, { id: "code", name: "Code" }] },
+        configOptions: ${modern ? '[{ id: "mode", name: "Mode", category: "mode", type: "select", currentValue: "ask", options: [{ value: "ask", name: "Ask" }] }]' : '[]'}
+      } });
+      if (message.method === "session/set_mode") {
+        if (message.params.modeId === "ask") send({ id: message.id, error: { code: -1, message: "Mode change refused" } });
+        else send({ id: message.id, result: {} });
+      }
+      if (message.method === "session/prompt") {
+        send({ method: "session/update", params: { sessionId: "elsewhere", update: { sessionUpdate: "current_mode_update", currentModeId: "code" } } });
+        send({ method: "session/update", params: { sessionId: "modes", update: { sessionUpdate: "current_mode_update", currentModeId: "ask" } } });
+        send({ method: "session/update", params: { sessionId: "modes", update: { sessionUpdate: "current_mode_update", currentModeId: "invented" } } });
+        send({ id: message.id, result: { stopReason: "end_turn" } });
+      }
+    }
+  `);
+
+  it("offers modes with null descriptions, acknowledges changes, and follows the agent's mode", async () => {
+    const file = agent();
+    const session = new DirectAcpSession({ command: process.execPath, args: [file], env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" } });
+    try {
+      await session.start();
+      const mode = session.reportedCapabilities?.configOptions[0];
+      expect(mode).toMatchObject({ name: "Agent mode", currentValue: "ask", choices: [{ value: "ask", name: "Ask" }, { value: "code", name: "Code" }] });
+      await expect(session.setConfig("capsule:session-mode", "invented")).rejects.toThrow("reported");
+      await session.setConfig("capsule:session-mode", "code");
+      expect(mode?.currentValue).toBe("code");
+      await expect(session.setConfig("capsule:session-mode", "ask")).rejects.toThrow("Mode change refused");
+      expect(mode?.currentValue).toBe("code");
+      await session.prompt("Change mode");
+      expect(mode?.currentValue).toBe("ask");
+    } finally { await session.close(); rmSync(path.dirname(file), { recursive: true, force: true }); }
+  });
+
+  it("prefers the modern mode selector without a duplicate legacy control", async () => {
+    const file = agent(true);
+    const session = new DirectAcpSession({ command: process.execPath, args: [file], env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" } });
+    try {
+      await session.start();
+      expect(session.reportedCapabilities?.configOptions.map((option) => option.id)).toEqual(["mode"]);
+      await expect(session.setConfig("capsule:session-mode", "code")).rejects.toThrow("no longer reports");
+    } finally { await session.close(); rmSync(path.dirname(file), { recursive: true, force: true }); }
+  });
+
+  it("retains startup mode reports and does not overwrite a newer mode with an acknowledgement", async () => {
+    const file = fakeAgent(`
+      function mode(modeId) { send({ method: "session/update", params: { sessionId: "s", update: { sessionUpdate: "current_mode_update", currentModeId: modeId } } }); }
+      function handle(message) {
+        if (message.method === "initialize") send({ id: message.id, result: { protocolVersion: 1 } });
+        if (message.method === "session/new") {
+          mode("code");
+          send({ id: message.id, result: { sessionId: "s", modes: { currentModeId: "ask", availableModes: [{ id: "ask", name: "Ask" }, { id: "code", name: "Code" }] } } });
+        }
+        if (message.method === "session/set_mode") {
+          mode("code");
+          setTimeout(() => send({ id: message.id, result: {} }), 20);
+        }
+      }
+    `);
+    const session = new DirectAcpSession({ command: "node", args: [file] });
+    try {
+      await session.start();
+      expect(session.reportedCapabilities?.configOptions[0]?.currentValue).toBe("code");
+      await expect(session.setConfig("capsule:session-mode", "ask")).rejects.toThrow("different mode");
+      expect(session.reportedCapabilities?.configOptions[0]?.currentValue).toBe("code");
+    } finally { await session.close(); rmSync(path.dirname(file), { recursive: true, force: true }); }
+  });
+});
+
 describe("talking to an agent directly", () => {
   it("retains early advertised commands and applies only this session's later reports", async () => {
     const agent = fakeAgent(`

@@ -82,6 +82,15 @@ session; it does not silently ignore the selected model. Existing owned-session 
 command identity as well as cwd and harness. No automatic package installation,
 credential reader or new agent loop is added.
 
+Direct ACP also normalizes legacy `modes.availableModes` and `currentModeId`
+into an Agent mode selector when no modern mode config option is reported.
+Nullable descriptions are accepted. This selector alone calls `session/set_mode`;
+own-session `current_mode_update` notifications update the reported value.
+Unknown IDs are ignored, rejected changes preserve state, and a newer reported
+mode wins over a delayed acknowledgement. Existing config selectors keep their
+wire IDs and use `session/set_config_option`. This does not translate agent modes
+into Capsule permission profiles or add a Gateway control command.
+
 ### Native local session transports
 
 New direct Codex sessions use `@capsule/codex` and the installed CLI's

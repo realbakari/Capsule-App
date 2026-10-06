@@ -16,6 +16,8 @@ import {
   readStopReason,
   type JsonRpcMessage,
   readModelCatalog,
+  readModeOption,
+  LEGACY_MODE_CONFIG_ID,
 } from "./protocol.js";
 
 /*
@@ -102,11 +104,14 @@ export class DirectAcpSession {
   private acpSessionId: string | undefined;
   private acpModels: AcpModelCatalog | undefined;
   private legacyModels: AcpModelCatalog | undefined;
+  private legacyMode: ReturnType<typeof readModeOption>;
+  private modeRevision = 0;
   private initialization: unknown;
   private capabilityReport?: AgentCapabilityReport;
   private contextReport?: ReportedContextUsage;
   private commandReport?: AgentCommand[];
   private pendingCommands?: { sessionId: string; commands: AgentCommand[] };
+  private pendingMode?: { sessionId: string; modeId: string };
   private closed = false;
   private closing?: Promise<void>;
   private turn: Promise<unknown> | undefined;
@@ -236,8 +241,12 @@ export class DirectAcpSession {
     if (this.pendingCommands?.sessionId === sessionId) this.commandReport = this.pendingCommands.commands;
     this.pendingCommands = undefined;
     this.legacyModels = readModelCatalog((created as { models?: unknown })?.models);
+    this.legacyMode = readModeOption((created as { modes?: unknown })?.modes);
     const configuration = (created as { configOptions?: unknown })?.configOptions;
     if (!this.capabilityReport || Array.isArray(configuration)) this.readConfiguration(configuration);
+    this.includeLegacyMode();
+    if (this.pendingMode?.sessionId === sessionId) this.updateMode(this.pendingMode.modeId);
+    this.pendingMode = undefined;
     // Retain only normalized metadata, not the unbounded handshake response.
     this.initialization = { agentInfo: { name: this.capabilityReport?.name, version: this.capabilityReport?.version },
       agentCapabilities: { promptCapabilities: { image: this.capabilityReport?.images, embeddedContext: this.capabilityReport?.embeddedContext },
@@ -298,6 +307,14 @@ export class DirectAcpSession {
     this.setting = true;
     const revision = this.configurationRevision;
     try {
+      if (option === this.legacyMode && typeof value === "string") {
+        const modeRevision = this.modeRevision;
+        await this.request("session/set_mode", { sessionId: this.acpSessionId, modeId: value });
+        // A mode notification during the request supersedes its acknowledgement.
+        if (modeRevision === this.modeRevision) this.updateMode(value);
+        if (this.legacyMode?.currentValue !== value) throw new Error("The agent reports a different mode. Its reported setting has been retained.");
+        return;
+      }
       const response = await this.request("session/set_config_option", { sessionId: this.acpSessionId, configId, value,
         ...(option.type === "boolean" ? { type: "boolean" } : {}) });
       const options = (response as { configOptions?: unknown } | null)?.configOptions;
@@ -428,7 +445,12 @@ export class DirectAcpSession {
         this.pendingCommands = { sessionId: update.sessionId, commands: update.availableCommands };
         return;
       }
+      if ((!this.acpSessionId || this.restoring) && update?.sessionId && update.currentModeId) {
+        this.pendingMode = { sessionId: update.sessionId, modeId: update.currentModeId };
+        return;
+      }
       if (!update || (update.sessionId && update.sessionId !== this.acpSessionId)) return;
+      if (update.sessionId === this.acpSessionId && update.currentModeId) this.updateMode(update.currentModeId);
       if (update.sessionId === this.acpSessionId && update.availableCommands) {
         this.commandReport = update.availableCommands;
         this.scheduleConfigurationNotice();
@@ -525,6 +547,7 @@ export class DirectAcpSession {
   private readConfiguration(options: unknown): void {
     this.configurationRevision++;
     this.capabilityReport = readAgentCapabilities(this.initialization, options);
+    this.includeLegacyMode();
     const model = this.capabilityReport.configOptions.find((option) => option.type !== "boolean" && (option.id === "model" || option.category === "model"));
     // Config notifications replace the entire snapshot, including removals.
     // Only a catalog actually supplied by the legacy API is a valid fallback.
@@ -532,6 +555,19 @@ export class DirectAcpSession {
       currentModelId: model.currentValue,
       availableModels: model.choices.map((choice) => ({ modelId: choice.value, name: choice.name })),
     } : this.legacyModels;
+    this.scheduleConfigurationNotice();
+  }
+
+  private includeLegacyMode(): void {
+    if (this.legacyMode && this.capabilityReport && !this.capabilityReport.configOptions.some((option) => option.category === "mode" || option.id === "mode" || option.id === LEGACY_MODE_CONFIG_ID)) {
+      this.capabilityReport.configOptions.push(this.legacyMode);
+    }
+  }
+
+  private updateMode(modeId: string): void {
+    if (!this.legacyMode?.choices.some((choice) => choice.value === modeId)) return;
+    this.legacyMode.currentValue = modeId;
+    this.modeRevision++;
     this.scheduleConfigurationNotice();
   }
 

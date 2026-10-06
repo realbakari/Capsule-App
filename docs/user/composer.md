@@ -110,6 +110,9 @@ permissions control shows **Agent-managed**: Capsule profiles are not agent
 policies. Open **Agent settings** inside Capabilities for the agent's exact
 reported selectors and switches, including mode or permission settings it exposes.
 Rejected changes keep the reported state and show an error without losing your draft.
+Agents using the older mode selector are supported too. Their current mode
+appears in **Agent settings** and follows mode changes made by the agent.
+Selecting a mode does not change Capsule's permission defaults.
 To inspect the session's raw status, open **Harnesses**, select the
 session with **Refresh**, and expand **Session diagnostics**. Diagnostics stay
 with that session and are collapsed by default.
