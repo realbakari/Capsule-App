@@ -75,6 +75,11 @@ Sign in with each tool's own flow — `claude`, `codex login`, `grok login`, and
 
 ### Local Codex
 
+If the CLI reports that your saved conversation is archived, Capsule restores
+that same session and retries opening it once. This does not replay old prompts
+or create a replacement conversation. Missing sessions and connection failures
+remain visible errors.
+
 New Direct conversations use your installed `codex` CLI. No ACP adapter is
 needed. Complete `codex login`, then use **Check this agent** in Harnesses. Your
 CLI must support app-server; update it if startup reports an unsupported method

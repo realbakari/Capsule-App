@@ -95,6 +95,10 @@ the exact durable thread in the requested folder. It explicitly requests
 read-only sandboxing, untrusted-command approvals and a user reviewer on both
 start and resume, rather than inheriting an unrestricted saved policy. Busy or
 ephemeral threads are refused. The CLI owns sign-in, inference and tools.
+When resume explicitly reports an archived native session, Capsule unarchives
+that exact saved ID and retries resume once with the same folder and restrictive
+policy. Missing sessions, transport failures and uncertain writes do not take
+this recovery path; no replacement session is silently created.
 
 Text, images, tool activity, plans and reported context usage map to existing
 run events. Context occupancy uses the latest usage snapshot, not cumulative

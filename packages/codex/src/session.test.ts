@@ -44,6 +44,17 @@ it("resumes only the exact saved thread and working folder without replaying his
   await expect(create().start("missing")).rejects.toThrow("Session not found");
 });
 
+it("recovers an archived native thread without replacing its identity or replaying history", async () => {
+  const session = create("archived"); const output: string[] = [];
+  session.on("text", (event) => output.push(event.text));
+  expect(await session.start("native-thread")).toBe("native-thread");
+  await session.prompt("Continue");
+  expect(output).toEqual(["Hello model-one"]);
+  await expect(create("archived-denied").start("native-thread")).rejects.toThrow("Unarchive denied");
+  await expect(create("archived-still").start("native-thread")).rejects.toThrow("is archived");
+  await expect(create("archived").start("missing")).rejects.toThrow("Session not found");
+});
+
 it.each(["approval", "file-approval"])("surfaces %s and accepts only one action", async (scenario) => {
   const session = create(scenario); await session.start();
   let request: Parameters<DirectAcpEvents["permission"]>[0] | undefined;

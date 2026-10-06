@@ -10,6 +10,7 @@ let turnId;
 let counter = 0;
 let model = "model-one";
 let approvalId;
+let archived = scenario.startsWith("archived");
 const notify = (method, params) => send({ method, params: { threadId, turnId, ...params } });
 const finish = (status = "completed", message) => notify("turn/completed", { turn: { id: turnId, status, error: message ? { message } : null } });
 const respond = () => {
@@ -35,10 +36,16 @@ createInterface({ input: process.stdin }).on("line", (line) => {
   else if (method === "thread/start" || method === "thread/resume") {
     if (params.sandbox !== "read-only" || params.approvalPolicy !== "untrusted" || params.approvalsReviewer !== "user") throw new Error("Unsafe policy");
     if (method === "thread/resume" && params.threadId !== "native-thread") { send({ id, error: { code: -32000, message: "Session not found" } }); return; }
+    if (method === "thread/resume" && archived) { send({ id, error: { code: -32000, message: "session native-thread is archived; run codex unarchive" } }); return; }
     if (scenario === "wrong-id") threadId = "different-thread";
     model = params.model ?? model;
     notify("item/agentMessage/delta", { itemId: "history", delta: "Old history must not replay" });
     reply(id, { thread: { id: threadId, ephemeral: scenario === "ephemeral", status: { type: scenario === "active" ? "active" : "idle" } }, model, cwd: scenario === "wrong-folder" ? "/other" : params.cwd });
+  } else if (method === "thread/unarchive") {
+    if (!archived || params.threadId !== "native-thread") throw new Error("Unexpected unarchive");
+    if (scenario === "archived-denied") { send({ id, error: { code: -32000, message: "Unarchive denied" } }); return; }
+    archived = scenario === "archived-still";
+    reply(id, {});
   } else if (method === "turn/start") {
     turnId = `turn-${++counter}`;
     model = params.model ?? model;

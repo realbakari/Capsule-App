@@ -6,6 +6,9 @@ import type { DirectAcpOptions } from "@capsule/acp";
 export const object = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const FRAME_LIMIT = 4 * 1024 * 1024;
 
+/** An explicit server rejection, distinct from an uncertain transport failure. */
+export class CodexRequestError extends Error {}
+
 /** One owned stdio connection. Requests are never retried after an uncertain write. */
 export class CodexTransport {
   private child?: ChildProcessWithoutNullStreams;
@@ -50,7 +53,7 @@ export class CodexTransport {
             this.pending.delete(message.id); clearTimeout(request.timer);
             if (message.error) {
               const error = object(message.error);
-              request.reject(new Error(typeof error.message === "string" ? error.message.slice(0, 2000) : "The agent rejected the request."));
+              request.reject(new CodexRequestError(typeof error.message === "string" ? error.message.slice(0, 2000) : "The agent rejected the request."));
             } else request.resolve(message.result);
           }
         } catch {

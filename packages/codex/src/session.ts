@@ -3,7 +3,7 @@ import path from "node:path";
 import type { DirectAcpEvents, DirectAcpOptions, DirectAgentSession } from "@capsule/acp";
 import type { AcpModelCatalog, AgentCapabilityReport, AgentPromptBlock, ReportedContextUsage } from "@capsule/shared";
 import { readReportedTurnUsage, readPlanEntries } from "@capsule/shared";
-import { CodexTransport, object } from "./transport.js";
+import { CodexRequestError, CodexTransport, object } from "./transport.js";
 
 const text = (value: unknown): string | undefined => typeof value === "string" ? value : undefined;
 const id = (value: unknown) => typeof value === "string" && value.length > 0 && value.length <= 4096 ? value : undefined;
@@ -66,12 +66,22 @@ export class DirectCodexSession implements DirectAgentSession {
       } while (cursor && cursors.size < 10);
       this.catalog = { availableModels: models };
       if (this.selectedModel && !models.some((model) => model.modelId === this.selectedModel)) throw new Error("The selected model is not reported by this Codex installation. Choose its default model or update the CLI.");
-      const result = object(await this.transport.request(resumeSessionId ? "thread/resume" : "thread/start", {
+      const openThread = () => this.transport.request(resumeSessionId ? "thread/resume" : "thread/start", {
         ...(resumeSessionId ? { threadId: resumeSessionId } : {}), cwd: this.options.cwd ?? process.cwd(),
         // Never inherit a saved session's full-access policy or automatic reviewer.
         approvalPolicy: "untrusted", approvalsReviewer: "user", sandbox: "read-only",
         ...(this.selectedModel ? { model: this.selectedModel } : {}),
-      }));
+      });
+      let response: unknown;
+      try { response = await openThread(); }
+      catch (error) {
+        if (!resumeSessionId || !(error instanceof CodexRequestError)
+          || !/\bsession \S+ is archived\b|\bcodex unarchive\b/i.test(error.message)) throw error;
+        // Only an explicit archived-session rejection permits this one retry.
+        await this.transport.request("thread/unarchive", { threadId: resumeSessionId });
+        response = await openThread();
+      }
+      const result = object(response);
       const threadId = id(object(result.thread).id);
       if (!threadId || (resumeSessionId && threadId !== resumeSessionId)) throw new Error("Codex did not resume the requested conversation. The recorded history is unchanged.");
       if (typeof result.cwd === "string" && path.resolve(result.cwd) !== path.resolve(this.options.cwd ?? process.cwd())) throw new Error("Codex opened a different working folder than requested.");
