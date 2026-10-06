@@ -35,6 +35,15 @@ it("rejects unreported models and carries images", async () => {
   expect(await session.prompt([{ type: "image", mimeType: "image/png", data: "aW1hZ2U=" }])).toEqual({ stopReason: "end_turn" });
 });
 
+it("keeps a failed command distinct from a completed agent turn", async () => {
+  const session = create("command-failed");
+  const tools: unknown[] = [];
+  session.on("tool", (tool) => tools.push(tool));
+  await session.start();
+  expect(await session.prompt("Inspect")).toEqual({ stopReason: "end_turn" });
+  expect(tools[1]).toMatchObject({ status: "failed", details: { input: "pwd", output: "/fixture" } });
+});
+
 it("resumes only the exact saved thread and working folder without replaying history", async () => {
   const session = create(); const output: string[] = []; session.on("text", (event) => output.push(event.text));
   expect(await session.start("native-thread")).toBe("native-thread");

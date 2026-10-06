@@ -824,6 +824,10 @@ answer; a queued write invalidates that sharing before a later read. There is
 no time-based cache of Git status. A composite push/create-PR operation keeps
 its lock through both steps. External Git processes are not governed by this
 queue; Git's own locking and pre/post revision checks remain necessary.
+Inline tool steps expand only when readable input, output or file locations
+exist. Command previews use the bounded syntax renderer; output stays literal,
+muted and independently scrollable. Native command, file-change and MCP text
+results use the shared bounded details reader; opaque binary blocks are omitted.
 
 File indexing uses asynchronous Git reads with a shared in-flight scan and a
 30-second cache. Invalidation prevents older scans from repopulating the cache.

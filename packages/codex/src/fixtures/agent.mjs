@@ -17,7 +17,7 @@ const respond = () => {
   send({ method: "item/agentMessage/delta", params: { threadId: "foreign", turnId, itemId: "foreign", delta: "Wrong thread" } });
   notify("turn/plan/updated", { plan: [{ step: "Inspect", status: "completed" }] });
   notify("item/started", { item: { type: "commandExecution", id: "command", command: "pwd", status: "inProgress" } });
-  notify("item/completed", { item: { type: "commandExecution", id: "command", command: "pwd", status: "completed", aggregatedOutput: "/fixture" } });
+  notify("item/completed", { item: { type: "commandExecution", id: "command", command: "pwd", status: "completed", exitCode: scenario === "command-failed" ? 1 : 0, aggregatedOutput: "/fixture" } });
   notify("item/agentMessage/delta", { itemId: "answer", delta: `Hello ${model}` });
   notify("item/completed", { item: { id: "answer", type: "agentMessage", text: `Hello ${model}` } });
   notify("thread/tokenUsage/updated", { tokenUsage: { total: { totalTokens: 100 }, last: { inputTokens: 8, outputTokens: 12, totalTokens: 20, cachedInputTokens: 3 }, modelContextWindow: 1000 } });

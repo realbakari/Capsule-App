@@ -16,6 +16,7 @@ import {
   WrenchIcon,
 } from "../shell/icons";
 import { CopyButton } from "./CopyButton";
+import { highlight } from "../../lib/highlight";
 
 type Glyph = ComponentType<SVGProps<SVGSVGElement> & { size?: number }>;
 
@@ -62,7 +63,7 @@ export function InlineActivity({ tools, run, stopping, onOpenFile }: { tools: To
     </button>
     {!open && active && <div className="inline-activity-current">
       <button type="button" className="activity-step-toggle" aria-expanded={false}
-        onClick={() => { setExpandedToolId(active.id); setOpen(true); }}>
+        onClick={() => { setExpandedToolId(hasToolDetails(active) ? active.id : undefined); setOpen(true); }}>
         <ToolKindIcon kind={active.kind} /><span className="activity-step-title" title={active.title}>{active.title}</span>
         <span className="inline-activity-state">{toolObservationState(active, run, stopping)}</span><ChevronRightIcon size={12} aria-hidden />
       </button>
@@ -73,32 +74,38 @@ export function InlineActivity({ tools, run, stopping, onOpenFile }: { tools: To
   </div>;
 }
 
+function hasToolDetails(tool: ToolObservation): boolean {
+  return Boolean(tool.details?.input || tool.details?.output || tool.details?.locations?.length);
+}
+
 function ToolStep({ tool, state, initiallyOpen = false, onOpenFile }: { tool: ToolObservation; state: string; initiallyOpen?: boolean; onOpenFile?: (path: string) => void }) {
   const [open, setOpen] = useState(initiallyOpen);
   const details = tool.details;
-  const hasDetails = details?.input || details?.output || details?.locations?.length;
+  const hasDetails = hasToolDetails(tool);
+  const heading = <>
+    <ToolKindIcon kind={tool.kind} size={14} />
+    <span className="activity-step-title" title={tool.title}>{tool.title}</span>
+    <span className="inline-activity-state">{state}</span>
+  </>;
   return <div className="activity-step" data-state={state}>
-    <button type="button" className="activity-step-toggle" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
-      <ToolKindIcon kind={tool.kind} size={14} />
-      <span className="activity-step-title" title={tool.title}>{tool.title}</span>
-      <span className="inline-activity-state">{state}</span>
+    {hasDetails ? <button type="button" className="activity-step-toggle" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+      {heading}
       <ChevronRightIcon size={12} className={open ? "open" : ""} aria-hidden />
-    </button>
-    {open && <div className="activity-step-body">
-      {details?.input && <ToolText label={tool.command ? "Command" : "Input"} text={details.input} />}
+    </button> : <div className="activity-step-toggle activity-step-static">{heading}</div>}
+    {open && hasDetails && <div className="activity-step-body">
+      {details?.input && <ToolText label={tool.command ? "Command" : "Input"} text={details.input} language={tool.command ? "shell" : undefined} />}
       {details?.output && <ToolText label="Output" text={details.output} />}
       {details?.locations?.length ? <div className="activity-step-files" aria-label="Reported files">{details.locations.map((path, index) =>
         onOpenFile ? <button type="button" className="activity-file" key={`${index}:${path}`} title={path} onClick={() => onOpenFile(path)}><FileIcon size={13} />{path}</button>
           : <span key={`${index}:${path}`}>{path}</span>)}</div> : null}
-      {!hasDetails && <p className="muted">No additional details were reported for this step.</p>}
       {details?.truncated && <p className="muted">Preview shortened. Only the displayed text is copied.</p>}
     </div>}
   </div>;
 }
 
-function ToolText({ label, text }: { label: string; text: string }) {
+function ToolText({ label, text, language }: { label: string; text: string; language?: string }) {
   return <div className="activity-tool-text">
     <div className="activity-tool-text-heading"><span>{label}</span><CopyButton text={text} label={`Copy ${label.toLowerCase()} preview`} /></div>
-    <pre tabIndex={0} aria-label={`${label} preview`}>{text}</pre>
+    <pre tabIndex={0} aria-label={`${label} preview`}>{highlight(text, language)}</pre>
   </div>;
 }

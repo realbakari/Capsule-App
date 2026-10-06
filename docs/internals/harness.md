@@ -113,6 +113,9 @@ Text, images, tool activity, plans and reported context usage map to existing
 run events. Context occupancy uses the latest usage snapshot, not cumulative
 session tokens. Model selection uses only CLI-reported IDs. Command and file
 approvals expose once-only decisions and fail closed without a listener.
+Command previews include the reported input and output; nonzero exit codes mark
+the tool step failed. File-change diffs and paths, and MCP text/error results,
+map to the shared bounded preview shape without dumping image or binary payloads.
 Unsupported interactive requests fail visibly; native steering, arbitrary
 configuration, reasoning controls and browser MCP attachment are not carried.
 Interrupt waits for terminal confirmation before accepting another turn.

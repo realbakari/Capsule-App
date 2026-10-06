@@ -4,6 +4,7 @@ import type { DirectAcpEvents, DirectAcpOptions, DirectAgentSession } from "@cap
 import type { AcpModelCatalog, AgentCapabilityReport, AgentPromptBlock, ReportedContextUsage } from "@capsule/shared";
 import { readReportedTurnUsage, readPlanEntries } from "@capsule/shared";
 import { CodexRequestError, CodexTransport, object } from "./transport.js";
+import { nativeToolDetails } from "./tool-details.js";
 
 const text = (value: unknown): string | undefined => typeof value === "string" ? value : undefined;
 const id = (value: unknown) => typeof value === "string" && value.length > 0 && value.length <= 4096 ? value : undefined;
@@ -195,8 +196,9 @@ export class DirectCodexSession implements DirectAgentSession {
         this.emitter.emit("message-end");
       } else if (typeof item.type === "string" && !["userMessage", "reasoning", "agentMessage"].includes(item.type)) {
         this.emitter.emit("tool", { toolCallId: itemId, kind: item.type === "commandExecution" ? "execute" : item.type === "fileChange" ? "edit" : item.type === "webSearch" ? "search" : "other", title: (text(item.command) ?? text(item.tool) ?? item.type).slice(0, 512),
-          status: completed ? (item.status === "failed" || item.status === "declined" ? "failed" : "completed") : "in_progress",
-          details: typeof item.aggregatedOutput === "string" ? { output: item.aggregatedOutput.slice(-16000) } : undefined });
+          status: completed ? (item.status === "failed" || item.status === "declined"
+            || (typeof item.exitCode === "number" && item.exitCode !== 0) ? "failed" : "completed") : "in_progress",
+          details: nativeToolDetails(item) });
       }
     } else if (method === "turn/plan/updated" && Array.isArray(params.plan)) {
       const entries = readPlanEntries(params.plan.slice(0, 32).map((entry) => ({ content: object(entry).step, status: object(entry).status })));

@@ -35,7 +35,7 @@ export async function runActivityRegressions(host: HTMLElement) {
 
     let opened = "";
     const tool: ToolObservation = { id: "call", timestamp: "2026-01-01", title: "Run checks", command: true, kind: "execute", status: "running",
-      details: { input: "pnpm test", output: "<script>example</script>\n" + "long-output ".repeat(120), locations: ["src/example.ts"], truncated: true } };
+      details: { input: "echo 'checking'", output: "<script>example</script>\n" + "long-output ".repeat(120), locations: ["src/example.ts"], truncated: true } };
     const renderTool = (value: ToolObservation) => root.render(<InlineActivity tools={[value]} run={{ id: "run", status: "running" } as Run} onOpenFile={(path) => { opened = path; }} />);
     host.style.width = "320px";
     renderTool(tool); await settle();
@@ -43,6 +43,7 @@ export async function runActivityRegressions(host: HTMLElement) {
     assert(host.querySelector(".inline-activity-current")?.textContent?.includes("Run checks"), "Current tool was hidden behind its group");
     host.querySelector<HTMLButtonElement>(".inline-activity-current .activity-step-toggle")!.click(); await settle();
     const output = host.querySelector<HTMLElement>('[aria-label="Output preview"]')!;
+    assert(host.querySelector('[aria-label="Command preview"] .tok-str')?.textContent === "'checking'", "Shell input lost syntax highlighting");
     assert(output.textContent?.includes("<script>example</script>") && !host.querySelector("script"), "Tool output was interpreted as markup");
     assert(host.scrollWidth <= host.clientWidth + 1, "Expanded activity overflowed the narrow transcript");
     assert(getComputedStyle(output).overscrollBehaviorY === "contain", "Nested tool output can scroll the conversation at its edge");
@@ -55,7 +56,10 @@ export async function runActivityRegressions(host: HTMLElement) {
     host.querySelector<HTMLButtonElement>(".inline-activity-toggle")!.click(); await settle();
     renderTool({ ...tool, details: undefined }); await settle();
     host.querySelector<HTMLButtonElement>(".inline-activity-current .activity-step-toggle")!.click(); await settle();
-    assert(host.textContent?.includes("No additional details were reported"), "Missing provider data was presented as an empty successful result");
+    assert(host.querySelector(".activity-step-static")?.textContent?.includes("Run checks") && !host.querySelector(".activity-step button"), "Empty tool details still offered an expansion");
+    renderTool(tool); await settle();
+    host.querySelector<HTMLButtonElement>(".activity-step button")!.click(); await settle();
+    assert(host.querySelector('[aria-label="Output preview"]'), "A later tool result could not be expanded");
   } finally {
     root.unmount();
     window.capsule = previousApi;

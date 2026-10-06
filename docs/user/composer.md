@@ -147,9 +147,10 @@ reported command, text output and files. **Copy command preview** and **Copy out
 preview** copy only the displayed text. Large previews are shortened and labelled.
 Reported files open in that turn's checkout; workspace file-access checks still
 apply. Scrolling long output stays inside the tool details. These controls inspect
-work; they do not rerun commands or grant agent permissions. If the runtime did not
-report readable details, the step says so. Images and opaque provider objects are
-not shown as raw data.
+work; they do not rerun commands or grant agent permissions. Commands use syntax
+colors, with output beneath them. A step without readable details has no expand
+control; it becomes expandable if details arrive later. Images and opaque
+provider objects are not shown as raw data.
 
 **Sending** means Capsule is submitting the prompt, not that the agent is
 already running. **Stopping** means a cancellation request is pending; a failed
