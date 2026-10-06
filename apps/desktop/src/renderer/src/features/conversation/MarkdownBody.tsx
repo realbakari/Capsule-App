@@ -1,6 +1,6 @@
 import { Fragment, createElement, useMemo, type ReactNode } from "react";
 import type { Token } from "markdown-it";
-import { parseMarkdown, markdownHref } from "../../lib/markdown";
+import { parseMarkdown, markdownHref, markdownFilePath } from "../../lib/markdown";
 import { normalizeGitHubMarkdown } from "../../lib/github-markdown";
 import { splitGitHubDetails } from "../../lib/github-details";
 import { splitFences } from "../../lib/fences";
@@ -37,7 +37,12 @@ function WebLink({ href, title, children, actions }: {
   href: string; title?: string; children: ReactNode; actions: MarkdownActions;
 }) {
   const safeHref = markdownHref(href, actions.githubBaseUrl);
-  if (!safeHref) return <>{children}</>;
+  if (!safeHref) {
+    const path = markdownFilePath(href, actions.githubBaseUrl);
+    return path && actions.onOpenFile
+      ? <button type="button" className="md-file-link" title={path} onClick={() => actions.onOpenFile?.(path)}>{children}</button>
+      : <>{children}</>;
+  }
   return <a href={safeHref} title={title} onClick={(event) => {
     event.preventDefault();
     if (actions.onOpenLink) actions.onOpenLink(safeHref);

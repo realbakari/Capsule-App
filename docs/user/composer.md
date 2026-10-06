@@ -79,6 +79,12 @@ Completed code blocks and open review disclosures stay in place as more text
 arrives. Unusually deep Markdown nesting is shown as readable source instead of
 preventing the conversation from opening.
 
+Named file links in replies open Files while keeping the agent's descriptive
+label. Local file URLs and Windows drive paths are supported; the file must
+still be inside the conversation's allowed workspace. Image links open a file
+preview or web destination only when clicked, without loading remote images
+automatically. Review links continue to resolve against their web page.
+
 Paragraph spacing, list markers and medium-weight emphasis keep long replies
 readable without changing your chosen conversation text size or rewriting
 saved messages.

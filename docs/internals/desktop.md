@@ -828,6 +828,10 @@ Inline tool steps expand only when readable input, output or file locations
 exist. Command previews use the bounded syntax renderer; output stays literal,
 muted and independently scrollable. Native command, file-change and MCP text
 results use the shared bounded details reader; opaque binary blocks are omitted.
+Named Markdown file links invoke the existing scoped Files read path instead
+of an external opener. Drive-path separators survive parsing, labels remain
+intact, and network shares/unsafe schemes are not activated. Review-relative
+links remain web links. No new IPC or paired-device write capability is added.
 
 File indexing uses asynchronous Git reads with a shared in-flight scan and a
 30-second cache. Invalidation prevents older scans from repopulating the cache.

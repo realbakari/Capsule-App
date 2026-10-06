@@ -6,6 +6,19 @@ import { MarkdownBody } from "./MessageBody";
 const render = (content: string, githubBaseUrl?: string) =>
   renderToStaticMarkup(createElement(MarkdownBody, { content, githubBaseUrl }));
 
+it("opens descriptive local file labels through one inspector control, never a file URL", () => {
+  const html = renderToStaticMarkup(createElement(MarkdownBody, {
+    content: '[**Implementation** `app.ts`](file:///workspace/app.ts) and [Diagram](./diagram.svg)', onOpenFile: () => {},
+  }));
+  expect(html.match(/class="md-file-link"/g)).toHaveLength(2);
+  expect(html).toContain("Implementation");
+  expect(html).toContain("Diagram");
+  expect(html).not.toContain('href="file:');
+  expect(html).not.toContain('role="button"');
+  expect(render('[Implementation](file:///workspace/app.ts)')).toContain("Implementation");
+  expect(render('[Implementation](file:///workspace/app.ts)')).not.toContain("<button");
+});
+
 describe.each([undefined, "https://github.com/example/repo/pull/1"])("Markdown correctness (%s)", (base) => {
   it("bounds quote nesting without dropping the remaining text", () => {
     const html = render("> ".repeat(8000) + "Still readable", base);

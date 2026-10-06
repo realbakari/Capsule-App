@@ -99,6 +99,12 @@ export async function runMarkdownRegressions(host: HTMLElement) {
     await until(() => document.querySelector('a[href="https://example.test/a(b)"]'));
     document.querySelector<HTMLAnchorElement>('a[href="https://example.test/a(b)"]')!.click();
     assert(opened === "https://example.test/a(b)", "Link action used a truncated destination");
+    let openedFile = "";
+    root.render(<MarkdownBody content={'[**Implementation**](<C:\\Work\\.config\\app.ts>) and [Diagram](./diagram.svg)'} onOpenFile={(path) => { openedFile = path; }} />);
+    await until(() => host.querySelectorAll(".md-file-link").length === 2);
+    host.querySelector<HTMLButtonElement>(".md-file-link")!.click();
+    assert(openedFile === 'C:\\Work\\.config\\app.ts', "Named file link changed its Windows destination");
+    assert(host.querySelector(".md-file-link strong")?.textContent === "Implementation", "File link lost its descriptive label");
   } finally {
     root.unmount();
     if (clipboard) Object.defineProperty(navigator, "clipboard", clipboard);

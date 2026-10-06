@@ -1171,11 +1171,12 @@
 .md-task.is-done .md-task-mark {
   background: rgb(255 255 255 / 8%);
 }
-.body a {
+.body a, .body .md-file-link {
   color: var(--text);
   text-decoration: underline;
   text-underline-offset: 0.15em;
 }
+.body .md-file-link { display: inline; padding: 0; border: 0; border-radius: 0; background: none; font: inherit; text-align: inherit; white-space: normal; cursor: pointer; }
 .msg .body {
   font-size: var(--text-message);
 }
