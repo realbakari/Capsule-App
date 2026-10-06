@@ -1,4 +1,5 @@
 import type { SkillCatalogEntry, SkillCatalogPage } from "@capsule/shared";
+import { readCatalogCache } from "./catalog-cache.js";
 
 /**
  * Live skill catalog, read from GitHub.
@@ -118,11 +119,11 @@ export class SkillCatalogClient {
      * dev restart or app relaunch spends another slice of the hourly budget.
      */
     private readonly store?: {
-      read: () => SkillCatalogPage | undefined;
+      read: () => unknown;
       write: (page: SkillCatalogPage) => void;
     },
   ) {
-    const persisted = this.store?.read();
+    const persisted = readCatalogCache(this.store?.read());
     if (persisted?.entries.length) this.cache = persisted;
   }
 
@@ -224,7 +225,7 @@ export class SkillCatalogClient {
       // Everything failed. Showing an empty directory hides a catalog we
       // already have; serve the last good one and carry the errors so the UI
       // can say why it is stale.
-      const stale = this.cache ?? this.store?.read();
+      const stale = this.cache ?? readCatalogCache(this.store?.read());
       if (stale?.entries.length) {
         return { ...stale, errors: [...errors, ...(stale.errors ?? [])] };
       }

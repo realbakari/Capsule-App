@@ -1104,6 +1104,9 @@ deleting records; user-pasted reports and agent explanations are preserved.
   previews in place.
 - **Packed skills and packs**: pre-bundled skills across Web & React, Backend & Database, Testing & Quality, Agent Workflows, and Design & UI. Packs use flat compact rows; repeated CLI commands and included-skill controls live in the detail view.
 - **Browse GitHub**: the directory reads a live catalog from the skill repositories on GitHub — names from the repository listing, descriptions from `SKILL.md` frontmatter. Results use compact rows capped to an initial page, and partial-source errors collapse behind a summary instead of taking over the view. No account is needed. The catalog is cached on disk because unauthenticated GitHub allows 60 requests an hour for the whole machine; a failed refetch serves the last good page with the reason attached rather than an empty list. Refresh forces a refetch. Links route into Capsule's embedded Browser.
+- Catalog persistence uses atomic replacement. Persisted pages are validated as
+  unknown input before restoration or stale fallback; malformed pages are misses,
+  not startup failures.
 - **skills.sh**: optional. Every skills.sh endpoint answers 401 without a Vercel OIDC token, so the catalog reads GitHub unless a token is set in Settings → Skills. With one, skills.sh results merge in ahead of the GitHub ones and carry install counts.
 - **Installing** fetches the skill's `SKILL.md` and stores it. A skill without that text is refused rather than saved, because a turn injects the active skill as `[Active Skill: name]` followed by its content — a skill stored without content attaches and contributes nothing.
 - **Composer attachment**: type `$skill` in the composer to attach procedural guidance to a run.

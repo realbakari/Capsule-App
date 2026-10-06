@@ -272,7 +272,7 @@ describe("request budget", () => {
       return { ok: true, status: 200, json: async () => ({}), text: async () => "" } as Response;
     }) as unknown as typeof fetch;
     const store = {
-      read: () => saved.page as never,
+      read: () => saved.page,
       write: (page: unknown) => {
         saved.page = page;
       },
@@ -287,5 +287,18 @@ describe("request budget", () => {
     }) as unknown as typeof fetch;
     const restarted = new SkillCatalogClient(ONE_REPO, dead, undefined, store);
     expect((await restarted.catalog()).entries).toHaveLength(1);
+  });
+
+  it.each([{}, null, { entries: [null], errors: [], fetchedAt: 0 }, {
+    entries: [{ id: "x", name: 42, source: "owner/repo", url: "https://example.com" }],
+    errors: [], fetchedAt: 0,
+  }, { entries: [], errors: [42], fetchedAt: 0 }])("ignores malformed persisted catalog data: %j", async (data) => {
+    const client = new SkillCatalogClient(ONE_REPO, async () => { throw new Error("offline"); }, undefined, {
+      read: () => data,
+      write: () => {},
+    });
+    const page = await client.search("skill");
+    expect(page.entries).toEqual([]);
+    expect(page.errors.join(" ")).toContain("offline");
   });
 });

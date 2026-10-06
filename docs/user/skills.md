@@ -62,6 +62,8 @@ The list is cached, because GitHub allows a limited number of anonymous
 requests per hour for your whole machine. If a refresh fails, Capsule keeps
 showing the last catalog it loaded and says why it could not update, rather
 than showing you an empty page. **Refresh** forces a new fetch.
+If the saved catalog is damaged, Capsule discards it and fetches it again;
+installed skills are unaffected.
 
 ## skills.sh
 

@@ -7,7 +7,7 @@ import { ResultWriter } from "./result-writer.js";
 import { worktreesDirectory } from "./worktree-location.js";
 import { ChannelHarness } from "./channel-harness.js";
 import { ChannelRoutes } from "./channel-routes.js";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { prepareDirectPrompt } from "./direct-prompt.js";
 import { DirectMuseSession } from "@capsule/muse";
@@ -42,6 +42,7 @@ import { readUsageSummaryAsync, sinceDaysAgo, type UsageSummary } from "./usage/
 import { CapsuleDatabase, CapsuleRepositories } from "@capsule/database";
 import {
   attachmentPromptBlock,
+  writeFileAtomic,
   inRepository,
   captureCheckpoint,
   checkoutBranch as checkoutGitBranch,
@@ -314,15 +315,14 @@ export class CapsuleEngine {
     this.skillsClient = new SkillCatalogClient(undefined, undefined, undefined, {
       read: () => {
         try {
-          return JSON.parse(readFileSync(cachePath, "utf8")) as SkillCatalogPage;
+          return JSON.parse(readFileSync(cachePath, "utf8"));
         } catch {
           return undefined;
         }
       },
       write: (page) => {
         try {
-          mkdirSync(path.dirname(cachePath), { recursive: true });
-          writeFileSync(cachePath, JSON.stringify(page));
+          writeFileAtomic(cachePath, JSON.stringify(page));
         } catch {
           // A cache we cannot write is a slower directory, not a failure.
         }
