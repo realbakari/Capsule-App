@@ -175,6 +175,9 @@ attachment validation still receives the original native path.
 - Four-column grid: chevron or indent, icon or pin, title, status. Hover actions
   sit outside the grid. Project rows
   show a discovered or user-selected icon when one is available.
+  The engine caches icon data for 60 seconds (missing icons for 5 seconds),
+  bounded to 128 entries and 16 MiB. Changing a project's icon or root clears
+  the cache, as does deleting a project. Warm workspace reads do not reopen icons.
 - Rows show the **project or thread name only**. Do not put folder paths under rows or in the titlebar.
 - Collapsed project status prioritizes waiting approvals, then working turns,
   then failures, independently of thread order.

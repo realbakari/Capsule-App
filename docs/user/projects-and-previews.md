@@ -24,7 +24,8 @@ and open**. Capsule creates the project only after Git finishes successfully.
 Project rows use a common icon found in the project folder when one is
 available. To choose another PNG, JPEG, WebP, AVIF, GIF, ICO, or SVG file, open
 **Settings → Projects → Choose icon**. **Automatic** returns to folder-based
-icon discovery.
+icon discovery. Choosing an icon updates it immediately. If you edit an icon
+file outside Capsule, it can take up to a minute to appear.
 
 ## Git and conversation workspaces
 

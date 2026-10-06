@@ -4,6 +4,7 @@ import { FolderActivity, foldersOverlap } from "./folder-activity.js";
 import type { VerificationResult } from "@capsule/shared";
 import { localTimings, TextBudget, OUTPUT_LIMIT_ERROR, searchSessionTitles } from "@capsule/shared";
 import { ResultWriter } from "./result-writer.js";
+import { ProjectIconCache } from "./project-icon-cache.js";
 import { worktreesDirectory } from "./worktree-location.js";
 import { ChannelHarness } from "./channel-harness.js";
 import { ChannelRoutes } from "./channel-routes.js";
@@ -75,7 +76,6 @@ import {
   readGitDiff,
   readGitStatus,
   readProjectFile,
-  readProjectIconDataUrl,
   readPreviewFile,
   previewFromBytes,
   resolveProjectIconPath,
@@ -304,6 +304,7 @@ export class CapsuleEngine {
   private verificationPending = new Map<string, { cwd?: string; controller: AbortController; promise: Promise<VerificationResult>; }>();
   private skillsClient: SkillCatalogClient;
   private skillsShClient = new SkillsShClient();
+  private readonly projectIcons = new ProjectIconCache();
 
   constructor(private readonly options: CapsuleEngineOptions) {
     this.usingMock = options.autoConnect === false;
@@ -1113,6 +1114,7 @@ export class CapsuleEngine {
     }
     project.updatedAt = nowIso();
     this.repos.updateProject(project);
+    if (patch.iconPath !== undefined || patch.workingDirectory !== undefined) this.projectIcons.clear();
     return project;
   }
 
@@ -1120,6 +1122,7 @@ export class CapsuleEngine {
     const project = this.requireProject(id);
     this.stopPrWatch(id);
     this.pausedPrWatches.delete(id);
+    this.projectIcons.clear();
     for (const run of this.listProjectActionRuns(id)) {
       if (run.status === "running") this.stopProjectAction(id, run.actionId, run.sessionId);
     }
@@ -3555,7 +3558,7 @@ export class CapsuleEngine {
         : {}),
       projectFile: state,
     };
-    const iconDataUrl = readProjectIconDataUrl(
+    const iconDataUrl = this.projectIcons.read(
       merged.workingDirectory,
       merged.iconPath ?? file?.iconPath,
     );
