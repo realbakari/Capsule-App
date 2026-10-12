@@ -58,6 +58,7 @@ import {
 import type { SettingsSectionId } from "../features/settings/settings-search";
 import { commandForEvent, parseChord, type Keymap } from "./keybindings";
 import { formatUserError } from "./errors";
+import { enqueuePrompt, loadQueue, moveQueued as moveQueuedPrompt, removeQueued as removeQueuedPrompt, saveQueue, takeNext, type QueuedPrompt } from "./prompt-queue";
 import { EMPTY_NAVIGATION, canGoBack as navigationCanGoBack, canGoForward as navigationCanGoForward, goBack as navigationBack, goForward as navigationForward, pruneNavigation, recordNavigation, type NavigationHistory } from "./navigation-history";
 import { contextUsageFromEvents, type ContextUsage } from "./context-window";
 import { harnessPreflightReason } from "./harness-preflight";
@@ -326,6 +327,17 @@ export interface WorkspaceValue {
   requestedFile?: { path: string; root?: string; projectId?: string; sessionId?: string };
   clearRequestedFile: () => void;
   contentSearch: boolean;
+  /** Follow-ups waiting for the running turn to finish, in send order. */
+  queue: QueuedPrompt[];
+  removeQueued: (id: string) => void;
+  moveQueued: (id: string, direction: "up" | "down") => void;
+  /** Take a queued follow-up back into the composer. */
+  editQueued: (id: string) => void;
+  /** Send a queued follow-up now as a steer, where the route supports it. */
+  steerQueued: (id: string) => Promise<void>;
+  /** The find bar over the current conversation. */
+  threadFind: boolean;
+  setThreadFind: (open: boolean | ((current: boolean) => boolean)) => void;
   setContentSearch: (open: boolean) => void;
   gitCommit: (message: string) => Promise<boolean>;
   gitStage: (relative: string) => Promise<void>;
@@ -994,6 +1006,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
         case "history-forward":
           goForward();
           break;
+        case "find-in-thread":
+          setThreadFind((open) => !open);
+          break;
       }
     };
     window.addEventListener("keydown", onKey, true);
@@ -1161,12 +1176,23 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     }
     const submissionKey = currentDraftKey;
     const submittedRevision = draftRevision.current;
-    const content = command ?? (draft.trim() || (skillId ? `Use the ${skills.find((item) => item.id === skillId)?.name ?? "selected"} skill.` : ""));
-    const filesToSend = command ? [] : attachmentState.current.value;
+    const content = queued ? queued.content : command ?? (draft.trim() || (skillId ? `Use the ${skills.find((item) => item.id === skillId)?.name ?? "selected"} skill.` : ""));
+    const filesToSend = queued ? queued.attachments : command ? [] : attachmentState.current.value;
+    const promptSkill = queued ? queued.skillId : command ? undefined : skillId;
     if ((!content && filesToSend.length === 0) || busy || submissions.current.has(submissionKey)) return false;
-    if (activeRun) {
-      setNotice("This thread already has an active turn. Stop it or wait before sending a follow-up.");
-      return false;
+    if (activeRun && !queued) {
+      const result = enqueuePrompt(queue, { content, attachments: filesToSend, skillId: promptSkill });
+      if (!result.accepted) {
+        setNotice("The follow-up queue is full. Wait for the running turn or remove a queued message.");
+        return false;
+      }
+      setQueue(result.queue);
+      if (!command) {
+        setDraft("");
+        setAttachments([]);
+        setSkillId(undefined);
+      }
+      return true;
     }
     if (sendBlockReason) {
       setNotice(sendBlockReason);
@@ -1178,7 +1204,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     let preparedThread = false;
     const recoverSubmission = (error: unknown, targetProjectId = projectId) => {
       const recovery = recoverFailedPrompt(localStorage, latestStashes.current, {
-        prompt: content, attachments: filesToSend, skillId: command ? undefined : skillId, projectId: targetProjectId,
+        prompt: content, attachments: filesToSend, skillId: promptSkill, projectId: targetProjectId,
       });
       latestStashes.current = recovery.entries;
       setPromptStashes(recovery.entries);
@@ -1219,7 +1245,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
           createdAt: new Date().toISOString(),
         },
       ]);
-      const unchanged = !command && draftRevision.current === submittedRevision;
+      const unchanged = !command && !queued && draftRevision.current === submittedRevision;
       if (unchanged) {
         setDraft("");
         setAttachments([]);
@@ -1233,7 +1259,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
           content,
           agentId,
           mode,
-          skillId: command ? undefined : skillId,
+          skillId: promptSkill,
           attachments: filesToSend,
         });
         accepted = true;
@@ -1299,6 +1325,51 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     } finally {
       submissions.current.delete(submissionKey);
       setBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    if (activeRun || busy || !sessionId || queue.length === 0 || flushing.current || historyLoad.state !== "loaded") return;
+    // Right after switching threads the run list may not know about a live
+    // turn yet; a short settle keeps a queued follow-up from racing it.
+    const wait = 1_500 - (Date.now() - sessionSettledAt.current);
+    if (wait > 0) {
+      const timer = window.setTimeout(() => setQueue((current) => [...current]), wait);
+      return () => window.clearTimeout(timer);
+    }
+    const { queue: rest, next } = takeNext(queue);
+    if (!next) return;
+    flushing.current = true;
+    setQueue(rest);
+    void send(false, undefined, next).finally(() => { flushing.current = false; });
+    return undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRun?.id, busy, queue, sessionId, historyLoad.state]);
+
+  function removeQueued(id: string) {
+    setQueue((current) => removeQueuedPrompt(current, id));
+  }
+  function moveQueued(id: string, direction: "up" | "down") {
+    setQueue((current) => moveQueuedPrompt(current, id, direction));
+  }
+  function editQueued(id: string) {
+    const item = queue.find((entry) => entry.id === id);
+    if (!item) return;
+    setQueue((current) => removeQueuedPrompt(current, id));
+    setDraft((current) => (current.trim() ? `${current}\n\n${item.content}` : item.content));
+    if (item.attachments.length) setAttachments((current) => [...current, ...item.attachments.filter((file) => !current.some((existing) => existing.path === file.path))]);
+    if (item.skillId) setSkillId(item.skillId);
+  }
+  async function steerQueued(id: string) {
+    const item = queue.find((entry) => entry.id === id);
+    if (!item || !sessionId) return;
+    try {
+      await api.steerHarness(sessionId, item.content);
+      setQueue((current) => removeQueuedPrompt(current, id));
+      await refresh();
+      await loadSession(sessionId);
+    } catch (error) {
+      setNotice(formatUserError(error));
     }
   }
 
@@ -2248,6 +2319,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       openInspector,
       contentSearch,
       setContentSearch,
+      queue,
+      removeQueued,
+      moveQueued,
+      editQueued,
+      steerQueued,
+      threadFind,
+      setThreadFind,
       gitCommit,
       gitStage,
       gitDiscard,
@@ -2325,6 +2403,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       skillId,
       filePicker,
       contentSearch,
+      queue,
+      threadFind,
       navigation,
       inspectorTab,
       projectRuns,

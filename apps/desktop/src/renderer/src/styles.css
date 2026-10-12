@@ -11174,3 +11174,21 @@ fieldset.harness-options:disabled { opacity: .7; }
 .git-diffstat .added { color: var(--green); }
 .git-diffstat .removed { color: var(--red); }
 
+/* Queued follow-ups above the composer controls. */
+.queued-prompts { margin: 0 0.35rem 0.5rem; padding: 0.5rem 0.65rem; border: 1px solid var(--border-color); border-radius: 0.6rem; background: var(--surface-0); font-size: 0.8125rem; }
+.queued-prompts-head { display: flex; gap: 0.5rem; align-items: baseline; margin-bottom: 0.35rem; }
+.queued-prompts-head strong { font-size: 0.75rem; }
+.queued-prompts-head .faint { font-size: 0.6875rem; }
+.queued-prompts-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.25rem; }
+.queued-prompt { display: flex; align-items: center; gap: 0.4rem; min-width: 0; }
+.queued-prompt-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.queued-prompt-meta { color: var(--text-faint); font-size: 0.6875rem; }
+.queued-prompt-actions { display: flex; gap: 0.1rem; align-items: center; flex-shrink: 0; }
+.queued-prompt-actions .icon-btn:disabled { opacity: 0.35; }
+
+/* Find in conversation. */
+.thread-find { display: flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.75rem; border-bottom: 1px solid var(--border-color); background: var(--surface-0); font-size: 0.8125rem; flex-shrink: 0; }
+.thread-find input { flex: 1; min-width: 0; height: 1.75rem; padding: 0 0.5rem; border: 1px solid var(--border-color); border-radius: var(--control-radius); background: var(--bg); color: var(--text); font-size: 0.8125rem; }
+.thread-find-count { color: var(--text-muted); font-size: 0.75rem; min-width: 5rem; }
+.turn-focus { outline: 2px solid color-mix(in srgb, var(--text) 25%, transparent); outline-offset: 2px; border-radius: 0.5rem; }
+

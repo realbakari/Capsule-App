@@ -5,11 +5,13 @@ import { localTimings } from "@capsule/shared";
 const OVERSCAN = 700;
 
 /** Variable-height rows. Measurements and focus belong to stable turn IDs. */
-export function VirtualTurns({ turns, folded, scroller, stick, children }: {
+export function VirtualTurns({ turns, folded, scroller, stick, focus, children }: {
   turns: Turn[];
   folded: ReadonlySet<string>;
   scroller: RefObject<HTMLDivElement | null>;
   stick: boolean;
+  /** A turn to scroll to and mark, for find; the nonce lets the same turn be asked for twice. */
+  focus?: { id: string; nonce: number };
   children: (turn: Turn) => ReactNode;
 }) {
   const renderStarted = performance.now();
@@ -30,6 +32,16 @@ export function VirtualTurns({ turns, folded, scroller, stick, children }: {
   });
   const live = useRef({ rows, folded, stick });
   live.current = { rows, folded, stick };
+  useEffect(() => {
+    if (!focus) return;
+    const root = scroller.current;
+    const list = container.current;
+    const row = live.current.rows.find((row) => row.turn.id === focus.id);
+    if (!root || !list || !row) return;
+    const offset = list.getBoundingClientRect().top - root.getBoundingClientRect().top + root.scrollTop;
+    root.scrollTo({ top: Math.max(0, offset + row.top - 48), behavior: "smooth" });
+    setPinned((current) => new Set(current).add(focus.id));
+  }, [focus, scroller]);
 
   // Parent refs are attached after child layout effects. Subscribe after commit.
   useEffect(() => {
@@ -106,7 +118,7 @@ export function VirtualTurns({ turns, folded, scroller, stick, children }: {
 
   return <div ref={container} className="virtual-turns" style={{ position: "relative", height: total, flexShrink: 0, overflowAnchor: "none" }}>
     {rows.filter((row) => row.top + row.height >= viewport.top - OVERSCAN && row.top <= viewport.top + viewport.height + OVERSCAN
-      || pinned.has(row.turn.id)).map((row) => <div key={row.turn.id} data-virtual-turn={row.turn.id}
+      || pinned.has(row.turn.id)).map((row) => <div key={row.turn.id} data-virtual-turn={row.turn.id} className={focus?.id === row.turn.id ? "turn-focus" : undefined}
         style={{ position: "absolute", top: row.top, width: "100%", display: "flow-root" }}>
         {children(row.turn)}
       </div>)}

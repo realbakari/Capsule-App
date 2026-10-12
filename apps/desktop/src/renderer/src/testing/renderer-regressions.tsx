@@ -1381,6 +1381,7 @@ window.runRendererRegressions = async () => {
   await runPanelRegressions(host, contextBase);
   phase("simulator");
   await runSimulatorRegressions(host, contextBase);
+  phase("follow-ups");
   phase("activity and startup");
   await runActivityRegressions(host);
   await runChannelRegressions(host);

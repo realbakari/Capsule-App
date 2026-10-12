@@ -221,6 +221,10 @@ export function Conversation() {
     settings,
     openPath,
     terminalOpen,
+    setDraft,
+    attachFiles,
+    threadFind,
+    setThreadFind,
     view,
     setTerminalOpen,
     setInspectorOpen,
@@ -392,6 +396,7 @@ export function Conversation() {
           </button>
         </div>
       )}
+      {threadFind && <ThreadFind messages={workspaceMessages} onLocate={locateMessage} onClose={() => setThreadFind(false)} />}
       <div
         className="conversation"
         ref={scroller}
@@ -480,7 +485,7 @@ export function Conversation() {
                 </div>
               )}
               {historyNavigation}
-              <VirtualTurns key={session?.id} turns={turns} folded={folded} scroller={scroller} stick={stick}>{(turn) =>
+              <VirtualTurns key={session?.id} turns={turns} folded={folded} scroller={scroller} stick={stick} focus={focusTurn}>{(turn) =>
                 folded.has(turn.id) ? (
                   <FoldedTurn key={turn.id} turn={turn} onOpen={openTurn} />
                 ) : (

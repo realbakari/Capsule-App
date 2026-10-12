@@ -7,7 +7,7 @@ import { SearchDialog, type SearchDialogItem } from "./SearchDialog";
 
 export function Palette() {
   const {
-    api, palette, paletteQuery, setPalette, setPaletteQuery, setView, createTask,
+    api, palette, paletteQuery, setPalette, setPaletteQuery, setView, createTask, canGoBack, canGoForward, goBack, goForward, setThreadFind,
     createProjectFromFolder, pickProjectDirectory, pickFilesToMention, projects,
     sessions, session, setProjectId, setAboutOpen, openInspector, setAgentCommandsOpen,
     project, terminalOpen, setTerminalOpen,
@@ -44,6 +44,7 @@ export function Palette() {
       { id: "simulator", label: "Open iOS Simulator", group: "Workspace", icon: <SmartphoneIcon size={15} />, disabledReason: desktopOnly ?? (api.platform && api.platform !== "darwin" ? "Available on macOS with Xcode." : undefined), onSelect: () => openInspector("simulator") },
       { id: "back", label: "Back", group: "Go to", shortcut: "⌘[", disabledReason: canGoBack ? undefined : "No earlier conversation to go back to.", onSelect: goBack },
       { id: "forward", label: "Forward", group: "Go to", shortcut: "⌘]", disabledReason: canGoForward ? undefined : "No later conversation to go forward to.", onSelect: goForward },
+      { id: "find-in-thread", label: "Find in conversation", group: "Workspace", icon: <SearchIcon size={15} />, shortcut: "⌘F", disabledReason: !session ? "Open a conversation first." : undefined, onSelect: () => { setView("chat"); setThreadFind(true); } },
       { id: "chat", label: "Open conversation", group: "Go to", icon: <MessageSquareIcon size={15} />, onSelect: () => setView("chat") },
       { id: "channels", label: "Shared channels", group: "Go to", icon: <MessageSquareIcon size={15} />, disabledReason: desktopOnly, onSelect: () => setView("channels") },
       { id: "skills", label: "Skills & packs", group: "Go to", onSelect: () => setView("skills") },
@@ -78,7 +79,7 @@ export function Palette() {
       onSelect: () => { setProjectId(message.projectId, message.sessionId); setView("chat"); },
     }));
     return [...actions, ...projectItems, ...threads, ...messages];
-  }, [api, query, currentSearch, projects, sessions, session, project, terminalOpen, setTerminalOpen, createTask, createProjectFromFolder, pickProjectDirectory, pickFilesToMention, setView, setProjectId, setAboutOpen, openInspector, setAgentCommandsOpen]);
+  }, [api, query, currentSearch, projects, sessions, session, project, terminalOpen, setTerminalOpen, createTask, createProjectFromFolder, pickProjectDirectory, pickFilesToMention, setView, setProjectId, setAboutOpen, openInspector, setAgentCommandsOpen, canGoBack, canGoForward, goBack, goForward, setThreadFind]);
 
   if (!palette) return null;
   return <SearchDialog title="Search workspace" placeholder="Search commands, projects, conversations…" query={paletteQuery}

@@ -678,3 +678,6 @@ export function RotateIcon(props: IconProps) {
   );
 }
 
+export function ArrowDownIcon(props: IconProps) {
+  return <Svg {...props}><path d="M12 5v14M5 12l7 7 7-7" /></Svg>;
+}

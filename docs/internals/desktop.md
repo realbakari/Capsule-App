@@ -525,6 +525,19 @@ its text behind a `$` prompt with a copy control, then its output. A user
 message's hover actions are Copy and **Continue in a new conversation**,
 which starts a thread in the same project with that prompt as the draft.
 
+Sending during a running turn enqueues instead of refusing: `prompt-queue`
+keeps up to 20 follow-ups per conversation in `capsule.queue:<sessionId>`,
+`QueuedPrompts` above the steer row lists them with Steer now (route
+permitting), move, edit-back and remove, and a workspace effect sends the
+first one once the thread is free, after a 1.5s settle on thread switches so
+a not-yet-listed live run cannot be raced. A queued send that fails goes to
+Stash. `↑` in an empty or caret-at-start prompt recalls earlier user prompts
+(newest first, steers and repeats skipped); `↓` walks forward and restores
+the original draft; typing ends the walk. `⌘F` (`find-in-thread`, also in the
+palette) opens `ThreadFind` above the transcript: it counts matching messages,
+Enter / Shift+Enter walk them, and the matching turn is unfolded, scrolled to
+through `VirtualTurns`' `focus` prop and outlined.
+
 The titlebar's branch chip shows `+added −removed` from Git status when the
 checkout is dirty, and a **Create PR** chip appears on a non-default branch
 with `gh` available and no open pull request; it opens Review, which owns

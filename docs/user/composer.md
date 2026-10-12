@@ -211,8 +211,15 @@ Pasting files uses the same attachment validation as dropping them. Pasted
 clipboard images are saved locally first. Attachments are desktop-only; a
 paired read-only viewer cannot attach files or send messages.
 
-Only one turn may run in a thread at a time. Wait or **Stop** before sending a
-follow-up; Gateway sessions offer **Steer** during a live turn when supported.
+One turn runs in a thread at a time, but you do not have to wait to send the
+next message. A prompt sent while a turn is running joins a queue above the
+composer and goes out, in order, as soon as the thread is free. Each queued
+follow-up can be edited back into the composer, moved up or down, removed,
+or, on routes that can steer, sent into the running turn with **Steer now**.
+The queue belongs to its conversation, holds up to twenty messages, and
+survives a restart. A queued message that fails to send goes to Stash like
+any other. Gateway sessions also offer **Steer** during a live turn when
+supported. Press `↑` in an empty prompt to recall what you asked before.
 Steering drafts stay with their conversation. A pending steer cannot be sent
 twice, and a newer draft is not cleared when the earlier steer finishes.
 Send-and-new-conversation stays put on a rejected send. A refresh failure after

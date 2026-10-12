@@ -24,6 +24,8 @@ import {
 } from "../shell/icons";
 import { ComposerMenu, detectTrigger, type SuggestItem } from "./ComposerMenu";
 import { ComposerTasks } from "./ComposerTasks";
+import { QueuedPrompts } from "./QueuedPrompts";
+import { recallablePrompts } from "../../lib/prompt-queue";
 import { searchComposerSkills, skillSource } from "../../lib/composer-skills";
 import { shouldRestComposer } from "../../lib/composer-rest";
 import { tasksFromRunEvents } from "@capsule/shared";
@@ -162,6 +164,14 @@ export function Composer({
   } = workspace;
   const harnesses = workspace.harnesses ?? [];
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [recall, setRecall] = useState<{ index: number; original: string }>();
+  useEffect(() => { setRecall(undefined); }, [session?.id]);
+  useEffect(() => {
+    if (!recall) return;
+    // Typing over a recalled prompt ends the walk; the draft is the person's again.
+    if (draft !== recallablePrompts(messages)[recall.index]) setRecall(undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft]);
   const inlinePasteUntil = useRef(0);
   const composerRef = useRef<HTMLDivElement>(null);
   const [menuIndex, setMenuIndex] = useState(0);
@@ -579,6 +589,30 @@ export function Composer({
             }
             if (menuOpen && event.key === "Escape") { event.preventDefault(); setMenuDismissed(true); return; }
             if (menuOpen && event.key === "Enter" && !event.metaKey && !event.ctrlKey && !event.shiftKey) { event.preventDefault(); return; }
+            /*
+             * ArrowUp in an empty prompt, or at its start, walks back through
+             * what this thread was asked before; ArrowDown walks forward and
+             * finally restores whatever was being typed.
+             */
+            if ((event.key === "ArrowUp" || event.key === "ArrowDown") && !menuOpen && items.length === 0 && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) {
+              const field = event.currentTarget;
+              const history = recallablePrompts(messages);
+              const atStart = draft === "" || (field.selectionStart === 0 && field.selectionEnd === 0);
+              if (event.key === "ArrowUp" && history.length > 0 && (atStart || recall)) {
+                event.preventDefault();
+                const index = recall ? Math.min(recall.index + 1, history.length - 1) : 0;
+                if (recall && index === recall.index) return;
+                setRecall({ index, original: recall?.original ?? draft });
+                setDraft(history[index]!);
+                return;
+              }
+              if (event.key === "ArrowDown" && recall) {
+                event.preventDefault();
+                if (recall.index === 0) { setDraft(recall.original); setRecall(undefined); }
+                else { setRecall({ ...recall, index: recall.index - 1 }); setDraft(history[recall.index - 1]!); }
+                return;
+              }
+            }
             if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
               event.preventDefault();
               if (event.shiftKey || sendOnEnter) void sendAndContinue();
@@ -669,6 +703,7 @@ export function Composer({
             </button>
           </div>
         )}
+        <QueuedPrompts />
         {harnessLive && activeRun && capabilities.steer.state === "unavailable" && <p className="capability-hint">{capabilities.steer.detail}</p>}
         {harnessLive && activeRun && capabilities.steer.state !== "unavailable" && (
           <div className="steer-row">

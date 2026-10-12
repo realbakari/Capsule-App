@@ -11,6 +11,7 @@
 | Search in files | `⇧⌘F` |
 | Toggle the sidebar | `⌘B` |
 | Toggle the inspector | `⌘\` |
+| Find in the current conversation | `⌘F` |
 | Back to the previous conversation you visited | `⌘[` |
 | Forward again | `⌘]` |
 | Stash the current prompt | `⌘S` |
@@ -38,6 +39,7 @@ Two things the editor will not let you do:
 - `$` to attach a skill
 - Paperclip or drop to attach local files
 - `⌘S` to stash the current prompt, or open the stash when the composer is empty
+- `↑` in an empty prompt recalls earlier prompts from this conversation; `↓` comes back
 
 ## Finding your way around
 
