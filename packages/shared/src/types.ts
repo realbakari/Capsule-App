@@ -343,6 +343,32 @@ export interface LocalServer {
   protocol: "http" | "https";
 }
 
+/** What the simulator surface can do on this machine. `supported` is false off macOS or without Xcode. */
+export interface SimulatorInventory {
+  supported: boolean;
+  reason?: string;
+  devices: Simulator[];
+}
+
+export interface SimulatorApp {
+  bundleId: string;
+  name: string;
+  type: "User" | "System";
+}
+
+/** Every operation the desktop performs on a simulator: one typed action per control. */
+export type SimulatorAction =
+  | { type: "boot" }
+  | { type: "shutdown" }
+  | { type: "reveal" }
+  | { type: "appearance"; style: "light" | "dark" }
+  | { type: "openUrl"; url: string }
+  | { type: "launch"; bundleId: string }
+  | { type: "terminate"; bundleId: string }
+export interface SimulatorActionResult {
+  file?: string;
+}
+
 export interface GitChange {
   path: string;
   code: string;

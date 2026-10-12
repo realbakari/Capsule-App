@@ -20,6 +20,7 @@
     "@capsule/harness": "workspace:*",
     "@capsule/remote": "workspace:*",
     "@capsule/shared": "workspace:*",
+    "@capsule/simulator": "workspace:*",
     "@capsule/terminal": "workspace:*",
     "@capsule/ui": "workspace:*",
     "@openclaw/gateway-client": "2026.8.1-beta.3",

@@ -41,6 +41,7 @@ const api = {
   /* Resolved once at preload time so path display can abbreviate the home
      directory without an IPC round trip on every render. */
   homeDir: os.homedir(),
+  platform: process.platform as NodeJS.Platform,
   getPathForFile: (file: File): string => webUtils.getPathForFile(file),
   listProjects: () => ipcRenderer.invoke(IPC_CHANNELS.listProjects),
   createProject: (input: unknown) => ipcRenderer.invoke(IPC_CHANNELS.createProject, input),
@@ -191,6 +192,10 @@ const api = {
   searchContents: (projectId: string, query: string, sessionId?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.searchContents, projectId, query, sessionId),
   listLocalServers: () => ipcRenderer.invoke(IPC_CHANNELS.listLocalServers),
+  listSimulators: (): Promise<import("@capsule/shared").SimulatorInventory> => ipcRenderer.invoke(IPC_CHANNELS.listSimulators),
+  listSimulatorApps: (udid: string): Promise<import("@capsule/shared").SimulatorApp[]> => ipcRenderer.invoke(IPC_CHANNELS.listSimulatorApps, udid),
+  simulatorScreen: (udid: string): Promise<import("@capsule/shared").SimulatorFrame> => ipcRenderer.invoke(IPC_CHANNELS.simulatorScreen, udid),
+  simulatorAction: (udid: string, action: import("@capsule/shared").SimulatorAction): Promise<import("@capsule/shared").SimulatorActionResult | undefined> => ipcRenderer.invoke(IPC_CHANNELS.simulatorAction, udid, action),
   openPath: (target: string) => ipcRenderer.invoke(IPC_CHANNELS.openPath, target),
   pickDirectory: () => ipcRenderer.invoke(IPC_CHANNELS.pickDirectory),
   pickFiles: () => ipcRenderer.invoke(IPC_CHANNELS.pickFiles),

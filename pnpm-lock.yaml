@@ -55,6 +55,9 @@ importers:
       '@capsule/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@capsule/simulator':
+        specifier: workspace:*
+        version: link:../../packages/simulator
       '@capsule/terminal':
         specifier: workspace:*
         version: link:../../packages/terminal
@@ -343,6 +346,15 @@ importers:
         version: link:../shared
 
   packages/shared: {}
+
+  packages/simulator:
+    dependencies:
+      '@capsule/process':
+        specifier: workspace:*
+        version: link:../process
+      '@capsule/shared':
+        specifier: workspace:*
+        version: link:../shared
 
   packages/skills:
     dependencies:

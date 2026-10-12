@@ -10905,3 +10905,102 @@ fieldset.harness-options:disabled { opacity: .7; }
 .archived-conversations { margin-bottom: 1.5rem; }
 .archived-conversations summary { cursor: pointer; padding-block: .5rem; }
 .archived-conversations .row { padding-block: .375rem; gap: 1rem; }
+
+/* ───────────── Simulator surface ───────────── */
+.simulator-pane { background: var(--bg); }
+.simulator-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--surface-0);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 20;
+}
+.simulator-picker { position: relative; min-width: 0; }
+.simulator-picker-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.3rem 0.5rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.simulator-picker-trigger:hover:not(:disabled) { background: var(--bg-hover); }
+.simulator-picker-trigger:disabled { cursor: default; }
+.simulator-picker-copy { display: grid; min-width: 0; line-height: 1.2; }
+.simulator-picker-copy b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.875rem; font-weight: 600; }
+.simulator-picker-copy small { color: var(--text-muted); font-size: 0.6875rem; }
+.simulator-picker-menu { left: 0; right: auto; min-width: 17rem; max-width: min(24rem, calc(100cqw - 1rem)); max-height: 20rem; overflow: auto; }
+.simulator-device-row { gap: 0.35rem; }
+.simulator-device-row .preview-menu-item { display: grid; gap: 0.1rem; }
+.simulator-device-row .preview-menu-item.active { background: rgba(255, 255, 255, 0.06); }
+.simulator-device-name { font-size: 0.8125rem; }
+.simulator-device-row small { font-size: 0.6875rem; }
+
+.simulator-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  align-self: center;
+  margin: 0.4rem auto 0.75rem;
+  padding: 0.3rem 0.45rem;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--surface-0);
+  box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.35);
+  flex-shrink: 0;
+  max-width: calc(100% - 1.5rem);
+  overflow-x: auto;
+}
+.simulator-toolbar .preview-chrome-btn { border-radius: 999px; }
+.simulator-toolbar-sep { width: 1px; height: 1rem; margin: 0 0.2rem; background: var(--border-color); flex-shrink: 0; }
+
+.simulator-banner {
+  margin: 0.4rem 0.75rem 0;
+  padding: 0.4rem 0.65rem;
+  border-radius: 0.5rem;
+  background: var(--surface-0);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  line-height: 1.45;
+  flex-shrink: 0;
+  overflow-wrap: anywhere;
+}
+.simulator-banner.error { color: var(--red); }
+.simulator-tool-row {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  margin: 0.4rem 0.75rem 0;
+  flex-shrink: 0;
+}
+.simulator-tool-row .preview-address-input { height: 1.85rem; }
+.simulator-apps { margin: 0.4rem 0.75rem 0; max-height: 14rem; overflow: auto; flex-shrink: 0; border: 1px solid var(--border-color); border-radius: 0.5rem; padding: 0.3rem; background: var(--surface-0); }
+.simulator-app-list .preview-menu-item { display: grid; gap: 0.1rem; }
+.simulator-apps p { margin: 0.4rem 0.5rem; font-size: 0.75rem; }
+
+.simulator-empty,
+.simulator-offline {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 0.45rem;
+  text-align: center;
+  color: var(--text-muted);
+  padding: 2rem 1.5rem;
+}
+.simulator-empty h3, .simulator-offline h3 { margin: 0.4rem 0 0; font-size: 0.9375rem; color: var(--text); }
+.simulator-empty p, .simulator-offline p { margin: 0; max-width: 28rem; font-size: 0.8125rem; line-height: 1.5; }
+.simulator-offline .send { margin-top: 0.5rem; }
+

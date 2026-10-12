@@ -184,6 +184,7 @@ export function createRemoteBridge(token: string): CapsuleApi {
   const bridge = new Proxy(
     {
       homeDir: "",
+      platform: undefined,
       isDesktop: false,
       get remoteMode() { return !ready ? "connecting" : control ? "control" : "read"; },
       get remoteError() { return authError; },

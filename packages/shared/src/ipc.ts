@@ -130,6 +130,11 @@ export const IPC_CHANNELS = {
   gitRebasePullRequestStack: "capsule:gitRebasePullRequestStack",
   searchContents: "capsule:searchContents",
   listLocalServers: "capsule:listLocalServers",
+  /* The iOS Simulator surface. Desktop-only: none of these are viewer reads. */
+  listSimulators: "capsule:listSimulators",
+  listSimulatorApps: "capsule:listSimulatorApps",
+  simulatorScreen: "capsule:simulatorScreen",
+  simulatorAction: "capsule:simulatorAction",
   openPath: "capsule:openPath",
   listHarnesses: "capsule:listHarnesses",
   doctorHarness: "capsule:doctorHarness",

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { searchSessionTitles, type SearchResults } from "@capsule/shared";
 import { useWorkspace } from "../../lib/workspace";
 import { formatUserError } from "../../lib/errors";
-import { CpuIcon, FolderIcon, MessageSquareIcon, PlusIcon, SearchIcon, SettingsIcon, TerminalIcon } from "./icons";
+import { CpuIcon, FolderIcon, GlobeIcon, MessageSquareIcon, PlusIcon, SearchIcon, SettingsIcon, SmartphoneIcon, TerminalIcon } from "./icons";
 import { SearchDialog, type SearchDialogItem } from "./SearchDialog";
 
 export function Palette() {
@@ -40,6 +40,8 @@ export function Palette() {
       { id: "open-files", label: "Open files", group: "Actions", icon: <FolderIcon size={15} />, disabledReason: desktopOnly, onSelect: pickFilesToMention },
       { id: "terminal", label: terminalOpen ? "Hide terminal" : "Show terminal", group: "Workspace", icon: <TerminalIcon size={15} />, shortcut: "⌘J", disabledReason: desktopOnly ?? (!(session?.workingDirectory ?? project?.workingDirectory) ? "Open a folder first." : undefined), onSelect: () => { setView("chat"); setTerminalOpen(!terminalOpen); } },
       { id: "commands", label: "Run a project command", group: "Workspace", icon: <TerminalIcon size={15} />, disabledReason: desktopOnly ?? (!project ? "Open a project first." : undefined), onSelect: () => { setView("chat"); openInspector("term"); } },
+      { id: "browser", label: "Open browser", group: "Workspace", icon: <GlobeIcon size={15} />, onSelect: () => openInspector("browser") },
+      { id: "simulator", label: "Open iOS Simulator", group: "Workspace", icon: <SmartphoneIcon size={15} />, disabledReason: desktopOnly ?? (api.platform && api.platform !== "darwin" ? "Available on macOS with Xcode." : undefined), onSelect: () => openInspector("simulator") },
       { id: "chat", label: "Open conversation", group: "Go to", icon: <MessageSquareIcon size={15} />, onSelect: () => setView("chat") },
       { id: "channels", label: "Shared channels", group: "Go to", icon: <MessageSquareIcon size={15} />, disabledReason: desktopOnly, onSelect: () => setView("channels") },
       { id: "skills", label: "Skills & packs", group: "Go to", onSelect: () => setView("skills") },

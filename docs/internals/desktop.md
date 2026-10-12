@@ -267,12 +267,12 @@ Helpers: `projectFolderList`, `addFolderToProject`, `removeFolderFromProject`, `
 ## Inspector
 
 Opening the panel with no surface chosen shows the chooser: Review, Commands,
-Files, Browser, Agents and Side chat, each with what it opens and its shortcut. A
+Files, Browser, Simulator, Agents and Side chat, each with what it opens and its shortcut. A
 surface that cannot open is disabled and says why — "Available for Git
 repositories", "Open a project first" — rather than being a control that does
 nothing when clicked.
 
-Tools: **Launch**, **Review**, **Commands**, **Browser**, **Files**, **Agents**, **Side chat**.
+Tools: **Launch**, **Review**, **Commands**, **Browser**, **Simulator**, **Files**, **Agents**, **Side chat**.
 
 - `+` opens Launch. Tabs are not nested buttons. Maximize, tree toggle, and close live in the chrome.
 - **Files** is a split: preview on the left, expandable tree on the right. Folders expand **in place**. There is no navigate-into-directory / `← ..` stack and no `dir` current-path state.

@@ -23,6 +23,7 @@ import { formatProjectRoot, toWorkspaceRelative } from "../../lib/paths";
 import { useWorkspace } from "../../lib/workspace";
 import { DiffView } from "./DiffView";
 import { EmbeddedBrowser } from "./EmbeddedBrowser";
+import { SimulatorPane } from "./SimulatorPane";
 import { FilePreviewView } from "./FilePreview";
 import { FileTreePane, sortTreeEntries } from "./FileTree";
 import { ThreadAgents } from "./ThreadAgents";
@@ -41,6 +42,7 @@ import {
   MinimizeIcon,
   PanelRightIcon,
   PlusIcon,
+  SmartphoneIcon,
   TerminalIcon,
   XIcon,
 } from "./icons";
@@ -48,7 +50,7 @@ import {
 /** Bump when the inspector shell changes so a stuck error panel remounts. */
 export const INSPECTOR_REVISION = 3;
 
-type InspectorTool = "launcher" | "review" | "terminal" | "browser" | "files" | "chat" | "agents";
+type InspectorTool = "launcher" | "review" | "terminal" | "browser" | "simulator" | "files" | "chat" | "agents";
 
 function toolFromTab(tab: string): InspectorTool {
   if (tab === "term") return "terminal";
@@ -56,6 +58,7 @@ function toolFromTab(tab: string): InspectorTool {
   if (tab === "agents" || tab === "run") return "agents";
   if (tab === "chat") return "chat";
   if (tab === "browser") return "browser";
+  if (tab === "simulator") return "simulator";
   if (tab === "files" || tab === "preview") return "files";
   return "launcher";
 }
@@ -65,6 +68,7 @@ function toolTitle(tool: InspectorTool, fileName?: string): string {
   if (tool === "review") return "Review";
   if (tool === "terminal") return "Commands";
   if (tool === "browser") return "Browser";
+  if (tool === "simulator") return "Simulator";
   if (tool === "chat") return "Side chat";
   if (tool === "agents") return "Agents";
   return "Launch";
@@ -90,6 +94,9 @@ export const SURFACES: Array<{
   blockedBy: (state: {
     projectId?: string;
     git?: { isRepo?: boolean; dirty?: boolean };
+    /** `false` in a paired viewer, which has no machine to run a simulator on. */
+    desktop?: boolean;
+    platform?: string;
   }) => string | undefined;
 }> = [
   { tool: "agents", label: "Agents", detail: "This thread’s agent and reported delegated tasks.", icon: CpuIcon, blockedBy: () => undefined },
@@ -122,6 +129,14 @@ export const SURFACES: Array<{
     blockedBy: () => undefined,
   },
   {
+    tool: "simulator",
+    label: "Simulator",
+    detail: "Watch and drive an iOS Simulator.",
+    icon: SmartphoneIcon,
+    blockedBy: ({ desktop, platform }) =>
+      desktop === false ? "Available in the desktop app." : platform && platform !== "darwin" ? "Available on macOS with Xcode." : undefined,
+  },
+  {
     tool: "chat",
     label: "Side chat",
     detail: "Ask without interrupting the thread.",
@@ -135,6 +150,7 @@ const TOOL_SHORTCUTS: Record<InspectorTool, string> = {
   review: "⌃⇧G",
   terminal: "⌃`",
   browser: "",
+  simulator: "",
   files: "",
   chat: "⌥⌘S",
   agents: "",
@@ -595,6 +611,7 @@ export function Inspector() {
     else if (tool === "chat") setInspectorTab("chat");
     else if (tool === "agents") setInspectorTab("agents");
     else if (tool === "browser") setInspectorTab("browser");
+    else if (tool === "simulator") setInspectorTab("simulator");
     else setInspectorTab("launcher");
   }
 
@@ -799,6 +816,8 @@ export function Inspector() {
         return <TerminalIcon size={14} />;
       case "browser":
         return <GlobeIcon size={14} />;
+      case "simulator":
+        return <SmartphoneIcon size={14} />;
       case "files":
         return <FileIcon size={14} />;
       case "chat":
@@ -932,6 +951,12 @@ export function Inspector() {
               <span className="codex-breadcrumb-sep">·</span>
               <span className="truncate">{browserUrl}</span>
             </>
+          ) : activeTool === "simulator" ? (
+            <>
+              <span>Simulator</span>
+              <span className="codex-breadcrumb-sep">·</span>
+              <span className="truncate">iOS Simulator on this Mac</span>
+            </>
           ) : activeTool === "agents" ? (
             <span>Current thread · reported activity</span>
           ) : activeTool === "chat" ? (
@@ -963,7 +988,7 @@ export function Inspector() {
             <div className="codex-launcher-cards">
               {SURFACES.map((surface) => {
                 const Icon = surface.icon;
-                const blocked = surface.blockedBy({ projectId, git });
+                const blocked = surface.blockedBy({ projectId, git, desktop: api.isDesktop, platform: api.platform });
                 return (
                   <button
                     key={surface.tool}
@@ -1327,6 +1352,8 @@ export function Inspector() {
             onOpenExternal={(url) => void openPath(url)}
           />
         )}
+
+        {activeTool === "simulator" && <SimulatorPane />}
 
         {activeTool === "agents" && <div className="codex-tool-pane"><ThreadAgents /></div>}
 

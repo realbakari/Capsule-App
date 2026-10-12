@@ -29,6 +29,16 @@ describe("inspector surfaces", () => {
     expect(blocked.chat).toBeUndefined();
   });
 
+  it("keeps the simulator on the desktop, on a Mac", () => {
+    const state = { projectId: "p1", git: { isRepo: true } };
+    const simulator = SURFACES.find((s) => s.tool === "simulator")!;
+    expect(simulator.blockedBy({ ...state, desktop: false })).toBe("Available in the desktop app.");
+    expect(simulator.blockedBy({ ...state, desktop: true, platform: "win32" })).toBe("Available on macOS with Xcode.");
+    expect(simulator.blockedBy({ ...state, desktop: true, platform: "darwin" })).toBeUndefined();
+    // No project is needed: the simulator belongs to the Mac, not a folder.
+    expect(simulator.blockedBy({ desktop: true, platform: "darwin" })).toBeUndefined();
+  });
+
   it("gives every surface a label and a description", () => {
     for (const surface of SURFACES) {
       expect(surface.label.length, surface.tool).toBeGreaterThan(0);

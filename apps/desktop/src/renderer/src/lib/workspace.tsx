@@ -90,7 +90,8 @@ export type InspectorTab =
   | "agents"
   | "chat"
   | "term"
-  | "browser";
+  | "browser"
+  | "simulator";
 
 export const MODES: AgentMode[] = ["plan", "chat", "agent", "code", "research", "browser", "automation"];
 export const PRIMARY_MODES: AgentMode[] = ["plan", "chat", "code"];

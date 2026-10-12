@@ -1469,6 +1469,15 @@ function registerIpc(): void {
     requireEngine().searchContents(String(projectId), String(query), typeof sessionId === "string" ? sessionId : undefined),
   );
   handle(IPC_CHANNELS.listLocalServers, () => requireEngine().localServers());
+  /*
+   * The Simulator surface. Everything here is a write for a paired viewer:
+   * a boot, a tap and a screenshot all reach the machine, and the viewer has
+   * no device to show one on.
+   */
+  handle(IPC_CHANNELS.listSimulators, async () => (await import("./simulator.js")).simulatorInventory());
+  handle(IPC_CHANNELS.listSimulatorApps, async (udid) => (await import("./simulator.js")).simulatorApps(udid));
+  handle(IPC_CHANNELS.simulatorScreen, async (udid) => (await import("./simulator.js")).simulatorFrame(udid));
+  handle(IPC_CHANNELS.simulatorAction, async (udid, action) => (await import("./simulator.js")).simulatorAct(udid, action));
   handle(IPC_CHANNELS.openPath, async (target) => {
     const location = String(target);
     if (!location) return;

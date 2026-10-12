@@ -203,7 +203,7 @@ Keep files focused. Prefer a new package over growing `core` into a junk drawer.
 
 Layout: collapsible sidebar, 52px titlebar (no app mark), centered conversation, glass composer dock, optional inspector. Graphite and off-white matching the Capsule mark — no purple. Slash commands, file mentions, skills, and permission modes belong in the composer. Keep the default conversation free of policy matrices.
 
-The inspector is Launch / Review / Terminal / Browser / Files / Side chat. Files is an in-place expandable tree plus preview (images and code). Terminal is a command runner, not a PTY. Do not reintroduce a current-directory `dir` stack that navigates into folders.
+The inspector is Launch / Review / Terminal / Browser / Simulator / Files / Side chat. Files is an in-place expandable tree plus preview (images and code). Terminal is a command runner, not a PTY. Do not reintroduce a current-directory `dir` stack that navigates into folders.
 
 The product spec is [docs/internals/desktop.md](docs/internals/desktop.md). If the UI and that file disagree, fix both in the same change.
 

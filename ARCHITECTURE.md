@@ -138,6 +138,7 @@ packages/
   artifacts           Run outputs
   filesystem          Project-scoped file access
   terminal            Project commands, native terminal open, embedded PTY
+  simulator           iOS Simulator listing, capture and control over simctl, plus the XCUITest touch bridge
   acp                 Native CLI ACP stdio client and direct session host
   muse                Native Muse session SDK adapter behind the direct host
   codex               Native app-server client behind the direct host

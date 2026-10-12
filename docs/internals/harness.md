@@ -404,6 +404,8 @@ without an unbounded queue. MCP calls also use desktop update admission.
 Local `browser.tool` timings record only operation duration/failure, not URLs,
 arguments or page contents. Runtime completion is distinct from UI verification.
 
+### Simulator tools
+
 ### Turn evidence
 
 Turn verification is a workspace capability shared by every harness and both

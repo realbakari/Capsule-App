@@ -579,3 +579,82 @@ export function BellOffIcon(props: IconProps) {
     </Svg>
   );
 }
+
+export function SmartphoneIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="6" y="2.5" width="12" height="19" rx="2.5" />
+      <line x1="10.5" y1="18" x2="13.5" y2="18" />
+    </Svg>
+  );
+}
+
+export function HomeIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M3 11.5 12 4l9 7.5" />
+      <path d="M5.5 10v10h13V10" />
+      <path d="M10 20v-5h4v5" />
+    </Svg>
+  );
+}
+
+export function SunIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+    </Svg>
+  );
+}
+
+export function MoonIcon(props: IconProps) {
+  return <Svg {...props}><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z" /></Svg>;
+}
+
+export function PowerIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M12 3v9" />
+      <path d="M7 6.3a8 8 0 1 0 10 0" />
+    </Svg>
+  );
+}
+
+export function LinkIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1.5 1.5" />
+      <path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1.5-1.5" />
+    </Svg>
+  );
+}
+
+export function GridIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" />
+      <rect x="13.5" y="3.5" width="7" height="7" rx="1.5" />
+      <rect x="3.5" y="13.5" width="7" height="7" rx="1.5" />
+      <rect x="13.5" y="13.5" width="7" height="7" rx="1.5" />
+    </Svg>
+  );
+}
+
+export function KeyboardIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="2.5" y="6" width="19" height="12" rx="2" />
+      <path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M18 14h.01M9 14h6" />
+    </Svg>
+  );
+}
+
+export function PlayIcon(props: IconProps) {
+  return <Svg {...props}><path d="M7 4.5v15l12-7.5Z" /></Svg>;
+}
+
+export function PauseIcon(props: IconProps) {
+  return <Svg {...props}><path d="M8 5v14M16 5v14" /></Svg>;
+}
+

@@ -11,6 +11,7 @@ import {
   FolderIcon,
   GitBranchIcon,
   PanelRightIcon,
+  SmartphoneIcon,
   PlusIcon,
   StopIcon,
   TerminalIcon,

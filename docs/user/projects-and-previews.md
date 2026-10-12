@@ -86,6 +86,8 @@ Browser panel automatically.
 
 ## Local previews
 
+For a native iOS app, open **Simulator** instead; see [iOS Simulator](simulator.md).
+
 Open **Browser** in the inspector to see local HTTP apps that are responding on
 this Mac. The list refreshes while the panel is open and excludes listening
 services that do not answer like web pages. Select a server to open it in the
