@@ -406,6 +406,16 @@ arguments or page contents. Runtime completion is distinct from UI verification.
 
 ### Simulator tools
 
+The same loopback HTTP MCP transport offers `capsule-simulator` beside
+`capsule-browser` to direct spawns on macOS. A token resolves only its
+thread; a tool then resolves the device the user attached in that thread's
+Simulator panel, at call time, and refuses when none is attached, the device
+is not booted, or **Agent simulator access** is off. Tools: status,
+screenshot (bounded JPEG), tap, swipe, type, key (return/delete), home,
+open_url, apps, launch. No list, boot, shutdown, install or settings tool
+exists for agents. Gestures go through the XCUITest touch bridge the panel
+uses, started on demand. Gateway sessions are not given these tools.
+
 ### Turn evidence
 
 Turn verification is a workspace capability shared by every harness and both

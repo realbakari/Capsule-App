@@ -59,6 +59,8 @@ describe("ipc scopes", () => {
       "listSimulatorApps",
       "simulatorScreen",
       "simulatorAction",
+      "readSimulatorSettings",
+      "attachSimulator",
       "saveTextAttachment",
       "registerBrowserView",
       "setBrowserControl",

@@ -41,6 +41,14 @@ must not be silently treated as enabled.
   profiles and stay running across panel changes for up to 30 minutes. At most
   four can run; each has separate agent-control and paired-viewer sharing grants.
   Recording, profile import, arbitrary-script tools and file uploads are not provided.
+- **Simulator:** the desktop can list, start, watch, configure and shut down
+  iOS Simulators that Xcode already provides. The live screen is captured
+  frames, not video. Taps, swipes, Home and typing use Capsule's own touch
+  bridge, a test runner Xcode builds once from source; until it is ready the
+  panel is view-only and says why. A direct agent
+  that accepts HTTP MCP gets simulator tools for the one device attached in
+  its conversation, while **Agent simulator access** is on. Paired viewers
+  cannot open one.
 - **Page interaction:** tools use references from a recent snapshot of the
   main document. Frames, shadow-root content and rich-text editors are not
   fully supported. Preset preview widths change layout, not the device identity.

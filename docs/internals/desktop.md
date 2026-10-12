@@ -418,6 +418,76 @@ Tools: **Launch**, **Review**, **Commands**, **Browser**, **Simulator**, **Files
   admission asks the user to close background pages. Dock activation tests the
   main workspace window, not the count of hidden/companion windows. The paired viewer gets
   read-only, explicitly shared snapshots here, not a webview or write channel.
+- **Simulator** is the iOS Simulator surface, built on `@capsule/simulator`,
+  a wrapper over Apple's `simctl`. Nothing is installed: Xcode's own tools
+  list, boot, capture, configure and shut down devices. The pane polls
+  `listSimulators` every five seconds while open (single-flight, last good
+  list kept on failure) and, for a booted device, requests `simulatorScreen`
+  frames back to back with a short gap while the document is visible and the
+  stream is not paused. Main coalesces captures per device and returns a JPEG
+  bounded to 1200px on its longest edge, with the framebuffer size and, when
+  the touch bridge reports it, the logical point size. `simctl io screenshot -`
+  writes a file named `-`, so capture goes through a private temp file.
+  Every control is one typed `simulatorAction` (boot, shutdown, reveal,
+  appearance, openUrl, launch, terminate, connect, tap, press, swipe, text,
+  key, button) validated in main; the renderer never hands main a command
+  line, and a device is always a UDID, never the ambiguous `booted` alias.
+  Touch goes through Capsule's own bridge, `apps/desktop/native/simulator-bridge`:
+  one XCUITest (`BridgeTests.testServe`) that serves HTTP on a loopback port
+  behind a per-launch token and turns commands into public XCTest gestures
+  (coordinate tap, press, press-and-drag, `typeText` on the foreground
+  candidate app, `XCUIDevice.press(.home)`). The project is generated from
+  `project.yml` with xcodegen and committed, and shipped under
+  `Contents/Resources/simulator-bridge`. `SimulatorBridge` in
+  `@capsule/simulator` builds it once per Xcode build version with
+  `xcodebuild build-for-testing` into the profile's `simulator-bridge` cache
+  (single-flight, log beside the products), then runs
+  `test-without-building` per device with the port and token passed as
+  `TEST_RUNNER_` environment, polls `status` until the runner answers with the
+  screen size in points, and kills only the child it spawned. Each device
+  carries a `touch` state in the inventory (unavailable, idle, building,
+  starting, ready, failed). The pane sends `connect` once for an idle booted
+  device, shows building and starting states in a banner, offers Retry on
+  failure, and gates Home, Type and screen clicks on `ready`. Frames carry
+  point size only from a ready bridge. Click and drag on the frame map through
+  the rendered size to device points; under 8px of travel is a tap, otherwise
+  a swipe with the pointer's duration. Shutdown stops the device's bridge; app
+  quit stops them all. No third-party tool is detected or installed.
+  The phone frame is always drawn for the selected device. Until the user
+  attaches it, its screen is the attach card (`SimulatorAttach`): the state
+  of the device, an Xcode check and a touch-input check, and a split
+  **Attach simulator** button. Its arrow opens a device menu drawn by the
+  pane beside the phone (the screen clips), grouped **Running** then
+  **Available (will boot)**, newest runtime first; choosing one attaches it. Attaching
+  boots a shut-down device, remembers the choice per thread in
+  `capsule.simulator.attached:<threadId>`, and calls the write-scoped
+  `attachSimulator(threadId, udid)` so main knows which device that thread's
+  agent may use; the renderer repeats the call on mount so a restart keeps
+  the grant. Nothing streams and no touch bridge starts before attach.
+  **Detach simulator** (Tools drawer) clears both. The toolbar's power
+  control boots or shuts down; other controls are disabled until attached.
+  `SimulatorTools` is the drawer: appearance, Dynamic Type step and increase
+  contrast (`simctl ui`), rotation (bridge `orientation`, which also updates
+  the session's point size), status bar clean/clear (`simctl status_bar`),
+  location set/clear, push notification (`simctl push` with an APNs payload
+  on stdin), and privacy grant/revoke/reset for a user app. Each is one typed
+  action; the drawer re-reads `readSimulatorSettings` after every change.
+  **Record** runs `simctl io recordVideo` as an owned child; stop sends it an
+  interrupt, waits for exit, returns the file under Downloads and the pane
+  opens it. Shutdown stops a recording first.
+  Agent tools: `simulator-mcp.ts` serves `capsule-simulator` over the generic
+  loopback transport in `local-mcp.ts` (same token, host, origin, body and
+  concurrency rules as the browser server), offered beside `capsule-browser`
+  to direct spawns. A tool resolves the thread's attached, booted device at
+  call time and checks `agentSimulatorAccess`; there is no list, boot,
+  shutdown or settings tool. Touch tools call the shared bridge and start it
+  if needed. The bridge cache folder is keyed by Xcode build and a hash of
+  the runner source, so an edited runner rebuilds.
+  The chooser blocks the surface in a paired viewer ("Available in the desktop
+  app.") and off macOS ("Available on macOS with Xcode."); it needs no
+  project. All four channels are write-scoped. The command palette offers
+  **Open browser** and **Open iOS Simulator**. The last device is remembered
+  in `capsule.simulator.udid`. No agent tools are injected on either route.
 - File editors capture immutable project/root/path and their own revision cell.
   Navigating flushes pending changes to that owner; late preview/listing reads
   are rejected after selection changes. Old save replies do not update a new

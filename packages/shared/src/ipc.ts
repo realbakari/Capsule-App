@@ -135,6 +135,9 @@ export const IPC_CHANNELS = {
   listSimulatorApps: "capsule:listSimulatorApps",
   simulatorScreen: "capsule:simulatorScreen",
   simulatorAction: "capsule:simulatorAction",
+  readSimulatorSettings: "capsule:readSimulatorSettings",
+  /* Which simulator a thread's agent may see and drive: set from the panel, never by the agent. */
+  attachSimulator: "capsule:attachSimulator",
   openPath: "capsule:openPath",
   listHarnesses: "capsule:listHarnesses",
   doctorHarness: "capsule:doctorHarness",

@@ -658,3 +658,23 @@ export function PauseIcon(props: IconProps) {
   return <Svg {...props}><path d="M8 5v14M16 5v14" /></Svg>;
 }
 
+export function VideoIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="2.5" y="6.5" width="13" height="11" rx="2" />
+      <path d="m15.5 10 6-3v10l-6-3" />
+    </Svg>
+  );
+}
+
+export function RotateIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M3 12a9 9 0 0 1 15.5-6.3L21 8" />
+      <path d="M21 3v5h-5" />
+      <path d="M21 12a9 9 0 0 1-15.5 6.3L3 16" />
+      <path d="M3 21v-5h5" />
+    </Svg>
+  );
+}
+

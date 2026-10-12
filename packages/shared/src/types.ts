@@ -356,6 +356,31 @@ export type SimulatorTouch =
   | { state: "ready"; width: number; height: number }
   | { state: "failed"; detail: string };
 
+/** One iOS Simulator device as `simctl` reports it. */
+export interface Simulator {
+  udid: string;
+  name: string;
+  /** "iOS 26.4", "iPadOS 26.4", "watchOS 12.0" and so on. */
+  runtime: string;
+  family: "iPhone" | "iPad" | "Apple Watch" | "Apple TV" | "Apple Vision" | "Other";
+  state: "Booted" | "Booting" | "Shutdown" | "Shutting Down" | "Unknown";
+  lastBootedAt?: string;
+  touch: SimulatorTouch;
+  /** A screen recording is in progress. */
+  recording: boolean;
+}
+
+/** Device settings the Tools drawer reads back after each change. */
+export interface SimulatorDeviceSettings {
+  appearance?: "light" | "dark";
+  contentSize?: string;
+  increaseContrast?: boolean;
+  orientation?: SimulatorOrientation;
+  recording: boolean;
+}
+
+export type SimulatorOrientation = "portrait" | "landscapeLeft" | "landscapeRight" | "portraitUpsideDown";
+
 /** What the simulator surface can do on this machine. `supported` is false off macOS or without Xcode. */
 export interface SimulatorInventory {
   supported: boolean;
@@ -400,6 +425,17 @@ export type SimulatorAction =
   | { type: "text"; text: string }
   | { type: "key"; key: "return" | "delete" }
   | { type: "button"; name: "HOME" }
+  | { type: "rotate"; orientation: SimulatorOrientation }
+  | { type: "contentSize"; size: "increment" | "decrement" }
+  | { type: "contrast"; enabled: boolean }
+  | { type: "statusBar"; mode: "clean" | "clear" }
+  | { type: "location"; latitude: number; longitude: number }
+  | { type: "clearLocation" }
+  | { type: "push"; bundleId: string; title: string; body: string }
+  | { type: "privacy"; action: "grant" | "revoke" | "reset"; service: string; bundleId?: string }
+  /** Stop resolves with the recording's file. */
+  | { type: "record"; mode: "start" | "stop" };
+
 export interface SimulatorActionResult {
   file?: string;
 }

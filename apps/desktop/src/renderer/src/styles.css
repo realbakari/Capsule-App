@@ -11086,3 +11086,78 @@ fieldset.harness-options:disabled { opacity: .7; }
 .simulator-empty p, .simulator-offline p { margin: 0; max-width: 28rem; font-size: 0.8125rem; line-height: 1.5; }
 .simulator-offline .send { margin-top: 0.5rem; }
 
+/* Attach card inside the phone screen, and the Tools drawer. */
+.simulator-attach {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 12% 1.2rem 1.2rem;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.72);
+  overflow: auto;
+}
+.simulator-attach h3 { margin: 0; font-size: 1.1rem; line-height: 1.3; color: #fff; }
+.simulator-attach p { margin: 0; font-size: 0.8125rem; line-height: 1.45; max-width: 26rem; }
+.simulator-attach-checks { list-style: none; margin: 0.4rem 0 0; padding: 0; width: 100%; max-width: 26rem; display: grid; gap: 0.35rem; }
+.simulator-attach-checks li { display: flex; align-items: center; gap: 0.5rem; padding: 0.6rem 0.8rem; border-radius: 0.7rem; background: rgba(255, 255, 255, 0.07); font-size: 0.8125rem; text-align: left; }
+.simulator-attach-checks li[data-ok="true"] svg { color: #34c759; }
+.simulator-attach-checks li[data-ok="false"] svg { color: #ff453a; }
+.simulator-attach-foot { margin-top: auto; width: 100%; max-width: 26rem; display: grid; gap: 0.8rem; }
+.simulator-attach-foot small { font-size: 0.6875rem; color: rgba(255, 255, 255, 0.4); line-height: 1.4; }
+.simulator-attach-actions { position: relative; display: flex; }
+.simulator-attach-button, .simulator-attach-more {
+  height: 2.6rem;
+  border: 0;
+  background: #fff;
+  color: #111;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.simulator-attach-button { flex: 1; border-radius: 0.6rem 0 0 0.6rem; }
+.simulator-attach-more { width: 2.6rem; border-left: 1px solid rgba(0, 0, 0, 0.15); border-radius: 0 0.6rem 0.6rem 0; display: grid; place-items: center; }
+.simulator-attach-button:disabled, .simulator-attach-more:disabled { opacity: 0.55; cursor: default; }
+.simulator-stage { position: relative; }
+.simulator-attach-menu {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  bottom: auto;
+  left: auto;
+  width: min(18rem, calc(100% - 2rem));
+  max-height: calc(100% - 2rem);
+  overflow: auto;
+  z-index: 30;
+}
+.simulator-attach-menu .preview-menu-item { display: grid; gap: 0.1rem; }
+.simulator-attach-menu-head { padding: 0.45rem 0.65rem 0.2rem; font-size: 0.6875rem; color: var(--text-faint); }
+.simulator-attach-menu-head + .simulator-attach-menu-head { display: none; }
+
+.simulator-tools {
+  margin: 0.4rem 0.75rem 0;
+  max-height: 20rem;
+  overflow: auto;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.6rem;
+  background: var(--surface-0);
+  font-size: 0.8125rem;
+  display: grid;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+.simulator-tools section { display: grid; gap: 0.4rem; }
+.simulator-tools h5 { margin: 0; font-size: 0.6875rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-faint); }
+.simulator-tools p { margin: 0; font-size: 0.75rem; line-height: 1.4; }
+.simulator-tools-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
+.simulator-tools-row .preview-address-input { flex: 1 1 7rem; height: 1.75rem; }
+.simulator-tools-stack { display: grid; gap: 0.35rem; }
+.simulator-tools-stack .preview-address-input { height: 1.75rem; }
+.simulator-tools-stack .preview-viewport, .simulator-tools select.preview-viewport { max-width: none; }
+.simulator-tools-value { min-width: 6rem; text-align: center; font-size: 0.75rem; color: var(--text-muted); }
+.simulator-tools-check { display: flex; align-items: center; gap: 0.4rem; font-size: 0.75rem; }
+.simulator-tools .chip[aria-pressed="true"] { background: var(--bg-hover); color: var(--text); border-color: var(--text-muted); }
+

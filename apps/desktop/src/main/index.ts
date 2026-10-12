@@ -45,6 +45,7 @@ import { RunNotifications } from "./run-notifications";
 import { observeBrowser } from "./browser-diagnostics";
 import { secureBrowserSession } from "./browser-security";
 import { startBrowserMcpServer, type BrowserMcpServer } from "./browser-mcp";
+import { startSimulatorMcpServer, type SimulatorMcpServer } from "./simulator-mcp";
 import { Updater, mergeUpdateStatus } from "./updater";
 import { UpdateAdmission } from "./update-admission";
 import { NativeUpdateStager } from "./native-update-stager";
@@ -201,6 +202,7 @@ const browserGuestIds = new Set<number>();
 const browserReady = new Map<(contents: Electron.WebContents) => void, string | undefined>();
 
 let browserMcp: BrowserMcpServer | undefined;
+let simulatorMcp: SimulatorMcpServer | undefined;
 let petWindow: BrowserWindow | undefined;
 const petVoice = new PetVoice(app.isPackaged ? path.join(process.resourcesPath, "capsule-voice") : path.join(__dirname, "../../native/capsule-voice"));
 
@@ -1478,6 +1480,8 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.listSimulatorApps, async (udid) => (await import("./simulator.js")).simulatorApps(udid));
   handle(IPC_CHANNELS.simulatorScreen, async (udid) => (await import("./simulator.js")).simulatorFrame(udid));
   handle(IPC_CHANNELS.simulatorAction, async (udid, action) => (await import("./simulator.js")).simulatorAct(udid, action));
+  handle(IPC_CHANNELS.readSimulatorSettings, async (udid) => (await import("./simulator.js")).simulatorSettings(udid));
+  handle(IPC_CHANNELS.attachSimulator, async (threadId, udid) => (await import("./simulator.js")).attachSimulator(threadId, udid));
   handle(IPC_CHANNELS.openPath, async (target) => {
     const location = String(target);
     if (!location) return;
@@ -2125,15 +2129,35 @@ async function startEngineOnce(): Promise<void> {
    */
   try {
     browserMcp = await startBrowserMcpServer((operation) => updateAdmission.run(IPC_CHANNELS.setBrowserControl, operation));
+    if (process.platform === "darwin") {
+      simulatorMcp = await startSimulatorMcpServer((operation) => updateAdmission.run(IPC_CHANNELS.simulatorAction, operation)).catch((error: unknown) => {
+        console.warn("Simulator tools unavailable:", error instanceof Error ? error.message : error);
+        return undefined;
+      });
+    }
     engine.offerDirectMcpServers(({ threadId, harnessId }) => {
       if (!threadId || !browserMcp) return { servers: [], dispose: () => {} };
       const connection = browserMcp.register(browserAccess.target(threadId, harnessId));
+      /*
+       * The simulator tools reach only the device the user attached in this
+       * thread's panel, and only while the setting allows it; both are read
+       * at call time, so turning either off cuts a running agent off too.
+       */
+      const simulator = simulatorMcp?.register({
+        threadId,
+        allowed: () => engine?.getSettings().agentSimulatorAccess === true,
+      });
       return { servers: [{
         type: "http",
         name: "capsule-browser",
         url: connection.url,
         headers: Object.entries(connection.headers).map(([name, value]) => ({ name, value })),
-      }], dispose: () => { connection.dispose(); backgroundBrowsers.revokeAgent(threadId); browserAccess.revoke(threadId); } };
+      }, ...(simulator ? [{
+        type: "http" as const,
+        name: "capsule-simulator",
+        url: simulator.url,
+        headers: Object.entries(simulator.headers).map(([name, value]) => ({ name, value })),
+      }] : [])], dispose: () => { connection.dispose(); simulator?.dispose(); backgroundBrowsers.revokeAgent(threadId); browserAccess.revoke(threadId); } };
     });
   } catch (error) {
     console.warn("Browser tools unavailable:", error instanceof Error ? error.message : error);
@@ -2298,7 +2322,7 @@ const shutdown = new Shutdown(async () => {
   stopAllTerminals();
   backgroundBrowsers.closeAll();
   const results = await Promise.allSettled([
-    engine?.stop(), browserMcp?.close(), remoteAccess.set("off"),
+    engine?.stop(), browserMcp?.close(), simulatorMcp?.close(), remoteAccess.set("off"), import("./simulator.js").then((m) => m.stopSimulatorBridges()),
   ]);
   for (const result of results) {
     if (result.status === "rejected") console.error("Capsule shutdown cleanup failed", result.reason);

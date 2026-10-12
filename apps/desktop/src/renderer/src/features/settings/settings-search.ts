@@ -52,6 +52,7 @@ export const SETTINGS_SEARCH_ITEMS: SettingsSearchItem[] = [
   { title: "Browser access", section: "gateway", keywords: ["remote", "pairing", "web", "control", "devices"] },
   { title: "Menu bar", section: "general", keywords: ["tray", "status bar", "extra"] },
   { title: "Desktop companion", section: "general", keywords: ["pet", "mascot", "capsule", "animation", "motion"] },
+  { title: "Agent simulator access", section: "general", keywords: ["ios", "simulator", "device", "xcode", "touch", "attach"] },
   { title: "Local performance", section: "diagnostics", keywords: ["freeze", "timings", "slow", "git", "preview"] },
   { title: "Keep computer awake", section: "general", keywords: ["sleep", "power", "running"] },
   { title: "Response completions", section: "general", keywords: ["notification", "alert", "run complete"] },

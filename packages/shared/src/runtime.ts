@@ -114,6 +114,7 @@ export const DEFAULT_CAPSULE_SETTINGS: CapsuleSettings = {
   keepAwakeWhileRunning: false,
   autoDownloadUpdates: true,
   autoClassifySessions: true,
+  agentSimulatorAccess: true,
   archiveInactiveAfter: "never",
   gitForceWithLease: false,
   prDraft: false,
@@ -145,6 +146,7 @@ export const SETTINGS_SECTION_KEYS: Record<string, ReadonlyArray<keyof CapsuleSe
     "notifyApprovals",
     "bounceDockOnAttention",
     "autoClassifySessions",
+    "agentSimulatorAccess",
     "archiveInactiveAfter",
   ],
   appearance: [
@@ -238,6 +240,8 @@ export interface CapsuleSettings {
   customCodeFont?: string;
   notifyRunComplete: boolean;
   notifyApprovals: boolean;
+  /** Direct agents may use a simulator the user attached in that thread's panel. */
+  agentSimulatorAccess: boolean;
   bounceDockOnAttention: boolean;
   showMenuBarExtra: boolean;
   keepAwakeWhileRunning: boolean;
@@ -452,6 +456,7 @@ export function normalizeCapsuleSettings(input: Partial<CapsuleSettings> = {}): 
     customCodeFont: sanitizeFontName(input.customCodeFont),
     notifyRunComplete: flag(input.notifyRunComplete, DEFAULT_CAPSULE_SETTINGS.notifyRunComplete),
     notifyApprovals: flag(input.notifyApprovals, DEFAULT_CAPSULE_SETTINGS.notifyApprovals),
+    agentSimulatorAccess: flag(input.agentSimulatorAccess, DEFAULT_CAPSULE_SETTINGS.agentSimulatorAccess),
     bounceDockOnAttention: flag(
       input.bounceDockOnAttention,
       DEFAULT_CAPSULE_SETTINGS.bounceDockOnAttention,

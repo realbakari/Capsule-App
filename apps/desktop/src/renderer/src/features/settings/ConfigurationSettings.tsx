@@ -211,6 +211,9 @@ export function DesktopCard({ settings, onPatch }: SectionProps) {
       <SettingRow label="Download updates automatically" hint="Download compatible releases in the background. Capsule only restarts to install when you ask, after active work finishes.">
         <Switch checked={settings.autoDownloadUpdates} label="Download updates automatically" onChange={(autoDownloadUpdates) => onPatch({ autoDownloadUpdates })} />
       </SettingRow>
+      <SettingRow label="Agent simulator access" hint="Let a direct agent see and drive the iOS Simulator you attach in a conversation's Simulator panel. Off hides the simulator tools from agents started from now on and refuses calls from running ones.">
+        <Switch checked={settings.agentSimulatorAccess} label="Agent simulator access" onChange={(agentSimulatorAccess) => onPatch({ agentSimulatorAccess })} />
+      </SettingRow>
       <SettingRow
         label="Menu bar"
         hint="Show Capsule in the menu bar for Open, Settings, Approvals, and active runs."
