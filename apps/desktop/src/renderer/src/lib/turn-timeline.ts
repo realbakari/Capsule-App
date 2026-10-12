@@ -82,10 +82,16 @@ export function toolObservationState(tool: ToolObservation, run: Run, stopping =
   return tool.status === "running" ? "Running" : tool.status === "waiting" ? "Waiting" : "Reported";
 }
 
+/** "Ran 12 commands (1 failed)": what happened, said the way a person would. */
 export function toolGroupLabel(tools: ToolObservation[]): string {
   const commands = tools.filter((tool) => tool.command).length;
   const others = tools.length - commands;
-  return [commands ? `${commands} command${commands === 1 ? "" : "s"}` : "", others ? `${others} tool${others === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · ");
+  const failed = tools.filter((tool) => tool.status === "failed").length;
+  const parts = [
+    commands ? `Ran ${commands} command${commands === 1 ? "" : "s"}` : "",
+    others ? `${commands ? "used" : "Used"} ${others} tool${others === 1 ? "" : "s"}` : "",
+  ].filter(Boolean).join(", ");
+  return failed ? `${parts} (${failed} failed)` : parts;
 }
 
 export function toolKindFrom(kind: unknown, title: string, command: boolean): ToolKind {

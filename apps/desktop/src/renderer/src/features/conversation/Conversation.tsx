@@ -45,10 +45,13 @@ const MessageRow = memo(function MessageRow({
   message,
   isNew,
   onOpenAttachment,
+  onContinue,
 }: {
   message: ChatMessage;
   isNew: boolean;
   onOpenAttachment: (path: string) => void;
+  /** Start a fresh conversation with this prompt as the draft. */
+  onContinue?: (content: string) => void;
 }) {
   return (
     <div className={`msg ${message.role}${isNew ? " motion-enter-conversation" : ""}`}>
@@ -114,18 +117,6 @@ const KEEP_EXPANDED_TURNS = 3;
  * The interval is cleared with the component: a timer left running behind a
  * closed thread repaints the whole transcript every second for nothing.
  */
-function RunElapsed({ startedAt }: { startedAt: string; }) {
-  const startedMs = Date.parse(startedAt);
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    if (Number.isNaN(startedMs)) return;
-    const id = window.setInterval(() => setTick((value) => value + 1), 1_000);
-    return () => window.clearInterval(id);
-  }, [startedMs]);
-  if (Number.isNaN(startedMs)) return null;
-  return <span className="run-elapsed">{formatDuration(Date.now() - startedMs)}</span>;
-}
-
 /**
  * One line for a turn in flight: how long, how much, and what it is doing.
  *

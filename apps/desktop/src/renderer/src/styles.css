@@ -11167,3 +11167,10 @@ fieldset.harness-options:disabled { opacity: .7; }
 .project-row .project-new { margin-right: 0.1rem; }
 .thread-worktree { display: inline-flex; color: var(--text-faint); }
 
+/* Transcript detail: live clock on a tool group, shell prompt, titlebar diff counts. */
+.inline-activity-elapsed { font-variant-numeric: tabular-nums; color: var(--text-faint); font-size: 0.6875rem; }
+.activity-tool-text pre[data-shell] .shell-prompt { color: var(--text-faint); user-select: none; }
+.git-diffstat { margin-left: 0.3rem; font-variant-numeric: tabular-nums; font-size: 0.6875rem; }
+.git-diffstat .added { color: var(--green); }
+.git-diffstat .removed { color: var(--red); }
+

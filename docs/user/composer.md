@@ -37,6 +37,12 @@ the filename remains visible with **Image preview unavailable**. Other files
 keep their compact name and size. Read-only paired viewers can see these
 previews without getting write access.
 
+Hover a message you sent for **Copy** and **Continue in a new conversation**,
+which opens a fresh thread in the same project with that prompt ready to
+edit and send. Tool activity in a reply folds into one line such as
+"Ran 12 commands (1 failed)"; open it to see each step, and open a step to
+see the command and its output.
+
 If a send fails, your draft and attachments return to the composer. Once the
 failed turn is recorded, its error appears once below the work log rather than
 also appearing at the top. Dismiss hides that attempt's error; a later attempt

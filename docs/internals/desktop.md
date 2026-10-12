@@ -517,6 +517,20 @@ A panel crash is isolated by `ViewErrorBoundary`. Retry remounts the panel. Fast
 
 ## Chat
 
+Tool activity inside a turn is one collapsible group labelled the way a
+person would say it: "Ran 12 commands (1 failed)", "Used 2 tools", or both.
+While the group is live its header carries a clock from the first tool's
+timestamp, and the current step shows beneath it. An expanded command shows
+its text behind a `$` prompt with a copy control, then its output. A user
+message's hover actions are Copy and **Continue in a new conversation**,
+which starts a thread in the same project with that prompt as the draft.
+
+The titlebar's branch chip shows `+added −removed` from Git status when the
+checkout is dirty, and a **Create PR** chip appears on a non-default branch
+with `gh` available and no open pull request; it opens Review, which owns
+PR creation. A `⋮` menu at the right offers iOS Simulator (macOS desktop),
+Browser, and the keep-awake-while-running toggle, mirrored in Settings.
+
 The composer is one box: the prompt, then a single row of the controls that
 shape a turn — mode, permission, harness, and the context meter. The strip
 below it is reference (folder, branch, terminal), not state. The steer field

@@ -16,6 +16,7 @@ import {
   WrenchIcon,
 } from "../shell/icons";
 import { CopyButton } from "./CopyButton";
+import { RunElapsed } from "./RunElapsed";
 import { highlight } from "../../lib/highlight";
 
 type Glyph = ComponentType<SVGProps<SVGSVGElement> & { size?: number }>;
@@ -57,8 +58,8 @@ export function InlineActivity({ tools, run, stopping, onOpenFile }: { tools: To
       </span>
       {kinds.length > 3 && <span className="inline-activity-overflow" title={`${kinds.length} tool categories`}>+{kinds.length - 3}</span>}
       <span>{toolGroupLabel(tools)}</span>
+      {active && tools[0] ? <RunElapsed startedAt={tools[0].timestamp} className="inline-activity-elapsed" /> : null}
       <span className="inline-activity-state">{state}</span>
-      {active && failedCount > 0 && <span className="inline-activity-failures">{failedCount} failed</span>}
       <ChevronRightIcon size={12} className={open ? "open" : ""} aria-hidden />
     </button>
     {!open && active && <div className="inline-activity-current">
@@ -106,6 +107,8 @@ function ToolStep({ tool, state, initiallyOpen = false, onOpenFile }: { tool: To
 function ToolText({ label, text, language }: { label: string; text: string; language?: string }) {
   return <div className="activity-tool-text">
     <div className="activity-tool-text-heading"><span>{label}</span><CopyButton text={text} label={`Copy ${label.toLowerCase()} preview`} /></div>
-    <pre tabIndex={0} aria-label={`${label} preview`}>{highlight(text, language)}</pre>
+    <pre tabIndex={0} aria-label={`${label} preview`} data-shell={language === "shell" ? "true" : undefined}>
+      {language === "shell" ? <span className="shell-prompt" aria-hidden>$ </span> : null}{highlight(text, language)}
+    </pre>
   </div>;
 }

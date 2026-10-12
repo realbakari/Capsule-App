@@ -26,7 +26,7 @@ describe("turn transcript", () => {
     const activity = result.rows[2];
     expect(activity?.kind).toBe("activity");
     if (activity?.kind !== "activity") throw new Error("Expected activity");
-    expect(toolGroupLabel(activity.tools)).toBe("2 commands");
+    expect(toolGroupLabel(activity.tools)).toBe("Ran 2 commands");
     expect(activity.tools.map((tool) => tool.status)).toEqual(["completed", "running"]);
   });
   it("filters other runs and reasoning, and reads legacy nested tool metadata", () => {
@@ -77,5 +77,15 @@ describe("turn transcript", () => {
     expect(result.partial).toBe(true);
     expect(result.rows).toHaveLength(1);
     expect(result.rows[0]?.kind === "activity" && result.rows[0].tools.length).toBe(100);
+  });
+});
+
+describe("toolGroupLabel", () => {
+  const tool = (command: boolean, status: "completed" | "failed" = "completed") => ({ id: String(Math.random()), timestamp: time(0), title: "t", command, kind: command ? "execute" : "read", status }) as const;
+  it("phrases commands, tools and failures the way a person would", () => {
+    expect(toolGroupLabel([tool(true)])).toBe("Ran 1 command");
+    expect(toolGroupLabel([tool(false), tool(false)])).toBe("Used 2 tools");
+    expect(toolGroupLabel([tool(true), tool(false)])).toBe("Ran 1 command, used 1 tool");
+    expect(toolGroupLabel([tool(true), tool(true, "failed"), tool(true)])).toBe("Ran 3 commands (1 failed)");
   });
 });

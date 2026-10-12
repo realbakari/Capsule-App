@@ -3,6 +3,7 @@ import { useWorkspace } from "../../lib/workspace";
 import { SidebarToggle } from "./SidebarControl";
 import { ProjectActionsControl } from "./ProjectActionsControl";
 import { CommitControl } from "./CommitControl";
+import { MenuSelect } from "./MenuSelect";
 import { HeaderPopover } from "./HeaderPopover";
 import { formatUserError } from "../../lib/errors";
 import { gatewayConnectionLabel } from "../../lib/harness";
@@ -10,6 +11,8 @@ import {
   ChevronDownIcon,
   FolderIcon,
   GitBranchIcon,
+  GlobeIcon,
+  MoreVerticalIcon,
   PanelRightIcon,
   SmartphoneIcon,
   PlusIcon,
@@ -51,6 +54,7 @@ export function Titlebar() {
     createTask,
     initializeGit,
     setNotice,
+    updateSettings,
   } = useWorkspace();
   const terminalCwd = session?.workingDirectory ?? project?.workingDirectory;
 
@@ -162,7 +166,16 @@ export function Titlebar() {
               >
                 <GitBranchIcon size={12} />
                 <span>{git.branch ?? "main"}</span>
-                {git.dirty && <span className="git-dirty-indicator">•</span>}
+                {git.dirty && (git.added || git.removed) ? (
+                  <span className="git-diffstat" aria-label={`${git.added ?? 0} lines added, ${git.removed ?? 0} removed`}>
+                    <span className="added">+{git.added ?? 0}</span> <span className="removed">−{git.removed ?? 0}</span>
+                  </span>
+                ) : git.dirty ? <span className="git-dirty-indicator">•</span> : null}
+              </button>
+            )}
+            {git?.isRepo && git.ghAvailable && !git.pullRequest && git.branch && !["main", "master"].includes(git.branch) && (
+              <button type="button" className="topbar-chip-btn" onClick={() => openInspector("changes")} title="Open Review to create a pull request for this branch">
+                Create PR
               </button>
             )}
             <CommitControl />
@@ -216,6 +229,18 @@ export function Titlebar() {
           >
             <PanelRightIcon size={14} />
           </button>
+        )}
+
+        {view === "chat" && (
+          <MenuSelect ariaLabel="More" value="" placeholder="More" iconOnly icon={<MoreVerticalIcon size={14} />} options={[
+            ...(api.isDesktop !== false && api.platform === "darwin" ? [{ id: "simulator", label: "iOS Simulator", detail: "Watch and drive a simulator beside this conversation.", icon: <SmartphoneIcon size={14} /> }] : []),
+            { id: "browser", label: "Browser", detail: "Open a local app or URL in the inspector.", icon: <GlobeIcon size={14} /> },
+            { id: "keep-awake", label: settings?.keepAwakeWhileRunning ? "Keep computer awake: on" : "Keep computer awake: off", detail: "While a turn is running. Also in Settings." },
+          ]} onChange={(id) => {
+            if (id === "simulator") openInspector("simulator");
+            else if (id === "browser") openInspector("browser");
+            else if (id === "keep-awake") void updateSettings({ keepAwakeWhileRunning: !settings?.keepAwakeWhileRunning }).catch((error) => setNotice(formatUserError(error)));
+          }} />
         )}
 
         <button
