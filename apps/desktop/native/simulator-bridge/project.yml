@@ -1,0 +1,42 @@
+# Regenerate the Xcode project with `xcodegen generate` from this folder after
+# editing. The generated project is committed so a user build needs only Xcode.
+# Packaged into Contents/Resources/simulator-bridge; see electron-builder.yml.
+name: CapsuleSimulatorBridge
+options:
+  bundleIdPrefix: dev.capsule
+  deploymentTarget:
+    iOS: "16.0"
+  xcodeVersion: "16.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    CODE_SIGNING_ALLOWED: "NO"
+    CODE_SIGN_IDENTITY: ""
+    SWIFT_VERSION: "5.9"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    SUPPORTED_PLATFORMS: "iphonesimulator iphoneos"
+    SUPPORTS_MACCATALYST: "NO"
+targets:
+  CapsuleSimulatorBridgeTests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: BridgeTests
+    info:
+      path: BridgeTests/Info.plist
+      properties:
+        CFBundleIdentifier: dev.capsule.simulator-bridge.tests
+        CFBundleName: CapsuleSimulatorBridgeTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.capsule.simulator-bridge.tests
+        GENERATE_INFOPLIST_FILE: "NO"
+schemes:
+  CapsuleSimulatorBridge:
+    build:
+      targets:
+        CapsuleSimulatorBridgeTests: [test]
+    test:
+      targets:
+        - CapsuleSimulatorBridgeTests
+      parallelizable: false

@@ -10947,6 +10947,88 @@ fieldset.harness-options:disabled { opacity: .7; }
 .simulator-device-name { font-size: 0.8125rem; }
 .simulator-device-row small { font-size: 0.6875rem; }
 
+.simulator-stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem 1.25rem 0.75rem;
+  overflow: hidden;
+  background: radial-gradient(ellipse at 50% 40%, rgba(255, 255, 255, 0.035), transparent 70%), var(--bg);
+}
+.simulator-bezel {
+  position: relative;
+  height: 100%;
+  max-height: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 0.5rem;
+  border-radius: 3.1rem;
+  background: #0a0a0b;
+  box-shadow:
+    0 0 0 1.5px #a5a7ad,
+    0 0 0 2.5px #1b1c1e,
+    inset 0 0 0 1px #2a2b2e,
+    0 1.75rem 3.5rem rgba(0, 0, 0, 0.55);
+}
+.simulator-pane[data-family="iPad"] .simulator-bezel { border-radius: 1.5rem; padding: 0.75rem; }
+.simulator-pane[data-family="Apple Watch"] .simulator-bezel { border-radius: 2rem; }
+.simulator-keys { position: absolute; inset: 0; pointer-events: none; }
+.simulator-key {
+  position: absolute;
+  display: block;
+  width: 4px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #7c7e85, #4a4b50);
+}
+.simulator-key.action { left: -6.5px; top: 17%; height: 4.5%; }
+.simulator-key.up { left: -6.5px; top: 25%; height: 7.5%; }
+.simulator-key.down { left: -6.5px; top: 34.5%; height: 7.5%; }
+.simulator-key.side { right: -6.5px; top: 28%; height: 12%; background: linear-gradient(90deg, #4a4b50, #7c7e85); }
+.simulator-screen {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 2.6rem;
+  background: #000;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+.simulator-pane[data-family="iPad"] .simulator-screen { border-radius: 0.75rem; }
+.simulator-screen img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+.simulator-screen img.touchable { cursor: crosshair; touch-action: none; }
+.simulator-waiting, .simulator-screen-off { position: absolute; inset: 0; display: grid; place-items: center; }
+.simulator-start {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+.simulator-start:hover:not(:disabled) { background: rgba(255, 255, 255, 0.12); color: #fff; }
+.simulator-start:disabled { opacity: 0.6; cursor: default; }
+.simulator-spinner {
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  border-top-color: rgba(255, 255, 255, 0.8);
+  animation: previewSpin 0.9s linear infinite;
+}
+
 .simulator-toolbar {
   display: flex;
   align-items: center;

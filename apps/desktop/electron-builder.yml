@@ -42,6 +42,9 @@ mac:
   extraResources:
     - from: native/capsule-voice
       to: capsule-voice
+    - from: native/simulator-bridge
+      to: simulator-bridge
+      filter: ["!**/xcuserdata", "!**/*.log"]
   binaries:
     - Contents/Resources/capsule-voice
   extendInfo:

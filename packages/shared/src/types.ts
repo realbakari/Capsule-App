@@ -343,11 +343,38 @@ export interface LocalServer {
   protocol: "http" | "https";
 }
 
+/**
+ * Whether Capsule's touch bridge can drive this device. The bridge is an
+ * XCUITest runner Xcode builds once and runs per device; until it answers,
+ * the screen is view-only and the state says why.
+ */
+export type SimulatorTouch =
+  | { state: "unavailable"; detail: string }
+  | { state: "idle" }
+  | { state: "building"; since: number }
+  | { state: "starting"; since: number }
+  | { state: "ready"; width: number; height: number }
+  | { state: "failed"; detail: string };
+
 /** What the simulator surface can do on this machine. `supported` is false off macOS or without Xcode. */
 export interface SimulatorInventory {
   supported: boolean;
   reason?: string;
   devices: Simulator[];
+}
+
+/** One captured frame of a simulator's screen, already bounded for IPC. */
+export interface SimulatorFrame {
+  udid: string;
+  /** JPEG data URL, longest edge capped in main. */
+  dataUrl: string;
+  /** The full framebuffer size, so taps can be mapped back to it. */
+  pixelWidth: number;
+  pixelHeight: number;
+  /** Logical points, once the touch bridge has reported them. */
+  pointWidth?: number;
+  pointHeight?: number;
+  capturedAt: string;
 }
 
 export interface SimulatorApp {
@@ -365,6 +392,14 @@ export type SimulatorAction =
   | { type: "openUrl"; url: string }
   | { type: "launch"; bundleId: string }
   | { type: "terminate"; bundleId: string }
+  /** Build (first time) and start the touch bridge for this device. Long-running. */
+  | { type: "connect" }
+  | { type: "tap"; x: number; y: number }
+  | { type: "press"; x: number; y: number; durationMs?: number }
+  | { type: "swipe"; fromX: number; fromY: number; toX: number; toY: number; durationMs?: number }
+  | { type: "text"; text: string }
+  | { type: "key"; key: "return" | "delete" }
+  | { type: "button"; name: "HOME" }
 export interface SimulatorActionResult {
   file?: string;
 }
