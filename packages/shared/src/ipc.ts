@@ -176,6 +176,8 @@ export const IPC_CHANNELS = {
   providerUsage: "capsule:providerUsage",
   turnDiff: "capsule:turnDiff",
   restoreTurn: "capsule:restoreTurn",
+  /* Edit from here: drop a prompt and everything after it, optionally restoring files. */
+  rewindSession: "capsule:rewindSession",
   fetchSkillDetail: "capsule:fetchSkillDetail",
 } as const;
 

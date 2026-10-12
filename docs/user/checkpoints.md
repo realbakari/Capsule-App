@@ -9,6 +9,18 @@ Every turn that finishes captures the state of your project folder. When a turn
 changes files, the changed-files card under the reply offers **Restore this
 turn**, which puts the folder back to how that turn left it.
 
+## Editing from here
+
+Hover one of your own prompts and choose **Edit from here** to try it again
+differently. The prompt and every reply after it leave the conversation, the
+prompt comes back into the composer with its attachments, and earlier turns
+stay. The agent starts a fresh session on the next turn, so it will not
+remember what was removed; what remains above is still there for you to read.
+**Edit and restore files** does the same and also puts the project folder
+back to how the turn before stood, using that turn's checkpoint. If no earlier
+turn has a checkpoint, Capsule says so and changes nothing. Editing from here
+waits for a running turn to stop, and is desktop-only.
+
 The card stays beneath that turn's reply when you send a follow-up. Folding
 the old turn folds its card too; expanding the turn brings it back. It does not
 follow you into another conversation or project.

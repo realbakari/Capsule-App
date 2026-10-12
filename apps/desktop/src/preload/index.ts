@@ -72,6 +72,7 @@ const api = {
   providerUsage: (): Promise<ProviderUsageSnapshot> => ipcRenderer.invoke(IPC_CHANNELS.providerUsage),
   turnDiff: (runId: string, options?: import("@capsule/shared").TurnDiffOptions): Promise<import("@capsule/shared").TurnDiffResult> => ipcRenderer.invoke(IPC_CHANNELS.turnDiff, runId, options),
   restoreTurn: (runId: string) => ipcRenderer.invoke(IPC_CHANNELS.restoreTurn, runId),
+  rewindSession: (sessionId: string, messageId: string, options?: { restoreFiles?: boolean }): Promise<import("@capsule/shared").RewindResult> => ipcRenderer.invoke(IPC_CHANNELS.rewindSession, sessionId, messageId, options),
   fetchSkillDetail: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.fetchSkillDetail, id),
   listSessions: (projectId?: string) => ipcRenderer.invoke(IPC_CHANNELS.listSessions, projectId),
   createSession: (input: unknown) => ipcRenderer.invoke(IPC_CHANNELS.createSession, input),

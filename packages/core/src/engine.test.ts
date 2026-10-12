@@ -1003,3 +1003,49 @@ describe("what a turn changed", () => {
     await engine.stop();
   });
 });
+
+describe("edit from here", () => {
+  it("removes the prompt and everything after it, drops the agent identity, and hands the prompt back", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-rewind-"));
+    const engine = new CapsuleEngine({ databasePath: path.join(dir, "capsule.sqlite"), userDataDir: dir, autoConnect: false });
+    await engine.start();
+    const project = engine.createProject({ name: "Rewind", defaultMode: "chat" });
+    const session = await engine.createSession({ projectId: project.id, title: "Rewind", mode: "chat", agentId: "coding" });
+    const first = await engine.sendMessage({ sessionId: session.id, content: "First ask", agentId: "coding", mode: "chat" });
+    await waitForRun(engine, first.run.id);
+    const second = await engine.sendMessage({ sessionId: session.id, content: "Second ask", agentId: "coding", mode: "chat" });
+    await waitForRun(engine, second.run.id);
+    const before = engine.listMessages(session.id);
+    const secondPrompt = before.find((message) => message.role === "user" && message.content === "Second ask")!;
+    expect(before.length).toBeGreaterThanOrEqual(4);
+
+    const refused = await engine.rewindSession(session.id, before.find((message) => message.role === "assistant")!.id);
+    expect(refused.ok).toBe(false);
+
+    const result = await engine.rewindSession(session.id, secondPrompt.id);
+    expect(result).toMatchObject({ ok: true, prompt: "Second ask", filesRestored: false });
+    const after = engine.listMessages(session.id);
+    expect(after.map((message) => message.content)).toEqual(before.filter((message) => message.createdAt < secondPrompt.createdAt).map((message) => message.content));
+    expect(after.some((message) => message.content === "Second ask")).toBe(false);
+    expect(engine.getRun(second.run.id)).toBeUndefined();
+    expect(engine.getRun(first.run.id)).toBeDefined();
+    const reloaded = engine.listSessions(project.id).find((item) => item.id === session.id)!;
+    expect(reloaded.openclawSessionKey).toBeUndefined();
+    expect(reloaded.harnessState).toBe("closed");
+  });
+
+  it("refuses to restore files when no earlier turn has a checkpoint", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-rewind-"));
+    const engine = new CapsuleEngine({ databasePath: path.join(dir, "capsule.sqlite"), userDataDir: dir, autoConnect: false });
+    await engine.start();
+    const project = engine.createProject({ name: "Rewind", defaultMode: "chat" });
+    const session = await engine.createSession({ projectId: project.id, title: "Rewind", mode: "chat", agentId: "coding" });
+    const { run } = await engine.sendMessage({ sessionId: session.id, content: "Only ask", agentId: "coding", mode: "chat" });
+    await waitForRun(engine, run.id);
+    const prompt = engine.listMessages(session.id).find((message) => message.role === "user")!;
+    const result = await engine.rewindSession(session.id, prompt.id, { restoreFiles: true });
+    expect(result.ok).toBe(false);
+    expect(result.detail).toMatch(/checkpoint/);
+    expect(engine.listMessages(session.id).some((message) => message.id === prompt.id)).toBe(true);
+  });
+});

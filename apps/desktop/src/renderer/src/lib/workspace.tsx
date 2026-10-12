@@ -154,6 +154,8 @@ export interface ConfirmState {
   danger?: boolean;
   confirmLabel?: string;
   onConfirm: () => void;
+  /** A second way to say yes, for a choice such as "and restore files". */
+  secondary?: { label: string; onConfirm: () => void };
 }
 
 export interface WorkspaceValue {

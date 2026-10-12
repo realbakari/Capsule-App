@@ -12,6 +12,11 @@ export function ConfirmDialog() {
           <button className="ghost" onClick={() => setConfirm(undefined)}>
             Cancel
           </button>
+          {confirm.secondary && (
+            <button className="chip" onClick={() => confirm.secondary?.onConfirm()}>
+              {confirm.secondary.label}
+            </button>
+          )}
           <button className={confirm.danger ? "danger" : "send"} onClick={() => confirm.onConfirm()}>
             {confirm.confirmLabel ?? "Confirm"}
           </button>

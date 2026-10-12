@@ -436,6 +436,16 @@ export type SimulatorAction =
   /** Stop resolves with the recording's file. */
   | { type: "record"; mode: "start" | "stop" };
 
+export interface RewindResult {
+  ok: boolean;
+  detail: string;
+  /** The removed prompt, for the composer to take back. */
+  prompt?: string;
+  attachments?: MessageAttachment[];
+  removedMessages?: number;
+  filesRestored?: boolean;
+}
+
 export interface SimulatorActionResult {
   file?: string;
 }

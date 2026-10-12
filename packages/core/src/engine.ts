@@ -150,6 +150,7 @@ import {
   type HarnessOptionPatch,
   type HarnessStatus,
   type LocalServer,
+  type RewindResult,
   type MessageAttachment,
   type SpawnHarnessInput,
   type UpdateProjectInput,
@@ -3382,6 +3383,53 @@ export class CapsuleEngine {
     } catch (error) {
       return { ok: false, detail: error instanceof Error ? error.message : String(error) };
     } finally { release?.(); }
+  }
+
+  /**
+   * Edit from here. The chosen prompt and everything after it leave the
+   * conversation, their runs with them; optionally the folder goes back to
+   * how the turn before stood. The agent's native session is closed and its
+   * identity dropped, so the next turn starts a fresh process rather than
+   * resuming a session that still remembers what was just removed. The
+   * removed prompt is returned for the composer.
+   */
+  async rewindSession(sessionId: string, messageId: string, options: { restoreFiles?: boolean } = {}): Promise<RewindResult> {
+    this.assertWorkAllowed();
+    const session = this.repos.getSession(sessionId);
+    if (!session) return { ok: false, detail: "That conversation no longer exists." };
+    const message = this.repos.listMessages(sessionId).find((item) => item.id === messageId);
+    if (!message || message.role !== "user" || message.kind === "steer") return { ok: false, detail: "Choose one of your own prompts to edit from." };
+    if (this.listRuns(sessionId).some((run) => ["queued", "running", "waiting", "approval_required"].includes(run.status))) {
+      return { ok: false, detail: "A turn is running in this conversation. Stop it or wait before editing from here." };
+    }
+    let filesRestored = false;
+    if (options.restoreFiles) {
+      const earlier = this.listRuns(sessionId).filter((run) => run.checkpointRef && run.createdAt < message.createdAt).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0];
+      if (!earlier) return { ok: false, detail: "No earlier turn has a checkpoint to restore files from. Edit from here without restoring files, or use Restore this turn." };
+      const restored = await this.restoreTurn(earlier.id);
+      if (!restored.ok) return restored;
+      filesRestored = true;
+    }
+    if (session.openclawSessionKey && isLiveHarnessState(session.harnessState)) {
+      try { await this.closeHarnessSession(sessionId); } catch { /* The identity is dropped below either way. */ }
+    }
+    const removed = this.repos.deleteMessagesFrom(sessionId, messageId);
+    const current = this.requireSession(sessionId);
+    current.openclawSessionKey = undefined;
+    current.directSession = undefined;
+    current.harnessState = "closed";
+    current.updatedAt = nowIso();
+    this.repos.updateSession(current);
+    this.events.emit("state", { command: "harness-updated" });
+    this.events.emit("state", { command: "files-updated" });
+    return {
+      ok: true,
+      detail: `Removed ${removed.messages} message${removed.messages === 1 ? "" : "s"}${filesRestored ? " and restored the files from the turn before" : ""}. The next turn starts a fresh agent session.`,
+      prompt: message.content,
+      attachments: message.attachments ?? [],
+      removedMessages: removed.messages,
+      filesRestored,
+    };
   }
 
   private async hydrateSecrets(): Promise<void> {

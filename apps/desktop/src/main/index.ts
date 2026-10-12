@@ -1817,6 +1817,11 @@ function registerIpc(): void {
   handleArgs(IPC_CHANNELS.restoreTurn, [id], (runId: string) =>
     requireEngine().restoreTurn(runId),
   );
+  handle(IPC_CHANNELS.rewindSession, (sessionId, messageId, options) => {
+    const channel = IPC_CHANNELS.rewindSession;
+    const value = options && typeof options === "object" ? options as { restoreFiles?: unknown } : {};
+    return requireEngine().rewindSession(id(sessionId, channel, 0), id(messageId, channel, 1), { restoreFiles: optBool(value.restoreFiles, channel, 2) });
+  });
   handleArgs(IPC_CHANNELS.searchSkillCatalog, [str, optBool], (query: string, refresh: boolean) =>
     requireEngine().searchSkillCatalog(query, refresh),
   );

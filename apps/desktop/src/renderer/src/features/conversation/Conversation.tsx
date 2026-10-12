@@ -46,12 +46,15 @@ const MessageRow = memo(function MessageRow({
   isNew,
   onOpenAttachment,
   onContinue,
+  onRewind,
 }: {
   message: ChatMessage;
   isNew: boolean;
   onOpenAttachment: (path: string) => void;
   /** Start a fresh conversation with this prompt as the draft. */
   onContinue?: (content: string) => void;
+  /** Remove this prompt and everything after it, putting the prompt back in the composer. */
+  onRewind?: (message: ChatMessage) => void;
 }) {
   return (
     <div className={`msg ${message.role}${isNew ? " motion-enter-conversation" : ""}`}>
@@ -65,6 +68,16 @@ const MessageRow = memo(function MessageRow({
         <span className="when">{formatTime(message.createdAt)}</span>
         <span className="msg-actions">
           <CopyButton text={message.content} />
+          {message.role === "user" && message.kind !== "steer" && onRewind && !message.id.startsWith("local-") ? (
+            <button type="button" className="copy-action" title="Edit from here" aria-label="Edit from here" onClick={() => onRewind(message)}>
+              <HistoryIcon size={13} />
+            </button>
+          ) : null}
+          {message.role === "user" && message.kind !== "steer" && message.content && onContinue ? (
+            <button type="button" className="copy-action" title="Continue in a new conversation" aria-label="Continue in a new conversation" onClick={() => onContinue(message.content)}>
+              <MessageSquarePlusIcon size={13} />
+            </button>
+          ) : null}
         </span>
       </div>
       {message.content ? <MessageBody content={message.content} /> : null}
@@ -356,6 +369,48 @@ export function Conversation() {
     setOpenedTurns((current) => new Set(current).add(id));
   }, []);
   const openAttachment = useCallback((path: string) => void openPath(path), [openPath]);
+  const [focusTurn, setFocusTurn] = useState<{ id: string; nonce: number }>();
+  const locateMessage = useCallback((messageId: string) => {
+    const turn = turns.find((item) => item.messages.some((message) => message.id === messageId));
+    if (!turn) return;
+    openTurn(turn.id);
+    setFocusTurn((current) => ({ id: turn.id, nonce: (current?.nonce ?? 0) + 1 }));
+  }, [openTurn, turns]);
+  /*
+   * Edit from here: the conversation is cut at this prompt. The dialog says
+   * what is lost and offers the file restore as a second choice rather than a
+   * hidden checkbox, since restoring files is the bigger decision.
+   */
+  const rewindFrom = useCallback((message: ChatMessage) => {
+    const target = session?.id;
+    if (!target) return;
+    if (api.isDesktop === false) { setNotice("Editing from here is available in the desktop app."); return; }
+    const perform = async (restoreFiles: boolean) => {
+      setConfirm(undefined);
+      try {
+        const result = await api.rewindSession(target, message.id, { restoreFiles });
+        if (!result.ok) { setNotice(result.detail); return; }
+        await loadSession(target);
+        setDraft(result.prompt ?? message.content);
+        const paths = (result.attachments ?? []).map((file) => file.path);
+        if (paths.length) await attachFiles(paths);
+        setNotice(result.detail);
+      } catch (error) {
+        setNotice(formatUserError(error));
+      }
+    };
+    setConfirm({
+      title: "Edit from here?",
+      detail: "This prompt and every reply after it leave the conversation, and the prompt goes back into the composer. The agent starts a fresh session on the next turn, so it will not remember what was removed. Files stay as they are unless you also restore them to how the turn before stood.",
+      confirmLabel: "Edit from here",
+      danger: true,
+      onConfirm: () => void perform(false),
+      secondary: { label: "Edit and restore files", onConfirm: () => void perform(true) },
+    });
+  }, [api, attachFiles, loadSession, session?.id, setConfirm, setDraft, setNotice]);
+  const continueInNewConversation = useCallback((content: string) => {
+    void createTask().then(() => setDraft(content)).catch((error) => setNotice(formatUserError(error)));
+  }, [createTask, setDraft, setNotice]);
 
   const scroller = useRef<HTMLDivElement>(null);
   /* Track the message count at mount time so entrance animations only fire for
@@ -498,7 +553,7 @@ export function Conversation() {
                     {(message) => <>
                         <MessageRow message={message}
                           isNew={(messageOffsets.get(message.id) ?? 0) >= initialCountRef.current}
-                          onOpenAttachment={openAttachment} />
+                          onOpenAttachment={openAttachment} onContinue={continueInNewConversation} onRewind={rewindFrom} />
                         {turn.id === activeTurnId && message === turn.prompt && activeRun && <TurnStatusLine
                           run={activeRun} agentName={harnessDisplayName(harnesses, session?.harnessId, "the agent")}
                           usage={contextUsage} activity={liveActivity} stopping={stoppingRunIds?.includes(activeRun.id)} />}

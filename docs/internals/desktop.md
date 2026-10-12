@@ -525,6 +525,17 @@ its text behind a `$` prompt with a copy control, then its output. A user
 message's hover actions are Copy and **Continue in a new conversation**,
 which starts a thread in the same project with that prompt as the draft.
 
+**Edit from here** on a user message calls the write-scoped `rewindSession`
+(sessionId, messageId, {restoreFiles}). The engine refuses while a run is live
+or for a non-user or steer message; it deletes the message and every later
+one in that conversation with their runs (`deleteMessagesFrom`, one
+transaction), optionally restores the latest earlier checkpoint through
+`restoreTurn`, closes a live harness session, and clears
+`openclawSessionKey`, `directSession` and the harness state so the next turn
+spawns fresh. The result carries the removed prompt and attachments; the
+renderer reloads the session and puts them back in the composer. The confirm
+dialog's `secondary` action is the restore-files choice.
+
 Sending during a running turn enqueues instead of refusing: `prompt-queue`
 keeps up to 20 follow-ups per conversation in `capsule.queue:<sessionId>`,
 `QueuedPrompts` above the steer row lists them with Steer now (route

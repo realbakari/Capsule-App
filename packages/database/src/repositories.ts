@@ -246,6 +246,27 @@ export class CapsuleRepositories {
     this.db.sqlite.prepare("DELETE FROM sessions WHERE id = ?").run(id);
   }
 
+  /**
+   * Remove a message and everything after it in a conversation, with the
+   * runs those messages belonged to. Returns what was removed so the caller
+   * can say so. Used by rewind; nothing else deletes part of a transcript.
+   */
+  deleteMessagesFrom(sessionId: string, messageId: string): { messages: number; runs: string[] } {
+    const anchor = this.db.sqlite.prepare("SELECT created_at AS createdAt FROM messages WHERE id = ? AND session_id = ?").get(messageId, sessionId) as { createdAt: string } | undefined;
+    if (!anchor) return { messages: 0, runs: [] };
+    const doomed = this.db.sqlite.prepare(
+      "SELECT id, run_id AS runId FROM messages WHERE session_id = ? AND (created_at > ? OR (created_at = ? AND id = ?))",
+    ).all(sessionId, anchor.createdAt, anchor.createdAt, messageId) as Array<{ id: string; runId: string | null }>;
+    const runIds = new Set<string>(doomed.flatMap((row) => (row.runId ? [row.runId] : [])));
+    for (const run of this.db.sqlite.prepare("SELECT id FROM runs WHERE session_id = ? AND created_at >= ?").all(sessionId, anchor.createdAt) as Array<{ id: string }>) runIds.add(run.id);
+    const remove = this.db.sqlite.transaction(() => {
+      this.deleteRuns([...runIds]);
+      for (const row of doomed) this.db.sqlite.prepare("DELETE FROM messages WHERE id = ?").run(row.id);
+    });
+    remove();
+    return { messages: doomed.length, runs: [...runIds] };
+  }
+
   deleteProject(id: string): void {
     const sessions = this.listSessions(id);
     for (const session of sessions) this.deleteSession(session.id);
