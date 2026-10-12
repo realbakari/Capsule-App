@@ -11161,3 +11161,9 @@ fieldset.harness-options:disabled { opacity: .7; }
 .simulator-tools-check { display: flex; align-items: center; gap: 0.4rem; font-size: 0.75rem; }
 .simulator-tools .chip[aria-pressed="true"] { background: var(--bg-hover); color: var(--text); border-color: var(--text-muted); }
 
+/* Sidebar: history buttons beside the wordmark, a per-project new-conversation control, worktree glyph. */
+.sidebar-history { margin-left: auto; display: flex; gap: 0.1rem; }
+.sidebar-history .icon-btn:disabled { opacity: 0.35; }
+.project-row .project-new { margin-right: 0.1rem; }
+.thread-worktree { display: inline-flex; color: var(--text-faint); }
+

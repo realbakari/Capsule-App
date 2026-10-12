@@ -181,7 +181,15 @@ attachment validation still receives the original native path.
 - Rows show the **project or thread name only**. Do not put folder paths under rows or in the titlebar.
 - Collapsed project status prioritizes waiting approvals, then working turns,
   then failures, independently of thread order.
-- The sidebar titlebar carries a compact Capsule wordmark and hide control.
+- The sidebar titlebar carries a compact Capsule wordmark, the hide control,
+  and Back / Forward over visited conversations (`⌘[` / `⌘]`, also in the
+  palette). Selection changes are recorded by effect in `navigation-history`,
+  bounded to 50 places; a move made by Back or Forward is not recorded as a
+  new place, and archived or deleted conversations are pruned.
+- Project rows reveal a `+` beside `···` on hover that starts a conversation
+  in that project (`createTask(projectId)`), expanding the project.
+- Unpinned worktree threads show a small branch glyph in the pin slot with the
+  branch name in its tooltip.
   New conversation has a text label. Search and project rows are flat by default;
   the active thread has a muted background. Settled, unpinned threads have no glyph.
 - Hover or focus reveals pin, archive, and overflow actions without navigating.

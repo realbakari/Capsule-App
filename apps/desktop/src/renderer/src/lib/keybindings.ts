@@ -43,6 +43,8 @@ export const COMMANDS: KeyCommand[] = [
   { id: "toggle-sidebar", label: "Toggle sidebar", chord: { key: "b", meta: true } },
   { id: "toggle-inspector", label: "Toggle inspector", chord: { key: "\\", meta: true } },
   { id: "toggle-terminal", label: "Toggle terminal", chord: { key: "j", meta: true } },
+  { id: "history-back", label: "Back", chord: { key: "[", meta: true } },
+  { id: "history-forward", label: "Forward", chord: { key: "]", meta: true } },
 ];
 
 export type Keymap = Record<string, KeyChord>;

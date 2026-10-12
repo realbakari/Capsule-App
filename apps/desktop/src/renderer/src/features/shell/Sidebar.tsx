@@ -45,6 +45,8 @@ import {
   ArchiveIcon,
   CpuIcon,
   FolderIcon,
+  ArrowLeftIcon,
+  ArrowRightIcon,
   FolderPlusIcon,
   GitBranchIcon,
   HistoryIcon,
@@ -117,6 +119,10 @@ export function Sidebar() {
     setSettingsTab,
     setProjectId,
     createTask,
+    canGoBack,
+    canGoForward,
+    goBack,
+    goForward,
     createProjectFromFolder,
     pickProjectDirectory,
     addProjectFolder,
@@ -489,7 +495,9 @@ export function Sidebar() {
       >
         <span className="row-slot" aria-hidden />
         <span className="row-slot">
-          {session.pinned ? <PinIcon size={11} /> : null}
+          {session.pinned ? <PinIcon size={11} /> : session.workspaceMode === "worktree" ? (
+            <span className="thread-worktree" title={session.worktreeBranch ? `Own worktree on ${session.worktreeBranch}` : "Own worktree"} aria-label="Runs in its own worktree"><GitBranchIcon size={11} /></span>
+          ) : null}
         </span>
         <span className="thread-title">
           <span className="truncate">{session.title}</span>
@@ -630,6 +638,10 @@ export function Sidebar() {
       <div className="sidebar-header">
         <SidebarToggle />
         <span className="brand">Capsule</span>
+        <span className="sidebar-history">
+          <button type="button" className="icon-btn" title="Back (⌘[)" aria-label="Back" disabled={!canGoBack} onClick={goBack}><ArrowLeftIcon size={14} /></button>
+          <button type="button" className="icon-btn" title="Forward (⌘])" aria-label="Forward" disabled={!canGoForward} onClick={goForward}><ArrowRightIcon size={14} /></button>
+        </span>
       </div>
       <div className="sidebar-toolbar">
         <label className="sidebar-search">
@@ -797,6 +809,20 @@ export function Sidebar() {
                       </span>
                     ) : null}
                   </span>
+                  <button
+                    type="button"
+                    className="thread-more project-new"
+                    aria-label={`New conversation in ${item.name}`}
+                    title="New conversation here"
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setCollapsed((current) => { const next = new Set(current); next.delete(item.id); return next; });
+                      void createTask(item.id);
+                    }}
+                  >
+                    <PlusIcon size={13} />
+                  </button>
                   <button
                     type="button"
                     className="thread-more"

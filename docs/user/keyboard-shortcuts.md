@@ -11,6 +11,8 @@
 | Search in files | `⇧⌘F` |
 | Toggle the sidebar | `⌘B` |
 | Toggle the inspector | `⌘\` |
+| Back to the previous conversation you visited | `⌘[` |
+| Forward again | `⌘]` |
 | Stash the current prompt | `⌘S` |
 | Undo the latest archive while its notice is visible | `⌘Z` / `Ctrl+Z`, outside an editor or dialog |
 | Send | `Enter`, or `⌘Enter` if you changed the send key |

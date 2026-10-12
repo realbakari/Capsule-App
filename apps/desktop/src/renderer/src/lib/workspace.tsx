@@ -58,6 +58,7 @@ import {
 import type { SettingsSectionId } from "../features/settings/settings-search";
 import { commandForEvent, parseChord, type Keymap } from "./keybindings";
 import { formatUserError } from "./errors";
+import { EMPTY_NAVIGATION, canGoBack as navigationCanGoBack, canGoForward as navigationCanGoForward, goBack as navigationBack, goForward as navigationForward, pruneNavigation, recordNavigation, type NavigationHistory } from "./navigation-history";
 import { contextUsageFromEvents, type ContextUsage } from "./context-window";
 import { harnessPreflightReason } from "./harness-preflight";
 import {
@@ -232,7 +233,13 @@ export interface WorkspaceValue {
   refresh: () => Promise<void>;
   loadSession: (id: string) => Promise<void>;
   eventLoad?: { runId: string; state: "loading" | "loaded" | "error"; detail?: string };
-  createTask: () => Promise<void>;
+  /** Start a conversation, in the given project or the selected one. */
+  createTask: (projectId?: string) => Promise<void>;
+  /** Visited conversations, like a browser's history. */
+  canGoBack: boolean;
+  canGoForward: boolean;
+  goBack: () => void;
+  goForward: () => void;
   send: () => Promise<boolean>;
   runAgentCommand: (name: string, input?: string) => Promise<boolean>;
   agentCommandsOpen: boolean;
@@ -386,6 +393,28 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       return undefined;
     }
   });
+  /*
+   * Back and Forward over visited conversations. Selection changes are
+   * recorded by effect, so every way of choosing a thread counts; a move made
+   * by Back or Forward itself is marked so it is not recorded as a new place.
+   */
+  const [navigation, setNavigation] = useState<NavigationHistory>(EMPTY_NAVIGATION);
+  const navigating = useRef(false);
+  useEffect(() => {
+    if (navigating.current) { navigating.current = false; return; }
+    setNavigation((current) => recordNavigation(current, { projectId, sessionId }));
+  }, [projectId, sessionId]);
+  const travel = (direction: "back" | "forward") => {
+    const move = direction === "back" ? navigationBack(navigation) : navigationForward(navigation);
+    if (!move) return;
+    navigating.current = true;
+    setNavigation(move.history);
+    if (move.entry.projectId) setProjectId(move.entry.projectId);
+    setSessionId(move.entry.sessionId);
+    setView("chat");
+  };
+  const goBack = () => travel("back");
+  const goForward = () => travel("forward");
   const [ready, setReady] = useState(false);
   const [startupError, setStartupError] = useState<string>();
   const refreshError = useRef<{ scope: object; detail: string } | undefined>(undefined);
@@ -555,6 +584,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   const draftRecovery = useRef(new DraftRecovery()).current;
   const latestStashes = useRef(promptStashes);
   latestStashes.current = promptStashes;
+  // An archived or deleted conversation is not a place to go back to.
+  useEffect(() => {
+    if (!ready || sessions.length === 0) return;
+    setNavigation((current) => pruneNavigation(current, (entry) => !entry.sessionId || sessions.some((item) => item.id === entry.sessionId && item.state === "active")));
+  }, [ready, sessions]);
   const activeRun = runs.find(
     (run) => run.sessionId === sessionId && ["running", "approval_required", "waiting"].includes(run.status),
   );
@@ -954,6 +988,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
         case "toggle-terminal":
           setTerminalOpen((open) => !open);
           break;
+        case "history-back":
+          goBack();
+          break;
+        case "history-forward":
+          goForward();
+          break;
       }
     };
     window.addEventListener("keydown", onKey, true);
@@ -1093,12 +1133,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       .catch(() => setFiles([]));
   }, [api, scope, loadGit, projectId, project?.workingDirectory, sessionId, session?.workingDirectory, selectionExists]);
 
-  async function createTask() {
+  async function createTask(inProject?: string) {
     if (api.isDesktop === false && api.remoteMode !== "control") {
       setNotice("This browser is read-only. Pair with conversation control to create a thread.");
       return;
     }
-    const targetProject = projectId ?? projects[0]?.id;
+    const targetProject = inProject ?? projectId ?? projects[0]?.id;
     if (!targetProject) return;
     const created = await api.createSession({
       projectId: targetProject,
@@ -2102,6 +2142,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
         setSessionId(first?.id);
       },
       setSessionId,
+      canGoBack: navigationCanGoBack(navigation),
+      canGoForward: navigationCanGoForward(navigation),
+      goBack,
+      goForward,
       setAgentId,
       setMode,
       setDraft,
@@ -2281,6 +2325,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       skillId,
       filePicker,
       contentSearch,
+      navigation,
       inspectorTab,
       projectRuns,
       settings,
