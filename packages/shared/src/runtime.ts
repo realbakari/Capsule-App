@@ -115,6 +115,7 @@ export const DEFAULT_CAPSULE_SETTINGS: CapsuleSettings = {
   autoDownloadUpdates: true,
   autoClassifySessions: true,
   agentSimulatorAccess: true,
+  autoResumeOnLimit: false,
   archiveInactiveAfter: "never",
   gitForceWithLease: false,
   prDraft: false,
@@ -147,6 +148,7 @@ export const SETTINGS_SECTION_KEYS: Record<string, ReadonlyArray<keyof CapsuleSe
     "bounceDockOnAttention",
     "autoClassifySessions",
     "agentSimulatorAccess",
+    "autoResumeOnLimit",
     "archiveInactiveAfter",
   ],
   appearance: [
@@ -242,6 +244,8 @@ export interface CapsuleSettings {
   notifyApprovals: boolean;
   /** Direct agents may use a simulator the user attached in that thread's panel. */
   agentSimulatorAccess: boolean;
+  /** When a turn stops on a usage limit that names a reset time, resume it then without asking. */
+  autoResumeOnLimit: boolean;
   bounceDockOnAttention: boolean;
   showMenuBarExtra: boolean;
   keepAwakeWhileRunning: boolean;
@@ -457,6 +461,7 @@ export function normalizeCapsuleSettings(input: Partial<CapsuleSettings> = {}): 
     notifyRunComplete: flag(input.notifyRunComplete, DEFAULT_CAPSULE_SETTINGS.notifyRunComplete),
     notifyApprovals: flag(input.notifyApprovals, DEFAULT_CAPSULE_SETTINGS.notifyApprovals),
     agentSimulatorAccess: flag(input.agentSimulatorAccess, DEFAULT_CAPSULE_SETTINGS.agentSimulatorAccess),
+    autoResumeOnLimit: flag(input.autoResumeOnLimit, DEFAULT_CAPSULE_SETTINGS.autoResumeOnLimit),
     bounceDockOnAttention: flag(
       input.bounceDockOnAttention,
       DEFAULT_CAPSULE_SETTINGS.bounceDockOnAttention,

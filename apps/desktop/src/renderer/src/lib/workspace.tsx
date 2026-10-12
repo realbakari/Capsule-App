@@ -59,6 +59,7 @@ import type { SettingsSectionId } from "../features/settings/settings-search";
 import { commandForEvent, parseChord, type Keymap } from "./keybindings";
 import { formatUserError } from "./errors";
 import { enqueuePrompt, loadQueue, moveQueued as moveQueuedPrompt, removeQueued as removeQueuedPrompt, saveQueue, takeNext, type QueuedPrompt } from "./prompt-queue";
+import { detectUsageLimit } from "./usage-limit";
 import { EMPTY_NAVIGATION, canGoBack as navigationCanGoBack, canGoForward as navigationCanGoForward, goBack as navigationBack, goForward as navigationForward, pruneNavigation, recordNavigation, type NavigationHistory } from "./navigation-history";
 import { contextUsageFromEvents, type ContextUsage } from "./context-window";
 import { harnessPreflightReason } from "./harness-preflight";
@@ -146,6 +147,14 @@ function storedNumber(key: string, fallback: number): number {
   } catch {
     return fallback;
   }
+}
+
+export interface PendingResume {
+  sessionId: string;
+  /** The run that stopped on the limit, so the same stop is not scheduled twice. */
+  runId: string;
+  prompt: string;
+  at: number;
 }
 
 export interface ConfirmState {
@@ -337,6 +346,12 @@ export interface WorkspaceValue {
   editQueued: (id: string) => void;
   /** Send a queued follow-up now as a steer, where the route supports it. */
   steerQueued: (id: string) => Promise<void>;
+  /** A prompt waiting for a usage limit to lift, then sent through the queue. */
+  pendingResume?: PendingResume;
+  scheduleResume: (runId: string, prompt: string, at: number) => void;
+  cancelResume: () => void;
+  /** Send a stopped turn's prompt again now. */
+  retryPrompt: (prompt: string) => void;
   /** The find bar over the current conversation. */
   threadFind: boolean;
   setThreadFind: (open: boolean | ((current: boolean) => boolean)) => void;
@@ -1171,7 +1186,83 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     await refresh();
   }
 
-  async function send(continueToNew = false, command?: string) {
+  /*
+   * Follow-ups while a turn runs. Sending used to be refused; now the prompt
+   * waits its turn. The queue is per conversation, survives a restart, and is
+   * flushed by effect once the thread is free. A follow-up that fails to send
+   * goes to Stash like any other failed submission.
+   */
+  const [queue, setQueue] = useState<QueuedPrompt[]>([]);
+  const queueSession = useRef<string | undefined>(undefined);
+  const sessionSettledAt = useRef(0);
+  const flushing = useRef(false);
+  useEffect(() => {
+    queueSession.current = sessionId;
+    sessionSettledAt.current = Date.now();
+    setQueue(sessionId ? loadQueue(localStorage, sessionId) : []);
+  }, [sessionId]);
+  useEffect(() => {
+    if (sessionId && queueSession.current === sessionId) saveQueue(localStorage, sessionId, queue);
+  }, [queue, sessionId]);
+  const [threadFind, setThreadFind] = useState(false);
+  useEffect(() => { setThreadFind(false); }, [sessionId]);
+
+  /*
+   * Resume at reset. A limit stop that names a time becomes a scheduled
+   * re-send, kept per conversation in storage so a restart keeps the plan;
+   * when the time comes the prompt joins the queue and goes out like any
+   * other follow-up. Sending something else first does not cancel it.
+   */
+  const [pendingResume, setPendingResume] = useState<PendingResume>();
+  const [resumeTick, setResumeTick] = useState(0);
+  useEffect(() => {
+    if (!sessionId) { setPendingResume(undefined); return; }
+    try {
+      const raw = localStorage.getItem(`capsule.resume:${sessionId}`);
+      const parsed = raw ? JSON.parse(raw) as PendingResume : undefined;
+      setPendingResume(parsed && parsed.sessionId === sessionId && typeof parsed.at === "number" && typeof parsed.prompt === "string" ? parsed : undefined);
+    } catch { setPendingResume(undefined); }
+  }, [sessionId]);
+  const scheduleResume = (runId: string, prompt: string, at: number) => {
+    if (!sessionId || !prompt.trim()) return;
+    const next = { sessionId, runId, prompt, at };
+    setPendingResume(next);
+    try { localStorage.setItem(`capsule.resume:${sessionId}`, JSON.stringify(next)); } catch { /* Kept for this window only. */ }
+  };
+  const cancelResume = () => {
+    if (sessionId) try { localStorage.removeItem(`capsule.resume:${sessionId}`); } catch { /* Nothing stored. */ }
+    setPendingResume(undefined);
+  };
+  useEffect(() => {
+    if (!pendingResume || pendingResume.sessionId !== sessionId) return;
+    const wait = pendingResume.at - Date.now();
+    if (wait > 0) {
+      const timer = window.setTimeout(() => setResumeTick((value) => value + 1), Math.min(wait, 60_000));
+      return () => window.clearTimeout(timer);
+    }
+    if (activeRun || busy) return;
+    cancelResume();
+    setQueue((current) => enqueuePrompt(current, { content: pendingResume.prompt, attachments: [] }).queue);
+    return undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingResume, sessionId, resumeTick, activeRun?.id, busy]);
+  const retryPrompt = (prompt: string) => {
+    if (!prompt.trim()) return;
+    setQueue((current) => enqueuePrompt(current, { content: prompt, attachments: [] }).queue);
+  };
+  // With auto-resume on, a limit stop that names a time schedules itself.
+  useEffect(() => {
+    if (!settings?.autoResumeOnLimit || !sessionId || pendingResume) return;
+    const latest = runs.filter((run) => run.sessionId === sessionId).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0];
+    if (!latest || latest.status !== "failed" || !latest.prompt) return;
+    const limit = detectUsageLimit(latest.error);
+    if (!limit.limited || !limit.resetsAt) return;
+    try { if (localStorage.getItem(`capsule.resume-handled:${latest.id}`)) return; localStorage.setItem(`capsule.resume-handled:${latest.id}`, "1"); } catch { /* Best effort. */ }
+    scheduleResume(latest.id, latest.prompt, limit.resetsAt.getTime());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runs, sessionId, settings?.autoResumeOnLimit, pendingResume]);
+
+  async function send(continueToNew = false, command?: string, queued?: QueuedPrompt) {
     if (attachmentReservations.get(draftScope)) {
       setNotice("Attachments are still being prepared. Wait for them before sending.");
       return false;
@@ -2328,6 +2419,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       steerQueued,
       threadFind,
       setThreadFind,
+      pendingResume,
+      scheduleResume,
+      cancelResume,
+      retryPrompt,
       gitCommit,
       gitStage,
       gitDiscard,
@@ -2407,6 +2502,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       contentSearch,
       queue,
       threadFind,
+      pendingResume,
       navigation,
       inspectorTab,
       projectRuns,

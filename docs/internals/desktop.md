@@ -525,6 +525,20 @@ its text behind a `$` prompt with a copy control, then its output. A user
 message's hover actions are Copy and **Continue in a new conversation**,
 which starts a thread in the same project with that prompt as the draft.
 
+Usage limits: `usage-limit.ts` recognises a limit stop in a failed run's
+error and parses a reset time from relative waits ("in 2 hours and 15 min",
+"retry after 90 seconds"), clock times ("resets at 3pm", rolling to
+tomorrow when past) or an ISO timestamp. The conversation shows a limit banner
+with **Resume at reset** (scheduleResume: per-conversation
+`capsule.resume:<sessionId>` record with runId, prompt and time; a workspace
+effect enqueues the prompt when due and the thread is free) and **Retry now**
+(enqueue immediately). A pending resume shows above the error with Cancel.
+`autoResumeOnLimit` (Settings → General) schedules automatically once per run
+(`capsule.resume-handled:<runId>`). The context meter card gains **Compact
+conversation**, which runs the agent's advertised `compact` command through
+`runAgentCommand`, says why it is unavailable otherwise, and notes a likely
+expired prompt cache after five idle minutes.
+
 **Edit from here** on a user message calls the write-scoped `rewindSession`
 (sessionId, messageId, {restoreFiles}). The engine refuses while a run is live
 or for a non-user or steer message; it deletes the message and every later

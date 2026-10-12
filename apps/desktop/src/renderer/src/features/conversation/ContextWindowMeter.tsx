@@ -7,6 +7,12 @@ interface ContextWindowMeterProps {
   fraction: number;
   tone?: "normal" | "warn" | "critical";
   size?: number;
+  /** Ask the agent to compact its context; absent when the agent offers no such command. */
+  onCompact?: () => void;
+  /** Why compacting is unavailable, said instead of hiding the control. */
+  compactUnavailable?: string;
+  /** Minutes since the conversation last moved; past five the prompt cache has likely expired. */
+  idleMinutes?: number;
 }
 
 export function ContextWindowMeter({
@@ -15,6 +21,9 @@ export function ContextWindowMeter({
   fraction,
   tone = "normal",
   size = 20,
+  onCompact,
+  compactUnavailable,
+  idleMinutes,
 }: ContextWindowMeterProps) {
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -105,6 +114,13 @@ export function ContextWindowMeter({
               className="context-card-fill"
               style={{ width: `${Math.max(2, clamped * 100)}%`, background: stroke }}
             />
+          </div>
+          {idleMinutes !== undefined && idleMinutes >= 5 && (
+            <p className="context-card-hint">Idle {Math.round(idleMinutes)} min. The prompt cache has likely expired, so compacting now costs the least.</p>
+          )}
+          <div className="context-card-actions">
+            <button type="button" className="chip" disabled={!onCompact} title={onCompact ? "Ask the agent to summarise its context into less" : compactUnavailable} onClick={() => { onCompact?.(); setOpen(false); }}>Compact conversation</button>
+            {!onCompact && compactUnavailable && <span className="faint">{compactUnavailable}</span>}
           </div>
 
         </div>

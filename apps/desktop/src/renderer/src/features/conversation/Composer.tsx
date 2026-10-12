@@ -122,6 +122,8 @@ export function Composer({
     session,
     project,
     git,
+    messages,
+    runAgentCommand,
     steerDraft,
     steeringPending,
     setSteerDraft,
@@ -209,6 +211,9 @@ export function Composer({
       ? session.id
       : undefined;
   const harnessStatus = liveHarnessSessionId ? harnessStatuses[liveHarnessSessionId] : undefined;
+  const compactCommand = harnessStatus?.parsed?.availableCommands?.find((command) => /^(compact|context-compact)$/i.test(command.name))?.name;
+  const lastMovedAt = messages.length ? Date.parse(messages[messages.length - 1]!.createdAt) : Number.NaN;
+  const idleMinutes = Number.isNaN(lastMovedAt) ? undefined : (Date.now() - lastMovedAt) / 60_000;
   useEffect(() => {
     if (!liveHarnessSessionId || harnessStatus) return;
     void loadHarnessStatus(liveHarnessSessionId);
@@ -760,6 +765,9 @@ export function Composer({
                 fraction={contextUsage.fraction}
                 tone={contextTone(contextUsage.fraction)}
                 size={22}
+                onCompact={compactCommand ? () => void runAgentCommand(compactCommand) : undefined}
+                compactUnavailable={compactCommand ? undefined : harnessLive ? "This agent does not offer a compact command." : "Start an agent conversation first."}
+                idleMinutes={idleMinutes}
               />
             )}
             {activeRun ? (

@@ -2,7 +2,10 @@ import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } fro
 import type { ChatMessage, Run } from "@capsule/shared";
 import { harnessDisplayName } from "../../lib/harness";
 import { formatTokens, type ContextUsage } from "../../lib/context-window";
-import { AlertTriangleIcon, DiffIcon, FileIcon, SparkIcon, TerminalIcon, XIcon } from "../shell/icons";
+import { AlertTriangleIcon, DiffIcon, FileIcon, HistoryIcon, MessageSquarePlusIcon, SparkIcon, TerminalIcon, XIcon } from "../shell/icons";
+import { RunElapsed } from "./RunElapsed";
+import { ThreadFind } from "./ThreadFind";
+import { detectUsageLimit, formatResetTime } from "../../lib/usage-limit";
 import { useWorkspace } from "../../lib/workspace";
 import { useScopedState } from "../../lib/scoped-state";
 import { formatUserError } from "../../lib/errors";
@@ -238,6 +241,10 @@ export function Conversation() {
     attachFiles,
     threadFind,
     setThreadFind,
+    pendingResume,
+    scheduleResume,
+    cancelResume,
+    retryPrompt,
     view,
     setTerminalOpen,
     setInspectorOpen,
@@ -364,6 +371,13 @@ export function Conversation() {
   // that run arrives. Remember dismissals per attempt, not per error string.
   const [dismissedFailures, setDismissedFailures] = useState<ReadonlySet<string>>(() => new Set());
   const { notice: shownNotice, failure, failureKey } = threadFeedback({ sessionId: session?.id, runs, notice, dismissed: dismissedFailures });
+  const limitStop = useMemo(() => {
+    if (!failure || !session) return undefined;
+    const latest = runs.filter((run) => run.sessionId === session.id).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0];
+    if (!latest || latest.status !== "failed") return undefined;
+    const limit = detectUsageLimit(latest.error);
+    return limit.limited ? { runId: latest.id, prompt: latest.prompt, resetsAt: limit.resetsAt } : undefined;
+  }, [failure, runs, session]);
 
   const openTurn = useCallback((id: string) => {
     setOpenedTurns((current) => new Set(current).add(id));
@@ -648,7 +662,27 @@ export function Conversation() {
               </RunSummary>
             </div>
           )}
-          {failure && failureKey ? (
+          {pendingResume && pendingResume.sessionId === session?.id && (
+            <div className="thread-resume" role="status">
+              <span>Resuming at {formatResetTime(new Date(pendingResume.at))}: “{pendingResume.prompt.slice(0, 80)}{pendingResume.prompt.length > 80 ? "…" : ""}”</span>
+              <button type="button" className="chip" onClick={cancelResume}>Cancel</button>
+            </div>
+          )}
+          {failure && failureKey && limitStop ? (
+            <div className="thread-error thread-limit" role="status">
+              <AlertTriangleIcon size={13} aria-hidden />
+              <span className="thread-error-text" title={failure}>
+                Usage limit reached.{limitStop.resetsAt ? ` The provider says it lifts at ${formatResetTime(limitStop.resetsAt)}.` : " The provider did not say when it lifts."}
+              </span>
+              {limitStop.resetsAt && limitStop.prompt && !pendingResume && (
+                <button type="button" className="chip" onClick={() => { scheduleResume(limitStop.runId, limitStop.prompt!, limitStop.resetsAt!.getTime()); setDismissedFailures((current) => new Set(current).add(failureKey)); }}>Resume at reset</button>
+              )}
+              {limitStop.prompt && (
+                <button type="button" className="chip" onClick={() => { retryPrompt(limitStop.prompt!); setDismissedFailures((current) => new Set(current).add(failureKey)); }}>Retry now</button>
+              )}
+              <button type="button" className="icon-btn" aria-label="Dismiss error" onClick={() => setDismissedFailures((current) => new Set(current).add(failureKey))}><XIcon size={12} /></button>
+            </div>
+          ) : failure && failureKey ? (
             <div className="thread-error" role="status">
               <AlertTriangleIcon size={13} aria-hidden />
               <span className="thread-error-text" title={failure}>

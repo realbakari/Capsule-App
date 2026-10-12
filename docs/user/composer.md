@@ -268,3 +268,22 @@ Rejected commands show an error and are recoverable in **Stash**.
 The list belongs to the current agent session. An empty or unreported list is
 labelled explicitly. Gateway command discovery is not available through this
 control, and paired viewers cannot send commands.
+
+## Usage limits
+
+When a turn stops because the provider's usage limit is reached, the
+conversation says so and, when the provider named a time, when the limit
+lifts. **Resume at reset** schedules that prompt to be sent again at that
+time; it joins the follow-up queue when the moment comes, and a line above
+the error shows the plan with **Cancel**. **Retry now** sends it again
+immediately. Turn on **Auto-resume limited threads** in Settings → General to
+schedule these stops without asking. Capsule must be running when the reset
+arrives. Limits that name no time offer only Retry now.
+
+## Compacting a long conversation
+
+The context ring beside Send opens a card with the context window in use.
+**Compact conversation** asks the agent to summarise its context into less,
+when the agent offers that command; the card says when it does not. After
+five idle minutes the card notes that the prompt cache has likely expired, the
+cheapest moment to compact.

@@ -211,6 +211,9 @@ export function DesktopCard({ settings, onPatch }: SectionProps) {
       <SettingRow label="Download updates automatically" hint="Download compatible releases in the background. Capsule only restarts to install when you ask, after active work finishes.">
         <Switch checked={settings.autoDownloadUpdates} label="Download updates automatically" onChange={(autoDownloadUpdates) => onPatch({ autoDownloadUpdates })} />
       </SettingRow>
+      <SettingRow label="Auto-resume limited threads" hint="When a turn stops because the provider's usage limit is reached and it says when the limit lifts, send the prompt again at that time. Off asks each time with Resume at reset.">
+        <Switch checked={settings.autoResumeOnLimit} label="Auto-resume limited threads" onChange={(autoResumeOnLimit) => onPatch({ autoResumeOnLimit })} />
+      </SettingRow>
       <SettingRow label="Agent simulator access" hint="Let a direct agent see and drive the iOS Simulator you attach in a conversation's Simulator panel. Off hides the simulator tools from agents started from now on and refuses calls from running ones.">
         <Switch checked={settings.agentSimulatorAccess} label="Agent simulator access" onChange={(agentSimulatorAccess) => onPatch({ agentSimulatorAccess })} />
       </SettingRow>
