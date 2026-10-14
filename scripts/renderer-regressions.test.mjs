@@ -22,7 +22,7 @@ it("keeps renderer interactions recoverable and companion motion accessible", { 
     const script = path.join(directory, "test.js");
     await writeFile(script, bundle.outputFiles[0].text);
     const petStyles = await readFile("apps/desktop/src/renderer/src/features/pet/pet.css", "utf8");
-    const composerStyles = (await readFile("packages/ui/src/tokens.css", "utf8")) + (await readFile("apps/desktop/src/renderer/src/styles.css", "utf8")).replace('@import "@capsule/ui/tokens.css";', "") + (await readFile("apps/desktop/src/renderer/src/features/channels/channels.css", "utf8"));
+    const composerStyles = (await readFile("packages/ui/src/tokens.css", "utf8")) + (await readFile("apps/desktop/src/renderer/src/styles.css", "utf8")).replace('@import "@capsule/ui/tokens.css";', "") + (await readFile("apps/desktop/src/renderer/src/features/channels/channels.css", "utf8")) + (await readFile("apps/desktop/src/renderer/src/features/landing/landing.css", "utf8"));
     await writeFile(path.join(directory, "index.html"), '<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; img-src \'self\' data:"><style id="pet-test-styles">' + petStyles + '</style><style id="composer-test-styles" media="not all">' + composerStyles + '</style><div id="root"></div>');
     const env = { ...process.env };
     delete env.ELECTRON_RUN_AS_NODE;

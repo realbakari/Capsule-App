@@ -14,8 +14,8 @@ import "./styles.css";
  * painted a dark window and swapped to light once settings came back over
  * IPC — the "pop" on every start.
  *
- * The website takes no part in that: no preload bridge means this is the
- * public site, which is dark and stays dark.
+ * Public pages own their light palette. The isolated sample workspace keeps
+ * the dark app theme, independently of its surrounding page.
  */
 applyStoredTheme(window.capsule ? undefined : "dark");
 // Windows uses a native caption above the renderer, not inset traffic lights.
@@ -79,6 +79,7 @@ const remoteToken = isDesktop ? undefined : await resolveRemoteToken().catch((er
   return undefined;
 });
 const isShowcase = !isDesktop && !remoteToken && new URLSearchParams(window.location.search).get("showcase") === "1";
+if (!isDesktop && !remoteToken && !isShowcase && !pairingError) applyStoredTheme("light");
 if (!isDesktop) {
   window.capsule = remoteToken ? createRemoteBridge(remoteToken) : createDemoBridge();
 }

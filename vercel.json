@@ -2,8 +2,8 @@
   "outputDirectory": "out/renderer",
   "rewrites": [
     {
-      "source": "/(privacy|security|terms)",
-      "destination": "/index.html"
+      "source": "/(privacy|security|terms|features|about|updates|roadmap|pricing|resources|faq|support)",
+      "destination": "/$1/index.html"
     }
   ]
 }

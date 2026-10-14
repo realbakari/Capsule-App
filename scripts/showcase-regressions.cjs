@@ -10,7 +10,7 @@ app.whenReady().then(async () => {
   if (!root) throw new Error("Missing showcase fixture");
   const server = http.createServer((request, response) => {
     const pathname = new URL(request.url, "http://localhost").pathname;
-    const name = pathname === "/" || ["/privacy", "/security", "/terms"].includes(pathname) ? "index.html" : pathname.slice(1);
+    const name = pathname === "/" || ["/privacy", "/security", "/terms", "/features", "/about", "/updates", "/roadmap", "/pricing", "/resources", "/faq", "/support"].includes(pathname) ? "index.html" : pathname.slice(1);
     const file = path.resolve(root, name);
     if (!file.startsWith(`${root}${path.sep}`)) { response.writeHead(403).end(); return; }
     const publicFile = name === "icon.png" ? path.resolve("apps/desktop/src/renderer/public/icon.png") : file;
@@ -74,7 +74,7 @@ app.whenReady().then(async () => {
     assert.equal(await evaluate("document.querySelector('.site').scrollWidth <= innerWidth"), true, "Mobile page overflows horizontally");
     await evaluate("document.querySelector('.site-compact-preview').scrollIntoView({behavior:'instant'})");
     await capture("public-mobile-preview");
-    await evaluate("document.querySelector('.site-nav a[href=\"#download\"]').click()");
+    await evaluate("document.querySelector('.site-header-download').click()");
     await waitFor("location.hash === '#download' && document.querySelector('#download').getBoundingClientRect().top < innerHeight");
     await capture("public-downloads");
     await evaluate("document.querySelector('.site-source summary').click()");
@@ -89,8 +89,22 @@ app.whenReady().then(async () => {
     assert.equal(await evaluate("Boolean(document.querySelector('.site-compact-preview'))"), false);
     for (const slug of ["privacy", "security", "terms"]) {
       await window.loadURL(`${origin}/${slug}`);
-      await waitFor("Boolean(document.querySelector('.policy-body h2'))");
+      await waitFor("Boolean(document.querySelector('.policy-body h1'))");
       assert.equal(await evaluate("Boolean(document.querySelector('.app'))"), false);
+      await capture(`public-${slug}`);
+    }
+    for (const slug of ["features", "about", "updates", "roadmap", "pricing", "resources", "faq", "support"]) {
+      await window.loadURL(`${origin}/${slug}`);
+      await waitFor("Boolean(document.querySelector('.site-page-heading h1'))");
+      assert.equal(await evaluate("document.querySelectorAll('main h1').length"), 1);
+      assert.equal(await evaluate("Boolean(document.querySelector('.app'))"), false);
+      assert.match(await evaluate("document.title"), /· Capsule$/);
+      await capture(`public-${slug}`);
+      window.setContentSize(390, 844);
+      await waitFor("innerWidth === 390");
+      assert.equal(await evaluate("document.querySelector('.site').scrollWidth <= innerWidth"), true, `${slug} overflows mobile`);
+      await capture(`public-${slug}-mobile`);
+      window.setContentSize(1440, 1000);
     }
     assert.deepEqual(errors, []);
     console.log("Showcase regressions passed");

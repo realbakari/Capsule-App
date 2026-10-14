@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { LandingPage } from "./LandingPage";
+import { PublicPage } from "./PublicPage";
+import { publicPageForPath } from "./site-content";
 
 /*
  * The demo shot embeds the real app, and Capsule's shell is a three-column
@@ -9,6 +11,7 @@ import { LandingPage } from "./LandingPage";
 const WIDE = "(min-width: 900px)";
 
 export function WebRoot() {
+  const page = publicPageForPath(window.location.pathname);
   const [wide, setWide] = useState(
     () => typeof window !== "undefined" && window.matchMedia(WIDE).matches,
   );
@@ -20,5 +23,8 @@ export function WebRoot() {
     return () => query.removeEventListener("change", onChange);
   }, []);
 
-  return <LandingPage demo={wide} />;
+  useEffect(() => {
+    if (page) document.title = `${page.title} · Capsule`;
+  }, [page]);
+  return page ? <PublicPage slug={page.slug} /> : <LandingPage demo={wide} />;
 }

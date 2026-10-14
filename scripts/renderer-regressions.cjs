@@ -31,6 +31,14 @@ app.whenReady().then(async () => {
     const result = await window.webContents.executeJavaScript("window.runRendererRegressions().then(value => ({ value }), error => ({ error: String(error.stack || error) }))");
     if (result.error) throw new Error(result.error);
     console.log(result.value);
+    for (const width of [380, 900, 1280]) {
+      window.setContentSize(width, 800);
+      await window.webContents.executeJavaScript("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
+      const landing = await window.webContents.executeJavaScript("window.runLandingRegressions().then(value => ({ value }), error => ({ error: String(error.stack || error) }))");
+      if (landing.error) throw new Error(landing.error);
+      console.log(landing.value);
+    }
+    window.setContentSize(800, 600);
     for (const scheme of ["dark", "light"]) {
       await window.webContents.debugger.sendCommand("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: scheme }] });
       await window.webContents.executeJavaScript("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");

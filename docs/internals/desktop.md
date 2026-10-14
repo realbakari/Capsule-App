@@ -6,6 +6,39 @@ Capsule is a workspace, not a clone of any other agent product. Quality bars els
 
 ---
 
+## Public landing page
+
+The public route uses a self-contained warm off-white palette, serif display
+headings, a compact navigation bar, and a large sample-workspace frame. Its
+styles live in `features/landing/landing.css`, not the desktop stylesheet.
+Policy routes import the same palette explicitly; desktop appearance settings
+must not change public-page contrast. The sample app remains isolated in an
+iframe, with a labelled task-and-diff illustration below 900px.
+
+The page proceeds from product preview to workflow, supported agents, setup
+questions, and platform-specific downloads. Native disclosures hold setup and
+privacy answers and the source installation command. Downloads stay pinned to
+a published release. No decorative controls imply a running agent or claim
+provider access. Renderer regressions cover 380px, 900px, and 1280px layouts,
+section targets, reversible disclosures, clipboard success/failure, and all
+three policy routes.
+
+The public site also has `/features`, `/about`, `/updates`, `/roadmap`,
+`/pricing`, `/resources`, `/faq`, and `/support` routes. A shared shell owns the
+desktop navigation, native mobile menu, and grouped footer on every page,
+including policies. The feature tour uses keyboard-accessible tabs and labelled
+illustrations, never live-looking controls that pretend to execute work.
+Resources filter by category and search, with an explicit empty-state reset.
+Development links to issues and compatibility limits; it does not invent
+delivery dates. Costs distinguish the MIT workspace from agent usage.
+
+The production build renders all eleven secondary routes to HTML using the
+same React components, with route-specific titles and descriptions and absolute
+asset URLs. Hosting rewrites resolve these files, so direct and trailing-slash
+URLs work without a catch-all route. The desktop entry stays unprerendered;
+the public sample app remains isolated. Policy Markdown is converted before
+the shared page renderer emits the final policy HTML.
+
 ## Shared channels
 
 Relay emoji avatars retain their published glyph and color across messages,

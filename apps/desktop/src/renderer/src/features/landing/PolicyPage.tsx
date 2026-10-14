@@ -1,4 +1,6 @@
 import { POLICY_PAGES } from "./policies.generated";
+import "./landing.css";
+import { SiteShell } from "./SiteShell";
 
 /*
  * A public page — privacy, security, terms — on the website.
@@ -17,8 +19,9 @@ export function policyForPath(pathname: string): (typeof POLICY_PAGES)[number] |
 export function PolicyPage({ slug }: { slug: string }) {
   const page = POLICY_PAGES.find((item) => item.slug === slug);
   if (!page) return null;
+  const html = page.html.replace(/^<h2>(.*?)<\/h2>/, "<h1>$1</h1>");
   return (
-    <div className="site policy-page">
+    <SiteShell current={`/${slug}`}><div className="policy-page">
       <header className="policy-head">
         <a className="policy-home" href="/">
           ← Capsule
@@ -35,13 +38,7 @@ export function PolicyPage({ slug }: { slug: string }) {
           ))}
         </nav>
       </header>
-      <article className="policy-body" dangerouslySetInnerHTML={{ __html: page.html }} />
-      <footer className="site-footer">
-        <span>Capsule</span>
-        <a href="https://github.com/realbakari/Capsule-App" target="_blank" rel="noreferrer">
-          GitHub
-        </a>
-      </footer>
-    </div>
+      <article className="policy-body" dangerouslySetInnerHTML={{ __html: html }} />
+    </div></SiteShell>
   );
 }

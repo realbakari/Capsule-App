@@ -1,4 +1,5 @@
 import { createRoot } from "react-dom/client";
+import { runLandingRegressions } from "./landing-regressions";
 import { useState } from "react";
 import { ProjectActionDialog } from "../features/shell/ProjectActionDialog";
 import { SkillsDirectory } from "../features/library/SkillsDirectory";
@@ -55,6 +56,7 @@ import type { Skill, Agent, HarnessStatus, AttentionState } from "@capsule/share
 
 declare global {
   interface Window {
+    runLandingRegressions: typeof runLandingRegressions;
     testWorkspace: Record<string, unknown>;
     runPetRegressions: (motion: "reduce" | "no-preference") => Promise<string>;
     runRendererRegressions: () => Promise<string>;
@@ -73,6 +75,7 @@ declare global {
 }
 
 window.runSurfaceRegressions = runSurfaceRegressions;
+window.runLandingRegressions = runLandingRegressions;
 
 function assert(condition: unknown, message: string): void {
   if (!condition) throw new Error(message);

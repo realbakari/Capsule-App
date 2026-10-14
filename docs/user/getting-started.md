@@ -88,6 +88,19 @@ not treated as a successful result.
 
 ## Public preview
 
+The public site introduces the workspace with a product preview, a visual
+feature tour, and a task-to-review walkthrough. **Features** explains the
+workflow; **Resources** has searchable guides grouped by topic. **Story**,
+**Updates**, **Development**, **Pricing**, **FAQ**, and **Support** cover the
+product’s purpose, releases, current limits, costs, setup questions, and help.
+These pages share navigation with the privacy, security, and terms pages.
+
+Use the feature tabs with a pointer or the arrow keys. Illustrated actions
+explain the workflow but do not execute work. On narrow screens, **Explore
+Capsule** opens the navigation. Setup questions expand individually.
+**Build from source** includes a copyable installation command and a manual-copy
+fallback when clipboard access is unavailable.
+
 The website shows a read-only sample of the interface, not a running agent or
 your own workspace. Its displayed project, conversation and connection state
 are sample data. Download the desktop app to send messages or use workspace
