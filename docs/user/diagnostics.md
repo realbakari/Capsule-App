@@ -40,6 +40,10 @@ depend on the JavaScript function-argument limit to calculate the date range.
 
 ## Closing Capsule
 
+On macOS, closing the desktop window leaves Capsule running. Background work
+and paired-browser updates continue. Use the Dock or **Open Capsule** in the
+menu bar to reopen the workspace. You can quit with the window already closed.
+
 Quit asks for confirmation when a turn is active. It gives owned agent processes
 time to stop before closing the workspace, with a short deadline so a stalled
 process cannot keep the app open indefinitely. Capsule disconnects from your

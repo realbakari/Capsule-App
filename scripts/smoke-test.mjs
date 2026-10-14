@@ -20,8 +20,8 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const desktop = path.join(root, "apps/desktop");
 const mainBundle = path.join(desktop, "out/main/index.js");
 const packagedExecutable = process.env.CAPSULE_SMOKE_EXECUTABLE;
-// Allow startup and the desktop's 12-second shutdown deadline.
-const SMOKE_WINDOW_MS = 25_000;
+// macOS loads the workspace twice to exercise close/reopen before shutdown.
+const SMOKE_WINDOW_MS = process.platform === "darwin" ? 60_000 : 25_000;
 const expectedVersion = readPackageVersion();
 
 /*
@@ -104,7 +104,9 @@ child.stderr.on("data", (chunk) => (output += chunk.toString()));
 let timedOut = false;
 const timer = setTimeout(() => {
   timedOut = true;
-  child.kill();
+  // This is only the child we spawned with the throwaway profile. A native
+  // error dialog can prevent graceful termination after the deadline.
+  child.kill("SIGKILL");
 }, SMOKE_WINDOW_MS);
 
 child.on("error", (error) => {
@@ -120,6 +122,10 @@ child.on("exit", (code) => {
   const failures = FATAL_PATTERNS.filter((pattern) => output.includes(pattern));
   if (!output.includes(WORKSPACE_MARKER)) failures.push("workspace never finished loading");
   if (!output.includes(SHUTDOWN_MARKER)) failures.push("normal shutdown never finished");
+  if (process.platform === "darwin") {
+    if (!output.includes("capsule: closed-window events delivered")) failures.push("closed window blocked background events");
+    if (!output.includes("capsule: reopened workspace closed before quit")) failures.push("workspace did not reopen and close before quitting");
+  }
   if (timedOut) failures.push("startup or shutdown exceeded its deadline");
   const ready = READY_MARKER.exec(output);
   if (!ready) failures.push("the window never finished loading");
@@ -136,6 +142,6 @@ child.on("exit", (code) => {
     console.error(`\n${output}`);
     process.exit(1);
   }
-  console.log(`Smoke test passed: Capsule ${expectedVersion} loaded its workspace in one window and quit cleanly.`);
+  console.log(`Smoke test passed: Capsule ${expectedVersion} loaded its workspace in one window${process.platform === "darwin" ? ", delivered events after close, reopened, closed again" : ""} and quit cleanly.`);
   process.exit(0);
 });

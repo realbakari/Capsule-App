@@ -49,6 +49,7 @@ import { startSimulatorMcpServer, type SimulatorMcpServer } from "./simulator-mc
 import { Updater, mergeUpdateStatus } from "./updater";
 import { UpdateAdmission } from "./update-admission";
 import { NativeUpdateStager } from "./native-update-stager";
+import { WindowReference } from "./window-reference";
 import {
   IPC_CHANNELS,
   isNewerRelease,
@@ -91,7 +92,7 @@ import { ensureSqliteAbi } from "./sqlite-abi";
 import { Shutdown } from "./shutdown";
 import { Startup } from "./startup";
 
-let mainWindow: BrowserWindow | undefined;
+const desktopWindow = new WindowReference<BrowserWindow>();
 let tray: Tray | undefined;
 let engine: CapsuleEngine | undefined;
 let analytics: ProductAnalytics | undefined;
@@ -307,7 +308,7 @@ export const browserTarget: BrowserTarget = {
     return contents && !contents.isDestroyed() ? contents : undefined;
   },
   open: async (url, owner) => {
-    if (!mainWindow || mainWindow.isDestroyed()) throw new Error("Open the Capsule desktop window first.");
+    if (!desktopWindow.current) throw new Error("Open the Capsule desktop window first.");
     return new Promise<Electron.WebContents>((resolve, reject) => {
       const ready = (contents: Electron.WebContents) => { clearTimeout(timer); browserReady.delete(ready); resolve(contents); };
       const timer = setTimeout(() => { browserReady.delete(ready); reject(new Error("The Browser panel did not become ready. Open it and retry.")); }, 10_000);
@@ -720,7 +721,7 @@ function createWindow(): BrowserWindow {
  * renderer collapses the inset.
  */
 function reportFullscreen(): void {
-  send(IPC_EVENTS.fullscreen, Boolean(mainWindow?.isFullScreen()));
+  send(IPC_EVENTS.fullscreen, Boolean(desktopWindow.current?.isFullScreen()));
 }
 
 /*
@@ -840,7 +841,7 @@ function stopAllTerminals(): void {
 }
 
 function send(channel: string, payload: unknown): void {
-  mainWindow?.webContents.send(channel, payload);
+  desktopWindow.send(channel, payload);
   for (const listener of remoteListeners) {
     try {
       listener(channel, payload);
@@ -851,7 +852,7 @@ function send(channel: string, payload: unknown): void {
 }
 
 function windowFocused(): boolean {
-  return Boolean(mainWindow?.isFocused());
+  return Boolean(desktopWindow.current?.isFocused());
 }
 
 function bounceDock(): void {
@@ -1492,7 +1493,7 @@ function registerIpc(): void {
     await shell.openPath(location);
   });
   handle(IPC_CHANNELS.pickDirectory, async () => {
-    const win = mainWindow ?? BrowserWindow.getFocusedWindow();
+    const win = desktopWindow.current ?? BrowserWindow.getFocusedWindow();
     const options: Electron.OpenDialogOptions = {
       title: "Open folder",
       message: "Choose the code folder Capsule should work in",
@@ -1505,7 +1506,7 @@ function registerIpc(): void {
     return result.canceled ? undefined : result.filePaths[0];
   });
   handle(IPC_CHANNELS.pickFiles, async () => {
-    const win = mainWindow ?? BrowserWindow.getFocusedWindow();
+    const win = desktopWindow.current ?? BrowserWindow.getFocusedWindow();
     const options: Electron.OpenDialogOptions = {
       title: "Open files",
       buttonLabel: "Open",
@@ -1577,8 +1578,8 @@ function registerIpc(): void {
   /* Opened from the pet, which is a different window and cannot route itself. */
   handle(IPC_CHANNELS.focusSession, (sessionId) => {
     if (typeof sessionId !== "string" || !sessionId) return false;
-    mainWindow?.show();
-    mainWindow?.focus();
+    desktopWindow.current?.show();
+    desktopWindow.current?.focus();
     send(IPC_EVENTS.state, { command: "open-session", sessionId });
     return true;
   });
@@ -1751,7 +1752,8 @@ function registerIpc(): void {
     if (!isHexColor(color)) return false;
     if (paintedBackground === color) return true;
     paintedBackground = color;
-    if (mainWindow && !mainWindow.isDestroyed()) {
+    const mainWindow = desktopWindow.current;
+    if (mainWindow) {
       // The frame behind the app while it is resized or restored.
       mainWindow.setBackgroundColor(color);
       saveWindowState(mainWindow);
@@ -1796,14 +1798,47 @@ function registerIpc(): void {
       if (petWindow && !petWindow.isDestroyed() && !petWindow.isVisible()) petWindow.showInactive();
       return true;
     }
-    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) mainWindow.show();
+    const mainWindow = desktopWindow.current;
+    if (mainWindow && !mainWindow.isVisible()) mainWindow.show();
     rendererReady = true;
     deliverDeepLink();
     if (process.env.CAPSULE_SMOKE_TEST) {
       console.log("capsule: workspace ready");
       // Exercise normal shutdown after acknowledging the renderer, not a
       // signal that bypasses before-quit and leaves cleanup untested.
-      setImmediate(() => app.quit());
+      setImmediate(() => {
+        const afterClose = () => {
+          if (desktopWindow.current) throw new Error("Smoke window did not close");
+          if (!smokeWindowReopened) {
+            smokeWindowReopened = true;
+            const payload = { command: "smoke-window-closed" };
+            let delivered = false;
+            const listener = (channel: string, value: unknown) => {
+              if (channel === IPC_EVENTS.state && value === payload) delivered = true;
+            };
+            remoteListeners.add(listener);
+            try {
+              requireEngine().events.emit("state", payload);
+              reportFullscreen();
+              if (windowFocused()) throw new Error("Closed window still has focus");
+              if (!delivered) throw new Error("Closed window blocked remote events");
+            } finally {
+              remoteListeners.delete(listener);
+            }
+            console.log("capsule: closed-window events delivered");
+            revealWindow();
+            return;
+          }
+          console.log("capsule: reopened workspace closed before quit");
+          app.quit();
+        };
+        if (process.platform === "darwin" && mainWindow) {
+          mainWindow.once("closed", () => setImmediate(afterClose));
+          mainWindow.close();
+        } else {
+          app.quit();
+        }
+      });
     }
     return true;
   });
@@ -2035,7 +2070,7 @@ function attentionEntries(): Electron.MenuItemConstructorOptions[] {
       ...shown.map((item) => ({
         label: `${ATTENTION_MARK[item.state]}  ${item.title}`,
         click: () => {
-          mainWindow?.show();
+          desktopWindow.current?.show();
           send(IPC_EVENTS.state, { command: "open-session", sessionId: item.sessionId });
         },
       })),
@@ -2053,7 +2088,7 @@ function buildTrayMenu(): void {
     tray.setContextMenu(
       Menu.buildFromTemplate([
         ...attentionEntries(),
-        { label: "Open Capsule", click: () => mainWindow?.show() },
+        { label: "Open Capsule", click: revealWindow },
         {
           label: isPetOpen() ? "Hide pet" : "Show pet",
           click: () => {
@@ -2191,12 +2226,14 @@ const ownsProfile = app.requestSingleInstanceLock();
 const startup = new Startup(ownsProfile);
 let pendingDeepLink: string | undefined;
 let rendererReady = false;
+let smokeWindowReopened = false;
 
 function revealWindow(): void {
   if (!startup.canOpenWindow) return;
-  if (!mainWindow || mainWindow.isDestroyed()) {
+  const mainWindow = desktopWindow.current;
+  if (!mainWindow) {
     rendererReady = false;
-    mainWindow = createWindow();
+    desktopWindow.current = createWindow();
     return;
   }
   if (mainWindow.isMinimized()) mainWindow.restore();
@@ -2268,7 +2305,7 @@ app.whenReady().then(() => startup.run(async () => {
   startResourceSampling();
   createMenu();
   createTray();
-  mainWindow = createWindow();
+  desktopWindow.current = createWindow();
   const launchLink = process.argv.find((arg) => arg.startsWith(`${APP_SCHEME}://`));
   if (launchLink) handleDeepLink(launchLink);
   try {
@@ -2347,7 +2384,8 @@ app.on("before-quit", (event) => {
   const running = engine?.listRuns().filter((run) =>
     ["running", "queued", "waiting", "approval_required"].includes(run.status),
   ).length ?? 0;
-  if (running > 0 && !quitConfirmed && mainWindow && !mainWindow.isDestroyed()) {
+  const mainWindow = desktopWindow.current;
+  if (running > 0 && !quitConfirmed && mainWindow) {
     revealWindow();
     const choice = dialog.showMessageBoxSync(mainWindow, {
       type: "question",

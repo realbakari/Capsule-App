@@ -870,6 +870,13 @@ Startup is owned by the profile-lock winner. Quit cancels pending window reveals
 waits for in-flight startup before cleanup, and publishes a closing state rather
 than a retryable load error. Deep-link routes wait for renderer readiness. IPC waits
 for the complete engine startup, not merely construction of the engine object.
+The main-window reference is released on `closed`, not the cancellable `close`
+event. Event delivery checks both window and web-contents lifetime; closing the
+desktop never disconnects the app-owned engine subscriptions or paired viewers.
+On macOS the workspace can reopen from the Dock or tray while services remain
+running, and quit runs cleanup even when no desktop window remains. The macOS
+startup smoke test closes a loaded workspace, emits an engine event to a remote
+subscriber, reopens the workspace, then closes it again before normal quit.
 Search ranks exact conversation titles first, then recent activity, consistently
 in the palette and the search API without changing sidebar pin order.
 
