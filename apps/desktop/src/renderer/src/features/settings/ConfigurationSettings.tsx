@@ -70,29 +70,28 @@ export function AgentDefaultsCard({ settings, onPatch }: SectionProps) {
     <div className="card">
       <h3>Agent defaults</h3>
       <p className="muted">
-        Permissions, web access, and how much detail new conversations ask for. ACP cannot show a
-        permission dialog — the Gateway plugin is the real switch.
+        Local agent permissions and reasoning are configured per conversation in the composer.
       </p>
-      <SettingRow
-        label="Approval policy"
-        hint="Standard and Full access use Gateway approve-all so coding can write and fetch. Supervised refuses those tools instead of asking. Capsule Approvals only appear if OpenClaw forwards a permission request."
+      {settings.runtimeMode === "openclaw" && <SettingRow
+        label="Gateway approval policy"
+        hint="Read-only refuses tools that need approval. Full access lets the Gateway approve them without a prompt."
       >
         <select
           className="field-select"
-          value={settings.defaultPermission}
+          value={settings.defaultPermission === "default" ? "approve-all" : settings.defaultPermission}
           onChange={(event) =>
             onPatch({
               defaultPermission: event.target.value as CapsuleSettings["defaultPermission"],
             })
           }
         >
-          {PERMISSION_OPTIONS.map((item) => (
+          {PERMISSION_OPTIONS.filter((item) => item.id !== "default").map((item) => (
             <option key={item.id} value={item.id}>
               {item.label}
             </option>
           ))}
         </select>
-      </SettingRow>
+      </SettingRow>}
       <SettingRow
         label="Sandbox"
         hint="How much local command access Capsule grants. Strict blocks the project terminal."

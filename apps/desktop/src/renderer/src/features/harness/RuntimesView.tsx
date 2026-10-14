@@ -367,14 +367,14 @@ function HarnessDetail({
                 <span>Permissions</span>
                 <select
                   className="field-select"
-                  value={activeSession.permissionProfile ?? "default"}
+                  value={activeSession.permissionProfile === "strict" ? "strict" : "approve-all"}
                   onChange={(event) => {
                     if (event.target.value) onOption("permissions", event.target.value);
                   }}
                 >
-                  {PERMISSION_PROFILES.map((profile) => (
+                  {PERMISSION_PROFILES.filter((profile) => profile.id !== "default").map((profile) => (
                     <option key={profile.id} value={profile.id}>
-                      {profile.label}
+                      {profile.id === "strict" ? "Read-only" : profile.label}
                     </option>
                   ))}
                 </select>

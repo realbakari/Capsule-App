@@ -13,7 +13,7 @@ async function until(check: () => unknown) {
 /** Exercise admission through the real provider, not a mocked composer action. */
 export async function runDraftAdmissionRegressions(get: () => ReturnType<typeof useWorkspace>, threads: Session[]) {
   const api = window.capsule;
-  const original = { validate: api.validateAttachments, send: api.sendMessage, save: api.saveTextAttachment, status: api.harnessStatus };
+  const original = { validate: api.validateAttachments, send: api.sendMessage, save: api.saveTextAttachment, status: api.harnessStatus, spawn: api.spawnHarness, configure: api.setHarnessConfig, option: api.setHarnessOption };
   const thread = threads.find((item) => item.id === get().sessionId)!;
   const originalThread = { ...thread };
   const draft = get().draft;
@@ -47,6 +47,21 @@ export async function runDraftAdmissionRegressions(get: () => ReturnType<typeof 
     await until(() => get().promptStashes.some((entry) => entry.prompt === paste));
     assert(get().draft === "Keep this draft" && get().attachments[0]?.path === "/fixture/keep.txt", "Failed paste damaged existing work");
 
+    const configurationCalls: string[] = [];
+    api.spawnHarness = async (input) => { configurationCalls.push(`spawn:${(input as { model?: string }).model}`); return { session: thread } as never; };
+    api.setHarnessConfig = async (_id, key, value) => { configurationCalls.push(`${key}:${value}`); return undefined as never; };
+    api.setHarnessOption = async (input) => { configurationCalls.push(`model:${(input as { value: string }).value}`); return undefined as never; };
+    api.sendMessage = async (input) => { configurationCalls.push("send"); sent = input; return undefined as never; };
+    get().setDraftHarnessConfig({ model: "reported-model", options: { provider_effort: "high", permissions: "supervised" } });
+    await until(() => get().draftHarnessConfig.model === "reported-model");
+    assert(await get().send(), `Configured first turn failed: ${get().notice}`);
+    assert(configurationCalls.join(",") === "spawn:reported-model,model:reported-model,provider_effort:high,permissions:supervised,send", "Draft settings did not reach the agent before the prompt");
+    await until(() => !get().draftHarnessConfig.model);
+    sent = undefined;
+    get().setDraft("Keep this draft"); get().setSkillId("keep-skill");
+    await get().attachFiles(["/fixture/keep.txt"]);
+    await until(() => get().draft === "Keep this draft" && get().attachments.length === 1);
+
     thread.harnessId = "codex"; thread.openclawSessionKey = "direct:acp:codex:fixture"; thread.harnessState = "waiting";
     api.harnessStatus = async () => ({ sessionId: thread.id, harnessId: "codex", openclawSessionKey: thread.openclawSessionKey,
       parsed: { availableCommands: [{ name: "compact", description: "Compact context" }] } } as never);
@@ -72,6 +87,8 @@ export async function runDraftAdmissionRegressions(get: () => ReturnType<typeof 
     } finally { Storage.prototype.setItem = setItem; }
   } finally {
     api.validateAttachments = original.validate; api.sendMessage = original.send; api.saveTextAttachment = original.save; api.harnessStatus = original.status;
+    api.spawnHarness = original.spawn; api.setHarnessConfig = original.configure;
+    api.setHarnessOption = original.option;
     Object.assign(thread, originalThread);
     for (const key of ["harnessId", "openclawSessionKey", "harnessState"] as const) if (!(key in originalThread)) delete thread[key];
     for (const item of get().attachments) get().removeAttachment(item.path);

@@ -28,7 +28,7 @@ import { RemoteAccessSettings } from "./RemoteAccessSettings";
 import { AnalyticsSettings } from "./AnalyticsSettings";
 import { SettingRow, Switch } from "./controls";
 import { formatProjectRoot } from "../../lib/paths";
-import { MODES, useWorkspace } from "../../lib/workspace";
+import { useWorkspace } from "../../lib/workspace";
 
 /*
  * Sections a user can name before they open them. The old list had a
@@ -222,23 +222,6 @@ export function SettingsView() {
               <div className="appearance-page">
                 <div className="card">
                   <h3>New conversations</h3>
-                  <SettingRow label="Default mode" hint="Used for new conversations.">
-                    <select
-                      className="field-select"
-                      value={settings.defaultMode}
-                      onChange={(event) =>
-                        void patch({
-                          defaultMode: event.target.value as CapsuleSettings["defaultMode"],
-                        })
-                      }
-                    >
-                      {MODES.map((item) => (
-                        <option key={item} value={item}>
-                          {item}
-                        </option>
-                      ))}
-                    </select>
-                  </SettingRow>
                   <SettingRow label="Default agent" hint="Pre-selected when you start a new thread.">
                     <select
                       className="field-select"

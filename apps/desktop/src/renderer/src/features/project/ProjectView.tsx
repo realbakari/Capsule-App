@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import type { AgentMode, ProjectAction, WorkspaceMode } from "@capsule/shared";
+import type { ProjectAction, WorkspaceMode } from "@capsule/shared";
 import { isSharedAction, PROJECT_FILE_NAME } from "@capsule/shared";
 
-import { MODES, useWorkspace } from "../../lib/workspace";
+import { useWorkspace } from "../../lib/workspace";
 import { formatProjectRoot } from "../../lib/paths";
 import { useScopedState } from "../../lib/scoped-state";
 import { AgentGlyph } from "../shell/AgentGlyph";
@@ -175,20 +175,6 @@ export function ProjectView() {
                 </button>
               ) : null}
             </div>
-          </SettingRow>
-
-          <SettingRow label="Mode" hint="What a new conversation here starts in.">
-            <select
-              className="field-select"
-              value={project.defaultMode}
-              onChange={(event) => void patch({ defaultMode: event.target.value as AgentMode })}
-            >
-              {MODES.map((mode) => (
-                <option key={mode} value={mode}>
-                  {mode}
-                </option>
-              ))}
-            </select>
           </SettingRow>
 
           {/* The one setting here that had nowhere to live: it was app-wide,

@@ -47,6 +47,18 @@ app.whenReady().then(async () => {
     await window.webContents.executeJavaScript("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
     const narrowDiff = await window.webContents.executeJavaScript("window.runDiffPreviewRegressions().then(() => ({}), error => ({ error: String(error.stack || error) }))");
     if (narrowDiff.error) throw new Error(narrowDiff.error);
+    for (const width of [380, 900]) {
+      window.setContentSize(width, 650);
+      await window.webContents.executeJavaScript('window.renderAgentControlsPreview("dark")');
+      await window.webContents.executeJavaScript(`(() => {
+        const actions = document.querySelector('.composer-prompt-actions').getBoundingClientRect();
+        const glass = document.querySelector('.composer-glass').getBoundingClientRect();
+        for (const control of document.querySelectorAll('.composer-controls .menu-select-trigger')) {
+          const r = control.getBoundingClientRect();
+          if (r.left < glass.left || r.right > glass.right || r.left < actions.right && r.right > actions.left && r.top < actions.bottom && r.bottom > actions.top) throw new Error('Agent controls overlap or overflow the composer');
+        }
+      })()`);
+    }
     const sidebarScreenshots = process.env.CAPSULE_SIDEBAR_SCREENSHOTS_DIRECTORY;
     const turnScreenshots = process.env.CAPSULE_TURN_SCREENSHOTS_DIRECTORY;
     if (turnScreenshots) {
@@ -67,6 +79,19 @@ app.whenReady().then(async () => {
       }
     }
     const screenshots = process.env.CAPSULE_RENDERER_SCREENSHOTS_DIRECTORY;
+    const controlScreenshots = process.env.CAPSULE_CONTROLS_SCREENSHOTS_DIRECTORY;
+    if (controlScreenshots) {
+      fs.mkdirSync(controlScreenshots, { recursive: true });
+      for (const [width, theme] of [[900, "dark"], [380, "light"]]) {
+        window.setContentSize(width, 650);
+        for (const control of ["Agent and model", "Permissions"]) {
+          await window.webContents.executeJavaScript(`window.renderAgentControlsPreview(${JSON.stringify(theme)})`);
+          await window.webContents.executeJavaScript(`document.querySelector('[aria-label="${control}"]').click(); new Promise(resolve => setTimeout(resolve, 150))`);
+          fs.writeFileSync(path.join(controlScreenshots, `${width}-${control}.png`), (await window.webContents.capturePage()).toPNG());
+          await window.webContents.executeJavaScript(`document.querySelector('[aria-label="${control}"]').click()`);
+        }
+      }
+    }
     if (screenshots) {
       fs.mkdirSync(screenshots, { recursive: true });
       window.setContentSize(1000, 500);

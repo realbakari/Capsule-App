@@ -1,7 +1,7 @@
 import { useLayoutEffect, useState, type CSSProperties, type RefObject } from "react";
 
 /** Viewport coordinates for a body portal; never clipped by composer glass. */
-export function useAnchoredPopover(open: boolean, anchor: RefObject<HTMLElement | null>, panel: RefObject<HTMLElement | null>): CSSProperties {
+export function useAnchoredPopover(open: boolean, anchor: RefObject<HTMLElement | null>, panel: RefObject<HTMLElement | null>, align: "start" | "end" = "end"): CSSProperties {
   const [position, setPosition] = useState<CSSProperties>({ position: "fixed", visibility: "hidden" });
   useLayoutEffect(() => {
     if (!open || !anchor.current || !panel.current) return;
@@ -15,7 +15,7 @@ export function useAnchoredPopover(open: boolean, anchor: RefObject<HTMLElement 
       const maxHeight = Math.min(520, up ? above : below);
       const height = Math.min(panel.current.getBoundingClientRect().height, maxHeight);
       const next: CSSProperties = { position: "fixed", visibility: "visible", width, maxHeight,
-        left: Math.max(12, Math.min(rect.right - width, innerWidth - width - 12)),
+        left: Math.max(12, Math.min(align === "start" ? rect.left : rect.right - width, innerWidth - width - 12)),
         top: Math.max(12, Math.min(up ? rect.top - height - 8 : rect.bottom + 8, innerHeight - height - 12)),
         bottom: "auto", right: "auto" };
       setPosition((current) => Object.keys(next).every((key) => current[key as keyof CSSProperties] === next[key as keyof CSSProperties]) ? current : next);
@@ -27,6 +27,6 @@ export function useAnchoredPopover(open: boolean, anchor: RefObject<HTMLElement 
     window.addEventListener("resize", place);
     window.addEventListener("scroll", scroll, true);
     return () => { observer.disconnect(); window.removeEventListener("resize", place); window.removeEventListener("scroll", scroll, true); };
-  }, [open, anchor, panel]);
+  }, [open, anchor, panel, align]);
   return position;
 }

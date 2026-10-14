@@ -70,10 +70,9 @@ export const SETTINGS_SEARCH_ITEMS: SettingsSearchItem[] = [
   { title: "Translucent sidebar", section: "appearance", keywords: ["glass", "blur"] },
   { title: "Contrast", section: "appearance", keywords: ["separation", "borders"] },
 
-  { title: "Default mode", section: "agents", keywords: ["new conversation"] },
   { title: "Default agent", section: "agents", keywords: ["harness", "new thread"] },
   { title: "Conversation workspace", section: "agents", keywords: ["worktree", "isolation", "local"] },
-  { title: "Approval policy", section: "agents", keywords: ["permission", "access", "sandbox"] },
+  { title: "Gateway approval policy", section: "agents", keywords: ["permission", "access", "sandbox"] },
   { title: "Web search", section: "agents", keywords: ["internet", "fetch", "web access"] },
   { title: "Sandbox", section: "agents", keywords: ["filesystem", "safety"] },
   { title: "Output detail", section: "agents", keywords: ["verbose", "concise"] },

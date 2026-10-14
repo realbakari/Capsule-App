@@ -1,5 +1,7 @@
 import { contextTone } from "../../lib/context-window";
-import { harnessCapabilities } from "@capsule/shared";
+import { agentControls, reportedAgentControls, harnessCapabilities } from "@capsule/shared";
+import { useHarnessDiscovery } from "../../lib/harness-discovery";
+import { AgentControl } from "../harness/AgentControl";
 import { ContextWindowMeter } from "./ContextWindowMeter";
 import { ComposerTools } from "./ComposerTools";
 import { agentSwitchNotice, harnessDisplayName } from "../../lib/harness";
@@ -9,7 +11,7 @@ import { GATEWAY_CONNECTION_REQUIRED } from "../../lib/harness-preflight";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { FileEntry } from "@capsule/shared";
 import { searchProjectFiles } from "../../lib/bridge";
-import { MODES, PERMISSION_OPTIONS, useWorkspace, type View } from "../../lib/workspace";
+import { PERMISSION_OPTIONS, useWorkspace, type View } from "../../lib/workspace";
 import { formatProjectRoot, projectFolderName } from "../../lib/paths";
 import { MenuSelect } from "../shell/MenuSelect";
 import {
@@ -38,12 +40,12 @@ const SUGGESTIONS = [
   },
   {
     label: "Plan a change",
-    mode: "plan" as const,
+    mode: "code" as const,
     text: "Help me plan the next change for this project.",
   },
   {
     label: "Research options",
-    mode: "research" as const,
+    mode: "code" as const,
     text: "Research options for this problem and cite sources.",
   },
 ];
@@ -56,7 +58,6 @@ function slashCommands(input: {
   setSkillId: (id: string) => void;
   query: string;
   createTask: () => void;
-  setMode: (mode: "plan" | "chat" | "code") => void;
   spawnHarness: (id: string) => void;
   toggleInspector: () => void;
   openTerminal: () => void;
@@ -73,9 +74,6 @@ function slashCommands(input: {
         ];
   return [
     { id: "new", label: "/new", detail: "New conversation", run: () => input.createTask() },
-    { id: "plan", label: "/plan", detail: "Plan mode", run: () => input.setMode("plan") },
-    { id: "chat", label: "/chat", detail: "Chat mode", run: () => input.setMode("chat") },
-    { id: "code", label: "/code", detail: "Code mode", run: () => input.setMode("code") },
     ...targets.map((harness) => ({
       id: `spawn-${harness.id}`,
       label: `/${harness.id}`,
@@ -113,7 +111,6 @@ export function Composer({
     send,
     sendAndContinue,
     busy,
-    mode,
     setMode,
     agentId,
     setAgentId,
@@ -201,16 +198,12 @@ export function Composer({
     }
     setPendingSelection(undefined);
   }, [pendingSelection, selectionScope]);
-  /*
-   * Which models this agent will run is something only the running agent can
-   * say, so it is asked once per live session and remembered. Without this the
-   * list existed but only after someone pressed Status on the Harnesses screen.
-   */
   const liveHarnessSessionId =
     session?.harnessId && session.harnessState && session.harnessState !== "closed"
       ? session.id
       : undefined;
-  const harnessStatus = liveHarnessSessionId ? harnessStatuses[liveHarnessSessionId] : undefined;
+  const cachedStatus = liveHarnessSessionId ? harnessStatuses[liveHarnessSessionId] : undefined;
+  const harnessStatus = cachedStatus?.session.openclawSessionKey === session?.openclawSessionKey ? cachedStatus : undefined;
   const compactCommand = harnessStatus?.parsed?.availableCommands?.find((command) => /^(compact|context-compact)$/i.test(command.name))?.name;
   const lastMovedAt = messages.length ? Date.parse(messages[messages.length - 1]!.createdAt) : Number.NaN;
   const idleMinutes = Number.isNaN(lastMovedAt) ? undefined : (Date.now() - lastMovedAt) / 60_000;
@@ -221,13 +214,20 @@ export function Composer({
 
   const capabilityHarness = harnesses.find((item) => item.id === agentId);
   const capabilities = harnessCapabilities({ harness: capabilityHarness, session, status: harnessStatus });
+  const harnessLive = Boolean(session?.harnessId && session.harnessState && session.harnessState !== "closed");
+  const draftConfiguration = workspace.draftHarnessConfig ?? { options: {} };
+  const discovery = useHarnessDiscovery(api, projectId, agentId, draftConfiguration.model,
+    !harnessLive && capabilities.route === "direct" && Boolean(capabilityHarness) && capabilityHarness?.readiness !== "missing_cli" && api.isDesktop === true, session?.id);
+  const controls = harnessLive ? agentControls(session?.harnessId === agentId ? session : undefined, harnessStatus)
+    : reportedAgentControls(discovery.result?.reported?.configOptions);
   const gatewayUnavailable = ready && !connected && capabilities.route !== "direct" && workspace.status?.kind !== "mock";
-  const models = session?.harnessId === agentId ? harnessStatus?.parsed?.models : undefined;
+  const models = harnessLive ? session?.harnessId === agentId ? harnessStatus?.parsed?.models : undefined : discovery.result?.models;
   const currentModel =
-    session?.harnessId === agentId ? session.modelOverride ?? models?.currentModelId ?? harnessStatus?.parsed?.model ?? "" : "";
+    harnessLive ? session?.harnessId === agentId ? models?.currentModelId ?? harnessStatus?.parsed?.model ?? session.modelOverride ?? "" : ""
+      : draftConfiguration.model ?? models?.currentModelId ?? "";
 
   const [stashOpen, setStashOpen] = useState(false);
-  const harnessLive = Boolean(session?.harnessId && session.harnessState && session.harnessState !== "closed");
+  const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const liveHarnessId = harnessLive ? session?.harnessId : undefined;
   /* Undefined until the agent list has arrived: a tile for "Agent" is a mark
      for a name nobody picked. */
@@ -243,7 +243,7 @@ export function Composer({
   const menuOpen = Boolean(picker || trigger) && !menuDismissed;
   const resting = shouldRestComposer({
     awayFromLatest,
-    blocking: Boolean(picker || stashOpen || dropping || menuOpen),
+    blocking: Boolean(picker || modelPickerOpen || stashOpen || dropping || menuOpen),
     multiline: draft.includes("\n"),
     hasAttachments: attachments.length > 0,
     hasSkill: Boolean(skillId),
@@ -300,7 +300,6 @@ export function Composer({
         setSkillId,
         query: trigger?.kind === "slash" ? trigger.query : "___",
         createTask,
-        setMode,
         spawnHarness,
         toggleInspector,
         openTerminal: () => setTerminalOpen(true),
@@ -316,7 +315,6 @@ export function Composer({
       openInspector,
       pickProjectDirectory,
       setTerminalOpen,
-      setMode,
       setView,
       spawnHarness,
       toggleInspector,
@@ -393,11 +391,7 @@ export function Composer({
   }
 
   const permission = session?.permissionProfile ?? settings?.defaultPermission ?? "default";
-  const permissionOptions = capabilities.route === "direct"
-    ? [{ id: "agent-managed", label: "Agent-managed", disabledReason: capabilities.permissions.detail }]
-    : PERMISSION_OPTIONS.map((item) => ({ id: item.id, label: item.label, detail: item.detail }));
-  const permissionValue = capabilities.route === "direct" ? "agent-managed" : permission;
-  const modeOptions = MODES.map((item) => ({ id: item, label: item.charAt(0).toUpperCase() + item.slice(1) }));
+  const permissionOptions = PERMISSION_OPTIONS.map((item) => ({ id: item.id, label: item.id === "strict" ? "Read-only" : item.label, detail: item.detail }));
   const sendOnEnter = settings?.composerSendKey !== "cmd-enter";
   const selectedHarness = harnesses.find((item) => item.id === agentId);
   const taskEvents = useMemo(() => activeRun ? (events ?? []).filter((event) => event.runId === activeRun.id) : events ?? [], [events, activeRun?.id]);
@@ -709,7 +703,6 @@ export function Composer({
           </div>
         )}
         <QueuedPrompts />
-        {harnessLive && activeRun && capabilities.steer.state === "unavailable" && <p className="capability-hint">{capabilities.steer.detail}</p>}
         {harnessLive && activeRun && capabilities.steer.state !== "unavailable" && (
           <div className="steer-row">
             <input
@@ -732,25 +725,31 @@ export function Composer({
         <div className="composer-row">
           <div className="composer-controls">
             <AgentModelPicker agents={agents} harnesses={harnesses} agentId={agentId} liveHarnessId={liveHarnessId}
-              models={models} currentModel={currentModel} availability={capabilities.model}
-              onAgent={setAgentId} onModel={(id) => void setHarnessOption("model", id)} />
-            <div className="composer-options-inline">
-            <span className="composer-control-divider" aria-hidden />
-            <MenuSelect
+              models={models} currentModel={currentModel} availability={!harnessLive && models?.availableModels.length ? { state: "available", detail: "Reported by the installed agent." } : capabilities.model}
+              disabled={busy || Boolean(activeRun) || api.isDesktop !== true}
+              loading={discovery.loading} error={discovery.error} onRetry={discovery.retry}
+              onManage={() => setView("runtimes")} onOpenChange={setModelPickerOpen}
+              onAgent={setAgentId} onModel={(id) => harnessLive ? void setHarnessOption("model", id) : workspace.setDraftHarnessConfig({ model: id, options: {} })} />
+            {!harnessLive && capabilities.route === "direct" && (controls.effort || controls.permissions || controls.mode) && <div className="composer-agent-controls">
+              {([ [controls.effort, "Reasoning effort"], [controls.permissions, "Permissions"], [controls.mode, "Agent mode"] ] as const).map(([option, label]) => option && <MenuSelect key={option.id}
+                ariaLabel={label} value={draftConfiguration.options[option.id] ?? option.currentValue ?? ""} placeholder={`${label}: agent default`}
+                options={option.choices.map((choice) => ({ id: choice.value, label: choice.name, detail: choice.description }))}
+                unavailableReason={busy || api.isDesktop !== true ? "Change settings when the desktop is ready." : undefined}
+                onChange={(value) => workspace.setDraftHarnessConfig({ ...draftConfiguration, options: { ...draftConfiguration.options, [option.id]: value } })} />)}
+            </div>}
+            {session && harnessLive && capabilities.route === "direct" && (controls.effort || controls.permissions || controls.mode) && <div className="composer-agent-controls">
+              {controls.effort && <AgentControl key={`${session.id}:effort`} sessionId={session.id} option={controls.effort} label="Reasoning effort" disabled={busy || Boolean(activeRun)} />}
+              {controls.permissions && <AgentControl key={`${session.id}:permissions`} sessionId={session.id} option={controls.permissions} label="Permissions" disabled={busy || Boolean(activeRun)} />}
+              {controls.mode && <AgentControl key={`${session.id}:mode`} sessionId={session.id} option={controls.mode} label="Agent mode" disabled={busy || Boolean(activeRun)} />}
+            </div>}
+            {harnessLive && capabilities.route !== "direct" && <MenuSelect
               ariaLabel="Permission mode"
               icon={<ShieldIcon size={13} />}
-              value={permissionValue}
-              options={permissionOptions}
+              value={permission === "default" ? "approve-all" : permission}
+              options={permissionOptions.filter((option) => option.id !== "default")}
+              unavailableReason={api.isDesktop !== true ? "Change permissions on the desktop." : !harnessLive ? "Start the agent before changing permissions." : activeRun ? "Wait for this turn to finish." : undefined}
               onChange={(id) => void setPermissionProfile(id)}
-            />
-            <MenuSelect ariaLabel="Mode" value={mode} options={modeOptions} onChange={(id) => setMode(id as typeof mode)} />
-            </div>
-            <div className="composer-options-overflow">
-              <MenuSelect ariaLabel="Composer options" value="" placeholder="More options" iconOnly options={[
-                ...permissionOptions.map((item) => ({ ...item, id: `permission:${item.id}`, group: `Permissions · ${permissionOptions.find((option) => option.id === permissionValue)?.label ?? "Standard"}` })),
-                ...modeOptions.map((item) => ({ ...item, id: `mode:${item.id}`, group: `Mode · ${modeOptions.find((option) => option.id === mode)?.label}` })),
-              ]} onChange={(id) => { if (id.startsWith("permission:")) void setPermissionProfile(id.slice(11)); else if (id.startsWith("mode:")) setMode(id.slice(5) as typeof mode); }} />
-            </div>
+            />}
           </div>
         <div className="composer-prompt-actions">
             <ComposerTools key={JSON.stringify([projectId, session?.id, agentId])} harness={capabilityHarness} session={session} status={harnessStatus}

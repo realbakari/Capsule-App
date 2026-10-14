@@ -39,6 +39,8 @@ import { CapabilityDetails } from "../features/harness/CapabilityDetails";
 import { MenuSelect } from "../features/shell/MenuSelect";
 import { RunSummary } from "../features/conversation/RunSummary";
 import { AgentModelPicker } from "../features/conversation/AgentModelPicker";
+import { runDiscoveryRegressions } from "./discovery-regressions";
+import { AgentControl } from "../features/harness/AgentControl";
 import { Composer } from "../features/conversation/Composer";
 import { ComposerTasks } from "../features/conversation/ComposerTasks";
 import { Sidebar } from "../features/shell/Sidebar";
@@ -66,6 +68,7 @@ declare global {
     renderTurnDetailsPreview: (expanded: boolean, theme: "dark" | "light") => Promise<void>;
     renderChannelPreview: (surface: "channel" | "thread" | "members" | "empty" | "settings" | "mentions" | "reactions" | "harness" | "route" | "connecting" | "connection-error", theme: "dark" | "light") => Promise<void>;
     renderWorkspacePreview: (surface: "sidebar" | "quota" | "runtime", theme: "dark" | "light") => Promise<void>;
+    renderAgentControlsPreview: (theme: "dark" | "light") => Promise<void>;
   }
 }
 
@@ -335,25 +338,64 @@ window.runRendererRegressions = async () => {
   const pickerTrigger = document.querySelector<HTMLButtonElement>('[aria-label="Agent and model"]')!;
   assert(pickerTrigger.textContent?.includes("Example model"), "Combined picker omitted the current model");
   pickerTrigger.click();
-  await until(() => document.querySelector('[role="listbox"]'));
-  document.querySelector<HTMLButtonElement>('[role="option"][aria-selected="true"]')!.click();
-  await until(() => selectedModel === "example" && !document.querySelector('[role="listbox"]'));
+  await until(() => document.querySelector('[data-model-choice]'));
+  document.querySelector<HTMLButtonElement>('[data-model-choice]')!.click();
+  await until(() => selectedModel === "example" && !document.querySelector('.agent-model-picker'));
   assert(document.activeElement === pickerTrigger, "Model selection lost keyboard focus");
-  pickerTrigger.click(); await until(() => document.querySelector('[role="listbox"]'));
-  window.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", cancelable: true }));
-  assert(document.activeElement?.getAttribute("role") === "option", "Picker keyboard navigation did not focus an option");
-  const agentRow = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="option"]')).find((row) => row.textContent?.startsWith("Codex"))!;
-  agentRow.click(); await until(() => selectedAgent === "codex");
+  pickerTrigger.click(); await until(() => document.querySelector('.agent-model-picker'));
+  document.querySelector('[aria-label="Search models"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
+  assert(document.activeElement?.hasAttribute("data-model-choice"), "Picker keyboard navigation did not focus a model");
+  document.querySelector<HTMLButtonElement>('[aria-label="Favorite Example model"]')!.click();
+  await until(() => document.querySelector('[aria-label="Unfavorite Example model"]'));
+  const agentRow = document.querySelector<HTMLButtonElement>('.agent-model-picker [aria-label="Codex"]')!;
+  agentRow.click();
+  assert(agentRow.disabled && selectedAgent === "", "Picker replaced a running agent's identity");
   root.render(<AgentModelPicker {...pickerProps} models={undefined} currentModel="" availability={{ state: "unavailable", detail: "Direct mode cannot change live models." }} />);
   await until(() => pickerTrigger.textContent?.includes("Claude Code"));
-  pickerTrigger.click(); await until(() => document.querySelector('[role="listbox"]'));
-  const unavailableModel = document.querySelector<HTMLButtonElement>('[role="option"][aria-disabled="true"]')!;
-  assert(unavailableModel.textContent?.includes("Direct mode cannot change live models"), "Unavailable model has no explanation");
-  unavailableModel.click();
-  assert(selectedModel === "example" && document.querySelector('[role="listbox"]'), "Unavailable model dispatched a change");
-  window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", cancelable: true }));
-  await until(() => !document.querySelector('[role="listbox"]'));
+  assert(document.querySelector('.agent-model-picker')?.textContent?.includes("Direct mode cannot change live models"), "Unavailable model has no explanation");
+  document.querySelector('.agent-model-picker')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+  await until(() => !document.querySelector('.agent-model-picker'));
   assert(document.activeElement === pickerTrigger, "Escape did not restore picker focus");
+  const allHarnesses: HarnessStatus[] = PRESET_HARNESSES.map((preset) => ({ ...preset, runtimeRoute: "direct", readiness: "ready", binaryPath: "/fixture/agent", acpxEnabled: false, dedicatedProjectIds: [], liveSessionIds: [], detail: "Installed" }));
+  root.render(<AgentModelPicker key="all-harnesses" {...pickerProps} agents={[]} harnesses={allHarnesses} models={undefined} liveHarnessId={undefined} availability={{ state: "unavailable", detail: "Start an agent" }} />);
+  await until(() => document.querySelector('[aria-label="Agent and model"]') !== pickerTrigger);
+  document.querySelector<HTMLButtonElement>('[aria-label="Agent and model"]')!.click();
+  await until(() => document.querySelector('[aria-label="All harnesses"]'));
+  document.querySelector<HTMLButtonElement>('[aria-label="All harnesses"]')!.click();
+  await until(() => document.querySelectorAll('[data-harness-choice]').length === allHarnesses.length);
+  assert(document.querySelector('.agent-model-picker')?.textContent?.includes("Codex") && document.querySelector('.agent-model-picker')?.textContent?.includes("Muse"), "Actual harnesses disappeared with the cached agent list");
+  assert(document.querySelectorAll('.agent-model-picker nav button').length <= 6, "Harness rail grows without a bound");
+  document.querySelector('[aria-label="Search harnesses"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
+  assert(document.activeElement?.hasAttribute("data-harness-choice"), "Harness list is not keyboard navigable");
+  const originalWorkspace = window.testWorkspace;
+  const configCalls: unknown[][] = [];
+  let rejectSetting!: (reason: Error) => void;
+  let settingError = "", configRefreshes = 0;
+  window.testWorkspace = { ...originalWorkspace, api: { isDesktop: true, setHarnessConfig: (...args: unknown[]) => {
+    configCalls.push(args); return new Promise((_resolve, reject) => { rejectSetting = reject; });
+  } }, refreshHarnessStatus: async () => { configRefreshes++; }, setNotice: (error: string) => { settingError = error; } };
+  const effortOption = { id: "effort_wire_id", name: "Reasoning", currentValue: "medium", choices: [{ value: "medium", name: "Medium" }, { value: "high", name: "High" }] };
+  root.render(<AgentControl sessionId="configured-thread" option={effortOption} label="Reasoning effort" />);
+  await until(() => document.querySelector('[aria-label="Reasoning effort"]'));
+  document.querySelector<HTMLButtonElement>('[aria-label="Reasoning effort"]')!.click();
+  await until(() => document.querySelector('[role="option"]'));
+  Array.from(document.querySelectorAll<HTMLButtonElement>('[role="option"]')).find((item) => item.textContent === "High")!.click();
+  await until(() => configCalls.length === 1);
+  assert(JSON.stringify(configCalls[0]) === JSON.stringify(["configured-thread", "effort_wire_id", "high"]), "Composer did not use the reported setting ID");
+  assert(document.querySelector('[aria-label="Reasoning effort"]')?.textContent?.includes("Medium"), "Unconfirmed effort was shown as selected");
+  rejectSetting(new Error("Agent rejected this effort"));
+  await until(() => configRefreshes === 1 && settingError.includes("Agent rejected"));
+  root.render(<AgentControl sessionId="configured-thread" option={{ ...effortOption, currentValue: "high" }} label="Reasoning effort" disabled />);
+  await until(() => document.querySelector('[aria-label="Reasoning effort"]')?.textContent?.includes("High"));
+  document.querySelector<HTMLButtonElement>('[aria-label="Reasoning effort"]')!.click();
+  assert(!document.querySelector('[role="listbox"]') && configCalls.length === 1, "Busy control allowed another mutation");
+  window.testWorkspace = { ...window.testWorkspace, api: { isDesktop: false } };
+  root.render(<AgentControl sessionId="configured-thread" option={effortOption} label="Reasoning effort" />);
+  await until(() => document.querySelector('[aria-label="Reasoning effort"]')?.textContent?.includes("Medium"));
+  document.querySelector<HTMLButtonElement>('[aria-label="Reasoning effort"]')!.click();
+  assert(!document.querySelector('[role="listbox"]'), "Remote viewer exposed agent mutation");
+  window.testWorkspace = originalWorkspace;
+  await runDiscoveryRegressions(root);
   let closes = 0;
   let saves = 0;
   let finishSave!: (result: { saved: true } | { saved: false; error: string }) => void;
@@ -967,31 +1009,37 @@ window.runRendererRegressions = async () => {
   (document.getElementById("composer-test-styles") as HTMLStyleElement).media = "all";
   host.style.width = "360px";
   root.render(<Composer />);
-  await until(() => document.querySelector('.composer-options-overflow') && getComputedStyle(document.querySelector('.composer-options-overflow')!).display === "block");
+  await until(() => document.querySelector('.composer-controls'));
   const controls = document.querySelector('.composer-controls')!.getBoundingClientRect();
   const actions = document.querySelector('.composer-prompt-actions')!.getBoundingClientRect();
   const overlap = controls.left < actions.right && controls.right > actions.left && controls.top < actions.bottom && controls.bottom > actions.top;
   assert(!overlap, "Compact composer controls overlap send/attachment actions");
   assert(Math.abs((controls.top + controls.bottom) / 2 - (actions.top + actions.bottom) / 2) < 2,
     "Composer actions sit above the agent controls instead of sharing their row");
-  assert(getComputedStyle(document.querySelector('.composer-options-inline')!).display === "none", "Compact composer left redundant settings in the toolbar");
+  assert(!document.querySelector('[aria-label="Mode"]') && !document.querySelector('[aria-label="Composer options"]'), "Composer still exposes obsolete workflow modes");
   const glass = document.querySelector('.composer-glass')!.getBoundingClientRect();
   const context = document.querySelector('.composer-context')!.getBoundingClientRect();
   assert(context.width < glass.width && context.top < glass.bottom, "Workspace strip is not inset beneath the composer");
   assert(context.height < 64, "Compact repository context wrapped into multiple rows");
-  (document.querySelector('[aria-label="Composer options"]') as HTMLButtonElement).click();
-  await until(() => document.querySelector('[role="listbox"]'));
-  const popup = document.querySelector('[role="listbox"]')!.getBoundingClientRect();
+  (document.querySelector('[aria-label="Agent and model"]') as HTMLButtonElement).click();
+  await until(() => document.querySelector('.agent-model-picker'));
+  const popup = document.querySelector('.agent-model-picker')!.getBoundingClientRect();
   assert(popup.left >= 0 && popup.top >= 0 && popup.right <= innerWidth + 1 && popup.bottom <= innerHeight + 1, "Overflow menu escaped the viewport");
-  window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-  await until(() => !document.querySelector('[role="listbox"]'));
+  root.render(<Composer awayFromLatest />);
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  assert(!document.querySelector('.composer--resting'), "An open model picker lost its anchor when the composer rested");
+  const modelAnchor = document.querySelector('[aria-label="Agent and model"]')!.getBoundingClientRect();
+  assert(modelAnchor.width > 0 && modelAnchor.height > 0, "Model picker is anchored to a hidden control");
+  document.querySelector('.agent-model-picker')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  await until(() => !document.querySelector('.agent-model-picker'));
+  root.render(<Composer />);
+  await until(() => !document.querySelector('.composer--resting'));
   document.querySelector<HTMLButtonElement>('[aria-label="Conversation tools"]')!.click();
   await until(() => document.querySelector('[role="listbox"]'));
   assert(document.querySelector('[role="listbox"]')!.textContent?.includes("Prompt stash"), "Compact composer lost prompt stash from its shared tools menu");
   window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
   host.style.width = "900px";
-  await until(() => getComputedStyle(document.querySelector('.composer-options-overflow')!).display === "none");
-  assert(getComputedStyle(document.querySelector('.composer-options-inline')!).display === "flex", "Wide composer did not restore its controls");
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   const wideControls = document.querySelector('.composer-controls')!.getBoundingClientRect();
   const wideActions = document.querySelector('.composer-prompt-actions')!.getBoundingClientRect();
   assert(Math.abs((wideControls.top + wideControls.bottom) / 2 - (wideActions.top + wideActions.bottom) / 2) < 2,
@@ -1257,6 +1305,26 @@ window.runRendererRegressions = async () => {
     previewRoot.render(<Composer awayFromLatest={resting} />);
     await until(() => Boolean(document.querySelector(".composer--resting")) === resting && document.querySelector(".composer-context"));
     await new Promise((resolve) => setTimeout(resolve, 250));
+  };
+  window.renderAgentControlsPreview = async (theme) => {
+    await window.renderComposerPreview(false, theme);
+    const session = { id: "controls-preview", projectId: "app", harnessId: "codex", harnessState: "running", openclawSessionKey: "direct:codex:codex:preview" };
+    const preset = PRESET_HARNESSES.find((item) => item.id === "codex")!;
+    window.testWorkspace = { ...window.testWorkspace, session, sessionId: session.id, agentId: "codex",
+      api: { ...(window.testWorkspace.api as object), isDesktop: true },
+      agents: [{ id: "codex", name: "Codex" }],
+      harnesses: PRESET_HARNESSES.map((item) => ({ ...item, runtimeRoute: "direct", readiness: item.id === preset.id ? "ready" : "missing_cli", detail: "Setup required", liveSessionIds: item.id === preset.id ? [session.id] : [], dedicatedProjectIds: [] })),
+      harnessStatuses: { [session.id]: { session, parsed: { models: { currentModelId: "model-one", availableModels: [{ modelId: "model-one", name: "Reasoning model" }, { modelId: "model-two", name: "Fast model" }] }, reported: { configOptions: [
+        { id: "model", category: "model", name: "Model", currentValue: "model-one", choices: [{ value: "model-one", name: "Reasoning model" }, { value: "model-two", name: "Fast model" }] },
+        { id: "reasoning_effort", category: "thought_level", name: "Reasoning effort", currentValue: "high", choices: [{ value: "high", name: "High" }, { value: "low", name: "Low" }] },
+        { id: "permissions", category: "permissions", name: "Permissions", currentValue: "supervised", choices: [
+          { value: "supervised", name: "Supervised", description: "Read-only sandbox. Ask before actions that need approval." },
+          { value: "full-access", name: "Full access", description: "Allow commands, network access and file changes without approval prompts." },
+        ] },
+      ] } } } },
+    };
+    previewRoot!.render(<Composer key={`controls-${theme}-${innerWidth}`} />);
+    await until(() => document.querySelector('[aria-label="Reasoning effort"]'));
   };
   window.renderFilesPreview = async (width, openFile) => {
     (document.getElementById("composer-test-styles") as HTMLStyleElement).media = "all";

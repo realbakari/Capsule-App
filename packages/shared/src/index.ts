@@ -24,6 +24,7 @@ export * from "./performance.js";
 export * from "./run-activity.js";
 export * from "./harness-capabilities.js";
 export * from "./agent-reports.js";
+export * from "./agent-controls.js";
 export * from "./provider-usage.js";
 export * from "./agent-commands.js";
 export * from "./delegation.js";

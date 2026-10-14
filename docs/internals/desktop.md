@@ -570,11 +570,11 @@ PR creation. A `⋮` menu at the right offers iOS Simulator (macOS desktop),
 Browser, and the keep-awake-while-running toggle, mirrored in Settings.
 
 The composer is one box: the prompt, then a single row of the controls that
-shape a turn — mode, permission, harness, and the context meter. The strip
+shape a turn — model, reported effort and permissions, and the context meter. The strip
 below it is reference (folder, branch, terminal), not state. The steer field
 appears only while a turn is running, which is the only time it means
-anything. Permission options carry a line saying what each one does, because
-"Supervised" does not say that it refuses rather than asks.
+anything. Permission choices describe their route-specific behavior: native
+Supervised can ask; Gateway Read-only declines actions requiring approval.
 Attach and send share the controls row in the expanded layout at both narrow
 and wide widths. In compact mode those actions share the prompt line; checkout
 controls remain entirely below the glass surface. Geometry is tested in the
@@ -583,7 +583,7 @@ the expanded composer visible so hidden context cannot be submitted unnoticed.
 Composer geometry is covered at 320, 360, 640 and 900 CSS pixels, in both themes
 and at 16/20px root text sizes. The empty expanded field remains 3.5rem; its
 growth cap comes from CSS rather than a fixed pixel constant. Narrow docks
-reduce padding, not text size, and retain the existing overflow controls.
+reduce padding, not text size, and wrap supported agent controls.
 Reading older messages rests that box to a single prompt line (attach and
 send on the same row) so the dock shrinks instead of covering the
 transcript. Focus does not expand it; the live edge, a multiline draft,
@@ -630,15 +630,15 @@ direct agent reporting false or no HTTP MCP support shows browser tools as
 unavailable, explains why they were not attached, and preserves manual browsing.
 Model configuration snapshots replace previous choices, including removals.
 **Agent settings** renders reported select and boolean options in both Composer
-Capabilities and Harnesses. Values wait for agent acknowledgement, and failure
+Capabilities and Harnesses. Values wait for the transport's accepted state, and failure
 of either the setting or follow-up refresh must release the pending UI. Provider/
 process changes remount the controls. Restorable direct identities also govern
 composer readiness after restart, even if the new-thread default is Gateway.
 The compact capabilities popover wraps both availability and settings in one
 bounded scrolling surface; nested disclosures do not expand the composer toolbar.
 The wrench-marked Conversation tools control owns context, drafts, commands and
-capabilities at every composer width. The narrow options menu contains only
-permissions and mode; it never redirects capabilities to another view. Tools and
+capabilities at every composer width. Reported effort, permissions, and agent
+mode are also directly reachable beside the model, without a nested menu. Tools and
 tool servers remain agent-owned; the popover explicitly distinguishes reported
 session configuration from individual tool selection.
 
@@ -682,10 +682,26 @@ stat or transcript-read failures. Missing CLI directories remain normal empty
 sources. Usable totals stay visible with a partial-coverage warning; a failed
 read is not cached as success. No transcript paths or contents enter the notice.
 
-The composer uses one agent/model picker with grouped, capability-aware choices.
-Permission and conversation mode controls collapse into an overflow menu below
-36rem of available row width, along with stash and the Harnesses link. The agent,
-attachment and send controls stay visible. Folder, terminal, workspace mode and
+The composer uses one searchable agent/model picker with an agent rail and
+device-local favorites. Only explicitly reported legacy models are grouped.
+A live conversation cannot change agents. A compact primary rail and All harnesses
+list keep harness names and setup status reachable without a tall empty panel.
+An open picker keeps the composer expanded and anchored. Local model discovery
+uses the installed CLI for native Claude as well as Codex. It does not require
+starting a conversation or installing an ACP adapter for either native route.
+Existing ACP conversations retain their original adapter. Other supported local
+CLIs expose their own ACP model and setting reports, including legacy model
+selectors; no shared vendor model list is substituted. Local model discovery
+runs automatically for the selected harness without a Start button or a Capsule
+conversation. Loading, retry, setup and agent-default states remain compact.
+Draft settings are scoped by draft and harness, then applied before the first
+prompt. Model changes reset dependent draft settings. Native model/effort/policy changes apply to
+the next turn; direct settings persist with the session identity. Stale status
+from a different session key cannot supply controls. Busy and browser-viewer
+controls cannot mutate configuration. The old workflow-mode dropdown, direct
+Agent-managed placeholder, default-mode settings and narrow options menu are
+removed; saved conversation modes remain readable. The agent, attachment and
+send controls stay visible. Folder, terminal, workspace mode and
 branch sit in an inset context strip beneath the prompt. Menus keep sentence
 case. Git workspace selection includes the folder chooser, and its label and
 the branch label collapse to named, tooltip-equipped icons below 28rem.
@@ -1181,7 +1197,7 @@ result names the section it lives in.
 |---------|------|
 | General | Launch at login, send key, menu bar extra, keep awake, notifications, session archiving |
 | Appearance | System / Light / Dark, per-theme accent / background / foreground, UI and code fonts, translucent sidebar, contrast, transcript size / width, with live type previews |
-| Agents | Default mode, agent and conversation workspace, approval policy, sandbox, web access, output detail, reasoning, harness credentials |
+| Agents | Default agent and conversation workspace, Gateway approval policy, sandbox, web access, output detail, reasoning, harness credentials |
 | Gateway | URL, connect / disconnect, token in Keychain, reading from another device |
 | Projects | Create, delete, attach primary folder, choose or reset project icon |
 | Source control | Branch prefix, force-with-lease, draft PRs, merge method, review delivery, watch-and-fix, auto-merge, commit / PR instructions |

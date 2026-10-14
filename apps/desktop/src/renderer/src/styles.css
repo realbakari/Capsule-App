@@ -1,6 +1,6 @@
 @import "@capsule/ui/tokens.css";
 
-.menu-select-pop, .action-menu, .topbar-dropdown-menu, .composer-tools-popover,
+.agent-model-picker, .menu-select-pop, .action-menu, .topbar-dropdown-menu, .composer-tools-popover,
 .agent-command-popover, .context-card, .sidebar-thread-preview {
   background: var(--bg-elevated);
   color: var(--text);
@@ -15,6 +15,36 @@
   border-radius: var(--dialog-radius);
   box-shadow: var(--shadow);
 }
+
+.composer-agent-controls { display: flex; flex-wrap: wrap; gap: 0.25rem; min-width: 0; }
+.composer-row:has(.composer-agent-controls) { flex-wrap: wrap; }
+.composer-controls:has(.composer-agent-controls) { flex-wrap: wrap; }
+.composer-row:has(.composer-agent-controls) .composer-prompt-actions { margin-left: auto; }
+.agent-model-picker { z-index: 10000; display: flex; flex-direction: column; overflow: hidden; font-size: 0.8125rem; }
+.agent-model-picker header { display: flex; align-items: center; padding: 0.625rem; border-bottom: 1px solid var(--border-color); gap: 0.25rem; }
+.agent-model-picker header input { background: transparent; border: 0; border-radius: 0.25rem; color: var(--text); min-width: 0; flex: 1; padding: 0.375rem; font: inherit; }
+.agent-model-picker header:focus-within { box-shadow: inset 0 -1px var(--text-muted); }
+.agent-model-picker header input:focus { outline: none; box-shadow: none; }
+.agent-model-picker-body { display: flex; min-height: 0; max-height: 20rem; overflow: auto; }
+.agent-model-picker nav { display: flex; flex-direction: column; flex: 0 0 3.25rem; padding: 0.375rem; gap: 0.25rem; border-right: 1px solid var(--border-color); }
+.agent-model-picker nav button { display: grid; place-items: center; min-height: 2rem; background: transparent; border: 0; border-radius: 0.5rem; color: var(--text-muted); }
+.agent-model-picker nav button[aria-pressed="true"], .agent-model-row button[aria-pressed="true"], .agent-model-picker button:hover { background: var(--bg-hover); color: var(--text); }
+.agent-model-picker button:focus-visible { outline: 2px solid var(--text-muted); outline-offset: -2px; }
+.agent-model-picker section { min-width: 0; flex: 1; padding: 0.5rem; }
+.agent-model-heading { margin: 0.25rem 0.5rem 0.5rem; color: var(--text-muted); font-size: 0.75rem; }
+.agent-model-row { display: flex; gap: 0.125rem; margin-bottom: 0.125rem; }
+.agent-model-row button { border: 0; border-radius: 0.5rem; background: transparent; color: var(--text); padding: 0.625rem; }
+.agent-model-row button[data-model-choice] { flex: 1; min-width: 0; text-align: left; }
+.agent-model-row span, .agent-model-row small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-model-row small { color: var(--text-muted); font-size: 0.6875rem; margin-top: 0.25rem; }
+.agent-model-row .model-favorite { flex: 0 0 2rem; color: var(--text-muted); }
+.agent-model-empty, .agent-model-note { display: block; margin: 0.5rem; color: var(--text-muted); line-height: 1.5; overflow-wrap: anywhere; }
+.agent-model-note { font-size: 0.6875rem; }
+.agent-model-picker button:disabled { opacity: 0.45; cursor: default; }
+.agent-harness-choice { display: flex; width: 100%; align-items: center; gap: 0.625rem; padding: 0.5rem; border: 0; border-radius: 0.375rem; background: transparent; color: var(--text); text-align: left; font: inherit; }
+.agent-harness-choice span { min-width: 0; }
+.agent-harness-choice small { display: block; color: var(--text-muted); font-size: 0.6875rem; margin-top: 0.125rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agent-model-manage { border: 0; border-top: 1px solid var(--border-color); background: transparent; color: var(--text-muted); width: 100%; text-align: left; padding: 0.625rem; font: inherit; }
 
 .turn-verification { margin: 0.75rem 0 1.5rem; border: 1px solid var(--border-color); border-radius: 0.625rem; font-size: 0.8125rem; min-width: 0; }
 .turn-verification > summary { display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem; cursor: pointer; list-style: none; }
@@ -1827,8 +1857,6 @@ textarea.composer-field--resting {
   min-width: 0;
   flex-wrap: nowrap;
 }
-.composer-options-inline { display: flex; align-items: center; gap: .25rem; }
-.composer-options-overflow { display: none; }
 .composer-controls > .menu-select:first-child { flex-shrink: 1; }
 .menu-select {
   position: relative;
@@ -7147,8 +7175,8 @@ div.changed-files-head { cursor: default; }
 .composer-tools-popover .capability-details { margin: 0.5rem 0 0; }
 @container composer-row (max-width: 36rem) {
   .composer-controls { flex: 1; }
-  .composer-options-inline { display: none; }
-  .composer-options-overflow { display: block; }
+  .composer-controls:has(.composer-agent-controls) { display: contents; }
+  .composer-agent-controls { flex: 1 0 auto; flex-wrap: nowrap; min-width: max-content; }
   .composer-secondary-action { display: none; }
   .composer-actions-right { gap: .15rem; }
 }

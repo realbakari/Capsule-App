@@ -29,7 +29,7 @@ export function AgentConfiguration({ sessionId, options }: { sessionId: string; 
   }
   return <details className="advanced agent-configuration">
     <summary>Agent settings · {options.length}</summary>
-    <p className="faint">These are the agent's own settings. Read its descriptions before changing modes or permissions. Only acknowledged values are shown.</p>
+    <p className="faint">These are the agent's own settings. Changes apply to the next turn. Read its descriptions before changing modes or permissions.</p>
     {readOnly && <p className="faint">Change agent settings from the desktop app. This viewer is read-only.</p>}
     {options.map((option) => <label key={option.id} className="agent-config-row">
       <span>{option.name}{option.description && <small>{option.description}</small>}</span>

@@ -96,9 +96,6 @@ export type InspectorTab =
   | "browser"
   | "simulator";
 
-export const MODES: AgentMode[] = ["plan", "chat", "agent", "code", "research", "browser", "automation"];
-export const PRIMARY_MODES: AgentMode[] = ["plan", "chat", "code"];
-export const MORE_MODES: AgentMode[] = ["agent", "research", "browser", "automation"];
 /*
  * The detail lines matter more than the labels here. These map onto acpx
  * permission modes, which cannot show a dialog, so "Supervised" refuses a tool
@@ -107,7 +104,7 @@ export const MORE_MODES: AgentMode[] = ["agent", "research", "browser", "automat
 export const PERMISSION_OPTIONS = [
   {
     id: "strict",
-    label: "Supervised",
+    label: "Read-only",
     detail: "Refuses commands and file writes. It cannot ask, so it declines.",
   },
   {
@@ -118,7 +115,7 @@ export const PERMISSION_OPTIONS = [
   {
     id: "approve-all",
     label: "Full access",
-    detail: "Everything Standard allows, with no approval step at all.",
+    detail: "Allow commands and file changes without approval prompts.",
   },
 ] as const;
 
@@ -292,6 +289,8 @@ export interface WorkspaceValue {
     prompt?: string,
     options?: { mode?: "persistent" | "oneshot"; },
   ) => Promise<void>;
+  draftHarnessConfig: { model?: string; options: Record<string, string> };
+  setDraftHarnessConfig: (config: { model?: string; options: Record<string, string> }) => void;
   dedicateHarness: (harnessId: string) => Promise<void>;
   undedicateHarness: () => Promise<void>;
   doctorHarness: (harnessId: string) => Promise<void>;
@@ -478,8 +477,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   const [eventLoad, setEventLoad] = useScopedState<WorkspaceValue["eventLoad"]>(scope, undefined);
   const [artifacts, setArtifacts] = useScopedState<Artifact[]>(scope, []);
   const [agentId, setAgentId] = useState<string>("general");
-  const [mode, setMode] = useState<AgentMode>("chat");
+  const [mode, setMode] = useState<AgentMode>("code");
   const [draft, setDraftValue] = useScopedState(draftScope, "");
+  const [draftHarnessConfigs, setDraftHarnessConfigs] = useScopedState<Record<string, { model?: string; options: Record<string, string> }>>(draftScope, {});
+  const draftHarnessConfig = draftHarnessConfigs[agentId] ?? { options: {} };
+  const setDraftHarnessConfig = (config: { model?: string; options: Record<string, string> }) => setDraftHarnessConfigs((current) => ({ ...current, [agentId]: config }));
   const [attachments, setAttachmentValues] = useScopedState<MessageAttachment[]>(draftScope, []);
   const attachmentState = useRef({ scope: draftScope, value: attachments });
   attachmentState.current = { scope: draftScope, value: attachments };
@@ -811,7 +813,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       if (!settingsDefaultsApplied.current && nextSettings) {
         const loaded = nextSettings as CapsuleSettings;
         settingsDefaultsApplied.current = true;
-        setMode(loaded.defaultMode);
+        setMode("code");
         setWorkspaceModeState(loaded.defaultWorkspaceMode);
         const defaultAgent =
           loaded.defaultAgentId && nextAgents.some((item: Agent) => item.id === loaded.defaultAgentId)
@@ -1139,7 +1141,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     if (nextProject.defaultAgentId && agents.some((item) => item.id === nextProject.defaultAgentId)) {
       setAgentId(nextProject.defaultAgentId);
     }
-    setMode(nextProject.defaultMode);
+    setMode("code");
   }
 
   useEffect(() => {
@@ -1326,6 +1328,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       if (!currentSessionId) return false;
       if (!draftScopes.isCurrent(draftScope)) return false;
       preparedThread = true;
+      if (draftHarnessConfig.model || Object.keys(draftHarnessConfig.options).length) {
+        await api.spawnHarness({ projectId: currentProjectId, sessionId: currentSessionId, harnessId: agentId,
+          model: draftHarnessConfig.model, permissionProfile: "strict" });
+        if (draftHarnessConfig.model) await api.setHarnessOption({ sessionId: currentSessionId, key: "model", value: draftHarnessConfig.model });
+        for (const [id, value] of Object.entries(draftHarnessConfig.options)) await api.setHarnessConfig(currentSessionId, id, value);
+        if (!draftScopes.isCurrent(draftScope)) return false;
+        setDraftHarnessConfigs((current) => { const next = { ...current }; delete next[agentId]; return next; });
+      }
       const optimisticId = `local-${Date.now()}`;
       setMessages((current) => [
         ...current.filter((item) => !item.id.startsWith("local-")),
@@ -2094,7 +2104,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     const next = await api.updateSettings(patch) as CapsuleSettings;
     setSettings(next);
     applyAppearance(next);
-    if (patch.defaultMode) setMode(patch.defaultMode);
     if (patch.defaultAgentId) setAgentId(patch.defaultAgentId);
     if (patch.defaultWorkspaceMode) setWorkspaceModeState(patch.defaultWorkspaceMode);
     return next;
@@ -2357,6 +2366,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       openPath,
       mentionFile,
       spawnHarness,
+      draftHarnessConfig,
+      setDraftHarnessConfig,
       dedicateHarness,
       undedicateHarness,
       doctorHarness,

@@ -3,7 +3,7 @@
 Scrolling up through a conversation rests the composer to a single prompt
 line with attach and send on that same row, so the dock does not cover the
 transcript. The workspace strip (folder, terminal, branch) stays under it.
-Agent, mode, and steer chrome tuck away. Scrolling back to the latest
+Agent controls and steer tuck away. Scrolling back to the latest
 messages restores the full composer. A multiline draft, attachments, an
 open picker, a selected skill, or a file drop keeps it expanded. Focusing the field while
 reading history does not grow it back.
@@ -109,22 +109,46 @@ that turn’s **Run log** (or **What the agent reported** after failure) and use
 diagnostic payloads are shortened and labelled; these logs are not a complete
 copy of tool output. Agent replies remain separate from this diagnostic limit.
 
-## Choose a model
+## Model, effort, and permissions
 
-Open the agent name in the composer to choose an agent or a model it reports.
-The same control shows the current model when that model is known. Changing it
-updates the session without posting a message or a status
-banner, and leaves your draft untouched. This also applies to model changes in
-Harnesses when the runtime supports it. Unavailable model choices explain why
-they cannot be selected; Capsule does not invent a model list. Direct sessions
-can change a model when the agent reports a mutable model selector. Their
-permissions control shows **Agent-managed**: Capsule profiles are not agent
-policies. Open **Agent settings** inside Capabilities for the agent's exact
-reported selectors and switches, including mode or permission settings it exposes.
-Rejected changes keep the reported state and show an error without losing your draft.
-Agents using the older mode selector are supported too. Their current mode
-appears in **Agent settings** and follows mode changes made by the agent.
-Selecting a mode does not change Capsule's permission defaults.
+Open the model control to search the selected agent's models or star favorites.
+For local Claude Code and Codex conversations, Capsule uses the installed CLI
+and discovers its models automatically; a separate ACP adapter is not needed.
+Older conversations created through an ACP adapter keep that connection. Start
+a new conversation to use the native connection without changing old history.
+OpenCode, Qwen, Kimi, Kiro, Qoder and Kilo can also use their installed CLI's
+built-in ACP support. Model availability and sign-in still belong to each agent;
+Capsule only offers the choices that installation reports.
+Favorites stay on this device. **All harnesses** opens a named list with
+installation status, and **Manage harnesses** opens setup. Legacy models are grouped only when the agent
+identifies them as legacy. A running conversation keeps its agent; start a new
+conversation to use another one.
+
+Before the first turn, Capsule automatically loads the selected local harness's
+reported models and settings. There is no separate Start button and your draft
+is not sent during discovery. Choose a model, reasoning effort, permissions, or
+agent mode before sending; those choices are applied before the first prompt.
+Unsupported controls stay hidden. Missing installations link to setup, and failed
+discovery offers Retry. Other settings remain in
+**Conversation tools → Agent settings and capabilities** and Harnesses.
+
+Changes apply to the next turn and leave the draft untouched. Once applied to an
+agent session, they are saved with the conversation for restart. Draft choices
+stay scoped to the selected harness and reset when you leave that draft.
+Model changes reset draft settings to the new model's defaults and can change the available effort
+levels. Controls are unavailable during a turn and in a paired browser viewer.
+Rejected settings show an error rather than claiming success.
+
+Native Codex starts **Supervised**, with a read-only sandbox and approval
+requests for actions that need them. **Full access** allows commands, network
+access, and file changes without prompts; choose **Supervised** to switch back
+before the next turn. Other agents expose their own reported permission or mode
+choices. Capsule does not translate them into invented policies.
+
+The Gateway route has separate **Read-only** and **Full access** choices.
+Read-only declines actions requiring approval; it cannot display an approval
+prompt. Full access approves tools automatically. Old Standard settings have
+the same Gateway behavior as Full access and display that name.
 To inspect the session's raw status, open **Harnesses**, select the
 session with **Refresh**, and expand **Session diagnostics**. Diagnostics stay
 with that session and are collapsed by default.
@@ -144,9 +168,9 @@ runtime route cannot carry. Missing information stays labelled as not reported.
 The workspace strip below the prompt holds the folder, terminal, checkout mode
 and branch. For Git folders, **Current checkout** or **Worktree** also offers
 **Change folder**. In compact panes the workspace and branch labels become icons;
-their names remain in tooltips and menus. The **…** menu holds permissions, conversation mode,
-prompt stash and the link to Harnesses. The agent picker and send button stay
-reachable. Menus support arrow keys, Home, End and Escape; closing one returns
+their names remain in tooltips and menus. **Conversation tools** holds prompt
+stash and advanced agent settings. Supported agent controls wrap on narrow
+screens; there is no separate conversation-mode selector. Menus support keyboard navigation and Escape; closing one returns
 focus to its trigger.
 
 ## Read activity accurately

@@ -16,7 +16,7 @@ it("keeps renderer interactions recoverable and companion motion accessible", { 
       define: { "process.env.NODE_ENV": '"test"' },
       plugins: [{ name: "test-workspace", setup(builder) {
         builder.onResolve({ filter: /(?:\/lib\/workspace|^\.\/workspace)$/ }, () => ({ path: "workspace", namespace: "test" }));
-        builder.onLoad({ filter: /.*/, namespace: "test" }, () => ({ contents: `export { MODES, PERMISSION_OPTIONS } from ${JSON.stringify(path.resolve("apps/desktop/src/renderer/src/lib/workspace.tsx"))}; export const useWorkspace = () => window.testWorkspace;`, loader: "js", resolveDir: process.cwd() }));
+        builder.onLoad({ filter: /.*/, namespace: "test" }, () => ({ contents: `export { PERMISSION_OPTIONS } from ${JSON.stringify(path.resolve("apps/desktop/src/renderer/src/lib/workspace.tsx"))}; export const useWorkspace = () => window.testWorkspace;`, loader: "js", resolveDir: process.cwd() }));
       } }],
     });
     const script = path.join(directory, "test.js");
