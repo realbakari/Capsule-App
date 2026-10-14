@@ -140,6 +140,7 @@ export const IPC_CHANNELS = {
   attachSimulator: "capsule:attachSimulator",
   openPath: "capsule:openPath",
   listHarnesses: "capsule:listHarnesses",
+  discoverHarness: "capsule:discoverHarness",
   doctorHarness: "capsule:doctorHarness",
   dedicateHarness: "capsule:dedicateHarness",
   undedicateHarness: "capsule:undedicateHarness",

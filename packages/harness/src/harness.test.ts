@@ -17,7 +17,7 @@ import {
 } from "./index.js";
 
 describe("harness catalog", () => {
-  it.each(["codex", "copilot", "gemini", "grok"] as const)("checks %s's installed native transport without demanding an adapter", (id) => {
+  it.each(["claude", "codex", "copilot", "gemini", "grok", "opencode", "qwen", "kimi", "kiro", "qoder", "kilocode"] as const)("checks %s's installed native transport without demanding an adapter", (id) => {
     const preset = PRESET_HARNESSES.find((item) => item.id === id)!;
     const command = preset.nativeCommand ?? preset.directCommand ?? preset.acpxCommand;
     const checks = localDoctorChecks({ preset, binaryPath: `/fixture/${id}`, direct: true, gatewayConnected: false, acpxEnabled: false });
@@ -66,6 +66,13 @@ describe("harness catalog", () => {
       featured: true,
       acpxCommand: { command: "grok", args: ["agent", "stdio"] },
     });
+  });
+
+  it("uses the unambiguous local Cursor CLI entrypoint rather than an unrelated agent binary", () => {
+    const preset = PRESET_HARNESSES.find((item) => item.id === "cursor")!;
+    expect(preset.directCommand).toEqual({ command: "cursor-agent", args: ["acp"] });
+    const checks = localDoctorChecks({ preset, binaryPath: "/fixture/cursor-agent", direct: true, gatewayConnected: false, acpxEnabled: false });
+    expect(checks.some((check) => ["gateway", "acpx"].includes(check.id))).toBe(false);
   });
 
   it("builds the OpenClaw ACP spawn command", () => {

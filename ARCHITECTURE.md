@@ -18,11 +18,19 @@ former Gateway-first startup: Direct mode neither connects to the Gateway nor
 waits for its plugin discovery. The Gateway remains an optional integration for
 its agents and channels. Saved route preferences and existing conversation
 identities are preserved; no runtime is replaced or agent loop added.
-Local Claude Code uses a user-installed ACP adapter. New local Codex sessions
+Local Claude Code uses `@capsule/claude`, the official session SDK connected to
+the user's installed CLI. The SDK owns framing, and the CLI owns login, tools
+and execution. New local Codex sessions
 use `@capsule/codex`, a thin native app-server client injected into the direct
 host. This intentionally extends the ACP-only transport contract without adding
-an agent loop. Existing Codex ACP sessions retain their adapter and identity;
+an agent loop. Existing Claude and Codex ACP sessions retain their adapter and identity;
 Gateway mappings remain unchanged. No packages are installed automatically.
+
+Model discovery is a prompt-free probe owned by the direct host, separate from
+workspace conversations. Native Codex and Claude can list models without opening a thread;
+ACP agents may require a temporary idle session to report options. Probes receive
+no workspace MCP tools and are closed after discovery. Draft choices use those
+reported options and are applied to the real session before its first prompt.
 
 Muse Code intentionally extends the transport contract: `@capsule/muse` uses
 the official Muse session SDK over `muse serve` stdio, not an ACP adapter or a
@@ -142,6 +150,7 @@ packages/
   acp                 Native CLI ACP stdio client and direct session host
   muse                Native Muse session SDK adapter behind the direct host
   codex               Native app-server client behind the direct host
+  claude              Official session SDK adapter behind the direct host
   openclaw            Gateway adapter + mock runtime
   harness             Claude Code / Codex / Grok ACP lifecycle (doctor, spawn, steer, cancel, close)
   buzz                Gateway channel mapping and optional relay CLI adapter

@@ -3,6 +3,11 @@ import { PRESET_HARNESSES, type HarnessStatus, type HarnessLiveStatus, type Sess
 import { harnessCapabilities } from "./harness-capabilities.js";
 
 describe("capability-aware controls", () => {
+  it("keeps a closed Gateway conversation on its original route", () => {
+    const harness = { ...PRESET_HARNESSES.find((item) => item.id === "codex")!, runtimeRoute: "direct" } as HarnessStatus;
+    const session = { id: "saved", harnessId: "codex", harnessState: "closed", openclawSessionKey: "agent:codex:acp:saved" } as SessionRef;
+    expect(harnessCapabilities({ harness, session }).route).toBe("openclaw");
+  });
   it("uses saved direct identity for the route and reported config options for live mutability", () => {
     const harness = { ...PRESET_HARNESSES.find((item) => item.id === "grok")!, runtimeRoute: "openclaw" } as HarnessStatus;
     const saved = { id: "s", harnessId: "grok", harnessState: "closed", directSession: { harnessId: "grok", sessionId: "native" } } as SessionRef;

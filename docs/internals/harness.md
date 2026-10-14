@@ -69,7 +69,7 @@ The disconnected production adapter remains distinct from the explicit test
 mock. Gateway availability uses actual connection state, not the adapter's
 kind. Explicit connection and existing Gateway session keys remain supported.
 
-Claude Code and legacy Codex sessions have separate `directCommand` metadata for user-installed
+Legacy Claude Code and Codex ACP sessions have separate `directCommand` metadata for user-installed
 `claude-agent-acp` and `codex-acp`. Unlike `acpxCommand`, these entries never
 rewrite Gateway agent mappings. Direct readiness and Doctor check the adapter
 executable; login probes still target the provider CLI, never the adapter.
@@ -92,6 +92,33 @@ wire IDs and use `session/set_config_option`. This does not translate agent mode
 into Capsule permission profiles or add a Gateway control command.
 
 ### Native local session transports
+
+New direct Claude sessions use `@capsule/claude` with the official Agent SDK
+and the installed `claude` executable. `direct:claude:claude:` keys cannot be
+confused with legacy ACP session IDs. The packaged SDK excludes its optional
+CLI binaries; Capsule does not install another CLI or read credentials.
+Prompt-free initialization reports available models, model-dependent effort
+and Auto support. Discovery disables hooks, tools, MCP discovery and persistence.
+It never submits a prompt or creates a Capsule conversation.
+
+Real sessions start supervised. Model, effort and permission controls call the
+SDK and update accepted state only after acknowledgement. Settings are local
+to the session, not written to the user's CLI configuration. The CLI owns tool
+execution; permission callbacks feed Capsule's existing once-only approvals.
+Stop settles approvals and awaits the interrupted turn. Close terminates only
+the owned process. Resume requires the exact saved UUID and canonical working
+folder, and replays saved settings before the next prompt. Missing transcripts
+fail explicitly instead of silently starting a different conversation. Text,
+images, tool activity and per-turn usage feed the existing run records; cumulative
+session costs are not added as turn totals. Workspace MCP injection is not
+provided by this transport. Tests cover the SDK wire, approvals, setting changes,
+cancellation and database-reopen resume; provider inference is not exercised.
+
+OpenCode, Qwen, Kimi, Kiro, Qoder and Kilo also have direct commands for their
+built-in ACP servers. This is launch metadata, not a replacement agent loop.
+Existing Gateway mappings are unchanged. ACP agents reporting only legacy
+`models` receive a model selector backed by `session/set_model`; rejected changes
+leave the prior selection intact. Modern model config options take precedence.
 
 New direct Codex sessions use `@capsule/codex` and the installed CLI's
 `app-server --listen stdio://` command. Core injects it into the existing direct
@@ -117,8 +144,24 @@ Command previews include the reported input and output; nonzero exit codes mark
 the tool step failed. File-change diffs and paths, and MCP text/error results,
 map to the shared bounded preview shape without dumping image or binary payloads.
 Unsupported interactive requests fail visibly; native steering, arbitrary
-configuration, reasoning controls and browser MCP attachment are not carried.
+configuration and browser MCP attachment are not carried.
 Interrupt waits for terminal confirmation before accepting another turn.
+
+The native model catalog supplies supported reasoning efforts and defaults.
+Model, effort, and permission selectors validate locally and become explicit
+`turn/start` overrides; app-server has no session configuration setter. They
+describe next-turn settings, not a remote acknowledgement. Supervised maps to
+`untrusted`, user reviewer, and read-only sandbox without network; Full access
+maps to `never`, user reviewer, and `dangerFullAccess`. Every turn sends the
+policy explicitly, including when returning to Supervised. Unsupported effort
+levels are rejected; a model switch replaces an incompatible effort with its
+reported default. No Auto or edit-only policy is invented.
+
+Accepted direct settings are stored in the existing direct-session identity.
+Resume restores the model first, then dependent selectors, through the same
+validated transport APIs. An unavailable saved value fails visibly instead of
+silently downgrading or widening access. Config changes are refused during a
+turn. Legacy ACP and native sessions retain their original transport identity.
 
 Frames, pending requests and early turn activity are bounded. Timeouts and
 malformed output close the owned process; uncertain writes are never replayed.
@@ -269,7 +312,7 @@ The composer groups agent selection and reported model choices into one picker.
 Missing or immutable model choices carry a disabled reason inside the menu.
 `harnessCapabilities` uses the existing thread's key, not its harness's current
 route default, and ignores model catalogs from another session. Direct
-permissions display as agent-managed, with no local setting mutation. A compact
+permissions use the agent's reported config options. A compact
 capability disclosure, Harnesses detail, the command palette and Browser expose
 the same route limitations; none of these affordances adds runtime support.
 
@@ -281,7 +324,20 @@ Presets with `directCommand`, `acpxCommand` or `nativeCommand` can use the direc
 route; others keep the Gateway.
 The `direct:acp:` key is authoritative for existing sessions regardless of later
 settings. Readiness and Doctor probe the local CLI/login without requiring a
-Gateway or acpx. Start is available in the composer and Harnesses alike.
+Gateway. Cursor uses the unambiguous `cursor-agent acp` entrypoint: a generic
+`agent` command may belong to a different installation and is not guessed.
+Existing Gateway sessions retain their route. New local discovery does not require a
+Gateway or acpx. Harnesses retains explicit Start; the composer discovers local
+models automatically before sending. `discoverHarness` uses an owned, bounded
+probe with no MCP offers or prompts. Native Codex and Claude initialize and list models
+without starting a thread. Other transports may need an idle provider session
+to report their options; it is closed after discovery and never registered as a
+Capsule conversation. Results are cached for one minute by folder, harness and
+model (32 entries); failures are retryable, and Quit closes in-flight probes.
+The IPC remains desktop-only because discovery starts a local process. Existing
+Gateway conversations continue to use their own live catalog and route. Draft
+choices are validated by the real session before the first prompt, then stored
+using the same per-thread configuration path as subsequent changes.
 Initialization must select ACP protocol version 1 before `session/new` is sent.
 Missing, malformed, or unsupported versions fail startup with a compatibility
 error; the host closes only that failed session's owned process.

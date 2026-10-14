@@ -267,6 +267,8 @@ export interface DirectSessionIdentity {
   cwd: string;
   /** Preset command identity, excluding user model overrides. */
   launchSignature: string;
+  /** Explicit, acknowledged per-conversation choices; reapplied after resume. */
+  configuration?: Record<string, string | boolean>;
 }
 
 export type AgentPromptBlock =

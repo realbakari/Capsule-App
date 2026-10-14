@@ -224,6 +224,7 @@ const api = {
   validateAttachments: (attachments: Array<{ name: string; path: string; }>) =>
     ipcRenderer.invoke(IPC_CHANNELS.validateAttachments, attachments),
   listHarnesses: () => ipcRenderer.invoke(IPC_CHANNELS.listHarnesses),
+  discoverHarness: (projectId: string, harnessId: string, model?: string, sessionId?: string): Promise<import("@capsule/shared").HarnessDiscovery> => ipcRenderer.invoke(IPC_CHANNELS.discoverHarness, projectId, harnessId, model, sessionId),
   doctorHarness: (harnessId: string) => ipcRenderer.invoke(IPC_CHANNELS.doctorHarness, harnessId),
   dedicateHarness: (projectId: string, harnessId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.dedicateHarness, projectId, harnessId),

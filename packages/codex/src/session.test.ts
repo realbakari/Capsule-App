@@ -12,6 +12,52 @@ function create(scenario = "normal", model?: string) {
 }
 afterEach(async () => { await Promise.all(sessions.splice(0).map((session) => session.close())); });
 
+it("discovers model-specific controls without creating a thread or sending a prompt", async () => {
+  const session = create("discovery");
+  const output: string[] = []; session.on("text", (event) => output.push(event.text));
+  await session.discover();
+  expect(session.sessionId).toBeUndefined();
+  expect(session.models.currentModelId).toBe("model-one");
+  expect(session.models.availableModels.map((row) => row.modelId)).toEqual(["model-one", "model-two"]);
+  expect(session.reportedCapabilities.configOptions.find((row) => row.id === "reasoning_effort")?.currentValue).toBe("medium");
+  const other = create("discovery", "model-two"); await other.discover();
+  expect(other.reportedCapabilities.configOptions.find((row) => row.id === "reasoning_effort")?.choices.map((row) => row.value)).toEqual(["low"]);
+  expect(output).toEqual([]);
+  await session.close(); expect(session.running).toBe(false);
+});
+
+it("carries model, effort and reversible permissions to actual turn requests", async () => {
+  const session = create("settings");
+  const output: string[] = [];
+  session.on("text", (event) => output.push(event.text));
+  await session.start();
+  await session.setConfig("reasoning_effort", "high");
+  await session.setConfig("permissions", "full-access");
+  await session.prompt("Work");
+  expect(JSON.parse(output[0]!)).toEqual({ model: "model-one", effort: "high", approvalPolicy: "never", sandboxPolicy: { type: "dangerFullAccess" } });
+  await session.setConfig("model", "model-two");
+  await expect(session.setConfig("reasoning_effort", "high")).rejects.toThrow("not reported");
+  await session.setConfig("permissions", "supervised");
+  await session.prompt("Continue");
+  expect(JSON.parse(output[1]!)).toEqual({ model: "model-two", effort: "low", approvalPolicy: "untrusted", sandboxPolicy: { type: "readOnly", networkAccess: false } });
+});
+
+it("does not change permissions or effort during an active turn", async () => {
+  const session = create("wait"); await session.start();
+  const turn = session.prompt("Work");
+  await expect(session.setConfig("permissions", "full-access")).rejects.toThrow("Wait");
+  await expect(session.setConfig("reasoning_effort", "high")).rejects.toThrow("Wait");
+  await session.cancel();
+  expect(await turn).toEqual({ stopReason: "cancelled" });
+  expect(session.reportedCapabilities.configOptions.find((option) => option.id === "permissions")?.currentValue).toBe("supervised");
+});
+
+it("preserves the CLI's configured model unless the user explicitly selects one", async () => {
+  const session = create("configured"); await session.start();
+  expect(session.models.currentModelId).toBe("model-two");
+  expect(session.reportedCapabilities.configOptions.find((row) => row.id === "reasoning_effort")?.currentValue).toBe("low");
+});
+
 it.each(["normal", "early"])("streams consecutive %s turns once, with model selection, tools, plans and usage", async (scenario) => {
   const session = create(scenario);
   const output: string[] = []; const tools: unknown[] = []; const plans: unknown[] = []; const usage: unknown[] = [];

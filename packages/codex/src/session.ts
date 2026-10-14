@@ -5,6 +5,7 @@ import type { AcpModelCatalog, AgentCapabilityReport, AgentPromptBlock, Reported
 import { readReportedTurnUsage, readPlanEntries } from "@capsule/shared";
 import { CodexRequestError, CodexTransport, object } from "./transport.js";
 import { nativeToolDetails } from "./tool-details.js";
+import { permissionOption, readModelSettings, turnPermissions, type ModelSettings, type NativePermissions } from "./configuration.js";
 
 const text = (value: unknown): string | undefined => typeof value === "string" ? value : undefined;
 const id = (value: unknown) => typeof value === "string" && value.length > 0 && value.length <= 4096 ? value : undefined;
@@ -22,6 +23,9 @@ export class DirectCodexSession implements DirectAgentSession {
   private streamed = new Set<string>();
   private filePreviews = new Map<string, string>();
   private selectedModel?: string;
+  private modelSettings = new Map<string, ModelSettings>();
+  private effort?: string;
+  private permissions: NativePermissions = "supervised";
   private closing = false;
 
   constructor(private readonly options: DirectAcpOptions & { model?: string }) {
@@ -41,12 +45,18 @@ export class DirectCodexSession implements DirectAgentSession {
   get reportedContext() { return this.context; }
   get reportedCommands() { return undefined; }
   get reportedCapabilities(): AgentCapabilityReport {
+    const settings = this.selectedModel ? this.modelSettings.get(this.selectedModel) : undefined;
     return { name: "Codex", images: true, embeddedContext: true, httpMcp: false, resumeSession: true,
-      configOptions: this.catalog.availableModels.length ? [{ id: "model", category: "model", name: "Model", currentValue: this.catalog.currentModelId,
-        choices: this.catalog.availableModels.map((model) => ({ value: model.modelId, name: model.name })) }] : [] };
+      configOptions: [
+        ...(this.catalog.availableModels.length ? [{ id: "model", category: "model", name: "Model", currentValue: this.catalog.currentModelId,
+          choices: this.catalog.availableModels.map((model) => ({ value: model.modelId, name: model.name })) }] : []),
+        ...(settings?.efforts.length ? [{ id: "reasoning_effort", category: "thought_level", name: "Reasoning effort", currentValue: this.effort,
+          description: "Applies to the next turn. Choices depend on the selected model.", choices: settings.efforts }] : []),
+        permissionOption(this.permissions),
+      ] };
   }
 
-  async start(resumeSessionId?: string): Promise<string> {
+  async discover(): Promise<void> {
     this.transport.start();
     try {
       await this.transport.request("initialize", { clientInfo: { name: "capsule", title: "Capsule", version: "0.1.0" } });
@@ -59,7 +69,11 @@ export class DirectCodexSession implements DirectAgentSession {
         for (const candidate of Array.isArray(page.data) ? page.data : []) {
           const row = object(candidate);
           const modelId = id(row.model) ?? id(row.id);
-          if (modelId && row.hidden !== true && !models.some((model) => model.modelId === modelId)) models.push({ modelId, name: text(row.displayName)?.slice(0, 128) ?? modelId });
+          if (modelId && row.hidden !== true && !models.some((model) => model.modelId === modelId)) {
+            models.push({ modelId, name: text(row.displayName)?.slice(0, 128) ?? modelId });
+            this.modelSettings.set(modelId, readModelSettings(row));
+            if (!this.selectedModel && row.isDefault === true) this.selectedModel = modelId;
+          }
         }
         cursor = id(page.nextCursor);
         if (cursor && cursors.has(cursor)) throw new Error("The agent returned a repeated model catalog page.");
@@ -67,11 +81,19 @@ export class DirectCodexSession implements DirectAgentSession {
       } while (cursor && cursors.size < 10);
       this.catalog = { availableModels: models };
       if (this.selectedModel && !models.some((model) => model.modelId === this.selectedModel)) throw new Error("The selected model is not reported by this Codex installation. Choose its default model or update the CLI.");
+      this.catalog.currentModelId = this.selectedModel;
+      this.effort = this.selectedModel ? this.modelSettings.get(this.selectedModel)?.defaultEffort : undefined;
+    } catch (error) { await this.close(); throw error; }
+  }
+
+  async start(resumeSessionId?: string): Promise<string> {
+    await this.discover();
+    try {
       const openThread = () => this.transport.request(resumeSessionId ? "thread/resume" : "thread/start", {
         ...(resumeSessionId ? { threadId: resumeSessionId } : {}), cwd: this.options.cwd ?? process.cwd(),
         // Never inherit a saved session's full-access policy or automatic reviewer.
         approvalPolicy: "untrusted", approvalsReviewer: "user", sandbox: "read-only",
-        ...(this.selectedModel ? { model: this.selectedModel } : {}),
+        ...(this.options.model ? { model: this.options.model } : {}),
       });
       let response: unknown;
       try { response = await openThread(); }
@@ -92,15 +114,28 @@ export class DirectCodexSession implements DirectAgentSession {
       this.threadId = threadId;
       this.catalog.currentModelId = id(result.model) ?? this.selectedModel;
       this.selectedModel = this.catalog.currentModelId;
+      const settings = this.selectedModel ? this.modelSettings.get(this.selectedModel) : undefined;
+      this.effort = settings?.efforts.some((choice) => choice.value === result.reasoningEffort) ? text(result.reasoningEffort) : settings?.defaultEffort;
       this.emitter.emit("configuration");
       return threadId;
     } catch (error) { await this.close(); throw error; }
   }
 
   async setConfig(configId: string, value: string | boolean): Promise<void> {
-    if (this.busy) throw new Error("Wait for this turn to finish before changing the model.");
-    if (configId !== "model" || typeof value !== "string" || !this.catalog.availableModels.some((model) => model.modelId === value)) throw new Error("This model is not reported by the installed agent.");
-    this.selectedModel = value; this.catalog.currentModelId = value; this.emitter.emit("configuration");
+    if (!this.threadId || !this.running) throw new Error("Start this agent before changing its settings.");
+    if (this.busy) throw new Error("Wait for this turn to finish before changing agent settings.");
+    if (configId === "model" && typeof value === "string" && this.catalog.availableModels.some((model) => model.modelId === value)) {
+      this.selectedModel = value; this.catalog.currentModelId = value;
+      const settings = this.modelSettings.get(value);
+      if (!settings?.efforts.some((choice) => choice.value === this.effort)) this.effort = settings?.defaultEffort;
+    } else if (configId === "reasoning_effort" && typeof value === "string" && this.selectedModel && this.modelSettings.get(this.selectedModel)?.efforts.some((choice) => choice.value === value)) {
+      this.effort = value;
+    } else if (configId === "permissions" && (value === "supervised" || value === "full-access")) {
+      this.permissions = value;
+    } else throw new Error("This setting or value is not reported by the installed agent.");
+    // app-server has no session config setter: these validated overrides are
+    // submitted atomically with the next turn, whose rejection remains visible.
+    this.emitter.emit("configuration");
   }
 
   async prompt(input: string | AgentPromptBlock[]): Promise<{ stopReason?: string }> {
@@ -118,7 +153,8 @@ export class DirectCodexSession implements DirectAgentSession {
       const finished = new Promise<void>((resolve) => { settle = resolve; });
       const turn: Turn = { resolve, reject, cancelling: false, starting: Promise.resolve(), finished, settle, early: [], earlyBytes: 0 };
       this.turn = turn;
-      turn.starting = this.transport.request("turn/start", { threadId: this.threadId, input: blocks, ...(this.selectedModel ? { model: this.selectedModel } : {}) });
+      turn.starting = this.transport.request("turn/start", { threadId: this.threadId, input: blocks,
+        ...turnPermissions(this.permissions), ...(this.selectedModel ? { model: this.selectedModel } : {}), ...(this.effort ? { effort: this.effort } : {}) });
       void turn.starting.then((value) => {
         if (this.turn !== turn) return;
         const turnId = id(object(object(value).turn).id);

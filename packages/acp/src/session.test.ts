@@ -64,6 +64,38 @@ const HAPPY = `
 `;
 
 describe("legacy agent modes", () => {
+  it("applies legacy model choices through their protocol and leaves rejected choices unchanged", async () => {
+    const file = fakeAgent(`
+      let model = "one";
+      function handle(message) {
+        if (message.method === "initialize") send({ id: message.id, result: { protocolVersion: 1 } });
+        if (message.method === "session/new") send({ id: message.id, result: { sessionId: "models", models: {
+          currentModelId: model, availableModels: [{ modelId: "one", name: "One" }, { modelId: "two", name: "Two" }]
+        } } });
+        if (message.method === "session/set_model") {
+          if (message.params.modelId === "one") send({ id: message.id, error: { code: -1, message: "Model refused" } });
+          else { model = message.params.modelId; send({ id: message.id, result: {} }); }
+        }
+        if (message.method === "session/prompt") {
+          send({ method: "session/update", params: { sessionId: "models", update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: model } } } });
+          send({ id: message.id, result: { stopReason: "end_turn" } });
+        }
+      }
+    `);
+    const session = new DirectAcpSession({ command: process.execPath, args: [file], env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" } });
+    const output = vi.fn(); session.on("text", output);
+    try {
+      await session.start();
+      await expect(session.setConfig("capsule:session-model", "unknown")).rejects.toThrow("reported");
+      await session.setConfig("capsule:session-model", "two");
+      await expect(session.setConfig("capsule:session-model", "one")).rejects.toThrow("Model refused");
+      expect(session.models?.currentModelId).toBe("two");
+      expect(session.reportedCapabilities?.configOptions[0]?.currentValue).toBe("two");
+      await session.prompt("Hello");
+      expect(output).toHaveBeenCalledWith(expect.objectContaining({ text: "two" }));
+    } finally { await session.close(); rmSync(path.dirname(file), { recursive: true, force: true }); }
+  });
+
   const agent = (modern = false) => fakeAgent(`
     function handle(message) {
       if (message.method === "initialize") send({ id: message.id, result: { protocolVersion: 1 } });
@@ -402,7 +434,7 @@ describe("talking to an agent directly", () => {
       expect((await host.statusAcp(key)).parsed.models?.availableModels).toEqual([{ modelId: "second", name: "second" }]);
       await session.prompt("remove");
       const status = (await host.statusAcp(key)).parsed;
-      expect(status.configOptions).toEqual([]);
+      expect(status.configOptions).toEqual(hasLegacy ? [expect.objectContaining({ id: "capsule:session-model", currentValue: "legacy" })] : []);
       expect(status.models).toEqual(hasLegacy ? legacy : undefined);
       expect(status.model).toBe(hasLegacy ? "legacy" : undefined);
     } finally { await host.closeAll(); rmSync(path.dirname(agent), { recursive: true, force: true }); }

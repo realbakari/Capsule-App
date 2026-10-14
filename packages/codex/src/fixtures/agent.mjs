@@ -10,6 +10,7 @@ let turnId;
 let counter = 0;
 let model = "model-one";
 let approvalId;
+let turnSettings;
 let archived = scenario.startsWith("archived");
 const notify = (method, params) => send({ method, params: { threadId, turnId, ...params } });
 const finish = (status = "completed", message) => notify("turn/completed", { turn: { id: turnId, status, error: message ? { message } : null } });
@@ -18,7 +19,7 @@ const respond = () => {
   notify("turn/plan/updated", { plan: [{ step: "Inspect", status: "completed" }] });
   notify("item/started", { item: { type: "commandExecution", id: "command", command: "pwd", status: "inProgress" } });
   notify("item/completed", { item: { type: "commandExecution", id: "command", command: "pwd", status: "completed", exitCode: scenario === "command-failed" ? 1 : 0, aggregatedOutput: "/fixture" } });
-  notify("item/agentMessage/delta", { itemId: "answer", delta: `Hello ${model}` });
+  notify("item/agentMessage/delta", { itemId: "answer", delta: scenario === "settings" ? JSON.stringify(turnSettings) : `Hello ${model}` });
   notify("item/completed", { item: { id: "answer", type: "agentMessage", text: `Hello ${model}` } });
   notify("thread/tokenUsage/updated", { tokenUsage: { total: { totalTokens: 100 }, last: { inputTokens: 8, outputTokens: 12, totalTokens: 20, cachedInputTokens: 3 }, modelContextWindow: 1000 } });
   finish();
@@ -32,13 +33,17 @@ createInterface({ input: process.stdin }).on("line", (line) => {
     reply(id, { userAgent: "fixture" });
   } else if (method === "initialized") initialized = true;
   else if (!initialized) send({ id, error: { code: -32000, message: "Not initialized" } });
-  else if (method === "model/list") reply(id, { data: [{ id: "model-one", model: "model-one", displayName: "One" }, { id: "model-two", model: "model-two", displayName: "Two" }], nextCursor: null });
+  else if (method === "model/list") reply(id, { data: [
+    { id: "model-one", model: "model-one", displayName: "One", isDefault: true, defaultReasoningEffort: "medium", supportedReasoningEfforts: [{ reasoningEffort: "medium", description: "Balanced" }, { reasoningEffort: "high", description: "More reasoning" }] },
+    { id: "model-two", model: "model-two", displayName: "Two", defaultReasoningEffort: "low", supportedReasoningEfforts: [{ reasoningEffort: "low", description: "Fast" }] },
+  ], nextCursor: null });
   else if (method === "thread/start" || method === "thread/resume") {
+    if (scenario === "discovery") throw new Error("Model discovery must not create a thread");
     if (params.sandbox !== "read-only" || params.approvalPolicy !== "untrusted" || params.approvalsReviewer !== "user") throw new Error("Unsafe policy");
     if (method === "thread/resume" && params.threadId !== "native-thread") { send({ id, error: { code: -32000, message: "Session not found" } }); return; }
     if (method === "thread/resume" && archived) { send({ id, error: { code: -32000, message: "session native-thread is archived; run codex unarchive" } }); return; }
     if (scenario === "wrong-id") threadId = "different-thread";
-    model = params.model ?? model;
+    model = params.model ?? (scenario === "configured" ? "model-two" : model);
     notify("item/agentMessage/delta", { itemId: "history", delta: "Old history must not replay" });
     reply(id, { thread: { id: threadId, ephemeral: scenario === "ephemeral", status: { type: scenario === "active" ? "active" : "idle" } }, model, cwd: scenario === "wrong-folder" ? "/other" : params.cwd });
   } else if (method === "thread/unarchive") {
@@ -47,6 +52,7 @@ createInterface({ input: process.stdin }).on("line", (line) => {
     archived = scenario === "archived-still";
     reply(id, {});
   } else if (method === "turn/start") {
+    turnSettings = { model: params.model, effort: params.effort, approvalPolicy: params.approvalPolicy, sandboxPolicy: params.sandboxPolicy };
     turnId = `turn-${++counter}`;
     model = params.model ?? model;
     const acknowledge = () => reply(id, { turn: { id: turnId, status: "inProgress" } });

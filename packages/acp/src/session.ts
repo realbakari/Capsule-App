@@ -104,6 +104,7 @@ export class DirectAcpSession {
   private acpSessionId: string | undefined;
   private acpModels: AcpModelCatalog | undefined;
   private legacyModels: AcpModelCatalog | undefined;
+  private legacyModel: AgentCapabilityReport["configOptions"][number] | undefined;
   private legacyMode: ReturnType<typeof readModeOption>;
   private modeRevision = 0;
   private initialization: unknown;
@@ -241,10 +242,15 @@ export class DirectAcpSession {
     if (this.pendingCommands?.sessionId === sessionId) this.commandReport = this.pendingCommands.commands;
     this.pendingCommands = undefined;
     this.legacyModels = readModelCatalog((created as { models?: unknown })?.models);
+    this.legacyModel = this.legacyModels?.availableModels.length ? {
+      id: "capsule:session-model", category: "model", name: "Model", currentValue: this.legacyModels.currentModelId,
+      choices: this.legacyModels.availableModels.map((model) => ({ value: model.modelId, name: model.name })),
+    } : undefined;
     this.legacyMode = readModeOption((created as { modes?: unknown })?.modes);
     const configuration = (created as { configOptions?: unknown })?.configOptions;
     if (!this.capabilityReport || Array.isArray(configuration)) this.readConfiguration(configuration);
     this.includeLegacyMode();
+    this.includeLegacyModel();
     if (this.pendingMode?.sessionId === sessionId) this.updateMode(this.pendingMode.modeId);
     this.pendingMode = undefined;
     // Retain only normalized metadata, not the unbounded handshake response.
@@ -307,6 +313,15 @@ export class DirectAcpSession {
     this.setting = true;
     const revision = this.configurationRevision;
     try {
+      if (option === this.legacyModel && typeof value === "string") {
+        await this.request("session/set_model", { sessionId: this.acpSessionId, modelId: value });
+        if (revision !== this.configurationRevision) throw new Error("The agent changed its configuration. Review the reported model before retrying.");
+        option.currentValue = value;
+        if (this.legacyModels) this.legacyModels.currentModelId = value;
+        this.acpModels = this.legacyModels;
+        this.scheduleConfigurationNotice();
+        return;
+      }
       if (option === this.legacyMode && typeof value === "string") {
         const modeRevision = this.modeRevision;
         await this.request("session/set_mode", { sessionId: this.acpSessionId, modeId: value });
@@ -548,6 +563,7 @@ export class DirectAcpSession {
     this.configurationRevision++;
     this.capabilityReport = readAgentCapabilities(this.initialization, options);
     this.includeLegacyMode();
+    this.includeLegacyModel();
     const model = this.capabilityReport.configOptions.find((option) => option.type !== "boolean" && (option.id === "model" || option.category === "model"));
     // Config notifications replace the entire snapshot, including removals.
     // Only a catalog actually supplied by the legacy API is a valid fallback.
@@ -561,6 +577,13 @@ export class DirectAcpSession {
   private includeLegacyMode(): void {
     if (this.legacyMode && this.capabilityReport && !this.capabilityReport.configOptions.some((option) => option.category === "mode" || option.id === "mode" || option.id === LEGACY_MODE_CONFIG_ID)) {
       this.capabilityReport.configOptions.push(this.legacyMode);
+    }
+  }
+
+  private includeLegacyModel(): void {
+    if (this.legacyModel && this.capabilityReport && !this.capabilityReport.configOptions.some((option) => option.category === "model" || option.id === "model" || option.id === this.legacyModel?.id)) {
+      this.capabilityReport.configOptions.push(this.legacyModel);
+      this.acpModels = this.legacyModels;
     }
   }
 

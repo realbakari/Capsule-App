@@ -22,6 +22,7 @@
     { "path": "packages/acp" },
     { "path": "packages/muse" },
     { "path": "packages/codex" },
+    { "path": "packages/claude" },
     { "path": "packages/harness" },
     { "path": "packages/buzz" },
     { "path": "packages/core" },

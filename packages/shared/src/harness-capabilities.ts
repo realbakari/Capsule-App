@@ -1,4 +1,5 @@
 import type { HarnessLiveStatus, HarnessStatus, SessionRef } from "./harness.js";
+import { agentControls } from "./agent-controls.js";
 
 export interface FeatureAvailability { state: "available" | "unavailable" | "limited"; detail: string }
 export function harnessCapabilities(input: { harness?: HarnessStatus; session?: SessionRef; status?: HarnessLiveStatus }) {
@@ -6,7 +7,8 @@ export function harnessCapabilities(input: { harness?: HarnessStatus; session?: 
   const live = Boolean(session?.harnessId === harness?.id && session?.openclawSessionKey && session.harnessState !== "closed");
   // An existing thread keeps its route, regardless of changed defaults.
   const savedDirect = session?.directSession?.harnessId === harness?.id && Boolean(session?.directSession);
-  const route = live ? session!.openclawSessionKey!.startsWith("direct:") ? "direct" : "openclaw" : savedDirect ? "direct" : harness?.runtimeRoute;
+  const bound = session?.harnessId === harness?.id && Boolean(session?.openclawSessionKey);
+  const route = bound ? session!.openclawSessionKey!.startsWith("direct:") ? "direct" : "openclaw" : savedDirect ? "direct" : harness?.runtimeRoute;
   const unavailable = (detail: string): FeatureAvailability => ({ state: "unavailable", detail });
   const available = (detail: string): FeatureAvailability => ({ state: "available", detail });
   const limited = (detail: string): FeatureAvailability => ({ state: "limited", detail });
@@ -16,7 +18,7 @@ export function harnessCapabilities(input: { harness?: HarnessStatus; session?: 
   const models = currentStatus?.parsed?.models?.availableModels ?? [];
   const report = currentStatus?.parsed?.reported;
   const tuning = !live ? noSession : route === "direct"
-    ? report?.configOptions.length ? available("Change the exact settings reported by this agent in Agent settings. Changes wait for its acknowledgement.")
+    ? report?.configOptions.length ? available("Change the exact settings reported by this agent in Agent settings. Accepted changes apply to the next turn.")
       : unavailable("This agent has not reported mutable configuration. Refresh status or configure its CLI before starting it.")
     : limited("Sent through the Gateway; the selected agent decides which values it accepts.");
   const mutableModel = report?.configOptions.some((option) => (option.id === "model" || option.category === "model") && option.type !== "boolean" && option.choices.length > 0);
@@ -26,7 +28,7 @@ export function harnessCapabilities(input: { harness?: HarnessStatus; session?: 
   return {
     route,
     model: !live ? noSession : route === "direct"
-      ? mutableModel ? available(`${models.length} models reported by this live agent. Changes require its acknowledgement.`)
+      ? mutableModel ? available(`${models.length} models reported by this live agent. Accepted changes apply to the next turn.`)
         : unavailable("This agent has not reported a mutable model selector. Refresh status or configure its CLI before starting it.")
       : models.length ? available(`${models.length} models reported by this live agent.`)
       : unavailable("This agent has not reported a model list. Refresh its status in Harnesses; a supported model ID can be entered there."),
@@ -38,7 +40,8 @@ export function harnessCapabilities(input: { harness?: HarnessStatus; session?: 
       ? directBrowser
       : unavailable("Capsule does not inject its browser tools into Gateway agents. Browse manually here, or configure browser tools on the Gateway."),
     permissions: route === "direct"
-      ? limited("Direct agents can request approval once in Capsule. Agent settings may expose their own permission options; Capsule's permission profiles are not automatically mapped to them.")
-      : limited("Gateway ACP Standard and Full access approve tools automatically; Supervised refuses tools that require a prompt. Agent settings may impose additional restrictions."),
+      ? agentControls(session, currentStatus).permissions ? available("Choose the agent's reported permissions in the composer. Changes apply to this conversation.")
+        : limited("This agent has no separate permission selector. Its reported Agent mode may control approvals; otherwise approval requests appear in the conversation.")
+      : limited("Gateway Full access approves tools automatically; Read-only refuses tools that require approval because this route cannot show a prompt."),
   };
 }

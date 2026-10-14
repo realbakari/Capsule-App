@@ -1648,6 +1648,8 @@ function registerIpc(): void {
     return saveTextAttachment(path.join(app.getPath("userData"), "attachments"), text);
   });
   handle(IPC_CHANNELS.listHarnesses, () => requireEngine().listHarnesses());
+  handle(IPC_CHANNELS.discoverHarness, (projectId, harnessId, model, sessionId) =>
+    requireEngine().discoverHarness(String(projectId), String(harnessId), typeof model === "string" ? model : undefined, typeof sessionId === "string" ? sessionId : undefined));
   handle(IPC_CHANNELS.doctorHarness, (harnessId) =>
     requireEngine().doctorHarness(harnessId as HarnessId),
   );

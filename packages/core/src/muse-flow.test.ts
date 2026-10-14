@@ -41,6 +41,8 @@ it("runs Muse through the engine, persists its transcript, and resumes without a
     expect(first.session.openclawSessionKey).toMatch(/^direct:msp:muse:/);
     expect(first.session.directSession).toMatchObject({ sessionId: "fixture-session", harnessId: "muse", cwd: directory });
     await engine.setHarnessConfig(first.session.id, "reasoning_effort", "max");
+    const configuredIdentity = engine.listSessions().find((item) => item.id === first.session.id)!.directSession;
+    expect(configuredIdentity?.configuration).toEqual({ reasoning_effort: "max" });
     expect(engine.listMessages(first.session.id)).toHaveLength(0);
     expect(engine.listRuns(first.session.id)).toHaveLength(0);
     const initial = await engine.sendMessage({ sessionId: first.session.id, agentId: "muse", content: "First prompt", mode: "chat" });
@@ -50,7 +52,7 @@ it("runs Muse through the engine, persists its transcript, and resumes without a
     await engine.start();
     await engine.updateSettings({ runtimeMode: "openclaw" }); // The existing native thread must stay local.
     const recovered = engine.listSessions().find((item) => item.id === first.session.id)!;
-    expect(recovered.directSession).toEqual(first.session.directSession);
+    expect(recovered.directSession).toEqual(configuredIdentity);
     const next = await engine.sendMessage({ sessionId: recovered.id, agentId: "muse", content: "Continue", mode: "chat" });
     await vi.waitFor(() => expect(engine.getRun(next.run.id)?.status).toBe("completed"));
     await vi.waitFor(async () => {

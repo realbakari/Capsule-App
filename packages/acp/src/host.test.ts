@@ -59,7 +59,42 @@ describe("session keys", () => {
   });
 });
 
+it.each(PRESET_HARNESSES.filter((preset) => !preset.nativeCommand && (preset.directCommand || preset.acpxCommand)).map((preset) => preset.id))(
+  "discovers %s through its reported options without a prompt or MCP access", async (harnessId) => {
+    const start = vi.spyOn(DirectAcpSession.prototype, "start").mockResolvedValue("probe");
+    const configure = vi.spyOn(DirectAcpSession.prototype, "setConfig").mockResolvedValue();
+    const prompt = vi.spyOn(DirectAcpSession.prototype, "prompt");
+    const capabilities = vi.spyOn(DirectAcpSession.prototype, "reportedCapabilities", "get").mockReturnValue(readAgentCapabilities({}, [
+      { id: "provider-model", category: "model", name: "Model", type: "select", currentValue: "default", options: [{ value: "default" }, { value: "reported-model" }] },
+    ]));
+    const close = vi.spyOn(DirectAcpSession.prototype, "close").mockResolvedValue();
+    const offer = vi.fn(() => ({ servers: [], dispose: () => {} }));
+    const host = new DirectAcpHost(); host.offerMcpServers(offer);
+    try {
+      const result = await host.discover(harnessId, process.cwd(), "reported-model");
+      expect(result.reported?.configOptions[0]?.id).toBe("provider-model");
+      expect(configure).toHaveBeenCalledWith("provider-model", "reported-model");
+      expect(start).toHaveBeenCalledOnce(); expect(close).toHaveBeenCalledOnce();
+      expect(prompt).not.toHaveBeenCalled(); expect(offer).not.toHaveBeenCalled();
+    } finally { await host.closeAll(); start.mockRestore(); configure.mockRestore(); prompt.mockRestore(); capabilities.mockRestore(); close.mockRestore(); }
+  },
+);
+
 describe("spawning an agent that has no ACP mode", () => {
+  it("discovers a saved ACP conversation through its original adapter", async () => {
+    const start = vi.spyOn(DirectAcpSession.prototype, "start").mockResolvedValue("probe");
+    const close = vi.spyOn(DirectAcpSession.prototype, "close").mockResolvedValue();
+    const native = vi.fn();
+    const executable = vi.fn((command: string) => command);
+    const host = new DirectAcpHost(native, executable);
+    try {
+      await host.discover("codex", process.cwd(), undefined, true);
+      expect(executable).toHaveBeenCalledWith("codex-acp");
+      expect(native).not.toHaveBeenCalled();
+      expect(start).toHaveBeenCalledOnce();
+      expect(close).toHaveBeenCalledOnce();
+    } finally { await host.closeAll(); start.mockRestore(); close.mockRestore(); }
+  });
   it("says so instead of starting something that cannot answer", async () => {
     const host = new DirectAcpHost();
     await expect(host.spawnAcpSession({ harnessId: "droid" })).rejects.toThrow(
@@ -92,7 +127,7 @@ it("closes an adapter without a reported model control instead of silently ignor
   const close = vi.spyOn(DirectAcpSession.prototype, "close").mockResolvedValue();
   const host = new DirectAcpHost();
   try {
-    await expect(host.spawnAcpSession({ harnessId: "claude", model: "requested-model" })).rejects.toThrow("does not report a mutable model option");
+    await expect(host.spawnAcpSession({ harnessId: "claude", sessionKey: "direct:acp:claude:old", model: "requested-model" })).rejects.toThrow("does not report a mutable model option");
     expect(configure).not.toHaveBeenCalled();
     expect(close).toHaveBeenCalledOnce();
   } finally { await host.closeAll(); start.mockRestore(); configure.mockRestore(); capabilities.mockRestore(); close.mockRestore(); }

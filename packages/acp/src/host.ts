@@ -10,6 +10,7 @@ import {
   type DirectSessionIdentity,
   type AgentPromptBlock,
   type ProviderSubscriptionUsage,
+  type HarnessDiscovery,
 } from "@capsule/shared";
 
 import { explainDirectFailure, readCliError } from "./errors.js";
@@ -20,8 +21,9 @@ export type DirectAgentSession = Pick<DirectAcpSession,
   "on" | "busy" | "running" | "sessionId" | "models" | "reportedCapabilities" |
   "reportedContext" | "reportedCommands" | "start" | "prompt" | "cancel" | "close" | "setConfig"> & {
     readonly reportedSubscriptionUsage?: ProviderSubscriptionUsage;
+    discover?: () => Promise<void>;
   };
-export type NativeSessionFactory = (options: DirectAcpOptions & { model?: string; protocol: "msp" | "codex" }) => DirectAgentSession;
+export type NativeSessionFactory = (options: DirectAcpOptions & { model?: string; protocol: "msp" | "codex" | "claude" }) => DirectAgentSession;
 
 export type DirectActivity =
   | { type: "subscription-usage"; sessionKey: string }
@@ -74,7 +76,7 @@ export function directSessionKey(harnessId: string, id: string, protocol = "acp"
 }
 
 export function isDirectSessionKey(key: string | undefined): boolean {
-  return Boolean(key?.startsWith("direct:acp:") || key?.startsWith("direct:msp:") || key?.startsWith("direct:codex:"));
+  return Boolean(key?.startsWith("direct:acp:") || key?.startsWith("direct:msp:") || key?.startsWith("direct:codex:") || key?.startsWith("direct:claude:"));
 }
 
 /** Whether this harness can be driven without the Gateway. */
@@ -110,6 +112,35 @@ export class DirectAcpHost {
   private readonly harnessBySession = new Map<string, HarnessId>();
   private counter = 0;
   private closing?: Promise<void>;
+  private readonly discoveries = new Set<DirectAgentSession>();
+
+  /** A bounded, prompt-free handshake; never creates a Capsule conversation. */
+  async discover(harnessId: HarnessId, cwd: string, model?: string, legacyAcp = false): Promise<HarnessDiscovery> {
+    if (this.closing) throw new Error("The agent host is shutting down.");
+    if (this.discoveries.size >= 4) throw new Error("Model discovery is busy. Try again shortly.");
+    const preset = PRESET_HARNESSES.find((item) => item.id === harnessId);
+    const native = legacyAcp ? undefined : preset?.nativeCommand;
+    const command = native ?? preset?.directCommand ?? preset?.acpxCommand;
+    if (!command) throw new Error("This harness does not support local model discovery.");
+    if (native && !this.nativeSession) throw new Error("The native session transport is unavailable.");
+    const options = { command: this.executable(command.command), args: [...(command.args ?? [])], cwd, timeoutMs: 15_000 };
+    const session: DirectAgentSession = native && this.nativeSession
+      ? this.nativeSession({ ...options, protocol: native.protocol, model })
+      : new DirectAcpSession(options);
+    this.discoveries.add(session);
+    try {
+      if (session.discover) await session.discover();
+      else {
+        await session.start();
+        if (model) {
+          const option = session.reportedCapabilities?.configOptions?.find((item) => item.category === "model" || item.id === "model");
+          if (!option) throw new Error("This agent does not report a model selector.");
+          await session.setConfig(option.id, model);
+        }
+      }
+      return structuredClone({ models: session.models, reported: session.reportedCapabilities });
+    } finally { await session.close(); this.discoveries.delete(session); }
+  }
 
   isRunning(key: string): boolean { return this.sessions.get(key)?.running === true; }
   capabilities(key: string) { return this.sessions.get(key)?.reportedCapabilities; }
@@ -210,6 +241,14 @@ export class DirectAcpHost {
     try {
       await session.start(input.resume?.sessionId);
       if (this.closing) throw new Error("The direct agent host is shutting down.");
+      if (input.resume?.configuration) {
+        const entries = Object.entries(input.resume.configuration);
+        if (entries.length > 128) throw new Error("Too many saved agent settings. Start a new conversation.");
+        // Model first: it determines which reasoning settings are valid.
+        const modelId = session.reportedCapabilities?.configOptions.find((option) => option.category === "model")?.id ?? "model";
+        entries.sort(([a], [b]) => Number(b === modelId) - Number(a === modelId));
+        for (const [configId, value] of entries) await session.setConfig(configId, value);
+      }
       // Local adapters have different launch flags. Their reported protocol
       // selector is authoritative; never invent a --model CLI argument.
       if (!native && preset?.directCommand && input.model && !input.resume) {
@@ -228,7 +267,8 @@ export class DirectAcpHost {
       sessionKey: key,
       usedSlashCommand: false,
       command: [command.command, ...args].join(" "),
-      directSession: { sessionId: session.sessionId!, harnessId: input.harnessId, cwd, launchSignature },
+      directSession: { sessionId: session.sessionId!, harnessId: input.harnessId, cwd, launchSignature,
+        ...(input.resume?.configuration ? { configuration: input.resume.configuration } : {}) },
     };
   }
 
@@ -279,7 +319,9 @@ export class DirectAcpHost {
 
   private async closeOwnedSessions(): Promise<void> {
     const keys = [...this.sessions.keys()];
-    const results = await Promise.allSettled(keys.map((key) => this.closeAcp(key)));
+    const results = await Promise.allSettled([...keys.map((key) => this.closeAcp(key)), ...[...this.discoveries].map(async (session) => {
+      await session.close(); this.discoveries.delete(session);
+    })]);
     const failures = results.filter((result) => result.status === "rejected");
     if (failures.length) throw new AggregateError(failures.map((result) => result.reason), "Some agent processes could not close.");
   }
@@ -323,13 +365,14 @@ export class DirectAcpHost {
     if (key !== "model" && key !== "mode") throw new Error(`Direct mode does not map ${key} to an agent setting. Use the exact reported option in Agent settings.`);
     const option = session.reportedCapabilities?.configOptions.find((item) => item.type !== "boolean" && (item.category === key || item.id === key));
     if (!option) throw new Error(`This agent does not report a mutable ${key} option. Start it again with the desired CLI configuration.`);
-    await session.setConfig(option.id, value);
+    await this.setConfig(sessionKey, option.id, value);
     return `Updated ${option.name}.`;
   }
 
   async setConfig(sessionKey: string, configId: string, value: string | boolean): Promise<void> {
     const session = this.sessions.get(sessionKey);
     if (!session) throw new Error("That agent is no longer running. Start it again.");
+    if (session.busy) throw new Error("Wait for this turn to finish before changing agent settings.");
     await session.setConfig(configId, value);
   }
 

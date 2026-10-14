@@ -13,6 +13,7 @@ import path from "node:path";
 import { prepareDirectPrompt } from "./direct-prompt.js";
 import { DirectMuseSession } from "@capsule/muse";
 import { DirectCodexSession } from "@capsule/codex";
+import { DirectClaudeSession } from "@capsule/claude";
 import {
   DirectAcpHost,
   type DirectMcpOffer,
@@ -257,7 +258,13 @@ export class CapsuleEngine {
    * turn pipeline does not branch on which route carried it.
    */
   private direct = new DirectAcpHost(
-    (options) => options.protocol === "codex" ? new DirectCodexSession(options) : new DirectMuseSession(options),
+    (options) => {
+      switch (options.protocol) {
+        case "codex": return new DirectCodexSession(options);
+        case "claude": return new DirectClaudeSession(options);
+        case "msp": return new DirectMuseSession(options);
+      }
+    },
     (command) => whichBinary([command]) ?? command,
   );
 
@@ -594,6 +601,29 @@ export class CapsuleEngine {
     return listing;
   }
 
+  private readonly modelDiscovery = new Map<string, { at: number; result: Promise<import("@capsule/shared").HarnessDiscovery> }>();
+
+  async discoverHarness(projectId: string, harnessId: string, model?: string, sessionId?: string) {
+    const project = this.requireProject(projectId);
+    const thread = sessionId ? this.requireSession(sessionId) : undefined;
+    if (thread && thread.projectId !== project.id) throw new Error("This conversation belongs to another project.");
+    const prior = thread?.harnessId === harnessId ? thread : undefined;
+    if (!isHarnessId(harnessId) || !(prior?.openclawSessionKey ? isDirectSessionKey(prior.openclawSessionKey) : this.useDirectMode(harnessId)) || this.usingMock) throw new Error("Model discovery is available for local harnesses. Gateway models are reported by the conversation's agent.");
+    if (model !== undefined && (!model.trim() || model.length > 4096)) throw new Error("Invalid model identifier.");
+    const cwd = thread?.workingDirectory ?? project.workingDirectory ?? ensureProjectlessFolder(this.projectlessRoot());
+    const legacyAcp = Boolean(prior?.openclawSessionKey?.startsWith("direct:acp:"));
+    const key = JSON.stringify([cwd, harnessId, model, legacyAcp]);
+    const cached = this.modelDiscovery.get(key);
+    if (cached && Date.now() - cached.at < 60_000) return cached.result;
+    const result = this.direct.discover(harnessId, cwd, model, legacyAcp).catch((error) => {
+      if (this.modelDiscovery.get(key)?.result === result) this.modelDiscovery.delete(key);
+      throw error;
+    });
+    if (this.modelDiscovery.size >= 32) this.modelDiscovery.delete(this.modelDiscovery.keys().next().value!);
+    this.modelDiscovery.set(key, { at: Date.now(), result });
+    return result;
+  }
+
   private async readHarnesses(): Promise<HarnessStatus[]> {
     const dedicatedByHarness: Record<string, string[]> = Object.fromEntries(
       PRESET_HARNESSES.map((preset) => [preset.id, [] as string[]]),
@@ -623,6 +653,7 @@ export class CapsuleEngine {
   }
 
   async doctorHarness(harnessId: HarnessId): Promise<HarnessDoctorReport> {
+    this.modelDiscovery.clear();
     const preset = presetFor(harnessId);
     if (!preset) throw new Error(`Unknown harness: ${harnessId}`);
     // Explicit environment re-check: drop cached lookups so a CLI installed —
@@ -1026,6 +1057,13 @@ export class CapsuleEngine {
     if (patch.key === "cwd") {
       throw new Error("Live working-directory changes are unavailable. Close the agent and choose the thread's folder before starting it again.");
     }
+    if (patch.key === "model" && session.openclawSessionKey && isDirectSessionKey(session.openclawSessionKey)) {
+      const status = await this.harnessStatus(session.id);
+      const option = status.parsed?.reported?.configOptions.find((item) => item.category === "model" || item.id === "model");
+      if (!option) throw new Error("This agent does not report model selection.");
+      const updated = await this.setHarnessConfig(session.id, option.id, value);
+      return { session: updated.session, detail: "Model updated for the next turn." };
+    }
     let statusText: string | undefined;
     if (!this.usingMock && session.openclawSessionKey) {
       if (patch.key === "permissions" && !isDirectSessionKey(session.openclawSessionKey)) {
@@ -1054,8 +1092,27 @@ export class CapsuleEngine {
     }
     if (typeof configId !== "string" || configId.length > 128 || (typeof value !== "boolean" && typeof value !== "string")) throw new Error("Invalid agent configuration value.");
     await this.direct.setConfig(session.openclawSessionKey, configId, value);
+    const status = await this.harnessStatus(sessionId);
+    const options = status.parsed?.reported?.configOptions ?? [];
+    const confirmed = options.find((item) => item.id === configId);
+    if (!confirmed || (confirmed.type === "boolean" ? confirmed.booleanValue : confirmed.currentValue) !== value) throw new Error("The agent did not confirm that setting. Refresh its status.");
+    const current = this.requireSession(sessionId);
+    if (current.directSession) {
+      const configuration = { ...current.directSession.configuration, [configId]: value };
+      // Refresh saved dependent choices after a model change; never restore an
+      // effort level the new model no longer supports.
+      for (const key of Object.keys(configuration)) {
+        const option = options.find((item) => item.id === key);
+        const accepted = option?.type === "boolean" ? option.booleanValue : option?.currentValue;
+        if (accepted === undefined) delete configuration[key]; else configuration[key] = accepted;
+      }
+      current.directSession = { ...current.directSession, configuration };
+    }
+    if ((confirmed.category === "model" || confirmed.id === "model") && typeof value === "string") current.modelOverride = value;
+    current.updatedAt = nowIso();
+    this.repos.updateSession(current);
     this.events.emit("state", { command: "harness-updated" });
-    return this.harnessStatus(sessionId);
+    return { ...status, session: current };
   }
 
   listHarnessSessions(projectId?: string): Session[] {

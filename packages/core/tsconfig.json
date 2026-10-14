@@ -24,6 +24,7 @@
     { "path": "../acp" },
     { "path": "../muse" },
     { "path": "../codex" },
+    { "path": "../claude" },
     { "path": "../harness" },
     { "path": "../buzz" }
   ]

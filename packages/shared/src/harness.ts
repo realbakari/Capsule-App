@@ -128,7 +128,7 @@ export interface HarnessPreset {
   directCommand?: { command: string; args?: string[] };
   directInstallHint?: string;
   /** Native direct-only transport; never register it as an ACP command. */
-  nativeCommand?: { protocol: "msp" | "codex"; command: string; args: string[] };
+  nativeCommand?: { protocol: "msp" | "codex" | "claude"; command: string; args: string[] };
 }
 
 export interface HarnessDoctorCheck {
@@ -234,9 +234,14 @@ export interface AcpStatusSnapshot {
   models?: AcpModelCatalog;
 }
 
+export interface HarnessDiscovery {
+  models?: AcpModelCatalog;
+  reported?: import("./agent-reports.js").AgentCapabilityReport;
+}
+
 export interface AcpModelCatalog {
   currentModelId?: string;
-  availableModels: Array<{ modelId: string; name: string }>;
+  availableModels: Array<{ modelId: string; name: string; isLegacy?: boolean }>;
 }
 
 /** Lightweight session shape so harness types do not import the full domain graph. */
@@ -301,15 +306,16 @@ export const PRESET_HARNESSES: HarnessPreset[] = [
   preset(
     "claude",
     "Claude Code",
-    "Claude Code through a local ACP adapter or the optional Gateway. Claude owns the coding loop.",
+    "Claude Code through its native SDK or the optional Gateway. Claude owns the coding loop.",
     ["claude"],
-    "Install and sign in to Claude Code on the computer running the agent. Direct mode also needs claude-agent-acp on PATH.",
+    "Install and sign in to Claude Code on this computer. New direct conversations use the installed CLI through its SDK.",
     "https://claude.ai/code",
     { probeArgs: ["auth", "status"], hint: "Run `claude` and complete sign-in" },
     {
       underlyingCli: "claude",
+      nativeCommand: { protocol: "claude", command: "claude", args: [] },
       directCommand: { command: "claude-agent-acp" },
-      directInstallHint: "Install @agentclientprotocol/claude-agent-acp so claude-agent-acp is on PATH, then complete the agent's sign-in.",
+      directInstallHint: "Install Claude Code so claude is on PATH, then complete its sign-in. Existing ACP conversations retain their original claude-agent-acp adapter.",
       configFilePath: "~/.claude/settings.json",
       providerLocked: true,
       featured: true,
@@ -365,10 +371,13 @@ export const PRESET_HARNESSES: HarnessPreset[] = [
   preset(
     "cursor",
     "Cursor",
-    "Cursor CLI ACP (`cursor-agent acp`). Override the acpx command if the local install uses a different entrypoint.",
+    "Cursor CLI through its ACP stdio interface.",
     ["cursor-agent", "cursor"],
-    "Install Cursor CLI on the Gateway host and expose an ACP entrypoint.",
+    "Install and sign in to Cursor CLI on the computer running the agent.",
     "https://cursor.com/docs/cli/acp",
+    undefined,
+    { directCommand: { command: "cursor-agent", args: ["acp"] },
+      directInstallHint: "Install and sign in to Cursor CLI, and expose its cursor-agent command on PATH. The desktop editor alone is not the coding CLI." },
   ),
   preset(
     "droid",
@@ -412,10 +421,12 @@ export const PRESET_HARNESSES: HarnessPreset[] = [
   preset(
     "opencode",
     "OpenCode",
-    "OpenCode ACP adapter. Requires OpenCode CLI/provider auth on the Gateway host.",
+    "OpenCode through its built-in ACP server or the optional Gateway.",
     ["opencode"],
-    "Install and authenticate OpenCode on the Gateway host.",
+    "Install and authenticate OpenCode on the computer running the agent.",
     "https://opencode.ai",
+    undefined,
+    { directCommand: { command: "opencode", args: ["acp"] } },
   ),
   preset(
     "openclaw",
@@ -428,34 +439,42 @@ export const PRESET_HARNESSES: HarnessPreset[] = [
   preset(
     "qwen",
     "Qwen Code",
-    "Qwen Code / Qwen CLI through acpx.",
+    "Qwen Code through its built-in ACP server or the optional Gateway.",
     ["qwen"],
-    "Authenticate a Qwen-compatible CLI on the Gateway host.",
+    "Install and authenticate Qwen Code on the computer running the agent.",
     "https://github.com/QwenLM/qwen-code",
+    undefined,
+    { directCommand: { command: "qwen", args: ["--acp"] } },
   ),
   preset(
     "kimi",
     "Kimi",
-    "Kimi/Moonshot CLI through acpx.",
+    "Kimi Code through its built-in ACP server or the optional Gateway.",
     ["kimi"],
-    "Authenticate Kimi/Moonshot on the Gateway host.",
+    "Install Kimi Code and run kimi login on the computer running the agent.",
     "https://github.com/MoonshotAI/kimi-cli",
+    undefined,
+    { directCommand: { command: "kimi", args: ["acp"] } },
   ),
   preset(
     "kilocode",
     "Kilo Code",
-    "Kilo Code CLI through acpx. Model control depends on the installed CLI.",
-    ["kilocode"],
-    "Install Kilo Code CLI on the Gateway host.",
+    "Kilo Code CLI through its built-in ACP server or the optional Gateway.",
+    ["kilo", "kilocode"],
+    "Install and authenticate the current Kilo Code CLI on the computer running the agent.",
     "https://kilocode.ai",
+    undefined,
+    { directCommand: { command: "kilo", args: ["acp"] } },
   ),
   preset(
     "kiro",
     "Kiro",
-    "Kiro CLI through acpx.",
-    ["kiro"],
-    "Install Kiro CLI on the Gateway host.",
+    "Kiro CLI through its built-in ACP server or the optional Gateway.",
+    ["kiro-cli", "kiro"],
+    "Install and sign in to Kiro CLI on the computer running the agent. Direct mode requires its current ACP interface.",
     "https://kiro.dev",
+    undefined,
+    { directCommand: { command: "kiro-cli", args: ["acp"] } },
   ),
   preset(
     "iflow",
@@ -476,10 +495,12 @@ export const PRESET_HARNESSES: HarnessPreset[] = [
   preset(
     "qoder",
     "Qoder",
-    "Qoder CLI through acpx.",
+    "Qoder CLI through its built-in ACP server or the optional Gateway.",
     ["qoder"],
-    "Install Qoder CLI on the Gateway host.",
+    "Install Qoder CLI and run qoder login on the computer running the agent.",
     "https://docs.qoder.com/cli/acp",
+    undefined,
+    { directCommand: { command: "qoder", args: ["--acp"] } },
   ),
   preset(
     "trae",
@@ -746,7 +767,7 @@ export function parseAcpStatus(text: string): AcpStatusSnapshot {
 
 export function isAcpSessionKey(key: string | undefined): boolean {
   // Historical name: engine callers use this for all dedicated harness sessions.
-  return Boolean(key && (key.includes(":acp:") || key.startsWith("acp:") || key.startsWith("direct:msp:") || key.startsWith("direct:codex:")));
+  return Boolean(key && (key.includes(":acp:") || key.startsWith("acp:") || key.startsWith("direct:msp:") || key.startsWith("direct:codex:") || key.startsWith("direct:claude:")));
 }
 
 /**
