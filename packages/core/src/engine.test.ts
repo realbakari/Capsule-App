@@ -1025,7 +1025,8 @@ describe("edit from here", () => {
     const result = await engine.rewindSession(session.id, secondPrompt.id);
     expect(result).toMatchObject({ ok: true, prompt: "Second ask", filesRestored: false });
     const after = engine.listMessages(session.id);
-    expect(after.map((message) => message.content)).toEqual(before.filter((message) => message.createdAt < secondPrompt.createdAt).map((message) => message.content));
+    // By position, not timestamp: the first reply can share a millisecond with the second prompt.
+    expect(after.map((message) => message.content)).toEqual(before.slice(0, before.indexOf(secondPrompt)).map((message) => message.content));
     expect(after.some((message) => message.content === "Second ask")).toBe(false);
     expect(engine.getRun(second.run.id)).toBeUndefined();
     expect(engine.getRun(first.run.id)).toBeDefined();
