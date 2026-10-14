@@ -1,6 +1,6 @@
 export const REPO = "https://github.com/realbakari/Capsule-App";
 export const DOCS = `${REPO}/blob/main/docs/user`;
-export const RELEASE = "0.10.0";
+export const RELEASE = "0.10.1";
 export const RELEASE_URL = `${REPO}/releases/tag/v${RELEASE}`;
 export const ASSETS = `${REPO}/releases/download/v${RELEASE}`;
 
