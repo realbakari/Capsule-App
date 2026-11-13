@@ -1,6 +1,7 @@
 import type { CapsuleSettings, RuntimeMode } from "@capsule/shared";
 
 import { useWorkspace } from "../../lib/workspace";
+import { SettingSource } from "../customization/SettingSource";
 
 const OPTIONS: Array<{ id: RuntimeMode; label: string; detail: string }> = [
   {
@@ -38,7 +39,7 @@ export function RuntimeModeCard({
 
   return (
     <div className="card">
-      <h3>Runtime</h3>
+      <h3>Runtime<SettingSource setting="runtimeMode" /></h3>
       <p className="muted">Choose the route for new conversations. Existing conversations keep their route.</p>
       <div className="runtime-modes" role="radiogroup" aria-label="Runtime">
         {OPTIONS.map((option) => (

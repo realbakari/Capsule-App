@@ -12,6 +12,7 @@ import {
   type TranscriptWidth,
 } from "@capsule/shared";
 import { SettingRow } from "./controls";
+import { SettingSource } from "../customization/SettingSource";
 
 const THEMES: Array<{ id: AppearanceTheme; label: string }> = [
   { id: "system", label: "System" },
@@ -52,7 +53,7 @@ export function AppearanceSettings({
   return (
     <div className="appearance-page">
       <div className="card">
-        <h3>Theme and text</h3>
+        <h3>Theme and text<SettingSource setting="appearanceTheme" /></h3>
         <p className="muted">
           Theme, transcript sizing, and the code font. Colors, contrast, and the
           translucent sidebar are set separately for Light and Dark below.
@@ -71,7 +72,7 @@ export function AppearanceSettings({
           ))}
         </div>
         <SettingRow
-          label="Transcript text size"
+          label="Transcript text size" setting="transcriptSize"
           hint="Size of the conversation transcript text."
         >
           <select
@@ -96,7 +97,7 @@ export function AppearanceSettings({
           </div>
         </div>
         <SettingRow
-          label="Transcript width"
+          label="Transcript width" setting="transcriptWidth"
           hint="Maximum width of the transcript and composer columns."
         >
           <select
@@ -113,7 +114,7 @@ export function AppearanceSettings({
             ))}
           </select>
         </SettingRow>
-        <SettingRow label="Time format" hint="How message times are written.">
+        <SettingRow label="Time format" setting="timeFormat" hint="How message times are written.">
           <select
             className="field-select"
             value={settings.timeFormat}
@@ -124,7 +125,7 @@ export function AppearanceSettings({
             <option value="24h">24-hour</option>
           </select>
         </SettingRow>
-        <SettingRow label="Tool calls" hint="Whether a turn's tool calls start folded to one line or listed in full.">
+        <SettingRow label="Tool calls" setting="toolCallDisplay" hint="Whether a turn's tool calls start folded to one line or listed in full.">
           <select
             className="field-select"
             value={settings.toolCallDisplay}
@@ -135,7 +136,7 @@ export function AppearanceSettings({
           </select>
         </SettingRow>
         <SettingRow
-          label="Custom code font"
+          label="Custom code font" setting="customCodeFont"
           hint="Optional monospace family for code and the terminal, e.g. JetBrains Mono."
         >
           <input

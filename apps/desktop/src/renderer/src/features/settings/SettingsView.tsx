@@ -1,6 +1,9 @@
 import { isFeaturedHarness } from "../../lib/harness";
 import { useEffect, useState } from "react";
-import type { CapsuleSettings } from "@capsule/shared";
+import type { CapsuleSettings, WritableScope } from "@capsule/shared";
+import { routeSettingsPatch, sectionTakesProjectValues, settingsFileTarget, settingsLayerView, type SettingSourceChip } from "../../lib/config-view";
+import { SaveToControl, SettingSource, SettingSourceContext, type SettingSourceState } from "../customization/SettingSource";
+import { CustomizationDoctor } from "../customization/CustomizationDoctor";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { KeybindingsSettings } from "./KeybindingsSettings";
 import { ProcessMonitor } from "./ProcessMonitor";
@@ -28,7 +31,7 @@ import { CommandsCard } from "./CommandsCard";
 import { RemoteAccessSettings } from "./RemoteAccessSettings";
 import { AnalyticsSettings } from "./AnalyticsSettings";
 import { SettingRow, Switch } from "./controls";
-import { ChartIcon, CpuIcon, FolderIcon, GitBranchIcon, InfoIcon, KeyboardIcon, LinkIcon, SettingsIcon, SparkIcon, SunIcon, UndoIcon } from "../shell/icons";
+import { ChartIcon, CpuIcon, FileIcon, FolderIcon, GitBranchIcon, InfoIcon, KeyboardIcon, LinkIcon, SettingsIcon, SparkIcon, SunIcon, UndoIcon } from "../shell/icons";
 import { formatProjectRoot } from "../../lib/paths";
 import { useWorkspace } from "../../lib/workspace";
 
@@ -71,8 +74,10 @@ export function SettingsView() {
     deleteProject,
     setProjectId,
     setView,
-    settings,
+    settings: userSettings,
     updateSettings,
+    config,
+    setConfigValue,
     agents,
     connected,
     settingsTab: tab,
@@ -81,22 +86,39 @@ export function SettingsView() {
     refresh,
   } = useWorkspace();
 
-  const [url, setUrl] = useState(settings?.gatewayUrl ?? "");
+  const [url, setUrl] = useState(userSettings?.gatewayUrl ?? "");
   const [token, setToken] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  /* Where changes go while a project is open. Back to You when the project changes. */
+  const [saveTo, setSaveTo] = useState<{ projectId?: string; scope: WritableScope }>({ scope: "user" });
+  const projectConfig = config?.project;
+  const target: WritableScope = projectConfig && saveTo.projectId === projectConfig.projectId ? saveTo.scope : "user";
+  const canWriteFiles = api.isDesktop === true && !config?.safeMode;
 
   useEffect(() => {
-    if (settings?.gatewayUrl) setUrl(settings.gatewayUrl);
-  }, [settings?.gatewayUrl]);
+    if (userSettings?.gatewayUrl) setUrl(userSettings.gatewayUrl);
+  }, [userSettings?.gatewayUrl]);
+
+  function fail(caught: unknown) {
+    setError(caught instanceof Error ? caught.message : String(caught));
+  }
 
   async function patch(next: Partial<CapsuleSettings>) {
     setError(undefined);
     try {
-      await updateSettings(next);
+      const { user, layer } = routeSettingsPatch(next, target);
+      for (const { key, value } of layer) await setConfigValue({ key, value, scope: target, projectId: projectConfig?.projectId });
+      if (Object.keys(user).length) await updateSettings(user);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
+      fail(caught);
     }
+  }
+
+  function openSource(chip: SettingSourceChip) {
+    setError(undefined);
+    const opened = chip.layer === "legacy" ? api.openPath(chip.path) : api.configOpenFile(settingsFileTarget(chip.layer, projectConfig?.projectId));
+    void Promise.resolve(opened).catch(fail);
   }
 
   async function connect() {
@@ -127,7 +149,7 @@ export function SettingsView() {
     }
   }
 
-  if (!settings) {
+  if (!userSettings) {
     return (
       <section className="panel">
         <div className="panel-inner settings-page">
@@ -139,10 +161,24 @@ export function SettingsView() {
     );
   }
 
+  const view = settingsLayerView(userSettings, config, target);
+  const settings = view.settings;
+  const sources: SettingSourceState = {
+    view,
+    projectOverrides: target === "user" ? projectConfig?.provenance : undefined,
+    editable: canWriteFiles,
+    open: openSource,
+    reset: (key, layer) => {
+      setError(undefined);
+      void setConfigValue({ key, scope: layer, projectId: projectConfig?.projectId }).catch(fail);
+    },
+  };
+  const fileScope: WritableScope = sectionTakesProjectValues(tab) ? target : "user";
   const tokenSaved = Boolean(settings.gatewayToken);
   const sendOnEnter = settings.composerSendKey !== "cmd-enter";
 
   return (
+    <SettingSourceContext.Provider value={sources}>
     <section className="panel">
       <div className="panel-inner settings-page">
         <div className="settings">
@@ -151,13 +187,28 @@ export function SettingsView() {
               {/* One heading per page: the section's name. The titlebar already says Settings. */}
               <h2 className="settings-title">{SETTINGS_SECTION_LABELS[tab]}</h2>
               {SECTIONS_WITH_DEFAULTS.has(tab) && (
+              <div className="settings-crumb-actions">
+                {canWriteFiles && (
+                  <button
+                    type="button"
+                    className="ghost"
+                    title={fileScope === "user" ? "Your user settings file" : `This project's ${fileScope === "local" ? "personal" : "shared"} settings file`}
+                    onClick={() => {
+                      setError(undefined);
+                      void api.configOpenFile(settingsFileTarget(fileScope, projectConfig?.projectId)).catch(fail);
+                    }}
+                  >
+                    <FileIcon size={13} />
+                    Open {fileScope === "local" ? "settings.local.json" : "settings.json"}
+                  </button>
+                )}
                 <button
                   type="button"
                   className="ghost"
                   onClick={() =>
                     setConfirm({
                       title: `Restore ${SETTINGS_SECTION_LABELS[tab]} defaults?`,
-                      detail: `Every setting in ${SETTINGS_SECTION_LABELS[tab]} goes back to its default. Other sections, and any saved tokens, are left alone.`,
+                      detail: `Every setting in ${SETTINGS_SECTION_LABELS[tab]} goes back to its default and is removed from your user settings file.${projectConfig ? " Values this project's files set still apply in it." : ""} Other sections, and any saved tokens, are left alone.`,
                       confirmLabel: "Restore defaults",
                       danger: true,
                       onConfirm: () => void resetSection(tab),
@@ -167,13 +218,22 @@ export function SettingsView() {
                   <UndoIcon size={13} />
                   Restore {SETTINGS_SECTION_LABELS[tab]} defaults
                 </button>
+              </div>
               )}
             </div>
+            {canWriteFiles && projectConfig && sectionTakesProjectValues(tab) && (
+              <SaveToControl
+                value={target}
+                projectName={project?.name}
+                onChange={(scope) => setSaveTo({ projectId: projectConfig.projectId, scope })}
+              />
+            )}
+            {error && <div className="notice settings-error" role="alert">{error}</div>}
             {tab === "general" && (
               <div className="card">
                 <h3>Startup and sending</h3>
                 <SettingRow
-                  label="Launch at login"
+                  label="Launch at login" setting="launchAtLogin"
                   hint="Open Capsule when you sign in to this computer. Requires the packaged app."
                 >
                   <Switch
@@ -183,7 +243,7 @@ export function SettingsView() {
                   />
                 </SettingRow>
                 <SettingRow
-                  label="Send key"
+                  label="Send key" setting="composerSendKey"
                   hint={
                     sendOnEnter
                       ? "Enter sends. Shift+Enter inserts a new line. ⌘Enter starts another thread."
@@ -204,7 +264,7 @@ export function SettingsView() {
                   </select>
                 </SettingRow>
                 <SettingRow
-                  label="Follow-ups"
+                  label="Follow-ups" setting="followUpBehavior"
                   hint="What sending during a running turn does. Steer adds it to the turn where the agent can take it; attachments and skills always queue."
                 >
                   <select
@@ -225,10 +285,10 @@ export function SettingsView() {
                 <SessionsCard settings={settings} onPatch={(next) => void patch(next)} />
                 <div className="card">
                   <h3>Confirmations</h3>
-                  <SettingRow label="Confirm before deleting" hint="Ask before deleting a conversation. Deleting a project always asks.">
+                  <SettingRow label="Confirm before deleting" setting="confirmDelete" hint="Ask before deleting a conversation. Deleting a project always asks.">
                     <Switch checked={settings.confirmDelete} label="Confirm before deleting" onChange={(value) => void patch({ confirmDelete: value })} />
                   </SettingRow>
-                  <SettingRow label="Confirm before archiving" hint="Ask before archiving a conversation. Without it, Archive offers Undo for a few seconds.">
+                  <SettingRow label="Confirm before archiving" setting="confirmArchive" hint="Ask before archiving a conversation. Without it, Archive offers Undo for a few seconds.">
                     <Switch checked={settings.confirmArchive} label="Confirm before archiving" onChange={(value) => void patch({ confirmArchive: value })} />
                   </SettingRow>
                 </div>
@@ -244,7 +304,7 @@ export function SettingsView() {
               <div className="appearance-page">
                 <div className="card">
                   <h3>New conversations</h3>
-                  <SettingRow label="Default agent" hint="Pre-selected when you start a new thread.">
+                  <SettingRow label="Default agent" setting="defaultAgentId" hint="Pre-selected when you start a new thread.">
                     <select
                       className="field-select"
                       value={settings.defaultAgentId ?? "general"}
@@ -258,7 +318,7 @@ export function SettingsView() {
                     </select>
                   </SettingRow>
                   <SettingRow
-                    label="Conversation workspace"
+                    label="Conversation workspace" setting="defaultWorkspaceMode"
                     hint="Local shares the checkout. Worktree creates an isolated branch and folder for each Git conversation."
                   >
                     <select
@@ -321,6 +381,7 @@ export function SettingsView() {
                       }}
                     />
                   </label>
+                  <SettingSource setting="gatewayUrl" />
                   <label className="field">
                     <span>Operator token</span>
                     <input
@@ -368,7 +429,6 @@ export function SettingsView() {
                       <div>{status?.openclawVersion ?? "—"}</div>
                     </div>
                   </div>
-                  {error && <div className="notice" role="alert">{error}</div>}
                   <div className="actions">
                     <button className="send" disabled={busy} onClick={() => void connect()}>
                       {busy ? "Connecting…" : "Save & Connect"}
@@ -418,7 +478,7 @@ export function SettingsView() {
                   history, not the folder on disk.
                 </p>
                 <SettingRow
-                  label="Tasks without a project"
+                  label="Tasks without a project" setting="projectlessFolder"
                   hint="Default folder for Inbox threads. Each conversation gets a dated subfolder."
                 >
                   <div className="setting-stack">
@@ -555,6 +615,7 @@ export function SettingsView() {
 
             {tab === "diagnostics" && (
               <div className="appearance-page">
+                <CustomizationDoctor />
                 <ProcessMonitor />
                 <PerformanceDiagnostics />
               <div className="card">
@@ -583,5 +644,6 @@ export function SettingsView() {
         </div>
       </div>
     </section>
+    </SettingSourceContext.Provider>
   );
 }

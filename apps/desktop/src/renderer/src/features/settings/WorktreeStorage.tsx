@@ -22,7 +22,7 @@ export function WorktreeStorage({ settings, chooseFolder, save, editable }: {
   }
   return <div className="card worktree-storage">
     <h3>Worktrees</h3>
-    <SettingRow label="Worktree location" hint="New worktrees are created in this folder on the host computer. Existing conversations stay where they are.">
+    <SettingRow label="Worktree location" setting="worktreesDirectory" hint="New worktrees are created in this folder on the host computer. Existing conversations stay where they are.">
       <div className="setting-stack">
         <div className="mono setting-path">{settings.worktreesDirectory || "Default · Capsule application data"}</div>
         <div className="actions" style={{ marginTop: 0 }}>

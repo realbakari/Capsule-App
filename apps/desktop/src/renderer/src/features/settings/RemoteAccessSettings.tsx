@@ -53,7 +53,7 @@ export function RemoteAccessSettings({
       </p>
 
       <SettingRow
-        label="Who can reach it"
+        label="Who can reach it" setting="remoteAccess"
         hint={
           settings.remoteAccess === "network"
             ? "Anything on your network can load the page. Pairing is still required to see anything."

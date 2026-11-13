@@ -33,7 +33,8 @@ import {
   type SidebarThreadKind,
 } from "../../lib/sidebar";
 import { SETTINGS_TABS } from "../settings/SettingsView";
-import { searchSettings } from "../settings/settings-search";
+import { isModifiedQuery, searchSettings } from "../settings/settings-search";
+import { modifiedKeys } from "../../lib/config-view";
 import { useWorkspace, type View } from "../../lib/workspace";
 import { ActionMenu } from "./ActionMenu";
 import { MenuSelect } from "./MenuSelect";
@@ -118,6 +119,7 @@ export function Sidebar() {
     view,
     setView,
     settingsTab,
+    config,
     setSettingsTab,
     setProjectId,
     createTask,
@@ -560,7 +562,7 @@ export function Sidebar() {
    * lives in — knowing where a setting is is half the answer.
    */
   if (view === "settings") {
-    const results = searchSettings(settingsQuery);
+    const results = searchSettings(settingsQuery, undefined, modifiedKeys(config));
     const searching = settingsQuery.trim().length >= 2;
     return (
       <aside {...focusProps} className="sidebar" data-testid="app-sidebar">
@@ -594,7 +596,7 @@ export function Sidebar() {
           <nav className="settings-nav" aria-label="Settings sections">
             {searching ? (
               results.length === 0 ? (
-                <p className="sidebar-empty">No setting matches that.</p>
+                <p className="sidebar-empty">{isModifiedQuery(settingsQuery) ? "No settings file sets any of these." : "No setting matches that."}</p>
               ) : (
                 results.map((result) => (
                   <button
@@ -623,6 +625,9 @@ export function Sidebar() {
                   >
                     <item.icon size={14} />
                     {item.label}
+                    {item.id === "diagnostics" && config?.problemCount ? (
+                      <span className="settings-nav-count" title="Customization problems">{config.problemCount}</span>
+                    ) : null}
                   </button>
                 </Fragment>
               ))
@@ -903,11 +908,12 @@ export function Sidebar() {
           <button
             type="button"
             className="icon-btn"
-            title="Settings"
+            title={config?.problemCount ? `Settings · ${config.problemCount} customization ${config.problemCount === 1 ? "problem" : "problems"}` : "Settings"}
             aria-label="Settings"
             onClick={() => setView("settings")}
           >
             <SettingsIcon size={15} />
+            {config?.problemCount ? <span className="util-badge">{config.problemCount > 9 ? "9+" : config.problemCount}</span> : null}
           </button>
           {LIBRARY.map((item) => {
             const Icon = item.icon;
