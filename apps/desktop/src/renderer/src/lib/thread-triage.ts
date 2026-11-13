@@ -56,7 +56,7 @@ export function useThreadTriage() {
   const { api, sessions, projectRuns, sessionId, setProjectId, setView, setNotice, settings } = useWorkspace();
   const toasts = useToasts();
   const writable = api.isDesktop !== false;
-  const latest = useMemo(() => latestSidebarRuns(projectRuns), [projectRuns]);
+  const latest = useMemo(() => latestSidebarRuns(projectRuns ?? []), [projectRuns]);
 
   const apply = useCallback(async (id: string, action: ThreadTriageAction): Promise<Session | undefined> => {
     if (!writable) return undefined;
@@ -122,7 +122,7 @@ export function useThreadTriage() {
 export function useMarkThreadViewed(visible: boolean) {
   const { api, session, projectRuns } = useWorkspace();
   const writable = api.isDesktop !== false;
-  const run = useMemo(() => session ? latestSidebarRuns(projectRuns).get(session.id) : undefined, [projectRuns, session]);
+  const run = useMemo(() => session && projectRuns ? latestSidebarRuns(projectRuns).get(session.id) : undefined, [projectRuns, session]);
   const latestFinish = run ? `${run.id}:${run.status}` : "";
   const sent = useRef<string>("");
   useEffect(() => {
