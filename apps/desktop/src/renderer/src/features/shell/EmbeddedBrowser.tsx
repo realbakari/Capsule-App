@@ -1,5 +1,6 @@
 import type { WebviewTag } from "electron";
 import { useWorkspace } from "../../lib/workspace";
+import { useToasts } from "../../lib/toasts";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { InspectorHeadSlot } from "./inspector-slot";
@@ -249,7 +250,6 @@ export function EmbeddedBrowser({
   const [pickActive, setPickActive] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [zoomFactor, setZoomFactor] = useState(1.0);
-  const [toast, setToast] = useState<string | null>(null);
   const [recents, setRecents] = useState<BrowserRecent[]>(() => {
     try {
       return parseBrowserRecents(localStorage.getItem(BROWSER_RECENTS_KEY));
@@ -267,7 +267,7 @@ export function EmbeddedBrowser({
   const publishedAddress = useRef(address);
   const ownerId = session?.id;
   const moreMenuAnchorRef = useRef<HTMLDivElement>(null);
-  const toastTimerRef = useRef<number | undefined>(undefined);
+  const toasts = useToasts();
 
   useEffect(() => {
     if (!desktopBrowser) return;
@@ -279,7 +279,6 @@ export function EmbeddedBrowser({
       disposed = true;
       controlEpoch.current++;
       if (ownerId) void api.setBrowserControl?.(ownerId, false).catch(() => undefined);
-      window.clearTimeout(toastTimerRef.current);
     };
   }, [api, ownerId, desktopBrowser]);
 
@@ -302,13 +301,10 @@ export function EmbeddedBrowser({
     finally { setControlBusy(false); }
   };
 
-  const showToast = useCallback((message: string) => {
-    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
-    setToast(message);
-    toastTimerRef.current = window.setTimeout(() => {
-      setToast(null);
-    }, 2400);
-  }, []);
+  const { show: showNotice } = toasts;
+  const showToast = useCallback((message: string, tone: "success" | "error" = "success") => {
+    showNotice({ key: "browser", tone, title: message });
+  }, [showNotice]);
 
   const publishAddress = useCallback((value: string) => {
     publishedAddress.current = value;
@@ -496,7 +492,7 @@ export function EmbeddedBrowser({
       }
     } catch (error) {
       setPickActive(false);
-      showToast(`Element inspection failed: ${String(error)}`);
+      showToast(`Element inspection failed: ${String(error)}`, "error");
     }
   };
 
@@ -508,7 +504,7 @@ export function EmbeddedBrowser({
       await api.copyBrowserScreenshot(view.getWebContentsId());
       showToast("Screenshot copied to clipboard");
     } catch (failure) {
-      showToast(`Could not copy screenshot: ${failure instanceof Error ? failure.message : String(failure)}`);
+      showToast(`Could not copy screenshot: ${failure instanceof Error ? failure.message : String(failure)}`, "error");
     }
   };
 
@@ -536,7 +532,7 @@ export function EmbeddedBrowser({
       await api.clearBrowserData(view.getWebContentsId(), "cache");
       showToast("Browser HTTP cache cleared");
     } catch {
-      showToast("Unable to clear cache");
+      showToast("Unable to clear cache", "error");
     }
     setMoreMenuOpen(false);
   };
@@ -559,7 +555,7 @@ export function EmbeddedBrowser({
             view.reload();
             showToast("Browser cookies and site storage cleared");
           } catch {
-            showToast("Unable to clear cookies");
+            showToast("Unable to clear cookies", "error");
           }
         })();
       },
@@ -839,12 +835,6 @@ export function EmbeddedBrowser({
       </div>
 
       {error ? <div className="browser-error" role="alert"><span>{error}</span>{currentUrl && <button type="button" className="chip" onClick={() => navigate(currentUrl)}>Retry page</button>}</div> : null}
-
-      {toast && (
-        <div className="preview-toast" role="status">
-          <span>{toast}</span>
-        </div>
-      )}
 
       {currentUrl ? (
         <div className="embedded-browser-frame" data-viewport={viewport}>

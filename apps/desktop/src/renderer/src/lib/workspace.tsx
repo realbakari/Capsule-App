@@ -71,6 +71,7 @@ import { loadQueue, saveQueue, type QueuedPrompt } from "./prompt-queue";
 import { EMPTY_NAVIGATION, canGoBack as navigationCanGoBack, canGoForward as navigationCanGoForward, goBack as navigationBack, goForward as navigationForward, pruneNavigation, recordNavigation, type NavigationHistory } from "./navigation-history";
 import { contextUsageFromEvents, type ContextUsage } from "./context-window";
 import { harnessPreflightReason } from "./harness-preflight";
+import { useToasts } from "./toasts";
 import {
   promptDraftKey,
   readPromptStash,
@@ -283,8 +284,6 @@ export interface WorkspaceValue {
   deleteSession: (id: string) => void;
   archiveSession: (id: string) => Promise<void>;
   restoreSession: (id: string) => Promise<void>;
-  archiveUndo?: { id: string; title: string };
-  dismissArchiveUndo: () => void;
   openTerminal: () => Promise<void>;
   initializeGit: () => Promise<void>;
   saveProjectActions: (actions: ProjectAction[]) => Promise<{ saved: true } | { saved: false; error: string }>;
@@ -543,7 +542,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     return values;
   }, [sessions, projects, statusCache, statusVersion]);
   const [notice, setNotice] = useScopedState<string | undefined>(scope, undefined);
-  const [archiveUndo, setArchiveUndo] = useState<{ id: string; title: string }>();
+  const toasts = useToasts();
   const archiving = useRef(new Set<string>());
   const restoring = useRef(new Set<string>());
   const currentSelection = useRef({ projectId, sessionId });
@@ -1697,7 +1696,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       setDraft("");
       setAttachments([]);
       setSkillId(undefined);
-      setNotice("Prompt stashed. Press ⌘S with an empty composer to open the stash.");
+      toasts.show({ key: "stash", tone: "success", title: "Prompt stashed", detail: "Press ⌘S with an empty composer to open the stash." });
     } catch {
       setNotice("Could not save the prompt stash.");
     }
@@ -1878,7 +1877,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     try {
       const archived = await api.archiveSession(id);
       if (currentSelection.current.sessionId === id) setSessionId(undefined);
-      setArchiveUndo({ id, title: archived.title });
+      toasts.show({
+        key: `archive:${id}`,
+        title: `Archived “${archived.title}”`,
+        action: { label: "Undo", undo: true, run: () => restoreSession(id) },
+      });
       await refresh();
     } catch (error) { setNotice(formatUserError(error)); }
     finally { archiving.current.delete(id); }
@@ -1889,7 +1892,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     restoring.current.add(id);
     try {
       await api.restoreSession(id);
-      setArchiveUndo((current) => current?.id === id ? undefined : current);
+      toasts.dismissKey(`archive:${id}`);
       await refresh();
     } catch (error) { setNotice(formatUserError(error)); }
     finally { restoring.current.delete(id); }
@@ -1913,7 +1916,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   async function initializeGit() {
     if (!projectId) return;
     if (await performGit(() => api.gitInit(projectId))) {
-      setNotice("Git initialized. Create the first commit before using worktree conversations.");
+      toasts.show({ key: "git-init", tone: "success", title: "Git initialized", detail: "Create the first commit before using worktree conversations." });
     }
   }
 
@@ -2427,8 +2430,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       deleteSession,
       archiveSession: (id: string) => archiveSession(id),
       restoreSession,
-      archiveUndo,
-      dismissArchiveUndo: () => setArchiveUndo(undefined),
       openTerminal,
       initializeGit,
       saveProjectActions,
@@ -2565,7 +2566,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       diagnostics,
       notice,
       setNotice,
-      archiveUndo,
       steerDraft,
       steeringPending,
       steeringVersion,

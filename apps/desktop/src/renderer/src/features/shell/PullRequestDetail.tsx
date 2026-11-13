@@ -1,3 +1,4 @@
+import { useToasts } from "../../lib/toasts";
 import { displayPrefs } from "../../lib/display-prefs";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -179,14 +180,12 @@ export function GitPullRequestDetail({
   const [stagedComments, setStagedComments] = useState<StagedComment[]>([]);
   const [pendingComment, setPendingComment] = useState<Omit<StagedComment, "id">>();
   const [quickComment, setQuickComment] = useState("");
-  const [copiedNotification, setCopiedNotification] = useState("");
   const [selectedCommit, setSelectedCommit] = useState("");
   const [commitDiff, setCommitDiff] = useState("");
   const [commitLoading, setCommitLoading] = useState(false);
   const [commitError, setCommitError] = useState<string>();
   const commitRequest = useRef(0);
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => () => clearTimeout(toastTimer.current), []);
+  const { show: showNotice } = useToasts();
   useEffect(() => () => { commitRequest.current += 1; }, []);
 
   async function selectCommit(oid: string) {
@@ -220,10 +219,8 @@ export function GitPullRequestDetail({
   const shownComments = useMemo(() => [...(detail?.activity ?? [])].sort((a, b) =>
     (activityTime(a.createdAt) - activityTime(b.createdAt)) * (newestFirst ? -1 : 1)), [detail?.activity, newestFirst]);
 
-  const showToast = (msg: string) => {
-    clearTimeout(toastTimer.current);
-    setCopiedNotification(msg);
-    toastTimer.current = setTimeout(() => setCopiedNotification(""), 2500);
+  const showToast = (msg: string, tone: "success" | "error" | "info" = "success") => {
+    showNotice({ key: "pull-request", tone, title: msg });
   };
 
   const handleCopyLink = async () => {
@@ -231,14 +228,14 @@ export function GitPullRequestDetail({
       await navigator.clipboard.writeText(summary.url);
       showToast("Link copied to clipboard");
     } catch {
-      showToast("Could not copy the link. Try again.");
+      showToast("Could not copy the link. Try again.", "error");
     }
     setMenuOpen(false);
   };
 
   const handleAddComment = (filePath: string, line: number, side: "left" | "right") => {
     if (pendingComment?.text.trim()) {
-      showToast("Save or cancel the current note before starting another.");
+      showToast("Save or cancel the current note before starting another.", "info");
       return;
     }
     setPendingComment({ filePath, line, side, text: "" });
@@ -271,7 +268,7 @@ export function GitPullRequestDetail({
         showToast("Review notes copied");
       }
     } catch {
-      showToast("Could not copy the notes. Your draft has been kept.");
+      showToast("Could not copy the notes. Your draft has been kept.", "error");
       return;
     }
 
@@ -321,10 +318,6 @@ export function GitPullRequestDetail({
 
   return (
     <section className="pr-detail">
-      {copiedNotification && (
-        <div className="pr-toast-notification">{copiedNotification}</div>
-      )}
-
       <div className="pr-detail-actions">
         <button className="ghost" type="button" onClick={onBack}>
           ← Pull requests

@@ -1,12 +1,19 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { ArchiveUndoNotice } from "../features/shell/ArchiveUndoNotice";
+import { Toasts } from "../features/toasts/Toasts";
+import { ToastProvider, useToasts } from "../lib/toasts";
 import { HeaderPopover } from "../features/shell/HeaderPopover";
 import { MenuSelect } from "../features/shell/MenuSelect";
 import { HistoryView } from "../features/library/LibraryViews";
 
 function assert(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
 const settle = () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+
+function ArchiveToast({ restore }: { restore: () => void }) {
+  const { show } = useToasts();
+  useEffect(() => { show({ key: "archive:archived", title: "Archived “A saved conversation”", action: { label: "Undo", undo: true, run: restore } }); }, [show, restore]);
+  return null;
+}
 
 function LowPopover() {
   const anchor = useRef<HTMLDivElement>(null);
@@ -23,19 +30,19 @@ export async function runNavigationRecoveryRegressions(host: HTMLElement) {
   const previous = window.testWorkspace;
   const styles = document.querySelector<HTMLStyleElement>("#composer-test-styles")!;
   const media = styles.media; styles.media = "all";
-  const root = createRoot(host); const restored: string[] = []; let dismissed = false;
+  const root = createRoot(host); const restored: string[] = [];
   try {
     window.testWorkspace = { api: { isDesktop: true, listRunPage: async () => ({ runs: [], hasMore: false }) },
-      archiveUndo: { id: "archived", title: "A saved conversation" }, restoreSession: async (id: string) => { restored.push(id); }, dismissArchiveUndo: () => { dismissed = true; },
+      restoreSession: async (id: string) => { restored.push(id); },
       sessions: [{ id: "archived", title: "A saved conversation", state: "archived", projectId: "p" }], projectId: "p" };
-    root.render(<><textarea aria-label="Draft" /><ArchiveUndoNotice /></>); await settle();
+    const restore = () => { restored.push("archived"); };
+    root.render(<ToastProvider><textarea aria-label="Draft" /><ArchiveToast restore={restore} /><Toasts /></ToastProvider>); await settle();
     const draft = host.querySelector("textarea")!;
     draft.focus(); draft.dispatchEvent(new KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true }));
     assert(restored.length === 0, "Archive undo stole text editing undo");
     document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true })); await settle();
     assert(restored.join() === "archived", "Keyboard archive undo did not restore the conversation");
-    host.querySelector<HTMLButtonElement>('[aria-label="Dismiss archive notification"]')!.click(); await settle();
-    assert(dismissed, "Archive notice could not be dismissed");
+    assert(!host.querySelector(".toast"), "An undone toast stayed on screen");
     root.render(<HistoryView />); await settle();
     const archived = host.querySelector<HTMLDetailsElement>(".archived-conversations")!; archived.open = true;
     archived.querySelector<HTMLButtonElement>("button")!.click(); await settle();
