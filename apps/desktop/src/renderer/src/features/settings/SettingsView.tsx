@@ -27,6 +27,7 @@ import { AboutCard } from "./AboutModal";
 import { RemoteAccessSettings } from "./RemoteAccessSettings";
 import { AnalyticsSettings } from "./AnalyticsSettings";
 import { SettingRow, Switch } from "./controls";
+import { ChartIcon, CpuIcon, FolderIcon, GitBranchIcon, InfoIcon, KeyboardIcon, LinkIcon, SettingsIcon, SparkIcon, SunIcon, UndoIcon } from "../shell/icons";
 import { formatProjectRoot } from "../../lib/paths";
 import { useWorkspace } from "../../lib/workspace";
 
@@ -36,17 +37,18 @@ import { useWorkspace } from "../../lib/workspace";
  * settings that overlapped them — "Default agent" in one, "Agent defaults" in
  * the other. Each card now sits under the heading someone would look in.
  */
-export const SETTINGS_TABS: Array<{ id: SettingsSectionId; label: string }> = [
-  { id: "general", label: "General" },
-  { id: "appearance", label: "Appearance" },
-  { id: "agents", label: "Agents" },
-  { id: "gateway", label: "Gateway" },
-  { id: "projects", label: "Projects" },
-  { id: "sourceControl", label: "Source control" },
-  { id: "skills", label: "Skills" },
-  { id: "shortcuts", label: "Shortcuts" },
-  { id: "diagnostics", label: "Diagnostics" },
-  { id: "about", label: "About" },
+/* Each section has a mark and, after the first two, a small group heading, so the list scans at a glance. */
+export const SETTINGS_TABS: Array<{ id: SettingsSectionId; label: string; icon: typeof SettingsIcon; group?: string }> = [
+  { id: "general", label: "General", icon: SettingsIcon },
+  { id: "appearance", label: "Appearance", icon: SunIcon },
+  { id: "agents", label: "Agents", icon: CpuIcon, group: "Runtime" },
+  { id: "gateway", label: "Gateway", icon: LinkIcon },
+  { id: "projects", label: "Projects", icon: FolderIcon, group: "Code" },
+  { id: "sourceControl", label: "Source control", icon: GitBranchIcon },
+  { id: "skills", label: "Skills", icon: SparkIcon },
+  { id: "shortcuts", label: "Shortcuts", icon: KeyboardIcon, group: "App" },
+  { id: "diagnostics", label: "Diagnostics", icon: ChartIcon },
+  { id: "about", label: "About", icon: InfoIcon },
 ];
 
 
@@ -142,15 +144,11 @@ export function SettingsView() {
   return (
     <section className="panel">
       <div className="panel-inner settings-page">
-        <div className="panel-header">
-          <p>Gateway, appearance, agent defaults, and diagnostics for this computer.</p>
-        </div>
         <div className="settings">
           <div className="settings-body">
             <div className="settings-crumbbar">
-              <p className="settings-breadcrumb">
-                Settings <span aria-hidden>/</span> {SETTINGS_SECTION_LABELS[tab]}
-              </p>
+              {/* One heading per page: the section's name. The titlebar already says Settings. */}
+              <h2 className="settings-title">{SETTINGS_SECTION_LABELS[tab]}</h2>
               {SECTIONS_WITH_DEFAULTS.has(tab) && (
                 <button
                   type="button"
@@ -165,13 +163,14 @@ export function SettingsView() {
                     })
                   }
                 >
-                  Restore defaults
+                  <UndoIcon size={13} />
+                  Restore {SETTINGS_SECTION_LABELS[tab]} defaults
                 </button>
               )}
             </div>
             {tab === "general" && (
               <div className="card">
-                <h3>General</h3>
+                <h3>Startup and sending</h3>
                 <SettingRow
                   label="Launch at login"
                   hint="Open Capsule when you sign in to this computer. Requires the packaged app."
@@ -203,6 +202,19 @@ export function SettingsView() {
                     <option value="cmd-enter">⌘Enter to send</option>
                   </select>
                 </SettingRow>
+                <SettingRow
+                  label="Follow-ups"
+                  hint="What sending during a running turn does. Steer adds it to the turn where the agent can take it; attachments and skills always queue."
+                >
+                  <select
+                    className="field-select"
+                    value={settings.followUpBehavior}
+                    onChange={(event) => void patch({ followUpBehavior: event.target.value as CapsuleSettings["followUpBehavior"] })}
+                  >
+                    <option value="queue">Queue for after the turn</option>
+                    <option value="steer">Steer the running turn</option>
+                  </select>
+                </SettingRow>
               </div>
             )}
             {tab === "general" && (
@@ -210,6 +222,15 @@ export function SettingsView() {
                 <DesktopCard settings={settings} onPatch={(next) => void patch(next)} />
                 <NotificationsCard settings={settings} onPatch={(next) => void patch(next)} />
                 <SessionsCard settings={settings} onPatch={(next) => void patch(next)} />
+                <div className="card">
+                  <h3>Confirmations</h3>
+                  <SettingRow label="Confirm before deleting" hint="Ask before deleting a conversation. Deleting a project always asks.">
+                    <Switch checked={settings.confirmDelete} label="Confirm before deleting" onChange={(value) => void patch({ confirmDelete: value })} />
+                  </SettingRow>
+                  <SettingRow label="Confirm before archiving" hint="Ask before archiving a conversation. Without it, Archive offers Undo for a few seconds.">
+                    <Switch checked={settings.confirmArchive} label="Confirm before archiving" onChange={(value) => void patch({ confirmArchive: value })} />
+                  </SettingRow>
+                </div>
                 <AnalyticsSettings settings={settings} patch={patch} />
               </div>
             )}
@@ -345,7 +366,7 @@ export function SettingsView() {
                       <div>{status?.openclawVersion ?? "—"}</div>
                     </div>
                   </div>
-                  {error && <div className="notice">{error}</div>}
+                  {error && <div className="notice" role="alert">{error}</div>}
                   <div className="actions">
                     <button className="send" disabled={busy} onClick={() => void connect()}>
                       {busy ? "Connecting…" : "Save & Connect"}
@@ -357,10 +378,10 @@ export function SettingsView() {
                 </div>
                 <RemoteAccessSettings settings={settings} patch={patch} />
                 <div className="card">
-                  <h3>ACP harnesses</h3>
+                  <h3>Agents on the Gateway</h3>
                   <p className="muted">
                     Spawned with <span className="mono">/acp spawn</span> through OpenClaw acpx.
-                    Capsule will not install a second copy. Open Harnesses for the full catalog.
+                    Capsule will not install a second copy. Open Agents for the full catalog.
                   </p>
                   {(harnessList ?? [])
                     .filter(
@@ -387,7 +408,7 @@ export function SettingsView() {
 
             {tab === "projects" && (
               <div className="card">
-                <h3>Projects</h3>
+                <h3>Folders</h3>
                 <p className="muted">
                   Inbox is for tasks started outside a repo. ⌘O attaches or changes this project’s
                   folder; New project from folder creates another. Extra folders stay readable
@@ -535,7 +556,7 @@ export function SettingsView() {
                 <ProcessMonitor />
                 <PerformanceDiagnostics />
               <div className="card">
-                <h3>Diagnostics</h3>
+                <h3>Subsystems</h3>
                 <div className="muted">
                   Capsule core {subsystems?.capsuleCore} · Gateway {subsystems?.openclawGateway} ·
                   Channel {subsystems?.buzz} · Database {subsystems?.database} · Keychain{" "}

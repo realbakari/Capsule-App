@@ -52,7 +52,7 @@ export const SETTINGS_SEARCH_ITEMS: SettingsSearchItem[] = [
   { title: "Browser access", section: "gateway", keywords: ["remote", "pairing", "web", "control", "devices"] },
   { title: "Menu bar", section: "general", keywords: ["tray", "status bar", "extra"] },
   { title: "Desktop companion", section: "general", keywords: ["pet", "mascot", "capsule", "animation", "motion"] },
-  { title: "Auto-resume limited threads", section: "general", keywords: ["usage limit", "rate limit", "reset", "resume", "quota"] },
+  { title: "Auto-resume limited conversations", section: "general", keywords: ["usage limit", "rate limit", "reset", "resume", "quota"] },
   { title: "Agent simulator access", section: "general", keywords: ["ios", "simulator", "device", "xcode", "touch", "attach"] },
   { title: "Local performance", section: "diagnostics", keywords: ["freeze", "timings", "slow", "git", "preview"] },
   { title: "Keep computer awake", section: "general", keywords: ["sleep", "power", "running"] },
@@ -61,22 +61,27 @@ export const SETTINGS_SEARCH_ITEMS: SettingsSearchItem[] = [
   { title: "Bounce the Dock", section: "general", keywords: ["notification", "attention"] },
   { title: "Classify session states", section: "general", keywords: ["title", "auto", "conversations"] },
   { title: "Archive inactive", section: "general", keywords: ["cleanup", "old threads"] },
+  { title: "Follow-ups", section: "general", keywords: ["queue", "steer", "send during a turn"] },
+  { title: "Confirm before deleting", section: "general", keywords: ["confirmation", "delete", "ask"] },
+  { title: "Confirm before archiving", section: "general", keywords: ["confirmation", "archive", "ask"] },
 
-  { title: "Theme", section: "appearance", keywords: ["dark", "light", "system"] },
+  { title: "Theme", section: "appearance", keywords: ["dark", "light", "system", "dark mode", "colour scheme"] },
   { title: "Transcript text size", section: "appearance", keywords: ["font size", "type"] },
   { title: "Transcript width", section: "appearance", keywords: ["column", "measure"] },
-  { title: "Custom code font", section: "appearance", keywords: ["mono", "monospace"] },
+  { title: "Time format", section: "appearance", keywords: ["clock", "12-hour", "24-hour", "timestamp"] },
+  { title: "Tool calls", section: "appearance", keywords: ["activity", "commands", "folded", "compact"] },
+  { title: "Custom code font", section: "appearance", keywords: ["mono", "monospace", "terminal", "editor"] },
   { title: "Accent", section: "appearance", keywords: ["colour", "color", "palette"] },
   { title: "Translucent sidebar", section: "appearance", keywords: ["glass", "blur"] },
   { title: "Contrast", section: "appearance", keywords: ["separation", "borders"] },
 
-  { title: "Default agent", section: "agents", keywords: ["harness", "new thread"] },
+  { title: "Default agent", section: "agents", keywords: ["harness", "new thread", "model", "provider"] },
   { title: "Conversation workspace", section: "agents", keywords: ["worktree", "isolation", "local"] },
   { title: "Gateway approval policy", section: "agents", keywords: ["permission", "access", "sandbox"] },
   { title: "Web search", section: "agents", keywords: ["internet", "fetch", "web access"] },
   { title: "Sandbox", section: "agents", keywords: ["filesystem", "safety"] },
   { title: "Output detail", section: "agents", keywords: ["verbose", "concise"] },
-  { title: "Reasoning summary", section: "agents", keywords: ["thinking", "chain of thought"] },
+  { title: "Reasoning summary", section: "agents", keywords: ["thinking", "chain of thought", "model", "effort"] },
   { title: "skills.sh token", section: "agents", keywords: ["api key", "credential"] },
 
   {
@@ -93,6 +98,8 @@ export const SETTINGS_SEARCH_ITEMS: SettingsSearchItem[] = [
   { title: "Always force push", section: "sourceControl", keywords: ["push", "git", "force with lease"] },
   { title: "Create draft pull requests", section: "sourceControl", keywords: ["pr", "github", "draft"] },
   { title: "Pull request merge method", section: "sourceControl", keywords: ["squash", "rebase", "pr"] },
+  { title: "Diff layout", section: "sourceControl", keywords: ["split", "unified", "side by side"] },
+  { title: "Diff files", section: "sourceControl", keywords: ["collapsed", "expanded", "folded"] },
   { title: "Review delivery", section: "sourceControl", keywords: ["pr", "chat"] },
   { title: "Commit instructions", section: "sourceControl", keywords: ["message", "template"] },
   { title: "Pull request instructions", section: "sourceControl", keywords: ["pr", "template"] },
@@ -118,6 +125,12 @@ export function searchSettings(query: string, limit = 8): SettingsSearchResult[]
   if (needle.length < 2) return [];
 
   const scored: Array<{ item: SettingsSearchItem; score: number }> = [];
+  /* A section's own name finds the section: "appearance" opens Appearance. */
+  for (const [section, label] of Object.entries(SETTINGS_SECTION_LABELS) as Array<[SettingsSectionId, string]>) {
+    const name = label.toLowerCase();
+    const score = name === needle ? 95 : name.startsWith(needle) ? 75 : 0;
+    if (score && !SETTINGS_SEARCH_ITEMS.some((item) => item.title.toLowerCase() === name)) scored.push({ item: { title: label, section }, score });
+  }
   for (const item of SETTINGS_SEARCH_ITEMS) {
     const title = item.title.toLowerCase();
     let score = 0;
@@ -149,4 +162,5 @@ export const SECTIONS_WITH_DEFAULTS: ReadonlySet<SettingsSectionId> = new Set([
   "gateway",
   "projects",
   "sourceControl",
+  "shortcuts",
 ]);

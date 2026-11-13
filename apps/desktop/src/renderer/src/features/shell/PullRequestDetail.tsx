@@ -1,3 +1,4 @@
+import { displayPrefs } from "../../lib/display-prefs";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   parseUnifiedDiff,
@@ -169,7 +170,7 @@ export function GitPullRequestDetail({
 }) {
   const [tab, setTab] = useState<PullRequestTab>("summary");
   const [newestFirst, setNewestFirst] = useState(true);
-  const [split, setSplit] = useState(true);
+  const [split, setSplit] = useState(() => displayPrefs().diffLayout === "split");
   const [wrap, setWrap] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuAnchor = useRef<HTMLDivElement>(null);
@@ -401,7 +402,7 @@ export function GitPullRequestDetail({
         <div className="pr-detail-kicker">
           <div className="pr-kicker-left">
             <span className="pr-number">#{summary.number}</span>
-            <span className="codex-pr-checks">
+            <span className="panel-pr-checks">
               {(detail ?? summary).isDraft ? "Draft" : (detail ?? summary).state.toLowerCase().replace(/^./, (letter) => letter.toUpperCase())}
             </span>
           </div>
@@ -451,9 +452,9 @@ export function GitPullRequestDetail({
                       disabled={current || !onSelectLayer}
                       onClick={() => onSelectLayer?.(layer.number)}
                     >
-                      <span className="codex-pr-number">#{layer.number}</span>
+                      <span className="panel-pr-number">#{layer.number}</span>
                       <span className="truncate">{label}</span>
-                      {layer.isDraft ? <span className="codex-pr-checks draft">Draft</span> : null}
+                      {layer.isDraft ? <span className="panel-pr-checks draft">Draft</span> : null}
                       {layer.state.toLowerCase() !== "open" ? (
                         <span className="faint">{layer.state.toLowerCase()}</span>
                       ) : null}

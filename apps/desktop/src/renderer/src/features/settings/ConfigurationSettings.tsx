@@ -210,8 +210,8 @@ export function DesktopCard({ settings, onPatch }: SectionProps) {
       <SettingRow label="Download updates automatically" hint="Download compatible releases in the background. Capsule only restarts to install when you ask, after active work finishes.">
         <Switch checked={settings.autoDownloadUpdates} label="Download updates automatically" onChange={(autoDownloadUpdates) => onPatch({ autoDownloadUpdates })} />
       </SettingRow>
-      <SettingRow label="Auto-resume limited threads" hint="When a turn stops because the provider's usage limit is reached and it says when the limit lifts, send the prompt again at that time. Off asks each time with Resume at reset.">
-        <Switch checked={settings.autoResumeOnLimit} label="Auto-resume limited threads" onChange={(autoResumeOnLimit) => onPatch({ autoResumeOnLimit })} />
+      <SettingRow label="Auto-resume limited conversations" hint="When a turn stops because the provider's usage limit is reached and it says when the limit lifts, send the prompt again at that time. Off asks each time with Resume at reset.">
+        <Switch checked={settings.autoResumeOnLimit} label="Auto-resume limited conversations" onChange={(autoResumeOnLimit) => onPatch({ autoResumeOnLimit })} />
       </SettingRow>
       <SettingRow label="Agent simulator access" hint="Let a direct agent see and drive the iOS Simulator you attach in a conversation's Simulator panel. Off hides the simulator tools from agents started from now on and refuses calls from running ones.">
         <Switch checked={settings.agentSimulatorAccess} label="Agent simulator access" onChange={(agentSimulatorAccess) => onPatch({ agentSimulatorAccess })} />
@@ -387,6 +387,26 @@ export function GitCard({ settings, onPatch }: SectionProps) {
           ))}
         </select>
       </SettingRow>
+      <SettingRow label="Diff layout" hint="Side by side or one column, for pull request diffs. Turn diffs in the conversation stay one column.">
+        <select
+          className="field-select"
+          value={settings.diffLayout}
+          onChange={(event) => onPatch({ diffLayout: event.target.value as CapsuleSettings["diffLayout"] })}
+        >
+          <option value="split">Side by side</option>
+          <option value="unified">One column</option>
+        </select>
+      </SettingRow>
+      <SettingRow label="Diff files" hint="Whether each changed file in a diff starts open or folded.">
+        <select
+          className="field-select"
+          value={settings.diffFileState}
+          onChange={(event) => onPatch({ diffFileState: event.target.value as CapsuleSettings["diffFileState"] })}
+        >
+          <option value="expanded">Open</option>
+          <option value="collapsed">Folded</option>
+        </select>
+      </SettingRow>
       <SettingRow
         label="Always force push"
         hint="Use --force-with-lease when pushing from Capsule, never --force."
@@ -500,15 +520,15 @@ export function HarnessProvidersCard() {
 
   return (
     <div className="card">
-      <h3>Harnesses</h3>
+      <h3>Installed agents</h3>
       <p className="muted">
         {total === 0
-          ? "No harnesses detected."
+          ? "No agents detected."
           : `${ready} of ${total} ready.`}
       </p>
       <div className="actions">
         <button type="button" className="chip" onClick={() => setView("runtimes")}>
-          Open Runtimes
+          Open Agents
         </button>
       </div>
     </div>

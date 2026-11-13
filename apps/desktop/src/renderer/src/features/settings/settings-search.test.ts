@@ -110,4 +110,16 @@ describe("the catalog against the panels", () => {
     const missing = SETTINGS_SEARCH_ITEMS.filter((item) => !panelSource.includes(item.title));
     expect(missing.map((item) => `${item.section}: ${item.title}`)).toEqual([]);
   });
+
+  it("finds the words people actually type", () => {
+    expect(searchSettings("model").map((item) => item.title)).toContain("Default agent");
+    expect(searchSettings("terminal").map((item) => item.title)).toContain("Custom code font");
+    expect(searchSettings("theme")[0]?.title).toBe("Theme");
+  });
+
+  it("finds a section by its own name", () => {
+    const [first] = searchSettings("appearance");
+    expect(first).toMatchObject({ title: "Appearance", section: "appearance" });
+    expect(searchSettings("shortcuts").filter((item) => item.title === "Shortcuts")).toHaveLength(1);
+  });
 });

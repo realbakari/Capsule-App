@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { useModalFocus } from "../../lib/modal-focus";
 import { useUpdates } from "../../lib/updates";
 import { XIcon } from "../shell/icons";
 import { UpdateControl } from "./UpdateControl";
@@ -19,15 +20,17 @@ function AboutContents() {
     <div className="about-app-version">{version ? `Version ${version}` : update.error ? "Version unavailable" : "Reading version…"}</div>
     <div className="about-app-copyright">Copyright © 2026 Capsule</div>
     <UpdateControl update={update}>
-      <button type="button" className="about-copy-btn" disabled={!version} onClick={() => void copy()}>{copyState}</button>
+      <button type="button" className="chip" disabled={!version} onClick={() => void copy()}>{copyState}</button>
     </UpdateControl>
   </>;
 }
 
 export function AboutModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const card = useRef<HTMLDivElement>(null);
+  useModalFocus(card, open, onClose);
   if (!open) return null;
-  return <div className="about-modal-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-label="About Capsule">
-    <div className="about-modal-card" onClick={(event) => event.stopPropagation()}>
+  return <div className="about-modal-overlay" onClick={onClose}>
+    <div className="about-modal-card" ref={card} role="dialog" aria-modal="true" aria-label="About Capsule" onClick={(event) => event.stopPropagation()}>
       <button type="button" className="about-modal-close" onClick={onClose} aria-label="Close About"><XIcon size={18} /></button>
       <AboutContents />
     </div>

@@ -72,7 +72,7 @@ export function RuntimeModeCard({
               )}
             </>
           ) : (
-            <>Choose an agent with a supported local connection in Harnesses, or connect a Gateway for Gateway-only agents.</>
+            <>Choose an agent with a supported local connection in Agents, or connect a Gateway for Gateway-only agents.</>
           )}
         </p>
       )}

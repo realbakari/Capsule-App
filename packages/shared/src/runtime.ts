@@ -55,6 +55,14 @@ export type ReasoningSummary = "hidden" | "collapsed" | "visible";
 export type TranscriptSize = "s" | "m" | "l";
 export type TranscriptWidth = "narrow" | "standard" | "wide";
 export type ArchiveInactiveAfter = "never" | "1d" | "7d" | "30d";
+/** Clock style for message times: the system's, or forced 12- or 24-hour. */
+export type TimeFormat = "system" | "12h" | "24h";
+/** How a turn's tool calls first appear: folded to one line, or listed. */
+export type ToolCallDisplay = "compact" | "expanded";
+/** What sending during a running turn does by default, where the route can steer. */
+export type FollowUpBehavior = "queue" | "steer";
+export type DiffLayout = "split" | "unified";
+export type DiffFileState = "expanded" | "collapsed";
 export type SessionClassification = "blocked" | "done";
 export type PrMergeMethod = "merge" | "squash" | "rebase";
 export type PrReviewDelivery = "current" | "new-chat";
@@ -124,6 +132,14 @@ export const DEFAULT_CAPSULE_SETTINGS: CapsuleSettings = {
   prWatchAndFix: false,
   prAutoMerge: false,
   prWatchUntilMerged: false,
+  timeFormat: "system",
+  confirmDelete: true,
+  // Archiving already offers Undo, so asking first is opt-in.
+  confirmArchive: false,
+  toolCallDisplay: "compact",
+  followUpBehavior: "queue",
+  diffLayout: "split",
+  diffFileState: "expanded",
 };
 
 /**
@@ -138,6 +154,9 @@ export const DEFAULT_CAPSULE_SETTINGS: CapsuleSettings = {
  */
 export const SETTINGS_SECTION_KEYS: Record<string, ReadonlyArray<keyof CapsuleSettings>> = {
   general: [
+    "confirmDelete",
+    "confirmArchive",
+    "followUpBehavior",
     "launchAtLogin",
     "composerSendKey",
     "showMenuBarExtra",
@@ -152,6 +171,8 @@ export const SETTINGS_SECTION_KEYS: Record<string, ReadonlyArray<keyof CapsuleSe
     "archiveInactiveAfter",
   ],
   appearance: [
+    "timeFormat",
+    "toolCallDisplay",
     "appearanceTheme",
     "appearanceLight",
     "appearanceDark",
@@ -173,6 +194,8 @@ export const SETTINGS_SECTION_KEYS: Record<string, ReadonlyArray<keyof CapsuleSe
   gateway: ["gatewayUrl"],
   projects: ["projectlessFolder"],
   sourceControl: [
+    "diffLayout",
+    "diffFileState",
     "worktreesDirectory",
     "branchPrefix",
     "gitForceWithLease",
@@ -186,7 +209,7 @@ export const SETTINGS_SECTION_KEYS: Record<string, ReadonlyArray<keyof CapsuleSe
     "prInstructions",
   ],
   skills: [],
-  shortcuts: [],
+  shortcuts: ["keybindings"],
   diagnostics: [],
   about: [],
 };
@@ -271,6 +294,15 @@ export interface CapsuleSettings {
    * declared by the application menu in the main process.
    */
   keybindings?: Record<string, string>;
+  timeFormat: TimeFormat;
+  /** Ask before deleting a conversation or project. */
+  confirmDelete: boolean;
+  /** Ask before archiving a conversation. */
+  confirmArchive: boolean;
+  toolCallDisplay: ToolCallDisplay;
+  followUpBehavior: FollowUpBehavior;
+  diffLayout: DiffLayout;
+  diffFileState: DiffFileState;
 }
 
 const AGENT_MODES: AgentMode[] = [
@@ -295,6 +327,11 @@ const TRANSCRIPT_SIZES: TranscriptSize[] = ["s", "m", "l"];
 const TRANSCRIPT_WIDTHS: TranscriptWidth[] = ["narrow", "standard", "wide"];
 const ARCHIVE_AFTER: ArchiveInactiveAfter[] = ["never", "1d", "7d", "30d"];
 const PR_MERGE: PrMergeMethod[] = ["merge", "squash", "rebase"];
+const TIME_FORMATS: TimeFormat[] = ["system", "12h", "24h"];
+const TOOL_CALL_DISPLAYS: ToolCallDisplay[] = ["compact", "expanded"];
+const FOLLOW_UP_BEHAVIORS: FollowUpBehavior[] = ["queue", "steer"];
+const DIFF_LAYOUTS: DiffLayout[] = ["split", "unified"];
+const DIFF_FILE_STATES: DiffFileState[] = ["expanded", "collapsed"];
 const PR_REVIEW: PrReviewDelivery[] = ["current", "new-chat"];
 
 function pick<T extends string>(value: string | undefined, allowed: readonly T[], fallback: T): T {
@@ -499,5 +536,12 @@ export function normalizeCapsuleSettings(input: Partial<CapsuleSettings> = {}): 
     ),
     commitInstructions: sanitizeGuidance(input.commitInstructions),
     prInstructions: sanitizeGuidance(input.prInstructions),
+    timeFormat: pick(input.timeFormat, TIME_FORMATS, DEFAULT_CAPSULE_SETTINGS.timeFormat),
+    confirmDelete: flag(input.confirmDelete, DEFAULT_CAPSULE_SETTINGS.confirmDelete),
+    confirmArchive: flag(input.confirmArchive, DEFAULT_CAPSULE_SETTINGS.confirmArchive),
+    toolCallDisplay: pick(input.toolCallDisplay, TOOL_CALL_DISPLAYS, DEFAULT_CAPSULE_SETTINGS.toolCallDisplay),
+    followUpBehavior: pick(input.followUpBehavior, FOLLOW_UP_BEHAVIORS, DEFAULT_CAPSULE_SETTINGS.followUpBehavior),
+    diffLayout: pick(input.diffLayout, DIFF_LAYOUTS, DEFAULT_CAPSULE_SETTINGS.diffLayout),
+    diffFileState: pick(input.diffFileState, DIFF_FILE_STATES, DEFAULT_CAPSULE_SETTINGS.diffFileState),
   };
 }

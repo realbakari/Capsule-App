@@ -1,17 +1,32 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Switch } from "../settings/controls";
 
-/** Explicit show/hide commands do not depend on a stale local visibility toggle. */
+/**
+ * Show or hide the companion. The companion can also be hidden from its own
+ * window or the menu bar, so the switch reads the real state when it appears,
+ * after each change, and whenever this window regains focus, rather than
+ * trusting a flag it set itself.
+ */
 export function PetControl() {
   const api = window.capsule;
+  const [visible, setVisible] = useState<boolean>();
   const [error, setError] = useState<string>();
-  const [busy, setBusy] = useState(false);
-  async function show(visible: boolean) {
-    setBusy(true); setError(undefined);
-    try { await api.togglePet(visible); } catch { setError("Could not change the companion. Try again from this Mac."); }
-    finally { setBusy(false); }
+  useEffect(() => {
+    if (api?.isDesktop !== true) return undefined;
+    const read = () => { void api.getPetState().then((state) => setVisible(state.visible), () => undefined); };
+    read();
+    window.addEventListener("focus", read);
+    return () => window.removeEventListener("focus", read);
+  }, [api]);
+  if (api?.isDesktop !== true) return <span className="muted">Available in the desktop app on this Mac.</span>;
+  async function change(next: boolean) {
+    setError(undefined);
+    setVisible(next);
+    try { await api.togglePet(next); } catch { setError("Could not change the companion. Try again."); }
+    try { setVisible((await api.getPetState()).visible); } catch { /* Keep the optimistic value. */ }
   }
   return <div className="pet-setting-control">
-    {api?.isDesktop === true ? <div className="actions"><button className="chip" disabled={busy} onClick={() => void show(true)}>Show companion</button><button className="ghost" disabled={busy} onClick={() => void show(false)}>Hide</button></div> : <span className="muted">Available in the desktop app on this Mac.</span>}
+    <Switch checked={Boolean(visible)} label="Desktop companion" onChange={(next) => void change(next)} />
     {error && <small role="alert">{error}</small>}
   </div>;
 }

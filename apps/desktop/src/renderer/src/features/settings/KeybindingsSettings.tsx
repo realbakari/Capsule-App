@@ -58,7 +58,7 @@ export function KeybindingsSettings({
   return (
     <div className="appearance-page">
       <div className="card">
-        <h3>Shortcuts</h3>
+        <h3>Key bindings</h3>
         <p className="muted">
           Click a shortcut and press the keys you want. Shortcuts marked as menu items are set by
           the application menu and cannot be changed here.

@@ -1,3 +1,4 @@
+import { displayPrefs } from "../../lib/display-prefs";
 import { useState, type ComponentType, type SVGProps } from "react";
 import type { Run } from "@capsule/shared";
 import { toolGroupLabel, toolKindOrder, toolObservationState, type ToolKind, type ToolObservation } from "../../lib/turn-timeline";
@@ -42,7 +43,8 @@ function ToolKindIcon({ kind, size = 14 }: { kind: ToolKind; size?: number }) {
 
 /** Compact observed work, never a claim that the turn was verified. */
 export function InlineActivity({ tools, run, stopping, onOpenFile }: { tools: ToolObservation[]; run: Run; stopping?: boolean; onOpenFile?: (path: string) => void }) {
-  const [open, setOpen] = useState(false);
+  /* Settings › Appearance › Tool calls: folded to one line, or listed from the start. */
+  const [open, setOpen] = useState(() => displayPrefs().toolCallDisplay === "expanded");
   const [expandedToolId, setExpandedToolId] = useState<string>();
   const failedCount = tools.filter((tool) => tool.status === "failed").length;
   const newest = [...tools].reverse();

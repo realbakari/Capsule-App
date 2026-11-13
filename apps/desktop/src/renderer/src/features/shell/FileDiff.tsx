@@ -1,3 +1,4 @@
+import { displayPrefs } from "../../lib/display-prefs";
 import { memo, useMemo, useState } from "react";
 import { splitRows, type DiffFile, type DiffHunk, type DiffLine } from "@capsule/shared";
 import { highlight } from "../../lib/highlight";
@@ -210,7 +211,7 @@ export function FileDiff({
   file,
   split,
   wrap = true,
-  defaultOpen = true,
+  defaultOpen = displayPrefs().diffFileState === "expanded",
   expanded,
   onExpandedChange,
   onAddComment,

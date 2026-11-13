@@ -1,3 +1,4 @@
+import { formatClock } from "../../lib/display-prefs";
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { ChannelMember, ChannelMessage, SharedChannel } from "@capsule/shared";
 import { MarkdownBody } from "../conversation/MarkdownBody";
@@ -81,7 +82,7 @@ export function MemberStack({ members }: { members: ChannelMember[] }) {
 function ChannelPostView({ message, members, reply, replies, compact, channelId }: { message: ChannelMessage; members: ChannelMember[]; reply?: () => void; replies: ChannelMessage[]; compact?: boolean; channelId?: string }) {
   const member = members.find((item) => item.pubkey === message.author);
   const time = new Date(message.createdAt * 1000);
-  const stamp = time.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const stamp = formatClock(time);
   const participants = [...new Set(replies.map((item) => item.author))].slice(0, 3);
   const latest = replies.reduce((value, item) => Math.max(value, item.createdAt), 0);
   return <article className={`channel-post${compact ? " compact" : ""}`}>

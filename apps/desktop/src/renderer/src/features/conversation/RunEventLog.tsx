@@ -1,3 +1,4 @@
+import { formatClock } from "../../lib/display-prefs";
 import { useEffect, useRef, useState } from "react";
 import type { RunEventCursor, RunEventPage } from "@capsule/shared";
 import { useWorkspace } from "../../lib/workspace";
@@ -31,7 +32,7 @@ export function RunEventLog({ runId, failed = false }: { runId: string; failed?:
       {page && <ReportedUsage events={page.events} />}
       {error && <p role="alert">{error} <button onClick={() => setRetry((value) => value + 1)}>Retry</button></p>}
       <div className="event-log">{page?.events.filter((event) => settings?.reasoningSummary !== "hidden" || !/think|reason|thought/.test(String(event.data?.streamKind ?? event.type))).map((event) => <div key={event.id}>
-        <span className="event-time">{new Date(event.timestamp).toLocaleTimeString()}</span>
+        <span className="event-time">{formatClock(event.timestamp)}</span>
         <span className="event-kind">{event.type}</span>
         <span className="event-text">{event.message}{event.data?.payloadTruncated ? "\n[Diagnostic payload truncated]" : ""}</span>
       </div>)}</div>

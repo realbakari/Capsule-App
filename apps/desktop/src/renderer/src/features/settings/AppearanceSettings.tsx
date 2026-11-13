@@ -52,7 +52,7 @@ export function AppearanceSettings({
   return (
     <div className="appearance-page">
       <div className="card">
-        <h3>Appearance</h3>
+        <h3>Theme and text</h3>
         <p className="muted">
           Theme, transcript sizing, and the code font. Colors, contrast, and the
           translucent sidebar are set separately for Light and Dark below.
@@ -111,6 +111,27 @@ export function AppearanceSettings({
                 {item.label}
               </option>
             ))}
+          </select>
+        </SettingRow>
+        <SettingRow label="Time format" hint="How message times are written.">
+          <select
+            className="field-select"
+            value={settings.timeFormat}
+            onChange={(event) => onPatch({ timeFormat: event.target.value as CapsuleSettings["timeFormat"] })}
+          >
+            <option value="system">System default</option>
+            <option value="12h">12-hour</option>
+            <option value="24h">24-hour</option>
+          </select>
+        </SettingRow>
+        <SettingRow label="Tool calls" hint="Whether a turn's tool calls start folded to one line or listed in full.">
+          <select
+            className="field-select"
+            value={settings.toolCallDisplay}
+            onChange={(event) => onPatch({ toolCallDisplay: event.target.value as CapsuleSettings["toolCallDisplay"] })}
+          >
+            <option value="compact">Folded to one line</option>
+            <option value="expanded">Listed in full</option>
           </select>
         </SettingRow>
         <SettingRow
