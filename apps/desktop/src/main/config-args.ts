@@ -1,5 +1,5 @@
 import { IpcArgumentError, type ArgParser } from "@capsule/contracts";
-import { WRITABLE_SCOPES, type ConfigFileTarget, type SetConfigValueInput, type WritableScope } from "@capsule/shared";
+import { WRITABLE_SCOPES, type CommandExpandInput, type ConfigFileTarget, type SetConfigValueInput, type WritableScope } from "@capsule/shared";
 
 /*
  * Shapes for the settings-file channels, checked where they cross from the
@@ -36,6 +36,18 @@ export const configFileTarget: ArgParser<ConfigFileTarget> = (value, channel, in
     default:
       throw new IpcArgumentError(channel, index, "kind must be settings, keybindings or folder");
   }
+};
+
+export const commandExpandInput: ArgParser<CommandExpandInput> = (value, channel, index) => {
+  const input = record(value, channel, index);
+  if (typeof input.projectId !== "string" || !input.projectId.trim()) throw new IpcArgumentError(channel, index, "needs a projectId");
+  if (typeof input.text !== "string" || !input.text.trim().startsWith("/") || input.text.length > 20_000) {
+    throw new IpcArgumentError(channel, index, "text must be a /command of at most 20,000 characters");
+  }
+  if (input.sessionId !== undefined && (typeof input.sessionId !== "string" || !input.sessionId.trim())) {
+    throw new IpcArgumentError(channel, index, "sessionId must be a non-empty string");
+  }
+  return { projectId: input.projectId, text: input.text, ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }) };
 };
 
 function record(value: unknown, channel: string, index: number): Record<string, unknown> {

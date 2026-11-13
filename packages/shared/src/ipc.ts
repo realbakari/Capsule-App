@@ -191,6 +191,9 @@ export const IPC_CHANNELS = {
   configOpenFile: "capsule:config:openFile",
   configTrust: "capsule:config:trust",
   configReload: "capsule:config:reload",
+  /* Capsule commands: list them for the menu (a read), expand one for review (may run its shell). */
+  commandsList: "capsule:commands:list",
+  commandsExpand: "capsule:commands:expand",
 } as const;
 
 export const IPC_EVENTS = {

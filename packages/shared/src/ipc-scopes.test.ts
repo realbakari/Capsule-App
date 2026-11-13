@@ -147,6 +147,15 @@ describe("settings-file channels", () => {
   });
 });
 
+describe("command channels", () => {
+  it("lets a viewer list commands but keeps expanding one, which may run shell, to the desktop", () => {
+    expect(isChannelAllowed("commandsList", ["read"])).toBe(true);
+    expect(scopeForChannel("commandsExpand")).toBe("write");
+    expect(isChannelAllowed("commandsExpand", ["read"])).toBe(false);
+    expect(isChannelAllowed("commandsExpand", ["control"])).toBe(false);
+  });
+});
+
 describe("follow-up channels", () => {
   it("lets a viewer read the queue and conversation control change it, but not a read-only device", () => {
     expect(isChannelAllowed("getFollowUps", ["read"])).toBe(true);

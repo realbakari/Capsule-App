@@ -166,6 +166,11 @@ const api = {
     ipcRenderer.invoke(IPC_CHANNELS.configTrust, projectId, trusted),
   configReload: (projectId?: string): Promise<import("@capsule/shared").ConfigSnapshot> =>
     ipcRenderer.invoke(IPC_CHANNELS.configReload, projectId),
+  commandsList: (projectId?: string): Promise<import("@capsule/shared").CommandList> =>
+    ipcRenderer.invoke(IPC_CHANNELS.commandsList, projectId),
+  /** Expands a command for editing in the composer. It may run the command's shell spans. */
+  commandsExpand: (input: import("@capsule/shared").CommandExpandInput): Promise<import("@capsule/shared").CommandExpansion> =>
+    ipcRenderer.invoke(IPC_CHANNELS.commandsExpand, input),
   search: (query: string) => ipcRenderer.invoke(IPC_CHANNELS.search, query),
   updateProject: (id: string, patch: unknown) =>
     ipcRenderer.invoke(IPC_CHANNELS.updateProject, id, patch),

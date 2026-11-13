@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { configFileTarget, setConfigValueInput } from "./config-args.js";
+import { commandExpandInput, configFileTarget, setConfigValueInput } from "./config-args.js";
 
 const CHANNEL = "capsule:config:test";
 
@@ -22,6 +22,13 @@ describe("settings-file channel arguments", () => {
     expect(configFileTarget({ kind: "folder", folder: "commands", scope: "user" }, CHANNEL, 0)).toEqual({ kind: "folder", folder: "commands", scope: "user" });
     for (const bad of [{ kind: "shell" }, { kind: "folder", folder: "../etc", scope: "user" }, { kind: "folder", folder: "commands", scope: "local" }, { kind: "settings", scope: "everyone" }]) {
       expect(() => configFileTarget(bad, CHANNEL, 0)).toThrow(CHANNEL);
+    }
+  });
+
+  it("accepts a command to expand and nothing that is not one", () => {
+    expect(commandExpandInput({ projectId: "proj_1", sessionId: "ses_1", text: "/review 12" }, CHANNEL, 0)).toEqual({ projectId: "proj_1", sessionId: "ses_1", text: "/review 12" });
+    for (const bad of [undefined, { text: "/review" }, { projectId: "proj_1", text: "review" }, { projectId: "proj_1", text: "/x", sessionId: "" }]) {
+      expect(() => commandExpandInput(bad, CHANNEL, 0)).toThrow(CHANNEL);
     }
   });
 });
