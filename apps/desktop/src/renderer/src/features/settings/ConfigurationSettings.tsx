@@ -222,6 +222,9 @@ export function DesktopCard({ settings, onPatch }: SectionProps) {
       <SettingRow label="Auto-resume limited conversations" hint="When a turn stops because the provider's usage limit is reached and it says when the limit lifts, send the prompt again at that time. Off asks each time with Resume at reset.">
         <Switch checked={settings.autoResumeOnLimit} label="Auto-resume limited conversations" onChange={(autoResumeOnLimit) => onPatch({ autoResumeOnLimit })} />
       </SettingRow>
+      <SettingRow label="Continue after a restart" hint="If Capsule quits or restarts in the middle of a turn, queue that turn's prompt again when it reopens, so the agent picks up where it stopped. It waits in the conversation's queue, where you can remove it. Gateway-hosted turns are left alone, because the Gateway may still be running them.">
+        <Switch checked={settings.continueAfterRestart} label="Continue after a restart" onChange={(continueAfterRestart) => onPatch({ continueAfterRestart })} />
+      </SettingRow>
       <SettingRow label="Agent simulator access" hint="Let a direct agent see and drive the iOS Simulator you attach in a conversation's Simulator panel. Off hides the simulator tools from agents started from now on and refuses calls from running ones.">
         <Switch checked={settings.agentSimulatorAccess} label="Agent simulator access" onChange={(agentSimulatorAccess) => onPatch({ agentSimulatorAccess })} />
       </SettingRow>

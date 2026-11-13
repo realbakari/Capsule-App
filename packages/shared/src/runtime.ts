@@ -126,6 +126,7 @@ export const DEFAULT_CAPSULE_SETTINGS: CapsuleSettings = {
   autoClassifySessions: true,
   agentSimulatorAccess: true,
   autoResumeOnLimit: false,
+  continueAfterRestart: false,
   archiveInactiveAfter: "never",
   gitForceWithLease: false,
   prDraft: false,
@@ -172,6 +173,7 @@ export const SETTINGS_SECTION_KEYS: Record<string, ReadonlyArray<keyof CapsuleSe
     "autoClassifySessions",
     "agentSimulatorAccess",
     "autoResumeOnLimit",
+    "continueAfterRestart",
     "archiveInactiveAfter",
   ],
   appearance: [
@@ -273,6 +275,8 @@ export interface CapsuleSettings {
   agentSimulatorAccess: boolean;
   /** When a turn stops on a usage limit that names a reset time, resume it then without asking. */
   autoResumeOnLimit: boolean;
+  /** After a quit or crash mid-turn, queue that turn's prompt again in direct-route threads. */
+  continueAfterRestart: boolean;
   bounceDockOnAttention: boolean;
   /** The Dock icon counts threads waiting on you: decisions, failures, unread finishes. */
   dockBadge: boolean;
@@ -507,6 +511,7 @@ export function normalizeCapsuleSettings(input: Partial<CapsuleSettings> = {}): 
     notifyApprovals: flag(input.notifyApprovals, DEFAULT_CAPSULE_SETTINGS.notifyApprovals),
     agentSimulatorAccess: flag(input.agentSimulatorAccess, DEFAULT_CAPSULE_SETTINGS.agentSimulatorAccess),
     autoResumeOnLimit: flag(input.autoResumeOnLimit, DEFAULT_CAPSULE_SETTINGS.autoResumeOnLimit),
+    continueAfterRestart: flag(input.continueAfterRestart, DEFAULT_CAPSULE_SETTINGS.continueAfterRestart),
     bounceDockOnAttention: flag(
       input.bounceDockOnAttention,
       DEFAULT_CAPSULE_SETTINGS.bounceDockOnAttention,

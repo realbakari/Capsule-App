@@ -6,6 +6,7 @@ import { localTimings, TextBudget, OUTPUT_LIMIT_ERROR, searchSessionTitles } fro
 import type { FollowUpOp, FollowUps, RunStatus } from "@capsule/shared";
 import { FollowUpService } from "./follow-up-service.js";
 import { ThreadTriage } from "./thread-triage.js";
+import { continuationsAfterRestart, type InterruptedTurn } from "./restart-continuation.js";
 
 const ACTIVE_RUN_STATUSES = new Set<RunStatus>(["queued", "running", "waiting", "approval_required"]);
 const TERMINAL_RUN_STATUSES = new Set<RunStatus>(["completed", "failed", "cancelled", "blocked"]);
@@ -413,6 +414,7 @@ export class CapsuleEngine {
     this.events.on("run", (run: Run) => {
       if (!this.stopped && TERMINAL_RUN_STATUSES.has(run.status)) this.followUps.runEnded(run);
     });
+    this.continueInterruptedTurns();
     this.followUps.start();
     this.events.on("run", (run: Run) => {
       if (!this.stopped && (run.status === "running" || run.status === "queued")) this.triage.runStarted(run.sessionId);
@@ -3136,9 +3138,17 @@ export class CapsuleEngine {
    * ever after — including threads whose answer had already arrived and whose
    * only problem was that Capsule was closed afterwards.
    */
+  /** Turns cut off by the last quit, kept until follow-ups start so they can be sent again. */
+  private interruptedTurns: InterruptedTurn[] = [];
+
   private recoverInterruptedWork(): void {
+    const sessions = new Map(this.repos.listSessions().map((session) => [session.id, session]));
     for (const run of this.repos.listRuns()) {
       if (!["running", "waiting", "queued", "approval_required"].includes(run.status)) continue;
+      const owner = sessions.get(run.sessionId);
+      const route = owner?.directSession || isDirectSessionKey(owner?.openclawSessionKey) ? "direct"
+        : owner?.openclawSessionKey ? "gateway" : owner?.carryOver?.route ?? "local";
+      this.interruptedTurns.push({ run, route });
       run.status = "cancelled";
       run.error = run.error ?? "Interrupted when Capsule last quit.";
       run.updatedAt = nowIso();
@@ -3163,6 +3173,26 @@ export class CapsuleEngine {
       session.openclawSessionKey = undefined;
       session.updatedAt = nowIso();
       this.repos.updateSession(session);
+    }
+  }
+
+  /*
+   * Settings › General › Continue after a restart. The cancel above stays:
+   * the old process is gone. What comes back is a queued follow-up, visible
+   * and removable like any other, never a hidden resume.
+   */
+  private continueInterruptedTurns(): void {
+    const turns = this.interruptedTurns;
+    this.interruptedTurns = [];
+    if (!this.settings.continueAfterRestart || turns.length === 0) return;
+    const plan = continuationsAfterRestart(turns, this.repos.listSessions(), (runId) =>
+      this.repos.listMessages(this.repos.getRun(runId)?.sessionId ?? "").find((message) => message.runId === runId && message.role === "user")?.attachments ?? []);
+    for (const item of plan) {
+      try {
+        this.followUps.apply(item.sessionId, { type: "add", prompt: item.prompt });
+      } catch (error) {
+        this.log(`Could not queue the interrupted turn for ${item.sessionId}: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
   }
 
