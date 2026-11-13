@@ -17,6 +17,7 @@ import { ChannelRoutes } from "./channel-routes.js";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { prepareDirectPrompt } from "./direct-prompt.js";
+import { findCommandCall, prepareCommand, readInvocation, runCommandShell, summarizeCommand, type CommandCall } from "./commands.js";
 import { DirectMuseSession } from "@capsule/muse";
 import { DirectCodexSession } from "@capsule/codex";
 import { DirectClaudeSession } from "@capsule/claude";
@@ -93,6 +94,7 @@ import {
   searchContents,
   stageFile,
   validateMessageAttachments,
+  MAX_MESSAGE_ATTACHMENTS,
   pollPullRequest,
   pollPullRequestList,
   pullRequestListFailure,
@@ -185,6 +187,9 @@ import {
   SETTINGS_SCHEMA,
   type ConfigDiagnostics,
   type ConfigFileTarget,
+  type CommandExpandInput,
+  type CommandExpansion,
+  type CommandList,
   type ConfigSnapshot,
   type SetConfigValueInput,
 } from "@capsule/shared";
@@ -1035,6 +1040,9 @@ export class CapsuleEngine {
     const session = this.requireHarnessSession(sessionId);
     const text = instruction.trim();
     if (!text) throw new Error("Steer instruction is empty");
+    if (this.commandCall(text, this.requireProject(session.projectId))) {
+      throw new Error("A command runs as its own turn, so it waits in the queue instead.");
+    }
     if (!this.usingMock && session.openclawSessionKey) {
       await this.acpHost(session.openclawSessionKey).steerAcp(session.openclawSessionKey, text);
     }
@@ -1934,6 +1942,23 @@ export class CapsuleEngine {
     let session = this.requireSession(input.sessionId);
     if (session.openclawSessionKey) this.ignoredReplySessions.delete(session.openclawSessionKey);
     const project = this.requireProject(session.projectId);
+    /*
+     * A Capsule command is expanded here, so every way a message arrives
+     * (composer, paired device, queue, resume, channel) gets the same text,
+     * and every agent receives a plain prompt. Its mode and workspace apply
+     * when it starts the conversation.
+     */
+    const call = this.commandCall(input.content, project);
+    const firstTurn = this.repos.listRuns(session.id).length === 0;
+    const commandProblems: string[] = [];
+    const commandWorkspace = firstTurn ? call?.entry.command.workspace : undefined;
+    if (call && commandWorkspace && commandWorkspace !== session.workspaceMode) {
+      try {
+        session = await this.setSessionWorkspaceMode(session.id, commandWorkspace);
+      } catch (error) {
+        commandProblems.push(`/${call.entry.command.name} asks for a ${commandWorkspace} workspace, which this conversation cannot switch to: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
     const startingCwd = this.cwdFor(session, project);
     if ([...this.verificationPending.values()].some((check) => check.cwd === startingCwd)) {
       throw new Error("A workspace check is running. Cancel it or wait before starting another turn.");
@@ -1943,9 +1968,11 @@ export class CapsuleEngine {
     if (!input.content.trim() && attachments.length === 0) {
       throw new Error("Write a message or attach a file first.");
     }
+    const command = call ? prepareCommand(call, { cwd: startingCwd, room: MAX_MESSAGE_ATTACHMENTS - attachments.length }) : undefined;
+    if (command) attachments.push(...command.attachments);
     const prompt = input.content.trim() || `Review the attached file${attachments.length === 1 ? "" : "s"}.`;
-    const runtimePrompt = `${prompt}${attachmentPromptBlock(attachments)}`;
-    const mode = input.mode ?? session.mode;
+    let runtimePrompt = `${prompt}${attachmentPromptBlock(attachments)}`;
+    const mode = (firstTurn ? call?.entry.command.mode : undefined) ?? input.mode ?? session.mode;
     const harnessId = this.resolveHarnessId(session, project, input.agentId, mode);
     const agentId = harnessId ?? input.agentId ?? session.agentId ?? agentIdForMode(mode);
     const skillId = input.skillId ?? skillIdForMode(mode);
@@ -1984,6 +2011,37 @@ export class CapsuleEngine {
 
     this.events.emit("run", run);
     this.appendEvent(run.id, "request", "Request received", { step: "understand" });
+
+    if (command) {
+      // Until the prompt is sent, Stop cancels the turn here.
+      this.startingHarnessRuns.add(run.id);
+      let expandedText: string;
+      try {
+        const root = project.workingDirectory;
+        const shell = await runCommandShell(command, {
+          cwd: startingCwd,
+          trusted: root ? this.config.isTrusted(root) : true,
+          record: (record) => this.config.recordRun(record),
+        });
+        expandedText = shell.text;
+        commandProblems.push(...command.problems, ...shell.problems);
+      } finally {
+        this.startingHarnessRuns.delete(run.id);
+      }
+      const currentRun = this.requireRun(run.id);
+      if (currentRun.completedAt) return { session, run: currentRun, userMessage };
+      runtimePrompt = `${expandedText}${attachmentPromptBlock(attachments)}`;
+      const { entry } = command.call;
+      this.appendEvent(run.id, "command.expanded", [`Expanded /${entry.command.name} from ${entry.path}`, ...commandProblems].join("\n"), {
+        command: entry.command.name,
+        source: entry.source,
+        path: entry.path,
+        ...(entry.command.profile ? { profile: entry.command.profile } : {}),
+        shellSpans: command.shell.length,
+        attachments: command.attachments.map((file) => file.path),
+        problems: commandProblems,
+      });
+    }
 
     /*
      * Starting an agent takes seconds — a spawn, a login check, sometimes a
@@ -2694,6 +2752,38 @@ export class CapsuleEngine {
 
   private configRoot(projectId?: string): string | undefined {
     return projectId ? this.requireProject(projectId).workingDirectory : undefined;
+  }
+
+  /** Capsule commands for the `/` menu, the palette and Settings. Reading runs nothing. */
+  listCommands(projectId?: string): CommandList {
+    const root = this.configRoot(projectId);
+    const catalog = this.config.commands(root);
+    const trusted = root ? this.config.isTrusted(root) : true;
+    return { commands: catalog.commands.map((entry) => summarizeCommand(entry, trusted)), problems: catalog.problems };
+  }
+
+  /** Expand a command for the person to edit before sending. It may run the command's shell spans. */
+  async expandCommand(input: CommandExpandInput): Promise<CommandExpansion> {
+    this.assertWorkAllowed();
+    const project = this.requireProject(input.projectId);
+    const session = input.sessionId ? this.requireSession(input.sessionId) : undefined;
+    if (session && session.projectId !== project.id) throw new Error("That conversation belongs to another project.");
+    const call = this.commandCall(input.text, project);
+    if (!call) throw new Error(`${input.text.trim().split(/\s/)[0]} is not a Capsule command.`);
+    const cwd = session ? this.cwdFor(session, project) : project.workingDirectory;
+    const prepared = prepareCommand(call, { cwd, room: MAX_MESSAGE_ATTACHMENTS });
+    const root = project.workingDirectory;
+    const shell = await runCommandShell(prepared, {
+      cwd,
+      trusted: root ? this.config.isTrusted(root) : true,
+      record: (record) => this.config.recordRun(record),
+    });
+    return { text: shell.text, attachments: prepared.attachments, problems: [...prepared.problems, ...shell.problems] };
+  }
+
+  private commandCall(content: string, project: Project): CommandCall | undefined {
+    if (!readInvocation(content)) return undefined;
+    return findCommandCall(this.config.commands(project.workingDirectory), content);
   }
 
   getDiagnostics(): DiagnosticsSnapshot {
