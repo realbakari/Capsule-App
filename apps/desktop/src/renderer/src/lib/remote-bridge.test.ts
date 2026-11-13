@@ -84,6 +84,16 @@ describe("paired commands across disconnects", () => {
     expect(bridge.isDesktop).toBe(false);
   });
 
+  it("delivers an event the host forwards under its channel to listeners of its key", () => {
+    const bridge = createRemoteBridge("pairing-token");
+    const socket = TestSocket.connections[0]!;
+    socket.open(); socket.frame({ type: "ready" });
+    const changed = vi.fn();
+    bridge.on("state", changed);
+    socket.frame({ type: "event", event: "capsule:event:state", payload: { command: "config-updated" } });
+    expect(changed).toHaveBeenCalledWith({ command: "config-updated" });
+  });
+
   it("never replays a rejected queued write after reconnecting", async () => {
     const bridge = createRemoteBridge("pairing-token");
     const socket = TestSocket.connections[0]!;
