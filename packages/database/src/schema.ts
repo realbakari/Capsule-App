@@ -354,4 +354,29 @@ export const MIGRATIONS: Array<{ version: number; sql: string; }> = [
       ALTER TABLE sessions ADD COLUMN done_at TEXT;
     `,
   },
+  {
+    version: 21,
+    sql: `
+      ALTER TABLE sessions ADD COLUMN forked_from TEXT;
+      -- What one restore took away, so Redo can put it back. The rows a
+      -- conversation restore removed are parked here verbatim rather than
+      -- flagged in place: a flag would have to be honoured by every query that
+      -- reads a transcript or a run, and missing one would show a removed
+      -- turn. A new turn in the thread discards its points.
+      CREATE TABLE IF NOT EXISTS restore_points (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        target_run_id TEXT,
+        scope TEXT NOT NULL,
+        edit INTEGER NOT NULL DEFAULT 0,
+        files_ref TEXT,
+        files_cwd TEXT,
+        parked_rows TEXT NOT NULL DEFAULT '{}',
+        hidden_messages INTEGER NOT NULL DEFAULT 0,
+        agent_before TEXT,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_restore_points_session ON restore_points(session_id, created_at);
+    `,
+  },
 ];

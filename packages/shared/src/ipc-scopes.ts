@@ -76,6 +76,8 @@ const READ_CHANNELS: ChannelName[] = [
   // Cached native observations only: no spawn, refresh request or provider I/O.
   "providerUsage",
   "turnDiff",
+  "redoPoint",
+  "forkBranches",
   "rendererReady",
   "windowBackground",
 ];

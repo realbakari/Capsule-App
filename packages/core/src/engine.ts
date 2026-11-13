@@ -7,6 +7,7 @@ import type { FollowUpOp, FollowUps, RunStatus } from "@capsule/shared";
 import { FollowUpService } from "./follow-up-service.js";
 import { BoardService } from "./board-service.js";
 import type { BoardCardOp, CreateBoardCardInput } from "@capsule/shared";
+import { Branching, transcriptContext } from "./branching.js";
 
 const ACTIVE_RUN_STATUSES = new Set<RunStatus>(["queued", "running", "waiting", "approval_required"]);
 const TERMINAL_RUN_STATUSES = new Set<RunStatus>(["completed", "failed", "cancelled", "blocked"]);
@@ -162,7 +163,13 @@ import {
   type HarnessOptionPatch,
   type HarnessStatus,
   type LocalServer,
-  type RewindResult,
+  type RestoreRequest,
+  type RestoreResult,
+  type RedoPoint,
+  type ForkSessionInput,
+  type ForkBranchGroup,
+  type TurnDiffOptions,
+  type TurnDiffResult,
   type MessageAttachment,
   type SpawnHarnessInput,
   type UpdateProjectInput,
@@ -353,6 +360,26 @@ export class CapsuleEngine {
   private skillsClient: SkillCatalogClient;
   private skillsShClient = new SkillsShClient();
   private readonly projectIcons = new ProjectIconCache();
+  private readonly branching: Branching;
+
+  private branchingHost(): import("./branching.js").BranchingHost {
+    return {
+    repos: this.repos,
+    assertWorkAllowed: () => this.assertWorkAllowed(),
+    turnActive: (sessionId) => this.listRuns(sessionId).some((run) => ["queued", "running", "waiting", "approval_required"].includes(run.status)),
+    cwdForRun: (run) => this.runCwd(run),
+    folderRefusal: (sessionId, cwd, since) => this.folderRestoreRefusal(sessionId, cwd, since),
+    rewriteFolder: (cwd, ref, snapshotTo) => this.rewriteFolder(cwd, ref, snapshotTo),
+    closeAgent: async (session) => {
+      if (!session.openclawSessionKey || !isLiveHarnessState(session.harnessState)) return;
+      try { await this.closeHarnessSession(session.id); } catch { /* The identity is dropped by the caller either way. */ }
+    },
+    attachWorktree: (session, project) => this.attachSessionWorktree(session, project),
+    requireProject: (id) => this.requireProject(id),
+    emit: (command) => this.events.emit("state", { command }),
+    log: (message) => this.log(message),
+    };
+  }
 
   constructor(private readonly options: CapsuleEngineOptions) {
     this.usingMock = options.autoConnect === false;
@@ -378,6 +405,7 @@ export class CapsuleEngine {
       },
     });
     this.repos = new CapsuleRepositories(this.db);
+    this.branching = new Branching(this.branchingHost());
     this.keychain = createKeychainAdapter(options.userDataDir, options.secretEncryptor);
     this.sharedChannels = new SharedRelayClient(undefined, createRelayCredentialStore(options.userDataDir, options.secretEncryptor));
     this.channelHarness = new ChannelHarness(this.sharedChannels, this);
@@ -809,7 +837,7 @@ export class CapsuleEngine {
     if (prior?.directSession?.harnessId === harnessId || (prior?.harnessId === harnessId && isDirectSessionKey(prior.openclawSessionKey))) return "direct";
     if (prior?.harnessId === harnessId && prior.openclawSessionKey) return "gateway";
     // After edit-from-here the identity is gone but the thread keeps its route.
-    if (prior?.harnessId === harnessId && prior.carryOver) return prior.carryOver.route;
+    if (prior?.harnessId === harnessId && prior.carryOver?.route) return prior.carryOver.route;
     return this.useDirectMode(harnessId) ? "direct" : "gateway";
   }
 
@@ -1980,6 +2008,10 @@ export class CapsuleEngine {
       session.pendingStart = undefined;
       this.repos.updateSessionBoard(session);
     }
+    // A new turn is what ends Redo for the restores before it.
+    await this.branching.discard(session.id);
+    // Read before this turn's own prompt is written: the history is what came before it.
+    const replay = session.carryOver?.replayTranscript ? this.repos.listMessages(session.id) : undefined;
 
     const run = createRunRecord({
       sessionId: session.id,
@@ -2101,6 +2133,25 @@ export class CapsuleEngine {
       this.repos.updateSession(session);
     }
 
+    let carriedHistory = "";
+    if (replay?.length) {
+      /*
+       * A fork or a conversation restore started this thread a fresh agent
+       * session. The kept turns go with this prompt, once, so the agent is
+       * not starting blind. The mock runtime reads scenario tokens out of a
+       * prompt, so it is told about the history rather than handed it.
+       */
+      if (!this.usingMock) carriedHistory = transcriptContext(replay);
+      this.appendEvent(run.id, "lifecycle", `Carried the earlier conversation to the fresh agent session (${replay.length} message${replay.length === 1 ? "" : "s"}).`, { step: "harness", streamKind: "lifecycle" });
+      const current = this.requireSession(session.id);
+      if (current.carryOver?.replayTranscript) {
+        const { replayTranscript: _carried, ...rest } = current.carryOver;
+        current.carryOver = Object.keys(rest).length ? rest : undefined;
+        this.repos.updateSession(current);
+      }
+      session.carryOver = current.carryOver;
+    }
+
     let skillInstruction = "";
     if (activeSkill?.content) {
       skillInstruction = `\n\n[Active Skill: ${activeSkill.name}]\n${activeSkill.content}`;
@@ -2113,7 +2164,7 @@ export class CapsuleEngine {
       ...(session.permissionProfile
         ? { permissionProfile: session.permissionProfile as HarnessPermissionProfile }
         : {}),
-      content: applyAgentInstructionHints(runtimePrompt + skillInstruction, this.settings),
+      content: carriedHistory + applyAgentInstructionHints(runtimePrompt + skillInstruction, this.settings),
       attachments,
       sessionId: this.usingMock ? session.id : (session.openclawSessionKey ?? session.id),
       agentId: this.usingMock ? agentId : undefined,
@@ -3551,40 +3602,48 @@ export class CapsuleEngine {
     return previewCheckpoint(cwd, run.checkpointRef, previous, options);
   }
 
-  /** Put the worktree back to how a turn left it. */
-  async restoreTurn(runId: string): Promise<{ ok: boolean; detail: string; }> {
-    this.assertWorkAllowed();
-    const run = this.repos.getRun(runId);
-    if (!run?.checkpointRef) return { ok: false, detail: "That turn has no checkpoint." };
+  private runCwd(run: Run): string | undefined {
     const session = this.repos.getSession(run.sessionId);
     const project = session ? this.repos.getProject(session.projectId) : undefined;
-    const cwd = run.workingDirectory ?? session?.workingDirectory ?? project?.workingDirectory;
-    if (!cwd) return { ok: false, detail: "That turn has no working directory." };
-    const active = this.listRuns().some((item) => item.workingDirectory && foldersOverlap(item.workingDirectory, cwd) && ["queued", "running", "waiting", "approval_required"].includes(item.status));
+    return run.workingDirectory ?? session?.workingDirectory ?? project?.workingDirectory;
+  }
+
+  /** Why the folder cannot be rewritten for a thread right now, or undefined. */
+  private folderRestoreRefusal(sessionId: string, cwd: string, since: string): string | undefined {
+    const runs = this.listRuns();
+    const active = runs.some((item) => item.workingDirectory && foldersOverlap(item.workingDirectory, cwd) && ["queued", "running", "waiting", "approval_required"].includes(item.status));
     const checking = [...this.verificationPending.values()].some((check) => check.cwd && foldersOverlap(check.cwd, cwd));
-    if (active || checking) return { ok: false, detail: "An agent or check is working in this folder. Stop it or wait before restoring." };
+    if (active || checking) return "An agent or check is working in this folder. Stop it or wait before restoring.";
     /*
      * A restore rewrites the whole folder. When another conversation shares
      * it and finished a turn since, that turn's work would silently go too.
+     * A fork's copied turns are older than the fork itself and are the
+     * original's work, which the original's own runs already account for.
      */
-    const overtaken = this.listRuns().find((item) =>
-      item.sessionId !== run.sessionId &&
+    const sessions = new Map(this.repos.listSessions().map((item) => [item.id, item]));
+    const overtaken = runs.find((item) =>
+      item.sessionId !== sessionId &&
       item.checkpointRef &&
       item.workingDirectory &&
       foldersOverlap(item.workingDirectory, cwd) &&
-      item.createdAt > run.createdAt);
-    if (overtaken) {
-      const title = this.repos.getSession(overtaken.sessionId)?.title;
-      return {
-        ok: false,
-        detail: `${title ? `"${title}"` : "Another conversation"} changed this folder after this turn, and restoring would undo its work. Restore from that conversation instead, or give each conversation its own worktree.`,
-      };
-    }
+      item.createdAt > since &&
+      item.createdAt >= (sessions.get(item.sessionId)?.createdAt ?? ""));
+    if (!overtaken) return undefined;
+    const title = sessions.get(overtaken.sessionId)?.title;
+    return `${title ? `"${title}"` : "Another conversation"} changed this folder after this turn, and restoring would undo its work. Restore from that conversation instead, or give each conversation its own worktree.`;
+  }
+
+  /** Rewrite the folder from a saved ref, first saving how it stands when asked to. */
+  private async rewriteFolder(cwd: string, ref: string, snapshotTo?: string): Promise<{ ok: boolean; detail: string }> {
     let release: (() => void) | undefined;
     try {
       release = this.folderActivity.restore(cwd);
       await this.checkpointPending.get(cwd);
-      const result = await restoreCheckpoint(cwd, run.checkpointRef);
+      if (snapshotTo) {
+        const saved = await captureCheckpoint(cwd, snapshotTo);
+        if (!saved.ok) return { ok: false, detail: `Could not save the folder before restoring, so nothing was changed: ${saved.detail}` };
+      }
+      const result = await restoreCheckpoint(cwd, ref);
       if (result.ok) { clearFileIndex(cwd); this.events.emit("state", { command: "files-updated" }); }
       return result;
     } catch (error) {
@@ -3592,71 +3651,40 @@ export class CapsuleEngine {
     } finally { release?.(); }
   }
 
+  /** Restore a turn's files, its conversation, or both. Redo reverses it until the next turn. */
+  async restoreToTurn(request: RestoreRequest): Promise<RestoreResult> {
+    return this.branching.restore(request.runId, request.scope);
+  }
+
   /**
-   * Edit from here. The chosen prompt and everything after it leave the
-   * conversation, their runs with them; optionally the folder goes back to
-   * how the turn before stood. The agent's native session is closed and its
-   * identity dropped, so the next turn starts a fresh process rather than
-   * resuming a session that still remembers what was just removed. The
-   * removed prompt is returned for the composer.
+   * Edit from here: a conversation restore to the turn before a prompt, which
+   * also hands the prompt back for the composer. With restoreFiles, the folder
+   * goes back to that turn too. Redo puts it all back until the next turn.
    */
-  async rewindSession(sessionId: string, messageId: string, options: { restoreFiles?: boolean } = {}): Promise<RewindResult> {
-    this.assertWorkAllowed();
-    const session = this.repos.getSession(sessionId);
-    if (!session) return { ok: false, detail: "That conversation no longer exists." };
-    const transcript = this.repos.listMessages(sessionId);
-    const anchor = transcript.findIndex((item) => item.id === messageId);
-    const message = transcript[anchor];
-    if (!message || message.role !== "user" || message.kind === "steer") return { ok: false, detail: "Choose one of your own prompts to edit from." };
-    if (this.listRuns(sessionId).some((run) => ["queued", "running", "waiting", "approval_required"].includes(run.status))) {
-      return { ok: false, detail: "A turn is running in this conversation. Stop it or wait before editing from here." };
-    }
-    let filesRestored = false;
-    if (options.restoreFiles) {
-      /*
-       * The turns being removed are the ones the dropped messages belong to.
-       * Comparing timestamps alone is not enough: a run is stamped a moment
-       * before its own prompt, so the edited turn looked "earlier" than itself
-       * and the restore put back the very state it was meant to undo.
-       */
-      const removedRuns = new Set(transcript.slice(anchor).flatMap((item) => (item.runId ? [item.runId] : [])));
-      const earlier = this.listRuns(sessionId)
-        .filter((run) => run.checkpointRef && !removedRuns.has(run.id) && run.createdAt <= message.createdAt)
-        .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0];
-      if (!earlier) return { ok: false, detail: "No earlier turn has a checkpoint to restore files from. Edit from here without restoring files, or use Restore this turn." };
-      const restored = await this.restoreTurn(earlier.id);
-      if (!restored.ok) return restored;
-      filesRestored = true;
-    }
-    if (session.openclawSessionKey && isLiveHarnessState(session.harnessState)) {
-      try { await this.closeHarnessSession(sessionId); } catch { /* The identity is dropped below either way. */ }
-    }
-    const removed = this.repos.deleteMessagesFrom(sessionId, messageId);
-    const current = this.requireSession(sessionId);
-    /*
-     * The agent's session goes, so the next turn starts without the removed
-     * history. Its route and saved controls (model, effort, permissions,
-     * mode) stay: dropping them reset the thread's choices and let the next
-     * spawn pick whichever route was the global default.
-     */
-    const route = current.directSession || isDirectSessionKey(current.openclawSessionKey) ? "direct" : current.openclawSessionKey ? "gateway" : current.carryOver?.route;
-    const configuration = current.directSession?.configuration ?? current.carryOver?.configuration;
-    current.carryOver = route ? { route, ...(configuration ? { configuration } : {}) } : undefined;
-    current.openclawSessionKey = undefined;
-    current.directSession = undefined;
-    current.harnessState = "closed";
-    current.updatedAt = nowIso();
-    this.repos.updateSession(current);
-    this.events.emit("state", { command: "harness-updated" });
-    this.events.emit("state", { command: "files-updated" });
-    return {
-      ok: true,
-      detail: `Removed ${removed.messages} message${removed.messages === 1 ? "" : "s"}${filesRestored ? " and restored the files from the turn before" : ""}. The next turn starts a fresh agent session.`,
-      prompt: message.content,
-      attachments: message.attachments ?? [],
-      removedMessages: removed.messages,
-      filesRestored,
-    };
+  async rewindSession(sessionId: string, messageId: string, options: { restoreFiles?: boolean } = {}): Promise<RestoreResult> {
+    return this.branching.editFrom(sessionId, messageId, options.restoreFiles === true);
+  }
+
+  redoPoint(sessionId: string): RedoPoint | undefined {
+    return this.branching.redoPoint(sessionId);
+  }
+
+  async redoRestore(sessionId: string): Promise<RestoreResult> {
+    return this.branching.redo(sessionId);
+  }
+
+  /** What restoring a turn's files would change: the folder now against that turn's checkpoint. */
+  async compareCheckpoint(runId: string, options?: TurnDiffOptions): Promise<TurnDiffResult> {
+    const { cwd, from, to } = await this.branching.compareRefs(runId);
+    return previewCheckpoint(cwd, to, from, options);
+  }
+
+  async forkSession(input: ForkSessionInput): Promise<Session> {
+    return this.branching.fork(input);
+  }
+
+  forkBranches(sessionId: string): ForkBranchGroup[] {
+    return this.branching.branches(sessionId);
   }
 
   private async hydrateSecrets(): Promise<void> {

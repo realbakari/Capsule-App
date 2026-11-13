@@ -61,6 +61,9 @@ export {
 } from "./github.js";
 export {
   captureCheckpoint,
+  copyCheckpointRef,
+  deleteCheckpointRef,
+  threadSnapshotRef,
   readWorktreeRevision,
   checkpointNumstat,
   checkpointRef,

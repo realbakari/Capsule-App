@@ -9,6 +9,7 @@ import type {
   AcpMode,
   PolicyDecision,
   PolicyRule,
+  RedoPoint,
   Project,
   Run,
   RunEvent,
@@ -19,6 +20,17 @@ import type {
 } from "@capsule/shared";
 import { isHarnessId, readPendingStart, TextBudget, REPLY_BYTE_LIMIT } from "@capsule/shared";
 import type { CapsuleDatabase } from "./database.js";
+import { copyTranscript, parkRows, splitTranscript, unparkRows, type CopyTranscriptOptions, type TranscriptRows, type TranscriptSplit } from "./transcript-rows.js";
+
+/** A restore as stored: what Redo needs to put the thread back. */
+export interface RestorePointRecord extends RedoPoint {
+  /** Snapshot of the folder just before the restore, under the thread's checkpoint refs. */
+  filesRef?: string;
+  filesCwd?: string;
+  parkedRows: Partial<TranscriptRows>;
+  /** The agent session the restore dropped. */
+  agentBefore?: Pick<Session, "openclawSessionKey" | "directSession" | "harnessState" | "carryOver">;
+}
 
 function parseJson<T>(value: string | null | undefined, fallback: T): T {
   if (!value) return fallback;
@@ -52,6 +64,7 @@ function sessionParams(session: Session) {
     carryOver: session.carryOver ? JSON.stringify(session.carryOver) : null,
     pendingStart: session.pendingStart ? JSON.stringify(session.pendingStart) : null,
     doneAt: session.doneAt ?? null,
+    forkedFrom: session.forkedFrom ? JSON.stringify(session.forkedFrom) : null,
     pinned: session.pinned ? 1 : 0,
     pinOrder: session.pinOrder ?? null,
     workingDirectory: session.workingDirectory ?? null,
@@ -62,11 +75,12 @@ function sessionParams(session: Session) {
   };
 }
 
-type SessionRow = Omit<Session, "directSession" | "carryOver" | "pendingStart" | "doneAt"> & {
+type SessionRow = Omit<Session, "directSession" | "carryOver" | "pendingStart" | "doneAt" | "forkedFrom"> & {
   directSession?: string | null;
   carryOver?: string | null;
   pendingStart?: string | null;
   doneAt?: string | null;
+  forkedFrom?: string | null;
 };
 
 function normalizeSession(row: SessionRow): Session {
@@ -86,6 +100,7 @@ function normalizeSession(row: SessionRow): Session {
     carryOver: parseJson<Session["carryOver"]>(row.carryOver, undefined),
     pendingStart: readPendingStart(row.pendingStart),
     doneAt: row.doneAt || undefined,
+    forkedFrom: parseJson<Session["forkedFrom"]>(row.forkedFrom, undefined),
     pinned: Boolean(row.pinned),
     pinOrder: typeof row.pinOrder === "number" ? row.pinOrder : undefined,
     openclawSessionKey: row.openclawSessionKey || undefined,
@@ -235,12 +250,12 @@ export class CapsuleRepositories {
           id, workspace_id, project_id, agent_id, title, mode, state,
           openclaw_session_key, harness_id, harness_state, acp_mode,
           permission_profile, model_override, pinned, pin_order, working_directory, workspace_mode,
-          worktree_branch, direct_session, carry_over, pending_start, done_at, created_at, updated_at
+          worktree_branch, direct_session, carry_over, pending_start, done_at, forked_from, created_at, updated_at
         ) VALUES (
           @id, @workspaceId, @projectId, @agentId, @title, @mode, @state,
           @openclawSessionKey, @harnessId, @harnessState, @acpMode,
           @permissionProfile, @modelOverride, @pinned, @pinOrder, @workingDirectory, @workspaceMode,
-          @worktreeBranch, @directSession, @carryOver, @pendingStart, @doneAt, @createdAt, @updatedAt
+          @worktreeBranch, @directSession, @carryOver, @pendingStart, @doneAt, @forkedFrom, @createdAt, @updatedAt
         )`,
       )
       .run(sessionParams(session));
@@ -254,7 +269,7 @@ export class CapsuleRepositories {
          harness_state = @harnessState, acp_mode = @acpMode,
          permission_profile = @permissionProfile, model_override = @modelOverride,
          pinned = @pinned, pin_order = @pinOrder, working_directory = @workingDirectory, workspace_mode = @workspaceMode,
-         worktree_branch = @worktreeBranch, direct_session = @directSession, carry_over = @carryOver, updated_at = @updatedAt WHERE id = @id`,
+         worktree_branch = @worktreeBranch, direct_session = @directSession, carry_over = @carryOver, forked_from = @forkedFrom, updated_at = @updatedAt WHERE id = @id`,
       )
       .run(sessionParams(session));
   }
@@ -277,38 +292,74 @@ export class CapsuleRepositories {
     this.deleteRuns(runIds);
     this.db.sqlite.prepare("DELETE FROM messages WHERE session_id = ?").run(id);
     this.db.sqlite.prepare("DELETE FROM artifacts WHERE session_id = ?").run(id);
+    this.db.sqlite.prepare("DELETE FROM restore_points WHERE session_id = ?").run(id);
     this.db.sqlite.prepare("DELETE FROM sessions WHERE id = ?").run(id);
   }
 
-  /**
-   * Remove a message and everything after it in a conversation, with the
-   * runs those messages belonged to. Returns what was removed so the caller
-   * can say so. Used by rewind; nothing else deletes part of a transcript.
-   */
-  deleteMessagesFrom(sessionId: string, messageId: string): { messages: number; runs: string[] } {
-    // Cut by transcript position (created_at, then rowid), the same order
-    // listMessages shows. Timestamps are millisecond-grained, so a reply can
-    // share one with the next prompt; created_at alone cannot tell them apart.
-    const anchor = this.db.sqlite.prepare("SELECT created_at AS createdAt, rowid FROM messages WHERE id = ? AND session_id = ?").get(messageId, sessionId) as { createdAt: string; rowid: number } | undefined;
-    if (!anchor) return { messages: 0, runs: [] };
-    const doomed = this.db.sqlite.prepare(
-      "SELECT id, run_id AS runId FROM messages WHERE session_id = ? AND (created_at > ? OR (created_at = ? AND rowid >= ?))",
-    ).all(sessionId, anchor.createdAt, anchor.createdAt, anchor.rowid) as Array<{ id: string; runId: string | null }>;
-    const runIds = new Set<string>(doomed.flatMap((row) => (row.runId ? [row.runId] : [])));
-    const kept = new Set<string>(
-      (this.db.sqlite.prepare(
-        "SELECT DISTINCT run_id AS runId FROM messages WHERE session_id = ? AND run_id IS NOT NULL AND (created_at < ? OR (created_at = ? AND rowid < ?))",
-      ).all(sessionId, anchor.createdAt, anchor.createdAt, anchor.rowid) as Array<{ runId: string }>).map((row) => row.runId),
-    );
-    for (const run of this.db.sqlite.prepare("SELECT id FROM runs WHERE session_id = ? AND created_at >= ?").all(sessionId, anchor.createdAt) as Array<{ id: string }>) {
-      if (!kept.has(run.id)) runIds.add(run.id);
-    }
-    const remove = this.db.sqlite.transaction(() => {
-      this.deleteRuns([...runIds]);
-      for (const row of doomed) this.db.sqlite.prepare("DELETE FROM messages WHERE id = ?").run(row.id);
+  /** Where a thread splits at a message; see splitTranscript. */
+  splitTranscript(sessionId: string, cutMessageId?: string): TranscriptSplit {
+    return splitTranscript(this.db.sqlite, sessionId, cutMessageId);
+  }
+
+  /** Take turns out of a thread whole, for a restore point to keep. */
+  parkTranscript(messageIds: string[], runIds: string[]): TranscriptRows {
+    return parkRows(this.db.sqlite, messageIds, runIds);
+  }
+
+  unparkTranscript(rows: Partial<TranscriptRows>): void {
+    unparkRows(this.db.sqlite, rows);
+  }
+
+  copyTranscript(options: CopyTranscriptOptions): Map<string, string> {
+    return copyTranscript(this.db.sqlite, options);
+  }
+
+  insertRestorePoint(point: RestorePointRecord): void {
+    this.db.sqlite.prepare(`INSERT INTO restore_points (id, session_id, target_run_id, scope, edit, files_ref, files_cwd, parked_rows, hidden_messages, agent_before, created_at)
+      VALUES (@id, @sessionId, @targetRunId, @scope, @edit, @filesRef, @filesCwd, @parkedRows, @hiddenMessages, @agentBefore, @createdAt)`).run({
+      id: point.id,
+      sessionId: point.sessionId,
+      targetRunId: point.targetRunId ?? null,
+      scope: point.scope,
+      edit: point.edit ? 1 : 0,
+      filesRef: point.filesRef ?? null,
+      filesCwd: point.filesCwd ?? null,
+      parkedRows: JSON.stringify(point.parkedRows),
+      hiddenMessages: point.hiddenMessages,
+      agentBefore: point.agentBefore ? JSON.stringify(point.agentBefore) : null,
+      createdAt: point.createdAt,
     });
-    remove();
-    return { messages: doomed.length, runs: [...runIds] };
+  }
+
+  /** Newest first. Rows are parsed only for the caller that asks for them. */
+  listRestorePoints(sessionId: string): RestorePointRecord[] {
+    const rows = this.db.sqlite.prepare(`SELECT id, session_id AS sessionId, target_run_id AS targetRunId, scope, edit, files_ref AS filesRef, files_cwd AS filesCwd,
+      parked_rows AS parkedRows, hidden_messages AS hiddenMessages, agent_before AS agentBefore, created_at AS createdAt
+      FROM restore_points WHERE session_id = ? ORDER BY created_at DESC, rowid DESC`).all(sessionId) as Array<Record<string, unknown>>;
+    return rows.map((row) => ({
+      id: String(row.id),
+      sessionId: String(row.sessionId),
+      targetRunId: typeof row.targetRunId === "string" ? row.targetRunId : undefined,
+      scope: row.scope as RestorePointRecord["scope"],
+      edit: Boolean(row.edit),
+      filesRef: typeof row.filesRef === "string" ? row.filesRef : undefined,
+      filesCwd: typeof row.filesCwd === "string" ? row.filesCwd : undefined,
+      filesSaved: typeof row.filesRef === "string",
+      parkedRows: parseJson<Partial<TranscriptRows>>(row.parkedRows as string, {}),
+      hiddenMessages: Number(row.hiddenMessages) || 0,
+      agentBefore: parseJson<RestorePointRecord["agentBefore"]>(row.agentBefore as string | null, undefined),
+      createdAt: String(row.createdAt),
+    }));
+  }
+
+  deleteRestorePoint(id: string): void {
+    this.db.sqlite.prepare("DELETE FROM restore_points WHERE id = ?").run(id);
+  }
+
+  /** Whether anything was written to the thread after a moment: a new turn, a steer, a notice. */
+  hasMessagesSince(sessionId: string, since: string): boolean {
+    return Boolean(this.db.sqlite.prepare("SELECT 1 FROM messages WHERE session_id = ? AND created_at > ? LIMIT 1").get(sessionId, since)
+      || this.db.sqlite.prepare("SELECT 1 FROM runs WHERE session_id = ? AND created_at > ? LIMIT 1").get(sessionId, since));
   }
 
   deleteProject(id: string): void {
@@ -335,7 +386,7 @@ export class CapsuleRepositories {
                 permission_profile AS permissionProfile, model_override AS modelOverride,
                 pinned, pin_order AS pinOrder, working_directory AS workingDirectory, workspace_mode AS workspaceMode,
                 worktree_branch AS worktreeBranch, direct_session AS directSession, carry_over AS carryOver,
-                pending_start AS pendingStart, done_at AS doneAt, created_at AS createdAt, updated_at AS updatedAt`;
+                pending_start AS pendingStart, done_at AS doneAt, forked_from AS forkedFrom, created_at AS createdAt, updated_at AS updatedAt`;
     const sql = projectId
       ? `SELECT ${columns} FROM sessions WHERE project_id = ?
          ORDER BY pinned DESC, COALESCE(pin_order, 2147483647) ASC, updated_at DESC`

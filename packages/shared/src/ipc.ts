@@ -180,9 +180,16 @@ export const IPC_CHANNELS = {
   usageSummary: "capsule:usageSummary",
   providerUsage: "capsule:providerUsage",
   turnDiff: "capsule:turnDiff",
-  restoreTurn: "capsule:restoreTurn",
   /* Edit from here: drop a prompt and everything after it, optionally restoring files. */
   rewindSession: "capsule:rewindSession",
+  /* Restore a turn's files, conversation or both, and reverse the latest restore. */
+  restoreToTurn: "capsule:restoreToTurn",
+  redoRestore: "capsule:redoRestore",
+  redoPoint: "capsule:redoPoint",
+  /* Diff a turn's checkpoint against the folder as it is now. Records a snapshot, so not a read. */
+  compareCheckpoint: "capsule:compareCheckpoint",
+  forkSession: "capsule:forkSession",
+  forkBranches: "capsule:forkBranches",
   /* A conversation's queued follow-ups and scheduled resume, kept and sent by the engine. */
   getFollowUps: "capsule:getFollowUps",
   updateFollowUps: "capsule:updateFollowUps",

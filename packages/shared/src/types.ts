@@ -254,6 +254,8 @@ export interface Session {
    * A thread keeps the route it started on even without a live identity.
    */
   carryOver?: SessionCarryOver;
+  /** Set on a thread made by forking another one at a turn. The original is never changed. */
+  forkedFrom?: ForkOrigin;
   pinned?: boolean;
   /** Stable ordering among pinned conversations; lower values appear first. */
   pinOrder?: number;
@@ -272,8 +274,21 @@ export interface Session {
 }
 
 export interface SessionCarryOver {
-  route: "direct" | "gateway";
+  /** Absent when the thread never had an agent session to keep the route of. */
+  route?: "direct" | "gateway";
   configuration?: Record<string, string | boolean>;
+  /**
+   * The agent has not seen this thread's transcript: the next prompt carries
+   * it as context. Set by a fork and by a conversation restore, whose fresh
+   * agent session would otherwise start knowing nothing of the kept turns.
+   */
+  replayTranscript?: boolean;
+}
+
+export interface ForkOrigin {
+  sessionId: string;
+  /** The turn in the original thread the fork copies up to and including. */
+  runId: string;
 }
 
 export interface DirectSessionIdentity {
@@ -461,6 +476,70 @@ export interface RewindResult {
   attachments?: MessageAttachment[];
   removedMessages?: number;
   filesRestored?: boolean;
+}
+
+/**
+ * What a restore puts back. Files rewrites the folder from the turn's
+ * checkpoint; conversation hides every turn after it and starts a fresh agent
+ * session; both does the two together.
+ */
+export type RestoreScope = "files" | "conversation" | "both";
+
+export interface RestoreRequest {
+  /** The turn to go back to. */
+  runId: string;
+  scope: RestoreScope;
+}
+
+/**
+ * The one restore Redo can reverse: the latest in its thread, while nothing
+ * new has happened there since. A new turn discards it.
+ */
+export interface RedoPoint {
+  id: string;
+  sessionId: string;
+  /** Absent for Edit from here on the first prompt, which keeps no turn. */
+  targetRunId?: string;
+  scope: RestoreScope;
+  /** Edit from here is a conversation restore that also takes back its prompt. */
+  edit?: boolean;
+  createdAt: string;
+  filesSaved: boolean;
+  hiddenMessages: number;
+}
+
+export interface RestoreResult extends RewindResult {
+  redo?: RedoPoint;
+}
+
+export type ForkWorkspace = "same" | "worktree";
+
+export interface ForkSessionInput {
+  sessionId: string;
+  runId: string;
+  workspace: ForkWorkspace;
+}
+
+/** One thread in a fork group, described well enough to choose between them. */
+export interface ForkBranch {
+  sessionId: string;
+  title: string;
+  original: boolean;
+  /** When the fork was made; absent for the original. */
+  forkedAt?: string;
+  worktree: boolean;
+  /** Turns taken in this thread after the fork point. */
+  turnsSince: number;
+  latestStatus?: RunStatus;
+  archived: boolean;
+}
+
+/** The threads that share history up to one turn, anchored on that turn in the thread being read. */
+export interface ForkBranchGroup {
+  /** The turn in the current thread where the branches part. */
+  anchorRunId: string;
+  branches: ForkBranch[];
+  currentIndex: number;
 }
 
 export interface SimulatorActionResult {

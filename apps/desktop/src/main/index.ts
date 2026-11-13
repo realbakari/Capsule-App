@@ -1890,9 +1890,26 @@ function registerIpc(): void {
     const channel = IPC_CHANNELS.turnDiff;
     return requireEngine().turnDiff(id(runId, channel, 0), { relative: optStr(value?.relative, channel, 1), summaryOnly: optBool(value?.summaryOnly, channel, 1) });
   });
-  handleArgs(IPC_CHANNELS.restoreTurn, [id], (runId: string) =>
-    requireEngine().restoreTurn(runId),
-  );
+  handle(IPC_CHANNELS.restoreToTurn, (request) => {
+    const channel = IPC_CHANNELS.restoreToTurn;
+    const value = request && typeof request === "object" ? request as { runId?: unknown; scope?: unknown } : {};
+    if (value.scope !== "files" && value.scope !== "conversation" && value.scope !== "both") throw new Error(`${channel}: choose files, conversation or both.`);
+    return requireEngine().restoreToTurn({ runId: id(value.runId, channel, 0), scope: value.scope });
+  });
+  handleArgs(IPC_CHANNELS.redoRestore, [id], (sessionId: string) => requireEngine().redoRestore(sessionId));
+  handleArgs(IPC_CHANNELS.redoPoint, [id], (sessionId: string) => requireEngine().redoPoint(sessionId) ?? null);
+  handle(IPC_CHANNELS.compareCheckpoint, (runId, options) => {
+    const value = options as { relative?: unknown; summaryOnly?: unknown } | undefined;
+    const channel = IPC_CHANNELS.compareCheckpoint;
+    return requireEngine().compareCheckpoint(id(runId, channel, 0), { relative: optStr(value?.relative, channel, 1), summaryOnly: optBool(value?.summaryOnly, channel, 1) });
+  });
+  handle(IPC_CHANNELS.forkSession, (input) => {
+    const channel = IPC_CHANNELS.forkSession;
+    const value = input && typeof input === "object" ? input as { sessionId?: unknown; runId?: unknown; workspace?: unknown } : {};
+    if (value.workspace !== "same" && value.workspace !== "worktree") throw new Error(`${channel}: choose the same folder or a new worktree.`);
+    return requireEngine().forkSession({ sessionId: id(value.sessionId, channel, 0), runId: id(value.runId, channel, 0), workspace: value.workspace });
+  });
+  handleArgs(IPC_CHANNELS.forkBranches, [id], (sessionId: string) => requireEngine().forkBranches(sessionId));
   handle(IPC_CHANNELS.rewindSession, (sessionId, messageId, options) => {
     const channel = IPC_CHANNELS.rewindSession;
     const value = options && typeof options === "object" ? options as { restoreFiles?: unknown } : {};
