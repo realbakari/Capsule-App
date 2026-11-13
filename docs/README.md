@@ -19,6 +19,7 @@ need the shipped-product voice.
 - [iOS Simulator](./user/simulator.md)
 - [capsule.json — project config in the repository](./user/project-file.md)
 - [Settings files](./user/settings-files.md)
+- [Commands](./user/commands.md)
 - [Providers and credentials](./user/providers.md)
 - [Reading from another device](./user/reading-from-another-device.md)
 - [Optional usage reports](./user/usage-reports.md)

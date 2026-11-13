@@ -511,6 +511,14 @@ No. Capsule **picks them up**:
 
 If the UI says a CLI is already detected, the remaining step is **start/connect the Gateway**, not another install.
 
+## Capsule commands on both routes
+
+A Capsule command (`/name` naming a file in a commands folder) is expanded by
+the engine before either route is chosen, so the Gateway's ACP bridge and a
+direct ACP session receive the same plain prompt, and no harness needs a
+native command of its own. A Capsule command wins over an agent's command of
+the same name; anything else starting with `/` is sent as typed.
+
 ## What Capsule does not do
 
 - Implement a CLI's model/tool loop or a Capsule-owned ACP server

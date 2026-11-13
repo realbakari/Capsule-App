@@ -1452,6 +1452,29 @@ the child finished. Closed threads display their recorded runtime route rather
 than the current harness default. Card borders and typography are explicitly
 scoped so generic inspector heading rules cannot restyle the empty state.
 
+### Capsule commands
+
+The composer's `/` menu lists Capsule commands (`commands:list`) first under
+a **Commands** heading, each with its argument hint, description and a source
+badge (`project`, `user`, `plugin`, `from claude`, `from codex`); the built-in
+items then sit under **Capsule**. With no command matching, the menu looks as
+before, without headings. Choosing a command inserts `/name ` so arguments
+can follow. Sending a draft that starts with a `send: review` command calls
+`commands:expand` instead, puts the expansion and its `@` files in the
+composer, and shows any problem as a notice; a status line reads "Expanding
+/name for review…" meanwhile. A paired device sends it instead.
+
+The palette has a **Commands** group, "Run command: /name", which puts
+`/name ` in the composer of the open conversation.
+
+**Settings → Skills → Commands** lists each command with its path, source,
+"review first" and its shell state ("runs shell", or "shell waits for trust"
+in yellow for an untrusted project). It opens the user's and the project's
+commands folders through `config:openFile`, folds problems into an expansion,
+shows a one-line example when there are no commands, and has a switch for
+each of other tools' folders, which writes `commandSources` to the user file.
+The menu, palette and card re-read the list on `config-updated`.
+
 ### Draft admission and inspection
 
 Failed durable prompt writes use an in-window recovery map: at most 32 drafts

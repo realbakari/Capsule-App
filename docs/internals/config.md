@@ -189,6 +189,62 @@ Capsule was closed still loads its last good value on the next launch. The
 doctor names the file, the line and the parser message. An entry that fails
 validation is skipped on its own, and the rest of the file applies.
 
+## Commands
+
+Capsule expands its own commands, so a command works the same with every
+agent, on both routes, and from a paired device. The agent only ever receives
+prompt text.
+
+**Catalog.** `ConfigService.commands(root)` (`commands.ts` in
+`@capsule/config`) reads the folders `commandFolders` lists, in precedence
+order: the project's `.capsule/commands`, the user's `commands`, plugin
+folders (an empty seam the plugins feature fills), then the folders
+`commandSources` turns on: `claude-commands` (the project's `.claude/commands`,
+then `~/.claude/commands`) and `codex-prompts` (`~/.codex/prompts`). A name's
+first file wins; each shadowed file is a warning in `problems`. Other tools'
+files are parsed with their unknown frontmatter keys ignored and their names
+lowercased, and a Codex prompt counts `$1` as the first argument. Safe mode
+reads none. `claude-skills` belongs to the Skills feature and is not read here.
+
+**Change detection.** The reload stamp now covers every command folder of the
+user and of each tracked project, so editing a command emits
+`config-updated` like a settings edit. Folders of other tools sit outside the
+watched settings folders and get their own watch once turned on. The renderer
+re-reads `commands:list` on `config-updated`; there is no separate commands
+event, because every cause of a different list (a file, `commandSources`,
+trust) already publishes `config-updated`.
+
+**Expansion.** `packages/core/src/commands.ts` owns it, and the engine calls
+it from `sendAdmittedMessage`, the one point every message passes:
+
+1. `readInvocation` matches `/name args`; only then is the catalog read.
+2. On a conversation's first turn, the command's `mode` replaces the
+   requested mode and its `workspace` is applied through
+   `setSessionWorkspaceMode`. A switch that cannot happen (a live agent, the
+   Inbox) becomes a problem, and the turn goes on in the current workspace.
+3. `prepareCommand` fills in arguments and resolves `@path` mentions against
+   the conversation's folder through `realpath`, refusing any that leave it,
+   then validates them like composer attachments. They join the message's
+   attachments, so the thread shows them.
+4. The user message and run are recorded with what was typed, so the thread,
+   the title, run search, retry and auto-resume all re-expand rather than
+   replay a stale expansion.
+5. `runCommandShell` runs each `` !`cmd` `` span with `runCapped` from
+   `@capsule/terminal` (10 s, 16 KB of both streams in arrival order) and
+   records each run as `command-shell`. A project-scope command in an
+   untrusted folder gets `UNTRUSTED_SHELL` in place of each span. The run sits
+   in `startingHarnessRuns` meanwhile, so Stop cancels it before anything is
+   sent.
+6. The contract and the runtime message carry the expanded text, and a
+   `command.expanded` run event names the command, its file, the profile, and
+   every problem.
+
+Every caller of `sendMessage` gets this: the composer, the paired viewer
+(`sendMessage` is a control channel), queued follow-ups and scheduled
+resumes (`FollowUpService.send`), the pull request fixer, and channel routes
+and channel jobs. Steering is the one way around it, so `steerHarness` refuses
+a command and the renderer's existing fallback queues it instead.
+
 ## Migration
 
 The first launch of a build with settings files exports the SQLite
@@ -318,6 +374,33 @@ Decisions made while building this, and why.
 - **Not yet project-aware.** Git and pull request actions (branch prefix,
   force-with-lease, draft, merge method, auto-merge, review delivery) still
   read the user-level settings. They should read the project's layers next.
+- **Commands expand in the engine, not in an agent.** An agent's own command
+  system differs per harness and route. Expanding in `sendMessage` gives one
+  behaviour for every agent and every way a message arrives, and the thread
+  keeps the typed text so a retry re-expands.
+- **`commands:list` returns `{commands, problems, sources}`, not a bare
+  array.** The Settings card needs the problems and the state of the
+  `commandSources` toggles, and `ConfigSnapshot` does not carry extended keys.
+- **A command's shell state is one field, `none`, `runs` or `needs-trust`.**
+  A `shell` boolean beside a separate trusted flag would be two values that
+  must agree.
+- **A command's `mode` must be an `AgentMode`.** It is checked when the file
+  is parsed, so a wrong value is a problem in Settings, not a surprise later.
+- **A command's `workspace` applies on the first turn from any device.** A
+  paired device cannot create a worktree conversation directly; a command the
+  desktop user or the team wrote can. It is the same switch the composer's
+  workspace picker makes before a conversation starts.
+- **Missing `@` paths stay text.** `@team` in a command is prose more often
+  than a typo, so only a path that leaves the folder is reported.
+- **Shell output keeps the head, not the tail.** It becomes prompt text, where
+  the start of a diff or a log is what a reader needs; a time-limited command
+  keeps what it printed.
+- **`send: review` is desktop-only.** `commands:expand` returns shell output
+  to the caller, so it is a write. A paired device sends the command instead,
+  and the desktop expands it as usual.
+- **The Commands area lives under Settings → Skills.** Commands and skills
+  are both prompt text a person brings to a conversation, and both sit in the
+  composer's `/` menu.
 - **The renderer still sends user-level defaults.** It passes the user's
   `defaultPermission`, `defaultWorkspaceMode` and agent when it creates a
   conversation, so the engine's project-layer fallbacks reach only threads
