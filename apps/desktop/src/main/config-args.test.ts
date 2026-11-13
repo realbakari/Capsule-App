@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { commandExpandInput, configFileTarget, setConfigValueInput } from "./config-args.js";
+import { appRestartInput, commandExpandInput, configFileTarget, setConfigValueInput } from "./config-args.js";
 
 const CHANNEL = "capsule:config:test";
 
@@ -29,6 +29,14 @@ describe("settings-file channel arguments", () => {
     expect(commandExpandInput({ projectId: "proj_1", sessionId: "ses_1", text: "/review 12" }, CHANNEL, 0)).toEqual({ projectId: "proj_1", sessionId: "ses_1", text: "/review 12" });
     for (const bad of [undefined, { text: "/review" }, { projectId: "proj_1", text: "review" }, { projectId: "proj_1", text: "/x", sessionId: "" }]) {
       expect(() => commandExpandInput(bad, CHANNEL, 0)).toThrow(CHANNEL);
+    }
+  });
+
+  it("restarts into or out of safe mode only on an explicit yes or no", () => {
+    expect(appRestartInput({ safeMode: true }, CHANNEL, 0)).toEqual({ safeMode: true });
+    expect(appRestartInput({ safeMode: false, extra: 1 }, CHANNEL, 0)).toEqual({ safeMode: false });
+    for (const bad of [undefined, true, {}, { safeMode: "true" }, { safeMode: 1 }]) {
+      expect(() => appRestartInput(bad, CHANNEL, 0)).toThrow(CHANNEL);
     }
   });
 });

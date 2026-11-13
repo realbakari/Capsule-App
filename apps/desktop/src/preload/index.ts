@@ -171,6 +171,8 @@ const api = {
   /** Expands a command for editing in the composer. It may run the command's shell spans. */
   commandsExpand: (input: import("@capsule/shared").CommandExpandInput): Promise<import("@capsule/shared").CommandExpansion> =>
     ipcRenderer.invoke(IPC_CHANNELS.commandsExpand, input),
+  /** Quits and starts again, with or without customizations. Running turns may hold the quit. */
+  appRestart: (input: { safeMode: boolean }): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.appRestart, input),
   search: (query: string) => ipcRenderer.invoke(IPC_CHANNELS.search, query),
   updateProject: (id: string, patch: unknown) =>
     ipcRenderer.invoke(IPC_CHANNELS.updateProject, id, patch),

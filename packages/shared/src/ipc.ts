@@ -194,6 +194,8 @@ export const IPC_CHANNELS = {
   /* Capsule commands: list them for the menu (a read), expand one for review (may run its shell). */
   commandsList: "capsule:commands:list",
   commandsExpand: "capsule:commands:expand",
+  /* Quit and start again, into or out of safe mode. */
+  appRestart: "capsule:app:restart",
 } as const;
 
 export const IPC_EVENTS = {

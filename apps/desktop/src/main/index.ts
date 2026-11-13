@@ -87,7 +87,7 @@ import { startRemoteServer, type RemoteServerHandle } from "@capsule/remote";
 import { startPty, TerminalOutputFlow, type PtySession } from "@capsule/terminal";
 import { popupContextMenu } from "./popup-menu";
 import { remoteReachFromArgs } from "./remote-args";
-import { commandExpandInput, configFileTarget, setConfigValueInput } from "./config-args";
+import { appRestartInput, commandExpandInput, configFileTarget, setConfigValueInput } from "./config-args";
 import { configDirFor, relaunchArgs, safeModeFromArgs } from "./launch-config";
 import { RemoteAccessLifecycle } from "./remote-access";
 import {
@@ -1751,6 +1751,7 @@ function registerIpc(): void {
   handleArgs(IPC_CHANNELS.commandsList, [optStr], (projectId?: string) => requireEngine().listCommands(projectId));
   handleArgs(IPC_CHANNELS.commandsExpand, [commandExpandInput], (input: import("@capsule/shared").CommandExpandInput) =>
     requireEngine().expandCommand(input));
+  handleArgs(IPC_CHANNELS.appRestart, [appRestartInput], (input: { safeMode: boolean }) => restartWithSafeMode(input.safeMode));
   /*
    * Both routes, one answer. The updater knows whether this build can replace
    * itself; the GitHub check knows what the latest release is even when that

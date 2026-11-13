@@ -50,6 +50,12 @@ export const commandExpandInput: ArgParser<CommandExpandInput> = (value, channel
   return { projectId: input.projectId, text: input.text, ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }) };
 };
 
+export const appRestartInput: ArgParser<{ safeMode: boolean }> = (value, channel, index) => {
+  const input = record(value, channel, index);
+  if (typeof input.safeMode !== "boolean") throw new IpcArgumentError(channel, index, "safeMode must be true or false");
+  return { safeMode: input.safeMode };
+};
+
 function record(value: unknown, channel: string, index: number): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new IpcArgumentError(channel, index, "must be an object");
   return value as Record<string, unknown>;

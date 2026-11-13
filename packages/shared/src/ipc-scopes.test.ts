@@ -139,7 +139,7 @@ describe("remote events", () => {
 describe("settings-file channels", () => {
   it("lets a viewer read settings and their problems, but never change a file or a folder's trust", () => {
     for (const channel of ["configGetEffective", "configGetDiagnostics"]) expect(isChannelAllowed(channel, ["read"])).toBe(true);
-    for (const channel of ["configSetValue", "configOpenFile", "configTrust", "configReload"]) {
+    for (const channel of ["configSetValue", "configOpenFile", "configTrust", "configReload", "appRestart"]) {
       expect(scopeForChannel(channel)).toBe("write");
       expect(isChannelAllowed(channel, ["read"])).toBe(false);
       expect(isChannelAllowed(channel, ["control"])).toBe(false);
