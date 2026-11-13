@@ -263,6 +263,12 @@ export interface Session {
   workspaceMode?: WorkspaceMode;
   /** Branch created for a worktree conversation. */
   worktreeBranch?: string;
+  /** When the person last had this thread on screen; see `thread-state.ts`. */
+  lastViewedAt?: string;
+  /** Set when the person called the thread done; a new turn clears it. */
+  settledAt?: string;
+  /** Hidden from the active list until this time; a new turn clears it. */
+  snoozedUntil?: string;
   createdAt: string;
   updatedAt: string;
 }

@@ -5,6 +5,7 @@ import type { VerificationResult } from "@capsule/shared";
 import { localTimings, TextBudget, OUTPUT_LIMIT_ERROR, searchSessionTitles } from "@capsule/shared";
 import type { FollowUpOp, FollowUps, RunStatus } from "@capsule/shared";
 import { FollowUpService } from "./follow-up-service.js";
+import { ThreadTriage } from "./thread-triage.js";
 
 const ACTIVE_RUN_STATUSES = new Set<RunStatus>(["queued", "running", "waiting", "approval_required"]);
 const TERMINAL_RUN_STATUSES = new Set<RunStatus>(["completed", "failed", "cancelled", "blocked"]);
@@ -169,6 +170,7 @@ import {
   type Run,
   type RunEvent,
   type Session,
+  type ThreadTriageAction,
   type Skill,
   type SkillPack,
   type SkillCatalogEntry,
@@ -289,6 +291,15 @@ export class CapsuleEngine {
   private directApprovals = new Map<string, { runId: string; canApproveOnce?: boolean; allow: () => void; deny: () => void; cancel: () => void }>();
   private admittingSessions = new Set<string>();
   /* Queued follow-ups and scheduled resumes, sent whichever conversation is on screen. */
+  private readonly triage = new ThreadTriage({
+    getSession: (id) => this.repos.getSession(id),
+    listSessions: () => this.repos.listSessions(),
+    latestRun: (sessionId) => this.listRuns(sessionId).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0],
+    write: (session) => this.repos.updateSessionTriage(session),
+    changed: () => this.events.emit("state", { command: "sessions-updated" }),
+    woke: (session) => this.events.emit("session-woke", session),
+  });
+
   private readonly followUps = new FollowUpService({
     read: (key) => this.repos.getSetting(key),
     write: (key, value) => this.repos.setSetting(key, value),
@@ -403,6 +414,10 @@ export class CapsuleEngine {
       if (!this.stopped && TERMINAL_RUN_STATUSES.has(run.status)) this.followUps.runEnded(run);
     });
     this.followUps.start();
+    this.events.on("run", (run: Run) => {
+      if (!this.stopped && (run.status === "running" || run.status === "queued")) this.triage.runStarted(run.sessionId);
+    });
+    this.triage.start();
     this.log("Capsule engine started");
   }
 
@@ -458,6 +473,7 @@ export class CapsuleEngine {
     // promise, which surfaces as an unhandled rejection with no run to blame.
     this.stopped = true;
     this.followUps.stop();
+    this.triage.stop();
     const channelRoutesStopped = this.channelRoutes.stop();
     // Resolve approval records while the database is still open. Closing the
     // transport later cannot safely update those persisted requests.
@@ -1771,6 +1787,11 @@ export class CapsuleEngine {
     this.repos.updateSession(session);
     this.events.emit("state", { command: "sessions-updated" });
     return session;
+  }
+
+  /** Read, unread, settle, snooze: the person's bookkeeping, never the agent's. */
+  triageSession(id: string, action: ThreadTriageAction): Session {
+    return this.triage.apply(id, action);
   }
 
   pinSession(id: string, pinned: boolean): Session {

@@ -184,6 +184,8 @@ export const IPC_CHANNELS = {
   getFollowUps: "capsule:getFollowUps",
   updateFollowUps: "capsule:updateFollowUps",
   fetchSkillDetail: "capsule:fetchSkillDetail",
+  /* Read, unread, settle, snooze: a thread's triage state. */
+  triageSession: "capsule:triageSession",
 } as const;
 
 export const IPC_EVENTS = {

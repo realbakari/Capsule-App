@@ -347,4 +347,15 @@ export const MIGRATIONS: Array<{ version: number; sql: string; }> = [
     version: 19,
     sql: `ALTER TABLE sessions ADD COLUMN carry_over TEXT;`,
   },
+  {
+    // Triage state, apart from run status. Existing threads count as read up
+    // to now, or every finished thread would light up unread on upgrade.
+    version: 120,
+    sql: `
+      ALTER TABLE sessions ADD COLUMN last_viewed_at TEXT;
+      ALTER TABLE sessions ADD COLUMN settled_at TEXT;
+      ALTER TABLE sessions ADD COLUMN snoozed_until TEXT;
+      UPDATE sessions SET last_viewed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now');
+    `,
+  },
 ];

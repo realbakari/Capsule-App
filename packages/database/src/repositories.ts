@@ -83,6 +83,9 @@ function normalizeSession(row: SessionRow): Session {
     workingDirectory: row.workingDirectory || undefined,
     workspaceMode: row.workspaceMode === "worktree" ? "worktree" : "local",
     worktreeBranch: row.worktreeBranch || undefined,
+    lastViewedAt: row.lastViewedAt || undefined,
+    settledAt: row.settledAt || undefined,
+    snoozedUntil: row.snoozedUntil || undefined,
   };
 }
 
@@ -314,7 +317,8 @@ export class CapsuleRepositories {
                 harness_id AS harnessId, harness_state AS harnessState, acp_mode AS acpMode,
                 permission_profile AS permissionProfile, model_override AS modelOverride,
                 pinned, pin_order AS pinOrder, working_directory AS workingDirectory, workspace_mode AS workspaceMode,
-                worktree_branch AS worktreeBranch, direct_session AS directSession, carry_over AS carryOver, created_at AS createdAt, updated_at AS updatedAt`;
+                worktree_branch AS worktreeBranch, direct_session AS directSession, carry_over AS carryOver, created_at AS createdAt, updated_at AS updatedAt,
+                last_viewed_at AS lastViewedAt, settled_at AS settledAt, snoozed_until AS snoozedUntil`;
     const sql = projectId
       ? `SELECT ${columns} FROM sessions WHERE project_id = ?
          ORDER BY pinned DESC, COALESCE(pin_order, 2147483647) ASC, updated_at DESC`
@@ -324,6 +328,16 @@ export class CapsuleRepositories {
       projectId ? this.db.sqlite.prepare(sql).all(projectId) : this.db.sqlite.prepare(sql).all()
     ) as SessionRow[];
     return rows.map(normalizeSession);
+  }
+
+  /**
+   * Triage is the person's bookkeeping, written apart from the row so that
+   * reading a thread never bumps `updated_at` and reorders the sidebar.
+   */
+  updateSessionTriage(session: Pick<Session, "id" | "lastViewedAt" | "settledAt" | "snoozedUntil">): void {
+    this.db.sqlite
+      .prepare("UPDATE sessions SET last_viewed_at = ?, settled_at = ?, snoozed_until = ? WHERE id = ?")
+      .run(session.lastViewedAt ?? null, session.settledAt ?? null, session.snoozedUntil ?? null, session.id);
   }
 
   getSession(id: string): Session | undefined {

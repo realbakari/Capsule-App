@@ -63,6 +63,7 @@ import {
   type AttentionState,
   attentionLabel,
   summariseAttention,
+  parseThreadTriageAction,
   type MessageAttachment,
   type UpdateCheck,
   IPC_EVENTS,
@@ -1371,6 +1372,9 @@ function registerIpc(): void {
   );
   handle(IPC_CHANNELS.pinSession, (id, pinned) =>
     requireEngine().pinSession(String(id), Boolean(pinned)),
+  );
+  handle(IPC_CHANNELS.triageSession, (id, action) =>
+    requireEngine().triageSession(String(id), parseThreadTriageAction(action)),
   );
   handle(IPC_CHANNELS.reorderPinnedSessions, (projectId, orderedIds) =>
     requireEngine().reorderPinnedSessions(
