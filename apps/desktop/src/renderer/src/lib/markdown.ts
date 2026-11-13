@@ -1,4 +1,5 @@
 import MarkdownIt, { type Token } from "markdown-it";
+import { markdownMath } from "./markdown-math";
 
 // HTML is tokenized, never rendered as HTML. The React renderer explicitly
 // converts supported presentation tags and ignores every untrusted attribute.
@@ -7,6 +8,7 @@ const parser = new MarkdownIt({ html: true, linkify: true, maxNesting: MAX_NESTI
 const plainParser = new MarkdownIt({ html: false, linkify: true, maxNesting: MAX_NESTING });
 
 for (const selected of [parser, plainParser]) {
+  selected.use(markdownMath);
   const parseDestination = selected.helpers.parseLinkDestination;
   // The normal Markdown unescaper treats Windows path separators before dot
   // directories as punctuation escapes. Preserve only explicit drive paths.

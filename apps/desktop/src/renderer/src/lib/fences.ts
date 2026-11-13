@@ -4,6 +4,8 @@ export interface FenceSegment {
   kind: "prose" | "code";
   text: string;
   language?: string;
+  /** False while a streaming fence still waits for its closing marker. */
+  closed?: boolean;
 }
 
 interface CodeFence {
@@ -12,6 +14,7 @@ interface CodeFence {
   bodyEnd: number;
   end: number;
   language?: string;
+  closed: boolean;
 }
 
 /** Fences start on a line; a shorter fence inside a code example is literal. */
@@ -29,7 +32,7 @@ export function codeFences(content: string): CodeFence[] {
     const closing = closer.exec(content);
     const end = closing ? closer.lastIndex : content.length;
     const language = info.split(/\s+/)[0] || undefined;
-    fences.push({ start: match.index, bodyStart, bodyEnd: closing?.index ?? content.length, end, language });
+    fences.push({ start: match.index, bodyStart, bodyEnd: closing?.index ?? content.length, end, language, closed: Boolean(closing) });
     opener.lastIndex = end;
     if (!closing) break;
   }
@@ -45,6 +48,7 @@ export function splitFences(content: string): FenceSegment[] {
       kind: "code",
       text: content.slice(fence.bodyStart, fence.bodyEnd).replace(/\r?\n$/, ""),
       ...(fence.language ? { language: fence.language } : {}),
+      ...(fence.closed ? {} : { closed: false }),
     });
     consumed = fence.end;
   }

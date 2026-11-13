@@ -33,7 +33,7 @@ describe("splitFences", () => {
   it("tolerates an unclosed fence — streaming replies arrive mid-block", () => {
     expect(splitFences("A\n```ts\ncode")).toEqual([
       { kind: "prose", text: "A\n" },
-      { kind: "code", text: "code", language: "ts" },
+      { kind: "code", text: "code", language: "ts", closed: false },
     ]);
   });
 
