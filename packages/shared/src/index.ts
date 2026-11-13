@@ -39,6 +39,7 @@ export * from "./settings-schema.js";
 export * from "./permission-rules.js";
 export * from "./rrule.js";
 export * from "./command-template.js";
+export * from "./commands.js";
 export * from "./theme.js";
 export * from "./theme-tokens.js";
 export * from "./keymap.js";

@@ -305,7 +305,7 @@ export interface CapsuleSettings {
   diffFileState: DiffFileState;
 }
 
-const AGENT_MODES: AgentMode[] = [
+export const AGENT_MODES: AgentMode[] = [
   "chat",
   "agent",
   "plan",

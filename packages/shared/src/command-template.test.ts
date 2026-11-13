@@ -4,6 +4,7 @@ import {
   commandNameFromPath,
   expandCommandTemplate,
   parseCommandFile,
+  shellSpanCommands,
   spliceShellOutputs,
   splitArguments,
   type CommandTemplate,
@@ -71,6 +72,19 @@ describe("parseCommandFile", () => {
     const { command, problems } = parseCommandFile("x", "---\ndescription: oops\nBody");
     expect(command?.body).toBe("---\ndescription: oops\nBody");
     expect(problems[0]).toMatch(/never closed/);
+  });
+
+  it("keeps only modes Capsule has", () => {
+    const { command, problems } = parseCommandFile("x", "---\nmode: yolo\n---\nBody");
+    expect(command).not.toHaveProperty("mode");
+    expect(problems[0]).toMatch(/line 2: mode must be one of/);
+  });
+
+  it("can read another tool's file without calling its own keys mistakes", () => {
+    const file = "---\nallowed-tools: Bash(git diff:*)\ndescription: Commit\nsend: later\n---\nBody";
+    const { command, problems } = parseCommandFile("commit", file, { ignoreUnknownKeys: true });
+    expect(command).toMatchObject({ description: "Commit", body: "Body" });
+    expect(problems).toEqual(["line 4: send must be auto or review."]);
   });
 
   it("refuses a name that cannot be typed as a command", () => {
@@ -144,6 +158,16 @@ describe("expandCommandTemplate", () => {
     );
     expect(mentions).toEqual(["src/index.ts", "docs/a.md", "README.md"]);
     expect(text).toContain("@src/index.ts");
+  });
+
+  it("counts positions from one for prompt files written that way", () => {
+    const { text } = expandCommandTemplate(template("first: $1, second: $2, none: [$0]"), "a b", { projectDir, positionalBase: 1 });
+    expect(text).toBe("first: a, second: b, none: []");
+  });
+
+  it("lists what a body's shell spans run, before arguments go in", () => {
+    expect(shellSpanCommands("A !`git diff $0` B !`ls` C `plain`")).toEqual(["git diff $0", "ls"]);
+    expect(shellSpanCommands("No shell here.")).toEqual([]);
   });
 
   it("splices shell output back in place of each token", () => {

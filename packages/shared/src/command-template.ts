@@ -1,3 +1,6 @@
+import { AGENT_MODES } from "./runtime.js";
+import type { AgentMode } from "./types.js";
+
 /** A custom command: a Markdown file whose body becomes the prompt. */
 export interface CommandTemplate {
   /** `review`, or `git:commit` for `git/commit.md`. */
@@ -7,7 +10,7 @@ export interface CommandTemplate {
   /** Names for positional arguments, so the body can say `$file` instead of `$0`. */
   argumentNames: string[];
   profile?: string;
-  mode?: string;
+  mode?: AgentMode;
   workspace?: "local" | "worktree";
   /** `review` puts the expansion in the composer instead of sending it. */
   send: "auto" | "review";
@@ -39,7 +42,11 @@ export function isValidCommandName(name: string): boolean {
 
 type FrontmatterValue = string | string[];
 
-export function parseCommandFile(name: string, text: string): ParsedCommandFile {
+/**
+ * `ignoreUnknownKeys` is for another tool's command files, whose own keys
+ * (allowed tools, a model) mean nothing to Capsule and are not mistakes.
+ */
+export function parseCommandFile(name: string, text: string, options: { ignoreUnknownKeys?: boolean } = {}): ParsedCommandFile {
   const problems: string[] = [];
   if (!NAME.test(name)) {
     problems.push(`"${name}" is not a valid command name. Use lowercase letters, digits, "-", "_" and ":" for folders.`);
@@ -64,9 +71,13 @@ export function parseCommandFile(name: string, text: string): ParsedCommandFile 
       case "profile":
         command.profile = single();
         break;
-      case "mode":
-        command.mode = single();
+      case "mode": {
+        const v = single();
+        const mode = AGENT_MODES.find((item) => item === v);
+        if (mode) command.mode = mode;
+        else if (v !== undefined) problems.push(`${where} must be one of ${AGENT_MODES.join(", ")}.`);
         break;
+      }
       case "workspace": {
         const v = single();
         if (v === "local" || v === "worktree") command.workspace = v;
@@ -91,7 +102,7 @@ export function parseCommandFile(name: string, text: string): ParsedCommandFile 
         break;
       }
       default:
-        problems.push(`line ${line}: unknown key "${key}" is ignored.`);
+        if (!options.ignoreUnknownKeys) problems.push(`line ${line}: unknown key "${key}" is ignored.`);
     }
   }
   if (!NAME.test(name)) return { problems };
@@ -222,6 +233,13 @@ export function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
+const SHELL_SPAN = /(!`[^`]*`)/;
+
+/** The commands a body's `` !`cmd` `` spans run, before any argument is put in. */
+export function shellSpanCommands(body: string): string[] {
+  return body.split(SHELL_SPAN).filter((_, i) => i % 2 === 1).map((span) => span.slice(2, -1));
+}
+
 const PLACEHOLDER = /\$\{CAPSULE_PROJECT_DIR\}|\$ARGUMENTS\b|\$(\d)|\$([A-Za-z_][A-Za-z0-9_]*)/g;
 
 /**
@@ -232,7 +250,8 @@ const PLACEHOLDER = /\$\{CAPSULE_PROJECT_DIR\}|\$ARGUMENTS\b|\$(\d)|\$([A-Za-z_]
 export function expandCommandTemplate(
   command: CommandTemplate,
   argsText: string,
-  options: { projectDir: string },
+  /** `positionalBase: 1` makes `$1` the first argument, as other tools' prompt files expect. */
+  options: { projectDir: string; positionalBase?: 0 | 1 },
 ): ExpandedCommand {
   const raw = argsText.trim();
   const args = splitArguments(raw);
@@ -248,7 +267,7 @@ export function expandCommandTemplate(
       }
       if (digit !== undefined) {
         used = true;
-        return wrap(args[Number(digit)] ?? "");
+        return wrap(args[Number(digit) - (options.positionalBase ?? 0)] ?? "");
       }
       const index = name === undefined ? -1 : command.argumentNames.indexOf(name);
       if (index === -1) return match;
@@ -258,7 +277,7 @@ export function expandCommandTemplate(
 
   const marker = uniqueMarker(command.body + raw);
   const shell: ShellSpan[] = [];
-  const parts = command.body.split(/(!`[^`]*`)/);
+  const parts = command.body.split(SHELL_SPAN);
   let text = parts
     .map((part, i) => {
       if (i % 2 === 0) return substitute(part, false);
