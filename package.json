@@ -15,7 +15,7 @@
     "build": "pnpm --filter @capsule/desktop build",
     "test": "node scripts/test.mjs",
     "test:watch": "vitest",
-    "lint": "eslint . && node scripts/check-css-tokens.mjs && node scripts/gen-settings-schema.mjs --check",
+    "lint": "eslint . && node scripts/check-css-tokens.mjs && node scripts/gen-settings-schema.mjs --check && node scripts/gen-theme-tokens.mjs --check",
     "typecheck": "tsc -b --pretty false && pnpm --filter @capsule/desktop typecheck",
     "package:mac": "node scripts/package-mac.mjs",
     "package:windows": "node scripts/package-windows.mjs",
