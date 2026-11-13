@@ -15,6 +15,7 @@ import { Palette } from "./features/shell/Palette";
 import { Sidebar } from "./features/shell/Sidebar";
 import { Titlebar } from "./features/shell/Titlebar";
 import { RemoteSessionBanner } from "./features/shell/RemoteSessionBanner";
+import { CustomizationNotices } from "./features/customization/CustomizationNotices";
 import { ArchiveUndoNotice } from "./features/shell/ArchiveUndoNotice";
 import { ShortcutsSheet } from "./features/shell/ShortcutsSheet";
 import { AboutModal } from "./features/settings/AboutModal";
@@ -73,6 +74,7 @@ function Shell() {
       <div className="workspace">
         <Titlebar />
         <RemoteSessionBanner />
+        <CustomizationNotices />
         <div className="workspace-body">
           <div className="conversation-host" hidden={view !== "chat"}>
             <ViewErrorBoundary label="Conversation"><Conversation /></ViewErrorBoundary>

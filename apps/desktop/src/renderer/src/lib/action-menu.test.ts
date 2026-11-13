@@ -64,6 +64,15 @@ describe("buildProjectActionMenuItems", () => {
     expect(items.find((item) => item.id === "open-folder")?.enabled).not.toBe(false);
     expect(items.find((item) => item.id === "delete")?.destructive).toBe(true);
   });
+
+  it("offers Revoke for a trusted folder, Trust for one waiting on it, and neither when unknown", () => {
+    const ids = (trust?: "trusted" | "untrusted") =>
+      buildProjectActionMenuItems({ hasFolder: true, canDelete: true, canRename: true, trust }).map((item) => item.id);
+    expect(ids("trusted")).toContain("revoke-trust");
+    expect(ids("trusted")).not.toContain("trust");
+    expect(ids("untrusted")).toContain("trust");
+    expect(ids(undefined).filter((id) => id.includes("trust"))).toEqual([]);
+  });
 });
 
 describe("menu keyboard helpers", () => {

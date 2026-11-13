@@ -39,6 +39,7 @@ import { VirtualTurns } from "./VirtualTurns";
 import { CopyButton } from "./CopyButton";
 import { turnTranscript } from "../../lib/turn-timeline";
 import { TurnTranscript } from "./TurnTranscript";
+import { TrustNotice } from "../customization/TrustNotice";
 
 /*
  * One message. Memoized because a streamed frame appends a message rather
@@ -484,6 +485,7 @@ export function Conversation() {
           </button>
         </div>
       )}
+      <TrustNotice />
       {threadFind && <ThreadFind messages={messages} onLocate={locateMessage} onClose={() => setThreadFind(false)} />}
       <div
         className="conversation"

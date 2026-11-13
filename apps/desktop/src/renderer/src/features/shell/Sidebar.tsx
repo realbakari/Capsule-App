@@ -34,7 +34,7 @@ import {
 } from "../../lib/sidebar";
 import { SETTINGS_TABS } from "../settings/SettingsView";
 import { isModifiedQuery, searchSettings } from "../settings/settings-search";
-import { modifiedKeys } from "../../lib/config-view";
+import { modifiedKeys, pendingTrust } from "../../lib/config-view";
 import { useWorkspace, type View } from "../../lib/workspace";
 import { ActionMenu } from "./ActionMenu";
 import { MenuSelect } from "./MenuSelect";
@@ -120,6 +120,7 @@ export function Sidebar() {
     setView,
     settingsTab,
     config,
+    configDiagnostics,
     setSettingsTab,
     setProjectId,
     createTask,
@@ -291,6 +292,10 @@ export function Sidebar() {
         void navigator.clipboard.writeText(project.workingDirectory);
         return;
       }
+      if (action === "trust" || action === "revoke-trust") {
+        void api.configTrust(id, action === "trust").catch(() => undefined);
+        return;
+      }
       if (action === "delete") deleteProject(id);
       return;
     }
@@ -333,10 +338,13 @@ export function Sidebar() {
     if (kind === "project") {
       const project = projects.find((item) => item.id === id);
       const inbox = project?.name === "Inbox";
+      // Trust is known for the open project only, from its settings snapshot.
+      const scoped = api.isDesktop === true && config?.project?.projectId === id ? config.project : undefined;
       return buildProjectActionMenuItems({
         hasFolder: Boolean(project?.workingDirectory),
         canDelete: !inbox,
         canRename: !inbox,
+        trust: scoped?.trusted ? "trusted" : scoped && pendingTrust(config, configDiagnostics).length ? "untrusted" : undefined,
       });
     }
     const session = sessions.find((item) => item.id === id);
