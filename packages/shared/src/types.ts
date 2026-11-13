@@ -842,6 +842,13 @@ export interface TurnDiffOptions {
   summaryOnly?: boolean;
   /** A literal repository-relative filename, scoped to this saved turn. */
   relative?: string;
+  /** Compare lines with all whitespace ignored (git diff -w). */
+  ignoreWhitespace?: boolean;
+}
+
+export interface GitDiffOptions {
+  /** Compare lines with all whitespace ignored (git diff -w). */
+  ignoreWhitespace?: boolean;
 }
 
 export interface TurnDiffResult {

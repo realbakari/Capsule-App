@@ -1358,14 +1358,14 @@ export class CapsuleEngine {
     return await readPullRequestDetail(cwd, number);
   }
 
-  async gitDiff(projectId: string, relative?: string, sessionId?: string): Promise<string> {
+  async gitDiff(projectId: string, relative?: string, sessionId?: string, options: import("@capsule/shared").GitDiffOptions = {}): Promise<string> {
     const project = this.requireProject(projectId);
     const cwd = this.workingDirectoryFor(project, sessionId);
     return inRepository(cwd, async () => {
       if (!cwd) return "";
-      return await readGitDiff(cwd, relative);
+      return await readGitDiff(cwd, relative, options);
 
-    }, JSON.stringify(["gitDiff", projectId, relative, sessionId]));
+    }, JSON.stringify(["gitDiff", projectId, relative, sessionId, Boolean(options.ignoreWhitespace)]));
   }
 
   async commitDiff(projectId: string, oid: string, sessionId?: string): Promise<string> {

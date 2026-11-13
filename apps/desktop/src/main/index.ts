@@ -1471,11 +1471,12 @@ function registerIpc(): void {
     ),
   );
   handle(IPC_CHANNELS.gitInit, (projectId) => requireEngine().gitInit(String(projectId)));
-  handle(IPC_CHANNELS.gitDiff, (projectId, relative, sessionId) =>
+  handle(IPC_CHANNELS.gitDiff, (projectId, relative, sessionId, options) =>
     requireEngine().gitDiff(
       String(projectId),
       relative ? String(relative) : undefined,
       sessionId ? String(sessionId) : undefined,
+      { ignoreWhitespace: optBool((options as { ignoreWhitespace?: unknown } | undefined)?.ignoreWhitespace, IPC_CHANNELS.gitDiff, 3) },
     ),
   );
   handle(IPC_CHANNELS.checkoutBranch, (projectId, branch, sessionId) =>
@@ -1980,9 +1981,9 @@ function registerIpc(): void {
   );
   handle(IPC_CHANNELS.providerUsage, () => requireEngine().providerUsage());
   handle(IPC_CHANNELS.turnDiff, (runId, options) => {
-    const value = options as { relative?: unknown; summaryOnly?: unknown } | undefined;
+    const value = options as { relative?: unknown; summaryOnly?: unknown; ignoreWhitespace?: unknown } | undefined;
     const channel = IPC_CHANNELS.turnDiff;
-    return requireEngine().turnDiff(id(runId, channel, 0), { relative: optStr(value?.relative, channel, 1), summaryOnly: optBool(value?.summaryOnly, channel, 1) });
+    return requireEngine().turnDiff(id(runId, channel, 0), { relative: optStr(value?.relative, channel, 1), summaryOnly: optBool(value?.summaryOnly, channel, 1), ignoreWhitespace: optBool(value?.ignoreWhitespace, channel, 1) });
   });
   handleArgs(IPC_CHANNELS.restoreTurn, [id], (runId: string) =>
     requireEngine().restoreTurn(runId),

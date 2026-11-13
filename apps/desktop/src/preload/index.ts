@@ -173,8 +173,8 @@ const api = {
   getCommitDiff: (projectId: string, oid: string, sessionId?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.getCommitDiff, projectId, oid, sessionId),
   gitInit: (projectId: string) => ipcRenderer.invoke(IPC_CHANNELS.gitInit, projectId),
-  gitDiff: (projectId: string, relative?: string, sessionId?: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.gitDiff, projectId, relative, sessionId),
+  gitDiff: (projectId: string, relative?: string, sessionId?: string, options?: import("@capsule/shared").GitDiffOptions) =>
+    ipcRenderer.invoke(IPC_CHANNELS.gitDiff, projectId, relative, sessionId, options),
   checkoutBranch: (projectId: string, branch: string, sessionId?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.checkoutBranch, projectId, branch, sessionId),
   gitCommit: (projectId: string, message: string, sessionId?: string) =>
