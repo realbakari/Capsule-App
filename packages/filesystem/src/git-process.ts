@@ -4,14 +4,14 @@ import { realpath } from "node:fs/promises";
 import path from "node:path";
 import { localTimings } from "@capsule/shared";
 
-export function git(cwd: string, args: string[], env = process.env): Promise<{ ok: boolean; stdout: string; stderr: string; exitCode?: number }> {
+export function git(cwd: string, args: string[], env = process.env, timeout = 30_000): Promise<{ ok: boolean; stdout: string; stderr: string; exitCode?: number }> {
   const operation = args[0];
   const label = operation === "status" ? "git.status" : operation === "diff" ? "git.diff" : operation === "show" ? "git.show"
     : ["rev-parse", "branch", "for-each-ref", "update-ref"].includes(operation ?? "") ? "git.refs"
     : ["write-tree", "read-tree", "add"].includes(operation ?? "") ? "git.snapshot" : "git.process";
   const end = localTimings.start(label);
   return new Promise((resolve) => {
-    execFile("git", args, { cwd, env: { ...env, GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0" }, encoding: "utf8", timeout: 30_000, maxBuffer: 16 * 1024 * 1024 }, (error, stdout, stderr) => {
+    execFile("git", args, { cwd, env: { ...env, GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0" }, encoding: "utf8", timeout, maxBuffer: 16 * 1024 * 1024 }, (error, stdout, stderr) => {
       end(Boolean(error));
       resolve({ ok: !error, stdout, stderr: (stderr || error?.message || "").trim(),
         // Missing binaries, timeouts and output limits are not safe retry signals.

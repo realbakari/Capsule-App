@@ -197,6 +197,11 @@ export const IPC_CHANNELS = {
   finishDictation: "capsule:finishDictation",
   cancelDictation: "capsule:cancelDictation",
   openDictationSettings: "capsule:openDictationSettings",
+  /* Base branches a new worktree conversation can start from. */
+  listWorktreeBases: "capsule:listWorktreeBases",
+  setSessionWorktreeBase: "capsule:setSessionWorktreeBase",
+  /* Check out a pull request into a worktree or the project folder and open a thread on it. */
+  startPullRequestThread: "capsule:startPullRequestThread",
 } as const;
 
 export const IPC_EVENTS = {

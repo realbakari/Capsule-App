@@ -223,6 +223,8 @@ export interface Project {
    * expressed by one global switch.
    */
   defaultWorkspaceMode?: WorkspaceMode;
+  /** Base for new worktree conversations. Unset means the remote default branch, else HEAD. */
+  defaultWorktreeBaseRef?: string;
   /**
    * What capsule.json in this project's folder says, if anything. Read on
    * every list rather than stored: it is a file someone edits with the app
@@ -270,6 +272,8 @@ export interface Session {
   settledAt?: string;
   /** Hidden from the active list until this time; a new turn clears it. */
   snoozedUntil?: string;
+  /** What that branch started from, as chosen or resolved: `origin/main`, `HEAD`. */
+  worktreeBaseRef?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -317,6 +321,8 @@ export interface UpdateProjectInput {
   defaultMode?: AgentMode;
   /** null clears the override and returns the project to the app-wide default. */
   defaultWorkspaceMode?: WorkspaceMode | null;
+  /** null returns new worktrees to the remote default branch. */
+  defaultWorktreeBaseRef?: string | null;
 }
 
 export interface FileEntry {

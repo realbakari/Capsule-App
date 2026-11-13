@@ -57,6 +57,7 @@ import {
   type SkillCatalogPage,
   type SubsystemStatus,
   type WorkspaceMode,
+  type StartPullRequestInput,
 } from "@capsule/shared";
 
 import type { SettingsSectionId } from "../features/settings/settings-search";
@@ -290,6 +291,10 @@ export interface WorkspaceValue {
   saveProjectActions: (actions: ProjectAction[]) => Promise<{ saved: true } | { saved: false; error: string }>;
   workspaceMode: WorkspaceMode;
   setWorkspaceMode: (mode: WorkspaceMode) => Promise<void>;
+  /** Move a not-yet-started worktree thread to another base branch. */
+  setWorktreeBase: (ref: string) => Promise<void>;
+  /** Check a pull request out and open a thread on it with a draft that names it. Throws on failure. */
+  startPullRequestThread: (input: Omit<StartPullRequestInput, "projectId">) => Promise<{ detail: string }>;
   browserUrl: string;
   setBrowserUrl: (url: string) => void;
   projectRuns: Run[];
@@ -1946,6 +1951,29 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     }
   }
 
+  async function setWorktreeBase(ref: string) {
+    if (!sessionId) return;
+    try {
+      await api.setSessionWorktreeBase(sessionId, ref);
+      setNotice(undefined);
+      await refresh();
+    } catch (error) {
+      setNotice(formatUserError(error));
+    }
+  }
+
+  async function startPullRequestThread(input: Omit<StartPullRequestInput, "projectId">) {
+    if (!projectId) throw new Error("Select a project first.");
+    const targetProject = projectId;
+    const started = await api.startPullRequestThread({ ...input, projectId: targetProject });
+    promotedDrafts.current.set(promptDraftKey(targetProject, started.session.id), { prompt: started.draft, attachments: [] });
+    setProjectId(targetProject);
+    setSessionId(started.session.id);
+    setView("chat");
+    await refresh();
+    return { detail: started.detail };
+  }
+
   async function openPath(target: string) {
     await api.openPath(target);
   }
@@ -2432,6 +2460,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       saveProjectActions,
       workspaceMode,
       setWorkspaceMode,
+      setWorktreeBase,
+      startPullRequestThread,
       browserUrl,
       setBrowserUrl,
       projectRuns,

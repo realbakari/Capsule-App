@@ -39,3 +39,4 @@ export * from "./usage-limit.js";
 export * from "./follow-ups.js";
 export * from "./thread-state.js";
 export * from "./agent-question.js";
+export * from "./worktree-base.js";

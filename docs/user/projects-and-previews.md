@@ -84,6 +84,28 @@ uncommitted changes, Capsule keeps it on disk rather than deleting the work.
 Choose the default for new conversations in **Settings → Agents → Conversation
 workspace**.
 
+### Which branch a worktree starts from
+
+A new worktree branches from the repository's remote default branch, usually
+`origin/main`, not from whatever the project folder has checked out. Capsule
+fetches that branch first when it has not fetched it in the last five minutes.
+If the fetch fails, for example offline, the worktree starts from the copy
+fetched earlier and the engine log says so. A project with no `origin` remote
+has nothing to fetch, so its worktrees start from the project folder's current
+commit (`HEAD`).
+
+While a worktree conversation is still empty, **from** beside the workspace
+choice in the composer picks another base. It lists the default, then remote
+and local branches by most recent commit, with a search field. Changing it moves
+the empty worktree's branch to the new base. Once the worktree has changes or
+its own commits, the base stays fixed.
+
+To change the default for one project, open the project page and set
+**Worktree base**. **Default** follows the remote default branch.
+
+The new branch has no upstream, so a push never aims at the base branch by
+mistake. Both local and Gateway agents work in the resulting folder the same way.
+
 Choose **Settings → Source control → Worktree location** to store new worktrees
 in another folder or on another drive. The location belongs to the computer
 running Capsule. **Use default** restores Capsule's application-data location.
@@ -318,6 +340,27 @@ local checkout. Both ask for confirmation. A draft in the merge set, a stack
 that changed since it was loaded, or GitHub.com not reporting stacks hides
 those actions. Merging the current branch's pull request from the Review header
 is unchanged.
+
+### Work on a pull request
+
+Hover a pull request in the list and choose **Work on this**, or choose **Work
+on this PR** from the detail view's **···** menu. Pick where to check it out:
+
+- **New worktree** (the default) fetches the pull request from `origin` into a
+  separate branch and folder. The project folder is not touched.
+- **Project folder** switches the project folder itself to the pull request. It
+  refuses while the folder has uncommitted changes.
+
+Capsule then opens a new conversation there with a draft naming the pull
+request's number, title and link. Finish the sentence and send it.
+
+When the pull request's branch lives in the same repository, the new branch
+takes that name and tracks it, so a push updates the pull request. A pull
+request from a fork gets a branch named `pr-<number>` with no upstream. If the
+pull request no longer exists, or origin is not the repository it was opened
+on, Capsule says so and creates nothing. Fetching uses Git, so it works even
+where the GitHub CLI is not signed in, but the list itself needs it. A paired
+browser cannot start this.
 
 Filter the loaded list by title, author, branch, or PR number, and sort by recent
 updates or creation time. The list shows up to 50 open pull requests. **Refresh**

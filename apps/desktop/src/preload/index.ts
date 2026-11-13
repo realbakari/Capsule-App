@@ -77,6 +77,12 @@ const api = {
   getFollowUps: (sessionId: string): Promise<import("@capsule/shared").FollowUps> => ipcRenderer.invoke(IPC_CHANNELS.getFollowUps, sessionId),
   updateFollowUps: (sessionId: string, op: import("@capsule/shared").FollowUpOp): Promise<import("@capsule/shared").FollowUps> => ipcRenderer.invoke(IPC_CHANNELS.updateFollowUps, sessionId, op),
   fetchSkillDetail: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.fetchSkillDetail, id),
+  listWorktreeBases: (projectId: string): Promise<import("@capsule/shared").WorktreeBases> =>
+    ipcRenderer.invoke(IPC_CHANNELS.listWorktreeBases, projectId),
+  setSessionWorktreeBase: (sessionId: string, ref: string): Promise<import("@capsule/shared").Session> =>
+    ipcRenderer.invoke(IPC_CHANNELS.setSessionWorktreeBase, sessionId, ref),
+  startPullRequestThread: (input: import("@capsule/shared").StartPullRequestInput): Promise<{ session: import("@capsule/shared").Session; draft: string; detail: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.startPullRequestThread, input),
   listSessions: (projectId?: string) => ipcRenderer.invoke(IPC_CHANNELS.listSessions, projectId),
   createSession: (input: unknown) => ipcRenderer.invoke(IPC_CHANNELS.createSession, input),
   setSessionWorkspaceMode: (id: string, mode: "local" | "worktree") =>

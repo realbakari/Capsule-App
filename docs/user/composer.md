@@ -186,7 +186,9 @@ runtime route cannot carry. Missing information stays labelled as not reported.
 
 The workspace strip below the prompt holds the folder, terminal, checkout mode
 and branch. For Git folders, **Current checkout** or **Worktree** also offers
-**Change folder**. In compact panes the workspace and branch labels become icons;
+**Change folder**. An empty worktree conversation also shows **from**, the branch
+its worktree starts from; choose another or search for one before the first
+message. In compact panes the workspace and branch labels become icons;
 their names remain in tooltips and menus. **Conversation tools** holds prompt
 stash and advanced agent settings. Supported agent controls wrap on narrow
 screens; there is no separate conversation-mode selector. Menus support keyboard navigation and Escape; closing one returns

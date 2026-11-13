@@ -81,6 +81,9 @@ import {
   type SpawnHarnessInput,
   type GitPullRequestStackAction,
   type UpdateProjectInput,
+  type GitRefName,
+  parseGitRefName,
+  parseStartPullRequestInput,
 } from "@capsule/shared";
 import { readAgentProcesses } from "@capsule/filesystem";
 import { startRemoteServer, type RemoteServerHandle } from "@capsule/remote";
@@ -2002,6 +2005,22 @@ function registerIpc(): void {
   handleArgs(IPC_CHANNELS.fetchSkillDetail, [id], (skillId: string) =>
     requireEngine().fetchSkillDetail(skillId),
   );
+  handleArgs(IPC_CHANNELS.listWorktreeBases, [id], (projectId: string) =>
+    requireEngine().listWorktreeBases(projectId),
+  );
+  const gitRef: ArgParser<GitRefName> = (value, channel, index) => {
+    const ref = parseGitRefName(value);
+    if (!ref) throw new Error(`${channel} argument ${index + 1} must be a branch name.`);
+    return ref;
+  };
+  handleArgs(IPC_CHANNELS.setSessionWorktreeBase, [id, gitRef], (sessionId: string, ref: GitRefName) =>
+    requireEngine().setSessionWorktreeBase(sessionId, ref),
+  );
+  handle(IPC_CHANNELS.startPullRequestThread, (input) => {
+    const parsed = parseStartPullRequestInput(input);
+    if (!parsed) throw new Error("That pull request could not be read. Refresh the list and try again.");
+    return requireEngine().startPullRequestThread(parsed);
+  });
 
   ipcMain.handle(IPC_CHANNELS.showContextMenu, async (event, payload: PopupMenuRequest) => {
     try {

@@ -55,6 +55,7 @@ function sessionParams(session: Session) {
     workingDirectory: session.workingDirectory ?? null,
     workspaceMode: session.workspaceMode ?? "local",
     worktreeBranch: session.worktreeBranch ?? null,
+    worktreeBaseRef: session.worktreeBaseRef ?? null,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
   };
@@ -86,6 +87,7 @@ function normalizeSession(row: SessionRow): Session {
     lastViewedAt: row.lastViewedAt || undefined,
     settledAt: row.settledAt || undefined,
     snoozedUntil: row.snoozedUntil || undefined,
+    worktreeBaseRef: row.worktreeBaseRef || undefined,
   };
 }
 
@@ -138,10 +140,10 @@ export class CapsuleRepositories {
       .prepare(
         `INSERT INTO projects (
           id, workspace_id, name, description, working_directory, extra_folders, project_actions, icon_path, default_agent_id,
-          default_skill_ids, default_mode, default_workspace_mode, created_at, updated_at
+          default_skill_ids, default_mode, default_workspace_mode, default_worktree_base_ref, created_at, updated_at
         ) VALUES (
           @id, @workspaceId, @name, @description, @workingDirectory, @extraFolders, @actions, @iconPath, @defaultAgentId,
-          @defaultSkillIds, @defaultMode, @defaultWorkspaceMode, @createdAt, @updatedAt
+          @defaultSkillIds, @defaultMode, @defaultWorkspaceMode, @defaultWorktreeBaseRef, @createdAt, @updatedAt
         )`,
       )
       .run({
@@ -153,6 +155,7 @@ export class CapsuleRepositories {
         iconPath: project.iconPath ?? null,
         defaultAgentId: project.defaultAgentId ?? null,
         defaultWorkspaceMode: project.defaultWorkspaceMode ?? null,
+        defaultWorktreeBaseRef: project.defaultWorktreeBaseRef ?? null,
         defaultSkillIds: JSON.stringify(project.defaultSkillIds),
       });
   }
@@ -165,6 +168,7 @@ export class CapsuleRepositories {
                 default_agent_id AS defaultAgentId,
                 default_skill_ids AS defaultSkillIds, default_mode AS defaultMode,
                 default_workspace_mode AS defaultWorkspaceMode,
+                default_worktree_base_ref AS defaultWorktreeBaseRef,
                 created_at AS createdAt, updated_at AS updatedAt
          FROM projects ORDER BY updated_at DESC`,
       )
@@ -187,6 +191,7 @@ export class CapsuleRepositories {
         iconPath: row.iconPath || undefined,
         defaultAgentId: row.defaultAgentId || undefined,
         defaultWorkspaceMode: row.defaultWorkspaceMode || undefined,
+        defaultWorktreeBaseRef: row.defaultWorktreeBaseRef || undefined,
         defaultSkillIds: parseJson<string[]>(row.defaultSkillIds, []),
       };
     });
@@ -204,6 +209,7 @@ export class CapsuleRepositories {
          default_agent_id = @defaultAgentId,
          default_skill_ids = @defaultSkillIds, default_mode = @defaultMode,
          default_workspace_mode = @defaultWorkspaceMode,
+         default_worktree_base_ref = @defaultWorktreeBaseRef,
          updated_at = @updatedAt WHERE id = @id`,
       )
       .run({
@@ -216,6 +222,7 @@ export class CapsuleRepositories {
         iconPath: project.iconPath ?? null,
         defaultAgentId: project.defaultAgentId ?? null,
         defaultWorkspaceMode: project.defaultWorkspaceMode ?? null,
+        defaultWorktreeBaseRef: project.defaultWorktreeBaseRef ?? null,
         defaultSkillIds: JSON.stringify(project.defaultSkillIds),
         defaultMode: project.defaultMode,
         updatedAt: project.updatedAt,
@@ -229,12 +236,12 @@ export class CapsuleRepositories {
           id, workspace_id, project_id, agent_id, title, mode, state,
           openclaw_session_key, harness_id, harness_state, acp_mode,
           permission_profile, model_override, pinned, pin_order, working_directory, workspace_mode,
-          worktree_branch, direct_session, carry_over, created_at, updated_at
+          worktree_branch, worktree_base_ref, direct_session, carry_over, created_at, updated_at
         ) VALUES (
           @id, @workspaceId, @projectId, @agentId, @title, @mode, @state,
           @openclawSessionKey, @harnessId, @harnessState, @acpMode,
           @permissionProfile, @modelOverride, @pinned, @pinOrder, @workingDirectory, @workspaceMode,
-          @worktreeBranch, @directSession, @carryOver, @createdAt, @updatedAt
+          @worktreeBranch, @worktreeBaseRef, @directSession, @carryOver, @createdAt, @updatedAt
         )`,
       )
       .run(sessionParams(session));
@@ -248,7 +255,7 @@ export class CapsuleRepositories {
          harness_state = @harnessState, acp_mode = @acpMode,
          permission_profile = @permissionProfile, model_override = @modelOverride,
          pinned = @pinned, pin_order = @pinOrder, working_directory = @workingDirectory, workspace_mode = @workspaceMode,
-         worktree_branch = @worktreeBranch, direct_session = @directSession, carry_over = @carryOver, updated_at = @updatedAt WHERE id = @id`,
+         worktree_branch = @worktreeBranch, worktree_base_ref = @worktreeBaseRef, direct_session = @directSession, carry_over = @carryOver, updated_at = @updatedAt WHERE id = @id`,
       )
       .run(sessionParams(session));
   }
@@ -317,7 +324,7 @@ export class CapsuleRepositories {
                 harness_id AS harnessId, harness_state AS harnessState, acp_mode AS acpMode,
                 permission_profile AS permissionProfile, model_override AS modelOverride,
                 pinned, pin_order AS pinOrder, working_directory AS workingDirectory, workspace_mode AS workspaceMode,
-                worktree_branch AS worktreeBranch, direct_session AS directSession, carry_over AS carryOver, created_at AS createdAt, updated_at AS updatedAt,
+                worktree_branch AS worktreeBranch, worktree_base_ref AS worktreeBaseRef, direct_session AS directSession, carry_over AS carryOver, created_at AS createdAt, updated_at AS updatedAt,
                 last_viewed_at AS lastViewedAt, settled_at AS settledAt, snoozed_until AS snoozedUntil`;
     const sql = projectId
       ? `SELECT ${columns} FROM sessions WHERE project_id = ?

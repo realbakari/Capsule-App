@@ -15,6 +15,7 @@ import type { FileEntry } from "@capsule/shared";
 import { searchProjectFiles } from "../../lib/bridge";
 import { PERMISSION_OPTIONS, useWorkspace, type View } from "../../lib/workspace";
 import { formatProjectRoot, projectFolderName } from "../../lib/paths";
+import { WorktreeBasePicker } from "../worktree-base/WorktreeBasePicker";
 import { MenuSelect } from "../shell/MenuSelect";
 import {
   ArrowUpIcon,
@@ -832,6 +833,12 @@ export function Composer({
           <FolderIcon size={12} />
           {folder ?? "No folder"}
         </button>}
+        {git?.isRepo && projectId && session?.workspaceMode === "worktree" && session.worktreeBranch && messages.length === 0 && !activeRun && api.isDesktop !== false ? (
+          <span className="worktree-base-slot" title="The branch this worktree starts from. It can change until the first message.">
+            <span className="worktree-base-from">from</span>
+            <WorktreeBasePicker projectId={projectId} value={session.worktreeBaseRef} onChange={(ref) => workspace.setWorktreeBase(ref)} />
+          </span>
+        ) : null}
         {git?.isRepo && git.branches.length > 0 && (
           <span className="inline-icon composer-branch">
             <GitBranchIcon size={12} />

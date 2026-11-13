@@ -86,7 +86,8 @@ export {
   type ProcessRow,
 } from "./process-tree.js";
 export { readProjectFile } from "./project-file.js";
-export { createWorktree, removeWorktree, type WorktreeResult } from "./worktrees.js";
+export { createWorktree, listWorktreeBases, rebaseFreshWorktree, removeWorktree, type WorktreeResult } from "./worktrees.js";
+export { availableBranchName, checkoutPullRequestLocally, fetchPullRequest } from "./pull-request-checkout.js";
 export {
   isSupportedProjectIcon,
   readProjectIconDataUrl,

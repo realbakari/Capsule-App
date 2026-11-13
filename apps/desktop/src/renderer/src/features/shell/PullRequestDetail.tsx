@@ -29,6 +29,7 @@ import {
   MoreHorizontalIcon,
   RefreshIcon,
   WrenchIcon,
+  GitBranchIcon,
   XIcon,
 } from "./icons";
 
@@ -153,6 +154,7 @@ export function GitPullRequestDetail({
   onMergeStack,
   onRebaseStack,
   stackBusy,
+  onWork,
 }: {
   summary: GitPullRequest;
   detail?: PullRequestDetail;
@@ -168,6 +170,8 @@ export function GitPullRequestDetail({
   onMergeStack?: (action: GitPullRequestStackAction) => void;
   onRebaseStack?: (action: GitPullRequestStackAction) => void;
   stackBusy?: boolean;
+  /** Check the pull request out and open a thread on it. Absent on a read-only viewer. */
+  onWork?: () => void;
 }) {
   const [tab, setTab] = useState<PullRequestTab>("summary");
   const [newestFirst, setNewestFirst] = useState(true);
@@ -367,6 +371,18 @@ export function GitPullRequestDetail({
                 >
                   <WrenchIcon size={15} /> Fix findings in this thread
                 </button>
+                {onWork ? (
+                  <button
+                    type="button"
+                    className="pr-action-item"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onWork();
+                    }}
+                  >
+                    <GitBranchIcon size={15} /> Work on this PR
+                  </button>
+                ) : null}
                 <hr className="pr-menu-divider" />
                 <button
                   type="button"

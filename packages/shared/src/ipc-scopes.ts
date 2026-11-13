@@ -77,6 +77,8 @@ const READ_CHANNELS: ChannelName[] = [
   "windowBackground",
   // Names and icons of installed apps the system reports; opening one is a write.
   "listOpenInApps",
+  // Local refs and the FETCH_HEAD time only; never fetches.
+  "listWorktreeBases",
 ];
 
 const READ_SET = new Set<string>(READ_CHANNELS);

@@ -32,6 +32,7 @@ import { SURFACES, tabForTool, toolFromTab, type InspectorTool } from "./surface
 import { InspectorHeadSlot } from "./inspector-slot";
 import { GitPullRequestDetail as PullRequestDetailView } from "./PullRequestDetail";
 import { PullRequestList } from "./PullRequestList";
+import { PullRequestCheckoutDialog } from "../worktree-base/PullRequestCheckoutDialog";
 import { ReviewCommitForm } from "./ReviewCommitForm";
 import {
   ColumnsIcon,
@@ -226,6 +227,9 @@ export function Inspector() {
   const [pullRequestDetailLoading, setPullRequestDetailLoading] = useState(false);
   const [pullRequestDetailError, setPullRequestDetailError] = useState<string>();
   const [stackBusy, setStackBusy] = useState(false);
+  const [checkoutPullRequest, setCheckoutPullRequest] = useState<GitPullRequest>();
+  // Checking a pull request out writes to the repository; a paired viewer only reads.
+  const workOnPullRequest = api.isDesktop === false ? undefined : setCheckoutPullRequest;
   const reviewScope = JSON.stringify([projectId, session?.id]);
   const latestReview = useRef({ scope: reviewScope, refresh: () => {} });
   const pullRequestRequest = useRef(0);
@@ -685,6 +689,8 @@ export function Inspector() {
   }
 
   return (
+    <>
+    {checkoutPullRequest ? <PullRequestCheckoutDialog pullRequest={checkoutPullRequest} onClose={() => setCheckoutPullRequest(undefined)} /> : null}
     <aside
       ref={inspectorElement}
       className={`inspector panel-inspector${isMaximized ? " maximized" : ""}`}
@@ -970,6 +976,7 @@ export function Inspector() {
                   setView("chat");
                 }}
                 stackBusy={stackBusy}
+                onWork={workOnPullRequest ? () => workOnPullRequest(selectedPullRequest) : undefined}
                 onSelectLayer={(number) => {
                   const listed = pullRequests?.find((item) => item.number === number);
                   if (listed) {
@@ -1049,6 +1056,7 @@ export function Inspector() {
               loading={pullRequestsLoading}
               error={pullRequestsError}
               onSelect={openPullRequest}
+              onWork={workOnPullRequest}
               onRefresh={() => {
                 forceNextListRead.current = true;
                 setListRefreshVersion((value) => value + 1);
@@ -1214,5 +1222,6 @@ export function Inspector() {
         )}
       </div>
     </aside>
+    </>
   );
 }

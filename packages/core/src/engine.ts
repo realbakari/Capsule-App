@@ -7,6 +7,14 @@ import type { FollowUpOp, FollowUps, RunStatus } from "@capsule/shared";
 import { FollowUpService } from "./follow-up-service.js";
 import { ThreadTriage } from "./thread-triage.js";
 import { continuationsAfterRestart, type InterruptedTurn } from "./restart-continuation.js";
+import { parseGitRefName, pullRequestDraft, type GitRefName, type StartPullRequestInput, type WorktreeBases } from "@capsule/shared";
+
+/** How a new worktree conversation's branch starts, when not from the defaults. */
+interface WorktreeStart {
+  baseRef?: GitRefName;
+  branch?: string;
+  upstream?: string;
+}
 
 const ACTIVE_RUN_STATUSES = new Set<RunStatus>(["queued", "running", "waiting", "approval_required"]);
 const TERMINAL_RUN_STATUSES = new Set<RunStatus>(["completed", "failed", "cancelled", "blocked"]);
@@ -60,6 +68,11 @@ import {
   cloneRepository as cloneGitRepository,
   commitAll,
   createWorktree,
+  listWorktreeBases as listGitWorktreeBases,
+  rebaseFreshWorktree,
+  fetchPullRequest,
+  availableBranchName,
+  checkoutPullRequestLocally,
   createBranch as createGitBranch,
   createPullRequest as openPullRequest,
   detectSourceControlTools,
@@ -1244,6 +1257,11 @@ export class CapsuleEngine {
     if (patch.defaultWorkspaceMode !== undefined) {
       project.defaultWorkspaceMode = patch.defaultWorkspaceMode ?? undefined;
     }
+    if (patch.defaultWorktreeBaseRef !== undefined) {
+      const ref = patch.defaultWorktreeBaseRef === null ? undefined : parseGitRefName(patch.defaultWorktreeBaseRef);
+      if (patch.defaultWorktreeBaseRef !== null && !ref) throw new Error("Choose a valid branch name for new worktrees.");
+      project.defaultWorktreeBaseRef = ref;
+    }
     project.updatedAt = nowIso();
     this.repos.updateProject(project);
     if (patch.iconPath !== undefined || patch.workingDirectory !== undefined) this.projectIcons.clear();
@@ -1680,7 +1698,7 @@ export class CapsuleEngine {
     return this.repos.listSessions(projectId);
   }
 
-  async createSession(input: CreateSessionInput): Promise<Session> {
+  async createSession(input: CreateSessionInput, worktree?: WorktreeStart): Promise<Session> {
     const project = this.requireProject(input.projectId);
     const agentId = input.agentId ?? project.defaultAgentId ?? agentIdForMode(input.mode ?? project.defaultMode);
     const requestedWorkspaceMode =
@@ -1700,7 +1718,7 @@ export class CapsuleEngine {
       );
     }
     if (session.workspaceMode === "worktree") {
-      await this.attachSessionWorktree(session, project);
+      await this.attachSessionWorktree(session, project, worktree);
     }
     const direct = isHarnessId(agentId) && this.useDirectMode(agentId);
     if (!this.usingMock && !direct) {
@@ -1796,6 +1814,74 @@ export class CapsuleEngine {
   /** Read, unread, settle, snooze: the person's bookkeeping, never the agent's. */
   triageSession(id: string, action: ThreadTriageAction): Session {
     return this.triage.apply(id, action);
+  }
+
+  /** Base branches for the picker. Local refs only; choosing one is what fetches. */
+  async listWorktreeBases(projectId: string): Promise<WorktreeBases> {
+    const project = this.requireProject(projectId);
+    if (!project.workingDirectory || isInboxProject(project)) return { defaultRef: "HEAD", choices: [] };
+    return listGitWorktreeBases(project.workingDirectory);
+  }
+
+  /** Point a worktree conversation that has not started at a different base. */
+  async setSessionWorktreeBase(id: string, baseRef: GitRefName): Promise<Session> {
+    const session = this.requireSession(id);
+    const project = this.requireProject(session.projectId);
+    if (session.workspaceMode !== "worktree" || !session.workingDirectory || !session.worktreeBranch || !project.workingDirectory) {
+      throw new Error("Only a worktree conversation has a base branch.");
+    }
+    if (this.repos.listMessages(id).length > 0 || this.repos.listRuns(id).length > 0 || isLiveHarnessState(session.harnessState)) {
+      throw new Error("The base branch can only change before the conversation starts.");
+    }
+    const result = await rebaseFreshWorktree(project.workingDirectory, session.workingDirectory, session.worktreeBranch, baseRef);
+    if (!result.ok) throw new Error(result.detail);
+    session.worktreeBaseRef = result.baseRef;
+    session.updatedAt = nowIso();
+    this.repos.updateSession(session);
+    this.log(result.detail);
+    this.events.emit("state", { command: "sessions-updated" });
+    return session;
+  }
+
+  /*
+   * Fetch a pull request's head and open a conversation on it, in a new
+   * worktree or the project folder. Worktree setup is Capsule's own, so the
+   * runtime route the thread later takes does not change any of this.
+   */
+  async startPullRequestThread(input: StartPullRequestInput): Promise<{ session: Session; draft: string; detail: string }> {
+    const project = this.requireProject(input.projectId);
+    if (!project.workingDirectory || isInboxProject(project) || !(await readGitStatus(project.workingDirectory)).isRepo) {
+      throw new Error("Attach the project's Git folder before working on a pull request.");
+    }
+    const head = input.headRefName ? parseGitRefName(input.headRefName) : undefined;
+    const fetched = await fetchPullRequest(project.workingDirectory, input.number, head);
+    if (!fetched.ok) throw new Error(fetched.detail);
+    const prefixed = applyBranchPrefix(this.settings.branchPrefix ?? "capsule", `pr-${input.number}`);
+    const title = `#${input.number} ${input.title}`.trim().slice(0, 120);
+    const base = { projectId: project.id, title, mode: "code" as const, permissionProfile: this.settings.defaultPermission };
+    let detail: string;
+    let session: Session;
+    if (input.target === "local") {
+      const branch = fetched.upstream && head ? head : prefixed;
+      const checkout = await checkoutPullRequestLocally(project.workingDirectory, fetched, branch);
+      if (!checkout.ok) throw new Error(checkout.detail);
+      detail = checkout.detail;
+      session = await this.createSession({ ...base, workspaceMode: "local" });
+    } else {
+      // The head branch's own name, when it is free, so a push updates the
+      // pull request; a fork's head, or a name already in use, gets its own.
+      const own = fetched.upstream && head && (await availableBranchName(project.workingDirectory, head)) === head;
+      const branch = own ? head : await availableBranchName(project.workingDirectory, prefixed);
+      session = await this.createSession({ ...base, workspaceMode: "worktree" }, {
+        baseRef: fetched.ref,
+        branch,
+        ...(own ? { upstream: fetched.upstream } : {}),
+      });
+      if (session.workspaceMode !== "worktree") throw new Error("Could not create a worktree for this pull request.");
+      detail = `Checked out #${input.number} into ${branch}${own ? `, tracking ${fetched.upstream}` : ""}.`;
+    }
+    this.events.emit("state", { command: "sessions-updated" });
+    return { session, draft: pullRequestDraft(input), detail };
   }
 
   pinSession(id: string, pinned: boolean): Session {
@@ -3799,7 +3885,7 @@ export class CapsuleEngine {
     return this.requireSession(result.session.id);
   }
 
-  private async attachSessionWorktree(session: Session, project: Project): Promise<void> {
+  private async attachSessionWorktree(session: Session, project: Project, start: WorktreeStart = {}): Promise<void> {
     if (!project.workingDirectory) throw new Error("Choose a project folder before using a worktree.");
     const slug = session.title
       .toLowerCase()
@@ -3807,12 +3893,17 @@ export class CapsuleEngine {
       .replace(/^-+|-+$/g, "")
       .slice(0, 36) || "conversation";
     const suffix = session.id.replace(/[^a-zA-Z0-9]/g, "").slice(-8).toLowerCase();
-    const branch = applyBranchPrefix(this.settings.branchPrefix ?? "capsule", `${slug}-${suffix}`);
+    const branch = start.branch ?? applyBranchPrefix(this.settings.branchPrefix ?? "capsule", `${slug}-${suffix}`);
     const destination = path.join(worktreesDirectory(this.settings.worktreesDirectory, this.options.userDataDir), project.id, session.id);
-    const result = await createWorktree(project.workingDirectory, destination, branch);
+    const baseRef = start.baseRef ?? parseGitRefName(session.worktreeBaseRef ?? project.defaultWorktreeBaseRef);
+    const result = await createWorktree(project.workingDirectory, destination, branch, {
+      ...(baseRef ? { baseRef } : {}),
+      ...(start.upstream ? { upstream: start.upstream } : {}),
+    });
     if (!result.ok || !result.path || !result.branch) throw new Error(result.detail);
     session.workingDirectory = result.path;
     session.worktreeBranch = result.branch;
+    session.worktreeBaseRef = result.baseRef;
     session.workspaceMode = "worktree";
     this.log(`Created worktree ${result.branch} for ${session.title}`);
   }

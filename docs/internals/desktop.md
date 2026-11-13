@@ -351,6 +351,40 @@ Helpers: `projectFolderList`, `addFolderToProject`, `removeFolderFromProject`, `
   Switching modes is allowed only before messages, runs, or a live harness.
   Clean worktrees are removed with their conversation; dirty worktrees are
   retained and named in the engine log.
+- **Worktree base.** `createWorktree(repo, dest, branch, { baseRef, upstream })`
+  in `@capsule/filesystem` resolves the base, then runs `git worktree add
+  --no-track -b <branch> <dest> <commit>` on the resolved commit, so the remote
+  default never becomes the branch's upstream. The default is
+  `origin/HEAD`, else `origin/main` or `origin/master` when present, else
+  `HEAD`. A remote-tracking base is fetched with a refspec
+  (`+refs/heads/<b>:refs/remotes/<r>/<b>`, 15 s timeout) unless this process
+  fetched it in the last 5 minutes; a failed fetch falls back to the local copy
+  and the result's detail says so. Refs from the renderer pass
+  `parseGitRefName` (`@capsule/shared`, check-ref-format rules minus revision
+  syntax) at the IPC boundary. `sessions.worktree_base_ref` records the base
+  and `projects.default_worktree_base_ref` the project choice (schema v130,
+  null = default).
+- `listWorktreeBases` (read channel) returns the default, `origin` presence,
+  the current branch and up to 80 local and remote branches by commit date.
+  It never fetches. `setSessionWorktreeBase` (write) runs `git reset --keep` in
+  an empty thread's worktree, refused when the tree is dirty or the branch has
+  commits no other branch or remote has. The composer shows **from <base>**
+  (a searchable `MenuSelect`) only for a worktree thread with no messages and
+  no active run, and not on a paired viewer. The project page has a
+  **Worktree base** row using the same picker with "" meaning follow the
+  default. Worktree setup is Capsule's, so direct and Gateway threads differ
+  only in who later runs the agent in that folder.
+- **Pull request threads.** `startPullRequestThread` (write) fetches
+  `+refs/pull/<n>/head:refs/capsule/pull/<n>` from `origin`, then fetches the
+  head branch; if `origin/<head>` is the same commit the PR is same-repository
+  and the branch is named `<head>` with that upstream (when the name is free),
+  otherwise `<prefix>/pr-<n>` (`-2`, `-3` when taken) with none. Worktree target
+  creates the session through `createSession` with that base and branch; local
+  target refuses a dirty tree, switches to an existing branch of the same name
+  when no worktree holds it, else creates one. The thread opens with
+  `pullRequestDraft` as its draft. Entry points are the PR list row (hover
+  **Work on this**) and the detail **···** menu, both hidden when
+  `api.isDesktop === false`. `gh` is not used for the checkout.
 
 ---
 
@@ -2033,6 +2067,25 @@ than a day are skipped.
 
 **Development.** `CAPSULE_MOCK_RUNTIME=1` runs a built app on the mock runtime
 against a throwaway profile.
+## Worktree base and pull request threads: decisions
+
+- The worktree is still created when the thread is, so the composer picker
+  moves an existing, empty worktree (`reset --keep`) instead of deferring
+  creation. Deferring would have changed when setup actions run and what the
+  Files panel shows for a new thread.
+- Staleness is per ref and in memory, not `FETCH_HEAD` age: a fetch of one
+  branch says nothing about another. The first worktree after launch always
+  fetches.
+- The default falls back to `origin/main` or `origin/master` when `origin/HEAD`
+  was never set (a remote added with `git remote add`). Only `origin` is
+  consulted; other remotes appear in the list but never become the default.
+- Same-repository detection compares commits rather than asking the GitHub CLI,
+  so the checkout path needs only Git. A fork head is fetched from the base
+  repository’s `refs/pull/<n>/head`, which needs no access to the fork.
+- PR heads land under `refs/capsule/pull/`, beside checkpoints, so they never
+  appear in branch lists or the base picker.
+- Success opens the new thread with its draft and a success toast naming the
+  branch; the dialog shows failures inline and keeps the choice so the user can switch target and retry.
 
 ## Open in
 

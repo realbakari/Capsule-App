@@ -358,4 +358,13 @@ export const MIGRATIONS: Array<{ version: number; sql: string; }> = [
       UPDATE sessions SET last_viewed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now');
     `,
   },
+  {
+    version: 130,
+    sql: `
+      -- What a worktree conversation's branch started from, and a project's
+      -- choice for new ones. Null means the remote default branch, else HEAD.
+      ALTER TABLE sessions ADD COLUMN worktree_base_ref TEXT;
+      ALTER TABLE projects ADD COLUMN default_worktree_base_ref TEXT;
+    `,
+  },
 ];

@@ -1,14 +1,17 @@
 import { useMemo, useState } from "react";
 import type { GitPullRequest } from "@capsule/shared";
 import { visiblePullRequests, type PullRequestSort } from "../../lib/pull-requests";
-import { RefreshIcon, SearchIcon } from "./icons";
+import { GitBranchIcon, RefreshIcon, SearchIcon } from "./icons";
+import "../worktree-base/worktree-base.css";
 
-export function PullRequestList({ items, loading, error, onRefresh, onSelect }: {
+export function PullRequestList({ items, loading, error, onRefresh, onSelect, onWork }: {
   items?: GitPullRequest[];
   loading: boolean;
   error?: string;
   onRefresh: () => void;
   onSelect: (item: GitPullRequest) => void;
+  /** Check the pull request out and open a thread on it. Absent on a read-only viewer. */
+  onWork?: (item: GitPullRequest) => void;
 }) {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<PullRequestSort>("updated");
@@ -35,7 +38,8 @@ export function PullRequestList({ items, loading, error, onRefresh, onSelect }: 
       {!loading && items?.length === 0 && !error ? <p className="faint">No open pull requests were found for this repository.</p> : null}
       {items && items.length > 0 && shown.length === 0 ? <p className="faint">No loaded pull requests match this filter.</p> : null}
       {shown.map((item) => (
-        <button className="panel-pr-row" type="button" key={item.number} onClick={() => onSelect(item)}>
+        <div className="pr-row-wrap" key={item.number}>
+        <button className="panel-pr-row" type="button" onClick={() => onSelect(item)}>
           <span className="panel-pr-number">#{item.number}</span>
           <span className="panel-pr-copy">
             <b>{item.title}</b>
@@ -67,6 +71,12 @@ export function PullRequestList({ items, loading, error, onRefresh, onSelect }: 
           </span>
           ) : null}
         </button>
+        {onWork ? (
+          <button className="chip pr-row-work" type="button" title={`Check out #${item.number} and start a thread on it`} onClick={() => onWork(item)}>
+            <GitBranchIcon size={12} /> Work on this
+          </button>
+        ) : null}
+        </div>
       ))}
       {items && items.length >= 50 ? <p className="faint">Showing the first 50 open pull requests. Filters apply to these results.</p> : null}
     </section>

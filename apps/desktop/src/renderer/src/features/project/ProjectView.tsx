@@ -8,6 +8,7 @@ import { formatProjectRoot } from "../../lib/paths";
 import { useScopedState } from "../../lib/scoped-state";
 import { AgentGlyph } from "../shell/AgentGlyph";
 import { MenuSelect } from "../shell/MenuSelect";
+import { WorktreeBasePicker } from "../worktree-base/WorktreeBasePicker";
 import { SettingRow } from "../settings/controls";
 import { ProjectActionDialog } from "../shell/ProjectActionDialog";
 import { CopyIcon, FolderIcon, PlusIcon, TerminalIcon, TrashIcon } from "../shell/icons";
@@ -203,6 +204,24 @@ export function ProjectView() {
               <option value="worktree">An isolated worktree</option>
             </select>
           </SettingRow>
+          {project.workingDirectory ? (
+            <SettingRow
+              label="Worktree base"
+              hint={
+                project.defaultWorktreeBaseRef
+                  ? `New worktree conversations start from ${project.defaultWorktreeBaseRef}. Each one can still pick another before its first message.`
+                  : "New worktree conversations start from the remote default branch, or this folder's current commit when there is no remote."
+              }
+            >
+              <WorktreeBasePicker
+                projectId={project.id}
+                value={project.defaultWorktreeBaseRef ?? ""}
+                followDefault
+                unavailableReason={api.isDesktop === false ? "Change this on the computer running Capsule." : undefined}
+                onChange={(ref) => patch({ defaultWorktreeBaseRef: ref || null })}
+              />
+            </SettingRow>
+          ) : null}
         </div>
 
         <div className="card">
