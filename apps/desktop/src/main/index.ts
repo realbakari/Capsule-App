@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 /** Where releases are published. */
 const UPDATE_REPO = "realbakari/Capsule-App";
 import {
+  bool,
   id,
   num,
   optBool,
@@ -85,6 +86,7 @@ import { startRemoteServer, type RemoteServerHandle } from "@capsule/remote";
 import { startPty, TerminalOutputFlow, type PtySession } from "@capsule/terminal";
 import { popupContextMenu } from "./popup-menu";
 import { remoteReachFromArgs } from "./remote-args";
+import { configFileTarget, setConfigValueInput } from "./config-args";
 import { RemoteAccessLifecycle } from "./remote-access";
 import {
   DEFAULT_WINDOW_SIZE,
@@ -1726,6 +1728,20 @@ function registerIpc(): void {
     await applyDesktopSettings(next);
     return next;
   });
+  // A change any of these makes reaches the desktop through the engine's
+  // "config-updated" event, the same way a hand edit to a file does.
+  handleArgs(IPC_CHANNELS.configGetEffective, [optStr], (projectId?: string) => requireEngine().getConfigSnapshot(projectId));
+  handleArgs(IPC_CHANNELS.configGetDiagnostics, [optStr], (projectId?: string) => requireEngine().getConfigDiagnostics(projectId));
+  handleArgs(IPC_CHANNELS.configSetValue, [setConfigValueInput], (input: import("@capsule/shared").SetConfigValueInput) =>
+    requireEngine().setConfigValue(input));
+  handleArgs(IPC_CHANNELS.configOpenFile, [configFileTarget], async (target: import("@capsule/shared").ConfigFileTarget) => {
+    const location = requireEngine().configFilePath(target);
+    const failure = await shell.openPath(location);
+    if (failure) throw new Error(failure);
+    return location;
+  });
+  handleArgs(IPC_CHANNELS.configTrust, [id, bool], (projectId: string, trusted: boolean) => requireEngine().trustProject(projectId, trusted));
+  handleArgs(IPC_CHANNELS.configReload, [optStr], (projectId?: string) => requireEngine().reloadConfig(projectId));
   /*
    * Both routes, one answer. The updater knows whether this build can replace
    * itself; the GitHub check knows what the latest release is even when that
@@ -1921,7 +1937,10 @@ function bindEngineEvents(): void {
   });
   engine.events.on("run-event", (event) => send(IPC_EVENTS.run, event));
   engine.events.on("message", (message) => send(IPC_EVENTS.message, message));
-  engine.events.on("state", (payload) => send(IPC_EVENTS.state, payload));
+  engine.events.on("state", (payload: { command?: string }) => {
+    send(IPC_EVENTS.state, payload);
+    if (payload.command === "config-updated") void applyDesktopSettings(engine?.getSettings());
+  });
   engine.events.on("approval", (approval: ApprovalRequest) => {
     send(IPC_EVENTS.approval, approval);
     if (approval.status === "pending") notifyApproval(approval);

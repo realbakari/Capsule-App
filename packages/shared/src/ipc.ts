@@ -184,6 +184,13 @@ export const IPC_CHANNELS = {
   getFollowUps: "capsule:getFollowUps",
   updateFollowUps: "capsule:updateFollowUps",
   fetchSkillDetail: "capsule:fetchSkillDetail",
+  /* Settings files: the effective values with where each came from, and writes to one layer. */
+  configGetEffective: "capsule:config:getEffective",
+  configGetDiagnostics: "capsule:config:getDiagnostics",
+  configSetValue: "capsule:config:setValue",
+  configOpenFile: "capsule:config:openFile",
+  configTrust: "capsule:config:trust",
+  configReload: "capsule:config:reload",
 } as const;
 
 export const IPC_EVENTS = {

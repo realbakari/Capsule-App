@@ -153,6 +153,19 @@ const api = {
   getSettings: () => ipcRenderer.invoke(IPC_CHANNELS.getSettings),
   updateSettings: (patch: unknown) => ipcRenderer.invoke(IPC_CHANNELS.updateSettings, patch),
   getDiagnostics: () => ipcRenderer.invoke(IPC_CHANNELS.getDiagnostics),
+  configGetEffective: (projectId?: string): Promise<import("@capsule/shared").ConfigSnapshot> =>
+    ipcRenderer.invoke(IPC_CHANNELS.configGetEffective, projectId),
+  configGetDiagnostics: (projectId?: string): Promise<import("@capsule/shared").ConfigDiagnostics> =>
+    ipcRenderer.invoke(IPC_CHANNELS.configGetDiagnostics, projectId),
+  configSetValue: (input: import("@capsule/shared").SetConfigValueInput): Promise<import("@capsule/shared").ConfigSnapshot> =>
+    ipcRenderer.invoke(IPC_CHANNELS.configSetValue, input),
+  /** Creates the file or folder from a template when missing, opens it, and returns its path. */
+  configOpenFile: (target: import("@capsule/shared").ConfigFileTarget): Promise<string> =>
+    ipcRenderer.invoke(IPC_CHANNELS.configOpenFile, target),
+  configTrust: (projectId: string, trusted: boolean): Promise<import("@capsule/shared").ConfigSnapshot> =>
+    ipcRenderer.invoke(IPC_CHANNELS.configTrust, projectId, trusted),
+  configReload: (projectId?: string): Promise<import("@capsule/shared").ConfigSnapshot> =>
+    ipcRenderer.invoke(IPC_CHANNELS.configReload, projectId),
   search: (query: string) => ipcRenderer.invoke(IPC_CHANNELS.search, query),
   updateProject: (id: string, patch: unknown) =>
     ipcRenderer.invoke(IPC_CHANNELS.updateProject, id, patch),
