@@ -102,7 +102,10 @@ export class SimulatorBridge {
   private build?: Promise<string>;
   private buildSince?: number;
   private buildFailure?: string;
+  private buildChild?: ChildProcess;
   private readonly sessions = new Map<string, Session>();
+  /* Starts still awaiting the build or a port, so a second caller joins instead of spawning another runner. */
+  private readonly starting = new Map<string, Promise<{ width: number; height: number }>>();
   private support?: Promise<{ available: boolean; detail?: string }>;
 
   constructor(private readonly options: BridgeOptions) {}
@@ -182,10 +185,12 @@ export class SimulatorBridge {
             "build-for-testing", "-project", path.join(this.options.projectDir, `${SCHEME}.xcodeproj`), "-scheme", SCHEME,
             "-destination", "generic/platform=iOS Simulator", "-derivedDataPath", derived, "CODE_SIGNING_ALLOWED=NO", "-quiet",
           ], { stdio: ["ignore", logFile.fd, logFile.fd] });
+          this.buildChild = child;
           const timer = setTimeout(() => { stopChild(child, "SIGKILL"); reject(new Error("Building the touch bridge took too long.")); }, BUILD_TIMEOUT_MS);
           child.on("error", (error) => { clearTimeout(timer); reject(error); });
           child.on("exit", (code) => {
             clearTimeout(timer);
+            if (this.buildChild === child) this.buildChild = undefined;
             if (code === 0) resolve();
             else reject(new Error(`xcodebuild exited with ${code}.`));
           });
@@ -221,6 +226,19 @@ export class SimulatorBridge {
     const live = this.sessions.get(udid);
     if (live && !live.failure) return live.ready;
     if (live) this.sessions.delete(udid);
+    /*
+     * The session is only registered after the build and a free port, which
+     * can take minutes. Two callers in that window (the panel's Connect and an
+     * agent's tap) each spawned a runner; the first was orphaned past quit.
+     */
+    const pending = this.starting.get(udid);
+    if (pending) return pending;
+    const start = this.start(udid).finally(() => this.starting.delete(udid));
+    this.starting.set(udid, start);
+    return start;
+  }
+
+  private async start(udid: string): Promise<{ width: number; height: number }> {
     const testRun = await this.ensureBuilt();
     const derived = path.dirname(path.dirname(path.dirname(testRun)));
     const port = await freePort();
@@ -286,5 +304,7 @@ export class SimulatorBridge {
 
   stopAll(): void {
     for (const udid of [...this.sessions.keys()]) this.stop(udid);
+    // A first-use build is minutes long and was otherwise left running past quit.
+    if (this.buildChild) stopChild(this.buildChild, "SIGKILL");
   }
 }

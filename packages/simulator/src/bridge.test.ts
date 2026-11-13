@@ -21,6 +21,25 @@ describe("SimulatorBridge", () => {
     }
   });
 
+  it("starts one runner per device when two callers ask during the build", async () => {
+    const bridge = new SimulatorBridge({ projectDir: "/nowhere", cacheDir: "/nowhere" });
+    let release!: (value: string) => void;
+    let builds = 0;
+    const internals = bridge as unknown as { ensureBuilt: () => Promise<string>; start: (udid: string) => Promise<unknown> };
+    internals.ensureBuilt = () => { builds += 1; return new Promise<string>((resolve) => { release = resolve; }); };
+    let starts = 0;
+    const realStart = internals.start.bind(bridge);
+    internals.start = (udid: string) => { starts += 1; return realStart(udid); };
+    const udid = "1F0BAB41-6C6A-48F4-8D60-A0FA315A06B7";
+    const first = bridge.ensure(udid);
+    const second = bridge.ensure(udid);
+    expect(starts).toBe(1);
+    expect(builds).toBe(1);
+    release("/nowhere/a/b/c/run.xctestrun");
+    await expect(first).rejects.toThrow();
+    await expect(second).rejects.toThrow();
+  });
+
   it("stops nothing it did not start", () => {
     const bridge = new SimulatorBridge({ projectDir: "/nowhere", cacheDir: "/nowhere" });
     expect(() => bridge.stop("1F0BAB41-6C6A-48F4-8D60-A0FA315A06B7")).not.toThrow();
