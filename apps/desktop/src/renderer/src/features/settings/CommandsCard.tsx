@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { CommandSourceId, ConfigFileTarget } from "@capsule/shared";
-import { COMMAND_SOURCE_LABELS, useCommandList } from "../../lib/commands";
+import { COMMAND_SOURCE_LABELS } from "../../lib/commands";
 import { formatUserError } from "../../lib/errors";
 import { formatProjectRoot } from "../../lib/paths";
 import { useWorkspace } from "../../lib/workspace";
@@ -16,8 +16,8 @@ const SHELL_LABELS = { none: undefined, runs: "runs shell", "needs-trust": "shel
 
 /** Capsule's own commands: where they come from, what is wrong with them, and which other folders to read. */
 export function CommandsCard() {
-  const { api, project, projectId } = useWorkspace();
-  const { list, error, reload } = useCommandList(api, projectId);
+  const { api, project, projectId, commands } = useWorkspace();
+  const list = commands?.list;
   const [failure, setFailure] = useState<string>();
   const desktop = api.isDesktop === true;
   const home = api.homeDir || undefined;
@@ -33,7 +33,7 @@ export function CommandsCard() {
     run(async () => {
       if (!desktop) throw new Error("Change this on the desktop.");
       await api.configSetValue({ key: "commandSources", value: { ...list?.sources, [id]: on }, scope: "user" });
-      reload();
+      commands?.reload();
     });
 
   return (
@@ -50,7 +50,7 @@ export function CommandsCard() {
           Open {project?.name ?? "project"} commands folder
         </button>
       </div>
-      {(error || failure) && <p className="commands-card-error" role="alert">{failure ?? error}</p>}
+      {(commands?.error || failure) && <p className="commands-card-error" role="alert">{failure ?? commands?.error}</p>}
       {list && list.commands.length === 0 && (
         <div className="commands-card-empty">
           <p>No commands yet. Add <code>review.md</code> to your commands folder, then type <code>/review 123</code>:</p>

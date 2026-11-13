@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CommandList, CommandSource, CommandSummary } from "@capsule/shared";
 import { formatUserError } from "./errors";
 
@@ -22,29 +22,35 @@ export function commandDetail(command: CommandSummary): string | undefined {
 
 type CommandApi = Pick<typeof window.capsule, "commandsList" | "on">;
 
+export interface CommandListState {
+  list?: CommandList;
+  error?: string;
+  reload: () => void;
+}
+
 /**
  * Capsule commands for a project, read again whenever configuration changes:
  * an edited command file, a source turned on, a folder trusted.
  */
-export function useCommandList(api: CommandApi, projectId: string | undefined, enabled = true): { list?: CommandList; error?: string; reload: () => void } {
+export function useCommandList(api: CommandApi, projectId: string | undefined): CommandListState {
   const [version, setVersion] = useState(0);
   const [state, setState] = useState<{ projectId?: string; list?: CommandList; error?: string }>();
   useEffect(() => {
-    if (!enabled) return;
     const off = api.on("state", (payload) => {
       if ((payload as { command?: string }).command === "config-updated") setVersion((value) => value + 1);
     });
     return () => { off(); };
-  }, [api, enabled]);
+  }, [api]);
   useEffect(() => {
-    if (!enabled) return;
     let current = true;
-    void api.commandsList(projectId)
+    // Read inside a promise, so a call that throws becomes the error state like one that rejects.
+    void Promise.resolve().then(() => api.commandsList(projectId))
       .then((list) => { if (current) setState({ projectId, list }); })
       .catch((error: unknown) => { if (current) setState({ projectId, error: formatUserError(error) }); });
     return () => { current = false; };
-  }, [api, projectId, enabled, version]);
+  }, [api, projectId, version]);
+  const reload = useCallback(() => setVersion((value) => value + 1), []);
   // A reread keeps showing the list it replaces; another project's list is never shown.
   const mine = state?.projectId === projectId ? state : undefined;
-  return { list: mine?.list, error: mine?.error, reload: () => setVersion((value) => value + 1) };
+  return useMemo(() => ({ list: mine?.list, error: mine?.error, reload }), [mine?.list, mine?.error, reload]);
 }

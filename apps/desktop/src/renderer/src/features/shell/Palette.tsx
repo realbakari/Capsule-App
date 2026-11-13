@@ -5,16 +5,15 @@ import { formatUserError } from "../../lib/errors";
 import { SHOW_SHORTCUTS_EVENT } from "../../lib/shortcuts-event";
 import { ArrowLeftIcon, ArrowRightIcon, CpuIcon, FolderIcon, GlobeIcon, HistoryIcon, InfoIcon, RefreshIcon, KeyboardIcon, LinkIcon, MessageSquareIcon, PlusIcon, SearchIcon, SettingsIcon, ShieldIcon, SmartphoneIcon, SmilePlusIcon, SparkIcon, TerminalIcon } from "./icons";
 import { SearchDialog, type SearchDialogItem } from "./SearchDialog";
-import { commandDetail, useCommandList } from "../../lib/commands";
+import { commandDetail } from "../../lib/commands";
 
 export function Palette() {
   const {
     api, palette, paletteQuery, setPalette, setPaletteQuery, setView, createTask, canGoBack, canGoForward, goBack, goForward, setThreadFind,
     createProjectFromFolder, pickProjectDirectory, pickFilesToMention, projects,
     sessions, session, setProjectId, setAboutOpen, openInspector, setAgentCommandsOpen,
-    project, terminalOpen, setTerminalOpen, projectId, setDraft,
+    project, terminalOpen, setTerminalOpen, setDraft, commands,
   } = useWorkspace();
-  const commandList = useCommandList(api, projectId, palette);
   const query = paletteQuery.trim().toLowerCase();
   const [retry, setRetry] = useState(0);
   const [search, setSearch] = useState<{ query: string; hits?: SearchResults; error?: string }>();
@@ -66,7 +65,7 @@ export function Palette() {
       { id: "about", label: "About Capsule", group: "Workspace", icon: <InfoIcon size={15} />, onSelect: () => setAboutOpen(true) },
     ].filter((item) => item.label.toLowerCase().includes(query));
     /* A command takes arguments, so choosing one puts it in the message box rather than sending it. */
-    actions.push(...(commandList.list?.commands ?? []).filter((command) => `run command: /${command.name}`.includes(query)).map((command) => ({
+    actions.push(...(commands?.list?.commands ?? []).filter((command) => `run command: /${command.name}`.includes(query)).map((command) => ({
       id: `command-${command.name}`, label: `Run command: /${command.name}`, detail: commandDetail(command), group: "Commands",
       icon: <TerminalIcon size={15} />, disabledReason: api.isDesktop === false && api.remoteMode !== "control" ? "Read only on this device." : undefined,
       onSelect: () => { setView("chat"); setDraft(`/${command.name} `); },
@@ -88,7 +87,7 @@ export function Palette() {
       onSelect: () => { setProjectId(message.projectId, message.sessionId); setView("chat"); },
     }));
     return [...actions, ...projectItems, ...threads, ...messages];
-  }, [api, query, currentSearch, commandList.list, setDraft, projects, sessions, session, project, terminalOpen, setTerminalOpen, createTask, createProjectFromFolder, pickProjectDirectory, pickFilesToMention, setView, setProjectId, setAboutOpen, openInspector, setAgentCommandsOpen, canGoBack, canGoForward, goBack, goForward, setThreadFind]);
+  }, [api, query, currentSearch, commands, setDraft, projects, sessions, session, project, terminalOpen, setTerminalOpen, createTask, createProjectFromFolder, pickProjectDirectory, pickFilesToMention, setView, setProjectId, setAboutOpen, openInspector, setAgentCommandsOpen, canGoBack, canGoForward, goBack, goForward, setThreadFind]);
 
   if (!palette) return null;
   return <SearchDialog title="Search workspace" placeholder="Search commands, projects, conversations…" query={paletteQuery}

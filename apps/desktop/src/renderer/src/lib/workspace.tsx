@@ -10,6 +10,7 @@ import { SteeringDrafts } from "./steering-drafts";
 import { DraftRecovery } from "./draft-recovery";
 import { fileMentionTarget, parentFolder } from "./file-context";
 import { activityFromEvents, type RunActivity } from "./activity";
+import { useCommandList, type CommandListState } from "./commands";
 import {
   createContext,
   useCallback,
@@ -265,6 +266,8 @@ export interface WorkspaceValue {
   runAgentCommand: (name: string, input?: string) => Promise<boolean>;
   agentCommandsOpen: boolean;
   setAgentCommandsOpen: (open: boolean) => void;
+  /** Capsule commands for the selected project, for the `/` menu, the palette and Settings. */
+  commands: CommandListState;
   createProject: () => Promise<void>;
   git?: GitStatus;
   files: FileEntry[];
@@ -2308,9 +2311,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     setView("chat");
   };
 
+  const commands = useCommandList(api, projectId);
+
   const value = useMemo<WorkspaceValue>(
     () => ({
       api,
+      commands,
       view,
       setView,
       settingsTab,
@@ -2523,6 +2529,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     }),
     [
       api,
+      commands,
       view,
       stoppingRunIds,
       status,

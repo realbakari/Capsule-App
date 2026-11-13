@@ -30,7 +30,7 @@ import { QueuedPrompts } from "./QueuedPrompts";
 import { recallablePrompts } from "../../lib/prompt-queue";
 import { searchComposerSkills, skillSource } from "../../lib/composer-skills";
 import { composerPlaceholder, shouldRestComposer } from "../../lib/composer-rest";
-import { COMMAND_SOURCE_LABELS, commandDetail, commandInDraft, useCommandList } from "../../lib/commands";
+import { COMMAND_SOURCE_LABELS, commandDetail, commandInDraft } from "../../lib/commands";
 import { tasksFromRunEvents } from "@capsule/shared";
 
 const SUGGESTIONS = [
@@ -292,8 +292,7 @@ export function Composer({
     return () => { cancelled = true; window.clearTimeout(timer); };
   }, [folderPath, projectId, searchKind, searchQuery, menuOpen]);
 
-  const commandList = useCommandList(api, projectId);
-  const commands = commandList.list?.commands;
+  const commands = workspace.commands?.list?.commands;
   /* Capsule's own commands lead the menu; the rest sit under one heading once there are any. */
   const slashItems = useMemo<SuggestItem[]>(
     () => {
