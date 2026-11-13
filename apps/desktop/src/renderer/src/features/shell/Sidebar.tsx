@@ -43,6 +43,7 @@ import { AddProjectPicker, type ProjectSourceId } from "./AddProjectPicker";
 import { CloneRepositoryDialog } from "./CloneRepositoryDialog";
 import { SidebarToggle } from "./SidebarControl";
 import { SidebarThreadPreview } from "./SidebarThreadPreview";
+import { useFolderDrop } from "./useFolderDrop";
 import { AgentGlyph } from "./AgentGlyph";
 import {
   ArchiveIcon,
@@ -152,6 +153,7 @@ export function Sidebar() {
   } = useWorkspace();
   const [menu, setMenu] = useState<MenuState>();
   const sessionActions = useSessionActions();
+  const folderDrop = useFolderDrop();
   const triage = useThreadTriage();
   const [openShelves, setOpenShelves] = useState<Set<string>>(new Set());
   const toggleShelf = (key: string) => setOpenShelves((current) => {
@@ -631,7 +633,8 @@ export function Sidebar() {
   }
 
   return (
-    <aside {...focusProps} className="sidebar" data-testid="app-sidebar">
+    <aside {...focusProps} {...folderDrop.handlers} className={`sidebar${folderDrop.over ? " folder-drop-over" : ""}`} data-testid="app-sidebar">
+      {folderDrop.over && <div className="sidebar-drop-hint" aria-hidden><FolderPlusIcon size={18} />Drop a folder to add it as a project</div>}
       <div className="sidebar-header">
         <SidebarToggle />
         <span className="brand">Capsule</span>
