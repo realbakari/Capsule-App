@@ -2231,7 +2231,9 @@ async function startEngineOnce(): Promise<void> {
     userDataDir: userDataDir(),
     capsuleVersion: app.getVersion(),
     clientVersion: app.getVersion(),
-    ...(process.env.CAPSULE_SMOKE_TEST ? { autoConnect: false } : {}),
+    // CAPSULE_MOCK_RUNTIME=1 runs a development profile on the mock runtime, so
+    // turns can be driven without a Gateway or an installed agent.
+    ...(process.env.CAPSULE_SMOKE_TEST || process.env.CAPSULE_MOCK_RUNTIME === "1" ? { autoConnect: false } : {}),
     // The Gateway operator token and the skills.sh token; the settings screen
     // calls this the Keychain and now it is one.
     secretEncryptor: {
