@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import { pathToFileURL } from "node:url";
 
 /** Where releases are published. */
@@ -87,6 +88,7 @@ import { startPty, TerminalOutputFlow, type PtySession } from "@capsule/terminal
 import { popupContextMenu } from "./popup-menu";
 import { remoteReachFromArgs } from "./remote-args";
 import { configFileTarget, setConfigValueInput } from "./config-args";
+import { configDirFor, relaunchArgs, safeModeFromArgs } from "./launch-config";
 import { RemoteAccessLifecycle } from "./remote-access";
 import {
   DEFAULT_WINDOW_SIZE,
@@ -100,6 +102,8 @@ import { Shutdown } from "./shutdown";
 import { Startup } from "./startup";
 
 const desktopWindow = new WindowReference<BrowserWindow>();
+/** Started with built-in defaults only: no settings file, command, hook or theme loads. */
+const safeMode = safeModeFromArgs(process.argv, process.env);
 let tray: Tray | undefined;
 let engine: CapsuleEngine | undefined;
 let analytics: ProductAnalytics | undefined;
@@ -1964,6 +1968,10 @@ function applyLaunchAtLogin(enabled: boolean): void {
 function createMenu(): void {
   const openSettings = () => send(IPC_EVENTS.state, { command: "settings" });
   const openAbout = () => send(IPC_EVENTS.state, { command: "about" });
+  const restartItem: Electron.MenuItemConstructorOptions = {
+    label: safeMode ? "Restart Normally" : "Restart Without Customizations",
+    click: () => restartWithSafeMode(!safeMode),
+  };
   const mac = process.platform === "darwin";
   const template: Electron.MenuItemConstructorOptions[] = [
     ...(mac
@@ -1981,6 +1989,7 @@ function createMenu(): void {
                 accelerator: "CommandOrControl+,",
                 click: openSettings,
               },
+              restartItem,
               { type: "separator" as const },
               { role: "services" as const },
               { type: "separator" as const },
@@ -2024,6 +2033,7 @@ function createMenu(): void {
                 accelerator: "CommandOrControl+,",
                 click: openSettings,
               },
+              restartItem,
             ]
           : []),
         { role: "close" },
@@ -2197,6 +2207,13 @@ async function startEngineOnce(): Promise<void> {
     capsuleVersion: app.getVersion(),
     clientVersion: app.getVersion(),
     ...(process.env.CAPSULE_SMOKE_TEST ? { autoConnect: false } : {}),
+    configDir: configDirFor({
+      env: process.env,
+      home: os.homedir(),
+      userData: userDataDir(),
+      ownProfile: app.commandLine.hasSwitch("user-data-dir") || Boolean(process.env.CAPSULE_SMOKE_TEST),
+    }),
+    safeMode,
     // The Gateway operator token and the skills.sh token; the settings screen
     // calls this the Keychain and now it is one.
     secretEncryptor: {
@@ -2414,6 +2431,22 @@ app.on("window-all-closed", () => {
  * app is a dialog that teaches people to dismiss dialogs.
  */
 let quitConfirmed = false;
+/** Arguments for the instance that starts once this one has quit, if any. */
+let pendingRelaunch: string[] | undefined;
+
+/*
+ * Into or out of safe mode. The relaunch is registered only once quitting is
+ * settled, so choosing "Keep working" over running turns cancels it too.
+ */
+function restartWithSafeMode(on: boolean): void {
+  if (!on) delete process.env.CAPSULE_SAFE_MODE;
+  pendingRelaunch = relaunchArgs(process.argv, on);
+  app.quit();
+}
+
+app.on("will-quit", () => {
+  if (pendingRelaunch) app.relaunch({ args: pendingRelaunch });
+});
 const shutdown = new Shutdown(async () => {
   petVoice.cancel();
   // Startup may be opening the database or a server when Quit arrives. Stop
@@ -2455,7 +2488,10 @@ app.on("before-quit", (event) => {
       message: running === 1 ? "A turn is still running." : `${running} turns are still running.`,
       detail: "Quitting stops agents started directly by Capsule and disconnects from the Gateway. Gateway-hosted work may continue. Anything already written stays.",
     });
-    if (choice !== 0) return;
+    if (choice !== 0) {
+      pendingRelaunch = undefined;
+      return;
+    }
     quitConfirmed = true;
   }
   startup.cancel();
