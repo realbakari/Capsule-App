@@ -356,6 +356,15 @@ function flag(value: boolean | undefined, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
 }
 
+/** Command id to stored chord. Anything that is not a short string pair is dropped. */
+function normalizeKeybindings(value: unknown): Record<string, string> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[0].length <= 64 && entry[1].length <= 64)
+    .slice(0, 100);
+  return entries.length ? Object.fromEntries(entries) : undefined;
+}
+
 export function sanitizeFontName(value: string | undefined): string | undefined {
   const trimmed = value?.trim() ?? "";
   if (!trimmed || trimmed.length > 80) return undefined;
@@ -553,6 +562,7 @@ export function normalizeCapsuleSettings(input: Partial<CapsuleSettings> = {}): 
     ),
     commitInstructions: sanitizeGuidance(input.commitInstructions),
     prInstructions: sanitizeGuidance(input.prInstructions),
+    keybindings: normalizeKeybindings(input.keybindings),
     timeFormat: pick(input.timeFormat, TIME_FORMATS, DEFAULT_CAPSULE_SETTINGS.timeFormat),
     confirmDelete: flag(input.confirmDelete, DEFAULT_CAPSULE_SETTINGS.confirmDelete),
     confirmArchive: flag(input.confirmArchive, DEFAULT_CAPSULE_SETTINGS.confirmArchive),
