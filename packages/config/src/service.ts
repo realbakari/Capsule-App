@@ -92,7 +92,8 @@ interface Resolution {
 export class ConfigService {
   readonly paths: ConfigPaths;
   readonly safeMode: boolean;
-  private readonly defaults: CapsuleSettings;
+  /** The base every layer applies over; what Reset falls back to in the user file. */
+  readonly defaults: CapsuleSettings;
   private readonly lastGood: LastGoodStore;
   private readonly trustStore: TrustStore;
   private readonly listeners = new Set<() => void>();

@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { isDeepStrictEqual } from "node:util";
 import { checkRun } from "./run-verification.js";
 import { FolderActivity, foldersOverlap } from "./folder-activity.js";
 import type { VerificationResult } from "@capsule/shared";
@@ -181,6 +182,11 @@ import {
   MAX_PROVIDER_USAGE_SOURCES,
   type ProviderUsageSnapshot,
   type ProviderUsageSource,
+  SETTINGS_SCHEMA,
+  type ConfigDiagnostics,
+  type ConfigFileTarget,
+  type ConfigSnapshot,
+  type SetConfigValueInput,
 } from "@capsule/shared";
 import {
   DEFAULT_SKILLS,
@@ -200,6 +206,7 @@ import {
   type ManagedCommand,
 } from "@capsule/terminal";
 import { verifyContract } from "@capsule/verification";
+import { ConfigService, createTrustStore, migrateDatabaseSettings, SAFE_MODE_WRITE_ERROR } from "@capsule/config";
 import { commitWithSecrets, type SecretChange } from "./settings-secrets.js";
 import { createRelayCredentialStore } from "./relay-credentials.js";
 import {
@@ -235,7 +242,19 @@ export interface CapsuleEngineOptions {
    * used to do unconditionally.
    */
   secretEncryptor?: SecretEncryptor;
+  /**
+   * The user's settings folder. The desktop passes ~/.capsule; anything else
+   * gets a folder inside its own profile, so a test never reads a real one.
+   */
+  configDir?: string;
+  /** Start with built-in defaults and read no settings file. */
+  safeMode?: boolean;
 }
+
+/** SQLite setting holding `{ [folder]: trustedAt }` for trusted project folders. */
+const TRUSTED_FOLDERS_SETTING = "config.trustedFolders";
+/** SQLite setting recording when the settings row was exported to the user file. */
+const CONFIG_MIGRATED_SETTING = "config.migratedAt";
 
 export interface EngineState {
   projects: Project[];
@@ -308,6 +327,8 @@ export class CapsuleEngine {
   private folderActivity = new FolderActivity();
   private updateReserved = false;
   private settings: CapsuleSettings;
+  /** Settings files: the source of truth for preferences. */
+  readonly config: ConfigService;
   private settingsWrite: Promise<unknown> = Promise.resolve();
   private logs: string[] = [];
   private stopped = false;
@@ -367,6 +388,16 @@ export class CapsuleEngine {
     this.settings = normalizeCapsuleSettings({
       ...DEFAULT_CAPSULE_SETTINGS,
       gatewayUrl: options.gatewayUrl ?? defaultGatewayEndpoint().url,
+    });
+    this.config = new ConfigService({
+      userDir: options.configDir ?? path.join(options.userDataDir, "capsule-home"),
+      lastGoodDir: path.join(options.userDataDir, "config-last-good"),
+      trust: createTrustStore({
+        read: () => this.repos.getSetting(TRUSTED_FOLDERS_SETTING),
+        write: (value) => this.repos.setSetting(TRUSTED_FOLDERS_SETTING, value),
+      }),
+      safeMode: options.safeMode,
+      defaults: this.settings,
     });
     this.openclaw = this.createOpenClawAdapter();
     this.runtime = this.usingMock ? this.mock : this.openclaw;
@@ -458,6 +489,7 @@ export class CapsuleEngine {
     // promise, which surfaces as an unhandled rejection with no run to blame.
     this.stopped = true;
     this.followUps.stop();
+    this.config.close();
     const channelRoutesStopped = this.channelRoutes.stop();
     // Resolve approval records while the database is still open. Closing the
     // transport later cannot safely update those persisted requests.
@@ -872,7 +904,7 @@ export class CapsuleEngine {
           title,
           workspaceMode:
             !isInboxProject(project) &&
-              this.settings.defaultWorkspaceMode === "worktree" &&
+              this.projectSettings(project).defaultWorkspaceMode === "worktree" &&
               (await readGitStatus(project.workingDirectory)).isRepo
               ? "worktree"
               : "local",
@@ -895,7 +927,7 @@ export class CapsuleEngine {
     session.harnessId = harnessId;
     session.harnessState = "spawning";
     session.acpMode = input.mode ?? "persistent";
-    const permissionProfile = input.permissionProfile ?? this.settings.defaultPermission;
+    const permissionProfile = input.permissionProfile ?? this.projectSettings(project).defaultPermission;
     session.permissionProfile = permissionProfile;
     session.modelOverride = input.model;
     session.updatedAt = nowIso();
@@ -1662,9 +1694,16 @@ export class CapsuleEngine {
 
   async createSession(input: CreateSessionInput): Promise<Session> {
     const project = this.requireProject(input.projectId);
-    const agentId = input.agentId ?? project.defaultAgentId ?? agentIdForMode(input.mode ?? project.defaultMode);
+    const defaults = this.projectSettings(project);
+    // A settings file's agent is a default for a conversation started with
+    // no mode; a mode names its own agent.
+    const settingsAgent = !input.mode && defaults.defaultAgentId
+      && (isHarnessId(defaults.defaultAgentId) || this.repos.listAgents().some((agent) => agent.id === defaults.defaultAgentId))
+      ? defaults.defaultAgentId
+      : undefined;
+    const agentId = input.agentId ?? project.defaultAgentId ?? settingsAgent ?? agentIdForMode(input.mode ?? project.defaultMode);
     const requestedWorkspaceMode =
-      input.workspaceMode ?? project.defaultWorkspaceMode ?? this.settings.defaultWorkspaceMode;
+      input.workspaceMode ?? project.defaultWorkspaceMode ?? defaults.defaultWorkspaceMode;
     const workspaceMode =
       !isInboxProject(project) &&
         requestedWorkspaceMode === "worktree" &&
@@ -1672,7 +1711,7 @@ export class CapsuleEngine {
         ? "worktree"
         : "local";
     const session = createSessionRecord(project, { ...input, workspaceMode }, agentId);
-    session.permissionProfile = input.permissionProfile ?? this.settings.defaultPermission;
+    session.permissionProfile = input.permissionProfile ?? defaults.defaultPermission;
     if (isInboxProject(project) && !session.workingDirectory) {
       session.workingDirectory = allocateThreadFolder(
         ensureProjectlessFolder(this.projectlessRoot()),
@@ -2002,14 +2041,15 @@ export class CapsuleEngine {
       }
     }
 
+    const settings = this.projectSettings(project);
     const contract = buildContract({
       mode,
       prompt: runtimePrompt,
       workingDirectory: this.cwdFor(session, project),
       runId: run.id,
-      outputDetail: this.settings.outputDetail,
-      webAccess: this.settings.webAccess,
-      sandbox: this.settings.sandbox,
+      outputDetail: settings.outputDetail,
+      webAccess: settings.webAccess,
+      sandbox: settings.sandbox,
     });
     this.repos.insertContract(contract);
     run.contractId = contract.id;
@@ -2053,7 +2093,7 @@ export class CapsuleEngine {
       ...(session.permissionProfile
         ? { permissionProfile: session.permissionProfile as HarnessPermissionProfile }
         : {}),
-      content: applyAgentInstructionHints(runtimePrompt + skillInstruction, this.settings),
+      content: applyAgentInstructionHints(runtimePrompt + skillInstruction, settings),
       attachments,
       sessionId: this.usingMock ? session.id : (session.openclawSessionKey ?? session.id),
       agentId: this.usingMock ? agentId : undefined,
@@ -2526,8 +2566,12 @@ export class CapsuleEngine {
   }
 
   getSettings(): CapsuleSettings {
+    return this.masked(this.settings);
+  }
+
+  private masked(settings: CapsuleSettings): CapsuleSettings {
     return {
-      ...this.settings,
+      ...settings,
       gatewayToken: this.settings.gatewayToken ? TOKEN_PRESENT_MASK : undefined,
       skillsShToken: this.settings.skillsShToken ? TOKEN_PRESENT_MASK : undefined,
     };
@@ -2566,6 +2610,8 @@ export class CapsuleEngine {
   private async saveSettings(patch: Partial<CapsuleSettings>): Promise<CapsuleSettings> {
     if (this.stopped) throw new Error("Capsule is closing. Settings were not saved.");
     const { gatewayToken: _gatewayToken, skillsShToken: _skillsToken, ...rest } = patch;
+    const fileKeys = Object.keys(rest).filter((key): key is keyof CapsuleSettings => Object.hasOwn(SETTINGS_SCHEMA, key));
+    if (fileKeys.length && this.config.safeMode) throw new Error(SAFE_MODE_WRITE_ERROR);
     const next = normalizeCapsuleSettings({ ...this.settings, ...rest });
     if (Object.hasOwn(patch, "worktreesDirectory")) {
       if (typeof patch.worktreesDirectory !== "string") throw new Error("The worktree location must be a folder path.");
@@ -2580,21 +2626,74 @@ export class CapsuleEngine {
       secrets.push({ account, value: value || undefined });
     }
     const archived = await commitWithSecrets(this.keychain, secrets, () => this.db.sqlite.transaction(() => {
-      this.persistSettings(next);
       if (Object.hasOwn(patch, "projectlessFolder")) this.bindInboxToProjectless(next);
       if (patch.webAccess !== undefined || patch.sandbox !== undefined || patch.defaultPermission !== undefined) {
         this.applyWorkspacePolicies(next);
       }
-      return patch.archiveInactiveAfter !== undefined ? this.archiveInactiveSessions(next, false) : 0;
+      const archived = patch.archiveInactiveAfter !== undefined ? this.archiveInactiveSessions(next, false) : 0;
+      // Last, so a failed file write rolls back every database write above.
+      if (fileKeys.length) this.config.setValues("user", Object.fromEntries(fileKeys.map((key) => [key, next[key]])));
+      return archived;
     })());
     // Publish only after every persistent write succeeded. Observers and
-    // clients never see settings from a rejected save.
-    this.settings = next;
+    // clients never see settings from a rejected save. The file, not the
+    // patch, is what was saved: it may hold an edit not yet reloaded.
+    this.settings = this.withSecrets(this.config.settings(), next);
     this.skillsShClient.setToken(next.skillsShToken);
     if (!pullRequestWatchEnabled(next)) { this.stopAllPrWatch(); this.pausedPrWatches.clear(); }
     this.notifyArchivedSessions(archived);
     this.events.emit("state", { command: "settings-updated" });
     return this.getSettings();
+  }
+
+  /** Effective settings and where each came from, optionally with a project's layers. */
+  getConfigSnapshot(projectId?: string): ConfigSnapshot {
+    const project = projectId ? this.requireProject(projectId) : undefined;
+    const scoped = project?.workingDirectory ? this.config.forProject(project.workingDirectory) : undefined;
+    return {
+      safeMode: this.config.safeMode,
+      userDir: this.config.paths.userDir,
+      settings: this.getSettings(),
+      provenance: this.config.provenance(),
+      ...(project && scoped
+        ? { project: { projectId: project.id, root: scoped.root, trusted: scoped.trusted, settings: this.masked(scoped.settings), provenance: scoped.provenance, files: scoped.files } }
+        : {}),
+      problemCount: this.config.diagnostics(scoped?.root).problems.length,
+    };
+  }
+
+  getConfigDiagnostics(projectId?: string): ConfigDiagnostics {
+    return this.config.diagnostics(this.configRoot(projectId));
+  }
+
+  /** Write or remove one key in one settings file, then publish the result. */
+  setConfigValue(input: SetConfigValueInput): ConfigSnapshot {
+    this.config.setValue({ key: input.key, value: input.value, scope: input.scope, root: this.configRoot(input.projectId) });
+    this.applyConfigChange();
+    return this.getConfigSnapshot(input.projectId);
+  }
+
+  /** The file or folder a target names, created from a template when missing. */
+  configFilePath(target: ConfigFileTarget): string {
+    return this.config.ensureFile(target, this.configRoot("projectId" in target ? target.projectId : undefined));
+  }
+
+  trustProject(projectId: string, trusted: boolean): ConfigSnapshot {
+    const root = this.configRoot(projectId);
+    if (!root) throw new Error("This project has no folder to trust.");
+    this.config.trust(root, trusted);
+    this.applyConfigChange();
+    return this.getConfigSnapshot(projectId);
+  }
+
+  /** Re-read every settings file now; a change publishes as a file edit would. */
+  reloadConfig(projectId?: string): ConfigSnapshot {
+    this.config.reload();
+    return this.getConfigSnapshot(projectId);
+  }
+
+  private configRoot(projectId?: string): string | undefined {
+    return projectId ? this.requireProject(projectId).workingDirectory : undefined;
   }
 
   getDiagnostics(): DiagnosticsSnapshot {
@@ -3179,17 +3278,68 @@ export class CapsuleEngine {
     for (const rule of DEFAULT_POLICIES) this.repos.insertPolicy(rule);
   }
 
+  /*
+   * The user's settings file is the source of truth. The first launch that
+   * has one exports the database row into it; the row stays as a backup.
+   */
   private loadSettings(): void {
-    const raw = this.repos.getSetting("settings");
-    if (!raw) return;
-    try {
-      this.settings = normalizeCapsuleSettings({
-        ...this.settings,
-        ...(JSON.parse(raw) as Partial<CapsuleSettings>),
-      });
-    } catch {
-      // Keep defaults if persisted settings are unreadable.
+    if (!this.config.safeMode) {
+      try {
+        const result = migrateDatabaseSettings({
+          paths: this.config.paths,
+          stored: this.repos.getSetting("settings"),
+          defaults: this.config.defaults,
+          record: {
+            read: () => this.repos.getSetting(CONFIG_MIGRATED_SETTING),
+            write: (at) => this.repos.setSetting(CONFIG_MIGRATED_SETTING, at),
+          },
+        });
+        if (result.status === "migrated") this.log(`Moved settings to ${this.config.paths.userSettings}`);
+      } catch (error) {
+        this.log(`Settings could not be moved to ${this.config.paths.userSettings}: ${String(error)}`);
+      }
     }
+    this.config.load();
+    this.config.onChange(() => this.applyConfigChange());
+    this.settings = this.withSecrets(this.config.settings());
+  }
+
+  private withSecrets(settings: CapsuleSettings, from = this.settings): CapsuleSettings {
+    const next = { ...settings };
+    if (from.gatewayToken) next.gatewayToken = from.gatewayToken;
+    if (from.skillsShToken) next.skillsShToken = from.skillsShToken;
+    return next;
+  }
+
+  /*
+   * A settings file changed on disk. Publish it the way a save from the
+   * Settings screen would: the same derived records, then the same events.
+   */
+  private applyConfigChange(): void {
+    if (this.stopped) return;
+    const previous = this.settings;
+    const next = this.withSecrets(this.config.settings());
+    const changed = (key: keyof CapsuleSettings) => !isDeepStrictEqual(previous[key], next[key]);
+    try {
+      const archived = this.db.sqlite.transaction(() => {
+        if (changed("projectlessFolder")) this.bindInboxToProjectless(next);
+        if (changed("webAccess") || changed("sandbox")) this.applyWorkspacePolicies(next);
+        return changed("archiveInactiveAfter") ? this.archiveInactiveSessions(next, false) : 0;
+      })();
+      this.notifyArchivedSessions(archived);
+    } catch (error) {
+      this.log(`Settings from ${this.config.paths.userSettings} were read but not applied: ${String(error)}`);
+    }
+    this.settings = next;
+    if (!pullRequestWatchEnabled(next)) { this.stopAllPrWatch(); this.pausedPrWatches.clear(); }
+    if (!isDeepStrictEqual(previous, next)) this.events.emit("state", { command: "settings-updated" });
+    this.events.emit("state", { command: "config-updated" });
+  }
+
+  /** Settings for work in a project: its own files layered over the user's. */
+  private projectSettings(project: Project): CapsuleSettings {
+    if (!project.workingDirectory) return this.settings;
+    return this.withSecrets(this.config.forProject(project.workingDirectory).settings);
   }
 
   private schedulePrWatch(projectId: string, sessionId?: string, restart = false): void {
@@ -3337,11 +3487,14 @@ export class CapsuleEngine {
     return true;
   }
 
-  private persistSettings(settings = this.settings): void {
-    const stored = { ...settings };
-    delete stored.gatewayToken;
-    delete stored.skillsShToken;
-    this.repos.setSetting("settings", JSON.stringify(stored));
+  /** The settings row older builds wrote. Kept as a backup; read only for secrets left in it. */
+  private storedSettingsRow(): Record<string, unknown> {
+    try {
+      const parsed: unknown = JSON.parse(this.repos.getSetting("settings") ?? "{}");
+      return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+    } catch {
+      return {};
+    }
   }
 
   private applyWorkspacePolicies(settings = this.settings): void {
@@ -3601,14 +3754,18 @@ export class CapsuleEngine {
   private async hydrateSecrets(): Promise<void> {
     // Migrate legacy settings only after secure storage succeeds. Never lose
     // the only copy on a Keychain failure or send a stored mask as a token.
+    const stored = this.storedSettingsRow();
     for (const [key, account] of [["gatewayToken", GATEWAY_TOKEN_ACCOUNT], ["skillsShToken", SKILLS_SH_TOKEN_ACCOUNT]] as const) {
-      const legacy = this.settings[key];
-      if (legacy && legacy !== TOKEN_PRESENT_MASK && !(await this.keychain.get(CAPSULE_KEYCHAIN_SERVICE, account))) {
+      const legacy = stored[key];
+      if (typeof legacy === "string" && legacy && legacy !== TOKEN_PRESENT_MASK && !(await this.keychain.get(CAPSULE_KEYCHAIN_SERVICE, account))) {
         await this.keychain.set(CAPSULE_KEYCHAIN_SERVICE, account, legacy);
       }
       delete this.settings[key];
     }
-    this.persistSettings();
+    if ("gatewayToken" in stored || "skillsShToken" in stored) {
+      const { gatewayToken: _gateway, skillsShToken: _catalog, ...preferences } = stored;
+      this.repos.setSetting("settings", JSON.stringify(preferences));
+    }
     const token = await this.keychain.get(CAPSULE_KEYCHAIN_SERVICE, GATEWAY_TOKEN_ACCOUNT);
     if (token) this.settings.gatewayToken = token;
     if (process.env.OPENCLAW_GATEWAY_TOKEN) {

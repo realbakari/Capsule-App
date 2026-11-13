@@ -234,6 +234,9 @@ importers:
       '@capsule/codex':
         specifier: workspace:*
         version: link:../codex
+      '@capsule/config':
+        specifier: workspace:*
+        version: link:../config
       '@capsule/contracts':
         specifier: workspace:*
         version: link:../contracts
