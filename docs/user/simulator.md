@@ -41,7 +41,8 @@ The floating toolbar under the screen offers, left to right:
 - **Copy a screenshot** to the clipboard as an image you can paste into a
   message or another app.
 - **Record** the screen to a video in your Downloads folder; press it again
-  to stop, and the file opens.
+  to stop, and the file opens. Stop stays available while a recording runs,
+  even when the screen is hidden, and detaching the device stops it too.
 - **Device tools**, the drawer described below.
 - **Open a URL**, for a web address or a deep link such as `myapp://home`.
 - **Installed apps**, listing the apps you have built onto this device with

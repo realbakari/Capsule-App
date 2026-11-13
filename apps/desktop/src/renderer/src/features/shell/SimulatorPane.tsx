@@ -233,6 +233,8 @@ export function SimulatorPane() {
   };
 
   const detach = () => {
+    // A recording left running after detach had no control anywhere to stop it.
+    if (device?.recording) void stopRecording();
     remember(attachedKey, undefined);
     setAttached(undefined);
     setTool("none");
@@ -320,15 +322,19 @@ export function SimulatorPane() {
     }
   };
 
+  async function stopRecording() {
+    const result = (await act({ type: "record", mode: "stop" }, "record")) as { file?: string } | undefined;
+    refreshInventory.current();
+    if (result?.file) {
+      setNotice(`Recording saved to ${result.file}`);
+      void openPath(result.file);
+    }
+  }
+
   const toggleRecording = async () => {
     if (!device) return;
     if (device.recording) {
-      const result = (await act({ type: "record", mode: "stop" }, "record")) as { file?: string } | undefined;
-      refreshInventory.current();
-      if (result?.file) {
-        setNotice(`Recording saved to ${result.file}`);
-        void openPath(result.file);
-      }
+      await stopRecording();
     } else {
       await act({ type: "record", mode: "start" }, "record");
       refreshInventory.current();
@@ -545,7 +551,7 @@ export function SimulatorPane() {
             <button type="button" className="preview-chrome-btn" title="Copy a screenshot" aria-label="Copy a screenshot" disabled={!showScreen || busy === "screenshot"} onClick={() => void copyScreenshot()}>
               <CameraIcon size={15} />
             </button>
-            <button type="button" className={`preview-chrome-btn${device.recording ? " active" : ""}`} title={device.recording ? "Stop recording" : "Record the screen"} aria-label={device.recording ? "Stop recording" : "Record"} disabled={!showScreen || busy === "record"} onClick={() => void toggleRecording()}>
+            <button type="button" className={`preview-chrome-btn${device.recording ? " active" : ""}`} title={device.recording ? "Stop recording" : "Record the screen"} aria-label={device.recording ? "Stop recording" : "Record"} disabled={busy === "record" || (!device.recording && !showScreen)} onClick={() => void toggleRecording()}>
               <VideoIcon size={15} />
             </button>
             <button type="button" className={`preview-chrome-btn${tool === "tools" ? " active" : ""}`} title="Device tools" aria-label="Device tools" disabled={!showScreen} onClick={openTools}>
