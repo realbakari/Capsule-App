@@ -4,14 +4,20 @@ import { parseMarkdown, markdownHref, markdownFilePath } from "../../lib/markdow
 import { normalizeGitHubMarkdown } from "../../lib/github-markdown";
 import { splitGitHubDetails } from "../../lib/github-details";
 import { splitFences } from "../../lib/fences";
-import { CodeBlock } from "./CodeBlock";
+import { fenceClosed } from "../../lib/markdown-math";
+import { FencedCode } from "./FencedCode";
 import { InlineCode } from "./InlineCode";
+import { MarkdownImage, type LoadImage } from "./MarkdownImage";
+import { MathTex } from "./MathTex";
 
 interface MarkdownActions {
   githubBaseUrl?: string;
   onOpenFile?: (path: string) => void;
   onOpenLink?: (href: string) => void;
   renderText?: (text: string) => ReactNode;
+  /** Reads a project image; without it a local image stays a file link. */
+  loadImage?: LoadImage;
+  inLink?: boolean;
 }
 
 interface MarkdownNode {
@@ -60,7 +66,7 @@ function parsedContent(text: string, actions: MarkdownActions, inline = false, a
 /** Convert presentation HTML only. Markdown links and code never pass through it. */
 function presentationHtml(raw: string, actions: MarkdownActions, inline: boolean): ReactNode {
   return splitFences(raw).map((segment, index) => {
-    if (segment.kind === "code") return <CodeBlock key={index} code={segment.text} language={segment.language} />;
+    if (segment.kind === "code") return <FencedCode key={index} code={segment.text} language={segment.language} closed={segment.closed !== false} />;
     const text = normalizeGitHubMarkdown(segment.text, actions.githubBaseUrl ?? "");
     return text ? <Fragment key={index}>{parsedContent(text, actions, inline, false)}</Fragment> : null;
   });
@@ -127,14 +133,15 @@ function renderNode(node: MarkdownNode, actions: MarkdownActions): ReactNode {
     case "softbreak": return "\n";
     case "hardbreak": return <br />;
     case "code_inline": return <InlineCode value={token.content} onOpen={actions.onOpenFile} />;
-    case "fence":
-    case "code_block": return <CodeBlock code={token.content} language={token.info.trim().split(/\s+/)[0]} />;
+    case "fence": return <FencedCode code={token.content} language={token.info.trim().split(/\s+/)[0]} closed={fenceClosed(token.meta)} />;
+    case "code_block": return <FencedCode code={token.content} closed />;
+    case "math_inline": return <MathTex tex={token.content} display={token.markup === "$$"} />;
+    case "math_block": return <MathTex tex={token.content} display />;
     case "link_open": return <WebLink href={attribute(token, "href") ?? ""} title={attribute(token, "title")} actions={actions}>
-      {renderNodes(children, { ...actions, onOpenFile: undefined, renderText: undefined })}
+      {renderNodes(children, { ...actions, onOpenFile: undefined, renderText: undefined, inLink: true })}
     </WebLink>;
-    case "image": return <WebLink href={attribute(token, "src") ?? ""} title={attribute(token, "title")} actions={actions}>
-      {token.content || "Image"}
-    </WebLink>;
+    case "image": return <MarkdownImage src={attribute(token, "src") ?? ""} alt={token.content} title={attribute(token, "title")}
+      baseUrl={actions.githubBaseUrl} inLink={actions.inLink} loadImage={actions.loadImage} onOpenFile={actions.onOpenFile} onOpenLink={actions.onOpenLink} />;
     case "html_inline":
       if (/^<br\b/i.test(token.content)) return <br />;
       return presentationHtml(token.content, actions, true);
@@ -202,8 +209,8 @@ function markdownSections(content: string, actions: MarkdownActions, depth = 0):
 }
 
 /** Safe React nodes shared by chat, review, skills and read-only paired views. */
-export function MarkdownBody({ content, ...actions }: MarkdownActions & { content: string }) {
-  const { githubBaseUrl, onOpenFile, onOpenLink, renderText } = actions;
-  const body = useMemo(() => markdownSections(content, { githubBaseUrl, onOpenFile, onOpenLink, renderText }), [content, githubBaseUrl, onOpenFile, onOpenLink, renderText]);
+export function MarkdownBody({ content, ...actions }: Omit<MarkdownActions, "inLink"> & { content: string }) {
+  const { githubBaseUrl, onOpenFile, onOpenLink, renderText, loadImage } = actions;
+  const body = useMemo(() => markdownSections(content, { githubBaseUrl, onOpenFile, onOpenLink, renderText, loadImage }), [content, githubBaseUrl, onOpenFile, onOpenLink, renderText, loadImage]);
   return <div className="body">{body}</div>;
 }

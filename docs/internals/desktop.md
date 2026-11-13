@@ -456,6 +456,43 @@ window) shows the chooser cards.
   remote grammar fetch. Dedicated light/dark syntax tokens are independent of
   interface accent colors. Code typography scales with the transcript, while
   memoized fences preserve DOM and copy state when following content changes.
+  Rich reply blocks are parsed by the same token parser. A `mermaid` fence is
+  drawn as a diagram, a `math` fence and `$$` blocks as display math, and
+  `$…$` as inline math. Both libraries are loaded on first use in their own
+  renderer chunks. A fence carries whether its closing marker has arrived, so
+  a streaming diagram or formula shows its source and is drawn once, when it
+  closes; drawings are cached by source and resolved theme, and a theme change
+  redraws (Mermaid "dark" or "neutral", strict security, SVG text labels). A
+  diagram that fails to parse falls back to its code block with a one-line
+  reason. Inline math opens only on a `$` followed by a non-space and closes
+  on the next unescaped `$` that follows a non-space and is not followed by a
+  word character; a number followed by words between two dollars is prose.
+  This keeps prices and shell variables literal; code spans and fences never
+  reach the math rules. KaTeX runs with `trust: false`. Markdown images:
+  `data:` raster images render inline; project images in thread messages are
+  read through the read-only `previewFile` channel from the thread's working
+  folder and shown as data URLs (never `file://`); web images never load and
+  show a placeholder whose Open button sends the URL to the Browser surface.
+  Images inside links keep their label. Clicking an image or a diagram's
+  expand control opens a zoom dialog with Fit and 100%; Escape closes and
+  focus returns to the opener. An `html` fence offers Preview: a modal
+  `<iframe srcdoc>` whose document begins with its own content policy
+  (`default-src 'none'`, only inline styles and `data:` images, fonts and
+  media) and whose sandbox is empty, so scripts, forms, popups and top
+  navigation are off. "Run scripts" re-creates the frame with only
+  `allow-scripts`; the frame stays an opaque origin with no preload and no
+  network. All of this reads message text only, so it is the same on the
+  Gateway and direct routes, for every harness, and in the read-only remote
+  viewer (`previewFile` is a read channel).
+
+  Decision: HTML preview uses a sandboxed offline frame, not the embedded
+  Browser. The Browser guest accepts only http(s) pages, shares the
+  persistent browsing partition (cookies and logins), and has full network
+  access; an agent-written page there could read or send to any site the
+  user is signed in to. A srcdoc frame with its own `default-src 'none'`
+  policy cannot load or send anything, cannot reach Capsule's preload, and
+  needs no new IPC channel. External resources not loading is the stated
+  cost; the dialog says so.
   Summary comments are collapsible cards with shared newest/oldest ordering.
   Timeline groups adjacent comments/reviews without grouping across a commit;
   commit titles open the single-commit diff. Optional mergedAt/closedAt fields

@@ -67,7 +67,7 @@ const MessageRow = memo(function MessageRow({
       <h2 className="sr-only">
         {message.role === "user" ? (message.kind === "steer" ? "You, steering" : "You") : "Agent"}
       </h2>
-      {message.content ? <MessageBody content={message.content} /> : null}
+      {message.content ? <MessageBody content={message.content} threadImages /> : null}
       {message.contentTruncated ? <p className="faint">Display excerpt. The full message is retained in local history.</p> : null}
       <MessageAttachments message={message} onOpen={onOpenAttachment} />
       {/* Visual alignment carries authorship; the heading exposes it to
