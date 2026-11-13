@@ -48,4 +48,23 @@ describe("navigation history", () => {
     expect(pruned.index).toBe(0);
     expect(goForward(pruned)!.entry).toEqual(c);
   });
+
+  it("keeps the cursor on the current place when it appears more than once", () => {
+    // A, B, C, A with C archived: the cursor stays on the last A, not the first.
+    const history = [a, b, c, a].reduce(recordNavigation, EMPTY_NAVIGATION);
+    const pruned = pruneNavigation(history, (entry) => entry.sessionId !== "s3");
+    expect(pruned.entries).toEqual([a, b, a]);
+    expect(pruned.index).toBe(2);
+    expect(canGoBack(pruned)).toBe(true);
+    expect(canGoForward(pruned)).toBe(false);
+  });
+
+  it("never leaves the cursor past the end when removal merges neighbours", () => {
+    // A, C, A, C with C deleted while current collapses to [A].
+    const history = [a, c, a, c].reduce(recordNavigation, EMPTY_NAVIGATION);
+    const pruned = pruneNavigation(history, (entry) => entry.sessionId !== "s3");
+    expect(pruned.entries).toEqual([a]);
+    expect(pruned.index).toBe(0);
+    expect(canGoBack(pruned)).toBe(false);
+  });
 });

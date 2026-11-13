@@ -52,12 +52,20 @@ export function goForward(history: NavigationHistory): { history: NavigationHist
 
 /** A deleted or archived conversation drops out; the cursor stays on a surviving entry. */
 export function pruneNavigation(history: NavigationHistory, keep: (entry: NavigationEntry) => boolean): NavigationHistory {
-  const current = history.entries[history.index];
-  const entries = history.entries.filter(keep).filter((entry, index, all) => index === 0 || !sameEntry(all[index - 1], entry));
+  /*
+   * The cursor is carried through the filtering itself. Looking the current
+   * place up afterwards found its first occurrence (A, B, A with the cursor on
+   * the last A went back to the first), and counting survivors before merging
+   * duplicates could leave the cursor past the end.
+   */
+  const entries: NavigationEntry[] = [];
+  let index = -1;
+  history.entries.forEach((entry, position) => {
+    if (keep(entry) && !sameEntry(entries.at(-1), entry)) entries.push(entry);
+    // The current place, or the nearest surviving place before it.
+    if (position <= history.index && entries.length > 0) index = entries.length - 1;
+  });
   if (entries.length === history.entries.length) return history;
   if (entries.length === 0) return EMPTY_NAVIGATION;
-  // A removed current place leaves the cursor on the nearest surviving place before it.
-  const keptBefore = history.entries.slice(0, history.index + 1).filter(keep).length;
-  const index = current && keep(current) ? entries.findIndex((entry) => sameEntry(entry, current)) : Math.max(0, keptBefore - 1);
-  return { entries, index };
+  return { entries, index: Math.max(0, index) };
 }
