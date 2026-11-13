@@ -3474,14 +3474,25 @@ export class CapsuleEngine {
     this.assertWorkAllowed();
     const session = this.repos.getSession(sessionId);
     if (!session) return { ok: false, detail: "That conversation no longer exists." };
-    const message = this.repos.listMessages(sessionId).find((item) => item.id === messageId);
+    const transcript = this.repos.listMessages(sessionId);
+    const anchor = transcript.findIndex((item) => item.id === messageId);
+    const message = transcript[anchor];
     if (!message || message.role !== "user" || message.kind === "steer") return { ok: false, detail: "Choose one of your own prompts to edit from." };
     if (this.listRuns(sessionId).some((run) => ["queued", "running", "waiting", "approval_required"].includes(run.status))) {
       return { ok: false, detail: "A turn is running in this conversation. Stop it or wait before editing from here." };
     }
     let filesRestored = false;
     if (options.restoreFiles) {
-      const earlier = this.listRuns(sessionId).filter((run) => run.checkpointRef && run.createdAt < message.createdAt).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0];
+      /*
+       * The turns being removed are the ones the dropped messages belong to.
+       * Comparing timestamps alone is not enough: a run is stamped a moment
+       * before its own prompt, so the edited turn looked "earlier" than itself
+       * and the restore put back the very state it was meant to undo.
+       */
+      const removedRuns = new Set(transcript.slice(anchor).flatMap((item) => (item.runId ? [item.runId] : [])));
+      const earlier = this.listRuns(sessionId)
+        .filter((run) => run.checkpointRef && !removedRuns.has(run.id) && run.createdAt <= message.createdAt)
+        .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0];
       if (!earlier) return { ok: false, detail: "No earlier turn has a checkpoint to restore files from. Edit from here without restoring files, or use Restore this turn." };
       const restored = await this.restoreTurn(earlier.id);
       if (!restored.ok) return restored;

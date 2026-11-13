@@ -1137,4 +1137,38 @@ describe("edit from here", () => {
     expect(result.detail).toMatch(/checkpoint/);
     expect(engine.listMessages(session.id).some((message) => message.id === prompt.id)).toBe(true);
   });
+
+  it("never restores the checkpoint of the turn it is removing", async () => {
+    // A run is stamped a moment before its own prompt. Picking "the latest
+    // run older than the prompt" could pick the edited turn itself.
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-rewind-own-"));
+    const repo = path.join(dir, "repo");
+    mkdirSync(repo, { recursive: true });
+    execFileSync("git", ["init", "-q"], { cwd: repo });
+    execFileSync("git", ["config", "user.email", "t@example.com"], { cwd: repo });
+    execFileSync("git", ["config", "user.name", "T"], { cwd: repo });
+    writeFileSync(path.join(repo, "README.md"), "hello\n");
+    const engine = new CapsuleEngine({ databasePath: path.join(dir, "capsule.sqlite"), userDataDir: dir, autoConnect: false });
+    await engine.start();
+    const project = engine.createProject({ name: "Rewind", workingDirectory: repo });
+    const session = await engine.createSession({ projectId: project.id, title: "Rewind", mode: "chat", agentId: "general" });
+    const { run } = await engine.sendMessage({ sessionId: session.id, content: "Only ask" });
+    await waitForRun(engine, run.id);
+    const internals = engine as unknown as {
+      captureTurnCheckpoint: (run: unknown, session: unknown) => void;
+      repos: { db: { sqlite: { prepare: (sql: string) => { run: (...args: unknown[]) => void } } } };
+    };
+    internals.captureTurnCheckpoint.call(engine, engine.getRun(run.id)!, session);
+    for (let waited = 0; !engine.getRun(run.id)?.checkpointRef && waited < 10_000; waited += 100) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    const prompt = engine.listMessages(session.id).find((message) => message.role === "user")!;
+    const before = new Date(Date.parse(prompt.createdAt) - 5).toISOString();
+    internals.repos.db.sqlite.prepare("UPDATE runs SET created_at = ? WHERE id = ?").run(before, run.id);
+
+    const result = await engine.rewindSession(session.id, prompt.id, { restoreFiles: true });
+    expect(result.ok).toBe(false);
+    expect(result.detail).toMatch(/No earlier turn/);
+    await engine.stop();
+  });
 });
