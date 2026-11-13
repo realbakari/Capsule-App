@@ -465,7 +465,7 @@ export function Conversation() {
           </button>
         </div>
       )}
-      {threadFind && <ThreadFind messages={workspaceMessages} onLocate={locateMessage} onClose={() => setThreadFind(false)} />}
+      {threadFind && <ThreadFind messages={messages} onLocate={locateMessage} onClose={() => setThreadFind(false)} />}
       <div
         className="conversation"
         ref={scroller}

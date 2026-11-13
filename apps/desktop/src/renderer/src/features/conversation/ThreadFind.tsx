@@ -22,7 +22,14 @@ export function ThreadFind({ messages, onLocate, onClose }: {
   useEffect(() => { input.current?.focus(); }, []);
   useEffect(() => { setIndex(0); }, [query]);
   const current = matches[Math.min(index, Math.max(0, matches.length - 1))];
-  useEffect(() => { if (current) onLocate(current); }, [current, onLocate]);
+  /*
+   * onLocate is rebuilt on every streamed frame. Depending on it re-ran the
+   * scroll each frame, so with find open during a live turn the transcript
+   * kept snapping back to the match. Scroll only when the match changes.
+   */
+  const locate = useRef(onLocate);
+  locate.current = onLocate;
+  useEffect(() => { if (current) locate.current(current); }, [current, index]);
   const step = (delta: number) => {
     if (matches.length === 0) return;
     setIndex((value) => (value + delta + matches.length) % matches.length);
