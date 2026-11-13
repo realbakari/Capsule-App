@@ -72,8 +72,6 @@ export interface AttentionInput {
   runs: Array<Pick<Run, "id" | "sessionId" | "status" | "createdAt" | "updatedAt" | "completedAt">>;
   /** Threads the person is looking at, which are not waiting for them. */
   activeSessionId?: string;
-  /** Threads already seen since their last change. */
-  seenSessionIds?: ReadonlySet<string>;
 }
 
 /**
@@ -84,7 +82,7 @@ export interface AttentionInput {
  * wins — a completed run does not cancel out an approval sitting behind it.
  */
 export function summariseAttention(input: AttentionInput): AttentionSummary {
-  const { sessions, runs, activeSessionId, seenSessionIds } = input;
+  const { sessions, runs, activeSessionId } = input;
   const titles = new Map(sessions.map((session) => [session.id, session.title]));
   const byId = new Map(sessions.map((session) => [session.id, session]));
   const now = Date.now();
@@ -103,7 +101,6 @@ export function summariseAttention(input: AttentionInput): AttentionSummary {
      */
     if (run.sessionId === activeSessionId && state !== "needs-input") continue;
     // "Ready" means finished and unread; once seen it is just history.
-    if (state === "ready" && seenSessionIds?.has(run.sessionId)) continue;
     const session = byId.get(run.sessionId);
     const finished = run.completedAt ?? run.updatedAt;
     if (state === "ready" && session?.lastViewedAt && finished <= session.lastViewedAt) continue;
