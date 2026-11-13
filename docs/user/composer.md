@@ -241,8 +241,10 @@ composer and goes out, in order, as soon as the thread is free. Each queued
 follow-up can be edited back into the composer, moved up or down, removed,
 or, on routes that can steer, sent into the running turn with **Steer now**.
 The queue belongs to its conversation, holds up to twenty messages, and
-survives a restart. A queued message that fails to send goes to Stash like
-any other. Gateway sessions also offer **Steer** during a live turn when
+survives a restart. While the thread cannot send, for example while the
+Gateway is disconnected or the agent needs a login, queued messages wait
+rather than leave the queue. A queued message that fails to send goes to Stash
+like any other. Gateway sessions also offer **Steer** during a live turn when
 supported. Press `↑` in an empty prompt to recall what you asked before.
 Steering drafts stay with their conversation. A pending steer cannot be sent
 twice, and a newer draft is not cleared when the earlier steer finishes.

@@ -1265,7 +1265,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   }, [runs, sessionId, settings?.autoResumeOnLimit, pendingResume]);
 
   async function send(continueToNew = false, command?: string, queued?: QueuedPrompt) {
-    if (attachmentReservations.get(draftScope)) {
+    // A queued prompt carries its own, already prepared attachments.
+    if (!queued && attachmentReservations.get(draftScope)) {
       setNotice("Attachments are still being prepared. Wait for them before sending.");
       return false;
     }
@@ -1276,6 +1277,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     const promptSkill = queued ? queued.skillId : command ? undefined : skillId;
     if ((!content && filesToSend.length === 0) || busy || submissions.current.has(submissionKey)) return false;
     if (activeRun && !queued) {
+      // A read-only viewer would queue a prompt that can never be sent.
+      if (api.isDesktop === false && api.remoteMode !== "control" && sendBlockReason) {
+        setNotice(sendBlockReason);
+        return false;
+      }
       const result = enqueuePrompt(queue, { content, attachments: filesToSend, skillId: promptSkill });
       if (!result.accepted) {
         setNotice("The follow-up queue is full. Wait for the running turn or remove a queued message.");
@@ -1326,14 +1332,21 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
         currentSessionId = created.id;
       }
       if (!currentSessionId) return false;
-      if (!draftScopes.isCurrent(draftScope)) return false;
+      if (!draftScopes.isCurrent(draftScope)) {
+        // A queued prompt has already left its queue; keep it somewhere.
+        if (queued) recoverSubmission(new Error("The conversation changed before the queued message was sent."));
+        return false;
+      }
       preparedThread = true;
       if (draftHarnessConfig.model || Object.keys(draftHarnessConfig.options).length) {
         await api.spawnHarness({ projectId: currentProjectId, sessionId: currentSessionId, harnessId: agentId,
           model: draftHarnessConfig.model, permissionProfile: "strict" });
         if (draftHarnessConfig.model) await api.setHarnessOption({ sessionId: currentSessionId, key: "model", value: draftHarnessConfig.model });
         for (const [id, value] of Object.entries(draftHarnessConfig.options)) await api.setHarnessConfig(currentSessionId, id, value);
-        if (!draftScopes.isCurrent(draftScope)) return false;
+        if (!draftScopes.isCurrent(draftScope)) {
+          if (queued) recoverSubmission(new Error("The conversation changed before the queued message was sent."));
+          return false;
+        }
         setDraftHarnessConfigs((current) => { const next = { ...current }; delete next[agentId]; return next; });
       }
       const optimisticId = `local-${Date.now()}`;
@@ -1422,7 +1435,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
         throw error;
       }
     } catch (error) {
-      if (!preparedThread && draftRevision.current !== submittedRevision) recoverSubmission(error);
+      // A queued prompt is in no composer to fall back to, so it always goes to Stash.
+      if (queued || (!preparedThread && draftRevision.current !== submittedRevision)) recoverSubmission(error);
       else setNotice(formatUserError(error));
       return false;
     } finally {
@@ -1432,7 +1446,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   }
 
   useEffect(() => {
-    if (activeRun || busy || !sessionId || queue.length === 0 || flushing.current || historyLoad.state !== "loaded") return;
+    // Take nothing while a send would be refused before it is tried: the
+    // prompt would leave the queue and go nowhere. It waits here instead.
+    if (activeRun || busy || sendBlockReason || submissions.current.has(currentDraftKey) || !sessionId || queue.length === 0 || flushing.current || historyLoad.state !== "loaded") return;
     // Right after switching threads the run list may not know about a live
     // turn yet; a short settle keeps a queued follow-up from racing it.
     const wait = 1_500 - (Date.now() - sessionSettledAt.current);
@@ -1447,7 +1463,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     void send(false, undefined, next).finally(() => { flushing.current = false; });
     return undefined;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeRun?.id, busy, queue, sessionId, historyLoad.state]);
+  }, [activeRun?.id, busy, sendBlockReason, queue, sessionId, historyLoad.state]);
 
   function removeQueued(id: string) {
     setQueue((current) => removeQueuedPrompt(current, id));
