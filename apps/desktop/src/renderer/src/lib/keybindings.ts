@@ -41,11 +41,31 @@ export const COMMANDS: KeyCommand[] = [
   { id: "search-files", label: "Search files", chord: { key: "p", meta: true } },
   { id: "search-in-files", label: "Search in files", chord: { key: "f", meta: true, shift: true } },
   { id: "toggle-sidebar", label: "Toggle sidebar", chord: { key: "b", meta: true } },
-  { id: "toggle-inspector", label: "Toggle inspector", chord: { key: "\\", meta: true } },
+  { id: "toggle-inspector", label: "Toggle panel", chord: { key: "\\", meta: true } },
   { id: "toggle-terminal", label: "Toggle terminal", chord: { key: "j", meta: true } },
   { id: "history-back", label: "Back", chord: { key: "[", meta: true } },
   { id: "history-forward", label: "Forward", chord: { key: "]", meta: true } },
   { id: "find-in-thread", label: "Find in conversation", chord: { key: "f", meta: true } },
+  { id: "open-review", label: "Open Review", chord: { key: "d", meta: true, shift: true } },
+  { id: "open-browser", label: "Open Browser", chord: { key: "b", meta: true, shift: true } },
+  /* ⌃Tab: `meta` matches Control as well as ⌘, and ⌘Tab never reaches the app. */
+  { id: "next-conversation", label: "Next conversation", chord: { key: "tab", meta: true } },
+  { id: "previous-conversation", label: "Previous conversation", chord: { key: "tab", meta: true, shift: true } },
+  { id: "show-shortcuts", label: "Keyboard shortcuts", chord: { key: "/", meta: true } },
+  { id: "open-mode", label: "Choose mode", chord: { key: "m", meta: true, shift: true } },
+  { id: "open-model", label: "Choose model", chord: { key: "i", meta: true, shift: true } },
+  { id: "open-effort", label: "Choose effort", chord: { key: "e", meta: true, shift: true } },
+];
+
+/** Shortcuts that live outside this registry (in a surface or the composer), shown in the shortcuts sheet. */
+export const FIXED_SHORTCUTS: Array<{ label: string; keys: string[] }> = [
+  { label: "Send", keys: ["↵"] },
+  { label: "Stop the running turn", keys: ["Esc"] },
+  { label: "Previous prompt", keys: ["↑"] },
+  { label: "Side chat", keys: ["⌥", "⌘", "S"] },
+  { label: "Open the terminal", keys: ["⌃", "`"] },
+  { label: "Skills", keys: ["⇧", "⌘", "S"] },
+  { label: "Agents", keys: ["⇧", "⌘", "R"] },
 ];
 
 export type Keymap = Record<string, KeyChord>;
@@ -82,8 +102,9 @@ export function chordSymbols(chord: KeyChord): string[] {
   if (chord.ctrl) parts.push("⌃");
   if (chord.alt) parts.push("⌥");
   if (chord.shift) parts.push("⇧");
-  if (chord.meta) parts.push("⌘");
-  parts.push(chord.key === " " ? "Space" : chord.key.length === 1 ? chord.key.toUpperCase() : chord.key);
+  /* `meta` matches Control too; ⌘Tab belongs to the system, so a Tab chord is shown as ⌃. */
+  if (chord.meta) parts.push(chord.key === "tab" ? "⌃" : "⌘");
+  parts.push(chord.key === " " ? "Space" : chord.key === "tab" ? "Tab" : chord.key.length === 1 ? chord.key.toUpperCase() : chord.key);
   return parts;
 }
 

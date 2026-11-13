@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { searchSessionTitles, type SearchResults } from "@capsule/shared";
 import { useWorkspace } from "../../lib/workspace";
 import { formatUserError } from "../../lib/errors";
-import { CpuIcon, FolderIcon, GlobeIcon, MessageSquareIcon, PlusIcon, SearchIcon, SettingsIcon, SmartphoneIcon, TerminalIcon } from "./icons";
+import { SHOW_SHORTCUTS_EVENT } from "../../lib/shortcuts-event";
+import { ArrowLeftIcon, ArrowRightIcon, CpuIcon, FolderIcon, GlobeIcon, HistoryIcon, InfoIcon, RefreshIcon, KeyboardIcon, LinkIcon, MessageSquareIcon, PlusIcon, SearchIcon, SettingsIcon, ShieldIcon, SmartphoneIcon, SmilePlusIcon, SparkIcon, TerminalIcon } from "./icons";
 import { SearchDialog, type SearchDialogItem } from "./SearchDialog";
 
 export function Palette() {
@@ -41,25 +42,26 @@ export function Palette() {
       { id: "terminal", label: terminalOpen ? "Hide terminal" : "Show terminal", group: "Workspace", icon: <TerminalIcon size={15} />, shortcut: "⌘J", disabledReason: desktopOnly ?? (!(session?.workingDirectory ?? project?.workingDirectory) ? "Open a folder first." : undefined), onSelect: () => { setView("chat"); setTerminalOpen(!terminalOpen); } },
       { id: "browser", label: "Open browser", group: "Workspace", icon: <GlobeIcon size={15} />, onSelect: () => openInspector("browser") },
       { id: "simulator", label: "Open iOS Simulator", group: "Workspace", icon: <SmartphoneIcon size={15} />, disabledReason: desktopOnly ?? (api.platform && api.platform !== "darwin" ? "Available on macOS with Xcode." : undefined), onSelect: () => openInspector("simulator") },
-      { id: "back", label: "Back", group: "Go to", shortcut: "⌘[", disabledReason: canGoBack ? undefined : "No earlier conversation to go back to.", onSelect: goBack },
-      { id: "forward", label: "Forward", group: "Go to", shortcut: "⌘]", disabledReason: canGoForward ? undefined : "No later conversation to go forward to.", onSelect: goForward },
+      { id: "back", label: "Back", group: "Go to", icon: <ArrowLeftIcon size={15} />, shortcut: "⌘[", disabledReason: canGoBack ? undefined : "No earlier conversation to go back to.", onSelect: goBack },
+      { id: "forward", label: "Forward", group: "Go to", icon: <ArrowRightIcon size={15} />, shortcut: "⌘]", disabledReason: canGoForward ? undefined : "No later conversation to go forward to.", onSelect: goForward },
       { id: "find-in-thread", label: "Find in conversation", group: "Workspace", icon: <SearchIcon size={15} />, shortcut: "⌘F", disabledReason: !session ? "Open a conversation first." : undefined, onSelect: () => { setView("chat"); setThreadFind(true); } },
       { id: "chat", label: "Open conversation", group: "Go to", icon: <MessageSquareIcon size={15} />, onSelect: () => setView("chat") },
       { id: "channels", label: "Shared channels", group: "Go to", icon: <MessageSquareIcon size={15} />, disabledReason: desktopOnly, onSelect: () => setView("channels") },
-      { id: "skills", label: "Skills & packs", group: "Go to", onSelect: () => setView("skills") },
-      { id: "harness", label: "Agents, harnesses & capabilities", group: "Go to", icon: <CpuIcon size={15} />, onSelect: () => setView("runtimes") },
-      { id: "runs", label: "Run history", group: "Go to", onSelect: () => setView("history") },
-      { id: "thread-agents", label: "Thread agents", group: "Go to", onSelect: () => openInspector("agents") },
-      { id: "agent-commands", label: "Agent commands", group: "Go to", disabledReason: !session?.harnessId ? "Start an agent conversation first." : undefined, onSelect: () => { setView("chat"); setAgentCommandsOpen(true); } },
-      { id: "approvals", label: "Approvals", group: "Go to", onSelect: () => setView("approvals") },
+      { id: "skills", label: "Skills & packs", group: "Go to", icon: <SparkIcon size={15} />, onSelect: () => setView("skills") },
+      { id: "harness", label: "Agents", group: "Go to", icon: <CpuIcon size={15} />, onSelect: () => setView("runtimes") },
+      { id: "shortcuts", label: "Keyboard shortcuts", group: "Go to", icon: <KeyboardIcon size={15} />, shortcut: "⌘/", onSelect: () => window.dispatchEvent(new CustomEvent(SHOW_SHORTCUTS_EVENT)) },
+      { id: "runs", label: "Run history", group: "Go to", icon: <HistoryIcon size={15} />, onSelect: () => setView("history") },
+      { id: "thread-agents", label: "Thread agents", group: "Go to", icon: <CpuIcon size={15} />, onSelect: () => openInspector("agents") },
+      { id: "agent-commands", label: "Agent commands", group: "Go to", icon: <TerminalIcon size={15} />, disabledReason: !session?.harnessId ? "Start an agent conversation first." : undefined, onSelect: () => { setView("chat"); setAgentCommandsOpen(true); } },
+      { id: "approvals", label: "Approvals", group: "Go to", icon: <ShieldIcon size={15} />, onSelect: () => setView("approvals") },
       { id: "settings", label: "Settings", group: "Go to", icon: <SettingsIcon size={15} />, onSelect: () => setView("settings") },
-      { id: "connect", label: "Connect OpenClaw", group: "Workspace", disabledReason: desktopOnly, onSelect: () => api.connectGateway() },
+      { id: "connect", label: "Connect OpenClaw", group: "Workspace", icon: <LinkIcon size={15} />, disabledReason: desktopOnly, onSelect: () => api.connectGateway() },
       ...(api.isDesktop === true ? [
-        { id: "pet-show", label: "Show desktop companion", group: "Workspace", onSelect: () => api.togglePet(true) },
-        { id: "pet-hide", label: "Hide desktop companion", group: "Workspace", onSelect: () => api.togglePet(false) },
+        { id: "pet-show", label: "Show desktop companion", group: "Workspace", icon: <SmilePlusIcon size={15} />, onSelect: () => api.togglePet(true) },
+        { id: "pet-hide", label: "Hide desktop companion", group: "Workspace", icon: <SmilePlusIcon size={15} />, onSelect: () => api.togglePet(false) },
       ] : []),
-      { id: "update", label: "Check for updates", group: "Workspace", onSelect: () => setAboutOpen(true) },
-      { id: "about", label: "About Capsule", group: "Workspace", onSelect: () => setAboutOpen(true) },
+      { id: "update", label: "Check for updates", group: "Workspace", icon: <RefreshIcon size={15} />, onSelect: () => setAboutOpen(true) },
+      { id: "about", label: "About Capsule", group: "Workspace", icon: <InfoIcon size={15} />, onSelect: () => setAboutOpen(true) },
     ].filter((item) => item.label.toLowerCase().includes(query));
     const projectNames = new Map(projects.map((project) => [project.id, project.name]));
     const matchingThreads = searchSessionTitles(sessions.filter((session) => session.state === "active"), query).slice(0, query ? 30 : 5);

@@ -10,13 +10,29 @@
 | Search files to mention | `⌘P` |
 | Search in files | `⇧⌘F` |
 | Toggle the sidebar | `⌘B` |
-| Toggle the inspector | `⌘\` |
+| Toggle the side panel | `⌘\` |
 | Find in the current conversation | `⌘F` |
 | Back to the previous conversation you visited | `⌘[` |
 | Forward again | `⌘]` |
 | Stash the current prompt | `⌘S` |
 | Undo the latest archive while its notice is visible | `⌘Z` / `Ctrl+Z`, outside an editor or dialog |
 | Send | `Enter`, or `⌘Enter` if you changed the send key |
+| Stop the running turn | `Esc` in the composer |
+| Show every shortcut | `⌘/` |
+| Open Review | `⇧⌘D` |
+| Open the Browser | `⇧⌘B` |
+| Next conversation, by recent activity | `⌃Tab` |
+| Previous conversation | `⌃⇧Tab` |
+| Choose the mode (permissions) | `⇧⌘M` |
+| Choose the model | `⇧⌘I` |
+| Choose the reasoning effort | `⇧⌘E` |
+
+The mode, model and effort shortcuts open the composer's own controls. When the
+current agent has no such control, or it cannot change during a turn, a notice
+says why.
+
+`⌘/` opens a sheet listing every shortcut, including any you have changed. It is
+also in the command palette as **Keyboard shortcuts**.
 
 ## Changing a shortcut
 
@@ -65,3 +81,9 @@ Actions that need the desktop app explain that in a paired viewer.
 Searching the sidebar by project name keeps that project's conversations visible.
 Hiding the sidebar removes its controls from keyboard navigation; showing it
 restores them.
+
+## In the side panel
+
+When the panel shows its list of surfaces, press a surface's letter to open it:
+**R** Review, **B** Browser, **M** Simulator, **F** Files, **A** Agents,
+**S** Side chat. Each card shows its letter.
