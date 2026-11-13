@@ -8,6 +8,7 @@ import {
   sectionTakesProjectValues,
   settingsFileTarget,
   settingsLayerView,
+  asSentence,
   shortConfigPath,
   sourceChip,
   sourceFileTarget,
@@ -168,6 +169,13 @@ describe("announcing a broken file", () => {
     const first = trackBrokenFiles(new Map(), diagnostics(broken(4)));
     const elsewhere = trackBrokenFiles(first.announced, diagnostics());
     expect(trackBrokenFiles(elsewhere.announced, diagnostics(broken(4))).announce).toHaveLength(0);
+  });
+});
+
+describe("messages", () => {
+  it("ends a parser message with one full stop", () => {
+    expect(asSentence("Comma expected.")).toBe("Comma expected.");
+    expect(asSentence("Comma expected ")).toBe("Comma expected.");
   });
 });
 

@@ -177,6 +177,12 @@ export function trackBrokenFiles(announced: AnnouncedBreaks, diagnostics: Config
   return { announced: next, announce };
 }
 
+/** A parser or validator message as the end of a sentence, without a doubled full stop. */
+export function asSentence(message: string): string {
+  const trimmed = message.trim();
+  return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+}
+
 /** A path as a person reads it: home as ~, and only the folders that tell two settings.json apart. */
 export function shortConfigPath(file: string, home?: string): string {
   const withHome = home && file.startsWith(`${home}/`) ? `~${file.slice(home.length)}` : file;

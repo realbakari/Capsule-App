@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ConfigSourceReport } from "@capsule/shared";
-import { shortConfigPath, sourceFileTarget, trackBrokenFiles, type AnnouncedBreaks } from "../../lib/config-view";
+import { asSentence, shortConfigPath, sourceFileTarget, trackBrokenFiles, type AnnouncedBreaks } from "../../lib/config-view";
 import { formatUserError } from "../../lib/errors";
 import { useWorkspace } from "../../lib/workspace";
 import { XIcon } from "../shell/icons";
@@ -46,7 +46,7 @@ export function CustomizationNotices() {
         <div className="customization-banner is-broken" role="alert">
           <span>
             <b title={broken.path}>{shortConfigPath(broken.path, window.capsule?.homeDir)}</b> has a mistake
-            {broken.error ? ` at line ${broken.error.line}, column ${broken.error.column}: ${broken.error.message}.` : "."}{" "}
+            {broken.error ? ` at line ${broken.error.line}, column ${broken.error.column}: ${asSentence(broken.error.message)}` : "."}{" "}
             {broken.usingLastGood ? "Capsule keeps using its last good copy." : "Its settings do not apply until it parses."}
             {error && <span className="customization-banner-error">{error}</span>}
           </span>

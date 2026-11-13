@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ConfigSourceReport, CustomizationRunRecord, SourceState } from "@capsule/shared";
-import { PENDING_KIND_LABELS, shortConfigPath, sourceFileTarget, sourcesByPrecedence } from "../../lib/config-view";
+import { PENDING_KIND_LABELS, asSentence, shortConfigPath, sourceFileTarget, sourcesByPrecedence } from "../../lib/config-view";
 import { formatUserError } from "../../lib/errors";
 import { useWorkspace } from "../../lib/workspace";
 import { RefreshIcon } from "../shell/icons";
@@ -111,7 +111,7 @@ export function CustomizationDoctor() {
             {source.keys && source.keys.length > 0 && <div className="doctor-keys">Sets {source.keys.join(", ")}</div>}
             {source.error && (
               <div className="doctor-error">
-                Line {source.error.line}, column {source.error.column}: {source.error.message}.{" "}
+                Line {source.error.line}, column {source.error.column}: {asSentence(source.error.message)}{" "}
                 {source.usingLastGood ? "Using last good copy." : "Not applied until it parses."}
               </div>
             )}
@@ -130,7 +130,7 @@ export function CustomizationDoctor() {
               <li key={`${problem.path}:${problem.key ?? ""}:${index}`} className="doctor-problem">
                 <span className={`doctor-severity is-${problem.severity}`}>{problem.severity === "error" ? "Error" : "Warning"}</span>
                 <span className="doctor-problem-copy">
-                  {problem.key && <code>{problem.key}</code>} {problem.message}
+                  {problem.key && !problem.message.includes(problem.key) && <><code>{problem.key}</code>{" "}</>}{problem.message}
                   <span className="doctor-problem-file">
                     {canWrite ? (
                       <button type="button" className="doctor-link" title={problem.path} onClick={() => openSource(source ?? { kind: "settings", scope: "default", path: problem.path })}>

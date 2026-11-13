@@ -31,6 +31,7 @@ export function TrustNotice() {
           This project's settings want to run {pending.length === 1 ? "one thing" : `${pending.length} things`}. Nothing runs until you trust the folder
           {desktop ? "." : " on the host computer."}
         </span>
+        <span className="trust-notice-actions">
         <button type="button" className="ghost" aria-expanded={expanded} onClick={() => setExpanded((open) => !open)}>
           {expanded ? "Hide list" : "What would run"}
         </button>
@@ -53,6 +54,7 @@ export function TrustNotice() {
         <button type="button" className="ghost" onClick={() => { notNow.add(project.projectId); dismissed((value) => value + 1); }}>
           Not now
         </button>
+        </span>
       </div>
       {expanded && (
         <ul className="trust-items">

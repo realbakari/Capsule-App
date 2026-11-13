@@ -120,10 +120,11 @@ button.setting-source-chip:hover { border-color: var(--border-strong); color: va
 .doctor-list > li:first-child { border-top: 0; }
 .doctor-row {
   display: grid;
-  grid-template-columns: 8rem auto minmax(0, 1fr) auto;
+  grid-template-columns: 8rem 7.5rem minmax(0, 1fr) auto;
   align-items: center;
   gap: 0.6rem;
 }
+.doctor-row .doctor-state { justify-self: start; }
 .doctor-scope { color: var(--text); font-size: var(--text-xs); white-space: nowrap; }
 .doctor-path {
   min-width: 0;
@@ -240,6 +241,7 @@ button.setting-source-chip:hover { border-color: var(--border-strong); color: va
 .trust-notice-row { display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem 0.6rem; }
 .trust-notice-row > svg { flex-shrink: 0; color: var(--text-faint); }
 .trust-notice-copy { flex: 1 1 16rem; min-width: 0; }
+.trust-notice-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-left: auto; }
 .trust-notice .trust-items { padding-top: 0.4rem; border-top: 1px solid var(--border-color); }
 .trust-notice-error { margin: 0.35rem 0 0; color: var(--red); }
 
