@@ -1353,7 +1353,8 @@ export function Inspector() {
           />
         )}
 
-        {activeTool === "simulator" && <SimulatorPane />}
+        {/* Keyed by thread: an attach that finishes after a switch must not land on the new thread. */}
+        {activeTool === "simulator" && <SimulatorPane key={session?.id ?? "inbox"} />}
 
         {activeTool === "agents" && <div className="codex-tool-pane"><ThreadAgents /></div>}
 
