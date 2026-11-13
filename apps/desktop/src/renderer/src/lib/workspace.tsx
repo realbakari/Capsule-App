@@ -233,6 +233,8 @@ export interface WorkspaceValue {
   setDraft: (value: string | ((current: string) => string)) => void;
   pickAttachments: () => Promise<void>;
   attachClipboardImage: () => Promise<boolean>;
+  /** Attach a PNG the app made, such as a simulator screenshot, to the message being written. */
+  attachImage: (png: Uint8Array) => Promise<boolean>;
   attachPastedText: (text: string) => Promise<boolean>;
   attachFiles: (paths: string[]) => Promise<boolean>;
   removeAttachment: (path: string) => void;
@@ -1586,6 +1588,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
    * Returns false when the clipboard held no image, so the composer can let an
    * ordinary text paste through untouched.
    */
+  async function attachImage(png: Uint8Array): Promise<boolean> {
+    return prepareAttachments(1, async () => [await api.saveImageAttachment(png)]);
+  }
+
   async function attachClipboardImage(): Promise<boolean> {
     return prepareAttachments(1, async () => {
       const saved = (await api.saveClipboardImage()) as string | undefined;
@@ -2317,6 +2323,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       setDraft,
       pickAttachments,
       attachClipboardImage,
+      attachImage,
       attachFiles,
       removeAttachment,
       stashCurrentPrompt,

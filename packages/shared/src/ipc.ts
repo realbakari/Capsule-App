@@ -93,6 +93,8 @@ export const IPC_CHANNELS = {
   validateAttachments: "capsule:validateAttachments",
   /* Writes the clipboard's image to a file so it can be attached. */
   saveClipboardImage: "capsule:saveClipboardImage",
+  /* PNG bytes the renderer made, e.g. an annotated simulator screenshot, saved as an attachment. */
+  saveImageAttachment: "capsule:saveImageAttachment",
   saveTextAttachment: "capsule:saveTextAttachment",
   /* The browser pane's guest WebContents, so agent tools can reach it. */
   registerBrowserView: "capsule:registerBrowserView",

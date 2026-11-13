@@ -16,6 +16,7 @@ import path from "node:path";
 import { BackgroundBrowsers } from "./background-browsers";
 import { PetVoice } from "./pet-voice";
 import { ProductAnalytics } from "./analytics";
+import { readPngBytes } from "./image-attachments";
 import { remoteControlArgs } from "./remote-control";
 import {
   app,
@@ -1669,6 +1670,12 @@ function registerIpc(): void {
     const dir = path.join(app.getPath("userData"), "attachments");
     const { saveImageAttachment } = await import("./image-attachments.js");
     return saveImageAttachment(dir, image.toPNG());
+  });
+  handle(IPC_CHANNELS.saveImageAttachment, async (png) => {
+    const bytes = readPngBytes(png);
+    if (!bytes) throw new Error("capsule:saveImageAttachment: expected a PNG image under 25 MB.");
+    const { saveImageAttachment } = await import("./image-attachments.js");
+    return saveImageAttachment(path.join(app.getPath("userData"), "attachments"), bytes);
   });
   handle(IPC_CHANNELS.saveTextAttachment, async (text) => {
     const { saveTextAttachment } = await import("./text-attachments.js");

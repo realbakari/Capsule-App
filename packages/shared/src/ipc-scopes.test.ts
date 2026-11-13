@@ -64,6 +64,7 @@ describe("ipc scopes", () => {
       "rewindSession",
       "updateFollowUps",
       "saveTextAttachment",
+      "saveImageAttachment",
       "registerBrowserView",
       "setBrowserControl",
       "controlBackgroundBrowser",
