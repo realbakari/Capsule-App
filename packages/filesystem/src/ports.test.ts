@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { listListeningPorts, parseLsofPorts, parsePageTitle } from "./ports.js";
+import http from "node:http";
+import type { AddressInfo } from "node:net";
+import { listListeningPorts, parseLsofPorts, parsePageTitle, probeLocalServer } from "./ports.js";
 
 // Shaped exactly as lsof -F prints it, including the repeated descriptor.
 const sample = ["p4662", "cnode", "f11", "n*:5173", "f14", "n*:5173", "f21", "n127.0.0.1:18789"].join("\n");
@@ -69,5 +71,26 @@ describe("parsePageTitle", () => {
     expect(parsePageTitle("<html><title> Capsule\n Preview </title></html>")).toBe(
       "Capsule Preview",
     );
+  });
+});
+
+describe("probing a local server", () => {
+  it("settles when a page sends its headers and then stalls", async () => {
+    // Streamed SSR during a first compile: headers, a little HTML, then nothing.
+    const server = http.createServer((_request, response) => {
+      response.writeHead(200, { "Content-Type": "text/html" });
+      response.write("<html><head><title>Stalled app</title></head>");
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const port = (server.address() as AddressInfo).port;
+    try {
+      const started = Date.now();
+      const found = await probeLocalServer({ port, command: "node", pid: process.pid }, 200);
+      expect(Date.now() - started).toBeLessThan(2_000);
+      expect(found?.title).toBe("Stalled app");
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
   });
 });

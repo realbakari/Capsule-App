@@ -119,6 +119,21 @@ function probe(
 ): Promise<LocalServer | undefined> {
   const client = protocol === "https" ? https : http;
   return new Promise((resolve) => {
+    /*
+     * One settle, and a deadline over the whole exchange. A server that sent
+     * its headers and then stalled (streamed SSR mid-compile) had its response
+     * aborted by the socket timeout, which raises no error on the request and
+     * never ends the response: the promise hung and the Launch pane spun.
+     */
+    let settled = false;
+    const settle = (value: LocalServer | undefined) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(deadline);
+      resolve(value);
+    };
+    const deadline = setTimeout(() => { request.destroy(); settle(undefined); }, timeoutMs * 2);
+    deadline.unref?.();
     const request = client.get(
       {
         host: "127.0.0.1",
@@ -133,26 +148,29 @@ function probe(
         const status = response.statusCode ?? 0;
         if (status < 200 || status >= 400 || (!contentType.includes("text/html") && status < 300)) {
           response.resume();
-          resolve(undefined);
+          settle(undefined);
           return;
         }
         let body = "";
+        // A page that answered is a server even if its body never finishes.
+        const found = () => settle({
+          ...candidate,
+          protocol,
+          url: `${protocol}://localhost:${candidate.port}`,
+          title: parsePageTitle(body),
+        });
         response.setEncoding("utf8");
         response.on("data", (chunk: string) => {
           if (body.length < 64_000) body += chunk.slice(0, 64_000 - body.length);
         });
-        response.on("end", () =>
-          resolve({
-            ...candidate,
-            protocol,
-            url: `${protocol}://localhost:${candidate.port}`,
-            title: parsePageTitle(body),
-          }),
-        );
+        response.on("end", found);
+        response.on("aborted", found);
+        response.on("error", found);
+        response.on("close", found);
       },
     );
     request.on("timeout", () => request.destroy());
-    request.on("error", () => resolve(undefined));
+    request.on("error", () => settle(undefined));
   });
 }
 
