@@ -1,4 +1,6 @@
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync } from "node:fs";
+import { homedir } from "node:os";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { readProjectFile } from "@capsule/filesystem";
@@ -7,6 +9,7 @@ import {
   SETTINGS_SCHEMA,
   SETTINGS_SCHEMA_URL,
   settingSpec,
+  shellSpanCommands,
   type CapsuleSettings,
   type ConfigDiagnostics,
   type ConfigFileTarget,
@@ -19,12 +22,13 @@ import {
   type Provenance,
   type WritableScope,
 } from "@capsule/shared";
+import { commandFolders, readCommandCatalog, type CommandCatalog, type CommandFolder } from "./commands.js";
 import { excludeFromGit } from "./git-exclude.js";
 import { editJsonc, readJsonc, writeJsonc, type JsoncEdit, type JsoncFile } from "./jsonc.js";
 import { LastGoodStore } from "./last-good.js";
 import { mergeLayers, readLayer, type Layer, type LayerReading, type MergedConfig } from "./layers.js";
 import { ConfigPaths } from "./paths.js";
-import { listResources, type ResourceFile, type ResourceKind } from "./resources.js";
+import { listResourceFolder, listResources, type ResourceFile, type ResourceKind } from "./resources.js";
 import { isPlainObject, pruneToSchema, type SchemaIssue } from "./schema-check.js";
 import type { TrustStore } from "./trust.js";
 import { ConfigWatcher, type ConfigWatcherOptions } from "./watcher.js";
@@ -44,6 +48,8 @@ export interface ConfigServiceOptions {
   defaults?: CapsuleSettings;
   /** Live reload. Off, or tuned, in tests. */
   watch?: boolean | ConfigWatcherOptions;
+  /** Where other tools' command folders are looked for when the user turns them on. */
+  homeDir?: string;
 }
 
 /** Settings and extended configuration for one project folder. */
@@ -102,6 +108,8 @@ export class ConfigService {
   private user: SettingsSource;
   private keybindings: JsoncFile = { state: "missing" };
   private watcher?: ConfigWatcher;
+  /** What every known command folder held at the last read, so an edit to one is a change. */
+  private commandFiles = "";
   private loaded = false;
   private closed = false;
 
@@ -123,6 +131,7 @@ export class ConfigService {
       this.watcher = new ConfigWatcher(() => this.reload(), typeof this.options.watch === "object" ? this.options.watch : {});
       this.watcher.add(this.paths.userDir, "dir");
     }
+    this.commandFiles = this.commandFilesStamp();
   }
 
   /** Effective user-level settings: defaults with the user file applied. */
@@ -187,6 +196,14 @@ export class ConfigService {
     if (resolution.legacy) {
       const { path: file, state } = resolution.legacy;
       sources.push({ kind: "settings", scope: "legacy", path: file, state: state.status === "ok" ? "ok" : "broken", keys: state.status === "ok" && state.file.defaultWorkspaceMode ? ["defaultWorkspaceMode"] : [] });
+    }
+    const commands = this.commands(root);
+    problems.push(...commands.problems);
+    if (!resolution.trusted) {
+      for (const entry of commands.commands) {
+        if (entry.scope !== "project") continue;
+        for (const command of shellSpanCommands(entry.command.body)) pending.push({ kind: "command-shell", detail: `/${entry.command.name}: ${command}`, path: entry.path });
+      }
     }
     return { safeMode: false, userDir, sources, problems, trust: root ? this.trustFor(root, pending) : undefined, runs };
   }
@@ -257,13 +274,25 @@ export class ConfigService {
     return listResources(kind, roots);
   }
 
+  /**
+   * Commands from every folder the user and, given a root, the project
+   * offer, with a name's highest-precedence file winning.
+   */
+  commands(root?: string): CommandCatalog {
+    if (this.safeMode) return { commands: [], problems: [] };
+    if (root) this.trackProject(root);
+    return readCommandCatalog(this.commandFolders(root));
+  }
+
   /** Re-read every file now. Listeners hear about it when anything changed. */
   reload(): boolean {
     if (this.safeMode || this.closed || !this.loaded) return false;
     const before = this.fingerprint();
+    const commandsBefore = this.commandFiles;
     this.readUser();
     for (const root of this.projects.keys()) this.readProject(root);
-    const changed = this.fingerprint() !== before;
+    this.commandFiles = this.commandFilesStamp();
+    const changed = this.fingerprint() !== before || this.commandFiles !== commandsBefore;
     if (changed) for (const listener of this.listeners) listener();
     return changed;
   }
@@ -324,7 +353,33 @@ export class ConfigService {
     const sources = this.readProject(key);
     this.watcher?.add(this.paths.projectDir(key), "dir");
     this.watcher?.add(this.paths.legacyFile(key), "file");
+    this.commandFiles = this.commandFilesStamp();
     return sources;
+  }
+
+  /*
+   * Other tools' folders sit outside the watched settings folders, so each
+   * one the user turns on gets its own watch.
+   */
+  private commandFolders(root?: string): CommandFolder[] {
+    const folders = commandFolders({
+      userDir: this.paths.userDir,
+      homeDir: this.options.homeDir ?? homedir(),
+      root: root ? path.resolve(root) : undefined,
+      sources: this.resolve().merged.extended.commandSources,
+    });
+    for (const folder of folders) if (folder.source === "claude" || folder.source === "codex") this.watcher?.add(folder.dir, "dir");
+    return folders;
+  }
+
+  private commandFilesStamp(): string {
+    const hash = createHash("sha1");
+    for (const root of [undefined, ...this.projects.keys()]) {
+      for (const folder of this.commandFolders(root)) {
+        for (const file of listResourceFolder("commands", folder.scope, folder.dir)) hash.update(`${file.path}\0${file.text}\0`);
+      }
+    }
+    return hash.digest("hex");
   }
 
   private readUser(): void {
