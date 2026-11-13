@@ -14,7 +14,7 @@ const RUN_PAGES = 10;
 export function useReviewTurns(sessionId: string | undefined): { turns: ReviewTurn[]; loading: boolean } {
   const { api, runs } = useWorkspace();
   // A turn that has just saved its checkpoint is a new entry for the list.
-  const signal = useMemo(() => runs.filter((run) => run.sessionId === sessionId && run.checkpointRef).map((run) => run.id).join(","), [runs, sessionId]);
+  const signal = useMemo(() => (runs ?? []).filter((run) => run.sessionId === sessionId && run.checkpointRef).map((run) => run.id).join(","), [runs, sessionId]);
   const [state, setState] = useState<{ sessionId?: string; turns: ReviewTurn[]; loading: boolean }>({ turns: [], loading: false });
   useEffect(() => {
     if (!sessionId) { setState({ turns: [], loading: false }); return undefined; }
