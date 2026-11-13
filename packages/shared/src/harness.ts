@@ -310,7 +310,7 @@ export const PRESET_HARNESSES: HarnessPreset[] = [
     ["claude"],
     "Install and sign in to Claude Code on this computer. New direct conversations use the installed CLI through its SDK.",
     "https://claude.ai/code",
-    { probeArgs: ["auth", "status"], hint: "Run `claude` and complete sign-in" },
+    { probeArgs: ["auth", "status"], hint: "Run `claude auth login` in a terminal" },
     {
       underlyingCli: "claude",
       nativeCommand: { protocol: "claude", command: "claude", args: [] },

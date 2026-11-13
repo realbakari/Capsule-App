@@ -70,7 +70,7 @@ describe("readiness gating on sign-in", () => {
     const result = describeReadiness({ ...base, loginState: "logged_out" });
     expect(result.readiness).toBe("needs_login");
     expect(result.detail).toContain("not signed in");
-    expect(result.detail).toContain("Run `claude`");
+    expect(result.detail).toContain("Run `claude auth login`");
   });
 
   it("uses the codex hint for codex", () => {
@@ -120,7 +120,7 @@ describe("doctor checks", () => {
     });
     const login = checks.find((c) => c.id === "login");
     expect(login?.ok).toBe(false);
-    expect(login?.detail).toContain("Run `claude`");
+    expect(login?.detail).toContain("Run `claude auth login`");
   });
 
   it("passes the sign-in check when signed in", () => {
