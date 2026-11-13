@@ -4,6 +4,7 @@ export * from "./replies.js";
 export * from "./context-menu.js";
 export * from "./control-notice.js";
 export * from "./diff.js";
+export * from "./review-hunks.js";
 export * from "./untrusted.js";
 export * from "./folders.js";
 export * from "./harness.js";
