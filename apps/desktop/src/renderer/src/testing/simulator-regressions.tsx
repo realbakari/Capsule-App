@@ -227,11 +227,15 @@ export async function runSimulatorRegressions(host: HTMLElement, base: Record<st
     document.dispatchEvent(new Event("visibilitychange"));
     await until(() => host.textContent?.includes("Simulator is not available here"));
 
-    // On a Mac without Xcode, the pane walks through setup instead.
+    // Without Xcode, a Mac walks through setup; anywhere else the simulator is simply unavailable.
     inventory = { supported: false, reason: "Install Xcode and its iOS platform, then open Xcode once so its command-line tools are selected.", devices: [] };
     document.dispatchEvent(new Event("visibilitychange"));
-    await until(() => host.textContent?.includes("Set up a simulator"));
-    assert(host.querySelector('.simulator-setup-steps li[data-state="current"]')?.textContent?.includes("Install Xcode"), "Setup did not start at Xcode");
+    if (/Mac/.test(navigator.userAgent)) {
+      await until(() => host.textContent?.includes("Set up a simulator"));
+      assert(host.querySelector('.simulator-setup-steps li[data-state="current"]')?.textContent?.includes("Install Xcode"), "Setup did not start at Xcode");
+    } else {
+      await until(() => host.textContent?.includes("Simulator is not available here"));
+    }
     assert(notices.every((notice) => notice.startsWith("Recording saved")), `Unexpected notices: ${notices.join(" | ")}`);
     return "Simulator regressions passed";
   } finally {
