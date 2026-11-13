@@ -3506,8 +3506,8 @@ select:focus,
 }
 
 .preview-chrome-btn.active {
-  background: rgba(59, 130, 246, 0.18);
-  color: #3b82f6;
+  background: var(--bg-active);
+  color: var(--text);
 }
 
 .preview-spin-icon {
