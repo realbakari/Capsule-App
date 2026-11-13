@@ -423,8 +423,8 @@ export function Conversation() {
     });
   }, [api, attachFiles, loadSession, session?.id, setConfirm, setDraft, setNotice]);
   const continueInNewConversation = useCallback((content: string) => {
-    void createTask().then(() => setDraft(content)).catch((error) => setNotice(formatUserError(error)));
-  }, [createTask, setDraft, setNotice]);
+    void createTask(undefined, content).catch((error) => setNotice(formatUserError(error)));
+  }, [createTask, setNotice]);
 
   const scroller = useRef<HTMLDivElement>(null);
   /* Track the message count at mount time so entrance animations only fire for

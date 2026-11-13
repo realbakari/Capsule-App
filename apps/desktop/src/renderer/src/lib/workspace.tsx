@@ -243,7 +243,8 @@ export interface WorkspaceValue {
   loadSession: (id: string) => Promise<void>;
   eventLoad?: { runId: string; state: "loading" | "loaded" | "error"; detail?: string };
   /** Start a conversation, in the given project or the selected one. */
-  createTask: (projectId?: string) => Promise<void>;
+  /** Opens a new conversation, in another project when one is named, optionally with a prompt waiting in its composer. */
+  createTask: (projectId?: string, initialPrompt?: string) => Promise<void>;
   /** Visited conversations, like a browser's history. */
   canGoBack: boolean;
   canGoForward: boolean;
@@ -1167,7 +1168,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       .catch(() => setFiles([]));
   }, [api, scope, loadGit, projectId, project?.workingDirectory, sessionId, session?.workingDirectory, selectionExists]);
 
-  async function createTask(inProject?: string) {
+  async function createTask(inProject?: string, initialPrompt?: string) {
     if (api.isDesktop === false && api.remoteMode !== "control") {
       setNotice("This browser is read-only. Pair with conversation control to create a thread.");
       return;
@@ -1183,6 +1184,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       title: "New conversation",
     });
     if (!requests.isCurrent(scope)) return;
+    // The draft scope moves with the selection, so a prompt written after the
+    // switch was dropped. Hand it to the new thread's own draft instead.
+    if (initialPrompt) promotedDrafts.current.set(promptDraftKey(targetProject, created.id), { prompt: initialPrompt, attachments: [] });
+    // A thread is looked up within the selected project; selecting only the
+    // thread left it unfound, and the view fell back to the old project.
+    setProjectId(targetProject);
     setSessionId(created.id);
     setView("chat");
     await refresh();
