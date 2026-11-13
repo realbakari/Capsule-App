@@ -186,7 +186,7 @@ export function SettingsView() {
             <div className="settings-crumbbar">
               {/* One heading per page: the section's name. The titlebar already says Settings. */}
               <h2 className="settings-title">{SETTINGS_SECTION_LABELS[tab]}</h2>
-              {SECTIONS_WITH_DEFAULTS.has(tab) && (
+              {SECTIONS_WITH_DEFAULTS.has(tab) && api.isDesktop === true && (
               <div className="settings-crumb-actions">
                 {canWriteFiles && (
                   <button
