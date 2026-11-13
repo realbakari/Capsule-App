@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, it, vi } from "vitest";
@@ -42,6 +42,19 @@ it.each(["replace", "delete"])("restores credentials and settings after a failed
     expect(stored()).toBe(before);
     expect(secrets).toEqual(beforeSecrets);
     expect(changed).not.toHaveBeenCalled();
+  } finally { await close(); }
+});
+
+it("says where a settings file is broken when a save is refused for it", async () => {
+  const { engine, secrets, close } = await fixture();
+  const file = path.join(engine.config.paths.userDir, "settings.json");
+  try {
+    const before = new Map(secrets);
+    writeFileSync(file, '{\n  "diffLayout": "unified"\n  "transcriptSize": "l"\n}\n');
+    const save = engine.updateSettings({ transcriptWidth: "narrow", gatewayToken: "fixture-other" });
+    await expect(save).rejects.toThrow(/line 3, column 3.*Previous settings were kept/);
+    expect(readFileSync(file, "utf8")).toContain('"transcriptSize": "l"');
+    expect(secrets).toEqual(before);
   } finally { await close(); }
 });
 
