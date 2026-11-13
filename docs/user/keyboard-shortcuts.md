@@ -15,7 +15,9 @@
 | Back to the previous conversation you visited | `⌘[` |
 | Forward again | `⌘]` |
 | Stash the current prompt | `⌘S` |
-| Undo the latest archive while its notice is visible | `⌘Z` / `Ctrl+Z`, outside an editor or dialog |
+| Undo the latest archive, settle or snooze while its notice is visible | `⌘Z` / `Ctrl+Z`, outside an editor or dialog |
+| Settle this conversation and go to the next one waiting for you | `⌘E` |
+| Mark this conversation unread | `⇧⌘U` |
 | Send | `Enter`, or `⌘Enter` if you changed the send key |
 | Stop the running turn | `Esc` in the composer |
 | Show every shortcut | `⌘/` |
