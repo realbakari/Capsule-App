@@ -137,6 +137,7 @@ export const DEFAULT_CAPSULE_SETTINGS: CapsuleSettings = {
   prWatchAndFix: false,
   prAutoMerge: false,
   prWatchUntilMerged: false,
+  autoSettleMerged: true,
   timeFormat: "system",
   confirmDelete: true,
   // Archiving already offers Undo, so asking first is opt-in.
@@ -215,6 +216,7 @@ export const SETTINGS_SECTION_KEYS: Record<string, ReadonlyArray<keyof CapsuleSe
     "prWatchAndFix",
     "prAutoMerge",
     "prWatchUntilMerged",
+    "autoSettleMerged",
     "commitInstructions",
     "prInstructions",
   ],
@@ -302,6 +304,8 @@ export interface CapsuleSettings {
   prWatchAndFix: boolean;
   prAutoMerge: boolean;
   prWatchUntilMerged: boolean;
+  /** Settle the thread watching a pull request once it merges. */
+  autoSettleMerged: boolean;
   commitInstructions?: string;
   prInstructions?: string;
   /**
@@ -577,6 +581,7 @@ export function normalizeCapsuleSettings(input: Partial<CapsuleSettings> = {}): 
       input.prWatchUntilMerged,
       DEFAULT_CAPSULE_SETTINGS.prWatchUntilMerged,
     ),
+    autoSettleMerged: flag(input.autoSettleMerged, DEFAULT_CAPSULE_SETTINGS.autoSettleMerged),
     commitInstructions: sanitizeGuidance(input.commitInstructions),
     prInstructions: sanitizeGuidance(input.prInstructions),
     keybindings: normalizeKeybindings(input.keybindings),

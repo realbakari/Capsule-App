@@ -58,6 +58,7 @@ export const SETTINGS_SEARCH_ITEMS: SettingsSearchItem[] = [
   { title: "Local performance", section: "diagnostics", keywords: ["freeze", "timings", "slow", "git", "preview"] },
   { title: "Keep computer awake", section: "general", keywords: ["sleep", "power", "running"] },
   { title: "Response completions", section: "general", keywords: ["notification", "alert", "run complete"] },
+  { title: "Settle merged conversations", section: "sourceControl", keywords: ["pull request", "merged", "settle", "done"] },
   { title: "Continue after a restart", section: "general", keywords: ["crash", "quit", "resume", "interrupted", "restart"] },
   { title: "Dock badge", section: "general", keywords: ["notification", "unread", "count", "icon"] },
   { title: "Notification sound", section: "general", keywords: ["notification", "sound", "silent", "alert"] },

@@ -494,6 +494,9 @@ export function GitCard({ settings, onPatch }: SectionProps) {
           onChange={(prWatchUntilMerged) => onPatch({ prWatchUntilMerged })}
         />
       </SettingRow>
+      <SettingRow label="Settle merged conversations" hint="When a watched pull request merges, settle the conversation that opened it. It comes back as soon as you send it another message.">
+        <Switch checked={settings.autoSettleMerged} label="Settle merged conversations" onChange={(autoSettleMerged) => onPatch({ autoSettleMerged })} />
+      </SettingRow>
       <SettingRow
         label="Commit instructions"
         hint="Added to agent prompts when writing commit messages."

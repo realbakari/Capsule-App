@@ -3461,6 +3461,12 @@ export class CapsuleEngine {
     if (!known) return;
     if (!pullRequest || pullRequest.state === "MERGED" || pullRequest.state === "CLOSED") {
       this.events.emit("state", { command: "git-updated" });
+      // A merged pull request is the thread's work done: settle it, reversibly, unless asked not to.
+      const owner = this.prWatchers.get(projectId)?.ownerSessionId ?? this.prWatchSessions.get(projectId);
+      if (pullRequest?.state === "MERGED" && owner && this.settings.autoSettleMerged !== false) {
+        try { if (!this.repos.getSession(owner)?.settledAt) this.triage.apply(owner, { kind: "settle" }); }
+        catch (error) { this.log(`Could not settle the merged thread: ${String(error)}`); }
+      }
       if (!this.settings.prWatchUntilMerged || !pullRequest || pullRequest.state !== "OPEN") {
         this.stopPrWatch(projectId);
       }
