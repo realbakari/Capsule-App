@@ -57,6 +57,8 @@ import {
   IPC_CHANNELS,
   isRemoteEvent,
   readFollowUpOp,
+  readBoardCardOp,
+  readCreateBoardCard,
   isNewerRelease,
   pickReleaseAsset,
   PRESET_HARNESSES,
@@ -1891,6 +1893,17 @@ function registerIpc(): void {
     const parsed = readFollowUpOp(op);
     if (!parsed) throw new Error(`${channel}: that change to the follow-ups is not valid.`);
     return requireEngine().updateFollowUps(id(sessionId, channel, 0), parsed);
+  });
+  handle(IPC_CHANNELS.createBoardCard, (input) => {
+    const parsed = readCreateBoardCard(input);
+    if (!parsed) throw new Error(`${IPC_CHANNELS.createBoardCard}: that card is not valid.`);
+    return requireEngine().createBoardCard(parsed);
+  });
+  handle(IPC_CHANNELS.updateBoardCard, (sessionId, op) => {
+    const channel = IPC_CHANNELS.updateBoardCard;
+    const parsed = readBoardCardOp(op);
+    if (!parsed) throw new Error(`${channel}: that change to the card is not valid.`);
+    return requireEngine().updateBoardCard(id(sessionId, channel, 0), parsed);
   });
   handleArgs(IPC_CHANNELS.searchSkillCatalog, [str, optBool], (query: string, refresh: boolean) =>
     requireEngine().searchSkillCatalog(query, refresh),

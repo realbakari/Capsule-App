@@ -183,6 +183,9 @@ export const IPC_CHANNELS = {
   /* A conversation's queued follow-ups and scheduled resume, kept and sent by the engine. */
   getFollowUps: "capsule:getFollowUps",
   updateFollowUps: "capsule:updateFollowUps",
+  /* Board cards: create a draft or started card, and change one (link, start, mark done). */
+  createBoardCard: "capsule:createBoardCard",
+  updateBoardCard: "capsule:updateBoardCard",
   fetchSkillDetail: "capsule:fetchSkillDetail",
 } as const;
 

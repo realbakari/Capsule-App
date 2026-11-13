@@ -5,6 +5,8 @@ import type { VerificationResult } from "@capsule/shared";
 import { localTimings, TextBudget, OUTPUT_LIMIT_ERROR, searchSessionTitles } from "@capsule/shared";
 import type { FollowUpOp, FollowUps, RunStatus } from "@capsule/shared";
 import { FollowUpService } from "./follow-up-service.js";
+import { BoardService } from "./board-service.js";
+import type { BoardCardOp, CreateBoardCardInput } from "@capsule/shared";
 
 const ACTIVE_RUN_STATUSES = new Set<RunStatus>(["queued", "running", "waiting", "approval_required"]);
 const TERMINAL_RUN_STATUSES = new Set<RunStatus>(["completed", "failed", "cancelled", "blocked"]);
@@ -304,6 +306,19 @@ export class CapsuleEngine {
     attachmentsFor: (runId) => this.repos.listMessages(this.repos.getRun(runId)?.sessionId ?? "").find((message) => message.runId === runId && message.role === "user")?.attachments ?? [],
     log: (message) => this.log(message),
   });
+  /* Board cards: drafts waiting to start, and the chains that start them. */
+  private readonly board = new BoardService({
+    getSession: (id) => this.repos.getSession(id),
+    listSessions: () => this.repos.listSessions(),
+    saveCard: (session) => this.repos.updateSessionBoard(session),
+    latestRuns: () => new Map(this.repos.listLatestRuns().map((run) => [run.sessionId, run])),
+    isBusy: (sessionId) => this.admittingSessions.has(sessionId) || this.listRuns(sessionId).some((run) => ACTIVE_RUN_STATUSES.has(run.status)),
+    createSession: (input) => this.createSession(input),
+    send: async (sessionId, content) => { await this.sendMessage({ sessionId, content }); },
+    emit: () => this.events.emit("state", { command: "sessions-updated" }),
+    log: (message) => this.log(message),
+    now: nowIso,
+  });
   private startingHarnessRuns = new Set<string>();
   private folderActivity = new FolderActivity();
   private updateReserved = false;
@@ -403,6 +418,7 @@ export class CapsuleEngine {
       if (!this.stopped && TERMINAL_RUN_STATUSES.has(run.status)) this.followUps.runEnded(run);
     });
     this.followUps.start();
+    this.board.start();
     this.log("Capsule engine started");
   }
 
@@ -458,6 +474,7 @@ export class CapsuleEngine {
     // promise, which surfaces as an unhandled rejection with no run to blame.
     this.stopped = true;
     this.followUps.stop();
+    this.board.stop();
     const channelRoutesStopped = this.channelRoutes.stop();
     // Resolve approval records while the database is still open. Closing the
     // transport later cannot safely update those persisted requests.
@@ -1742,6 +1759,7 @@ export class CapsuleEngine {
     await this.cleanupSessionWorktree(session, project);
     this.followUps.forget(id);
     this.repos.deleteSession(id);
+    this.board.forget(id);
   }
 
   async setSessionWorkspaceMode(id: string, mode: WorkspaceMode): Promise<Session> {
@@ -1875,6 +1893,17 @@ export class CapsuleEngine {
     return this.followUps.apply(sessionId, op);
   }
 
+  /** Make a board card: a thread that starts with this prompt now, by hand, or when what it waits for is done. */
+  createBoardCard(input: CreateBoardCardInput): Promise<Session> {
+    this.assertWorkAllowed();
+    return this.board.createCard(input);
+  }
+
+  updateBoardCard(sessionId: string, op: BoardCardOp): Promise<Session> {
+    this.assertWorkAllowed();
+    return this.board.apply(sessionId, op);
+  }
+
   async sendMessage(input: AgentMessage): Promise<{ session: Session; run: Run; userMessage: ChatMessage; }> {
     this.assertWorkAllowed();
     if (this.admittingSessions.has(input.sessionId) || this.repos.findReplyRun(input.sessionId)) {
@@ -1920,6 +1949,11 @@ export class CapsuleEngine {
     session.mode = mode;
     session.updatedAt = nowIso();
     this.repos.updateSession(session);
+    if (session.pendingStart) {
+      // Sent by hand from the thread: the card has started, and must not start again.
+      session.pendingStart = undefined;
+      this.repos.updateSessionBoard(session);
+    }
 
     const run = createRunRecord({
       sessionId: session.id,
@@ -3368,7 +3402,8 @@ export class CapsuleEngine {
       if (
         !shouldArchiveInactiveSession({
           state: session.state,
-          pinned: session.pinned,
+          // A draft card is waiting on purpose, however long it has been quiet.
+          pinned: session.pinned || Boolean(session.pendingStart),
           updatedAt: session.updatedAt,
           liveHarness: isLiveHarnessState(session.harnessState),
           hasActiveRun: activeRunIds.has(session.id),

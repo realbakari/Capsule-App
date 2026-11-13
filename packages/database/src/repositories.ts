@@ -254,10 +254,20 @@ export class CapsuleRepositories {
          harness_state = @harnessState, acp_mode = @acpMode,
          permission_profile = @permissionProfile, model_override = @modelOverride,
          pinned = @pinned, pin_order = @pinOrder, working_directory = @workingDirectory, workspace_mode = @workspaceMode,
-         worktree_branch = @worktreeBranch, direct_session = @directSession, carry_over = @carryOver,
-         pending_start = @pendingStart, done_at = @doneAt, updated_at = @updatedAt WHERE id = @id`,
+         worktree_branch = @worktreeBranch, direct_session = @directSession, carry_over = @carryOver, updated_at = @updatedAt WHERE id = @id`,
       )
       .run(sessionParams(session));
+  }
+
+  /**
+   * A card's draft prompt and done mark, written on their own. Turns update
+   * their thread from objects read seconds earlier; if those writes carried
+   * these columns, a turn finishing could undo a card marked done meanwhile.
+   */
+  updateSessionBoard(session: Pick<Session, "id" | "pendingStart" | "doneAt" | "updatedAt">): void {
+    this.db.sqlite
+      .prepare("UPDATE sessions SET pending_start = ?, done_at = ?, updated_at = ? WHERE id = ?")
+      .run(session.pendingStart ? JSON.stringify(session.pendingStart) : null, session.doneAt ?? null, session.updatedAt, session.id);
   }
 
   deleteSession(id: string): void {

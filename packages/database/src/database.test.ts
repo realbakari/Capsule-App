@@ -330,13 +330,14 @@ describe("board cards on disk", () => {
     expect(repos.getSession("old")).toMatchObject({ title: "Older thread", pendingStart: undefined, doneAt: undefined });
     const pendingStart = { prompt: "Add the tests", dependsOn: ["old"], autoStart: true, createdAt: "2026-11-01T00:00:00.000Z" };
     repos.insertSession({ ...repos.getSession("old")!, id: "card", title: "Tests", pendingStart });
-    repos.updateSession({ ...repos.getSession("old")!, doneAt: "2026-11-02T00:00:00.000Z" });
+    repos.updateSessionBoard({ ...repos.getSession("old")!, doneAt: "2026-11-02T00:00:00.000Z" });
+    repos.updateSession({ ...repos.getSession("old")!, doneAt: undefined, title: "Renamed" });
     db.close();
 
     const reopened = new CapsuleRepositories(new CapsuleDatabase(file));
     expect(reopened.getSession("card")?.pendingStart).toEqual(pendingStart);
-    expect(reopened.getSession("old")?.doneAt).toBe("2026-11-02T00:00:00.000Z");
-    reopened.updateSession({ ...reopened.getSession("card")!, pendingStart: undefined });
+    expect(reopened.getSession("old")).toMatchObject({ title: "Renamed", doneAt: "2026-11-02T00:00:00.000Z" });
+    reopened.updateSessionBoard({ ...reopened.getSession("card")!, pendingStart: undefined });
     expect(reopened.getSession("card")?.pendingStart).toBeUndefined();
   });
 });

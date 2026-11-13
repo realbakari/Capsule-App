@@ -63,6 +63,8 @@ describe("ipc scopes", () => {
       "attachSimulator",
       "rewindSession",
       "updateFollowUps",
+      "createBoardCard",
+      "updateBoardCard",
       "saveTextAttachment",
       "saveImageAttachment",
       "registerBrowserView",
@@ -141,5 +143,15 @@ describe("follow-up channels", () => {
     expect(isChannelAllowed("getFollowUps", ["read"])).toBe(true);
     expect(isChannelAllowed("updateFollowUps", ["read"])).toBe(false);
     expect(isChannelAllowed("updateFollowUps", ["control"])).toBe(true);
+  });
+});
+
+describe("board channels", () => {
+  it("keeps making, linking, starting and finishing cards away from any paired device that is not trusted to write", () => {
+    for (const channel of ["createBoardCard", "updateBoardCard"]) {
+      expect(isChannelAllowed(channel, ["read"])).toBe(false);
+      expect(isChannelAllowed(channel, ["control"])).toBe(false);
+      expect(isChannelAllowed(channel, ["write"])).toBe(true);
+    }
   });
 });
