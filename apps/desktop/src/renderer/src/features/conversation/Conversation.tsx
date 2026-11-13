@@ -4,6 +4,7 @@ import type { ChatMessage, Run } from "@capsule/shared";
 import { harnessDisplayName } from "../../lib/harness";
 import { useMarkThreadViewed } from "../../lib/thread-triage";
 import { QuestionCard } from "../questions/QuestionCard";
+import { QuoteSelection } from "./QuoteSelection";
 import { formatTokens, type ContextUsage } from "../../lib/context-window";
 import { AlertTriangleIcon, DiffIcon, FileIcon, HistoryIcon, MessageSquarePlusIcon, SparkIcon, TerminalIcon, XIcon } from "../shell/icons";
 import { RunElapsed } from "./RunElapsed";
@@ -498,6 +499,7 @@ export function Conversation() {
           </button>
         </div>
       )}
+      {api.isDesktop !== false && <QuoteSelection scroller={scroller} />}
       {threadFind && <ThreadFind messages={messages} onLocate={locateMessage} onClose={() => setThreadFind(false)} />}
       <div
         className="conversation"

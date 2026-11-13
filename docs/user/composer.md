@@ -388,3 +388,9 @@ The context ring beside Send opens a card with the context window in use.
 when the agent offers that command; the card says when it does not. After
 five idle minutes the card notes that the prompt cache has likely expired, the
 cheapest moment to compact.
+
+## Quoting a reply
+
+Select part of an agent's reply and choose **Quote in reply**. The text goes into
+your message as a quote where your cursor was, so you can ask about exactly that
+part. Quoting works within one reply at a time.

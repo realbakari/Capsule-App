@@ -2164,3 +2164,17 @@ differs from the one for folders.
   and the page survive the git status polling that drives uncommitted reloads.
 - Decision: the old single-file raw diff in Review is gone; selecting a file
   narrows the parsed, paged view instead, so one renderer serves both scopes.
+
+## Quote, scroll position, queued edit, folder drop
+
+- **Quote in reply** floats over a selection that lies inside one assistant
+  message (`.msg.assistant`), and inserts it as a Markdown quote at the composer
+  caret through the same paragraph insertion the terminal's Add to chat uses. A
+  selection across turns gets no button. Desktop only.
+- **Reading position** per thread is the turn at the top of the view plus the
+  offset into it (`lib/turn-anchors.ts`, 64 threads, module memory). A thread
+  left following its latest turn has no entry and opens at the bottom.
+- **⌥↑** in an empty composer takes the last queued follow-up back to edit.
+- **Folder drop**: folders dropped on the sidebar become projects (an existing
+  one opens instead); files are refused with a reason. Desktop only, since it
+  needs local paths.
