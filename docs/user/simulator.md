@@ -7,6 +7,11 @@ Xcode, runtimes or devices.
 
 ## Open a simulator
 
+If this Mac has no simulator yet, the panel shows the setup steps instead:
+install Xcode, download the iOS platform (with a button that copies
+`xcodebuild -downloadPlatform iOS`), and create a device. Each step ticks
+itself off as soon as it is done; there is nothing to reload.
+
 Open the inspector and choose **Simulator**, or pick **Open iOS Simulator**
 from the command palette. The device picker at the top lists every simulator
 Xcode knows about with its runtime and whether it is running.
@@ -86,6 +91,13 @@ gesture. Each value shown is read back from the device after a change.
   simulator**.
 
 ## Agents and the simulator
+
+While the running turn is working with a simulator, a banner above the device
+says so, and names this device when the agent's step does. Taps you make then
+change what the agent sees, so it is worth waiting for the banner to clear.
+
+With the screen focused, `⇧⌘H` presses Home, `⌘→` rotates a quarter turn, and
+`⌘S` adds a screenshot to your message.
 
 A direct agent in a conversation with an attached simulator gets tools to
 read its status, take screenshots, tap, swipe, type, press Return or Delete,

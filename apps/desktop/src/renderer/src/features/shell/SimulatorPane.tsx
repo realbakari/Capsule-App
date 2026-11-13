@@ -7,6 +7,8 @@ import { SimulatorAttach } from "./SimulatorAttach";
 import { SimulatorTools } from "./SimulatorTools";
 import { SimulatorAnnotator } from "./SimulatorAnnotator";
 import { InspectorHeadSlot } from "./inspector-slot";
+import { SimulatorSetup } from "./SimulatorSetup";
+import { agentSimulatorActivity } from "../../lib/simulator-activity";
 import { deviceGeometry, devicePoints, pointOnScreen, rotateClockwise, stepZoom, type SimulatorZoom, type Size } from "./simulator-geometry";
 import {
   CameraIcon,
@@ -69,7 +71,7 @@ interface PointerTrack {
 }
 
 export function SimulatorPane() {
-  const { api, session, settings, setNotice, openPath, attachImage } = useWorkspace();
+  const { api, session, settings, setNotice, openPath, attachImage, activeRun, events } = useWorkspace();
   const headSlot = useContext(InspectorHeadSlot);
   const threadId = session?.id;
   const attachedKey = `${ATTACHED_KEY}:${threadId ?? "inbox"}`;
@@ -109,6 +111,17 @@ export function SimulatorPane() {
   useEffect(() => () => { mounted.current = false; }, []);
 
   const device = useMemo(() => inventory?.devices.find((item) => item.udid === udid), [inventory, udid]);
+  /* Re-read every few seconds while a turn runs, so the banner clears once the agent's simulator steps stop. */
+  const [clock, setClock] = useState(() => Date.now());
+  useEffect(() => {
+    if (!activeRun) return undefined;
+    const id = window.setInterval(() => setClock(Date.now()), 3000);
+    return () => window.clearInterval(id);
+  }, [activeRun]);
+  const agentUsing = useMemo(
+    () => agentSimulatorActivity(events ?? [], activeRun?.id, device ? { udid: device.udid, name: device.name } : undefined, Date.now()),
+    [events, activeRun?.id, device, clock],
+  );
   /* Running devices first, then the rest by newest runtime: the device being worked on is near the top. */
   const grouped = useMemo(() => {
     const byRuntime = (a: Simulator, b: Simulator) => b.runtime.localeCompare(a.runtime, undefined, { numeric: true }) || a.name.localeCompare(b.name);
@@ -355,6 +368,13 @@ export function SimulatorPane() {
   };
   useEffect(() => () => window.clearTimeout(typeTimer.current), []);
   const onScreenKey = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    /* Device keys while the screen has focus: ⌘⇧H Home, ⌘→ rotate, ⌘S screenshot into the message. */
+    if (event.metaKey && !event.altKey && !event.ctrlKey) {
+      const key = event.key.toLowerCase();
+      if (event.shiftKey && key === "h" && canTouch) { event.preventDefault(); void act({ type: "button", name: "HOME" }, "home"); return; }
+      if (!event.shiftKey && event.key === "ArrowRight" && canTouch) { event.preventDefault(); rotate(); return; }
+      if (!event.shiftKey && key === "s") { event.preventDefault(); void screenshot(addPng); return; }
+    }
     if (!canTouch || event.metaKey || event.ctrlKey || event.altKey) return;
     if (event.key === "Enter") { event.preventDefault(); flushTyped(); void act({ type: "key", key: "return" }); return; }
     if (event.key === "Backspace") { event.preventDefault(); flushTyped(); void act({ type: "key", key: "delete" }); return; }
@@ -442,9 +462,14 @@ export function SimulatorPane() {
     setTool(tool === next ? "none" : next);
   };
 
+  /* On a Mac the missing piece is Xcode, which the setup steps walk through and tick off. */
+  if (inventory && !inventory.supported && /Mac/.test(navigator.userAgent) && !/needs macOS/.test(inventory.reason ?? "")) {
+    return <SimulatorSetup inventory={inventory} onCopy={(text) => void navigator.clipboard.writeText(text).then(() => setNotice("Command copied."), () => setNotice("Could not copy the command."))} />;
+  }
+
   if (inventory && !inventory.supported) {
     return (
-      <div className="codex-tool-pane simulator-empty">
+      <div className="panel-tool-pane simulator-empty">
         <SmartphoneIcon size={28} />
         <h3>Simulator is not available here</h3>
         <p>{inventory.reason}</p>
@@ -453,7 +478,7 @@ export function SimulatorPane() {
   }
 
   if (!inventory && !inventoryError) {
-    return <div className="codex-tool-pane simulator-empty"><SmartphoneIcon size={28} /><p className="faint">Looking for simulators…</p></div>;
+    return <div className="panel-tool-pane simulator-empty"><SmartphoneIcon size={28} /><p className="faint">Looking for simulators…</p></div>;
   }
 
   const devices = inventory?.devices ?? [];
@@ -515,7 +540,7 @@ export function SimulatorPane() {
   );
 
   return (
-    <div className="codex-browser-pane simulator-pane" data-family={family}>
+    <div className="panel-browser-pane simulator-pane" data-family={family}>
       <div className="simulator-head">
         <div className="simulator-picker">
           <button
@@ -562,6 +587,12 @@ export function SimulatorPane() {
 
       {inventoryError && !inventory && (
         <div className="simulator-banner error">{inventoryError}</div>
+      )}
+
+      {agentUsing.active && (
+        <div className="simulator-banner agent" role="status">
+          {agentUsing.device ? "The agent is using this device." : "The agent is working with a simulator."} Taps now change what it sees.
+        </div>
       )}
 
       {device && (
@@ -712,14 +743,14 @@ export function SimulatorPane() {
 
           {!annotating && (
             <div className="simulator-toolbar" role="toolbar" aria-label="Simulator controls">
-              <button type="button" className="preview-chrome-btn" title={canTouch ? "Home" : "Home needs touch input"} aria-label="Home" disabled={!showScreen || !canTouch || busy === "home"} onClick={() => void act({ type: "button", name: "HOME" }, "home")}>
+              <button type="button" className="preview-chrome-btn" title={canTouch ? "Home (⌘⇧H)" : "Home needs touch input"} aria-label="Home" disabled={!showScreen || !canTouch || busy === "home"} onClick={() => void act({ type: "button", name: "HOME" }, "home")}>
                 <HomeIcon size={17} />
               </button>
-              <button type="button" className="preview-chrome-btn" title={canTouch ? "Rotate clockwise" : "Rotating needs touch input"} aria-label="Rotate clockwise" disabled={!showScreen || !canTouch || busy === "rotate"} onClick={rotate}>
+              <button type="button" className="preview-chrome-btn" title={canTouch ? "Rotate clockwise (⌘→)" : "Rotating needs touch input"} aria-label="Rotate clockwise" disabled={!showScreen || !canTouch || busy === "rotate"} onClick={rotate}>
                 <RotateClockwiseIcon size={17} />
               </button>
               <span className="simulator-toolbar-sep" />
-              <button type="button" className="preview-chrome-btn" title="Add a screenshot to your message" aria-label="Add a screenshot to your message" disabled={!showScreen || busy === "screenshot"} onClick={() => void screenshot(addPng)}>
+              <button type="button" className="preview-chrome-btn" title="Add a screenshot to your message (⌘S)" aria-label="Add a screenshot to your message" disabled={!showScreen || busy === "screenshot"} onClick={() => void screenshot(addPng)}>
                 <CameraIcon size={17} />
               </button>
               <button type="button" className={`preview-chrome-btn${device.recording ? " recording" : ""}`} title={device.recording ? "Stop recording" : "Record the screen"} aria-label={device.recording ? "Stop recording" : "Record the screen"} aria-pressed={device.recording} disabled={busy === "record" || (!device.recording && !showScreen)} onClick={() => void toggleRecording()}>
@@ -735,11 +766,10 @@ export function SimulatorPane() {
       )}
 
       {!device && devices.length === 0 && inventory && (
-        <div className="codex-tool-pane simulator-empty">
-          <SmartphoneIcon size={28} />
-          <h3>No simulators yet</h3>
-          <p>Create one in Xcode under Window → Devices and Simulators, then it appears here.</p>
-        </div>
+        <SimulatorSetup
+          inventory={inventory}
+          onCopy={(text) => void navigator.clipboard.writeText(text).then(() => setNotice("Command copied."), () => setNotice("Could not copy the command."))}
+        />
       )}
     </div>
   );

@@ -79,7 +79,7 @@ export async function runSimulatorRegressions(host: HTMLElement, base: Record<st
     // The chooser: no project is needed, but a paired viewer and a non-Mac are told why not.
     window.testWorkspace = fixture;
     root.render(<Inspector />); await settle();
-    const card = () => Array.from(document.querySelectorAll<HTMLButtonElement>(".codex-launcher-card")).find((node) => node.textContent?.includes("Simulator"));
+    const card = () => Array.from(document.querySelectorAll<HTMLButtonElement>(".panel-launcher-card")).find((node) => node.textContent?.includes("Simulator"));
     assert(card() && !card()!.disabled, "Chooser hid the simulator without a project");
     window.testWorkspace = { ...fixture, api: { ...api, isDesktop: false } };
     root.render(<Inspector />); await settle();
@@ -226,6 +226,12 @@ export async function runSimulatorRegressions(host: HTMLElement, base: Record<st
     inventory = { supported: false, reason: "The iOS Simulator needs macOS with Xcode installed.", devices: [] };
     document.dispatchEvent(new Event("visibilitychange"));
     await until(() => host.textContent?.includes("Simulator is not available here"));
+
+    // On a Mac without Xcode, the pane walks through setup instead.
+    inventory = { supported: false, reason: "Install Xcode and its iOS platform, then open Xcode once so its command-line tools are selected.", devices: [] };
+    document.dispatchEvent(new Event("visibilitychange"));
+    await until(() => host.textContent?.includes("Set up a simulator"));
+    assert(host.querySelector('.simulator-setup-steps li[data-state="current"]')?.textContent?.includes("Install Xcode"), "Setup did not start at Xcode");
     assert(notices.every((notice) => notice.startsWith("Recording saved")), `Unexpected notices: ${notices.join(" | ")}`);
     return "Simulator regressions passed";
   } finally {
