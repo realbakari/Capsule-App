@@ -929,6 +929,47 @@ Voice IPC validates the companion's top-level sender; it is absent from the
 remote handler map even for write-scoped viewers. Windows reports unsupported
 voice explicitly. Tests use fixture processes, never live microphone capture.
 
+### Composer dictation
+
+The same helper has a `--dictate` mode: free text, a 120-second cap, partial
+results as `{"type":"partial"}` lines, a coarse `level` meter, punctuation on
+macOS 13 and later, and the system locale when it supports on-device
+recognition (US English otherwise). Errors carry a `settings` pane
+(`microphone`, `speech`, `dictation`) so the composer can open the right page of
+System Settings through `openDictationSettings`, which accepts only those three.
+`PetVoice` keeps one microphone owner (`companion` or `dictation`): hiding the
+companion cancels only its own capture, and either one waits while the other
+listens. Main bounds a pending line at 32 KiB instead of the companion's 4 KiB
+stream cap, since every partial repeats the transcript; the final text is capped
+at 8000 characters. A helper that macOS aborts before it reports listening (an
+app copy without a speech usage description, such as the development Electron)
+is reported as a Speech Recognition settings problem, not a crash.
+
+`startDictation`, `finishDictation`, `cancelDictation` and
+`openDictationSettings` are writes, registered with `ipcMain.handle` only after
+checking that the sender is the desktop window's main frame, and are absent from
+the remote handler map. `startDictation` resolves a `DictationOutcome`; expected
+failures are values, not rejections. Partial text and levels go to the sender
+alone as the `dictation` event, which `isRemoteEvent` keeps off the wire.
+Navigation, a renderer crash or destroying the sender cancels capture.
+
+In the renderer, `useDictation` (`features/conversation/Dictation.tsx`) anchors
+on the selection at start (`lib/dictation.ts`), replaces the anchored span with
+each partial, keeps the prompt read-only, disables Send, and handles Escape and
+Enter in a window capture listener so neither reaches the stop-turn or send
+paths. A thread change cancels without writing the draft. The status row above
+the prompt shows starting, listening (dot, level, elapsed clock, a countdown in
+the last 15 seconds), finishing and error states. The mic button sits after
+Attach and hides in the resting dock unless recording. `⇧⌘L` (`dictation` in
+`lib/keybindings.ts`) dispatches `TOGGLE_DICTATION_EVENT`; ⇧⌘D was taken by
+Review, and ⌥ chords arrive as composed characters on macOS. Remote viewers and
+non-macOS builds keep the button and explain the reason on click.
+
+Decisions: dictation streams into the draft rather than a separate preview, so
+the person edits one thing; the cap is two minutes because a prompt longer than
+that is better typed or pasted, and a bounded session keeps the microphone from
+staying open by accident.
+
 Review search uses a scoped search-field surface rather than native browser
 input chrome. Search/sort and commit controls share a 2.25rem minimum height;
 branch actions wrap on narrow panels. The commit form owns its draft, admits

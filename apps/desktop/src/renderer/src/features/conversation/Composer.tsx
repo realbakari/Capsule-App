@@ -4,6 +4,8 @@ import { useHarnessDiscovery } from "../../lib/harness-discovery";
 import { AgentControl } from "../harness/AgentControl";
 import { ContextWindowMeter } from "./ContextWindowMeter";
 import { ComposerTools } from "./ComposerTools";
+import { DictationButton, DictationStatus, useDictation } from "./Dictation";
+import { dictationUnavailableReason } from "../../lib/dictation";
 import { agentSwitchNotice, harnessDisplayName } from "../../lib/harness";
 import { AgentModelPicker } from "./AgentModelPicker";
 import { GatewayBanner } from "../shell/GatewayBanner";
@@ -162,6 +164,7 @@ export function Composer({
   } = workspace;
   const harnesses = workspace.harnesses ?? [];
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const dictation = useDictation({ api, draft, setDraft, field: textareaRef, scope: `${projectId ?? ""}:${session?.id ?? ""}` });
   const [recall, setRecall] = useState<{ index: number; original: string }>();
   useEffect(() => { setRecall(undefined); }, [session?.id]);
   useEffect(() => {
@@ -239,10 +242,10 @@ export function Composer({
   const folderPath = session?.workingDirectory || project?.workingDirectory;
   const folder = projectFolderName(folderPath);
   const trigger = detectTrigger(draft, caret);
-  const menuOpen = Boolean(picker || trigger) && !menuDismissed;
+  const menuOpen = Boolean(picker || trigger) && !menuDismissed && !dictation.active;
   const resting = shouldRestComposer({
     awayFromLatest,
-    blocking: Boolean(picker || modelPickerOpen || stashOpen || dropping || menuOpen),
+    blocking: Boolean(picker || modelPickerOpen || stashOpen || dropping || menuOpen || dictation.state.phase !== "idle"),
     multiline: draft.includes("\n"),
     hasAttachments: attachments.length > 0,
     hasSkill: Boolean(skillId),
@@ -522,9 +525,11 @@ export function Composer({
           </span>
           <button type="button" className="ghost" onClick={() => openPicker("skill")}>Change</button>
         </div>}
+        <DictationStatus state={dictation.state} api={api} onCancel={dictation.cancel} onFinish={dictation.finish} onDismiss={dictation.dismiss} />
         <div className="composer-prompt">
         <textarea
           ref={textareaRef}
+          readOnly={dictation.active}
           className={resting ? "composer-field composer-field--resting" : "composer-field"}
           rows={1}
           value={draft}
@@ -766,6 +771,7 @@ export function Composer({
             <button className="icon-btn" title="Attach files" aria-label="Attach files" onClick={() => void pickAttachments()}>
               <PaperclipIcon size={14} />
             </button>
+            <DictationButton state={dictation.state} unavailable={dictationUnavailableReason(api)} onToggle={dictation.toggle} />
             {contextUsage && (
               <ContextWindowMeter
                 used={contextUsage.used}
@@ -787,7 +793,7 @@ export function Composer({
               <button
                 className="send-btn"
                 aria-label="Send message"
-                disabled={busy || picking || (!draft.trim() && attachments.length === 0 && !skillId) || Boolean(sendBlockReason)}
+                disabled={busy || picking || dictation.active || (!draft.trim() && attachments.length === 0 && !skillId) || Boolean(sendBlockReason)}
                 title={
                   sendBlockReason || (sendOnEnter
                     ? "Send · Enter · ⌘Enter starts another thread"

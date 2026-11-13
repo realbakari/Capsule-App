@@ -32,6 +32,7 @@
 | Choose the mode (permissions) | `⇧⌘M` |
 | Choose the model | `⇧⌘I` |
 | Choose the reasoning effort | `⇧⌘E` |
+| Start or finish dictation (macOS) | `⇧⌘L` |
 
 `⌥⌘O` opens the folder the conversation works in, which is its worktree when it
 has one, in the app you last chose from **Open in**. With no favourite yet, it
@@ -67,6 +68,7 @@ Two things the editor will not let you do:
 - Paperclip or drop to attach local files
 - `⌘S` to stash the current prompt, or open the stash when the composer is empty
 - `↑` in an empty prompt recalls earlier prompts from this conversation; `↓` comes back
+- `⇧⌘L` to dictate; `Enter` keeps the text and `Esc` cancels and restores the draft
 
 ## Finding your way around
 

@@ -59,12 +59,15 @@ export const COMMANDS: KeyCommand[] = [
   { id: "mark-unread", label: "Mark conversation unread", chord: { key: "u", meta: true, shift: true } },
   /* ⌘O stays Open folder (the menu's); the Option variant opens the conversation's folder in the favourite app. */
   { id: "open-in-favorite", label: "Open in favourite app", chord: { key: "o", meta: true, alt: true } },
+  /* L for listen: ⌘⇧D already opens Review, and ⌥ chords arrive as composed characters on macOS. */
+  { id: "dictation", label: "Start or finish dictation", chord: { key: "l", meta: true, shift: true } },
 ];
 
 /** Shortcuts that live outside this registry (in a surface or the composer), shown in the shortcuts sheet. */
 export const FIXED_SHORTCUTS: Array<{ label: string; keys: string[] }> = [
   { label: "Send", keys: ["↵"] },
   { label: "Stop the running turn", keys: ["Esc"] },
+  { label: "Cancel dictation and restore the draft", keys: ["Esc"] },
   { label: "Previous prompt", keys: ["↑"] },
   { label: "Edit the last queued follow-up", keys: ["⌥", "↑"] },
   { label: "Side chat", keys: ["⌥", "⌘", "S"] },

@@ -61,6 +61,7 @@ import {
 
 import type { SettingsSectionId } from "../features/settings/settings-search";
 import { commandForEvent, keymapFrom, type Keymap } from "./keybindings";
+import { TOGGLE_DICTATION_EVENT } from "./dictation";
 import { adjacentSession } from "./session-cycle";
 import { isNarrow } from "./narrow";
 import { setDisplayPrefs } from "./display-prefs";
@@ -1058,6 +1059,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
           break;
         case "open-in-favorite":
           window.dispatchEvent(new CustomEvent(OPEN_IN_EVENT));
+          break;
+        case "dictation":
+          window.dispatchEvent(new CustomEvent(TOGGLE_DICTATION_EVENT));
           break;
         case "open-mode":
         case "open-model":

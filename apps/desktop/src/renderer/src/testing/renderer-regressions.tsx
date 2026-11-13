@@ -26,6 +26,7 @@ import { runPanelRegressions } from "./panel-regressions";
 import { runActivityRegressions, renderActivityPreview } from "./activity-regressions";
 import { runChannelRegressions, renderChannelPreview } from "./channel-regressions";
 import { runComposerLayoutRegressions } from "./composer-layout-regressions";
+import { runDictationRegressions } from "./dictation-regressions";
 import { runSurfaceRegressions } from "./surface-regressions";
 import { runSimulatorRegressions } from "./simulator-regressions";
 import { runFollowupRegressions } from "./followup-regressions";
@@ -1462,6 +1463,8 @@ window.runRendererRegressions = async () => {
   await runChannelRegressions(host);
   phase("composer layout matrix");
   await runComposerLayoutRegressions(host, contextBase);
+  phase("dictation");
+  await runDictationRegressions(host, contextBase);
   phase("native settings");
   await runMuseSettingsRegressions(host, contextBase);
   await runWebAccessRegressions(host);

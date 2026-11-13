@@ -301,6 +301,32 @@ local path. A missing file is refused instead of being silently omitted. Each
 turn accepts up to eight files, with a 50 MB limit per file. The harness still
 applies the conversation's permission mode when it reads those paths.
 
+## Dictate a prompt
+
+On a Mac, press the microphone beside the paperclip, or `⇧⌘L`, and speak.
+Recognition runs on the Mac itself: audio is never sent to a speech service.
+The words appear where the cursor was, or replace the text you had selected,
+and they refine as you keep talking. The prompt is read-only while you dictate.
+
+- `⇧⌘L` again, **Done**, the microphone button or `Enter` keeps the text.
+- `Esc` or **Cancel** stops listening and puts the draft back exactly as it was.
+  While you dictate, `Esc` cancels dictation rather than stopping a running turn.
+- Dictation stops on its own after two minutes. The last 15 seconds count down
+  beside the recording dot, and what you said so far is kept.
+
+The first time, macOS asks to allow the microphone and speech recognition. If
+either is turned off, or speech recognition is not available for your language
+on this Mac, the composer says so and offers a button that opens the right page
+of System Settings. Dictation uses your system language when the Mac can
+recognize it on device, and US English otherwise.
+
+Switching to another conversation stops dictation. The companion and the
+composer share the microphone, so one waits while the other is listening.
+
+A paired browser cannot dictate: its microphone button explains that dictation
+runs on the Mac. On Windows and Linux the button explains that dictation is not
+available.
+
 ## Stash a prompt
 
 Press `⌘S` while the composer contains text or attachments to move that draft
