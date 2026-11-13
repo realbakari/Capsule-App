@@ -168,6 +168,61 @@ export function runInDirectory(
   });
 }
 
+export interface CappedRun {
+  /** Standard output and error in the order they arrived, cut at the byte cap. */
+  output: string;
+  /** Null when the command was stopped at the time limit. */
+  code: number | null;
+  timedOut: boolean;
+  truncated: boolean;
+  durationMs: number;
+}
+
+/**
+ * One command whose output becomes text someone reads, such as a prompt: the
+ * first `maxBytes` of both streams together, and whatever it printed before
+ * the time limit rather than an error in its place.
+ */
+export function runCapped(cwd: string, command: string, limits: { timeoutMs: number; maxBytes: number }): Promise<CappedRun> {
+  if (!cwd || !existsSync(cwd)) return Promise.reject(new Error("Working directory is missing"));
+  const started = Date.now();
+  return new Promise((resolve, reject) => {
+    const shell = commandShell(command);
+    const child = spawn(shell.file, shell.args, {
+      cwd,
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: process.platform !== "win32",
+      windowsHide: true,
+    });
+    const chunks: Buffer[] = [];
+    let bytes = 0;
+    let truncated = false;
+    let timedOut = false;
+    let killTimer: ReturnType<typeof setTimeout> | undefined;
+    const collect = (chunk: Buffer) => {
+      if (bytes >= limits.maxBytes) { truncated = true; return; }
+      const kept = chunk.subarray(0, limits.maxBytes - bytes);
+      if (kept.length < chunk.length) truncated = true;
+      chunks.push(kept);
+      bytes += kept.length;
+    };
+    child.stdout.on("data", collect);
+    child.stderr.on("data", collect);
+    const timer = setTimeout(() => {
+      timedOut = true;
+      stopChild(child, "SIGTERM", true);
+      killTimer = setTimeout(() => stopChild(child, "SIGKILL", true), 1000);
+    }, limits.timeoutMs);
+    child.on("error", (error) => { clearTimeout(timer); clearTimeout(killTimer); reject(error); });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      clearTimeout(killTimer);
+      resolve({ output: Buffer.concat(chunks).toString("utf8"), code: timedOut ? null : code ?? 1, timedOut, truncated, durationMs: Date.now() - started });
+    });
+  });
+}
+
 export function startInDirectory(
   cwd: string,
   command: string,

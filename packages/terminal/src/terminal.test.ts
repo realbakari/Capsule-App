@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { outputTail, runInDirectory, terminalAppleScript } from "./index.js";
+import { outputTail, runCapped, runInDirectory, terminalAppleScript } from "./index.js";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -82,5 +82,31 @@ describe("outputTail", () => {
     const text = tail.read();
     expect(text.length).toBe(cap);
     expect(Date.now() - started).toBeLessThan(1_000);
+  });
+});
+
+describe("runCapped", () => {
+  it.skipIf(process.platform === "win32")("keeps the first bytes of both streams, in order, and the exit code", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-capped-"));
+    try {
+      const failed = await runCapped(dir, "echo out; sleep 0.2; echo err >&2; exit 3", { timeoutMs: 10_000, maxBytes: 1024 });
+      expect(failed).toMatchObject({ output: "out\nerr\n", code: 3, timedOut: false, truncated: false });
+      const long = await runCapped(dir, "head -c 40000 /dev/zero | tr '\\0' x", { timeoutMs: 10_000, maxBytes: 16 * 1024 });
+      expect(long).toMatchObject({ code: 0, truncated: true });
+      expect(long.output).toBe("x".repeat(16 * 1024));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it.skipIf(process.platform === "win32")("stops a command at its time limit and keeps what it printed", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-capped-"));
+    try {
+      const result = await runCapped(dir, "echo started; sleep 30", { timeoutMs: 500, maxBytes: 1024 });
+      expect(result).toMatchObject({ output: "started\n", code: null, timedOut: true });
+      expect(result.durationMs).toBeLessThan(10_000);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
