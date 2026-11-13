@@ -11,6 +11,7 @@ import { MenuSelect } from "../shell/MenuSelect";
 import { SettingRow } from "../settings/controls";
 import { ProjectActionDialog } from "../shell/ProjectActionDialog";
 import { CopyIcon, FolderIcon, PlusIcon, TerminalIcon, TrashIcon } from "../shell/icons";
+import { fromProjectFile } from "../../lib/config-view";
 
 /**
  * Everything that belongs to one project, in one place.
@@ -28,7 +29,8 @@ export function ProjectView() {
     agents,
     harnesses,
     sessions,
-    settings,
+    config,
+    projectSettings,
     api,
     refresh,
     setView,
@@ -186,7 +188,7 @@ export function ProjectView() {
             hint={
               project.defaultWorkspaceMode
                 ? "Overrides the app default for this project."
-                : `Following the app default (${settings?.defaultWorkspaceMode === "worktree" ? "isolated worktree" : "the project folder"}).`
+                : `Following ${fromProjectFile(config?.project?.provenance.defaultWorkspaceMode) ? "this project's settings file" : "the app default"} (${projectSettings?.defaultWorkspaceMode === "worktree" ? "isolated worktree" : "the project folder"}).`
             }
           >
             <select

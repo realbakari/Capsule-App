@@ -60,7 +60,9 @@ import {
   type WorkspaceMode,
 } from "@capsule/shared";
 
+import type { ConfigDiagnostics, ConfigSnapshot, SetConfigValueInput } from "@capsule/shared";
 import type { SettingsSectionId } from "../features/settings/settings-search";
+import { fromProjectFile, projectSettingsFor } from "./config-view";
 import { commandForEvent, parseChord, type Keymap } from "./keybindings";
 import { adjacentSession } from "./session-cycle";
 import { isNarrow } from "./narrow";
@@ -391,6 +393,14 @@ export interface WorkspaceValue {
   setAboutOpen: (open: boolean) => void;
   settings?: CapsuleSettings;
   updateSettings: (patch: Partial<CapsuleSettings>) => Promise<CapsuleSettings>;
+  /** The settings files' effective values and where each came from, for the selected project. */
+  config?: ConfigSnapshot;
+  /** What the customization doctor shows for the selected project: files, problems, trust and runs. */
+  configDiagnostics?: ConfigDiagnostics;
+  /** Settings for work in the selected project, its files over yours. New conversations start from these. */
+  projectSettings?: CapsuleSettings;
+  /** Write or remove one key in one settings file, then show the result. */
+  setConfigValue: (input: SetConfigValueInput) => Promise<ConfigSnapshot>;
 }
 
 const workspaceContextSlot = globalThis as typeof globalThis & {
@@ -581,6 +591,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   const [requestedFile, setRequestedFile] = useState<WorkspaceValue["requestedFile"]>();
   const [projectRuns, setProjectRuns] = useState<Run[]>([]);
   const [settings, setSettings] = useState<CapsuleSettings>();
+  const [configView, setConfigView] = useState<{ snapshot: ConfigSnapshot; diagnostics: ConfigDiagnostics }>();
+  const config = configView?.snapshot;
+  const configDiagnostics = configView?.diagnostics;
+  const projectSettings = projectSettingsFor(config, projectId) ?? settings;
   const [workspaceMode, setWorkspaceModeState] = useState<WorkspaceMode>("local");
   // A page address belongs to its thread. A small in-memory cache preserves
   // recent tabs without keeping browser guests running in the background.
@@ -614,10 +628,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   /* Set during render, before the transcript and diffs that read them draw. */
   useMemo(() => setDisplayPrefs({
     timeFormat: settings?.timeFormat ?? "system",
-    toolCallDisplay: settings?.toolCallDisplay ?? "compact",
-    diffLayout: settings?.diffLayout ?? "split",
-    diffFileState: settings?.diffFileState ?? "expanded",
-  }), [settings?.timeFormat, settings?.toolCallDisplay, settings?.diffLayout, settings?.diffFileState]);
+    toolCallDisplay: projectSettings?.toolCallDisplay ?? "compact",
+    diffLayout: projectSettings?.diffLayout ?? "split",
+    diffFileState: projectSettings?.diffFileState ?? "expanded",
+  }), [settings?.timeFormat, projectSettings?.toolCallDisplay, projectSettings?.diffLayout, projectSettings?.diffFileState]);
 
   const keymap = useMemo<Keymap>(() => {
     const stored = settings?.keybindings ?? {};
@@ -635,6 +649,51 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   const project = projects.find((item) => item.id === projectId);
   const session = sessions.find((item) => item.id === sessionId && item.projectId === projectId);
   const selectionExists = Boolean(project && (!sessionId || session));
+
+  /*
+   * The settings files as the renderer sees them, reloaded whenever a file,
+   * a save or a trust decision changes them, so an edit made in another
+   * editor shows here the way a change in Settings does. The user-level
+   * settings come with each snapshot.
+   */
+  const configLoad = useRef(0);
+  const loadConfig = useCallback(async () => {
+    const generation = ++configLoad.current;
+    try {
+      const [snapshot, diagnostics] = await Promise.all([api.configGetEffective(projectId), api.configGetDiagnostics(projectId)]);
+      if (generation !== configLoad.current) return;
+      setConfigView({ snapshot, diagnostics });
+      setSettings(snapshot.settings);
+      applyAppearance(snapshot.settings);
+    } catch (error) {
+      console.warn("Could not read the settings files", error);
+    }
+  }, [api, projectId]);
+  useEffect(() => {
+    void loadConfig();
+    const off = api.on("state", (payload) => {
+      const command = (payload as { command?: string }).command;
+      if (command === "config-updated" || command === "settings-updated" || command === "projects-updated") void loadConfig();
+    });
+    return () => { off(); };
+  }, [api, loadConfig]);
+
+  /*
+   * A new conversation starts from the project's defaults: its record first,
+   * then its settings files. Once per project, so a later file edit does not
+   * undo a choice made in the composer.
+   */
+  const projectDefaultsApplied = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const scoped = config?.project;
+    if (!ready || !agents.length || !scoped || scoped.projectId !== projectId || projectDefaultsApplied.current === projectId) return;
+    projectDefaultsApplied.current = projectId;
+    if (sessionId) return;
+    setWorkspaceModeState(project?.defaultWorkspaceMode ?? scoped.settings.defaultWorkspaceMode);
+    if (fromProjectFile(scoped.provenance.defaultMode)) setMode(scoped.settings.defaultMode);
+    const fileAgent = fromProjectFile(scoped.provenance.defaultAgentId) ? scoped.settings.defaultAgentId : undefined;
+    if (!project?.defaultAgentId && fileAgent && agents.some((item) => item.id === fileAgent)) setAgentId(fileAgent);
+  }, [ready, agents, config, projectId, sessionId, project?.defaultWorkspaceMode, project?.defaultAgentId]);
   const currentDraftKey = promptDraftKey(projectId, sessionId);
   const latestDraft = useRef({ key: currentDraftKey, value: { prompt: draft, attachments, skillId } });
   latestDraft.current = { key: currentDraftKey, value: { prompt: draft, attachments, skillId } };
@@ -1230,12 +1289,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     }
     const targetProject = inProject ?? projectId ?? projects[0]?.id;
     if (!targetProject) return;
+    // Permission and workspace come from the target project's record and
+    // settings files, which the engine reads; it also keeps a folder that is
+    // not a Git repository local.
     const created = await api.createSession({
       projectId: targetProject,
       agentId,
       mode,
-      permissionProfile: settings?.defaultPermission,
-      workspaceMode: git?.isRepo ? (settings?.defaultWorkspaceMode ?? "local") : "local",
       title: "New conversation",
     });
     if (!requests.isCurrent(scope)) return;
@@ -1394,7 +1454,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
           projectId: currentProjectId,
           agentId,
           mode,
-          permissionProfile: settings?.defaultPermission,
           workspaceMode: git?.isRepo ? workspaceMode : "local",
           title: "New conversation",
         });
@@ -1448,8 +1507,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
             projectId: currentProjectId,
             agentId,
             mode,
-            permissionProfile: settings?.defaultPermission,
-            workspaceMode: git?.isRepo ? (settings?.defaultWorkspaceMode ?? "local") : "local",
             title: "New conversation",
           }) : undefined;
           if (draftScopes.isCurrent(draftScope)) {
@@ -1978,7 +2035,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
           session?.permissionProfile === "approve-all" ||
           session?.permissionProfile === "default"
             ? (session.permissionProfile as HarnessPermissionProfile)
-            : settings?.defaultPermission,
+            : projectSettings?.defaultPermission,
       });
       setSessionId(result.session.id);
       setAgentId(harnessId);
@@ -2167,6 +2224,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     setView("chat");
   }
 
+  async function setConfigValue(input: SetConfigValueInput): Promise<ConfigSnapshot> {
+    const snapshot = await api.configSetValue({ ...input, projectId: input.projectId ?? projectId });
+    configLoad.current++;
+    setConfigView((current) => current && { ...current, snapshot });
+    setSettings(snapshot.settings);
+    applyAppearance(snapshot.settings);
+    return snapshot;
+  }
+
   async function updateSettings(patch: Partial<CapsuleSettings>) {
     const next = await api.updateSettings(patch) as CapsuleSettings;
     setSettings(next);
@@ -2298,8 +2364,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   );
 
   const steps = useMemo(() => activityFromEvents(events, !activeRun || activeRun.status !== "running", {
-    reasoning: settings?.reasoningSummary,
-  }), [events, activeRun?.status, settings?.reasoningSummary]);
+    reasoning: projectSettings?.reasoningSummary,
+  }), [events, activeRun?.status, projectSettings?.reasoningSummary]);
 
   /* ⌃Tab reads the latest list and selection, not the ones its key handler closed over. */
   cycleSession.current = (step) => {
@@ -2526,6 +2592,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       gitRebasePullRequestStack,
       settings,
       updateSettings,
+      config,
+      configDiagnostics,
+      projectSettings,
+      setConfigValue,
     }),
     [
       api,
@@ -2601,6 +2671,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       inspectorTab,
       projectRuns,
       settings,
+      configView,
+      projectSettings,
       workspaceMode,
       browserUrl,
       refresh,

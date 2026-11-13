@@ -145,6 +145,7 @@ export function Composer({
     checkoutBranch,
     openInspector,
     settings,
+    projectSettings,
     setTerminalOpen,
     sendBlockReason,
     doctorHarness,
@@ -427,7 +428,7 @@ export function Composer({
     return Boolean(event.nativeEvent.isComposing) || event.keyCode === 229;
   }
 
-  const permission = session?.permissionProfile ?? settings?.defaultPermission ?? "default";
+  const permission = session?.permissionProfile ?? projectSettings?.defaultPermission ?? "default";
   const permissionOptions = PERMISSION_OPTIONS.map((item) => ({ id: item.id, label: item.id === "strict" ? "Read-only" : item.label, detail: item.detail }));
   const sendOnEnter = settings?.composerSendKey !== "cmd-enter";
   /* A paired browser without conversation control can read but never send. */
