@@ -9,7 +9,7 @@ import type {
   LocalServer,
 } from "@capsule/shared";
 import { mergePrompt, rebasePrompt } from "../../lib/pull-request-stack";
-import { folderBasename, projectFolderList, type HarnessReadiness } from "@capsule/shared";
+import { folderBasename, conversationFolderRoots, type HarnessReadiness } from "@capsule/shared";
 import { useRememberedScroll } from "../../lib/remembered-scroll";
 import { FileSaveCoordinator, isConflictError } from "../../lib/file-save";
 import { fileDrafts, fileOwnerKey } from "../../lib/file-drafts";
@@ -234,12 +234,7 @@ export function Inspector() {
   const harnesses = harnessList ?? [];
   const dedicated = harnesses.find((item) => item.id === project?.defaultAgentId);
 
-  const folderRoots = useMemo(() => {
-    const projectRoots = projectFolderList(project ?? {});
-    return session?.workingDirectory && session.workingDirectory !== project?.workingDirectory
-      ? [session.workingDirectory, ...projectRoots.filter((root) => root !== project?.workingDirectory)]
-      : projectRoots;
-  }, [project, session?.workingDirectory]);
+  const folderRoots = useMemo(() => conversationFolderRoots(project ?? {}, session?.workingDirectory), [project, session?.workingDirectory]);
   const activeRoot =
     (fileRoot && folderRoots.find((root) => root.toLowerCase() === fileRoot.toLowerCase())) ||
     (session?.workingDirectory ?? project?.workingDirectory);
