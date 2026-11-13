@@ -788,6 +788,8 @@ export class CapsuleEngine {
   private harnessRoute(prior: Session | undefined, harnessId: HarnessId): "direct" | "gateway" {
     if (prior?.directSession?.harnessId === harnessId || (prior?.harnessId === harnessId && isDirectSessionKey(prior.openclawSessionKey))) return "direct";
     if (prior?.harnessId === harnessId && prior.openclawSessionKey) return "gateway";
+    // After edit-from-here the identity is gone but the thread keeps its route.
+    if (prior?.harnessId === harnessId && prior.carryOver) return prior.carryOver.route;
     return this.useDirectMode(harnessId) ? "direct" : "gateway";
   }
 
@@ -938,6 +940,10 @@ export class CapsuleEngine {
       session.openclawSessionKey = spawned.sessionKey;
       if (direct && "directSession" in spawned && spawned.directSession) session.directSession = spawned.directSession as Session["directSession"];
       else if (!direct) session.directSession = undefined;
+      if (direct && session.carryOver?.configuration && session.directSession) {
+        session.directSession = { ...session.directSession, configuration: await this.direct.reapplyConfiguration(spawned.sessionKey, session.carryOver.configuration) };
+      }
+      session.carryOver = undefined;
       session.harnessState = "running";
       if (input.sessionId) this.repos.updateSession(session);
       else this.repos.insertSession(session);
@@ -3566,6 +3572,15 @@ export class CapsuleEngine {
     }
     const removed = this.repos.deleteMessagesFrom(sessionId, messageId);
     const current = this.requireSession(sessionId);
+    /*
+     * The agent's session goes, so the next turn starts without the removed
+     * history. Its route and saved controls (model, effort, permissions,
+     * mode) stay: dropping them reset the thread's choices and let the next
+     * spawn pick whichever route was the global default.
+     */
+    const route = current.directSession || isDirectSessionKey(current.openclawSessionKey) ? "direct" : current.openclawSessionKey ? "gateway" : current.carryOver?.route;
+    const configuration = current.directSession?.configuration ?? current.carryOver?.configuration;
+    current.carryOver = route ? { route, ...(configuration ? { configuration } : {}) } : undefined;
     current.openclawSessionKey = undefined;
     current.directSession = undefined;
     current.harnessState = "closed";

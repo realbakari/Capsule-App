@@ -242,29 +242,7 @@ export class DirectAcpHost {
     try {
       await session.start(input.resume?.sessionId);
       if (this.closing) throw new Error("The direct agent host is shutting down.");
-      if (configuration) {
-        const entries = Object.entries(configuration);
-        if (entries.length > 128) throw new Error("Too many saved agent settings. Start a new conversation.");
-        // Model first: it determines which reasoning settings are valid.
-        const modelId = session.reportedCapabilities?.configOptions.find((option) => option.category === "model")?.id ?? "model";
-        entries.sort(([a], [b]) => Number(b === modelId) - Number(a === modelId));
-        /*
-         * A setting the agent no longer accepts (a model an upgrade removed,
-         * a mode it stopped reporting) is skipped, not fatal. Failing here
-         * failed every later resume too, and the thread could never continue.
-         * What was skipped leaves the saved settings so it is not retried.
-         */
-        const kept: Record<string, string | boolean> = {};
-        for (const [configId, value] of entries) {
-          try {
-            await session.setConfig(configId, value);
-            kept[configId] = value;
-          } catch {
-            if (this.closing) throw new Error("The direct agent host is shutting down.");
-          }
-        }
-        configuration = kept;
-      }
+      if (configuration) configuration = await this.applyConfiguration(session, configuration);
       // Local adapters have different launch flags. Their reported protocol
       // selector is authoritative; never invent a --model CLI argument.
       if (!native && preset?.directCommand && input.model && !input.resume) {
@@ -286,6 +264,36 @@ export class DirectAcpHost {
       directSession: { sessionId: session.sessionId!, harnessId: input.harnessId, cwd, launchSignature,
         ...(configuration ? { configuration } : {}) },
     };
+  }
+
+  /** Put saved controls on a running session, e.g. a fresh one after edit-from-here. Returns what it accepted. */
+  async reapplyConfiguration(sessionKey: string, configuration: Record<string, string | boolean>): Promise<Record<string, string | boolean>> {
+    const session = this.sessions.get(sessionKey);
+    if (!session) throw new Error("That agent is no longer running. Start it again.");
+    return this.applyConfiguration(session, configuration);
+  }
+
+  /*
+   * Model first: it determines which reasoning settings are valid. A setting
+   * the agent no longer accepts (a model an upgrade removed, a mode it stopped
+   * reporting) is skipped, not fatal: failing here failed every later resume
+   * and the thread could never continue. Skipped keys leave the saved set.
+   */
+  private async applyConfiguration(session: DirectAgentSession, configuration: Record<string, string | boolean>): Promise<Record<string, string | boolean>> {
+    const entries = Object.entries(configuration);
+    if (entries.length > 128) throw new Error("Too many saved agent settings. Start a new conversation.");
+    const modelId = session.reportedCapabilities?.configOptions.find((option) => option.category === "model")?.id ?? "model";
+    entries.sort(([a], [b]) => Number(b === modelId) - Number(a === modelId));
+    const kept: Record<string, string | boolean> = {};
+    for (const [configId, value] of entries) {
+      try {
+        await session.setConfig(configId, value);
+        kept[configId] = value;
+      } catch {
+        if (this.closing) throw new Error("The direct agent host is shutting down.");
+      }
+    }
+    return kept;
   }
 
   /** Send a turn. The reply arrives through `onAcpReply`, as the Gateway's does. */

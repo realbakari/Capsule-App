@@ -21,6 +21,8 @@ differently. The prompt and every reply after it leave the conversation, the
 prompt comes back into the composer with its attachments, and earlier turns
 stay. The agent starts a fresh session on the next turn, so it will not
 remember what was removed; what remains above is still there for you to read.
+The conversation keeps its agent settings, such as model, reasoning effort,
+permissions and mode, and how it connects to the agent.
 **Edit and restore files** does the same and also puts the project folder
 back to how the turn before stood, using that turn's checkpoint. If no earlier
 turn has a checkpoint, Capsule says so and changes nothing. Editing from here

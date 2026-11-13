@@ -343,4 +343,8 @@ export const MIGRATIONS: Array<{ version: number; sql: string; }> = [
       ON runs(session_id, working_directory, created_at)
       WHERE checkpoint_ref IS NOT NULL;`,
   },
+  {
+    version: 19,
+    sql: `ALTER TABLE sessions ADD COLUMN carry_over TEXT;`,
+  },
 ];

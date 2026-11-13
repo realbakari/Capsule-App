@@ -580,7 +580,10 @@ one in that conversation with their runs (`deleteMessagesFrom`, one
 transaction), optionally restores the latest earlier checkpoint through
 `restoreTurn`, closes a live harness session, and clears
 `openclawSessionKey`, `directSession` and the harness state so the next turn
-spawns fresh. The result carries the removed prompt and attachments; the
+spawns fresh. Before clearing, it records `carryOver` (the route and the
+direct session's saved configuration). The next `spawnHarness` keeps that
+route and re-applies the configuration model first, dropping keys the agent
+no longer accepts. The result carries the removed prompt and attachments; the
 renderer reloads the session and puts them back in the composer. The confirm
 dialog's `secondary` action is the restore-files choice.
 

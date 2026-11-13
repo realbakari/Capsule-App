@@ -1196,3 +1196,32 @@ describe("follow-ups the engine keeps", () => {
     }
   }, 15_000);
 });
+
+describe("edit from here keeps what the thread chose", () => {
+  it("drops the agent's session but keeps its route and saved controls for the next one", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-rewind-carry-"));
+    const engine = new CapsuleEngine({ databasePath: path.join(dir, "capsule.sqlite"), userDataDir: dir, autoConnect: false });
+    await engine.start();
+    try {
+      const project = engine.createProject({ name: "Carry", defaultMode: "chat" });
+      const session = await engine.createSession({ projectId: project.id, title: "Carry", mode: "chat", agentId: "general" });
+      const { run } = await engine.sendMessage({ sessionId: session.id, content: "First ask" });
+      await waitForRun(engine, run.id);
+      const repos = (engine as unknown as { repos: { getSession: (id: string) => Session; updateSession: (session: Session) => void } }).repos;
+      const live = repos.getSession(session.id);
+      repos.updateSession({
+        ...live,
+        openclawSessionKey: "direct:claude:abc",
+        directSession: { sessionId: "agent-1", harnessId: "claude", cwd: dir, launchSignature: "x", configuration: { model: "opus", effort: "high" } },
+      });
+      const prompt = engine.listMessages(session.id).find((message) => message.role === "user")!;
+      expect((await engine.rewindSession(session.id, prompt.id)).ok).toBe(true);
+      const after = repos.getSession(session.id);
+      expect(after.directSession).toBeUndefined();
+      expect(after.openclawSessionKey).toBeUndefined();
+      expect(after.carryOver).toEqual({ route: "direct", configuration: { model: "opus", effort: "high" } });
+    } finally {
+      await engine.stop();
+    }
+  });
+});

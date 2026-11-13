@@ -256,3 +256,24 @@ it("resumes past a saved setting the agent no longer accepts and forgets it", as
     expect(result.directSession?.configuration).toEqual({ effort: "high" });
   } finally { await host.closeAll(); start.mockRestore(); configure.mockRestore(); capabilities.mockRestore(); close.mockRestore(); }
 });
+
+it("puts saved controls on a fresh session model first and drops what it rejects", async () => {
+  const start = vi.spyOn(DirectAcpSession.prototype, "start").mockResolvedValue("fresh");
+  const order: string[] = [];
+  const configure = vi.spyOn(DirectAcpSession.prototype, "setConfig").mockImplementation(async (id: string) => {
+    order.push(id);
+    if (id === "mode") throw new Error("no longer reported");
+  });
+  const capabilities = vi.spyOn(DirectAcpSession.prototype, "reportedCapabilities", "get").mockReturnValue(readAgentCapabilities({}, [
+    { id: "provider-model", category: "model", name: "Model", type: "select", currentValue: "a", options: [{ value: "a" }, { value: "b" }] },
+  ]));
+  const close = vi.spyOn(DirectAcpSession.prototype, "close").mockResolvedValue();
+  const host = new DirectAcpHost();
+  try {
+    const { sessionKey } = await host.spawnAcpSession({ harnessId: "grok", cwd: path.resolve(".") });
+    order.length = 0;
+    const kept = await host.reapplyConfiguration(sessionKey, { effort: "high", mode: "plan", "provider-model": "b" });
+    expect(order[0]).toBe("provider-model");
+    expect(kept).toEqual({ "provider-model": "b", effort: "high" });
+  } finally { await host.closeAll(); start.mockRestore(); configure.mockRestore(); capabilities.mockRestore(); close.mockRestore(); }
+});

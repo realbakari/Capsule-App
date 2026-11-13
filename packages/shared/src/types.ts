@@ -248,6 +248,12 @@ export interface Session {
   modelOverride?: string;
   /** Native ACP identity, retained across process exits; never a live-process claim. */
   directSession?: DirectSessionIdentity;
+  /**
+   * What a fresh agent session for this thread starts from after edit-from-here
+   * dropped the old one: the route the thread is on and its saved controls.
+   * A thread keeps the route it started on even without a live identity.
+   */
+  carryOver?: SessionCarryOver;
   pinned?: boolean;
   /** Stable ordering among pinned conversations; lower values appear first. */
   pinOrder?: number;
@@ -259,6 +265,11 @@ export interface Session {
   worktreeBranch?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface SessionCarryOver {
+  route: "direct" | "gateway";
+  configuration?: Record<string, string | boolean>;
 }
 
 export interface DirectSessionIdentity {
