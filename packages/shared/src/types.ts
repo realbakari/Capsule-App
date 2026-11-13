@@ -61,7 +61,8 @@ export type MockScenario =
   | "long_running"
   | "disconnected_gateway"
   | "buzz_message"
-  | "tool_failure";
+  | "tool_failure"
+  | "agent_question";
 
 export interface RuntimeStatus {
   state: ConnectionState;

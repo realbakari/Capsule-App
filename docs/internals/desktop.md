@@ -234,8 +234,9 @@ attachment validation still receives the original native path.
   grouping. The validated, local-only `capsule.sidebarGrouping` preference falls
   back to project grouping on invalid or denied storage. Status groups use the
   existing all-project latest-run summaries: Needs you, Working, Ready for review,
-  Other conversations. Each active thread appears once, with project-name context.
-  Completed with a result is reviewable, not unread or verified. Live groups are
+  Other conversations, then folded Snoozed and Settled shelves. Each active thread
+  appears once, with project-name context. Completed with a result is
+  reviewable, not verified; unread is its own state (see Thread triage). Live groups are
   uncapped; settled groups show 20 rows plus expansion, keeping selection visible.
   Pinned rows precede recency/ID ordering; drag reorder is project-mode only.
 
@@ -279,8 +280,12 @@ attachment validation still receives the original native path.
 - Two-finger swipe left on the sidebar hides it. A rightward swipe or drag from the left edge shows it (`useSidebarSwipe`).
 - `···` opens an in-app **portaled** action menu (the sidebar `backdrop-filter` creates a stacking context that traps `position: fixed` descendants). Right-click uses the native Electron menu (`capsule:showContextMenu`).
 - Project menu: rename, new conversation, change folder, **add folder**, open folder, copy path, delete.
-- Thread menu: rename, pin, generate title, open/copy folder when one exists, archive, delete.
-- Archiving offers a ten-second Undo notice and Cmd/Ctrl-Z outside text inputs
+- Thread menu: Mark unread / Mark as read, Settle / Return to active, Snooze… /
+  Wake now (desktop only), rename, pin, generate title, Copy as Markdown, Copy
+  branch name (worktree threads), open/copy folder when one exists, archive,
+  delete. The sidebar row, its context menu and the titlebar menu share one
+  action list (`features/triage/session-actions.ts`).
+- Archiving offers a ten-second Undo toast and Cmd/Ctrl-Z outside text inputs
   and dialogs. History offers a permanent Restore action. Restore preserves
   messages and runtime identity; paired devices cannot archive or restore.
 - Header popovers and model menus clamp to viewport edges and flip above their
@@ -1235,7 +1240,7 @@ The renderer does not launch process-table commands while typing or rendering.
 - Do not dump Artifacts or a second “run result” copy of the assistant reply.
 - Composer: actual file attachments, `/` commands, `@` file mentions, `$`
   skills, prompt stash, permission profile, folder chip, Terminal.app.
-- Mock runtime is first-class in explicit test mode (`autoConnect: false`), never a silent production fallback. Prompt tokens: `[approval]`, `[fail]`, `[verify]`, `[multi]`, `[long]`, `[buzz]`, `[tool]`.
+- Mock runtime is first-class in explicit test mode (`autoConnect: false`), never a silent production fallback. Prompt tokens: `[approval]`, `[question]`, `[fail]`, `[verify]`, `[multi]`, `[long]`, `[buzz]`, `[tool]`.
 
 ### Project actions
 
@@ -1784,3 +1789,90 @@ drop `backdrop-filter`, which composited wrongly with the webview layer.
 beside a 13rem title; the rest move to the top of More, the open surface always
 staying in the bar. With the sidebar collapsed the titlebar adds back and
 forward beside the sidebar toggle.
+
+## Thread triage, toasts and notifications
+
+What the person did about a thread is stored apart from what its agent did.
+`Session` carries `lastViewedAt`, `settledAt` and `snoozedUntil` (migration 120
+stamps existing threads as read, so an upgrade does not light everything up).
+The engine's `ThreadTriage` module is the only writer, through one write channel,
+`triageSession(id, action)`, whose action is a typed union (`viewed`, `unread`,
+`settle`, `unsettle`, `snooze`, `wake`). Triage writes its own columns and never
+bumps `updated_at`, so reading a thread does not reorder the sidebar.
+
+- **Unread** is `latest finished turn > lastViewedAt` (`isThreadUnread` in
+  `@capsule/shared`). A completed or failed turn is news; running, stopped and
+  cancelled are not. The thread on screen is marked read while the window has
+  focus: on opening, on focus returning, and when one of its turns finishes in
+  front of you. Mark unread sets the mark a millisecond before the latest finish.
+  The sidebar shows a dot in the existing first status slot and a bolder title;
+  rows still show names only.
+- **New since your last visit**: the transcript draws a rule above the first
+  turn whose reply arrived after the mark that was current when the thread was
+  opened. The mark is read once per opening so the line does not move while you
+  read. No rule when the first turn is already new.
+- **Settle** means done but close at hand; archive still means gone. Settled
+  threads fold into a Settled shelf at the end of their project (or the Settled
+  group in status view). **Snooze** hides a thread until a time: presets (Later
+  today, This evening, Tomorrow 9:00, Next week Monday 9:00, dropped when less
+  than an hour away) or a picked time, at most a year out. One engine timer aims
+  at the next wake; on waking the thread returns, and a notification says so when
+  the window is in the background. A turn starting clears both shelves, and work
+  in flight or a waiting decision is never shown on a shelf.
+- **Settle and next** (⌘E) settles the open thread and opens what wants you most
+  next: a decision, then an unread finish, then an unread failure, newest first.
+  With nothing waiting it stays and the toast says so. ⇧⌘U marks the open thread
+  unread. Every triage action offers Undo, also on ⌘Z.
+- **Attention summary** (menu bar, companion, Dock badge) counts a finished
+  thread as ready only while unread and not shelved; a decision on a shelved
+  thread still counts.
+- Paired viewers see triage state but get no triage actions: the channel is a
+  write.
+
+**Toasts.** One stack (`lib/toasts.tsx`, `features/toasts/Toasts.tsx`) under the
+titlebar on the right, clear of the composer. A toast has a tone (info, success,
+error), an optional action and a key; a toast with the same key replaces the one
+on screen, and the stack keeps the newest three. Timers pause under the pointer or
+focus; errors are alerts, the rest polite status. An action marked `undo` answers
+⌘Z outside text fields and dialogs. The thread notice above the transcript keeps
+errors that belong to that thread; confirmations (stash, Git initialized,
+simulator screenshots and recordings, browser and pull-request copies) are
+toasts. A recording no longer opens a player on its own; its toast offers Open.
+
+**Notifications.** A desktop notification's title is the thread's name; the body
+is the project and what happened (Finished, Failed, Needs approval, Has a
+question, Snooze ended), and clicking it opens the thread. Stopping a turn
+yourself does not notify. With the window focused, another thread finishing,
+failing or asking shows a toast with Open instead; its live region is what a
+screen reader announces. A run first seen already finished counts when it
+finished after the window opened, so a fast turn is not missed between two
+updates. The Dock badge counts threads waiting on a person (decisions, failures,
+unread finishes) and falls as you read rather than clearing on focus. Settings ›
+General adds Dock badge and Notification sound.
+
+**Agent questions.** A question the agent stops to ask arrives as a pending
+approval whose `details.questions` holds `AgentQuestion`s (header, question,
+options, multi-select, free text, secret). The conversation shows a question card
+in place of the approval card: one question at a time with progress, number keys
+pick, Enter moves on, a free answer replaces a single choice, a secret is masked.
+Don't answer declines and the agent continues on its own judgement. Answers go
+back through `answerAgentQuestion` (conversation control, like approvals), are
+checked against the questions, and are not written to the transcript; the run's
+event log records them, with secrets hidden. The sidebar shows Question rather
+than Approval, and the status line says Waiting for your answer. Per route: the
+Claude direct session answers its question tool through the tool's `answers`
+input; the Codex direct session answers `item/tool/requestUserInput` by question
+id (it used to end the turn as an unsupported interaction); generic ACP agents
+and the Gateway have no question request, so a question there stays in the
+agent's own reply text. The mock runtime asks two questions on `[question]`.
+
+**Continue after a restart.** Off by default because it spends a turn the person
+did not send. When on, the engine queues each thread's latest turn that the last
+quit interrupted, as an ordinary follow-up: a line saying the turn was cut off and
+changes are on disk, then the original prompt and files. Direct and local threads
+only; a Gateway may still be running its turn. Archived threads and turns older
+than a day are skipped.
+
+**Development.** `CAPSULE_MOCK_RUNTIME=1` runs a built app on the mock runtime
+against a throwaway profile.
+

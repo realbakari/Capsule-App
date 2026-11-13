@@ -211,6 +211,7 @@ export function Sidebar() {
   const [expandedGroups, setExpandedGroups] = useState<Set<SidebarStatusGroupId>>(new Set());
   const latestRuns = useMemo(() => latestSidebarRuns(projectRuns), [projectRuns]);
   const pendingApprovals = approvals.filter((item) => item.status === "pending").length;
+  const askingRuns = useMemo(() => new Set(approvals.filter((item) => item.status === "pending" && item.details?.questions?.length).map((item) => item.runId)), [approvals]);
   const [channelUnread, setChannelUnread] = useState(() => unreadChannelCount(loadChannelPrefs()));
   useEffect(() => {
     const sync = () => setChannelUnread(unreadChannelCount(loadChannelPrefs()));
@@ -493,7 +494,8 @@ export function Sidebar() {
               {startedAt ? <WorkingDuration startedAt={startedAt} /> : null}
             </span>
           ) : kind === "approval" ? (
-            <span className="thread-status approval"><ShieldIcon size={10} />Approval</span>
+            askingRuns.has(run?.id ?? "") ? <span className="thread-status approval"><MessageSquareIcon size={10} />Question</span>
+              : <span className="thread-status approval"><ShieldIcon size={10} />Approval</span>
           ) : kind === "failed" ? (
             <span className="thread-status failed"><AlertTriangleIcon size={10} />Failed</span>
           ) : shelf === "snoozed" && session.snoozedUntil ? (

@@ -172,6 +172,8 @@ import {
   type RunEvent,
   type Session,
   type ThreadTriageAction,
+  validateQuestionAnswers,
+  type AgentQuestionAnswers,
   type Skill,
   type SkillPack,
   type SkillCatalogEntry,
@@ -289,7 +291,7 @@ export class CapsuleEngine {
   }
 
   private directUnsub?: () => void;
-  private directApprovals = new Map<string, { runId: string; canApproveOnce?: boolean; allow: () => void; deny: () => void; cancel: () => void }>();
+  private directApprovals = new Map<string, { runId: string; canApproveOnce?: boolean; allow: () => void; deny: () => void; cancel: () => void; answer?: (answers: AgentQuestionAnswers) => void }>();
   private admittingSessions = new Set<string>();
   /* Queued follow-ups and scheduled resumes, sent whichever conversation is on screen. */
   private readonly triage = new ThreadTriage({
@@ -2341,6 +2343,45 @@ export class CapsuleEngine {
     this.events.emit("approval", approval);
   }
 
+  /**
+   * Answers a question the agent stopped to ask. The answers are checked
+   * against the questions it sent and go back in the agent's own form; they
+   * are not written to the transcript, so a secret stays out of history.
+   */
+  async answerAgentQuestion(approvalId: string, answers: unknown): Promise<void> {
+    const approval = this.repos.listApprovals("pending").find((item) => item.id === approvalId);
+    const direct = this.directApprovals.get(approvalId);
+    const questions = approval?.details?.questions;
+    if (!approval) throw new Error("That question is no longer waiting for an answer.");
+    if (!questions?.length) throw new Error("This request is not a question.");
+    const valid = validateQuestionAnswers(questions, answers);
+    if (!direct) {
+      // Only the mock runtime asks questions off the direct route; the Gateway does not carry them.
+      if (!this.runtime.answerQuestion) throw new Error("Questions are not carried on this route. Answer in the agent's own interface.");
+      approval.status = "approved_once";
+      approval.resolvedAt = nowIso();
+      this.repos.updateApproval(approval);
+      this.events.emit("approval", approval);
+      return this.runtime.answerQuestion(approvalId, valid);
+    }
+    if (!direct.answer) throw new Error("This request is not a question.");
+    approval.status = "approved_once";
+    approval.resolvedAt = nowIso();
+    this.repos.updateApproval(approval);
+    this.directApprovals.delete(approvalId);
+    direct.answer(valid);
+    const run = this.requireRun(direct.runId);
+    this.appendEvent(run.id, "question.answered", `Answered ${questions.length === 1 ? "a question" : `${questions.length} questions`}`, {
+      questions: questions.map((question) => ({ question: question.question, answer: question.secret ? "(hidden)" : valid[question.id]!.join(", ") })),
+    });
+    if (!run.completedAt && !this.repos.listApprovals("pending").some((item) => item.runId === run.id)) {
+      run.status = "running";
+      this.repos.updateRun(run);
+      this.events.emit("run", run);
+    }
+    this.events.emit("approval", approval);
+  }
+
   listFiles(projectId: string, relative = ".", root?: string) {
     const project = this.requireProject(projectId);
     const decision = decidePolicy(this.repos.listPolicies(), "filesystem", "read");
@@ -2685,11 +2726,12 @@ export class CapsuleEngine {
         });
         return;
       }
+      const asked = payload.request.details?.questions;
       const approval: ApprovalRequest = {
         id: createId("approval"), runId: run.id, agentId: run.agentId,
         agentName: session?.harnessId ?? run.agentId, action: payload.request.title,
-        target: payload.request.details?.locations.join("\n") || "Target not reported by the agent",
-        reason: "The direct agent is waiting for your approval.",
+        target: asked?.length ? asked[0]!.question : payload.request.details?.locations.join("\n") || "Target not reported by the agent",
+        reason: asked?.length ? "The direct agent is waiting for your answer." : "The direct agent is waiting for your approval.",
         details: payload.request.details,
         status: "pending", createdAt: nowIso(),
       };

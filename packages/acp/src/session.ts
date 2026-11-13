@@ -55,6 +55,8 @@ export interface DirectAcpEvents {
     deny: () => void;
     /** End an unanswered request without recording a user decision. */
     cancel: () => void;
+    /** Present when `details.questions` is: answer them instead of allowing. */
+    answer?: (answers: import("@capsule/shared").AgentQuestionAnswers) => void;
   }) => void;
   /** The process ended. */
   exit: (payload: { code: number | null; stderr: string }) => void;

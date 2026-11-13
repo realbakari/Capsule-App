@@ -3,6 +3,7 @@ import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } fro
 import type { ChatMessage, Run } from "@capsule/shared";
 import { harnessDisplayName } from "../../lib/harness";
 import { useMarkThreadViewed } from "../../lib/thread-triage";
+import { QuestionCard } from "../questions/QuestionCard";
 import { formatTokens, type ContextUsage } from "../../lib/context-window";
 import { AlertTriangleIcon, DiffIcon, FileIcon, HistoryIcon, MessageSquarePlusIcon, SparkIcon, TerminalIcon, XIcon } from "../shell/icons";
 import { RunElapsed } from "./RunElapsed";
@@ -158,10 +159,12 @@ function TurnStatusLine({
 }) {
   // The agent's own most recent step when there is one; otherwise the honest
   // answer, which is that nothing has come back yet.
-  const state = stopping ? "Stopping — waiting for the runtime" : `${runActivityLabel(run)} · ${activity?.trim() || `Waiting for ${agentName}`}`;
+  const { pendingApproval } = useWorkspace();
+  const asking = Boolean(pendingApproval?.runId === run.id && pendingApproval.details?.questions?.length);
+  const state = stopping ? "Stopping — waiting for the runtime" : `${runActivityLabel(run, false, asking)} · ${activity?.trim() || `Waiting for ${agentName}`}`;
   return (
     <div className="turn-status">
-      <span>{stopping ? "Stopping" : run.status === "running" ? "Working" : runActivityLabel(run)}</span>
+      <span>{stopping ? "Stopping" : run.status === "running" ? "Working" : runActivityLabel(run, false, asking)}</span>
       {run.createdAt && <><span>for</span><RunElapsed startedAt={run.createdAt} /></>}
       {usage ? (
         <>
@@ -642,6 +645,7 @@ export function Conversation() {
                 label={[...transcripts.values()].some((item) => item.run.id === summaryRun.id && item.hasActivity) ? "Turn details" : `${events.some((event) => event.data?.earlierEvents) ? "Recent activity · " : ""}${summariseWork(steps).label}`}
                 run={summaryRun}
                 stopping={Boolean(activeRun && stoppingRunIds?.includes(activeRun.id))}
+                asking={Boolean(pendingApproval?.runId === summaryRun?.id && pendingApproval?.details?.questions?.length)}
                 touchedFiles={touchedFiles}
                 onOpenFile={openAttachment}
               >
@@ -732,7 +736,7 @@ export function Conversation() {
               </button>
             </div>
           ) : null}
-          {pendingApproval && (
+          {pendingApproval?.details?.questions?.length ? <QuestionCard approval={pendingApproval} /> : pendingApproval && (
             <div className="conversation-approval">
               <h3>Approval required</h3>
               <div>

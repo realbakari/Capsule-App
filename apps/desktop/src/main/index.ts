@@ -910,8 +910,9 @@ function notifyApproval(approval: ApprovalRequest): void {
   const settings = engine?.getSettings();
   if (settings && !settings.notifyApprovals) return;
   const thread = threadLabel(engine?.getRun(approval.runId)?.sessionId);
-  const what = `${approval.agentName} wants to ${approval.action} ${approval.target}`;
-  notifyDesktop(thread.title, thread.project ? `${thread.project} · Needs approval: ${what}` : `Needs approval: ${what}`, thread.sessionId);
+  const question = approval.details?.questions?.[0]?.question;
+  const what = question ? `Has a question: ${question}` : `Needs approval: ${approval.agentName} wants to ${approval.action} ${approval.target}`;
+  notifyDesktop(thread.title, thread.project ? `${thread.project} · ${what}` : what, thread.sessionId);
   if (settings?.bounceDockOnAttention) bounceDock();
 }
 
@@ -1414,6 +1415,9 @@ function registerIpc(): void {
   );
   handle(IPC_CHANNELS.pinSession, (id, pinned) =>
     requireEngine().pinSession(String(id), Boolean(pinned)),
+  );
+  handle(IPC_CHANNELS.answerAgentQuestion, (approvalId, answers) =>
+    requireEngine().answerAgentQuestion(String(approvalId), answers),
   );
   handle(IPC_CHANNELS.triageSession, (id, action) =>
     requireEngine().triageSession(String(id), parseThreadTriageAction(action)),

@@ -5,7 +5,7 @@ import { realpathSync } from "node:fs";
 import { query, getSessionInfo, type Query, type ModelInfo, type SDKMessage, type SDKUserMessage, type CanUseTool, type PermissionResult, type PermissionMode } from "@anthropic-ai/claude-agent-sdk";
 import { spawnCommand, stopChild } from "@capsule/process";
 import type { DirectAcpEvents, DirectAcpOptions, DirectAgentSession } from "@capsule/acp";
-import { readPlanEntries, readReportedContextUsage, readReportedTurnUsage, readToolActivityDetails, type AcpModelCatalog, type AgentCapabilityReport, type AgentCommand, type AgentPromptBlock, type ReportedContextUsage } from "@capsule/shared";
+import { readToolQuestions, toolAnswerPayload, type AgentQuestionAnswers, readPlanEntries, readReportedContextUsage, readReportedTurnUsage, readToolActivityDetails, type AcpModelCatalog, type AgentCapabilityReport, type AgentCommand, type AgentPromptBlock, type ReportedContextUsage } from "@capsule/shared";
 import { ClaudeInput } from "./input.js";
 import { isClaudeEffort, isClaudePermission, permissionChoices } from "./configuration.js";
 
@@ -293,6 +293,23 @@ export class DirectClaudeSession implements DirectAgentSession {
       };
       const cancel = () => answer(false, true);
       this.approvals.add(cancel); options.signal.addEventListener("abort", cancel, { once: true });
+      const questions = name === "AskUserQuestion" ? readToolQuestions(input) : [];
+      if (questions.length > 0) {
+        const handled = this.emitter.emit("permission", { title: "The agent has a question", canApproveOnce: true, settled,
+          details: { toolCallId: options.toolUseID, kind: "question", locations: [], truncated: false, canApproveOnce: true, questions },
+          allow: () => answer(false), cancel,
+          deny: () => {
+            if (answered) return; answered = true; this.approvals.delete(cancel); options.signal.removeEventListener("abort", cancel); settle();
+            resolve({ behavior: "deny", message: "The user chose not to answer. Continue with your best judgement, or ask again in your reply." });
+          },
+          answer: (answers: AgentQuestionAnswers) => {
+            if (answered) return; answered = true; this.approvals.delete(cancel); options.signal.removeEventListener("abort", cancel); settle();
+            resolve({ behavior: "allow", updatedInput: { ...input, answers: toolAnswerPayload(questions, answers) } });
+          },
+        });
+        if (!handled) cancel();
+        return;
+      }
       const preview = JSON.stringify(input);
       const handled = this.emitter.emit("permission", { title: options.title ?? `Allow ${name}?`, canApproveOnce: true, settled,
         details: { toolCallId: options.toolUseID, kind: name === "Bash" ? "execute" : /Edit|Write/.test(name) ? "edit" : "other", locations: options.blockedPath ? [options.blockedPath] : [], preview: preview.slice(0, 8000), truncated: preview.length > 8000, canApproveOnce: true },

@@ -164,3 +164,15 @@ it("closes a connection whose interrupted turn never finishes", async () => {
   await expect(session.cancel()).rejects.toThrow("did not confirm");
   await turn; expect(session.running).toBe(false);
 });
+
+it("puts the agent's questions to the person and returns the answers by id", async () => {
+  const session = create("question"); await session.start();
+  const text: string[] = [];
+  session.on("text", ({ text: chunk }) => text.push(chunk));
+  session.on("permission", (event) => {
+    expect(event.details?.questions?.map((question) => [question.id, question.allowOther, question.secret])).toEqual([["db", false, false], ["token", true, true]]);
+    event.answer?.({ db: ["Postgres"], token: ["secret-value"] });
+  });
+  expect(await session.prompt("Set up storage")).toEqual({ stopReason: "end_turn" });
+  expect(text.join("")).toBe("Using Postgres with 1 token");
+});

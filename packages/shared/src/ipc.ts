@@ -186,6 +186,8 @@ export const IPC_CHANNELS = {
   fetchSkillDetail: "capsule:fetchSkillDetail",
   /* Read, unread, settle, snooze: a thread's triage state. */
   triageSession: "capsule:triageSession",
+  /* Answers to a question the agent asked; conversation control, like approvals. */
+  answerAgentQuestion: "capsule:answerAgentQuestion",
 } as const;
 
 export const IPC_EVENTS = {

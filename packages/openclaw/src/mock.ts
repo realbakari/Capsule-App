@@ -158,6 +158,16 @@ export class MockAgentRuntime implements AgentRuntime {
     await this.finishSuccess(approval.runId, "Approved and completed the requested write.");
   }
 
+  async answerQuestion(approvalId: string, answers: Record<string, string[]>): Promise<void> {
+    const approval = this.approvals.get(approvalId);
+    if (!approval) return;
+    approval.status = "approved_once";
+    approval.resolvedAt = nowIso();
+    this.emit(approval.runId, "approval.resolved", "Question answered", { status: "running" });
+    const chosen = Object.values(answers).map((values) => values.join(", ")).join("; ");
+    await this.finishSuccess(approval.runId, `Going with ${chosen}.`);
+  }
+
   async listApprovals(): Promise<ApprovalRequest[]> {
     return [...this.approvals.values()];
   }
@@ -171,6 +181,7 @@ export class MockAgentRuntime implements AgentRuntime {
     if (lower.includes("[long]")) return "long_running";
     if (lower.includes("[buzz]")) return "buzz_message";
     if (lower.includes("[tool]")) return "tool_failure";
+    if (lower.includes("[question]")) return "agent_question";
     return this.scenario;
   }
 
@@ -195,6 +206,32 @@ export class MockAgentRuntime implements AgentRuntime {
     this.emit(run.id, "lifecycle", "Skill activated", { step: "skill", skillId: run.skillId });
     await sleep(delay);
     this.emit(run.id, "lifecycle", "Contract created", { step: "contract" });
+
+    if (scenario === "agent_question") {
+      const approval: ApprovalRequest = {
+        id: createId("apr"),
+        runId: run.id,
+        agentId: run.agentId,
+        agentName: this.agents.find((agent) => agent.id === run.agentId)?.name ?? "Agent",
+        action: "The agent has a question",
+        target: "Which database should the app use?",
+        reason: "The agent is waiting for your answer.",
+        status: "pending",
+        createdAt: nowIso(),
+        details: { kind: "question", locations: [], truncated: false, canApproveOnce: true, questions: [
+          { id: "db", header: "Database", question: "Which database should the app use?", multiSelect: false, allowOther: true, secret: false, options: [
+            { label: "SQLite", description: "One file next to the app; nothing to run." },
+            { label: "Postgres", description: "A server; better for many writers." },
+          ] },
+          { id: "checks", header: "Checks", question: "Which checks should run before each commit?", multiSelect: true, allowOther: false, secret: false, options: [
+            { label: "Lint" }, { label: "Type check" }, { label: "Unit tests" },
+          ] },
+        ] },
+      };
+      this.approvals.set(approval.id, approval);
+      this.emit(run.id, "approval.requested", "Question asked", { approval, status: "approval_required" });
+      return;
+    }
 
     if (scenario === "approval_required") {
       const approval: ApprovalRequest = {

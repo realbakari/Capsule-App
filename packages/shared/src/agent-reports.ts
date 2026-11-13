@@ -37,6 +37,8 @@ export interface ApprovalToolDetails {
   preview?: string;
   truncated: boolean;
   canApproveOnce: boolean;
+  /** Set when the request is a question with choices rather than a permission. */
+  questions?: import("./agent-question.js").AgentQuestion[];
 }
 
 const object = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};

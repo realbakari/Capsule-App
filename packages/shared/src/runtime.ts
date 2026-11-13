@@ -44,6 +44,8 @@ export interface AgentRuntime {
     decision: "approved_once" | "approved_session" | "denied",
   ): Promise<void>;
   listApprovals?(): Promise<ApprovalRequest[]>;
+  /** Answers a question approval; only runtimes whose agents ask questions implement it. */
+  answerQuestion?(approvalId: string, answers: import("./agent-question.js").AgentQuestionAnswers): Promise<void>;
 }
 
 export type ComposerSendKey = "enter" | "cmd-enter";
