@@ -1,6 +1,8 @@
 import type { WebviewTag } from "electron";
 import { useWorkspace } from "../../lib/workspace";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { InspectorHeadSlot } from "./inspector-slot";
 import type { LocalServer } from "@capsule/shared";
 import { harnessCapabilities } from "@capsule/shared";
 import { BackgroundBrowser } from "./BackgroundBrowser";
@@ -18,7 +20,9 @@ import {
   MoreVerticalIcon,
   MousePointerClickIcon,
   PlusIcon,
+  XIcon,
   RefreshIcon,
+  TerminalIcon,
 } from "./icons";
 
 export interface BrowserRecent {
@@ -195,6 +199,11 @@ export function normalizedBrowserUrl(raw: string): string {
   }
 }
 
+interface BrowserTab { id: string; url: string; title: string }
+let tabSequence = 0;
+const newTabId = () => `tab-${Date.now().toString(36)}-${(tabSequence += 1)}`;
+const hostOf = (url: string) => { try { return new URL(url).host; } catch { return url; } };
+
 export function EmbeddedBrowser({
   address,
   onAddressChange,
@@ -212,13 +221,22 @@ export function EmbeddedBrowser({
   onRetryServers?: () => void;
   onOpenExternal: (url: string) => void;
 }) {
-  const { api, session, agentId, harnesses, harnessStatuses, view: workspaceView, inspectorOpen } = useWorkspace();
+  const { api, session, agentId, harnesses, harnessStatuses, view: workspaceView, inspectorOpen, setConfirm } = useWorkspace();
   const desktopBrowser = navigator.userAgent.includes("Electron/");
   const browserCapability = harnessCapabilities({ harness: harnesses?.find((item) => item.id === agentId), session, status: session ? harnessStatuses?.[session.id] : undefined }).browser;
   const initialUrl = normalizedBrowserUrl(address);
   const [agentControl, setAgentControl] = useState(false);
   const [controlBusy, setControlBusy] = useState(false);
   const [ready, setReady] = useState(false);
+  const [pageTitle, setPageTitle] = useState<string>();
+  /*
+   * Tabs. One live page shows at a time; the others keep their address and
+   * title, and switching loads the tab's address into the page. That keeps a
+   * single registered page for the agent's browser tools.
+   */
+  const [tabs, setTabs] = useState<BrowserTab[]>(() => [{ id: newTabId(), url: initialUrl ?? "", title: "" }]);
+  const [activeTab, setActiveTab] = useState(() => tabs[0]!.id);
+  const headSlot = useContext(InspectorHeadSlot);
   const [viewport, setViewport] = useState("fill");
   const controlEpoch = useRef(0);
   const [currentUrl, setCurrentUrl] = useState(initialUrl);
@@ -330,6 +348,7 @@ export function EmbeddedBrowser({
     if (!view) return;
     const url = view.getURL();
     if (!normalizedBrowserUrl(url)) return;
+    setPageTitle(view.getTitle().trim() || undefined);
     const entry: BrowserRecent = {
       url,
       title: view.getTitle().trim() || new URL(url).hostname,
@@ -416,6 +435,31 @@ export function EmbeddedBrowser({
     };
   }, [mountedView, api, publishAddress, ownerId]);
 
+  useEffect(() => {
+    setTabs((current) => current.map((tab) => tab.id === activeTab ? { ...tab, url: currentUrl ?? "", title: pageTitle ?? (currentUrl ? tab.title : "") } : tab));
+  }, [activeTab, currentUrl, pageTitle]);
+
+  const showTab = (tab: BrowserTab) => {
+    setActiveTab(tab.id);
+    setPageTitle(tab.title || undefined);
+    setError(undefined);
+    if (tab.url) navigate(tab.url);
+    else { publishAddress(""); setGuestUrl(""); setCurrentUrl(""); }
+  };
+  const openTab = () => {
+    const tab: BrowserTab = { id: newTabId(), url: "", title: "" };
+    setTabs((current) => [...current, tab]);
+    showTab(tab);
+  };
+  const closeTab = (id: string) => {
+    const index = tabs.findIndex((tab) => tab.id === id);
+    const rest = tabs.filter((tab) => tab.id !== id);
+    if (rest.length === 0) { const blank: BrowserTab = { id: newTabId(), url: "", title: "" }; setTabs([blank]); showTab(blank); return; }
+    setTabs(rest);
+    if (id === activeTab) showTab(rest[Math.min(index, rest.length - 1)]!);
+  };
+  const tabLabel = (tab: BrowserTab) => tab.title || (tab.url ? hostOf(tab.url) : "New tab");
+
   const navigate = (value: string) => {
     const next = normalizedBrowserUrl(value);
     if (!next) {
@@ -497,27 +541,231 @@ export function EmbeddedBrowser({
     setMoreMenuOpen(false);
   };
 
-  const handleClearCookies = async () => {
+  /* The app's own confirm dialog, like every other destructive action; the native one looked foreign and blocked the window. */
+  const handleClearCookies = () => {
     const view = webviewRef.current;
     if (!view) return;
-    if (!window.confirm("Clear cookies and site storage for all Capsule browser pages? This signs you out of those sites. Capsule projects and drafts are kept.")) return;
-    try {
-      await api.clearBrowserData(view.getWebContentsId(), "storage");
-      view.reload();
-      showToast("Browser cookies and site storage cleared");
-    } catch {
-      showToast("Unable to clear cookies");
-    }
     setMoreMenuOpen(false);
+    setConfirm({
+      title: "Clear browser cookies and site storage?",
+      detail: "This signs you out of sites in every Capsule browser page. Capsule projects and drafts are kept.",
+      danger: true,
+      confirmLabel: "Clear cookies",
+      onConfirm: () => {
+        setConfirm(undefined);
+        void (async () => {
+          try {
+            await api.clearBrowserData(view.getWebContentsId(), "storage");
+            view.reload();
+            showToast("Browser cookies and site storage cleared");
+          } catch {
+            showToast("Unable to clear cookies");
+          }
+        })();
+      },
+    });
   };
 
+
+  /*
+   * The panel header row, as in a browser's tab strip: the page this panel
+   * shows, then its actions. Drawn into the panel's header so the page gets
+   * the row back; drawn here when the browser is not inside the panel.
+   */
+  const head = (
+    <div className="browser-head">
+      <div className="browser-tabs" role="tablist" aria-label="Browser tabs">
+        {tabs.map((tab) => (
+          <span key={tab.id} className="browser-head-tab" role="presentation" data-active={tab.id === activeTab || undefined}>
+            <button type="button" role="tab" aria-selected={tab.id === activeTab} className="browser-tab-select" title={tab.url || "New tab"} onClick={() => { if (tab.id !== activeTab) showTab(tab); }}>
+              <GlobeIcon size={13} />
+              <span className="truncate">{tabLabel(tab)}</span>
+            </button>
+            <button type="button" className="browser-tab-close" aria-label={`Close ${tabLabel(tab)}`} title="Close tab" onClick={() => closeTab(tab.id)}><XIcon size={11} /></button>
+          </span>
+        ))}
+        <button type="button" className="icon-btn browser-tab-new" aria-label="New tab" title="New tab" onClick={openTab}><PlusIcon size={13} /></button>
+      </div>
+        <div className="preview-actions-cluster">
+        <BrowserControls allowed={agentControl} disabled={!ownerId || controlBusy || browserCapability.state === "unavailable"}
+          detail={browserCapability.detail} url={normalizedBrowserUrl(address)}
+          active={inspectorOpen !== false && (workspaceView === undefined || workspaceView === "chat")}
+          backgroundAvailable={browserCapability.state !== "unavailable" && Boolean(session?.harnessId && session.openclawSessionKey?.startsWith("direct:"))}
+          onToggle={() => void toggleAgentControl()} onBackgroundControl={() => setAgentControl(false)} />
+        <button
+          className={`preview-chrome-btn ${pickActive ? "active" : ""}`}
+          type="button"
+          aria-label="Inspect element"
+          title={pickActive ? "Cancel inspection (Esc)" : "Inspect element"}
+          disabled={!ready}
+          onClick={handlePickElement}
+        >
+          <MousePointerClickIcon size={14} />
+        </button>
+
+        <button
+          className="preview-chrome-btn"
+          type="button"
+          aria-label="Capture screenshot"
+          title="Capture screenshot"
+          disabled={!ready}
+          onClick={() => void handleCaptureScreenshot()}
+        >
+          <CameraIcon size={14} />
+        </button>
+
+
+        <div className="preview-menu-anchor" ref={moreMenuAnchorRef}>
+          <button
+            className={`preview-chrome-btn ${moreMenuOpen ? "active" : ""}`}
+            type="button"
+            aria-label="More options"
+            title="More options"
+            onClick={() => setMoreMenuOpen((prev) => !prev)}
+          >
+            <MoreVerticalIcon size={14} />
+          </button>
+
+          {moreMenuOpen && (
+            <div className="preview-more-menu" role="menu">
+              {/* The page's width lives here with zoom, so the header keeps its room for tabs. */}
+              <label className="preview-menu-item-row preview-viewport-row">
+                <span>Page width</span>
+                <select className="preview-viewport" aria-label="Preview viewport" value={viewport} onChange={(event) => setViewport(event.target.value)}>
+                  <option value="fill">Fit panel</option><option value="phone">Phone · 390px</option><option value="tablet">Tablet · 768px</option>
+                </select>
+              </label>
+              <div className="preview-menu-divider" />
+              <button
+                type="button"
+                className="preview-menu-item"
+                disabled={!ready}
+                onClick={() => {
+                  webviewRef.current?.reloadIgnoringCache();
+                  setMoreMenuOpen(false);
+                }}
+              >
+                Hard reload
+              </button>
+              <button
+                type="button"
+                className="preview-menu-item"
+                disabled={!ready}
+                onClick={() => {
+                  if (webviewRef.current?.isDevToolsOpened()) {
+                    webviewRef.current.closeDevTools();
+                  } else {
+                    webviewRef.current?.openDevTools();
+                  }
+                  setMoreMenuOpen(false);
+                }}
+              >
+                Open DevTools
+              </button>
+
+              <div className="preview-menu-divider" />
+
+              <div className="preview-zoom-row">
+                <span>Zoom</span>
+                <div className="preview-zoom-controls">
+                  <button
+                    type="button"
+                    className="preview-zoom-btn"
+                    title="Zoom out"
+                    onClick={handleZoomOut}
+                    disabled={zoomFactor <= 0.5}
+                  >
+                    <MinusIcon size={11} />
+                  </button>
+                  <span className="preview-zoom-value">{Math.round(zoomFactor * 100)}%</span>
+                  <button
+                    type="button"
+                    className="preview-zoom-btn"
+                    title="Zoom in"
+                    onClick={handleZoomIn}
+                    disabled={zoomFactor >= 3.0}
+                  >
+                    <PlusIcon size={11} />
+                  </button>
+                  <button
+                    type="button"
+                    className="preview-zoom-btn"
+                    title="Reset zoom"
+                    onClick={handleResetZoom}
+                    disabled={zoomFactor === 1.0}
+                  >
+                    <RefreshIcon size={10} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="preview-menu-divider" />
+
+              <button
+                type="button"
+                className="preview-menu-item"
+                disabled={!ready}
+                onClick={() => {
+                  onOpenExternal(currentUrl);
+                  setMoreMenuOpen(false);
+                }}
+              >
+                Open in system browser
+              </button>
+              <button
+                type="button"
+                className="preview-menu-item"
+                onClick={() => {
+                  setCurrentUrl("");
+                  setGuestUrl("");
+                  setPickActive(false);
+                  setLoading(false);
+                  setError(undefined);
+                  publishAddress("");
+                  setCanGoBack(false);
+                  setCanGoForward(false);
+                  setMoreMenuOpen(false);
+                }}
+              >
+                <span className="preview-menu-item-row">
+                  <span>Local servers home</span>
+                  <GlobeIcon size={12} />
+                </span>
+              </button>
+
+              <div className="preview-menu-divider" />
+
+              <button
+                type="button"
+                className="preview-menu-item"
+                disabled={!ready}
+                onClick={() => void handleClearCache()}
+              >
+                Clear browser HTTP cache
+              </button>
+              <button
+                type="button"
+                className="preview-menu-item"
+                disabled={!ready}
+                onClick={() => void handleClearCookies()}
+              >
+                Clear browser cookies &amp; storage
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
   if (!desktopBrowser) return (
-    <div className="codex-tool-pane"><BackgroundBrowser desktop={false} url="" available={false} active={inspectorOpen !== false} /></div>
+    <div className="panel-tool-pane"><BackgroundBrowser desktop={false} url="" available={false} active={inspectorOpen !== false} /></div>
   );
 
   return (
-    <div className="codex-browser-pane">
-      <div className="codex-browser-nav preview-chrome-row">
+    <div className="panel-browser-pane">
+      {headSlot ? createPortal(head, headSlot) : head}
+      <div className="panel-browser-nav preview-chrome-row">
         <div className="preview-nav-cluster">
           <button
             className="preview-chrome-btn"
@@ -586,170 +834,6 @@ export function EmbeddedBrowser({
           ) : null}
         </form>
 
-        <div className="preview-actions-cluster">
-          <BrowserControls allowed={agentControl} disabled={!ownerId || controlBusy || browserCapability.state === "unavailable"}
-            detail={browserCapability.detail} url={normalizedBrowserUrl(address)}
-            active={inspectorOpen !== false && (workspaceView === undefined || workspaceView === "chat")}
-            backgroundAvailable={browserCapability.state !== "unavailable" && Boolean(session?.harnessId && session.openclawSessionKey?.startsWith("direct:"))}
-            onToggle={() => void toggleAgentControl()} onBackgroundControl={() => setAgentControl(false)} />
-          <button
-            className={`preview-chrome-btn ${pickActive ? "active" : ""}`}
-            type="button"
-            aria-label="Inspect element"
-            title={pickActive ? "Cancel inspection (Esc)" : "Inspect element"}
-            disabled={!ready}
-            onClick={handlePickElement}
-          >
-            <MousePointerClickIcon size={14} />
-          </button>
-
-          <button
-            className="preview-chrome-btn"
-            type="button"
-            aria-label="Capture screenshot"
-            title="Capture screenshot"
-            disabled={!ready}
-            onClick={() => void handleCaptureScreenshot()}
-          >
-            <CameraIcon size={14} />
-          </button>
-
-          <select className="preview-viewport" aria-label="Preview viewport" value={viewport} onChange={(event) => setViewport(event.target.value)}>
-            <option value="fill">Fit panel</option><option value="phone">Phone · 390px</option><option value="tablet">Tablet · 768px</option>
-          </select>
-
-          <div className="preview-menu-anchor" ref={moreMenuAnchorRef}>
-            <button
-              className={`preview-chrome-btn ${moreMenuOpen ? "active" : ""}`}
-              type="button"
-              aria-label="More options"
-              title="More options"
-              onClick={() => setMoreMenuOpen((prev) => !prev)}
-            >
-              <MoreVerticalIcon size={14} />
-            </button>
-
-            {moreMenuOpen && (
-              <div className="preview-more-menu" role="menu">
-                <button
-                  type="button"
-                  className="preview-menu-item"
-                  disabled={!ready}
-                  onClick={() => {
-                    webviewRef.current?.reloadIgnoringCache();
-                    setMoreMenuOpen(false);
-                  }}
-                >
-                  Hard reload
-                </button>
-                <button
-                  type="button"
-                  className="preview-menu-item"
-                  disabled={!ready}
-                  onClick={() => {
-                    if (webviewRef.current?.isDevToolsOpened()) {
-                      webviewRef.current.closeDevTools();
-                    } else {
-                      webviewRef.current?.openDevTools();
-                    }
-                    setMoreMenuOpen(false);
-                  }}
-                >
-                  Open DevTools
-                </button>
-
-                <div className="preview-menu-divider" />
-
-                <div className="preview-zoom-row">
-                  <span>Zoom</span>
-                  <div className="preview-zoom-controls">
-                    <button
-                      type="button"
-                      className="preview-zoom-btn"
-                      title="Zoom out"
-                      onClick={handleZoomOut}
-                      disabled={zoomFactor <= 0.5}
-                    >
-                      <MinusIcon size={11} />
-                    </button>
-                    <span className="preview-zoom-value">{Math.round(zoomFactor * 100)}%</span>
-                    <button
-                      type="button"
-                      className="preview-zoom-btn"
-                      title="Zoom in"
-                      onClick={handleZoomIn}
-                      disabled={zoomFactor >= 3.0}
-                    >
-                      <PlusIcon size={11} />
-                    </button>
-                    <button
-                      type="button"
-                      className="preview-zoom-btn"
-                      title="Reset zoom"
-                      onClick={handleResetZoom}
-                      disabled={zoomFactor === 1.0}
-                    >
-                      <RefreshIcon size={10} />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="preview-menu-divider" />
-
-                <button
-                  type="button"
-                  className="preview-menu-item"
-                  disabled={!ready}
-                  onClick={() => {
-                    onOpenExternal(currentUrl);
-                    setMoreMenuOpen(false);
-                  }}
-                >
-                  Open in system browser
-                </button>
-                <button
-                  type="button"
-                  className="preview-menu-item"
-                  onClick={() => {
-                    setCurrentUrl("");
-                    setGuestUrl("");
-                    setPickActive(false);
-                    setLoading(false);
-                    setError(undefined);
-                    publishAddress("");
-                    setCanGoBack(false);
-                    setCanGoForward(false);
-                    setMoreMenuOpen(false);
-                  }}
-                >
-                  <span className="preview-menu-item-row">
-                    <span>Local servers home</span>
-                    <GlobeIcon size={12} />
-                  </span>
-                </button>
-
-                <div className="preview-menu-divider" />
-
-                <button
-                  type="button"
-                  className="preview-menu-item"
-                  disabled={!ready}
-                  onClick={() => void handleClearCache()}
-                >
-                  Clear browser HTTP cache
-                </button>
-                <button
-                  type="button"
-                  className="preview-menu-item"
-                  disabled={!ready}
-                  onClick={() => void handleClearCookies()}
-                >
-                  Clear browser cookies &amp; storage
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
 
         {loading && <div className="preview-loading-bar" />}
       </div>
@@ -774,7 +858,7 @@ export function EmbeddedBrowser({
           />
         </div>
       ) : (
-        <div className="codex-browser-links local-server-list">
+        <div className="panel-browser-links local-server-list">
           {recents.length > 0 ? (
             <section className="browser-home-section">
               <h4>Recently used</h4>
@@ -786,11 +870,7 @@ export function EmbeddedBrowser({
                     key={recent.url}
                     onClick={() => navigate(recent.url)}
                   >
-                    <span className="local-server-icon" aria-hidden>
-                      <span />
-                      <span />
-                      <span />
-                    </span>
+                    <span className="local-server-icon" aria-hidden><GlobeIcon size={14} /></span>
                     <span className="local-server-copy">
                       <b>{recent.title}</b>
                       <small>
@@ -808,7 +888,7 @@ export function EmbeddedBrowser({
                 <h4>Local servers</h4>
                 <p className="faint">Select a live app to open it in this browser tab.</p>
               </div>
-              <span className={serversLoading ? "dot warn live" : serversError ? "dot warn" : "dot on"} aria-hidden />
+              {serversLoading ? <span className="faint local-server-status" role="status">Checking…</span> : null}
             </div>
             {serversError ? <div className="notice" role="alert">
               <span>Could not refresh local servers: {serversError}</span>
@@ -825,11 +905,7 @@ export function EmbeddedBrowser({
                   key={`${server.protocol}:${server.port}`}
                   onClick={() => navigate(server.url)}
                 >
-                  <span className="local-server-icon" aria-hidden>
-                    <span />
-                    <span />
-                    <span />
-                  </span>
+                  <span className="local-server-icon" aria-hidden><TerminalIcon size={14} /></span>
                   <span className="local-server-copy">
                     <b>{server.title || server.command || `Port ${server.port}`}</b>
                     <small>localhost:{server.port}</small>
