@@ -646,7 +646,17 @@ function createWindow(): BrowserWindow {
   });
   window.webContents.on("render-process-gone", (_event, details) => {
     console.error("Renderer process gone", details);
+    stopAllTerminals();
   });
+  /*
+   * Shells belong to the renderer that started them; only it knows their ids.
+   * After a reload or a closed window they kept running with nobody able to
+   * reach them, holding folder leases that blocked restore and the 16-shell
+   * cap, and blocking update install. A fresh document starts with none.
+   */
+  // Committed main-frame loads only: a navigation the guard refused must not cost the shells.
+  window.webContents.on("did-navigate", () => stopAllTerminals());
+  window.on("closed", stopAllTerminals);
   window.webContents.on("console-message", (_event, ...payload) => {
     console.error("[renderer]", ...payload);
   });
