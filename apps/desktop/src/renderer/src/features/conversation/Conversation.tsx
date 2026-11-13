@@ -5,6 +5,7 @@ import { harnessDisplayName } from "../../lib/harness";
 import { useMarkThreadViewed } from "../../lib/thread-triage";
 import { QuestionCard } from "../questions/QuestionCard";
 import { QuoteSelection } from "./QuoteSelection";
+import { TimelineRail } from "./TimelineRail";
 import { formatTokens, type ContextUsage } from "../../lib/context-window";
 import { AlertTriangleIcon, DiffIcon, FileIcon, HistoryIcon, MessageSquarePlusIcon, SparkIcon, TerminalIcon, XIcon } from "../shell/icons";
 import { RunElapsed } from "./RunElapsed";
@@ -38,7 +39,7 @@ import { TurnVerification } from "./TurnVerification";
 import { TurnFilesCard } from "./TurnFilesCard";
 import { MessageBody } from "./MessageBody";
 import { MessageAttachments } from "./MessageAttachments";
-import { VirtualTurns } from "./VirtualTurns";
+import { VirtualTurns, type TurnLayout } from "./VirtualTurns";
 import { CopyButton } from "./CopyButton";
 import { turnTranscript } from "../../lib/turn-timeline";
 import { TurnTranscript } from "./TurnTranscript";
@@ -298,6 +299,7 @@ export function Conversation() {
     return next;
   }, [messages]);
   useMarkThreadViewed(view === "chat");
+  const [turnLayout, setTurnLayout] = useState<TurnLayout>();
   /* Where the person left off, read once per opening: marking the thread read
      must not move the line while they are reading below it. */
   const [visit, setVisit] = useState<{ id?: string; mark?: string }>({});
@@ -500,6 +502,7 @@ export function Conversation() {
         </div>
       )}
       {api.isDesktop !== false && <QuoteSelection scroller={scroller} />}
+      <TimelineRail scroller={scroller} turns={turns} layout={turnLayout} />
       {threadFind && <ThreadFind messages={messages} onLocate={locateMessage} onClose={() => setThreadFind(false)} />}
       <div
         className="conversation"
@@ -589,7 +592,7 @@ export function Conversation() {
                 </div>
               )}
               {historyNavigation}
-              <VirtualTurns key={`${session?.id}:${settings?.timeFormat ?? "system"}:${settings?.toolCallDisplay ?? "compact"}`} turns={turns} folded={folded} scroller={scroller} stick={stick} focus={focusTurn} restoreKey={session?.id} onRestore={() => setStick(false)}>{(turn) =>
+              <VirtualTurns key={`${session?.id}:${settings?.timeFormat ?? "system"}:${settings?.toolCallDisplay ?? "compact"}`} turns={turns} folded={folded} scroller={scroller} stick={stick} focus={focusTurn} restoreKey={session?.id} onRestore={() => setStick(false)} onLayout={setTurnLayout}>{(turn) =>
                 folded.has(turn.id) ? (
                   <FoldedTurn key={turn.id} turn={turn} onOpen={openTurn} />
                 ) : (

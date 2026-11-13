@@ -1,0 +1,34 @@
+/* ───────────── Timeline rail beside a long transcript ───────────── */
+.main:has(> .timeline-rail) { position: relative; }
+.timeline-rail {
+  position: absolute;
+  right: 0.25rem;
+  width: 0.625rem;
+  z-index: var(--z-sticky);
+  opacity: 0.55;
+  transition: opacity var(--motion-fast) var(--motion-ease);
+}
+.timeline-rail:hover { opacity: 1; }
+.timeline-rail-window {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-radius: var(--radius-xs);
+  background: color-mix(in srgb, var(--text) 9%, transparent);
+  pointer-events: none;
+}
+.timeline-rail-mark {
+  position: absolute;
+  left: 0.1875rem;
+  right: 0.1875rem;
+  min-height: 2px;
+  padding: 0;
+  border: 0;
+  border-top: 2px solid var(--background, var(--bg));
+  border-radius: var(--radius-xs);
+  background: color-mix(in srgb, var(--text) 32%, transparent);
+  cursor: pointer;
+}
+.timeline-rail-mark:hover { background: var(--accent); }
+@media (max-width: 47.99rem) { .timeline-rail { display: none; } }
+@media (prefers-reduced-motion: reduce) { .timeline-rail { transition: none; } }
