@@ -1595,9 +1595,7 @@ function registerIpc(): void {
   /* Opened from the pet, which is a different window and cannot route itself. */
   handle(IPC_CHANNELS.focusSession, (sessionId) => {
     if (typeof sessionId !== "string" || !sessionId) return false;
-    desktopWindow.current?.show();
-    desktopWindow.current?.focus();
-    send(IPC_EVENTS.state, { command: "open-session", sessionId });
+    commandWindow({ command: "open-session", sessionId });
     return true;
   });
   handle(IPC_CHANNELS.registerBrowserView, (webContentsId, threadId, domReady) => {
@@ -1964,22 +1962,22 @@ function createMenu(): void {
         {
           label: "New Task",
           accelerator: "CommandOrControl+N",
-          click: () => send(IPC_EVENTS.state, { command: "new-task" }),
+          click: () => commandWindow({ command: "new-task" }),
         },
         {
           label: "Open Folder…",
           accelerator: "CommandOrControl+O",
-          click: () => send(IPC_EVENTS.state, { command: "open-folder" }),
+          click: () => commandWindow({ command: "open-folder" }),
         },
         {
           label: "Open Files…",
           accelerator: "CommandOrControl+Shift+O",
-          click: () => send(IPC_EVENTS.state, { command: "open-files" }),
+          click: () => commandWindow({ command: "open-files" }),
         },
         {
           label: "New Project from Folder…",
           accelerator: "CommandOrControl+Shift+N",
-          click: () => send(IPC_EVENTS.state, { command: "new-project" }),
+          click: () => commandWindow({ command: "new-project" }),
         },
         ...(!mac
           ? [
@@ -2001,17 +1999,17 @@ function createMenu(): void {
         {
           label: "Command Palette",
           accelerator: "CommandOrControl+K",
-          click: () => send(IPC_EVENTS.state, { command: "palette" }),
+          click: () => commandWindow({ command: "palette" }),
         },
         {
           label: "Skills & Packs",
           accelerator: "CommandOrControl+Shift+S",
-          click: () => send(IPC_EVENTS.state, { command: "skills" }),
+          click: () => commandWindow({ command: "skills" }),
         },
         {
           label: "Runtimes",
           accelerator: "CommandOrControl+Shift+R",
-          click: () => send(IPC_EVENTS.state, { command: "harness" }),
+          click: () => commandWindow({ command: "harness" }),
         },
         { type: "separator" },
         { role: "reload" },
@@ -2086,10 +2084,7 @@ function attentionEntries(): Electron.MenuItemConstructorOptions[] {
       { label: attentionLabel(summary) ?? "Waiting", enabled: false },
       ...shown.map((item) => ({
         label: `${ATTENTION_MARK[item.state]}  ${item.title}`,
-        click: () => {
-          desktopWindow.current?.show();
-          send(IPC_EVENTS.state, { command: "open-session", sessionId: item.sessionId });
-        },
+        click: () => commandWindow({ command: "open-session", sessionId: item.sessionId }),
       })),
       { type: "separator" as const },
     ];
@@ -2114,11 +2109,11 @@ function buildTrayMenu(): void {
             buildTrayMenu();
           },
         },
-        { label: "About Capsule", click: () => send(IPC_EVENTS.state, { command: "about" }) },
-        { label: "Settings…", click: () => send(IPC_EVENTS.state, { command: "settings" }) },
-        { label: "Skills & Packs", click: () => send(IPC_EVENTS.state, { command: "skills" }) },
-        { label: "Approvals", click: () => send(IPC_EVENTS.state, { command: "approvals" }) },
-        { label: "Active runs", click: () => send(IPC_EVENTS.state, { command: "runs" }) },
+        { label: "About Capsule", click: () => commandWindow({ command: "about" }) },
+        { label: "Settings…", click: () => commandWindow({ command: "settings" }) },
+        { label: "Skills & Packs", click: () => commandWindow({ command: "skills" }) },
+        { label: "Approvals", click: () => commandWindow({ command: "approvals" }) },
+        { label: "Active runs", click: () => commandWindow({ command: "runs" }) },
         { type: "separator" },
         { label: "Quit", click: () => app.quit() },
       ]),
@@ -2241,7 +2236,18 @@ async function startEngineOnce(): Promise<void> {
 const APP_SCHEME = "capsule";
 const ownsProfile = app.requestSingleInstanceLock();
 const startup = new Startup(ownsProfile);
-let pendingDeepLink: string | undefined;
+/*
+ * A command for the window that waits until it can be heard. Once the main
+ * window closed, tray, menu and pet actions sent to nobody and showed nothing;
+ * they now reopen it and the command lands when the new renderer is ready.
+ */
+let pendingCommand: { command: string; [key: string]: unknown } | undefined;
+
+function commandWindow(payload: { command: string; [key: string]: unknown }): void {
+  pendingCommand = payload;
+  revealWindow();
+  deliverDeepLink();
+}
 let rendererReady = false;
 let smokeWindowReopened = false;
 
@@ -2271,15 +2277,15 @@ function handleDeepLink(raw: string): void {
   // menu sends, named the same way.
   const route = (parsed.hostname || parsed.pathname.replace(/^\/+/, "")).toLowerCase();
   const allowed = ["settings", "skills", "approvals", "runs", "harness", "palette", "about"];
-  if (allowed.includes(route)) pendingDeepLink = route;
+  if (allowed.includes(route)) pendingCommand = { command: route };
   revealWindow();
   deliverDeepLink();
 }
 
 function deliverDeepLink(): void {
-  if (!startup.canOpenWindow || !rendererReady || !pendingDeepLink) return;
-  send(IPC_EVENTS.state, { command: pendingDeepLink });
-  pendingDeepLink = undefined;
+  if (!startup.canOpenWindow || !rendererReady || !pendingCommand) return;
+  send(IPC_EVENTS.state, pendingCommand);
+  pendingCommand = undefined;
 }
 
 /*
@@ -2416,7 +2422,7 @@ app.on("before-quit", (event) => {
     quitConfirmed = true;
   }
   startup.cancel();
-  pendingDeepLink = undefined;
+  pendingCommand = undefined;
   send(IPC_EVENTS.state, { command: "app-shutting-down" });
   void shutdown.request().then(() => app.quit());
 });
