@@ -3,6 +3,7 @@ import { memo, useMemo, useState } from "react";
 import { splitRows, type DiffFile, type DiffHunk, type DiffLine } from "@capsule/shared";
 import { highlight } from "../../lib/highlight";
 import { DIFF_PAGE_ROWS, DiffPager } from "./DiffPager";
+import "./file-diff-viewed.css";
 
 /*
  * One file of a patch, rendered with split and unified diff support:
@@ -215,6 +216,8 @@ export function FileDiff({
   expanded,
   onExpandedChange,
   onAddComment,
+  viewed = false,
+  onViewedChange,
 }: {
   file: DiffFile;
   split: boolean;
@@ -223,12 +226,14 @@ export function FileDiff({
   expanded?: boolean;
   onExpandedChange?: (open: boolean) => void;
   onAddComment?: (filePath: string, line: number, side: "left" | "right") => void;
+  viewed?: boolean;
+  /** Shows a "Viewed" checkbox in the file's header row. */
+  onViewedChange?: (viewed: boolean) => void;
 }) {
   const [localOpen, setOpen] = useState(defaultOpen);
   const open = expanded ?? localOpen;
   const label = STATUS_LABEL[file.status];
-  return (
-    <section className={`file-diff ${open ? "is-open" : ""}`}>
+  const head = (
       <button
         type="button"
         className="file-diff-head"
@@ -248,7 +253,8 @@ export function FileDiff({
         </span>
         <FileBadgeIcon />
         <span className="mono file-diff-path" title={file.path}>
-          <span className="file-diff-dir">{dirOf(file.path)}</span>
+          {/* The marks keep "src/" reading left to right inside the rtl box that ellipsizes its start. */}
+          {dirOf(file.path) ? <span className="file-diff-dir">{`‎${dirOf(file.path)}‎`}</span> : null}
           <span className="file-diff-name">{nameOf(file.path)}</span>
         </span>
         {file.oldPath && file.status === "renamed" ? (
@@ -264,6 +270,19 @@ export function FileDiff({
           <span className="file-diff-chip file-diff-chip--del">−{file.deletions}</span>
         </span>
       </button>
+  );
+  return (
+    <section className={`file-diff ${open ? "is-open" : ""}${viewed ? " is-viewed" : ""}`}>
+      {onViewedChange ? (
+        <div className="file-diff-head-row">
+          {head}
+          <label className="file-diff-viewed" title={viewed ? "Mark as not viewed" : "Mark as viewed and fold"}>
+            <input type="checkbox" checked={viewed} onChange={(event) => onViewedChange(event.target.checked)}
+              aria-label={`Viewed ${file.path}`} />
+            <span>Viewed</span>
+          </label>
+        </div>
+      ) : head}
       {open ? (
         file.binary ? (
           <p className="faint file-diff-binary">Binary file — no text to show.</p>

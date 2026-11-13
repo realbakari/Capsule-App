@@ -311,9 +311,38 @@ Stop and close remain available; close shell tabs before restoring files.
 
 ## Pull requests
 
-**Settings › Source control** sets the **Diff layout** for pull request diffs
-(side by side or one column) and whether **Diff files** start open or folded.
-Turn diffs in the conversation always use one column.
+**Settings › Source control** sets the **Diff layout** for Review and pull
+request diffs (side by side or one column), whether **Diff files** start open
+or folded, and whether Review starts with **Ignore whitespace** on. Turn diffs
+in the conversation always use one column.
+
+## Reviewing changes
+
+Review shows every changed file of the conversation's folder at once, paged ten
+files at a time. Select a file in **Changed files** to show only that file, and
+**All files** to go back.
+
+The menu at the top of Review chooses what to compare:
+
+- **Uncommitted changes** compares the folder with its last commit. Stage,
+  discard and commit work here.
+- **Turn N** shows what one turn of this conversation changed, from the
+  checkpoints Capsule saves when a turn finishes. Turns from either runtime
+  route appear once they have a checkpoint; a turn in a folder that is not a
+  git repository has none. This view is read-only: there is nothing to stage
+  or discard. Choose **Back to uncommitted changes** to return. The first
+  checkpointed turn of a conversation has nothing earlier to compare against,
+  and Review says so instead of guessing.
+
+**Ignore whitespace** hides changes that only touch spaces, tabs or line
+endings. The setting is the starting point; switching it in Review changes it
+for that conversation only. Review remembers the chosen comparison and the
+whitespace choice per conversation until you quit.
+
+**Collapse all** and **Expand all** fold or open the files on the current page.
+Tick **Viewed** on a file to fold it and count it in "3 of 8 viewed". The mark
+belongs to that version of the file's changes: when the file changes again, it
+reads as not viewed. Marks are kept on this device only.
 
 
 Sending a PR question or suggested fix to the composer appends it after your

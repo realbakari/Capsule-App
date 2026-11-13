@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useEffect, useLayoutEffect, useReducer, useRef, useState, useSyncExternalStore } from "react";
 import { usePanelResize } from "../../lib/panel-resize";
 import type {
   FileEntry,
@@ -14,8 +14,6 @@ import { useRememberedScroll } from "../../lib/remembered-scroll";
 import { FileSaveCoordinator, isConflictError } from "../../lib/file-save";
 import { fileDrafts, fileOwnerKey } from "../../lib/file-drafts";
 import { RecoverableFiles } from "./RecoverableFiles";
-import { RequestScope } from "../../lib/request-scope";
-import { useScopedState } from "../../lib/scoped-state";
 import { DirectoryListings } from "../../lib/directory-listings";
 import { formatUserError } from "../../lib/errors";
 import { clampPanelWidth, fitPanelWidth, restorePanelWidth } from "../../lib/panel-size";
@@ -34,6 +32,15 @@ import { GitPullRequestDetail as PullRequestDetailView } from "./PullRequestDeta
 import { PullRequestList } from "./PullRequestList";
 import { PullRequestCheckoutDialog } from "../worktree-base/PullRequestCheckoutDialog";
 import { ReviewCommitForm } from "./ReviewCommitForm";
+import { ReviewChanges } from "../review/ReviewChanges";
+import { ReviewScopeBar, useReviewTurns } from "../review/ReviewScopeBar";
+import {
+  UNCOMMITTED,
+  ignoreWhitespaceFor,
+  rememberIgnoreWhitespace,
+  rememberScope,
+  rememberedScope,
+} from "../../lib/review-scope";
 import {
   ColumnsIcon,
   CpuIcon,
@@ -250,9 +257,20 @@ export function Inspector() {
   const searchHits = searchingFiles ? currentFileSearch?.hits ?? [] : null;
   const fileSearchLoading = searchingFiles && (currentFileSearch?.loading ?? true);
   const scope = JSON.stringify([projectId, session?.id, activeRoot]);
-  const diffRequests = useRef(new RequestScope()).current;
-  const diffScope = diffRequests.select(JSON.stringify([scope, git?.branch]));
-  const [diff, setDiff] = useScopedState(diffScope, "");
+  /* What Review compares, remembered per thread for this window's life. */
+  const reviewThread = session?.id ?? `project:${projectId ?? ""}`;
+  const [, rerenderReview] = useReducer((value: number) => value + 1, 0);
+  const reviewTurnList = useReviewTurns(session?.id);
+  const rememberedReviewScope = rememberedScope(reviewThread);
+  const diffScope = rememberedReviewScope.kind === "turn" && !reviewTurnList.loading &&
+    !reviewTurnList.turns.some((turn) => turn.runId === rememberedReviewScope.runId)
+    ? UNCOMMITTED
+    : rememberedReviewScope;
+  const diffTurn = diffScope.kind === "turn" ? reviewTurnList.turns.find((turn) => turn.runId === diffScope.runId) : undefined;
+  const ignoreWhitespace = ignoreWhitespaceFor(reviewThread, settings?.diffIgnoreWhitespace ?? false);
+  const [diffFocus, setDiffFocus] = useState<{ thread: string; path: string }>();
+  const focusPath = diffFocus?.thread === reviewThread ? diffFocus.path : undefined;
+  const gitSignature = JSON.stringify([git?.branch, git?.files?.map((file) => [file.path, file.code, file.added, file.removed])]);
   const directoryCache = useMemo(() => new DirectoryListings(async (path) => {
     if (!projectId || !activeRoot) return [];
     return sortTreeEntries(await api.listFiles(projectId, path || undefined, activeRoot));
@@ -505,7 +523,6 @@ export function Inspector() {
   }, [activeRoot, api, fileSearch, projectId, fileSearchKey, fileSearchRetry]);
 
   function selectTool(tool: InspectorTool) {
-    if (tool !== "review") diffRequests.capture("diff");
     if (tool !== "files") fileRequest.current += 1;
     setInspectorTab(tabForTool(tool, Boolean(previewDoc)));
   }
@@ -626,7 +643,6 @@ export function Inspector() {
 
   const previewFile = useCallback(async (relative: string) => {
     if (!projectId || !activeRoot) return;
-    diffRequests.capture("diff");
     const request = ++fileRequest.current;
     const requestedScope = fileScope.current;
     const current = () => request === fileRequest.current && requestedScope === fileScope.current;
@@ -649,7 +665,6 @@ export function Inspector() {
           : undefined,
       );
       setSaveState(recovered?.state ?? (doc.truncated ? "truncated" : "idle"));
-      setDiff("");
 
     } catch (error) {
       if (!current()) return;
@@ -670,20 +685,8 @@ export function Inspector() {
     }
   }, [api, projectId, activeRoot, setInspectorOpen]);
 
-  async function showFileDiff(relative: string) {
-    if (!projectId) return;
-    const current = diffRequests.capture("diff");
-    setDiff("Loading diff…");
-    try {
-      const text = await api.gitDiff(projectId, relative, session?.id);
-      if (!current()) return;
-      setDiff(text || "(no differences)");
-    } catch {
-      if (!current()) return;
-      setDiff("Failed to load diff.");
-    }
-    setPreviewDoc(undefined);
-    setEditing(undefined);
+  function showFileDiff(relative: string) {
+    setDiffFocus({ thread: reviewThread, path: relative });
     selectTool("review");
     setInspectorOpen(true);
   }
@@ -736,7 +739,9 @@ export function Inspector() {
               <span>Review</span>
               <span className="panel-breadcrumb-sep">·</span>
               <span className="mono" title={git?.branch}>{git?.branch ?? "No branch"}</span>
-              {git?.changed ? (
+              {diffScope.kind === "turn" && !selectedPullRequest ? (
+                <span className="panel-breadcrumb-count">{diffTurn ? `Turn ${diffTurn.number}` : "Saved turn"}</span>
+              ) : git?.changed ? (
                 <span className="panel-breadcrumb-count">{git.changed} changed</span>
               ) : null}
             </>
@@ -1019,6 +1024,32 @@ export function Inspector() {
               />
             ) : (
               <>
+            <ReviewScopeBar
+              scope={diffScope}
+              turns={reviewTurnList.turns}
+              loadingTurns={reviewTurnList.loading}
+              onScope={(next) => { rememberScope(reviewThread, next); rerenderReview(); }}
+              ignoreWhitespace={ignoreWhitespace}
+              onIgnoreWhitespace={(value) => {
+                rememberIgnoreWhitespace(reviewThread, value, settings?.diffIgnoreWhitespace ?? false);
+                rerenderReview();
+              }}
+            />
+            {diffScope.kind === "turn" ? (
+              <>
+                <div className="review-turn-banner" role="note">
+                  <span>
+                    Read-only. What {diffTurn ? `turn ${diffTurn.number}` : "this turn"} changed, from its saved checkpoint.
+                  </span>
+                  <button type="button" className="chip" onClick={() => { rememberScope(reviewThread, UNCOMMITTED); rerenderReview(); }}>
+                    Back to uncommitted changes
+                  </button>
+                </div>
+                <ReviewChanges scope={diffScope} thread={reviewThread} sessionId={session?.id}
+                  ignoreWhitespace={ignoreWhitespace} onClearFocus={() => setDiffFocus(undefined)} refreshKey="" />
+              </>
+            ) : (
+              <>
             <div className="panel-review-header">
               <div className="kv">
                 <span>Branch</span>
@@ -1093,9 +1124,11 @@ export function Inspector() {
 
             <div className="panel-diff-section">
               <h4>Diff</h4>
-              {diff ? (
-                <DiffView text={diff} />
-              ) : (
+              {git?.isRepo ? (
+                <ReviewChanges scope={diffScope} thread={reviewThread} sessionId={session?.id}
+                  ignoreWhitespace={ignoreWhitespace} focusPath={focusPath}
+                  onClearFocus={() => setDiffFocus(undefined)} refreshKey={gitSignature} />
+              ) : artifacts.some((item) => item.kind === "patch" && item.content) ? (
                 artifacts
                   .filter((item) => item.kind === "patch" && item.content)
                   .map((artifact) => (
@@ -1104,11 +1137,12 @@ export function Inspector() {
                       <DiffView text={artifact.content ?? ""} />
                     </div>
                   ))
-              )}
-              {!diff && artifacts.every((item) => item.kind !== "patch" || !item.content) && (
-                <p className="faint">Select a changed file to view its git diff.</p>
+              ) : (
+                <p className="faint">This folder is not a git repository, so there is no diff to show.</p>
               )}
             </div>
+              </>
+            )}
               </>
             )}
           </div>

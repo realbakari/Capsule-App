@@ -419,6 +419,18 @@ window) shows the chooser cards.
   preview requests so their completion cannot reopen the panel.
 - Click a file to preview it. Images render as `data:` URLs (`img-src 'self' data:`). Text is highlighted and can be edited with conflict-aware save. Binary files show a notice. Mention / Open / Edit live on the preview bar.
 - Hidden tree names: `node_modules`, `.git`, `dist`, `out`, `.next`, `coverage`, `build`, `Pods`, `.DS_Store`.
+- **Review** opens with a scope bar: a select of **Uncommitted changes** or
+  **Turn N · prompt excerpt** (turns of this thread with a `checkpointRef`,
+  numbered among all the thread's runs, newest first) and an **Ignore
+  whitespace** toggle. Turn scope replaces the branch header, PR list, file list
+  and commit form with a read-only banner whose button returns to uncommitted
+  changes; the breadcrumb shows "Turn N". The diff below is `ReviewChanges`:
+  every file through `PagedFileDiffs`, with **Collapse/Expand all**, per-file
+  **Viewed** checkboxes and an "N of M viewed" count. Clicking a changed file
+  narrows it to that file with an **All files** chip. States: loading, error
+  with Retry, "no earlier checkpoint" for a first turn, and empty ("No
+  uncommitted changes", "No changes besides whitespace", "This turn changed no
+  files").
 - **Review** is git status, stage / discard / commit, diff, push, open-PR
   discovery, and PR creation via local `git` + `gh` when present. No GitHub
   OAuth. Selecting a pull request keeps the reader in Capsule and opens its
@@ -2127,3 +2139,28 @@ LaunchServices reports, which misses editors that never declared they open
 folders, so adding an app by picking its bundle is first-class rather than a
 fallback. A file's own handlers are listed for a file, so the list in Files
 differs from the one for folders.
+
+## Review scope, whitespace and viewed marks
+
+- Turn scope reads the existing `turnDiff` channel; uncommitted scope reads
+  `gitDiff`. Both take a typed `ignoreWhitespace` option that becomes `git diff
+  -w` in `readGitDiff` and `previewCheckpoint`, and is part of their read-dedupe
+  keys. With `-w`, git drops a file whose only change is whitespace, so it
+  leaves the list rather than showing an empty header. Both channels stay reads,
+  so a paired viewer gets the same scopes.
+- `settings.diffIgnoreWhitespace` (Settings › Source control) is the default.
+  The per-thread override and the chosen scope live in a module map in
+  `lib/review-scope.ts`: they last for the window's life, not across restarts,
+  because reopening on an old turn would read as the current state.
+- Turn numbers come from paging `listRunPage` for the thread (up to 2,000
+  runs), not from the conversation's loaded pages, so "Turn 1" is the thread's
+  first turn even when older messages are not loaded.
+- Viewed marks are in `localStorage` under `capsule.review.viewed.v1`, keyed by
+  thread then `path\0hash`, where the hash is FNV-1a over what the reader sees
+  of that file's diff. A changed diff reads as unviewed; several versions of a
+  path can be marked, so a turn's copy and the working tree's do not clear each
+  other. Bounded to 40 threads and 1,000 marks each; every access is in
+  try/catch. A refresh with an identical patch keeps the parsed files, so folds
+  and the page survive the git status polling that drives uncommitted reloads.
+- Decision: the old single-file raw diff in Review is gone; selecting a file
+  narrows the parsed, paged view instead, so one renderer serves both scopes.

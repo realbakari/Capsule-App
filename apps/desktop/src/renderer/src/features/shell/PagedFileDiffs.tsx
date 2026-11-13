@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { DiffFile } from "@capsule/shared";
 import { FileDiff } from "./FileDiff";
 import { DIFF_PAGE_FILES, DIFF_PAGE_ROWS, DiffPager } from "./DiffPager";
+import type { ViewedMarks } from "../review/useViewedFiles";
 
 /** A file-to-symlink change contains separate delete/add blocks at one path. */
 export function diffBlockKeys(files: readonly DiffFile[]): string[] {
@@ -14,9 +15,11 @@ export function diffBlockKeys(files: readonly DiffFile[]): string[] {
   });
 }
 
-export function PagedFileDiffs({ files, split, wrap = true, onAddComment }: {
+export function PagedFileDiffs({ files, split, wrap = true, onAddComment, viewed }: {
   files: DiffFile[]; split: boolean; wrap?: boolean;
   onAddComment?: (filePath: string, line: number, side: "left" | "right") => void;
+  /** Per-file "Viewed" marks; a viewed file starts folded. */
+  viewed?: ViewedMarks;
 }) {
   const blocks = useMemo(() => {
     const keys = diffBlockKeys(files);
@@ -26,15 +29,17 @@ export function PagedFileDiffs({ files, split, wrap = true, onAddComment }: {
     let budget = DIFF_PAGE_ROWS * 4;
     const expanded = new Set<string>();
     for (const { file, key } of blocks.slice(0, DIFF_PAGE_FILES)) {
+      if (viewed?.isViewed(file)) continue;
       const size = file.hunks.reduce((sum, hunk) => sum + hunk.lines.length, 0);
       if (size <= budget) { expanded.add(key); budget -= size; }
     }
     return { files, page: 0, expanded };
-  }, [files, blocks]);
+  }, [files, blocks, viewed]);
   const [stored, setStored] = useState(initial);
   const state = stored.files === files ? stored : initial;
   const visible = blocks.slice(state.page * DIFF_PAGE_FILES, (state.page + 1) * DIFF_PAGE_FILES);
   const allOpen = visible.every(({ key }) => state.expanded.has(key));
+  const viewedCount = viewed ? files.filter((file) => viewed.isViewed(file)).length : 0;
   const expand = (paths: string[], open: boolean) => {
     setStored((previous) => {
       const current = previous.files === files ? previous : initial;
@@ -46,11 +51,14 @@ export function PagedFileDiffs({ files, split, wrap = true, onAddComment }: {
   return <div className="pr-file-diffs">
     <div className="diff-list-controls">
       <DiffPager page={state.page} pages={Math.ceil(files.length / DIFF_PAGE_FILES)} label="Files" onChange={(page) => setStored({ ...state, page })} />
+      {viewed ? <span className="diff-viewed-count" role="status">{viewedCount} of {files.length} viewed</span> : null}
       <button type="button" className="chip" onClick={() => expand(visible.map(({ key }) => key), !allOpen)}>
         {allOpen ? "Collapse" : "Expand"} {files.length > DIFF_PAGE_FILES ? "page" : "all"}
       </button>
     </div>
     {visible.map(({ file, key }) => <FileDiff key={key} file={file} split={split} wrap={wrap}
-      expanded={state.expanded.has(key)} onExpandedChange={(open) => expand([key], open)} onAddComment={onAddComment} />)}
+      expanded={state.expanded.has(key)} onExpandedChange={(open) => expand([key], open)} onAddComment={onAddComment}
+      viewed={viewed?.isViewed(file)}
+      onViewedChange={viewed ? (next) => { viewed.mark(file, next); expand([key], !next); } : undefined} />)}
   </div>;
 }
