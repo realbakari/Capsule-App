@@ -59,6 +59,40 @@ uncommitted changes, Capsule keeps it on disk rather than deleting the work.
 Choose the default for new conversations in **Settings → Agents → Conversation
 workspace**.
 
+### Apply a worktree to your checkout
+
+When a worktree conversation has work you want in the project folder itself,
+choose **Apply to local checkout**. It is in **Conversation details**, in the
+menu on the conversation's name in the titlebar, and in the command palette as
+**Apply worktree to local checkout**.
+
+Everything the worktree holds lands in the project folder as unstaged changes:
+commits on the worktree's branch, edits not yet committed, and new files.
+Deleted and renamed files, and images and other binary files, come across too.
+Your staging area is left alone, so you review and commit in the project folder
+the way you normally would. The worktree conversation keeps working afterwards.
+
+When the project folder already has its own edits to the same lines, Capsule
+still applies, and those files get the usual conflict markers. A dialog lists
+them and offers three ways forward:
+
+- **Open Review** shows the project folder's changes.
+- **Ask the agent to resolve** starts a new conversation in the project folder
+  with the list of conflicted files and the branch they came from.
+- **Undo apply** puts the files back.
+
+A clean apply shows a notice with the number of files and an **Undo** button.
+Until the conversation's next turn, Conversation details also shows **Applied
+to local** with the time and an **Undo** link. Undo restores only the files the
+apply touched, to how they were just before it, and removes files it created.
+Edits you made to other files since are kept. Undo also replaces any edits you
+made to the applied files after applying.
+
+Apply is unavailable, with the reason shown, when the worktree has no changes,
+when a turn is still running, or when the project folder is in the middle of a
+merge, rebase, cherry-pick or revert, or has unresolved conflicts. A device
+reading this computer through a pairing link does not offer it.
+
 Choose **Settings → Source control → Worktree location** to store new worktrees
 in another folder or on another drive. The location belongs to the computer
 running Capsule. **Use default** restores Capsule's application-data location.

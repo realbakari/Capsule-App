@@ -19,7 +19,8 @@ export type ActionMenuIcon =
   | "folder-plus"
   | "file"
   | "message"
-  | "history";
+  | "history"
+  | "merge";
 
 export type SessionActionId =
   | "rename"
@@ -28,6 +29,7 @@ export type SessionActionId =
   | "generate-title"
   | "open-folder"
   | "copy-path"
+  | "apply-to-local"
   | "archive"
   | "delete";
 export type ProjectActionId =
@@ -42,6 +44,8 @@ export type ProjectActionId =
 export interface ActionMenuItem extends PopupMenuItem {
   icon?: ActionMenuIcon;
   shortcut?: string;
+  /** Why a disabled item is disabled. */
+  title?: string;
 }
 
 export interface MenuAnchor {
@@ -74,6 +78,8 @@ export function copyAnchor(rect: {
 export function buildSessionActionMenuItems(state: {
   pinned: boolean;
   hasFolder?: boolean;
+  /** Present for a worktree thread on the desktop; the reason disables it. */
+  applyToLocal?: { disabledReason?: string };
 }): ActionMenuItem[] {
   return [
     { id: "rename", label: "Rename", icon: "pencil" },
@@ -93,6 +99,16 @@ export function buildSessionActionMenuItems(state: {
           },
           { id: "copy-path" as const, label: "Copy path", icon: "copy" as const },
         ]
+      : []),
+    ...(state.applyToLocal
+      ? [{
+          id: "apply-to-local" as const,
+          label: "Apply to local checkout",
+          icon: "merge" as const,
+          separatorBefore: true,
+          enabled: !state.applyToLocal.disabledReason,
+          title: state.applyToLocal.disabledReason,
+        }]
       : []),
     { id: "archive", label: "Archive", icon: "archive", separatorBefore: true },
     { id: "delete", label: "Delete", icon: "trash", destructive: true },

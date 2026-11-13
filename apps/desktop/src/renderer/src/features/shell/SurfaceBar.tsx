@@ -4,6 +4,7 @@ import { formatUserError } from "../../lib/errors";
 import { formatProjectRoot } from "../../lib/paths";
 import { useWorkspace } from "../../lib/workspace";
 import { BackgroundTasks } from "./BackgroundTasks";
+import { ApplyToLocalRow } from "../apply/ApplyToLocal";
 import { CommitControl } from "./CommitControl";
 import { ProjectActionsControl } from "./ProjectActionsControl";
 import { HeaderPopover } from "./HeaderPopover";
@@ -68,7 +69,7 @@ export function SurfaceBar() {
         </button>
         {details && (
           <HeaderPopover anchor={detailsAnchor} label="Conversation details" className="session-details" onClose={() => setDetails(false)}>
-            <SessionDetails onReview={() => { setDetails(false); openInspector("changes"); }} />
+            <SessionDetails onReview={() => { setDetails(false); openInspector("changes"); }} onClose={() => setDetails(false)} />
           </HeaderPopover>
         )}
       </div>
@@ -126,7 +127,7 @@ export function SurfaceBar() {
 }
 
 /** Where this conversation runs, how full its context is, what changed, and what is running. */
-function SessionDetails({ onReview }: { onReview: () => void }) {
+function SessionDetails({ onReview, onClose }: { onReview: () => void; onClose: () => void }) {
   const { api, project, session, git, contextUsage, openTerminal, initializeGit, setNotice } = useWorkspace();
   const folder = session?.workingDirectory ?? project?.workingDirectory;
   const reveal = async () => {
@@ -151,6 +152,7 @@ function SessionDetails({ onReview }: { onReview: () => void }) {
           </div>
         )}
         {git?.branch && <p className="session-details-row"><GitBranchIcon size={14} /><span className="mono">{git.branch}</span></p>}
+        <ApplyToLocalRow onApply={onClose} />
       </section>
       {/* What the titlebar used to carry: run an action, commit and push, or start Git. */}
       {folder && api.isDesktop !== false && (

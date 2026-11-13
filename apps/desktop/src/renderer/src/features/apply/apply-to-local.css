@@ -1,0 +1,52 @@
+/* Apply to local: the details row, its toast, and the conflict dialog. */
+.apply-local { display: flex; flex-direction: column; gap: 0.15rem; }
+.apply-local .session-details-action:disabled { color: var(--text-faint); }
+.apply-local .session-details-action:disabled:hover { background: transparent; }
+.apply-local .session-details-action:disabled > svg:first-child { color: var(--text-faint); }
+.apply-local-count { flex: 0 0 auto !important; color: var(--text-faint); font-size: var(--text-xs); }
+.apply-local-reason {
+  margin: 0 0 0.2rem calc(14px + 0.55rem);
+  color: var(--text-faint); font-size: var(--text-xs); line-height: 1.35;
+}
+.apply-local-last {
+  display: flex; align-items: center; gap: 0.55rem; margin: 0 0 0.2rem;
+  color: var(--text-muted); font-size: var(--text-xs);
+}
+.apply-local-last > svg { flex-shrink: 0; color: var(--green, var(--text-muted)); }
+.apply-local-last > svg.warn { color: var(--text-muted); }
+.apply-local-last > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.apply-local-last .link-btn {
+  padding: 0 0.25rem; border: 0; border-radius: var(--radius-sm); background: transparent;
+  color: var(--text); font: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer;
+}
+.apply-local-last .link-btn:hover { background: var(--bg-hover); }
+.apply-local-last .link-btn:focus-visible { outline: var(--focus-ring); outline-offset: 1px; }
+.apply-local-last .link-btn:disabled { color: var(--text-faint); cursor: default; }
+
+.apply-toast {
+  position: fixed; z-index: var(--z-toast); bottom: 1rem; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 0.5rem; max-width: min(36rem, calc(100vw - 2rem));
+  padding: 0.5rem 0.5rem 0.5rem 0.75rem; border: 1px solid var(--border-color); border-radius: var(--control-radius);
+  background: var(--bg-elevated); box-shadow: var(--shadow-raised); color: var(--text);
+  font-size: var(--text-ui);
+}
+.apply-toast > svg { flex-shrink: 0; color: var(--text-muted); }
+.apply-toast > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.apply-toast > button { flex-shrink: 0; }
+.apply-toast > button[data-undo] { color: var(--text); font-weight: 500; }
+.apply-toast > button[data-undo]:disabled { color: var(--text-faint); }
+.apply-toast.error > svg { color: var(--red); }
+.apply-toast.error > span { white-space: normal; overflow-wrap: anywhere; }
+
+.dialog.apply-conflicts h3 { display: flex; align-items: center; gap: 0.5rem; }
+.dialog.apply-conflicts h3 > svg { flex-shrink: 0; color: var(--text-muted); }
+.apply-conflicts-files {
+  margin: 0.75rem 0 0; padding: 0.4rem 0; max-height: 12rem; overflow: auto; list-style: none;
+  border: 1px solid var(--border-color); border-radius: var(--radius-md); background: color-mix(in srgb, var(--text) 3%, transparent);
+}
+.apply-conflicts-files li {
+  padding: 0.2rem 0.75rem; font-size: var(--text-xs); color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left;
+}
+.dialog p.apply-conflicts-error { margin-top: 0.6rem; color: var(--red); overflow-wrap: anywhere; }
+.dialog.apply-conflicts .actions { flex-wrap: wrap; margin-top: 1rem; }

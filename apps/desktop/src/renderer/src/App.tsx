@@ -22,6 +22,7 @@ import { AboutModal } from "./features/settings/AboutModal";
 import { ViewErrorBoundary } from "./features/shell/ErrorBoundary";
 import { useSidebarSwipe } from "./lib/useSidebarSwipe";
 import { WorkspaceProvider, useWorkspace } from "./lib/workspace";
+import { ApplyToLocalProvider } from "./features/apply/ApplyToLocal";
 import { StartupScreen, useAppClosing } from "./features/shell/StartupScreen";
 
 function Shell() {
@@ -117,7 +118,9 @@ function Shell() {
 export default function App() {
   return (
     <WorkspaceProvider>
-      <Shell />
+      <ApplyToLocalProvider>
+        <Shell />
+      </ApplyToLocalProvider>
     </WorkspaceProvider>
   );
 }

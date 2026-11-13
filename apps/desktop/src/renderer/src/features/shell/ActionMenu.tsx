@@ -19,6 +19,7 @@ import {
   GitBranchIcon,
   HistoryIcon,
   MessageSquareIcon,
+  GitMergeIcon,
   PencilIcon,
   PinIcon,
   PinOffIcon,
@@ -49,6 +50,7 @@ const ICONS: Record<ActionMenuIcon, typeof PencilIcon> = {
   file: FileIcon,
   message: MessageSquareIcon,
   history: HistoryIcon,
+  merge: GitMergeIcon,
 };
 
 export function ActionMenu({
@@ -193,6 +195,7 @@ export function ActionMenu({
                 className={item.destructive ? "danger" : undefined}
                 data-highlighted={highlighted ? "true" : undefined}
                 disabled={item.enabled === false}
+                title={item.title}
                 onMouseEnter={() => {
                   if (item.enabled !== false) setActiveId(item.id);
                 }}

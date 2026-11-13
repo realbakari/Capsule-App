@@ -347,6 +347,53 @@ Helpers: `projectFolderList`, `addFolderToProject`, `removeFolderFromProject`, `
   Clean worktrees are removed with their conversation; dirty worktrees are
   retained and named in the engine log.
 
+### Apply to local
+
+A worktree thread can land its work on the project's own checkout
+(`applyWorktreeToLocal(sessionId) -> ApplyResult`, `undoApplyToLocal(sessionId,
+undoRef)`, and the read `worktreeApplyStatus(sessionId)`; the first two are
+write channels). The git work is in `@capsule/filesystem` `apply-to-local.ts`.
+
+- **Change set.** The worktree's whole state (`readWorktreeRevision`, a private
+  index with `add -A`) diffed from the merge-base of the checkout's HEAD and the
+  worktree's HEAD, as one `--binary --full-index -M` patch. Committed, unstaged
+  and untracked work, deletions, renames and binaries all ride in it.
+- **Landing.** `git apply --3way` runs against a private index seeded from the
+  checkout's current files (then `update-index --refresh`, or every file reads
+  as modified). The real index is never written, so the changes arrive
+  unstaged; conflicts leave standard markers and are read from the private
+  index's unmerged entries. A patch git refuses outright is rolled back from the
+  snapshot and nothing is recorded.
+- **Refusals.** A merge, rebase, cherry-pick or revert in progress, or unmerged
+  entries in the real index, refuse up front with that reason. A dirty checkout
+  is allowed: untouched paths apply cleanly, overlapping ones go through 3-way.
+  The thread's own turn, or an agent working in the checkout, also refuses; the
+  checkout takes the restore lease, so open terminals and saved actions there
+  refuse too.
+- **Undo ref.** Before writing, the checkout's files (tracked and untracked) are
+  committed as a parentless commit at
+  `refs/capsule/apply-undo/<session>/<epoch-ms>`. The commit message is
+  `capsule-apply-to-local`, a blank line, then JSON `{at, files, paths,
+  conflicts, branch}`; `paths` includes rename sources. Undo restores only
+  `paths` from that tree through a private index seeded from the current
+  files, so paths the apply created are removed and other edits stay. A
+  successful undo deletes the ref. Deleting the thread deletes its refs.
+- **Record.** No database column: the newest undo ref for the session is the
+  record. Conversation details shows **Applied to local · Undo** while that ref
+  exists and no run of the thread started after its `at`.
+- **Surfaces.** Conversation details (Environment section, under the branch),
+  the titlebar name menu (`apply-to-local`, disabled with the reason as its
+  title), and the palette (`Apply worktree to local checkout`, disabled with the
+  reason). All three read one status from `ApplyToLocalProvider`, refreshed on
+  thread, turn and Git status changes. A clean apply shows a bottom toast with
+  file count and Undo (10 s); conflicts open a dialog listing the files with
+  **Open Review** (the project folder's Review, by leaving the thread for the
+  project's draft), **Ask the agent to resolve** (a new local thread on the same
+  agent, sent a prompt naming the files and branch) and **Undo apply**. Failures
+  show an alert toast that stays until dismissed. Hidden on paired devices.
+- **Routes and agents.** Git only, so the same for direct and Gateway threads
+  and every harness.
+
 ---
 
 ## Inspector
