@@ -67,6 +67,7 @@ export const FIXED_SHORTCUTS: Array<{ label: string; keys: string[] }> = [
   { label: "Edit the last queued follow-up", keys: ["⌥", "↑"] },
   { label: "Side chat", keys: ["⌥", "⌘", "S"] },
   { label: "Open the terminal", keys: ["⌃", "`"] },
+  { label: "Add terminal selection to the message", keys: ["⌘", "L"] },
   { label: "Skills", keys: ["⇧", "⌘", "S"] },
   { label: "Agents", keys: ["⇧", "⌘", "R"] },
 ];

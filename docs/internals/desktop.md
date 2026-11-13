@@ -1679,6 +1679,41 @@ The dock retains 1,000 scrollback lines per pane, eight panes per folder and
 `chat.commit` and `terminal.render` timings share the existing bounded diagnostic
 ring and contain no paths, commands or output.
 
+Terminal links come from one hand-rolled `registerLinkProvider` per pane
+(`features/terminal/terminalLinks.ts`, pure parsing in `lib/terminal-links.ts`).
+It joins `isWrapped` rows into a logical line, finds `http(s)` URLs and
+path-shaped tokens there, and maps each match back to a 1-based, end-inclusive
+buffer range, so hovering any row of a wrapped link underlines all of it. A path
+is a link only if it names a file (an extension, or a `:line`) and resolves,
+against the shell's folder, inside `conversationFolderRoots` (shared with Files,
+so the root handed to `openFile` is one Files accepts). The shell's folder is
+the dock's cwd until the shell reports another through OSC 7. Local hosts go to
+the thread's Browser via `setBrowserUrl` + `openInspector("browser")`; other
+URLs, and `⌘`-click on any URL, go through `window.open`, which main's window
+open handler restricts to web and mail schemes. The hint is an in-dock element,
+not a native tooltip, so it can say which click does what.
+
+Selecting text shows **Add to chat** under the selection's end once the drag
+ends. It, `⌘L` (`attachCustomKeyEventHandler`; `Ctrl+Shift+L` elsewhere because
+`Ctrl+L` clears the shell), and the native context menu all call one
+`addToChat`: `terminalSnippet` fences the selection under the tab's name, keeps
+the last 200 lines or 12,000 characters with a note, and `insertBlock` puts it
+into the workspace draft at the composer's caret. A caret of 0 on a composer
+that was never focused is read as "no choice" and the block is appended. No new
+IPC: terminal data is already a local-only event, so a paired viewer never sees
+output to link or select, and `terminalStart` is a write channel it cannot call.
+
+Decisions. A plain click stays inside Capsule and `⌘`-click leaves it, for
+every link kind, so selecting text over an external URL never opens a browser.
+A drag that starts and ends on one link counts as a selection, not a click.
+Paths outside the conversation's folders are not links at all rather than links
+that fail. Files opens at the top of the file; the `:line` is shown in the hint
+and kept for when the preview can scroll to a line. The selection colour is mixed
+on a canvas into an opaque colour because xterm cannot parse the translucent
+`rgb(… / a)` surface tokens and fell back to a dark fill in light mode. The dock
+refits on a `ResizeObserver` of its pane box, not window resize, because opening
+the side panel narrows it.
+
 Ownership renderer regressions exercise delayed first-thread creation, failed
 storage and a 1,000-turn scroll/prepend fixture with fewer than 60 mounted rows.
 Unit tests independently assert retained byte/count ceilings, receipt ownership,
