@@ -105,6 +105,8 @@ export const SETTINGS_SEARCH_ITEMS: SettingsSearchItem[] = [
   { title: "Pull request instructions", section: "sourceControl", keywords: ["pr", "template"] },
 
   { title: "skills.sh token", section: "skills", keywords: ["catalog", "install counts"] },
+  { title: "Commands", section: "skills", keywords: ["slash", "custom commands", "prompt", "template", "commands folder"] },
+  { title: "Other tools' folders", section: "skills", keywords: ["commands", "prompts", "import"] },
 
   { title: "Shortcuts", section: "shortcuts", keywords: ["keys", "bindings", "keyboard"] },
   { title: "Diagnostics", section: "diagnostics", keywords: ["logs", "support", "export"] },

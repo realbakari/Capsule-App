@@ -91,6 +91,7 @@ describe("the catalog against the panels", () => {
     "PerformanceDiagnostics.tsx",
     "AnalyticsSettings.tsx",
     "RemoteAccessSettings.tsx",
+    "CommandsCard.tsx",
   ]
     .map((name) => {
       const path = new URL(`./${name}`, import.meta.url);

@@ -24,6 +24,7 @@ import {
   SkillCatalogCard,
 } from "./ConfigurationSettings";
 import { AboutCard } from "./AboutModal";
+import { CommandsCard } from "./CommandsCard";
 import { RemoteAccessSettings } from "./RemoteAccessSettings";
 import { AnalyticsSettings } from "./AnalyticsSettings";
 import { SettingRow, Switch } from "./controls";
@@ -291,6 +292,7 @@ export function SettingsView() {
 
             {tab === "skills" && (
               <div className="appearance-page">
+                <CommandsCard />
                 <SkillCatalogCard settings={settings} onPatch={(next) => void patch(next)} />
               </div>
             )}

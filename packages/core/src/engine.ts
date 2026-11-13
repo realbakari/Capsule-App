@@ -2759,7 +2759,11 @@ export class CapsuleEngine {
     const root = this.configRoot(projectId);
     const catalog = this.config.commands(root);
     const trusted = root ? this.config.isTrusted(root) : true;
-    return { commands: catalog.commands.map((entry) => summarizeCommand(entry, trusted)), problems: catalog.problems };
+    return {
+      commands: catalog.commands.map((entry) => summarizeCommand(entry, trusted)),
+      problems: catalog.problems,
+      sources: this.config.extended().commandSources,
+    };
   }
 
   /** Expand a command for the person to edit before sending. It may run the command's shell spans. */

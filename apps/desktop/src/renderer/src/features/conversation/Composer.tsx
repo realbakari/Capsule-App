@@ -30,6 +30,7 @@ import { QueuedPrompts } from "./QueuedPrompts";
 import { recallablePrompts } from "../../lib/prompt-queue";
 import { searchComposerSkills, skillSource } from "../../lib/composer-skills";
 import { composerPlaceholder, shouldRestComposer } from "../../lib/composer-rest";
+import { COMMAND_SOURCE_LABELS, commandDetail, commandInDraft, useCommandList } from "../../lib/commands";
 import { tasksFromRunEvents } from "@capsule/shared";
 
 const SUGGESTIONS = [
@@ -291,9 +292,22 @@ export function Composer({
     return () => { cancelled = true; window.clearTimeout(timer); };
   }, [folderPath, projectId, searchKind, searchQuery, menuOpen]);
 
+  const commandList = useCommandList(api, projectId);
+  const commands = commandList.list?.commands;
+  /* Capsule's own commands lead the menu; the rest sit under one heading once there are any. */
   const slashItems = useMemo<SuggestItem[]>(
-    () =>
-      slashCommands({
+    () => {
+      const query = trigger?.kind === "slash" ? trigger.query.toLowerCase() : "___";
+      const own: SuggestItem[] = (commands ?? []).filter((command) => command.name.includes(query)).map((command) => ({
+        id: `command-${command.name}`,
+        label: `/${command.name}`,
+        detail: commandDetail(command),
+        badge: COMMAND_SOURCE_LABELS[command.source],
+        group: "Commands",
+        kind: "command" as const,
+        insert: `/${command.name} `,
+      }));
+      const builtIn = slashCommands({
         harnesses,
         skills: skills.filter((skill) => skill.status === "installed"),
         setSkillId,
@@ -304,8 +318,11 @@ export function Composer({
         openTerminal: () => setTerminalOpen(true),
         pickProjectDirectory,
         setView,
-      }),
+      });
+      return own.length ? [...own, ...builtIn.map((item) => ({ ...item, group: "Capsule" }))] : builtIn;
+    },
     [
+      commands,
       createTask,
       harnesses,
       skills,
@@ -359,6 +376,30 @@ export function Composer({
     setMenuIndex(0);
     setMenuDismissed(false);
   }, [searchKind, searchQuery]);
+
+  const [expanding, setExpanding] = useState(false);
+  /*
+   * A `send: review` command fills the composer with its expansion for
+   * editing. Expanding can run shell on the desktop, so a paired device sends
+   * it instead, and the desktop expands it as it would any command.
+   */
+  async function submit(continueToNew = false) {
+    const review = api.isDesktop === true && projectId ? commandInDraft(draft, commands) : undefined;
+    if (review?.send !== "review") return continueToNew ? sendAndContinue() : send();
+    if (expanding) return;
+    setExpanding(true);
+    try {
+      const result = await api.commandsExpand({ projectId: projectId!, ...(session ? { sessionId: session.id } : {}), text: draft });
+      setDraft(result.text);
+      setPendingSelection({ scope: JSON.stringify([projectId, session?.id, result.text]), position: result.text.length });
+      if (result.attachments.length) await attachFiles(result.attachments.map((file) => file.path));
+      if (result.problems.length) workspace.setNotice(result.problems.join(" "));
+    } catch (error) {
+      workspace.setNotice(error instanceof Error ? error.message : String(error));
+    } finally {
+      setExpanding(false);
+    }
+  }
 
   function syncCaret() {
     const el = textareaRef.current;
@@ -506,6 +547,7 @@ export function Composer({
             }} />
           <ComposerMenu id={menuId} items={items} index={menuIndex} onHover={setMenuIndex} onPick={(item) => void applyItem(item)} empty={picker === "file" ? fileState : "No installed skills match. Browse Skills to install one."} />
         </div>}
+        {expanding && <div className="meta" role="status">Expanding {commandInDraft(draft, commands) ? `/${commandInDraft(draft, commands)!.name}` : "the command"} for review…</div>}
         {workspace.preparingAttachments > 0 && <div className="meta" role="status">Preparing {workspace.preparingAttachments} attachment{workspace.preparingAttachments === 1 ? "" : "s"}…</div>}
         {!picker && <ComposerMenu
           id={menuId}
@@ -617,14 +659,13 @@ export function Composer({
             }
             if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
               event.preventDefault();
-              if (event.shiftKey || sendOnEnter) void sendAndContinue();
-              else void send();
+              void submit(event.shiftKey || sendOnEnter);
               return;
             }
             if (event.key === "Enter" && !event.shiftKey) {
               if (!sendOnEnter) return;
               event.preventDefault();
-              void send();
+              void submit();
             }
           }}
         />
@@ -782,13 +823,13 @@ export function Composer({
               <button
                 className="send-btn"
                 aria-label="Send message"
-                disabled={busy || picking || (!draft.trim() && attachments.length === 0 && !skillId) || Boolean(sendBlockReason)}
+                disabled={busy || picking || expanding || (!draft.trim() && attachments.length === 0 && !skillId) || Boolean(sendBlockReason)}
                 title={
                   sendBlockReason || (sendOnEnter
                     ? "Send · Enter · ⌘Enter starts another thread"
                     : "Send · ⌘Enter · ⌘⇧Enter starts another thread")
                 }
-                onClick={() => void send()}
+                onClick={() => void submit()}
               >
                 <ArrowUpIcon size={14} />
               </button>

@@ -1,4 +1,4 @@
-import type { ConfigProblem } from "./config.js";
+import type { CommandSourceId, ConfigProblem } from "./config.js";
 import type { MessageAttachment } from "./types.js";
 
 /**
@@ -26,6 +26,8 @@ export interface CommandList {
   commands: CommandSummary[];
   /** Frontmatter mistakes, unusable names, and files a higher-precedence command shadows. */
   problems: ConfigProblem[];
+  /** Which of other tools' folders the user's settings turn on. */
+  sources: Partial<Record<CommandSourceId, boolean>>;
 }
 
 export interface CommandExpandInput {

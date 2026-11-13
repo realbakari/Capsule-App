@@ -1,0 +1,117 @@
+/* Group headings in the composer's suggestion menu, and the Commands card in Settings. */
+.suggest-group {
+  padding: 0.45rem 0.5rem 0.2rem;
+  color: var(--text-faint);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.suggest-group:not(:first-child) {
+  margin-top: 0.2rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.commands-card code,
+.commands-card pre {
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+}
+.commands-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.6rem 0 0.4rem;
+}
+.commands-card-error {
+  color: var(--red);
+  font-size: var(--text-ui);
+}
+.commands-card-empty {
+  margin-top: 0.5rem;
+  color: var(--text-muted);
+  font-size: var(--text-ui);
+}
+.commands-card-empty pre {
+  margin: 0.4rem 0 0;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+.commands-card-list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+}
+.commands-card-list li {
+  padding: 0.55rem 0;
+  border-top: 1px solid var(--border-color);
+  min-width: 0;
+}
+.commands-card-list li:first-child {
+  border-top: 0;
+}
+.commands-card-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+  font-size: var(--text-ui);
+}
+.commands-card-row > .faint {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.commands-card-tags {
+  display: flex;
+  gap: 0.3rem;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.commands-card-tags .suggest-badge {
+  max-width: none;
+  color: var(--text-muted);
+}
+.commands-card-tags .commands-card-waiting {
+  color: var(--yellow);
+  border-color: color-mix(in srgb, var(--yellow) 45%, transparent);
+}
+.commands-card-description {
+  margin: 0.2rem 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-ui);
+}
+.commands-card-path {
+  margin: 0.15rem 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: var(--text-2xs);
+}
+.commands-card-problems {
+  margin-top: 0.5rem;
+}
+.commands-card-problems ul {
+  margin: 0.4rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.commands-card-problems li {
+  display: grid;
+  gap: 0.1rem;
+  padding: 0.35rem 0;
+  font-size: var(--text-ui);
+  min-width: 0;
+}
+.commands-card-subhead {
+  margin: 0.9rem 0 0.2rem;
+  font-size: var(--text-ui);
+  color: var(--text-muted);
+  font-weight: 600;
+}

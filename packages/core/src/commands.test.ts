@@ -112,6 +112,7 @@ it("lists commands for the menu and expands one for review without sending it", 
   expect(f.engine.listCommands(f.project.id)).toEqual({
     commands: [{ name: "draft", description: "Draft notes", argumentHint: "<topic>", source: "project", scope: "project", path: path.join(f.root, ".capsule", "commands", "draft.md"), send: "review", shell: "needs-trust" }],
     problems: [],
+    sources: {},
   });
   f.engine.trustProject(f.project.id, true);
   expect(f.engine.listCommands(f.project.id).commands[0]?.shell).toBe("runs");

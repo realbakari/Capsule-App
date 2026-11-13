@@ -1,12 +1,15 @@
 import { useEffect, useRef } from "react";
-import { FileIcon, CpuIcon } from "../shell/icons";
+import { FileIcon, CpuIcon, TerminalIcon } from "../shell/icons";
+import "./commands.css";
 
 export interface SuggestItem {
   id: string;
   label: string;
   detail?: string;
   badge?: string;
-  kind?: "file" | "skill";
+  /** Items that share a group sit under its heading, in the order they come. */
+  group?: string;
+  kind?: "file" | "skill" | "command";
   insert?: string;
   run?: () => void | Promise<void>;
 }
@@ -34,7 +37,10 @@ export function ComposerMenu({
   return (
     <div ref={menu} id={id} className="suggest-menu" role="listbox" aria-label="Composer suggestions">
       {empty && items.length === 0 && <div className="suggest-empty" role="status">{empty}</div>}
-      {items.map((item, itemIndex) => (
+      {items.map((item, itemIndex) => [
+        item.group && item.group !== items[itemIndex - 1]?.group
+          ? <div key={`group-${item.group}`} className="suggest-group" role="presentation">{item.group}</div>
+          : null,
         <button
           type="button"
           key={item.id}
@@ -49,13 +55,13 @@ export function ComposerMenu({
           }}
           onClick={() => onPick(item)}
         >
-          {item.kind === "file" ? <FileIcon size={14} /> : item.kind === "skill" ? <CpuIcon size={14} /> : null}
+          {item.kind === "file" ? <FileIcon size={14} /> : item.kind === "skill" ? <CpuIcon size={14} /> : item.kind === "command" ? <TerminalIcon size={14} /> : null}
           <span className="suggest-copy"><span className="suggest-name">{item.label}</span>
             {item.detail ? <span className="meta" title={item.detail}>{item.detail}</span> : null}
           </span>
           {item.badge && <span className="suggest-badge">{item.badge}</span>}
-        </button>
-      ))}
+        </button>,
+      ])}
     </div>
   );
 }
