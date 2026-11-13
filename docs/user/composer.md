@@ -241,10 +241,11 @@ composer and goes out, in order, as soon as the thread is free. Each queued
 follow-up can be edited back into the composer, moved up or down, removed,
 or, on routes that can steer, sent into the running turn with **Steer now**.
 The queue belongs to its conversation, holds up to twenty messages, and
-survives a restart. While the thread cannot send, for example while the
-Gateway is disconnected or the agent needs a login, queued messages wait
-rather than leave the queue. A queued message that fails to send goes to Stash
-like any other. Gateway sessions also offer **Steer** during a live turn when
+survives a restart. Queued messages go out when their conversation is free
+even if you have switched to another one or closed the window. While the
+thread cannot send, for example while the Gateway is disconnected or the
+agent needs a login, the next message waits at the front of the queue with
+the reason and is tried again every thirty seconds. Gateway sessions also offer **Steer** during a live turn when
 supported. Press `↑` in an empty prompt to recall what you asked before.
 Steering drafts stay with their conversation. A pending steer cannot be sent
 twice, and a newer draft is not cleared when the earlier steer finishes.
@@ -302,9 +303,11 @@ conversation says so and, when the provider named a time, when the limit
 lifts. **Resume at reset** schedules that prompt to be sent again at that
 time; it joins the follow-up queue when the moment comes, and a line above
 the error shows the plan with **Cancel**. **Retry now** sends it again
-immediately. Turn on **Auto-resume limited threads** in Settings → General to
-schedule these stops without asking. Capsule must be running when the reset
-arrives. Limits that name no time offer only Retry now.
+immediately. Both send the turn's attached files again too. Turn on
+**Auto-resume limited threads** in Settings → General to schedule these stops
+without asking; an automatic resume waits at least a minute, and after three
+limit stops in a row it stops and leaves the next try to you. Capsule must be
+running when the reset arrives. Limits that name no time offer only Retry now.
 
 ## Compacting a long conversation
 

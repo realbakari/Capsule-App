@@ -8,16 +8,21 @@ import { ArrowUpIcon, ArrowDownIcon, PencilIcon, XIcon } from "../shell/icons";
  * the running turn right now.
  */
 export function QueuedPrompts() {
-  const { queue, removeQueued, moveQueued, editQueued, steerQueued, session, harnesses, harnessStatuses, agentId } = useWorkspace();
-  if (queue.length === 0) return null;
+  const { queue, followUpsBlocked, removeQueued, moveQueued, editQueued, steerQueued, session, harnesses, harnessStatuses, agentId } = useWorkspace();
+  if (queue.length === 0) {
+    // Auto-resume can stop with nothing queued; say so rather than going quiet.
+    return followUpsBlocked ? <p className="queued-prompts-blocked" role="status">{followUpsBlocked}</p> : null;
+  }
   const harness = harnesses.find((item) => item.id === (session?.harnessId ?? agentId));
   const canSteer = harnessCapabilities({ harness, session, status: session ? harnessStatuses?.[session.id] : undefined }).steer.state !== "unavailable";
   return (
     <div className="queued-prompts" role="region" aria-label="Queued follow-ups">
       <div className="queued-prompts-head">
         <strong>{queue.length === 1 ? "1 follow-up queued" : `${queue.length} follow-ups queued`}</strong>
-        <span className="faint">Sent in order when this turn finishes.</span>
+        <span className="faint">Sent in order when this conversation is free, even if you switch away.</span>
       </div>
+      {/* The composer already says why a turn cannot start; say only that the queue is waiting. */}
+      {followUpsBlocked && <p className="queued-prompts-blocked" role="status" title={followUpsBlocked}>Waiting until this conversation can start a turn.</p>}
       <ol className="queued-prompts-list">
         {queue.map((item, index) => (
           <li key={item.id} className="queued-prompt">
@@ -28,7 +33,7 @@ export function QueuedPrompts() {
               <button type="button" className="icon-btn" title="Move up" aria-label="Move up" disabled={index === 0} onClick={() => moveQueued(item.id, "up")}><ArrowUpIcon size={12} /></button>
               <button type="button" className="icon-btn" title="Move down" aria-label="Move down" disabled={index === queue.length - 1} onClick={() => moveQueued(item.id, "down")}><ArrowDownIcon size={12} /></button>
               <button type="button" className="icon-btn" title="Edit in the composer" aria-label="Edit in the composer" onClick={() => editQueued(item.id)}><PencilIcon size={12} /></button>
-              <button type="button" className="icon-btn" title="Remove" aria-label="Remove from queue" onClick={() => removeQueued(item.id)}><XIcon size={12} /></button>
+              <button type="button" className="icon-btn" title="Remove from queue" aria-label="Remove from queue" onClick={() => removeQueued(item.id)}><XIcon size={12} /></button>
             </span>
           </li>
         ))}

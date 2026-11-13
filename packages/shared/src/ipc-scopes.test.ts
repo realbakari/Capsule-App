@@ -62,6 +62,7 @@ describe("ipc scopes", () => {
       "readSimulatorSettings",
       "attachSimulator",
       "rewindSession",
+      "updateFollowUps",
       "saveTextAttachment",
       "registerBrowserView",
       "setBrowserControl",
@@ -132,5 +133,13 @@ describe("remote events", () => {
     for (const event of [IPC_EVENTS.state, IPC_EVENTS.run, IPC_EVENTS.message, IPC_EVENTS.approval]) {
       expect(isRemoteEvent(event)).toBe(true);
     }
+  });
+});
+
+describe("follow-up channels", () => {
+  it("lets a viewer read the queue and conversation control change it, but not a read-only device", () => {
+    expect(isChannelAllowed("getFollowUps", ["read"])).toBe(true);
+    expect(isChannelAllowed("updateFollowUps", ["read"])).toBe(false);
+    expect(isChannelAllowed("updateFollowUps", ["control"])).toBe(true);
   });
 });

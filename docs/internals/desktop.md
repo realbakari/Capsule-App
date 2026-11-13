@@ -562,12 +562,13 @@ Usage limits: `usage-limit.ts` recognises a limit stop in a failed run's
 error and parses a reset time from relative waits ("in 2 hours and 15 min",
 "retry after 90 seconds"), clock times ("resets at 3pm", rolling to
 tomorrow when past) or an ISO timestamp. The conversation shows a limit banner
-with **Resume at reset** (scheduleResume: per-conversation
-`capsule.resume:<sessionId>` record with runId, prompt and time; a workspace
-effect enqueues the prompt when due and the thread is free) and **Retry now**
-(enqueue immediately). A pending resume shows above the error with Cancel.
-`autoResumeOnLimit` (Settings → General) schedules automatically once per run
-(`capsule.resume-handled:<runId>`). The context meter card gains **Compact
+with **Resume at reset** (a `schedule` follow-up op carrying runId, prompt,
+the prompt's attachments and time) and **Retry now** (an `add` op). A pending
+resume shows above the error with Cancel. The engine's `FollowUpService` moves
+a due resume into the queue on its 30 s tick. With `autoResumeOnLimit` it
+schedules a limit stop itself, once per run, at least a minute out, and stops
+after three limit stops in a row with a `blocked` reason the queue shows.
+`detectUsageLimit` lives in `@capsule/shared` so both sides parse alike. The context meter card gains **Compact
 conversation**, which runs the agent's advertised `compact` command through
 `runAgentCommand`, says why it is unavailable otherwise, and notes a likely
 expired prompt cache after five idle minutes.
@@ -583,13 +584,18 @@ spawns fresh. The result carries the removed prompt and attachments; the
 renderer reloads the session and puts them back in the composer. The confirm
 dialog's `secondary` action is the restore-files choice.
 
-Sending during a running turn enqueues instead of refusing: `prompt-queue`
-keeps up to 20 follow-ups per conversation in `capsule.queue:<sessionId>`,
-`QueuedPrompts` above the steer row lists them with Steer now (route
-permitting), move, edit-back and remove, and a workspace effect sends the
-first one once the thread is free, after a 1.5s settle on thread switches so
-a not-yet-listed live run cannot be raced. A queued send that fails goes to
-Stash. `↑` in an empty or caret-at-start prompt recalls earlier user prompts
+Sending during a running turn enqueues instead of refusing. The engine owns
+the queue: `FollowUpService` keeps up to 20 follow-ups and one scheduled resume
+per conversation in the settings table (`followups:<sessionId>`), and sends the
+first follow-up 1.5 s after any run in that conversation ends, whichever thread
+is on screen and with the window closed. `getFollowUps` is a read channel and
+`updateFollowUps` (add, remove, move, schedule, cancel-resume) is a control
+channel; every change emits `follow-ups-updated`. A send that fails puts the
+prompt back first with a `blocked` reason and retries every 30 s, so nothing is
+dropped. `QueuedPrompts` above the steer row lists the queue with Steer now
+(route permitting), move, edit-back and remove. A queue an older build left in
+`capsule.queue:<sessionId>` moves to the engine the first time its thread
+opens. `↑` in an empty or caret-at-start prompt recalls earlier user prompts
 (newest first, steers and repeats skipped); `↓` walks forward and restores
 the original draft; typing ends the walk. `⌘F` (`find-in-thread`, also in the
 palette) opens `ThreadFind` above the transcript: it counts matching messages,

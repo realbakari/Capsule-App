@@ -3,6 +3,11 @@ import { checkRun } from "./run-verification.js";
 import { FolderActivity, foldersOverlap } from "./folder-activity.js";
 import type { VerificationResult } from "@capsule/shared";
 import { localTimings, TextBudget, OUTPUT_LIMIT_ERROR, searchSessionTitles } from "@capsule/shared";
+import type { FollowUpOp, FollowUps, RunStatus } from "@capsule/shared";
+import { FollowUpService } from "./follow-up-service.js";
+
+const ACTIVE_RUN_STATUSES = new Set<RunStatus>(["queued", "running", "waiting", "approval_required"]);
+const TERMINAL_RUN_STATUSES = new Set<RunStatus>(["completed", "failed", "cancelled", "blocked"]);
 import { ResultWriter } from "./result-writer.js";
 import { ProjectIconCache } from "./project-icon-cache.js";
 import { worktreesDirectory } from "./worktree-location.js";
@@ -283,6 +288,22 @@ export class CapsuleEngine {
   private directUnsub?: () => void;
   private directApprovals = new Map<string, { runId: string; canApproveOnce?: boolean; allow: () => void; deny: () => void; cancel: () => void }>();
   private admittingSessions = new Set<string>();
+  /* Queued follow-ups and scheduled resumes, sent whichever conversation is on screen. */
+  private readonly followUps = new FollowUpService({
+    read: (key) => this.repos.getSetting(key),
+    write: (key, value) => this.repos.setSetting(key, value),
+    remove: (key) => this.repos.deleteSetting(key),
+    keys: (prefix) => this.repos.listSettingKeys(prefix),
+    sessionExists: (sessionId) => Boolean(this.repos.getSession(sessionId)),
+    isBusy: (sessionId) => this.admittingSessions.has(sessionId) || this.listRuns(sessionId).some((run) => ACTIVE_RUN_STATUSES.has(run.status)),
+    send: async (sessionId, prompt) => { await this.sendMessage({ sessionId, ...prompt }); },
+    blocker: (sessionId) => this.turnBlocker(sessionId),
+    emit: (sessionId, followUps) => this.events.emit("state", { command: "follow-ups-updated", sessionId, followUps }),
+    autoResume: () => this.settings.autoResumeOnLimit === true,
+    recentRuns: (sessionId) => this.listRuns(sessionId).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)),
+    attachmentsFor: (runId) => this.repos.listMessages(this.repos.getRun(runId)?.sessionId ?? "").find((message) => message.runId === runId && message.role === "user")?.attachments ?? [],
+    log: (message) => this.log(message),
+  });
   private startingHarnessRuns = new Set<string>();
   private folderActivity = new FolderActivity();
   private updateReserved = false;
@@ -378,6 +399,10 @@ export class CapsuleEngine {
     await this.connectPreferredRuntime();
     this.bindAcpReplies();
     this.channelRoutes.start();
+    this.events.on("run", (run: Run) => {
+      if (!this.stopped && TERMINAL_RUN_STATUSES.has(run.status)) this.followUps.runEnded(run);
+    });
+    this.followUps.start();
     this.log("Capsule engine started");
   }
 
@@ -432,6 +457,7 @@ export class CapsuleEngine {
     // than throwing "The database connection is not open" from a detached
     // promise, which surfaces as an unhandled rejection with no run to blame.
     this.stopped = true;
+    this.followUps.stop();
     const channelRoutesStopped = this.channelRoutes.stop();
     // Resolve approval records while the database is still open. Closing the
     // transport later cannot safely update those persisted requests.
@@ -758,6 +784,44 @@ export class CapsuleEngine {
     return project;
   }
 
+  /** Which route a thread's next agent session takes; a thread keeps the route it started on. */
+  private harnessRoute(prior: Session | undefined, harnessId: HarnessId): "direct" | "gateway" {
+    if (prior?.directSession?.harnessId === harnessId || (prior?.harnessId === harnessId && isDirectSessionKey(prior.openclawSessionKey))) return "direct";
+    if (prior?.harnessId === harnessId && prior.openclawSessionKey) return "gateway";
+    return this.useDirectMode(harnessId) ? "direct" : "gateway";
+  }
+
+  /*
+   * Why an agent cannot start for this thread right now, or undefined. Only a
+   * definite verdict counts: an unrunnable login probe returns "unknown" and
+   * must not gate a working harness. Spawning and the follow-up queue share it,
+   * so the queue asks before sending instead of recording a turn that fails.
+   */
+  private harnessStartRefusal(prior: Session | undefined, harnessId: HarnessId, direct: boolean): string | undefined {
+    const preset = presetFor(harnessId);
+    if (!preset) return undefined;
+    const legacy = preset.nativeCommand && preset.directCommand && (prior?.openclawSessionKey?.startsWith("direct:acp:") || prior?.directSession?.launchSignature === JSON.stringify(preset.directCommand));
+    const command = legacy ? preset.directCommand : preset.nativeCommand ?? preset.directCommand;
+    if (direct && command && !whichBinary([command.command])) {
+      return legacy
+        ? `This conversation uses ${command.command}. Restore that adapter to continue its saved session, or start a new conversation to use the installed CLI directly.`
+        : preset.directInstallHint ?? `Install ${command.command} on this computer before starting this agent.`;
+    }
+    if (!direct && !this.openclaw.connected) return "OpenClaw Gateway is not connected.";
+    const loginState = probeLoginStateNow(preset, whichBinary(preset.binaries));
+    if (loginState === "logged_out") return `${preset.name} is installed but not signed in. ${preset.loginHint ?? "Sign in to its CLI"} ${direct ? "on this computer" : "on the Gateway host"}, then run Doctor.`;
+    if (loginState === "config_invalid") return `${preset.name}'s CLI config could not be read. Fix it, then run Doctor.`;
+    return undefined;
+  }
+
+  /** What would stop the next turn in this conversation from starting, before anything is recorded. */
+  private turnBlocker(sessionId: string): string | undefined {
+    if (this.usingMock) return undefined;
+    const session = this.repos.getSession(sessionId);
+    if (!session?.harnessId || isLiveHarnessState(session.harnessState)) return undefined;
+    return this.harnessStartRefusal(session, session.harnessId, this.harnessRoute(session, session.harnessId) === "direct");
+  }
+
   async spawnHarness(input: SpawnHarnessInput): Promise<HarnessControlResult> {
     this.assertWorkAllowed();
     const { projectId, harnessId } = input;
@@ -770,16 +834,10 @@ export class CapsuleEngine {
      * harness.
      */
     const prior = input.sessionId ? this.requireSession(input.sessionId) : undefined;
-    const direct = prior?.directSession?.harnessId === harnessId || (prior?.harnessId === harnessId && isDirectSessionKey(prior.openclawSessionKey))
-      ? true : prior?.harnessId === harnessId && prior.openclawSessionKey ? false : this.useDirectMode(harnessId);
+    const direct = this.harnessRoute(prior, harnessId) === "direct";
     if (!this.usingMock) {
-      const legacy = preset.nativeCommand && preset.directCommand && (prior?.openclawSessionKey?.startsWith("direct:acp:") || prior?.directSession?.launchSignature === JSON.stringify(preset.directCommand));
-      const command = legacy ? preset.directCommand : preset.nativeCommand ?? preset.directCommand;
-      if (direct && command && !whichBinary([command.command])) {
-        throw new Error(legacy
-          ? `This conversation uses ${command.command}. Restore that adapter to continue its saved session, or start a new conversation to use the installed CLI directly.`
-          : preset.directInstallHint ?? `Install ${command.command} on this computer before starting this agent.`);
-      }
+      const refusal = this.harnessStartRefusal(prior, harnessId, direct);
+      if (refusal) throw new Error(refusal);
       // Direct mode spawns the CLI here, so there is no Gateway config to
       // write and nothing to register a command with.
       if (preset.acpxCommand && !direct) {
@@ -793,17 +851,6 @@ export class CapsuleEngine {
             `Could not register ${preset.name}'s ACP command with OpenClaw: ${configured.error ?? "Gateway rejected the acpx agent configuration."}`,
           );
         }
-      }
-      const loginState = probeLoginStateNow(preset, whichBinary(preset.binaries));
-      if (loginState === "logged_out") {
-        throw new Error(
-          `${preset.name} is installed but not signed in. ${preset.loginHint ?? "Sign in to its CLI"} ${direct ? "on this computer" : "on the Gateway host"}, then run Doctor.`,
-        );
-      }
-      if (loginState === "config_invalid") {
-        throw new Error(
-          `${preset.name}'s CLI config could not be read. Fix it, then run Doctor.`,
-        );
       }
     }
     if (input.sessionId && this.requireSession(input.sessionId).projectId !== project.id) {
@@ -1187,6 +1234,7 @@ export class CapsuleEngine {
       if (run.status === "running") this.stopProjectAction(id, run.actionId, run.sessionId);
     }
     for (const session of this.repos.listSessions(id)) {
+      this.followUps.forget(session.id);
       await this.dropSessionCheckpoints(session, project);
       await this.cleanupSessionWorktree(session, project);
     }
@@ -1686,6 +1734,7 @@ export class CapsuleEngine {
     }
     await this.dropSessionCheckpoints(session, project);
     await this.cleanupSessionWorktree(session, project);
+    this.followUps.forget(id);
     this.repos.deleteSession(id);
   }
 
@@ -1809,6 +1858,15 @@ export class CapsuleEngine {
     const hasMore = rows.length > limit;
     // The extra row is the oldest one; drop it from the front.
     return { messages: hasMore ? rows.slice(1) : rows, hasMore };
+  }
+
+  getFollowUps(sessionId: string): FollowUps {
+    return this.followUps.get(sessionId);
+  }
+
+  updateFollowUps(sessionId: string, op: FollowUpOp): FollowUps {
+    this.assertWorkAllowed();
+    return this.followUps.apply(sessionId, op);
   }
 
   async sendMessage(input: AgentMessage): Promise<{ session: Session; run: Run; userMessage: ChatMessage; }> {

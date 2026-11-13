@@ -5,7 +5,7 @@ import { formatTokens, type ContextUsage } from "../../lib/context-window";
 import { AlertTriangleIcon, DiffIcon, FileIcon, HistoryIcon, MessageSquarePlusIcon, SparkIcon, TerminalIcon, XIcon } from "../shell/icons";
 import { RunElapsed } from "./RunElapsed";
 import { ThreadFind } from "./ThreadFind";
-import { detectUsageLimit, formatResetTime } from "../../lib/usage-limit";
+import { detectUsageLimit, formatResetTime } from "@capsule/shared";
 import { useWorkspace } from "../../lib/workspace";
 import { useScopedState } from "../../lib/scoped-state";
 import { formatUserError } from "../../lib/errors";
@@ -678,7 +678,7 @@ export function Conversation() {
                 <button type="button" className="chip" onClick={() => { scheduleResume(limitStop.runId, limitStop.prompt!, limitStop.resetsAt!.getTime()); setDismissedFailures((current) => new Set(current).add(failureKey)); }}>Resume at reset</button>
               )}
               {limitStop.prompt && (
-                <button type="button" className="chip" onClick={() => { retryPrompt(limitStop.prompt!); setDismissedFailures((current) => new Set(current).add(failureKey)); }}>Retry now</button>
+                <button type="button" className="chip" onClick={() => { retryPrompt(limitStop.prompt!, limitStop.runId); setDismissedFailures((current) => new Set(current).add(failureKey)); }}>Retry now</button>
               )}
               <button type="button" className="icon-btn" aria-label="Dismiss error" onClick={() => setDismissedFailures((current) => new Set(current).add(failureKey))}><XIcon size={12} /></button>
             </div>

@@ -32,6 +32,7 @@ const READ_CHANNELS: ChannelName[] = [
   "readSharedBrowser",
   "getRun",
   "listRuns",
+  "getFollowUps",
   "listRunPage",
   "listLatestRuns",
   "listRunEvents",
@@ -81,6 +82,8 @@ const READ_SET = new Set<string>(READ_CHANNELS);
 // Paired conversation control is not desktop administration or a generic shell.
 export const CONTROL_CHANNELS = [
   "createSession", "sendMessage", "stopRun", "resolveApproval",
+  // Queueing a follow-up is sending one later; it belongs with sendMessage.
+  "updateFollowUps",
 ] satisfies ChannelName[];
 const CONTROL_SET = new Set<string>(CONTROL_CHANNELS);
 

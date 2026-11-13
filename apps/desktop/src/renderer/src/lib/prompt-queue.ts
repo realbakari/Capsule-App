@@ -1,21 +1,15 @@
-import type { MessageAttachment } from "@capsule/shared";
+import { FOLLOW_UP_LIMIT, enqueuePrompt, moveQueued, removeQueued, type QueuedPrompt } from "@capsule/shared";
 
 /**
- * Follow-ups typed while a turn is running. Instead of refusing the send,
- * the composer keeps them in order and sends each one when the thread is
- * free again. The queue belongs to a conversation and survives a restart.
+ * Follow-ups typed while a turn is running. The engine keeps and sends them
+ * now; these helpers remain for the composer's own list and for moving a
+ * queue an older build left in this window's storage over to the engine.
  */
 
-export interface QueuedPrompt {
-  id: string;
-  content: string;
-  attachments: MessageAttachment[];
-  skillId?: string;
-  createdAt: string;
-}
+export { enqueuePrompt, moveQueued, removeQueued, type QueuedPrompt };
 
 const KEY_PREFIX = "capsule.queue:";
-const LIMIT = 20;
+const LIMIT = FOLLOW_UP_LIMIT;
 
 export function queueKey(sessionId: string): string {
   return `${KEY_PREFIX}${sessionId}`;
@@ -48,24 +42,8 @@ function isQueuedPrompt(value: unknown): value is QueuedPrompt {
   return Boolean(item && typeof item.id === "string" && typeof item.content === "string" && Array.isArray(item.attachments) && typeof item.createdAt === "string");
 }
 
-export function enqueuePrompt(queue: QueuedPrompt[], prompt: Omit<QueuedPrompt, "id" | "createdAt">, now = new Date()): { queue: QueuedPrompt[]; accepted: boolean } {
-  if (queue.length >= LIMIT) return { queue, accepted: false };
-  const id = `queued-${now.getTime()}-${Math.random().toString(36).slice(2, 8)}`;
-  return { queue: [...queue, { ...prompt, id, createdAt: now.toISOString() }], accepted: true };
-}
 
-export function removeQueued(queue: QueuedPrompt[], id: string): QueuedPrompt[] {
-  return queue.filter((item) => item.id !== id);
-}
 
-export function moveQueued(queue: QueuedPrompt[], id: string, direction: "up" | "down"): QueuedPrompt[] {
-  const index = queue.findIndex((item) => item.id === id);
-  const target = direction === "up" ? index - 1 : index + 1;
-  if (index < 0 || target < 0 || target >= queue.length) return queue;
-  const next = [...queue];
-  [next[index], next[target]] = [next[target]!, next[index]!];
-  return next;
-}
 
 /** The first item leaves the queue; the caller sends it. */
 export function takeNext(queue: QueuedPrompt[]): { queue: QueuedPrompt[]; next?: QueuedPrompt } {

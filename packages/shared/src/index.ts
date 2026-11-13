@@ -32,3 +32,5 @@ export * from "./session-search.js";
 export * from "./tool-activity.js";
 export * from "./channels.js";
 export type { PetVoiceStatus } from "./pet-voice.js";
+export * from "./usage-limit.js";
+export * from "./follow-ups.js";

@@ -55,6 +55,7 @@ import { WindowReference } from "./window-reference";
 import {
   IPC_CHANNELS,
   isRemoteEvent,
+  readFollowUpOp,
   isNewerRelease,
   pickReleaseAsset,
   PRESET_HARNESSES,
@@ -1883,6 +1884,13 @@ function registerIpc(): void {
     const channel = IPC_CHANNELS.rewindSession;
     const value = options && typeof options === "object" ? options as { restoreFiles?: unknown } : {};
     return requireEngine().rewindSession(id(sessionId, channel, 0), id(messageId, channel, 1), { restoreFiles: optBool(value.restoreFiles, channel, 2) });
+  });
+  handleArgs(IPC_CHANNELS.getFollowUps, [id], (sessionId: string) => requireEngine().getFollowUps(sessionId));
+  handle(IPC_CHANNELS.updateFollowUps, (sessionId, op) => {
+    const channel = IPC_CHANNELS.updateFollowUps;
+    const parsed = readFollowUpOp(op);
+    if (!parsed) throw new Error(`${channel}: that change to the follow-ups is not valid.`);
+    return requireEngine().updateFollowUps(id(sessionId, channel, 0), parsed);
   });
   handleArgs(IPC_CHANNELS.searchSkillCatalog, [str, optBool], (query: string, refresh: boolean) =>
     requireEngine().searchSkillCatalog(query, refresh),

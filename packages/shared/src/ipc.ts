@@ -179,6 +179,9 @@ export const IPC_CHANNELS = {
   restoreTurn: "capsule:restoreTurn",
   /* Edit from here: drop a prompt and everything after it, optionally restoring files. */
   rewindSession: "capsule:rewindSession",
+  /* A conversation's queued follow-ups and scheduled resume, kept and sent by the engine. */
+  getFollowUps: "capsule:getFollowUps",
+  updateFollowUps: "capsule:updateFollowUps",
   fetchSkillDetail: "capsule:fetchSkillDetail",
 } as const;
 

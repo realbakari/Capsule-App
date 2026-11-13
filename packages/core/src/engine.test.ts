@@ -1172,3 +1172,27 @@ describe("edit from here", () => {
     await engine.stop();
   });
 });
+
+describe("follow-ups the engine keeps", () => {
+  it("sends a queued follow-up when the turn ends, with no window watching", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-follow-ups-"));
+    const engine = new CapsuleEngine({ databasePath: path.join(dir, "capsule.sqlite"), userDataDir: dir, autoConnect: false });
+    await engine.start();
+    try {
+      const project = engine.createProject({ name: "Queue", defaultMode: "chat" });
+      const session = await engine.createSession({ projectId: project.id, title: "Queue", mode: "chat", agentId: "general" });
+      const { run } = await engine.sendMessage({ sessionId: session.id, content: "Start [long]" });
+      engine.updateFollowUps(session.id, { type: "add", prompt: { content: "Then summarise it", attachments: [] } });
+      expect(engine.getFollowUps(session.id).queue).toHaveLength(1);
+      await waitForRun(engine, run.id);
+      const deadline = Date.now() + 8_000;
+      while (Date.now() < deadline && !engine.listMessages(session.id).some((message) => message.role === "user" && message.content === "Then summarise it")) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      expect(engine.listMessages(session.id).filter((message) => message.role === "user").map((message) => message.content)).toEqual(["Start [long]", "Then summarise it"]);
+      expect(engine.getFollowUps(session.id).queue).toEqual([]);
+    } finally {
+      await engine.stop();
+    }
+  }, 15_000);
+});

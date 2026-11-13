@@ -102,6 +102,18 @@ export class CapsuleRepositories {
       .run(key, value);
   }
 
+  deleteSetting(key: string): void {
+    this.db.sqlite.prepare("DELETE FROM settings WHERE key = ?").run(key);
+  }
+
+  /** Keys under a prefix, e.g. every conversation's stored follow-ups. */
+  listSettingKeys(prefix: string): string[] {
+    const rows = this.db.sqlite
+      .prepare("SELECT key FROM settings WHERE substr(key, 1, ?) = ?")
+      .all(prefix.length, prefix) as Array<{ key: string }>;
+    return rows.map((row) => row.key);
+  }
+
   insertWorkspace(workspace: Workspace): void {
     this.db.sqlite
       .prepare(

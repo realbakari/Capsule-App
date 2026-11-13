@@ -42,6 +42,10 @@ import {
   type HarnessPermissionProfile,
   type HarnessStatus,
   type MessageAttachment,
+  EMPTY_FOLLOW_UPS,
+  type FollowUpOp,
+  type FollowUps,
+  type ScheduledResume,
   type Project,
   type ProjectAction,
   type Run,
@@ -58,8 +62,7 @@ import {
 import type { SettingsSectionId } from "../features/settings/settings-search";
 import { commandForEvent, parseChord, type Keymap } from "./keybindings";
 import { formatUserError } from "./errors";
-import { enqueuePrompt, loadQueue, moveQueued as moveQueuedPrompt, removeQueued as removeQueuedPrompt, saveQueue, takeNext, type QueuedPrompt } from "./prompt-queue";
-import { detectUsageLimit } from "./usage-limit";
+import { loadQueue, saveQueue, type QueuedPrompt } from "./prompt-queue";
 import { EMPTY_NAVIGATION, canGoBack as navigationCanGoBack, canGoForward as navigationCanGoForward, goBack as navigationBack, goForward as navigationForward, pruneNavigation, recordNavigation, type NavigationHistory } from "./navigation-history";
 import { contextUsageFromEvents, type ContextUsage } from "./context-window";
 import { harnessPreflightReason } from "./harness-preflight";
@@ -151,6 +154,8 @@ export interface PendingResume {
   /** The run that stopped on the limit, so the same stop is not scheduled twice. */
   runId: string;
   prompt: string;
+  /** The stopped turn's files, so the resumed prompt is the same turn again. */
+  attachments?: MessageAttachment[];
   at: number;
 }
 
@@ -340,6 +345,8 @@ export interface WorkspaceValue {
   contentSearch: boolean;
   /** Follow-ups waiting for the running turn to finish, in send order. */
   queue: QueuedPrompt[];
+  /** Why the first follow-up could not be sent yet; it stays first and is retried. */
+  followUpsBlocked?: string;
   removeQueued: (id: string) => void;
   moveQueued: (id: string, direction: "up" | "down") => void;
   /** Take a queued follow-up back into the composer. */
@@ -351,7 +358,8 @@ export interface WorkspaceValue {
   scheduleResume: (runId: string, prompt: string, at: number) => void;
   cancelResume: () => void;
   /** Send a stopped turn's prompt again now. */
-  retryPrompt: (prompt: string) => void;
+  /** Re-send a stopped turn's prompt; with its run, its attachments go too. */
+  retryPrompt: (prompt: string, runId?: string) => void;
   /** The find bar over the current conversation. */
   threadFind: boolean;
   setThreadFind: (open: boolean | ((current: boolean) => boolean)) => void;
@@ -1196,105 +1204,94 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   }
 
   /*
-   * Follow-ups while a turn runs. Sending used to be refused; now the prompt
-   * waits its turn. The queue is per conversation, survives a restart, and is
-   * flushed by effect once the thread is free. A follow-up that fails to send
-   * goes to Stash like any other failed submission.
+   * Follow-ups while a turn runs, and a turn scheduled to resume when a usage
+   * limit lifts. The engine keeps and sends both, so they go out in a thread
+   * that is not on screen, or with the window closed; this mirrors the
+   * selected conversation's and sends each change as one operation.
    */
-  const [queue, setQueue] = useState<QueuedPrompt[]>([]);
-  const queueSession = useRef<string | undefined>(undefined);
-  const sessionSettledAt = useRef(0);
-  const flushing = useRef(false);
+  const [followUps, setFollowUps] = useState<FollowUps>(EMPTY_FOLLOW_UPS);
+  const queue = followUps.queue;
   useEffect(() => {
-    queueSession.current = sessionId;
-    sessionSettledAt.current = Date.now();
-    setQueue(sessionId ? loadQueue(localStorage, sessionId) : []);
-  }, [sessionId]);
-  useEffect(() => {
-    if (sessionId && queueSession.current === sessionId) saveQueue(localStorage, sessionId, queue);
-  }, [queue, sessionId]);
+    setFollowUps(EMPTY_FOLLOW_UPS);
+    if (!sessionId) return;
+    let current = true;
+    const unsubscribe = api.on("state", (payload) => {
+      const event = payload as { command?: string; sessionId?: string; followUps?: FollowUps };
+      if (event.command === "follow-ups-updated" && event.sessionId === sessionId && event.followUps) setFollowUps(event.followUps);
+    });
+    void (async () => {
+      try {
+        let state = await api.getFollowUps(sessionId);
+        // A queue or plan an older build kept in this window moves to the engine once.
+        const legacy = loadQueue(localStorage, sessionId);
+        for (const item of legacy) {
+          state = await api.updateFollowUps(sessionId, { type: "add", prompt: { content: item.content, attachments: item.attachments, ...(item.skillId ? { skillId: item.skillId } : {}) } });
+        }
+        if (legacy.length) saveQueue(localStorage, sessionId, []);
+        const legacyResume = localStorage.getItem(`capsule.resume:${sessionId}`);
+        if (legacyResume) {
+          const parsed = JSON.parse(legacyResume) as Partial<ScheduledResume>;
+          if (!state.resume && typeof parsed.runId === "string" && typeof parsed.prompt === "string" && typeof parsed.at === "number") {
+            state = await api.updateFollowUps(sessionId, { type: "schedule", resume: { runId: parsed.runId, prompt: parsed.prompt, attachments: parsed.attachments ?? [], at: parsed.at } });
+          }
+          localStorage.removeItem(`capsule.resume:${sessionId}`);
+        }
+        if (current) setFollowUps(state);
+      } catch {
+        /* A viewer without the channel, or an engine still starting: the queue stays empty here. */
+      }
+    })();
+    return () => { current = false; unsubscribe(); };
+  }, [api, sessionId]);
+  const changeFollowUps = async (op: FollowUpOp) => {
+    if (!sessionId) return;
+    try {
+      setFollowUps(await api.updateFollowUps(sessionId, op));
+    } catch (error) {
+      setNotice(formatUserError(error));
+    }
+  };
   const [threadFind, setThreadFind] = useState(false);
   useEffect(() => { setThreadFind(false); }, [sessionId]);
 
-  /*
-   * Resume at reset. A limit stop that names a time becomes a scheduled
-   * re-send, kept per conversation in storage so a restart keeps the plan;
-   * when the time comes the prompt joins the queue and goes out like any
-   * other follow-up. Sending something else first does not cancel it.
-   */
-  const [pendingResume, setPendingResume] = useState<PendingResume>();
-  const [resumeTick, setResumeTick] = useState(0);
-  useEffect(() => {
-    if (!sessionId) { setPendingResume(undefined); return; }
-    try {
-      const raw = localStorage.getItem(`capsule.resume:${sessionId}`);
-      const parsed = raw ? JSON.parse(raw) as PendingResume : undefined;
-      setPendingResume(parsed && parsed.sessionId === sessionId && typeof parsed.at === "number" && typeof parsed.prompt === "string" ? parsed : undefined);
-    } catch { setPendingResume(undefined); }
-  }, [sessionId]);
+  const pendingResume: PendingResume | undefined = sessionId && followUps.resume ? { sessionId, ...followUps.resume } : undefined;
+  // A limit stop's files live on its prompt message, not on the run.
+  const attachmentsForRun = (runId: string): MessageAttachment[] =>
+    messages.find((message) => message.runId === runId && message.role === "user")?.attachments ?? [];
   const scheduleResume = (runId: string, prompt: string, at: number) => {
-    if (!sessionId || !prompt.trim()) return;
-    const next = { sessionId, runId, prompt, at };
-    setPendingResume(next);
-    try { localStorage.setItem(`capsule.resume:${sessionId}`, JSON.stringify(next)); } catch { /* Kept for this window only. */ }
-  };
-  const cancelResume = () => {
-    if (sessionId) try { localStorage.removeItem(`capsule.resume:${sessionId}`); } catch { /* Nothing stored. */ }
-    setPendingResume(undefined);
-  };
-  useEffect(() => {
-    if (!pendingResume || pendingResume.sessionId !== sessionId) return;
-    const wait = pendingResume.at - Date.now();
-    if (wait > 0) {
-      const timer = window.setTimeout(() => setResumeTick((value) => value + 1), Math.min(wait, 60_000));
-      return () => window.clearTimeout(timer);
-    }
-    if (activeRun || busy) return;
-    cancelResume();
-    setQueue((current) => enqueuePrompt(current, { content: pendingResume.prompt, attachments: [] }).queue);
-    return undefined;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingResume, sessionId, resumeTick, activeRun?.id, busy]);
-  const retryPrompt = (prompt: string) => {
     if (!prompt.trim()) return;
-    setQueue((current) => enqueuePrompt(current, { content: prompt, attachments: [] }).queue);
+    void changeFollowUps({ type: "schedule", resume: { runId, prompt, attachments: attachmentsForRun(runId), at } });
   };
-  // With auto-resume on, a limit stop that names a time schedules itself.
-  useEffect(() => {
-    if (!settings?.autoResumeOnLimit || !sessionId || pendingResume) return;
-    const latest = runs.filter((run) => run.sessionId === sessionId).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0];
-    if (!latest || latest.status !== "failed" || !latest.prompt) return;
-    const limit = detectUsageLimit(latest.error);
-    if (!limit.limited || !limit.resetsAt) return;
-    try { if (localStorage.getItem(`capsule.resume-handled:${latest.id}`)) return; localStorage.setItem(`capsule.resume-handled:${latest.id}`, "1"); } catch { /* Best effort. */ }
-    scheduleResume(latest.id, latest.prompt, limit.resetsAt.getTime());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runs, sessionId, settings?.autoResumeOnLimit, pendingResume]);
+  const cancelResume = () => { void changeFollowUps({ type: "cancel-resume" }); };
+  const retryPrompt = (prompt: string, runId?: string) => {
+    if (!prompt.trim()) return;
+    void changeFollowUps({ type: "add", prompt: { content: prompt, attachments: runId ? attachmentsForRun(runId) : [] } });
+  };
 
-  async function send(continueToNew = false, command?: string, queued?: QueuedPrompt) {
-    // A queued prompt carries its own, already prepared attachments.
-    if (!queued && attachmentReservations.get(draftScope)) {
+  async function send(continueToNew = false, command?: string) {
+    if (attachmentReservations.get(draftScope)) {
       setNotice("Attachments are still being prepared. Wait for them before sending.");
       return false;
     }
     const submissionKey = currentDraftKey;
     const submittedRevision = draftRevision.current;
-    const content = queued ? queued.content : command ?? (draft.trim() || (skillId ? `Use the ${skills.find((item) => item.id === skillId)?.name ?? "selected"} skill.` : ""));
-    const filesToSend = queued ? queued.attachments : command ? [] : attachmentState.current.value;
-    const promptSkill = queued ? queued.skillId : command ? undefined : skillId;
+    const content = command ?? (draft.trim() || (skillId ? `Use the ${skills.find((item) => item.id === skillId)?.name ?? "selected"} skill.` : ""));
+    const filesToSend = command ? [] : attachmentState.current.value;
+    const promptSkill = command ? undefined : skillId;
     if ((!content && filesToSend.length === 0) || busy || submissions.current.has(submissionKey)) return false;
-    if (activeRun && !queued) {
+    if (activeRun) {
       // A read-only viewer would queue a prompt that can never be sent.
       if (api.isDesktop === false && api.remoteMode !== "control" && sendBlockReason) {
         setNotice(sendBlockReason);
         return false;
       }
-      const result = enqueuePrompt(queue, { content, attachments: filesToSend, skillId: promptSkill });
-      if (!result.accepted) {
-        setNotice("The follow-up queue is full. Wait for the running turn or remove a queued message.");
+      if (!sessionId) return false;
+      try {
+        setFollowUps(await api.updateFollowUps(sessionId, { type: "add", prompt: { content, attachments: filesToSend, ...(promptSkill ? { skillId: promptSkill } : {}) } }));
+      } catch (error) {
+        setNotice(formatUserError(error));
         return false;
       }
-      setQueue(result.queue);
       if (!command) {
         setDraft("");
         setAttachments([]);
@@ -1339,21 +1336,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
         currentSessionId = created.id;
       }
       if (!currentSessionId) return false;
-      if (!draftScopes.isCurrent(draftScope)) {
-        // A queued prompt has already left its queue; keep it somewhere.
-        if (queued) recoverSubmission(new Error("The conversation changed before the queued message was sent."));
-        return false;
-      }
+      if (!draftScopes.isCurrent(draftScope)) return false;
       preparedThread = true;
       if (draftHarnessConfig.model || Object.keys(draftHarnessConfig.options).length) {
         await api.spawnHarness({ projectId: currentProjectId, sessionId: currentSessionId, harnessId: agentId,
           model: draftHarnessConfig.model, permissionProfile: "strict" });
         if (draftHarnessConfig.model) await api.setHarnessOption({ sessionId: currentSessionId, key: "model", value: draftHarnessConfig.model });
         for (const [id, value] of Object.entries(draftHarnessConfig.options)) await api.setHarnessConfig(currentSessionId, id, value);
-        if (!draftScopes.isCurrent(draftScope)) {
-          if (queued) recoverSubmission(new Error("The conversation changed before the queued message was sent."));
-          return false;
-        }
+        if (!draftScopes.isCurrent(draftScope)) return false;
         setDraftHarnessConfigs((current) => { const next = { ...current }; delete next[agentId]; return next; });
       }
       const optimisticId = `local-${Date.now()}`;
@@ -1368,7 +1358,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
           createdAt: new Date().toISOString(),
         },
       ]);
-      const unchanged = !command && !queued && draftRevision.current === submittedRevision;
+      const unchanged = !command && draftRevision.current === submittedRevision;
       if (unchanged) {
         setDraft("");
         setAttachments([]);
@@ -1442,8 +1432,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
         throw error;
       }
     } catch (error) {
-      // A queued prompt is in no composer to fall back to, so it always goes to Stash.
-      if (queued || (!preparedThread && draftRevision.current !== submittedRevision)) recoverSubmission(error);
+      if (!preparedThread && draftRevision.current !== submittedRevision) recoverSubmission(error);
       else setNotice(formatUserError(error));
       return false;
     } finally {
@@ -1452,36 +1441,17 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     }
   }
 
-  useEffect(() => {
-    // Take nothing while a send would be refused before it is tried: the
-    // prompt would leave the queue and go nowhere. It waits here instead.
-    if (activeRun || busy || sendBlockReason || submissions.current.has(currentDraftKey) || !sessionId || queue.length === 0 || flushing.current || historyLoad.state !== "loaded") return;
-    // Right after switching threads the run list may not know about a live
-    // turn yet; a short settle keeps a queued follow-up from racing it.
-    const wait = 1_500 - (Date.now() - sessionSettledAt.current);
-    if (wait > 0) {
-      const timer = window.setTimeout(() => setQueue((current) => [...current]), wait);
-      return () => window.clearTimeout(timer);
-    }
-    const { queue: rest, next } = takeNext(queue);
-    if (!next) return;
-    flushing.current = true;
-    setQueue(rest);
-    void send(false, undefined, next).finally(() => { flushing.current = false; });
-    return undefined;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeRun?.id, busy, sendBlockReason, queue, sessionId, historyLoad.state]);
 
   function removeQueued(id: string) {
-    setQueue((current) => removeQueuedPrompt(current, id));
+    void changeFollowUps({ type: "remove", id });
   }
   function moveQueued(id: string, direction: "up" | "down") {
-    setQueue((current) => moveQueuedPrompt(current, id, direction));
+    void changeFollowUps({ type: "move", id, direction });
   }
   function editQueued(id: string) {
     const item = queue.find((entry) => entry.id === id);
     if (!item) return;
-    setQueue((current) => removeQueuedPrompt(current, id));
+    void changeFollowUps({ type: "remove", id });
     setDraft((current) => (current.trim() ? `${current}\n\n${item.content}` : item.content));
     if (item.attachments.length) setAttachments((current) => [...current, ...item.attachments.filter((file) => !current.some((existing) => existing.path === file.path))]);
     if (item.skillId) setSkillId(item.skillId);
@@ -1491,7 +1461,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     if (!item || !sessionId) return;
     try {
       await api.steerHarness(sessionId, item.content);
-      setQueue((current) => removeQueuedPrompt(current, id));
+      await changeFollowUps({ type: "remove", id });
       await refresh();
       await loadSession(sessionId);
     } catch (error) {
@@ -2447,6 +2417,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       contentSearch,
       setContentSearch,
       queue,
+      followUpsBlocked: followUps.blocked,
       removeQueued,
       moveQueued,
       editQueued,
@@ -2535,6 +2506,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       filePicker,
       contentSearch,
       queue,
+      followUps.blocked,
       threadFind,
       pendingResume,
       navigation,
