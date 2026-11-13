@@ -19,6 +19,7 @@ const VIEW_TITLE: Record<string, string> = {
   approvals: "Approvals",
   usage: "Usage",
   settings: "Settings",
+  board: "Board",
 };
 
 export function Titlebar() {

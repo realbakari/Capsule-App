@@ -27,6 +27,7 @@ import { runComposerLayoutRegressions } from "./composer-layout-regressions";
 import { runSurfaceRegressions } from "./surface-regressions";
 import { runSimulatorRegressions } from "./simulator-regressions";
 import { runFollowupRegressions } from "./followup-regressions";
+import { runBoardRegressions } from "./board-regressions";
 import { runMuseSettingsRegressions } from "./muse-settings-regressions";
 import { runWebAccessRegressions } from "./web-access-regressions";
 import { runWorktreeStorageRegressions } from "./worktree-storage-regressions";
@@ -1455,6 +1456,8 @@ window.runRendererRegressions = async () => {
   await runSimulatorRegressions(host, contextBase);
   phase("follow-ups");
   await runFollowupRegressions(host, contextBase);
+  phase("board");
+  await runBoardRegressions(host, contextBase);
   phase("activity and startup");
   await runActivityRegressions(host);
   await runChannelRegressions(host);

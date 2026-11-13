@@ -5,6 +5,7 @@ import { ProjectView } from "./features/project/ProjectView";
 import { RuntimesView } from "./features/harness/RuntimesView";
 import { ApprovalsView, HistoryView, SkillsView } from "./features/library/LibraryViews";
 import { UsageView } from "./features/library/UsageView";
+import { BoardView } from "./features/board/BoardView";
 import { SettingsView } from "./features/settings/SettingsView";
 import { ConfirmDialog } from "./features/shell/ConfirmDialog";
 import { TooltipLayer } from "./features/shell/TooltipLayer";
@@ -86,6 +87,7 @@ function Shell() {
             {view === "history" && <HistoryView />}
             {view === "approvals" && <ApprovalsView />}
             {view === "settings" && <SettingsView />}
+            {view === "board" && <BoardView />}
           </ViewErrorBoundary>
         </div>
       </div>

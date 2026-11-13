@@ -90,7 +90,8 @@ export type View =
   | "history"
   | "approvals"
   | "usage"
-  | "settings";
+  | "settings"
+  | "board";
 export type InspectorTab =
   | "launcher"
   | "files"

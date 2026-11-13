@@ -702,9 +702,14 @@ export function Sidebar() {
           end, where the tree's own controls already are. With nothing to scope
           it says nothing — the prompt below is the whole story then. */}
       <div className={`sidebar-scope${projects.length === 0 ? " empty" : ""}`}>
-        {ready && projects.length > 0 && <MenuSelect ariaLabel="Group conversations" value={grouping}
-          options={[{ id: "project", label: "By project" }, { id: "status", label: "By status" }, { id: "recent", label: "Recent" }]}
-          onChange={changeGrouping} />}
+        {ready && projects.length > 0 && <MenuSelect ariaLabel="Group conversations" value={view === "board" ? "board" : grouping}
+          options={[{ id: "project", label: "By project" }, { id: "status", label: "By status" }, { id: "recent", label: "Recent" },
+            { id: "board", label: "Board", detail: "Cards in status columns, in the main area" }]}
+          onChange={(value) => {
+            if (value === "board") { setView("board"); return; }
+            changeGrouping(value);
+            if (view === "board") setView("chat");
+          }} />}
         <div className="sidebar-scope-actions">
           <button
             type="button"

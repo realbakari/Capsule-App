@@ -3,7 +3,8 @@ import { searchSessionTitles, type SearchResults } from "@capsule/shared";
 import { useWorkspace } from "../../lib/workspace";
 import { formatUserError } from "../../lib/errors";
 import { SHOW_SHORTCUTS_EVENT } from "../../lib/shortcuts-event";
-import { ArrowLeftIcon, ArrowRightIcon, CpuIcon, FolderIcon, GlobeIcon, HistoryIcon, InfoIcon, RefreshIcon, KeyboardIcon, LinkIcon, MessageSquareIcon, PlusIcon, SearchIcon, SettingsIcon, ShieldIcon, SmartphoneIcon, SmilePlusIcon, SparkIcon, TerminalIcon } from "./icons";
+import { requestNewBoardCard } from "../../lib/board";
+import { ArrowLeftIcon, ArrowRightIcon, ColumnsIcon, CpuIcon, FolderIcon, GlobeIcon, HistoryIcon, InfoIcon, RefreshIcon, KeyboardIcon, LinkIcon, MessageSquareIcon, PlusIcon, SearchIcon, SettingsIcon, ShieldIcon, SmartphoneIcon, SmilePlusIcon, SparkIcon, TerminalIcon } from "./icons";
 import { SearchDialog, type SearchDialogItem } from "./SearchDialog";
 
 export function Palette() {
@@ -36,6 +37,7 @@ export function Palette() {
     const desktopOnly = api.isDesktop === false ? "Available in the desktop app." : undefined;
     const actions: SearchDialogItem[] = [
       { id: "new", label: "New conversation", group: "Actions", icon: <PlusIcon size={15} />, shortcut: "⌘N", disabledReason: desktopOnly, onSelect: () => createTask() },
+      { id: "new-board-card", label: "New board card", group: "Actions", icon: <ColumnsIcon size={15} />, disabledReason: desktopOnly ?? (projects.length === 0 ? "Add a project first." : undefined), onSelect: () => { setView("board"); requestNewBoardCard(); } },
       { id: "new-project", label: "New project from folder", group: "Actions", icon: <FolderIcon size={15} />, disabledReason: desktopOnly, onSelect: createProjectFromFolder },
       { id: "open-folder", label: "Open folder", group: "Actions", icon: <FolderIcon size={15} />, disabledReason: desktopOnly, onSelect: pickProjectDirectory },
       { id: "open-files", label: "Open files", group: "Actions", icon: <FolderIcon size={15} />, disabledReason: desktopOnly, onSelect: pickFilesToMention },
@@ -45,6 +47,7 @@ export function Palette() {
       { id: "back", label: "Back", group: "Go to", icon: <ArrowLeftIcon size={15} />, shortcut: "⌘[", disabledReason: canGoBack ? undefined : "No earlier conversation to go back to.", onSelect: goBack },
       { id: "forward", label: "Forward", group: "Go to", icon: <ArrowRightIcon size={15} />, shortcut: "⌘]", disabledReason: canGoForward ? undefined : "No later conversation to go forward to.", onSelect: goForward },
       { id: "find-in-thread", label: "Find in conversation", group: "Workspace", icon: <SearchIcon size={15} />, shortcut: "⌘F", disabledReason: !session ? "Open a conversation first." : undefined, onSelect: () => { setView("chat"); setThreadFind(true); } },
+      { id: "board", label: "Board", group: "Go to", icon: <ColumnsIcon size={15} />, onSelect: () => setView("board") },
       { id: "chat", label: "Open conversation", group: "Go to", icon: <MessageSquareIcon size={15} />, onSelect: () => setView("chat") },
       { id: "channels", label: "Shared channels", group: "Go to", icon: <MessageSquareIcon size={15} />, disabledReason: desktopOnly, onSelect: () => setView("channels") },
       { id: "skills", label: "Skills & packs", group: "Go to", icon: <SparkIcon size={15} />, onSelect: () => setView("skills") },
