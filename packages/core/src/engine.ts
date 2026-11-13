@@ -1589,7 +1589,7 @@ export class CapsuleEngine {
   }
 
   /** Which source-control tools are on this machine, and what to do about gaps. */
-  sourceControlTools(): ToolStatus[] {
+  async sourceControlTools(): Promise<ToolStatus[]> {
     return detectSourceControlTools();
   }
 

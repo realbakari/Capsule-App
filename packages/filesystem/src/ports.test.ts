@@ -1,6 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { listListeningPorts, parseLsofPorts, parsePageTitle, probeLocalServer } from "./ports.js";
 
 // Shaped exactly as lsof -F prints it, including the repeated descriptor.
@@ -56,8 +59,56 @@ describe("parseLsofPorts", () => {
 });
 
 describe("listListeningPorts", () => {
-  it("runs against the real machine without throwing", () => {
-    const servers = listListeningPorts();
+  const originalPath = process.env.PATH;
+  const dirs: string[] = [];
+  afterEach(() => {
+    process.env.PATH = originalPath;
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  /** Puts a stand-in lsof first on PATH: it prints `output` after `delay` seconds. */
+  function fakeLsof(output: string, delay: number): void {
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-lsof-"));
+    dirs.push(dir);
+    const script = path.join(dir, "lsof");
+    writeFileSync(path.join(dir, "output"), output);
+    writeFileSync(script, `#!/bin/sh\nsleep ${delay}\ncat "${dir}/output"\n`);
+    chmodSync(script, 0o755);
+    process.env.PATH = `${dir}:${originalPath}`;
+  }
+
+  it("parses lsof's output exactly as the parser does", async () => {
+    fakeLsof(sample, 0);
+    expect(await listListeningPorts()).toEqual(parseLsofPorts(sample));
+    expect(await listListeningPorts()).toEqual([
+      { port: 5173, command: "node", pid: 4662 },
+      { port: 18789, command: "node", pid: 4662 },
+    ]);
+  });
+
+  it("keeps the event loop turning while lsof is slow", async () => {
+    fakeLsof(sample, 0.5);
+    let ticks = 0;
+    const timer = setInterval(() => { ticks += 1; }, 10);
+    try {
+      const ports = await listListeningPorts();
+      expect(ports.map((entry) => entry.port)).toEqual([5173, 18789]);
+    } finally {
+      clearInterval(timer);
+    }
+    // A blocking spawn lets at most one tick through, after it returns.
+    expect(ticks).toBeGreaterThan(10);
+  });
+
+  it("returns nothing when lsof is not installed", async () => {
+    const empty = mkdtempSync(path.join(tmpdir(), "capsule-empty-"));
+    dirs.push(empty);
+    process.env.PATH = empty;
+    expect(await listListeningPorts()).toEqual([]);
+  });
+
+  it("runs against the real machine without throwing", async () => {
+    const servers = await listListeningPorts();
     expect(Array.isArray(servers)).toBe(true);
     for (const server of servers) {
       expect(server.port).toBeGreaterThan(0);

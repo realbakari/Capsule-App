@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import http from "node:http";
 import https from "node:https";
 import type { LocalServer } from "@capsule/shared";
@@ -94,16 +94,20 @@ export function parseLsofPorts(output: string): ListeningPort[] {
 }
 
 /** Empty when lsof is unavailable — a missing list is better than a wrong one. */
-export function listListeningPorts(): ListeningPort[] {
-  try {
-    const result = spawnSync("lsof", ["-iTCP", "-sTCP:LISTEN", "-P", "-n", "-F", "pcn"], {
-      encoding: "utf8",
-      timeout: 4_000,
-    });
-    return parseLsofPorts(result.stdout ?? "");
-  } catch {
-    return [];
-  }
+export function listListeningPorts(): Promise<ListeningPort[]> {
+  return new Promise((resolve) => {
+    try {
+      execFile(
+        "lsof",
+        ["-iTCP", "-sTCP:LISTEN", "-P", "-n", "-F", "pcn"],
+        { encoding: "utf8", timeout: 4_000 },
+        // lsof exits 1 when nothing is listening; whatever it printed still counts.
+        (_error, stdout) => resolve(parseLsofPorts(stdout ?? "")),
+      );
+    } catch {
+      resolve([]);
+    }
+  });
 }
 
 export function parsePageTitle(html: string): string | undefined {
@@ -188,7 +192,7 @@ export async function probeLocalServer(
  * like web servers, so databases and the OpenClaw Gateway do not become links.
  */
 export async function listLocalServers(timeoutMs = 700): Promise<LocalServer[]> {
-  const candidates = listListeningPorts().slice(0, 80);
+  const candidates = (await listListeningPorts()).slice(0, 80);
   const servers = await Promise.all(
     candidates.map((candidate) => probeLocalServer(candidate, timeoutMs)),
   );

@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { execFile } from "node:child_process";
 
 /**
  * What source-control tooling is present on this machine.
@@ -43,23 +43,36 @@ export function parseGhAccount(output: string): string | undefined {
   return match?.[1];
 }
 
-function probe(command: string, args: string[], timeout = 2_000) {
-  try {
-    const result = spawnSync(command, args, { encoding: "utf8", timeout });
-    return {
-      ok: result.status === 0,
-      // gh writes auth status to stderr, git writes its version to stdout.
-      text: `${result.stdout ?? ""}\n${result.stderr ?? ""}`,
-    };
-  } catch {
-    return { ok: false, text: "" };
-  }
+function probe(command: string, args: string[], timeout = 2_000): Promise<{ ok: boolean; text: string }> {
+  return new Promise((resolve) => {
+    try {
+      execFile(command, args, { encoding: "utf8", timeout }, (error, stdout, stderr) => {
+        // gh writes auth status to stderr, git writes its version to stdout.
+        resolve({ ok: !error, text: `${stdout ?? ""}\n${stderr ?? ""}` });
+      });
+    } catch {
+      resolve({ ok: false, text: "" });
+    }
+  });
 }
 
-export function detectSourceControlTools(): ToolStatus[] {
-  const git = probe("git", ["--version"]);
-  const gh = probe("gh", ["--version"]);
-  const ghAuth = gh.ok ? probe("gh", ["auth", "status"]) : undefined;
+/*
+ * The Settings pane and a paired viewer can ask at once, and `gh auth status`
+ * may wait on the network. Callers that overlap share one probe; the next call
+ * after it settles probes again, so a fresh install or sign-in shows up.
+ */
+let inFlight: Promise<ToolStatus[]> | undefined;
+
+export function detectSourceControlTools(): Promise<ToolStatus[]> {
+  inFlight ??= probeSourceControlTools().finally(() => {
+    inFlight = undefined;
+  });
+  return inFlight;
+}
+
+async function probeSourceControlTools(): Promise<ToolStatus[]> {
+  const [git, gh] = await Promise.all([probe("git", ["--version"]), probe("gh", ["--version"])]);
+  const ghAuth = gh.ok ? await probe("gh", ["auth", "status"]) : undefined;
   const account = ghAuth?.ok ? parseGhAccount(ghAuth.text) : undefined;
 
   return [
