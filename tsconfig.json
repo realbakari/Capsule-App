@@ -8,6 +8,7 @@
     { "path": "packages/sessions" },
     { "path": "packages/agents" },
     { "path": "packages/skills" },
+    { "path": "packages/config" },
     { "path": "packages/tools" },
     { "path": "packages/runs" },
     { "path": "packages/policies" },

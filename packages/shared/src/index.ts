@@ -34,3 +34,5 @@ export * from "./channels.js";
 export type { PetVoiceStatus } from "./pet-voice.js";
 export * from "./usage-limit.js";
 export * from "./follow-ups.js";
+export * from "./config.js";
+export * from "./settings-schema.js";
