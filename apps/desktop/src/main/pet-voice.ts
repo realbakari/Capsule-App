@@ -1,14 +1,23 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync } from "node:fs";
-import { attentionLabel, type AttentionSummary, type PetVoiceStatus } from "@capsule/shared";
+import { attentionLabel, DICTATION_SETTINGS_PANES, type AttentionSummary, type DictationEvent, type DictationOutcome, type DictationSettingsPane, type PetVoiceStatus } from "@capsule/shared";
 
 type Launch = (file: string, args: string[]) => ChildProcessWithoutNullStreams;
 const launch: Launch = (file, args) => spawn(file, args, { stdio: "pipe" });
 type Operation = { child: ChildProcessWithoutNullStreams; cancel: () => void };
+/** Who holds the microphone. The companion and the composer share one helper and one microphone. */
+export type VoiceOwner = "companion" | "dictation";
+type Mode = "--check" | "--listen" | "--dictate";
 
-/** Owns only the companion's short-lived OS speech processes. */
+class VoiceError extends Error {
+  constructor(message: string, readonly settings?: DictationSettingsPane) { super(message); }
+}
+
+const DICTATION_TEXT_LIMIT = 8000;
+
+/** Owns the short-lived OS speech processes for the companion and composer dictation. */
 export class PetVoice {
-  private input?: Operation;
+  private input?: Operation & { owner: VoiceOwner };
   private output?: Operation;
   constructor(private readonly helper: string, private readonly platform = process.platform, private readonly start: Launch = launch) {}
 
@@ -28,11 +37,29 @@ export class PetVoice {
     if (this.platform !== "darwin") return Promise.reject(new Error("Companion voice input requires macOS."));
     if (this.input) return Promise.reject(new Error("A voice request is already active."));
     this.output?.cancel();
-    return this.capture("--listen", onListening);
+    return this.capture("--listen", event => { if (event.phase === "listening") onListening(); });
   }
 
-  finish(): void { this.input?.child.stdin.write("finish\n"); }
-  cancel(): void { this.input?.cancel(); this.output?.cancel(); }
+  /** Free-text dictation for the composer. Partial text streams through `onEvent`; nothing is kept here. */
+  async dictate(onEvent: (event: DictationEvent) => void): Promise<DictationOutcome> {
+    if (this.platform !== "darwin") return { kind: "error", message: "Dictation runs on macOS." };
+    if (!existsSync(this.helper)) return { kind: "error", message: "The speech helper is missing. Rebuild or reinstall Capsule." };
+    if (this.input) return { kind: "error", message: this.input.owner === "companion" ? "The companion is listening. Try again when it finishes." : "Dictation is already running." };
+    this.output?.cancel();
+    try {
+      const text = await this.capture("--dictate", onEvent);
+      return text === undefined ? { kind: "cancelled" } : { kind: "text", text };
+    } catch (error) {
+      return { kind: "error", message: error instanceof Error ? error.message : "Dictation stopped unexpectedly.", ...(error instanceof VoiceError && error.settings ? { settings: error.settings } : {}) };
+    }
+  }
+
+  finish(owner: VoiceOwner): void { if (this.input?.owner === owner) this.input.child.stdin.write("finish\n"); }
+  /** Cancels one owner's capture, or every voice process when no owner is named. */
+  cancel(owner?: VoiceOwner): void {
+    if (!owner || this.input?.owner === owner) this.input?.cancel();
+    if (owner !== "dictation") this.output?.cancel();
+  }
 
   speak(summary: AttentionSummary): Promise<void> {
     if (this.platform !== "darwin") return Promise.reject(new Error("Spoken status requires macOS."));
@@ -57,20 +84,23 @@ export class PetVoice {
     });
   }
 
-  private capture(mode: "--check" | "--listen", onListening?: () => void): Promise<string | undefined> {
+  private capture(mode: Mode, onEvent?: (event: DictationEvent) => void): Promise<string | undefined> {
     if (this.input) return Promise.reject(new Error("A voice request is already active."));
+    const dictating = mode === "--dictate";
+    const textLimit = dictating ? DICTATION_TEXT_LIMIT : 256;
     return new Promise((resolve, reject) => {
       const child = this.start(this.helper, [mode]);
-      let buffer = "", bytes = 0, result: string | undefined, error: Error | undefined, completed = false, cancelled = false;
-      const operation: Operation = { child, cancel: () => { cancelled = true; stop(child); } };
+      let buffer = "", bytes = 0, listening = false, result: string | undefined, error: Error | undefined, completed = false, cancelled = false;
+      const operation = { child, owner: dictating ? "dictation" as const : "companion" as const, cancel: () => { cancelled = true; stop(child); } };
       this.input = operation;
       const fail = (message: string) => { error = new Error(message); stop(child); };
-      const timer = setTimeout(() => fail("Voice input timed out. Try again."), mode === "--check" ? 5000 : 45_000);
+      // The helper ends dictation itself at its two-minute cap; this only catches a stuck helper.
+      const timer = setTimeout(() => fail("Voice input timed out. Try again."), mode === "--check" ? 5000 : dictating ? 150_000 : 45_000);
       child.stdin.on("error", () => { /* The helper can finish before the release event. */ });
       child.stdout.setEncoding("utf8");
       child.stdout.on("data", (chunk: string) => {
         bytes += Buffer.byteLength(chunk);
-        if (bytes > 4096) { fail("Invalid voice helper response."); return; }
+        if (!dictating && bytes > 4096) { fail("Invalid voice helper response."); return; }
         buffer += chunk;
         let newline: number;
         while ((newline = buffer.indexOf("\n")) >= 0) {
@@ -78,23 +108,35 @@ export class PetVoice {
           try {
             const value: unknown = JSON.parse(line);
             if (!value || typeof value !== "object" || !("type" in value)) throw new Error();
-            if (value.type === "listening" && mode === "--listen") onListening?.();
+            if (value.type === "listening" && mode !== "--check") {
+              listening = true;
+              onEvent?.({ phase: "listening", limitMs: "limitMs" in value && typeof value.limitMs === "number" ? value.limitMs : 10_000 });
+            }
+            else if (value.type === "partial" && dictating && "text" in value && typeof value.text === "string" && value.text.length <= textLimit) onEvent?.({ phase: "partial", text: value.text });
+            else if (value.type === "level" && dictating && "value" in value && typeof value.value === "number") onEvent?.({ phase: "level", value: Math.min(1, Math.max(0, value.value)) });
             else if (value.type === "capability" && mode === "--check" && "available" in value && typeof value.available === "boolean") { result = value.available ? "available" : undefined; completed = true; }
-            else if (value.type === "result" && mode === "--listen" && "text" in value && typeof value.text === "string" && value.text.length <= 256) { result = value.text; completed = true; }
+            else if (value.type === "result" && mode !== "--check" && "text" in value && typeof value.text === "string" && value.text.length <= textLimit) { result = value.text; completed = true; }
             else if (value.type === "cancelled") { cancelled = true; completed = true; }
-            else if (value.type === "error" && "message" in value && typeof value.message === "string" && value.message.length <= 256) { error = new Error(value.message); completed = true; }
+            else if (value.type === "error" && "message" in value && typeof value.message === "string" && value.message.length <= 256) {
+              const settings = "settings" in value ? DICTATION_SETTINGS_PANES.find(pane => pane === value.settings) : undefined;
+              error = new VoiceError(value.message, settings); completed = true;
+            }
             else throw new Error();
           } catch { fail("Invalid voice helper response."); }
         }
+        // Dictation repeats the whole transcript on every refinement, so bound a line, not the stream.
+        if (dictating && buffer.length > 4 * DICTATION_TEXT_LIMIT) fail("Invalid voice helper response.");
       });
       child.stderr.resume(); // Never persist microphone output or transcripts.
-      child.on("error", () => { error = new Error("Could not start companion voice."); });
-      child.on("close", code => {
+      child.on("error", () => { error = new Error(dictating ? "Could not start dictation." : "Could not start companion voice."); });
+      child.on("close", (code, signal) => {
         clearTimeout(timer);
         if (this.input === operation) this.input = undefined;
         if (cancelled) resolve(undefined);
         else if (error) reject(error);
-        else if (code !== 0 || !completed) reject(new Error("Companion voice stopped unexpectedly."));
+        // macOS aborts a process that asks for speech access from an app without a usage description.
+        else if (dictating && signal === "SIGABRT" && !listening) reject(new VoiceError("macOS stopped speech recognition for this copy of Capsule. Allow Speech Recognition in Privacy & Security settings, or dictate from the installed app.", "speech"));
+        else if (code !== 0 || !completed) reject(new Error(dictating ? "Dictation stopped unexpectedly." : "Companion voice stopped unexpectedly."));
         else resolve(result);
       });
     });

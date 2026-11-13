@@ -287,12 +287,12 @@ function openPetWindow(): void {
     fallback.unref?.();
   });
   petWindow.on("closed", () => {
-    petVoice.cancel();
+    petVoice.cancel("companion");
     petWindow = undefined;
   });
-  petWindow.on("hide", () => petVoice.cancel());
-  petWindow.webContents.on("render-process-gone", () => petVoice.cancel());
-  petWindow.webContents.on("did-start-navigation", () => petVoice.cancel());
+  petWindow.on("hide", () => petVoice.cancel("companion"));
+  petWindow.webContents.on("render-process-gone", () => petVoice.cancel("companion"));
+  petWindow.webContents.on("did-start-navigation", () => petVoice.cancel("companion"));
 
   const rendererURL = process.env.ELECTRON_RENDERER_URL;
   if (rendererURL) void petWindow.loadURL(`${rendererURL}#pet`);
@@ -1655,8 +1655,40 @@ function registerIpc(): void {
   voiceHandler(IPC_CHANNELS.listenPetCommand, () => petVoice.listen(() => {
     if (petWindow && !petWindow.isDestroyed()) petWindow.webContents.send(IPC_EVENTS.petVoice, { phase: "listening" });
   }), true);
-  voiceHandler(IPC_CHANNELS.finishPetCommand, () => petVoice.finish());
-  voiceHandler(IPC_CHANNELS.cancelPetVoice, () => petVoice.cancel());
+  voiceHandler(IPC_CHANNELS.finishPetCommand, () => petVoice.finish("companion"));
+  voiceHandler(IPC_CHANNELS.cancelPetVoice, () => petVoice.cancel("companion"));
+  /*
+   * Composer dictation. Like companion voice these stay out of the remote
+   * handler map: only the desktop window's own frame may start the microphone,
+   * and partial text goes back to that frame alone.
+   */
+  const dictationHandler = (channel: string, action: (sender: Electron.WebContents, ...args: unknown[]) => unknown) => ipcMain.handle(channel, (event, ...args) => {
+    const window = desktopWindow.current;
+    if (shutdown.started || !window || window.isDestroyed() || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame) throw new Error("Dictation is available only in the desktop window.");
+    return action(event.sender, ...args);
+  });
+  dictationHandler(IPC_CHANNELS.startDictation, (sender) => {
+    const release = () => petVoice.cancel("dictation");
+    sender.once("did-start-navigation", release);
+    sender.once("render-process-gone", release);
+    sender.once("destroyed", release);
+    return petVoice.dictate((payload) => { if (!sender.isDestroyed()) sender.send(IPC_EVENTS.dictation, payload); }).finally(() => {
+      sender.off("did-start-navigation", release);
+      sender.off("render-process-gone", release);
+      sender.off("destroyed", release);
+    });
+  });
+  dictationHandler(IPC_CHANNELS.finishDictation, () => petVoice.finish("dictation"));
+  dictationHandler(IPC_CHANNELS.cancelDictation, () => petVoice.cancel("dictation"));
+  dictationHandler(IPC_CHANNELS.openDictationSettings, (_sender, pane) => {
+    if (process.platform !== "darwin") return;
+    const target = pane === "microphone" ? "com.apple.preference.security?Privacy_Microphone"
+      : pane === "speech" ? "com.apple.preference.security?Privacy_SpeechRecognition"
+      : pane === "dictation" ? "com.apple.preference.keyboard?Dictation"
+      : undefined;
+    if (!target) throw new Error("Unknown settings pane.");
+    return shell.openExternal(`x-apple.systempreferences:${target}`);
+  });
   voiceHandler(IPC_CHANNELS.speakPetStatus, () => {
     const engine = requireEngine();
     return petVoice.speak(summariseAttention({ sessions: engine.listSessions(), runs: engine.listLatestRunStates() }));

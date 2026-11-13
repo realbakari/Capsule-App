@@ -110,7 +110,11 @@ export const READ_ONLY_CHANNELS: readonly string[] = READ_CHANNELS;
  * shell's output has no business on the wire: a read-only viewer would see
  * whatever the user prints, credentials included.
  */
-const LOCAL_ONLY_EVENTS = new Set<string>([IPC_EVENTS.terminalData, IPC_EVENTS.terminalExit]);
+const LOCAL_ONLY_EVENTS = new Set<string>([
+  IPC_EVENTS.terminalData, IPC_EVENTS.terminalExit,
+  // What the person is saying, before they decide to keep it.
+  IPC_EVENTS.dictation,
+]);
 
 /** Whether an event may be forwarded to a paired device. */
 export function isRemoteEvent(event: string): boolean {

@@ -192,6 +192,11 @@ export const IPC_CHANNELS = {
   listOpenInApps: "capsule:listOpenInApps",
   addOpenInApp: "capsule:addOpenInApp",
   openInApp: "capsule:openInApp",
+  /* Composer dictation through the on-device macOS speech helper. Desktop window only. */
+  startDictation: "capsule:startDictation",
+  finishDictation: "capsule:finishDictation",
+  cancelDictation: "capsule:cancelDictation",
+  openDictationSettings: "capsule:openDictationSettings",
 } as const;
 
 export const IPC_EVENTS = {
@@ -204,4 +209,5 @@ export const IPC_EVENTS = {
   fullscreen: "capsule:event:fullscreen",
   terminalData: "capsule:event:terminalData",
   terminalExit: "capsule:event:terminalExit",
+  dictation: "capsule:event:dictation",
 } as const;
