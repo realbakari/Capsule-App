@@ -73,6 +73,16 @@ export {
   isGitRepository,
   restoreCheckpoint,
 } from "./checkpoints.js";
+export {
+  applyUndoRef,
+  applyWorktreeChanges,
+  checkoutBlocker,
+  deleteApplyRecords,
+  latestApplyRecord,
+  readApplyRecord,
+  readWorktreeChangeCount,
+  undoWorktreeApply,
+} from "./apply-to-local.js";
 export { detectSourceControlTools, type ToolStatus } from "./tooling.js";
 export {
   listListeningPorts,

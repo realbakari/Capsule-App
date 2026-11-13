@@ -468,6 +468,41 @@ export type SimulatorAction =
   /** Stop resolves with the recording's file. */
   | { type: "record"; mode: "start" | "stop" };
 
+/** Landing a worktree conversation's changes on the project's own checkout. */
+export interface ApplyResult {
+  /** True when the changes were written, conflicts or not. */
+  applied: boolean;
+  /** Paths as they now stand in the checkout. */
+  files: string[];
+  /** Paths left with conflict markers. */
+  conflicts: string[];
+  /** The hidden ref holding the checkout as it was before; undo takes it. */
+  undoRef?: string;
+  detail?: string;
+}
+
+/** One apply, read back from its undo ref. */
+export interface ApplyRecord {
+  undoRef: string;
+  at: string;
+  files: string[];
+  /** Every path the apply wrote or removed, rename sources included. */
+  paths: string[];
+  conflicts: string[];
+  branch?: string;
+}
+
+/** Whether a thread can apply now, and the apply it can still undo. */
+export interface WorktreeApplyStatus {
+  available: boolean;
+  /** Why it cannot, in words for a disabled control. */
+  reason?: string;
+  /** Files the worktree would change; 0 when unknown or none. */
+  files: number;
+  /** Shown until the thread's next turn starts. */
+  lastApply?: ApplyRecord;
+}
+
 export interface RewindResult {
   ok: boolean;
   detail: string;
