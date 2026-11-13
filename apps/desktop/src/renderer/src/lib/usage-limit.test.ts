@@ -9,6 +9,24 @@ describe("detectUsageLimit", () => {
     expect(detectUsageLimit(undefined, now)).toEqual({ limited: false });
   });
 
+  it("does not read a clock time out of ordinary words", () => {
+    // "chat 4" once parsed as "at 4", scheduling a resend at 04:00.
+    expect(detectUsageLimit("Usage limit reached for this chat 4 times today.", now)).toEqual({ limited: true });
+    expect(detectUsageLimit("Rate limit hit; using fallback 2 of 3.", now)).toEqual({ limited: true });
+  });
+
+  it("is not fooled by a disk quota", () => {
+    expect(detectUsageLimit("EDQUOT: Disk quota exceeded", now)).toEqual({ limited: false });
+    expect(detectUsageLimit("You exceeded your current quota.", now).limited).toBe(true);
+  });
+
+  it("reads a UTC clock time as UTC", () => {
+    const resetsAt = detectUsageLimit("Usage limit reached. Resets at 23:30 UTC.", now).resetsAt!;
+    expect(resetsAt.getUTCHours()).toBe(23);
+    expect(resetsAt.getUTCMinutes()).toBe(30);
+    expect(resetsAt.getTime()).toBeGreaterThan(now.getTime());
+  });
+
   it("recognises a limit without a time", () => {
     expect(detectUsageLimit("Rate limit exceeded for this organisation.", now)).toEqual({ limited: true });
   });

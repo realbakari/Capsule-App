@@ -10,7 +10,8 @@ export interface UsageLimit {
   resetsAt?: Date;
 }
 
-const LIMIT = /rate limit|usage limit|session limit|quota|too many requests|limit (?:reached|exceeded)|out of (?:credits|budget)/i;
+// "quota" alone also matched errors like "Disk quota exceeded", which are not a provider limit.
+const LIMIT = /rate limit|usage limit|session limit|(?<!disk )quota|too many requests|limit (?:reached|exceeded)|out of (?:credits|budget)/i;
 
 const UNIT_MS: Record<string, number> = { second: 1_000, sec: 1_000, s: 1_000, minute: 60_000, min: 60_000, m: 60_000, hour: 3_600_000, hr: 3_600_000, h: 3_600_000, day: 86_400_000, d: 86_400_000 };
 /** Longest spelling first, or "h" would win over "hours" and drop the rest. */
@@ -38,7 +39,8 @@ function absolute(text: string, now: Date): Date | undefined {
     const date = new Date(iso[1]!);
     if (!Number.isNaN(date.getTime()) && date.getTime() > now.getTime()) return date;
   }
-  const clock = /(?:resets?|available|back|until|at)\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i.exec(text);
+  // Whole words only: "chat 4 times" or "fallback 2" are not a clock time.
+  const clock = /\b(?:resets?|available|back|until|at)\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b(\s*(?:UTC|GMT|Z)\b)?/i.exec(text);
   if (!clock) return undefined;
   let hours = Number(clock[1]);
   const minutes = Number(clock[2] ?? "0");
@@ -47,9 +49,14 @@ function absolute(text: string, now: Date): Date | undefined {
   if (meridiem === "am" && hours === 12) hours = 0;
   if (hours > 23 || minutes > 59) return undefined;
   const date = new Date(now);
-  date.setHours(hours, minutes, 0, 0);
+  // A time named in UTC is not the person's local clock.
+  if (clock[4]) date.setUTCHours(hours, minutes, 0, 0);
+  else date.setHours(hours, minutes, 0, 0);
   // A clock time already behind us means tomorrow.
-  if (date.getTime() <= now.getTime()) date.setDate(date.getDate() + 1);
+  if (date.getTime() <= now.getTime()) {
+    if (clock[4]) date.setUTCDate(date.getUTCDate() + 1);
+    else date.setDate(date.getDate() + 1);
+  }
   return date;
 }
 
