@@ -6,13 +6,14 @@ import { SHOW_SHORTCUTS_EVENT } from "../../lib/shortcuts-event";
 import { ArrowLeftIcon, ArrowRightIcon, CpuIcon, FolderIcon, GlobeIcon, HistoryIcon, InfoIcon, RefreshIcon, KeyboardIcon, LinkIcon, MessageSquareIcon, PlusIcon, SearchIcon, SettingsIcon, ShieldIcon, SmartphoneIcon, SmilePlusIcon, SparkIcon, TerminalIcon } from "./icons";
 import { SearchDialog, type SearchDialogItem } from "./SearchDialog";
 import { commandDetail } from "../../lib/commands";
+import { customizationCommands } from "../customization/customization-commands";
 
 export function Palette() {
   const {
     api, palette, paletteQuery, setPalette, setPaletteQuery, setView, createTask, canGoBack, canGoForward, goBack, goForward, setThreadFind,
     createProjectFromFolder, pickProjectDirectory, pickFilesToMention, projects,
     sessions, session, setProjectId, setAboutOpen, openInspector, setAgentCommandsOpen,
-    project, terminalOpen, setTerminalOpen, setDraft, commands,
+    project, terminalOpen, setTerminalOpen, setDraft, commands, config, setSettingsTab, setNotice,
   } = useWorkspace();
   const query = paletteQuery.trim().toLowerCase();
   const [retry, setRetry] = useState(0);
@@ -63,6 +64,7 @@ export function Palette() {
       ] : []),
       { id: "update", label: "Check for updates", group: "Workspace", icon: <RefreshIcon size={15} />, onSelect: () => setAboutOpen(true) },
       { id: "about", label: "About Capsule", group: "Workspace", icon: <InfoIcon size={15} />, onSelect: () => setAboutOpen(true) },
+      ...customizationCommands({ api, config, onError: setNotice, showProblems: () => { setSettingsTab("diagnostics"); setView("settings"); } }),
     ].filter((item) => item.label.toLowerCase().includes(query));
     /* A command takes arguments, so choosing one puts it in the message box rather than sending it. */
     actions.push(...(commands?.list?.commands ?? []).filter((command) => `run command: /${command.name}`.includes(query)).map((command) => ({
@@ -87,7 +89,7 @@ export function Palette() {
       onSelect: () => { setProjectId(message.projectId, message.sessionId); setView("chat"); },
     }));
     return [...actions, ...projectItems, ...threads, ...messages];
-  }, [api, query, currentSearch, commands, setDraft, projects, sessions, session, project, terminalOpen, setTerminalOpen, createTask, createProjectFromFolder, pickProjectDirectory, pickFilesToMention, setView, setProjectId, setAboutOpen, openInspector, setAgentCommandsOpen, canGoBack, canGoForward, goBack, goForward, setThreadFind]);
+  }, [api, query, currentSearch, commands, setDraft, projects, sessions, session, project, terminalOpen, setTerminalOpen, createTask, createProjectFromFolder, pickProjectDirectory, pickFilesToMention, setView, setProjectId, setAboutOpen, openInspector, setAgentCommandsOpen, canGoBack, canGoForward, goBack, goForward, setThreadFind, config, setSettingsTab, setNotice]);
 
   if (!palette) return null;
   return <SearchDialog title="Search workspace" placeholder="Search commands, projects, conversations…" query={paletteQuery}
