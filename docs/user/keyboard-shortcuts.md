@@ -6,6 +6,7 @@
 | Command palette | `⌘K` |
 | New conversation | `⌘N` |
 | Open or attach a folder | `⌘O` |
+| Open the conversation's folder in your favourite app | `⌥⌘O` |
 | Mention files from disk | `⇧⌘O` |
 | Search files to mention | `⌘P` |
 | Search in files | `⇧⌘F` |
@@ -31,6 +32,11 @@
 | Choose the mode (permissions) | `⇧⌘M` |
 | Choose the model | `⇧⌘I` |
 | Choose the reasoning effort | `⇧⌘E` |
+
+`⌥⌘O` opens the folder the conversation works in, which is its worktree when it
+has one, in the app you last chose from **Open in**. With no favourite yet, it
+opens Conversation details with the list of apps showing. `⌘O` stays **Open
+folder**.
 
 The mode, model and effort shortcuts open the composer's own controls. When the
 current agent has no such control, or it cannot change during a turn, a notice

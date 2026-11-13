@@ -2501,6 +2501,27 @@ export class CapsuleEngine {
     await openNativeTerminal(cwd);
   }
 
+  /**
+   * The real path of a folder or file this conversation may hand to another
+   * app: the conversation's folder, or something inside one of the project's
+   * folders or the conversation's worktree. Anything else is refused.
+   */
+  resolveOpenTarget(projectId: string, sessionId?: string, target?: string): string {
+    const project = this.requireProject(projectId);
+    const cwd = this.workingDirectoryFor(project, sessionId);
+    const roots = [...new Set([cwd, ...projectFolderList(project)].filter((root): root is string => Boolean(root)))];
+    const [first] = roots;
+    if (!first) throw new Error("Choose a project folder first");
+    const requested = target?.trim() ? path.resolve(first, target.trim()) : first;
+    for (const root of roots) {
+      try {
+        const resolved = new FilesystemAdapter(root).resolve(requested);
+        if (existsSync(resolved)) return resolved;
+      } catch { /* Outside this root; try the next. */ }
+    }
+    throw new Error("That path is not inside this project's folders.");
+  }
+
   async execInProject(projectId: string, command: string, sessionId?: string) {
     this.assertLocalCommandsAllowed();
     const project = this.requireProject(projectId);

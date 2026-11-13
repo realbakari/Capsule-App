@@ -19,6 +19,7 @@ function key(init: Partial<KeyboardEvent> & { key: string }): KeyboardEvent {
     ctrlKey: init.ctrlKey ?? false,
     shiftKey: init.shiftKey ?? false,
     altKey: init.altKey ?? false,
+    code: init.code ?? "",
   } as KeyboardEvent;
 }
 
@@ -50,6 +51,13 @@ describe("matchesChord", () => {
 
   it("is case insensitive on the key", () => {
     expect(matchesChord(key({ key: "B", metaKey: true }), { key: "b", meta: true })).toBe(true);
+  });
+
+  it("reads the physical key when Option changes the character", () => {
+    const optionO = key({ key: "ø", code: "KeyO", metaKey: true, altKey: true });
+    expect(matchesChord(optionO, { key: "o", meta: true, alt: true })).toBe(true);
+    expect(commandForEvent(optionO, undefined)?.id).toBe("open-in-favorite");
+    expect(commandForEvent(key({ key: "o", code: "KeyO", metaKey: true }), undefined)).toBeUndefined();
   });
 });
 

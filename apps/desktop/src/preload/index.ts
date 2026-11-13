@@ -5,6 +5,7 @@ import {
   IPC_EVENTS,
   type FilePreview,
   type FileReadResult,
+  type OpenInCatalog,
   type MessagePage,
   type PopupMenuRequest,
   type ProviderUsageSnapshot,
@@ -200,6 +201,11 @@ const api = {
   readSimulatorSettings: (udid: string): Promise<import("@capsule/shared").SimulatorDeviceSettings> => ipcRenderer.invoke(IPC_CHANNELS.readSimulatorSettings, udid),
   attachSimulator: (threadId: string, udid: string | undefined): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.attachSimulator, threadId, udid),
   openPath: (target: string) => ipcRenderer.invoke(IPC_CHANNELS.openPath, target),
+  listOpenInApps: (projectId?: string, sessionId?: string, target?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.listOpenInApps, projectId, sessionId, target) as Promise<OpenInCatalog>,
+  addOpenInApp: () => ipcRenderer.invoke(IPC_CHANNELS.addOpenInApp) as Promise<string | undefined>,
+  openInApp: (appId: string, projectId: string, sessionId?: string, target?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.openInApp, appId, projectId, sessionId, target) as Promise<void>,
   pickDirectory: () => ipcRenderer.invoke(IPC_CHANNELS.pickDirectory),
   pickFiles: () => ipcRenderer.invoke(IPC_CHANNELS.pickFiles),
   saveClipboardImage: () => ipcRenderer.invoke(IPC_CHANNELS.saveClipboardImage),

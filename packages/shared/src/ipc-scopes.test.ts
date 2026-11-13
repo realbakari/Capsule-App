@@ -91,6 +91,8 @@ describe("ipc scopes", () => {
       "cancelPetVoice",
       "speakPetStatus",
       "setPetExpanded",
+      "openInApp",
+      "addOpenInApp",
     ]) {
       expect(scopeForChannel(channel)).toBe("write");
       expect(isChannelAllowed(channel, ["read"])).toBe(false);

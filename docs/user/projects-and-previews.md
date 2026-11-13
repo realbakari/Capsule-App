@@ -27,6 +27,31 @@ available. To choose another PNG, JPEG, WebP, AVIF, GIF, ICO, or SVG file, open
 icon discovery. Choosing an icon updates it immediately. If you edit an icon
 file outside Capsule, it can take up to a minute to appear.
 
+## Open in another app
+
+**Open in** opens the conversation's folder, or a file, in an app installed on
+this computer. Find it in **Conversation details** (the list icon in the
+titlebar), under the folder, and beside **Open** when you preview a file in
+**Files**.
+
+On a Mac the list is what macOS reports can open that folder or file, with each
+app's own name and icon. Many editors do not tell macOS they open folders, so
+yours may be missing: choose **Add app…** and pick it from Applications. On
+Windows and Linux the system gives no such list, so **Open in** offers the
+default app plus the programs you add.
+
+The app you choose becomes your favourite. The button then reads **Open in**
+followed by its name, and `⌥⌘O` opens the conversation's folder there. The
+arrow beside it chooses another app.
+
+**Settings → Projects → Open in** lists the apps for folders. The star sets or
+clears the favourite, **Remove** takes an app off the list, and **Show removed
+apps** brings back the ones macOS reported that you removed.
+
+Open in only opens what belongs to the conversation: its folder, its worktree,
+and the project's other folders. A paired browser does not show it, because it
+has no apps of its own to open this computer's files in.
+
 ## Git and conversation workspaces
 
 Folders containing spaces work with a Gateway running on this Mac. Capsule

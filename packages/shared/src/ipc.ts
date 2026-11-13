@@ -188,6 +188,10 @@ export const IPC_CHANNELS = {
   triageSession: "capsule:triageSession",
   /* Answers to a question the agent asked; conversation control, like approvals. */
   answerAgentQuestion: "capsule:answerAgentQuestion",
+  /* Open in: the apps that can open a folder or file, adding one, and opening with one. */
+  listOpenInApps: "capsule:listOpenInApps",
+  addOpenInApp: "capsule:addOpenInApp",
+  openInApp: "capsule:openInApp",
 } as const;
 
 export const IPC_EVENTS = {

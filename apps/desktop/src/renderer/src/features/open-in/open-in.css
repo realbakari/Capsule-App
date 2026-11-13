@@ -1,0 +1,51 @@
+/* Open in: the split button, the app list it opens, and its Settings card. */
+.open-in-icon { flex-shrink: 0; width: 1rem; height: 1rem; object-fit: contain; }
+.open-in-icon-blank, .open-in-icon-glyph { display: inline-flex; align-items: center; justify-content: center; color: var(--text-muted); }
+.open-in-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.open-in-control { position: relative; display: flex; align-items: stretch; min-width: 0; border-radius: var(--radius-sm); }
+.open-in-control button {
+  display: inline-flex; align-items: center; gap: 0.5rem; min-width: 0;
+  border: 0; background: transparent; color: var(--text); font: inherit; cursor: default;
+}
+.open-in-control button:hover, .open-in-control button[aria-expanded="true"] { background: var(--bg-hover); }
+.open-in-control button:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset-inset); }
+
+/* In Conversation details: a full-width row like the actions below it. */
+.open-in-row { margin: 0.3rem -0.4rem 0; }
+.open-in-row .open-in-primary {
+  flex: 1; min-height: var(--control-h-md); padding: 0 0.4rem; border-radius: var(--radius-sm);
+  font-size: var(--text-ui); text-align: left;
+}
+.open-in-row .open-in-more { flex-shrink: 0; width: var(--control-h-md); justify-content: center; border-radius: var(--radius-sm); color: var(--text-faint); }
+/* Line the row's glyph up with the 14px icons in the rows above it. */
+.open-in-row .open-in-primary { gap: 0.55rem; }
+.open-in-row .open-in-icon-glyph { width: 0.875rem; }
+.open-in-kbd { flex-shrink: 0; color: var(--text-faint); font-family: inherit; font-size: var(--text-2xs); }
+
+/* In a surface header: as tall as the ghost buttons beside it. */
+.open-in-bar { border: 1px solid var(--border-color); flex-shrink: 1; max-width: 12rem; }
+.open-in-bar .open-in-primary { min-height: var(--control-h-sm); padding: 0 0.5rem; font-size: var(--text-xs); border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+.open-in-bar .open-in-primary:only-child { border-radius: var(--radius-sm); }
+.open-in-bar .open-in-more { padding: 0 0.3rem; border-left: 1px solid var(--border-color); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; color: var(--text-muted); }
+
+.open-in-picker { width: min(17rem, calc(100vw - 2rem)); max-height: min(26rem, calc(100vh - 5rem)); }
+.open-in-picker [role="menu"] { display: flex; flex-direction: column; gap: 0.125rem; }
+.open-in-heading { margin: 0; padding: 0.35rem 0.65rem 0.2rem; color: var(--text-faint); font-size: var(--text-2xs); }
+.topbar-dropdown-menu .open-in-item { width: 100%; font-size: var(--text-ui); }
+.topbar-dropdown-menu .open-in-item:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset-inset); background: var(--bg-hover); }
+.open-in-favorite { display: inline-flex; align-items: center; gap: 0.3rem; flex-shrink: 0; color: var(--text-faint); }
+.open-in-favorite kbd { font-family: inherit; font-size: var(--text-2xs); }
+.open-in-note { margin: 0; padding: 0.4rem 0.65rem; color: var(--text-faint); font-size: var(--text-xs); line-height: 1.4; }
+.open-in-error { color: var(--red); }
+.open-in-footer { display: flex; flex-direction: column; gap: 0.125rem; margin-top: 0.2rem; padding-top: 0.2rem; border-top: 1px solid var(--border-color); }
+
+.open-in-settings-list { list-style: none; margin: 0.5rem 0 0; padding: 0; display: grid; gap: 0.15rem; }
+.open-in-settings-row { display: flex; align-items: center; gap: 0.65rem; min-height: 2.4rem; padding: 0 0.25rem; border-radius: var(--radius-sm); }
+.open-in-settings-row:hover { background: var(--bg-hover); }
+.open-in-settings-row > .open-in-icon { width: 1.5rem; height: 1.5rem; }
+.open-in-settings-copy { display: grid; flex: 1; min-width: 0; font-size: var(--text-ui); }
+.open-in-settings-copy .faint { font-size: var(--text-2xs); }
+.open-in-star { color: var(--text-faint); }
+.open-in-star.active { color: var(--yellow); }
+.open-in-star.active svg { fill: currentColor; }

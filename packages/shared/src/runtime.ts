@@ -200,7 +200,7 @@ export const SETTINGS_SECTION_KEYS: Record<string, ReadonlyArray<keyof CapsuleSe
     "reasoningSummary",
   ],
   gateway: ["gatewayUrl"],
-  projects: ["projectlessFolder"],
+  projects: ["projectlessFolder", "openInApps", "openInHidden", "openInFavorite"],
   sourceControl: [
     "diffLayout",
     "diffFileState",
@@ -308,6 +308,12 @@ export interface CapsuleSettings {
    * declared by the application menu in the main process.
    */
   keybindings?: Record<string, string>;
+  /** Apps the user added to Open in, by location on disk. */
+  openInApps?: string[];
+  /** System-reported apps the user removed from Open in. */
+  openInHidden?: string[];
+  /** The app the Open in shortcut and primary button use. */
+  openInFavorite?: string;
   timeFormat: TimeFormat;
   /** Ask before deleting a conversation or project. */
   confirmDelete: boolean;
@@ -354,6 +360,13 @@ function pick<T extends string>(value: string | undefined, allowed: readonly T[]
 
 function flag(value: boolean | undefined, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
+}
+
+/** Distinct non-empty paths, bounded so a corrupt file cannot grow the list without limit. */
+function pathList(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const paths = [...new Set(value.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter((item) => item && item.length <= 1024))].slice(0, 50);
+  return paths.length ? paths : undefined;
 }
 
 /** Command id to stored chord. Anything that is not a short string pair is dropped. */
@@ -563,6 +576,9 @@ export function normalizeCapsuleSettings(input: Partial<CapsuleSettings> = {}): 
     commitInstructions: sanitizeGuidance(input.commitInstructions),
     prInstructions: sanitizeGuidance(input.prInstructions),
     keybindings: normalizeKeybindings(input.keybindings),
+    openInApps: pathList(input.openInApps),
+    openInHidden: pathList(input.openInHidden),
+    openInFavorite: typeof input.openInFavorite === "string" && input.openInFavorite.trim() ? input.openInFavorite.trim() : undefined,
     timeFormat: pick(input.timeFormat, TIME_FORMATS, DEFAULT_CAPSULE_SETTINGS.timeFormat),
     confirmDelete: flag(input.confirmDelete, DEFAULT_CAPSULE_SETTINGS.confirmDelete),
     confirmArchive: flag(input.confirmArchive, DEFAULT_CAPSULE_SETTINGS.confirmArchive),

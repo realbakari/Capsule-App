@@ -65,7 +65,7 @@ import { adjacentSession } from "./session-cycle";
 import { isNarrow } from "./narrow";
 import { setDisplayPrefs } from "./display-prefs";
 import { openComposerControl, type ComposerControl } from "./composer-controls";
-import { SHOW_SHORTCUTS_EVENT } from "./shortcuts-event";
+import { OPEN_IN_EVENT, SHOW_SHORTCUTS_EVENT } from "./shortcuts-event";
 import { formatUserError } from "./errors";
 import { loadQueue, saveQueue, type QueuedPrompt } from "./prompt-queue";
 import { EMPTY_NAVIGATION, canGoBack as navigationCanGoBack, canGoForward as navigationCanGoForward, goBack as navigationBack, goForward as navigationForward, pruneNavigation, recordNavigation, type NavigationHistory } from "./navigation-history";
@@ -1055,6 +1055,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
           break;
         case "show-shortcuts":
           window.dispatchEvent(new CustomEvent(SHOW_SHORTCUTS_EVENT));
+          break;
+        case "open-in-favorite":
+          window.dispatchEvent(new CustomEvent(OPEN_IN_EVENT));
           break;
         case "open-mode":
         case "open-model":

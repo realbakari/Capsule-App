@@ -57,6 +57,8 @@ export const COMMANDS: KeyCommand[] = [
   { id: "open-effort", label: "Choose effort", chord: { key: "e", meta: true, shift: true } },
   { id: "settle-and-next", label: "Settle and go to next", chord: { key: "e", meta: true } },
   { id: "mark-unread", label: "Mark conversation unread", chord: { key: "u", meta: true, shift: true } },
+  /* ⌘O stays Open folder (the menu's); the Option variant opens the conversation's folder in the favourite app. */
+  { id: "open-in-favorite", label: "Open in favourite app", chord: { key: "o", meta: true, alt: true } },
 ];
 
 /** Shortcuts that live outside this registry (in a surface or the composer), shown in the shortcuts sheet. */
@@ -119,7 +121,7 @@ export function chordSymbols(chord: KeyChord): string[] {
  * on ⌘⇧B, so a binding silently shadows every chord built on top of it.
  */
 export function matchesChord(event: KeyboardEvent, chord: KeyChord): boolean {
-  if (event.key.toLowerCase() !== chord.key.toLowerCase()) return false;
+  if (chordKey(event) !== chord.key.toLowerCase()) return false;
   // meta covers ⌘ on macOS and Ctrl elsewhere; a chord asking for neither must
   // not fire while one is held.
   const primary = event.metaKey || event.ctrlKey;
@@ -146,6 +148,15 @@ export function keymapFrom(stored: Record<string, string> | undefined): Keymap {
 export function shortcutLabel(id: string, keymap: Keymap | undefined, commands: KeyCommand[] = COMMANDS): string | undefined {
   const command = commands.find((item) => item.id === id);
   return command ? chordSymbols(chordFor(command, keymap)).join("") : undefined;
+}
+
+/**
+ * The key a chord names. Option changes the character on macOS (⌥O types
+ * "ø"), so with Option held the physical letter or digit is the key.
+ */
+export function chordKey(event: Pick<KeyboardEvent, "key" | "code" | "altKey">): string {
+  const physical = event.altKey ? /^(?:Key([A-Z])|Digit([0-9]))$/.exec(event.code ?? "") : null;
+  return (physical?.[1] ?? physical?.[2] ?? event.key).toLowerCase();
 }
 
 /** Effective chord for a command, honouring a user override. */

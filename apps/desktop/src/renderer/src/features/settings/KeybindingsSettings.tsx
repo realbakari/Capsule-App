@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { CapsuleSettings } from "@capsule/shared";
 import {
   COMMANDS,
+  chordKey,
   chordFor,
   chordSymbols,
   conflictsFor,
@@ -97,7 +98,7 @@ export function KeybindingsSettings({
                       // A modifier on its own is not a chord yet — keep listening.
                       if (["Meta", "Shift", "Alt", "Control"].includes(event.key)) return;
                       commit(command.id, {
-                        key: event.key.toLowerCase(),
+                        key: chordKey(event.nativeEvent),
                         meta: event.metaKey || event.ctrlKey,
                         shift: event.shiftKey,
                         alt: event.altKey,

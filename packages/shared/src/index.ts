@@ -6,6 +6,7 @@ export * from "./control-notice.js";
 export * from "./diff.js";
 export * from "./untrusted.js";
 export * from "./folders.js";
+export * from "./open-in.js";
 export * from "./harness.js";
 export * from "./preview.js";
 export * from "./version.js";

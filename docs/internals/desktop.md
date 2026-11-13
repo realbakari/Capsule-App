@@ -305,7 +305,7 @@ attachment validation still receives the original native path.
   runs, the panel icon bar, and the connection dot only while the Gateway is
   down. Workspace controls live in **Conversation details** (`SessionDetails`
   in `SurfaceBar.tsx`): the folder row with Reveal in Finder and Open in
-  Terminal, the branch, `ProjectActionsControl` and `CommitControl` as rows,
+  Terminal, the Open in split button (see Open in below), the branch, `ProjectActionsControl` and `CommitControl` as rows,
   and Initialize Git. Their menus open from inside the popover;
   `HeaderPopover` treats a popover or dialog opened after it as its own, so
   clicking there does not close it, and Escape closes only the topmost layer.
@@ -1993,3 +1993,43 @@ than a day are skipped.
 **Development.** `CAPSULE_MOCK_RUNTIME=1` runs a built app on the mock runtime
 against a throwaway profile.
 
+## Open in
+
+`features/open-in/` holds a split button (`OpenInControl`), its app list
+(`OpenInPicker`, a `HeaderPopover` with `role="menu"`: arrows, Home, End,
+Enter, Escape, and a letter jumps to the next app starting with it) and the
+Settings › Projects card (`OpenInSettings`). The button sits under the folder
+row in Conversation details (target: the conversation's folder) and in the
+Files preview bar (target: the previewed file).
+
+- `listOpenInApps(projectId?, sessionId?, path?)` is a read channel. In
+  `main/open-in.ts`, on macOS it runs a JavaScript for Automation script through
+  `osascript` that asks `NSWorkspace.URLsForApplicationsToOpenURL` for the
+  target, `displayNameAtPath` for names, and `iconForFile` drawn to a 64px PNG
+  for icons (`app.getFileIcon` returns one generic icon for every bundle).
+  No native module and no list of app names. Results are
+  cached per kind of target (folder, or file extension) for a minute. Capsule's
+  own bundle is left out. Elsewhere the list is a `default` entry
+  (`shell.openPath`) plus added programs.
+- `openInApp(appId, projectId, sessionId?, path?)` and `addOpenInApp()` are
+  writes. The engine's `resolveOpenTarget` resolves the path against the
+  conversation's folder and the project's folders, realpath-checked with the
+  same containment as file reads, and refuses anything outside or missing. The
+  app must be in the catalog for that target. macOS launches with
+  `open -a <bundle> <path>`; elsewhere the program is spawned with the path and
+  no shell.
+- Settings: `openInApps` (added paths), `openInHidden` (system apps removed),
+  `openInFavorite`. Choosing an app in the list makes it the favourite.
+- `⌥⌘O` (`open-in-favorite` in `lib/keybindings.ts`) dispatches
+  `OPEN_IN_EVENT`; `SurfaceBar` opens the favourite, or opens Conversation
+  details with the list showing. `chordKey` reads `event.code` while Option is
+  held, because macOS turns ⌥O into "ø" in `event.key`.
+- Paired viewer: the button and the Settings card render nothing.
+
+Decisions. `⌘O` stays Open folder: it is a menu accelerator and fires before
+the renderer, and overloading it by context would make one chord mean two
+things. The Option variant is free and sits next to it. The list is what
+LaunchServices reports, which misses editors that never declared they open
+folders, so adding an app by picking its bundle is first-class rather than a
+fallback. A file's own handlers are listed for a file, so the list in Files
+differs from the one for folders.

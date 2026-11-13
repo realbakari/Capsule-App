@@ -25,6 +25,7 @@ import { DiffView } from "./DiffView";
 import { EmbeddedBrowser } from "./EmbeddedBrowser";
 import { SimulatorPane } from "./SimulatorPane";
 import { FilePreviewView } from "./FilePreview";
+import { OpenInControl } from "../open-in/OpenInPicker";
 import { FileTreePane, sortTreeEntries } from "./FileTree";
 import { ThreadAgents } from "./ThreadAgents";
 import { SURFACES, tabForTool, toolFromTab, type InspectorTool } from "./surfaces";
@@ -864,6 +865,13 @@ export function Inspector() {
                       if (!activeRoot) return;
                       void openPath(`${activeRoot.replace(/\/$/, "")}/${previewDoc.path}`);
                     }}
+                    openIn={projectId && activeRoot ? (
+                      <OpenInControl
+                        target={{ projectId, sessionId: session?.id, path: `${activeRoot.replace(/\/$/, "")}/${previewDoc.path}` }}
+                        what="file"
+                        variant="bar"
+                      />
+                    ) : undefined}
                     onEdit={() => setPreviewEditing(true)}
                     onView={() => {
                       void saverRef.current?.flush();

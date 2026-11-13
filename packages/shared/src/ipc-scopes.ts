@@ -75,6 +75,8 @@ const READ_CHANNELS: ChannelName[] = [
   "turnDiff",
   "rendererReady",
   "windowBackground",
+  // Names and icons of installed apps the system reports; opening one is a write.
+  "listOpenInApps",
 ];
 
 const READ_SET = new Set<string>(READ_CHANNELS);

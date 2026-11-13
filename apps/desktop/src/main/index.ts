@@ -1564,6 +1564,28 @@ function registerIpc(): void {
     }
     await shell.openPath(location);
   });
+  /*
+   * Open in: the list reads what the system reports; opening resolves the
+   * target through the engine, which refuses anything outside the project's
+   * folders or the conversation's worktree, and only launches a listed app.
+   */
+  handleArgs(IPC_CHANNELS.listOpenInApps, [optStr, optStr, optStr], async (projectId?: string, sessionId?: string, target?: string) => {
+    const engine = requireEngine();
+    const location = projectId ? engine.resolveOpenTarget(projectId, sessionId, target) : undefined;
+    return (await import("./open-in.js")).openInCatalog(engine.getSettings(), location);
+  });
+  handle(IPC_CHANNELS.addOpenInApp, async () => {
+    const engine = requireEngine();
+    const patch = await (await import("./open-in.js")).pickOpenInApp(engine.getSettings(), desktopWindow.current ?? BrowserWindow.getFocusedWindow());
+    if (patch) await engine.updateSettings(patch);
+    return patch?.openInApps?.at(-1);
+  });
+  handleArgs(IPC_CHANNELS.openInApp, [str, id, optStr, optStr], async (appId: string, projectId: string, sessionId?: string, target?: string) => {
+    const engine = requireEngine();
+    const location = engine.resolveOpenTarget(projectId, sessionId, target);
+    const { openInCatalog, openWithApp } = await import("./open-in.js");
+    await openWithApp(await openInCatalog(engine.getSettings(), location), appId, location);
+  });
   handle(IPC_CHANNELS.pickDirectory, async () => {
     const win = desktopWindow.current ?? BrowserWindow.getFocusedWindow();
     const options: Electron.OpenDialogOptions = {

@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { folderBasename } from "@capsule/shared";
+import { favoriteOpenInApp, folderBasename } from "@capsule/shared";
+import { OpenInControl } from "../open-in/OpenInPicker";
+import { useOpenIn } from "../open-in/useOpenIn";
+import { OPEN_IN_EVENT } from "../../lib/shortcuts-event";
 import { formatUserError } from "../../lib/errors";
 import { formatProjectRoot } from "../../lib/paths";
 import { useWorkspace } from "../../lib/workspace";
@@ -26,10 +29,29 @@ const FIXED_BAR_PX = 3 * ICON_PX + 44;
 export function SurfaceBar() {
   const { api, project, session, git, inspectorOpen, inspectorTab, openInspector, setInspectorOpen, terminalOpen, setTerminalOpen, settings, updateSettings, setNotice } = useWorkspace();
   const [details, setDetails] = useState(false);
+  /* Bumped by the Open in shortcut when there is no favourite: details opens with the app list showing. */
+  const [pickApp, setPickApp] = useState(0);
   const detailsAnchor = useRef<HTMLDivElement>(null);
+  const openIn = useOpenIn();
   const active = inspectorOpen ? toolFromTab(inspectorTab) : undefined;
   const state = { projectId: project?.id, git, desktop: api.isDesktop !== false, platform: api.platform };
   const terminalCwd = session?.workingDirectory ?? project?.workingDirectory;
+
+  useEffect(() => {
+    const onOpenIn = () => {
+      if (api.isDesktop === false) return;
+      if (!project || !terminalCwd) { setNotice("Open a folder first, then open it in another app."); return; }
+      const target = { projectId: project.id, sessionId: session?.id };
+      void api.listOpenInApps(target.projectId, target.sessionId).then((catalog) => {
+        const favorite = favoriteOpenInApp(catalog);
+        if (favorite) { void openIn(favorite.id, target); return; }
+        setPickApp((value) => value + 1);
+        setDetails(true);
+      }, (error: unknown) => setNotice(formatUserError(error)));
+    };
+    window.addEventListener(OPEN_IN_EVENT, onOpenIn);
+    return () => window.removeEventListener(OPEN_IN_EVENT, onOpenIn);
+  }, [api, project, session?.id, terminalCwd, openIn, setNotice]);
 
   /* A surface that cannot exist on this machine is left off; one that cannot open yet says why. */
   const offered = (surface: Surface) => !(surface.tool === "simulator" && surface.blockedBy({ desktop: state.desktop, platform: state.platform }));
@@ -63,12 +85,12 @@ export function SurfaceBar() {
   return (
     <div className="surface-bar" role="toolbar" aria-label="Panels" ref={barRef}>
       <div ref={detailsAnchor} className="surface-bar-details">
-        <button type="button" className={`icon-btn${details ? " active" : ""}`} title="Conversation details" aria-label="Conversation details" aria-expanded={details} onClick={() => setDetails((open) => !open)}>
+        <button type="button" className={`icon-btn${details ? " active" : ""}`} title="Conversation details" aria-label="Conversation details" aria-expanded={details} onClick={() => { setPickApp(0); setDetails((open) => !open); }}>
           <ListIcon size={15} />
         </button>
         {details && (
           <HeaderPopover anchor={detailsAnchor} label="Conversation details" className="session-details" onClose={() => setDetails(false)}>
-            <SessionDetails onReview={() => { setDetails(false); openInspector("changes"); }} />
+            <SessionDetails key={pickApp} pickApp={pickApp > 0} onReview={() => { setDetails(false); openInspector("changes"); }} />
           </HeaderPopover>
         )}
       </div>
@@ -126,7 +148,7 @@ export function SurfaceBar() {
 }
 
 /** Where this conversation runs, how full its context is, what changed, and what is running. */
-function SessionDetails({ onReview }: { onReview: () => void }) {
+function SessionDetails({ onReview, pickApp }: { onReview: () => void; pickApp: boolean }) {
   const { api, project, session, git, contextUsage, openTerminal, initializeGit, setNotice } = useWorkspace();
   const folder = session?.workingDirectory ?? project?.workingDirectory;
   const reveal = async () => {
@@ -150,6 +172,9 @@ function SessionDetails({ onReview }: { onReview: () => void }) {
             </span> : null}
           </div>
         )}
+        {folder && project && api.isDesktop !== false ? (
+          <OpenInControl target={{ projectId: project.id, sessionId: session?.id }} what="folder" variant="row" startOpen={pickApp} />
+        ) : null}
         {git?.branch && <p className="session-details-row"><GitBranchIcon size={14} /><span className="mono">{git.branch}</span></p>}
       </section>
       {/* What the titlebar used to carry: run an action, commit and push, or start Git. */}
