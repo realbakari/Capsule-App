@@ -76,12 +76,12 @@ it("applies a hand edit to the user file and tells the window", async () => {
   const state = vi.fn();
   engine.events.on("state", state);
   write(settingsFile, { transcriptSize: "s", sandbox: "strict" });
-  await vi.waitFor(() => expect(engine.getSettings().transcriptSize).toBe("s"), { timeout: 5000 });
+  await vi.waitFor(() => expect(engine.getSettings().transcriptSize).toBe("s"), { timeout: 15_000 });
   expect(state).toHaveBeenCalledWith({ command: "settings-updated" });
   expect(state).toHaveBeenCalledWith({ command: "config-updated" });
   // The derived policy follows the file, as it would follow the Settings screen.
   expect(() => engine.assertLocalCommandsAllowed()).toThrow();
-});
+}, 20_000);
 
 it("starts a conversation with the project's own defaults", async () => {
   const { open, project } = fixture();

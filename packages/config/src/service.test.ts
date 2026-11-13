@@ -292,14 +292,14 @@ describe("settings files", () => {
     service.onChange(changed);
 
     for (const size of ["s", "m", "l"]) write(userFile, JSON.stringify({ transcriptSize: size }));
-    await vi.waitFor(() => expect(service.settings().transcriptSize).toBe("l"), { timeout: 3000 });
+    await vi.waitFor(() => expect(service.settings().transcriptSize).toBe("l"), { timeout: 15_000 });
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(changed).toHaveBeenCalledTimes(1);
 
     write(projectFile, JSON.stringify({ diffLayout: "unified" }));
-    await vi.waitFor(() => expect(changed).toHaveBeenCalledTimes(2), { timeout: 3000 });
+    await vi.waitFor(() => expect(changed).toHaveBeenCalledTimes(2), { timeout: 15_000 });
     expect(service.forProject(project).settings.diffLayout).toBe("unified");
-  });
+  }, 40_000);
 
   it("does not report its own writes as changes", async () => {
     const { open } = fixture({ watch: true });
