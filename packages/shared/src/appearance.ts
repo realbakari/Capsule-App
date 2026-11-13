@@ -100,6 +100,23 @@ export function relativeLuminance(hex: string): number {
   return 0.2126 * lin(rgb.r) + 0.7152 * lin(rgb.g) + 0.0722 * lin(rgb.b);
 }
 
+export function contrastRatio(first: string, second: string): number {
+  const [light, dark] = [relativeLuminance(first), relativeLuminance(second)].sort((a, b) => b - a) as [number, number];
+  return (light + 0.05) / (dark + 0.05);
+}
+
+/*
+ * The accent fills switches, the send button and focus rings. One that nearly
+ * matches the background (a white accent on a light theme) makes all of them
+ * vanish, so below this contrast the text colour stands in. The stored palette
+ * keeps the person's choice; only what is drawn changes.
+ */
+export const MIN_ACCENT_CONTRAST = 1.5;
+
+export function visibleAccent(accent: string, background: string, foreground: string): string {
+  return contrastRatio(accent, background) >= MIN_ACCENT_CONTRAST ? accent : foreground;
+}
+
 export function isDarkColor(hex: string): boolean {
   return relativeLuminance(hex) < 0.45;
 }
@@ -138,14 +155,15 @@ export function appearanceCssVars(palette: Partial<AppearancePalette> | undefine
     : `rgb(0 0 0 / ${borderAlpha.toFixed(3)})`;
   const sidebar = mixHex(safePalette.background, toward, sidebarMix);
   const elevated = mixHex(safePalette.background, lift, elevatedMix);
+  const accent = visibleAccent(safePalette.accent, safePalette.background, safePalette.foreground);
   const glassOpacity = safePalette.translucentSidebar ? `${Math.round(62 + contrast * 20)}%` : "100%";
   return {
     "--bg": safePalette.background,
     "--base": safePalette.background,
     "--text": safePalette.foreground,
-    "--accent": safePalette.accent,
-    "--accent-fg": inkOn(safePalette.accent),
-    "--ring": safePalette.accent,
+    "--accent": accent,
+    "--accent-fg": inkOn(accent),
+    "--ring": accent,
     "--bg-sidebar": sidebar,
     "--mantle": sidebar,
     "--bg-elevated": elevated,

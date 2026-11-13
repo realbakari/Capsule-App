@@ -52,3 +52,17 @@ describe("appearance palettes", () => {
     expect(vars["--sidebar-filter"]).toContain("blur");
   });
 });
+
+describe("an accent that matches the background", () => {
+  it("draws with the text colour instead, so switches and focus rings stay visible", () => {
+    const light = appearanceCssVars({ background: "#F4F4F1", foreground: "#161614", accent: "#FFFFFF" });
+    expect(light["--accent"]).toBe("#161614");
+    expect(light["--ring"]).toBe("#161614");
+    expect(light["--accent-fg"]).toBe("#FFFFFF");
+  });
+
+  it("keeps an accent that stands out", () => {
+    const dark = appearanceCssVars({ background: "#0A0A0A", foreground: "#F2F2F2", accent: "#F3F3EE" });
+    expect(dark["--accent"]).toBe("#F3F3EE");
+  });
+});
