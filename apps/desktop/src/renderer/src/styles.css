@@ -8090,9 +8090,6 @@ button.shortcut-keys.capturing {
 
 .menu-option-label {
   display: block;
-  /* Only the label. Capitalising the whole row Title-Cased the detail
-     sentences and the binary paths inside them. */
-  text-transform: capitalize;
 }
 .menu-option-detail {
   display: block;

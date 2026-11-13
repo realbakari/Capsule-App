@@ -4,6 +4,11 @@ import { useWorkspace } from "../../lib/workspace";
 import { formatUserError } from "../../lib/errors";
 import { MenuSelect } from "../shell/MenuSelect";
 
+/* Agents name options in lowercase ("high"); menus use sentence case. Word by word would turn "iOS" into "IOS". */
+function sentenceCase(value: string): string {
+  return value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
+}
+
 export function AgentControl({ sessionId, option, label, disabled = false }: {
   sessionId: string; option: AcpConfigOption; label: string; disabled?: boolean;
 }) {
@@ -30,6 +35,6 @@ export function AgentControl({ sessionId, option, label, disabled = false }: {
   }
   return <MenuSelect ariaLabel={label} value={option.currentValue ?? ""} placeholder={`${label}: agent default`}
     unavailableReason={api.isDesktop !== true ? "Change agent settings on the desktop." : pending ? "Applying setting…" : disabled ? "Wait for the current turn to finish." : undefined}
-    options={option.choices.map((choice) => ({ id: choice.value, label: choice.name, detail: choice.description }))}
+    options={option.choices.map((choice) => ({ id: choice.value, label: sentenceCase(choice.name), detail: choice.description }))}
     onChange={(value) => void change(value)} />;
 }
