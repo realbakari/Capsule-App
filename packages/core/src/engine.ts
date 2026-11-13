@@ -8,7 +8,7 @@ import { ProjectIconCache } from "./project-icon-cache.js";
 import { worktreesDirectory } from "./worktree-location.js";
 import { ChannelHarness } from "./channel-harness.js";
 import { ChannelRoutes } from "./channel-routes.js";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { prepareDirectPrompt } from "./direct-prompt.js";
 import { DirectMuseSession } from "@capsule/muse";
@@ -49,6 +49,7 @@ import {
   captureCheckpoint,
   checkoutBranch as checkoutGitBranch,
   checkpointRef,
+  deleteCheckpoints,
   cloneRepository as cloneGitRepository,
   commitAll,
   createWorktree,
@@ -1185,6 +1186,7 @@ export class CapsuleEngine {
       if (run.status === "running") this.stopProjectAction(id, run.actionId, run.sessionId);
     }
     for (const session of this.repos.listSessions(id)) {
+      await this.dropSessionCheckpoints(session, project);
       await this.cleanupSessionWorktree(session, project);
     }
     this.repos.deleteProject(id);
@@ -1678,6 +1680,7 @@ export class CapsuleEngine {
     for (const run of this.listProjectActionRuns(project.id, id)) {
       if (run.status === "running") this.stopProjectAction(project.id, run.actionId, id);
     }
+    await this.dropSessionCheckpoints(session, project);
     await this.cleanupSessionWorktree(session, project);
     this.repos.deleteSession(id);
   }
@@ -3612,6 +3615,31 @@ export class CapsuleEngine {
           `Setup action ${action.name} did not start: ${error instanceof Error ? error.message : String(error)
           }`,
         );
+      }
+    }
+  }
+
+  /*
+   * Each turn's checkpoint is a hidden ref rooting a full snapshot of the
+   * folder, untracked files included. Left behind, they keep a deleted
+   * thread's files (a stray .env among them) reachable forever and stop git
+   * from ever collecting them. Runs before the worktree goes: a worktree's
+   * refs live in the shared repository, but its folder is how we reach it.
+   */
+  private async dropSessionCheckpoints(session: Session, project: Project): Promise<void> {
+    const folders = new Set<string>();
+    for (const run of this.repos.listRuns(session.id)) {
+      if (run.checkpointRef && run.workingDirectory) folders.add(run.workingDirectory);
+    }
+    if (folders.size === 0) return;
+    if (project.workingDirectory) folders.add(project.workingDirectory);
+    for (const folder of folders) {
+      if (!existsSync(folder)) continue;
+      try {
+        const removed = await deleteCheckpoints(folder, session.id);
+        if (removed > 0) this.log(`Removed ${removed} checkpoint${removed === 1 ? "" : "s"} for a deleted conversation.`);
+      } catch (error) {
+        this.log(`Could not remove checkpoints in ${folder}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
   }

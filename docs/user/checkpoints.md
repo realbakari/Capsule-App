@@ -86,6 +86,10 @@ Checkpoints keep the worktree separate from your staging area and branch history
   your git client look exactly as they did.
 - **Normal pushes exclude checkpoints.** They stay local unless you explicitly
   copy or push their hidden refs using other Git tools.
+- **Deleting a conversation deletes its checkpoints.** A checkpoint holds every
+  file in the folder that git does not ignore, untracked ones included, so
+  checkpoints are removed with the conversation (or project) they belong to
+  and git can reclaim the space.
 
 Projects that are not git repositories do not get checkpoints, and the restore
 control does not appear for them.

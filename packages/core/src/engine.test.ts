@@ -887,6 +887,49 @@ describe("the turn checkpoint", () => {
     expect(engine.getRun(run.id)?.checkpointRef).toMatch(/^refs\/capsule\/checkpoints\//);
     await engine.stop();
   });
+
+  it("goes with the conversation it belongs to", async () => {
+    // A checkpoint roots a snapshot of the whole folder, untracked files
+    // included. Kept after its thread is gone, it pins those files forever.
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-checkpoint-delete-"));
+    const repo = path.join(dir, "repo");
+    mkdirSync(repo, { recursive: true });
+    execFileSync("git", ["init", "-q"], { cwd: repo });
+    execFileSync("git", ["config", "user.email", "t@example.com"], { cwd: repo });
+    execFileSync("git", ["config", "user.name", "T"], { cwd: repo });
+    writeFileSync(path.join(repo, "README.md"), "hello\n");
+    writeFileSync(path.join(repo, ".env"), "TOKEN=secret\n");
+
+    const engine = new CapsuleEngine({
+      databasePath: path.join(dir, "capsule.sqlite"),
+      userDataDir: dir,
+      autoConnect: false,
+    });
+    await engine.start();
+    const project = engine.createProject({ name: "Repo", workingDirectory: repo });
+    const kept = await engine.createSession({ projectId: project.id, title: "Kept", mode: "chat", agentId: "general" });
+    const dropped = await engine.createSession({ projectId: project.id, title: "Dropped", mode: "chat", agentId: "general" });
+    const refsFor = (sessionId: string) =>
+      execFileSync("git", ["for-each-ref", "--format=%(refname)", `refs/capsule/checkpoints/${sessionId}`], { cwd: repo, encoding: "utf8" }).trim();
+
+    const capture = (engine as unknown as {
+      captureTurnCheckpoint: (run: unknown, session: unknown) => void;
+    }).captureTurnCheckpoint.bind(engine);
+    for (const session of [kept, dropped]) {
+      const { run } = await engine.sendMessage({ sessionId: session.id, content: "hi" });
+      await waitForRun(engine, run.id);
+      capture(engine.getRun(run.id)!, session);
+      for (let waited = 0; !engine.getRun(run.id)?.checkpointRef && waited < 10_000; waited += 100) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      expect(refsFor(session.id)).not.toBe("");
+    }
+
+    await engine.deleteSession(dropped.id);
+    expect(refsFor(dropped.id)).toBe("");
+    expect(refsFor(kept.id)).not.toBe("");
+    await engine.stop();
+  });
 });
 
 describe("what a thread shows while a turn is starting", () => {
