@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { commandForEvent, keymapFrom, type Keymap } from "../../lib/keybindings";
 import { useThreadTriage } from "../../lib/thread-triage";
 import { useWorkspace } from "../../lib/workspace";
+import { cycleRegion } from "../../lib/regions";
 
 /**
  * ⌘E settles the open thread and moves to whatever wants you next, so triage
@@ -17,6 +18,11 @@ export function useTriageShortcuts() {
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      if (event.key === "F6" && !event.metaKey && !event.ctrlKey && !event.altKey) {
+        event.preventDefault();
+        cycleRegion(event.shiftKey ? -1 : 1);
+        return;
+      }
       const command = commandForEvent(event, keymap);
       if (command?.id !== "settle-and-next" && command?.id !== "mark-unread") return;
       const { triage: actions, sessionId: id, view: current } = live.current;

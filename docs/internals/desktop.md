@@ -2178,3 +2178,11 @@ differs from the one for folders.
 - **Folder drop**: folders dropped on the sidebar become projects (an existing
   one opens instead); files are refused with a reason. Desktop only, since it
   needs local paths.
+- **Timeline rail**: from four turns, and when the thread is over one and a half
+  screens tall, a 10px rail at the transcript's right edge marks each turn in
+  proportion to its height (from `VirtualTurns` `onLayout`) and outlines the
+  visible part. Hover names the turn, click scrolls to it. Pointer only and
+  `aria-hidden`: Find in conversation is the keyboard and screen-reader path.
+  Hidden below 48rem.
+- **F6 / ⇧F6** move focus between sidebar, conversation, composer and side
+  panel (`lib/regions.ts`), skipping hidden regions.

@@ -70,6 +70,8 @@ export const FIXED_SHORTCUTS: Array<{ label: string; keys: string[] }> = [
   { label: "Cancel dictation and restore the draft", keys: ["Esc"] },
   { label: "Previous prompt", keys: ["↑"] },
   { label: "Edit the last queued follow-up", keys: ["⌥", "↑"] },
+  { label: "Next region: sidebar, conversation, composer, panel", keys: ["F6"] },
+  { label: "Previous region", keys: ["⇧", "F6"] },
   { label: "Side chat", keys: ["⌥", "⌘", "S"] },
   { label: "Open the terminal", keys: ["⌃", "`"] },
   { label: "Add terminal selection to the message", keys: ["⌘", "L"] },

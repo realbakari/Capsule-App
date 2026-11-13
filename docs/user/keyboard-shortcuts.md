@@ -22,6 +22,7 @@
 | Send | `Enter`, or `⌘Enter` if you changed the send key |
 | Stop the running turn | `Esc` in the composer |
 | Take the last queued follow-up back to edit | `⌥↑` in an empty composer |
+| Move focus to the next region (sidebar, conversation, composer, side panel) | `F6`, or `⇧F6` to go back |
 | Show every shortcut | `⌘/` |
 | Add the terminal selection to the message | `⌘L` in the terminal (`Ctrl+Shift+L` on Windows and Linux) |
 | Open a terminal link in your default browser | `⌘`-click |

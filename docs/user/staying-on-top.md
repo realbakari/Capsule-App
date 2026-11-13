@@ -66,3 +66,10 @@ again when it reopens, so the agent picks up where it left off. The prompt waits
 in the conversation's queue, where you can remove it before it is sent. Turns
 running through a Gateway are left alone, because the Gateway may still be
 working on them.
+
+## Finding your place
+
+Capsule remembers how far you had scrolled in each conversation and takes you
+back there. Long conversations show a thin timeline at their right edge: point
+at a mark to see which turn it is, click to jump to it. `F6` moves between the
+sidebar, the conversation, the message box and the side panel.
