@@ -128,6 +128,25 @@ export function matchesChord(event: KeyboardEvent, chord: KeyChord): boolean {
   return true;
 }
 
+/**
+ * The person's overrides from settings. A stored chord that no longer parses
+ * falls back to the default rather than leaving the command unreachable.
+ */
+export function keymapFrom(stored: Record<string, string> | undefined): Keymap {
+  const map: Keymap = {};
+  for (const [id, value] of Object.entries(stored ?? {})) {
+    const chord = parseChord(value);
+    if (chord) map[id] = chord;
+  }
+  return map;
+}
+
+/** A command's current keys as one label, such as "⇧⌘D", or undefined when it has none. */
+export function shortcutLabel(id: string, keymap: Keymap | undefined, commands: KeyCommand[] = COMMANDS): string | undefined {
+  const command = commands.find((item) => item.id === id);
+  return command ? chordSymbols(chordFor(command, keymap)).join("") : undefined;
+}
+
 /** Effective chord for a command, honouring a user override. */
 export function chordFor(command: KeyCommand, keymap: Keymap | undefined): KeyChord {
   return keymap?.[command.id] ?? command.chord;

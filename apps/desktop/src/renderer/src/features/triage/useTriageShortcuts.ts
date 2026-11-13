@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
-import { commandForEvent, parseChord, type Keymap } from "../../lib/keybindings";
+import { commandForEvent, keymapFrom, type Keymap } from "../../lib/keybindings";
 import { useThreadTriage } from "../../lib/thread-triage";
 import { useWorkspace } from "../../lib/workspace";
 
@@ -11,14 +11,7 @@ import { useWorkspace } from "../../lib/workspace";
 export function useTriageShortcuts() {
   const { settings, sessionId, view } = useWorkspace();
   const triage = useThreadTriage();
-  const keymap = useMemo<Keymap>(() => {
-    const map: Keymap = {};
-    for (const [id, value] of Object.entries(settings?.keybindings ?? {})) {
-      const chord = parseChord(value);
-      if (chord) map[id] = chord;
-    }
-    return map;
-  }, [settings?.keybindings]);
+  const keymap = useMemo<Keymap>(() => keymapFrom(settings?.keybindings), [settings?.keybindings]);
   const live = useRef({ triage, sessionId, view });
   live.current = { triage, sessionId, view };
 

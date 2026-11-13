@@ -6,8 +6,10 @@ import {
   commandForEvent,
   conflictsFor,
   formatChord,
+  keymapFrom,
   matchesChord,
   parseChord,
+  shortcutLabel,
 } from "./keybindings.js";
 
 function key(init: Partial<KeyboardEvent> & { key: string }): KeyboardEvent {
@@ -130,5 +132,15 @@ describe("the registry itself", () => {
     for (const command of COMMANDS) {
       expect(conflictsFor(command.id, command.chord, undefined), command.id).toEqual([]);
     }
+  });
+});
+
+describe("keymapFrom and shortcutLabel", () => {
+  it("keeps parsable overrides, drops the rest, and labels the effective chord", () => {
+    const keymap = keymapFrom({ "toggle-sidebar": "meta+shift+l", "toggle-terminal": "nonsense+j" });
+    expect(Object.keys(keymap)).toEqual(["toggle-sidebar"]);
+    expect(shortcutLabel("toggle-sidebar", keymap)).toBe("⇧⌘L");
+    expect(shortcutLabel("toggle-terminal", keymap)).toBe("⌘J");
+    expect(shortcutLabel("not-a-command", keymap)).toBeUndefined();
   });
 });

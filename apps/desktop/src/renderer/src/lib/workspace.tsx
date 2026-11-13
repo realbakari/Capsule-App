@@ -60,7 +60,7 @@ import {
 } from "@capsule/shared";
 
 import type { SettingsSectionId } from "../features/settings/settings-search";
-import { commandForEvent, parseChord, type Keymap } from "./keybindings";
+import { commandForEvent, keymapFrom, type Keymap } from "./keybindings";
 import { adjacentSession } from "./session-cycle";
 import { isNarrow } from "./narrow";
 import { setDisplayPrefs } from "./display-prefs";
@@ -615,17 +615,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     diffFileState: settings?.diffFileState ?? "expanded",
   }), [settings?.timeFormat, settings?.toolCallDisplay, settings?.diffLayout, settings?.diffFileState]);
 
-  const keymap = useMemo<Keymap>(() => {
-    const stored = settings?.keybindings ?? {};
-    const map: Keymap = {};
-    for (const [id, value] of Object.entries(stored)) {
-      const chord = parseChord(value);
-      // A stored chord that no longer parses falls back to the default rather
-      // than leaving the command unreachable.
-      if (chord) map[id] = chord;
-    }
-    return map;
-  }, [settings?.keybindings]);
+  const keymap = useMemo<Keymap>(() => keymapFrom(settings?.keybindings), [settings?.keybindings]);
 
 
   const project = projects.find((item) => item.id === projectId);

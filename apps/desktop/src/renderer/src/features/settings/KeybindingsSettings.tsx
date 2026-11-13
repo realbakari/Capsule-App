@@ -6,7 +6,7 @@ import {
   chordSymbols,
   conflictsFor,
   formatChord,
-  parseChord,
+  keymapFrom,
   type KeyChord,
   type Keymap,
 } from "../../lib/keybindings";
@@ -30,11 +30,7 @@ export function KeybindingsSettings({
   const [capturing, setCapturing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const keymap: Keymap = {};
-  for (const [id, value] of Object.entries(settings.keybindings ?? {})) {
-    const chord = parseChord(value);
-    if (chord) keymap[id] = chord;
-  }
+  const keymap: Keymap = keymapFrom(settings.keybindings);
 
   function commit(id: string, chord: KeyChord) {
     const clash = conflictsFor(id, chord, keymap);
