@@ -178,6 +178,12 @@ const api = {
     ipcRenderer.invoke(IPC_CHANNELS.gitStage, projectId, relative, sessionId),
   gitDiscard: (projectId: string, relative: string, sessionId?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.gitDiscard, projectId, relative, sessionId),
+  gitScopedDiff: (projectId: string, scope: import("@capsule/shared").GitDiffScope, relative?: string, sessionId?: string): Promise<import("@capsule/shared").ScopedDiff> =>
+    ipcRenderer.invoke(IPC_CHANNELS.gitScopedDiff, projectId, scope, relative, sessionId),
+  gitCheckHunks: (projectId: string, applies: import("@capsule/shared").HunkApply[], sessionId?: string): Promise<boolean[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.gitCheckHunks, projectId, applies, sessionId),
+  gitApplyHunk: (projectId: string, apply: import("@capsule/shared").HunkApply, sessionId?: string): Promise<import("@capsule/shared").GitStatus> =>
+    ipcRenderer.invoke(IPC_CHANNELS.gitApplyHunk, projectId, apply, sessionId),
   gitCreateBranch: (projectId: string, branch: string, sessionId?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.gitCreateBranch, projectId, branch, sessionId),
   gitPush: (projectId: string, sessionId?: string) =>

@@ -1,19 +1,10 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { DiffScope, HunkApply, PatchApplication } from "@capsule/shared";
+import type { GitDiffScope, HunkApply, PatchApplication, ScopedDiff } from "@capsule/shared";
 import { git, inRepository } from "./git-process.js";
 import { CANONICAL_PATCH_FLAGS } from "./git-output.js";
 import { readGitDiff, readUntrackedPatches, REVIEW_DIFF_BYTES } from "./git.js";
-
-/** The scopes git answers directly. "This turn" comes from saved checkpoints. */
-export type GitDiffScope = Exclude<DiffScope, "turn">;
-
-export interface ScopedDiff {
-  patch: string;
-  /** For Branch, the branch the diff is measured from. */
-  base?: string;
-}
 
 const DIFF = ["--literal-pathspecs", "diff", "--no-ext-diff", "--no-textconv", ...CANONICAL_PATCH_FLAGS];
 

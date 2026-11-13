@@ -57,6 +57,9 @@ const READ_CHANNELS: ChannelName[] = [
   "searchFiles",
   "gitStatus",
   "gitDiff",
+  "gitScopedDiff",
+  // `git apply --check` only: it reports whether a hunk applies and writes nothing.
+  "gitCheckHunks",
   "listPullRequests",
   "getPullRequest",
   "getCommitDiff",

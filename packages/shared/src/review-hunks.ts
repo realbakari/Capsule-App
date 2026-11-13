@@ -19,6 +19,15 @@ export const DIFF_SCOPES: ReadonlyArray<{ id: DiffScope; label: string; detail: 
   { id: "branch", label: "Branch", detail: "Everything since this branch left the default branch" },
 ];
 
+/** The scopes git answers directly. "This turn" comes from saved checkpoints. */
+export type GitDiffScope = Exclude<DiffScope, "turn">;
+
+export interface ScopedDiff {
+  patch: string;
+  /** For Branch, the branch the diff is measured from. */
+  base?: string;
+}
+
 export function isDiffScope(value: unknown): value is DiffScope {
   return DIFF_SCOPES.some((scope) => scope.id === value);
 }

@@ -67,6 +67,9 @@ import {
   readBoundedFile,
   hasCheckpoint,
   discardFile,
+  applyHunk,
+  checkHunks,
+  readScopedDiff,
   clearFileIndex,
   clearGhCache,
   enrichGitStatus,
@@ -1400,6 +1403,29 @@ export class CapsuleEngine {
       return await readGitStatus(cwd);
 
     });
+  }
+
+  /** Review's diff for one scope; "This turn" is read through turnDiff. */
+  async gitScopedDiff(projectId: string, scope: import("@capsule/shared").GitDiffScope, relative?: string, sessionId?: string): Promise<import("@capsule/shared").ScopedDiff> {
+    const cwd = this.workingDirectoryFor(this.requireProject(projectId), sessionId);
+    if (!cwd || !(await readGitStatus(cwd)).isRepo) return { patch: "" };
+    return readScopedDiff(cwd, scope, relative);
+  }
+
+  async gitCheckHunks(projectId: string, applies: readonly import("@capsule/shared").HunkApply[], sessionId?: string): Promise<boolean[]> {
+    const cwd = this.workingDirectoryFor(this.requireProject(projectId), sessionId);
+    if (!cwd) return applies.map(() => false);
+    return checkHunks(cwd, applies);
+  }
+
+  /** Keep, Reject or Unstage one hunk. A refusal throws git's reason and changes nothing. */
+  async gitApplyHunk(projectId: string, apply: import("@capsule/shared").HunkApply, sessionId?: string): Promise<GitStatus> {
+    const cwd = this.workingDirectoryFor(this.requireProject(projectId), sessionId);
+    if (!cwd) throw new Error("Project has no working directory");
+    const result = await applyHunk(cwd, apply);
+    if (!result.ok) throw new Error(result.detail);
+    if (apply.worktree) { clearFileIndex(cwd); this.events.emit("state", { command: "files-updated" }); }
+    return await readGitStatus(cwd);
   }
 
   async gitCreateBranch(projectId: string, branch: string, sessionId?: string): Promise<GitStatus> {

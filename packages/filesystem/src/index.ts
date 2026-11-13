@@ -8,7 +8,7 @@ import { readBoundedFileSync } from "./bounded-read.js";
 
 export { readBoundedFile, readBoundedFileSync, FileTooLargeError } from "./bounded-read.js";
 export { previewCheckpoint } from "./checkpoint-preview.js";
-export { applyHunk, checkHunks, readScopedDiff, type GitDiffScope, type ScopedDiff } from "./git-hunks.js";
+export { applyHunk, checkHunks, readScopedDiff } from "./git-hunks.js";
 
 export type { FileEntry };
 export { inRepository } from "./git-process.js";

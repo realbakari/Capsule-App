@@ -7,6 +7,7 @@ import {
   id,
   num,
   optBool,
+  oneOf,
   optStr,
   parseArgs,
   str,
@@ -18,6 +19,7 @@ import { PetVoice } from "./pet-voice";
 import { ProductAnalytics } from "./analytics";
 import { readPngBytes } from "./image-attachments";
 import { remoteControlArgs } from "./remote-control";
+import { hunkApplies, hunkApply } from "./hunk-args";
 import {
   app,
   autoUpdater as nativeAutoUpdater,
@@ -80,6 +82,8 @@ import {
   type Run,
   type SpawnHarnessInput,
   type GitPullRequestStackAction,
+  type GitDiffScope,
+  type HunkApply,
   type UpdateProjectInput,
 } from "@capsule/shared";
 import { readAgentProcesses } from "@capsule/filesystem";
@@ -1455,6 +1459,13 @@ function registerIpc(): void {
       sessionId ? String(sessionId) : undefined,
     ),
   );
+  handleArgs(IPC_CHANNELS.gitScopedDiff, [id, oneOf("uncommitted", "staged", "unstaged", "branch"), optStr, optStr],
+    (projectId: string, scope: GitDiffScope, relative?: string, sessionId?: string) =>
+      requireEngine().gitScopedDiff(projectId, scope, relative, sessionId));
+  handleArgs(IPC_CHANNELS.gitCheckHunks, [id, hunkApplies, optStr], (projectId: string, applies: HunkApply[], sessionId?: string) =>
+    requireEngine().gitCheckHunks(projectId, applies, sessionId));
+  handleArgs(IPC_CHANNELS.gitApplyHunk, [id, hunkApply, optStr], (projectId: string, apply: HunkApply, sessionId?: string) =>
+    requireEngine().gitApplyHunk(projectId, apply, sessionId));
   handle(IPC_CHANNELS.gitCreateBranch, (projectId, branch, sessionId) =>
     requireEngine().gitCreateBranch(
       String(projectId),
