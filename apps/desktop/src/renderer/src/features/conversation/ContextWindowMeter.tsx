@@ -13,6 +13,8 @@ interface ContextWindowMeterProps {
   compactUnavailable?: string;
   /** Minutes since the conversation last moved; past five the prompt cache has likely expired. */
   idleMinutes?: number;
+  /** Start a new conversation in this project. */
+  onFresh?: () => void;
 }
 
 export function ContextWindowMeter({
@@ -24,6 +26,7 @@ export function ContextWindowMeter({
   onCompact,
   compactUnavailable,
   idleMinutes,
+  onFresh,
 }: ContextWindowMeterProps) {
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -105,7 +108,7 @@ export function ContextWindowMeter({
       {open && (
         <div className="context-card" role="dialog" aria-label="Context window">
           <div className="context-card-row">
-            <span className="context-card-title">Context Window</span>
+            <span className="context-card-title">Context window</span>
             <span className="context-card-stat mono">{pct}% · {usedLabel}/{limitLabel}</span>
           </div>
 
@@ -118,8 +121,14 @@ export function ContextWindowMeter({
           {idleMinutes !== undefined && idleMinutes >= 5 && (
             <p className="context-card-hint">Idle {Math.round(idleMinutes)} min. The prompt cache has likely expired, so compacting now costs the least.</p>
           )}
+          {tone !== "normal" && (
+            <p className="context-card-hint">
+              {tone === "critical" ? "Almost full." : "Filling up."} Compact to keep going on this task. For something unrelated, a new conversation starts with a clean context and does better.
+            </p>
+          )}
           <div className="context-card-actions">
-            <button type="button" className="chip" disabled={!onCompact} title={onCompact ? "Ask the agent to summarise its context into less" : compactUnavailable} onClick={() => { onCompact?.(); setOpen(false); }}>Compact conversation</button>
+            {onFresh && tone !== "normal" ? <button type="button" className="chip" onClick={() => { setOpen(false); onFresh(); }}>New conversation</button> : null}
+            <button type="button" className="chip" disabled={!onCompact} title={onCompact ? "Ask the agent to summarize its context into less" : compactUnavailable} onClick={() => { onCompact?.(); setOpen(false); }}>Compact conversation</button>
             {!onCompact && compactUnavailable && <span className="faint">{compactUnavailable}</span>}
           </div>
 

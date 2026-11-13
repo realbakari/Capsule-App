@@ -27,7 +27,7 @@ const HIDDEN_TREE_NAMES = new Set([
 function FileMark({ name }: { name: string }) {
   const kind = fileKind(name.split("/").pop() ?? name);
   return (
-    <span className="codex-tree-icon codex-file-mark" style={{ color: `var(${kind.tone})` }} aria-hidden>
+    <span className="panel-tree-icon panel-file-mark" style={{ color: `var(${kind.tone})` }} aria-hidden>
       {kind.label}
     </span>
   );
@@ -94,31 +94,31 @@ function TreeEntries({
         if (entry.type === "directory") {
           const kids = childrenByDir[entry.path];
           return (
-            <div key={entry.path} className="codex-tree-group">
+            <div key={entry.path} className="panel-tree-group">
               <button
                 type="button"
-                className="codex-tree-item"
+                className="panel-tree-item"
                 style={{ paddingLeft: `${0.4 + depth * 0.72}rem` }}
                 title={entry.path}
                 aria-expanded={open}
                 onClick={() => onToggleFolder(entry.path)}
               >
-                <span className={`codex-tree-chevron${open ? " open" : ""}`}>
+                <span className={`panel-tree-chevron${open ? " open" : ""}`}>
                   {open ? <ChevronDownIcon size={11} /> : <ChevronRightIcon size={11} />}
                 </span>
-                <span className="codex-tree-icon">
+                <span className="panel-tree-icon">
                   <FolderIcon size={13} />
                 </span>
-                <span className="codex-tree-name truncate">{entry.name}</span>
+                <span className="panel-tree-name truncate">{entry.name}</span>
                 {gitMark ? (
-                  <span className="codex-git-badge" title="Changed in the working tree">
+                  <span className="panel-git-badge" title="Changed in the working tree">
                     {gitMark}
                   </span>
                 ) : null}
               </button>
               {open ? (
                 directoryStates?.[entry.path]?.error ? (
-                  <div role="status" className="codex-tree-empty">
+                  <div role="status" className="panel-tree-empty">
                     Could not read folder. <button className="ghost" onClick={() => onRefreshDirectory?.(entry.path)}>Retry</button>
                   </div>
                 ) :
@@ -137,7 +137,7 @@ function TreeEntries({
                   />
                 ) : (
                   <div
-                    className="codex-tree-empty faint"
+                    className="panel-tree-empty faint"
                     style={{ paddingLeft: `${1.2 + depth * 0.72}rem` }}
                   >
                     {kids ? "Empty" : "Loading…"}
@@ -151,16 +151,16 @@ function TreeEntries({
           <button
             key={entry.path}
             type="button"
-            className={`codex-tree-item${selected ? " active" : ""}`}
+            className={`panel-tree-item${selected ? " active" : ""}`}
             style={{ paddingLeft: `${0.4 + depth * 0.72}rem` }}
             title={entry.path}
             onClick={() => onPreviewFile(entry.path)}
           >
-            <span className="codex-tree-chevron" aria-hidden />
+            <span className="panel-tree-chevron" aria-hidden />
             <FileMark name={entry.name} />
-            <span className="codex-tree-name truncate">{entry.name}</span>
+            <span className="panel-tree-name truncate">{entry.name}</span>
             {gitMark ? (
-              <span className="codex-git-badge" title="Changed in the working tree">
+              <span className="panel-git-badge" title="Changed in the working tree">
                 {gitMark}
               </span>
             ) : null}
@@ -215,14 +215,14 @@ export const FileTreePane = memo(function FileTreePane({
   const rootEntries = useMemo(() => sortTreeEntries(listing), [listing]);
   const gitMarks = useMemo(() => indexGitMarks(gitFiles), [gitFiles]);
   return (
-    <div className="codex-file-tree-pane">
-      <div className="codex-tree-search-wrap">
-        <span className="codex-tree-search-icon" aria-hidden>
+    <div className="panel-file-tree-pane">
+      <div className="panel-tree-search-wrap">
+        <span className="panel-tree-search-icon" aria-hidden>
           <SearchIcon size={14} />
         </span>
         <input
           type="text"
-          className="codex-tree-search"
+          className="panel-tree-search"
           aria-label="Filter workspace files"
           placeholder="Filter files..."
           value={fileSearch}
@@ -231,7 +231,7 @@ export const FileTreePane = memo(function FileTreePane({
         {fileSearch ? (
           <button
             type="button"
-            className="codex-tree-search-clear"
+            className="panel-tree-search-clear"
             onClick={onClearSearch}
             title="Clear filter"
           >
@@ -255,33 +255,33 @@ export const FileTreePane = memo(function FileTreePane({
         </div>
       ) : null}
 
-      <div className="codex-tree-list">
-        {directoryStates?.[""]?.error && <div role="status" className="codex-tree-empty">
+      <div className="panel-tree-list">
+        {directoryStates?.[""]?.error && <div role="status" className="panel-tree-empty">
           Could not refresh files. <button className="ghost" onClick={() => onRefreshDirectory?.("")}>Retry</button>
         </div>}
-        {searchLoading ? <div className="codex-tree-empty faint" role="status">Searching…</div>
-          : searchError ? <div className="codex-tree-empty" role="alert">Could not search files. {searchError} <button className="ghost" onClick={onRetrySearch}>Retry</button></div>
+        {searchLoading ? <div className="panel-tree-empty faint" role="status">Searching…</div>
+          : searchError ? <div className="panel-tree-empty" role="alert">Could not search files. {searchError} <button className="ghost" onClick={onRetrySearch}>Retry</button></div>
           : searchHits ? (
           searchHits.length === 0 ? (
-            <div className="codex-tree-empty faint">No matching files</div>
+            <div className="panel-tree-empty faint">No matching files</div>
           ) : (
             searchHits.map((entry) => (
               <button
                 key={entry.path}
                 type="button"
-                className={`codex-tree-item${previewPath === entry.path ? " active" : ""}`}
+                className={`panel-tree-item${previewPath === entry.path ? " active" : ""}`}
                 title={entry.path}
                 onClick={() => onPreviewFile(entry.path)}
               >
-                <span className="codex-tree-chevron" aria-hidden />
+                <span className="panel-tree-chevron" aria-hidden />
                 <FileMark name={entry.path} />
-                <span className="codex-tree-name truncate">{entry.path}</span>
+                <span className="panel-tree-name truncate">{entry.path}</span>
               </button>
             ))
           )
         ) : rootEntries.length === 0 ? (
           directoryStates?.[""]?.error ? null : (
-            <div className="codex-tree-empty faint" role="status">
+            <div className="panel-tree-empty faint" role="status">
               {directoryStates?.[""]?.loading || !directoryStates?.[""] ? "Loading files…" : "Folder is empty"}
             </div>
           )

@@ -113,7 +113,7 @@ export function ProviderQuota({ refreshNonce = 0 }: { refreshNonce?: number }) {
     <p className="muted">Observations from running native Muse sessions, separate from transcript tokens. Refresh rereads the latest report, not a live balance.</p>
     {!available ? <p className="muted">Subscription reports are unavailable in this connection. Reopen with an updated desktop app.</p>
       : loading && !snapshot ? <p role="status" className="muted">Reading reported usage…</p>
-      : !selected && !error ? <p className="muted">Not reported yet. A running native Muse session must report usage; this page does not start one.</p> : null}
+      : !selected && !error ? <p className="muted">Not reported yet. Start a conversation with Muse Code and send a message; its subscription usage appears here once that session reports it.</p> : null}
     {error && <p role="alert" className="settings-keybind-error">Could not read subscription reports: {error} Use Refresh report to retry. Previous values may be out of date.</p>}
     {reports.length > 1 && <label className="provider-quota-select">Reported by conversation
       <select value={selected?.sessionId} onChange={(event) => setSelectedId(event.target.value)}>

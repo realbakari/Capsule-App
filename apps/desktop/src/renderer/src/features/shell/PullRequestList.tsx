@@ -14,8 +14,8 @@ export function PullRequestList({ items, loading, error, onRefresh, onSelect }: 
   const [sort, setSort] = useState<PullRequestSort>("updated");
   const shown = useMemo(() => visiblePullRequests(items ?? [], query, sort), [items, query, sort]);
   return (
-    <section className="codex-pr-list" aria-busy={loading}>
-      <div className="codex-pr-list-head">
+    <section className="panel-pr-list" aria-busy={loading}>
+      <div className="panel-pr-list-head">
         <h4>Open pull requests{items ? ` (${items.length})` : ""}</h4>
         <button className="chip" type="button" disabled={loading} onClick={onRefresh}>
           <RefreshIcon size={13} /> {loading ? "Refreshing…" : error ? "Retry" : "Refresh"}
@@ -35,9 +35,9 @@ export function PullRequestList({ items, loading, error, onRefresh, onSelect }: 
       {!loading && items?.length === 0 && !error ? <p className="faint">No open pull requests were found for this repository.</p> : null}
       {items && items.length > 0 && shown.length === 0 ? <p className="faint">No loaded pull requests match this filter.</p> : null}
       {shown.map((item) => (
-        <button className="codex-pr-row" type="button" key={item.number} onClick={() => onSelect(item)}>
-          <span className="codex-pr-number">#{item.number}</span>
-          <span className="codex-pr-copy">
+        <button className="panel-pr-row" type="button" key={item.number} onClick={() => onSelect(item)}>
+          <span className="panel-pr-number">#{item.number}</span>
+          <span className="panel-pr-copy">
             <b>{item.title}</b>
             <small>{[item.author, item.headRefName].filter(Boolean).join(" · ") || "Open pull request"}</small>
           </span>
@@ -53,16 +53,16 @@ export function PullRequestList({ items, loading, error, onRefresh, onSelect }: 
             * checks behind it is better left out.
             */}
           {item.stack || item.isDraft || (item.checks && item.checks !== "none") ? (
-          <span className="codex-pr-meta">
+          <span className="panel-pr-meta">
             {item.stack ? (
-              <span className="codex-pr-checks" title={`Stack layer ${item.stack.position} of ${item.stack.size}, base ${item.stack.base}`}>
+              <span className="panel-pr-checks" title={`Stack layer ${item.stack.position} of ${item.stack.size}, base ${item.stack.base}`}>
                 {item.stack.position}/{item.stack.size}
               </span>
             ) : null}
             {item.isDraft ? (
-              <span className="codex-pr-checks draft">Draft</span>
+              <span className="panel-pr-checks draft">Draft</span>
             ) : item.checks && item.checks !== "none" ? (
-              <span className={`codex-pr-checks ${item.checks}`}>{item.checks}</span>
+              <span className={`panel-pr-checks ${item.checks}`}>{item.checks}</span>
             ) : null}
           </span>
           ) : null}

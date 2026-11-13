@@ -23,13 +23,13 @@ export function SavedChannelRoutes() {
     return () => { active = false; trigger.current?.focus(); };
   }, [api, open]);
   if (!api.isDesktop || !api.listSavedChannelRoutes) return null;
-  return <><button ref={trigger} type="button" className="ghost" onClick={() => setOpen(true)}>Saved channel harnesses</button>
-    {open && createPortal(<dialog ref={dialog} className="channel-dialog" aria-label="Saved channel harnesses" onCancel={(event) => { event.preventDefault(); if (!busy) setOpen(false); }}>
-      <header><h2>Saved channel harnesses</h2><button className="icon-btn" aria-label="Close saved harnesses" disabled={busy} onClick={() => setOpen(false)}><XIcon size={18} /></button></header>
+  return <><button ref={trigger} type="button" className="ghost" onClick={() => setOpen(true)}>Saved channel agents</button>
+    {open && createPortal(<dialog ref={dialog} className="channel-dialog" aria-label="Saved channel agents" onCancel={(event) => { event.preventDefault(); if (!busy) setOpen(false); }}>
+      <header><h2>Saved channel agents</h2><button className="icon-btn" aria-label="Close saved agents" disabled={busy} onClick={() => setOpen(false)}><XIcon size={18} /></button></header>
       <p className="channels-hint">Remove unused local connections to free a slot. Project conversations and relay channels are kept.</p>
       {error && <p role="alert" className="channels-error">{error}</p>}
-      {!routes && !error ? <p role="status">Loading saved harnesses…</p> : null}
-      {routes?.length === 0 && <p>No saved channel harnesses.</p>}
+      {!routes && !error ? <p role="status">Loading saved agents…</p> : null}
+      {routes?.length === 0 && <p>No saved channel agents.</p>}
       <ul className="channel-saved-routes">{routes?.map((route) => <li key={route.id}>
         <strong>{projects.find((project) => project.id === route.configuration.projectId)?.name ?? "Unavailable project"} · {route.configuration.harnessId}</strong>
         <p>{route.url}</p><p className="channel-id">Channel {route.configuration.channelId}<br />Identity {route.identity.slice(0, 12)}…{route.identity.slice(-6)}</p>

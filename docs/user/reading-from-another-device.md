@@ -168,3 +168,7 @@ a pairing link and has no stored session. Open a fresh link.
 **It stopped updating.** The socket reconnects on its own every couple of
 seconds; if it does not come back, the desktop app has quit or the setting was
 turned off.
+
+On a phone, the sidebar opens as a drawer from the toggle at the top left and
+closes when you pick a conversation, so the conversation always gets the full
+width. A read-only pairing says so in the message box.

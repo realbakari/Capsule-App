@@ -137,6 +137,7 @@ export function UsageView() {
                 key={option.days}
                 type="button"
                 className={`chip ${days === option.days ? "active-attached" : ""}`}
+                aria-pressed={days === option.days}
                 onClick={() => setDays(option.days)}
               >
                 {option.label}

@@ -95,7 +95,7 @@ export function CloneRepositoryDialog({
             </button>
           </div>
         </label>
-        {error ? <p className="notice">{error}</p> : null}
+        {error ? <p className="notice" role="alert">{error}</p> : null}
         <div className="actions">
           <button className="ghost" type="button" onClick={onClose} disabled={busy}>
             Cancel

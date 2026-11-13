@@ -754,3 +754,32 @@ export function DiffSquareIcon(props: IconProps) {
     </Svg>
   );
 }
+
+/* Git and workspace action icons, drawn on the same 24px grid and stroke as the rest. */
+export function GitPullRequestIcon(props: IconProps) {
+  return <Svg {...props}><circle cx="6" cy="6" r="2.25" /><circle cx="6" cy="18" r="2.25" /><circle cx="18" cy="18" r="2.25" /><path d="M6 8.25v7.5M13 6h3a2 2 0 0 1 2 2v7.75" /><path d="m15.5 3.5-2.5 2.5 2.5 2.5" /></Svg>;
+}
+
+export function GitMergeIcon(props: IconProps) {
+  return <Svg {...props}><circle cx="6" cy="6" r="2.25" /><circle cx="6" cy="18" r="2.25" /><circle cx="18" cy="14" r="2.25" /><path d="M6 8.25v7.5M6 8.25c0 3.5 3 5.75 9.75 5.75" /></Svg>;
+}
+
+export function CloudUploadIcon(props: IconProps) {
+  return <Svg {...props}><path d="M12 13v8M8.5 16.5 12 13l3.5 3.5" /><path d="M20 16.6A4.5 4.5 0 0 0 17.5 8h-1.3A7 7 0 1 0 4 14.9" /></Svg>;
+}
+
+export function CoffeeIcon(props: IconProps) {
+  return <Svg {...props}><path d="M10 2v2M14 2v2M6 2v2" /><path d="M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h12Z" /><path d="M17 9h1a3 3 0 0 1 0 6h-1" /></Svg>;
+}
+
+export function InfoIcon(props: IconProps) {
+  return <Svg {...props}><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></Svg>;
+}
+
+export function FolderOpenIcon(props: IconProps) {
+  return <Svg {...props}><path d="m6 14 1.5-2.9A2 2 0 0 1 9.2 10H20a2 2 0 0 1 1.9 2.5l-1.5 6a2 2 0 0 1-1.9 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.7.9l.8 1.2a2 2 0 0 0 1.7.9H18a2 2 0 0 1 2 2v2" /></Svg>;
+}
+
+export function GitCommitIcon(props: IconProps) {
+  return <Svg {...props}><circle cx="12" cy="12" r="3" /><path d="M3 12h6M15 12h6" /></Svg>;
+}

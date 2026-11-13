@@ -1,6 +1,6 @@
 import { createRoot } from "react-dom/client";
 
-const popovers = ["menu-select-pop", "action-menu", "topbar-dropdown-menu", "composer-tools-popover", "agent-command-popover", "context-card", "sidebar-thread-preview"];
+const popovers = ["menu-select-pop", "action-menu", "topbar-dropdown-menu", "composer-tools-popover", "agent-command-popover", "context-card", "sidebar-thread-preview", "preview-more-menu", "pr-action-menu"];
 const dialogs = ["dialog", "palette", "about-modal-card", "palette search-dialog"];
 
 /** Exercise the actual cascade, including OS-following theme tokens. */

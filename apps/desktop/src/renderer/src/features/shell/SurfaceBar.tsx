@@ -1,12 +1,15 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { folderBasename } from "@capsule/shared";
 import { formatUserError } from "../../lib/errors";
 import { formatProjectRoot } from "../../lib/paths";
 import { useWorkspace } from "../../lib/workspace";
+import { BackgroundTasks } from "./BackgroundTasks";
+import { CommitControl } from "./CommitControl";
+import { ProjectActionsControl } from "./ProjectActionsControl";
 import { HeaderPopover } from "./HeaderPopover";
 import { MenuSelect } from "./MenuSelect";
 import { SURFACES, tabForTool, toolFromTab, type Surface } from "./surfaces";
-import { DiffSquareIcon, FolderIcon, GitBranchIcon, ListIcon, LaptopIcon, MoreHorizontalIcon, TerminalIcon } from "./icons";
+import { CoffeeIcon, DiffSquareIcon, FolderIcon, FolderOpenIcon, GitBranchIcon, ListIcon, LaptopIcon, MoreHorizontalIcon, TerminalIcon } from "./icons";
 
 /**
  * The panel's surfaces, one icon each, in the titlebar. Clicking an icon shows
@@ -14,6 +17,12 @@ import { DiffSquareIcon, FolderIcon, GitBranchIcon, ListIcon, LaptopIcon, MoreHo
  * closes the panel. The list icon opens what this conversation is working
  * with, the way a status line would, without taking the panel.
  */
+/* The titlebar's budget: the name keeps this much; details, terminal and More always show. */
+const TITLE_ROOM_PX = 208;
+const ICON_PX = 32;
+/* Details, terminal and More, plus the titlebar's own padding and gap. */
+const FIXED_BAR_PX = 3 * ICON_PX + 44;
+
 export function SurfaceBar() {
   const { api, project, session, git, inspectorOpen, inspectorTab, openInspector, setInspectorOpen, terminalOpen, setTerminalOpen, settings, updateSettings, setNotice } = useWorkspace();
   const [details, setDetails] = useState(false);
@@ -28,10 +37,31 @@ export function SurfaceBar() {
     if (active === surface.tool) setInspectorOpen(false);
     else openInspector(tabForTool(surface.tool));
   };
-  const more = SURFACES.filter((surface) => !surface.inBar && offered(surface));
+  /*
+   * The bar keeps the conversation's name readable: when the titlebar is
+   * narrow (a wide panel beside it), panel icons that do not fit move to the
+   * top of More, the one on show staying in the bar.
+   */
+  const barRef = useRef<HTMLDivElement>(null);
+  const [room, setRoom] = useState(Infinity);
+  useEffect(() => {
+    const header = barRef.current?.closest(".page-header");
+    if (!header) return undefined;
+    const measure = () => setRoom(header.clientWidth);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(header);
+    return () => observer.disconnect();
+  }, []);
+  const candidates = SURFACES.filter((surface) => surface.inBar && offered(surface));
+  const slots = Math.max(1, Math.floor((room - TITLE_ROOM_PX - FIXED_BAR_PX) / ICON_PX));
+  const ordered = [...candidates].sort((a, b) => Number(b.tool === active) - Number(a.tool === active));
+  const shown = new Set(ordered.slice(0, slots).map((surface) => surface.tool));
+  const inBar = candidates.filter((surface) => shown.has(surface.tool));
+  const more = [...candidates.filter((surface) => !shown.has(surface.tool)), ...SURFACES.filter((surface) => !surface.inBar && offered(surface))];
 
   return (
-    <div className="surface-bar" role="toolbar" aria-label="Panels">
+    <div className="surface-bar" role="toolbar" aria-label="Panels" ref={barRef}>
       <div ref={detailsAnchor} className="surface-bar-details">
         <button type="button" className={`icon-btn${details ? " active" : ""}`} title="Conversation details" aria-label="Conversation details" aria-expanded={details} onClick={() => setDetails((open) => !open)}>
           <ListIcon size={15} />
@@ -54,7 +84,7 @@ export function SurfaceBar() {
       >
         <TerminalIcon size={15} />
       </button>
-      {SURFACES.filter((surface) => surface.inBar && offered(surface)).map((surface) => {
+      {inBar.map((surface) => {
         const Icon = surface.icon;
         const blocked = surface.blockedBy(state);
         const title = blocked ?? `${surface.label}${surface.shortcut ? ` (${surface.shortcut})` : ""}`;
@@ -81,7 +111,7 @@ export function SurfaceBar() {
         icon={<MoreHorizontalIcon size={15} />}
         options={[
           ...more.map((surface) => ({ id: surface.tool, label: surface.label, detail: surface.detail, icon: <surface.icon size={14} /> })),
-          { id: "keep-awake", label: settings?.keepAwakeWhileRunning ? "Keep computer awake: on" : "Keep computer awake: off", detail: "While a turn is running. Also in Settings." },
+          { id: "keep-awake", label: settings?.keepAwakeWhileRunning ? "Keep computer awake: on" : "Keep computer awake: off", detail: "While a turn is running. Also in Settings.", icon: <CoffeeIcon size={14} /> },
         ]}
         onChange={(id) => {
           const surface = more.find((item) => item.tool === id);
@@ -97,9 +127,12 @@ export function SurfaceBar() {
 
 /** Where this conversation runs, how full its context is, what changed, and what is running. */
 function SessionDetails({ onReview }: { onReview: () => void }) {
-  const { api, project, session, git, contextUsage, activeRun, runs } = useWorkspace();
+  const { api, project, session, git, contextUsage, openTerminal, initializeGit, setNotice } = useWorkspace();
   const folder = session?.workingDirectory ?? project?.workingDirectory;
-  const finished = runs.filter((run) => run.sessionId === session?.id && run.completedAt).length;
+  const reveal = async () => {
+    if (!folder) return;
+    try { await api.openPath(folder); } catch (error) { setNotice(formatUserError(error)); }
+  };
   const percent = contextUsage ? Math.round(Math.max(0, Math.min(1, contextUsage.fraction)) * 100) : undefined;
   return (
     <div className="session-details-body">
@@ -107,13 +140,30 @@ function SessionDetails({ onReview }: { onReview: () => void }) {
         <h4>Environment</h4>
         <p className="session-details-row"><LaptopIcon size={14} /><span>{api.isDesktop === false ? "Paired device, reading this computer" : "This computer"}</span></p>
         {folder && (
-          <p className="session-details-row" title={folder}>
+          <div className="session-details-row" title={folder}>
             <FolderIcon size={14} />
             <span className="truncate">{project?.name ?? folderBasename(folder)} <span className="faint">· {formatProjectRoot(folder, { home: window.capsule?.homeDir })}</span></span>
-          </p>
+            {/* Open the folder where you work on it, from the row that names it. */}
+            {api.isDesktop !== false ? <span className="session-details-row-actions">
+              <button type="button" className="icon-btn" title="Reveal in Finder" aria-label="Reveal in Finder" onClick={() => void reveal()}><FolderOpenIcon size={14} /></button>
+              <button type="button" className="icon-btn" title="Open in Terminal" aria-label="Open in Terminal" onClick={() => void openTerminal()}><TerminalIcon size={14} /></button>
+            </span> : null}
+          </div>
         )}
         {git?.branch && <p className="session-details-row"><GitBranchIcon size={14} /><span className="mono">{git.branch}</span></p>}
       </section>
+      {/* What the titlebar used to carry: run an action, commit and push, or start Git. */}
+      {folder && api.isDesktop !== false && (
+        <section className="session-details-actions" aria-label="Workspace actions">
+          <ProjectActionsControl />
+          <CommitControl />
+          {git?.available && !git.isRepo ? (
+            <button type="button" className="session-details-action" onClick={() => void initializeGit()}>
+              <GitBranchIcon size={14} /><span>Initialize Git in this folder</span>
+            </button>
+          ) : null}
+        </section>
+      )}
       <section className="session-details-line">
         <h4>Context</h4>
         {percent === undefined ? <span className="faint">Not reported yet</span> : (
@@ -132,15 +182,7 @@ function SessionDetails({ onReview }: { onReview: () => void }) {
           </span>
         </section>
       )}
-      <section>
-        <h4>Background tasks</h4>
-        {activeRun ? (
-          <p className="session-details-row"><TerminalIcon size={14} /><span className="truncate">{activeRun.prompt?.slice(0, 80) || "A turn is running"}</span></p>
-        ) : (
-          <p className="session-details-row faint">Nothing running</p>
-        )}
-        {finished > 0 && <p className="session-details-row faint">{finished} finished</p>}
-      </section>
+      <BackgroundTasks />
     </div>
   );
 }

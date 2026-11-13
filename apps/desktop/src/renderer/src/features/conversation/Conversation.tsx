@@ -1,3 +1,4 @@
+import { formatClock } from "../../lib/display-prefs";
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChatMessage, Run } from "@capsule/shared";
 import { harnessDisplayName } from "../../lib/harness";
@@ -64,28 +65,29 @@ const MessageRow = memo(function MessageRow({
       <h2 className="sr-only">
         {message.role === "user" ? (message.kind === "steer" ? "You, steering" : "You") : "Agent"}
       </h2>
+      {message.content ? <MessageBody content={message.content} /> : null}
+      {message.contentTruncated ? <p className="faint">Display excerpt. The full message is retained in local history.</p> : null}
+      <MessageAttachments message={message} onOpen={onOpenAttachment} />
       {/* Visual alignment carries authorship; the heading exposes it to
-          assistive navigation without adding repeated visible chrome. */}
+          assistive navigation. The time and actions follow the message, so
+          the content leads and the chrome reads as a caption. */}
       <div className="who">
         {message.kind === "steer" && <span className="tag">Steer</span>}
         <span className="when">{formatTime(message.createdAt)}</span>
         <span className="msg-actions">
           <CopyButton text={message.content} />
           {message.role === "user" && message.kind !== "steer" && onRewind && !message.id.startsWith("local-") ? (
-            <button type="button" className="copy-action" title="Edit from here" aria-label="Edit from here" onClick={() => onRewind(message)}>
+            <button type="button" className="icon-btn" title="Edit from here" aria-label="Edit from here" onClick={() => onRewind(message)}>
               <HistoryIcon size={13} />
             </button>
           ) : null}
           {message.role === "user" && message.kind !== "steer" && message.content && onContinue ? (
-            <button type="button" className="copy-action" title="Continue in a new conversation" aria-label="Continue in a new conversation" onClick={() => onContinue(message.content)}>
+            <button type="button" className="icon-btn" title="Continue in a new conversation" aria-label="Continue in a new conversation" onClick={() => onContinue(message.content)}>
               <MessageSquarePlusIcon size={13} />
             </button>
           ) : null}
         </span>
       </div>
-      {message.content ? <MessageBody content={message.content} /> : null}
-      {message.contentTruncated ? <p className="faint">Display excerpt. The full message is retained in local history.</p> : null}
-      <MessageAttachments message={message} onOpen={onOpenAttachment} />
     </div>
   );
 });
@@ -118,9 +120,7 @@ const FoldedTurn = memo(function FoldedTurn({
 });
 
 function formatTime(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return formatClock(iso);
 }
 
 /** Newest turns that never fold. */
@@ -536,7 +536,7 @@ export function Conversation() {
                     ? "Start a conversation, or attach a folder when the work needs a repo."
                     : project.name === "Inbox"
                       ? "This chat isn't bound to a repo. Attach a folder or start a project from one."
-                      : "Attach a folder so Capsule can search files, run git, and start coding harnesses."}
+                      : "Attach a folder so Capsule can search files, run git, and start coding agents."}
                 </p>
               )}
               {(!project || !project.workingDirectory) && (
@@ -573,7 +573,7 @@ export function Conversation() {
                 </div>
               )}
               {historyNavigation}
-              <VirtualTurns key={session?.id} turns={turns} folded={folded} scroller={scroller} stick={stick} focus={focusTurn}>{(turn) =>
+              <VirtualTurns key={`${session?.id}:${settings?.timeFormat ?? "system"}:${settings?.toolCallDisplay ?? "compact"}`} turns={turns} folded={folded} scroller={scroller} stick={stick} focus={focusTurn}>{(turn) =>
                 folded.has(turn.id) ? (
                   <FoldedTurn key={turn.id} turn={turn} onOpen={openTurn} />
                 ) : (

@@ -146,8 +146,8 @@ export async function runWorkspaceExtensionRegressions(host: HTMLElement, base: 
       setDraft: (update: string | ((value: string) => string)) => { draft = typeof update === "function" ? update(draft) : update; },
       api: { ...(base.api as object), listPullRequests: async () => ({ items: [pr] }), getPullRequest: async () => undefined } };
     root.render(<Inspector />);
-    await until(() => document.querySelector(".codex-pr-row"));
-    document.querySelector<HTMLButtonElement>(".codex-pr-row")!.click();
+    await until(() => document.querySelector(".panel-pr-row"));
+    document.querySelector<HTMLButtonElement>(".panel-pr-row")!.click();
     await until(() => document.querySelector('[aria-label="More pull request options"]'));
     document.querySelector<HTMLButtonElement>('[aria-label="More pull request options"]')!.click();
     await until(() => button("Explain this PR"));

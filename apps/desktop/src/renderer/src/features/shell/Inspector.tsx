@@ -9,7 +9,7 @@ import type {
   LocalServer,
 } from "@capsule/shared";
 import { mergePrompt, rebasePrompt } from "../../lib/pull-request-stack";
-import { folderBasename, projectFolderList } from "@capsule/shared";
+import { folderBasename, projectFolderList, type HarnessReadiness } from "@capsule/shared";
 import { useRememberedScroll } from "../../lib/remembered-scroll";
 import { FileSaveCoordinator, isConflictError } from "../../lib/file-save";
 import { fileDrafts, fileOwnerKey } from "../../lib/file-drafts";
@@ -39,6 +39,11 @@ import {
   FileIcon,
   MaximizeIcon,
   MinimizeIcon,
+  PlusIcon,
+  UndoIcon,
+  CloudUploadIcon,
+  GitMergeIcon,
+  GitPullRequestIcon,
   XIcon,
 } from "./icons";
 
@@ -54,9 +59,34 @@ const CONVERSATION_MIN_WIDTH = 480;
 const FILES_SPLIT_MIN_WIDTH = 480;
 
 /** The width the panel and the conversation share. */
+/** Surfaces that put their own controls in the panel header instead of a title. */
+const HEAD_SLOT_TOOLS = new Set<InspectorTool>(["simulator", "browser"]);
+
+/** Room for the conversation and the panel together: the window less the sidebar. */
 function available(): number {
-  return document.querySelector(".workspace-body")?.clientWidth ?? window.innerWidth;
+  const app = document.querySelector<HTMLElement>(".app");
+  // Drawn outside the app shell (a preview, a test), the panel's own container is the room.
+  if (!app) return document.querySelector<HTMLElement>(".inspector")?.parentElement?.clientWidth ?? window.innerWidth;
+  const sidebar = document.querySelector<HTMLElement>(".app > .sidebar");
+  return app.clientWidth - (sidebar && getComputedStyle(sidebar).position !== "absolute" ? sidebar.getBoundingClientRect().width : 0);
 }
+
+const READINESS_LABEL: Record<HarnessReadiness, string> = {
+  ready: "Ready",
+  dedicated: "Ready",
+  running: "Running",
+  missing_cli: "Not installed",
+  needs_login: "Needs sign-in",
+  missing_acpx: "Bridge missing",
+  gateway_offline: "Gateway offline",
+};
+
+const SPAWN_BLOCKED: Partial<Record<HarnessReadiness, string>> = {
+  missing_cli: "Install this agent's command-line tool first.",
+  needs_login: "Sign in to this agent in a terminal first.",
+  missing_acpx: "The Gateway's agent bridge is not installed.",
+  gateway_offline: "The Gateway is offline.",
+};
 
 export function Inspector() {
   const {
@@ -510,6 +540,22 @@ export function Inspector() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  /* While the chooser shows, a surface's letter opens it, as the hint on each card says; typing in a field stays typing. */
+  const launcherKeys = useRef<(event: KeyboardEvent) => void>(() => undefined);
+  launcherKeys.current = (event) => {
+    if (activeTool !== "launcher" || event.metaKey || event.ctrlKey || event.altKey) return;
+    if (event.target instanceof HTMLElement && event.target.closest("input, textarea, select, [contenteditable]")) return;
+    const surface = SURFACES.find((item) => item.key === event.key.toLowerCase());
+    if (!surface || surface.blockedBy({ projectId, git, desktop: api.isDesktop, platform: api.platform })) return;
+    event.preventDefault();
+    selectTool(surface.tool);
+  };
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => launcherKeys.current(event);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   function resizeBy(delta: number) {
     setPanelWidth((current) => clampPanelWidth({
       requested: panelWidth - delta,
@@ -645,7 +691,7 @@ export function Inspector() {
   return (
     <aside
       ref={inspectorElement}
-      className={`inspector codex-inspector${isMaximized ? " maximized" : ""}`}
+      className={`inspector panel-inspector${isMaximized ? " maximized" : ""}`}
       data-resizing={resizing || sizing ? "true" : undefined}
       style={!isMaximized ? { width: `${panelWidth}px` } : undefined}
     >
@@ -656,55 +702,61 @@ export function Inspector() {
         * the right. The titlebar's icon bar chooses the surface, so there are no
         * tabs to manage here.
         */}
-      <div className="codex-tab-bar inspector-head">
-        <span className="codex-breadcrumb inspector-title truncate">
+      <div className="panel-tab-bar inspector-head">
+        {/*
+          * The simulator portals its menus into this slot. It stays mounted
+          * whichever surface shows: unmounting it in the same update as the
+          * simulator left React removing the menus from a detached node.
+          */}
+        {/* Surfaces with their own header controls draw them here, in the titlebar's row. */}
+        <span className="inspector-head-slot" ref={setHeadSlot} hidden={!HEAD_SLOT_TOOLS.has(activeTool)} />
+        <span className="panel-breadcrumb inspector-title truncate" hidden={HEAD_SLOT_TOOLS.has(activeTool)}>
           {activeTool === "files" ? (
             <>
               <span>Files</span>
-              <span className="codex-breadcrumb-slash">/</span>
+              <span className="panel-breadcrumb-slash">/</span>
               {activeRoot ? (
-                <span className="codex-breadcrumb-root">{folderBasename(activeRoot)}</span>
+                <span className="panel-breadcrumb-root">{folderBasename(activeRoot)}</span>
               ) : (
                 <span>workspace</span>
               )}
               {previewDoc?.path?.includes("/") ? (
-                <span className="codex-breadcrumb-dir">
+                <span className="panel-breadcrumb-dir">
                   /{previewDoc.path.split("/").slice(0, -1).join("/")}
                 </span>
               ) : null}
               {previewDoc?.path ? (
-                <span className="codex-breadcrumb-file">/{folderBasename(previewDoc.path)}</span>
+                <span className="panel-breadcrumb-file">/{folderBasename(previewDoc.path)}</span>
               ) : null}
             </>
           ) : activeTool === "review" ? (
             <>
-              <span>Git</span>
-              <span className="codex-breadcrumb-sep">·</span>
+              <span>Review</span>
+              <span className="panel-breadcrumb-sep">·</span>
               <span className="mono" title={git?.branch}>{git?.branch ?? "No branch"}</span>
               {git?.changed ? (
-                <span className="codex-breadcrumb-count">{git.changed} changed</span>
+                <span className="panel-breadcrumb-count">{git.changed} changed</span>
               ) : null}
             </>
           ) : activeTool === "browser" ? (
             <>
               <span>Browser</span>
-              {browserUrl ? <><span className="codex-breadcrumb-sep">·</span><span className="truncate">{browserUrl}</span></> : null}
+              {browserUrl ? <><span className="panel-breadcrumb-sep">·</span><span className="truncate">{browserUrl}</span></> : null}
             </>
           ) : activeTool === "simulator" ? (
-            <span className="inspector-head-slot" ref={setHeadSlot} />
+            null
           ) : activeTool === "agents" ? (
-            <span>Current thread · reported activity</span>
+            <span>Agents</span>
           ) : activeTool === "chat" ? (
             <>
               <span>Side chat</span>
-              <span className="codex-breadcrumb-sep">·</span>
-              <span>{dedicated?.name ?? "ACP Agents"}</span>
+              {dedicated?.name ? <><span className="panel-breadcrumb-sep">·</span><span>{dedicated.name}</span></> : null}
             </>
           ) : (
             <span>Open a surface</span>
           )}
         </span>
-        <div className="codex-chrome-actions">
+        <div className="panel-chrome-actions">
           {activeTool === "files" && (
             <button
               type="button"
@@ -738,20 +790,18 @@ export function Inspector() {
         </div>
       </div>
 
-      <div className="codex-inspector-content">
+      <div className="panel-inspector-content">
         {activeTool === "launcher" && (
-          <div className="codex-launcher">
+          <div className="panel-launcher">
             {/*
               * A chooser, not a bare grid of buttons. Each surface says what it
               * opens, and one that cannot open says why instead of being a
               * button that does nothing when clicked — a disabled control with
               * no reason is a dead end.
               */}
-            <div className="codex-launcher-head">
-              <h3>Open a surface</h3>
-              <p>Choose what to show in this panel.</p>
-            </div>
-            <div className="codex-launcher-cards">
+            {/* The panel header already says "Open a surface"; the body starts with the choice. */}
+            <p className="panel-launcher-hint">Choose what to show in this panel.</p>
+            <div className="panel-launcher-cards">
               {SURFACES.map((surface) => {
                 const Icon = surface.icon;
                 const blocked = surface.blockedBy({ projectId, git, desktop: api.isDesktop, platform: api.platform });
@@ -759,21 +809,19 @@ export function Inspector() {
                   <button
                     key={surface.tool}
                     type="button"
-                    className="codex-launcher-card squish-click"
+                    className="panel-launcher-card squish-click"
                     disabled={Boolean(blocked)}
                     title={blocked ?? `Open ${surface.label}`}
                     onClick={() => selectTool(surface.tool)}
                   >
-                    <span className="codex-launcher-lead">
-                      <span className="codex-launcher-icon">
+                    <span className="panel-launcher-lead">
+                      <span className="panel-launcher-icon">
                         <Icon size={16} />
                       </span>
-                      <span className="codex-launcher-label">{surface.label}</span>
-                      {surface.shortcut ? (
-                        <kbd className="codex-launcher-kbd">{surface.shortcut}</kbd>
-                      ) : null}
+                      <span className="panel-launcher-label">{surface.label}</span>
+                      <kbd className="panel-launcher-kbd" title={surface.shortcut ? `Also ${surface.shortcut} from anywhere` : undefined}>{surface.key.toUpperCase()}</kbd>
                     </span>
-                    <span className="codex-launcher-detail">{blocked ?? surface.detail}</span>
+                    <span className="panel-launcher-detail">{blocked ?? surface.detail}</span>
                   </button>
                 );
               })}
@@ -782,7 +830,7 @@ export function Inspector() {
         )}
 
         {activeTool === "files" && (
-          <div className="codex-files-surface">
+          <div className="panel-files-surface">
             <RecoverableFiles onError={setNotice} onDiscard={(owner) => {
               fileDrafts.discard(owner);
               if (editing && fileOwnerKey(editing) === fileOwnerKey(owner)) {
@@ -793,8 +841,8 @@ export function Inspector() {
                 void previewFile(owner.path);
               }
             }} />
-            <div className={`codex-files-workspace${compactFiles ? " compact" : ""}${showTree && activeRoot ? " tree-visible" : ""}`}>
-              <div className="codex-file-preview-pane">
+            <div className={`panel-files-workspace${compactFiles ? " compact" : ""}${showTree && activeRoot ? " tree-visible" : ""}`}>
+              <div className="panel-file-preview-pane">
                 {previewDoc ? (
                   <FilePreviewView
                     doc={previewEditing ? { ...previewDoc, contents: preview } : previewDoc}
@@ -842,8 +890,8 @@ export function Inspector() {
                     }}
                   />
                 ) : (
-                  <div className="codex-empty-file-state">
-                    <div className="codex-empty-file-icon" aria-hidden>
+                  <div className="panel-empty-file-state">
+                    <div className="panel-empty-file-icon" aria-hidden>
                       <FileIcon size={46} />
                     </div>
                     <h3>Open file</h3>
@@ -887,7 +935,7 @@ export function Inspector() {
         )}
 
         {activeTool === "review" && (
-          <div className="codex-tool-pane" ref={reviewScroll}>
+          <div className="panel-tool-pane" ref={reviewScroll}>
             {selectedPullRequest ? (
               <PullRequestDetailView
                 key={selectedPullRequest.number}
@@ -961,18 +1009,18 @@ export function Inspector() {
               />
             ) : (
               <>
-            <div className="codex-review-header">
+            <div className="panel-review-header">
               <div className="kv">
                 <span>Branch</span>
                 <span className="mono">{git?.branch ?? "main"}</span>
               </div>
               <div className="git-actions">
                 <button className="chip" type="button" onClick={() => void gitPush()}>
-                  Push
+                  <CloudUploadIcon size={13} />Push
                 </button>
                 {git?.pullRequest && git.pullRequest.state === "OPEN" ? (
                   <button className="chip" type="button" onClick={() => void gitMergePullRequest()}>
-                    Merge PR
+                    <GitMergeIcon size={13} />Merge PR
                   </button>
                 ) : (
                   <button
@@ -986,7 +1034,7 @@ export function Inspector() {
                     }
                     onClick={() => void gitCreatePullRequest()}
                   >
-                    {settings?.prDraft ? "Draft PR" : "Pull request"}
+                    <GitPullRequestIcon size={13} />{settings?.prDraft ? "Draft PR" : "Pull request"}
                   </button>
                 )}
               </div>
@@ -1004,8 +1052,8 @@ export function Inspector() {
               }}
             />
 
-            <div className="codex-review-files">
-              <h4>Changed Files ({git?.files?.length ?? 0})</h4>
+            <div className="panel-review-files">
+              <h4>Changed files ({git?.files?.length ?? 0})</h4>
               {(git?.files ?? []).length === 0 ? (
                 <p className="faint">Working tree clean.</p>
               ) : (
@@ -1016,12 +1064,14 @@ export function Inspector() {
                       <span className="truncate">{entry.path}</span>
                       <span className="meta">{entry.code}</span>
                     </button>
-                    <button className="ghost" onClick={() => void gitStage(entry.path)}>
-                      Stage
-                    </button>
-                    <button className="danger" onClick={() => gitDiscard(entry.path)}>
-                      Discard
-                    </button>
+                    <span className="change-row-actions">
+                      <button type="button" className="icon-btn" title={`Stage ${entry.path}`} aria-label={`Stage ${entry.path}`} onClick={() => void gitStage(entry.path)}>
+                        <PlusIcon size={13} />
+                      </button>
+                      <button type="button" className="icon-btn change-row-discard" title={`Discard changes to ${entry.path}`} aria-label={`Discard changes to ${entry.path}`} onClick={() => gitDiscard(entry.path)}>
+                        <UndoIcon size={13} />
+                      </button>
+                    </span>
                   </div>
                 ))
               )}
@@ -1030,7 +1080,7 @@ export function Inspector() {
             {git?.isRepo && <ReviewCommitForm key={`${projectId}/${session?.id ?? ""}/${session?.workingDirectory ?? project?.workingDirectory ?? ""}`}
               dirty={Boolean(git.dirty)} onCommit={gitCommit} />}
 
-            <div className="codex-diff-section">
+            <div className="panel-diff-section">
               <h4>Diff</h4>
               {diff ? (
                 <DiffView text={diff} />
@@ -1054,6 +1104,7 @@ export function Inspector() {
         )}
 
         {activeTool === "browser" && (
+          <InspectorHeadSlot.Provider value={headSlot}>
           <EmbeddedBrowser
             key={`${session?.id ?? projectId ?? "inbox"}:${session?.harnessId ?? ""}:${session?.openclawSessionKey ?? ""}`}
             address={browserUrl}
@@ -1064,6 +1115,7 @@ export function Inspector() {
             onRetryServers={() => setServersRefresh((value) => value + 1)}
             onOpenExternal={(url) => void openPath(url)}
           />
+          </InspectorHeadSlot.Provider>
         )}
 
         {/* Keyed by thread: an attach that finishes after a switch must not land on the new thread. */}
@@ -1073,40 +1125,41 @@ export function Inspector() {
           </InspectorHeadSlot.Provider>
         )}
 
-        {activeTool === "agents" && <div className="codex-tool-pane"><ThreadAgents /></div>}
+        {activeTool === "agents" && <div className="panel-tool-pane"><ThreadAgents /></div>}
 
         {activeTool === "chat" && (
-          <div className="codex-tool-pane" ref={chatScroll}>
+          <div className="panel-tool-pane" ref={chatScroll}>
             <div className="inspector-block">
-              <h4>ACP Harness Agents</h4>
-              {harnesses.map((harness) => (
+              <h4>Agents</h4>
+              {harnesses.map((harness) => {
+                const notReady = SPAWN_BLOCKED[harness.readiness];
+                const reason = !projectId
+                  ? "Open a project first — an agent starts in its folder."
+                  : notReady ?? (busy ? "Waiting for the current request to finish." : undefined);
+                return (
                 <div className="change-row" key={harness.id}>
                   <div className="list-item" style={{ cursor: "default" }}>
                     <CpuIcon size={12} />
                     <span className="truncate">{harness.name}</span>
-                    <span className="meta">{harness.readiness.replaceAll("_", " ")}</span>
+                    <span className="meta">{READINESS_LABEL[harness.readiness]}</span>
                   </div>
                   <button
-                    className="send"
-                    disabled={!projectId || busy}
-                    title={
-                      !projectId
-                        ? "Open a project first — a harness spawns into its folder."
-                        : busy
-                          ? "Waiting for the current request to finish."
-                          : undefined
-                    }
+                    type="button"
+                    className="chip"
+                    disabled={Boolean(reason)}
+                    title={reason}
                     onClick={() => void spawnHarness(harness.id)}
                   >
-                    Spawn
+                    Start
                   </button>
                 </div>
-              ))}
+                );
+              })}
             </div>
 
             {harnessSessions.length > 0 && (
               <div className="inspector-block">
-                <h4>Active Sessions</h4>
+                <h4>Active sessions</h4>
                 {harnessSessions.map((item) => (
                   <div className="change-row" key={item.id}>
                     <button
@@ -1132,7 +1185,7 @@ export function Inspector() {
 
             {activeRun && (
               <div className="inspector-block">
-                <h4>Run Activity</h4>
+                <h4>Run activity</h4>
                 {steps.map((step) => (
                   <div className={`step ${step.status}`} key={step.id}>
                     {/* Error first: the fallback arm rendered a failed step as

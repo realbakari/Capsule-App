@@ -8,7 +8,7 @@ visible while collapsed, including when a turn has not been verified.
 To run a check:
 
 1. Open the turn’s **Verification** details. Use **Add check** to save a test or
-   build command, or choose an action already saved with **Add action** in the
+   build command, or choose an action already saved under **Actions** in the
    project header. Saving a check does not execute it.
 2. Choose the saved check. If the project has only one action, it is selected
    for you but never run automatically.

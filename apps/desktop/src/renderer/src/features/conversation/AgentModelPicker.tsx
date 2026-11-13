@@ -27,6 +27,8 @@ export function AgentModelPicker(props: {
   const agents = props.harnesses.length ? props.harnesses : props.agents;
   const agent = agents.find((item) => item.id === props.agentId) ?? props.agents.find((item) => item.id === props.agentId);
   const harness = props.harnesses.find((item) => item.id === props.agentId);
+  /* A model list that failed for want of a login is a dead end without the way to sign in. */
+  const needsSignIn = harness?.readiness === "needs_login" || /auth|sign.?in|log.?in/i.test(props.error ?? "");
   const preferred = agents.filter((item) => item.id === props.agentId || ["codex", "claude", "grok"].includes(item.id));
   const rail = preferred.length ? preferred.slice(0, 4) : agents.slice(0, 4);
   const knownModel = props.models?.availableModels.find((item) => item.modelId === props.currentModel);
@@ -41,8 +43,11 @@ export function AgentModelPicker(props: {
     if (!open) return;
     search.current?.focus();
     const dismiss = (event: PointerEvent) => { if (!anchor.current?.contains(event.target as Node) && !panel.current?.contains(event.target as Node)) setOpen(false); };
+    /* Escape closes it even when focus has left the panel (a click on its padding, a disabled row). */
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape" && !event.defaultPrevented) { event.preventDefault(); close(); } };
     document.addEventListener("pointerdown", dismiss);
-    return () => document.removeEventListener("pointerdown", dismiss);
+    document.addEventListener("keydown", escape);
+    return () => { document.removeEventListener("pointerdown", dismiss); document.removeEventListener("keydown", escape); };
   }, [open]);
   function toggleFavorite(id: string) {
     const key = modelFavoriteKey(props.agentId, id);
@@ -74,20 +79,20 @@ export function AgentModelPicker(props: {
           rows[next]?.focus();
         }
       }}>
-      <header><SearchIcon size={14} /><input ref={search} aria-label={choosingHarness ? "Search harnesses" : "Search models"} placeholder={choosingHarness ? "Search harnesses…" : "Search models…"} value={query} onChange={(event) => setQuery(event.target.value)} />
+      <header><SearchIcon size={14} /><input ref={search} aria-label={choosingHarness ? "Search agents" : "Search models"} placeholder={choosingHarness ? "Search agents…" : "Search models…"} value={query} onChange={(event) => setQuery(event.target.value)} />
         <button type="button" className="icon-btn" aria-label="Close model picker" onClick={close}><XIcon size={14} /></button></header>
       <div className="agent-model-picker-body">
         <nav aria-label="Agents">
-          <button type="button" aria-label="Favorite models" aria-pressed={favoritesOnly && !choosingHarness} onClick={() => { setChoosingHarness(false); setFavoritesOnly((value) => !value); }}>☆</button>
+          <button type="button" aria-label="Favorite models" title="Favorite models" aria-pressed={favoritesOnly && !choosingHarness} onClick={() => { setChoosingHarness(false); setFavoritesOnly((value) => !value); }}>☆</button>
           {rail.map((item) => <button type="button" key={item.id} aria-label={item.name} title={item.name} aria-pressed={item.id === props.agentId && !favoritesOnly && !choosingHarness}
             disabled={props.disabled || Boolean(props.liveHarnessId && props.liveHarnessId !== item.id)}
             onClick={() => { props.onAgent(item.id); setChoosingHarness(false); setFavoritesOnly(false); setQuery(""); setShowLegacy(false); }}><AgentGlyph id={item.id} name={item.name} /></button>)}
-          <button type="button" aria-label="All harnesses" title="All harnesses" aria-pressed={choosingHarness} onClick={() => { setChoosingHarness((value) => !value); setQuery(""); }}>…</button>
+          <button type="button" aria-label="All agents" title="All agents" aria-pressed={choosingHarness} onClick={() => { setChoosingHarness((value) => !value); setQuery(""); }}>…</button>
         </nav>
         <section aria-label={`${agent?.name ?? "Agent"} models`}>
           {choosingHarness ? <>
-            <p className="agent-model-heading">Harnesses</p>
-            {props.liveHarnessId && <small className="agent-model-note">Start a new conversation to switch harnesses.</small>}
+            <p className="agent-model-heading">Agents</p>
+            {props.liveHarnessId && <small className="agent-model-note">Start a new conversation to switch agents.</small>}
             {agents.filter((item) => item.name.toLowerCase().includes(needle)).map((item) => {
               const status = props.harnesses.find((candidate) => candidate.id === item.id);
               return <button type="button" className="agent-harness-choice" data-harness-choice key={item.id}
@@ -96,7 +101,7 @@ export function AgentModelPicker(props: {
                 <AgentGlyph id={item.id} name={item.name} /><span>{item.name}<small>{status?.readiness === "missing_cli" ? "Setup required" : status?.readiness === "needs_login" ? "Sign-in required" : status?.binaryPath ? "Installed" : status?.detail ?? ""}</small></span>
               </button>;
             })}
-            {props.onManage && <button type="button" className="agent-model-manage" onClick={() => { close(); props.onManage?.(); }}>Manage harnesses</button>}
+            {props.onManage && <button type="button" className="agent-model-manage" onClick={() => { close(); props.onManage?.(); }}>Manage agents</button>}
           </> : <>
           <p className="agent-model-heading">{agent?.name ?? "Select an agent"}{favoritesOnly ? " · Favorites" : ""}</p>
           {filtered.map((model) => <div className="agent-model-row" key={model.modelId}>
@@ -106,7 +111,11 @@ export function AgentModelPicker(props: {
             <button type="button" className="model-favorite" aria-label={`${favorite(model.modelId) ? "Unfavorite" : "Favorite"} ${model.name}`} aria-pressed={favorite(model.modelId)} onClick={() => toggleFavorite(model.modelId)}>{favorite(model.modelId) ? "★" : "☆"}</button>
           </div>)}
           {!filtered.length && <p className="agent-model-empty" role="status">{props.loading ? "Loading models…" : props.error ?? (models.length ? "No matching models." : harness?.readiness === "missing_cli" ? harness.detail : props.liveHarnessId ? props.availability.detail : "This agent has not reported model choices. Its default will be used.")}</p>}
-          {props.error && props.onRetry && <button type="button" className="chip" onClick={props.onRetry}>Retry</button>}
+          {!filtered.length && needsSignIn ? <p className="agent-model-note">{harness?.loginHint ?? `Sign in to ${agent?.name ?? "this agent"} in a terminal`}, then retry.</p> : null}
+          {props.error && props.onRetry ? <div className="agent-model-actions">
+            <button type="button" className="chip" onClick={props.onRetry}>Retry</button>
+            {needsSignIn && props.onManage ? <button type="button" className="chip" onClick={() => { close(); props.onManage?.(); }}>Open Agents</button> : null}
+          </div> : null}
           {!models.length && harness?.readiness === "missing_cli" && props.onManage && <button type="button" className="chip" onClick={() => { close(); props.onManage?.(); }}>Set up harness</button>}
           {models.some((model) => model.isLegacy) && !needle && <button type="button" className="ghost" aria-expanded={showLegacy} onClick={() => setShowLegacy((value) => !value)}>{showLegacy ? "Hide" : "Show"} legacy models</button>}
           </>}

@@ -84,10 +84,8 @@ export function ThreadAgents() {
 
   return (
     <div className="thread-agents">
-      <header className="thread-agents-header">
-        <h3>Activity</h3>
-        {route && <span className="meta">{route === "direct" ? "Direct" : "Gateway"}</span>}
-      </header>
+      {/* The panel header names the surface; this line only says which route the turn ran on. */}
+      {route && <p className="meta thread-agents-route">{route === "direct" ? "Direct · runs on this computer" : "Gateway · runs on the Gateway host"}</p>}
       {candidates.length > 1 && <label className="meta">Turn
         <select aria-label="Agent activity turn" value={historical ? run?.id : "latest"} onChange={(event) => setSelected(event.target.value === "latest" ? undefined : { thread: session!.id, id: event.target.value })}>
           <option value="latest">Latest turn</option>
@@ -130,10 +128,10 @@ export function ThreadAgents() {
       <details className="thread-agents-details">
         <summary>What this panel can show</summary>
         <p>Choose an earlier loaded turn to inspect its recorded activity. Historical reads are bounded and never replace live activity. Task states describe reported delegation tool calls, not a complete child-agent roster. Workflow membership and child-session controls are not available on these routes.</p>
-        <p>Some harnesses or Gateway versions omit delegation details and per-task usage. Missing values stay unknown; usage is never estimated from text or assigned from the parent turn.</p>
+        <p>Some agents or Gateway versions omit delegation details and per-task usage. Missing values stay unknown; usage is never estimated from text or assigned from the parent turn.</p>
       </details>
       <footer>
-        <button type="button" className="ghost" onClick={() => setView("runtimes")}>Manage harnesses</button>
+        <button type="button" className="ghost" onClick={() => setView("runtimes")}>Manage agents</button>
       </footer>
     </div>
   );

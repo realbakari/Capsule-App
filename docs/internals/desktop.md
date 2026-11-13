@@ -135,6 +135,40 @@ remain authoritative; this changes layout, not stored messages. Dark/light,
 narrow/wide and enlarged-text fixtures exercise Markdown independently of
 which runtime carried a turn.
 
+## Colour and theme tokens
+
+Every colour in the app's stylesheets comes from `packages/ui/src/tokens.css`,
+which defines the dark and light values. A translucent wash or border is
+`color-mix(in srgb, var(--text) N%, transparent)`, so the same rule reads as a
+light wash in dark theme and a dark one in light theme; a fixed white or black
+belongs only on surfaces that are always dark or always light (the simulator's
+screen, an embedded page, text over an image). The shadcn-style tokens such as
+`--border` and `--muted` hold bare HSL channels and are only valid inside
+`hsl(var(--x))`; use `--border-color` and `--text-muted` as colours.
+
+Scales live in the same file: type (`--text-3xs` .625rem up to `--text-xl`,
+with `--text-ui` .8125rem as the default for UI text), corners (`--radius-xs`
+to `--radius-2xl` and `--radius-full`), control heights (`--control-h-xs` to
+`--control-h-lg`), stacking layers (`--z-sticky` up to `--z-toast`), overlay
+motion (`--motion-overlay`, `--enter-scale`, `--press-scale`), one focus ring
+(`--focus-ring` with `--focus-offset` or `--focus-offset-inset`), and surfaces
+for sent messages (`--surface-message`) and wells (`--surface-sunken`). Every
+popover and menu shares one surface rule at the top of `styles.css`, which the
+surface regression checks across themes; dialogs end on a footer band.
+
+`TooltipLayer`, mounted once in `App`, gives every element with a `title` a
+styled tooltip on hover or keyboard focus. It holds the `title` aside while
+the tip shows so the native one does not appear too, and draws a trailing
+shortcut such as "(⌘J)" as a key.
+
+`scripts/check-css-tokens.mjs` runs in `pnpm lint`. Besides colours it fails
+on a font size under 0.9rem or a corner radius of 4px or more written as a raw
+number, and on a declaration whose parentheses do not balance. It fails on a `var(--x)`
+that nothing defines and that has no fallback, on a channel token used as a
+colour, and on any rise in raw colour literals over the count recorded in
+`scripts/css-colour-baseline.json`. After removing raw colours, run it with
+`--update` to lower the recorded count; it refuses to raise it.
+
 ## Shell
 
 New profiles default to Direct execution and do not attempt a Gateway connection
@@ -262,8 +296,18 @@ attachment validation still receives the original native path.
 - The folder-plus control adds a local project. The adjacent Git control opens
   repository cloning; clone is delegated to `git clone -- <url> <destination>`
   with no shell, and a project row is inserted only after it succeeds.
-- The titlebar exposes saved project actions, Open, Git branch state, and
-  **Initialize Git** when the folder is not yet a repository.
+- The titlebar carries the conversation's name (a menu), Stop while a turn
+  runs, the panel icon bar, and the connection dot only while the Gateway is
+  down. Workspace controls live in **Conversation details** (`SessionDetails`
+  in `SurfaceBar.tsx`): the folder row with Reveal in Finder and Open in
+  Terminal, the branch, `ProjectActionsControl` and `CommitControl` as rows,
+  and Initialize Git. Their menus open from inside the popover;
+  `HeaderPopover` treats a popover or dialog opened after it as its own, so
+  clicking there does not close it, and Escape closes only the topmost layer.
+  A paired browser sees the details but not these rows.
+- The conversation name is a menu (`ThreadTitleMenu`): the same actions as its
+  sidebar row, with rename in place, so they stay reachable with the sidebar
+  collapsed.
 
 ---
 
@@ -310,7 +354,9 @@ Helpers: `projectFolderList`, `addFolderToProject`, `removeFolderFromProject`, `
 The titlebar's `SurfaceBar` chooses what the panel shows, one surface at a
 time; there are no tabs. Left to right: **Conversation details** (a
 `HeaderPopover`: environment, folder and branch, context used, changes with
-Review, background tasks), the **terminal** toggle for the bottom dock, then
+Review, and `BackgroundTasks`: the running turn and running project actions,
+each with its elapsed time, a stop button, and, for actions, the last twelve
+lines of output when expanded; it polls action runs only while open), the **terminal** toggle for the bottom dock, then
 **Review**, **Browser**, **Simulator** (only on a Mac desktop) and **Files**,
 and **More** with **Agents**, **Side chat** and Keep computer awake. Clicking
 the surface that is showing closes the panel. `surfaces.ts` is the one table
@@ -629,11 +675,10 @@ palette) opens `ThreadFind` above the transcript: it counts matching messages,
 Enter / Shift+Enter walk them, and the matching turn is unfolded, scrolled to
 through `VirtualTurns`' `focus` prop and outlined.
 
-The titlebar's branch chip shows `+added −removed` from Git status when the
-checkout is dirty, and a **Create PR** chip appears on a non-default branch
-with `gh` available and no open pull request; it opens Review, which owns
-PR creation. A `⋮` menu at the right offers iOS Simulator (macOS desktop),
-Browser, and the keep-awake-while-running toggle, mirrored in Settings.
+Conversation details shows `+added −removed` from Git status beside
+**Review** when the checkout is dirty; pull requests are created from Commit &
+push or from Review. The icon bar's More menu offers Agents, Side chat and the
+keep-awake-while-running toggle, mirrored in Settings.
 
 The composer is one box: the prompt, then a single row of the controls that
 shape a turn — model, reported effort and permissions, and the context meter. The strip
@@ -1643,3 +1688,99 @@ queue size, last delivery and sanitized errors. Browser clients cannot consent
 on behalf of the host. Settings search includes analytics/privacy and browser
 pairing/control. See [implementation](web-access-and-analytics.md) and
 [user documentation](../user/usage-reports.md).
+
+## Shortcuts sheet and new chords
+
+`lib/keybindings.ts` stays the one table: it gained Open Review (⇧⌘D), Open
+Browser (⇧⌘B), next and previous conversation (⌃Tab, ⌃⇧Tab, ordered by
+`lib/session-cycle.ts`) and Keyboard shortcuts (⌘/). Shortcuts owned by a
+surface rather than the registry are listed in `FIXED_SHORTCUTS` so
+`ShortcutsSheet` can show them. The sheet opens from ⌘/ or the palette through
+`SHOW_SHORTCUTS_EVENT`, and uses `useModalFocus` like the other dialogs.
+
+## Simulator: agent banner, device keys, setup
+
+`lib/simulator-activity.ts` reads the running turn's own steps from the last
+20 seconds for `simctl`, `xcodebuild`, `xcrun` or a simulator tool, and the
+pane shows a banner while that holds. It names the device only when a step
+contains its UDID or name. This is inferred, not reported by the agent, and
+covers both runtime routes because it reads run events. With the screen
+focused, ⇧⌘H, ⌘→ and ⌘S press Home, rotate, and add a screenshot.
+`SimulatorSetup` replaces the empty state, and on a Mac without Xcode the
+unavailable state too, with steps derived from the inventory poll.
+
+## Picker shortcuts, context advice, instruction files
+
+⇧⌘M, ⇧⌘I and ⇧⌘E are registry commands that click the composer's own control,
+found by its accessible name (`lib/composer-controls.ts`), so both runtime
+routes and every harness get the same behaviour as a click; a missing,
+disabled or off-screen control produces a notice instead of nothing. The model
+picker's failed state names the agent's `loginHint` and offers **Open Agents**
+when the failure is a sign-in. The context card adds advice and **New
+conversation** at the warn and critical tones. `ProjectInstructions` reads the
+known instruction files through the read-scoped `readFile` channel and flags
+files over 200 lines.
+
+## One name per thing, one heading per page
+
+The user-facing name for the agent catalog and its harness records is
+**Agents**; "harness" stays in code. Each panel surface's header carries its own
+name (Review, Agents, Side chat, Open a surface) and the body starts with
+content. Settings pages show the section name once, and **Restore {Section}
+defaults** says what it resets; Shortcuts can restore too, since its section
+now owns `keybindings`. Settings search matches section names and the words
+people type (model, terminal, dark mode). The sidebar's grouping menu offers
+**By project**, **By status** and **Recent**; Recent replaces the project tree
+rather than repeating it underneath. The desktop companion is a switch that
+reads `getPetState` on mount, after each change and on window focus.
+
+## Narrow screens and paired browsers
+
+Below 640px (`lib/narrow.ts`, kept in step with the CSS block) the sidebar is a
+drawer over the conversation with a scrim: it starts closed, closes when a
+conversation or view is picked, and its open state there is never saved as the
+desktop preference. A paired browser sets `data-platform="browser"`, which drops
+the inset reserved for window controls. A read-only viewer's composer says
+"Read only on this device", shows the whole reason, and offers no Doctor or
+Agents buttons it cannot use. Sidebar rows show their agent's mark after the
+time, and Approval and Failed carry icons.
+
+## Launcher keys and Settings navigation
+
+Each surface in `surfaces.ts` has a one-letter `key` (R Review, B Browser, M
+Simulator, F Files, A Agents, S Side chat). While the panel's launcher shows,
+pressing it opens that surface unless the surface is blocked or the key was
+typed into a field; the card shows the letter, with the global shortcut in its
+tooltip. Settings sections carry an icon and sit under group headings (Runtime,
+Code, App); **Restore … defaults** carries the undo icon.
+
+## Display preferences and behaviour settings
+
+`timeFormat`, `toolCallDisplay`, `diffLayout` and `diffFileState` are read by
+memoized components through `lib/display-prefs.ts`, which the workspace sets
+during render; the transcript is keyed on the first two so a change redraws it.
+`confirmDelete` gates conversation deletion only (projects always confirm);
+`confirmArchive` adds a confirm before archiving. `followUpBehavior: "steer"`
+sends text-only follow-ups during a run through `steerHarness` and falls back
+to the queue when the route refuses. Whitespace-insensitive diffs and worktree
+cleanup beyond deleting a conversation are not built.
+
+## Full-height panel, browser tabs, narrow titlebar
+
+The panel is a sibling of `.workspace`, not inside it: it runs the window's
+full height and its header sits in the titlebar's row as a window drag region
+with its controls exempt. `available()` in `Inspector.tsx` measures the window
+less a docked sidebar. Surfaces in `HEAD_SLOT_TOOLS` (Simulator, Browser) draw
+their own controls into that header through `InspectorHeadSlot`.
+
+The Browser's header holds its tabs, a new-tab button and its actions; back,
+forward, reload and the address share one row below, and page width moved to
+the ⋮ menu. Tabs keep an address and title each and one live page: switching
+loads the tab's address, so in-page state does not survive a switch, and links
+that open a new window are not routed into tabs yet. Menus over the live page
+drop `backdrop-filter`, which composited wrongly with the webview layer.
+
+`SurfaceBar` measures the titlebar and keeps only the panel icons that fit
+beside a 13rem title; the rest move to the top of More, the open surface always
+staying in the bar. With the sidebar collapsed the titlebar adds back and
+forward beside the sidebar toggle.

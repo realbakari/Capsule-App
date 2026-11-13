@@ -1,6 +1,6 @@
 import { useUpdates } from "../../lib/updates";
 import { gatewayConnectionLabel } from "../../lib/harness";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type MouseEvent } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type MouseEvent } from "react";
 import { usePanelResize } from "../../lib/panel-resize";
 import type { Session } from "@capsule/shared";
 import {
@@ -41,6 +41,7 @@ import { AddProjectPicker, type ProjectSourceId } from "./AddProjectPicker";
 import { CloneRepositoryDialog } from "./CloneRepositoryDialog";
 import { SidebarToggle } from "./SidebarControl";
 import { SidebarThreadPreview } from "./SidebarThreadPreview";
+import { AgentGlyph } from "./AgentGlyph";
 import {
   ArchiveIcon,
   CpuIcon,
@@ -60,6 +61,7 @@ import {
   SearchIcon,
   SettingsIcon,
   ShieldIcon,
+  AlertTriangleIcon,
   SparkIcon,
   ChevronDownIcon,
   ChevronRightIcon,
@@ -144,6 +146,7 @@ export function Sidebar() {
     approvals,
     openPath,
     ready,
+    harnesses,
   } = useWorkspace();
   const [menu, setMenu] = useState<MenuState>();
   const sidebarRef = useRef<HTMLElement>(null);
@@ -192,7 +195,7 @@ export function Sidebar() {
 
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [restLimit, setRestLimit] = useState<Record<string, number>>({});
-  const [recentLimit, setRecentLimit] = useState(6);
+  const [recentLimit, setRecentLimit] = useState(20);
   const [grouping, setGrouping] = useState(() => readSidebarGrouping(() => localStorage.getItem(SIDEBAR_GROUPING_KEY)));
   const [expandedGroups, setExpandedGroups] = useState<Set<SidebarStatusGroupId>>(new Set());
   const latestRuns = useMemo(() => latestSidebarRuns(projectRuns), [projectRuns]);
@@ -206,10 +209,11 @@ export function Sidebar() {
 
   const threadsByProject = useMemo(() => indexSidebarThreads(sessions), [sessions]);
   const projectNames = useMemo(() => new Map(projects.map((project) => [project.id, project.name])), [projects]);
-  const recentThreads = useMemo(() => grouping === "project" ? [...threadsByProject.values()].flat()
-    .filter((thread) => projectNames.has(thread.projectId))
-    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)) : [], [grouping, threadsByProject, projectNames]);
   const needle = query.trim().toLowerCase();
+  /* Recent is a way of grouping the one list, not a second copy of it under the projects. */
+  const recentThreads = useMemo(() => grouping === "recent" ? [...threadsByProject.values()].flat()
+    .filter((thread) => projectNames.has(thread.projectId) && (!needle || thread.title.toLowerCase().includes(needle)))
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)) : [], [grouping, threadsByProject, projectNames, needle]);
 
   const kindOf = (session: Session): SidebarThreadKind => {
     const run = latestRuns.get(session.id);
@@ -224,7 +228,7 @@ export function Sidebar() {
   const statusGroups = useMemo(() => grouping === "status" ? groupSidebarThreads(sessions, projects, latestRuns, needle) : [], [grouping, sessions, projects, latestRuns, needle]);
 
   function changeGrouping(value: string) {
-    const next: SidebarGrouping = value === "status" ? "status" : "project";
+    const next: SidebarGrouping = value === "status" || value === "recent" ? value : "project";
     setGrouping(next);
     setDraggedPinnedId(undefined);
     try { localStorage.setItem(SIDEBAR_GROUPING_KEY, next); }
@@ -501,7 +505,7 @@ export function Sidebar() {
         </span>
         <span className="thread-title">
           <span className="truncate">{session.title}</span>
-          {grouping === "status" && <small className="thread-project">{projectNames.get(session.projectId)}</small>}
+          {grouping !== "project" && <small className="thread-project">{projectNames.get(session.projectId)}</small>}
         </span>
         <span className="thread-meta">
           {kind === "working" ? (
@@ -510,12 +514,18 @@ export function Sidebar() {
               {startedAt ? <WorkingDuration startedAt={startedAt} /> : null}
             </span>
           ) : kind === "approval" ? (
-            <span className="thread-status approval">Approval</span>
+            <span className="thread-status approval"><ShieldIcon size={10} />Approval</span>
           ) : kind === "failed" ? (
-            <span className="thread-status failed">Failed</span>
+            <span className="thread-status failed"><AlertTriangleIcon size={10} />Failed</span>
           ) : (
             <span className="thread-time">{compactRelativeTime(session.updatedAt)}</span>
           )}
+          {/* Which coding agent this conversation runs, at a glance, as its mark rather than its name. */}
+          {session.harnessId ? (
+            <span className="thread-agent" title={(harnesses ?? []).find((item) => item.id === session.harnessId)?.name ?? session.harnessId}>
+              <AgentGlyph id={session.harnessId} name={(harnesses ?? []).find((item) => item.id === session.harnessId)?.name ?? session.harnessId} size={11} />
+            </span>
+          ) : null}
         </span>
         <span className="thread-quick-actions">
         <button type="button" className="thread-quick-action" aria-label={session.pinned ? "Unpin conversation" : "Pin conversation"}
@@ -603,14 +613,18 @@ export function Sidebar() {
               )
             ) : (
               SETTINGS_TABS.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={settingsTab === item.id ? "active" : ""}
-                  onClick={() => setSettingsTab(item.id)}
-                >
-                  {item.label}
-                </button>
+                <Fragment key={item.id}>
+                  {item.group ? <h3 className="settings-nav-group">{item.group}</h3> : null}
+                  <button
+                    type="button"
+                    className={settingsTab === item.id ? "active" : ""}
+                    aria-current={settingsTab === item.id ? "page" : undefined}
+                    onClick={() => setSettingsTab(item.id)}
+                  >
+                    <item.icon size={14} />
+                    {item.label}
+                  </button>
+                </Fragment>
               ))
             )}
           </nav>
@@ -689,7 +703,7 @@ export function Sidebar() {
           it says nothing — the prompt below is the whole story then. */}
       <div className={`sidebar-scope${projects.length === 0 ? " empty" : ""}`}>
         {ready && projects.length > 0 && <MenuSelect ariaLabel="Group conversations" value={grouping}
-          options={[{ id: "project", label: "By project" }, { id: "status", label: "By status" }]}
+          options={[{ id: "project", label: "By project" }, { id: "status", label: "By status" }, { id: "recent", label: "Recent" }]}
           onChange={changeGrouping} />}
         <div className="sidebar-scope-actions">
           <button
@@ -739,7 +753,12 @@ export function Sidebar() {
             </section>;
           })}
           {ready && projects.length > 0 && statusGroups.length === 0 && <div className="sidebar-empty">{needle ? "No conversations match this search." : "No conversations"}</div>}
-        </> : filteredProjects.map((item) => {
+        </> : grouping === "recent" ? <section className="sidebar-recents" aria-label="Recent conversations">
+          {recentThreads.slice(0, recentLimit).map((thread) => renderThread(thread, "recent"))}
+          {recentThreads.length > recentLimit && <button type="button" className="show-more" onClick={() => setRecentLimit((limit) => limit + 20)}>Show more</button>}
+          {recentLimit > 20 && <button type="button" className="show-more" onClick={() => setRecentLimit(20)}>Show fewer</button>}
+          {ready && projects.length > 0 && recentThreads.length === 0 && <div className="sidebar-empty">{needle ? "No conversations match this search." : "No conversations"}</div>}
+        </section> : filteredProjects.map((item) => {
           const threads = sessionsFor(item.id);
           const isOpen = needle ? threads.length > 0 || item.id === projectId : !collapsed.has(item.id);
           const limit = restLimit[item.id] ?? SETTLED_THREAD_PREVIEW;
@@ -873,12 +892,6 @@ export function Sidebar() {
             </div>
           );
         })}
-        {grouping === "project" && !needle && recentThreads.length > 0 && <section className="sidebar-recents" aria-label="Recent conversations">
-          <h3>Recents</h3>
-          {recentThreads.slice(0, recentLimit).map((thread) => renderThread(thread, "recent"))}
-          {recentThreads.length > recentLimit && <button type="button" className="show-more" onClick={() => setRecentLimit((limit) => limit + 6)}>Show more</button>}
-          {recentLimit > 6 && <button type="button" className="show-more" onClick={() => setRecentLimit(6)}>Show fewer</button>}
-        </section>}
       </div>
       <div className="sidebar-footer">
         {update.error || updateResult?.detail || ["update-available", "downloading", "ready-to-install", "installing"].includes(updateResult?.state ?? "") ? (

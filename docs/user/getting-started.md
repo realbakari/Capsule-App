@@ -16,7 +16,7 @@ chat**, and **Keep computer awake**.
    Capsule does not supply a subscription or install the CLI.
 2. Add a project folder with the sidebar's folder-plus control. Start with a
    disposable repository when trying a new agent or permission mode.
-3. Choose the agent in the composer. Open **Harnesses** and **Check this agent**
+3. Choose the agent in the composer. Open **Agents** and **Check this agent**
    if it reports a missing prerequisite. Gateway-only agents need a connected
    OpenClaw Gateway with ACP enabled. New installations default to local agents
    in Direct mode, without a Gateway connection. Existing preferences are kept;
@@ -29,7 +29,7 @@ chat**, and **Keep computer awake**.
    the request and approve once or deny. **Stop** asks the active agent to stop;
    an unconfirmed stop is reported, not shown as completed work.
 6. Review the changed-files card and the Review panel. Save a test/build command
-   through **Add action**, then select it in the turn's Verification section to
+   through **Add project action** in Conversation details (the list icon in the titlebar), then select it in the turn's Verification section to
    record a local check. A reply or green tool indicator alone is not proof.
 
 A failed send keeps your draft. Sending and starting another conversation only
@@ -57,7 +57,7 @@ Learn more: [Drafts and attachments](composer.md), [projects and previews](proje
 ## Organize conversations
 
 Use **Group conversations** above the sidebar list to switch between **By project**
-(the default) and **By status**. This view preference stays on this device.
+(the default), **By status** and **Recent**. This view preference stays on this device.
 
 - **Needs you** collects approvals, blocked turns and failed conversations.
   Each row still distinguishes an approval from a failure.
@@ -72,9 +72,10 @@ offer **Show more** and **Show fewer**, keeping the selected conversation visibl
 Pins sort first within a status group. Return to **By project** to drag pinned
 conversations into a custom order; switching views keeps project expansion state.
 
-In project view, **Recents** opens conversations across projects in activity order.
-It highlights the selected conversation and offers the same pin, archive, and
-more actions as conversations under a project.
+**Recent** lists every conversation across projects in activity order, each with
+its project's name, instead of the project tree. It highlights the selected
+conversation and offers the same pin, archive, and more actions. `⌃Tab` steps
+through the same order from anywhere.
 Hover over a conversation or focus it with the keyboard to reveal pin, archive,
 and more actions. Pause on the row to see its full title and project. A project
 preview shows its folder and conversation count. Press Escape to dismiss a preview.

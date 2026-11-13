@@ -18,8 +18,9 @@ import "./styles.css";
  * the dark app theme, independently of its surrounding page.
  */
 applyStoredTheme(window.capsule ? undefined : "dark");
-// Windows uses a native caption above the renderer, not inset traffic lights.
-document.documentElement.dataset.platform = /Windows/u.test(navigator.userAgent) ? "windows" : "other";
+// Windows uses a native caption above the renderer, not inset traffic lights,
+// and a paired browser has no window controls at all.
+document.documentElement.dataset.platform = !/Electron/u.test(navigator.userAgent) ? "browser" : /Windows/u.test(navigator.userAgent) ? "windows" : "other";
 
 /*
  * The pet is the same bundle in a different window, chosen by the hash the

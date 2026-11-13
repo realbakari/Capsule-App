@@ -112,7 +112,7 @@ app.whenReady().then(async () => {
       window.setContentSize(1000, 650);
       for (const [width, openFile, name] of [[420, false, "files-narrow-tree"], [420, true, "files-narrow-preview"], [800, false, "files-split"]]) {
         await window.webContents.executeJavaScript(`window.renderFilesPreview(${width}, ${openFile})`);
-        const bounds = await window.webContents.executeJavaScript("(() => { const r = document.querySelector('.codex-inspector').getBoundingClientRect(); return {x: Math.floor(r.x), y: Math.floor(r.y), width: Math.ceil(r.width), height: Math.ceil(r.height)}; })()");
+        const bounds = await window.webContents.executeJavaScript("(() => { const r = document.querySelector('.panel-inspector').getBoundingClientRect(); return {x: Math.floor(r.x), y: Math.floor(r.y), width: Math.ceil(r.width), height: Math.ceil(r.height)}; })()");
         const capture = await window.webContents.capturePage(bounds);
         fs.writeFileSync(path.join(screenshots, `${name}.png`), capture.toPNG());
       }

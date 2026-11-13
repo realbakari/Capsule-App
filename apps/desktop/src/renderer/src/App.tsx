@@ -7,6 +7,7 @@ import { ApprovalsView, HistoryView, SkillsView } from "./features/library/Libra
 import { UsageView } from "./features/library/UsageView";
 import { SettingsView } from "./features/settings/SettingsView";
 import { ConfirmDialog } from "./features/shell/ConfirmDialog";
+import { TooltipLayer } from "./features/shell/TooltipLayer";
 import { ContentSearch } from "./features/shell/ContentSearch";
 import { FilePicker } from "./features/shell/FilePicker";
 import { Inspector, INSPECTOR_REVISION } from "./features/shell/Inspector";
@@ -15,6 +16,7 @@ import { Sidebar } from "./features/shell/Sidebar";
 import { Titlebar } from "./features/shell/Titlebar";
 import { RemoteSessionBanner } from "./features/shell/RemoteSessionBanner";
 import { ArchiveUndoNotice } from "./features/shell/ArchiveUndoNotice";
+import { ShortcutsSheet } from "./features/shell/ShortcutsSheet";
 import { AboutModal } from "./features/settings/AboutModal";
 import { ViewErrorBoundary } from "./features/shell/ErrorBoundary";
 import { useSidebarSwipe } from "./lib/useSidebarSwipe";
@@ -67,6 +69,7 @@ function Shell() {
       <Sidebar />
       <ArchiveUndoNotice />
       <div className="sidebar-swipe-edge" aria-hidden />
+      {!sidebarCollapsed && <button type="button" className="sidebar-scrim" aria-label="Close sidebar" tabIndex={-1} onClick={() => setSidebarCollapsed(true)} />}
       <div className="workspace">
         <Titlebar />
         <RemoteSessionBanner />
@@ -84,13 +87,14 @@ function Shell() {
             {view === "approvals" && <ApprovalsView />}
             {view === "settings" && <SettingsView />}
           </ViewErrorBoundary>
-          {view === "chat" && inspectorOpen && (
-            <ViewErrorBoundary label="Inspector" resetKey={INSPECTOR_REVISION}>
-              <Inspector />
-            </ViewErrorBoundary>
-          )}
         </div>
       </div>
+      {/* The panel runs the full height of the window, its header in the titlebar's row, so a surface like the simulator gets that row back. */}
+      {view === "chat" && inspectorOpen && (
+        <ViewErrorBoundary label="Inspector" resetKey={INSPECTOR_REVISION}>
+          <Inspector />
+        </ViewErrorBoundary>
+      )}
       <ViewErrorBoundary compact label="Command palette">
         <Palette />
       </ViewErrorBoundary>
@@ -101,6 +105,8 @@ function Shell() {
         <ContentSearch />
       </ViewErrorBoundary>
       <ConfirmDialog />
+      <ShortcutsSheet />
+      <TooltipLayer />
       <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} />
     </div>
   );

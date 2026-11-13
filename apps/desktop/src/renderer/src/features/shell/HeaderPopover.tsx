@@ -32,18 +32,33 @@ export function HeaderPopover({ anchor, label, className = "", onClose, children
     observer.observe(trigger);
     const focusTarget = node.querySelector<HTMLElement>("input:not(:disabled), button:not(:disabled), [tabindex='0']");
     (focusTarget ?? node).focus({ preventScroll: true });
+    /*
+     * A menu opened from a row inside this popover is portalled to the body,
+     * so it is outside this node. It still belongs here: clicking or focusing
+     * in it must not close the popover it came from. Popovers opened later
+     * stack after this one, and dialogs (an action editor) count too.
+     */
+    const ours = (target: EventTarget | null) => {
+      if (!(target instanceof Node)) return false;
+      if (node.contains(target) || trigger.contains(target)) return true;
+      const layer = target instanceof Element ? target.closest(".header-popover, [role='dialog'], dialog, .palette-backdrop") : target.parentElement?.closest(".header-popover, [role='dialog'], dialog, .palette-backdrop");
+      return Boolean(layer && layer !== node && (layer.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_PRECEDING));
+    };
     const outside = (event: PointerEvent) => {
-      if (!node.contains(event.target as Node) && !trigger.contains(event.target as Node)) close.current();
+      if (!ours(event.target)) close.current();
     };
     const key = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
+      // Escape closes the topmost layer only; a menu opened from this one goes first.
+      const layers = document.querySelectorAll(".header-popover");
+      if (layers[layers.length - 1] !== node) return;
       event.preventDefault();
       event.stopPropagation();
       close.current();
       trigger.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true });
     };
     const blur = (event: FocusEvent) => {
-      if (!node.contains(event.target as Node) && !trigger.contains(event.target as Node)) close.current();
+      if (!ours(event.target)) close.current();
     };
     window.addEventListener("resize", place);
     window.addEventListener("scroll", place, true);

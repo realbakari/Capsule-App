@@ -108,7 +108,7 @@ export function ApprovalsView() {
       <div className="panel-header">
         <p>Host execution and policy gates waiting on you.</p>
       </div>
-      {approvals.length === 0 && <p className="muted">No pending approvals.</p>}
+      {approvals.length === 0 && <p className="muted">Nothing is waiting on you. When an agent asks to run a command or edit outside its permissions, the request appears here and in its conversation.</p>}
       {approvals.map((item) => (
         <div className="card" key={item.id}>
           <b>{item.action}</b>

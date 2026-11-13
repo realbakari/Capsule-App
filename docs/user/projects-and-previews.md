@@ -41,8 +41,8 @@ path contains spaces, use a whitespace-free folder alias on the Gateway host.
 This also applies to a remote Gateway reached through a local tunnel. Capsule
 does not switch a thread's runtime route or move its project to work around it.
 
-When a folder is not a Git repository, choose **Initialize Git** in the
-titlebar. Git worktree conversations need at least one commit before Capsule
+When a folder is not a Git repository, open **Conversation details** (the list
+icon in the titlebar) and choose **Initialize Git in this folder**. Git worktree conversations need at least one commit before Capsule
 can create their branch.
 
 The composer offers two workspace choices for Git projects:
@@ -69,9 +69,26 @@ rules. Both local and Gateway conversations use their saved working folder.
 Pinned conversations stay above the rest of the project. Drag one pinned
 conversation over another to save a new pinned order.
 
+## Conversation details
+
+The list icon in the titlebar opens **Conversation details**, which holds the
+workspace controls in one place: the folder with **Reveal in Finder** and
+**Open in Terminal**, the branch, **Add project action** or **Run a project
+action**, **Commit & push** (commit, push and create a pull request), and
+**Initialize Git in this folder** when the folder has no repository. The
+titlebar itself carries only the conversation's name and the panel icons.
+
+## Instructions for agents
+
+Project settings list the instruction files at the project's root that coding
+agents read on every turn (`AGENTS.md`, `CLAUDE.md`, `CLAUDE.local.md`,
+`.claude/CLAUDE.md`, `GEMINI.md`), each with its length and an **Open** button.
+A file over 200 lines is marked **worth trimming**: every line costs context on
+every turn, and long files bury the rules that matter.
+
 ## Saved project actions
 
-Choose **Add action** in the titlebar to save a command such as `pnpm dev` or
+Open **Conversation details** (the list icon in the titlebar) and choose **Add project action**; once a project has actions the row reads **Run a project action**. Use it to save a command such as `pnpm dev` or
 `npm run storybook`. Actions belong to the project and run in the current
 conversation’s folder. A running action can be stopped from the same menu, and
 recent output remains visible there.
@@ -84,7 +101,18 @@ grace period.
 An action can include a preview URL. Starting it selects that address in the
 Browser panel automatically.
 
+A running action also appears under **Background tasks** in the conversation
+details (the list icon in the titlebar), with how long it has run. Open its row
+to see its latest output, or stop it from there.
+
 ## Local previews
+
+The Browser panel has tabs. **+** in its header opens a new tab on the local
+servers page; each tab keeps its own address and title, and **×** closes it.
+Switching tabs loads that tab's page again, so scroll position and typed form
+input are not kept across a switch. Page width (fit, phone, tablet) is in the
+⋮ menu with zoom.
+
 
 For a native iOS app, open **Simulator** instead; see [iOS Simulator](simulator.md).
 
@@ -235,6 +263,11 @@ input. It does not terminate existing commands or sandbox the coding CLI.
 Stop and close remain available; close shell tabs before restoring files.
 
 ## Pull requests
+
+**Settings › Source control** sets the **Diff layout** for pull request diffs
+(side by side or one column) and whether **Diff files** start open or folded.
+Turn diffs in the conversation always use one column.
+
 
 Sending a PR question or suggested fix to the composer appends it after your
 existing draft. It does not discard unfinished text or send automatically.

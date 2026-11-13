@@ -17,7 +17,7 @@ export function Avatar({ login, avatars, size = 20 }: { login?: string; avatars?
   const style = { width: size, height: size };
   return avatars?.[login]
     ? <img className="pr-avatar" src={avatars[login]} alt="" title={login} style={style} />
-    : <span className="pr-avatar pr-avatar--initials" title={login} aria-hidden style={{ ...style, background: "var(--surface-2)", color: "var(--text-muted)", fontSize: `${size * 0.42 / 16}rem` }}>{initials}</span>;
+    : <span className="pr-avatar pr-avatar--initials" title={login} aria-hidden style={{ ...style, background: "var(--bg-active)", color: "var(--text-muted)", fontSize: `${size * 0.42 / 16}rem` }}>{initials}</span>;
 }
 
 export function PullRequestComment({ activity, avatars, baseUrl, onOpenUrl, defaultOpen = true }: {

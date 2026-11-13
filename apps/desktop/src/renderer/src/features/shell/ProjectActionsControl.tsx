@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ProjectAction, ProjectActionRun } from "@capsule/shared";
 import { isSharedAction, PROJECT_FILE_NAME } from "@capsule/shared";
 import { useWorkspace } from "../../lib/workspace";
-import { PlusIcon, StopIcon, TerminalIcon } from "./icons";
+import { ChevronDownIcon, PlayIcon, PlusIcon, StopIcon, TerminalIcon } from "./icons";
 import { HeaderPopover } from "./HeaderPopover";
 import { ProjectActionDialog } from "./ProjectActionDialog";
 
@@ -88,17 +88,17 @@ export function ProjectActionsControl() {
   if (!project?.workingDirectory) return null;
 
   return (
-    <div className="topbar-menu-anchor project-actions-control" ref={root}>
+    <div className="session-details-anchor project-actions-control" ref={root}>
       <button
         type="button"
-        className="topbar-chip-btn"
+        className="session-details-action"
         onClick={() => setOpen((value) => !value)}
-        title="Run or add a project action"
         aria-haspopup="dialog"
         aria-expanded={open}
       >
-        <PlusIcon size={12} />
-        <span>Add action</span>
+        {actions.length ? <PlayIcon size={14} /> : <PlusIcon size={14} />}
+        <span>{actions.length ? `Run a project action (${actions.length})` : "Add project action"}</span>
+        <ChevronDownIcon size={12} />
       </button>
       {open ? (
         /*
@@ -114,7 +114,7 @@ export function ProjectActionsControl() {
         >
           {
             <>
-              {error ? <p className="notice project-action-error">{error}</p> : null}
+              {error ? <p className="notice project-action-error" role="alert">{error}</p> : null}
               {actions.length === 0 ? <p className="faint project-actions-empty">No saved actions.</p> : null}
               {actions.map((action) => {
                 const runState = runs.find((run) => run.actionId === action.id);

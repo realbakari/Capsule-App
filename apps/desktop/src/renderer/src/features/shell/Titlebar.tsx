@@ -1,23 +1,19 @@
-import { useState, useRef, useEffect } from "react";
 import { useWorkspace } from "../../lib/workspace";
 import { SidebarToggle } from "./SidebarControl";
-import { ProjectActionsControl } from "./ProjectActionsControl";
-import { CommitControl } from "./CommitControl";
-import { HeaderPopover } from "./HeaderPopover";
 import { SurfaceBar } from "./SurfaceBar";
-import { formatUserError } from "../../lib/errors";
+import { ThreadTitleMenu } from "./ThreadTitleMenu";
 import { gatewayConnectionLabel } from "../../lib/harness";
-import {
-  ChevronDownIcon,
-  FolderIcon,
-  GitBranchIcon,
-  PlusIcon,
-  StopIcon,
-} from "./icons";
+import { ArrowLeftIcon, ArrowRightIcon, StopIcon } from "./icons";
 
+/*
+ * The titlebar names where you are and picks the panel. Opening the folder,
+ * project actions, commit and push live in Conversation details (the list
+ * icon), one row each, so the bar stays the same short width everywhere.
+ */
 const VIEW_TITLE: Record<string, string> = {
   channels: "Channels",
-  runtimes: "Harnesses",
+  project: "Project",
+  runtimes: "Agents",
   skills: "Skills",
   history: "History",
   approvals: "Approvals",
@@ -34,35 +30,14 @@ export function Titlebar() {
     view,
     project,
     session,
-    git,
-    api,
-    openTerminal,
-    openInspector,
     sidebarCollapsed,
     activeRun,
     stopRun,
-    createTask,
-    initializeGit,
-    setNotice,
+    canGoBack,
+    canGoForward,
+    goBack,
+    goForward,
   } = useWorkspace();
-  const terminalCwd = session?.workingDirectory ?? project?.workingDirectory;
-
-  const [openMenu, setOpenMenu] = useState(false);
-  const openMenuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    setOpenMenu(false);
-  }, [project?.id, session?.id, view]);
-
-  async function revealFolder() {
-    if (!terminalCwd) return;
-    setOpenMenu(false);
-    try {
-      await api.openPath(terminalCwd);
-    } catch (error) {
-      setNotice(formatUserError(error));
-    }
-  }
 
   const label = gatewayConnectionLabel(settings?.runtimeMode, connected, status?.state);
 
@@ -73,9 +48,16 @@ export function Titlebar() {
   const sessionTitle = session?.title ?? "";
 
   return (
-    <header className={`page-header ${sidebarCollapsed || view === "channels" ? "with-traffic" : ""}`}>
+    <header className={`page-header ${sidebarCollapsed || view === "channels" ? "with-traffic" : ""}${sidebarCollapsed ? " with-history" : ""}`}>
       {view === "chat" ? <h1 className="sr-only">{sessionTitle || projectName}</h1> : null}
       {sidebarCollapsed || view === "channels" ? <SidebarToggle /> : null}
+      {/* With the sidebar away, its back and forward arrows come here, beside the toggle that brings it back. */}
+      {sidebarCollapsed ? (
+        <span className="titlebar-history">
+          <button type="button" className="icon-btn" title="Back (⌘[)" aria-label="Back" disabled={!canGoBack} onClick={goBack}><ArrowLeftIcon size={14} /></button>
+          <button type="button" className="icon-btn" title="Forward (⌘])" aria-label="Forward" disabled={!canGoForward} onClick={goForward}><ArrowRightIcon size={14} /></button>
+        </span>
+      ) : null}
       <div className="header-actions header-lead">
         <div className="page-title breadcrumb-title">
           {view === "chat" ? (
@@ -86,9 +68,7 @@ export function Titlebar() {
               {sessionTitle ? (
                 <>
                   <span className="breadcrumb-separator">/</span>
-                  <span className="breadcrumb-segment session-segment">
-                    <span>{sessionTitle}</span>
-                  </span>
+                  <ThreadTitleMenu />
                 </>
               ) : null}
             </div>
@@ -99,95 +79,6 @@ export function Titlebar() {
       </div>
 
       <div className="header-actions">
-        {/* Workspace Quick Actions */}
-        {view === "chat" && project?.workingDirectory && (
-          <div className="topbar-project-actions">
-            {/*
-              * Deliberately unkeyed. Keying these on project+session to reset
-              * their state left the previous element in the DOM when the key
-              * changed — two "Add action" buttons side by side — so each
-              * control clears its own state instead, the way the Open menu
-              * below already does.
-              */}
-            <ProjectActionsControl />
-            {/* Open in Finder/Terminal Menu */}
-            <div className="topbar-menu-anchor" ref={openMenuRef}>
-              <button
-                type="button"
-                className="topbar-chip-btn"
-                onClick={() => setOpenMenu((prev) => !prev)}
-                title="Open project folder"
-                aria-haspopup="dialog"
-                aria-expanded={openMenu}
-              >
-                <FolderIcon size={12} />
-                <span>Open</span>
-                <ChevronDownIcon size={12} />
-              </button>
-              {openMenu && (
-                <HeaderPopover anchor={openMenuRef} label="Open folder" onClose={() => setOpenMenu(false)}>
-                  <button
-                    type="button"
-                    onClick={() => void revealFolder()}
-                  >
-                    Reveal in Finder
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setOpenMenu(false);
-                      void openTerminal();
-                    }}
-                  >
-                    Open in Terminal
-                  </button>
-                </HeaderPopover>
-              )}
-            </div>
-
-            {/* Git Branch Badge */}
-            {git?.isRepo && (
-              <button
-                type="button"
-                className="topbar-chip-btn git-chip"
-                onClick={() => openInspector("changes")}
-                title={`Git branch: ${git.branch ?? "HEAD"}${git.dirty ? " (uncommitted changes)" : ""}`}
-              >
-                <GitBranchIcon size={12} />
-                <span>{git.branch ?? "main"}</span>
-                {git.dirty && (git.added || git.removed) ? (
-                  <span className="git-diffstat" aria-label={`${git.added ?? 0} lines added, ${git.removed ?? 0} removed`}>
-                    <span className="added">+{git.added ?? 0}</span> <span className="removed">−{git.removed ?? 0}</span>
-                  </span>
-                ) : git.dirty ? <span className="git-dirty-indicator">•</span> : null}
-              </button>
-            )}
-            {git?.isRepo && git.ghAvailable && !git.pullRequest && git.branch && !["main", "master"].includes(git.branch) && (
-              <button type="button" className="topbar-chip-btn" onClick={() => openInspector("changes")} title="Open Review to create a pull request for this branch">
-                Create PR
-              </button>
-            )}
-            <CommitControl />
-            {git?.available && !git.isRepo && (
-              <button
-                type="button"
-                className="topbar-chip-btn"
-                onClick={() => void initializeGit()}
-                title="Initialize a Git repository in this folder"
-              >
-                <GitBranchIcon size={12} />
-                <span>Initialize Git</span>
-              </button>
-            )}
-          </div>
-        )}
-
-        {view === "chat" && (
-          <button className="icon-btn" title="New conversation (⌘N)" aria-label="New conversation (⌘N)" onClick={() => void createTask()}>
-            <PlusIcon size={14} />
-          </button>
-        )}
-
         {activeRun && (
           <button className="icon-btn" title="Stop run" aria-label="Stop run" onClick={() => void stopRun()}>
             <StopIcon size={14} />
@@ -196,16 +87,12 @@ export function Titlebar() {
 
         {view === "chat" && <SurfaceBar />}
 
-        <button
-          className="status-dot-btn"
-          title={label}
-          onClick={() => setView("settings")}
-          aria-label={label}
-        >
-          <span
-            className={`dot ${connected ? "on" : status?.state === "connecting" ? "warn live" : settings?.runtimeMode === "direct" ? "" : "off"}`}
-          />
-        </button>
+        {/* Only when something needs attention; a healthy connection shows in the sidebar footer. */}
+        {!connected && settings?.runtimeMode !== "direct" && (
+          <button className="status-dot-btn" title={label} onClick={() => setView("settings")} aria-label={label}>
+            <span className={`dot ${status?.state === "connecting" ? "warn live" : "off"}`} />
+          </button>
+        )}
       </div>
     </header>
   );

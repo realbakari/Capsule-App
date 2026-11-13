@@ -29,7 +29,7 @@ export function CapabilityDetails(props: { harness?: HarnessStatus; session?: Se
       <AgentConfiguration key={`${props.session.id}:${props.session.openclawSessionKey}`} sessionId={props.session.id} options={report!.configOptions} />}
     <details className="advanced">
       <summary>Reported by agent</summary>
-      {!report ? <p className="faint">Negotiated metadata is not reported on this session's route. Refresh its status in Harnesses.</p> : <>
+      {!report ? <p className="faint">Negotiated metadata is not reported on this session's route. Refresh its status in Agents.</p> : <>
         <p>{report.name ?? "Agent"}{report.version ? ` · ${report.version}` : ""}</p>
         <p className="faint">Reported support does not enable a control unless Capsule can carry that operation on this route. This bounded summary may omit additional settings or choices.</p>
         <dl>{([ ["Image prompts", report.images], ["Embedded context", report.embeddedContext],

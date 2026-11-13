@@ -320,7 +320,7 @@ function terminalTheme(): Record<string, string> {
     foreground: read("--text", "#f2f2f2"),
     cursor: read("--text", "#f2f2f2"),
     selectionBackground: read("--bg-active", "#2a2a2a"),
-    black: read("--surface-2", "#1f1f1f"),
+    black: read("--bg-active", "#1f1f1f"),
     red: read("--red", "#d98989"),
     green: read("--green", "#8fbf88"),
     yellow: read("--yellow", "#d6c37a"),

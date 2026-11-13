@@ -119,8 +119,8 @@ a new conversation to use the native connection without changing old history.
 OpenCode, Qwen, Kimi, Kiro, Qoder and Kilo can also use their installed CLI's
 built-in ACP support. Model availability and sign-in still belong to each agent;
 Capsule only offers the choices that installation reports.
-Favorites stay on this device. **All harnesses** opens a named list with
-installation status, and **Manage harnesses** opens setup. Legacy models are grouped only when the agent
+Favorites stay on this device. **All agents** opens a named list with
+installation status, and **Manage agents** opens setup. Legacy models are grouped only when the agent
 identifies them as legacy. A running conversation keeps its agent; start a new
 conversation to use another one.
 
@@ -130,7 +130,7 @@ is not sent during discovery. Choose a model, reasoning effort, permissions, or
 agent mode before sending; those choices are applied before the first prompt.
 Unsupported controls stay hidden. Missing installations link to setup, and failed
 discovery offers Retry. Other settings remain in
-**Conversation tools → Agent settings and capabilities** and Harnesses.
+**Conversation tools → Agent settings and capabilities** and Agents.
 
 Changes apply to the next turn and leave the draft untouched. Once applied to an
 agent session, they are saved with the conversation for restart. Draft choices
@@ -149,7 +149,7 @@ The Gateway route has separate **Read-only** and **Full access** choices.
 Read-only declines actions requiring approval; it cannot display an approval
 prompt. Full access approves tools automatically. Old Standard settings have
 the same Gateway behavior as Full access and display that name.
-To inspect the session's raw status, open **Harnesses**, select the
+To inspect the session's raw status, open **Agents**, select the
 session with **Refresh**, and expand **Session diagnostics**. Diagnostics stay
 with that session and are collapsed by default.
 
@@ -158,7 +158,7 @@ override from the previous harness is not carried across.
 
 Choose **Conversation tools → Agent settings and capabilities** to inspect the selected harness and runtime
 route's model, permission, steering and browser support. The same information
-is available in Harnesses, and Browser describes its agent-tool limitations.
+is available in Agents, and Browser describes its agent-tool limitations.
 Manual browsing is separate from an agent's ability to control that browser.
 
 Expand **Reported by agent** to inspect bounded, negotiated capability and option
@@ -235,6 +235,31 @@ Pasting files uses the same attachment validation as dropping them. Pasted
 clipboard images are saved locally first. Attachments are desktop-only; a
 paired read-only viewer cannot attach files or send messages.
 
+When the context ring turns amber or red, its card says so and offers **New
+conversation** beside **Compact conversation**: compact to keep going on the same
+task, start fresh for something unrelated.
+
+The empty composer says what its keys do right now: in a new conversation it
+names what it understands (`@` files, `$` skills, `/` commands), in a conversation already under way it shows the send
+key you chose in Settings, and while a turn is running it says that sending
+queues the message.
+
+**Settings › General › Follow-ups** decides what sending during a running turn
+does: queue it for after the turn (the default), or steer the running turn
+where the agent supports it. Attachments and skills always queue, and a steer
+the agent refuses is queued instead, with a note saying so.
+
+**Settings › Appearance** sets the **Time format** (system, 12-hour or 24-hour)
+for message times, and whether **Tool calls** start folded to one line or
+listed in full.
+
+**Settings › General › Confirmations**: deleting a conversation asks first
+unless you turn that off; archiving can ask first too (off by default, since
+Archive offers Undo). Deleting a project always asks.
+
+Press **Esc** in the composer to stop the turn that is running, the same as the
+Stop button. Esc closes an open menu first.
+
 One turn runs in a thread at a time, but you do not have to wait to send the
 next message. A prompt sent while a turn is running joins a queue above the
 composer and goes out, in order, as soon as the thread is free. Each queued
@@ -281,7 +306,7 @@ not prove a background child agent has finished, and ending the parent turn
 does not mark every child complete. Task status is not verification.
 
 The panel uses a bounded recent event window and labels partial history. It
-does not start agents or control child sessions. **Manage harnesses** opens the
+does not start agents or control child sessions. **Manage agents** opens the
 harness manager; **Side chat** remains a separate surface.
 
 ## Agent commands
@@ -304,7 +329,7 @@ lifts. **Resume at reset** schedules that prompt to be sent again at that
 time; it joins the follow-up queue when the moment comes, and a line above
 the error shows the plan with **Cancel**. **Retry now** sends it again
 immediately. Both send the turn's attached files again too. Turn on
-**Auto-resume limited threads** in Settings → General to schedule these stops
+**Auto-resume limited conversations** in Settings → General to schedule these stops
 without asking; an automatic resume waits at least a minute, and after three
 limit stops in a row it stops and leaves the next try to you. Capsule must be
 running when the reset arrives. Limits that name no time offer only Retry now.
@@ -312,7 +337,7 @@ running when the reset arrives. Limits that name no time offer only Retry now.
 ## Compacting a long conversation
 
 The context ring beside Send opens a card with the context window in use.
-**Compact conversation** asks the agent to summarise its context into less,
+**Compact conversation** asks the agent to summarize its context into less,
 when the agent offers that command; the card says when it does not. After
 five idle minutes the card notes that the prompt cache has likely expired, the
 cheapest moment to compact.

@@ -363,12 +363,12 @@ window.runRendererRegressions = async () => {
   root.render(<AgentModelPicker key="all-harnesses" {...pickerProps} agents={[]} harnesses={allHarnesses} models={undefined} liveHarnessId={undefined} availability={{ state: "unavailable", detail: "Start an agent" }} />);
   await until(() => document.querySelector('[aria-label="Agent and model"]') !== pickerTrigger);
   document.querySelector<HTMLButtonElement>('[aria-label="Agent and model"]')!.click();
-  await until(() => document.querySelector('[aria-label="All harnesses"]'));
-  document.querySelector<HTMLButtonElement>('[aria-label="All harnesses"]')!.click();
+  await until(() => document.querySelector('[aria-label="All agents"]'));
+  document.querySelector<HTMLButtonElement>('[aria-label="All agents"]')!.click();
   await until(() => document.querySelectorAll('[data-harness-choice]').length === allHarnesses.length);
   assert(document.querySelector('.agent-model-picker')?.textContent?.includes("Codex") && document.querySelector('.agent-model-picker')?.textContent?.includes("Muse"), "Actual harnesses disappeared with the cached agent list");
   assert(document.querySelectorAll('.agent-model-picker nav button').length <= 6, "Harness rail grows without a bound");
-  document.querySelector('[aria-label="Search harnesses"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
+  document.querySelector('[aria-label="Search agents"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
   assert(document.activeElement?.hasAttribute("data-harness-choice"), "Harness list is not keyboard navigable");
   const originalWorkspace = window.testWorkspace;
   const configCalls: unknown[][] = [];
@@ -513,12 +513,12 @@ window.runRendererRegressions = async () => {
   await until(() => document.querySelector(".file-preview-code"));
   // This ownership/memoization fixture needs both panes. Compact navigation
   // and real stylesheet geometry are exercised separately below.
-  document.querySelector<HTMLElement>(".codex-inspector")!.style.minWidth = "520px";
-  if (!document.querySelector(".codex-file-tree-pane")) {
+  document.querySelector<HTMLElement>(".panel-inspector")!.style.minWidth = "520px";
+  if (!document.querySelector(".panel-file-tree-pane")) {
     document.querySelector<HTMLButtonElement>('[aria-label="Toggle workspace tree"]')!.click();
   }
   button("Edit").click(); await until(() => document.querySelector(".file-editor-area"));
-  await until(() => document.querySelectorAll(".codex-tree-item").length >= 300);
+  await until(() => document.querySelectorAll(".panel-tree-item").length >= 300);
   treeReads = 0;
   fill(".file-editor-area", "owned edit");
   await until(() => document.querySelector<HTMLTextAreaElement>(".file-editor-area")?.value === "owned edit");
@@ -544,20 +544,20 @@ window.runRendererRegressions = async () => {
   root.render(<Inspector />);
   await until(() => document.body.textContent?.includes("contents linked.txt"));
   assert(previewRoots.at(-1) === "/fixture/c", "Chat file link was resolved in the inspector's other folder");
-  fill(".codex-tree-search", "ready");
-  await until(() => document.querySelector('.codex-tree-item[title="ready.ts"]'));
-  fill(".codex-tree-search", "slow");
-  await until(() => Boolean(pendingFileSearch) && !document.querySelector('.codex-tree-item[title="ready.ts"]'));
-  fill(".codex-tree-search", "newer");
-  await until(() => document.querySelector('.codex-tree-item[title="newer.ts"]'));
+  fill(".panel-tree-search", "ready");
+  await until(() => document.querySelector('.panel-tree-item[title="ready.ts"]'));
+  fill(".panel-tree-search", "slow");
+  await until(() => Boolean(pendingFileSearch) && !document.querySelector('.panel-tree-item[title="ready.ts"]'));
+  fill(".panel-tree-search", "newer");
+  await until(() => document.querySelector('.panel-tree-item[title="newer.ts"]'));
   pendingFileSearch([{ path: "stale.ts", name: "stale.ts", type: "file" }]);
   await new Promise((resolve) => setTimeout(resolve, 20));
-  assert(!document.querySelector('.codex-tree-item[title="stale.ts"]'), "Old file filter replaced the current query");
-  fill(".codex-tree-search", "retry");
+  assert(!document.querySelector('.panel-tree-item[title="stale.ts"]'), "Old file filter replaced the current query");
+  fill(".panel-tree-search", "retry");
   await until(() => document.querySelector('[role="alert"]')?.textContent?.includes("Search unavailable"));
   assert(!document.body.textContent?.includes("No matching files"), "Search failure looked like empty results");
   failFileSearch = false; document.querySelector<HTMLButtonElement>('[role="alert"] button')!.click();
-  await until(() => document.querySelector('.codex-tree-item[title="retry.ts"]'));
+  await until(() => document.querySelector('.panel-tree-item[title="retry.ts"]'));
   root.unmount(); root = createRoot(host);
   const external: string[] = [];
   const registered: Array<number | undefined> = [];
@@ -593,7 +593,7 @@ window.runRendererRegressions = async () => {
   assert(guest.getAttribute("webpreferences")?.includes("nodeIntegration=false"), "Guest integration flag was not a boolean string");
   const browserStyles = document.getElementById("composer-test-styles") as HTMLStyleElement;
   browserStyles.media = "all";
-  const browserPane = document.querySelector<HTMLElement>('.codex-browser-pane')!;
+  const browserPane = document.querySelector<HTMLElement>('.panel-browser-pane')!;
   browserPane.style.width = "400px"; browserPane.style.height = "420px";
   await new Promise((resolve) => requestAnimationFrame(resolve));
   assert(document.querySelector('.preview-actions-cluster')!.getBoundingClientRect().right <= browserPane.getBoundingClientRect().right + 1, "Narrow browser toolbar overflowed");
@@ -1345,7 +1345,7 @@ window.runRendererRegressions = async () => {
     };
     previewRoot ??= createRoot(host);
     previewRoot.render(<Inspector key={`${width}-${openFile}`} />);
-    await until(() => openFile ? document.querySelector(".file-preview") : document.querySelector(".codex-tree-item"));
+    await until(() => openFile ? document.querySelector(".file-preview") : document.querySelector(".panel-tree-item"));
     await new Promise((resolve) => setTimeout(resolve, 250));
   };
   let slowFiles!: (files: unknown[]) => void;

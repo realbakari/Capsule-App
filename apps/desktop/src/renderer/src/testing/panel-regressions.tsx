@@ -162,6 +162,10 @@ export async function runPanelRegressions(host: HTMLElement, base: Record<string
     previewRow.querySelector<HTMLButtonElement>('[aria-label="Unpin conversation"]')!.click();
     previewRow.querySelector<HTMLButtonElement>('[aria-label="Archive conversation"]')!.click();
     assert(quickActions.join() === "pin:other-approval:false,archive:other-approval" && navigated.length === navigationCount, "Quick actions navigated or changed the wrong thread");
+    // Recent is a grouping of the same list, never a second copy under the projects.
+    assert(!document.querySelector('.sidebar-recents'), "Project grouping repeated its threads in a Recents list");
+    await chooseGrouping("Recent");
+    assert(!document.querySelector('.project-row') && document.querySelector('.sidebar-recents'), "Recent grouping kept the project tree");
     const recent = document.querySelector<HTMLElement>('.sidebar-recent-row')!;
     assert(recent.textContent?.includes("Review access"), "Recents did not start with the latest conversation");
     const selectedRecent = document.querySelector<HTMLElement>('.sidebar-recents [aria-current="page"]');
@@ -169,11 +173,9 @@ export async function runPanelRegressions(host: HTMLElement, base: Record<string
     recent.querySelector<HTMLButtonElement>('[aria-label="Unpin conversation"]')!.click();
     recent.querySelector<HTMLButtonElement>('[aria-label="Archive conversation"]')!.click();
     assert(quickActions.slice(-2).join() === "pin:other-approval:false,archive:other-approval" && navigated.length === navigationCount, "Recent quick actions navigated or targeted another conversation");
-    assert(recent.getAttribute("aria-describedby") !== previewRow.getAttribute("aria-describedby"), "Recent and project rows share a tooltip ID");
     recent.click();
     assert(navigated.at(-1) === "other/other-approval", "Recents opened the wrong project or thread");
     recent.focus({ preventScroll: true });
-    previewRow.focus({ preventScroll: true });
     await new Promise((resolve) => setTimeout(resolve, 500)); await settle();
     window.dispatchEvent(new Event("scroll")); await settle();
     assert(!document.querySelector('[role="tooltip"]'), "Scrolling left a detached preview");
@@ -184,6 +186,7 @@ export async function runPanelRegressions(host: HTMLElement, base: Record<string
     const renameInput = document.querySelector<HTMLInputElement>('.sidebar-recents input[aria-label="Conversation title"]');
     assert(renameInput?.value === "Review access" && document.querySelectorAll('input[aria-label="Conversation title"]').length === 1, "Rename opened in another section or duplicated its input");
     renameInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); await settle();
+    await chooseGrouping("By project");
     root.render(null); await settle(); localStorage.setItem(SIDEBAR_GROUPING_KEY, "malformed");
     root.render(<SidebarFixture base={groupedBase} />); await settle();
     assert(document.querySelector('.project-row'), "Invalid saved grouping did not fall back to projects");

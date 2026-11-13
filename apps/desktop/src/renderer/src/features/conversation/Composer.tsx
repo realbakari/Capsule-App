@@ -29,7 +29,7 @@ import { ComposerTasks } from "./ComposerTasks";
 import { QueuedPrompts } from "./QueuedPrompts";
 import { recallablePrompts } from "../../lib/prompt-queue";
 import { searchComposerSkills, skillSource } from "../../lib/composer-skills";
-import { shouldRestComposer } from "../../lib/composer-rest";
+import { composerPlaceholder, shouldRestComposer } from "../../lib/composer-rest";
 import { tasksFromRunEvents } from "@capsule/shared";
 
 const SUGGESTIONS = [
@@ -82,7 +82,7 @@ function slashCommands(input: {
     { id: "inspect", label: "/inspect", detail: "Toggle inspector", run: () => input.toggleInspector() },
     { id: "open", label: "/open", detail: "Open a code folder", run: () => input.pickProjectDirectory() },
     { id: "term", label: "/term", detail: "Project terminal", run: () => input.openTerminal() },
-    { id: "runtimes", label: "/runtimes", detail: "Open harnesses", run: () => input.setView("runtimes") },
+    { id: "runtimes", label: "/runtimes", detail: "Open Agents", run: () => input.setView("runtimes") },
     { id: "approvals", label: "/approvals", detail: "Open approvals", run: () => input.setView("approvals") },
     { id: "settings", label: "/settings", detail: "Open settings", run: () => input.setView("settings") },
     ...input.skills.map((skill) => ({
@@ -390,6 +390,8 @@ export function Composer({
   const permission = session?.permissionProfile ?? settings?.defaultPermission ?? "default";
   const permissionOptions = PERMISSION_OPTIONS.map((item) => ({ id: item.id, label: item.id === "strict" ? "Read-only" : item.label, detail: item.detail }));
   const sendOnEnter = settings?.composerSendKey !== "cmd-enter";
+  /* A paired browser without conversation control can read but never send. */
+  const readOnlyViewer = api.isDesktop === false && api.remoteMode !== "control";
   const selectedHarness = harnesses.find((item) => item.id === agentId);
   const taskEvents = useMemo(() => activeRun ? (events ?? []).filter((event) => event.runId === activeRun.id) : events ?? [], [events, activeRun?.id]);
   const tasks = useMemo(() => tasksFromRunEvents(taskEvents), [taskEvents]);
@@ -529,11 +531,13 @@ export function Composer({
           aria-label="Message"
           aria-controls={!picker && menuOpen ? menuId : undefined}
           aria-activedescendant={!picker && items[menuIndex] ? `${menuId}-${menuIndex}` : undefined}
-          placeholder={
-            harnessLive
-                ? `Continue with ${harnessDisplayName(harnesses, session?.harnessId)}…`
-                : "Describe a change, ask a question, or attach files…"
-          }
+          placeholder={readOnlyViewer ? "Read only on this device" : composerPlaceholder({
+            running: Boolean(activeRun),
+            steer: settings?.followUpBehavior === "steer" && harnessLive && capabilities.steer.state !== "unavailable",
+            hasMessages: messages.length > 0,
+            sendOnEnter,
+            agent: harnessLive ? harnessDisplayName(harnesses, session?.harnessId) : undefined,
+          })}
           onChange={(event) => {
             setDraft(event.target.value);
             setCaret(event.target.selectionStart);
@@ -584,6 +588,8 @@ export function Composer({
               }
             }
             if (menuOpen && event.key === "Escape") { event.preventDefault(); setMenuDismissed(true); return; }
+            /* With nothing to dismiss, Escape stops the turn that is running, the way the Stop button does. */
+            if (!menuOpen && event.key === "Escape" && activeRun && !workspace.stoppingRunIds?.includes(activeRun.id)) { event.preventDefault(); void stopRun(); return; }
             if (menuOpen && event.key === "Enter" && !event.metaKey && !event.ctrlKey && !event.shiftKey) { event.preventDefault(); return; }
             /*
              * ArrowUp in an empty prompt, or at its start, walks back through
@@ -687,16 +693,17 @@ export function Composer({
         )}
         {gatewayUnavailable && <GatewayBanner inset />}
         {sendBlockReason && !(gatewayUnavailable && sendBlockReason === GATEWAY_CONNECTION_REQUIRED) && (
-          <div className="composer-preflight" role="status">
+          <div className={`composer-preflight${readOnlyViewer ? " read-only" : ""}`} role="status">
             <span title={sendBlockReason}>{sendBlockReason}</span>
-            {selectedHarness ? (
+            {/* A read-only viewer can do neither; the reason is the whole message. */}
+            {readOnlyViewer ? null : selectedHarness ? (
               <button className="ghost" type="button" onClick={() => void doctorHarness(selectedHarness.id)}>
                 Run Doctor
               </button>
             ) : null}
-            <button className="ghost" type="button" onClick={() => setView("runtimes")}>
-              Open Harnesses
-            </button>
+            {readOnlyViewer ? null : <button className="ghost" type="button" onClick={() => setView("runtimes")}>
+              Open Agents
+            </button>}
           </div>
         )}
         <QueuedPrompts />
@@ -762,12 +769,13 @@ export function Composer({
                 tone={contextTone(contextUsage.fraction)}
                 size={22}
                 onCompact={compactCommand ? () => void runAgentCommand(compactCommand) : undefined}
+                onFresh={() => void createTask()}
                 compactUnavailable={compactCommand ? undefined : harnessLive ? "This agent does not offer a compact command." : "Start an agent conversation first."}
                 idleMinutes={idleMinutes}
               />
             )}
             {activeRun ? (
-              <button className="send-btn stop" disabled={workspace.stoppingRunIds?.includes(activeRun.id)} title={workspace.stoppingRunIds?.includes(activeRun.id) ? "Stopping — waiting for the runtime" : "Stop"} aria-label={workspace.stoppingRunIds?.includes(activeRun.id) ? "Stopping" : "Stop"} onClick={() => void stopRun()}>
+              <button className="send-btn stop" disabled={workspace.stoppingRunIds?.includes(activeRun.id)} title={workspace.stoppingRunIds?.includes(activeRun.id) ? "Stopping — waiting for the runtime" : "Stop (Esc)"} aria-label={workspace.stoppingRunIds?.includes(activeRun.id) ? "Stopping" : "Stop"} onClick={() => void stopRun()}>
                 <StopIcon size={16} />
               </button>
             ) : (

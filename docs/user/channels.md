@@ -169,7 +169,7 @@ Your chosen destination stays with each draft when switching channels or
 closing and reopening threads. **Ask Capsule** includes selected mentions as
 text only; it does not notify hosted agents.
 
-**Connection options → Saved channel harnesses** lists local connections,
+**Connection options → Saved channel agents** lists local connections,
 including those from earlier relay identities. It is also available on the
 connection screen. Remove an unused connection to reclaim one of the 16 saved
 slots. Active work must be paused and finished or stopped first. Removing a

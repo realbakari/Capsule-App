@@ -61,6 +61,11 @@ import {
 
 import type { SettingsSectionId } from "../features/settings/settings-search";
 import { commandForEvent, parseChord, type Keymap } from "./keybindings";
+import { adjacentSession } from "./session-cycle";
+import { isNarrow } from "./narrow";
+import { setDisplayPrefs } from "./display-prefs";
+import { openComposerControl, type ComposerControl } from "./composer-controls";
+import { SHOW_SHORTCUTS_EVENT } from "./shortcuts-event";
 import { formatUserError } from "./errors";
 import { loadQueue, saveQueue, type QueuedPrompt } from "./prompt-queue";
 import { EMPTY_NAVIGATION, canGoBack as navigationCanGoBack, canGoForward as navigationCanGoForward, goBack as navigationBack, goForward as navigationForward, pruneNavigation, recordNavigation, type NavigationHistory } from "./navigation-history";
@@ -411,6 +416,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   const [subsystems, setSubsystems] = useState<SubsystemStatus>();
   const [projects, setProjects] = useState<Project[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
+  const cycleSession = useRef<(step: 1 | -1) => void>(() => undefined);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
   const [skillPacks, setSkillPacks] = useState<SkillPack[]>([]);
@@ -557,7 +563,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   const [git, setGit] = useScopedState<GitStatus | undefined>(scope, undefined);
   const [files, setFiles] = useScopedState<FileEntry[]>(scope, []);
   const [confirm, setConfirm] = useScopedState<ConfirmState | undefined>(scope, undefined);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => storedFlag(SIDEBAR_COLLAPSED_KEY));
+  /* On a narrow screen the sidebar is a drawer, so it starts closed whatever the desktop last chose. */
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => isNarrow() || storedFlag(SIDEBAR_COLLAPSED_KEY));
   const [inspectorOpen, setInspectorOpen] = useState(() => storedFlag(INSPECTOR_OPEN_KEY));
   const [terminalOpen, setTerminalOpen] = useState(() => storedFlag(TERMINAL_OPEN_KEY));
   const [sidebarWidth, setSidebarWidthState] = useState(() =>
@@ -600,6 +607,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       dispose();
     };
   }, [api]);
+
+  /* Set during render, before the transcript and diffs that read them draw. */
+  useMemo(() => setDisplayPrefs({
+    timeFormat: settings?.timeFormat ?? "system",
+    toolCallDisplay: settings?.toolCallDisplay ?? "compact",
+    diffLayout: settings?.diffLayout ?? "split",
+    diffFileState: settings?.diffFileState ?? "expanded",
+  }), [settings?.timeFormat, settings?.toolCallDisplay, settings?.diffLayout, settings?.diffFileState]);
 
   const keymap = useMemo<Keymap>(() => {
     const stored = settings?.keybindings ?? {};
@@ -1037,6 +1052,28 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
         case "find-in-thread":
           setThreadFind((open) => !open);
           break;
+        case "open-review":
+          setInspectorTab("changes");
+          setInspectorOpen(true);
+          break;
+        case "open-browser":
+          setInspectorTab("browser");
+          setInspectorOpen(true);
+          break;
+        case "next-conversation":
+        case "previous-conversation":
+          cycleSession.current(command.id === "next-conversation" ? 1 : -1);
+          break;
+        case "show-shortcuts":
+          window.dispatchEvent(new CustomEvent(SHOW_SHORTCUTS_EVENT));
+          break;
+        case "open-mode":
+        case "open-model":
+        case "open-effort": {
+          const reason = openComposerControl(command.id.slice("open-".length) as ComposerControl);
+          if (reason) setNotice(reason);
+          break;
+        }
       }
     };
     window.addEventListener("keydown", onKey, true);
@@ -1086,12 +1123,19 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   }, [attachments, currentDraftKey, draft, skillId]);
 
   useEffect(() => {
+    // The drawer's open and closed states on a phone are not the desktop's preference.
+    if (isNarrow()) return;
     try {
       localStorage.setItem(SIDEBAR_COLLAPSED_KEY, sidebarCollapsed ? "1" : "0");
     } catch {
       /* ignore quota */
     }
   }, [sidebarCollapsed]);
+
+  /* Picking a conversation or a view from the drawer closes it, so what was picked is visible. */
+  useEffect(() => {
+    if (isNarrow()) setSidebarCollapsed(true);
+  }, [sessionId, view]);
 
   useEffect(() => {
     try {
@@ -1286,11 +1330,29 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
         return false;
       }
       if (!sessionId) return false;
-      try {
-        setFollowUps(await api.updateFollowUps(sessionId, { type: "add", prompt: { content, attachments: filesToSend, ...(promptSkill ? { skillId: promptSkill } : {}) } }));
-      } catch (error) {
-        setNotice(formatUserError(error));
-        return false;
+      /*
+       * Settings › General › Follow-ups: steer sends the text into the running
+       * turn where the route can. Attachments, skills and commands still
+       * queue, and a route that refuses the steer falls back to the queue.
+       */
+      const steerable = settings?.followUpBehavior === "steer" && Boolean(session?.harnessId) && !command && filesToSend.length === 0 && !promptSkill;
+      let steered = false;
+      if (steerable) {
+        try {
+          await api.steerHarness(sessionId, content);
+          steered = true;
+          void loadSession(sessionId).catch(() => { /* The live stream carries it too. */ });
+        } catch (error) {
+          setNotice(`Could not steer this turn, so the message is queued instead. ${formatUserError(error)}`);
+        }
+      }
+      if (!steered) {
+        try {
+          setFollowUps(await api.updateFollowUps(sessionId, { type: "add", prompt: { content, attachments: filesToSend, ...(promptSkill ? { skillId: promptSkill } : {}) } }));
+        } catch (error) {
+          setNotice(formatUserError(error));
+          return false;
+        }
       }
       if (!command) {
         setDraft("");
@@ -1780,23 +1842,37 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
 
   function deleteSession(id: string) {
     const target = sessions.find((item) => item.id === id);
+    const remove = async () => {
+      try {
+        await api.deleteSession(id);
+        if (sessionId === id) setSessionId(undefined);
+        setConfirm(undefined);
+        await refresh();
+      } catch (error) { setNotice(formatUserError(error)); }
+    };
+    // Settings › General › Confirm before deleting. A project's deletion always asks: it takes every conversation with it.
+    if (settings?.confirmDelete === false) { void remove(); return; }
     setConfirm({
       title: `Delete “${target?.title ?? "conversation"}”?`,
       detail: "Messages and runs in this conversation are removed.",
       danger: true,
       confirmLabel: "Delete",
-      onConfirm: () => {
-        void (async () => {
-          await api.deleteSession(id);
-          if (sessionId === id) setSessionId(undefined);
-          setConfirm(undefined);
-          await refresh();
-        })();
-      },
+      onConfirm: () => void remove(),
     });
   }
 
-  async function archiveSession(id: string) {
+  async function archiveSession(id: string, confirmed = false) {
+    // Settings › General › Confirm before archiving; off by default, since Archive offers Undo.
+    if (settings?.confirmArchive && !confirmed) {
+      const target = sessions.find((item) => item.id === id);
+      setConfirm({
+        title: `Archive “${target?.title ?? "conversation"}”?`,
+        detail: "It leaves the sidebar. History keeps it, and Restore brings it back.",
+        confirmLabel: "Archive",
+        onConfirm: () => { setConfirm(undefined); void archiveSession(id, true); },
+      });
+      return;
+    }
     if (archiving.current.has(id)) return;
     archiving.current.add(id);
     try {
@@ -2222,6 +2298,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     reasoning: settings?.reasoningSummary,
   }), [events, activeRun?.status, settings?.reasoningSummary]);
 
+  /* ⌃Tab reads the latest list and selection, not the ones its key handler closed over. */
+  cycleSession.current = (step) => {
+    const next = adjacentSession(sessions, sessionId, step);
+    if (!next || next.id === sessionId) return;
+    applyProjectDefaults(projects.find((item) => item.id === next.projectId));
+    setProjectId(next.projectId);
+    setSessionId(next.id);
+    setView("chat");
+  };
+
   const value = useMemo<WorkspaceValue>(
     () => ({
       api,
@@ -2339,7 +2425,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       deleteProject,
       renameSession,
       deleteSession,
-      archiveSession,
+      archiveSession: (id: string) => archiveSession(id),
       restoreSession,
       archiveUndo,
       dismissArchiveUndo: () => setArchiveUndo(undefined),

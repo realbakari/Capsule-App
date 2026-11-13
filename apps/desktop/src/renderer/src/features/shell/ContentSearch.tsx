@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ContentHit } from "@capsule/shared";
 import { searchProjectContents } from "../../lib/bridge";
 import { useWorkspace } from "../../lib/workspace";
-import { SearchIcon } from "./icons";
+import { SearchIcon, XIcon } from "./icons";
 
 export function ContentSearch() {
   const { contentSearch, setContentSearch, projectId, sessionId, openFile } = useWorkspace();
@@ -78,6 +78,9 @@ export function ContentSearch() {
               if (event.key === "Escape") setContentSearch(false);
             }}
           />
+          <button type="button" className="icon-btn" title="Close (Esc)" aria-label="Close search" onClick={() => { setContentSearch(false); setQuery(""); }}>
+            <XIcon size={14} />
+          </button>
         </div>
         <div className="palette-list">
           {loading && <div className="sidebar-empty" role="status">Searching…</div>}
@@ -97,6 +100,7 @@ export function ContentSearch() {
             </button>
           ))}
         </div>
+        <div className="palette-hints" aria-hidden><span><kbd>↑</kbd><kbd>↓</kbd> Navigate</span><span><kbd>↵</kbd> Open</span><span><kbd>Esc</kbd> Close</span></div>
       </div>
     </div>
   );

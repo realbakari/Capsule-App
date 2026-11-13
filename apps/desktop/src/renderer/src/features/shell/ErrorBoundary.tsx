@@ -56,7 +56,7 @@ export class ViewErrorBoundary extends Component<Props, State> {
     if (!error) return this.props.children;
     if (this.props.compact) {
       return (
-        <div className="notice">
+        <div className="notice" role="alert">
           {this.props.label ?? "This panel"} hit an error: {error.message}{" "}
           <button className="chip" type="button" onClick={this.retry}>
             Retry
@@ -70,12 +70,15 @@ export class ViewErrorBoundary extends Component<Props, State> {
           <div className="card">
             <h3>{this.props.label ?? "This panel"} hit an error</h3>
             <p className="muted">
-              The rest of Capsule is still running. Retry this panel or switch views from the
-              sidebar.
+              The rest of Capsule is still running. Retry, or open something else.
             </p>
-            <pre className="mono">{error.stack ?? error.message}</pre>
+            {/* The trace is for a bug report, not for reading first. */}
+            <details className="error-details">
+              <summary>Details</summary>
+              <pre className="mono">{error.stack ?? error.message}</pre>
+            </details>
             <div className="actions">
-              <button className="send" type="button" onClick={this.retry}>
+              <button className="chip" type="button" onClick={this.retry}>
                 Retry
               </button>
             </div>

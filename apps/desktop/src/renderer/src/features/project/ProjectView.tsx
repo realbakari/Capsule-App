@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ProjectAction, WorkspaceMode } from "@capsule/shared";
+import { ProjectInstructions } from "./ProjectInstructions";
 import { isSharedAction, PROJECT_FILE_NAME } from "@capsule/shared";
 
 import { useWorkspace } from "../../lib/workspace";
@@ -265,6 +266,8 @@ export function ProjectView() {
           )}
         </div>
 
+        {project.workingDirectory ? <ProjectInstructions projectId={project.id} /> : null}
+
         <div className="card">
           <div className="row">
             <div>
@@ -283,7 +286,7 @@ export function ProjectView() {
             </button>
           </div>
           {project.projectFile?.status === "invalid" ? (
-            <p className="notice">
+            <p className="notice" role="alert">
               {PROJECT_FILE_NAME} is here but cannot be read, so everything it declares is being
               ignored: {project.projectFile.error}
             </p>

@@ -1,11 +1,14 @@
 import { isInternalVerdict } from "./thread-error.js";
 import type { Run, Session } from "@capsule/shared";
 
-export type SidebarGrouping = "project" | "status";
+export type SidebarGrouping = "project" | "status" | "recent";
 export const SIDEBAR_GROUPING_KEY = "capsule.sidebarGrouping";
 
 export function readSidebarGrouping(read: () => string | null): SidebarGrouping {
-  try { return read() === "status" ? "status" : "project"; }
+  try {
+    const stored = read();
+    return stored === "status" || stored === "recent" ? stored : "project";
+  }
   catch { return "project"; }
 }
 

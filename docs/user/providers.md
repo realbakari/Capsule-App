@@ -81,7 +81,7 @@ or create a replacement conversation. Missing sessions and connection failures
 remain visible errors.
 
 New Direct conversations use your installed `codex` CLI. No ACP adapter is
-needed. Complete `codex login`, then use **Check this agent** in Harnesses. Your
+needed. Complete `codex login`, then use **Check this agent** in Agents. Your
 CLI must support app-server; update it if startup reports an unsupported method
 or model. Model choices come from that installation, not a fixed list.
 
@@ -106,7 +106,7 @@ npm install -g @agentclientprotocol/claude-agent-acp
 ```
 
 Complete the provider's own sign-in,
-then run **Check this agent** in Harnesses. Capsule does not download adapters
+then run **Check this agent** in Agents. Capsule does not download adapters
 automatically or register these local commands in Gateway configuration. A
 missing adapter is reported before a conversation starts; a provider CLI alone
 does not prove that its ACP adapter is installed. Existing Gateway conversations
@@ -133,7 +133,7 @@ the first pins the Flash model, the second takes the CLI default.
 Install [Muse Code](https://dev.meta.ai/docs/muse-code) and complete its sign-in
 in a terminal. Your CLI build must support native session connections through
 `muse serve`; Capsule cannot unlock a build or account that lacks this support.
-Choose **Muse Code** from the composer or **Harnesses**, and select a project
+Choose **Muse Code** from the composer or **Agents**, and select a project
 folder. Muse runs locally even when your default route is Gateway. Existing
 threads keep their original agent and route.
 
@@ -145,7 +145,7 @@ and confirms the same folder and identity. A folder alias resolving to the
 same location is accepted; another folder is not.
 
 The reasoning default is in **Agent settings**, in both the composer and
-Harnesses. Its eight levels range from **None** through **Ultra** and apply to
+Agents. Its eight levels range from **None** through **Ultra** and apply to
 future turns; they do not control whether reasoning text is visible. An unknown
 current value stays unknown until the session reports it or accepts your change.
 On resume Capsule makes one bounded attempt to recover the saved default;
@@ -165,7 +165,7 @@ empty reply.
 
 ## Choose and check a harness
 
-Open **Harnesses** from the agent picker or type `/runtimes`. The catalog puts
+Open **Agents** from the agent picker or type `/runtimes`. The catalog puts
 installed agents first. Select one to see its readiness, run **Check this
 agent**, make it the default for the current project, or start a persistent or
 one-turn session.
@@ -179,7 +179,7 @@ catalog. An open session appears in the selected agent's detail panel, where
 you can refresh status, cancel the current turn, or close it. Gateway sessions
 can request supported model, permission, timeout and mode changes. Direct
 sessions expose **Agent settings** inside Capabilities in both the composer and
-Harnesses. Selectors and switches use the exact IDs and choices reported by the
+Agents. Selectors and switches use the exact IDs and choices reported by the
 agent, and wait for its acknowledgement. Model choices require a reported model
 selector. Capsule's permission profiles are not automatically mapped to the
 agent's own policy controls; read the setting description before changing it.

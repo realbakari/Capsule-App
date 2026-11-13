@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { useWorkspace } from "../../lib/workspace";
-import { ChevronDownIcon, GitBranchIcon } from "./icons";
+import { ArrowUpIcon, ChevronDownIcon, CloudUploadIcon, GitCommitIcon, GitPullRequestIcon } from "./icons";
 import { HeaderPopover } from "./HeaderPopover";
 
 /*
@@ -42,10 +42,10 @@ export function CommitControl() {
   }
 
   return (
-    <div className="topbar-menu-anchor" ref={anchor}>
+    <div className="session-details-anchor" ref={anchor}>
       <button
         type="button"
-        className="topbar-chip-btn"
+        className="session-details-action"
         onClick={() => setOpen((prev) => !prev)}
         aria-haspopup="dialog"
         aria-expanded={open}
@@ -57,10 +57,8 @@ export function CommitControl() {
               : "Nothing to commit — the working tree is clean."
         }
       >
-        <GitBranchIcon size={12} />
-        {/* No second dot: the branch chip beside this one already carries the
-            one that says the tree is dirty. */}
-        <span>Commit</span>
+        <CloudUploadIcon size={14} />
+        <span>{git.dirty ? "Commit & push" : ahead > 0 ? `Push ${ahead} commit${ahead === 1 ? "" : "s"}` : "Commit & push"}</span>
         <ChevronDownIcon size={12} />
       </button>
       {open && (
@@ -93,6 +91,7 @@ export function CommitControl() {
               })
             }
           >
+            <GitCommitIcon size={14} />
             Commit
           </button>
           <button
@@ -107,6 +106,7 @@ export function CommitControl() {
               })
             }
           >
+            <CloudUploadIcon size={14} />
             Commit and push
           </button>
           <button
@@ -120,6 +120,7 @@ export function CommitControl() {
               })
             }
           >
+            <ArrowUpIcon size={14} />
             Push{ahead > 0 ? ` (${ahead})` : ""}
           </button>
           {/* Only where `gh` can actually open one: the alternative is a
@@ -136,6 +137,7 @@ export function CommitControl() {
                 })
               }
             >
+              <GitPullRequestIcon size={14} />
               Create pull request
             </button>
           )}

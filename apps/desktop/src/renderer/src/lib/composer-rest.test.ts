@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { shouldFollowLatest, shouldRestComposer } from "./composer-rest";
+import { composerPlaceholder, shouldFollowLatest, shouldRestComposer } from "./composer-rest";
 
 describe("composer rest", () => {
   it("rests only while reading history, not at the live edge", () => {
@@ -32,5 +32,20 @@ describe("follow latest", () => {
   it("rejoins when the reader scrolls back to the live edge", () => {
     expect(shouldFollowLatest({ following: false, distanceFromBottom: 10, scrollDelta: 24 })).toBe(true);
     expect(shouldFollowLatest({ following: false, distanceFromBottom: 90, scrollDelta: 24 })).toBe(false);
+  });
+});
+
+describe("composer placeholder", () => {
+  it("says what to write in a new thread", () => {
+    expect(composerPlaceholder({ running: false, hasMessages: false, sendOnEnter: true })).toBe("Ask anything. @ files, $ skills, / commands");
+  });
+  it("says Return queues while a turn runs", () => {
+    expect(composerPlaceholder({ running: true, hasMessages: true, sendOnEnter: true })).toBe("↵ to queue a follow-up for when this turn ends");
+    expect(composerPlaceholder({ running: true, hasMessages: true, sendOnEnter: false })).toMatch(/^⌘↵ to queue/);
+    expect(composerPlaceholder({ running: true, hasMessages: true, sendOnEnter: true, steer: true })).toBe("↵ to steer this turn");
+  });
+  it("teaches the send key that is actually set", () => {
+    expect(composerPlaceholder({ running: false, hasMessages: true, sendOnEnter: true, agent: "Codex" })).toBe("Reply to Codex · ↵ to send, ⇧↵ for a new line");
+    expect(composerPlaceholder({ running: false, hasMessages: true, sendOnEnter: false })).toBe("Reply · ⌘↵ to send");
   });
 });

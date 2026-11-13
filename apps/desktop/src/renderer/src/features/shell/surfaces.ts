@@ -25,13 +25,15 @@ export interface Surface {
   /** On the icon bar itself; the rest sit in its More menu. */
   inBar: boolean;
   shortcut?: string;
+  /** One key that opens it while the panel's launcher is showing. */
+  key: string;
   blockedBy: (state: SurfaceState) => string | undefined;
 }
 
 /* Icon bar order after the terminal toggle: review, look, then the workspace's files. */
 export const SURFACES: Surface[] = [
   {
-    tool: "review",
+    tool: "review", key: "r",
     label: "Review",
     detail: "Changed files and their diff.",
     icon: DiffSquareIcon,
@@ -40,15 +42,16 @@ export const SURFACES: Surface[] = [
     blockedBy: ({ git }) => (git?.isRepo ? undefined : "Available for Git repositories."),
   },
   {
-    tool: "browser",
+    tool: "browser", key: "b",
     label: "Browser",
     detail: "Open a local app or URL.",
     icon: GlobeIcon,
     inBar: true,
+    shortcut: "⌘⇧B",
     blockedBy: () => undefined,
   },
   {
-    tool: "simulator",
+    tool: "simulator", key: "m",
     label: "Simulator",
     detail: "Watch and drive an iOS Simulator.",
     icon: SmartphoneIcon,
@@ -57,16 +60,16 @@ export const SURFACES: Surface[] = [
       desktop === false ? "Available in the desktop app." : platform && platform !== "darwin" ? "Available on macOS with Xcode." : undefined,
   },
   {
-    tool: "files",
+    tool: "files", key: "f",
     label: "Files",
     detail: "Browse and edit workspace files.",
     icon: FolderIcon,
     inBar: true,
     blockedBy: ({ projectId }) => (projectId ? undefined : "Open a project first."),
   },
-  { tool: "agents", label: "Agents", detail: "This thread’s agent and reported delegated tasks.", icon: CpuIcon, inBar: false, blockedBy: () => undefined },
+  { tool: "agents", key: "a", label: "Agents", detail: "This thread’s agent and reported delegated tasks.", icon: CpuIcon, inBar: false, blockedBy: () => undefined },
   {
-    tool: "chat",
+    tool: "chat", key: "s",
     label: "Side chat",
     detail: "Ask without interrupting the thread.",
     icon: MessageSquarePlusIcon,

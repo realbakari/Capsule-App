@@ -1,5 +1,7 @@
 import { useLayoutEffect, useState, type CSSProperties, type RefObject } from "react";
 
+const TOP_CLEARANCE = 60;
+
 /** Viewport coordinates for a body portal; never clipped by composer glass. */
 export function useAnchoredPopover(open: boolean, anchor: RefObject<HTMLElement | null>, panel: RefObject<HTMLElement | null>, align: "start" | "end" = "end"): CSSProperties {
   const [position, setPosition] = useState<CSSProperties>({ position: "fixed", visibility: "hidden" });
@@ -8,7 +10,8 @@ export function useAnchoredPopover(open: boolean, anchor: RefObject<HTMLElement 
     const place = () => {
       if (!anchor.current || !panel.current) return;
       const rect = anchor.current.getBoundingClientRect();
-      const above = Math.max(0, rect.top - 20);
+      /* The 52px titlebar is not free space: a popover opening upward stops below it. */
+      const above = Math.max(0, rect.top - TOP_CLEARANCE - 8);
       const below = Math.max(0, innerHeight - rect.bottom - 20);
       const up = above >= Math.min(300, below);
       const width = Math.min(384, innerWidth - 24);
@@ -16,7 +19,7 @@ export function useAnchoredPopover(open: boolean, anchor: RefObject<HTMLElement 
       const height = Math.min(panel.current.getBoundingClientRect().height, maxHeight);
       const next: CSSProperties = { position: "fixed", visibility: "visible", width, maxHeight,
         left: Math.max(12, Math.min(align === "start" ? rect.left : rect.right - width, innerWidth - width - 12)),
-        top: Math.max(12, Math.min(up ? rect.top - height - 8 : rect.bottom + 8, innerHeight - height - 12)),
+        top: Math.max(TOP_CLEARANCE, Math.min(up ? rect.top - height - 8 : rect.bottom + 8, innerHeight - height - 12)),
         bottom: "auto", right: "auto" };
       setPosition((current) => Object.keys(next).every((key) => current[key as keyof CSSProperties] === next[key as keyof CSSProperties]) ? current : next);
     };

@@ -112,7 +112,7 @@ export function RuntimesView() {
     <section className="panel">
       <div className="panel-inner">
         <div className="panel-header">
-          <h2>Harnesses</h2>
+          <h2>Agents</h2>
           <p>
             Coding agents Capsule can start locally or through an optional Gateway.
           </p>
@@ -146,7 +146,7 @@ export function RuntimesView() {
         </div>
 
         <div className="harness-workspace">
-          <aside className="harness-catalog" aria-label="Available harnesses">
+          <aside className="harness-catalog" aria-label="Available agents">
             <div className="harness-catalog-heading">
               <span>Available</span>
               <small>{available.length}</small>
@@ -198,7 +198,7 @@ export function RuntimesView() {
               }
             />
           ) : (
-            <div className="harness-detail harness-empty">No harnesses were reported by the Gateway.</div>
+            <div className="harness-detail harness-empty">No agents were reported by the Gateway.</div>
           )}
         </div>
 
@@ -326,7 +326,13 @@ function HarnessDetail({
           </button>
         )}
         {installed ? (
-          <button className="send" disabled={!canSpawnNow} onClick={onSpawn}>
+          <button
+            className="send"
+            disabled={!canSpawnNow || harness.loginState === "logged_out"}
+            /* A signed-out agent would start and fail on its first turn; say what to do instead. */
+            title={harness.loginState === "logged_out" ? `${harness.loginHint ?? "Sign in to this agent in a terminal"} first.` : undefined}
+            onClick={onSpawn}
+          >
             Start a session
           </button>
         ) : (

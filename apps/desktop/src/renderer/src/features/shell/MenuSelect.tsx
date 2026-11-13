@@ -117,7 +117,7 @@ export function MenuSelect({
         aria-controls={open ? listId : undefined}
         aria-disabled={Boolean(unavailableReason)}
         aria-description={unavailableReason}
-        title={unavailableReason ?? `${ariaLabel}: ${current?.label ?? placeholder ?? "Select"}`}
+        title={unavailableReason ?? (iconOnly ? ariaLabel : `${ariaLabel}: ${current?.label ?? placeholder ?? "Select"}`)}
         onClick={() => { if (!unavailableReason) setOpen((currentOpen) => !currentOpen); }}
         onKeyDown={(event) => {
           if (!open && !unavailableReason && (event.key === "ArrowDown" || event.key === "ArrowUp")) { event.preventDefault(); setOpen(true); }

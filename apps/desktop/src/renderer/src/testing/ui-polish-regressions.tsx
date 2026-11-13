@@ -4,6 +4,7 @@ import { PullRequestList } from "../features/shell/PullRequestList";
 import { GitPullRequestDetail } from "../features/shell/PullRequestDetail";
 import { ReviewCommitForm } from "../features/shell/ReviewCommitForm";
 import { HarnessCatalogRow } from "../features/harness/HarnessCatalogRow";
+import { ContextWindowMeter } from "../features/conversation/ContextWindowMeter";
 
 function assert(value: unknown, message: string): asserts value {
   if (!value) throw new Error(message);
@@ -58,7 +59,7 @@ export async function runUiPolishRegressions(host: HTMLElement) {
     fill('[aria-label="Filter pull requests"]', "missing");
     await until(() => document.body.textContent?.includes("No loaded pull requests match"));
     fill('[aria-label="Filter pull requests"]', "42");
-    await until(() => document.querySelector(".codex-pr-row"));
+    await until(() => document.querySelector(".panel-pr-row"));
 
     fill('[aria-label="Commit message"]', "Keep this draft");
     await until(() => !document.querySelector<HTMLButtonElement>(".review-commit-button")!.disabled);
@@ -100,6 +101,23 @@ export async function runUiPolishRegressions(host: HTMLElement) {
     assert(other!.getBoundingClientRect().top > active!.getBoundingClientRect().bottom, "Harness rows touch each other");
     other!.click();
     assert(selected === "codex", "Harness row failed to select");
+
+    // A nearly full context says what to do and offers a fresh conversation beside Compact, inside the card.
+    let fresh = 0;
+    root.render(<div style={{ position: "relative", marginTop: 300, marginLeft: 300 }}>
+      <ContextWindowMeter used={190000} limit={200000} fraction={0.95} tone="critical" onCompact={() => {}} onFresh={() => { fresh += 1; }} />
+    </div>);
+    await until(() => document.querySelector(".context-meter-ring"));
+    document.querySelector<HTMLButtonElement>(".context-meter-ring")!.click();
+    await until(() => document.querySelector(".context-card"));
+    assert(document.querySelector(".context-card-hint")?.textContent?.includes("Almost full"), "Full context gave no advice");
+    const card = document.querySelector(".context-card")!.getBoundingClientRect();
+    const actions = Array.from(document.querySelectorAll<HTMLButtonElement>(".context-card-actions button"));
+    assert(actions.map((button) => button.textContent).join("|") === "New conversation|Compact conversation", `Unexpected context actions: ${actions.map((button) => button.textContent).join("|")}`);
+    assert(actions.every((button) => button.getBoundingClientRect().right <= card.right + 0.5), "Context actions overflow their card");
+    actions[0]!.click();
+    assert(fresh === 1, "New conversation did not start");
+    await until(() => !document.querySelector(".context-card"));
 
     document.documentElement.style.fontSize = "16px";
     root.render(<GitPullRequestDetail summary={pullRequest} loading={false} onRefresh={() => {}}

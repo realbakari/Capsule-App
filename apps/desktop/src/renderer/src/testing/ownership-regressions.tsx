@@ -51,28 +51,28 @@ async function firstSend(host: HTMLElement, fail: boolean | "creation") {
   const root = createRoot(host);
   try {
     root.render(<WorkspaceProvider><Capture /></WorkspaceProvider>);
-    await until(() => state?.ready);
+    await until(() => state?.ready, "provider ready");
     state.setDraft("submitted work");
-    await until(() => state.draft === "submitted work");
+    await until(() => state.draft === "submitted work", "draft set");
     const pending = state.send();
-    await until(() => create);
+    await until(() => create, "thread creation started");
     state.setDraft("follow-up while creating");
     state.setSkillId("follow-up-skill");
-    await until(() => state.skillId === "follow-up-skill");
+    await until(() => state.skillId === "follow-up-skill", "skill set");
     if (fail) Storage.prototype.setItem = () => { throw new Error("Storage unavailable"); };
     create();
     if (fail !== "creation") {
-      await until(() => finish);
+      await until(() => finish, "message send started");
       finish();
     }
     await pending;
-    await until(() => !state.busy);
+    await until(() => !state.busy, "send settled");
     assert(state.draft === "follow-up while creating" && state.skillId === "follow-up-skill", "First-send creation cleared the newer draft or skill");
     if (fail) {
       assert(state.promptStashes.some((entry) => entry.prompt === "submitted work" && entry.temporary), "Failed storage lost the submitted prompt");
       assert(state.notice?.includes("temporarily") && !state.notice.includes("saved in Stash"), "Failed storage claimed durable recovery");
     } else {
-      await until(() => state.sessionId === "created-thread");
+      await until(() => state.sessionId === "created-thread", "new thread selected");
       assert(state.draft === "follow-up while creating", "New-thread navigation lost the follow-up draft");
     }
   } finally {
