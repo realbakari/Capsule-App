@@ -643,19 +643,76 @@ conversation**, which runs the agent's advertised `compact` command through
 `runAgentCommand`, says why it is unavailable otherwise, and notes a likely
 expired prompt cache after five idle minutes.
 
-**Edit from here** on a user message calls the write-scoped `rewindSession`
-(sessionId, messageId, {restoreFiles}). The engine refuses while a run is live
-or for a non-user or steer message; it deletes the message and every later
-one in that conversation with their runs (`deleteMessagesFrom`, one
-transaction), optionally restores the latest earlier checkpoint through
-`restoreTurn`, closes a live harness session, and clears
-`openclawSessionKey`, `directSession` and the harness state so the next turn
-spawns fresh. Before clearing, it records `carryOver` (the route and the
-direct session's saved configuration). The next `spawnHarness` keeps that
-route and re-applies the configuration model first, dropping keys the agent
-no longer accepts. The result carries the removed prompt and attachments; the
-renderer reloads the session and puts them back in the composer. The confirm
-dialog's `secondary` action is the restore-files choice.
+**Restore, Redo and Fork** are one model, in `@capsule/core`'s `branching.ts`.
+A restore is `{ target: runId; scope: "files" | "conversation" | "both" }`
+(`restoreToTurn`, write-scoped). Files rewrites the folder from the target's
+checkpoint; conversation hides every message from the first one after the
+target's last message, with the runs they belong to; both does the two.
+**Edit from here** (`rewindSession`) is a conversation restore cut at the
+chosen prompt, to the newest kept run, that also returns the prompt and its
+attachments for the composer; with `restoreFiles` the folder goes to the
+newest kept run that has a checkpoint. All refuse while a run in the thread is
+live, and the files half keeps the folder guards described under checkpoints
+below.
+
+Before changing anything a restore records a RedoPoint (see "RedoPoint
+storage" below). A conversation restore closes a live harness session and
+clears `openclawSessionKey`, `directSession` and the harness state, recording
+`carryOver`: the route, the direct session's saved configuration, and
+`replayTranscript` when turns remain. `redoRestore` (write) reverses the newest
+point while no message or run is newer than it: it rewrites the folder from
+the point's snapshot, re-inserts the parked rows, and puts back a direct
+session's identity (its native session outlives the process, so the next turn
+resumes the session that remembers the restored turns). A Gateway session was
+closed for good, so a Gateway thread instead gets `replayTranscript` and the
+whole transcript on its next prompt. `redoPoint` is a read channel; a new turn
+(`sendMessage`) discards every point of its thread with their snapshot refs.
+
+`compareCheckpoint(runId)` (write, because it records a snapshot ref) captures
+the folder now at `refs/capsule/checkpoints/<session>/compare/latest` and returns
+`previewCheckpoint(now → checkpoint)`, the shape `turnDiff` returns, so the
+restore dialog reuses `SavedTurnDiff` with the patch.
+
+`forkSession({ sessionId, runId, workspace: "same" | "worktree" })` (write)
+creates "<title> (fork)" with `forkedFrom: { sessionId, runId }`, copying every
+row before the cut (messages, runs, events, contracts, artifacts, approvals,
+policy decisions) under new ids with the original timestamps. Each copied
+run's checkpoint ref is copied to the fork's own namespace, so either thread
+can be deleted without breaking the other's diffs. With `worktree` the engine
+creates a worktree and restores the target checkpoint into it; copied runs
+record that folder. The fork copies harness, ACP mode, model and permissions and
+gets `carryOver` from the original (route plus `replayTranscript`): no
+harness clones a live session at an older turn. Forking a fork at a turn it
+copied resolves `forkedFrom` to the root original (matched by the copied run's
+timestamp and prompt), so all threads sharing that turn form one group. A
+fork's copied runs predate the fork, which is how the shared-folder restore
+guard tells them from work done since.
+
+On the next prompt after `replayTranscript` the engine prefixes the kept
+transcript (user and assistant text, newest 48 KB) in a
+`<conversation-so-far>` block, records a "Carried the earlier conversation"
+lifecycle event, and clears the flag. The mock runtime records the event but
+is not handed the block, because it reads scenario tokens from the prompt.
+
+`forkBranches(sessionId)` (read) returns `ForkBranchGroup[]`: per fork point
+the anchor run in this thread, the branches (original first, then forks by
+creation) with title, fork time, own-worktree flag, turns since the fork point,
+latest status and archived flag, and this thread's index.
+
+UI: each message with a run gets a turn menu (branch icon) in its hover
+actions: Fork from here, Fork into a new worktree, Restore files…, Restore
+conversation…, Restore both…. The changed-files card's **Restore this turn…**
+opens the same dialog with Files selected. The dialog (`RestoreDialog`) shows
+the three scopes as radios with a reason on any that cannot apply (no
+checkpoint; latest turn), **Compare** with a file/line summary and the diff,
+the Redo note, and errors inline. After a restore or Edit from here, a
+`RedoBanner` above the composer says what happened and offers Redo and
+dismiss; the palette has **Redo last restore** and **Fork conversation from
+last turn**. Under the anchor turn (folded or not), `BranchSwitcher` shows
+"Branch n of m" with previous/next buttons, a listbox of branches (arrow keys,
+Home/End, Enter, Escape) and, in a fork, **Back to original**. None of the turn
+menu, dialog, banner or palette actions render for a paired viewer; the
+switcher does, because switching threads is a read.
 
 Sending during a running turn enqueues instead of refusing. The engine owns
 the queue: `FollowUpService` keeps up to 20 follow-ups and one scheduled resume
@@ -998,6 +1055,22 @@ The composer footer shows how full the harness's context window is, read from
 the `usage updated: <used>/<limit>` status frames the harness already sends.
 It warns at 75% and turns critical at 90%; below that a meter people learn to
 ignore is worse than none.
+
+### RedoPoint storage
+
+`restore_points` (migration 21) holds one row per restore: target run, scope,
+the edit flag, the folder snapshot ref
+(`refs/capsule/checkpoints/<session>/redo/<point-id>`, captured inside the
+folder lock just before the rewrite) and its folder, the agent identity the
+restore dropped, and `parked_rows`: the hidden messages and runs with their
+events, contracts, artifacts, approvals and policy decisions, as whole JSON
+rows per table. Parking moves rows out rather than flagging them in place
+(a `hiddenByRestoreId` column), because a flag would have to be honoured by
+every query that reads a transcript, a run, run history or search, and one
+missed query would show a hidden turn. Raw rows also carry any column a
+later migration adds. Redo re-inserts parents before children; deleting the
+thread deletes its points, and its snapshot refs sit under the thread's
+checkpoint prefix so `deleteCheckpoints` takes them too.
 
 Each finished turn captures the worktree as a hidden Git ref under
 `refs/capsule/checkpoints/<session>/turn/0/<run-id>` (legacy refs use a turn number), so the changed-files card can

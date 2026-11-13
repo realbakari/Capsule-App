@@ -13,7 +13,7 @@ need the shipped-product voice.
 - [Keyboard shortcuts](./user/keyboard-shortcuts.md)
 - [Skills](./user/skills.md)
 - [Reviewing changes](./user/review.md)
-- [Restoring a turn](./user/checkpoints.md)
+- [Restoring, redoing and forking turns](./user/checkpoints.md)
 - [Checking a turn](./user/verification.md)
 - [Drafts, attachments, and prompt stash](./user/composer.md)
 - [The board: cards, columns, and chains](./user/board.md)

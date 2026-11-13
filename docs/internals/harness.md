@@ -396,6 +396,26 @@ JSON/base64 overhead. Unsupported, special, missing and oversized files fail the
 turn instead of silently substituting paths. Encoded bytes are not persisted.
 Gateway delivery keeps its existing bridge and host semantics.
 
+### Forks and restores per route
+
+A fork, a conversation restore and Edit from here all end with a thread that
+has no agent session and a `carryOver`. Per route and harness:
+
+| Route / harness | Fresh session | Context for the kept turns | Redo of a conversation restore |
+|---|---|---|---|
+| Direct, Claude Code | spawned on the route recorded in `carryOver` | transcript block on the first prompt | resumes the saved native session (`resume`), which holds the hidden turns |
+| Direct, Codex, Grok Build, Muse | same | same | same, through `session/resume` or `session/load` when the agent offers it |
+| Gateway, any harness | new Gateway session and `/acp spawn --bind off` | same | the closed Gateway session is not reopened; the next prompt carries the whole transcript instead |
+| Mock runtime | mock session key | lifecycle event only (the mock reads scenario tokens from prompts) | same as Gateway |
+
+Native forking was considered and not used. ACP's session fork and the
+Claude SDK's `forkSession` copy a whole live session; forking at an older
+turn needs `resumeSessionAt` with the agent's own message id for that turn,
+which Capsule does not record per run. Using it for "fork at the latest turn"
+only, on one harness, would give the same menu item two behaviours. One
+mechanism for every route keeps a fork predictable; recording native message
+ids per run is the prerequisite if this is revisited.
+
 ### Embedded browser tools
 
 Browser operations acquire one target and grant generation. Foreground
