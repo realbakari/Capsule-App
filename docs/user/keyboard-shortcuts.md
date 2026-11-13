@@ -20,6 +20,7 @@
 | Mark this conversation unread | `⇧⌘U` |
 | Send | `Enter`, or `⌘Enter` if you changed the send key |
 | Stop the running turn | `Esc` in the composer |
+| Take the last queued follow-up back to edit | `⌥↑` in an empty composer |
 | Show every shortcut | `⌘/` |
 | Open Review | `⇧⌘D` |
 | Open the Browser | `⇧⌘B` |

@@ -64,6 +64,7 @@ export const FIXED_SHORTCUTS: Array<{ label: string; keys: string[] }> = [
   { label: "Send", keys: ["↵"] },
   { label: "Stop the running turn", keys: ["Esc"] },
   { label: "Previous prompt", keys: ["↑"] },
+  { label: "Edit the last queued follow-up", keys: ["⌥", "↑"] },
   { label: "Side chat", keys: ["⌥", "⌘", "S"] },
   { label: "Open the terminal", keys: ["⌃", "`"] },
   { label: "Skills", keys: ["⇧", "⌘", "S"] },

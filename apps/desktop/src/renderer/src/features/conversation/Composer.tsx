@@ -591,6 +591,11 @@ export function Composer({
             /* With nothing to dismiss, Escape stops the turn that is running, the way the Stop button does. */
             if (!menuOpen && event.key === "Escape" && activeRun && !workspace.stoppingRunIds?.includes(activeRun.id)) { event.preventDefault(); void stopRun(); return; }
             if (menuOpen && event.key === "Enter" && !event.metaKey && !event.ctrlKey && !event.shiftKey) { event.preventDefault(); return; }
+            /* ⌥↑ in an empty prompt takes the last queued follow-up back to edit. */
+            if (event.key === "ArrowUp" && event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey && !menuOpen && !event.currentTarget.value.trim()) {
+              const last = workspace.queue.at(-1);
+              if (last) { event.preventDefault(); workspace.editQueued(last.id); return; }
+            }
             /*
              * ArrowUp in an empty prompt, or at its start, walks back through
              * what this thread was asked before; ArrowDown walks forward and
