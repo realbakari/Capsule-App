@@ -22,6 +22,7 @@ import { clampPanelWidth, fitPanelWidth, restorePanelWidth } from "../../lib/pan
 import { formatProjectRoot, toWorkspaceRelative } from "../../lib/paths";
 import { useWorkspace } from "../../lib/workspace";
 import { DiffView } from "./DiffView";
+import { ReviewDiff } from "../review/ReviewDiff";
 import { EmbeddedBrowser } from "./EmbeddedBrowser";
 import { SimulatorPane } from "./SimulatorPane";
 import { FilePreviewView } from "./FilePreview";
@@ -252,7 +253,7 @@ export function Inspector() {
   const scope = JSON.stringify([projectId, session?.id, activeRoot]);
   const diffRequests = useRef(new RequestScope()).current;
   const diffScope = diffRequests.select(JSON.stringify([scope, git?.branch]));
-  const [diff, setDiff] = useScopedState(diffScope, "");
+  const [reviewPath, setReviewPath] = useScopedState<string | undefined>(diffScope, undefined);
   const directoryCache = useMemo(() => new DirectoryListings(async (path) => {
     if (!projectId || !activeRoot) return [];
     return sortTreeEntries(await api.listFiles(projectId, path || undefined, activeRoot));
@@ -649,7 +650,7 @@ export function Inspector() {
           : undefined,
       );
       setSaveState(recovered?.state ?? (doc.truncated ? "truncated" : "idle"));
-      setDiff("");
+      setReviewPath(undefined);
 
     } catch (error) {
       if (!current()) return;
@@ -670,18 +671,9 @@ export function Inspector() {
     }
   }, [api, projectId, activeRoot, setInspectorOpen]);
 
-  async function showFileDiff(relative: string) {
+  function showFileDiff(relative: string) {
     if (!projectId) return;
-    const current = diffRequests.capture("diff");
-    setDiff("Loading diff…");
-    try {
-      const text = await api.gitDiff(projectId, relative, session?.id);
-      if (!current()) return;
-      setDiff(text || "(no differences)");
-    } catch {
-      if (!current()) return;
-      setDiff("Failed to load diff.");
-    }
+    setReviewPath(relative);
     setPreviewDoc(undefined);
     setEditing(undefined);
     selectTool("review");
@@ -1059,7 +1051,7 @@ export function Inspector() {
               ) : (
                 git?.files?.map((entry) => (
                   <div className="change-row" key={entry.path}>
-                    <button className="list-item" onClick={() => void showFileDiff(entry.path)}>
+                    <button className="list-item" onClick={() => showFileDiff(entry.path)}>
                       <DiffIcon size={12} />
                       <span className="truncate">{entry.path}</span>
                       <span className="meta">{entry.code}</span>
@@ -1080,24 +1072,25 @@ export function Inspector() {
             {git?.isRepo && <ReviewCommitForm key={`${projectId}/${session?.id ?? ""}/${session?.workingDirectory ?? project?.workingDirectory ?? ""}`}
               dirty={Boolean(git.dirty)} onCommit={gitCommit} />}
 
-            <div className="panel-diff-section">
-              <h4>Diff</h4>
-              {diff ? (
-                <DiffView text={diff} />
-              ) : (
-                artifacts
+            {git?.isRepo && projectId ? (
+              <ReviewDiff key={`${projectId}/${session?.id ?? ""}`} projectId={projectId} sessionId={session?.id}
+                path={reviewPath} onShowAll={() => setReviewPath(undefined)} />
+            ) : (
+              <div className="panel-diff-section">
+                <h4>Diff</h4>
+                {artifacts
                   .filter((item) => item.kind === "patch" && item.content)
                   .map((artifact) => (
                     <div key={artifact.id}>
                       <h5>{artifact.title}</h5>
                       <DiffView text={artifact.content ?? ""} />
                     </div>
-                  ))
-              )}
-              {!diff && artifacts.every((item) => item.kind !== "patch" || !item.content) && (
-                <p className="faint">Select a changed file to view its git diff.</p>
-              )}
-            </div>
+                  ))}
+                {artifacts.every((item) => item.kind !== "patch" || !item.content) && (
+                  <p className="faint">No diff to show. This folder is not a git repository.</p>
+                )}
+              </div>
+            )}
               </>
             )}
           </div>

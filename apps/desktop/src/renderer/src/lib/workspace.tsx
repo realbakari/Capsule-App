@@ -57,6 +57,7 @@ import {
   type SkillCatalogPage,
   type SubsystemStatus,
   type WorkspaceMode,
+  type HunkApply,
 } from "@capsule/shared";
 
 import type { SettingsSectionId } from "../features/settings/settings-search";
@@ -373,6 +374,8 @@ export interface WorkspaceValue {
   gitCommit: (message: string) => Promise<boolean>;
   gitStage: (relative: string) => Promise<void>;
   gitDiscard: (relative: string) => void;
+  /** Keep, Reject or Unstage a hunk. Throws git's reason when it no longer applies. */
+  gitApplyHunk: (apply: HunkApply) => Promise<void>;
   gitCreateBranch: (branch: string) => Promise<void>;
   gitPush: () => Promise<boolean>;
   gitCreatePullRequest: (input?: { title?: string; body?: string; }) => Promise<boolean>;
@@ -2213,6 +2216,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     });
   }
 
+  async function gitApplyHunk(apply: HunkApply) {
+    if (!projectId) return;
+    const current = requests.capture("git");
+    const next = await api.gitApplyHunk(projectId, apply, sessionId);
+    if (current()) setGit(next);
+  }
+
   async function gitCreateBranch(branch: string) {
     if (projectId) await performGit(() => api.gitCreateBranch(projectId, branch, sessionId));
   }
@@ -2513,6 +2523,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       gitCommit,
       gitStage,
       gitDiscard,
+      gitApplyHunk,
       gitCreateBranch,
       gitPush,
       gitCreatePullRequest,
