@@ -3,22 +3,16 @@ import { useWorkspace } from "../../lib/workspace";
 import { SidebarToggle } from "./SidebarControl";
 import { ProjectActionsControl } from "./ProjectActionsControl";
 import { CommitControl } from "./CommitControl";
-import { MenuSelect } from "./MenuSelect";
 import { HeaderPopover } from "./HeaderPopover";
+import { SurfaceBar } from "./SurfaceBar";
 import { formatUserError } from "../../lib/errors";
 import { gatewayConnectionLabel } from "../../lib/harness";
 import {
   ChevronDownIcon,
   FolderIcon,
   GitBranchIcon,
-  GlobeIcon,
-  MoreVerticalIcon,
-  PanelRightIcon,
-  SmartphoneIcon,
   PlusIcon,
   StopIcon,
-  TerminalIcon,
-  XIcon,
 } from "./icons";
 
 const VIEW_TITLE: Record<string, string> = {
@@ -45,16 +39,11 @@ export function Titlebar() {
     openTerminal,
     openInspector,
     sidebarCollapsed,
-    inspectorOpen,
-    toggleInspector,
-    terminalOpen,
-    setTerminalOpen,
     activeRun,
     stopRun,
     createTask,
     initializeGit,
     setNotice,
-    updateSettings,
   } = useWorkspace();
   const terminalCwd = session?.workingDirectory ?? project?.workingDirectory;
 
@@ -205,43 +194,7 @@ export function Titlebar() {
           </button>
         )}
 
-        {view === "chat" && (
-          <button
-            className={`icon-btn ${terminalOpen ? "active" : ""}`}
-            /* A shell needs a folder to open in, so the control says why it is
-               unavailable instead of toggling nothing. */
-            disabled={!terminalCwd || api.isDesktop === false}
-            title={api.isDesktop === false ? "Available in the desktop app" : terminalCwd ? "Toggle terminal (⌘J)" : "Open a folder to use the terminal"}
-            aria-label="Toggle terminal (⌘J)"
-            aria-pressed={terminalOpen}
-            onClick={() => setTerminalOpen(!terminalOpen)}
-          >
-            <TerminalIcon size={14} />
-          </button>
-        )}
-
-        {view === "chat" && (
-          <button
-            className={`icon-btn ${inspectorOpen ? "active" : ""}`}
-            title="Toggle inspector (⌘\\)"
-            aria-label="Toggle inspector (⌘\\)"
-            onClick={toggleInspector}
-          >
-            <PanelRightIcon size={14} />
-          </button>
-        )}
-
-        {view === "chat" && (
-          <MenuSelect ariaLabel="More" value="" placeholder="More" iconOnly icon={<MoreVerticalIcon size={14} />} options={[
-            ...(api.isDesktop !== false && api.platform === "darwin" ? [{ id: "simulator", label: "iOS Simulator", detail: "Watch and drive a simulator beside this conversation.", icon: <SmartphoneIcon size={14} /> }] : []),
-            { id: "browser", label: "Browser", detail: "Open a local app or URL in the inspector.", icon: <GlobeIcon size={14} /> },
-            { id: "keep-awake", label: settings?.keepAwakeWhileRunning ? "Keep computer awake: on" : "Keep computer awake: off", detail: "While a turn is running. Also in Settings." },
-          ]} onChange={(id) => {
-            if (id === "simulator") openInspector("simulator");
-            else if (id === "browser") openInspector("browser");
-            else if (id === "keep-awake") void updateSettings({ keepAwakeWhileRunning: !settings?.keepAwakeWhileRunning }).catch((error) => setNotice(formatUserError(error)));
-          }} />
-        )}
+        {view === "chat" && <SurfaceBar />}
 
         <button
           className="status-dot-btn"

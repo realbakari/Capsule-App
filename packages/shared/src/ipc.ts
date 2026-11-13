@@ -74,7 +74,6 @@ export const IPC_CHANNELS = {
   terminalAcknowledge: "capsule:terminalAcknowledge",
   terminalResize: "capsule:terminalResize",
   terminalStop: "capsule:terminalStop",
-  execInProject: "capsule:execInProject",
   runProjectAction: "capsule:runProjectAction",
   stopProjectAction: "capsule:stopProjectAction",
   listProjectActionRuns: "capsule:listProjectActionRuns",

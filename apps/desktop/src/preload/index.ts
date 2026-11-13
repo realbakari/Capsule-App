@@ -122,8 +122,6 @@ const api = {
     ipcRenderer.invoke(IPC_CHANNELS.listFiles, projectId, relative, root),
   openTerminal: (projectId: string, sessionId?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.openTerminal, projectId, sessionId),
-  execInProject: (projectId: string, command: string, sessionId?: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.execInProject, projectId, command, sessionId),
   processHistory: () => ipcRenderer.invoke(IPC_CHANNELS.processHistory),
   rendererReady: (surface?: "pet") => ipcRenderer.invoke(IPC_CHANNELS.rendererReady, surface),
   remoteStatus: () => ipcRenderer.invoke(IPC_CHANNELS.remoteStatus),

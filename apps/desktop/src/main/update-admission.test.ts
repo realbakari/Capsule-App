@@ -16,7 +16,7 @@ it("accounts for in-flight writes and unlocks after a failed operation", async (
 it("keeps status readable but rejects every non-update write during restart", async () => {
   const gate = new UpdateAdmission();
   const release = gate.reserve();
-  for (const channel of [IPC_CHANNELS.sendMessage, IPC_CHANNELS.terminalStart, IPC_CHANNELS.execInProject,
+  for (const channel of [IPC_CHANNELS.sendMessage, IPC_CHANNELS.terminalStart,
     IPC_CHANNELS.writeFile, IPC_CHANNELS.spawnHarness, IPC_CHANNELS.gitPush, "capsule:futureWrite"]) {
     await expect(gate.run(channel, () => { throw new Error("Must not run"); })).rejects.toThrow("preparing to restart");
   }

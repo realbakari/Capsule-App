@@ -205,7 +205,7 @@ export async function runPanelRegressions(host: HTMLElement, base: Record<string
     assert(document.querySelector('.gateway-recovery'), "Gateway agent lost its connection recovery control");
 
     window.testWorkspace = { ...base, project: undefined, projectId: undefined, session: undefined,
-      files: [], steps: [], artifacts: [], harnesses: [], harnessSessions: [], inspectorTab: "launcher", inspectorOpen: true, settings: {},
+      files: [], steps: [], artifacts: [], harnesses: [], harnessSessions: [], setInspectorTab: () => {}, inspectorTab: "launcher", inspectorOpen: true, settings: {},
     };
     localStorage.setItem("capsule.inspectorWidth", "350");
     const inspector = () => document.querySelector<HTMLElement>(".inspector")!;

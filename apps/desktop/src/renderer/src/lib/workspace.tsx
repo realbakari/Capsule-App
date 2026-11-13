@@ -95,7 +95,6 @@ export type InspectorTab =
   | "run"
   | "agents"
   | "chat"
-  | "term"
   | "browser"
   | "simulator";
 
@@ -282,7 +281,6 @@ export interface WorkspaceValue {
   archiveUndo?: { id: string; title: string };
   dismissArchiveUndo: () => void;
   openTerminal: () => Promise<void>;
-  execInProject: (command: string) => Promise<{ stdout: string; stderr: string; code: number; }>;
   initializeGit: () => Promise<void>;
   saveProjectActions: (actions: ProjectAction[]) => Promise<{ saved: true } | { saved: false; error: string }>;
   workspaceMode: WorkspaceMode;
@@ -1836,15 +1834,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     }
   }
 
-  async function execInProject(command: string) {
-    if (!projectId) throw new Error("No project selected");
-    return await api.execInProject(projectId, command, sessionId) as {
-      stdout: string;
-      stderr: string;
-      code: number;
-    };
-  }
-
   async function initializeGit() {
     if (!projectId) return;
     if (await performGit(() => api.gitInit(projectId))) {
@@ -2355,7 +2344,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       archiveUndo,
       dismissArchiveUndo: () => setArchiveUndo(undefined),
       openTerminal,
-      execInProject,
       initializeGit,
       saveProjectActions,
       workspaceMode,

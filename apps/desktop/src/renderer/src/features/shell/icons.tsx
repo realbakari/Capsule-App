@@ -726,3 +726,31 @@ export function UndoIcon(props: IconProps) {
     </Svg>
   );
 }
+
+export function ListIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M9 6h11M9 12h11M9 18h11" />
+      <path d="M4.5 6h.01M4.5 12h.01M4.5 18h.01" strokeWidth="2.5" />
+    </Svg>
+  );
+}
+
+export function LaptopIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="4" y="5" width="16" height="11" rx="1.5" />
+      <path d="M2 19h20" />
+    </Svg>
+  );
+}
+
+/* A file's changes: plus over minus in a square. */
+export function DiffSquareIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="4" y="4" width="16" height="16" rx="2.5" />
+      <path d="M12 7.5v5M9.5 10h5M9.5 16h5" />
+    </Svg>
+  );
+}

@@ -1,9 +1,16 @@
 # Your first conversation
 
-The **Terminal** button in the conversation header opens a bottom drawer in the
-conversation’s folder. You can also use **Show terminal** in the command palette
-or `⌘J`. Hiding the drawer preserves running shells; closing a shell tab ends it.
-For a single command with captured output, use **Commands** in the inspector.
+The terminal icon in the title bar opens a terminal drawer under the
+conversation, in the conversation’s folder. You can also use **Show terminal**
+in the command palette, `/term` in the composer, or `⌘J`. Hiding the drawer
+keeps running shells; closing a shell tab ends it.
+
+The icons beside it open the panel next to the conversation, one surface at a
+time: **Review** for changed files, **Browser**, **Simulator** on a Mac, and
+**Files**. Click the icon that is showing to close the panel. The list icon
+shows this conversation's details: where it runs, how full its context is,
+what changed, and what is running. **More** (⋯) holds **Agents**, **Side
+chat**, and **Keep computer awake**.
 
 1. Install and sign in to a supported coding CLI using that tool's own setup.
    Capsule does not supply a subscription or install the CLI.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SURFACES } from "./Inspector.js";
+import { SURFACES } from "./surfaces.js";
 
 const reasons = (state: { projectId?: string; git?: { isRepo?: boolean } }) =>
   Object.fromEntries(SURFACES.map((s) => [s.tool, s.blockedBy(state)]));
@@ -7,8 +7,14 @@ const reasons = (state: { projectId?: string; git?: { isRepo?: boolean } }) =>
 describe("inspector surfaces", () => {
   it("blocks what needs a project, naming why", () => {
     const blocked = reasons({});
-    expect(blocked.terminal).toBe("Open a project first.");
     expect(blocked.files).toBe("Open a project first.");
+  });
+
+  it("puts the panel surfaces on the bar in order, with the rest under More", () => {
+    expect(SURFACES.filter((s) => s.inBar).map((s) => s.tool)).toEqual(["review", "browser", "simulator", "files"]);
+    expect(SURFACES.filter((s) => !s.inBar).map((s) => s.tool)).toEqual(["agents", "chat"]);
+    // The terminal is the real dock, toggled from the bar, not a panel surface.
+    expect(SURFACES.some((s) => (s.tool as string) === "terminal")).toBe(false);
   });
 
   it("blocks review outside a Git repository", () => {

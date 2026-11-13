@@ -125,7 +125,7 @@ export async function runScreenshotRegressions(host: HTMLElement) {
     // the uppercase empty state, and its switch omitted the Agents surface.
     const base = { project: { id: "p", name: "Fixture" }, projectId: "p", session: { id: "s", harnessState: "closed", openclawSessionKey: "direct:acp:fixture" },
       runs: [], events: [], agents: [], files: [], steps: [], artifacts: [], harnesses: [], harnessSessions: [], stoppingRunIds: [],
-      inspectorTab: "agents", settings: {}, setInspectorOpen: () => {}, api: {}, setView: () => {} };
+      setInspectorTab: () => {}, inspectorTab: "agents", settings: {}, setInspectorOpen: () => {}, api: {}, setView: () => {} };
     window.testWorkspace = base;
     localStorage.setItem("capsule.inspectorWidth", "360");
     root.render(<Inspector />);

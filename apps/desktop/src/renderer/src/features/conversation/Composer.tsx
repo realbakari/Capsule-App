@@ -61,7 +61,6 @@ function slashCommands(input: {
   spawnHarness: (id: string) => void;
   toggleInspector: () => void;
   openTerminal: () => void;
-  openInspector: (tab?: "term") => void;
   pickProjectDirectory: () => void;
   setView: (view: View) => void;
 }): SuggestItem[] {
@@ -82,7 +81,7 @@ function slashCommands(input: {
     })),
     { id: "inspect", label: "/inspect", detail: "Toggle inspector", run: () => input.toggleInspector() },
     { id: "open", label: "/open", detail: "Open a code folder", run: () => input.pickProjectDirectory() },
-    { id: "term", label: "/term", detail: "Project terminal", run: () => input.openInspector("term") },
+    { id: "term", label: "/term", detail: "Project terminal", run: () => input.openTerminal() },
     { id: "runtimes", label: "/runtimes", detail: "Open harnesses", run: () => input.setView("runtimes") },
     { id: "approvals", label: "/approvals", detail: "Open approvals", run: () => input.setView("approvals") },
     { id: "settings", label: "/settings", detail: "Open settings", run: () => input.setView("settings") },
@@ -303,7 +302,6 @@ export function Composer({
         spawnHarness,
         toggleInspector,
         openTerminal: () => setTerminalOpen(true),
-        openInspector,
         pickProjectDirectory,
         setView,
       }),
@@ -312,7 +310,6 @@ export function Composer({
       harnesses,
       skills,
       setSkillId,
-      openInspector,
       pickProjectDirectory,
       setTerminalOpen,
       setView,

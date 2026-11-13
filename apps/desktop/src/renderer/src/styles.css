@@ -10909,3 +10909,43 @@ fieldset.harness-options:disabled { opacity: .7; }
 .thread-limit .chip { flex-shrink: 0; }
 .context-card-hint { margin: 0.5rem 0 0; font-size: 0.75rem; color: var(--text-muted); line-height: 1.4; }
 .context-card-actions { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.6rem; font-size: 0.75rem; }
+
+/* Titlebar icon bar: one icon per panel surface, the showing one pressed. */
+.surface-bar { display: flex; align-items: center; gap: 0.15rem; }
+.surface-bar .icon-btn { width: 1.875rem; height: 1.875rem; }
+.surface-bar .icon-btn.active { background: var(--bg-active); color: var(--text); }
+.surface-bar-details { position: relative; display: flex; }
+
+/* The panel's one header row: what the surface is, then the panel's own controls. */
+.inspector-head { padding-left: 0.9rem; }
+.inspector-title { font-size: 0.8125rem; color: var(--text-muted); }
+.inspector-title > span:first-child { color: var(--text); font-weight: 500; }
+.inspector-head .codex-chrome-actions { margin-left: auto; }
+
+/* Conversation details, from the icon bar's list icon. */
+.session-details { width: min(22rem, calc(100vw - 2rem)); padding: 0.25rem 0; }
+.session-details-body { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; }
+.session-details-body section { padding: 0.65rem 0.9rem; border-top: 1px solid var(--border-color); }
+.session-details-body section:first-child { border-top: 0; }
+.session-details-body h4 { margin: 0 0 0.45rem; font-size: 0.8125rem; font-weight: 500; color: var(--text); }
+.session-details-line { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
+.session-details-line h4 { margin: 0; }
+.session-details-row { display: flex; align-items: center; gap: 0.55rem; margin: 0.3rem 0 0; min-width: 0; font-size: 0.8125rem; color: var(--text); }
+.session-details-row svg { flex-shrink: 0; color: var(--text-muted); }
+/* A long folder path shrinks to an ellipsis instead of widening the popover. */
+.session-details-row > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-details { overflow-x: hidden; }
+.session-details-meter { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.8125rem; color: var(--text-muted); }
+.session-details-bar { position: relative; display: inline-block; width: 2.5rem; height: 0.375rem; border-radius: 999px; background: var(--bg-active); overflow: hidden; }
+.session-details-bar i { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: var(--accent); }
+.session-details-changes { display: inline-flex; align-items: center; gap: 0.45rem; font-size: 0.8125rem; }
+.session-details-changes svg { color: var(--text-muted); }
+.session-details-changes .added { color: var(--green); }
+.session-details-changes .removed { color: var(--red); }
+.session-details-changes .chip { margin-left: 0.25rem; padding: 0.2rem 0.6rem; }
+/* A surface's own controls in the panel header: left-aligned, and their menus may drop below the row. */
+.inspector-title:has(.inspector-head-slot) { overflow: visible; }
+.inspector-head-slot { display: flex; align-items: center; min-width: 0; }
+.inspector-head-slot .simulator-menubar { margin-left: -0.55rem; }
+/* Before the simulator has its menus (still loading, or not available here), the row still names the surface. */
+.inspector-head-slot:empty::before { content: "Simulator"; color: var(--text); font-weight: 500; }

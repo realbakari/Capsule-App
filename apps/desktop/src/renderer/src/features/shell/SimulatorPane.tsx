@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { Simulator, SimulatorAction, SimulatorApp, SimulatorFrame, SimulatorInventory, SimulatorOrientation } from "@capsule/shared";
 import { formatUserError } from "../../lib/errors";
 import { useWorkspace } from "../../lib/workspace";
 import { SimulatorAttach } from "./SimulatorAttach";
 import { SimulatorTools } from "./SimulatorTools";
 import { SimulatorAnnotator } from "./SimulatorAnnotator";
+import { InspectorHeadSlot } from "./inspector-slot";
 import { deviceGeometry, devicePoints, pointOnScreen, rotateClockwise, stepZoom, type SimulatorZoom, type Size } from "./simulator-geometry";
 import {
   CameraIcon,
@@ -68,6 +70,7 @@ interface PointerTrack {
 
 export function SimulatorPane() {
   const { api, session, settings, setNotice, openPath, attachImage } = useWorkspace();
+  const headSlot = useContext(InspectorHeadSlot);
   const threadId = session?.id;
   const attachedKey = `${ATTACHED_KEY}:${threadId ?? "inbox"}`;
   const [inventory, setInventory] = useState<SimulatorInventory>();
@@ -491,6 +494,25 @@ export function SimulatorPane() {
   };
   const shown = annotating ?? frame;
   const zoomLabel = zoom === "fit" ? "Fit" : `${Math.round(zoom * 100)}%`;
+  /* In the panel the menus share the header row with expand and close; elsewhere they sit in the device row. */
+  const menubar = (
+    <div className="simulator-menubar" role="menubar" aria-label="Simulator" ref={menuRef}>
+          {(Object.keys(menus) as Array<keyof typeof menus>).map((key) => (
+            <div key={key} className="simulator-menu">
+              <button type="button" role="menuitem" className={`simulator-menu-trigger${menu === key ? " active" : ""}`} aria-haspopup="menu" aria-expanded={menu === key} disabled={!device} onClick={() => setMenu((open) => (open === key ? undefined : key))}>
+                {menus[key].label}<ChevronDownIcon size={12} />
+              </button>
+              {menu === key && (
+                <div className="preview-more-menu simulator-menu-list" role="menu" aria-label={menus[key].label}>
+                  {menus[key].items.map((item, index) => item === "separator"
+                    ? <div key={`sep-${index}`} className="preview-menu-sep" role="separator" />
+                    : <button key={item.label} type="button" role="menuitem" className="preview-menu-item" disabled={item.disabled} onClick={item.run}>{item.label}</button>)}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+  );
 
   return (
     <div className="codex-browser-pane simulator-pane" data-family={family}>
@@ -529,22 +551,7 @@ export function SimulatorPane() {
             </div>
           )}
         </div>
-        <div className="simulator-menubar" role="menubar" aria-label="Simulator" ref={menuRef}>
-              {(Object.keys(menus) as Array<keyof typeof menus>).map((key) => (
-                <div key={key} className="simulator-menu">
-                  <button type="button" role="menuitem" className={`simulator-menu-trigger${menu === key ? " active" : ""}`} aria-haspopup="menu" aria-expanded={menu === key} disabled={!device} onClick={() => setMenu((open) => (open === key ? undefined : key))}>
-                    {menus[key].label}<ChevronDownIcon size={12} />
-                  </button>
-                  {menu === key && (
-                    <div className="preview-more-menu simulator-menu-list" role="menu" aria-label={menus[key].label}>
-                      {menus[key].items.map((item, index) => item === "separator"
-                        ? <div key={`sep-${index}`} className="preview-menu-sep" role="separator" />
-                        : <button key={item.label} type="button" role="menuitem" className="preview-menu-item" disabled={item.disabled} onClick={item.run}>{item.label}</button>)}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
+        {headSlot ? createPortal(menubar, headSlot) : menubar}
         <div className="simulator-zoom" role="group" aria-label={`Zoom, ${zoomLabel}`}>
           <button type="button" className="preview-chrome-btn" title="Zoom out" aria-label="Zoom out" disabled={!device || geometry.scale <= 0.5 + 0.001} onClick={() => zoomStep("out")}><ZoomOutIcon size={16} /></button>
           <button type="button" className={`preview-chrome-btn${zoom === "fit" ? " active" : ""}`} title="Fit to the pane" aria-label="Fit to the pane" aria-pressed={zoom === "fit"} disabled={!device} onClick={() => setZoom("fit")}><ZoomFitIcon size={16} /></button>

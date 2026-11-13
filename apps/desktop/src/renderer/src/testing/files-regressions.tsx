@@ -32,10 +32,11 @@ export async function runFilesRegressions(host: HTMLElement, base: Record<string
   let rejectExtra!: (error: Error) => void;
   let failExtra = true;
   let opened = 0;
+  let closedPanel = false;
   const fixture = { ...base, inspectorTab: "files", inspectorOpen: true, requestedFile: undefined,
     projectId: "files-fixture", project: { id: "files-fixture", workingDirectory: "/fixture/main", extraFolders: ["/fixture/extra"] },
     session: { id: "files-thread" }, files: [entry("primary-only.ts")],
-    setInspectorTab: () => {}, setInspectorOpen: () => { opened++; },
+    setInspectorTab: () => {}, setInspectorOpen: () => { opened++; }, toggleInspector: () => { closedPanel = true; },
     api: { ...(base.api as object),
       listFiles: async (_project: string, _path: string, folder: string) => {
         if (folder === "/fixture/extra" && failExtra) return new Promise<FileEntry[]>((_resolve, reject) => { rejectExtra = reject; });
@@ -74,15 +75,16 @@ export async function runFilesRegressions(host: HTMLElement, base: Record<string
     click('.codex-tree-empty button');
     await until(() => document.querySelector('.codex-tree-item[title="extra-only.ts"]'));
 
-    // Late reads cannot reopen a closed tab or a dismissed inspector.
+    // A late read cannot reopen a panel the person closed. The app unmounts a closed panel.
     click('.codex-tree-item[title="slow.ts"]');
     await until(() => completePreview);
-    click('.codex-tab-close');
-    await until(() => document.querySelector(".codex-launcher"));
+    click('[aria-label="Close panel"]');
+    assert(closedPanel, "Close did not close the panel");
+    root.unmount(); root = createRoot(host);
     const beforeClose = opened;
     completePreview(preview("slow.ts"));
     await new Promise((resolve) => setTimeout(resolve, 20));
-    assert(document.querySelector(".codex-launcher") && opened === beforeClose, "Late preview reopened a closed Files tab");
+    assert(opened === beforeClose, "Late preview reopened a closed panel");
 
     root.unmount(); root = createRoot(host);
     window.testWorkspace = fixture;

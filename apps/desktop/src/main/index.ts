@@ -1328,13 +1328,6 @@ function registerIpc(): void {
     stopTerminal(String(id));
     return true;
   });
-  handle(IPC_CHANNELS.execInProject, (projectId, command, sessionId) =>
-    requireEngine().execInProject(
-      String(projectId),
-      String(command),
-      sessionId ? String(sessionId) : undefined,
-    ),
-  );
   handle(IPC_CHANNELS.runProjectAction, (projectId, actionId, sessionId) =>
     requireEngine().runProjectAction(
       String(projectId),

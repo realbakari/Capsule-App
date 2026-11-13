@@ -71,7 +71,6 @@ describe("ipc scopes", () => {
       "inspectBackgroundBrowser",
       "setHarnessConfig",
       "discoverHarness",
-      "execInProject",
       "runProjectAction",
       "verifyRun",
       "cancelVerification",

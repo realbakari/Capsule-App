@@ -142,7 +142,7 @@ export async function runWorkspaceExtensionRegressions(host: HTMLElement, base: 
 
     let draft = "Unfinished implementation notes";
     const pr = { number: 42, title: "Review fixture", url: "https://example.test/pull/42", state: "OPEN", isDraft: false };
-    window.testWorkspace = { ...base, inspectorTab: "changes", git: { isRepo: true, branch: "fixture", files: [] },
+    window.testWorkspace = { ...base, setInspectorTab: () => {}, inspectorTab: "changes", git: { isRepo: true, branch: "fixture", files: [] },
       setDraft: (update: string | ((value: string) => string)) => { draft = typeof update === "function" ? update(draft) : update; },
       api: { ...(base.api as object), listPullRequests: async () => ({ items: [pr] }), getPullRequest: async () => undefined } };
     root.render(<Inspector />);

@@ -72,7 +72,7 @@ export async function runSimulatorRegressions(host: HTMLElement, base: Record<st
   const fixture = {
     ...base, project: undefined, projectId: undefined, session: { id: "thread-sim" }, files: [], steps: [], artifacts: [], harnesses: [], harnessSessions: [],
     git: undefined, settings: { agentSimulatorAccess: true }, inspectorOpen: true, inspectorTab: "launcher", requestedFile: undefined, clearRequestedFile: () => {},
-    setInspectorOpen: () => {}, setInspectorTab: (tab: string) => { tabs.push(tab); window.testWorkspace = { ...window.testWorkspace, inspectorTab: tab }; },
+    setInspectorOpen: () => {}, setInspectorTab: (tab: string) => { tabs.push(tab); window.testWorkspace = { ...window.testWorkspace, inspectorTab: tab }; root.render(<Inspector />); },
     setNotice: (notice: string) => notices.push(notice), openPath: async (target: string) => { opened.push(target); }, api,
   };
   try {

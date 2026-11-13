@@ -27,6 +27,8 @@ import { SimulatorPane } from "./SimulatorPane";
 import { FilePreviewView } from "./FilePreview";
 import { FileTreePane, sortTreeEntries } from "./FileTree";
 import { ThreadAgents } from "./ThreadAgents";
+import { SURFACES, tabForTool, toolFromTab, type InspectorTool } from "./surfaces";
+import { InspectorHeadSlot } from "./inspector-slot";
 import { GitPullRequestDetail as PullRequestDetailView } from "./PullRequestDetail";
 import { PullRequestList } from "./PullRequestList";
 import { ReviewCommitForm } from "./ReviewCommitForm";
@@ -35,126 +37,15 @@ import {
   CpuIcon,
   DiffIcon,
   FileIcon,
-  FolderIcon,
-  GlobeIcon,
   MaximizeIcon,
-  MessageSquarePlusIcon,
   MinimizeIcon,
-  PanelRightIcon,
-  PlusIcon,
-  SmartphoneIcon,
-  TerminalIcon,
   XIcon,
 } from "./icons";
 
 /** Bump when the inspector shell changes so a stuck error panel remounts. */
 export const INSPECTOR_REVISION = 3;
 
-type InspectorTool = "launcher" | "review" | "terminal" | "browser" | "simulator" | "files" | "chat" | "agents";
-
-function toolFromTab(tab: string): InspectorTool {
-  if (tab === "term") return "terminal";
-  if (tab === "changes" || tab === "diff") return "review";
-  if (tab === "agents" || tab === "run") return "agents";
-  if (tab === "chat") return "chat";
-  if (tab === "browser") return "browser";
-  if (tab === "simulator") return "simulator";
-  if (tab === "files" || tab === "preview") return "files";
-  return "launcher";
-}
-
-function toolTitle(tool: InspectorTool, fileName?: string): string {
-  if (tool === "files") return fileName || "Open file";
-  if (tool === "review") return "Review";
-  if (tool === "terminal") return "Commands";
-  if (tool === "browser") return "Browser";
-  if (tool === "simulator") return "Simulator";
-  if (tool === "chat") return "Side chat";
-  if (tool === "agents") return "Agents";
-  return "Launch";
-}
-
-interface OpenTabItem {
-  id: InspectorTool;
-  title: string;
-  subTitle?: string;
-}
-
-/**
- * The surfaces this panel can show, with what each one opens and the condition
- * that stops it. `blockedBy` returns the reason rather than a boolean, so the
- * card can say it — a greyed control that does not explain itself just looks
- * broken.
- */
-export const SURFACES: Array<{
-  tool: InspectorTool;
-  label: string;
-  detail: string;
-  icon: typeof DiffIcon;
-  blockedBy: (state: {
-    projectId?: string;
-    git?: { isRepo?: boolean; dirty?: boolean };
-    /** `false` in a paired viewer, which has no machine to run a simulator on. */
-    desktop?: boolean;
-    platform?: string;
-  }) => string | undefined;
-}> = [
-  { tool: "agents", label: "Agents", detail: "This thread’s agent and reported delegated tasks.", icon: CpuIcon, blockedBy: () => undefined },
-  {
-    tool: "review",
-    label: "Review",
-    detail: "Changed files and their diff.",
-    icon: DiffIcon,
-    blockedBy: ({ git }) => (git?.isRepo ? undefined : "Available for Git repositories."),
-  },
-  {
-    tool: "terminal",
-    label: "Commands",
-    detail: "Run a single command and inspect its output. Interactive shells open in the bottom terminal.",
-    icon: TerminalIcon,
-    blockedBy: ({ projectId }) => (projectId ? undefined : "Open a project first."),
-  },
-  {
-    tool: "files",
-    label: "Files",
-    detail: "Browse and edit workspace files.",
-    icon: FolderIcon,
-    blockedBy: ({ projectId }) => (projectId ? undefined : "Open a project first."),
-  },
-  {
-    tool: "browser",
-    label: "Browser",
-    detail: "Open a local app or URL.",
-    icon: GlobeIcon,
-    blockedBy: () => undefined,
-  },
-  {
-    tool: "simulator",
-    label: "Simulator",
-    detail: "Watch and drive an iOS Simulator.",
-    icon: SmartphoneIcon,
-    blockedBy: ({ desktop, platform }) =>
-      desktop === false ? "Available in the desktop app." : platform && platform !== "darwin" ? "Available on macOS with Xcode." : undefined,
-  },
-  {
-    tool: "chat",
-    label: "Side chat",
-    detail: "Ask without interrupting the thread.",
-    icon: MessageSquarePlusIcon,
-    blockedBy: () => undefined,
-  },
-];
-
-const TOOL_SHORTCUTS: Record<InspectorTool, string> = {
-  launcher: "",
-  review: "⌃⇧G",
-  terminal: "⌃`",
-  browser: "",
-  simulator: "",
-  files: "",
-  chat: "⌥⌘S",
-  agents: "",
-};
+export { SURFACES } from "./surfaces";
 
 /* The panel's own bounds, and what the conversation keeps beside it. */
 const PANEL_MIN_WIDTH = 340;
@@ -181,7 +72,6 @@ export function Inspector() {
     pickProjectDirectory,
     openTerminal,
     setTerminalOpen,
-    execInProject,
     openPath,
     mentionFile,
     setDraft,
@@ -268,11 +158,9 @@ export function Inspector() {
     return () => observer.disconnect();
   }, []);
 
-  const [activeTool, setActiveTool] = useState<InspectorTool>(() => toolFromTab(inspectorTab));
-  const [openTabs, setOpenTabs] = useState<OpenTabItem[]>(() => {
-    const tool = toolFromTab(inspectorTab);
-    return tool === "launcher" ? [] : [{ id: tool, title: toolTitle(tool) }];
-  });
+  /* One surface at a time, chosen by the titlebar's icon bar; the workspace holds which. */
+  const activeTool = toolFromTab(inspectorTab);
+  const [headSlot, setHeadSlot] = useState<HTMLElement | null>(null);
 
   const [fileRoot, setFileRoot] = useState<string>();
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
@@ -311,9 +199,6 @@ export function Inspector() {
   const latestReview = useRef({ scope: reviewScope, refresh: () => {} });
   const pullRequestRequest = useRef(0);
 
-  const [termCmd, setTermCmd] = useState("");
-  const [termOut, setTermOut] = useState("");
-  const [termBusy, setTermBusy] = useState(false);
 
 
   const harnesses = harnessList ?? [];
@@ -592,39 +477,15 @@ export function Inspector() {
   function selectTool(tool: InspectorTool) {
     if (tool !== "review") diffRequests.capture("diff");
     if (tool !== "files") fileRequest.current += 1;
-    setActiveTool(tool);
-    if (tool !== "launcher") {
-      setOpenTabs((current) => {
-        if (current.some((tab) => tab.id === tool)) return current;
-        return [
-          ...current,
-          {
-            id: tool,
-            title: toolTitle(tool, previewDoc ? folderBasename(previewDoc.path) : undefined),
-          },
-        ];
-      });
-    }
-    if (tool === "terminal") setInspectorTab("term");
-    else if (tool === "review") setInspectorTab("changes");
-    else if (tool === "files") setInspectorTab(previewDoc ? "preview" : "files");
-    else if (tool === "chat") setInspectorTab("chat");
-    else if (tool === "agents") setInspectorTab("agents");
-    else if (tool === "browser") setInspectorTab("browser");
-    else if (tool === "simulator") setInspectorTab("simulator");
-    else setInspectorTab("launcher");
+    setInspectorTab(tabForTool(tool, Boolean(previewDoc)));
   }
 
+  /* Leaving Files abandons any read still in flight, however the surface changed. */
+  const previousTool = useRef(activeTool);
   useEffect(() => {
-    const next = toolFromTab(inspectorTab);
-    if (next !== "files") fileRequest.current += 1;
-    setActiveTool((current) => (current === next ? current : next));
-    if (next === "launcher") return;
-    setOpenTabs((current) => {
-      if (current.some((tab) => tab.id === next)) return current;
-      return [...current, { id: next, title: toolTitle(next) }];
-    });
-  }, [inspectorTab]);
+    if (previousTool.current === "files" && activeTool !== "files") fileRequest.current += 1;
+    previousTool.current = activeTool;
+  }, [activeTool]);
 
   useEffect(() => () => { fileRequest.current += 1; }, []);
 
@@ -639,7 +500,7 @@ export function Inspector() {
         selectTool("review");
       } else if (event.ctrlKey && (event.key === "`" || event.code === "Backquote")) {
         event.preventDefault();
-        selectTool("terminal");
+        setTerminalOpen(true);
       } else if ((event.metaKey || event.ctrlKey) && event.altKey && event.code === "KeyS") {
         event.preventDefault();
         selectTool("chat");
@@ -648,19 +509,6 @@ export function Inspector() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
-
-  function closeTab(id: InspectorTool) {
-    if (id === "files") fileRequest.current += 1;
-    const nextTabs = openTabs.filter((tab) => tab.id !== id);
-    setOpenTabs(nextTabs);
-    if (activeTool !== id) return;
-    const last = nextTabs[nextTabs.length - 1];
-    if (last) selectTool(last.id);
-    else {
-      setActiveTool("launcher");
-      setInspectorTab("launcher");
-    }
-  }
 
   function resizeBy(delta: number) {
     setPanelWidth((current) => clampPanelWidth({
@@ -708,7 +556,6 @@ export function Inspector() {
     if (activeRoot !== root) { setFileRoot(root); return; }
     const relative = toWorkspaceRelative(requestedFile.path, root);
     clearRequestedFile();
-    setActiveTool("files");
     void previewFile(relative);
     // The request is the trigger; folder ownership is checked inside previewFile.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -758,17 +605,6 @@ export function Inspector() {
       setSaveState(recovered?.state ?? (doc.truncated ? "truncated" : "idle"));
       setDiff("");
 
-      setOpenTabs((current) => {
-        const withoutFiles = current.filter((t) => t.id !== "files");
-        return [
-          ...withoutFiles,
-          {
-            id: "files",
-            title: folderBasename(relative) || "Open file",
-            subTitle: relative,
-          },
-        ];
-      });
     } catch (error) {
       if (!current()) return;
       setPreviewDoc({
@@ -781,7 +617,7 @@ export function Inspector() {
       setEditing(undefined);
       setSaveState("idle");
     }
-    setActiveTool("files");
+    setInspectorTab("preview");
     setInspectorOpen(true);
     if (inspectorElement.current && inspectorElement.current.clientWidth < FILES_SPLIT_MIN_WIDTH) {
       setShowTree(false);
@@ -806,27 +642,6 @@ export function Inspector() {
     setInspectorOpen(true);
   }
 
-  const renderToolIcon = (tool: InspectorTool) => {
-    switch (tool) {
-      case "agents":
-        return <CpuIcon size={14} />;
-      case "review":
-        return <DiffIcon size={14} />;
-      case "terminal":
-        return <TerminalIcon size={14} />;
-      case "browser":
-        return <GlobeIcon size={14} />;
-      case "simulator":
-        return <SmartphoneIcon size={14} />;
-      case "files":
-        return <FileIcon size={14} />;
-      case "chat":
-        return <MessageSquarePlusIcon size={14} />;
-      default:
-        return <FileIcon size={14} />;
-    }
-  };
-
   return (
     <aside
       ref={inspectorElement}
@@ -836,81 +651,16 @@ export function Inspector() {
     >
       <div className="inspector-rail" onPointerDown={(event) => startResize(event, resizeBy)} title="Drag to resize pane" />
 
-      <div className="codex-tab-bar">
-        <div className="codex-tabs-list">
-          {openTabs.map((tabItem) => (
-            <div
-              key={tabItem.id}
-              className={`codex-tab${activeTool === tabItem.id ? " active" : ""}`}
-            >
-              <button
-                type="button"
-                className="codex-tab-main"
-                onClick={() => selectTool(tabItem.id)}
-              >
-                <span className="codex-tab-icon">{renderToolIcon(tabItem.id)}</span>
-                <span className="codex-tab-title">{tabItem.title}</span>
-              </button>
-              <button
-                type="button"
-                className="codex-tab-close"
-                title="Close tab"
-                aria-label={`Close ${tabItem.title}`}
-                onClick={() => closeTab(tabItem.id)}
-              >
-                <XIcon size={11} />
-              </button>
-            </div>
-          ))}
-          <button
-            type="button"
-            className={`codex-tab-add${activeTool === "launcher" ? " active" : ""}`}
-            title="Open tools"
-            onClick={() => selectTool("launcher")}
-          >
-            <PlusIcon size={13} />
-          </button>
-        </div>
-
-        <div className="codex-chrome-actions">
-          <button
-            type="button"
-            className="icon-btn"
-            title={isMaximized ? "Restore standard size" : "Maximize panel"}
-            aria-label={isMaximized ? "Restore standard size" : "Maximize panel"}
-            onClick={() => setIsMaximized((prev) => !prev)}
-          >
-            {isMaximized ? <MinimizeIcon size={13} /> : <MaximizeIcon size={13} />}
-          </button>
-          {activeTool === "files" && (
-            <button
-              type="button"
-              className={`icon-btn${showTree ? " active" : ""}`}
-              title="Toggle workspace tree"
-              aria-label="Toggle workspace tree"
-              aria-expanded={showTree}
-              onClick={() => setShowTree((prev) => !prev)}
-            >
-              <ColumnsIcon size={13} />
-            </button>
-          )}
-          <button
-            type="button"
-            className="icon-btn"
-            title="Close inspector (⌘\\)"
-            aria-label="Close inspector (⌘\\)"
-            onClick={toggleInspector}
-          >
-            <PanelRightIcon size={14} />
-          </button>
-        </div>
-      </div>
-
-      {activeTool !== "launcher" ? (
-      <div className="codex-sub-bar">
-        <span className="codex-breadcrumb truncate">
+      {/*
+        * One row: what this surface is on the left, the panel's own controls on
+        * the right. The titlebar's icon bar chooses the surface, so there are no
+        * tabs to manage here.
+        */}
+      <div className="codex-tab-bar inspector-head">
+        <span className="codex-breadcrumb inspector-title truncate">
           {activeTool === "files" ? (
             <>
+              <span>Files</span>
               <span className="codex-breadcrumb-slash">/</span>
               {activeRoot ? (
                 <span className="codex-breadcrumb-root">{folderBasename(activeRoot)}</span>
@@ -935,28 +685,13 @@ export function Inspector() {
                 <span className="codex-breadcrumb-count">{git.changed} changed</span>
               ) : null}
             </>
-          ) : activeTool === "terminal" ? (
-            <>
-              <span>Commands</span>
-              <span className="codex-breadcrumb-sep">·</span>
-              <span className="mono truncate">
-                {conversationRoot
-                  ? formatProjectRoot(conversationRoot, { home: window.capsule.homeDir })
-                  : "local"}
-              </span>
-            </>
           ) : activeTool === "browser" ? (
             <>
               <span>Browser</span>
-              <span className="codex-breadcrumb-sep">·</span>
-              <span className="truncate">{browserUrl}</span>
+              {browserUrl ? <><span className="codex-breadcrumb-sep">·</span><span className="truncate">{browserUrl}</span></> : null}
             </>
           ) : activeTool === "simulator" ? (
-            <>
-              <span>Simulator</span>
-              <span className="codex-breadcrumb-sep">·</span>
-              <span className="truncate">iOS Simulator on this Mac</span>
-            </>
+            <span className="inspector-head-slot" ref={setHeadSlot} />
           ) : activeTool === "agents" ? (
             <span>Current thread · reported activity</span>
           ) : activeTool === "chat" ? (
@@ -966,11 +701,42 @@ export function Inspector() {
               <span>{dedicated?.name ?? "ACP Agents"}</span>
             </>
           ) : (
-            <span>Quick launch</span>
+            <span>Open a surface</span>
           )}
         </span>
+        <div className="codex-chrome-actions">
+          {activeTool === "files" && (
+            <button
+              type="button"
+              className={`icon-btn${showTree ? " active" : ""}`}
+              title="Toggle workspace tree"
+              aria-label="Toggle workspace tree"
+              aria-expanded={showTree}
+              onClick={() => setShowTree((prev) => !prev)}
+            >
+              <ColumnsIcon size={14} />
+            </button>
+          )}
+          <button
+            type="button"
+            className="icon-btn"
+            title={isMaximized ? "Restore standard size" : "Maximize panel"}
+            aria-label={isMaximized ? "Restore standard size" : "Maximize panel"}
+            onClick={() => setIsMaximized((prev) => !prev)}
+          >
+            {isMaximized ? <MinimizeIcon size={14} /> : <MaximizeIcon size={14} />}
+          </button>
+          <button
+            type="button"
+            className="icon-btn"
+            title="Close panel (⌘\\)"
+            aria-label="Close panel"
+            onClick={toggleInspector}
+          >
+            <XIcon size={15} />
+          </button>
+        </div>
       </div>
-      ) : null}
 
       <div className="codex-inspector-content">
         {activeTool === "launcher" && (
@@ -1003,8 +769,8 @@ export function Inspector() {
                         <Icon size={16} />
                       </span>
                       <span className="codex-launcher-label">{surface.label}</span>
-                      {TOOL_SHORTCUTS[surface.tool] ? (
-                        <kbd className="codex-launcher-kbd">{TOOL_SHORTCUTS[surface.tool]}</kbd>
+                      {surface.shortcut ? (
+                        <kbd className="codex-launcher-kbd">{surface.shortcut}</kbd>
                       ) : null}
                     </span>
                     <span className="codex-launcher-detail">{blocked ?? surface.detail}</span>
@@ -1287,59 +1053,6 @@ export function Inspector() {
           </div>
         )}
 
-        {activeTool === "terminal" && (
-          <div className="codex-terminal-pane">
-            <div className="codex-terminal-top">
-              <span className="faint">One command at a time, in this conversation’s folder.</span>
-              <button className="chip" type="button" disabled={!conversationRoot || api.isDesktop === false} onClick={() => setTerminalOpen(true)}>
-                Open interactive terminal
-              </button>
-              <button
-                className="chip"
-                type="button"
-                disabled={!projectId}
-                title={!projectId ? "Open a project first — there is no folder to run in." : undefined}
-                onClick={() => void openTerminal()}
-              >
-                Open external terminal
-              </button>
-            </div>
-            <pre className="mono term-out codex-term-output">{termOut || "Command output will appear here."}</pre>
-            <form
-              className="term-form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                const command = termCmd.trim();
-                if (!command || termBusy) return;
-                setTermBusy(true);
-                setTermOut((current) => `${current && current !== "$" ? `${current}\n` : ""}$ ${command}\n`);
-                void execInProject(command)
-                  .then((result) => {
-                    const body = `${result.stdout}${result.stderr}`.trim();
-                    setTermOut((current) => `${current}${body ? `${body}\n` : ""}exit ${result.code}`);
-                  })
-                  .catch((error) => {
-                    setTermOut((current) => `${current}${error instanceof Error ? error.message : String(error)}`);
-                  })
-                  .finally(() => setTermBusy(false));
-                setTermCmd("");
-              }}
-            >
-              <span className="faint">$</span>
-              <input
-                type="text"
-                value={termCmd}
-                placeholder={project?.workingDirectory ? "e.g. git status, pnpm test" : "Choose a folder first"}
-                disabled={!projectId || termBusy}
-                onChange={(event) => setTermCmd(event.target.value)}
-              />
-              <button className="chip" disabled={!termCmd.trim() || termBusy} type="submit">
-                Run
-              </button>
-            </form>
-          </div>
-        )}
-
         {activeTool === "browser" && (
           <EmbeddedBrowser
             key={`${session?.id ?? projectId ?? "inbox"}:${session?.harnessId ?? ""}:${session?.openclawSessionKey ?? ""}`}
@@ -1354,7 +1067,11 @@ export function Inspector() {
         )}
 
         {/* Keyed by thread: an attach that finishes after a switch must not land on the new thread. */}
-        {activeTool === "simulator" && <SimulatorPane key={session?.id ?? "inbox"} />}
+        {activeTool === "simulator" && (
+          <InspectorHeadSlot.Provider value={headSlot}>
+            <SimulatorPane key={session?.id ?? "inbox"} />
+          </InspectorHeadSlot.Provider>
+        )}
 
         {activeTool === "agents" && <div className="codex-tool-pane"><ThreadAgents /></div>}
 

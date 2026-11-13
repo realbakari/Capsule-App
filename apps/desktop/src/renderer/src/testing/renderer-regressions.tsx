@@ -492,7 +492,7 @@ window.runRendererRegressions = async () => {
   window.testWorkspace = {
     project: { id: "owner-a", name: "Owner A", workingDirectory: "/fixture/a" }, projectId: "owner-a",
     session: { id: "thread-a" }, files: treeFiles, steps: [], artifacts: [], harnesses: [], harnessSessions: [],
-    inspectorTab: "files", settings: {}, requestedFile: { path: "first.txt", root: "/fixture/a", projectId: "owner-a", sessionId: "thread-a" },
+    setInspectorTab: () => {}, inspectorTab: "files", settings: {}, requestedFile: { path: "first.txt", root: "/fixture/a", projectId: "owner-a", sessionId: "thread-a" },
     setInspectorOpen: () => {},
     clearRequestedFile: () => { window.testWorkspace.requestedFile = undefined; },
     api: {
@@ -1334,7 +1334,7 @@ window.runRendererRegressions = async () => {
     host.style.cssText = `width:${width}px;height:600px;position:relative;display:flex`;
     document.documentElement.style.fontSize = "16px";
     const files = ["README.md", "ARCHITECTURE.md", "CONTRIBUTING.md", "package.json", "pnpm-lock.yaml"].map((name) => ({ name, path: name, type: "file" }));
-    window.testWorkspace = { ...contextBase, inspectorTab: "files", inspectorOpen: true,
+    window.testWorkspace = { ...contextBase, setInspectorTab: () => {}, inspectorTab: "files", inspectorOpen: true,
       projectId: "files-preview", project: { id: "files-preview", workingDirectory: "/fixture/workspace" },
       session: { id: "files-preview-thread" }, files,
       requestedFile: openFile ? { path: "README.md", root: "/fixture/workspace", projectId: "files-preview", sessionId: "files-preview-thread" } : undefined,
