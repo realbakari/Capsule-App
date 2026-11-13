@@ -27,7 +27,7 @@ import {
   DotIcon,
 } from "./icons";
 
-const ICONS: Record<ActionMenuIcon, typeof PencilIcon> = {
+export const ACTION_ICONS: Record<ActionMenuIcon, typeof PencilIcon> = {
   pencil: PencilIcon,
   pin: PinIcon,
   "pin-off": PinOffIcon,
@@ -178,7 +178,7 @@ export function ActionMenu({
         onPointerDown={(event) => event.stopPropagation()}
       >
         {items.map((item) => {
-          const Icon = item.icon ? ICONS[item.icon] : undefined;
+          const Icon = item.icon ? ACTION_ICONS[item.icon] : undefined;
           const highlighted = item.id === activeId;
           return (
             <div key={item.id}>

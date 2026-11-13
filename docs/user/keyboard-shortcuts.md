@@ -66,14 +66,43 @@ Archiving a conversation offers **Undo** for ten seconds. After that, open
 **History** and choose **Restore** on an archived conversation. Messages and the
 agent's session identity are preserved. These actions are desktop-only.
 
-The command palette groups recent conversations, actions, projects, and matching
-messages. File search shows names with their paths and searches the current
-conversation's checkout, including a worktree. Loading and failed searches are
-labelled separately from no matches; failed searches offer **Retry**.
+The command palette groups recent conversations, actions on the open
+conversation, actions, the theme, projects, and matching messages. File search
+shows names with their paths and searches the current conversation's checkout,
+including a worktree. Loading and failed searches are labelled separately from
+no matches; failed searches offer **Retry**.
 
-An exact conversation-title match comes first. Other matching conversation titles
-are ordered by recent activity, independently of sidebar pins, before message-body
-matches. With no query, the palette shows your most recently active conversations.
+You do not have to type a name in full. The letters you type only need to appear
+in order, starting at the beginning of a word: `nc` finds **New conversation**
+and `gtf` finds **Go to file…**. Matches at word starts and runs of consecutive
+letters rank first, a shorter name wins a tie, and the matched letters are
+underlined. Conversations that match equally well are ordered by recent activity,
+independently of sidebar pins, and message-body matches come last. With no
+query, the palette shows your five most recently active conversations. The
+palette keeps its size while you type, so results do not jump under the pointer.
+
+Each command shows its current keys, including keys you changed in Settings, so
+the palette doubles as a way to learn them.
+
+**This conversation** appears while a conversation is open. It holds the same
+actions as the conversation's menu (rename, pin, settle, snooze, mark unread,
+copy as Markdown, generate a title, open its folder, archive, delete) plus:
+
+- **Settle and go to next** (`⌘E`) settles it and opens whatever is waiting for
+  you next.
+- **Rename conversation** edits the name in place in the title bar.
+- **Restart agent session** closes the conversation's coding agent and starts it
+  again in the same conversation, with the same model, permissions and mode.
+  It works for every coding agent, through the Gateway or directly. Going
+  directly, the agent picks its own session back up when it supports resuming;
+  otherwise it starts fresh. A conversation with no coding agent has nothing to
+  restart, and the palette says so. A running turn is stopped first.
+
+**Go to file…** opens file search and **Search in files…** opens search in
+files. **New conversation in…** lists your projects: type to narrow, `Enter`
+starts the conversation there, and `Backspace` in an empty field goes back.
+**Light theme**, **Dark theme** and **Match system theme** switch the
+appearance; the current one is marked.
 
 Use the arrow keys to move through results, `Home` / `End` for the first or last
 result, `Enter` to select, and `Esc` to close. The selected result stays in view.

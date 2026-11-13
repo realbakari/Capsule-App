@@ -1,5 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { formatUserError } from "../../lib/errors";
+import { highlightRuns } from "../../lib/palette";
 import { SearchIcon, XIcon } from "./icons";
 
 export interface SearchDialogItem {
@@ -10,11 +11,15 @@ export interface SearchDialogItem {
   icon?: ReactNode;
   shortcut?: string;
   disabledReason?: string;
+  /** Label indices to highlight as matching the query. */
+  matches?: readonly number[];
+  /** Selecting it changes what the dialog shows rather than closing it. */
+  keepOpen?: boolean;
   onSelect: () => unknown;
 }
 
 /** Shared keyboard, focus and result geometry for command and file discovery. */
-export function SearchDialog({ title, placeholder, query, onQueryChange, items, status, error, onRetry, empty, onClose, selectLabel = "Open" }: {
+export function SearchDialog({ title, placeholder, query, onQueryChange, items, status, error, onRetry, empty, onClose, selectLabel = "Open", className, onBack }: {
   title: string;
   placeholder: string;
   query: string;
@@ -26,6 +31,9 @@ export function SearchDialog({ title, placeholder, query, onQueryChange, items, 
   empty: ReactNode;
   onClose: () => void;
   selectLabel?: string;
+  className?: string;
+  /** Backspace in an empty field returns here, for a nested page. */
+  onBack?: () => void;
 }) {
   const id = useId();
   const dialog = useRef<HTMLDivElement>(null);
@@ -72,7 +80,7 @@ export function SearchDialog({ title, placeholder, query, onQueryChange, items, 
     setActionError(undefined);
     try {
       await item.onSelect();
-      if (alive.current) onClose();
+      if (alive.current && !item.keepOpen) onClose();
     } catch (reason) {
       if (alive.current) setActionError(formatUserError(reason));
     } finally {
@@ -82,7 +90,7 @@ export function SearchDialog({ title, placeholder, query, onQueryChange, items, 
   }
 
   return <div className="palette-backdrop" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <div ref={dialog} className="palette search-dialog" role="dialog" aria-modal="true" aria-label={title}
+    <div ref={dialog} className={`palette search-dialog${className ? ` ${className}` : ""}`} role="dialog" aria-modal="true" aria-label={title}
       onKeyDown={(event) => {
         if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); }
         if (event.key !== "Tab") return;
@@ -107,6 +115,7 @@ export function SearchDialog({ title, placeholder, query, onQueryChange, items, 
               setSelection({ query, id: items[next]!.id });
             }
             if (event.key === "Enter" && items[index]) { event.preventDefault(); void select(items[index]!); }
+            if (event.key === "Backspace" && !query && onBack) { event.preventDefault(); onBack(); }
           }} />
         <button type="button" className="search-dialog-close" aria-label={`Close ${title.toLowerCase()}`} onClick={onClose}><XIcon size={15} /></button>
       </div>
@@ -133,12 +142,12 @@ export function SearchDialog({ title, placeholder, query, onQueryChange, items, 
             }}
             onClick={() => void select(item)}>
             <span className="search-dialog-icon" aria-hidden>{item.icon}</span>
-            <span className="search-dialog-copy"><span>{item.label}</span>{(item.disabledReason || item.detail) && <small>{item.disabledReason ?? item.detail}</small>}</span>
+            <span className="search-dialog-copy"><span>{item.matches?.length ? highlightRuns(item.label, item.matches).map((run, runIndex) => run.match ? <mark key={runIndex}>{run.text}</mark> : run.text) : item.label}</span>{(item.disabledReason || item.detail) && <small>{item.disabledReason ?? item.detail}</small>}</span>
             {item.shortcut && <kbd>{item.shortcut}</kbd>}
           </button>
         </div>)}
       </div>
-      <div className="palette-hints" aria-hidden><span><kbd>↑</kbd><kbd>↓</kbd> Navigate</span><span><kbd>Enter</kbd> {selectLabel}</span><span><kbd>Esc</kbd> Close</span></div>
+      <div className="palette-hints" aria-hidden><span><kbd>↑</kbd><kbd>↓</kbd> Navigate</span><span><kbd>Enter</kbd> {selectLabel}</span>{onBack && <span><kbd>⌫</kbd> Back</span>}<span><kbd>Esc</kbd> Close</span></div>
     </div>
   </div>;
 }

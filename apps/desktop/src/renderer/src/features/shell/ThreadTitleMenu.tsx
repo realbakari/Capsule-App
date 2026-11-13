@@ -5,6 +5,13 @@ import { useWorkspace } from "../../lib/workspace";
 import { ActionMenu } from "./ActionMenu";
 import { ChevronDownIcon } from "./icons";
 
+const RENAME_THREAD_EVENT = "capsule:rename-thread";
+
+/** Starts renaming the open conversation in place, in the titlebar. */
+export function requestRename(sessionId: string): void {
+  window.dispatchEvent(new CustomEvent(RENAME_THREAD_EVENT, { detail: sessionId }));
+}
+
 /**
  * The conversation's name in the titlebar is also its menu: the same actions
  * as its row in the sidebar, reachable while the sidebar is collapsed. Rename
@@ -18,6 +25,13 @@ export function ThreadTitleMenu() {
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => { setAnchor(undefined); setEditing(undefined); }, [session?.id]);
   useEffect(() => { if (editing !== undefined) input.current?.select(); }, [editing !== undefined]);
+  useEffect(() => {
+    const start = (event: Event) => {
+      if (session && (event as CustomEvent<string>).detail === session.id) { setAnchor(undefined); setEditing(session.title); }
+    };
+    window.addEventListener(RENAME_THREAD_EVENT, start);
+    return () => window.removeEventListener(RENAME_THREAD_EVENT, start);
+  }, [session]);
   if (!session) return null;
 
   const commit = () => {

@@ -1,0 +1,14 @@
+/* A fixed height, so the dialog does not resize under the cursor while results narrow. */
+.search-dialog.command-palette { height: min(31rem, calc(84dvh - 1rem)); }
+.search-dialog.command-palette .palette-list { max-height: none; }
+.command-palette .palette-empty { flex-shrink: 0; }
+
+.search-dialog-copy mark {
+  background: none;
+  color: var(--text);
+  font-weight: 650;
+  text-decoration: underline;
+  text-decoration-color: var(--text-faint);
+  text-underline-offset: 0.18em;
+}
+.search-dialog-item[aria-disabled="true"] mark { color: inherit; }

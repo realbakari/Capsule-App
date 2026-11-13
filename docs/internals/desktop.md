@@ -1000,6 +1000,51 @@ subscriber, reopens the workspace, then closes it again before normal quit.
 Search ranks exact conversation titles first, then recent activity, consistently
 in the palette and the search API without changing sidebar pin order.
 
+### Command palette
+
+`Palette.tsx` builds every row as a `PaletteEntry` (`lib/palette.ts`): label,
+group, optional `keywords`, optional keybinding `command` id, `disabledReason`,
+`searchOnly` (projects, hidden until the person types), `keepOpen` (opens a
+nested page) and `run`. `rankPalette` ranks with `fuzzyScore` from
+`@capsule/shared`: the best subsequence alignment, first letter on a word start,
+bonuses for word starts and consecutive runs, an affine gap cost, shorter labels
+winning ties, then input order (threads are pre-sorted by recency). Groups
+follow their best row, so the top row is always the best answer. Keywords match
+only by word prefix and rank below any label match; they are not highlighted.
+Group caps (5 recent threads with no query, 30 with one, 20 projects) apply after
+ranking. Message hits from `api.search` are appended unranked.
+
+The shortcut beside a row is `shortcutLabel(command, keymapFrom(settings))`,
+the same registry the key handler and the shortcuts sheet read, so a rebound key
+shows up here too. The dialog has a fixed height (`palette.css`) so typing does
+not resize it. `SearchDialog` gained `matches` (highlight runs), `keepOpen`, a
+`className` and `onBack` (Backspace on an empty field) for nested pages.
+
+"This conversation" maps `useSessionActions().items(session)` to palette rows
+with longer labels, and adds Settle and go to next
+(`useThreadTriage().settle(id, { advance: true })`) and Restart agent session.
+Rename dispatches `requestRename(id)` (from `ThreadTitleMenu`), which opens the
+titlebar's in-place field; the palette switches to the chat view first and
+dispatches on the next task so the field is mounted. Restart is the existing
+close-and-respawn path: `closeHarness` (skipped when already closed), then
+`spawnHarness` with the thread's `sessionId`, `harnessId`, `acpMode`,
+`modelOverride` and permission profile. The engine picks the route from the
+thread, so it covers both routes and every harness; on direct mode the host
+resumes via `session/resume` or `session/load` when the agent offers one. It is
+disabled for a thread with no `harnessId`, while spawning, and in a paired
+viewer. Only the mock route was exercised end to end.
+
+In a paired viewer, write rows are disabled with a reason; copy rows stay live.
+
+Adding commands: write a group builder returning `Entry[]` in `Palette.tsx` and
+spread it into the root list. Give it a keybinding `command` id when one exists.
+
+Decisions: the first letter must start a word, because unanchored subsequences
+let three letters match most labels through the middle of a word. "New
+conversation in…" is a nested page, not inline rows, so projects do not double
+up in results. Rename uses the titlebar field rather than the sidebar row,
+because the titlebar is on screen even when the sidebar is collapsed.
+
 A folded turn shows how long it took beside its message count, and hovering it
 previews the prompt and the start of the answer, so it can be identified
 without unfolding. Activity rows
