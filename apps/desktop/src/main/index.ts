@@ -963,7 +963,9 @@ async function applyDesktopSettings(settings?: CapsuleSettings): Promise<void> {
   applyNativeTheme(settings?.appearanceTheme);
   applyMenuBar(settings);
   applyKeepAwake(settings);
-  await applyRemoteAccess(settings?.remoteAccess ?? "off");
+  // A reach asked for at launch holds for that launch; a settings change,
+  // including an edit to the settings file, must not close it.
+  await applyRemoteAccess(remoteReachFromArgs(process.argv, process.env) ?? settings?.remoteAccess ?? "off");
 }
 
 /*
