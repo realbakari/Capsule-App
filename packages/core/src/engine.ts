@@ -1180,6 +1180,7 @@ export class CapsuleEngine {
   async deleteProject(id: string): Promise<void> {
     const project = this.requireProject(id);
     this.stopPrWatch(id);
+    this.prFixFingerprints.delete(id);
     this.pausedPrWatches.delete(id);
     this.projectIcons.clear();
     for (const run of this.listProjectActionRuns(id)) {
@@ -1209,7 +1210,10 @@ export class CapsuleEngine {
       );
       if (status.pullRequest && pullRequestWatchEnabled(this.settings)) {
         this.schedulePrWatch(projectId, sessionId);
-      } else if (!status.pullRequest && this.prWatchSessions.get(projectId) === sessionId) {
+      } else if (status.pullRequestKnown && !status.pullRequest && this.prWatchSessions.get(projectId) === sessionId) {
+        // Only a reading that landed says there is no pull request. An
+        // overlapping read reports "unknown", and stopping on it restarted the
+        // watch moments later.
         this.stopPrWatch(projectId);
       }
       return status;
@@ -3147,7 +3151,8 @@ export class CapsuleEngine {
     if (watch) clearInterval(watch.timer);
     this.prWatchers.delete(projectId);
     this.prWatchSessions.delete(projectId);
-    this.prFixFingerprints.delete(projectId);
+    // The fingerprint names a PR and its failing checks, so it stays valid
+    // across a stop and restart; clearing it re-sent the same fix prompt.
   }
 
   private stopAllPrWatch(): void {

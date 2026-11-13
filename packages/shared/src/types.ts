@@ -629,6 +629,8 @@ export interface GitStatus {
   added?: number;
   removed?: number;
   pullRequest?: GitPullRequest;
+  /** True once a pull-request reading has landed; `pullRequest` undefined then means there is none. */
+  pullRequestKnown?: boolean;
 }
 
 export interface MessageAttachment {

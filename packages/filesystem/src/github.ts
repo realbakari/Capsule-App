@@ -860,12 +860,14 @@ export async function enrichGitStatus(status: GitStatus, cwd?: string): Promise<
     const available = await ghAvailable();
     const ahead = await run("git", ["rev-list", "--count", "@{upstream}..HEAD"], cwd, 3000);
     const behind = await run("git", ["rev-list", "--count", "HEAD..@{upstream}"], cwd, 3000);
+    const pullRequest = available ? await pollPullRequest(cwd) : { known: false };
     return {
       ...status,
       ghAvailable: available,
       ahead: ahead.ok ? Number.parseInt(ahead.stdout.trim(), 10) || 0 : undefined,
       behind: behind.ok ? Number.parseInt(behind.stdout.trim(), 10) || 0 : undefined,
-      pullRequest: available ? (await pollPullRequest(cwd)).value : undefined,
+      pullRequest: pullRequest.value,
+      pullRequestKnown: pullRequest.known,
     };
 
   }, JSON.stringify(["enrichGitStatus", status, cwd]));

@@ -5,17 +5,18 @@ import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { CapsuleEngine } from "./engine.js";
 
-const remote = vi.hoisted(() => ({ poll: vi.fn(), merge: vi.fn() }));
+const openPr = { number: 1, url: "https://github.com/example/repo/pull/1", state: "OPEN" };
+const remote = vi.hoisted(() => ({ poll: vi.fn(), merge: vi.fn(), enrich: vi.fn() }));
 vi.mock("@capsule/filesystem", async (original) => ({
   ...await original<typeof import("@capsule/filesystem")>(),
   pollPullRequest: remote.poll,
-  enrichGitStatus: async (status: object) => ({ ...status, pullRequest: { number: 1, url: "https://github.com/example/repo/pull/1", state: "OPEN" } }),
+  enrichGitStatus: async (status: object) => ({ ...status, ...(remote.enrich(status) ?? { pullRequest: { number: 1, url: "https://github.com/example/repo/pull/1", state: "OPEN" }, pullRequestKnown: true }) }),
   pushCurrentBranch: async () => ({ ok: true }),
   createPullRequest: async () => ({ ok: true, url: "https://github.com/example/repo/pull/1" }),
   mergePullRequest: remote.merge,
 }));
 
-afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); remote.poll.mockReset(); remote.merge.mockReset(); });
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); remote.poll.mockReset(); remote.merge.mockReset(); remote.enrich.mockReset(); });
 
 async function setup(worktree = false) {
   const directory = mkdtempSync(path.join(tmpdir(), "capsule-watch-"));
@@ -88,5 +89,31 @@ it("delivers repairs in a new chat without leaving the watched worktree", async 
     expect(send).toHaveBeenCalledWith(expect.objectContaining({ sessionId: repair.id }));
     await fixture.engine.deleteSession(fixture.session.id);
     expect(existsSync(repair.workingDirectory!)).toBe(true);
+  } finally { await fixture.dispose(); }
+});
+
+it("keeps watching through an unknown reading and never re-sends the same fix after a restart", async () => {
+  const fixture = await setup();
+  try {
+    remote.poll.mockResolvedValue({ known: true, value: { ...openPr, checks: "failure", checksSummary: "tests failed" } });
+    const send = vi.spyOn(fixture.engine, "sendMessage");
+    await fixture.engine.gitCreatePullRequest(fixture.project.id, { sessionId: fixture.session.id });
+    await vi.waitFor(() => expect(send).toHaveBeenCalledOnce());
+    const watching = () => (fixture.engine as unknown as { prWatchers: Map<string, unknown> }).prWatchers.has(fixture.project.id);
+
+    // An overlapping read: not known yet, so not "no pull request".
+    remote.enrich.mockReturnValue({ pullRequest: undefined, pullRequestKnown: false });
+    await fixture.engine.gitStatus(fixture.project.id, fixture.session.id);
+    expect(watching()).toBe(true);
+
+    // A reading that landed with no PR stops it; the PR showing again restarts it.
+    remote.enrich.mockReturnValue({ pullRequest: undefined, pullRequestKnown: true });
+    await fixture.engine.gitStatus(fixture.project.id, fixture.session.id);
+    expect(watching()).toBe(false);
+    remote.enrich.mockReturnValue({ pullRequest: openPr, pullRequestKnown: true });
+    await fixture.engine.gitStatus(fixture.project.id, fixture.session.id);
+    await vi.waitFor(() => expect(remote.poll.mock.calls.length).toBeGreaterThanOrEqual(2));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(send).toHaveBeenCalledOnce();
   } finally { await fixture.dispose(); }
 });
