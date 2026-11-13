@@ -30,7 +30,9 @@ function isWordStart(text: string, index: number): boolean {
  * higher; gaps cost a little. The best alignment wins, not the leftmost, so
  * "nc" in "New conversation" highlights both word starts.
  *
- * Whitespace in the query is ignored, so "new conv" still matches.
+ * The first query character must land on a word start, so "rst" does not
+ * find "conversation" by its middle letters. Whitespace in the query is
+ * ignored, so "new conv" still matches.
  */
 export function fuzzyScore(query: string, text: string): FuzzyMatch | undefined {
   const needle = query.toLowerCase().replace(/\s+/g, "");
@@ -62,7 +64,7 @@ export function fuzzyScore(query: string, text: string): FuzzyMatch | undefined 
         continue;
       }
       if (!previous) {
-        row[j] = bonus[j]! - LEADING_GAP * j;
+        if (isWordStart(text, j)) row[j] = bonus[j]! - LEADING_GAP * j;
       } else {
         const adjacent = j >= 1 ? previous[j - 1]! + CONSECUTIVE : -Infinity;
         const gapped = gapBest - GAP_OPEN - GAP_EXTEND * (j - 2);

@@ -11,6 +11,12 @@ describe("fuzzyScore", () => {
     expect(fuzzyScore("a much longer query", "short")).toBeUndefined();
   });
 
+  it("needs the first character on a word start", () => {
+    expect(fuzzyScore("rst", "Pin conversation")).toBeUndefined();
+    expect(fuzzyScore("ogin", "Fix login")).toBeUndefined();
+    expect(fuzzyScore("lgn", "Fix login")?.positions).toEqual([4, 6, 8]);
+  });
+
   it("ignores case and whitespace in the query", () => {
     expect(fuzzyScore("NEW CONV", "New conversation")?.positions).toEqual([0, 1, 2, 4, 5, 6, 7]);
   });
