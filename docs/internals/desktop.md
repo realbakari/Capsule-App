@@ -712,6 +712,37 @@ file. Emphasis scanning is linear for unmatched marker runs and uses bounded
 nesting rather than recursive tails. Task plans accept an empty replacement;
 unfinished tasks in ended turns are labelled Incomplete, not Running.
 
+Review's diff has a scope menu (`DIFF_SCOPES` in `@capsule/shared`):
+Uncommitted (HEAD to working tree, the default), Staged, Unstaged, This turn
+(the conversation's newest run with a checkpoint, read through `turnDiff`) and
+Branch (merge base with `origin/HEAD`'s branch, else local `main`/`master`, to
+the working tree; untracked files included). The choice is per project in
+renderer local storage (`lib/review-scope.ts`). With no file selected the
+scope's whole diff shows; a file row narrows it. A path-scoped read loses
+rename detection, so a staged rename shows as an added file when selected.
+Uncommitted, Staged and Unstaged hunks carry Keep / Unstage / Reject, built by
+`hunkActions` from the scope's table: each action is at most one `git apply`
+on the index and one on the working tree. An Uncommitted hunk is split by line
+overlap into its staged part (old-side lines of the `--cached` diff) and
+unstaged part (new-side lines of the index diff): Keep stages the unstaged
+part, Unstage reverses the staged part, Reject reverses the hunk in the working
+tree and the staged part in the index. A hunk patch never renames or changes a
+mode; a created or deleted file is one whole-file hunk. `gitApplyHunk`
+(write) runs `git apply --check` on every part before applying any and
+reverses the index part if the working tree then refuses, so a stale hunk
+returns git's reason, shown on that hunk, and leaves the repository unchanged.
+Success refreshes the diff without unmounting it and refocuses the hunk at the
+same position. Turn and Branch are read only. Hunk headings are focusable when
+they carry actions: `j`/`↓`/`↑` move, `k` keep, `u` unstage, `x` reject. The
+command palette has one entry per scope. A paired viewer reads every scope
+(`gitScopedDiff`, `gitCheckHunks` are reads) and sees no hunk actions. Both
+runtime routes and every harness are the same here: Review reads the
+checkout, not the agent.
+The saved-turn diff in a turn's changed-files card offers Reject per hunk only
+on the conversation's newest settled run, and only on hunks for which
+`gitCheckHunks` says the reverse still applies (at most 200 checked); a
+rejected hunk then reads Rejected.
+
 Review diff identity includes old path, new path, status and occurrence. A
 file-to-symlink replacement's delete/add blocks at one path collapse separately.
 Stack actions validate against all repository remotes and use explicit remote

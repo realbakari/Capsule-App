@@ -12,6 +12,7 @@ need the shipped-product voice.
 - [Supported behavior and current limits](./user/compatibility.md)
 - [Keyboard shortcuts](./user/keyboard-shortcuts.md)
 - [Skills](./user/skills.md)
+- [Reviewing changes](./user/review.md)
 - [Restoring a turn](./user/checkpoints.md)
 - [Checking a turn](./user/verification.md)
 - [Drafts, attachments, and prompt stash](./user/composer.md)

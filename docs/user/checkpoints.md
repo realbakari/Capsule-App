@@ -56,7 +56,9 @@ customize diff prefixes. Your Git configuration is not changed.
 
 Later edits do not change these saved views. The Review panel still shows your
 current repository changes; use it to stage or discard current edits. Hovering
-never changes files or restores a turn.
+never changes files or restores a turn. On the latest turn, a hunk that still
+matches your files can be rejected from the open diff; see
+[Reviewing changes](./review.md).
 
 If a saved diff cannot be read, the turn shows an error with **Retry** instead
 of looking unchanged. A missing base snapshot is never replaced with your live

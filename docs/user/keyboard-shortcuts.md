@@ -57,6 +57,12 @@ Two things the editor will not let you do:
 - `⌘S` to stash the current prompt, or open the stash when the composer is empty
 - `↑` in an empty prompt recalls earlier prompts from this conversation; `↓` comes back
 
+## In Review
+
+With a hunk's heading focused, `j` or `↓` moves to the next hunk and `↑` to the
+previous one. `k` keeps the hunk, `u` unstages it and `x` rejects it. See
+[Reviewing changes](./review.md).
+
 ## Finding your way around
 
 Archiving a conversation offers **Undo** for ten seconds. After that, open
