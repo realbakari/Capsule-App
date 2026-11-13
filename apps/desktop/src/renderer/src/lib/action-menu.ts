@@ -14,7 +14,10 @@ export type ActionMenuIcon =
   | "star"
   | "star-off"
   | "bell"
-  | "bell-off";
+  | "bell-off"
+  | "check"
+  | "clock"
+  | "dot";
 
 export type SessionActionId =
   | "rename"
@@ -24,7 +27,15 @@ export type SessionActionId =
   | "open-folder"
   | "copy-path"
   | "archive"
-  | "delete";
+  | "delete"
+  | "mark-unread"
+  | "mark-read"
+  | "settle"
+  | "unsettle"
+  | "snooze"
+  | "wake"
+  | "copy-markdown"
+  | "copy-branch";
 export type ProjectActionId =
   | "rename"
   | "new-conversation"
@@ -69,22 +80,39 @@ export function copyAnchor(rect: {
 export function buildSessionActionMenuItems(state: {
   pinned: boolean;
   hasFolder?: boolean;
+  /** Triage needs the desktop; a paired viewer reads but never writes it. */
+  triage?: { unread: boolean; canMarkUnread: boolean; shelf: "active" | "settled" | "snoozed" };
+  branch?: string;
 }): ActionMenuItem[] {
+  const triage = state.triage;
+  const triageItems: ActionMenuItem[] = triage ? [
+    triage.unread
+      ? { id: "mark-read", label: "Mark as read", icon: "check" }
+      : { id: "mark-unread", label: "Mark unread", icon: "dot", enabled: triage.canMarkUnread, shortcut: "⇧⌘U" },
+    triage.shelf === "settled"
+      ? { id: "unsettle", label: "Return to active", icon: "refresh" }
+      : { id: "settle", label: "Settle", icon: "check" },
+    triage.shelf === "snoozed"
+      ? { id: "wake", label: "Wake now", icon: "bell" }
+      : { id: "snooze", label: "Snooze…", icon: "clock" },
+  ] : [];
   return [
-    { id: "rename", label: "Rename", icon: "pencil" },
+    ...triageItems,
+    { id: "rename", label: "Rename", icon: "pencil", separatorBefore: triageItems.length > 0 },
     {
       id: state.pinned ? "unpin" : "pin",
       label: state.pinned ? "Unpin" : "Pin",
       icon: state.pinned ? "pin-off" : "pin",
     },
     { id: "generate-title", label: "Generate title", icon: "refresh" },
+    { id: "copy-markdown", label: "Copy as Markdown", icon: "copy", separatorBefore: true },
+    ...(state.branch ? [{ id: "copy-branch" as const, label: "Copy branch name", icon: "copy" as const }] : []),
     ...(state.hasFolder
       ? [
           {
             id: "open-folder" as const,
             label: "Open folder",
             icon: "folder" as const,
-            separatorBefore: true,
           },
           { id: "copy-path" as const, label: "Copy path", icon: "copy" as const },
         ]

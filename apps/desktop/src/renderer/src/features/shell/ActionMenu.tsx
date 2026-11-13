@@ -22,6 +22,9 @@ import {
   SettingsIcon,
   StarIcon,
   TrashIcon,
+  CheckIcon,
+  ClockIcon,
+  DotIcon,
 } from "./icons";
 
 const ICONS: Record<ActionMenuIcon, typeof PencilIcon> = {
@@ -39,6 +42,9 @@ const ICONS: Record<ActionMenuIcon, typeof PencilIcon> = {
   "star-off": StarIcon,
   bell: BellIcon,
   "bell-off": BellOffIcon,
+  check: CheckIcon,
+  clock: ClockIcon,
+  dot: DotIcon,
 };
 
 export function ActionMenu({

@@ -16,6 +16,7 @@ describe("buildSessionActionMenuItems", () => {
       "rename",
       "pin",
       "generate-title",
+      "copy-markdown",
       "archive",
       "delete",
     ]);
@@ -25,6 +26,7 @@ describe("buildSessionActionMenuItems", () => {
       "rename",
       "pin",
       "generate-title",
+      "copy-markdown",
       "open-folder",
       "copy-path",
       "archive",
@@ -32,6 +34,16 @@ describe("buildSessionActionMenuItems", () => {
     ]);
     expect(items.find((item) => item.id === "archive")?.separatorBefore).toBe(true);
     expect(items.at(-1)).toMatchObject({ id: "delete", destructive: true });
+  });
+
+  it("leads with triage on the desktop and swaps each action for its way back", () => {
+    const fresh = buildSessionActionMenuItems({ pinned: false, triage: { unread: false, canMarkUnread: true, shelf: "active" } });
+    expect(fresh.slice(0, 3).map((item) => item.id)).toEqual(["mark-unread", "settle", "snooze"]);
+    const shelved = buildSessionActionMenuItems({ pinned: false, triage: { unread: true, canMarkUnread: true, shelf: "settled" } });
+    expect(shelved.slice(0, 3).map((item) => item.id)).toEqual(["mark-read", "unsettle", "snooze"]);
+    const snoozed = buildSessionActionMenuItems({ pinned: false, triage: { unread: false, canMarkUnread: false, shelf: "snoozed" } });
+    expect(snoozed.slice(0, 3).map((item) => [item.id, item.enabled])).toEqual([["mark-unread", false], ["settle", undefined], ["wake", undefined]]);
+    expect(buildSessionActionMenuItems({ pinned: false, branch: "feat/x" }).map((item) => item.id)).toContain("copy-branch");
   });
 
   it("swaps pin for unpin", () => {

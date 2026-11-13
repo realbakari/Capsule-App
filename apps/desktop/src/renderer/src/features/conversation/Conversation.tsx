@@ -2,6 +2,7 @@ import { formatClock } from "../../lib/display-prefs";
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChatMessage, Run } from "@capsule/shared";
 import { harnessDisplayName } from "../../lib/harness";
+import { useMarkThreadViewed } from "../../lib/thread-triage";
 import { formatTokens, type ContextUsage } from "../../lib/context-window";
 import { AlertTriangleIcon, DiffIcon, FileIcon, HistoryIcon, MessageSquarePlusIcon, SparkIcon, TerminalIcon, XIcon } from "../shell/icons";
 import { RunElapsed } from "./RunElapsed";
@@ -292,6 +293,16 @@ export function Conversation() {
     previousTurns.current = next;
     return next;
   }, [messages]);
+  useMarkThreadViewed(view === "chat");
+  /* Where the person left off, read once per opening: marking the thread read
+     must not move the line while they are reading below it. */
+  const [visit, setVisit] = useState<{ id?: string; mark?: string }>({});
+  if (session && visit.id !== session.id) setVisit({ id: session.id, mark: session.lastViewedAt });
+  const firstNewTurnId = useMemo(() => {
+    if (!visit.mark || visit.id !== session?.id) return undefined;
+    const index = turns.findIndex((turn) => turn.messages.some((message) => message.role === "assistant" && message.createdAt > visit.mark!));
+    return index > 0 ? turns[index]!.id : undefined;
+  }, [session?.id, turns, visit]);
   const visibleMessageCount = useMemo(() => turns.reduce((count, turn) => count + turn.messages.length, 0), [turns]);
   const historyPending = !ready || Boolean(session && historyLoad?.state === "loading");
   const historyError = session && historyLoad?.state === "error" ? historyLoad.detail : undefined;
@@ -578,6 +589,7 @@ export function Conversation() {
                   <FoldedTurn key={turn.id} turn={turn} onOpen={openTurn} />
                 ) : (
                   <Fragment key={turn.id}>
+                  {turn.id === firstNewTurnId && <div className="thread-visit-rule" role="note">New since your last visit</div>}
                   <TurnTranscript key={transcripts.get(turn.id)?.run.id ?? turn.id}
                     onOpenFile={openFile}
                     rows={transcripts.get(turn.id)?.rows ?? turn.messages.map((message) => ({ kind: "message" as const, id: message.id, message }))}

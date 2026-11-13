@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { buildSessionActionMenuItems, copyAnchor, type MenuAnchor } from "../../lib/action-menu";
+import { copyAnchor, type MenuAnchor } from "../../lib/action-menu";
+import { useSessionActions } from "../triage/session-actions";
 import { useWorkspace } from "../../lib/workspace";
 import { ActionMenu } from "./ActionMenu";
 import { ChevronDownIcon } from "./icons";
@@ -10,14 +11,14 @@ import { ChevronDownIcon } from "./icons";
  * happens in place, in the titlebar.
  */
 export function ThreadTitleMenu() {
-  const { session, project, renameSession, pinSession, regenerateTitle, archiveSession, deleteSession, openPath } = useWorkspace();
+  const { session, renameSession } = useWorkspace();
+  const actions = useSessionActions();
   const [anchor, setAnchor] = useState<MenuAnchor>();
   const [editing, setEditing] = useState<string>();
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => { setAnchor(undefined); setEditing(undefined); }, [session?.id]);
   useEffect(() => { if (editing !== undefined) input.current?.select(); }, [editing !== undefined]);
   if (!session) return null;
-  const folder = session.workingDirectory || project?.workingDirectory;
 
   const commit = () => {
     const title = editing?.trim();
@@ -57,20 +58,14 @@ export function ThreadTitleMenu() {
       </button>
       {anchor && (
         <ActionMenu
-          items={buildSessionActionMenuItems({ pinned: Boolean(session.pinned), hasFolder: Boolean(folder) })}
+          items={actions.items(session)}
           point={{ x: anchor.left, y: anchor.bottom }}
           anchor={anchor}
           keyboard={false}
           onClose={() => setAnchor(undefined)}
           onSelect={(action) => {
             setAnchor(undefined);
-            if (action === "rename") setEditing(session.title);
-            else if (action === "pin" || action === "unpin") void pinSession(session.id, action === "pin");
-            else if (action === "generate-title") void regenerateTitle(session.id);
-            else if (action === "open-folder" && folder) void openPath(folder);
-            else if (action === "copy-path" && folder) void navigator.clipboard.writeText(folder);
-            else if (action === "archive") void archiveSession(session.id);
-            else if (action === "delete") deleteSession(session.id);
+            if (actions.run(session, action) === "rename") setEditing(session.title);
           }}
         />
       )}

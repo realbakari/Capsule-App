@@ -2,10 +2,11 @@ import { useUpdates } from "../../lib/updates";
 import { gatewayConnectionLabel } from "../../lib/harness";
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type MouseEvent } from "react";
 import { usePanelResize } from "../../lib/panel-resize";
-import type { Session } from "@capsule/shared";
+import { threadShelf, type Session } from "@capsule/shared";
+import { useSessionActions } from "../triage/session-actions";
+import { formatWakeTime, useThreadTriage } from "../../lib/thread-triage";
 import {
   buildProjectActionMenuItems,
-  buildSessionActionMenuItems,
   copyAnchor,
   type ActionMenuItem,
   type MenuAnchor,
@@ -23,6 +24,7 @@ import {
   SIDEBAR_GROUPING_KEY,
   STATUS_THREAD_PREVIEW,
   visibleStatusThreads,
+  SHELF_GROUPS,
   type SidebarGrouping,
   type SidebarStatusGroupId,
   resolveSidebarThreadKind,
@@ -149,6 +151,15 @@ export function Sidebar() {
     harnesses,
   } = useWorkspace();
   const [menu, setMenu] = useState<MenuState>();
+  const sessionActions = useSessionActions();
+  const triage = useThreadTriage();
+  const [openShelves, setOpenShelves] = useState<Set<string>>(new Set());
+  const toggleShelf = (key: string) => setOpenShelves((current) => {
+    const next = new Set(current);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    return next;
+  });
   const sidebarRef = useRef<HTMLElement>(null);
   const focusedInside = useRef(false);
   useLayoutEffect(() => {
@@ -212,7 +223,7 @@ export function Sidebar() {
   const needle = query.trim().toLowerCase();
   /* Recent is a way of grouping the one list, not a second copy of it under the projects. */
   const recentThreads = useMemo(() => grouping === "recent" ? [...threadsByProject.values()].flat()
-    .filter((thread) => projectNames.has(thread.projectId) && (!needle || thread.title.toLowerCase().includes(needle)))
+    .filter((thread) => projectNames.has(thread.projectId) && threadShelf(thread) !== "snoozed" && (!needle || thread.title.toLowerCase().includes(needle)))
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)) : [], [grouping, threadsByProject, projectNames, needle]);
 
   const kindOf = (session: Session): SidebarThreadKind => {
@@ -293,38 +304,10 @@ export function Sidebar() {
       return;
     }
     const session = sessions.find((item) => item.id === id);
-    const folder =
-      session?.workingDirectory ||
-      projects.find((item) => item.id === session?.projectId)?.workingDirectory;
-    if (action === "rename") {
-      setEditing({ kind: "session", id, value: session?.title ?? "", location });
-      return;
+    if (!session) return;
+    if (sessionActions.run(session, action) === "rename") {
+      setEditing({ kind: "session", id, value: session.title, location });
     }
-    if (action === "pin") {
-      void pinSession(id, true);
-      return;
-    }
-    if (action === "unpin") {
-      void pinSession(id, false);
-      return;
-    }
-    if (action === "generate-title") {
-      void regenerateTitle(id);
-      return;
-    }
-    if (action === "open-folder" && folder) {
-      void openPath(folder);
-      return;
-    }
-    if (action === "copy-path" && folder) {
-      void navigator.clipboard.writeText(folder);
-      return;
-    }
-    if (action === "archive") {
-      void archiveSession(id);
-      return;
-    }
-    if (action === "delete") deleteSession(id);
   }
 
   function itemsFor(kind: MenuState["kind"], id: string): ActionMenuItem[] {
@@ -338,13 +321,7 @@ export function Sidebar() {
       });
     }
     const session = sessions.find((item) => item.id === id);
-    const folder =
-      session?.workingDirectory ||
-      projects.find((item) => item.id === session?.projectId)?.workingDirectory;
-    return buildSessionActionMenuItems({
-      pinned: Boolean(session?.pinned),
-      hasFolder: Boolean(folder),
-    });
+    return session ? sessionActions.items(session) : [];
   }
 
   async function openActions(
@@ -432,7 +409,9 @@ export function Sidebar() {
     }
     const kind = kindOf(session);
     const active = session.id === sessionId;
-    const recede = shouldRecedeThread(kind, active);
+    const unread = !active && triage.isUnread(session);
+    const shelf = threadShelf(session);
+    const recede = !unread && shouldRecedeThread(kind, active);
     const run = latestRuns.get(session.id);
     const startedAt =
       kind === "working" && run && ["running", "queued", "waiting"].includes(run.status)
@@ -448,10 +427,10 @@ export function Sidebar() {
         data-menu-open={menu?.kind === "session" && menu.id === session.id ? "true" : undefined}
         /* The row is a button made of divs, so it has no name of its own —
            every conversation in the sidebar read as an unnamed control. */
-        aria-label={session.title}
+        aria-label={unread ? `${session.title}, unread` : shelf === "snoozed" && session.snoozedUntil ? `${session.title}, snoozed until ${formatWakeTime(session.snoozedUntil, new Date(), settings?.timeFormat)}` : session.title}
         aria-current={active ? "page" : undefined}
         aria-describedby={previewId}
-        className={`thread-row ${location === "recent" ? "sidebar-recent-row" : ""} ${active ? "active" : ""} ${recede ? "recede" : ""}`}
+        className={`thread-row ${location === "recent" ? "sidebar-recent-row" : ""} ${active ? "active" : ""} ${recede ? "recede" : ""} ${unread ? "unread" : ""}`}
         draggable={location === "project" && grouping === "project" && Boolean(session.pinned)}
         onDragStart={(event) => {
           if (grouping !== "project" || !session.pinned) return;
@@ -497,7 +476,7 @@ export function Sidebar() {
         }}
         onContextMenu={(event) => void openActions(event, "session", session.id)}
       >
-        <span className="row-slot" aria-hidden />
+        <span className="row-slot" aria-hidden>{unread ? <span className="thread-unread-dot" title="Unread" /> : null}</span>
         <span className="row-slot">
           {session.pinned ? <PinIcon size={11} /> : session.workspaceMode === "worktree" ? (
             <span className="thread-worktree" title={session.worktreeBranch ? `Own worktree on ${session.worktreeBranch}` : "Own worktree"} aria-label="Runs in its own worktree"><GitBranchIcon size={11} /></span>
@@ -517,6 +496,8 @@ export function Sidebar() {
             <span className="thread-status approval"><ShieldIcon size={10} />Approval</span>
           ) : kind === "failed" ? (
             <span className="thread-status failed"><AlertTriangleIcon size={10} />Failed</span>
+          ) : shelf === "snoozed" && session.snoozedUntil ? (
+            <span className="thread-wake" title={`Wakes ${formatWakeTime(session.snoozedUntil, new Date(), settings?.timeFormat)}`}>{formatWakeTime(session.snoozedUntil, new Date(), settings?.timeFormat, true)}</span>
           ) : (
             <span className="thread-time">{compactRelativeTime(session.updatedAt)}</span>
           )}
@@ -744,7 +725,12 @@ export function Sidebar() {
             return <section className="sidebar-status-group" key={group.id} aria-label={group.label}>
               <h3 className="session-label">{group.label}<span>{group.threads.length}</span></h3>
               {visible.map((session) => renderThread(session))}
-              {hidden > 0 || (expanded && group.threads.length > STATUS_THREAD_PREVIEW) ? <button type="button" className="show-more" onClick={() => setExpandedGroups((current) => {
+              {SHELF_GROUPS.has(group.id) ? <button type="button" className="show-more" aria-expanded={expanded} onClick={() => setExpandedGroups((current) => {
+                const next = new Set(current);
+                if (next.has(group.id)) next.delete(group.id);
+                else next.add(group.id);
+                return next;
+              })}>{expanded ? "Hide" : `Show ${group.label.toLowerCase()}`}</button> : hidden > 0 || (expanded && group.threads.length > STATUS_THREAD_PREVIEW) ? <button type="button" className="show-more" onClick={() => setExpandedGroups((current) => {
                 const next = new Set(current);
                 if (next.has(group.id)) next.delete(group.id);
                 else next.add(group.id);
@@ -885,6 +871,19 @@ export function Sidebar() {
                       )}
                       {!needle && limit > SETTLED_THREAD_PREVIEW && <button type="button" className="show-more"
                         onClick={() => setRestLimit((current) => ({ ...current, [item.id]: SETTLED_THREAD_PREVIEW }))}>Show fewer</button>}
+                      {([["snoozed", "Snoozed", groups.shelvedSnoozed], ["settled", "Settled", groups.shelvedSettled]] as const).map(([shelfId, label, shelved]) => {
+                        if (shelved.length === 0) return null;
+                        const key = `${item.id}:${shelfId}`;
+                        const open = Boolean(needle) || openShelves.has(key);
+                        const shown = open ? shelved : shelved.filter((thread) => thread.id === sessionId);
+                        return <Fragment key={shelfId}>
+                          <button type="button" className="sidebar-shelf-toggle" aria-expanded={open} onClick={() => toggleShelf(key)}>
+                            {open ? <ChevronDownIcon size={11} /> : <ChevronRightIcon size={11} />}
+                            {label}<span className="shelf-count">{shelved.length}</span>
+                          </button>
+                          {shown.map((thread) => renderThread(thread))}
+                        </Fragment>;
+                      })}
                     </>
                   )}
                 </div>

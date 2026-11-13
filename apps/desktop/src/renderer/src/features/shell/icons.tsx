@@ -783,3 +783,20 @@ export function FolderOpenIcon(props: IconProps) {
 export function GitCommitIcon(props: IconProps) {
   return <Svg {...props}><circle cx="12" cy="12" r="3" /><path d="M3 12h6M15 12h6" /></Svg>;
 }
+
+export function ClockIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <polyline points="12 7 12 12 15.5 14" />
+    </Svg>
+  );
+}
+
+export function DotIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="4" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}

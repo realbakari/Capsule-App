@@ -1,5 +1,5 @@
 import { isInternalVerdict } from "./thread-error.js";
-import type { Run, Session } from "@capsule/shared";
+import { threadShelf, type Run, type Session } from "@capsule/shared";
 
 export type SidebarGrouping = "project" | "status" | "recent";
 export const SIDEBAR_GROUPING_KEY = "capsule.sidebarGrouping";
@@ -21,7 +21,7 @@ export function latestSidebarRuns(runs: readonly Run[]): Map<string, Run> {
   return latest;
 }
 
-export type SidebarStatusGroupId = "attention" | "working" | "review" | "other";
+export type SidebarStatusGroupId = "attention" | "working" | "review" | "other" | "snoozed" | "settled";
 export interface SidebarStatusGroup {
   id: SidebarStatusGroupId;
   label: string;
@@ -40,7 +40,10 @@ export function groupSidebarThreads(
     { id: "working", label: "Working", threads: [] },
     { id: "review", label: "Ready for review", threads: [] },
     { id: "other", label: "Other conversations", threads: [] },
+    { id: "snoozed", label: "Snoozed", threads: [] },
+    { id: "settled", label: "Settled", threads: [] },
   ];
+  const now = Date.now();
   const projectNames = new Map(projects.map((project) => [project.id, project.name]));
   const seen = new Set<string>();
   const needle = query.trim().toLowerCase();
@@ -55,7 +58,11 @@ export function groupSidebarThreads(
       liveHarness: isWorkingHarnessState(session.harnessState),
       runStatus: run?.status, runAnswered: answered, runError: run?.error,
     });
-    const group = kind === "approval" || kind === "failed" ? groups[0]!
+    // Work in flight or waiting on a decision is never hidden by a shelf.
+    const shelf = kind === "approval" || kind === "working" ? "active" : threadShelf(session, now);
+    const group = shelf === "snoozed" ? groups[4]!
+      : shelf === "settled" ? groups[5]!
+      : kind === "approval" || kind === "failed" ? groups[0]!
       : kind === "working" ? groups[1]!
       : run?.status === "completed" && answered ? groups[2]! : groups[3]!;
     group.threads.push(session);
@@ -69,8 +76,12 @@ export function groupSidebarThreads(
 
 export const STATUS_THREAD_PREVIEW = 20;
 
+/** Shelves stay folded until opened; the selected thread is the one exception. */
+export const SHELF_GROUPS: ReadonlySet<SidebarStatusGroupId> = new Set(["snoozed", "settled"]);
+
 export function visibleStatusThreads(group: SidebarStatusGroup, expanded: boolean, selectedId?: string): Session[] {
   if (expanded || group.id === "attention" || group.id === "working") return group.threads;
+  if (SHELF_GROUPS.has(group.id)) return group.threads.filter((session) => session.id === selectedId);
   const selectedIndex = group.threads.findIndex((session) => session.id === selectedId);
   return group.threads.slice(0, Math.max(STATUS_THREAD_PREVIEW, selectedIndex + 1));
 }
@@ -161,26 +172,39 @@ export function shouldRecedeThread(kind: SidebarThreadKind, isActive: boolean): 
 
 export const SETTLED_THREAD_PREVIEW = 3;
 
-export function splitProjectThreads<T extends { pinned?: boolean; updatedAt: string }>(
+export function splitProjectThreads<T extends { pinned?: boolean; updatedAt: string; settledAt?: string; snoozedUntil?: string }>(
   threads: readonly T[],
   kindOf: (thread: T) => SidebarThreadKind,
   preview = SETTLED_THREAD_PREVIEW,
   selected?: T,
+  now = Date.now(),
 ): {
   pinned: T[];
   live: T[];
   rest: T[];
   hidden: number;
+  /** Threads the person called done, newest first; a shelf, folded by default. */
+  shelvedSettled: T[];
+  /** Threads hidden until a time, soonest wake first. */
+  shelvedSnoozed: T[];
 } {
-  const pinned = threads.filter((thread) => thread.pinned);
-  const unpinned = threads.filter((thread) => !thread.pinned);
+  const pinned: T[] = [];
   const live: T[] = [];
   const settled: T[] = [];
-  for (const thread of unpinned) {
+  const shelvedSettled: T[] = [];
+  const shelvedSnoozed: T[] = [];
+  for (const thread of threads) {
     const kind = kindOf(thread);
-    if (kind === "working" || kind === "approval") live.push(thread);
+    const busy = kind === "working" || kind === "approval";
+    const shelf = busy ? "active" : threadShelf(thread, now);
+    if (shelf === "snoozed") shelvedSnoozed.push(thread);
+    else if (shelf === "settled") shelvedSettled.push(thread);
+    else if (thread.pinned) pinned.push(thread);
+    else if (busy) live.push(thread);
     else settled.push(thread);
   }
+  shelvedSettled.sort((left, right) => ((left.settledAt ?? "") < (right.settledAt ?? "") ? 1 : -1));
+  shelvedSnoozed.sort((left, right) => ((left.snoozedUntil ?? "") < (right.snoozedUntil ?? "") ? -1 : 1));
   settled.sort((left, right) => (left.updatedAt < right.updatedAt ? 1 : -1));
   const rest = settled.slice(0, preview);
   if (selected && settled.includes(selected) && !rest.includes(selected)) rest.push(selected);
@@ -189,6 +213,8 @@ export function splitProjectThreads<T extends { pinned?: boolean; updatedAt: str
     live,
     rest,
     hidden: settled.length - rest.length,
+    shelvedSettled,
+    shelvedSnoozed,
   };
 }
 

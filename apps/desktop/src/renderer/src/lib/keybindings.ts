@@ -55,6 +55,8 @@ export const COMMANDS: KeyCommand[] = [
   { id: "open-mode", label: "Choose mode", chord: { key: "m", meta: true, shift: true } },
   { id: "open-model", label: "Choose model", chord: { key: "i", meta: true, shift: true } },
   { id: "open-effort", label: "Choose effort", chord: { key: "e", meta: true, shift: true } },
+  { id: "settle-and-next", label: "Settle and go to next", chord: { key: "e", meta: true } },
+  { id: "mark-unread", label: "Mark conversation unread", chord: { key: "u", meta: true, shift: true } },
 ];
 
 /** Shortcuts that live outside this registry (in a surface or the composer), shown in the shortcuts sheet. */

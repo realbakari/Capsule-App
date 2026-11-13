@@ -16,6 +16,7 @@ import { Sidebar } from "./features/shell/Sidebar";
 import { Titlebar } from "./features/shell/Titlebar";
 import { RemoteSessionBanner } from "./features/shell/RemoteSessionBanner";
 import { Toasts } from "./features/toasts/Toasts";
+import { TriageHost } from "./features/triage/TriageHost";
 import { ToastProvider } from "./lib/toasts";
 import { ShortcutsSheet } from "./features/shell/ShortcutsSheet";
 import { AboutModal } from "./features/settings/AboutModal";
@@ -105,6 +106,7 @@ function Shell() {
         <ContentSearch />
       </ViewErrorBoundary>
       <ConfirmDialog />
+      <TriageHost />
       <ShortcutsSheet />
       <TooltipLayer />
       <Toasts />
