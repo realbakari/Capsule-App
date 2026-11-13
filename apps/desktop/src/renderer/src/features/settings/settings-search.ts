@@ -104,6 +104,7 @@ export const SETTINGS_SEARCH_ITEMS: SettingsSearchItem[] = [
   { title: "Pull request merge method", section: "sourceControl", keywords: ["squash", "rebase", "pr"] },
   { title: "Diff layout", section: "sourceControl", keywords: ["split", "unified", "side by side"] },
   { title: "Diff files", section: "sourceControl", keywords: ["collapsed", "expanded", "folded"] },
+  { title: "Ignore whitespace", section: "sourceControl", keywords: ["diff", "review", "spaces", "indentation"] },
   { title: "Review delivery", section: "sourceControl", keywords: ["pr", "chat"] },
   { title: "Commit instructions", section: "sourceControl", keywords: ["message", "template"] },
   { title: "Pull request instructions", section: "sourceControl", keywords: ["pr", "template"] },

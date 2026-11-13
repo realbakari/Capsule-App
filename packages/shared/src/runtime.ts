@@ -145,6 +145,7 @@ export const DEFAULT_CAPSULE_SETTINGS: CapsuleSettings = {
   followUpBehavior: "queue",
   diffLayout: "split",
   diffFileState: "expanded",
+  diffIgnoreWhitespace: false,
 };
 
 /**
@@ -204,6 +205,7 @@ export const SETTINGS_SECTION_KEYS: Record<string, ReadonlyArray<keyof CapsuleSe
   sourceControl: [
     "diffLayout",
     "diffFileState",
+    "diffIgnoreWhitespace",
     "worktreesDirectory",
     "branchPrefix",
     "gitForceWithLease",
@@ -323,6 +325,8 @@ export interface CapsuleSettings {
   followUpBehavior: FollowUpBehavior;
   diffLayout: DiffLayout;
   diffFileState: DiffFileState;
+  /** Review starts with whitespace-only changes hidden; each thread can override it. */
+  diffIgnoreWhitespace: boolean;
 }
 
 const AGENT_MODES: AgentMode[] = [
@@ -586,5 +590,6 @@ export function normalizeCapsuleSettings(input: Partial<CapsuleSettings> = {}): 
     followUpBehavior: pick(input.followUpBehavior, FOLLOW_UP_BEHAVIORS, DEFAULT_CAPSULE_SETTINGS.followUpBehavior),
     diffLayout: pick(input.diffLayout, DIFF_LAYOUTS, DEFAULT_CAPSULE_SETTINGS.diffLayout),
     diffFileState: pick(input.diffFileState, DIFF_FILE_STATES, DEFAULT_CAPSULE_SETTINGS.diffFileState),
+    diffIgnoreWhitespace: flag(input.diffIgnoreWhitespace, DEFAULT_CAPSULE_SETTINGS.diffIgnoreWhitespace),
   };
 }

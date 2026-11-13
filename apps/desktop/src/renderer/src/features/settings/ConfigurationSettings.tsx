@@ -399,7 +399,7 @@ export function GitCard({ settings, onPatch }: SectionProps) {
           ))}
         </select>
       </SettingRow>
-      <SettingRow label="Diff layout" hint="Side by side or one column, for pull request diffs. Turn diffs in the conversation stay one column.">
+      <SettingRow label="Diff layout" hint="Side by side or one column, for Review and pull request diffs. Turn diffs in the conversation stay one column.">
         <select
           className="field-select"
           value={settings.diffLayout}
@@ -418,6 +418,13 @@ export function GitCard({ settings, onPatch }: SectionProps) {
           <option value="expanded">Open</option>
           <option value="collapsed">Folded</option>
         </select>
+      </SettingRow>
+      <SettingRow label="Ignore whitespace" hint="Review starts with whitespace-only changes hidden. Each conversation can still switch it from the Review header.">
+        <Switch
+          checked={settings.diffIgnoreWhitespace}
+          onChange={(value) => onPatch({ diffIgnoreWhitespace: value })}
+          label="Ignore whitespace in Review"
+        />
       </SettingRow>
       <SettingRow
         label="Always force push"
