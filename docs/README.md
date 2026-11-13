@@ -18,6 +18,7 @@ need the shipped-product voice.
 - [Projects, actions, and local previews](./user/projects-and-previews.md)
 - [iOS Simulator](./user/simulator.md)
 - [capsule.json — project config in the repository](./user/project-file.md)
+- [Settings files](./user/settings-files.md)
 - [Providers and credentials](./user/providers.md)
 - [Reading from another device](./user/reading-from-another-device.md)
 - [Optional usage reports](./user/usage-reports.md)
@@ -40,6 +41,7 @@ Setup is in the [root README](../README.md); agent rules in
 - [Shared-channel adapter](./internals/channels.md)
 - [Architecture pointer](./internals/architecture.md)
 - [Browser control and analytics](./internals/web-access-and-analytics.md)
+- [Customization and settings files](./internals/config.md)
 
 ## Where a change belongs
 
