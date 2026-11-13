@@ -16,6 +16,18 @@ const click = (label: string) => {
   assert(node, `No control called ${label}`);
   node.click();
 };
+/** Open one of the pane's header menus and choose an item in it. */
+const choose = async (menu: string, item: string) => {
+  const trigger = Array.from(document.querySelectorAll<HTMLButtonElement>(".simulator-menu-trigger")).find((node) => node.textContent?.trim() === menu);
+  assert(trigger, `No menu called ${menu}`);
+  trigger.click();
+  await settle();
+  const entry = Array.from(document.querySelectorAll<HTMLButtonElement>(".simulator-menu-list [role=menuitem]")).find((node) => node.textContent?.trim() === item);
+  assert(entry, `No item called ${item} in ${menu}`);
+  assert(!entry.disabled, `${menu} → ${item} is disabled`);
+  entry.click();
+  await settle();
+};
 
 /** A 2x1 JPEG is enough for an <img> to lay out; the frame reports a phone-sized framebuffer. */
 const FRAME_DATA = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAIBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AVN//2Q==";
@@ -105,30 +117,30 @@ export async function runSimulatorRegressions(host: HTMLElement, base: Record<st
     await settle();
     assert(actions.length === 0, "A view-only screen dispatched a tap");
 
-    // Pausing stops the stream; the single-frame refresh is the way to get a new picture.
+    // Pausing stops the stream; capturing one frame is the way to get a new picture.
     const streamed = frames;
-    click("Pause");
+    await choose("View", "Pause the live screen");
     await new Promise((resolve) => setTimeout(resolve, 600));
     const paused = frames;
     await new Promise((resolve) => setTimeout(resolve, 500));
     assert(frames === paused && paused <= streamed + 1, "Pausing did not stop the frame stream");
-    click("Refresh");
+    await choose("View", "Capture one frame");
     await until(() => frames === paused + 1);
 
     // Controls that need no bridge still work, each as one typed action.
-    click("Open a URL"); await settle();
+    await choose("Device", "Open a URL or deep link…");
     const urlInput = document.querySelector<HTMLInputElement>('[aria-label="URL to open on the simulator"]')!;
     const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
     setValue.call(urlInput, "myapp://home");
     urlInput.dispatchEvent(new Event("input", { bubbles: true })); await settle();
     urlInput.form!.requestSubmit();
     await until(() => actions.some((entry) => entry.action.type === "openUrl" && entry.action.url === "myapp://home"));
-    click("Installed apps");
+    await choose("Device", "Installed apps…");
     await until(() => document.querySelector(".simulator-app-list"));
     assert(host.textContent?.includes("Demo") && !host.textContent.includes("com.apple.Preferences"), "Installed apps listed system apps or missed the user's");
 
     // Recording: start, then stop opens the saved file.
-    click("Record");
+    click("Record the screen");
     await until(() => actions.some((entry) => entry.action.type === "record" && entry.action.mode === "start"));
     document.dispatchEvent(new Event("visibilitychange"));
     await until(() => document.querySelector('[aria-label="Stop recording"]'));
@@ -155,7 +167,7 @@ export async function runSimulatorRegressions(host: HTMLElement, base: Record<st
     await until(() => !document.querySelector(".simulator-banner"));
     await until(() => document.querySelector<HTMLButtonElement>('[aria-label="Home"]')?.disabled === false);
     const beforeResume = frames;
-    click("Resume");
+    await choose("View", "Resume the live screen");
     // Points arrive with the next frame; a tap on the stale frame has nothing to map to.
     await until(() => frames > beforeResume + 1);
     await until(() => document.querySelector<HTMLImageElement>(".simulator-screen img")?.getBoundingClientRect().width);
@@ -173,8 +185,16 @@ export async function runSimulatorRegressions(host: HTMLElement, base: Record<st
     const swipe = actions.find((entry) => entry.action.type === "swipe")!.action as { fromY: number; toY: number };
     assert(swipe.toY < swipe.fromY, "Drag upward did not become an upward swipe");
 
+    // Actual size draws one device point per CSS pixel; fit brings it back inside the pane.
+    click("Actual size"); await settle();
+    const actual = document.querySelector<HTMLElement>(".simulator-screen")!.getBoundingClientRect();
+    assert(Math.round(actual.width) === 440 && Math.round(actual.height) === 956, `Actual size drew ${actual.width}x${actual.height}`);
+    click("Fit to the pane"); await settle();
+    const fitted = document.querySelector<HTMLElement>(".simulator-screen")!.getBoundingClientRect();
+    assert(fitted.width < 440 && Math.abs(fitted.width / fitted.height - 440 / 956) < 0.01, "Fit did not keep the device's shape inside the pane");
+
     // The Tools drawer reads the device back, changes one setting per action, and can detach.
-    click("Device tools");
+    await choose("Device", "Device tools…");
     await until(() => document.querySelector(".simulator-tools"));
     await until(() => host.textContent?.includes("medium"));
     click("Dark");

@@ -26,30 +26,45 @@ agents away from simulators entirely; you can still watch and tap.
 
 The screen is a stream of still frames captured a few times a second. It is
 not video: animations look stepped, and a frame can lag the device by a
-fraction of a second. Pause the stream with the pause control and capture a
-single frame with refresh when you want a steady picture.
+fraction of a second. **View → Pause the live screen** holds one picture when
+you want it steady.
 
 The device does not need the Simulator app open. **Open in the Simulator
 app** brings the real window forward when you want Apple's own controls.
 
 ## Controls
 
-The floating toolbar under the screen offers, left to right:
+The header names the device and its iOS version; the arrow beside it picks
+another device. To its right are four zoom controls: **zoom out**, **fit**
+(the whole device in the pane), **actual size** (one device point to one
+screen point, scrolling when it does not fit) and **zoom in**.
+
+The floating toolbar under the device offers, left to right:
 
 - **Home**, once touch input is connected.
-- **Pause / resume** the live screen, and **refresh** one frame while paused.
-- **Copy a screenshot** to the clipboard as an image you can paste into a
-  message or another app.
+- **Rotate** a quarter turn clockwise. The home screen on iPhone stays
+  upright; apps that support landscape turn.
+- **Screenshot** adds the current screen to the message you are writing.
 - **Record** the screen to a video in your Downloads folder; press it again
   to stop, and the file opens. Stop stays available while a recording runs,
   even when the screen is hidden, and detaching the device stops it too.
-- **Device tools**, the drawer described below.
-- **Open a URL**, for a web address or a deep link such as `myapp://home`.
-- **Installed apps**, listing the apps you have built onto this device with
-  **Launch** and **Quit**.
-- **Type text** into whichever field has focus on the device, once touch
-  input is connected. **Return** presses the keyboard's return key.
-- **Power**: shut the device down, or start it when it is off.
+- **Mark up** holds the screen still so you can draw on it. **Add to message**
+  attaches the marked-up picture; copy, undo (⌘Z), clear and close (Esc) are
+  beside it.
+
+Click the screen to tap, drag to swipe. With the screen focused, typing goes
+to whichever field has focus on the device; Return and Delete work as keys.
+
+Everything else lives in the header's menus:
+
+- **Edit**: copy a screenshot, add one to your message, mark up the screen,
+  and **Type text…** for longer text.
+- **Device**: Home, Rotate, **Open a URL or deep link…** (a web address or
+  something like `myapp://home`), **Installed apps…** (launch or quit what
+  you built), **Device tools…** (the drawer below), **Open in the Simulator
+  app**, and shut down or start.
+- **View**: the zoom steps, pause or resume the live screen, and capture one
+  frame while paused.
 
 ## Device tools
 

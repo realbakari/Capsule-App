@@ -505,8 +505,24 @@ Tools: **Launch**, **Review**, **Commands**, **Browser**, **Simulator**, **Files
   `attachSimulator(threadId, udid)` so main knows which device that thread's
   agent may use; the renderer repeats the call on mount so a restart keeps
   the grant. Nothing streams and no touch bridge starts before attach.
-  **Detach simulator** (Tools drawer) clears both. The toolbar's power
-  control boots or shuts down; other controls are disabled until attached.
+  **Detach simulator** (Tools drawer) clears both.
+  Layout: the pane is keyed by thread in the inspector. Its header is the
+  device picker, **Edit / Device / View** menus and four zoom buttons; the
+  inspector's breadcrumb row is not shown for this surface. `simulator-geometry`
+  turns the device's point size (bridge-reported, else the frame at 3x or 2x)
+  and the measured stage into the bezel and screen size for "fit" or a scale
+  from 0.5 to 2 (1 is actual size). The screen is always drawn at the
+  device's own aspect, so the image fills it and a pointer maps straight to
+  points with no letterboxing. The floating toolbar is Home, Rotate (a
+  clockwise quarter turn, read back with `readSimulatorSettings`),
+  Screenshot (adds to the message), Record and Mark up. Mark up
+  (`SimulatorAnnotator`) freezes a fresh frame, draws strokes in normalized
+  coordinates and exports a PNG at the frame's size; **Add to message**
+  and the camera go through the write-scoped `saveImageAttachment`, which
+  accepts only PNG bytes under 25 MB, then `attachImage`, so the clipboard is
+  not touched. Keys typed into the focused screen are batched for 120 ms into
+  one `text` action; Return and Delete are `key` actions. Notices and the
+  URL, type and apps rows sit in a dock at the top of the stage.
   `SimulatorTools` is the drawer: appearance, Dynamic Type step and increase
   contrast (`simctl ui`), rotation (bridge `orientation`, which also updates
   the session's point size), status bar clean/clear (`simctl status_bar`),

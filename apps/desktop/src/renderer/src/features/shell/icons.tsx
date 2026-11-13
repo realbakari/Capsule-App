@@ -681,3 +681,48 @@ export function RotateIcon(props: IconProps) {
 export function ArrowDownIcon(props: IconProps) {
   return <Svg {...props}><path d="M12 5v14M5 12l7 7 7-7" /></Svg>;
 }
+
+/* Zoom controls for a device screen: a magnifier carrying what each step does. */
+function Magnifier({ children, ...props }: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="10.5" cy="10.5" r="6.5" />
+      <path d="m15.5 15.5 5 5" />
+      {children}
+    </Svg>
+  );
+}
+
+export function ZoomInIcon(props: IconProps) {
+  return <Magnifier {...props}><path d="M10.5 8v5M8 10.5h5" /></Magnifier>;
+}
+
+export function ZoomOutIcon(props: IconProps) {
+  return <Magnifier {...props}><path d="M8 10.5h5" /></Magnifier>;
+}
+
+export function ZoomFitIcon(props: IconProps) {
+  return <Magnifier {...props}><path d="M8 9.5v-1.5h1.5M11.5 8H13v1.5M13 11.5V13h-1.5M9.5 13H8v-1.5" /></Magnifier>;
+}
+
+export function ZoomActualIcon(props: IconProps) {
+  return <Magnifier {...props}><path d="M9.5 9.25 11 8v5" /></Magnifier>;
+}
+
+export function RotateClockwiseIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M20 11a8 8 0 1 0-2.35 5.65" />
+      <path d="M20 4v7h-7" />
+    </Svg>
+  );
+}
+
+export function UndoIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M9 14 4 9l5-5" />
+      <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+    </Svg>
+  );
+}

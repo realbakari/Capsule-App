@@ -1,24 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Simulator, SimulatorAction, SimulatorApp, SimulatorFrame, SimulatorInventory } from "@capsule/shared";
+import type { Simulator, SimulatorAction, SimulatorApp, SimulatorFrame, SimulatorInventory, SimulatorOrientation } from "@capsule/shared";
 import { formatUserError } from "../../lib/errors";
 import { useWorkspace } from "../../lib/workspace";
 import { SimulatorAttach } from "./SimulatorAttach";
 import { SimulatorTools } from "./SimulatorTools";
+import { SimulatorAnnotator } from "./SimulatorAnnotator";
+import { deviceGeometry, devicePoints, pointOnScreen, rotateClockwise, stepZoom, type SimulatorZoom, type Size } from "./simulator-geometry";
 import {
   CameraIcon,
   ChevronDownIcon,
-  ExternalLinkIcon,
-  GridIcon,
   HomeIcon,
-  KeyboardIcon,
-  LinkIcon,
-  PauseIcon,
-  PlayIcon,
-  PowerIcon,
-  RefreshIcon,
+  PencilIcon,
+  RotateClockwiseIcon,
   SmartphoneIcon,
   VideoIcon,
-  WrenchIcon,
+  ZoomActualIcon,
+  ZoomFitIcon,
+  ZoomInIcon,
+  ZoomOutIcon,
 } from "./icons";
 
 /**
@@ -37,6 +36,11 @@ const FRAME_GAP_MS = 350;
 const INVENTORY_POLL_MS = 5_000;
 /** Pointer travel below this is a tap; above it, a swipe. */
 const SWIPE_THRESHOLD_PX = 8;
+/** Keystrokes typed into the focused screen go out together after this pause. */
+const TYPE_FLUSH_MS = 120;
+/** Room kept below the device for the floating toolbar, in CSS pixels. */
+const TOOLBAR_ROOM = 60;
+const STAGE_PADDING = 12;
 
 type Tool = "none" | "url" | "apps" | "type" | "tools";
 
@@ -63,7 +67,7 @@ interface PointerTrack {
 }
 
 export function SimulatorPane() {
-  const { api, session, settings, setNotice, openPath } = useWorkspace();
+  const { api, session, settings, setNotice, openPath, attachImage } = useWorkspace();
   const threadId = session?.id;
   const attachedKey = `${ATTACHED_KEY}:${threadId ?? "inbox"}`;
   const [inventory, setInventory] = useState<SimulatorInventory>();
@@ -84,6 +88,16 @@ export function SimulatorPane() {
   const [apps, setApps] = useState<SimulatorApp[]>();
   const [appsError, setAppsError] = useState<string>();
   const [connectError, setConnectError] = useState<string>();
+  const [zoom, setZoom] = useState<SimulatorZoom>("fit");
+  const [stage, setStage] = useState<Size>({ width: 0, height: 0 });
+  const [orientation, setOrientation] = useState<SimulatorOrientation>("portrait");
+  const [menu, setMenu] = useState<"edit" | "device" | "view">();
+  /* The frame held still while marking it up; undefined when not annotating. */
+  const [annotating, setAnnotating] = useState<SimulatorFrame>();
+  const stageRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const typedBuffer = useRef("");
+  const typeTimer = useRef(0);
   const screenRef = useRef<HTMLImageElement>(null);
   const track = useRef<PointerTrack | undefined>(undefined);
   const connecting = useRef<string | undefined>(undefined);
@@ -258,16 +272,48 @@ export function SimulatorPane() {
     if (!apps && udid) void api.listSimulatorApps(udid).then(setApps).catch(() => undefined);
   };
 
-  /** Map a pointer position on the rendered frame back to device points. */
-  const toPoints = (clientX: number, clientY: number): { x: number; y: number } | undefined => {
+  const family = device?.family ?? "iPhone";
+  const points = devicePoints(frame, family);
+  /* The stage's free space, minus padding and the toolbar's room, is what "fit" fills. */
+  useEffect(() => {
+    const element = stageRef.current;
+    if (!element) return;
+    const measure = () => setStage({ width: element.clientWidth - 2 * STAGE_PADDING, height: element.clientHeight - 2 * STAGE_PADDING - TOOLBAR_ROOM });
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [device?.udid]);
+  const geometry = deviceGeometry(points, family, stage, zoom);
+  const zoomStep = (direction: "in" | "out") => setZoom(stepZoom(geometry.scale, direction));
+
+  /* Rotation starts from what the device reports, then follows the button. */
+  useEffect(() => {
+    if (!udid || !booted || !isAttached) return;
+    void api.readSimulatorSettings(udid).then((next) => { if (mounted.current && next.orientation) setOrientation(next.orientation); }).catch(() => undefined);
+  }, [api, udid, booted, isAttached]);
+  const rotate = () => {
+    if (!udid) return;
+    // Read back what the device reports rather than assuming the turn landed.
+    void act({ type: "rotate", orientation: rotateClockwise(orientation) }, "rotate")
+      .then(() => api.readSimulatorSettings(udid))
+      .then((next) => { if (mounted.current && next.orientation) setOrientation(next.orientation); })
+      .catch(() => undefined);
+  };
+
+  useEffect(() => {
+    if (!menu) return;
+    const outside = (event: PointerEvent) => { if (!menuRef.current?.contains(event.target as Node)) setMenu(undefined); };
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") setMenu(undefined); };
+    document.addEventListener("pointerdown", outside);
+    document.addEventListener("keydown", escape);
+    return () => { document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", escape); };
+  }, [menu]);
+
+  /** Map a pointer position on the drawn screen back to device points. */
+  const toPoints = (clientX: number, clientY: number) => {
     const image = screenRef.current;
-    if (!image || !frame?.pointWidth || !frame.pointHeight) return undefined;
-    const rect = image.getBoundingClientRect();
-    if (!rect.width || !rect.height) return undefined;
-    const x = ((clientX - rect.left) / rect.width) * frame.pointWidth;
-    const y = ((clientY - rect.top) / rect.height) * frame.pointHeight;
-    if (x < 0 || y < 0 || x > frame.pointWidth || y > frame.pointHeight) return undefined;
-    return { x, y };
+    return image ? pointOnScreen(clientX, clientY, image.getBoundingClientRect(), points) : undefined;
   };
 
   const onPointerDown = (event: React.PointerEvent<HTMLImageElement>) => {
@@ -294,31 +340,76 @@ export function SimulatorPane() {
     }
   };
 
-  const copyScreenshot = async () => {
+  /*
+   * With the screen focused, the keyboard types into the device: characters
+   * go out together after a short pause, Return and Delete as keys.
+   */
+  const flushTyped = () => {
+    window.clearTimeout(typeTimer.current);
+    const text = typedBuffer.current;
+    typedBuffer.current = "";
+    if (text) void act({ type: "text", text });
+  };
+  useEffect(() => () => window.clearTimeout(typeTimer.current), []);
+  const onScreenKey = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!canTouch || event.metaKey || event.ctrlKey || event.altKey) return;
+    if (event.key === "Enter") { event.preventDefault(); flushTyped(); void act({ type: "key", key: "return" }); return; }
+    if (event.key === "Backspace") { event.preventDefault(); flushTyped(); void act({ type: "key", key: "delete" }); return; }
+    if (event.key.length !== 1) return;
+    event.preventDefault();
+    typedBuffer.current += event.key;
+    window.clearTimeout(typeTimer.current);
+    typeTimer.current = window.setTimeout(flushTyped, TYPE_FLUSH_MS);
+  };
+
+  const framePng = async (source: SimulatorFrame): Promise<Uint8Array> => {
+    const image = new Image();
+    image.src = source.dataUrl;
+    await image.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    canvas.getContext("2d")?.drawImage(image, 0, 0);
+    const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((out) => (out ? resolve(out) : reject(new Error("The screenshot could not be encoded."))), "image/png"));
+    return new Uint8Array(await blob.arrayBuffer());
+  };
+
+  const copyPng = async (png: Uint8Array) => {
+    await navigator.clipboard.write([new ClipboardItem({ "image/png": new Blob([new Uint8Array(png)], { type: "image/png" }) })]);
+    setNotice("Screenshot copied.");
+  };
+  const addPng = async (png: Uint8Array) => {
+    if (await attachImage(png)) setNotice("Screenshot added to your message.");
+  };
+
+  /** A fresh frame, not the last one shown, sent where the person chose. */
+  const screenshot = async (send: (png: Uint8Array) => Promise<void>) => {
     if (!udid) return;
     setBusy("screenshot");
     try {
-      // A fresh full-resolution-bounded frame, not the last one shown.
-      const fresh = await api.simulatorScreen(udid);
-      const blob = await (await fetch(fresh.dataUrl)).blob();
-      const png = await new Promise<Blob>((resolve, reject) => {
-        const image = new Image();
-        image.onload = () => {
-          const canvas = document.createElement("canvas");
-          canvas.width = image.naturalWidth;
-          canvas.height = image.naturalHeight;
-          canvas.getContext("2d")?.drawImage(image, 0, 0);
-          canvas.toBlob((out) => (out ? resolve(out) : reject(new Error("The screenshot could not be encoded."))), "image/png");
-        };
-        image.onerror = () => reject(new Error("The screenshot could not be decoded."));
-        image.src = URL.createObjectURL(blob);
-      });
-      await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]);
-      setNotice("Simulator screenshot copied.");
+      await send(await framePng(await api.simulatorScreen(udid)));
     } catch (error) {
       setNotice(formatUserError(error));
     } finally {
       if (mounted.current) setBusy(undefined);
+    }
+  };
+
+  const startAnnotating = async () => {
+    if (!udid) return;
+    setMenu(undefined);
+    try {
+      setAnnotating(await api.simulatorScreen(udid));
+    } catch (error) {
+      setNotice(formatUserError(error));
+    }
+  };
+  const finishAnnotating = (send: (png: Uint8Array) => Promise<void>) => async (png: Uint8Array) => {
+    try {
+      await send(png);
+      setAnnotating(undefined);
+    } catch (error) {
+      setNotice(formatUserError(error));
     }
   };
 
@@ -341,6 +432,13 @@ export function SimulatorPane() {
     }
   };
 
+  const openTool = (next: Tool) => {
+    setMenu(undefined);
+    if (next === "apps") { void openApps(); return; }
+    if (next === "tools") { openTools(); return; }
+    setTool(tool === next ? "none" : next);
+  };
+
   if (inventory && !inventory.supported) {
     return (
       <div className="codex-tool-pane simulator-empty">
@@ -352,15 +450,50 @@ export function SimulatorPane() {
   }
 
   if (!inventory && !inventoryError) {
-    return <div className="codex-tool-pane simulator-empty"><p className="faint">Looking for simulators…</p></div>;
+    return <div className="codex-tool-pane simulator-empty"><SmartphoneIcon size={28} /><p className="faint">Looking for simulators…</p></div>;
   }
 
   const devices = inventory?.devices ?? [];
-  const aspect = frame ? `${frame.pixelWidth} / ${frame.pixelHeight}` : device?.family === "iPad" ? "3 / 4" : "9 / 19.5";
   const showScreen = Boolean(device && booted && isAttached);
+  /* The pane's menus, grouped the way a device window's are: what you do to the content, the device, and the view. */
+  type MenuItem = { label: string; disabled?: boolean; run: () => void } | "separator";
+  const run = (action: () => void) => () => { setMenu(undefined); action(); };
+  const menus: Record<"edit" | "device" | "view", { label: string; items: MenuItem[] }> = {
+    edit: { label: "Edit", items: [
+      { label: "Copy a screenshot", disabled: !showScreen, run: run(() => void screenshot(copyPng)) },
+      { label: "Add a screenshot to your message", disabled: !showScreen, run: run(() => void screenshot(addPng)) },
+      { label: "Mark up the screen", disabled: !showScreen, run: () => void startAnnotating() },
+      "separator",
+      { label: "Type text…", disabled: !showScreen || !canTouch, run: () => openTool("type") },
+    ] },
+    device: { label: "Device", items: [
+      { label: "Home", disabled: !showScreen || !canTouch, run: run(() => void act({ type: "button", name: "HOME" }, "home")) },
+      { label: "Rotate clockwise", disabled: !showScreen || !canTouch, run: run(rotate) },
+      "separator",
+      { label: "Open a URL or deep link…", disabled: !showScreen, run: () => openTool("url") },
+      { label: "Installed apps…", disabled: !showScreen, run: () => openTool("apps") },
+      { label: "Device tools…", disabled: !showScreen, run: () => openTool("tools") },
+      "separator",
+      { label: "Open in the Simulator app", disabled: !udid, run: run(() => void act({ type: "reveal" }, "reveal")) },
+      booted
+        ? { label: "Shut down", disabled: busy === "shutdown", run: run(() => void act({ type: "shutdown" }, "shutdown").then(() => refreshInventory.current())) }
+        : { label: "Start", disabled: device?.state !== "Shutdown" || busy === "boot", run: run(() => void act({ type: "boot" }, "boot").then(() => refreshInventory.current())) },
+    ] },
+    view: { label: "View", items: [
+      { label: "Fit to the pane", disabled: !device, run: run(() => setZoom("fit")) },
+      { label: "Actual size", disabled: !device, run: run(() => setZoom(1)) },
+      { label: "Zoom in", disabled: !device || geometry.scale >= 2 - 0.001, run: run(() => zoomStep("in")) },
+      { label: "Zoom out", disabled: !device || geometry.scale <= 0.5 + 0.001, run: run(() => zoomStep("out")) },
+      "separator",
+      { label: live ? "Pause the live screen" : "Resume the live screen", disabled: !showScreen, run: run(() => setLive((value) => !value)) },
+      { label: "Capture one frame", disabled: !showScreen || live, run: run(() => { if (udid) void api.simulatorScreen(udid).then(setFrame).catch((error) => setFrameError(formatUserError(error))); }) },
+    ] },
+  };
+  const shown = annotating ?? frame;
+  const zoomLabel = zoom === "fit" ? "Fit" : `${Math.round(zoom * 100)}%`;
 
   return (
-    <div className="codex-browser-pane simulator-pane" data-family={device?.family ?? "iPhone"}>
+    <div className="codex-browser-pane simulator-pane" data-family={family}>
       <div className="simulator-head">
         <div className="simulator-picker">
           <button
@@ -373,7 +506,7 @@ export function SimulatorPane() {
           >
             <span className="simulator-picker-copy">
               <b>{device?.name ?? (devices.length ? "Choose a simulator" : "No simulators")}</b>
-              <small>{device ? `${device.runtime} · ${stateLabel(device.state)}${isAttached ? " · Attached" : ""}` : inventoryError ? "List unavailable" : "Create one in Xcode"}</small>
+              <small>{device ? device.runtime : inventoryError ? "List unavailable" : "Create one in Xcode"}</small>
             </span>
             <ChevronDownIcon size={14} />
           </button>
@@ -396,10 +529,27 @@ export function SimulatorPane() {
             </div>
           )}
         </div>
-        <div className="preview-actions-cluster">
-          <button type="button" className="preview-chrome-btn" title="Open in the Simulator app" aria-label="Open in the Simulator app" disabled={!udid} onClick={() => void act({ type: "reveal" }, "reveal")}>
-            <ExternalLinkIcon size={14} />
-          </button>
+        <div className="simulator-menubar" role="menubar" aria-label="Simulator" ref={menuRef}>
+              {(Object.keys(menus) as Array<keyof typeof menus>).map((key) => (
+                <div key={key} className="simulator-menu">
+                  <button type="button" role="menuitem" className={`simulator-menu-trigger${menu === key ? " active" : ""}`} aria-haspopup="menu" aria-expanded={menu === key} disabled={!device} onClick={() => setMenu((open) => (open === key ? undefined : key))}>
+                    {menus[key].label}<ChevronDownIcon size={12} />
+                  </button>
+                  {menu === key && (
+                    <div className="preview-more-menu simulator-menu-list" role="menu" aria-label={menus[key].label}>
+                      {menus[key].items.map((item, index) => item === "separator"
+                        ? <div key={`sep-${index}`} className="preview-menu-sep" role="separator" />
+                        : <button key={item.label} type="button" role="menuitem" className="preview-menu-item" disabled={item.disabled} onClick={item.run}>{item.label}</button>)}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+        <div className="simulator-zoom" role="group" aria-label={`Zoom, ${zoomLabel}`}>
+          <button type="button" className="preview-chrome-btn" title="Zoom out" aria-label="Zoom out" disabled={!device || geometry.scale <= 0.5 + 0.001} onClick={() => zoomStep("out")}><ZoomOutIcon size={16} /></button>
+          <button type="button" className={`preview-chrome-btn${zoom === "fit" ? " active" : ""}`} title="Fit to the pane" aria-label="Fit to the pane" aria-pressed={zoom === "fit"} disabled={!device} onClick={() => setZoom("fit")}><ZoomFitIcon size={16} /></button>
+          <button type="button" className={`preview-chrome-btn${zoom === 1 ? " active" : ""}`} title="Actual size" aria-label="Actual size" aria-pressed={zoom === 1} disabled={!device} onClick={() => setZoom(1)}><ZoomActualIcon size={16} /></button>
+          <button type="button" className="preview-chrome-btn" title="Zoom in" aria-label="Zoom in" disabled={!device || geometry.scale >= 2 - 0.001} onClick={() => zoomStep("in")}><ZoomInIcon size={16} /></button>
         </div>
       </div>
 
@@ -408,15 +558,24 @@ export function SimulatorPane() {
       )}
 
       {device && (
-        <>
-          <div className="simulator-stage">
-            <div className="simulator-bezel" style={{ aspectRatio: aspect }}>
-              {device.family === "iPhone" && (
+        <div className="simulator-stage" ref={stageRef} data-zoom={zoom === "fit" ? "fit" : "scaled"}>
+          <div className="simulator-stage-inner" style={{ padding: `${STAGE_PADDING}px ${STAGE_PADDING}px ${STAGE_PADDING + TOOLBAR_ROOM}px` }}>
+            <div
+              className="simulator-bezel"
+              style={{ width: geometry.frame.width, height: geometry.frame.height, padding: geometry.border, borderRadius: geometry.screenRadius + geometry.border }}
+            >
+              {family === "iPhone" && (
                 <span className="simulator-keys" aria-hidden="true">
                   <i className="simulator-key action" /><i className="simulator-key up" /><i className="simulator-key down" /><i className="simulator-key side" />
                 </span>
               )}
-              <div className="simulator-screen">
+              <div
+                className="simulator-screen"
+                style={{ borderRadius: geometry.screenRadius }}
+                tabIndex={showScreen && canTouch ? 0 : undefined}
+                aria-label={showScreen ? `${device.name} screen. Click to tap, drag to swipe, type to enter text.` : undefined}
+                onKeyDown={onScreenKey}
+              >
                 {!showScreen ? (
                   <SimulatorAttach
                     device={device}
@@ -428,157 +587,144 @@ export function SimulatorPane() {
                     onAttach={(target) => void attach(target)}
                     onToggleMenu={() => setAttachMenu((open) => !open)}
                   />
-                ) : frame ? (
+                ) : shown ? (
                   <img
                     ref={screenRef}
-                    src={frame.dataUrl}
+                    src={shown.dataUrl}
                     alt={`${device.name} screen`}
                     draggable={false}
-                    className={canTouch ? "touchable" : undefined}
-                    onPointerDown={onPointerDown}
-                    onPointerUp={onPointerUp}
+                    className={canTouch && !annotating ? "touchable" : undefined}
+                    onPointerDown={annotating ? undefined : onPointerDown}
+                    onPointerUp={annotating ? undefined : onPointerUp}
                     onPointerCancel={() => { track.current = undefined; }}
                   />
                 ) : (
-                  <div className="simulator-waiting"><span className="simulator-spinner" aria-label="Waiting for the first frame" /></div>
+                  <div className="simulator-waiting"><span className="simulator-spinner" role="status" aria-label="Waiting for the first frame" /></div>
+                )}
+                {annotating && showScreen && (
+                  <SimulatorAnnotator frame={annotating} onAdd={finishAnnotating(addPng)} onCopy={finishAnnotating(copyPng)} onCancel={() => setAnnotating(undefined)} />
                 )}
               </div>
             </div>
-            {attachMenu && !showScreen && (
-              <div className="preview-more-menu simulator-attach-menu" role="menu" ref={attachMenuRef}>
-                {grouped.running.length > 0 && <div className="simulator-attach-menu-head">Running</div>}
-                {grouped.running.map((item) => (
-                  <button key={item.udid} type="button" role="menuitem" className="preview-menu-item" onClick={() => { setAttachMenu(false); void attach(item.udid); }}>
-                    <span className="simulator-device-name">{item.name}</span>
-                    <small className="faint">{item.runtime}</small>
-                  </button>
-                ))}
-                {grouped.available.length > 0 && <div className="simulator-attach-menu-head">Available (will boot)</div>}
-                {grouped.available.map((item) => (
-                  <button key={item.udid} type="button" role="menuitem" className="preview-menu-item" onClick={() => { setAttachMenu(false); void attach(item.udid); }}>
-                    <span className="simulator-device-name">{item.name}</span>
-                    <small className="faint">{item.runtime}</small>
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
-
-          {!showScreen ? null : frameError ? (
-            <div className="simulator-banner error">{frameError}</div>
-          ) : !canTouch && touch ? (
-            <div className={`simulator-banner${touch.state === "failed" || connectError ? " error" : ""}`}>
-              {connectError
-                ? `Touch input failed: ${connectError}`
-                : touch.state === "building"
-                  ? "Preparing touch input. Xcode is building a small helper, which takes a minute or two the first time."
-                  : touch.state === "starting"
-                    ? "Connecting touch input to this simulator…"
-                    : touch.state === "failed"
-                      ? `Touch input failed: ${touch.detail}`
-                      : touch.state === "unavailable"
-                        ? `View only. ${touch.detail}`
-                        : "View only."}
-              {(touch.state === "failed" || connectError) && udid ? (
-                <button type="button" className="chip" onClick={() => connectTouch(udid)}>Retry</button>
-              ) : null}
+          {attachMenu && !showScreen && (
+            <div className="preview-more-menu simulator-attach-menu" role="menu" ref={attachMenuRef}>
+              {grouped.running.length > 0 && <div className="simulator-attach-menu-head">Running</div>}
+              {grouped.running.map((item) => (
+                <button key={item.udid} type="button" role="menuitem" className="preview-menu-item" onClick={() => { setAttachMenu(false); void attach(item.udid); }}>
+                  <span className="simulator-device-name">{item.name}</span>
+                  <small className="faint">{item.runtime}</small>
+                </button>
+              ))}
+              {grouped.available.length > 0 && <div className="simulator-attach-menu-head">Available (will boot)</div>}
+              {grouped.available.map((item) => (
+                <button key={item.udid} type="button" role="menuitem" className="preview-menu-item" onClick={() => { setAttachMenu(false); void attach(item.udid); }}>
+                  <span className="simulator-device-name">{item.name}</span>
+                  <small className="faint">{item.runtime}</small>
+                </button>
+              ))}
             </div>
-          ) : null}
-
-          {showScreen && tool === "url" && (
-            <form
-              className="simulator-tool-row"
-              onSubmit={(event) => {
-                event.preventDefault();
-                if (!url.trim()) return;
-                void act({ type: "openUrl", url: url.trim() }, "url").then(() => setTool((current) => (current === "url" ? "none" : current)));
-              }}
-            >
-              <input type="text" className="preview-address-input" value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://… or myapp://…" aria-label="URL to open on the simulator" spellCheck={false} autoFocus />
-              <button type="submit" className="chip" disabled={!url.trim() || busy === "url"}>Open</button>
-            </form>
           )}
 
-          {showScreen && tool === "type" && (
-            <form
-              className="simulator-tool-row"
-              onSubmit={(event) => {
-                event.preventDefault();
-                if (!typed) return;
-                void act({ type: "text", text: typed }, "type").then(() => setTyped(""));
-              }}
-            >
-              <input type="text" className="preview-address-input" value={typed} onChange={(event) => setTyped(event.target.value)} placeholder="Text to type into the focused field" aria-label="Text to type on the simulator" autoFocus />
-              <button type="submit" className="chip" disabled={!typed || busy === "type"}>Type</button>
-              <button type="button" className="chip" title="Press Return on the device" disabled={busy === "type"} onClick={() => void act({ type: "key", key: "return" }, "type")}>Return</button>
-            </form>
-          )}
-
-          {showScreen && tool === "apps" && (
-            <div className="simulator-apps">
-              {appsError ? <p className="error-text">{appsError}</p> : !apps ? <p className="faint">Reading installed apps…</p> : (
-                <div className="simulator-app-list">
-                  {apps.filter((app) => app.type === "User").map((app) => (
-                    <div key={app.bundleId} className="preview-menu-item-row">
-                      <button type="button" className="preview-menu-item" onClick={() => void act({ type: "launch", bundleId: app.bundleId }, "launch").then(() => setTool((current) => (current === "apps" ? "none" : current)))}>
-                        <span className="simulator-device-name">{app.name}</span>
-                        <small className="faint mono">{app.bundleId}</small>
-                      </button>
-                      <button type="button" className="ghost" title="Quit this app" onClick={() => void act({ type: "terminate", bundleId: app.bundleId })}>Quit</button>
-                    </div>
-                  ))}
-                  {apps.every((app) => app.type !== "User") && <p className="faint">No apps installed by you yet. Build and run from Xcode, or install a .app with simctl.</p>}
+          {showScreen && !annotating && (
+            <div className="simulator-dock">
+              {frameError ? (
+                <div className="simulator-banner error">{frameError}</div>
+              ) : !canTouch && touch ? (
+                <div className={`simulator-banner${touch.state === "failed" || connectError ? " error" : ""}`}>
+                  {connectError
+                    ? `Touch input failed: ${connectError}`
+                    : touch.state === "building"
+                      ? "Preparing touch input. Xcode is building a small helper, which takes a minute or two the first time."
+                      : touch.state === "starting"
+                        ? "Connecting touch input to this simulator…"
+                        : touch.state === "failed"
+                          ? `Touch input failed: ${touch.detail}`
+                          : touch.state === "unavailable"
+                            ? `View only. ${touch.detail}`
+                            : "View only."}
+                  {(touch.state === "failed" || connectError) && udid ? (
+                    <button type="button" className="chip" onClick={() => connectTouch(udid)}>Retry</button>
+                  ) : null}
                 </div>
+              ) : null}
+
+              {tool === "url" && (
+                <form
+                  className="simulator-tool-row"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    if (!url.trim()) return;
+                    void act({ type: "openUrl", url: url.trim() }, "url").then(() => setTool((current) => (current === "url" ? "none" : current)));
+                  }}
+                >
+                  <input type="text" className="preview-address-input" value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://… or myapp://…" aria-label="URL to open on the simulator" spellCheck={false} autoFocus />
+                  <button type="submit" className="chip" disabled={!url.trim() || busy === "url"}>Open</button>
+                </form>
+              )}
+
+              {tool === "type" && (
+                <form
+                  className="simulator-tool-row"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    if (!typed) return;
+                    void act({ type: "text", text: typed }, "type").then(() => setTyped(""));
+                  }}
+                >
+                  <input type="text" className="preview-address-input" value={typed} onChange={(event) => setTyped(event.target.value)} placeholder="Text to type into the focused field" aria-label="Text to type on the simulator" autoFocus />
+                  <button type="submit" className="chip" disabled={!typed || busy === "type"}>Type</button>
+                  <button type="button" className="chip" title="Press Return on the device" disabled={busy === "type"} onClick={() => void act({ type: "key", key: "return" }, "type")}>Return</button>
+                </form>
+              )}
+
+              {tool === "apps" && (
+                <div className="simulator-apps">
+                  {appsError ? <p className="danger-text">{appsError}</p> : !apps ? <p className="faint">Reading installed apps…</p> : (
+                    <div className="simulator-app-list">
+                      {apps.filter((app) => app.type === "User").map((app) => (
+                        <div key={app.bundleId} className="preview-menu-item-row">
+                          <button type="button" className="preview-menu-item" onClick={() => void act({ type: "launch", bundleId: app.bundleId }, "launch").then(() => setTool((current) => (current === "apps" ? "none" : current)))}>
+                            <span className="simulator-device-name">{app.name}</span>
+                            <small className="faint mono">{app.bundleId}</small>
+                          </button>
+                          <button type="button" className="chip" title="Quit this app" onClick={() => void act({ type: "terminate", bundleId: app.bundleId })}>Quit</button>
+                        </div>
+                      ))}
+                      {apps.every((app) => app.type !== "User") && <p className="faint">No apps installed by you yet. Build and run from Xcode, or install a .app with simctl.</p>}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {tool === "tools" && (
+                <SimulatorTools udid={device.udid} apps={apps} touchReady={canTouch} agentAccess={agentAccess} onDetach={detach} act={act} onClose={() => setTool("none")} />
               )}
             </div>
           )}
 
-          {showScreen && tool === "tools" && (
-            <SimulatorTools udid={device.udid} apps={apps} touchReady={canTouch} agentAccess={agentAccess} onDetach={detach} act={act} onClose={() => setTool("none")} />
+          {!annotating && (
+            <div className="simulator-toolbar" role="toolbar" aria-label="Simulator controls">
+              <button type="button" className="preview-chrome-btn" title={canTouch ? "Home" : "Home needs touch input"} aria-label="Home" disabled={!showScreen || !canTouch || busy === "home"} onClick={() => void act({ type: "button", name: "HOME" }, "home")}>
+                <HomeIcon size={17} />
+              </button>
+              <button type="button" className="preview-chrome-btn" title={canTouch ? "Rotate clockwise" : "Rotating needs touch input"} aria-label="Rotate clockwise" disabled={!showScreen || !canTouch || busy === "rotate"} onClick={rotate}>
+                <RotateClockwiseIcon size={17} />
+              </button>
+              <span className="simulator-toolbar-sep" />
+              <button type="button" className="preview-chrome-btn" title="Add a screenshot to your message" aria-label="Add a screenshot to your message" disabled={!showScreen || busy === "screenshot"} onClick={() => void screenshot(addPng)}>
+                <CameraIcon size={17} />
+              </button>
+              <button type="button" className={`preview-chrome-btn${device.recording ? " recording" : ""}`} title={device.recording ? "Stop recording" : "Record the screen"} aria-label={device.recording ? "Stop recording" : "Record the screen"} aria-pressed={device.recording} disabled={busy === "record" || (!device.recording && !showScreen)} onClick={() => void toggleRecording()}>
+                <VideoIcon size={17} />
+              </button>
+              <span className="simulator-toolbar-sep" />
+              <button type="button" className="preview-chrome-btn" title="Mark up the screen" aria-label="Mark up the screen" disabled={!showScreen} onClick={() => void startAnnotating()}>
+                <PencilIcon size={17} />
+              </button>
+            </div>
           )}
-
-          <div className="simulator-toolbar" role="toolbar" aria-label="Simulator controls">
-            <button type="button" className="preview-chrome-btn" title={canTouch ? "Home" : "Home needs touch input"} aria-label="Home" disabled={!showScreen || !canTouch || busy === "home"} onClick={() => void act({ type: "button", name: "HOME" }, "home")}>
-              <HomeIcon size={15} />
-            </button>
-            <button type="button" className="preview-chrome-btn" title={live ? "Pause the live screen" : "Resume the live screen"} aria-label={live ? "Pause" : "Resume"} disabled={!showScreen} onClick={() => setLive((value) => !value)}>
-              {live ? <PauseIcon size={15} /> : <PlayIcon size={15} />}
-            </button>
-            <button type="button" className="preview-chrome-btn" title="Capture a frame now" aria-label="Refresh" disabled={!showScreen || live} onClick={() => { if (udid) void api.simulatorScreen(udid).then(setFrame).catch((error) => setFrameError(formatUserError(error))); }}>
-              <RefreshIcon size={15} />
-            </button>
-            <span className="simulator-toolbar-sep" />
-            <button type="button" className="preview-chrome-btn" title="Copy a screenshot" aria-label="Copy a screenshot" disabled={!showScreen || busy === "screenshot"} onClick={() => void copyScreenshot()}>
-              <CameraIcon size={15} />
-            </button>
-            <button type="button" className={`preview-chrome-btn${device.recording ? " active" : ""}`} title={device.recording ? "Stop recording" : "Record the screen"} aria-label={device.recording ? "Stop recording" : "Record"} disabled={busy === "record" || (!device.recording && !showScreen)} onClick={() => void toggleRecording()}>
-              <VideoIcon size={15} />
-            </button>
-            <button type="button" className={`preview-chrome-btn${tool === "tools" ? " active" : ""}`} title="Device tools" aria-label="Device tools" disabled={!showScreen} onClick={openTools}>
-              <WrenchIcon size={15} />
-            </button>
-            <span className="simulator-toolbar-sep" />
-            <button type="button" className={`preview-chrome-btn${tool === "url" ? " active" : ""}`} title="Open a URL or deep link" aria-label="Open a URL" disabled={!showScreen} onClick={() => setTool(tool === "url" ? "none" : "url")}>
-              <LinkIcon size={15} />
-            </button>
-            <button type="button" className={`preview-chrome-btn${tool === "apps" ? " active" : ""}`} title="Installed apps" aria-label="Installed apps" disabled={!showScreen} onClick={() => void openApps()}>
-              <GridIcon size={15} />
-            </button>
-            <button type="button" className={`preview-chrome-btn${tool === "type" ? " active" : ""}`} title={canTouch ? "Type text" : "Typing needs touch input"} aria-label="Type text" disabled={!showScreen || !canTouch} onClick={() => setTool(tool === "type" ? "none" : "type")}>
-              <KeyboardIcon size={15} />
-            </button>
-            <span className="simulator-toolbar-sep" />
-            {booted ? (
-              <button type="button" className="preview-chrome-btn" title="Shut down this simulator" aria-label="Shut down" disabled={busy === "shutdown"} onClick={() => void act({ type: "shutdown" }, "shutdown").then(() => refreshInventory.current())}>
-                <PowerIcon size={15} />
-              </button>
-            ) : (
-              <button type="button" className="preview-chrome-btn" title="Start this simulator" aria-label="Start" disabled={device.state !== "Shutdown" || busy === "boot"} onClick={() => void act({ type: "boot" }, "boot").then(() => refreshInventory.current())}>
-                <PowerIcon size={15} />
-              </button>
-            )}
-          </div>
-        </>
+        </div>
       )}
 
       {!device && devices.length === 0 && inventory && (

@@ -10586,7 +10586,7 @@ fieldset.harness-options:disabled { opacity: .7; }
   gap: 0.5rem;
   padding: 0.45rem 0.6rem;
   border-bottom: 1px solid var(--border-color);
-  background: var(--surface-0);
+  background: var(--bg);
   flex-shrink: 0;
   position: relative;
   z-index: 20;
@@ -10609,42 +10609,42 @@ fieldset.harness-options:disabled { opacity: .7; }
 .simulator-picker-trigger:hover:not(:disabled) { background: var(--bg-hover); }
 .simulator-picker-trigger:disabled { cursor: default; }
 .simulator-picker-copy { display: grid; min-width: 0; line-height: 1.2; }
-.simulator-picker-copy b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.875rem; font-weight: 600; }
-.simulator-picker-copy small { color: var(--text-muted); font-size: 0.6875rem; }
+.simulator-picker-copy b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.9375rem; font-weight: 500; }
+.simulator-picker-copy small { color: var(--text-muted); font-size: 0.75rem; }
 .simulator-picker-menu { left: 0; right: auto; min-width: 17rem; max-width: min(24rem, calc(100cqw - 1rem)); max-height: 20rem; overflow: auto; }
 .simulator-device-row { gap: 0.35rem; }
 .simulator-device-row .preview-menu-item { display: grid; gap: 0.1rem; }
-.simulator-device-row .preview-menu-item.active { background: rgba(255, 255, 255, 0.06); }
+.simulator-device-row .preview-menu-item.active { background: var(--bg-active); }
 .simulator-device-name { font-size: 0.8125rem; }
 .simulator-device-row small { font-size: 0.6875rem; }
 
+/*
+ * The stage scrolls when the device is zoomed past the pane, and centers it
+ * when it fits (auto margins center without clipping an overflowing side).
+ * The frame and screen sizes come from the device's own shape, set inline.
+ */
 .simulator-stage {
   flex: 1;
   min-height: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1.25rem 1.25rem 0.75rem;
-  overflow: hidden;
-  background: radial-gradient(ellipse at 50% 40%, rgba(255, 255, 255, 0.035), transparent 70%), var(--bg);
+  position: relative;
+  overflow: auto;
+  background: radial-gradient(ellipse at 50% 40%, color-mix(in srgb, var(--text) 4%, transparent), transparent 70%), var(--bg);
 }
+.simulator-stage[data-zoom="fit"] { overflow: hidden; }
+.simulator-stage-inner { display: flex; box-sizing: border-box; min-width: 100%; min-height: 100%; width: max-content; }
 .simulator-bezel {
   position: relative;
-  height: 100%;
-  max-height: 100%;
-  max-width: 100%;
+  flex: none;
+  margin: auto;
   box-sizing: border-box;
-  padding: 0.5rem;
-  border-radius: 3.1rem;
-  background: #0a0a0b;
+  /* A physical device frame: the same in light and dark themes. */
+  background: #0b0b0c;
   box-shadow:
     0 0 0 1.5px #a5a7ad,
     0 0 0 2.5px #1b1c1e,
     inset 0 0 0 1px #2a2b2e,
-    0 1.75rem 3.5rem rgba(0, 0, 0, 0.55);
+    0 1.75rem 3.5rem rgba(0, 0, 0, 0.45);
 }
-.simulator-pane[data-family="iPad"] .simulator-bezel { border-radius: 1.5rem; padding: 0.75rem; }
-.simulator-pane[data-family="Apple Watch"] .simulator-bezel { border-radius: 2rem; }
 .simulator-keys { position: absolute; inset: 0; pointer-events: none; }
 .simulator-key {
   position: absolute;
@@ -10662,35 +10662,20 @@ fieldset.harness-options:disabled { opacity: .7; }
   width: 100%;
   height: 100%;
   overflow: hidden;
-  border-radius: 2.6rem;
   background: #000;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
 }
-.simulator-pane[data-family="iPad"] .simulator-screen { border-radius: 0.75rem; }
+.simulator-screen:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
 .simulator-screen img {
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: fill;
   user-select: none;
   -webkit-user-drag: none;
 }
-.simulator-screen img.touchable { cursor: crosshair; touch-action: none; }
-.simulator-waiting, .simulator-screen-off { position: absolute; inset: 0; display: grid; place-items: center; }
-.simulator-start {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.5rem 0.9rem;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.07);
-  color: rgba(255, 255, 255, 0.82);
-  font-size: 0.8125rem;
-  cursor: pointer;
-}
-.simulator-start:hover:not(:disabled) { background: rgba(255, 255, 255, 0.12); color: #fff; }
-.simulator-start:disabled { opacity: 0.6; cursor: default; }
+.simulator-screen img.touchable { cursor: pointer; touch-action: none; }
+.simulator-waiting { position: absolute; inset: 0; display: grid; place-items: center; }
 .simulator-spinner {
   width: 1.1rem;
   height: 1.1rem;
@@ -10699,24 +10684,78 @@ fieldset.harness-options:disabled { opacity: .7; }
   border-top-color: rgba(255, 255, 255, 0.8);
   animation: previewSpin 0.9s linear infinite;
 }
+.simulator-annotate-canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
 
+/* Floats over the stage, like the device's own controls rather than a pane footer. */
 .simulator-toolbar {
+  position: absolute;
+  left: 50%;
+  bottom: 1rem;
+  transform: translateX(-50%);
+  z-index: 6;
   display: flex;
   align-items: center;
-  gap: 0.15rem;
-  align-self: center;
-  margin: 0.4rem auto 0.75rem;
-  padding: 0.3rem 0.45rem;
+  gap: 0.25rem;
+  padding: 0.35rem 0.5rem;
   border: 1px solid var(--border-color);
   border-radius: 999px;
-  background: var(--surface-0);
-  box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.35);
-  flex-shrink: 0;
+  background: color-mix(in srgb, var(--surface-0) 88%, transparent);
+  backdrop-filter: blur(16px);
+  box-shadow: var(--shadow-raised, var(--shadow));
   max-width: calc(100% - 1.5rem);
-  overflow-x: auto;
 }
-.simulator-toolbar .preview-chrome-btn { border-radius: 999px; }
-.simulator-toolbar-sep { width: 1px; height: 1rem; margin: 0 0.2rem; background: var(--border-color); flex-shrink: 0; }
+.simulator-toolbar .preview-chrome-btn { width: 2.25rem; height: 2.25rem; border-radius: 999px; }
+.simulator-toolbar .preview-chrome-btn.recording { color: var(--red); background: color-mix(in srgb, var(--red) 14%, transparent); }
+.simulator-toolbar-sep { width: 1px; height: 1.25rem; margin: 0 0.15rem; background: var(--border-color); flex-shrink: 0; }
+.simulator-annotate-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  height: 2rem;
+  padding: 0 0.8rem;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.simulator-annotate-add:disabled { opacity: 0.6; cursor: default; }
+/* Notices and tool rows sit at the top of the stage, clear of the device and its controls. */
+.simulator-dock {
+  position: absolute;
+  left: 0.75rem;
+  right: 0.75rem;
+  top: 0.75rem;
+  z-index: 5;
+  display: grid;
+  gap: 0.4rem;
+  pointer-events: none;
+}
+.simulator-dock > * { pointer-events: auto; }
+.simulator-dock .simulator-banner, .simulator-dock .simulator-tool-row, .simulator-dock .simulator-apps { margin: 0; box-shadow: var(--shadow); }
+.simulator-menubar { display: flex; align-items: center; gap: 0.1rem; margin-left: auto; min-width: 0; }
+.simulator-menu { position: relative; }
+.simulator-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  height: 2rem;
+  padding: 0 0.55rem;
+  border: 0;
+  border-radius: var(--control-radius);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+.simulator-menu-trigger:hover:not(:disabled), .simulator-menu-trigger.active { background: var(--bg-hover); color: var(--text); }
+.simulator-menu-trigger:disabled { opacity: 0.5; cursor: default; }
+.simulator-menu-list { left: 0; right: auto; min-width: 14rem; }
+.simulator-menu-list .preview-menu-sep { height: 1px; margin: 0.2rem 0.3rem; background: var(--border-color); }
+.simulator-zoom { display: flex; align-items: center; gap: 0.15rem; flex-shrink: 0; }
+.simulator-zoom .preview-chrome-btn { width: 2rem; height: 2rem; border-radius: var(--control-radius); }
 
 .simulator-banner {
   margin: 0.4rem 0.75rem 0;
