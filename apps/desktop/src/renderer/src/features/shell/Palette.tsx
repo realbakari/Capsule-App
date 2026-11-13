@@ -4,7 +4,8 @@ import { useWorkspace } from "../../lib/workspace";
 import { formatUserError } from "../../lib/errors";
 import { keymapFrom, shortcutLabel } from "../../lib/keybindings";
 import { rankPalette, type PaletteEntry } from "../../lib/palette";
-import { SHOW_SHORTCUTS_EVENT } from "../../lib/shortcuts-event";
+import { OPEN_IN_EVENT, SHOW_SHORTCUTS_EVENT } from "../../lib/shortcuts-event";
+import { TOGGLE_DICTATION_EVENT } from "../../lib/dictation";
 import { useThreadTriage } from "../../lib/thread-triage";
 import { useToasts } from "../../lib/toasts";
 import { useSessionActions } from "../triage/session-actions";
@@ -189,6 +190,12 @@ function PaletteDialog() {
       { id: "review", label: "Open Review", group: "Workspace", icon: icon(DiffIcon), command: "open-review", keywords: "diff changes", run: () => openInspector("changes") },
       { id: "browser", label: "Open browser", group: "Workspace", icon: icon(GlobeIcon), command: "open-browser", run: () => openInspector("browser") },
       { id: "simulator", label: "Open iOS Simulator", group: "Workspace", icon: icon(SmartphoneIcon), disabledReason: desktopOnly ?? (api.platform && api.platform !== "darwin" ? "Available on macOS with Xcode." : undefined), run: () => openInspector("simulator") },
+      { id: "open-in-favorite", label: "Open folder in favourite app", group: "Workspace", icon: icon(FolderIcon), command: "open-in-favorite", keywords: "editor open in",
+        disabledReason: desktopOnly ?? (folder ? undefined : "Open a folder first."), run: () => { setView("chat"); window.dispatchEvent(new CustomEvent(OPEN_IN_EVENT)); } },
+      { id: "open-in-settings", label: "Manage Open in apps", group: "Workspace", icon: icon(SettingsIcon), keywords: "editor open in", disabledReason: desktopOnly,
+        run: () => { workspace.setSettingsTab("projects"); setView("settings"); } },
+      { id: "dictation", label: "Start or finish dictation", group: "Workspace", icon: icon(MessageSquareIcon), command: "dictation", keywords: "voice microphone speak",
+        disabledReason: !session ? "Open a conversation first." : undefined, run: () => { setView("chat"); window.dispatchEvent(new CustomEvent(TOGGLE_DICTATION_EVENT)); } },
       { id: "back", label: "Back", group: "Go to", icon: icon(ArrowLeftIcon), command: "history-back", disabledReason: canGoBack ? undefined : "No earlier conversation to go back to.", run: goBack },
       { id: "forward", label: "Forward", group: "Go to", icon: icon(ArrowRightIcon), command: "history-forward", disabledReason: canGoForward ? undefined : "No later conversation to go forward to.", run: goForward },
       { id: "find-in-thread", label: "Find in conversation", group: "Workspace", icon: icon(SearchIcon), command: "find-in-thread", disabledReason: !session ? "Open a conversation first." : undefined, run: () => { setView("chat"); setThreadFind(true); } },
