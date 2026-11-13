@@ -789,7 +789,7 @@ export function Conversation() {
         </button>
       )}
       <ViewErrorBoundary compact label="Composer">
-        <Composer showSuggestions={false} awayFromLatest={!stick && visibleMessageCount > 0} />
+        <Composer awayFromLatest={!stick && visibleMessageCount > 0} />
       </ViewErrorBoundary>
       <ViewErrorBoundary compact label="Terminal">
         <PersistentTerminals cwd={terminalCwd} visible={terminalOpen && view === "chat"} onClose={() => setTerminalOpen(false)} />

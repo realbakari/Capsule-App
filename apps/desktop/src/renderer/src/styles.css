@@ -1436,17 +1436,6 @@
   background: linear-gradient(transparent, var(--bg));
   pointer-events: none;
 }
-.suggestions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.4rem;
-  max-width: var(--chat-max);
-  margin: 0 auto 0.65rem;
-  position: relative;
-  z-index: 1;
-}
-
 .composer-glass {
   position: relative;
   z-index: 1;

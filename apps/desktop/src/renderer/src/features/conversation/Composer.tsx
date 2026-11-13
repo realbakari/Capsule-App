@@ -35,24 +35,6 @@ import { searchComposerSkills, skillSource } from "../../lib/composer-skills";
 import { composerPlaceholder, shouldRestComposer } from "../../lib/composer-rest";
 import { tasksFromRunEvents } from "@capsule/shared";
 
-const SUGGESTIONS = [
-  {
-    label: "Review this repo",
-    mode: "code" as const,
-    text: "Review the working directory and summarize the main risks.",
-  },
-  {
-    label: "Plan a change",
-    mode: "code" as const,
-    text: "Help me plan the next change for this project.",
-  },
-  {
-    label: "Research options",
-    mode: "code" as const,
-    text: "Research options for this problem and cite sources.",
-  },
-];
-
 function slashCommands(input: {
   harnesses: Array<{ id: string; name: string }>;
   /* Skills belong in this menu too: $ was the only way to reach one, and the
@@ -98,10 +80,8 @@ function slashCommands(input: {
 }
 
 export function Composer({
-  showSuggestions = false,
   awayFromLatest = false,
 }: {
-  showSuggestions?: boolean;
   /** True while the thread is scrolled away from the latest messages. */
   awayFromLatest?: boolean;
 }) {
@@ -402,22 +382,6 @@ export function Composer({
 
   return (
     <div ref={composerRef} className={`composer composer-dock composer-overlay-corner-masks${busy ? " composer-dock--with-activity" : ""}${resting ? " composer--resting" : ""}`}>
-      {showSuggestions && (
-        <div className="suggestions">
-          {SUGGESTIONS.map((item) => (
-            <button
-              key={item.label}
-              className="chip"
-              onClick={() => {
-                setMode(item.mode);
-                setDraft(item.text);
-              }}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-      )}
       <ComposerTasks tasks={tasks} running={Boolean(activeRun)} />
       <div
         className={`composer-glass${dropping ? " dropping" : ""}${resting ? " composer-glass--resting" : ""}`}
