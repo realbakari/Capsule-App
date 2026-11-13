@@ -17,7 +17,7 @@ import { ChannelRoutes } from "./channel-routes.js";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { prepareDirectPrompt } from "./direct-prompt.js";
-import { findCommandCall, prepareCommand, readInvocation, runCommandShell, summarizeCommand, type CommandCall } from "./commands.js";
+import { findCommandCall, prepareCommand, readInvocation, runCommandShell, summarizeCommand, type CommandCall, type CommandShellContext } from "./commands.js";
 import { DirectMuseSession } from "@capsule/muse";
 import { DirectCodexSession } from "@capsule/codex";
 import { DirectClaudeSession } from "@capsule/claude";
@@ -1041,7 +1041,7 @@ export class CapsuleEngine {
     const text = instruction.trim();
     if (!text) throw new Error("Steer instruction is empty");
     if (this.commandCall(text, this.requireProject(session.projectId))) {
-      throw new Error("A command runs as its own turn, so it waits in the queue instead.");
+      throw new Error("A Capsule command runs as its own turn.");
     }
     if (!this.usingMock && session.openclawSessionKey) {
       await this.acpHost(session.openclawSessionKey).steerAcp(session.openclawSessionKey, text);
@@ -2017,12 +2017,7 @@ export class CapsuleEngine {
       this.startingHarnessRuns.add(run.id);
       let expandedText: string;
       try {
-        const root = project.workingDirectory;
-        const shell = await runCommandShell(command, {
-          cwd: startingCwd,
-          trusted: root ? this.config.isTrusted(root) : true,
-          record: (record) => this.config.recordRun(record),
-        });
+        const shell = await runCommandShell(command, this.commandShellContext(project, startingCwd));
         expandedText = shell.text;
         commandProblems.push(...command.problems, ...shell.problems);
       } finally {
@@ -2776,18 +2771,18 @@ export class CapsuleEngine {
     if (!call) throw new Error(`${input.text.trim().split(/\s/)[0]} is not a Capsule command.`);
     const cwd = session ? this.cwdFor(session, project) : project.workingDirectory;
     const prepared = prepareCommand(call, { cwd, room: MAX_MESSAGE_ATTACHMENTS });
-    const root = project.workingDirectory;
-    const shell = await runCommandShell(prepared, {
-      cwd,
-      trusted: root ? this.config.isTrusted(root) : true,
-      record: (record) => this.config.recordRun(record),
-    });
+    const shell = await runCommandShell(prepared, this.commandShellContext(project, cwd));
     return { text: shell.text, attachments: prepared.attachments, problems: [...prepared.problems, ...shell.problems] };
   }
 
   private commandCall(content: string, project: Project): CommandCall | undefined {
     if (!readInvocation(content)) return undefined;
     return findCommandCall(this.config.commands(project.workingDirectory), content);
+  }
+
+  private commandShellContext(project: Project, cwd: string | undefined): CommandShellContext {
+    const root = project.workingDirectory;
+    return { cwd, trusted: root ? this.config.isTrusted(root) : true, record: (record) => this.config.recordRun(record) };
   }
 
   getDiagnostics(): DiagnosticsSnapshot {
