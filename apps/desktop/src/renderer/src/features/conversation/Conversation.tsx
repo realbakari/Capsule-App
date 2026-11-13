@@ -448,6 +448,25 @@ export function Conversation() {
     const node = scroller.current;
     if (node) node.scrollTop = node.scrollHeight;
   }, [messages, activeRun, stick]);
+  /*
+   * The transcript's own box shrinks when the composer grows (a queue, a
+   * notice, a taller draft). Re-pin to the latest message then too, or the
+   * end of the thread slides under the composer while following it.
+   */
+  const following = useRef(stick);
+  following.current = stick;
+  useEffect(() => {
+    const node = scroller.current;
+    if (!node) return;
+    let height = node.clientHeight;
+    const observer = new ResizeObserver(() => {
+      if (node.clientHeight === height) return;
+      height = node.clientHeight;
+      if (following.current) node.scrollTop = node.scrollHeight;
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [session?.id]);
 
   return (
     <section className={`main page-content${!historyPending && !historyError && visibleMessageCount === 0 ? " conversation-empty" : ""}`}>
