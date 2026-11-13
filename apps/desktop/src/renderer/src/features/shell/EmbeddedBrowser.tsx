@@ -222,7 +222,7 @@ export function EmbeddedBrowser({
   onRetryServers?: () => void;
   onOpenExternal: (url: string) => void;
 }) {
-  const { api, session, agentId, harnesses, harnessStatuses, view: workspaceView, inspectorOpen, setConfirm } = useWorkspace();
+  const { api, session, agentId, harnesses, harnessStatuses, view: workspaceView, inspectorOpen, setConfirm, attachClipboardImage } = useWorkspace();
   const desktopBrowser = navigator.userAgent.includes("Electron/");
   const browserCapability = harnessCapabilities({ harness: harnesses?.find((item) => item.id === agentId), session, status: session ? harnessStatuses?.[session.id] : undefined }).browser;
   const initialUrl = normalizedBrowserUrl(address);
@@ -502,7 +502,9 @@ export function EmbeddedBrowser({
 
     try {
       await api.copyBrowserScreenshot(view.getWebContentsId());
-      showToast("Screenshot copied to clipboard");
+      // Already on the clipboard, so attaching it is the composer's own paste path.
+      showNotice({ key: "browser", tone: "success", title: "Screenshot copied to clipboard",
+        action: attachClipboardImage ? { label: "Attach to message", run: () => { void attachClipboardImage(); } } : undefined });
     } catch (failure) {
       showToast(`Could not copy screenshot: ${failure instanceof Error ? failure.message : String(failure)}`, "error");
     }

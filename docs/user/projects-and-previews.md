@@ -449,3 +449,6 @@ a clean working tree leaves **Commit** unavailable with an explanation.
 The pull request action menu can prepare a question, explanation request or
 fix request in your thread draft. These actions do not send the message for you.
 Escape closes the menu and returns focus to its button.
+
+After **Capture screenshot** in the browser, the notice offers **Attach to
+message**, which adds the screenshot to the message you are writing.
