@@ -43,6 +43,10 @@ Subscribe to `sessions.messages.subscribe` with `{ key }` **before** sending a
 turn. `includeApprovals` is not a supported subscription parameter and causes
 validation failure. Only an unknown-method response permits the legacy stream
 fallback; other subscription errors surface before the prompt is sent.
+A subscription lasts only as long as its socket, and the client reconnects on
+its own, so the adapter subscribes again to every session it has watched on
+each hello. Callbacks from a client the adapter has replaced are ignored. A
+reply that completes entirely while the socket is down is not replayed.
 `session.message` carries a persisted whole message, not a text delta or a
 turn-end event. Only assistant rows supply prose. User and tool rows are ignored.
 The message timestamp associates a delayed snapshot with its originating run;

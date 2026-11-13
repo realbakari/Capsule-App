@@ -156,6 +156,13 @@ export class OpenClawAdapter implements AgentRuntime {
   /** Last Capsule run for a Gateway session key — used when an approval has no runId. */
   private readonly sessionRuns = new Map<string, string>();
   private readonly pendingApprovals = new Map<string, ApprovalRequest>();
+  /*
+   * A Gateway subscription lives only as long as the socket that made it. The
+   * client reconnects on its own, so every session the adapter has watched is
+   * subscribed again on each hello, or a turn in flight across a sleep or a
+   * network change never delivers its reply.
+   */
+  private readonly watchedSessions = new Set<string>();
   /**
    * Slash-command replies are useful to the control call that requested them,
    * but they are not agent output and must not be added to a conversation.
@@ -209,7 +216,7 @@ export class OpenClawAdapter implements AgentRuntime {
         reject(wrapped);
       };
 
-      this.client = new GatewayClient({
+      const client: GatewayClient = new GatewayClient({
         url: endpoint.url.replace(/^http/, "ws"),
         token,
         bootstrapToken: token,
@@ -225,6 +232,7 @@ export class OpenClawAdapter implements AgentRuntime {
         maxProtocol: PROTOCOL_VERSION,
         hostDeps,
         onHelloOk: (hello) => {
+          if (this.client !== client) return;
           this.hello = hello;
           this.connectionState = "connected";
           this.lastError = undefined;
@@ -232,10 +240,14 @@ export class OpenClawAdapter implements AgentRuntime {
             settled = true;
             resolve();
           }
+          for (const key of this.watchedSessions) void this.subscribeSession(key).catch(() => undefined);
         },
-        onEvent: (event) => this.handleEvent(event),
+        onEvent: (event) => {
+          if (this.client === client) this.handleEvent(event);
+        },
         onConnectError: (error) => fail(error),
         onClose: (_code, reason) => {
+          if (this.client !== client) return;
           if (this.connectionState === "connecting") {
             fail(new Error(reason || "Gateway closed during handshake"));
             return;
@@ -243,7 +255,8 @@ export class OpenClawAdapter implements AgentRuntime {
           this.connectionState = "disconnected";
         },
       });
-      this.client.start();
+      this.client = client;
+      client.start();
     });
 
     try {
@@ -607,6 +620,7 @@ export class OpenClawAdapter implements AgentRuntime {
   }
 
   private async subscribeSession(sessionKey: string): Promise<void> {
+    this.watchedSessions.add(sessionKey);
     try {
       await this.request("sessions.messages.subscribe", {
         key: sessionKey,
