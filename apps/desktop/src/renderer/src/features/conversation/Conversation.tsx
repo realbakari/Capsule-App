@@ -587,7 +587,7 @@ export function Conversation() {
                 </div>
               )}
               {historyNavigation}
-              <VirtualTurns key={`${session?.id}:${settings?.timeFormat ?? "system"}:${settings?.toolCallDisplay ?? "compact"}`} turns={turns} folded={folded} scroller={scroller} stick={stick} focus={focusTurn}>{(turn) =>
+              <VirtualTurns key={`${session?.id}:${settings?.timeFormat ?? "system"}:${settings?.toolCallDisplay ?? "compact"}`} turns={turns} folded={folded} scroller={scroller} stick={stick} focus={focusTurn} restoreKey={session?.id} onRestore={() => setStick(false)}>{(turn) =>
                 folded.has(turn.id) ? (
                   <FoldedTurn key={turn.id} turn={turn} onOpen={openTurn} />
                 ) : (

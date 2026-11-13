@@ -1,17 +1,22 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import type { Turn } from "../../lib/turns";
 import { localTimings } from "@capsule/shared";
+import { recallTurnAnchor, rememberTurnAnchor, type TurnAnchor } from "../../lib/turn-anchors";
 
 const OVERSCAN = 700;
 
 /** Variable-height rows. Measurements and focus belong to stable turn IDs. */
-export function VirtualTurns({ turns, folded, scroller, stick, focus, children }: {
+export function VirtualTurns({ turns, folded, scroller, stick, focus, restoreKey, onRestore, children }: {
   turns: Turn[];
   folded: ReadonlySet<string>;
   scroller: RefObject<HTMLDivElement | null>;
   stick: boolean;
   /** A turn to scroll to and mark, for find; the nonce lets the same turn be asked for twice. */
   focus?: { id: string; nonce: number };
+  /** Names the thread, so reading position comes back when you return to it. */
+  restoreKey?: string;
+  /** Told when a remembered position is restored, so the parent stops following. */
+  onRestore?: () => void;
   children: (turn: Turn) => ReactNode;
 }) {
   const renderStarted = performance.now();
@@ -20,7 +25,9 @@ export function VirtualTurns({ turns, folded, scroller, stick, focus, children }
   const [viewport, setViewport] = useState({ top: 0, height: 900 });
   const [, remeasure] = useState(0);
   const [pinned, setPinned] = useState<ReadonlySet<string>>(new Set());
-  const previous = useRef<{ id: string; offset: number } | undefined>(undefined);
+  /* Read once on mount; held until the parent has stopped following. */
+  const restoring = useRef<TurnAnchor | undefined>(restoreKey ? recallTurnAnchor(restoreKey) : undefined);
+  const previous = useRef<{ id: string; offset: number } | undefined>(restoring.current);
   const previousLayout = useRef("");
   let total = 0;
   const rows = turns.map((turn) => {
@@ -30,8 +37,17 @@ export function VirtualTurns({ turns, folded, scroller, stick, focus, children }
     total += height;
     return row;
   });
-  const live = useRef({ rows, folded, stick });
-  live.current = { rows, folded, stick };
+  const live = useRef({ rows, folded, stick, restoreKey });
+  live.current = { rows, folded, stick, restoreKey };
+  const announceRestore = useRef(onRestore);
+  useEffect(() => {
+    if (restoring.current) announceRestore.current?.();
+    // Leaving the thread records where it was left, following or not.
+    return () => {
+      const { restoreKey: key, stick: following } = live.current;
+      if (key && !restoring.current) rememberTurnAnchor(key, following ? undefined : previous.current);
+    };
+  }, []);
   useEffect(() => {
     if (!focus) return;
     const root = scroller.current;
@@ -53,7 +69,10 @@ export function VirtualTurns({ turns, folded, scroller, stick, focus, children }
       const top = root.scrollTop - (list.getBoundingClientRect().top - root.getBoundingClientRect().top + root.scrollTop);
       setViewport((current) => current.top === top && current.height === root.clientHeight ? current : { top, height: root.clientHeight });
       const row = live.current.rows.find((row) => row.top + row.height > top);
+      // Until the first rows arrive there is nothing to read the view from.
+      if (restoring.current && live.current.rows.length === 0) return;
       previous.current = row ? { id: row.turn.id, offset: top - row.top } : undefined;
+      if (live.current.restoreKey && !restoring.current) rememberTurnAnchor(live.current.restoreKey, live.current.stick ? undefined : previous.current);
     };
     const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(readViewport); };
     // Keep focused and selected text mounted while the viewport moves away.
@@ -88,13 +107,15 @@ export function VirtualTurns({ turns, folded, scroller, stick, focus, children }
     localTimings.record("chat.commit", performance.now() - renderStarted);
     const ids = new Set(turns.map((turn) => turn.id));
     for (const id of heights.current.keys()) if (!ids.has(id)) heights.current.delete(id);
-    const anchor = previous.current;
+    if (restoring.current && !stick && rows.some((row) => row.turn.id === restoring.current!.id) && previousLayout.current) restoring.current = undefined;
+    const anchor = restoring.current ?? previous.current;
+    const following = stick && !restoring.current;
     const row = anchor && rows.find((row) => row.turn.id === anchor.id);
     const layout = JSON.stringify(rows.map((row) => [row.turn.id, row.height]));
     // Viewport/focus updates must never pull a user's scroll back to an old anchor.
     if (layout !== previousLayout.current) {
       previousLayout.current = layout;
-      if (stick) root.scrollTop = root.scrollHeight;
+      if (following) root.scrollTop = root.scrollHeight;
       else if (row && anchor) {
         const offset = list.getBoundingClientRect().top - root.getBoundingClientRect().top + root.scrollTop;
         root.scrollTop = offset + row.top + anchor.offset;
