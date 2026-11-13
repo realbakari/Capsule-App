@@ -66,7 +66,8 @@ describe("detectSourceControlTools with stand-in tools", () => {
     const calls = path.join(dir, "calls");
     writeFileSync(calls, "");
     const write = (name: string, body: string) => {
-      writeFileSync(path.join(dir, name), `#!/bin/sh\necho "${name} $*" >> "${calls}"\nsleep ${delay}\n${body}\n`);
+      // PATH holds only this folder, so the stand-in names sleep by its full path or it never waits.
+      writeFileSync(path.join(dir, name), `#!/bin/sh\necho "${name} $*" >> "${calls}"\n/bin/sleep ${delay}\n${body}\n`);
       chmodSync(path.join(dir, name), 0o755);
     };
     write("git", 'echo "git version 2.50.1 (Apple Git-155)"');
