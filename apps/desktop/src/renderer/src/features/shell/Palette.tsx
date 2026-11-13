@@ -1,11 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
-import { searchSessionTitles, type SearchResults } from "@capsule/shared";
+import { DIFF_SCOPES, searchSessionTitles, type DiffScope, type SearchResults } from "@capsule/shared";
+import { setReviewScope } from "../../lib/review-scope";
 import { useWorkspace } from "../../lib/workspace";
 import { formatUserError } from "../../lib/errors";
 import { SHOW_SHORTCUTS_EVENT } from "../../lib/shortcuts-event";
 import { requestNewBoardCard } from "../../lib/board";
-import { ArrowLeftIcon, ArrowRightIcon, ColumnsIcon, CpuIcon, FolderIcon, GlobeIcon, HistoryIcon, InfoIcon, RefreshIcon, KeyboardIcon, LinkIcon, MessageSquareIcon, PlusIcon, SearchIcon, SettingsIcon, ShieldIcon, SmartphoneIcon, SmilePlusIcon, SparkIcon, TerminalIcon } from "./icons";
+import { ArrowLeftIcon, ArrowRightIcon, ColumnsIcon, CpuIcon, DiffIcon, FolderIcon, GlobeIcon, HistoryIcon, InfoIcon, RefreshIcon, KeyboardIcon, LinkIcon, MessageSquareIcon, PlusIcon, SearchIcon, SettingsIcon, ShieldIcon, SmartphoneIcon, SmilePlusIcon, SparkIcon, TerminalIcon } from "./icons";
 import { SearchDialog, type SearchDialogItem } from "./SearchDialog";
+
+const REVIEW_SCOPE_LABEL: Record<DiffScope, string> = {
+  uncommitted: "Review uncommitted changes",
+  staged: "Review staged changes",
+  unstaged: "Review unstaged changes",
+  turn: "Review this turn's changes",
+  branch: "Review branch changes",
+};
 
 export function Palette() {
   const {
@@ -42,6 +51,11 @@ export function Palette() {
       { id: "open-folder", label: "Open folder", group: "Actions", icon: <FolderIcon size={15} />, disabledReason: desktopOnly, onSelect: pickProjectDirectory },
       { id: "open-files", label: "Open files", group: "Actions", icon: <FolderIcon size={15} />, disabledReason: desktopOnly, onSelect: pickFilesToMention },
       { id: "terminal", label: terminalOpen ? "Hide terminal" : "Show terminal", group: "Workspace", icon: <TerminalIcon size={15} />, shortcut: "⌘J", disabledReason: desktopOnly ?? (!(session?.workingDirectory ?? project?.workingDirectory) ? "Open a folder first." : undefined), onSelect: () => { setView("chat"); setTerminalOpen(!terminalOpen); } },
+      ...DIFF_SCOPES.map((scope) => ({
+        id: `review-${scope.id}`, label: REVIEW_SCOPE_LABEL[scope.id], detail: scope.detail, group: "Workspace", icon: <DiffIcon size={15} />,
+        disabledReason: !project ? "Open a project first." : scope.id === "turn" && !session ? "Open a conversation first." : undefined,
+        onSelect: () => { if (project) setReviewScope(project.id, scope.id); openInspector("changes"); },
+      })),
       { id: "browser", label: "Open browser", group: "Workspace", icon: <GlobeIcon size={15} />, onSelect: () => openInspector("browser") },
       { id: "simulator", label: "Open iOS Simulator", group: "Workspace", icon: <SmartphoneIcon size={15} />, disabledReason: desktopOnly ?? (api.platform && api.platform !== "darwin" ? "Available on macOS with Xcode." : undefined), onSelect: () => openInspector("simulator") },
       { id: "back", label: "Back", group: "Go to", icon: <ArrowLeftIcon size={15} />, shortcut: "⌘[", disabledReason: canGoBack ? undefined : "No earlier conversation to go back to.", onSelect: goBack },
