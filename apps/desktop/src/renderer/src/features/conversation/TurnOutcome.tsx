@@ -6,10 +6,13 @@ import { useWorkspace } from "../../lib/workspace";
 import { SavedTurnDiff } from "./SavedTurnDiff";
 import { formatUserError } from "../../lib/errors";
 import { ChangedFilesCard } from "./ChangedFilesCard";
+import { latestTurn } from "../../lib/review-scope";
+
+const SETTLED = new Set<Run["status"]>(["completed", "failed", "cancelled", "blocked"]);
 
 /** This component lives inside its originating turn, not below the thread. */
 export function TurnOutcome({ run, cwd }: { run: Run; cwd?: string }) {
-  const { api, setConfirm, setNotice } = useWorkspace();
+  const { api, setConfirm, setNotice, runs, session } = useWorkspace();
   const [loaded, setLoaded] = useState<{ key: string; files: TouchedFile[]; patch?: string; partial?: boolean; saved?: boolean; filesTruncated?: boolean }>();
   const [showDiff, setShowDiff] = useState(false);
   const [selectedPath, setSelectedPath] = useState<string>();
@@ -81,7 +84,8 @@ export function TurnOutcome({ run, cwd }: { run: Run; cwd?: string }) {
             {selectedPath && <button type="button" className="ghost" onClick={() => setSelectedPath(undefined)}>All changed files</button>}
             <button type="button" className="ghost" onClick={() => setShowDiff(false)}>Hide diff</button>
           </div>
-          <SavedTurnDiff runId={run.id} path={selectedPath} initialPatch={outcome?.patch || undefined} />
+          <SavedTurnDiff runId={run.id} path={selectedPath} initialPatch={outcome?.patch || undefined}
+            rejectable={Boolean(outcome?.saved) && session?.id === run.sessionId && latestTurn(runs, run.sessionId)?.id === run.id && SETTLED.has(run.status)} />
         </section>
       )}
     </div>
