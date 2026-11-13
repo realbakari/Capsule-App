@@ -168,7 +168,7 @@ export function NotificationsCard({ settings, onPatch }: SectionProps) {
       <h3>Notifications</h3>
       <SettingRow
         label="Response completions"
-        hint="Notify when a run finishes and Capsule is in the background."
+        hint="Notify with the conversation's name when a turn finishes or a snooze ends while Capsule is in the background. Clicking the notification opens it. In front of you, another conversation finishing shows in the app instead."
       >
         <Switch
           checked={settings.notifyRunComplete}
@@ -178,7 +178,7 @@ export function NotificationsCard({ settings, onPatch }: SectionProps) {
       </SettingRow>
       <SettingRow
         label="Approval requests"
-        hint="Notify when an agent needs approval to run a command."
+        hint="Notify when an agent needs approval or asks you a question."
       >
         <Switch
           checked={settings.notifyApprovals}
@@ -195,6 +195,15 @@ export function NotificationsCard({ settings, onPatch }: SectionProps) {
           label="Draw attention"
           onChange={(bounceDockOnAttention) => onPatch({ bounceDockOnAttention })}
         />
+      </SettingRow>
+      <SettingRow
+        label="Dock badge"
+        hint="Count the conversations waiting on you: a decision, a failure, or a finished turn you have not read."
+      >
+        <Switch checked={settings.dockBadge} label="Dock badge" onChange={(dockBadge) => onPatch({ dockBadge })} />
+      </SettingRow>
+      <SettingRow label="Notification sound" hint="Play the system sound with each notification.">
+        <Switch checked={settings.notificationSound} label="Notification sound" onChange={(notificationSound) => onPatch({ notificationSound })} />
       </SettingRow>
     </div>
   );

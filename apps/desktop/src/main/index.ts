@@ -77,6 +77,7 @@ import {
   type ResourceHistoryPoint,
   type ResourceSample,
   type Run,
+  type Session,
   type SpawnHarnessInput,
   type GitPullRequestStackAction,
   type UpdateProjectInput,
@@ -887,31 +888,72 @@ function bounceDock(): void {
   app.dock.bounce("informational");
 }
 
-function notifyDesktop(title: string, body: string): void {
+/*
+ * A notification names the thread and opens it. "Response complete" with the
+ * prompt as its body said neither which of a dozen threads finished nor took
+ * you there.
+ */
+function notifyDesktop(title: string, body: string, sessionId?: string): void {
   if (!Notification.isSupported()) return;
-  new Notification({ title, body }).show();
+  const notification = new Notification({ title, body, silent: engine?.getSettings().notificationSound === false });
+  if (sessionId) notification.on("click", () => commandWindow({ command: "open-session", sessionId }));
+  notification.show();
+}
+
+function threadLabel(sessionId: string | undefined): { title: string; project?: string; sessionId?: string } {
+  const session = sessionId ? engine?.repos.getSession(sessionId) : undefined;
+  const project = session ? engine?.repos.getProject(session.projectId)?.name : undefined;
+  return { title: session?.title ?? "Capsule", project, sessionId: session?.id };
 }
 
 function notifyApproval(approval: ApprovalRequest): void {
   const settings = engine?.getSettings();
   if (settings && !settings.notifyApprovals) return;
-  notifyDesktop(
-    "Approval required",
-    `${approval.agentName} wants to ${approval.action} ${approval.target}`,
-  );
+  const thread = threadLabel(engine?.getRun(approval.runId)?.sessionId);
+  const what = `${approval.agentName} wants to ${approval.action} ${approval.target}`;
+  notifyDesktop(thread.title, thread.project ? `${thread.project} · Needs approval: ${what}` : `Needs approval: ${what}`, thread.sessionId);
   if (settings?.bounceDockOnAttention) bounceDock();
 }
+
+const SETTLED_LABEL: Partial<Record<Run["status"], string>> = { completed: "Finished", failed: "Failed", cancelled: "Stopped" };
 
 const runNotifications = new RunNotifications();
 function notifyRunSettled(run: Run): void {
   if (!runNotifications.firstSettlement(run)) return;
   const settings = engine?.getSettings();
   if (!settings?.notifyRunComplete) return;
+  // In front of you, the window says it itself: an in-app toast for another thread.
   if (windowFocused()) return;
-  const title =
-    run.status === "completed" ? "Response complete" : run.status === "failed" ? "Run failed" : "Run cancelled";
-  notifyDesktop(title, (run.prompt ?? "Task").slice(0, 140));
+  // Stopping a turn yourself is not news.
+  if (run.status === "cancelled") return;
+  const thread = threadLabel(run.sessionId);
+  const status = SETTLED_LABEL[run.status] ?? "Finished";
+  notifyDesktop(thread.title, thread.project ? `${thread.project} · ${status}` : status, thread.sessionId);
   if (settings.bounceDockOnAttention) bounceDock();
+}
+
+function notifySessionWoke(session: Session): void {
+  const settings = engine?.getSettings();
+  if (!settings?.notifyRunComplete || windowFocused()) return;
+  const project = engine?.repos.getProject(session.projectId)?.name;
+  notifyDesktop(session.title, project ? `${project} · Snooze ended` : "Snooze ended", session.id);
+}
+
+/**
+ * The Dock counts threads waiting on a person: a decision, a failure, or a
+ * finish not yet read. It falls as you read, rather than clearing on focus
+ * and lying about what is left.
+ */
+function refreshDockBadge(): void {
+  if (!engine) return;
+  try {
+    const enabled = engine.getSettings().dockBadge !== false;
+    const summary = summariseAttention({ sessions: engine.listSessions(), runs: engine.listLatestRunStates() });
+    const waiting = summary.counts["needs-input"] + summary.counts.blocked + summary.counts.ready;
+    app.setBadgeCount(enabled ? waiting : 0);
+  } catch {
+    // The badge is a hint; never let it take a notification path down.
+  }
 }
 
 function desktopHasWork(): boolean {
@@ -1922,14 +1964,22 @@ function bindEngineEvents(): void {
     notifyRunSettled(run);
     applyKeepAwake(engine?.getSettings());
     refreshTrayAttention();
+    refreshDockBadge();
   });
+  engine.events.on("session-woke", (session: Session) => notifySessionWoke(session));
   engine.events.on("run-event", (event) => send(IPC_EVENTS.run, event));
   engine.events.on("message", (message) => send(IPC_EVENTS.message, message));
-  engine.events.on("state", (payload) => send(IPC_EVENTS.state, payload));
+  engine.events.on("state", (payload) => {
+    send(IPC_EVENTS.state, payload);
+    // Read, settle and snooze change what is waiting; settings may turn the badge off.
+    const command = (payload as { command?: string } | undefined)?.command;
+    if (command === "sessions-updated" || command === "settings-updated") { refreshDockBadge(); refreshTrayAttention(); }
+  });
   engine.events.on("approval", (approval: ApprovalRequest) => {
     send(IPC_EVENTS.approval, approval);
     if (approval.status === "pending") notifyApproval(approval);
     refreshTrayAttention();
+    refreshDockBadge();
   });
 }
 
@@ -2240,6 +2290,7 @@ async function startEngineOnce(): Promise<void> {
   }
   if (shutdown.started) return;
   bindEngineEvents();
+  refreshDockBadge();
   await applyDesktopSettings(engine.getSettings());
   if (shutdown.started) return;
   scheduleUpdateCheck();

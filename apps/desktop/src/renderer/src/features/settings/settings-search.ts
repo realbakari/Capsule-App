@@ -57,6 +57,8 @@ export const SETTINGS_SEARCH_ITEMS: SettingsSearchItem[] = [
   { title: "Local performance", section: "diagnostics", keywords: ["freeze", "timings", "slow", "git", "preview"] },
   { title: "Keep computer awake", section: "general", keywords: ["sleep", "power", "running"] },
   { title: "Response completions", section: "general", keywords: ["notification", "alert", "run complete"] },
+  { title: "Dock badge", section: "general", keywords: ["notification", "unread", "count", "icon"] },
+  { title: "Notification sound", section: "general", keywords: ["notification", "sound", "silent", "alert"] },
   { title: "Approvals", section: "general", keywords: ["notification", "permission"] },
   { title: "Bounce the Dock", section: "general", keywords: ["notification", "attention"] },
   { title: "Classify session states", section: "general", keywords: ["title", "auto", "conversations"] },
