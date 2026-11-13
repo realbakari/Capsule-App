@@ -238,16 +238,32 @@ export class DirectAcpHost {
     // that has started but has not answered initialize/session-new yet.
     this.sessions.set(key, session);
     this.harnessBySession.set(key, input.harnessId);
+    let configuration = input.resume?.configuration;
     try {
       await session.start(input.resume?.sessionId);
       if (this.closing) throw new Error("The direct agent host is shutting down.");
-      if (input.resume?.configuration) {
-        const entries = Object.entries(input.resume.configuration);
+      if (configuration) {
+        const entries = Object.entries(configuration);
         if (entries.length > 128) throw new Error("Too many saved agent settings. Start a new conversation.");
         // Model first: it determines which reasoning settings are valid.
         const modelId = session.reportedCapabilities?.configOptions.find((option) => option.category === "model")?.id ?? "model";
         entries.sort(([a], [b]) => Number(b === modelId) - Number(a === modelId));
-        for (const [configId, value] of entries) await session.setConfig(configId, value);
+        /*
+         * A setting the agent no longer accepts (a model an upgrade removed,
+         * a mode it stopped reporting) is skipped, not fatal. Failing here
+         * failed every later resume too, and the thread could never continue.
+         * What was skipped leaves the saved settings so it is not retried.
+         */
+        const kept: Record<string, string | boolean> = {};
+        for (const [configId, value] of entries) {
+          try {
+            await session.setConfig(configId, value);
+            kept[configId] = value;
+          } catch {
+            if (this.closing) throw new Error("The direct agent host is shutting down.");
+          }
+        }
+        configuration = kept;
       }
       // Local adapters have different launch flags. Their reported protocol
       // selector is authoritative; never invent a --model CLI argument.
@@ -268,7 +284,7 @@ export class DirectAcpHost {
       usedSlashCommand: false,
       command: [command.command, ...args].join(" "),
       directSession: { sessionId: session.sessionId!, harnessId: input.harnessId, cwd, launchSignature,
-        ...(input.resume?.configuration ? { configuration: input.resume.configuration } : {}) },
+        ...(configuration ? { configuration } : {}) },
     };
   }
 

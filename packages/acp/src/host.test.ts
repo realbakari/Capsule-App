@@ -232,3 +232,27 @@ describe("the models a direct session offers", () => {
     expect(status.parsed.models).toBeUndefined();
   });
 });
+
+it("resumes past a saved setting the agent no longer accepts and forgets it", async () => {
+  // A CLI upgrade that drops a saved model used to fail every resume of the thread.
+  const start = vi.spyOn(DirectAcpSession.prototype, "start").mockResolvedValue("saved");
+  const configure = vi.spyOn(DirectAcpSession.prototype, "setConfig").mockImplementation(async (id: string) => {
+    if (id === "model") throw new Error("Choose a value reported by this agent.");
+  });
+  const capabilities = vi.spyOn(DirectAcpSession.prototype, "reportedCapabilities", "get").mockReturnValue(readAgentCapabilities({}, []));
+  const close = vi.spyOn(DirectAcpSession.prototype, "close").mockResolvedValue();
+  const host = new DirectAcpHost();
+  const cwd = path.resolve(".");
+  const resume: DirectSessionIdentity = {
+    sessionId: "saved", cwd, harnessId: "grok",
+    launchSignature: JSON.stringify(PRESET_HARNESSES.find((item) => item.id === "grok")!.acpxCommand),
+    configuration: { model: "removed-model", effort: "high" },
+  };
+  try {
+    const result = await host.spawnAcpSession({ harnessId: "grok", cwd, resume });
+    expect(configure).toHaveBeenCalledWith("model", "removed-model");
+    expect(configure).toHaveBeenCalledWith("effort", "high");
+    expect(close).not.toHaveBeenCalled();
+    expect(result.directSession?.configuration).toEqual({ effort: "high" });
+  } finally { await host.closeAll(); start.mockRestore(); configure.mockRestore(); capabilities.mockRestore(); close.mockRestore(); }
+});
