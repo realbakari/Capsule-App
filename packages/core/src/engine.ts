@@ -3433,6 +3433,23 @@ export class CapsuleEngine {
     const active = this.listRuns().some((item) => item.workingDirectory && foldersOverlap(item.workingDirectory, cwd) && ["queued", "running", "waiting", "approval_required"].includes(item.status));
     const checking = [...this.verificationPending.values()].some((check) => check.cwd && foldersOverlap(check.cwd, cwd));
     if (active || checking) return { ok: false, detail: "An agent or check is working in this folder. Stop it or wait before restoring." };
+    /*
+     * A restore rewrites the whole folder. When another conversation shares
+     * it and finished a turn since, that turn's work would silently go too.
+     */
+    const overtaken = this.listRuns().find((item) =>
+      item.sessionId !== run.sessionId &&
+      item.checkpointRef &&
+      item.workingDirectory &&
+      foldersOverlap(item.workingDirectory, cwd) &&
+      item.createdAt > run.createdAt);
+    if (overtaken) {
+      const title = this.repos.getSession(overtaken.sessionId)?.title;
+      return {
+        ok: false,
+        detail: `${title ? `"${title}"` : "Another conversation"} changed this folder after this turn, and restoring would undo its work. Restore from that conversation instead, or give each conversation its own worktree.`,
+      };
+    }
     let release: (() => void) | undefined;
     try {
       release = this.folderActivity.restore(cwd);

@@ -930,6 +930,51 @@ describe("the turn checkpoint", () => {
     expect(refsFor(kept.id)).not.toBe("");
     await engine.stop();
   });
+
+  it("will not undo another conversation's later turn in the same folder", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-checkpoint-shared-"));
+    const repo = path.join(dir, "repo");
+    mkdirSync(repo, { recursive: true });
+    execFileSync("git", ["init", "-q"], { cwd: repo });
+    execFileSync("git", ["config", "user.email", "t@example.com"], { cwd: repo });
+    execFileSync("git", ["config", "user.name", "T"], { cwd: repo });
+    writeFileSync(path.join(repo, "README.md"), "hello\n");
+
+    const engine = new CapsuleEngine({
+      databasePath: path.join(dir, "capsule.sqlite"),
+      userDataDir: dir,
+      autoConnect: false,
+    });
+    await engine.start();
+    const project = engine.createProject({ name: "Repo", workingDirectory: repo });
+    const capture = (engine as unknown as {
+      captureTurnCheckpoint: (run: unknown, session: unknown) => void;
+    }).captureTurnCheckpoint.bind(engine);
+    const turn = async (session: Awaited<ReturnType<typeof engine.createSession>>) => {
+      const { run } = await engine.sendMessage({ sessionId: session.id, content: "hi" });
+      await waitForRun(engine, run.id);
+      capture(engine.getRun(run.id)!, session);
+      for (let waited = 0; !engine.getRun(run.id)?.checkpointRef && waited < 10_000; waited += 100) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      return run.id;
+    };
+
+    const first = await engine.createSession({ projectId: project.id, title: "First", mode: "chat", agentId: "general" });
+    const second = await engine.createSession({ projectId: project.id, title: "Second", mode: "chat", agentId: "general" });
+    const earlier = await turn(first);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    writeFileSync(path.join(repo, "second.txt"), "work from the second conversation\n");
+    const later = await turn(second);
+
+    const refused = await engine.restoreTurn(earlier);
+    expect(refused.ok).toBe(false);
+    expect(refused.detail).toContain('"Second"');
+    expect(readFileSync(path.join(repo, "second.txt"), "utf8")).toContain("second conversation");
+
+    expect((await engine.restoreTurn(later)).ok).toBe(true);
+    await engine.stop();
+  });
 });
 
 describe("what a thread shows while a turn is starting", () => {

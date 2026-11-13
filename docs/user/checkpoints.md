@@ -9,6 +9,11 @@ Every turn that finishes captures the state of your project folder. When a turn
 changes files, the changed-files card under the reply offers **Restore this
 turn**, which puts the folder back to how that turn left it.
 
+When two conversations share one folder, restoring an older turn would also
+undo whatever the other conversation did since. Capsule refuses that restore
+and names the conversation that changed the folder; restore from that
+conversation instead, or give each conversation its own worktree.
+
 ## Editing from here
 
 Hover one of your own prompts and choose **Edit from here** to try it again
