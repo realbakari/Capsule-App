@@ -263,6 +263,10 @@ export interface Session {
   workspaceMode?: WorkspaceMode;
   /** Branch created for a worktree conversation. */
   worktreeBranch?: string;
+  /** A board card that has not started: the prompt it will send, and what it waits for. */
+  pendingStart?: import("./board.js").PendingStart;
+  /** When the person marked this card done. Only this starts cards chained behind it. */
+  doneAt?: string;
   createdAt: string;
   updatedAt: string;
 }
