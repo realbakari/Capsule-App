@@ -313,3 +313,30 @@ describe("a run's checkpoint", () => {
     db.close();
   });
 });
+
+describe("board cards on disk", () => {
+  it("adds the board columns to a database from before them and keeps a draft across a restart", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-db-board-"));
+    const file = path.join(dir, "capsule.sqlite");
+    const first = new CapsuleDatabase(file);
+    first.sqlite.exec("ALTER TABLE sessions DROP COLUMN pending_start; ALTER TABLE sessions DROP COLUMN done_at; DELETE FROM schema_migrations WHERE version = 20;");
+    first.sqlite.exec(`INSERT INTO workspaces (id, name, created_at, updated_at) VALUES ('ws', 'Local', 'x', 'x');
+      INSERT INTO projects (id, workspace_id, name, default_skill_ids, default_mode, created_at, updated_at) VALUES ('p', 'ws', 'Demo', '[]', 'code', 'x', 'x');
+      INSERT INTO sessions (id, workspace_id, project_id, agent_id, title, mode, state, created_at, updated_at) VALUES ('old', 'ws', 'p', 'a', 'Older thread', 'code', 'active', 'x', 'x');`);
+    first.close();
+
+    const db = new CapsuleDatabase(file);
+    const repos = new CapsuleRepositories(db);
+    expect(repos.getSession("old")).toMatchObject({ title: "Older thread", pendingStart: undefined, doneAt: undefined });
+    const pendingStart = { prompt: "Add the tests", dependsOn: ["old"], autoStart: true, createdAt: "2026-11-01T00:00:00.000Z" };
+    repos.insertSession({ ...repos.getSession("old")!, id: "card", title: "Tests", pendingStart });
+    repos.updateSession({ ...repos.getSession("old")!, doneAt: "2026-11-02T00:00:00.000Z" });
+    db.close();
+
+    const reopened = new CapsuleRepositories(new CapsuleDatabase(file));
+    expect(reopened.getSession("card")?.pendingStart).toEqual(pendingStart);
+    expect(reopened.getSession("old")?.doneAt).toBe("2026-11-02T00:00:00.000Z");
+    reopened.updateSession({ ...reopened.getSession("card")!, pendingStart: undefined });
+    expect(reopened.getSession("card")?.pendingStart).toBeUndefined();
+  });
+});

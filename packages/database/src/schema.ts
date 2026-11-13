@@ -347,4 +347,11 @@ export const MIGRATIONS: Array<{ version: number; sql: string; }> = [
     version: 19,
     sql: `ALTER TABLE sessions ADD COLUMN carry_over TEXT;`,
   },
+  {
+    version: 20,
+    sql: `
+      ALTER TABLE sessions ADD COLUMN pending_start TEXT;
+      ALTER TABLE sessions ADD COLUMN done_at TEXT;
+    `,
+  },
 ];
