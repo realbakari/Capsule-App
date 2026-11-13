@@ -78,6 +78,8 @@ const READ_CHANNELS: ChannelName[] = [
   "turnDiff",
   "redoPoint",
   "forkBranches",
+  // Reads the worktree and the project folder; writes only Git objects, never a ref or a file.
+  "worktreeApplyStatus",
   "rendererReady",
   "windowBackground",
 ];

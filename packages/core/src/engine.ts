@@ -4,6 +4,8 @@ import { FolderActivity, foldersOverlap } from "./folder-activity.js";
 import type { VerificationResult } from "@capsule/shared";
 import { localTimings, TextBudget, OUTPUT_LIMIT_ERROR, searchSessionTitles } from "@capsule/shared";
 import type { FollowUpOp, FollowUps, RunStatus } from "@capsule/shared";
+import type { ApplyResult, WorktreeApplyStatus } from "@capsule/shared";
+import { applyUndoRef, applyWorktreeChanges, checkoutBlocker, deleteApplyRecords, latestApplyRecord, readWorktreeChangeCount, undoWorktreeApply } from "@capsule/filesystem";
 import { FollowUpService } from "./follow-up-service.js";
 import { BoardService } from "./board-service.js";
 import type { BoardCardOp, CreateBoardCardInput } from "@capsule/shared";
@@ -1810,6 +1812,9 @@ export class CapsuleEngine {
       if (run.status === "running") this.stopProjectAction(project.id, run.actionId, id);
     }
     await this.dropSessionCheckpoints(session, project);
+    if (session.workspaceMode === "worktree" && project.workingDirectory && existsSync(project.workingDirectory)) {
+      await deleteApplyRecords(project.workingDirectory, id).catch(() => 0);
+    }
     await this.cleanupSessionWorktree(session, project);
     this.followUps.forget(id);
     this.repos.deleteSession(id);
@@ -3654,6 +3659,80 @@ export class CapsuleEngine {
   /** Restore a turn's files, its conversation, or both. Redo reverses it until the next turn. */
   async restoreToTurn(request: RestoreRequest): Promise<RestoreResult> {
     return this.branching.restore(request.runId, request.scope);
+  }
+
+  /**
+   * Apply to local: a worktree thread's work lands, unstaged, on the project's
+   * own checkout. Git-only, so it behaves the same on either runtime route and
+   * for every agent. The undo ref in the checkout is the only record.
+   */
+  private applyTarget(session: Session): { worktree: string; checkout: string } | { reason: string } {
+    if (session.workspaceMode !== "worktree" || !session.workingDirectory) return { reason: "Only a conversation in its own worktree can apply to the project folder." };
+    const checkout = this.repos.getProject(session.projectId)?.workingDirectory;
+    if (!checkout) return { reason: "This project has no folder to apply to." };
+    if (!existsSync(session.workingDirectory)) return { reason: "The worktree folder no longer exists." };
+    if (!existsSync(checkout)) return { reason: "The project folder is missing." };
+    return { worktree: session.workingDirectory, checkout };
+  }
+
+  private applyBusyReason(sessionId: string, checkout: string): string | undefined {
+    if (this.admittingSessions.has(sessionId) || this.listRuns(sessionId).some((run) => ACTIVE_RUN_STATUSES.has(run.status))) return "Wait for this conversation's turn to finish, then apply.";
+    if (this.listRuns().some((run) => run.workingDirectory && ACTIVE_RUN_STATUSES.has(run.status) && foldersOverlap(run.workingDirectory, checkout))) return "An agent is working in the project folder. Wait for it to finish, then apply.";
+    return undefined;
+  }
+
+  async worktreeApplyStatus(sessionId: string): Promise<WorktreeApplyStatus> {
+    const session = this.requireSession(sessionId);
+    const target = this.applyTarget(session);
+    if ("reason" in target) return { available: false, reason: target.reason, files: 0 };
+    const record = await latestApplyRecord(target.checkout, session.id);
+    const lastApply = record && !this.listRuns(session.id).some((run) => run.createdAt > record.at) ? record : undefined;
+    try {
+      const blocker = this.applyBusyReason(session.id, target.checkout) ?? await checkoutBlocker(target.checkout);
+      const files = await readWorktreeChangeCount(target.worktree, target.checkout);
+      const reason = blocker ?? (files === 0 ? "The worktree has no changes to apply." : undefined);
+      return { available: !reason, ...(reason ? { reason } : {}), files, ...(lastApply ? { lastApply } : {}) };
+    } catch (error) {
+      return { available: false, reason: error instanceof Error ? error.message : String(error), files: 0, ...(lastApply ? { lastApply } : {}) };
+    }
+  }
+
+  async applyWorktreeToLocal(sessionId: string): Promise<ApplyResult> {
+    this.assertWorkAllowed();
+    const session = this.requireSession(sessionId);
+    const target = this.applyTarget(session);
+    if ("reason" in target) return { applied: false, files: [], conflicts: [], detail: target.reason };
+    const busy = this.applyBusyReason(session.id, target.checkout);
+    if (busy) return { applied: false, files: [], conflicts: [], detail: busy };
+    const release = this.folderActivity.restore(target.checkout);
+    try {
+      await this.checkpointPending.get(target.worktree);
+      const result = await applyWorktreeChanges({ ...target, undoRef: applyUndoRef(session.id, Date.now()), branch: session.worktreeBranch });
+      if (result.applied) {
+        clearFileIndex(target.checkout);
+        this.log(`Applied ${result.files.length} file${result.files.length === 1 ? "" : "s"} from ${session.worktreeBranch ?? "a worktree"} to the project folder${result.conflicts.length ? `, ${result.conflicts.length} with conflicts` : ""}.`);
+        this.events.emit("state", { command: "files-updated" });
+      }
+      return result;
+    } finally { release(); }
+  }
+
+  async undoApplyToLocal(sessionId: string, undoRef: string): Promise<{ ok: boolean; detail: string; files: string[] }> {
+    this.assertWorkAllowed();
+    const session = this.requireSession(sessionId);
+    const checkout = this.repos.getProject(session.projectId)?.workingDirectory;
+    if (!checkout) return { ok: false, detail: "This project has no folder.", files: [] };
+    if (!undoRef.startsWith(applyUndoRef(session.id, 0).replace(/\/0$/, "/"))) return { ok: false, detail: "That undo point belongs to another conversation.", files: [] };
+    const busy = this.applyBusyReason(session.id, checkout);
+    const blocked = busy ?? await checkoutBlocker(checkout);
+    // Undo writes the working files only; under a merge it would overwrite conflict states Git is tracking.
+    if (blocked) return { ok: false, detail: blocked.replace("then apply", "then undo"), files: [] };
+    const release = this.folderActivity.restore(checkout);
+    try {
+      const result = await undoWorktreeApply(checkout, undoRef);
+      if (result.ok) { clearFileIndex(checkout); this.events.emit("state", { command: "files-updated" }); }
+      return result;
+    } finally { release(); }
   }
 
   /**

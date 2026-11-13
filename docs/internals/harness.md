@@ -522,6 +522,14 @@ Gateway ACP sessions run on the Gateway host. OpenClaw sandbox policy does not w
 - **Supervised** → `deny-all`. Tools that would need a prompt are refused.
 - If OpenClaw later forwards `session/request_permission` on the operator socket, Capsule maps it to Approvals. Until that exists, plugin config is the real switch. Old ACP workers keep the flags they started with — restart the Gateway after changing them.
 
+### Apply to local
+
+Applying a worktree thread to the project checkout is a Git operation on this
+computer. It does not talk to the agent, so it behaves the same on the direct
+and Gateway routes and for every harness. The resolve-conflicts thread it can
+start is an ordinary local thread on the same agent as the worktree thread. See
+[desktop.md](./desktop.md#apply-to-local).
+
 ## Do you need to install Claude Code in Capsule?
 
 No. Capsule **picks them up**:

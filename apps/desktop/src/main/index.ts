@@ -1910,6 +1910,9 @@ function registerIpc(): void {
     return requireEngine().forkSession({ sessionId: id(value.sessionId, channel, 0), runId: id(value.runId, channel, 0), workspace: value.workspace });
   });
   handleArgs(IPC_CHANNELS.forkBranches, [id], (sessionId: string) => requireEngine().forkBranches(sessionId));
+  handleArgs(IPC_CHANNELS.worktreeApplyStatus, [id], (sessionId: string) => requireEngine().worktreeApplyStatus(sessionId));
+  handleArgs(IPC_CHANNELS.applyWorktreeToLocal, [id], (sessionId: string) => requireEngine().applyWorktreeToLocal(sessionId));
+  handleArgs(IPC_CHANNELS.undoApplyToLocal, [id, str], (sessionId: string, undoRef: string) => requireEngine().undoApplyToLocal(sessionId, undoRef));
   handle(IPC_CHANNELS.rewindSession, (sessionId, messageId, options) => {
     const channel = IPC_CHANNELS.rewindSession;
     const value = options && typeof options === "object" ? options as { restoreFiles?: unknown } : {};
