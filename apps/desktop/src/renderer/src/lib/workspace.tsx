@@ -198,6 +198,8 @@ export interface WorkspaceValue {
   loadOlderMessages: () => Promise<void>;
   hasNewerMessages: boolean;
   returnToLatest: () => Promise<void>;
+  /** Replace the open thread's messages and runs after turns were removed or put back. Merging would keep removed ones on screen. */
+  reloadThread: (id: string) => Promise<void>;
   runs: Run[];
   events: RunEvent[];
   artifacts: Artifact[];
@@ -759,6 +761,24 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     setTranscript({ messages: bounded.messages, olderEvicted: bounded.trimmed, hasNewer: false });
     setHasOlderMessages(page.hasMore);
     await loadSession(sessionId);
+  }, [api, sessionId, scope, historyWindow, liveRunState, loadSession]);
+
+  const reloadThread = useCallback(async (id: string) => {
+    if (id !== sessionId) return;
+    const current = requests.capture("older-messages");
+    const [page, history] = await Promise.all([api.listMessagePage(id, { limit: MESSAGE_PAGE_SIZE }), api.listRunPage({ sessionId: id })]);
+    if (!current()) return;
+    const kept = new Set(history.runs.map((run) => run.id));
+    for (const [runId, run] of liveRunState.runs) if (run.sessionId === id && !kept.has(runId)) liveRunState.runs.delete(runId);
+    historyWindow.edge = "newest";
+    historyWindow.detached = false;
+    liveRunState.loadedOlder = false;
+    const bounded = boundTranscript(page.messages, "newest");
+    setTranscript({ messages: bounded.messages, olderEvicted: bounded.trimmed, hasNewer: false });
+    setHasOlderMessages(page.hasMore);
+    setRuns(history.runs);
+    setProjectRuns((runs) => [...history.runs, ...runs.filter((run) => run.sessionId !== id)]);
+    await loadSession(id);
   }, [api, sessionId, scope, historyWindow, liveRunState, loadSession]);
 
   useEffect(() => {
@@ -2346,6 +2366,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       hasOlderMessages: hasOlderMessages || transcript.olderEvicted,
       hasNewerMessages: transcript.hasNewer,
       returnToLatest,
+      reloadThread,
       loadingOlder,
       loadOlderMessages,
       runs,
@@ -2549,6 +2570,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       hasOlderMessages,
       loadingOlder,
       returnToLatest,
+      reloadThread,
       runs,
       events,
       eventLoad,

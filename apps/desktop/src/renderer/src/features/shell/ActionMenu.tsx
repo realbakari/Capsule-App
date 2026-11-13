@@ -13,7 +13,12 @@ import {
   BellIcon,
   BellOffIcon,
   CopyIcon,
+  FileIcon,
   FolderIcon,
+  FolderPlusIcon,
+  GitBranchIcon,
+  HistoryIcon,
+  MessageSquareIcon,
   PencilIcon,
   PinIcon,
   PinOffIcon,
@@ -39,6 +44,11 @@ const ICONS: Record<ActionMenuIcon, typeof PencilIcon> = {
   "star-off": StarIcon,
   bell: BellIcon,
   "bell-off": BellOffIcon,
+  branch: GitBranchIcon,
+  "folder-plus": FolderPlusIcon,
+  file: FileIcon,
+  message: MessageSquareIcon,
+  history: HistoryIcon,
 };
 
 export function ActionMenu({

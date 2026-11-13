@@ -27,7 +27,7 @@ function key(element: Element, value: string) {
 }
 function PaletteFixture({ base }: { base: Record<string, unknown> }) {
   const [query, setQuery] = useState("");
-  window.testWorkspace = { ...base, palette: true, paletteQuery: query, setPaletteQuery: setQuery };
+  window.testWorkspace = { runs: [], ...base, palette: true, paletteQuery: query, setPaletteQuery: setQuery };
   return <Palette />;
 }
 

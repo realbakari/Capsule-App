@@ -11,13 +11,13 @@ import { latestTurn } from "../../lib/review-scope";
 const SETTLED = new Set<Run["status"]>(["completed", "failed", "cancelled", "blocked"]);
 
 /** This component lives inside its originating turn, not below the thread. */
-export function TurnOutcome({ run, cwd }: { run: Run; cwd?: string }) {
-  const { api, setConfirm, setNotice, runs, session } = useWorkspace();
+/** onRestore opens the restore choice for this turn; absent where the thread is read-only. */
+export function TurnOutcome({ run, cwd, onRestore }: { run: Run; cwd?: string; onRestore?: () => void }) {
+  const { api, runs, session } = useWorkspace();
   const [loaded, setLoaded] = useState<{ key: string; files: TouchedFile[]; patch?: string; partial?: boolean; saved?: boolean; filesTruncated?: boolean }>();
   const [showDiff, setShowDiff] = useState(false);
   const [selectedPath, setSelectedPath] = useState<string>();
   const diffSection = useRef<HTMLElement>(null);
-  const [restoring, setRestoring] = useState(false);
   const [error, setError] = useState<string>();
   const [retry, setRetry] = useState(0);
   const key = `${run.sessionId}:${run.id}:${run.checkpointRef ?? "events"}`;
@@ -46,23 +46,6 @@ export function TurnOutcome({ run, cwd }: { run: Run; cwd?: string }) {
   }, [showDiff, selectedPath]);
   if (error) return <div className="notice" role="alert">Could not load this turn’s changes. {error} <button type="button" className="chip" onClick={() => setRetry((value) => value + 1)}>Retry</button></div>;
   if (!outcome?.files.length && !outcome?.partial) return null;
-  const restore = () => setConfirm({
-    title: "Restore this turn?",
-    detail:
-      "Files in the project folder go back to how they stood when this turn finished — which includes anything you changed before it, not only the agent's work. Anything changed since is discarded.",
-    confirmLabel: "Restore",
-    danger: true,
-    onConfirm: async () => {
-      setRestoring(true);
-      try {
-        const result = await api.restoreTurn(run.id);
-        if (!result.ok) setNotice(result.detail);
-      } catch (error) {
-        setNotice(error instanceof Error ? error.message : String(error));
-      } finally { setRestoring(false); }
-    },
-  });
-
   return (
     <div className="turn-outcome" data-run-id={run.id}>
       {outcome?.partial && <p className="faint">Recent file activity only; no complete saved diff is available. Earlier activity is in this turn’s Run log.</p>}
@@ -74,8 +57,7 @@ export function TurnOutcome({ run, cwd }: { run: Run; cwd?: string }) {
         loadPatch={outcome.saved ? readPatch : undefined}
         filesTruncated={outcome.filesTruncated}
         onOpenDiff={outcome.saved || outcome.patch ? (path) => { setSelectedPath(path); setShowDiff(path ? true : !showDiff); } : undefined}
-        onRestore={run.checkpointRef ? restore : undefined}
-        restoring={restoring}
+        onRestore={run.checkpointRef ? onRestore : undefined}
       />}
       {showDiff && (outcome?.saved || outcome?.patch) && (
         <section ref={diffSection} tabIndex={-1} className="turn-saved-diff" aria-label="This turn's saved changes">

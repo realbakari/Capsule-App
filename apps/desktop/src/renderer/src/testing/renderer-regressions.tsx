@@ -850,6 +850,7 @@ window.runRendererRegressions = async () => {
       return { ...DEFAULT_CAPSULE_SETTINGS, defaultMode: "chat", defaultAgentId: "general" };
     },
     listSessions: async () => [...threads], listHarnessSessions: async () => [], listRuns: async () => [...savedRuns],
+    forkBranches: async () => [], redoPoint: async () => null,
     listLatestRuns: async () => [...savedRuns],
     listRunPage: async (options?: { before?: unknown }) => ({ runs: [...(options?.before ? olderRuns : savedRuns)], hasMore: false }),
     listRunEventPage: async () => { eventReads += 1; const events = deferEvents ? await new Promise<RunEvent[]>((resolve) => { holdEvents = resolve; }) : [...savedEvents]; return { events, hasMore: false }; },
@@ -1082,6 +1083,7 @@ window.runRendererRegressions = async () => {
       { id: "details-reply", runId: completed.id, sessionId: completed.sessionId, role: "assistant", content: completed.result, createdAt: completed.updatedAt },
     ],
     api: { ...actualWorkspace.api,
+      forkBranches: async () => [], redoPoint: async () => null,
       connectGateway: async () => { connectionCalls++; throw new Error("Gateway could not be reached"); },
       listRunEventPage: async () => { detailReads++; return { events: [], hasMore: false }; },
     },

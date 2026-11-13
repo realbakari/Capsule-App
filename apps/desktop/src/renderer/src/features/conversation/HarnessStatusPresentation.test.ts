@@ -21,7 +21,7 @@ const live: HarnessLiveStatus = {
 
 beforeEach(() => {
   workspace.value = {
-    api: {}, messages: [], runs: [], events: [], steps: [], agents: [], harnesses: [],
+    api: {}, sessions: [], messages: [], runs: [], events: [], steps: [], agents: [], harnesses: [],
     connected: true, ready: true,
     session: { id: "session-1", modelOverride: "opus" },
     harnessStatuses: { "session-1": live },

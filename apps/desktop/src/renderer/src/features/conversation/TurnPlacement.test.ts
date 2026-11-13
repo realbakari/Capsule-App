@@ -15,7 +15,7 @@ vi.mock("./TurnOutcome", () => ({ TurnOutcome: ({ run }: { run: Run; }) => creat
 
 beforeEach(() => {
   workspace.value = {
-    api: {}, projects: [], connected: true, ready: true, events: [], steps: [], agents: [], harnesses: [],
+    api: {}, projects: [], sessions: [], connected: true, ready: true, events: [], steps: [], agents: [], harnesses: [],
     session: { id: "s", projectId: "p" }, project: { id: "p", name: "Workspace", workingDirectory: "/repo" },
     messages: [
       { id: "u1", sessionId: "s", runId: "r1", role: "user", content: "Make a change", createdAt: "2026-09-04T00:00:01Z" },

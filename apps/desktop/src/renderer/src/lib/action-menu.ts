@@ -14,7 +14,12 @@ export type ActionMenuIcon =
   | "star"
   | "star-off"
   | "bell"
-  | "bell-off";
+  | "bell-off"
+  | "branch"
+  | "folder-plus"
+  | "file"
+  | "message"
+  | "history";
 
 export type SessionActionId =
   | "rename"

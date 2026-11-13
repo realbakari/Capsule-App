@@ -25,14 +25,13 @@ function splitPath(path: string): { dir: string; name: string } {
  * A saved turn's outcome. Its owner supplies both data and actions, so this
  * card cannot silently select another run or discard today's working tree.
  */
-export function ChangedFilesCard({ files, patch, loadPatch, filesTruncated, onOpenDiff, onRestore, restoring = false }: {
+export function ChangedFilesCard({ files, patch, loadPatch, filesTruncated, onOpenDiff, onRestore }: {
   files: TouchedFile[];
   patch?: string;
   loadPatch?: SavedPatchReader;
   filesTruncated?: boolean;
   onOpenDiff?: (path?: string) => void;
   onRestore?: () => void;
-  restoring?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const { triggerProps, preview, close } = useSavedDiffPreview(patch, onOpenDiff, loadPatch);
@@ -139,11 +138,10 @@ export function ChangedFilesCard({ files, patch, loadPatch, filesTruncated, onOp
             <button
               type="button"
               className="ghost"
-              disabled={restoring}
               onClick={onRestore}
-              title="Put the project folder back to how this turn left it"
+              title="Choose what to restore from this turn, and compare first"
             >
-              {restoring ? "Restoring…" : "Restore this turn"}
+              Restore this turn…
             </button>
           )}
         </div>
