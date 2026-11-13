@@ -13,6 +13,7 @@ let permissions = arg("--permission-mode");
 let effort;
 let user;
 let request;
+let turns = 0;
 const send = (value) => process.stdout.write(JSON.stringify(value) + "\n");
 const respond = (message, response = {}) => send({ type: "control_response", response: { subtype: "success", request_id: message.request_id, response } });
 const failure = (message, error) => send({ type: "control_response", response: { subtype: "error", request_id: message.request_id, error } });
@@ -20,10 +21,12 @@ const log = (event) => { if (process.env.CAPSULE_CLAUDE_TEST_LOG) appendFileSync
 log({ args: process.argv.slice(3) });
 const finish = (is_error = false) => {
   const result = JSON.stringify({ model, effort, permissions });
-  send({ type: "assistant", session_id: sessionId, parent_tool_use_id: null, uuid: randomUUID(), message: { id: "answer", role: "assistant", content: [{ type: "text", text: result }] } });
+  turns += 1;
+  send({ type: "assistant", session_id: sessionId, parent_tool_use_id: null, uuid: randomUUID(), message: { id: "answer", role: "assistant", model,
+    usage: { input_tokens: 1000 * turns, cache_read_input_tokens: 200, cache_creation_input_tokens: 30, output_tokens: 5 }, content: [{ type: "text", text: result }] } });
   send({ type: "result", subtype: "success", session_id: sessionId, uuid: randomUUID(), user_message_uuid: user.uuid, is_error,
     result, stop_reason: "end_turn", duration_ms: 10, duration_api_ms: 5, num_turns: 1, total_cost_usd: 0,
-    usage: { input_tokens: 4, output_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }, modelUsage: {}, permission_denials: [] });
+    usage: { input_tokens: 4, output_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }, modelUsage: { [model]: { inputTokens: 1000, outputTokens: 5, cacheReadInputTokens: 0, cacheCreationInputTokens: 0, webSearchRequests: 0, costUSD: 0, contextWindow: 200000, maxOutputTokens: 32000 } }, permission_denials: [] });
 };
 createInterface({ input: process.stdin }).on("line", (line) => {
   const message = JSON.parse(line); log(message);

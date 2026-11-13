@@ -5,13 +5,15 @@ import { realpathSync } from "node:fs";
 import { query, getSessionInfo, type Query, type ModelInfo, type SDKMessage, type SDKUserMessage, type CanUseTool, type PermissionResult, type PermissionMode } from "@anthropic-ai/claude-agent-sdk";
 import { spawnCommand, stopChild } from "@capsule/process";
 import type { DirectAcpEvents, DirectAcpOptions, DirectAgentSession } from "@capsule/acp";
-import { readPlanEntries, readReportedTurnUsage, readToolActivityDetails, type AcpModelCatalog, type AgentCapabilityReport, type AgentCommand, type AgentPromptBlock, type ReportedContextUsage } from "@capsule/shared";
+import { readPlanEntries, readReportedContextUsage, readReportedTurnUsage, readToolActivityDetails, type AcpModelCatalog, type AgentCapabilityReport, type AgentCommand, type AgentPromptBlock, type ReportedContextUsage } from "@capsule/shared";
 import { ClaudeInput } from "./input.js";
 import { isClaudeEffort, isClaudePermission, permissionChoices } from "./configuration.js";
 
 type Turn = {
   uuid: string; resolve(value: { stopReason?: string }): void; reject(error: Error): void;
   finished: Promise<void>; settle(): void; cancelling: boolean; hasText: boolean;
+  /** The latest root request: its prompt plus reply is what the context window holds now. */
+  request?: { model: string; tokens: number };
 };
 
 /** The SDK owns the protocol; the installed CLI owns authentication, tools and execution. */
@@ -241,6 +243,8 @@ export class DirectClaudeSession implements DirectAgentSession {
         this.emitter.emit("text", { text, thought });
       }
     } else if (message.type === "assistant") {
+      const usage = message.message.usage;
+      if (usage) turn.request = { model: message.message.model, tokens: usage.input_tokens + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0) + usage.output_tokens };
       for (const block of message.message.content) {
         if (block.type === "text" && !this.streamed.has(message.message.id)) { turn.hasText = true; this.emitter.emit("text", { text: block.text, thought: false }); }
         if (block.type === "thinking" && !this.streamed.has(message.message.id)) this.emitter.emit("text", { text: block.thinking, thought: true });
@@ -262,7 +266,12 @@ export class DirectClaudeSession implements DirectAgentSession {
       if (message.user_message_uuid && message.user_message_uuid !== turn.uuid) return;
       const usage = message.usage;
       const reported = readReportedTurnUsage({ inputTokens: usage.input_tokens, outputTokens: usage.output_tokens, cachedReadTokens: usage.cache_read_input_tokens, cachedWriteTokens: usage.cache_creation_input_tokens });
-      this.emitter.emit("usage", { turn: reported });
+      // result.usage sums every request in the turn, so it overstates what the window holds.
+      const window = turn.request && message.modelUsage[turn.request.model]?.contextWindow;
+      const context = turn.request && readReportedContextUsage({ used: turn.request.tokens, size: window });
+      const changed = context && JSON.stringify(context) !== JSON.stringify(this.context);
+      if (changed) this.context = context;
+      this.emitter.emit("usage", { turn: reported, ...(changed ? { context } : {}) });
       if (turn.cancelling) this.finish(undefined, "cancelled");
       else if (message.subtype !== "success" || message.is_error) this.finish(new Error(message.subtype === "success" ? message.result : message.errors.join("\n")));
       else {

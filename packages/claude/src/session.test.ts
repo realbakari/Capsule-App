@@ -61,8 +61,22 @@ it("waits for explicit once-only approvals and reports turn usage", async () => 
     expect(f.output).toEqual([]);
     permission.mock.calls[0]![0].allow();
     await turn;
-    expect(usage).toHaveBeenCalledWith({ turn: { source: "agent", inputTokens: 4, outputTokens: 5, cachedReadTokens: 0, cachedWriteTokens: 0 } });
+    expect(usage).toHaveBeenCalledWith(expect.objectContaining({ turn: { source: "agent", inputTokens: 4, outputTokens: 5, cachedReadTokens: 0, cachedWriteTokens: 0 } }));
     expect(f.wire()).not.toContain("updatedPermissions");
+  } finally { await f.cleanup(); }
+});
+
+it("reports the context window held after each turn, not the turn's summed requests", async () => {
+  const f = setup();
+  try {
+    await f.session.start();
+    expect(f.session.reportedContext).toBeUndefined();
+    const usage = vi.fn(); f.session.on("usage", usage);
+    await f.session.prompt("First");
+    expect(f.session.reportedContext).toEqual({ source: "agent", used: 1235, size: 200000 });
+    expect(usage).toHaveBeenLastCalledWith(expect.objectContaining({ context: { source: "agent", used: 1235, size: 200000 } }));
+    await f.session.prompt("Second");
+    expect(f.session.reportedContext).toEqual({ source: "agent", used: 2235, size: 200000 });
   } finally { await f.cleanup(); }
 });
 
