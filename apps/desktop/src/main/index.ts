@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 
 /** Where releases are published. */
 const UPDATE_REPO = "realbakari/Capsule-App";
@@ -40,6 +41,7 @@ import { isDirectSessionKey } from "@capsule/acp";
 import { mergePath, readLoginShellEnvironment } from "@capsule/harness";
 import electronUpdater from "electron-updater";
 import { readNavigableUrl, type BrowserTarget } from "./browser-tools";
+import { externalLinkTarget, isAppDocument } from "./app-navigation";
 import { BrowserAccess } from "./browser-access";
 import { RunNotifications } from "./run-notifications";
 import { observeBrowser } from "./browser-diagnostics";
@@ -649,11 +651,22 @@ function createWindow(): BrowserWindow {
   });
 
   window.webContents.setWindowOpenHandler((details) => {
-    void shell.openExternal(details.url);
+    // Only web and mail links reach the OS; a file: or custom scheme here
+    // would launch whatever application claims it.
+    const target = externalLinkTarget(details.url);
+    if (target) void shell.openExternal(target).catch(() => undefined);
     return { action: "deny" };
   });
 
   const rendererURL = process.env.ELECTRON_RENDERER_URL;
+  const appUrl = rendererURL ?? pathToFileURL(path.join(__dirname, "../renderer/index.html")).toString();
+  // This document holds the full preload. A dropped file or stray link must
+  // never replace it, or the replacement inherits every IPC channel.
+  const keepAppDocument = (event: Electron.Event, url: string) => {
+    if (!isAppDocument(url, appUrl)) event.preventDefault();
+  };
+  window.webContents.on("will-navigate", keepAppDocument);
+  window.webContents.on("will-redirect", keepAppDocument);
   if (rendererURL) {
     void window.loadURL(rendererURL);
   } else {
