@@ -123,6 +123,10 @@ that act on your machine refuse. Concretely, it can read:
 - git status, branches, and pull requests
 - settings, harnesses, and skills — as values, not as controls
 
+Terminal output never leaves this computer. A paired device of any kind cannot
+start a terminal, and it does not receive what one prints either, so a
+command that shows a token or a credentials file stays on your screen.
+
 And it is refused, by the server rather than by the interface, on anything
 that would: send a message, spawn or steer a harness, start a terminal, run or
 stop a project action, write or stage a file, commit, push, create or merge a

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { IPC_CHANNELS } from "./ipc.js";
-import { isChannelAllowed, READ_ONLY_CHANNELS, scopeForChannel } from "./ipc-scopes.js";
+import { IPC_CHANNELS, IPC_EVENTS } from "./ipc.js";
+import { isChannelAllowed, isRemoteEvent, READ_ONLY_CHANNELS, scopeForChannel } from "./ipc-scopes.js";
 
 describe("ipc scopes", () => {
   it("limits conversation control to named operations, never administration", () => {
@@ -118,6 +118,19 @@ describe("ipc scopes", () => {
   it("names only channels that exist", () => {
     for (const channel of READ_ONLY_CHANNELS) {
       expect(Object.keys(IPC_CHANNELS)).toContain(channel);
+    }
+  });
+});
+
+describe("remote events", () => {
+  it("keeps shell output on this machine", () => {
+    expect(isRemoteEvent(IPC_EVENTS.terminalData)).toBe(false);
+    expect(isRemoteEvent(IPC_EVENTS.terminalExit)).toBe(false);
+  });
+
+  it("forwards conversation state", () => {
+    for (const event of [IPC_EVENTS.state, IPC_EVENTS.run, IPC_EVENTS.message, IPC_EVENTS.approval]) {
+      expect(isRemoteEvent(event)).toBe(true);
     }
   });
 });

@@ -1,4 +1,4 @@
-import { IPC_CHANNELS } from "./ipc.js";
+import { IPC_CHANNELS, IPC_EVENTS } from "./ipc.js";
 
 /**
  * What a paired client is allowed to do.
@@ -99,3 +99,15 @@ export function isChannelAllowed(channel: string, scopes: readonly IpcScope[]): 
 }
 
 export const READ_ONLY_CHANNELS: readonly string[] = READ_CHANNELS;
+
+/*
+ * Events that stay on this machine. No paired scope can start a shell, so a
+ * shell's output has no business on the wire: a read-only viewer would see
+ * whatever the user prints, credentials included.
+ */
+const LOCAL_ONLY_EVENTS = new Set<string>([IPC_EVENTS.terminalData, IPC_EVENTS.terminalExit]);
+
+/** Whether an event may be forwarded to a paired device. */
+export function isRemoteEvent(event: string): boolean {
+  return !LOCAL_ONLY_EVENTS.has(event);
+}

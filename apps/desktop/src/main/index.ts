@@ -54,6 +54,7 @@ import { NativeUpdateStager } from "./native-update-stager";
 import { WindowReference } from "./window-reference";
 import {
   IPC_CHANNELS,
+  isRemoteEvent,
   isNewerRelease,
   pickReleaseAsset,
   PRESET_HARNESSES,
@@ -1033,8 +1034,11 @@ async function announceRemoteAccess(): Promise<void> {
 const remoteListeners = new Set<(event: string, payload: unknown) => void>();
 
 function subscribeRemote(emit: (event: string, payload: unknown) => void): () => void {
-  remoteListeners.add(emit);
-  return () => remoteListeners.delete(emit);
+  const forward = (event: string, payload: unknown) => {
+    if (isRemoteEvent(event)) emit(event, payload);
+  };
+  remoteListeners.add(forward);
+  return () => remoteListeners.delete(forward);
 }
 
 function registerIpc(): void {
