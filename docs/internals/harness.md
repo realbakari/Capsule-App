@@ -627,3 +627,14 @@ again by the event budget. Gateway tool frames use the same normalization. Nativ
 session adapters that report only title/status remain readable but do not invent
 command output. This does not add client filesystem or terminal execution APIs,
 and tool reports never grant permission or become assistant replies.
+
+## Board cards
+
+A board card that starts, by hand or because the cards before it were marked
+done, sends its prompt through `sendMessage`, the same call the composer makes.
+Nothing about the route or harness is decided by the board: a direct thread
+spawns its CLI, a Gateway thread goes through the ACP bridge, and every preset
+gets the model, permission profile and workspace mode the thread already has.
+A harness that is not installed or not signed in fails that turn the usual way,
+and the card shows it under Needs you. The chain itself runs in the engine, so
+it does not depend on the Gateway being connected; only the turns it starts do.

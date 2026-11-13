@@ -15,6 +15,7 @@ need the shipped-product voice.
 - [Restoring a turn](./user/checkpoints.md)
 - [Checking a turn](./user/verification.md)
 - [Drafts, attachments, and prompt stash](./user/composer.md)
+- [The board: cards, columns, and chains](./user/board.md)
 - [Projects, actions, and local previews](./user/projects-and-previews.md)
 - [iOS Simulator](./user/simulator.md)
 - [capsule.json — project config in the repository](./user/project-file.md)

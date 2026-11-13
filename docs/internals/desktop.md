@@ -1784,3 +1784,63 @@ drop `backdrop-filter`, which composited wrongly with the webview layer.
 beside a 13rem title; the rest move to the top of More, the open surface always
 staying in the bar. With the sidebar collapsed the titlebar adds back and
 forward beside the sidebar toggle.
+
+## Board
+
+The board (`view === "board"`, `features/board/`) is a view over threads, not
+a second store. Opt-in: the sidebar grouping menu offers **Board** after By
+project, By status and Recent, and the palette has **Board** and **New board
+card**. Picking a grouping while the board is open returns to the
+conversation. The home screen is unchanged.
+
+- **Data.** A card is a `Session`. A draft carries `pendingStart` (prompt,
+  `dependsOn`, `autoStart`, `createdAt`, and `error` when a start was refused
+  before a turn was recorded). `doneAt` is set only by the person's **Mark
+  done** and cleared by **Reopen**. Both persist on the sessions table
+  (migration 20) and are written only by `updateSessionBoard`, so a turn
+  updating its thread from an older copy cannot undo a done mark.
+- **Columns.** `groupBoardCards` / `boardCardState` in `@capsule/shared/board`
+  derive Draft, Queued, Running, Needs you, Review and Done from the thread and
+  its latest run summary. A draft waiting on a card whose latest turn failed
+  (unanswered, not a contract verdict) or was cancelled is Needs you with
+  `blockedBy`. Review is "the agent finished and nobody has marked it done";
+  uncommitted changes and pull requests are not read. Threads with no turns and
+  no `pendingStart` are left out.
+- **Chaining.** `BoardService` in core starts every draft whose `autoStart` is
+  on and whose prerequisites all have `doneAt`. It runs on engine start
+  (restart recovery), after Mark done, and after create, link and edit. A run
+  ending never triggers it. The pending prompt is cleared before the send, which
+  goes through `sendMessage` exactly as the composer does, so the thread's
+  harness, route, model and workspace mode apply. A refusal before a turn was
+  recorded puts the prompt back with `error`, which also stops auto-start until
+  someone presses Start. Sending by hand clears `pendingStart`. Deleting a
+  thread prunes it from every `dependsOn`; a card left with no prerequisites
+  waits for a person. Links that close a loop are refused. Draft threads are
+  never auto-archived.
+- **Card.** Agent glyph and title, branch badge (or "Local"), project name in
+  All projects, elapsed time (live while running), the latest step from the
+  latest run's events via `activityFromEvents` (polled every 4 s while running,
+  at most 40 cards), and the needs-you reason. Drafts show their prompt's first
+  line and **After …** links. Actions: **Start** / **Start anyway**,
+  **Depends on** (checkbox menu), **Mark done** (Review, or a failed card),
+  **Reopen** (Done).
+- **Linking.** ⌘-click card A, then ⌘-click card B: B waits for A. The **Depends on** menu is portalled so a scrolling column cannot clip it. A banner
+  says what the next ⌘-click does; Esc cancels. B must be a draft. The first
+  link on a draft that waited on nothing turns auto-start on; the menu's last
+  row toggles it (`edit` op).
+- **Keyboard.** One tab stop for the board; arrows move within and across
+  columns (skipping empty ones), Enter opens the thread.
+- **New card.** Title (optional, defaults to the prompt's first line), prompt,
+  project (when there is more than one), agent (project default or a harness),
+  workspace (own worktree by default, or the project's own default), depends on,
+  and auto-start (shown once something is picked). ⌘Enter submits.
+- **Not supported.** Dragging cards between columns: the column follows from
+  links and runs, so a drag would have no real state to change.
+- **Routes and harnesses.** The board starts turns through the normal send path,
+  so direct and Gateway threads, and every harness, behave as they would from
+  the composer; a harness that cannot start fails that turn and the card shows
+  it in Needs you.
+- **Remote viewer.** `createBoardCard` and `updateBoardCard` are write
+  channels: read and control peers cannot call them, and the board hides every
+  write control when `api.isDesktop === false`.
+
