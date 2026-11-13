@@ -299,6 +299,7 @@ landed while the save ran is not lost.
 | `capsule:config:openFile` | write | create a file from a template if missing, then open it |
 | `capsule:config:trust` | write | trust or revoke a project folder |
 | `capsule:config:reload` | write | re-read every file now |
+| `capsule:app:restart` | write | quit and start again, into or out of safe mode |
 | `commands:expand` | write | expand a command for review in the composer. It may run `!` |
 
 Main checks each write's shape where it crosses: a key and a known layer, or
@@ -401,9 +402,49 @@ Decisions made while building this, and why.
 - **The Commands area lives under Settings → Skills.** Commands and skills
   are both prompt text a person brings to a conversation, and both sit in the
   composer's `/` menu.
-- **The renderer still sends user-level defaults.** It passes the user's
-  `defaultPermission`, `defaultWorkspaceMode` and agent when it creates a
-  conversation, so the engine's project-layer fallbacks reach only threads
-  the engine starts itself. The composer should read
-  `ProjectConfigSnapshot.settings` (`capsule:config:getEffective` with a
-  project id) for these defaults.
+- **New conversations leave their defaults to the engine.** The renderer
+  used to send the user's `defaultPermission` and `defaultWorkspaceMode`
+  when it created a conversation, which hid the project's record and files.
+  It now sends neither from New conversation or Send and continue; the
+  engine resolves them from the target project, which may not be the open
+  one. A first send with no thread sends only the composer's workspace
+  choice, which starts from the project's record, then its files.
+- **The composer takes a project file's agent and mode only when a project
+  file names them.** Applying the effective value on every project switch
+  would reset the agent for everyone without project files, and the
+  renderer has always started new threads in `code` mode whatever
+  `defaultMode` says. Applied once per project, on the first snapshot, so a
+  file edit later does not undo a pick in the composer.
+- **The renderer's settings come with each snapshot.** `config-updated` and
+  `settings-updated` reload `capsule:config:getEffective` and
+  `capsule:config:getDiagnostics` together, and the snapshot's user-level
+  settings replace the renderer's copy, so a hand edit reaches every screen
+  the way a Settings change does.
+- **A row names its key; the search catalog repeats it.** `SettingRow` takes
+  `setting`, and the catalog entry carries the same `key` for `@modified`. A
+  test reads the panels and fails when a keyed catalog entry has no row
+  passing that key. Looking rows up by title was rejected: several catalog
+  titles are not the row's label.
+- **Save to splits by the registry.** A change saved to a project layer
+  writes only `both` keys there, through `capsule:config:setValue`; every
+  other key, secrets included, still goes through `updateSettings`, which
+  keeps the Keychain and derived records in step. The choice resets to You
+  when the project changes.
+- **Restore defaults stays a user-file operation.** Writing defaults through
+  the user save already removes them from the file, because a default-equal
+  user value is never written. Project values are left alone and the
+  confirmation says so.
+- **A broken file is announced once per mistake.** The renderer remembers
+  the path and error it announced, forgets a path when it parses again, and
+  keeps the record while another project's diagnostics do not mention it,
+  so switching projects does not announce the same break twice.
+- **Trust in the project menu is for the open project.** The renderer holds
+  one project's snapshot. Revoke and Trust appear in the sidebar menu of
+  that project; the doctor and the palette have them for it as well.
+- **A refused save says why.** The credential rollback replaced every failed
+  save's error with fixed text, because a Keychain adapter's message can hold
+  a credential. An error from the settings commit itself is Capsule's own,
+  such as a broken file's line and column, so it is kept; adapter errors
+  still read as before.
+- **"Not now" lasts for the run of the app.** It is kept in memory per
+  project, so the note returns after a restart rather than never.

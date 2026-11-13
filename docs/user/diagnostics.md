@@ -3,6 +3,34 @@
 Settings → Diagnostics shows what Capsule is doing to your machine, and can
 export a sanitized report.
 
+## Customization
+
+The **Customization** card lists every file that customizes Capsule, strongest
+first: the open project's personal and shared settings, its `capsule.json`,
+your user settings, and your key bindings. Each shows whether it loaded, is
+missing, is broken, waits for trust, or was skipped in safe mode, with the
+settings it sets and **Open** (or **Create** for a file that does not exist
+yet). A broken file shows the line, column and mistake, and whether Capsule is
+using its last good copy.
+
+Below the files:
+
+- **Problems** lists every entry that was skipped and why, with its file. A
+  setting with a wrong value is skipped on its own; the rest of the file
+  applies. With nothing wrong, it says so.
+- **Trust**, for the open project, lists exactly what its files would run, with
+  **Trust this project**, or, once trusted, **Revoke trust**.
+- **Recent runs** lists hooks, status line commands and command shells that
+  ran: when, which, and the exit code. Open one to see the command and what
+  it printed to stderr.
+
+The card also says whether safe mode is on, with the button that restarts into
+or out of it. **Reload** reads every file again at once.
+
+When there are problems, the Settings button in the sidebar and the
+Diagnostics section carry their count. **Show customization problems** in the
+command palette opens this card.
+
 ## Opening your workspace
 
 Capsule restores the last project and conversation when they still exist. If a

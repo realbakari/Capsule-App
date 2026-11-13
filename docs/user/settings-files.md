@@ -63,9 +63,35 @@ Most settings take the strongest value. A few combine instead:
 
 In a project, what Capsule sends with each message follows the project's
 files from the next message: output detail, sandbox, web access, and commit
-and pull request guidance. The defaults the composer offers for a new
-conversation (agent, permission mode, workspace) still come from your own
-settings.
+and pull request guidance. A new conversation in the project starts from the
+project's defaults too: its permission mode and workspace, and its agent and
+mode when a project file names them. Diff layout, folded tool calls and
+reasoning follow the project you are looking at.
+
+## In the Settings screen
+
+The Settings screen and the files are two views of the same settings.
+
+- A setting that a file sets carries a small label naming that file: **user
+  file**, **project**, **project (local)** or **capsule.json**. Click the label
+  to open the file. The arrow beside it resets the setting, which removes it
+  from that file, so the next file down, or the default, applies again.
+- With a project open, sections whose settings a project can hold show
+  **Save to: You · This project · This project, only me**. Changes go to your
+  own file, the project's shared `.capsule/settings.json`, or its personal
+  `settings.local.json`. Settings a project cannot set always save to your own
+  file, and say so when you point at them. While saving to You, a setting that
+  the open project's files change is marked **project overrides**.
+- **Open settings.json** at the top of a section opens the file Settings is
+  saving to, creating it if it does not exist yet.
+- Type `@modified` in the settings search to list every setting a file sets.
+  Words after it narrow the list, such as `@modified diff`.
+- **Restore defaults** removes that section's settings from your user file.
+  Values a project's files set still apply in that project.
+
+On a paired phone or browser you can see each setting and the file that set
+it, and both follow changes on the computer as they happen, but you cannot
+change files, trust a project or reset anything.
 
 ## What a project can set
 
@@ -89,11 +115,21 @@ automations and `allow` permission rules. Until then:
 Trust is remembered per folder on this computer. Revoking trust puts those
 entries back on hold.
 
+When you open a conversation in a project that wants to run something, a
+quiet note above the conversation says how many things it would run. **What
+would run** lists each one exactly: the hook command, the MCP server address,
+the automation or the allow rule, and the file it is in. Choose **Trust this
+project** to let them run, or **Not now** to hide the note until Capsule
+restarts. You can trust or revoke later from the project's menu in the
+sidebar, the command palette, or Settings → Diagnostics.
+
 ## When a file has a mistake
 
 If a settings file stops parsing, Capsule keeps using the last version of it
 that worked, even across a restart, and reports the line and column of the
-problem. Capsule does not write to a file it cannot read, so fix the mistake
+problem. A notice at the top of the window names the file and the mistake,
+with **Open file**. It appears once for each mistake, and goes away when the
+file parses again. Capsule does not write to a file it cannot read, so fix the mistake
 first.
 
 A setting with a wrong value is skipped on its own, and the rest of the file
@@ -124,6 +160,15 @@ menu on Windows). Capsule restarts with its built-in defaults and your
 Keychain secrets, and reads no settings file. You can also start it with
 `--safe-mode`.
 
-While Capsule runs this way, settings cannot be changed, so that nothing is
-saved over the files you are about to fix. Edit them in your own editor, then
-choose **Restart Normally** from the same menu.
+While Capsule runs this way, a banner reads **Safe mode: customizations are
+off.**, and settings cannot be changed, so that nothing is saved over the
+files you are about to fix. Edit them in your own editor, then choose
+**Restart normally** in the banner or **Restart Normally** from the same menu.
+
+## From the command palette
+
+The palette (⌘K) has the settings files too: **Open user settings**, **Open
+project settings**, **Open project local settings**, **Open keybindings
+file**, **Reload customizations**, **Trust this project** or **Revoke trust
+for this project**, **Restart without customizations** or **Restart
+normally**, and **Show customization problems**.

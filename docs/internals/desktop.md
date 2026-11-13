@@ -1321,7 +1321,7 @@ result names the section it lives in.
 | Source control | Branch prefix, force-with-lease, draft PRs, merge method, review delivery, watch-and-fix, auto-merge, commit / PR instructions |
 | Skills | skills.sh token for the catalog |
 | Shortcuts | Editable key bindings — see below |
-| Diagnostics | Process monitor, subsystem versions, export |
+| Diagnostics | Customization doctor, process monitor, subsystem versions, export |
 | About | App icon squircle, version, copyright, copy version info |
 
 Gateway also owns **Browser access**: off, this computer, or this
@@ -1807,3 +1807,47 @@ drop `backdrop-filter`, which composited wrongly with the webview layer.
 beside a 13rem title; the rest move to the top of More, the open surface always
 staying in the bar. With the sidebar collapsed the titlebar adds back and
 forward beside the sidebar toggle.
+
+## Settings files in the interface
+
+`lib/workspace.tsx` loads `config` (`capsule:config:getEffective`) and
+`configDiagnostics` (`capsule:config:getDiagnostics`) for the selected project
+on selection and on the `config-updated`, `settings-updated` and
+`projects-updated` state events, and replaces `settings` with the snapshot's
+user-level settings. `projectSettings` is the open project's merged settings;
+new-thread defaults, `diffLayout`, `diffFileState`, `toolCallDisplay` and the
+reasoning display read it. `setConfigValue` writes one key to one layer and
+shows the returned snapshot at once. The pure rules live in
+`lib/config-view.ts`.
+
+Settings rows pass `setting="<key>"` to `SettingRow`, which draws a provenance
+chip (user file, project, project (local), capsule.json) that opens the file,
+and a reset arrow that removes the key from that file. Theme, Runtime and the
+Gateway URL draw `SettingSource` themselves. With a project open, sections
+that hold a `both` key show **Save to** (You, This project, This project only
+me); rows show that layer's merged values, and user-only rows say on hover
+that they save to the user file. The section header has **Open
+settings.json** (or `settings.local.json`) beside **Restore defaults**, and
+save errors show under the header in every section.
+
+Settings → Diagnostics opens with the **Customization** card: sources in
+precedence order with state, keys, parse error and Open or Create; problems;
+trust with Trust or Revoke; safe mode with its restart; and the run log with
+stderr on expand. `problemCount` badges the sidebar's Settings button and the
+Diagnostics nav item. Typing `@modified` in the settings search lists rows a
+file sets.
+
+Below the titlebar, `CustomizationNotices` shows **Safe mode: customizations
+are off.** with **Restart normally** (`capsule:app:restart`), and a notice
+when a settings file breaks, once per mistake, with **Open file**. Above an
+open thread, `TrustNotice` says how many things an untrusted project wants to
+run, lists them on request, and offers **Trust this project** and **Not
+now**. The sidebar's project menu gains Trust or Revoke trust for the open
+project. The palette has Open user, project and project local settings, Open
+keybindings file, Reload customizations, Trust or Revoke, Restart without
+customizations or Restart normally, and Show customization problems.
+
+A paired device reads all of it, and the snapshot reloads there on the same
+events, which the remote bridge maps from their channel names to the keys the
+renderer listens on. Opening files, Save to, reset, Restore defaults, reload,
+trust and restart are hidden there, or disabled in the palette.
