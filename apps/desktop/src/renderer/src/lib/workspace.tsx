@@ -965,7 +965,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
         if (command === "skills") setView("skills");
         if (command === "about") setAboutOpen(true);
         if (command === "approvals") setView("approvals");
-        if (command === "runs") setView("history");
         /*
          * Opened from the menu bar, which lists the threads waiting on a
          * person. Landing on the thread is the whole point of the entry, so
