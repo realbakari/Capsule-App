@@ -15,7 +15,8 @@ export function useOpenInCatalog(target: OpenInTarget | undefined, enabled = tru
   const [nonce, setNonce] = useState(0);
   const key = JSON.stringify([target?.projectId, target?.sessionId, target?.path, settings?.openInApps, settings?.openInHidden, settings?.openInFavorite, nonce]);
   useEffect(() => {
-    if (!enabled || api.isDesktop === false) return undefined;
+    // Only the desktop bridge carries Open in; a paired browser or a test double has no such method.
+    if (!enabled || api.isDesktop === false || typeof api.listOpenInApps !== "function") return undefined;
     let live = true;
     setState((current) => ({ status: "loading", catalog: current.catalog }));
     api.listOpenInApps(target?.projectId, target?.sessionId, target?.path).then(

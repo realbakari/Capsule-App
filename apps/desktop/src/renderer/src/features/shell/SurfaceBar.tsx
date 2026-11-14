@@ -39,7 +39,7 @@ export function SurfaceBar() {
 
   useEffect(() => {
     const onOpenIn = () => {
-      if (api.isDesktop === false) return;
+      if (api.isDesktop === false || typeof api.listOpenInApps !== "function") return;
       if (!project || !terminalCwd) { setNotice("Open a folder first, then open it in another app."); return; }
       const target = { projectId: project.id, sessionId: session?.id };
       void api.listOpenInApps(target.projectId, target.sessionId).then((catalog) => {
