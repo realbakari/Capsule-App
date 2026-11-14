@@ -123,9 +123,16 @@ export type ContextResolver = ReturnType<typeof useContextResolver>;
 export function ContextChip({ attachment, context, onRemove }: { attachment: MessageAttachment; context: ContextAttachment; onRemove: () => void }) {
   const [open, setOpen] = useState<"hover" | "pinned">();
   const previewId = useId();
+  const chip = useRef<HTMLSpanElement>(null);
   const source = contextSource(context.kind);
+  useEffect(() => {
+    if (open !== "pinned") return;
+    const close = (event: PointerEvent) => { if (!(event.target instanceof Node && chip.current?.contains(event.target))) setOpen(undefined); };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, [open]);
   return (
-    <span className="composer-attachment composer-context-chip" data-kind={context.kind}
+    <span ref={chip} className="composer-attachment composer-context-chip" data-kind={context.kind}
       onMouseEnter={() => setOpen((value) => value ?? "hover")} onMouseLeave={() => setOpen((value) => value === "hover" ? undefined : value)}>
       <button type="button" className="composer-context-open" aria-expanded={Boolean(open)} aria-controls={previewId}
         aria-label={`Preview ${source.label.toLowerCase()}: ${context.label}`}
