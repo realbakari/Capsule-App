@@ -7,7 +7,7 @@
 }
 .thread-pr.open { color: var(--green); }
 .thread-pr.failing { color: var(--red); }
-.thread-pr.merged { color: var(--blue, #5b9fd4); }
+.thread-pr.merged { color: var(--blue); }
 .thread-pr.draft,
 .thread-pr.closed { color: var(--text-faint); }
 .thread-status.paused { color: var(--text-muted); }
@@ -68,7 +68,7 @@
   max-width: 100%;
   padding: 0.1rem 0.2rem 0.1rem 0.45rem;
   border: 1px solid var(--border-color);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--surface-1);
   color: var(--text);
   font-size: var(--text-xs);
@@ -76,7 +76,7 @@
 }
 .tag-editor[data-disabled="true"] .tag-chip { padding-right: 0.45rem; }
 .tag-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tag-chip-remove {
+.tag-editor .tag-chip-remove {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -84,12 +84,12 @@
   height: 1rem;
   padding: 0;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
 }
-.tag-chip-remove:hover { background: var(--bg-hover); color: var(--text); }
+.tag-editor .tag-chip-remove:hover { background: var(--bg-hover); color: var(--text); }
 .tag-chip-remove:focus-visible,
 .tag-editor-input:focus-visible { outline: var(--ring-width) solid var(--focus-ring); outline-offset: var(--focus-offset); }
 .tag-editor-input {
@@ -127,3 +127,6 @@
 }
 .tags-settings-error { margin: 0.5rem 0 0; color: var(--red); font-size: var(--text-sm); }
 .tags-settings .chip.danger { color: var(--red); border-color: color-mix(in srgb, var(--red) 40%, transparent); }
+.tag-editor .tag-chip-remove { min-height: 0; flex: none; }
+.tag-editor .tag-chip-remove svg { flex: none; width: 0.625rem; height: 0.625rem; }
+.tags-settings-row { display: grid; grid-template-columns: minmax(6rem, max-content) auto 1fr; }
