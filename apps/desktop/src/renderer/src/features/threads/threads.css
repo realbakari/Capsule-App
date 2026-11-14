@@ -27,9 +27,9 @@
 .sidebar-new-more[data-open="true"] { opacity: 1; }
 
 /* Temporary threads: a word in the row, a strip above the composer. */
+.thread-title-line { display: flex; align-items: center; gap: 0.3rem; min-width: 0; }
 .thread-temporary {
   flex: none;
-  margin-left: 0.3rem;
   padding: 0 0.3rem;
   border: 1px dashed var(--border-color);
   border-radius: var(--radius-sm);

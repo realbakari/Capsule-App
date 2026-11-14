@@ -555,8 +555,7 @@ export function Sidebar() {
           ) : null}
         </span>
         <span className="thread-title">
-          <span className="truncate">{label ?? session.title}</span>
-          <ThreadTemporaryMark session={session} />
+          <span className="thread-title-line"><span className="truncate">{label ?? session.title}</span><ThreadTemporaryMark session={session} /></span>
           {grouping !== "project" && <small className="thread-project">{projectNames.get(session.projectId)}</small>}
         </span>
         <span className="thread-meta">
