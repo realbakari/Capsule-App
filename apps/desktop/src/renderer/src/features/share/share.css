@@ -4,7 +4,7 @@
 .share-dialog-lede b { color: var(--text); font-weight: 500; }
 .dialog .share-reach, .dialog .share-hint, .dialog .share-empty { margin: 0 0 0.6rem; color: var(--text-muted); font-size: var(--text-xs); line-height: 1.4; }
 .dialog .share-hint { margin-top: 0.5rem; color: var(--text-faint); }
-.share-error { margin: 0.5rem 0 0; color: var(--red); font-size: var(--text-xs); overflow-wrap: anywhere; }
+.share-error, .dialog p.share-error { margin: 0.5rem 0 0; color: var(--red); font-size: var(--text-xs); overflow-wrap: anywhere; }
 
 .share-options { display: flex; flex-direction: column; gap: 0.35rem; margin: 0; padding: 0; border: 0; }
 .share-option {

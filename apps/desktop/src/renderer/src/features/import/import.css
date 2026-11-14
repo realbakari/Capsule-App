@@ -29,7 +29,7 @@
 .import-row .chip { flex-shrink: 0; }
 .import-empty { margin: 0; padding: 1.5rem 1rem; color: var(--text-muted); font-size: var(--text-sm); text-align: center; }
 .import-note { margin: 0.6rem 0 0; color: var(--text-muted); font-size: var(--text-sm); }
-.import-error { margin: 0.6rem 0 0; color: var(--red); font-size: var(--text-sm); }
+.import-error, .dialog p.import-error { margin: 0.6rem 0 0; color: var(--red); font-size: var(--text-sm); }
 .import-dialog .actions { margin-top: 1rem; }
 
 .import-hint {

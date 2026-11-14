@@ -101,7 +101,7 @@
 .restore-compare-head { display: flex; align-items: center; gap: 0.75rem; justify-content: space-between; color: var(--text-muted); font-size: var(--text-sm); }
 .restore-compare-diff { margin-top: 0.5rem; max-height: 22rem; overflow: auto; border: 1px solid var(--border-color); border-radius: var(--radius-md); }
 .restore-redo-note { margin: 0 0 0.5rem; color: var(--text-muted); font-size: var(--text-sm); }
-.restore-error { margin: 0 0 0.5rem; color: var(--red); font-size: var(--text-sm); }
+.restore-error, .dialog p.restore-error { margin: 0 0 0.5rem; color: var(--red); font-size: var(--text-sm); }
 
 .redo-banner {
   display: flex;
