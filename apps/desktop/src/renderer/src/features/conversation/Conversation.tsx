@@ -32,6 +32,7 @@ import { shouldFollowLatest } from "../../lib/composer-rest";
 import { ApprovalDetails, APPROVE_ONCE_UNAVAILABLE } from "../harness/ApprovalDetails";
 import { TurnOutcome } from "./TurnOutcome";
 import { TurnVerification } from "./TurnVerification";
+import { PlanHandoff } from "./PlanHandoff";
 import { TurnFilesCard } from "./TurnFilesCard";
 import { MessageBody } from "./MessageBody";
 import { MessageAttachments } from "./MessageAttachments";
@@ -723,6 +724,7 @@ export function Conversation() {
               </RunSummary>
             </div>
           )}
+          <PlanHandoff />
           {branching.redo && branching.redo.sessionId === session?.id && dismissedRedo !== branching.redo.id && (
             <RedoBanner point={branching.redo} turnNumber={branching.redo.targetRunId ? turnNumbers.get(branching.redo.targetRunId) : undefined}
               onRedo={branching.redoLast} onDismiss={() => setDismissedRedo(branching.redo?.id)} />

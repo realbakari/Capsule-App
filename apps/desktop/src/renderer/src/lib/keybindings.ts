@@ -55,6 +55,7 @@ export const COMMANDS: KeyCommand[] = [
   { id: "open-mode", label: "Choose mode", chord: { key: "m", meta: true, shift: true } },
   { id: "open-model", label: "Choose model", chord: { key: "i", meta: true, shift: true } },
   { id: "open-effort", label: "Choose effort", chord: { key: "e", meta: true, shift: true } },
+  { id: "cycle-favorite-model", label: "Next favorite model", chord: { key: "m", meta: true, alt: true } },
 ];
 
 /** Shortcuts that live outside this registry (in a surface or the composer), shown in the shortcuts sheet. */
@@ -62,6 +63,7 @@ export const FIXED_SHORTCUTS: Array<{ label: string; keys: string[] }> = [
   { label: "Send", keys: ["↵"] },
   { label: "Stop the running turn", keys: ["Esc"] },
   { label: "Previous prompt", keys: ["↑"] },
+  { label: "Switch Plan and Act", keys: ["⇧", "Tab"] },
   { label: "Side chat", keys: ["⌥", "⌘", "S"] },
   { label: "Open the terminal", keys: ["⌃", "`"] },
   { label: "Skills", keys: ["⇧", "⌘", "S"] },
@@ -115,7 +117,9 @@ export function chordSymbols(chord: KeyChord): string[] {
  * on ⌘⇧B, so a binding silently shadows every chord built on top of it.
  */
 export function matchesChord(event: KeyboardEvent, chord: KeyChord): boolean {
-  if (event.key.toLowerCase() !== chord.key.toLowerCase()) return false;
+  // Option turns a letter into another character (⌥M is µ); the physical key still names the letter.
+  const key = event.altKey && /^Key[A-Z]$/.test(event.code ?? "") ? event.code.slice(3).toLowerCase() : event.key.toLowerCase();
+  if (key !== chord.key.toLowerCase()) return false;
   // meta covers ⌘ on macOS and Ctrl elsewhere; a chord asking for neither must
   // not fire while one is held.
   const primary = event.metaKey || event.ctrlKey;

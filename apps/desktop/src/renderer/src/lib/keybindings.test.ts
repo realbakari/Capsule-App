@@ -17,6 +17,7 @@ function key(init: Partial<KeyboardEvent> & { key: string }): KeyboardEvent {
     ctrlKey: init.ctrlKey ?? false,
     shiftKey: init.shiftKey ?? false,
     altKey: init.altKey ?? false,
+    code: init.code ?? "",
   } as KeyboardEvent;
 }
 
@@ -130,5 +131,13 @@ describe("the registry itself", () => {
     for (const command of COMMANDS) {
       expect(conflictsFor(command.id, command.chord, undefined), command.id).toEqual([]);
     }
+  });
+});
+
+describe("Option chords", () => {
+  it("matches ⌥⌘M by its physical key although Option types µ", () => {
+    const event = key({ key: "µ", code: "KeyM", metaKey: true, altKey: true });
+    expect(commandForEvent(event, undefined)?.id).toBe("cycle-favorite-model");
+    expect(commandForEvent(key({ key: "m", code: "KeyM", metaKey: true, shiftKey: true }), undefined)?.id).toBe("open-mode");
   });
 });

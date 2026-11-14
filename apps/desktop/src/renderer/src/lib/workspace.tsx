@@ -1,4 +1,6 @@
 import { applyAppearance } from "./appearance";
+import { CYCLE_FAVORITE_MODEL_EVENT, useFavoriteModels, useTurnMode } from "./turn-mode";
+import { ACT_ON_PLAN_PROMPT, type TurnMode } from "@capsule/shared";
 import { RequestScope } from "./request-scope";
 import { resolveWorkspaceSelection } from "./workspace-selection";
 import { HarnessStatusCache, harnessStatusIdentity } from "./harness-status-cache";
@@ -394,6 +396,15 @@ export interface WorkspaceValue {
   setAboutOpen: (open: boolean) => void;
   settings?: CapsuleSettings;
   updateSettings: (patch: Partial<CapsuleSettings>) => Promise<CapsuleSettings>;
+  /** Plan or Act for the next turn of the selected thread, or of the thread a first message creates. */
+  turnMode: TurnMode;
+  setTurnMode: (mode: TurnMode) => Promise<boolean>;
+  /** Switch to Act, apply the Act model, and ask the agent to implement the plan it just wrote. */
+  actOnPlan: () => Promise<void>;
+  /** Stay in Plan and return to the composer for another planning turn. */
+  keepPlanning: () => Promise<void>;
+  favoriteModels: string[];
+  toggleFavoriteModel: (agentId: string, modelId: string) => Promise<CapsuleSettings>;
 }
 
 const workspaceContextSlot = globalThis as typeof globalThis & {
@@ -653,6 +664,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   const activeRun = runs.find(
     (run) => run.sessionId === sessionId && ["running", "approval_required", "waiting"].includes(run.status),
   );
+  const { turnMode, draftTurnMode, setTurnMode } = useTurnMode({ api, session, settings, setNotice });
   const pendingApproval = approvals.find(
     (item) => item.status === "pending" && runs.some((run) => run.id === item.runId),
   );
@@ -1091,6 +1103,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
         case "show-shortcuts":
           window.dispatchEvent(new CustomEvent(SHOW_SHORTCUTS_EVENT));
           break;
+        case "cycle-favorite-model":
+          window.dispatchEvent(new CustomEvent(CYCLE_FAVORITE_MODEL_EVENT));
+          break;
         case "open-mode":
         case "open-model":
         case "open-effort": {
@@ -1418,6 +1433,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
           permissionProfile: settings?.defaultPermission,
           workspaceMode: git?.isRepo ? workspaceMode : "local",
           title: "New conversation",
+          turnMode: draftTurnMode,
         });
         currentSessionId = created.id;
       }
@@ -2197,6 +2213,17 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     return next;
   }
 
+  const { favorites: favoriteModels, toggleFavorite: toggleFavoriteModel } = useFavoriteModels(settings, updateSettings, api.isDesktop !== false);
+
+  async function actOnPlan() {
+    if (await setTurnMode("act")) await send(false, ACT_ON_PLAN_PROMPT);
+  }
+
+  async function keepPlanning() {
+    if (turnMode !== "plan" && !await setTurnMode("plan")) return;
+    document.querySelector<HTMLTextAreaElement>(".composer textarea[aria-label='Message']")?.focus();
+  }
+
   async function performGit(operation: () => Promise<GitStatus>): Promise<boolean> {
     if (!requests.isCurrent(scope)) return false;
     const current = requests.capture("git");
@@ -2553,8 +2580,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       gitRebasePullRequestStack,
       settings,
       updateSettings,
+      turnMode,
+      setTurnMode,
+      actOnPlan,
+      keepPlanning,
+      favoriteModels,
+      toggleFavoriteModel,
     }),
     [
+      turnMode,
+      favoriteModels,
       api,
       view,
       stoppingRunIds,

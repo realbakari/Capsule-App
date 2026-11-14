@@ -1,0 +1,72 @@
+/* Plan / Act chip beside the agent and model picker. */
+.turn-mode-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-shrink: 0;
+  height: 1.75rem;
+  padding: 0 0.5rem;
+  border: 1px solid transparent;
+  border-radius: var(--control-radius);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--text-ui);
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+}
+.turn-mode-chip:hover { background: var(--bg-hover); color: var(--text); }
+.turn-mode-chip:focus-visible { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-offset); }
+.turn-mode-chip.is-plan {
+  border-color: var(--border-strong);
+  background: var(--surface-1);
+  color: var(--text);
+}
+/* Asked, not enforced: the same chip, drawn with a dashed edge so it does not read as a guarantee. */
+.turn-mode-chip.is-plan.is-asked { border-style: dashed; }
+.turn-mode-chip[aria-disabled="true"] { opacity: 0.5; cursor: default; }
+.turn-mode-chip[aria-disabled="true"]:hover { background: transparent; color: var(--text-muted); }
+
+/* Act on this plan / Keep planning, under the latest plan turn and in the task list. */
+.plan-handoff {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: var(--chat-max);
+  margin: 0.25rem auto 1rem;
+}
+.plan-handoff-label { color: var(--text-muted); font-size: var(--text-xs); margin-right: 0.25rem; }
+.plan-handoff .plan-handoff-act { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.plan-handoff button.plan-handoff-act:hover:not(:disabled) { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); opacity: 0.88; }
+.plan-handoff button:disabled { opacity: 0.5; cursor: default; }
+.plan-handoff--compact {
+  margin: 0;
+  padding: 0.45rem 0.65rem;
+  border-top: 1px solid var(--border-color);
+}
+
+/* Use for Plan / Act, in each model picker row. */
+.agent-model-row .model-mode-use {
+  flex: 0 0 auto;
+  align-self: center;
+  padding: 0.2rem 0.4rem;
+  font-size: var(--text-2xs);
+  color: var(--text-faint);
+  opacity: 0;
+}
+.agent-model-row:hover .model-mode-use,
+.agent-model-row:focus-within .model-mode-use,
+.agent-model-row .model-mode-use.is-chosen { opacity: 1; }
+.agent-model-row .model-mode-use.is-chosen { color: var(--text); background: var(--bg-hover); box-shadow: inset 0 0 0 1px var(--border-strong); }
+.agent-model-row .model-mode-use:focus-visible { opacity: 1; outline: var(--ring-width) solid var(--ring); outline-offset: -2px; }
+.agent-model-row .model-favorite:disabled { opacity: 0.5; cursor: default; }
+
+/* Settings › Agents › Plan mode. */
+.plan-mode-models { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.35rem; width: 100%; }
+.plan-mode-models li { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
+.plan-mode-models-agent { font-weight: 500; }
+.plan-mode-models-mode { color: var(--text-muted); font-size: var(--text-xs); }
+.plan-mode-models code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); }
+.plan-mode-models-empty { margin: 0; font-size: var(--text-xs); }

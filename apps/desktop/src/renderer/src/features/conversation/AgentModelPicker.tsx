@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { Agent, HarnessStatus, AcpModelCatalog, FeatureAvailability } from "@capsule/shared";
+import { modelFavoriteKey, type Agent, type HarnessStatus, type AcpModelCatalog, type FeatureAvailability, type TurnMode } from "@capsule/shared";
 import { AgentGlyph } from "../shell/AgentGlyph";
 import { ChevronDownIcon, SearchIcon, XIcon } from "../shell/icons";
 import { useAnchoredPopover } from "../../lib/anchored-popover";
-import { readModelFavorites, modelFavoriteKey } from "../../lib/model-favorites";
 
 /** Catalogs belong to an installed agent, not a hardcoded list of providers. */
 export function AgentModelPicker(props: {
@@ -13,13 +12,17 @@ export function AgentModelPicker(props: {
   onAgent: (id: string) => void; onModel: (id: string) => void;
   loading?: boolean; error?: string; onRetry?: () => void;
   onManage?: () => void; onOpenChange?: (open: boolean) => void; disabled?: boolean;
+  /** Favorite keys from settings; without a toggle the stars are read-only. */
+  favorites?: readonly string[]; onToggleFavorite?: (modelId: string) => void;
+  /** The models saved for Plan and Act with this agent. */
+  modeModels?: { plan?: string; act?: string }; onModeModel?: (mode: TurnMode, modelId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [showLegacy, setShowLegacy] = useState(false);
   const [choosingHarness, setChoosingHarness] = useState(false);
-  const [favorites, setFavorites] = useState(readModelFavorites);
+  const favorites = props.favorites ?? [];
   const anchor = useRef<HTMLDivElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const search = useRef<HTMLInputElement>(null);
@@ -49,12 +52,6 @@ export function AgentModelPicker(props: {
     document.addEventListener("keydown", escape);
     return () => { document.removeEventListener("pointerdown", dismiss); document.removeEventListener("keydown", escape); };
   }, [open]);
-  function toggleFavorite(id: string) {
-    const key = modelFavoriteKey(props.agentId, id);
-    const next = favorite(id) ? favorites.filter((item) => item !== key) : [...favorites, key].slice(-100);
-    setFavorites(next);
-    try { localStorage.setItem("capsule.model-favorites", JSON.stringify(next)); } catch { /* In-memory favorites still work when storage is unavailable. */ }
-  }
   return <div className="menu-select" ref={anchor}>
     <button type="button" className="menu-select-trigger" aria-label="Agent and model" aria-haspopup="dialog" aria-expanded={open}
       onClick={() => setOpen((value) => !value)}>
@@ -108,7 +105,17 @@ export function AgentModelPicker(props: {
             <button type="button" data-model-choice aria-pressed={model.modelId === props.currentModel}
               disabled={props.disabled || props.availability.state === "unavailable"}
               onClick={() => { props.onModel(model.modelId); close(); }}><span>{model.name}</span><small>{model.modelId}</small></button>
-            <button type="button" className="model-favorite" aria-label={`${favorite(model.modelId) ? "Unfavorite" : "Favorite"} ${model.name}`} aria-pressed={favorite(model.modelId)} onClick={() => toggleFavorite(model.modelId)}>{favorite(model.modelId) ? "★" : "☆"}</button>
+            {props.onModeModel && (["plan", "act"] as const).map((mode) => {
+              const label = mode === "plan" ? "Plan" : "Act";
+              const chosen = props.modeModels?.[mode] === model.modelId;
+              return <button type="button" key={mode} className={`model-mode-use${chosen ? " is-chosen" : ""}`} aria-pressed={chosen}
+                aria-label={chosen ? `Stop using ${model.name} for ${label} mode` : `Use ${model.name} for ${label} mode`}
+                title={chosen ? `Used for ${label} mode. Click to stop.` : `Use for ${label} mode`}
+                onClick={() => props.onModeModel?.(mode, model.modelId)}>{label}</button>;
+            })}
+            <button type="button" className="model-favorite" aria-label={`${favorite(model.modelId) ? "Unfavorite" : "Favorite"} ${model.name}`} aria-pressed={favorite(model.modelId)}
+              disabled={!props.onToggleFavorite} title="Favorite. Cycle favorites (⌥⌘M)"
+              onClick={() => props.onToggleFavorite?.(model.modelId)}>{favorite(model.modelId) ? "★" : "☆"}</button>
           </div>)}
           {!filtered.length && <p className="agent-model-empty" role="status">{props.loading ? "Loading models…" : props.error ?? (models.length ? "No matching models." : harness?.readiness === "missing_cli" ? harness.detail : props.liveHarnessId ? props.availability.detail : "This agent has not reported model choices. Its default will be used.")}</p>}
           {!filtered.length && needsSignIn ? <p className="agent-model-note">{harness?.loginHint ?? `Sign in to ${agent?.name ?? "this agent"} in a terminal`}, then retry.</p> : null}

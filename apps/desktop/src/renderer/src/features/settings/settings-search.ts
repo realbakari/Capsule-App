@@ -81,6 +81,8 @@ export const SETTINGS_SEARCH_ITEMS: SettingsSearchItem[] = [
   { title: "Web search", section: "agents", keywords: ["internet", "fetch", "web access"] },
   { title: "Sandbox", section: "agents", keywords: ["filesystem", "safety"] },
   { title: "Output detail", section: "agents", keywords: ["verbose", "concise"] },
+  { title: "Start in Plan mode", section: "agents", keywords: ["plan", "act", "read only", "new conversation"] },
+  { title: "Plan and Act models", section: "agents", keywords: ["plan", "act", "model", "mode"] },
   { title: "Reasoning summary", section: "agents", keywords: ["thinking", "chain of thought", "model", "effort"] },
   { title: "skills.sh token", section: "agents", keywords: ["api key", "credential"] },
 

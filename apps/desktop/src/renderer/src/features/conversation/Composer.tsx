@@ -1,5 +1,9 @@
 import { contextTone } from "../../lib/context-window";
-import { agentControls, reportedAgentControls, harnessCapabilities } from "@capsule/shared";
+import { agentControls, reportedAgentControls, harnessCapabilities, nextFavoriteModel, planModeSupport, withoutPlanChoice, type PlanRoute } from "@capsule/shared";
+import { TurnModeChip } from "./TurnModeChip";
+import "./plan-mode.css";
+import { PlanHandoff } from "./PlanHandoff";
+import { CYCLE_FAVORITE_MODEL_EVENT, latestPlanRun } from "../../lib/turn-mode";
 import { useHarnessDiscovery } from "../../lib/harness-discovery";
 import { AgentControl } from "../harness/AgentControl";
 import { ContextWindowMeter } from "./ContextWindowMeter";
@@ -159,6 +163,11 @@ export function Composer({
     stashCurrentPrompt,
     restorePromptStash,
     deletePromptStash,
+    turnMode,
+    setTurnMode,
+    favoriteModels,
+    toggleFavoriteModel,
+    runs,
   } = workspace;
   const harnesses = workspace.harnesses ?? [];
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -219,6 +228,12 @@ export function Composer({
     !harnessLive && capabilities.route === "direct" && Boolean(capabilityHarness) && capabilityHarness?.readiness !== "missing_cli" && api.isDesktop === true, session?.id);
   const controls = harnessLive ? agentControls(session?.harnessId === agentId ? session : undefined, harnessStatus)
     : reportedAgentControls(discovery.result?.reported?.configOptions);
+  /* The Plan chip owns the plan choice; the mode picker keeps whatever else the agent offers. */
+  const modeControl = withoutPlanChoice(controls.mode);
+  const planOptions = harnessLive ? session?.harnessId === agentId ? harnessStatus?.parsed?.reported?.configOptions : undefined : discovery.result?.reported?.configOptions;
+  const planRoute: PlanRoute = workspace.status?.kind === "mock" ? "mock" : capabilities.route === "direct" ? "direct" : "gateway";
+  const planSupport = planModeSupport({ harnessId: capabilityHarness?.id, harnessName: capabilityHarness?.name ?? agents.find((item) => item.id === agentId)?.name,
+    route: planRoute, options: planOptions, reported: Boolean(planOptions) });
   const gatewayUnavailable = ready && !connected && capabilities.route !== "direct" && workspace.status?.kind !== "mock";
   const models = harnessLive ? session?.harnessId === agentId ? harnessStatus?.parsed?.models : undefined : discovery.result?.models;
   const currentModel =
@@ -395,6 +410,26 @@ export function Composer({
   const selectedHarness = harnesses.find((item) => item.id === agentId);
   const taskEvents = useMemo(() => activeRun ? (events ?? []).filter((event) => event.runId === activeRun.id) : events ?? [], [events, activeRun?.id]);
   const tasks = useMemo(() => tasksFromRunEvents(taskEvents), [taskEvents]);
+  const planTasks = !activeRun && Boolean(latestPlanRun(runs, session?.id));
+  const toggleTurnMode = () => void setTurnMode(turnMode === "plan" ? "act" : "plan");
+  const modelChoices = models?.availableModels.map((model) => model.modelId) ?? [];
+  const chooseModel = (id: string) => harnessLive ? void setHarnessOption("model", id) : workspace.setDraftHarnessConfig({ model: id, options: {} });
+  const cycleFavorite = useRef<() => void>(() => undefined);
+  cycleFavorite.current = () => {
+    if (readOnlyViewer) return;
+    const next = nextFavoriteModel(favoriteModels, agentId, modelChoices, currentModel);
+    if (!next) {
+      workspace.setNotice(modelChoices.length ? "Star models in the model picker to cycle through them with ⌥⌘M." : "This agent has not reported its models yet. Open the model picker to load them.");
+      return;
+    }
+    if (busy || activeRun) { workspace.setNotice("Wait for this turn to finish before changing the model."); return; }
+    if (next !== currentModel) chooseModel(next);
+  };
+  useEffect(() => {
+    const onCycle = () => cycleFavorite.current();
+    window.addEventListener(CYCLE_FAVORITE_MODEL_EVENT, onCycle);
+    return () => window.removeEventListener(CYCLE_FAVORITE_MODEL_EVENT, onCycle);
+  }, []);
 
   return (
     <div ref={composerRef} className={`composer composer-dock composer-overlay-corner-masks${busy ? " composer-dock--with-activity" : ""}${resting ? " composer--resting" : ""}`}>
@@ -414,7 +449,7 @@ export function Composer({
           ))}
         </div>
       )}
-      <ComposerTasks tasks={tasks} running={Boolean(activeRun)} />
+      <ComposerTasks tasks={tasks} running={Boolean(activeRun)} actions={planTasks ? <PlanHandoff compact /> : undefined} />
       <div
         className={`composer-glass${dropping ? " dropping" : ""}${resting ? " composer-glass--resting" : ""}`}
         aria-expanded={!resting}
@@ -587,6 +622,11 @@ export function Composer({
                 return;
               }
             }
+            if (event.key === "Tab" && event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey && !readOnlyViewer) {
+              event.preventDefault();
+              toggleTurnMode();
+              return;
+            }
             if (menuOpen && event.key === "Escape") { event.preventDefault(); setMenuDismissed(true); return; }
             /* With nothing to dismiss, Escape stops the turn that is running, the way the Stop button does. */
             if (!menuOpen && event.key === "Escape" && activeRun && !workspace.stoppingRunIds?.includes(activeRun.id)) { event.preventDefault(); void stopRun(); return; }
@@ -733,18 +773,27 @@ export function Composer({
               disabled={busy || Boolean(activeRun) || api.isDesktop !== true}
               loading={discovery.loading} error={discovery.error} onRetry={discovery.retry}
               onManage={() => setView("runtimes")} onOpenChange={setModelPickerOpen}
-              onAgent={setAgentId} onModel={(id) => harnessLive ? void setHarnessOption("model", id) : workspace.setDraftHarnessConfig({ model: id, options: {} })} />
-            {!harnessLive && capabilities.route === "direct" && (controls.effort || controls.permissions || controls.mode) && <div className="composer-agent-controls">
-              {([ [controls.effort, "Reasoning effort"], [controls.permissions, "Permissions"], [controls.mode, "Agent mode"] ] as const).map(([option, label]) => option && <MenuSelect key={option.id}
+              onAgent={setAgentId} onModel={(id) => harnessLive ? void setHarnessOption("model", id) : workspace.setDraftHarnessConfig({ model: id, options: {} })}
+              favorites={favoriteModels} onToggleFavorite={readOnlyViewer || api.isDesktop === false ? undefined : (id) => void toggleFavoriteModel(agentId, id).catch((error: unknown) => workspace.setNotice(error instanceof Error ? error.message : String(error)))}
+              modeModels={settings?.modeModels[agentId]}
+              onModeModel={api.isDesktop === false ? undefined : (mode, id) => {
+                const current = settings?.modeModels ?? {};
+                const row = { ...current[agentId], [mode]: current[agentId]?.[mode] === id ? undefined : id };
+                void workspace.updateSettings({ modeModels: { ...current, [agentId]: row } }).catch((error: unknown) => workspace.setNotice(error instanceof Error ? error.message : String(error)));
+              }} />
+            {!readOnlyViewer && <TurnModeChip mode={turnMode} support={planSupport} onToggle={toggleTurnMode}
+              disabledReason={busy ? "Wait for the message to send." : undefined} />}
+            {!harnessLive && capabilities.route === "direct" && (controls.effort || controls.permissions || modeControl) && <div className="composer-agent-controls">
+              {([ [controls.effort, "Reasoning effort"], [controls.permissions, "Permissions"], [modeControl, "Agent mode"] ] as const).map(([option, label]) => option && <MenuSelect key={option.id}
                 ariaLabel={label} value={draftConfiguration.options[option.id] ?? option.currentValue ?? ""} placeholder={`${label}: agent default`}
                 options={option.choices.map((choice) => ({ id: choice.value, label: choice.name, detail: choice.description }))}
                 unavailableReason={busy || api.isDesktop !== true ? "Change settings when the desktop is ready." : undefined}
                 onChange={(value) => workspace.setDraftHarnessConfig({ ...draftConfiguration, options: { ...draftConfiguration.options, [option.id]: value } })} />)}
             </div>}
-            {session && harnessLive && capabilities.route === "direct" && (controls.effort || controls.permissions || controls.mode) && <div className="composer-agent-controls">
+            {session && harnessLive && capabilities.route === "direct" && (controls.effort || controls.permissions || modeControl) && <div className="composer-agent-controls">
               {controls.effort && <AgentControl key={`${session.id}:effort`} sessionId={session.id} option={controls.effort} label="Reasoning effort" disabled={busy || Boolean(activeRun)} />}
               {controls.permissions && <AgentControl key={`${session.id}:permissions`} sessionId={session.id} option={controls.permissions} label="Permissions" disabled={busy || Boolean(activeRun)} />}
-              {controls.mode && <AgentControl key={`${session.id}:mode`} sessionId={session.id} option={controls.mode} label="Agent mode" disabled={busy || Boolean(activeRun)} />}
+              {modeControl && <AgentControl key={`${session.id}:mode`} sessionId={session.id} option={modeControl} label="Agent mode" disabled={busy || Boolean(activeRun)} />}
             </div>}
             {harnessLive && capabilities.route !== "direct" && <MenuSelect
               ariaLabel="Permission mode"
