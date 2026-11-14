@@ -24,7 +24,10 @@ export class Handoff {
   draft(sessionId: string): { summary: string } {
     const source = this.requireSession(sessionId);
     const project = this.host.requireProject(source.projectId);
-    return { summary: handoffSummary({ title: source.title, project: project.name }, this.host.repos.listMessages(source.id)) };
+    const messages = this.host.repos.listMessages(source.id);
+    // A handoff not yet sent has no turns of its own; what it knows is the summary it carries.
+    if (!messages.length && source.carryOver?.brief) return { summary: source.carryOver.brief };
+    return { summary: handoffSummary({ title: source.title, project: project.name }, messages) };
   }
 
   /** The new thread carries the summary ahead of its first prompt and links back. The original is only read. */

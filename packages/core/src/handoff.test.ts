@@ -38,6 +38,7 @@ it("continues a thread in a new one on another agent, carrying the edited summar
     carryOver: { brief: "The parser now rejects trailing commas." },
   });
   expect(engine.listMessages(next.id)).toEqual([]);
+  expect(engine.handoffDraft(next.id).summary).toBe("The parser now rejects trailing commas.");
   expect(engine.listMessages(source.id).length).toBeGreaterThan(0);
 
   const first = await engine.sendMessage({ sessionId: next.id, content: "Add tests", agentId: "codex", mode: "code" });
