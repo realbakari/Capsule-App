@@ -12,6 +12,7 @@ import { SearchDialog, type SearchDialogItem } from "./SearchDialog";
 import { useBranching } from "../conversation/branching/use-branching";
 import { useApplyToLocal } from "../apply/ApplyToLocal";
 import { useThreadShare } from "../share/ThreadShare";
+import { useImportSessions } from "../import/ImportSessions";
 import { initPrompt } from "@capsule/shared";
 import { currentSelection, NO_SELECTION, selectionContext } from "../../lib/selection-share";
 import { detectInstructionFiles } from "../project/ProjectInstructions";
@@ -37,6 +38,7 @@ export function Palette() {
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0], [runs, session?.id]);
   const applyToLocal = useApplyToLocal();
   const share = useThreadShare();
+  const importSessions = useImportSessions();
   const query = paletteQuery.trim().toLowerCase();
   const [retry, setRetry] = useState(0);
   const [search, setSearch] = useState<{ query: string; hits?: SearchResults; error?: string }>();
@@ -96,6 +98,9 @@ export function Palette() {
       { id: "fork-last-turn", label: "Fork conversation from last turn", group: "Actions", icon: <GitBranchIcon size={15} />,
         disabledReason: desktopOnly ?? (!session ? "Open a conversation first." : !lastTurn ? "This conversation has no finished turn to fork from." : undefined),
         onSelect: () => { if (lastTurn) void branching.fork(lastTurn.id, "same"); } },
+      { id: "import-sessions", label: "Import sessions from Claude Code or Codex…", detail: "Sessions those agents ran in this project's folder", group: "Actions", icon: <HistoryIcon size={15} />,
+        disabledReason: importSessions.disabledReason ?? (!project ? "Open a project first." : !project.workingDirectory ? "Attach a folder first. Sessions are matched to the folder they ran in." : undefined),
+        onSelect: () => { if (project) importSessions.openImport(project.id); } },
       { id: "redo-restore", label: "Redo last restore", group: "Actions", icon: <RedoIcon size={15} />,
         disabledReason: desktopOnly ?? (!session ? "Open a conversation first." : !branching.redo ? "Nothing to redo. Redo lasts until the next message after a restore." : undefined),
         onSelect: () => void branching.redoLast() },
@@ -144,7 +149,7 @@ export function Palette() {
       onSelect: () => { setProjectId(message.projectId, message.sessionId); setView("chat"); },
     }));
     return [...actions, ...projectItems, ...threads, ...messages];
-  }, [api, query, currentSearch, projects, sessions, session, project, terminalOpen, setTerminalOpen, attachContext, setNotice, createTask, createProjectFromFolder, pickProjectDirectory, pickFilesToMention, setView, setProjectId, setAboutOpen, openInspector, setAgentCommandsOpen, canGoBack, canGoForward, goBack, goForward, setThreadFind, lastTurn, branching.fork, branching.redo, branching.redoLast, applyToLocal, share, turnMode, setTurnMode, runs]);
+  }, [api, query, currentSearch, projects, sessions, session, project, terminalOpen, setTerminalOpen, attachContext, setNotice, createTask, createProjectFromFolder, pickProjectDirectory, pickFilesToMention, setView, setProjectId, setAboutOpen, openInspector, setAgentCommandsOpen, canGoBack, canGoForward, goBack, goForward, setThreadFind, lastTurn, branching.fork, branching.redo, branching.redoLast, applyToLocal, share, turnMode, setTurnMode, runs, importSessions]);
 
   if (!palette) return null;
   return <SearchDialog title="Search workspace" placeholder="Search commands, projects, conversations…" query={paletteQuery}

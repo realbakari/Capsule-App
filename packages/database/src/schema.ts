@@ -433,4 +433,12 @@ export const MIGRATIONS: Array<{ version: number; sql: string; }> = [
       CREATE INDEX IF NOT EXISTS idx_run_ratings_session ON run_ratings(session_id);
     `,
   },
+  {
+    version: 25,
+    sql: `
+      -- Where a thread came from: an agent's own history, or another thread
+      -- it continues. Written once when the thread is created.
+      ALTER TABLE sessions ADD COLUMN origin TEXT;
+    `,
+  },
 ];

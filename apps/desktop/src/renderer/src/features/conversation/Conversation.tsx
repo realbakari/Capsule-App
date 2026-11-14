@@ -33,6 +33,8 @@ import { ApprovalDetails, APPROVE_ONCE_UNAVAILABLE } from "../harness/ApprovalDe
 import { TurnOutcome } from "./TurnOutcome";
 import { TurnVerification } from "./TurnVerification";
 import { PlanHandoff } from "./PlanHandoff";
+import { ThreadOrigin } from "../import/ThreadOrigin";
+import { ImportHint } from "../import/ImportSessions";
 import { TurnFilesCard } from "./TurnFilesCard";
 import { MessageBody } from "./MessageBody";
 import { MessageAttachments } from "./MessageAttachments";
@@ -541,6 +543,7 @@ export function Conversation() {
         }}
       >
         <div className="thread">
+          {session && <ThreadOrigin session={session} />}
           {historyError && <div className="thread-history-error" role="alert">
             <div><strong>Could not load this conversation</strong><p>{historyError}</p></div>
             <button className="chip" onClick={retryHistory}>Retry</button>
@@ -596,6 +599,7 @@ export function Conversation() {
                   </button>
                 </div>
               )}
+              {project?.workingDirectory && !session?.origin && <ImportHint projectId={project.id} />}
             </div>
           ) : (
             <>

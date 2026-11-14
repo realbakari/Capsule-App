@@ -37,6 +37,7 @@ import { searchSettings } from "../settings/settings-search";
 import { useWorkspace, type View } from "../../lib/workspace";
 import { ActionMenu } from "./ActionMenu";
 import { useThreadShare } from "../share/ThreadShare";
+import { useImportSessions } from "../import/ImportSessions";
 import { MenuSelect } from "./MenuSelect";
 import { AddProjectPicker, type ProjectSourceId } from "./AddProjectPicker";
 import { CloneRepositoryDialog } from "./CloneRepositoryDialog";
@@ -153,6 +154,7 @@ export function Sidebar() {
     harnesses,
   } = useWorkspace();
   const share = useThreadShare();
+  const importSessions = useImportSessions();
   const [menu, setMenu] = useState<MenuState>();
   const bestOfN = useBestOfN();
   const [openComparisons, setOpenComparisons] = useState<Set<string>>(new Set());
@@ -296,6 +298,10 @@ export function Sidebar() {
         void navigator.clipboard.writeText(project.workingDirectory);
         return;
       }
+      if (action === "import-sessions") {
+        importSessions.openImport(id);
+        return;
+      }
       if (action === "delete") deleteProject(id);
       return;
     }
@@ -354,6 +360,7 @@ export function Sidebar() {
         hasFolder: Boolean(project?.workingDirectory),
         canDelete: !inbox,
         canRename: !inbox,
+        canImport: !inbox && !importSessions.disabledReason,
       });
     }
     const session = sessions.find((item) => item.id === id);

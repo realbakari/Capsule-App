@@ -1,0 +1,11 @@
+{"timestamp":"2026-11-03T08:00:00.000Z","type":"session_meta","payload":{"id":"7a1d9e40-2c3b-4f56-9e8d-0b1c2d3e4f50","timestamp":"2026-11-03T08:00:00.000Z","cwd":"__CWD__","originator":"codex_cli_rs","cli_version":"0.1.0"}}
+{"timestamp":"2026-11-03T08:00:01.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<environment_context>\n  <cwd>__CWD__</cwd>\n</environment_context>"}]}}
+{"timestamp":"2026-11-03T08:00:02.000Z","type":"turn_context","payload":{"cwd":"__CWD__","model":"a-model"}}
+{"timestamp":"2026-11-03T08:00:03.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Rename the config loader"}]}}
+{"timestamp":"2026-11-03T08:00:03.100Z","type":"event_msg","payload":{"type":"user_message","message":"Rename the config loader","images":[]}}
+{"timestamp":"2026-11-03T08:00:10.000Z","type":"event_msg","payload":{"type":"agent_reasoning","text":"Searching for the loader."}}
+{"timestamp":"2026-11-03T08:00:20.000Z","type":"event_msg","payload":{"type":"agent_message","message":"Renamed loadConfig to readConfig in three files."}}
+{"timestamp":"2026-11-03T08:00:20.100Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Renamed loadConfig to readConfig in three files."}]}}
+{"timestamp":"2026-11-03T08:05:00.000Z","type":"event_msg","payload":{"type":"user_message","message":"Thanks, now update the docs","images":[]}}
+{"broken json
+{"timestamp":"2026-11-03T08:05:30.000Z","type":"event_msg","payload":{"type":"agent_message","message":"Updated the README."}}

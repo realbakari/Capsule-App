@@ -70,6 +70,7 @@ function sessionParams(session: Session) {
     doneAt: session.doneAt ?? null,
     forkedFrom: session.forkedFrom ? JSON.stringify(session.forkedFrom) : null,
     groupId: session.groupId ?? null,
+    origin: session.origin ? JSON.stringify(session.origin) : null,
     pinned: session.pinned ? 1 : 0,
     pinOrder: session.pinOrder ?? null,
     workingDirectory: session.workingDirectory ?? null,
@@ -81,8 +82,9 @@ function sessionParams(session: Session) {
   };
 }
 
-type SessionRow = Omit<Session, "directSession" | "carryOver" | "pendingStart" | "doneAt" | "forkedFrom" | "groupId"> & {
+type SessionRow = Omit<Session, "directSession" | "carryOver" | "pendingStart" | "doneAt" | "forkedFrom" | "groupId" | "origin"> & {
   groupId?: string | null;
+  origin?: string | null;
   directSession?: string | null;
   carryOver?: string | null;
   pendingStart?: string | null;
@@ -109,6 +111,7 @@ function normalizeSession(row: SessionRow): Session {
     doneAt: row.doneAt || undefined,
     forkedFrom: parseJson<Session["forkedFrom"]>(row.forkedFrom, undefined),
     groupId: row.groupId || undefined,
+    origin: parseJson<Session["origin"]>(row.origin, undefined),
     pinned: Boolean(row.pinned),
     pinOrder: typeof row.pinOrder === "number" ? row.pinOrder : undefined,
     openclawSessionKey: row.openclawSessionKey || undefined,
@@ -259,12 +262,12 @@ export class CapsuleRepositories {
           id, workspace_id, project_id, agent_id, title, mode, state,
           openclaw_session_key, harness_id, harness_state, acp_mode,
           permission_profile, model_override, pinned, pin_order, working_directory, workspace_mode,
-          worktree_branch, direct_session, carry_over, pending_start, done_at, forked_from, turn_mode, group_id, created_at, updated_at
+          worktree_branch, direct_session, carry_over, pending_start, done_at, forked_from, turn_mode, group_id, origin, created_at, updated_at
         ) VALUES (
           @id, @workspaceId, @projectId, @agentId, @title, @mode, @state,
           @openclawSessionKey, @harnessId, @harnessState, @acpMode,
           @permissionProfile, @modelOverride, @pinned, @pinOrder, @workingDirectory, @workspaceMode,
-          @worktreeBranch, @directSession, @carryOver, @pendingStart, @doneAt, @forkedFrom, @turnMode, @groupId, @createdAt, @updatedAt
+          @worktreeBranch, @directSession, @carryOver, @pendingStart, @doneAt, @forkedFrom, @turnMode, @groupId, @origin, @createdAt, @updatedAt
         )`,
       )
       .run(sessionParams(session));
@@ -457,7 +460,7 @@ export class CapsuleRepositories {
                 permission_profile AS permissionProfile, model_override AS modelOverride,
                 pinned, pin_order AS pinOrder, working_directory AS workingDirectory, workspace_mode AS workspaceMode,
                 worktree_branch AS worktreeBranch, direct_session AS directSession, carry_over AS carryOver,
-                pending_start AS pendingStart, done_at AS doneAt, forked_from AS forkedFrom, turn_mode AS turnMode, group_id AS groupId, created_at AS createdAt, updated_at AS updatedAt`;
+                pending_start AS pendingStart, done_at AS doneAt, forked_from AS forkedFrom, turn_mode AS turnMode, group_id AS groupId, origin, created_at AS createdAt, updated_at AS updatedAt`;
     const sql = projectId
       ? `SELECT ${columns} FROM sessions WHERE project_id = ?
          ORDER BY pinned DESC, COALESCE(pin_order, 2147483647) ASC, updated_at DESC`

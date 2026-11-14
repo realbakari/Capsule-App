@@ -39,6 +39,7 @@ export type SessionActionId =
 export type ProjectActionId =
   | "rename"
   | "new-conversation"
+  | "import-sessions"
   | "change-folder"
   | "add-folder"
   | "open-folder"
@@ -132,11 +133,14 @@ export function buildProjectActionMenuItems(state: {
   hasFolder: boolean;
   canDelete: boolean;
   canRename: boolean;
+  /** Import from the agents' own histories; absent where it is unavailable. */
+  canImport?: boolean;
 }): ActionMenuItem[] {
   return [
     { id: "settings", label: "Project settings", icon: "settings" },
     { id: "rename", label: "Rename", icon: "pencil", enabled: state.canRename },
     { id: "new-conversation", label: "New conversation", icon: "plus" },
+    ...(state.canImport ? [{ id: "import-sessions" as const, label: "Import sessions…", icon: "history" as const, enabled: state.hasFolder, title: state.hasFolder ? undefined : "Attach a folder first. Sessions are matched to the folder they ran in." }] : []),
     {
       id: "change-folder",
       label: state.hasFolder ? "Change folder" : "Attach folder",

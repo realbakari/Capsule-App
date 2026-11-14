@@ -12,6 +12,8 @@ import { BestOfNService } from "./best-of-n.js";
 import type { GroupComparison, LeaderboardRow, RatingValue, StartBestOfNInput, StartBestOfNResult, ThreadGroup } from "@capsule/shared";
 import type { BoardCardOp, CreateBoardCardInput } from "@capsule/shared";
 import { Branching, transcriptContext } from "./branching.js";
+import { HistoryImport } from "./history-import.js";
+import type { ImportListing, ImportSessionInput } from "@capsule/shared";
 import type { CommandResult, DiagnosticsResult } from "@capsule/shared";
 import { COMPOSER_COMMAND_TIMEOUT_MS, DIAGNOSTICS_TIMEOUT_MS, findCheckCommand, runContextCommand } from "./context-commands.js";
 
@@ -398,6 +400,7 @@ export class CapsuleEngine {
   private skillsShClient = new SkillsShClient();
   private readonly projectIcons = new ProjectIconCache();
   private readonly branching: Branching;
+  private readonly historyImport: HistoryImport;
 
   private branchingHost(): import("./branching.js").BranchingHost {
     return {
@@ -443,6 +446,17 @@ export class CapsuleEngine {
     });
     this.repos = new CapsuleRepositories(this.db);
     this.branching = new Branching(this.branchingHost());
+    const emitState = (command: "sessions-updated") => this.events.emit("state", { command });
+    this.historyImport = new HistoryImport({
+      repos: this.repos,
+      env: process.env,
+      assertWorkAllowed: () => this.assertWorkAllowed(),
+      requireProject: (id) => this.requireProject(id),
+      route: (agent) => this.usingMock ? "mock" : this.useDirectMode(agent) ? "direct" : "gateway",
+      permissionProfile: () => this.settings.defaultPermission,
+      emit: emitState,
+      log: (message) => this.log(message),
+    });
     this.bestOfN = new BestOfNService(this.bestOfNHost());
     this.keychain = createKeychainAdapter(options.userDataDir, options.secretEncryptor);
     this.sharedChannels = new SharedRelayClient(undefined, createRelayCredentialStore(options.userDataDir, options.secretEncryptor));
@@ -3933,6 +3947,15 @@ export class CapsuleEngine {
 
   forkBranches(sessionId: string): ForkBranchGroup[] {
     return this.branching.branches(sessionId);
+  }
+
+  /** Sessions in the agents' own histories that ran in this project's folder. */
+  listImportableSessions(projectId: string): Promise<ImportListing> {
+    return this.historyImport.list(projectId);
+  }
+
+  importSession(input: ImportSessionInput): Promise<Session> {
+    return this.historyImport.import(input);
   }
 
   private async hydrateSecrets(): Promise<void> {

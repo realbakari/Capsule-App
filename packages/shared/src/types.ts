@@ -273,6 +273,8 @@ export interface Session {
   turnMode?: import("./plan-mode.js").TurnMode;
   /** Set on a candidate of a best-of-N comparison: the ThreadGroup it belongs to. Fixed at creation. */
   groupId?: string;
+  /** Imported from an agent's own history, or continued from another thread. Fixed at creation. */
+  origin?: import("./thread-origin.js").ThreadOrigin;
   createdAt: string;
   updatedAt: string;
 }

@@ -87,6 +87,7 @@ import {
   type GitDiffScope,
   type HunkApply,
   type UpdateProjectInput,
+  isImportAgentId,
 } from "@capsule/shared";
 import { readAgentProcesses } from "@capsule/filesystem";
 import { startRemoteServer, type RemoteServerHandle } from "@capsule/remote";
@@ -1956,6 +1957,13 @@ function registerIpc(): void {
     return requireEngine().forkSession({ sessionId: id(value.sessionId, channel, 0), runId: id(value.runId, channel, 0), workspace: value.workspace });
   });
   handleArgs(IPC_CHANNELS.forkBranches, [id], (sessionId: string) => requireEngine().forkBranches(sessionId));
+  handleArgs(IPC_CHANNELS.listImportableSessions, [id], (projectId: string) => requireEngine().listImportableSessions(projectId));
+  handle(IPC_CHANNELS.importSession, (input) => {
+    const channel = IPC_CHANNELS.importSession;
+    const value = input && typeof input === "object" ? input as { projectId?: unknown; agent?: unknown; nativeSessionId?: unknown } : {};
+    if (!isImportAgentId(value.agent)) throw new Error(`${channel}: choose an agent Capsule can import from.`);
+    return requireEngine().importSession({ projectId: id(value.projectId, channel, 0), agent: value.agent, nativeSessionId: str(value.nativeSessionId, channel, 0) });
+  });
   handleArgs(IPC_CHANNELS.worktreeApplyStatus, [id], (sessionId: string) => requireEngine().worktreeApplyStatus(sessionId));
   handleArgs(IPC_CHANNELS.applyWorktreeToLocal, [id], (sessionId: string) => requireEngine().applyWorktreeToLocal(sessionId));
   handleArgs(IPC_CHANNELS.undoApplyToLocal, [id, str], (sessionId: string, undoRef: string) => requireEngine().undoApplyToLocal(sessionId, undoRef));
