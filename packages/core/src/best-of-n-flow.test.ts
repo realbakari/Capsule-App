@@ -99,8 +99,9 @@ describe("best-of-N on the mock runtime", { timeout: 60_000 }, () => {
     const { engine, project, repository } = await open();
     const { group, sessionIds } = await engine.startBestOfN({ projectId: project.id, prompt: "Write a note", candidates: [{ harnessId: "claude" }, { harnessId: "codex" }] });
     await settled(engine, sessionIds);
-    const [winner] = sessionIds.map((id) => engine.repos.getSession(id)!);
+    const [winner, other] = sessionIds.map((id) => engine.repos.getSession(id)!);
     writeFileSync(path.join(winner!.workingDirectory!, "note.txt"), "one\ntwo\n");
+    writeFileSync(path.join(other!.workingDirectory!, "other.txt"), "other\n");
 
     const comparison = await engine.compareThreadGroup(group.id);
     expect(comparison.candidates[0]!.diff).toEqual({ files: [{ path: "note.txt", added: 2, removed: 0 }], added: 2, removed: 0 });
@@ -109,6 +110,8 @@ describe("best-of-N on the mock runtime", { timeout: 60_000 }, () => {
     expect(result).toMatchObject({ applied: true, files: ["note.txt"], conflicts: [] });
     expect(readFileSync(path.join(repository, "note.txt"), "utf8")).toBe("one\ntwo\n");
     expect(engine.listThreadGroups()[0]).toMatchObject({ winnerSessionId: winner!.id, decidedAt: expect.any(String) });
+    expect(await engine.keepCandidate(group.id, other!.id)).toMatchObject({ applied: false, detail: expect.stringMatching(/Another candidate is kept/) });
+    expect(existsSync(path.join(repository, "other.txt"))).toBe(false);
     expect(engine.resultsLeaderboard()).toEqual([
       { harnessId: "claude", model: "", compared: 1, kept: 1, up: 0, down: 0 },
       { harnessId: "codex", model: "", compared: 1, kept: 0, up: 0, down: 0 },

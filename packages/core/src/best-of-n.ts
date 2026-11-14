@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import {
+  ANOTHER_KEPT,
   aggregateLeaderboard,
   candidateTitle,
   createId,
@@ -188,6 +189,7 @@ export class BestOfNService {
     const group = this.requireGroup(groupId);
     const session = this.requireMember(group, sessionId);
     if (session.state === "archived") return { applied: false, files: [], conflicts: [], detail: "Restore this thread before keeping it." };
+    if (group.winnerSessionId && group.winnerSessionId !== sessionId) return { applied: false, files: [], conflicts: [], detail: ANOTHER_KEPT };
     const result = await this.host.applyToLocal(sessionId);
     if (result.applied) {
       this.host.repos.setThreadGroupWinner(group.id, sessionId, this.host.now());

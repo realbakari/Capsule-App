@@ -104,9 +104,13 @@ export function candidatePhase(candidate: Pick<CandidateSummary, "run" | "startE
   return "running";
 }
 
+/** A second keep would stack two candidates' changes in one checkout. */
+export const ANOTHER_KEPT = "Another candidate is kept. Undo its apply to keep this one instead.";
+
 /** Why "Keep this one" cannot run for a candidate, or undefined when it can. */
 export function keepBlocker(group: ThreadGroup, candidate: CandidateSummary): string | undefined {
   if (group.winnerSessionId === candidate.sessionId) return "Already kept.";
+  if (group.winnerSessionId) return ANOTHER_KEPT;
   if (candidate.archived) return "Restore this thread first.";
   if (candidate.worktree !== "present") return "This candidate's worktree is missing.";
   const phase = candidatePhase(candidate);
