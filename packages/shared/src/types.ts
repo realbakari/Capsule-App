@@ -278,6 +278,8 @@ export interface Session {
   origin?: import("./thread-origin.js").ThreadOrigin;
   /** A worktree thread's pull request as last read. Written on its own, never by a turn. */
   pullRequest?: import("./thread-pull-request.js").ThreadPullRequest;
+  /** Set while a worktree thread is paused. Written on its own, never by a turn. */
+  paused?: import("./thread-pause.js").ThreadPause;
   createdAt: string;
   updatedAt: string;
 }

@@ -21,7 +21,11 @@ export type ActionMenuIcon =
   | "message"
   | "history"
   | "merge"
-  | "link";
+  | "link"
+  | "pause"
+  | "play"
+  | "tag"
+  | "bookmark";
 
 export type SessionActionId =
   | "rename"
@@ -31,6 +35,10 @@ export type SessionActionId =
   | "open-folder"
   | "copy-path"
   | "apply-to-local"
+  | "pause"
+  | "resume"
+  | "tags"
+  | "keep"
   | "export-markdown"
   | "copy-markdown"
   | "share-link"
@@ -81,8 +89,17 @@ export function copyAnchor(rect: {
   };
 }
 
+/** Thread lifecycle entries; each is absent where it does not apply or the device may only read. */
+export interface ThreadMenuState {
+  pause?: "pause" | "resume";
+  tags?: boolean;
+  /** A temporary thread can be kept. */
+  keep?: boolean;
+}
+
 export function buildSessionActionMenuItems(state: {
   pinned: boolean;
+  thread?: ThreadMenuState;
   hasFolder?: boolean;
   /** Present for a worktree thread on the desktop; the reason disables it. */
   applyToLocal?: { disabledReason?: string };
@@ -99,6 +116,14 @@ export function buildSessionActionMenuItems(state: {
       icon: state.pinned ? "pin-off" : "pin",
     },
     { id: "generate-title", label: "Generate title", icon: "refresh" },
+    ...(state.thread?.keep ? [{ id: "keep" as const, label: "Keep this conversation", icon: "bookmark" as const, separatorBefore: true }] : []),
+    ...(state.thread?.tags ? [{ id: "tags" as const, label: "Tags…", icon: "tag" as const, separatorBefore: !state.thread.keep }] : []),
+    ...(state.thread?.pause ? [{
+      id: state.thread.pause,
+      label: state.thread.pause === "pause" ? "Pause" : "Resume",
+      icon: state.thread.pause === "pause" ? "pause" as const : "play" as const,
+      separatorBefore: !state.thread.keep && !state.thread.tags,
+    }] : []),
     ...(state.hasFolder
       ? [
           {

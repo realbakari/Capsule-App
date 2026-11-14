@@ -165,6 +165,8 @@ export const IPC_CHANNELS = {
   setHarnessConfig: "capsule:setHarnessConfig",
   listHarnessSessions: "capsule:listHarnessSessions",
   pinSession: "capsule:pinSession",
+  pauseSession: "capsule:pauseSession",
+  resumeSession: "capsule:resumeSession",
   reorderPinnedSessions: "capsule:reorderPinnedSessions",
   searchFiles: "capsule:searchFiles",
   regenerateTitle: "capsule:regenerateTitle",

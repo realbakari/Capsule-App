@@ -101,6 +101,7 @@ export {
 } from "./process-tree.js";
 export { readProjectFile } from "./project-file.js";
 export { createWorktree, removeWorktree, restoreWorktree, setAsideWorktree, type WorktreeResult } from "./worktrees.js";
+export { restorePausedWorktree, savePausedWorktree, type PausedWorktree, type ResumeOutcome } from "./pause-snapshot.js";
 export {
   isSupportedProjectIcon,
   readProjectIconDataUrl,

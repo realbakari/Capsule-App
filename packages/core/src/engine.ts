@@ -15,6 +15,7 @@ import { AgentTasks, type AgentTaskResult } from "./agent-tasks.js";
 import { Branching, transcriptContext } from "./branching.js";
 import { HistoryImport } from "./history-import.js";
 import { Handoff } from "./handoff.js";
+import { ThreadPauses } from "./thread-pause.js";
 import { handoffContext, type HandoffInput, type ImportListing, type ImportSessionInput } from "@capsule/shared";
 import type { CommandResult, DiagnosticsResult } from "@capsule/shared";
 import { COMPOSER_COMMAND_TIMEOUT_MS, DIAGNOSTICS_TIMEOUT_MS, findCheckCommand, runContextCommand } from "./context-commands.js";
@@ -420,6 +421,7 @@ export class CapsuleEngine {
   private readonly branching: Branching;
   private readonly historyImport: HistoryImport;
   private readonly handoff: Handoff;
+  private readonly pauses: ThreadPauses;
 
   private branchingHost(): import("./branching.js").BranchingHost {
     return {
@@ -477,6 +479,15 @@ export class CapsuleEngine {
       log: (message) => this.log(message),
     });
     this.handoff = new Handoff({ repos: this.repos, assertWorkAllowed: () => this.assertWorkAllowed(), requireProject: (id) => this.requireProject(id), emit: emitState, log: (message) => this.log(message) });
+    this.pauses = new ThreadPauses({
+      repos: this.repos,
+      assertWorkAllowed: () => this.assertWorkAllowed(),
+      requireProject: (id) => this.requireProject(id),
+      listProjectActionRuns: (projectId, sessionId) => this.listProjectActionRuns(projectId, sessionId),
+      stopProjectAction: (projectId, actionId, sessionId) => this.stopProjectAction(projectId, actionId, sessionId),
+      emit: () => emitState("sessions-updated"),
+      log: (message) => this.log(message),
+    });
     this.bestOfN = new BestOfNService(this.bestOfNHost());
     this.keychain = createKeychainAdapter(options.userDataDir, options.secretEncryptor);
     this.sharedChannels = new SharedRelayClient(undefined, createRelayCredentialStore(options.userDataDir, options.secretEncryptor));
@@ -1961,6 +1972,15 @@ export class CapsuleEngine {
     return session;
   }
 
+  /** Save a worktree thread's work to a hidden ref and stop the actions it started. */
+  pauseSession(id: string): Promise<Session> {
+    return this.pauses.pause(id);
+  }
+
+  resumeSession(id: string): Promise<{ session: Session; detail: string }> {
+    return this.pauses.resume(id);
+  }
+
   pinSession(id: string, pinned: boolean): Session {
     const session = this.requireSession(id);
     session.pinned = pinned;
@@ -2125,6 +2145,7 @@ export class CapsuleEngine {
       throw new Error("This thread already has an active turn. Stop it or wait before sending another message.");
     }
     const thread = this.requireSession(input.sessionId);
+    if (thread.paused) throw new Error("This conversation is paused. Resume it to continue.");
     const release = this.folderActivity.enter(this.cwdFor(thread, this.requireProject(thread.projectId)));
     this.admittingSessions.add(input.sessionId);
     try {

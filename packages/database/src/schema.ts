@@ -449,4 +449,11 @@ export const MIGRATIONS: Array<{ version: number; sql: string; }> = [
       ALTER TABLE sessions ADD COLUMN pull_request TEXT;
     `,
   },
+  {
+    version: 27,
+    sql: `
+      -- A paused worktree thread: where its work was saved and what was stopped.
+      ALTER TABLE sessions ADD COLUMN paused TEXT;
+    `,
+  },
 ];

@@ -669,6 +669,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     ? "This is a shared, read-only conversation."
     : api.isDesktop === false && api.remoteMode !== "control"
     ? "This browser is read-only. Create a conversation-control pairing link from the desktop to send messages."
+    : session?.paused
+    ? "This conversation is paused. Resume it from its menu to continue."
     : harnessPreflightReason({
     harness: mode === "code" ? selectedHarness : undefined,
     connected,

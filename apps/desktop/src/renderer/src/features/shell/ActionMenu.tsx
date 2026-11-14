@@ -10,6 +10,10 @@ import {
 } from "../../lib/action-menu";
 import {
   ArchiveIcon,
+  BookmarkIcon,
+  HashIcon,
+  PauseIcon,
+  PlayIcon,
   BellIcon,
   BellOffIcon,
   CopyIcon,
@@ -53,6 +57,10 @@ const ICONS: Record<ActionMenuIcon, typeof PencilIcon> = {
   history: HistoryIcon,
   merge: GitMergeIcon,
   link: LinkIcon,
+  pause: PauseIcon,
+  play: PlayIcon,
+  tag: HashIcon,
+  bookmark: BookmarkIcon,
 };
 
 export function ActionMenu({

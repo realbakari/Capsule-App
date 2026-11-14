@@ -2360,3 +2360,31 @@ draft.
   draft, open, in that precedence. `ThreadPullRequestMark`
   (`features/threads/ThreadMarks.tsx`) renders it in the row's meta, before the
   time or status, with the state in words as its title.
+
+## Thread lifecycle: pause and resume
+
+- **Why a hidden ref, not a WIP commit.** A WIP commit lands on the branch an
+  open pull request is built from; a push (the user's or a watch-and-fix turn's)
+  publishes it, and unwinding it on resume means a reset that can drop what
+  landed meanwhile. `savePausedWorktree` (`@capsule/filesystem/pause-snapshot`)
+  writes `refs/capsule/checkpoints/<thread>/paused/latest`: a commit of the
+  folder's tree (untracked included, ignored excluded) whose second parent holds
+  the staging area's tree. No branch, file or index changes.
+- **Resume** (`restorePausedWorktree`): unchanged folder, no-op; folder clean at
+  the paused head (or removed, then re-added on its branch), `read-tree --reset -u`
+  the snapshot tree and `read-tree` the index tree, exact; anything else, the
+  folder is kept and so is the ref. The ref goes when the thread is deleted,
+  with its checkpoints.
+- **Processes.** `ThreadPauses` (`core/thread-pause.ts`) stops the thread's own
+  running project actions. The main-process handler then stops embedded
+  terminals whose recorded cwd is inside the worktree (`terminalFolders`). Only
+  PIDs Capsule spawned are signalled. Stopped actions are not restarted.
+- **State.** `Session.paused` (`ThreadPause`), `sessions.paused` (migration 27),
+  written only by `setSessionPaused`. `sendMessage` refuses a paused thread, and
+  the composer shows the reason. Pause refuses while a turn runs.
+- **Routes and agents.** The agent's session is not touched, so direct and
+  Gateway threads behave the same, for every harness.
+- **Surfaces.** Row and titlebar menus (`useThreadActions`), palette "Pause
+  conversation" / "Resume conversation", a Paused status in the row. Both
+  channels (`pauseSession`, `resumeSession`) are write-scoped and the entries are
+  hidden on a paired device.

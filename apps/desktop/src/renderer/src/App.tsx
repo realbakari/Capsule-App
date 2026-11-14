@@ -26,6 +26,7 @@ import { ApplyToLocalProvider } from "./features/apply/ApplyToLocal";
 import { ThreadShareProvider } from "./features/share/ThreadShare";
 import { ImportSessionsProvider } from "./features/import/ImportSessions";
 import { HandoffProvider } from "./features/handoff/Handoff";
+import { ThreadActionsProvider } from "./features/threads/ThreadActions";
 import { BestOfNProvider } from "./features/best-of-n/BestOfN";
 import { StartupScreen, useAppClosing } from "./features/shell/StartupScreen";
 
@@ -127,7 +128,9 @@ export default function App() {
           <BestOfNProvider>
             <ImportSessionsProvider>
               <HandoffProvider>
-                <Shell />
+                <ThreadActionsProvider>
+                  <Shell />
+                </ThreadActionsProvider>
               </HandoffProvider>
             </ImportSessionsProvider>
           </BestOfNProvider>

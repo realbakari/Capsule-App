@@ -10,3 +10,4 @@
 .thread-pr.merged { color: var(--blue, #5b9fd4); }
 .thread-pr.draft,
 .thread-pr.closed { color: var(--text-faint); }
+.thread-status.paused { color: var(--text-muted); }

@@ -12,6 +12,7 @@ import {
 } from "../../lib/action-menu";
 import { showNativeContextMenu } from "../../lib/bridge";
 import { ThreadPullRequestMark } from "../threads/ThreadMarks";
+import { useThreadActions } from "../threads/ThreadActions";
 import { CHANNEL_PREFS_EVENT, loadChannelPrefs, unreadChannelCount } from "../../lib/channel-prefs";
 import {
   compactRelativeTime,
@@ -58,6 +59,7 @@ import {
   InboxIcon,
   MessageSquareIcon,
   MoreHorizontalIcon,
+  PauseIcon,
   PinIcon,
   PlusIcon,
   ChartIcon,
@@ -209,6 +211,7 @@ export function Sidebar() {
   const [restLimit, setRestLimit] = useState<Record<string, number>>({});
   const [recentLimit, setRecentLimit] = useState(20);
   const [grouping, setGrouping] = useState(() => readSidebarGrouping(() => localStorage.getItem(SIDEBAR_GROUPING_KEY)));
+  const threadActions = useThreadActions();
   const [expandedGroups, setExpandedGroups] = useState<Set<SidebarStatusGroupId>>(new Set());
   const latestRuns = useMemo(() => latestSidebarRuns(projectRuns), [projectRuns]);
   const pendingApprovals = approvals.filter((item) => item.status === "pending").length;
@@ -312,6 +315,7 @@ export function Sidebar() {
     const folder =
       session?.workingDirectory ||
       projects.find((item) => item.id === session?.projectId)?.workingDirectory;
+    if (session && threadActions.run(action, session)) return;
     if (action === "rename") {
       setEditing({ kind: "session", id, value: session?.title ?? "", location });
       return;
@@ -376,6 +380,7 @@ export function Sidebar() {
       projects.find((item) => item.id === session?.projectId)?.workingDirectory;
     return buildSessionActionMenuItems({
       pinned: Boolean(session?.pinned),
+      ...(session ? { thread: threadActions.menuState(session) } : {}),
       hasFolder: Boolean(folder),
       share: { exportOffered: share.exportOffered, shareOffered: share.shareOffered },
       handoff: !handoff.disabledReason,
@@ -544,7 +549,9 @@ export function Sidebar() {
         </span>
         <span className="thread-meta">
           <ThreadPullRequestMark session={session} />
-          {kind === "working" ? (
+          {session.paused ? (
+            <span className="thread-status paused" title="Paused: its work is saved and its processes are stopped"><PauseIcon size={10} />Paused</span>
+          ) : kind === "working" ? (
             <span className="thread-status working">
               Working
               {startedAt ? <WorkingDuration startedAt={startedAt} /> : null}

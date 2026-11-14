@@ -770,6 +770,8 @@ function reportFullscreen(): void {
  */
 const terminals = new Map<string, PtySession>();
 const terminalOutputs = new Map<string, TerminalOutputFlow>();
+/** Each open terminal's folder, so pausing a thread stops only the terminals opened in its worktree. */
+const terminalFolders = new Map<string, string>();
 
 /*
  * Resource sampling.
@@ -874,6 +876,19 @@ function stopTerminal(id: string): void {
   terminalOutputs.delete(id);
   terminals.get(id)?.kill();
   terminals.delete(id);
+  terminalFolders.delete(id);
+}
+
+function stopTerminalsIn(folder: string): number {
+  const root = path.resolve(folder);
+  let stopped = 0;
+  for (const [id, cwd] of terminalFolders) {
+    const resolved = path.resolve(cwd);
+    if (resolved !== root && !resolved.startsWith(root + path.sep)) continue;
+    stopTerminal(id);
+    stopped += 1;
+  }
+  return stopped;
 }
 
 function stopAllTerminals(): void {
@@ -1207,6 +1222,12 @@ function registerIpc(): void {
   handleArgs(IPC_CHANNELS.setSessionTurnMode, [id, str], (sessionId: string, mode: string) =>
     requireEngine().setSessionTurnMode(sessionId, mode as import("@capsule/shared").TurnMode),
   );
+  handleArgs(IPC_CHANNELS.pauseSession, [id], async (sessionId: string) => {
+    const session = await requireEngine().pauseSession(sessionId);
+    if (session.workingDirectory) stopTerminalsIn(session.workingDirectory);
+    return session;
+  });
+  handleArgs(IPC_CHANNELS.resumeSession, [id], (sessionId: string) => requireEngine().resumeSession(sessionId));
   handleArgs(IPC_CHANNELS.archiveSession, [id], (sessionId: string) => {
     const session = requireEngine().archiveSession(sessionId);
     backgroundBrowsers.close(sessionId);
@@ -1342,12 +1363,14 @@ function registerIpc(): void {
           onExit: (code) => {
             release();
             terminals.delete(id);
+            terminalFolders.delete(id);
             exitCode = code;
             output.end();
           },
         },
       );
       terminals.set(id, session);
+      terminalFolders.set(id, cwd);
       return { id, pid: session.pid, cwd };
     } catch (error) {
       output.dispose();
