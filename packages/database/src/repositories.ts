@@ -1,4 +1,6 @@
 import type {
+  RunRating,
+  ThreadGroup,
   Agent,
   ApprovalRequest,
   Artifact,
@@ -67,6 +69,7 @@ function sessionParams(session: Session) {
     pendingStart: session.pendingStart ? JSON.stringify(session.pendingStart) : null,
     doneAt: session.doneAt ?? null,
     forkedFrom: session.forkedFrom ? JSON.stringify(session.forkedFrom) : null,
+    groupId: session.groupId ?? null,
     pinned: session.pinned ? 1 : 0,
     pinOrder: session.pinOrder ?? null,
     workingDirectory: session.workingDirectory ?? null,
@@ -78,7 +81,8 @@ function sessionParams(session: Session) {
   };
 }
 
-type SessionRow = Omit<Session, "directSession" | "carryOver" | "pendingStart" | "doneAt" | "forkedFrom"> & {
+type SessionRow = Omit<Session, "directSession" | "carryOver" | "pendingStart" | "doneAt" | "forkedFrom" | "groupId"> & {
+  groupId?: string | null;
   directSession?: string | null;
   carryOver?: string | null;
   pendingStart?: string | null;
@@ -104,6 +108,7 @@ function normalizeSession(row: SessionRow): Session {
     pendingStart: readPendingStart(row.pendingStart),
     doneAt: row.doneAt || undefined,
     forkedFrom: parseJson<Session["forkedFrom"]>(row.forkedFrom, undefined),
+    groupId: row.groupId || undefined,
     pinned: Boolean(row.pinned),
     pinOrder: typeof row.pinOrder === "number" ? row.pinOrder : undefined,
     openclawSessionKey: row.openclawSessionKey || undefined,
@@ -254,12 +259,12 @@ export class CapsuleRepositories {
           id, workspace_id, project_id, agent_id, title, mode, state,
           openclaw_session_key, harness_id, harness_state, acp_mode,
           permission_profile, model_override, pinned, pin_order, working_directory, workspace_mode,
-          worktree_branch, direct_session, carry_over, pending_start, done_at, forked_from, turn_mode, created_at, updated_at
+          worktree_branch, direct_session, carry_over, pending_start, done_at, forked_from, turn_mode, group_id, created_at, updated_at
         ) VALUES (
           @id, @workspaceId, @projectId, @agentId, @title, @mode, @state,
           @openclawSessionKey, @harnessId, @harnessState, @acpMode,
           @permissionProfile, @modelOverride, @pinned, @pinOrder, @workingDirectory, @workspaceMode,
-          @worktreeBranch, @directSession, @carryOver, @pendingStart, @doneAt, @forkedFrom, @turnMode, @createdAt, @updatedAt
+          @worktreeBranch, @directSession, @carryOver, @pendingStart, @doneAt, @forkedFrom, @turnMode, @groupId, @createdAt, @updatedAt
         )`,
       )
       .run(sessionParams(session));
@@ -287,6 +292,68 @@ export class CapsuleRepositories {
     this.db.sqlite
       .prepare("UPDATE sessions SET pending_start = ?, done_at = ?, updated_at = ? WHERE id = ?")
       .run(session.pendingStart ? JSON.stringify(session.pendingStart) : null, session.doneAt ?? null, session.updatedAt, session.id);
+  }
+
+  /** Written once, when a comparison creates the thread; turn updates never carry it. */
+  setSessionGroup(sessionId: string, groupId: string): void {
+    this.db.sqlite.prepare("UPDATE sessions SET group_id = ? WHERE id = ?").run(groupId, sessionId);
+  }
+
+  insertThreadGroup(group: ThreadGroup): void {
+    this.db.sqlite
+      .prepare("INSERT INTO thread_groups (id, project_id, kind, prompt, candidates, winner_session_id, decided_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(group.id, group.projectId, group.kind, group.prompt, JSON.stringify(group.candidates), group.winnerSessionId ?? null, group.decidedAt ?? null, group.createdAt);
+  }
+
+  listThreadGroups(): ThreadGroup[] {
+    const rows = this.db.sqlite
+      .prepare(`SELECT id, project_id AS projectId, kind, prompt, candidates, winner_session_id AS winnerSessionId, decided_at AS decidedAt, created_at AS createdAt
+        FROM thread_groups ORDER BY created_at DESC`)
+      .all() as Array<Record<string, string | null>>;
+    return rows.map((row) => ({
+      id: row.id!,
+      projectId: row.projectId!,
+      kind: "best-of-n",
+      prompt: row.prompt!,
+      candidates: parseJson<ThreadGroup["candidates"]>(row.candidates, []),
+      createdAt: row.createdAt!,
+      ...(row.winnerSessionId ? { winnerSessionId: row.winnerSessionId } : {}),
+      ...(row.decidedAt ? { decidedAt: row.decidedAt } : {}),
+    }));
+  }
+
+  getThreadGroup(id: string): ThreadGroup | undefined {
+    return this.listThreadGroups().find((group) => group.id === id);
+  }
+
+  /** The kept candidate, or none when the keep was undone. */
+  setThreadGroupWinner(id: string, winnerSessionId: string | undefined, decidedAt: string | undefined): void {
+    this.db.sqlite
+      .prepare("UPDATE thread_groups SET winner_session_id = ?, decided_at = ? WHERE id = ?")
+      .run(winnerSessionId ?? null, decidedAt ?? null, id);
+  }
+
+  deleteThreadGroup(id: string): void {
+    this.db.sqlite.prepare("DELETE FROM thread_groups WHERE id = ?").run(id);
+  }
+
+  setRunRating(rating: RunRating): void {
+    this.db.sqlite
+      .prepare(`INSERT INTO run_ratings (run_id, session_id, harness_id, model, value, created_at) VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(run_id) DO UPDATE SET value = excluded.value, harness_id = excluded.harness_id, model = excluded.model, created_at = excluded.created_at`)
+      .run(rating.runId, rating.sessionId, rating.harnessId, rating.model, rating.value, rating.createdAt);
+  }
+
+  clearRunRating(runId: string): void {
+    this.db.sqlite.prepare("DELETE FROM run_ratings WHERE run_id = ?").run(runId);
+  }
+
+  listRunRatings(sessionId?: string): RunRating[] {
+    const columns = "run_id AS runId, session_id AS sessionId, harness_id AS harnessId, model, value, created_at AS createdAt";
+    const rows = (sessionId
+      ? this.db.sqlite.prepare(`SELECT ${columns} FROM run_ratings WHERE session_id = ?`).all(sessionId)
+      : this.db.sqlite.prepare(`SELECT ${columns} FROM run_ratings`).all()) as RunRating[];
+    return rows.filter((row) => row.value === 1 || row.value === -1);
   }
 
   deleteSession(id: string): void {
@@ -390,7 +457,7 @@ export class CapsuleRepositories {
                 permission_profile AS permissionProfile, model_override AS modelOverride,
                 pinned, pin_order AS pinOrder, working_directory AS workingDirectory, workspace_mode AS workspaceMode,
                 worktree_branch AS worktreeBranch, direct_session AS directSession, carry_over AS carryOver,
-                pending_start AS pendingStart, done_at AS doneAt, forked_from AS forkedFrom, turn_mode AS turnMode, created_at AS createdAt, updated_at AS updatedAt`;
+                pending_start AS pendingStart, done_at AS doneAt, forked_from AS forkedFrom, turn_mode AS turnMode, group_id AS groupId, created_at AS createdAt, updated_at AS updatedAt`;
     const sql = projectId
       ? `SELECT ${columns} FROM sessions WHERE project_id = ?
          ORDER BY pinned DESC, COALESCE(pin_order, 2147483647) ASC, updated_at DESC`

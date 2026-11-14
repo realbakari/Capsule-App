@@ -403,4 +403,34 @@ export const MIGRATIONS: Array<{ version: number; sql: string; }> = [
       CREATE INDEX IF NOT EXISTS idx_share_grants_session ON share_grants(session_id, created_at);
     `,
   },
+  {
+    version: 24,
+    sql: `
+      -- Best-of-N: a comparison is a group of ordinary threads. The thread
+      -- carries its group, written once when it is created.
+      ALTER TABLE sessions ADD COLUMN group_id TEXT;
+      CREATE INDEX IF NOT EXISTS idx_sessions_group ON sessions(group_id) WHERE group_id IS NOT NULL;
+      CREATE TABLE IF NOT EXISTS thread_groups (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        prompt TEXT NOT NULL,
+        candidates TEXT NOT NULL DEFAULT '[]',
+        winner_session_id TEXT,
+        decided_at TEXT,
+        created_at TEXT NOT NULL
+      );
+      -- Thumbs on final replies. The agent and model are copied in when the
+      -- rating is made, so the leaderboard survives the thread being deleted.
+      CREATE TABLE IF NOT EXISTS run_ratings (
+        run_id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        harness_id TEXT NOT NULL,
+        model TEXT NOT NULL DEFAULT '',
+        value INTEGER NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_run_ratings_session ON run_ratings(session_id);
+    `,
+  },
 ];
