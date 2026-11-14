@@ -3027,7 +3027,10 @@ export class CapsuleEngine {
   async runAutomationNow(input: { key: string; projectId?: string }): Promise<ConfigSnapshot> {
     this.assertWorkAllowed();
     this.requireAutomation(input.key, input.projectId);
-    await this.automations.runNow(input.key);
+    // The thread exists at once, but its agent can take half a minute to answer; the row follows the run from here.
+    await new Promise<void>((resolve, reject) => {
+      this.automations.runNow(input.key, () => resolve()).then(() => resolve(), reject);
+    });
     return this.getConfigSnapshot(input.projectId);
   }
 

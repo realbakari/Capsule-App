@@ -40,6 +40,23 @@ function harness(automations: AutomationConfig[] = [EVERY_FIVE]) {
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe("automation scheduler", () => {
+  it("tells Run now about the thread before its agent has answered", async () => {
+    const h = harness();
+    let answer: () => void = () => undefined;
+    h.host.start = (_entry, _at, created) => {
+      created("session-slow");
+      return new Promise((resolve) => { answer = () => resolve({ sessionId: "session-slow", runId: "run-slow" }); });
+    };
+    const scheduler = h.make();
+    const seen: string[] = [];
+    const done = scheduler.runNow("user:beat", (sessionId) => seen.push(sessionId));
+    await flush();
+    expect(seen).toEqual(["session-slow"]);
+    expect(scheduler.views()[0]!.lastRun).toMatchObject({ status: "running" });
+    answer();
+    await done;
+  });
+
   it("anchors a new automation when first seen and runs it at its next occurrence, once", async () => {
     const h = harness();
     const scheduler = h.make();

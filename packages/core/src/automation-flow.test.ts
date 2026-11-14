@@ -38,7 +38,7 @@ it("runs an automation into a new unread Inbox thread, sending its command throu
   const thread = f.engine.listSessions(inbox.id).find((session) => session.automationId === "user:hello")!;
   expect(thread.title.startsWith("Say hello · ")).toBe(true);
   expect(thread.unread).toBe(true);
-  expect(f.sent.mock.calls.at(-1)?.[0].content).toContain("Say hello to the team.");
+  await vi.waitFor(() => expect(f.sent.mock.calls.at(-1)?.[0].content).toContain("Say hello to the team."));
   await vi.waitFor(() => expect(f.engine.getConfigSnapshot().automations[0]!.lastRun?.status).toBe("completed"), { timeout: 10_000 });
   expect(f.engine.getConfigSnapshot().automations[0]!.lastRun?.sessionId).toBe(thread.id);
   expect(f.engine.getConfigDiagnostics().runs.at(-1)).toMatchObject({ kind: "automation", label: "Say hello", outcome: "completed" });

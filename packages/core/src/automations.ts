@@ -148,8 +148,8 @@ export class AutomationScheduler {
     this.host.emit();
   }
 
-  /** Start one now. This is also how missed occurrences are answered. */
-  async runNow(key: string): Promise<AutomationLastRun> {
+  /** Start one now. This is also how missed occurrences are answered. `created` hears the thread as soon as it exists. */
+  async runNow(key: string, created?: (sessionId: string) => void): Promise<AutomationLastRun> {
     const entry = this.require(key);
     const read = readAutomation(entry.automation);
     if (!read.ok) throw new Error(`${entry.automation.name} cannot run: ${read.message}`);
@@ -157,7 +157,7 @@ export class AutomationScheduler {
     const state = this.state(key, now);
     if (this.isRunning(key, state)) throw new Error(`${entry.automation.name} is still running. Wait for that run to finish.`);
     this.save(key, { ...state, missed: undefined });
-    return this.fire(entry, "manual");
+    return this.fire(entry, "manual", created);
   }
 
   dismissMissed(key: string): void {
@@ -199,14 +199,17 @@ export class AutomationScheduler {
     });
   }
 
-  private async fire(entry: AutomationEntry, trigger: AutomationLastRun["trigger"]): Promise<AutomationLastRun> {
+  private async fire(entry: AutomationEntry, trigger: AutomationLastRun["trigger"], created?: (sessionId: string) => void): Promise<AutomationLastRun> {
     this.starting.add(entry.key);
     const startedAt = new Date(this.now);
     let last: AutomationLastRun = { at: startedAt.toISOString(), trigger, status: "running" };
     this.patch(entry.key, { lastRun: last });
     this.host.emit();
     try {
-      const { sessionId, runId } = await this.host.start(entry, startedAt, (sessionId) => { last = { ...last, sessionId }; });
+      const { sessionId, runId } = await this.host.start(entry, startedAt, (sessionId) => {
+        last = { ...last, sessionId };
+        created?.(sessionId);
+      });
       last = { ...last, sessionId, runId };
       const status = this.host.runStatus(runId);
       if (status && ENDED.has(status)) last = finished(last, status, new Date(this.now));
