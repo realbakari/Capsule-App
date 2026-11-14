@@ -1087,7 +1087,12 @@ The main-window reference is released on `closed`, not the cancellable `close`
 event. Event delivery checks both window and web-contents lifetime; closing the
 desktop never disconnects the app-owned engine subscriptions or paired viewers.
 On macOS the workspace can reopen from the Dock or tray while services remain
-running, and quit runs cleanup even when no desktop window remains. The macOS
+running, and quit runs cleanup even when no desktop window remains. Cleanup has a
+12-second deadline. The final quit runs from a later task than the one Electron
+asked from, never inside its `before-quit` microtasks, because a re-entrant quit
+there is recorded as cancelled after the windows have closed. If Electron has
+still not quit five seconds later, Capsule exits. SIGTERM takes the same path as
+Quit. The macOS
 startup smoke test closes a loaded workspace, emits an engine event to a remote
 subscriber, reopens the workspace, then closes it again before normal quit.
 Search ranks exact conversation titles first, then recent activity, consistently

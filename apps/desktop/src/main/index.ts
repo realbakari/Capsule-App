@@ -2549,5 +2549,5 @@ app.on("before-quit", (event) => {
   startup.cancel();
   pendingCommand = undefined;
   send(IPC_EVENTS.state, { command: "app-shutting-down" });
-  void shutdown.request().then(() => app.quit());
+  shutdown.quitWhenDone(() => app.quit(), () => app.exit(0));
 });
