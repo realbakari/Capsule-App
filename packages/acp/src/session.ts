@@ -74,20 +74,37 @@ export interface DirectAcpOptions {
   /** How long to wait for a reply to a request. A prompt is exempt. */
   timeoutMs?: number;
   /*
-   * MCP servers to offer the agent when the session opens.
-   *
-   * These optional HTTP tools are forwarded only if the installed agent
-   * advertises HTTP MCP support during initialization.
+   * MCP servers to offer the agent when the session opens. Every ACP agent
+   * takes stdio servers; HTTP ones go only to an agent that reports
+   * `mcpCapabilities.http` during initialization.
    */
   mcpServers?: AcpMcpServer[];
 }
 
 /** An HTTP MCP server, in the shape `session/new` takes. */
-export interface AcpMcpServer {
+export interface AcpHttpMcpServer {
   type: "http";
   name: string;
   url: string;
   headers?: Array<{ name: string; value: string }>;
+}
+
+/** A local MCP server the agent starts itself. `cwd` is not part of ACP; native sessions that take one use it. */
+export interface AcpStdioMcpServer {
+  name: string;
+  command: string;
+  args: string[];
+  env: Array<{ name: string; value: string }>;
+  cwd?: string;
+}
+
+export type AcpMcpServer = AcpHttpMcpServer | AcpStdioMcpServer;
+
+/** What `session/new` receives: stdio always, HTTP only when the agent said it takes it. */
+export function sessionMcpServers(servers: readonly AcpMcpServer[], httpMcp: boolean | undefined): unknown[] {
+  return servers.flatMap((server): unknown[] => "command" in server
+    ? [{ name: server.name, command: server.command, args: server.args, env: server.env }]
+    : httpMcp === true ? [{ ...server, headers: server.headers ?? [] }] : []);
 }
 
 export class DirectAcpSession {
@@ -218,9 +235,7 @@ export class DirectAcpSession {
     const capabilities = readAgentCapabilities(this.initialization);
     const setup = {
       cwd: this.options.cwd ?? process.cwd(),
-      mcpServers: capabilities.httpMcp === true
-        ? (this.options.mcpServers ?? []).map((server) => ({ ...server, headers: server.headers ?? [] }))
-        : [],
+      mcpServers: sessionMcpServers(this.options.mcpServers ?? [], capabilities.httpMcp),
     };
     let created: unknown;
     if (resumeSessionId) {
