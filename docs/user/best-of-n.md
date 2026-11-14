@@ -23,7 +23,9 @@ You can also start from the command palette with **Run on several agents…**.
 
 Each agent gets its own conversation, named after the prompt and the agent,
 with its own worktree and branch. The agents work at the same time and never
-share a session or a folder, even when you picked the same agent twice.
+share a session or a folder, even when you picked the same agent twice. An
+agent and model picked more than once are numbered, such as **Codex 1** and
+**Codex 2**, in the sidebar and in Compare.
 
 ## Compare
 

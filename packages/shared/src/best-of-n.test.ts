@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aggregateLeaderboard, candidatePhase, candidateTitle, keepBlocker, readStartBestOfN, type CandidateSummary, type ThreadGroup } from "./best-of-n.js";
+import { aggregateLeaderboard, candidateOrdinal, candidatePhase, candidateTitle, keepBlocker, readStartBestOfN, type CandidateSummary, type ThreadGroup } from "./best-of-n.js";
 
 describe("the personal leaderboard", () => {
   it("counts comparisons, keeps and thumbs per agent and model, best first", () => {
@@ -70,5 +70,13 @@ describe("a candidate's state", () => {
   it("titles a candidate after the prompt and its agent", () => {
     expect(candidateTitle("Fix the bug", "Codex")).toBe("Fix the bug · Codex");
     expect(candidateTitle("Fix the bug", "Claude Code", "opus")).toBe("Fix the bug · Claude Code/opus");
+    expect(candidateTitle("Fix the bug", "Codex", undefined, 2)).toBe("Fix the bug · Codex 2");
+  });
+});
+
+describe("telling identical candidates apart", () => {
+  it("numbers an agent and model that run more than once, and leaves single ones alone", () => {
+    const all = [{ harnessId: "codex" }, { harnessId: "claude" }, { harnessId: "codex" }, { harnessId: "codex", model: "fast" }];
+    expect(all.map((candidate) => candidateOrdinal(all, candidate))).toEqual([1, undefined, 2, undefined]);
   });
 });

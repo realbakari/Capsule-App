@@ -119,9 +119,15 @@ export function keepBlocker(group: ThreadGroup, candidate: CandidateSummary): st
   return undefined;
 }
 
-/** "Fix the login bug · Codex/gpt-5" */
-export function candidateTitle(promptTitle: string, agentName: string, model?: string): string {
-  return `${promptTitle} · ${model ? `${agentName}/${model}` : agentName}`;
+/** "Fix the login bug · Codex/gpt-5", or "· Codex 2" for the second of two identical candidates. */
+export function candidateTitle(promptTitle: string, agentName: string, model?: string, ordinal?: number): string {
+  return `${promptTitle} · ${model ? `${agentName}/${model}` : agentName}${ordinal ? ` ${ordinal}` : ""}`;
+}
+
+/** Which of several candidates with the same agent and model this is, from 1; undefined when it is the only one. */
+export function candidateOrdinal<T extends { harnessId?: string; model?: string }>(all: readonly T[], candidate: T): number | undefined {
+  const same = all.filter((item) => item.harnessId === candidate.harnessId && (item.model ?? "") === (candidate.model ?? ""));
+  return same.length > 1 ? same.indexOf(candidate) + 1 : undefined;
 }
 
 /* --- Ratings and the personal leaderboard ------------------------------ */

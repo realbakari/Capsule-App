@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import {
   ANOTHER_KEPT,
   aggregateLeaderboard,
+  candidateOrdinal,
   candidateTitle,
   createId,
   parseUnifiedDiff,
@@ -99,7 +100,7 @@ export class BestOfNService {
           projectId: project.id,
           agentId: candidate.harnessId,
           mode: "code",
-          title: candidateTitle(promptTitle, name, candidate.model),
+          title: candidateTitle(promptTitle, name, candidate.model, candidateOrdinal(input.candidates, candidate)),
           workspaceMode: "worktree",
           ...(input.permissionProfile ? { permissionProfile: input.permissionProfile } : {}),
         });

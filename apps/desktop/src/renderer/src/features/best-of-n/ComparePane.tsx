@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   candidatePhase,
+  candidateOrdinal,
   keepBlocker,
   parseUnifiedDiff,
   type CandidatePhase,
@@ -105,7 +106,7 @@ function CompareSummary({ comparison, mode, onMode }: { comparison: GroupCompari
       <div className="compare-summary-row">
         <span className="compare-summary-meta">
           {candidates.length} agents{working ? ` · ${working} working` : ""}
-          {winner ? <> · <CheckIcon size={12} /> Kept {harnessDisplayName(harnesses ?? [], winner.harnessId, "one")}</> : null}
+          {winner ? <> · <CheckIcon size={12} /> Kept {harnessDisplayName(harnesses ?? [], winner.harnessId, "one")}{candidateOrdinal(candidates, winner) ? ` ${candidateOrdinal(candidates, winner)}` : ""}</> : null}
         </span>
         <span className="compare-mode" role="radiogroup" aria-label="Compare by">
           <button type="button" role="radio" aria-checked={mode === "cards"} className={mode === "cards" ? "active" : ""} onClick={() => onMode("cards")}>Candidates</button>
@@ -132,7 +133,8 @@ function CandidateCard({ comparison, candidate }: { comparison: GroupComparison;
   const [rating, setRating] = useState<RatingValue | undefined>(candidate.rating);
   useEffect(() => setRating(candidate.rating), [candidate.rating]);
   const kept = group.winnerSessionId === candidate.sessionId;
-  const name = harnessDisplayName(harnesses ?? [], candidate.harnessId, candidate.harnessId ?? "Agent");
+  const ordinal = candidateOrdinal(comparison.candidates, candidate);
+  const name = `${harnessDisplayName(harnesses ?? [], candidate.harnessId, candidate.harnessId ?? "Agent")}${ordinal ? ` ${ordinal}` : ""}`;
   const blocker = keepBlocker(group, candidate);
   const time = elapsed(candidate, now);
   const open = () => { setProjectId(group.projectId, candidate.sessionId); setView("chat"); };
@@ -248,7 +250,8 @@ function SameFile({ comparison }: { comparison: GroupComparison }) {
       </label>
       <div className="compare-grid same-file">
         {touched.map((candidate) => {
-          const name = harnessDisplayName(harnesses ?? [], candidate.harnessId, candidate.harnessId ?? "Agent");
+          const ordinal = candidateOrdinal(comparison.candidates, candidate);
+          const name = `${harnessDisplayName(harnesses ?? [], candidate.harnessId, candidate.harnessId ?? "Agent")}${ordinal ? ` ${ordinal}` : ""}`;
           const entry = loaded?.[candidate.sessionId];
           return (
             <section key={candidate.sessionId} className="compare-file-column" aria-label={`${name}'s ${chosen}`}>
