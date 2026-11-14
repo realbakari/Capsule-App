@@ -11,7 +11,7 @@ export function useThreadPresence(): ThreadPresence[] {
   const [presence, setPresence] = useState<ThreadPresence[]>([]);
   const load = useCallback(() => {
     if (!desktop) return;
-    void api.threadPresence().then(setPresence, () => setPresence([]));
+    void Promise.resolve().then(() => api.threadPresence()).then(setPresence, () => setPresence([]));
   }, [api, desktop]);
   useEffect(load, [load]);
   useEffect(() => {

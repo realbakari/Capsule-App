@@ -16,7 +16,7 @@ export function useShareLinks(sessionId?: string) {
   const [links, setLinks] = useState<ShareGrant[]>();
   const [error, setError] = useState<string>();
   const load = useCallback(() => {
-    void Promise.all([api.remoteStatus() as Promise<RemoteAccessStatus>, api.listShareLinks(sessionId)])
+    void Promise.resolve().then(() => Promise.all([api.remoteStatus() as Promise<RemoteAccessStatus>, api.listShareLinks(sessionId)]))
       .then(([nextStatus, nextLinks]) => { setStatus(nextStatus); setLinks(nextLinks); setError(undefined); })
       .catch((failure: unknown) => setError(formatUserError(failure)));
   }, [api, sessionId]);
