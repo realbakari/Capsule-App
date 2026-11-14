@@ -54,7 +54,7 @@ import { Conversation } from "../features/conversation/Conversation";
 import { ThreadAgents } from "../features/shell/ThreadAgents";
 import { GATEWAY_CONNECTION_REQUIRED } from "../lib/harness-preflight";
 import { WorkspaceProvider, useWorkspace as useRealWorkspace } from "../lib/workspace.js";
-import { appearanceCssVars, DEFAULT_DARK_PALETTE, DEFAULT_LIGHT_PALETTE, DEFAULT_CAPSULE_SETTINGS, PRESET_HARNESSES, type Session, type Run, type RunEvent, type ChatMessage, type DiffFile } from "@capsule/shared";
+import { appearanceCssVars, modelFavoriteKey, DEFAULT_DARK_PALETTE, DEFAULT_LIGHT_PALETTE, DEFAULT_CAPSULE_SETTINGS, PRESET_HARNESSES, type Session, type Run, type RunEvent, type ChatMessage, type DiffFile } from "@capsule/shared";
 import type { Skill, Agent, HarnessStatus, AttentionState } from "@capsule/shared";
 
 declare global {
@@ -339,7 +339,11 @@ window.runRendererRegressions = async () => {
   const pickerHarnesses: HarnessStatus[] = PRESET_HARNESSES.filter((preset) => pickerAgents.some((agent) => agent.id === preset.id)).map((preset) => ({ ...preset, runtimeRoute: "openclaw", readiness: "ready", acpxEnabled: true, dedicatedProjectIds: [], liveSessionIds: [], detail: "Ready" }));
   let selectedAgent = "", selectedModel = "";
   const pickerProps = { agents: pickerAgents, harnesses: pickerHarnesses, agentId: "claude", liveHarnessId: "claude", currentModel: "example", models: { currentModelId: "example", availableModels: [{ modelId: "example", name: "Example model" }] }, onAgent: (id: string) => { selectedAgent = id; }, onModel: (id: string) => { selectedModel = id; } };
-  root.render(<AgentModelPicker {...pickerProps} availability={{ state: "available", detail: "Reported by the live session" }} />);
+  let favorites: string[] = [];
+  const renderAvailablePicker = () => root.render(<AgentModelPicker {...pickerProps} favorites={favorites}
+    onToggleFavorite={(modelId) => { favorites = [...favorites, modelFavoriteKey("claude", modelId)]; renderAvailablePicker(); }}
+    availability={{ state: "available", detail: "Reported by the live session" }} />);
+  renderAvailablePicker();
   await until(() => document.querySelector('[aria-label="Agent and model"]'));
   const pickerTrigger = document.querySelector<HTMLButtonElement>('[aria-label="Agent and model"]')!;
   assert(pickerTrigger.textContent?.includes("Example model"), "Combined picker omitted the current model");
