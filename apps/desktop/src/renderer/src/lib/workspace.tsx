@@ -75,6 +75,7 @@ import { contextUsageFromEvents, type ContextUsage } from "./context-window";
 import { harnessPreflightReason } from "./harness-preflight";
 import { useToasts } from "./toasts";
 import { BROWSER_FIND_EVENT } from "./browser-find";
+import { requestLabel, withSlowNotice } from "./slow-requests";
 import {
   promptDraftKey,
   readPromptStash,
@@ -413,7 +414,9 @@ export function useWorkspace(): WorkspaceValue {
 const MESSAGE_PAGE_SIZE = 60;
 
 export function WorkspaceProvider({ children }: { children: ReactNode; }) {
-  const api = window.capsule;
+  /* Set below, once toasts exist; the bridge is wrapped once and stays stable. */
+  const slowNotice = useRef<(name: string, waiting: boolean) => void>(() => undefined);
+  const api = useMemo(() => withSlowNotice(window.capsule, (name, waiting) => slowNotice.current(name, waiting)), []);
   const stoppingRuns = useRef(new Set<string>());
   const [stoppingRunIds, setStoppingRunIds] = useState<string[]>([]);
   const [view, setView] = useState<View>("chat");
@@ -550,6 +553,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   }, [sessions, projects, statusCache, statusVersion]);
   const [notice, setNotice] = useScopedState<string | undefined>(scope, undefined);
   const toasts = useToasts();
+  const slowToasts = useRef(new Map<string, string>());
+  slowNotice.current = (name, waiting) => {
+    const shown = slowToasts.current.get(name);
+    if (!waiting) { if (shown) toasts.dismiss(shown); slowToasts.current.delete(name); return; }
+    slowToasts.current.set(name, toasts.show({ key: `slow:${name}`, tone: "info", title: `Still waiting on ${requestLabel(name)}…`, detail: "This is taking longer than usual. The notice goes away when it finishes.", timeoutMs: 0 }));
+  };
   const archiving = useRef(new Set<string>());
   const restoring = useRef(new Set<string>());
   const currentSelection = useRef({ projectId, sessionId });

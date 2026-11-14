@@ -2191,3 +2191,9 @@ differs from the one for folders.
   guest's `before-input-event` and sends `browser-find` to this window only. ⌘F
   with focus elsewhere in the browser pane finds on the page instead of in the
   thread.
+- **Slow requests**: the workspace wraps its bridge once (`lib/slow-requests.ts`).
+  A call still pending after 8 s shows "Still waiting on <request>…" until it
+  settles; overlapping calls on one channel share one notice. Calls that wait
+  on the person (file pickers, menus, dictation, voice, the updater's own
+  progress) and terminal traffic are not watched. The wrapper proxies an empty
+  object so a frozen bridge's property rules never apply to it.
