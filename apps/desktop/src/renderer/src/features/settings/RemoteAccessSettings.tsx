@@ -3,6 +3,7 @@ import type { CapsuleSettings, RemoteAccessStatus } from "@capsule/shared";
 
 import { useWorkspace } from "../../lib/workspace";
 import { SettingRow } from "./controls";
+import { ShareSettings } from "../share/ShareSettings";
 
 function ago(timestamp: number): string {
   const seconds = Math.max(0, Math.round((Date.now() - timestamp) / 1000));
@@ -154,6 +155,7 @@ export function RemoteAccessSettings({
           )}
         </>
       )}
+      <ShareSettings />
     </div>
   );
 }

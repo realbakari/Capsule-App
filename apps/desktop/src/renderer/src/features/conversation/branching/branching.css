@@ -1,0 +1,120 @@
+/* Fork and restore: the branch point under a shared turn, the restore dialog, the redo banner. */
+
+.branch-point {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin: 0.75rem 0 0.5rem;
+  padding: 0.25rem 0.35rem;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: var(--text-ui);
+  max-width: 100%;
+  width: fit-content;
+}
+.branch-point-mark { display: inline-flex; padding: 0 0.2rem; color: var(--text-muted); }
+.branch-step { width: var(--control-h-xs); height: var(--control-h-xs); }
+.branch-step:disabled { opacity: var(--disabled-opacity); }
+.branch-step-flip { transform: scaleX(-1); }
+.branch-point-current {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  height: var(--control-h-xs);
+  padding: 0 0.5rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.branch-point-current:hover,
+.branch-point-current[aria-expanded="true"] { background: var(--bg-hover); }
+.branch-point-current:focus-visible,
+.branch-step:focus-visible,
+.branch-point-back:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
+.branch-point-count { color: var(--text-muted); white-space: nowrap; }
+.branch-point-title { font-weight: var(--weight-medium); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 18rem; }
+.branch-point-back { margin-left: 0.25rem; font-size: var(--text-xs); }
+.branch-point-list {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  left: 0;
+  z-index: var(--z-menu);
+  width: min(26rem, calc(100vw - 2rem));
+  margin: 0;
+  padding: 0.25rem;
+  list-style: none;
+  border: 1px solid var(--border-color);
+  border-radius: var(--popover-radius);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-raised);
+  outline: none;
+}
+.branch-point-list li {
+  display: grid;
+  gap: 0.1rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.branch-point-list li[data-active="true"] { background: var(--bg-hover); }
+.branch-point-list li[aria-selected="true"] .branch-point-option-title::before {
+  content: "";
+  display: inline-block;
+  width: 0.4rem;
+  height: 0.4rem;
+  margin: 0 0.4rem 0.1rem 0;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  vertical-align: middle;
+}
+.branch-point-list:focus-visible li[data-active="true"] { box-shadow: inset 0 0 0 1px var(--ring); }
+.branch-point-option-title { color: var(--text); font-weight: var(--weight-medium); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.branch-point-option-meta { color: var(--text-muted); font-size: var(--text-xs); }
+
+.restore-dialog { width: min(40rem, calc(100vw - 2rem)); max-height: calc(100vh - 4rem); overflow: auto; }
+.restore-prompt { margin: 0.25rem 0 1.25rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.restore-scopes { display: grid; gap: 0.4rem; margin-bottom: 1rem; }
+.restore-scope {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+.restore-scope:hover:not(.unavailable) { background: var(--bg-hover); }
+.restore-scope.selected { border-color: var(--border-strong); background: var(--surface-0); }
+.restore-scope.unavailable { cursor: not-allowed; opacity: 0.7; }
+.restore-scope:has(input:focus-visible) { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
+.restore-scope input { margin: 0.2rem 0 0; accent-color: var(--accent); }
+.restore-scope-text { display: grid; gap: 0.15rem; }
+.restore-scope-label { color: var(--text); font-weight: var(--weight-medium); }
+.restore-scope-detail { color: var(--text-muted); font-size: var(--text-sm); line-height: 1.4; }
+.restore-compare { margin-bottom: 0.75rem; }
+.restore-compare-head { display: flex; align-items: center; gap: 0.75rem; justify-content: space-between; color: var(--text-muted); font-size: var(--text-sm); }
+.restore-compare-diff { margin-top: 0.5rem; max-height: 22rem; overflow: auto; border: 1px solid var(--border-color); border-radius: var(--radius-md); }
+.restore-redo-note { margin: 0 0 0.5rem; color: var(--text-muted); font-size: var(--text-sm); }
+.restore-error, .dialog p.restore-error { margin: 0 0 0.5rem; color: var(--red); font-size: var(--text-sm); }
+
+.redo-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+  padding: 0.4rem 0.5rem 0.4rem 0.75rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--surface-0);
+  color: var(--text);
+  font-size: var(--text-ui);
+}
+.redo-banner-text { flex: 1; min-width: 0; }
+.redo-banner-hint { color: var(--text-muted); }
+.redo-banner .chip { display: inline-flex; align-items: center; gap: 0.3rem; flex-shrink: 0; }

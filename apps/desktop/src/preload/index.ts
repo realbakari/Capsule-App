@@ -71,17 +71,41 @@ const api = {
   usageSummary: (days: number) => ipcRenderer.invoke(IPC_CHANNELS.usageSummary, days),
   providerUsage: (): Promise<ProviderUsageSnapshot> => ipcRenderer.invoke(IPC_CHANNELS.providerUsage),
   turnDiff: (runId: string, options?: import("@capsule/shared").TurnDiffOptions): Promise<import("@capsule/shared").TurnDiffResult> => ipcRenderer.invoke(IPC_CHANNELS.turnDiff, runId, options),
-  restoreTurn: (runId: string) => ipcRenderer.invoke(IPC_CHANNELS.restoreTurn, runId),
-  rewindSession: (sessionId: string, messageId: string, options?: { restoreFiles?: boolean }): Promise<import("@capsule/shared").RewindResult> => ipcRenderer.invoke(IPC_CHANNELS.rewindSession, sessionId, messageId, options),
+  rewindSession: (sessionId: string, messageId: string, options?: { restoreFiles?: boolean }): Promise<import("@capsule/shared").RestoreResult> => ipcRenderer.invoke(IPC_CHANNELS.rewindSession, sessionId, messageId, options),
+  restoreToTurn: (request: import("@capsule/shared").RestoreRequest): Promise<import("@capsule/shared").RestoreResult> => ipcRenderer.invoke(IPC_CHANNELS.restoreToTurn, request),
+  redoRestore: (sessionId: string): Promise<import("@capsule/shared").RestoreResult> => ipcRenderer.invoke(IPC_CHANNELS.redoRestore, sessionId),
+  redoPoint: (sessionId: string): Promise<import("@capsule/shared").RedoPoint | null> => ipcRenderer.invoke(IPC_CHANNELS.redoPoint, sessionId),
+  compareCheckpoint: (runId: string, options?: import("@capsule/shared").TurnDiffOptions): Promise<import("@capsule/shared").TurnDiffResult> => ipcRenderer.invoke(IPC_CHANNELS.compareCheckpoint, runId, options),
+  forkSession: (input: import("@capsule/shared").ForkSessionInput): Promise<import("@capsule/shared").Session> => ipcRenderer.invoke(IPC_CHANNELS.forkSession, input),
+  forkBranches: (sessionId: string): Promise<import("@capsule/shared").ForkBranchGroup[]> => ipcRenderer.invoke(IPC_CHANNELS.forkBranches, sessionId),
+  listImportableSessions: (projectId: string): Promise<import("@capsule/shared").ImportListing> => ipcRenderer.invoke(IPC_CHANNELS.listImportableSessions, projectId),
+  importSession: (input: import("@capsule/shared").ImportSessionInput): Promise<import("@capsule/shared").Session> => ipcRenderer.invoke(IPC_CHANNELS.importSession, input),
+  handoffDraft: (sessionId: string): Promise<{ summary: string }> => ipcRenderer.invoke(IPC_CHANNELS.handoffDraft, sessionId),
+  handoffSession: (input: import("@capsule/shared").HandoffInput): Promise<import("@capsule/shared").Session> => ipcRenderer.invoke(IPC_CHANNELS.handoffSession, input),
+  worktreeApplyStatus: (sessionId: string): Promise<import("@capsule/shared").WorktreeApplyStatus> => ipcRenderer.invoke(IPC_CHANNELS.worktreeApplyStatus, sessionId),
+  applyWorktreeToLocal: (sessionId: string): Promise<import("@capsule/shared").ApplyResult> => ipcRenderer.invoke(IPC_CHANNELS.applyWorktreeToLocal, sessionId),
+  undoApplyToLocal: (sessionId: string, undoRef: string): Promise<{ ok: boolean; detail: string; files: string[] }> => ipcRenderer.invoke(IPC_CHANNELS.undoApplyToLocal, sessionId, undoRef),
   getFollowUps: (sessionId: string): Promise<import("@capsule/shared").FollowUps> => ipcRenderer.invoke(IPC_CHANNELS.getFollowUps, sessionId),
   updateFollowUps: (sessionId: string, op: import("@capsule/shared").FollowUpOp): Promise<import("@capsule/shared").FollowUps> => ipcRenderer.invoke(IPC_CHANNELS.updateFollowUps, sessionId, op),
+  createBoardCard: (input: import("@capsule/shared").CreateBoardCardInput): Promise<import("@capsule/shared").Session> => ipcRenderer.invoke(IPC_CHANNELS.createBoardCard, input),
+  updateBoardCard: (sessionId: string, op: import("@capsule/shared").BoardCardOp): Promise<import("@capsule/shared").Session> => ipcRenderer.invoke(IPC_CHANNELS.updateBoardCard, sessionId, op),
   fetchSkillDetail: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.fetchSkillDetail, id),
+  startBestOfN: (input: import("@capsule/shared").StartBestOfNInput): Promise<import("@capsule/shared").StartBestOfNResult> => ipcRenderer.invoke(IPC_CHANNELS.startBestOfN, input),
+  listThreadGroups: (): Promise<import("@capsule/shared").ThreadGroup[]> => ipcRenderer.invoke(IPC_CHANNELS.listThreadGroups),
+  compareThreadGroup: (groupId: string): Promise<import("@capsule/shared").GroupComparison> => ipcRenderer.invoke(IPC_CHANNELS.compareThreadGroup, groupId),
+  keepCandidate: (groupId: string, sessionId: string): Promise<import("@capsule/shared").ApplyResult> => ipcRenderer.invoke(IPC_CHANNELS.keepCandidate, groupId, sessionId),
+  setAsideCandidates: (groupId: string): Promise<{ archived: string[]; failed: Array<{ sessionId: string; reason: string }> }> => ipcRenderer.invoke(IPC_CHANNELS.setAsideCandidates, groupId),
+  rateRun: (runId: string, value: import("@capsule/shared").RatingValue | 0): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.rateRun, runId, value),
+  runRatings: (sessionId: string): Promise<Record<string, import("@capsule/shared").RatingValue>> => ipcRenderer.invoke(IPC_CHANNELS.runRatings, sessionId),
+  resultsLeaderboard: (): Promise<import("@capsule/shared").LeaderboardRow[]> => ipcRenderer.invoke(IPC_CHANNELS.resultsLeaderboard),
   listSessions: (projectId?: string) => ipcRenderer.invoke(IPC_CHANNELS.listSessions, projectId),
   createSession: (input: unknown) => ipcRenderer.invoke(IPC_CHANNELS.createSession, input),
   setSessionWorkspaceMode: (id: string, mode: "local" | "worktree") =>
     ipcRenderer.invoke(IPC_CHANNELS.setSessionWorkspaceMode, id, mode),
   renameSession: (id: string, title: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.renameSession, id, title),
+  setSessionTurnMode: (id: string, mode: import("@capsule/shared").TurnMode): Promise<{ session: import("@capsule/shared").Session; detail?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.setSessionTurnMode, id, mode),
   archiveSession: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.archiveSession, id),
   restoreSession: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.restoreSession, id),
   deleteSession: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.deleteSession, id),
@@ -125,11 +149,19 @@ const api = {
   processHistory: () => ipcRenderer.invoke(IPC_CHANNELS.processHistory),
   rendererReady: (surface?: "pet") => ipcRenderer.invoke(IPC_CHANNELS.rendererReady, surface),
   remoteStatus: () => ipcRenderer.invoke(IPC_CHANNELS.remoteStatus),
-  remoteMode: "desktop" as "desktop" | "read" | "control" | "connecting",
+  remoteMode: "desktop" as "desktop" | "read" | "control" | "connecting" | "share",
   remoteError: undefined as string | undefined,
+  /* True in a browser opened from a share link: one thread, read only, nothing to disconnect. */
+  remoteShare: false as boolean,
   remotePair: (access: "read" | "control" = "read") => ipcRenderer.invoke(IPC_CHANNELS.remotePair, access),
   analyticsStatus: (): Promise<{ enabled: boolean; configured: boolean; host: string; pending: number; lastSentAt?: string; error?: string }> => ipcRenderer.invoke(IPC_CHANNELS.analyticsStatus),
   remoteRevoke: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.remoteRevoke, id),
+  threadMarkdown: (sessionId: string, options?: import("@capsule/shared").ThreadMarkdownOptions): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.threadMarkdown, sessionId, options),
+  exportThreadMarkdown: (sessionId: string, options?: import("@capsule/shared").ThreadMarkdownOptions): Promise<{ saved: boolean; path?: string }> => ipcRenderer.invoke(IPC_CHANNELS.exportThreadMarkdown, sessionId, options),
+  createShareLink: (sessionId: string, expiry: import("@capsule/shared").ShareLinkExpiry): Promise<import("@capsule/shared").CreatedShareLink> => ipcRenderer.invoke(IPC_CHANNELS.createShareLink, sessionId, expiry),
+  listShareLinks: (sessionId?: string): Promise<import("@capsule/shared").ShareGrant[]> => ipcRenderer.invoke(IPC_CHANNELS.listShareLinks, sessionId),
+  revokeShareLink: (id: string): Promise<import("@capsule/shared").ShareGrant | undefined> => ipcRenderer.invoke(IPC_CHANNELS.revokeShareLink, id),
+  threadPresence: (): Promise<import("@capsule/shared").ThreadPresence[]> => ipcRenderer.invoke(IPC_CHANNELS.threadPresence),
   windowBackground: (color: string) => ipcRenderer.invoke(IPC_CHANNELS.windowBackground, color),
   terminalStart: (input: { cwd: string; cols?: number; rows?: number; }) =>
     ipcRenderer.invoke(IPC_CHANNELS.terminalStart, input),
@@ -176,6 +208,12 @@ const api = {
     ipcRenderer.invoke(IPC_CHANNELS.gitStage, projectId, relative, sessionId),
   gitDiscard: (projectId: string, relative: string, sessionId?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.gitDiscard, projectId, relative, sessionId),
+  gitScopedDiff: (projectId: string, scope: import("@capsule/shared").GitDiffScope, relative?: string, sessionId?: string): Promise<import("@capsule/shared").ScopedDiff> =>
+    ipcRenderer.invoke(IPC_CHANNELS.gitScopedDiff, projectId, scope, relative, sessionId),
+  gitCheckHunks: (projectId: string, applies: import("@capsule/shared").HunkApply[], sessionId?: string): Promise<boolean[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.gitCheckHunks, projectId, applies, sessionId),
+  gitApplyHunk: (projectId: string, apply: import("@capsule/shared").HunkApply, sessionId?: string): Promise<import("@capsule/shared").GitStatus> =>
+    ipcRenderer.invoke(IPC_CHANNELS.gitApplyHunk, projectId, apply, sessionId),
   gitCreateBranch: (projectId: string, branch: string, sessionId?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.gitCreateBranch, projectId, branch, sessionId),
   gitPush: (projectId: string, sessionId?: string) =>
@@ -204,13 +242,22 @@ const api = {
   pickFiles: () => ipcRenderer.invoke(IPC_CHANNELS.pickFiles),
   saveClipboardImage: () => ipcRenderer.invoke(IPC_CHANNELS.saveClipboardImage),
   saveImageAttachment: (png: Uint8Array): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.saveImageAttachment, png),
-  saveTextAttachment: (text: string): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.saveTextAttachment, text),
+  saveTextAttachment: (text: string, name?: string): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.saveTextAttachment, text, name),
+  fetchUrlContext: (url: string): Promise<import("@capsule/shared").UrlContext> => ipcRenderer.invoke(IPC_CHANNELS.fetchUrlContext, url),
+  runComposerCommand: (projectId: string, command: string, sessionId?: string): Promise<import("@capsule/shared").CommandResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.runComposerCommand, projectId, command, sessionId),
+  runDiagnostics: (projectId: string, sessionId?: string): Promise<import("@capsule/shared").DiagnosticsResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.runDiagnostics, projectId, sessionId),
   registerBrowserView: (webContentsId: number | undefined, threadId?: string, ready?: boolean) =>
     ipcRenderer.invoke(IPC_CHANNELS.registerBrowserView, webContentsId, threadId, ready),
   setBrowserControl: (threadId: string, allowed: boolean) =>
     ipcRenderer.invoke(IPC_CHANNELS.setBrowserControl, threadId, allowed),
   clearBrowserData: (webContentsId: number, kind: "cache" | "storage") =>
     ipcRenderer.invoke(IPC_CHANNELS.clearBrowserData, webContentsId, kind),
+  captureBrowserElement: (webContentsId: number, rect: { x: number; y: number; width: number; height: number }): Promise<string | undefined> =>
+    ipcRenderer.invoke(IPC_CHANNELS.captureBrowserElement, webContentsId, rect),
+  emulateBrowserDevice: (webContentsId: number, device: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.emulateBrowserDevice, webContentsId, device),
   copyBrowserScreenshot: (webContentsId: number) =>
     ipcRenderer.invoke(IPC_CHANNELS.copyBrowserScreenshot, webContentsId),
   togglePet: (visible?: boolean) => ipcRenderer.invoke(IPC_CHANNELS.togglePet, visible),
@@ -245,6 +292,13 @@ const api = {
   listHarnessSessions: (projectId?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.listHarnessSessions, projectId),
   pinSession: (id: string, pinned: boolean) => ipcRenderer.invoke(IPC_CHANNELS.pinSession, id, pinned),
+  pauseSession: (id: string): Promise<import("@capsule/shared").Session> => ipcRenderer.invoke(IPC_CHANNELS.pauseSession, id),
+  resumeSession: (id: string): Promise<{ session: import("@capsule/shared").Session; detail: string }> => ipcRenderer.invoke(IPC_CHANNELS.resumeSession, id),
+  setSessionTags: (id: string, tags: string[]): Promise<import("@capsule/shared").Session> => ipcRenderer.invoke(IPC_CHANNELS.setSessionTags, id, tags),
+  renameTag: (from: string, to: string): Promise<number> => ipcRenderer.invoke(IPC_CHANNELS.renameTag, from, to),
+  deleteTag: (tag: string): Promise<number> => ipcRenderer.invoke(IPC_CHANNELS.deleteTag, tag),
+  keepSession: (id: string): Promise<import("@capsule/shared").Session> => ipcRenderer.invoke(IPC_CHANNELS.keepSession, id),
+  listGithubIssues: (projectId: string): Promise<{ items?: import("@capsule/shared").GithubIssue[]; error?: string }> => ipcRenderer.invoke(IPC_CHANNELS.listGithubIssues, projectId),
   reorderPinnedSessions: (projectId: string, orderedIds: string[]) =>
     ipcRenderer.invoke(IPC_CHANNELS.reorderPinnedSessions, projectId, orderedIds),
   searchFiles: (projectId: string, query?: string, root?: string) =>

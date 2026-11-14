@@ -1,4 +1,7 @@
+import { isInternalVerdict } from "@capsule/shared";
 import { formatUserError } from "./errors";
+
+export { isInternalVerdict };
 
 /*
  * The reason a turn failed, said once in the thread it happened in.
@@ -28,19 +31,6 @@ function latestThreadRun(input: ThreadErrorInput): ThreadErrorInput["runs"][numb
     if (!latest || run.createdAt > latest.createdAt) latest = run;
   }
   return latest;
-}
-
-/*
- * Capsule's own contract verdicts. They are the app judging a turn against
- * the contract it wrote for itself, not the agent reporting a problem —
- * printing them in red over an answer that arrived says the wrong thing about
- * a turn that worked.
- */
-const INTERNAL_VERDICTS = new Set(["verification failed", "empty result", "completed"]);
-
-/** Whether a stored run error is one of those verdicts rather than a real fault. */
-export function isInternalVerdict(message: string | undefined): boolean {
-  return Boolean(message && INTERNAL_VERDICTS.has(message.trim().toLowerCase()));
 }
 
 /** What to show for this thread, if anything. */

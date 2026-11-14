@@ -22,6 +22,13 @@ import {
 import { FilesystemAdapter } from "@capsule/filesystem";
 import { DEFAULT_GATEWAY_HOST, DEFAULT_GATEWAY_PORT, DEFAULT_GATEWAY_URL } from "./discovery.js";
 
+const MOCK_PLAN_STEPS = [
+  "Read the files the request touches",
+  "Make the change in the smallest place that carries it",
+  "Add a test for the new behaviour",
+  "Run the checks and report what changed",
+];
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export class MockAgentRuntime implements AgentRuntime {
@@ -126,7 +133,7 @@ export class MockAgentRuntime implements AgentRuntime {
       createdAt: timestamp,
       updatedAt: timestamp,
     };
-    void this.simulate(run, scenario);
+    void this.simulate(run, scenario, input.turnMode === "plan");
     return run;
   }
 
@@ -171,6 +178,7 @@ export class MockAgentRuntime implements AgentRuntime {
     if (lower.includes("[long]")) return "long_running";
     if (lower.includes("[buzz]")) return "buzz_message";
     if (lower.includes("[tool]")) return "tool_failure";
+    if (lower.includes("[work]")) return "tool_run";
     return this.scenario;
   }
 
@@ -186,7 +194,30 @@ export class MockAgentRuntime implements AgentRuntime {
     this.emitter.emit("run", event);
   }
 
-  private async simulate(run: Run, scenario: MockScenario): Promise<void> {
+  /** A realistic run of reads, commands and edits with file paths, one failing, slow enough to watch. */
+  private async simulateToolRun(runId: string): Promise<void> {
+    const steps: Array<{ kind: string; title: string; path?: string; command?: string; fails?: boolean }> = [
+      { kind: "read", title: "Read README.md", path: "README.md" },
+      { kind: "read", title: "Read package.json", path: "package.json" },
+      { kind: "execute", title: "git status", command: "git status --short" },
+      { kind: "read", title: "Read src/index.ts", path: "src/index.ts" },
+      { kind: "edit", title: "Edit src/index.ts", path: "src/index.ts" },
+      { kind: "execute", title: "npm test", command: "npm test", fails: true },
+      { kind: "edit", title: "Edit README.md", path: "README.md" },
+    ];
+    for (const [index, step] of steps.entries()) {
+      const toolCallId = `mock-tool-${index}`;
+      const base = {
+        toolCallId, kind: step.kind, title: step.title,
+        ...(step.path ? { locations: [{ path: step.path }], rawInput: { path: step.path } } : { rawInput: { command: step.command } }),
+      };
+      this.emit(runId, "tool", step.title, { ...base, status: "in_progress" });
+      await sleep(700);
+      this.emit(runId, "tool", step.title, { ...base, status: step.fails ? "failed" : "completed", ...(step.command ? { rawOutput: step.fails ? "1 test failed" : "" } : {}) });
+    }
+  }
+
+  private async simulate(run: Run, scenario: MockScenario, planning = false): Promise<void> {
     const delay = scenario === "long_running" ? 400 : 180;
     this.emit(run.id, "lifecycle", "Request received", { step: "understand" });
     await sleep(delay);
@@ -216,6 +247,11 @@ export class MockAgentRuntime implements AgentRuntime {
       return;
     }
 
+    if (scenario === "tool_run") {
+      await this.simulateToolRun(run.id);
+      await this.finishSuccess(run.id, await this.describeMockReply());
+      return;
+    }
     this.emit(run.id, "tool.started", "Tool started", { step: "tools" });
     await sleep(delay);
     if (scenario === "tool_failure") {
@@ -238,6 +274,11 @@ export class MockAgentRuntime implements AgentRuntime {
         status: "failed",
         error: "The mock agent could not complete this task.",
       });
+      return;
+    }
+    if (planning) {
+      this.emit(run.id, "plan", "Plan", { entries: MOCK_PLAN_STEPS.map((content, index) => ({ id: String(index + 1), content, status: "pending" })) });
+      await this.finishSuccess(run.id, ["Mock runtime plan. Nothing was edited.", "", ...MOCK_PLAN_STEPS.map((step, index) => `${index + 1}. ${step}`)].join("\n"));
       return;
     }
     const output =

@@ -1,5 +1,5 @@
 import { displayPrefs } from "../../lib/display-prefs";
-import { memo, useMemo, useState } from "react";
+import { memo, useMemo, useState, type ReactNode } from "react";
 import { splitRows, type DiffFile, type DiffHunk, type DiffLine } from "@capsule/shared";
 import { highlight } from "../../lib/highlight";
 import { DIFF_PAGE_ROWS, DiffPager } from "./DiffPager";
@@ -47,12 +47,42 @@ export function FileBadgeIcon() {
   );
 }
 
+/**
+ * Per-hunk controls for a diff that can act on its hunks. The heading row
+ * becomes focusable so the keyboard can move between hunks and act on one.
+ */
+export interface HunkSlot {
+  /** Controls drawn at the end of the heading of hunk `index` of the file. */
+  render: (index: number) => ReactNode;
+  /** The accessible name of the heading, such as "Hunk 2 of 5". */
+  label: (index: number) => string;
+}
+
+function HunkHeading({ hunk, index, slot }: { hunk: DiffHunk; index: number; slot?: HunkSlot }) {
+  if (!slot) return <code className="diff-text">{hunk.header}</code>;
+  // The line range stays whole; only the section heading after it gives way.
+  const range = /^@@+ .*? @@+/.exec(hunk.header)?.[0] ?? hunk.header;
+  return (
+    <div className="diff-hunk-head" data-hunk={index} tabIndex={0} role="group" aria-label={slot.label(index)}>
+      <code className="diff-text" title={hunk.header}>
+        <span className="diff-hunk-range">{range}</span>
+        <span className="diff-hunk-section">{hunk.header.slice(range.length)}</span>
+      </code>
+      {slot.render(index)}
+    </div>
+  );
+}
+
 function UnifiedHunk({
   hunk,
+  index,
+  slot,
   filePath,
   onAddComment,
 }: {
   hunk: DiffHunk;
+  index: number;
+  slot?: HunkSlot;
   filePath?: string;
   onAddComment?: (filePath: string, line: number, side: "left" | "right") => void;
 }) {
@@ -61,7 +91,7 @@ function UnifiedHunk({
       <div className="diff-row diff-row--hunk">
         <span className="diff-gutter" aria-hidden />
         <span className="diff-gutter" aria-hidden />
-        <code className="diff-text">{hunk.header}</code>
+        <HunkHeading hunk={hunk} index={index} slot={slot} />
       </div>
       {hunk.lines.map((line, index) => {
         const lineNum = line.newLine ?? line.oldLine;
@@ -141,11 +171,15 @@ function SplitCell({
 
 function SplitHunk({
   hunk,
+  index,
+  slot,
   rows,
   filePath,
   onAddComment,
 }: {
   hunk: DiffHunk;
+  index: number;
+  slot?: HunkSlot;
   rows: ReturnType<typeof splitRows>;
   filePath?: string;
   onAddComment?: (filePath: string, line: number, side: "left" | "right") => void;
@@ -153,7 +187,7 @@ function SplitHunk({
   return (
     <>
       <div className="diff-split-row diff-split-row--hunk">
-        <code className="diff-text">{hunk.header}</code>
+        <HunkHeading hunk={hunk} index={index} slot={slot} />
       </div>
       {rows.map((row, index) => (
         <div className="diff-split-row" key={index}>
@@ -175,17 +209,17 @@ function SplitHunk({
   );
 }
 
-function FileDiffBody({ file, split, wrap, onAddComment }: {
-  file: DiffFile; split: boolean; wrap: boolean;
+function FileDiffBody({ file, split, wrap, hunkSlot, onAddComment }: {
+  file: DiffFile; split: boolean; wrap: boolean; hunkSlot?: HunkSlot;
   onAddComment?: (filePath: string, line: number, side: "left" | "right") => void;
 }) {
   const prepared = useMemo(() => {
     let count = 0;
-    const hunks = file.hunks.map((hunk) => {
+    const hunks = file.hunks.map((hunk, index) => {
       const rows = split ? splitRows(hunk) : [];
       const start = count;
       count += split ? rows.length : hunk.lines.length;
-      return { hunk, rows, start, end: count };
+      return { hunk, index, rows, start, end: count };
     });
     return { hunks, count };
   }, [file, split]);
@@ -199,9 +233,11 @@ function FileDiffBody({ file, split, wrap, onAddComment }: {
       {prepared.hunks.filter((item) => item.end > start && item.start < end).map((item) => {
         const from = Math.max(0, start - item.start);
         const to = Math.min(item.end, end) - item.start;
+        // A hunk continued from the previous page keeps its heading, not its controls.
+        const slot = from === 0 ? hunkSlot : undefined;
         return split
-          ? <SplitHunk key={item.start} hunk={item.hunk} rows={item.rows.slice(from, to)} filePath={file.path} onAddComment={onAddComment} />
-          : <UnifiedHunk key={item.start} hunk={{ ...item.hunk, lines: item.hunk.lines.slice(from, to) }} filePath={file.path} onAddComment={onAddComment} />;
+          ? <SplitHunk key={item.start} hunk={item.hunk} index={item.index} slot={slot} rows={item.rows.slice(from, to)} filePath={file.path} onAddComment={onAddComment} />
+          : <UnifiedHunk key={item.start} hunk={{ ...item.hunk, lines: item.hunk.lines.slice(from, to) }} index={item.index} slot={slot} filePath={file.path} onAddComment={onAddComment} />;
       })}
     </div>
   </>;
@@ -215,6 +251,8 @@ export function FileDiff({
   expanded,
   onExpandedChange,
   onAddComment,
+  hunkSlot,
+  tools,
 }: {
   file: DiffFile;
   split: boolean;
@@ -223,6 +261,9 @@ export function FileDiff({
   expanded?: boolean;
   onExpandedChange?: (open: boolean) => void;
   onAddComment?: (filePath: string, line: number, side: "left" | "right") => void;
+  hunkSlot?: HunkSlot;
+  /** File-wide controls shown above the hunks while the file is open. */
+  tools?: ReactNode;
 }) {
   const [localOpen, setOpen] = useState(defaultOpen);
   const open = expanded ?? localOpen;
@@ -272,7 +313,10 @@ export function FileDiff({
             {file.status === "renamed" ? "Renamed with no changes to its contents." : "No changes to show."}
           </p>
         ) : (
-          <FileDiffBody file={file} split={split} wrap={wrap} onAddComment={onAddComment} />
+          <>
+            {tools}
+            <FileDiffBody file={file} split={split} wrap={wrap} hunkSlot={hunkSlot} onAddComment={onAddComment} />
+          </>
         )
       ) : null}
     </section>

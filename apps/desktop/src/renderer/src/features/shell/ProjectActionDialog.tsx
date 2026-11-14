@@ -37,6 +37,7 @@ export function ProjectActionDialog({
   // An action with a preview URL opened it before this was a choice, so an
   // action that has never been told otherwise keeps doing that.
   const [openPreview, setOpenPreview] = useState(action.openPreview !== false);
+  const [check, setCheck] = useState(Boolean(action.check));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
   const pending = useRef(false);
@@ -75,6 +76,7 @@ export function ProjectActionDialog({
         ...(previewUrl ? { previewUrl } : {}),
         ...(runOnWorktreeCreate ? { runOnWorktreeCreate: true } : {}),
         ...(previewUrl && !openPreview ? { openPreview: false } : {}),
+        ...(check ? { check: true } : {}),
       });
       if (result.saved) onClose();
       else setError(result.error);
@@ -159,6 +161,15 @@ export function ProjectActionDialog({
               onChange={setRunOnWorktreeCreate}
               label="Run automatically on worktree creation"
             />
+          </div>
+        </div>
+        <div className="setting">
+          <div className="setting-copy">
+            <div>Use as the project's check</div>
+            <p>@diagnostics in the composer runs this and attaches what fails.</p>
+          </div>
+          <div className="setting-control">
+            <Switch checked={check} onChange={setCheck} label="Use as the project's check" />
           </div>
         </div>
         {previewUrl ? (

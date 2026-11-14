@@ -22,13 +22,17 @@ import { clampPanelWidth, fitPanelWidth, restorePanelWidth } from "../../lib/pan
 import { formatProjectRoot, toWorkspaceRelative } from "../../lib/paths";
 import { useWorkspace } from "../../lib/workspace";
 import { DiffView } from "./DiffView";
+import { ReviewDiff } from "../review/ReviewDiff";
 import { EmbeddedBrowser } from "./EmbeddedBrowser";
 import { SimulatorPane } from "./SimulatorPane";
 import { FilePreviewView } from "./FilePreview";
 import { FileTreePane, sortTreeEntries } from "./FileTree";
 import { ThreadAgents } from "./ThreadAgents";
+import { ComparePane } from "../best-of-n/ComparePane";
 import { SURFACES, tabForTool, toolFromTab, type InspectorTool } from "./surfaces";
 import { InspectorHeadSlot } from "./inspector-slot";
+import { useFollowAgent } from "./use-follow-agent";
+import "./follow-agent.css";
 import { GitPullRequestDetail as PullRequestDetailView } from "./PullRequestDetail";
 import { PullRequestList } from "./PullRequestList";
 import { ReviewCommitForm } from "./ReviewCommitForm";
@@ -39,6 +43,7 @@ import {
   FileIcon,
   MaximizeIcon,
   MinimizeIcon,
+  MousePointerClickIcon,
   PlusIcon,
   UndoIcon,
   CloudUploadIcon,
@@ -133,6 +138,8 @@ export function Inspector() {
     setBrowserUrl,
     requestedFile,
     clearRequestedFile,
+    events,
+    updateSettings,
   } = useWorkspace();
 
   const [panelWidth, setPanelWidth] = useState<number>(() => {
@@ -252,7 +259,7 @@ export function Inspector() {
   const scope = JSON.stringify([projectId, session?.id, activeRoot]);
   const diffRequests = useRef(new RequestScope()).current;
   const diffScope = diffRequests.select(JSON.stringify([scope, git?.branch]));
-  const [diff, setDiff] = useScopedState(diffScope, "");
+  const [reviewPath, setReviewPath] = useScopedState<string | undefined>(diffScope, undefined);
   const directoryCache = useMemo(() => new DirectoryListings(async (path) => {
     if (!projectId || !activeRoot) return [];
     return sortTreeEntries(await api.listFiles(projectId, path || undefined, activeRoot));
@@ -602,6 +609,7 @@ export function Inspector() {
     if (activeRoot !== root) { setFileRoot(root); return; }
     const relative = toWorkspaceRelative(requestedFile.path, root);
     clearRequestedFile();
+    followAgent.pause();
     void previewFile(relative);
     // The request is the trigger; folder ownership is checked inside previewFile.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -649,7 +657,7 @@ export function Inspector() {
           : undefined,
       );
       setSaveState(recovered?.state ?? (doc.truncated ? "truncated" : "idle"));
-      setDiff("");
+      setReviewPath(undefined);
 
     } catch (error) {
       if (!current()) return;
@@ -670,18 +678,43 @@ export function Inspector() {
     }
   }, [api, projectId, activeRoot, setInspectorOpen]);
 
-  async function showFileDiff(relative: string) {
+  /*
+   * Follow agent. A path outside the open folder, or a file being edited by
+   * hand, is left alone: following must never take a draft away.
+   */
+  const readOnlyPeer = api.isDesktop === false && api.remoteMode !== "control";
+  const followAgent = useFollowAgent({
+    enabled: settings?.followAgent === true,
+    visible: inspectorOpen && activeTool === "files",
+    run: activeRun?.sessionId === session?.id ? activeRun : undefined,
+    events,
+    onFollow: (path) => {
+      if (!activeRoot || previewEditing) return;
+      const absolute = /^(?:\/|[A-Za-z]:[\\/])/u.test(path);
+      if (absolute && !path.replace(/\\/gu, "/").toLowerCase().startsWith(`${activeRoot.replace(/\\/gu, "/").toLowerCase()}/`)) return;
+      const relative = toWorkspaceRelative(path, activeRoot);
+      const parts = relative.split("/").slice(0, -1);
+      const parents = parts.map((_, index) => parts.slice(0, index + 1).join("/"));
+      if (parents.length) {
+        setExpanded((current) => new Set([...current, ...parents]));
+        for (const parent of parents) void directoryCache.load(parent, true);
+      }
+      void previewFile(relative);
+    },
+  });
+  const setFollowAgent = (on: boolean) => {
+    followAgent.resume();
+    void updateSettings({ followAgent: on }).catch((error: unknown) => setNotice(formatUserError(error)));
+  };
+  const pauseFollow = followAgent.pause;
+  const previewByHand = useCallback((path: string) => { pauseFollow(); void previewFile(path); }, [pauseFollow, previewFile]);
+  const toggleFolderByHand = useCallback((path: string) => { pauseFollow(); toggleFolder(path); }, [pauseFollow, toggleFolder]);
+  const openRootByHand = useCallback((root: string) => { pauseFollow(); openRoot(root); }, [pauseFollow, openRoot]);
+  const searchByHand = useCallback((value: string) => { pauseFollow(); setFileSearch(value); }, [pauseFollow]);
+
+  function showFileDiff(relative: string) {
     if (!projectId) return;
-    const current = diffRequests.capture("diff");
-    setDiff("Loading diff…");
-    try {
-      const text = await api.gitDiff(projectId, relative, session?.id);
-      if (!current()) return;
-      setDiff(text || "(no differences)");
-    } catch {
-      if (!current()) return;
-      setDiff("Failed to load diff.");
-    }
+    setReviewPath(relative);
     setPreviewDoc(undefined);
     setEditing(undefined);
     selectTool("review");
@@ -747,6 +780,8 @@ export function Inspector() {
             null
           ) : activeTool === "agents" ? (
             <span>Agents</span>
+          ) : activeTool === "compare" ? (
+            <span>Compare</span>
           ) : activeTool === "chat" ? (
             <>
               <span>Side chat</span>
@@ -757,6 +792,18 @@ export function Inspector() {
           )}
         </span>
         <div className="panel-chrome-actions">
+          {activeTool === "files" && !readOnlyPeer && (
+            <button
+              type="button"
+              className={`icon-btn${followAgent.status !== "off" ? " active" : ""}`}
+              title={followAgent.status === "off" ? "Follow agent: show the file the agent is on while a turn runs" : "Stop following the agent"}
+              aria-label="Follow agent"
+              aria-pressed={followAgent.status !== "off"}
+              onClick={() => setFollowAgent(followAgent.status === "off")}
+            >
+              <MousePointerClickIcon size={14} />
+            </button>
+          )}
           {activeTool === "files" && (
             <button
               type="button"
@@ -781,7 +828,7 @@ export function Inspector() {
           <button
             type="button"
             className="icon-btn"
-            title="Close panel (⌘\\)"
+            title="Close panel (⌘\)"
             aria-label="Close panel"
             onClick={toggleInspector}
           >
@@ -804,7 +851,7 @@ export function Inspector() {
             <div className="panel-launcher-cards">
               {SURFACES.map((surface) => {
                 const Icon = surface.icon;
-                const blocked = surface.blockedBy({ projectId, git, desktop: api.isDesktop, platform: api.platform });
+                const blocked = surface.blockedBy({ projectId, git, desktop: api.isDesktop, platform: api.platform, groupId: session?.groupId });
                 return (
                   <button
                     key={surface.tool}
@@ -841,6 +888,18 @@ export function Inspector() {
                 void previewFile(owner.path);
               }
             }} />
+            {(followAgent.status === "following" || followAgent.status === "paused") && (
+              <div className="follow-agent-bar" role="status">
+                {followAgent.status === "following" ? <>
+                  <span className="follow-agent-dot" aria-hidden />
+                  <span className="follow-agent-text">Following the agent{followAgent.path ? <> · <code title={followAgent.path}>{toWorkspaceRelative(followAgent.path, activeRoot)}</code></> : null}</span>
+                  <button type="button" className="ghost" onClick={pauseFollow}>Pause</button>
+                </> : <>
+                  <span className="follow-agent-text">Paused while you browse Files.</span>
+                  <button type="button" className="ghost" onClick={followAgent.resume}>Follow again</button>
+                </>}
+              </div>
+            )}
             <div className={`panel-files-workspace${compactFiles ? " compact" : ""}${showTree && activeRoot ? " tree-visible" : ""}`}>
               <div className="panel-file-preview-pane">
                 {previewDoc ? (
@@ -923,11 +982,11 @@ export function Inspector() {
                   activeRoot={activeRoot}
                   previewPath={previewDoc?.path}
                   gitFiles={git?.files}
-                  onFileSearchChange={setFileSearch}
+                  onFileSearchChange={searchByHand}
                   onClearSearch={clearFileSearch}
-                  onOpenRoot={openRoot}
-                  onToggleFolder={toggleFolder}
-                  onPreviewFile={previewFile}
+                  onOpenRoot={openRootByHand}
+                  onToggleFolder={toggleFolderByHand}
+                  onPreviewFile={previewByHand}
                 />
               ) : null}
             </div>
@@ -1014,7 +1073,7 @@ export function Inspector() {
                 <span>Branch</span>
                 <span className="mono">{git?.branch ?? "main"}</span>
               </div>
-              <div className="git-actions">
+              {!readOnlyPeer && <div className="git-actions">
                 <button className="chip" type="button" onClick={() => void gitPush()}>
                   <CloudUploadIcon size={13} />Push
                 </button>
@@ -1037,7 +1096,7 @@ export function Inspector() {
                     <GitPullRequestIcon size={13} />{settings?.prDraft ? "Draft PR" : "Pull request"}
                   </button>
                 )}
-              </div>
+              </div>}
             </div>
 
             <PullRequestList
@@ -1059,45 +1118,46 @@ export function Inspector() {
               ) : (
                 git?.files?.map((entry) => (
                   <div className="change-row" key={entry.path}>
-                    <button className="list-item" onClick={() => void showFileDiff(entry.path)}>
+                    <button className="list-item" onClick={() => showFileDiff(entry.path)}>
                       <DiffIcon size={12} />
                       <span className="truncate">{entry.path}</span>
                       <span className="meta">{entry.code}</span>
                     </button>
-                    <span className="change-row-actions">
+                    {!readOnlyPeer && <span className="change-row-actions">
                       <button type="button" className="icon-btn" title={`Stage ${entry.path}`} aria-label={`Stage ${entry.path}`} onClick={() => void gitStage(entry.path)}>
                         <PlusIcon size={13} />
                       </button>
                       <button type="button" className="icon-btn change-row-discard" title={`Discard changes to ${entry.path}`} aria-label={`Discard changes to ${entry.path}`} onClick={() => gitDiscard(entry.path)}>
                         <UndoIcon size={13} />
                       </button>
-                    </span>
+                    </span>}
                   </div>
                 ))
               )}
             </div>
 
-            {git?.isRepo && <ReviewCommitForm key={`${projectId}/${session?.id ?? ""}/${session?.workingDirectory ?? project?.workingDirectory ?? ""}`}
+            {git?.isRepo && !readOnlyPeer && <ReviewCommitForm key={`${projectId}/${session?.id ?? ""}/${session?.workingDirectory ?? project?.workingDirectory ?? ""}`}
               dirty={Boolean(git.dirty)} onCommit={gitCommit} />}
 
-            <div className="panel-diff-section">
-              <h4>Diff</h4>
-              {diff ? (
-                <DiffView text={diff} />
-              ) : (
-                artifacts
+            {git?.isRepo && projectId ? (
+              <ReviewDiff key={`${projectId}/${session?.id ?? ""}`} projectId={projectId} sessionId={session?.id}
+                path={reviewPath} onShowAll={() => setReviewPath(undefined)} />
+            ) : (
+              <div className="panel-diff-section">
+                <h4>Diff</h4>
+                {artifacts
                   .filter((item) => item.kind === "patch" && item.content)
                   .map((artifact) => (
                     <div key={artifact.id}>
                       <h5>{artifact.title}</h5>
                       <DiffView text={artifact.content ?? ""} />
                     </div>
-                  ))
-              )}
-              {!diff && artifacts.every((item) => item.kind !== "patch" || !item.content) && (
-                <p className="faint">Select a changed file to view its git diff.</p>
-              )}
-            </div>
+                  ))}
+                {artifacts.every((item) => item.kind !== "patch" || !item.content) && (
+                  <p className="faint">No diff to show. This folder is not a git repository.</p>
+                )}
+              </div>
+            )}
               </>
             )}
           </div>
@@ -1126,6 +1186,8 @@ export function Inspector() {
         )}
 
         {activeTool === "agents" && <div className="panel-tool-pane"><ThreadAgents /></div>}
+
+        {activeTool === "compare" && <div className="panel-tool-pane"><ComparePane /></div>}
 
         {activeTool === "chat" && (
           <div className="panel-tool-pane" ref={chatScroll}>

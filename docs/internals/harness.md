@@ -396,6 +396,76 @@ JSON/base64 overhead. Unsupported, special, missing and oversized files fail the
 turn instead of silently substituting paths. Encoded bytes are not persisted.
 Gateway delivery keeps its existing bridge and host semantics.
 
+### Forks and restores per route
+
+A fork, a conversation restore and Edit from here all end with a thread that
+has no agent session and a `carryOver`. Per route and harness:
+
+| Route / harness | Fresh session | Context for the kept turns | Redo of a conversation restore |
+|---|---|---|---|
+| Direct, Claude Code | spawned on the route recorded in `carryOver` | transcript block on the first prompt | resumes the saved native session (`resume`), which holds the hidden turns |
+| Direct, Codex, Grok Build, Muse | same | same | same, through `session/resume` or `session/load` when the agent offers it |
+| Gateway, any harness | new Gateway session and `/acp spawn --bind off` | same | the closed Gateway session is not reopened; the next prompt carries the whole transcript instead |
+| Mock runtime | mock session key | lifecycle event only (the mock reads scenario tokens from prompts) | same as Gateway |
+
+Native forking was considered and not used. ACP's session fork and the
+Claude SDK's `forkSession` copy a whole live session; forking at an older
+turn needs `resumeSessionAt` with the agent's own message id for that turn,
+which Capsule does not record per run. Using it for "fork at the latest turn"
+only, on one harness, would give the same menu item two behaviours. One
+mechanism for every route keeps a fork predictable; recording native message
+ids per run is the prerequisite if this is revisited.
+
+### Imported sessions per route
+
+`HistoryImport` (`packages/core/src/history-import.ts`) turns a session from an
+agent's own history into a thread. The parsers live in a registry,
+`HISTORY_SOURCES` in `history-parsers.ts`, one per agent with a documented
+local format:
+
+| Agent | Where it reads | What a turn is |
+|---|---|---|
+| Claude Code | `$CLAUDE_CONFIG_DIR/projects/<cwd with every non-alphanumeric as "-">/*.jsonl` (default `~/.claude`) | a `user` entry with text content that is not meta, a sidechain, a tool result or a command wrapper; the reply is the turn's last `assistant` text |
+| Codex | `$CODEX_HOME/sessions/**/rollout-*.jsonl` (default `~/.codex`), matched by the `session_meta` line's `cwd` | `event_msg` `user_message` / `agent_message`; `response_item` messages when a rollout has no event messages; injected `<environment_context>` blocks are skipped |
+| Everyone else | not read | no documented local history; the dialog says they cannot be imported |
+
+Files are only read. Lines that are not JSON are counted and logged, never
+fatal. A session is listed only when its recorded `cwd` equals the project's
+folder, and the import call re-finds the file by agent and native id rather
+than trusting a path from the renderer.
+
+Whether the thread resumes is decided once, at import, by
+`importContinuation(route)`:
+
+| Route / harness | Imported thread | Next message |
+|---|---|---|
+| Direct, Claude Code | `directSession` with the native session id, `carryOver.route = "direct"` | spawns the native SDK transport with `resume: <id>`; the SDK checks the session exists for this folder |
+| Direct, Codex | same, with the thread id | `thread/resume` on the app-server; an archived thread is unarchived first, as for any resume |
+| Gateway, any harness | `carryOver.replayTranscript` | a new Gateway session; the imported transcript goes with the first prompt in `<conversation-so-far>`. The Gateway runs its own agent sessions and cannot reopen a CLI session started on this computer |
+| Mock runtime | same as Gateway | lifecycle event only |
+
+The `launchSignature` an imported `directSession` records comes from
+`directLaunchSignature(harnessId)`, the same command identity a new direct
+session records, so the host's resume guard accepts it. An import always uses
+the project checkout (`workspaceMode: "local"`): a resumed session must run in
+the folder it was recorded in.
+
+### Handoff per route
+
+**Hand off to a new conversation…** builds its summary locally with
+`handoffSummary` (`threadToMarkdown` over prompts and final replies, newest
+24 KB). Asking the agent was considered and not used: on the Gateway a
+control turn's reply would arrive as a thread reply, an agent that is not live
+would have to be spawned to answer, and it would cost a turn on every route.
+The local summary behaves the same on direct, Gateway and mock, for every
+harness.
+
+The new thread gets `carryOver.brief` (plus the original's route and saved
+controls when the agent is the same) and `origin: { kind: "handoff",
+sessionId }`. On its first prompt the engine prefixes the brief in a
+`<handoff-summary>` block, records "Carried the handoff summary to the agent",
+and clears it. A different agent starts on that agent's default route.
+
 ### Embedded browser tools
 
 Browser operations acquire one target and grant generation. Foreground
@@ -472,6 +542,27 @@ open_url, apps, launch. No list, boot, shutdown, install or settings tool
 exists for agents. Gestures go through the XCUITest touch bridge the panel
 uses, started on demand. Gateway sessions are not given these tools.
 
+### Task tools
+
+The same transport offers `capsule-tasks` beside the browser tools. A token
+resolves only its thread; `Engine.callAgentTaskTool` scopes each call to that
+thread's project. Tools: `create_task(title, prompt, agent?, workspace?,
+depends_on?)`, `start_task(id)` and `list_tasks()`. Created cards carry
+`origin: { kind: "task", sessionId }`. Unless the person allowed agent starts
+for the project (`settings.agentTaskAutoStart`), a card is a draft that never
+starts on its own and `start_task` is refused; an agent may start only cards it
+created. Calls go through desktop update admission under `createBoardCard`.
+
+Who receives it:
+
+| Route / harness | Gets `capsule-tasks` |
+|---|---|
+| Direct ACP harness whose handshake reports `mcpCapabilities.http === true` | Yes, on `session/new` |
+| Direct ACP harness without HTTP MCP support | No; the conversation works without it |
+| Claude Code, Codex and Muse Code (native session protocols) | No. The direct host gives native sessions no MCP offer yet |
+| Gateway route | No. The Gateway owns its agents' tools; the board's **Agent tasks** panel says so |
+| Mock runtime, probes | No |
+
 ### Turn evidence
 
 Turn verification is a workspace capability shared by every harness and both
@@ -492,15 +583,94 @@ contains no output. No session loop or transport is replaced by this handling.
 - Folder as the coding cwd, git branch/dirty status, file mention (`@path`)
 - Optional per-conversation Git worktree isolation; ACP always receives the resolved thread cwd
 - Slash commands (`/`), skills (`$`), plan vs code modes
-- Per-thread permission mode (supervised / standard / full access)
+- Per-thread approval preset (Ask / Auto / Full; see "Approval presets" below)
 - Approvals, run timeline, artifacts
 - ACP harnesses through OpenClaw acpx
 
 Gateway ACP sessions run on the Gateway host. OpenClaw sandbox policy does not wrap them. The Gateway's non-interactive policy is:
 
-- **Standard / Full access** → `plugins.entries.acpx.config.permissionMode=approve-all` (and `/acp permissions approve-all` on the session). Coding harnesses cannot write or fetch without this.
-- **Supervised** → `deny-all`. Tools that would need a prompt are refused.
+- **Auto / Full** → `plugins.entries.acpx.config.permissionMode=approve-all` (and `/acp permissions approve-all` on the session). Coding harnesses cannot write or fetch without this.
+- **Ask** → `deny-all`. Tools that would need a prompt are refused.
 - If OpenClaw later forwards `session/request_permission` on the operator socket, Capsule maps it to Approvals. Until that exists, plugin config is the real switch. Old ACP workers keep the flags they started with — restart the Gateway after changing them.
+
+### Approval presets
+
+`APPROVAL_PRESETS` in `@capsule/shared` (`approval-presets.ts`) is the one
+registry. The stored ids are the old permission profiles, so saved threads keep
+their meaning: `strict` is **Ask**, `default` is **Auto**, `approve-all` is
+**Full**. `approvalCarrier(profile, { route, harnessId })` says how a route
+carries a preset (`enforced`, `approximated` or `not-carried`) with a sentence
+the composer menu shows; `directApprovalDecision` is the direct route's answer
+to one permission request.
+
+| Route / harness | Ask | Auto | Full |
+| --- | --- | --- | --- |
+| Direct, Claude Code | Enforced: every request the agent makes is shown. Matching agent mode `default`. | Enforced: `read`/`search`/`think` and `edit`/`delete`/`move` requests whose locations are all inside the thread's folder are allowed; the rest are shown. Matching mode `acceptEdits`. | Enforced: every request is allowed. Matching mode `bypassPermissions`. |
+| Direct, Codex | Approximated: Codex's own `auto` mode edits workspace files without asking, so those never reach Capsule. Matching mode `read-only`. | Approximated: as Auto above, but Codex's `auto` mode also runs sandboxed commands without asking. Matching mode `auto`. | Enforced. Matching mode `full-access`. |
+| Direct, other ACP agents | Approximated: Capsule answers only what the agent asks; its own mode decides that. | Approximated, same reason. | Enforced. |
+| Gateway, every harness | Approximated: acpx `deny-all`; a tool needing approval is refused, not asked. | Approximated: acpx `approve-all`; acpx has no middle mode that keeps a turn alive (`approve-reads` throws on the first write), so commands run too. | Enforced: acpx `approve-all`. |
+| Mock runtime | Not carried: the demo asks only for `[approval]` prompts. | Not carried. | Not carried. |
+
+Direct mode never switches the agent's own mode to match a preset. Plan mode
+owns that option and restores the user's Act value; a second writer would fight
+it. The matching mode is named in the menu so a person can line the two up in
+Agent settings. A request is auto-allowed only when the agent offers an
+allow-once option, and the run log records it as `approval.auto` ("Allowed under
+Auto: …"). Changing the preset on a live direct thread sends nothing: the next
+request is answered from the stored profile. On the Gateway a change sends
+`/acp permissions <mode> <target>` as before. No new global acpx config write
+was added for presets; the existing per-change `ensureAcpxPermissionMode` write
+predates this and is unchanged.
+
+Under Auto and Full, a direct `execute` tool call that a person did not approve
+is timed (`LongCommandWatch`, `packages/core/src/long-commands.ts`). When it is
+still running after `longCommandSeconds` (default 30) the engine emits
+`long-command` once, and the desktop notifies if the window is unfocused and
+**Long-running commands** is on. The Gateway route does not report tool calls to
+Capsule, so it has no long-command alert.
+
+### Apply to local
+
+Applying a worktree thread to the project checkout is a Git operation on this
+computer. It does not talk to the agent, so it behaves the same on the direct
+and Gateway routes and for every harness. The resolve-conflicts thread it can
+start is an ordinary local thread on the same agent as the worktree thread. See
+[desktop.md](./desktop.md#apply-to-local).
+
+## Plan mode
+
+`Session.turnMode` (`"plan" | "act"`, absent means act) says what the next turn
+does, and `Run.turnMode` records what each turn did, so the renderer can offer
+**Act on this plan** on the right turn. Both are nullable `turn_mode` columns.
+One registry, `planModeSupport` in `@capsule/shared/plan-mode.ts`, decides how a
+plan turn is carried; the engine's `carryTurnMode` (`packages/core/src/turn-mode.ts`)
+applies it in `sendAdmittedMessage` and records the carrier as a `plan-mode` run
+event. Nothing else branches on harness or route for plan mode.
+
+| Harness and route | Carrier | Chip says | Instruction added |
+|---|---|---|---|
+| Claude Code, direct | The adapter's `mode` setting maps to the SDK `plan` permission mode and restores the Act permission afterwards. A permission chosen while planning waits for Act. When Claude calls `ExitPlanMode`, Capsule denies it, shows the plan as the reply and ends the turn. | Enforced by Claude Code | No |
+| Codex, direct | The adapter's `mode` setting sends the turn with a read-only sandbox and `approvalPolicy: never`. Codex's own collaboration mode is experimental and not used. | Read-only, enforced by Codex | Yes |
+| Other ACP agent, direct | If the agent reports a `mode` option with a plan choice, `direct.setConfig` switches it before the turn and back to the saved, current or likeliest working choice for Act. | Enforced by *agent* | No |
+| Any agent, Gateway | Same detection from `/acp status`. `/acp set-mode <value>` goes out as a control command on the control session, never as a thread message. The engine keeps the sessions it switched in memory and switches them back on the next Act turn. | Enforced by *agent* | No |
+| No plan mode reported (Muse, agents without one, a Gateway agent without a harness) | Instruction only. | Asked, not enforced | Yes |
+| Demo runtime | `AgentMessage.turnMode` reaches the mock, which replies with a numbered plan and a plan event, and edits nothing. | Demo runtime, no edits | No |
+
+Direct mode switches go straight to `DirectAcpHost.setConfig`, not through
+`setHarnessConfig`, so the thread's saved configuration keeps the Act choice
+and a resumed session does not come back in plan. A failed switch to plan falls
+back to the instruction and the run event says the turn was not enforced. The
+"strict" permission profile is never used as a fallback: on the Gateway it is a
+global acpx write that would change every session.
+
+`setSessionTurnMode(sessionId, mode)` saves the mode and, when
+`settings.modeModels[harnessId][mode]` is set, applies that model through the
+existing model option path if the agent is live (deferred with a notice while a
+turn runs), or sets `modelOverride` so the agent starts with it.
+`createSession` honours `turnMode` from the input, then `settings.startInPlanMode`,
+and starts with the matching mode model. The IPC channel `setSessionTurnMode` is
+a control channel like `sendMessage`: a paired viewer with conversation control
+may switch, a read-only viewer may not.
 
 ## Do you need to install Claude Code in Capsule?
 
@@ -627,3 +797,54 @@ again by the event budget. Gateway tool frames use the same normalization. Nativ
 session adapters that report only title/status remain readable but do not invent
 command output. This does not add client filesystem or terminal execution APIs,
 and tool reports never grant permission or become assistant replies.
+
+## Board cards
+
+A board card that starts, by hand or because the cards before it were marked
+done, sends its prompt through `sendMessage`, the same call the composer makes.
+Nothing about the route or harness is decided by the board: a direct thread
+spawns its CLI, a Gateway thread goes through the ACP bridge, and every preset
+gets the model, permission profile and workspace mode the thread already has.
+A harness that is not installed or not signed in fails that turn the usual way,
+and the card shows it under Needs you. The chain itself runs in the engine, so
+it does not depend on the Gateway being connected; only the turns it starts do.
+
+## Best-of-N candidates
+
+`startBestOfN` makes one worktree thread per candidate (agent plus optional
+model), records them on a `ThreadGroup`, and sends the same prompt and
+attachments to each through `sendMessage`. Nothing here picks a route or talks
+to an agent directly, so each candidate behaves exactly as a thread started
+from the composer with that agent:
+
+- **Routes.** Each candidate takes `harnessRoute` on its own: a preset that
+  runs direct spawns its CLI in the candidate's worktree; a Gateway preset gets
+  its own Gateway session and `/acp spawn`. One comparison can mix routes.
+- **No sharing.** Every candidate is a separate thread with its own session key
+  and its own worktree and branch, including two candidates of the same agent.
+  Same-agent candidates start one after the other because on the Gateway route
+  each spawn may call `ensureAcpxAgentCommand` for that agent, and two writes of
+  its registration at once can race; different agents start in parallel.
+- **Model.** The candidate's model is the thread's `modelOverride`, passed to
+  the spawn like a model chosen in the composer. A preset that does not accept
+  a model starts with its default; the card says "default model" only when none
+  was asked for.
+- **Readiness.** Before creating anything, a candidate whose agent definitely
+  cannot start (`harnessStartRefusal`: CLI missing, signed out, Gateway offline
+  for a Gateway preset) refuses the whole start with that reason. The picker
+  already disables those agents. An unknown login state does not block.
+- **Failure and approval.** A candidate whose spawn or turn fails shows as
+  Failed in Compare with the turn's error; one waiting on an approval shows
+  Needs you. Neither stops the other candidates. A prompt that was refused
+  before any turn was recorded keeps its thread and shows the reason until the
+  app quits.
+- **Project default.** Spawning an agent makes it the project's default agent.
+  A comparison restores the default the project had once all candidates have
+  started, because no single agent was chosen.
+- **Muse** is left out of the picker: it is not a coding agent and has no
+  worktree to compare.
+
+Keeping a candidate is Apply to local, so it is Git only and identical on both
+routes. Setting the others aside closes any live agent session first (its
+folder is about to go), saves the worktree to a hidden ref, and removes it;
+restoring the thread puts the worktree back before the thread is active again.

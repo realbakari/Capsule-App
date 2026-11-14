@@ -1,3 +1,5 @@
 export { CapsuleDatabase } from "./database.js";
-export { CapsuleRepositories } from "./repositories.js";
+export { CapsuleRepositories, type RestorePointRecord } from "./repositories.js";
+export type { TranscriptRows, TranscriptSplit } from "./transcript-rows.js";
 export { MIGRATIONS } from "./schema.js";
+export { ShareGrantStore } from "./share-grants.js";

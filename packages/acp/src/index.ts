@@ -19,6 +19,7 @@ export { readCliError, explainDirectFailure } from "./errors.js";
 export {
   DirectAcpHost,
   directCapableHarnesses,
+  directLaunchSignature,
   directSessionKey,
   isDirectSessionKey,
   supportsDirectMode,

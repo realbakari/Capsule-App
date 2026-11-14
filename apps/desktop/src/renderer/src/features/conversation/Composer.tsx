@@ -1,17 +1,27 @@
 import { contextTone } from "../../lib/context-window";
-import { agentControls, reportedAgentControls, harnessCapabilities } from "@capsule/shared";
+import { agentControls, reportedAgentControls, harnessCapabilities, nextFavoriteModel, planModeSupport, withoutPlanChoice, type PlanRoute } from "@capsule/shared";
+import { APPROVAL_PRESETS, approvalOptionDetail, approvalPreset, isApprovalPresetId, type ApprovalRoute } from "@capsule/shared";
+import { TurnModeChip } from "./TurnModeChip";
+import "./plan-mode.css";
+import { PlanHandoff } from "./PlanHandoff";
+import { CYCLE_FAVORITE_MODEL_EVENT, latestPlanRun } from "../../lib/turn-mode";
 import { useHarnessDiscovery } from "../../lib/harness-discovery";
 import { AgentControl } from "../harness/AgentControl";
 import { ContextWindowMeter } from "./ContextWindowMeter";
+import { useHandoff } from "../handoff/Handoff";
 import { ComposerTools } from "./ComposerTools";
 import { agentSwitchNotice, harnessDisplayName } from "../../lib/harness";
 import { AgentModelPicker } from "./AgentModelPicker";
+import { RunOnControl, RunOnSummary, useRunOn } from "../best-of-n/RunOnPicker";
 import { GatewayBanner } from "../shell/GatewayBanner";
-import { GATEWAY_CONNECTION_REQUIRED } from "../../lib/harness-preflight";
+import { TemporaryThreadBanner } from "../threads/ThreadMarks";
+import { useThreadActions } from "../threads/ThreadActions";
+import { GATEWAY_CONNECTION_REQUIRED, agentSetupNotice } from "../../lib/harness-preflight";
+import { AgentSetupNotice } from "./AgentSetupNotice";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { FileEntry } from "@capsule/shared";
 import { searchProjectFiles } from "../../lib/bridge";
-import { PERMISSION_OPTIONS, useWorkspace, type View } from "../../lib/workspace";
+import { useWorkspace, type View } from "../../lib/workspace";
 import { formatProjectRoot, projectFolderName } from "../../lib/paths";
 import { MenuSelect } from "../shell/MenuSelect";
 import {
@@ -22,6 +32,7 @@ import {
   PaperclipIcon,
   ShieldIcon,
   StopIcon,
+  TerminalIcon,
   XIcon,
 } from "../shell/icons";
 import { ComposerMenu, detectTrigger, type SuggestItem } from "./ComposerMenu";
@@ -31,6 +42,9 @@ import { recallablePrompts } from "../../lib/prompt-queue";
 import { searchComposerSkills, skillSource } from "../../lib/composer-skills";
 import { composerPlaceholder, shouldRestComposer } from "../../lib/composer-rest";
 import { tasksFromRunEvents } from "@capsule/shared";
+import { initPrompt, mentionSources, parseBangCommand, templateCommand, templateVariables, type PromptTemplate } from "@capsule/shared";
+import { CONTEXT_ICONS, ContextChip, ContextPicker, PendingChip, TemplateForm, useContextResolver, type ContextPickerKind } from "./ComposerContext";
+import { detectInstructionFiles } from "../project/ProjectInstructions";
 
 const SUGGESTIONS = [
   {
@@ -63,6 +77,10 @@ function slashCommands(input: {
   openTerminal: () => void;
   pickProjectDirectory: () => void;
   setView: (view: View) => void;
+  /** Absent when there is no project folder to write AGENTS.md into. */
+  init?: () => void;
+  templates: Array<{ template: PromptTemplate; scope: "Project" | "Personal" }>;
+  useTemplate: (template: PromptTemplate) => void;
 }): SuggestItem[] {
   const targets =
     input.harnesses.length > 0
@@ -73,6 +91,14 @@ function slashCommands(input: {
         ];
   return [
     { id: "new", label: "/new", detail: "New conversation", run: () => input.createTask() },
+    ...(input.init ? [{ id: "init", label: "/init", detail: "Ask the agent to write or refresh AGENTS.md", run: input.init }] : []),
+    ...input.templates.map(({ template, scope }) => ({
+      id: `template-${scope}-${template.name}`,
+      label: templateCommand(template),
+      detail: template.description ?? template.prompt.replace(/\s+/gu, " "),
+      badge: scope,
+      ...(templateVariables(template.prompt).length ? { run: () => input.useTemplate(template) } : { insert: template.prompt }),
+    })),
     ...targets.map((harness) => ({
       id: `spawn-${harness.id}`,
       label: `/${harness.id}`,
@@ -103,6 +129,8 @@ export function Composer({
   awayFromLatest?: boolean;
 }) {
   const workspace = useWorkspace();
+  const threadActions = useThreadActions();
+  const handoff = useHandoff();
   const { contextUsage } = workspace;
   const {
     draft,
@@ -134,6 +162,8 @@ export function Composer({
     setSkillId,
     skillId,
     setPermissionProfile,
+    draftApproval,
+    setDraftApproval,
     harnessStatuses,
     loadHarnessStatus,
     setHarnessOption,
@@ -159,8 +189,16 @@ export function Composer({
     stashCurrentPrompt,
     restorePromptStash,
     deletePromptStash,
+    turnMode,
+    setTurnMode,
+    favoriteModels,
+    toggleFavoriteModel,
+    runs,
   } = workspace;
   const harnesses = workspace.harnesses ?? [];
+  const runOn = useRunOn();
+  /* With two or more agents picked under Run on…, sending starts the comparison instead. */
+  const submit = () => runOn.active ? runOn.start() : send();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [recall, setRecall] = useState<{ index: number; original: string }>();
   useEffect(() => { setRecall(undefined); }, [session?.id]);
@@ -179,6 +217,9 @@ export function Composer({
   const [menuDismissed, setMenuDismissed] = useState(false);
   const menuId = useId();
   const [picker, setPicker] = useState<"file" | "skill">();
+  const [contextPicker, setContextPicker] = useState<ContextPickerKind>();
+  const [template, setTemplate] = useState<PromptTemplate>();
+  const resolver = useContextResolver();
   const [pickerQuery, setPickerQuery] = useState("");
   const [fileState, setFileState] = useState("Searching files…");
   const [picking, setPicking] = useState(false);
@@ -191,12 +232,13 @@ export function Composer({
     // React must commit the controlled value before restoring its caret. An
     // animation frame can run first under load and then lose the selection.
     if (pendingSelection.scope === selectionScope) {
-      textareaRef.current?.focus();
+      // A source that opened its own picker or form keeps the focus it took.
+      if (!contextPicker && !template) textareaRef.current?.focus();
       textareaRef.current?.setSelectionRange(pendingSelection.position, pendingSelection.position);
       setCaret(pendingSelection.position);
     }
     setPendingSelection(undefined);
-  }, [pendingSelection, selectionScope]);
+  }, [pendingSelection, selectionScope, contextPicker, template]);
   const liveHarnessSessionId =
     session?.harnessId && session.harnessState && session.harnessState !== "closed"
       ? session.id
@@ -219,6 +261,12 @@ export function Composer({
     !harnessLive && capabilities.route === "direct" && Boolean(capabilityHarness) && capabilityHarness?.readiness !== "missing_cli" && api.isDesktop === true, session?.id);
   const controls = harnessLive ? agentControls(session?.harnessId === agentId ? session : undefined, harnessStatus)
     : reportedAgentControls(discovery.result?.reported?.configOptions);
+  /* The Plan chip owns the plan choice; the mode picker keeps whatever else the agent offers. */
+  const modeControl = withoutPlanChoice(controls.mode);
+  const planOptions = harnessLive ? session?.harnessId === agentId ? harnessStatus?.parsed?.reported?.configOptions : undefined : discovery.result?.reported?.configOptions;
+  const planRoute: PlanRoute = workspace.status?.kind === "mock" ? "mock" : capabilities.route === "direct" ? "direct" : "gateway";
+  const planSupport = planModeSupport({ harnessId: capabilityHarness?.id, harnessName: capabilityHarness?.name ?? agents.find((item) => item.id === agentId)?.name,
+    route: planRoute, options: planOptions, reported: Boolean(planOptions) });
   const gatewayUnavailable = ready && !connected && capabilities.route !== "direct" && workspace.status?.kind !== "mock";
   const models = harnessLive ? session?.harnessId === agentId ? harnessStatus?.parsed?.models : undefined : discovery.result?.models;
   const currentModel =
@@ -242,9 +290,9 @@ export function Composer({
   const menuOpen = Boolean(picker || trigger) && !menuDismissed;
   const resting = shouldRestComposer({
     awayFromLatest,
-    blocking: Boolean(picker || modelPickerOpen || stashOpen || dropping || menuOpen),
+    blocking: Boolean(picker || contextPicker || template || modelPickerOpen || stashOpen || dropping || menuOpen),
     multiline: draft.includes("\n"),
-    hasAttachments: attachments.length > 0,
+    hasAttachments: attachments.length > 0 || resolver.pending.length > 0,
     hasSkill: Boolean(skillId),
   });
   const searchKind = picker ?? trigger?.kind;
@@ -257,7 +305,7 @@ export function Composer({
     document.addEventListener("pointerdown", close);
     return () => document.removeEventListener("pointerdown", close);
   }, [menuOpen]);
-  useEffect(() => { setPicker(undefined); setPickerQuery(""); setMenuDismissed(true); }, [projectId, session?.id]);
+  useEffect(() => { setPicker(undefined); setPickerQuery(""); setMenuDismissed(true); setContextPicker(undefined); setTemplate(undefined); }, [projectId, session?.id]);
 
   useLayoutEffect(() => {
     const el = textareaRef.current;
@@ -291,6 +339,16 @@ export function Composer({
     return () => { cancelled = true; window.clearTimeout(timer); };
   }, [folderPath, projectId, searchKind, searchQuery, menuOpen]);
 
+  /* A project's saved prompts come first and win a name clash: they are what the repository agreed on. */
+  const templates = useMemo(() => {
+    const shared = project?.projectFile?.status === "ok" ? project.projectFile.file.prompts ?? [] : [];
+    const taken = new Set(shared.map((item) => templateCommand(item)));
+    return [
+      ...shared.map((item) => ({ template: item, scope: "Project" as const })),
+      ...(settings?.composerPrompts ?? []).filter((item) => !taken.has(templateCommand(item))).map((item) => ({ template: item, scope: "Personal" as const })),
+    ];
+  }, [project?.projectFile, settings?.composerPrompts]);
+
   const slashItems = useMemo<SuggestItem[]>(
     () =>
       slashCommands({
@@ -304,8 +362,14 @@ export function Composer({
         openTerminal: () => setTerminalOpen(true),
         pickProjectDirectory,
         setView,
+        init: projectId && folderPath ? () => void runInit() : undefined,
+        templates,
+        useTemplate: setTemplate,
       }),
     [
+      templates,
+      folderPath,
+      projectId,
       createTask,
       harnesses,
       skills,
@@ -345,6 +409,22 @@ export function Composer({
     [files, folderPath, attachFiles],
   );
 
+  /* `@` offers the context sources first, then files. Each source reaches past this
+     window (git, a command, the network), so a paired browser is not offered them. */
+  const contextItems = useMemo<SuggestItem[]>(() => !picker && trigger?.kind === "file" && api.isDesktop === true && projectId
+    ? mentionSources(trigger.query).map((source) => ({
+      id: `context-${source.kind}`,
+      label: `@${source.keyword}`,
+      detail: source.detail,
+      icon: CONTEXT_ICONS[source.kind](14),
+      insert: "",
+      run: () => {
+        if (source.kind === "thread" || source.kind === "diff" || source.kind === "url") setContextPicker(source.kind);
+        else void resolver.attachDiagnostics();
+      },
+    }))
+    : [], [api.isDesktop, picker, projectId, resolver, trigger]);
+
   const items = !menuOpen
     ? []
     : searchKind === "slash"
@@ -352,7 +432,7 @@ export function Composer({
       : searchKind === "skill"
         ? skillItems
         : searchKind === "file"
-          ? fileItems
+          ? [...contextItems, ...fileItems]
           : [];
 
   useEffect(() => {
@@ -387,14 +467,59 @@ export function Composer({
     return Boolean(event.nativeEvent.isComposing) || event.keyCode === 229;
   }
 
-  const permission = session?.permissionProfile ?? settings?.defaultPermission ?? "default";
-  const permissionOptions = PERMISSION_OPTIONS.map((item) => ({ id: item.id, label: item.id === "strict" ? "Read-only" : item.label, detail: item.detail }));
+  async function runInit() {
+    if (!projectId) return;
+    const found = await detectInstructionFiles(api, projectId);
+    await workspace.sendPrompt(initPrompt(found));
+  }
+
+  function runBang(command: string) {
+    if (api.isDesktop !== true) { workspace.setNotice("Commands after ! run only in the desktop app."); return; }
+    setDraft("");
+    void resolver.runCommand(command).then((attached) => {
+      // Give a failed command back so it can be fixed and run again.
+      if (!attached) setDraft((current) => current || `!${command}`);
+    });
+  }
+
+  function fillFromTemplate(text: string) {
+    setTemplate(undefined);
+    const nextDraft = draft.trim() ? `${draft.trimEnd()}\n${text}` : text;
+    setDraft(nextDraft);
+    setPendingSelection({ scope: JSON.stringify([projectId, session?.id, nextDraft]), position: nextDraft.length });
+  }
+
+  const approval = approvalPreset(session ? session.permissionProfile ?? settings?.defaultPermission : draftApproval ?? settings?.defaultPermission);
+  const approvalRoute = capabilities.route === "direct" ? "direct" : capabilities.route === "openclaw" ? "gateway" : undefined;
+  const approvalOptions = approvalRoute ? approvalMenu(approvalRoute, session?.harnessId ?? capabilityHarness?.id) : [];
   const sendOnEnter = settings?.composerSendKey !== "cmd-enter";
   /* A paired browser without conversation control can read but never send. */
   const readOnlyViewer = api.isDesktop === false && api.remoteMode !== "control";
   const selectedHarness = harnesses.find((item) => item.id === agentId);
+  const setupNotice = session?.paused ? undefined : agentSetupNotice(selectedHarness, sendBlockReason);
+  const bang = parseBangCommand(draft);
   const taskEvents = useMemo(() => activeRun ? (events ?? []).filter((event) => event.runId === activeRun.id) : events ?? [], [events, activeRun?.id]);
   const tasks = useMemo(() => tasksFromRunEvents(taskEvents), [taskEvents]);
+  const planTasks = !activeRun && Boolean(latestPlanRun(runs, session?.id));
+  const toggleTurnMode = () => void setTurnMode(turnMode === "plan" ? "act" : "plan");
+  const modelChoices = models?.availableModels.map((model) => model.modelId) ?? [];
+  const chooseModel = (id: string) => harnessLive ? void setHarnessOption("model", id) : workspace.setDraftHarnessConfig({ model: id, options: {} });
+  const cycleFavorite = useRef<() => void>(() => undefined);
+  cycleFavorite.current = () => {
+    if (readOnlyViewer) return;
+    const next = nextFavoriteModel(favoriteModels, agentId, modelChoices, currentModel);
+    if (!next) {
+      workspace.setNotice(modelChoices.length ? "Star models in the model picker to cycle through them with ⌥⌘M." : "This agent has not reported its models yet. Open the model picker to load them.");
+      return;
+    }
+    if (busy || activeRun) { workspace.setNotice("Wait for this turn to finish before changing the model."); return; }
+    if (next !== currentModel) chooseModel(next);
+  };
+  useEffect(() => {
+    const onCycle = () => cycleFavorite.current();
+    window.addEventListener(CYCLE_FAVORITE_MODEL_EVENT, onCycle);
+    return () => window.removeEventListener(CYCLE_FAVORITE_MODEL_EVENT, onCycle);
+  }, []);
 
   return (
     <div ref={composerRef} className={`composer composer-dock composer-overlay-corner-masks${busy ? " composer-dock--with-activity" : ""}${resting ? " composer--resting" : ""}`}>
@@ -414,7 +539,7 @@ export function Composer({
           ))}
         </div>
       )}
-      <ComposerTasks tasks={tasks} running={Boolean(activeRun)} />
+      <ComposerTasks tasks={tasks} running={Boolean(activeRun)} actions={planTasks ? <PlanHandoff compact /> : undefined} />
       <div
         className={`composer-glass${dropping ? " dropping" : ""}${resting ? " composer-glass--resting" : ""}`}
         aria-expanded={!resting}
@@ -506,6 +631,8 @@ export function Composer({
             }} />
           <ComposerMenu id={menuId} items={items} index={menuIndex} onHover={setMenuIndex} onPick={(item) => void applyItem(item)} empty={picker === "file" ? fileState : "No installed skills match. Browse Skills to install one."} />
         </div>}
+        {contextPicker && !picker && <ContextPicker kind={contextPicker} resolver={resolver} onClose={() => { setContextPicker(undefined); textareaRef.current?.focus(); }} />}
+        {template && !picker && !contextPicker && <TemplateForm key={template.name} template={template} onCancel={() => { setTemplate(undefined); textareaRef.current?.focus(); }} onFill={fillFromTemplate} />}
         {workspace.preparingAttachments > 0 && <div className="meta" role="status">Preparing {workspace.preparingAttachments} attachment{workspace.preparingAttachments === 1 ? "" : "s"}…</div>}
         {!picker && <ComposerMenu
           id={menuId}
@@ -587,6 +714,11 @@ export function Composer({
                 return;
               }
             }
+            if (event.key === "Tab" && event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey && !readOnlyViewer) {
+              event.preventDefault();
+              toggleTurnMode();
+              return;
+            }
             if (menuOpen && event.key === "Escape") { event.preventDefault(); setMenuDismissed(true); return; }
             /* With nothing to dismiss, Escape stops the turn that is running, the way the Stop button does. */
             if (!menuOpen && event.key === "Escape" && activeRun && !workspace.stoppingRunIds?.includes(activeRun.id)) { event.preventDefault(); void stopRun(); return; }
@@ -615,23 +747,40 @@ export function Composer({
                 return;
               }
             }
+            /* `!command` runs here instead of reaching the agent. */
+            if (bang && event.key === "Enter" && !event.shiftKey && (sendOnEnter || event.metaKey || event.ctrlKey)) {
+              event.preventDefault();
+              runBang(bang);
+              return;
+            }
             if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
               event.preventDefault();
-              if (event.shiftKey || sendOnEnter) void sendAndContinue();
+              if (runOn.active) void runOn.start();
+              else if (event.shiftKey || sendOnEnter) void sendAndContinue();
               else void send();
               return;
             }
             if (event.key === "Enter" && !event.shiftKey) {
               if (!sendOnEnter) return;
               event.preventDefault();
-              void send();
+              void submit();
             }
           }}
         />
         </div>
-        {attachments.length > 0 && (
+        {bang && (
+          <div className="composer-bang-hint" role="status">
+            <TerminalIcon size={12} />
+            {api.isDesktop === true
+              ? <span>{sendOnEnter ? "Enter" : "⌘Enter"} runs <code>{bang}</code> in {folder ?? "the project folder"}. The output is attached; nothing is sent yet.</span>
+              : <span>Commands after ! run only in the desktop app.</span>}
+          </div>
+        )}
+        {(attachments.length > 0 || resolver.pending.length > 0) && (
           <div className="composer-attachments" aria-label="Attached files">
-            {attachments.map((attachment) => (
+            {attachments.map((attachment) => attachment.context ? (
+              <ContextChip key={attachment.path} attachment={attachment} context={attachment.context} onRemove={() => removeAttachment(attachment.path)} />
+            ) : (
               <span
                 className={`composer-attachment${attachment.thumbnail ? " composer-attachment--image" : ""}`}
                 key={attachment.path}
@@ -654,6 +803,7 @@ export function Composer({
                 </button>
               </span>
             ))}
+            {resolver.pending.map((item) => <PendingChip key={item.id} item={item} onDismiss={() => resolver.dismiss(item.id)} />)}
           </div>
         )}
         {stashOpen && (
@@ -691,17 +841,24 @@ export function Composer({
             )}
           </div>
         )}
+        <TemporaryThreadBanner />
         {gatewayUnavailable && <GatewayBanner inset />}
-        {sendBlockReason && !(gatewayUnavailable && sendBlockReason === GATEWAY_CONNECTION_REQUIRED) && (
+        {setupNotice && selectedHarness && !runOn.active ? (
+          <AgentSetupNotice notice={setupNotice} harness={selectedHarness} canAct={!readOnlyViewer && api.isDesktop !== false} />
+        ) : sendBlockReason && !runOn.active && !(gatewayUnavailable && sendBlockReason === GATEWAY_CONNECTION_REQUIRED) && (
           <div className={`composer-preflight${readOnlyViewer ? " read-only" : ""}`} role="status">
             <span title={sendBlockReason}>{sendBlockReason}</span>
             {/* A read-only viewer can do neither; the reason is the whole message. */}
-            {readOnlyViewer ? null : selectedHarness ? (
+            {readOnlyViewer ? null : session?.paused ? (
+              <button className="ghost" type="button" onClick={() => void threadActions.resume(session.id)}>
+                Resume
+              </button>
+            ) : selectedHarness ? (
               <button className="ghost" type="button" onClick={() => void doctorHarness(selectedHarness.id)}>
                 Run Doctor
               </button>
             ) : null}
-            {readOnlyViewer ? null : <button className="ghost" type="button" onClick={() => setView("runtimes")}>
+            {readOnlyViewer || session?.paused ? null : <button className="ghost" type="button" onClick={() => setView("runtimes")}>
               Open Agents
             </button>}
           </div>
@@ -728,31 +885,41 @@ export function Composer({
         )}
         <div className="composer-row">
           <div className="composer-controls">
-            <AgentModelPicker agents={agents} harnesses={harnesses} agentId={agentId} liveHarnessId={liveHarnessId}
+            {/* Under Run on…, the candidates are the agents; the single-agent controls would describe a turn that is not sent. */}
+            {runOn.active ? <RunOnSummary runOn={runOn} /> : <AgentModelPicker agents={agents} harnesses={harnesses} agentId={agentId} liveHarnessId={liveHarnessId}
               models={models} currentModel={currentModel} availability={!harnessLive && models?.availableModels.length ? { state: "available", detail: "Reported by the installed agent." } : capabilities.model}
               disabled={busy || Boolean(activeRun) || api.isDesktop !== true}
               loading={discovery.loading} error={discovery.error} onRetry={discovery.retry}
               onManage={() => setView("runtimes")} onOpenChange={setModelPickerOpen}
-              onAgent={setAgentId} onModel={(id) => harnessLive ? void setHarnessOption("model", id) : workspace.setDraftHarnessConfig({ model: id, options: {} })} />
-            {!harnessLive && capabilities.route === "direct" && (controls.effort || controls.permissions || controls.mode) && <div className="composer-agent-controls">
-              {([ [controls.effort, "Reasoning effort"], [controls.permissions, "Permissions"], [controls.mode, "Agent mode"] ] as const).map(([option, label]) => option && <MenuSelect key={option.id}
+              onAgent={setAgentId} onModel={(id) => harnessLive ? void setHarnessOption("model", id) : workspace.setDraftHarnessConfig({ model: id, options: {} })}
+              favorites={favoriteModels} onToggleFavorite={readOnlyViewer || api.isDesktop === false ? undefined : (id) => void toggleFavoriteModel(agentId, id).catch((error: unknown) => workspace.setNotice(error instanceof Error ? error.message : String(error)))}
+              modeModels={settings?.modeModels[agentId]}
+              onModeModel={api.isDesktop === false ? undefined : (mode, id) => {
+                const current = settings?.modeModels ?? {};
+                const row = { ...current[agentId], [mode]: current[agentId]?.[mode] === id ? undefined : id };
+                void workspace.updateSettings({ modeModels: { ...current, [agentId]: row } }).catch((error: unknown) => workspace.setNotice(error instanceof Error ? error.message : String(error)));
+              }} />}
+            {!readOnlyViewer && !runOn.active && <TurnModeChip mode={turnMode} support={planSupport} onToggle={toggleTurnMode}
+              disabledReason={busy ? "Wait for the message to send." : undefined} />}
+            {!runOn.active && !harnessLive && capabilities.route === "direct" && (controls.effort || controls.permissions || modeControl) && <div className="composer-agent-controls">
+              {([ [controls.effort, "Reasoning effort"], [controls.permissions, "Agent permissions"], [modeControl, "Agent mode"] ] as const).map(([option, label]) => option && <MenuSelect key={option.id}
                 ariaLabel={label} value={draftConfiguration.options[option.id] ?? option.currentValue ?? ""} placeholder={`${label}: agent default`}
                 options={option.choices.map((choice) => ({ id: choice.value, label: choice.name, detail: choice.description }))}
                 unavailableReason={busy || api.isDesktop !== true ? "Change settings when the desktop is ready." : undefined}
                 onChange={(value) => workspace.setDraftHarnessConfig({ ...draftConfiguration, options: { ...draftConfiguration.options, [option.id]: value } })} />)}
             </div>}
-            {session && harnessLive && capabilities.route === "direct" && (controls.effort || controls.permissions || controls.mode) && <div className="composer-agent-controls">
+            {session && harnessLive && capabilities.route === "direct" && (controls.effort || controls.permissions || modeControl) && <div className="composer-agent-controls">
               {controls.effort && <AgentControl key={`${session.id}:effort`} sessionId={session.id} option={controls.effort} label="Reasoning effort" disabled={busy || Boolean(activeRun)} />}
-              {controls.permissions && <AgentControl key={`${session.id}:permissions`} sessionId={session.id} option={controls.permissions} label="Permissions" disabled={busy || Boolean(activeRun)} />}
-              {controls.mode && <AgentControl key={`${session.id}:mode`} sessionId={session.id} option={controls.mode} label="Agent mode" disabled={busy || Boolean(activeRun)} />}
+              {controls.permissions && <AgentControl key={`${session.id}:permissions`} sessionId={session.id} option={controls.permissions} label="Agent permissions" disabled={busy || Boolean(activeRun)} />}
+              {modeControl && <AgentControl key={`${session.id}:mode`} sessionId={session.id} option={modeControl} label="Agent mode" disabled={busy || Boolean(activeRun)} />}
             </div>}
-            {harnessLive && capabilities.route !== "direct" && <MenuSelect
-              ariaLabel="Permission mode"
+            {!readOnlyViewer && !runOn.active && approvalRoute && <MenuSelect
+              ariaLabel="Approvals"
               icon={<ShieldIcon size={13} />}
-              value={permission === "default" ? "approve-all" : permission}
-              options={permissionOptions.filter((option) => option.id !== "default")}
-              unavailableReason={api.isDesktop !== true ? "Change permissions on the desktop." : !harnessLive ? "Start the agent before changing permissions." : activeRun ? "Wait for this turn to finish." : undefined}
-              onChange={(id) => void setPermissionProfile(id)}
+              value={approval.id}
+              options={approvalOptions}
+              unavailableReason={api.isDesktop !== true ? "Change approvals on the desktop." : busy ? "Wait for the message to send." : approvalRoute === "gateway" && activeRun ? "Wait for this turn to finish." : undefined}
+              onChange={(id) => { if (!isApprovalPresetId(id)) return; if (session) void setPermissionProfile(id); else setDraftApproval(id); }}
             />}
           </div>
         <div className="composer-prompt-actions">
@@ -770,6 +937,7 @@ export function Composer({
                 size={22}
                 onCompact={compactCommand ? () => void runAgentCommand(compactCommand) : undefined}
                 onFresh={() => void createTask()}
+                onHandoff={session && !handoff.disabledReason ? () => handoff.openHandoff(session.id) : undefined}
                 compactUnavailable={compactCommand ? undefined : harnessLive ? "This agent does not offer a compact command." : "Start an agent conversation first."}
                 idleMinutes={idleMinutes}
               />
@@ -781,16 +949,16 @@ export function Composer({
             ) : (
               <button
                 className="send-btn"
-                aria-label="Send message"
-                disabled={busy || picking || (!draft.trim() && attachments.length === 0 && !skillId) || Boolean(sendBlockReason)}
+                aria-label={bang ? "Run command" : runOn.active ? `Run on ${runOn.picks.length} agents` : "Send message"}
+                disabled={busy || picking || runOn.starting || (!draft.trim() && attachments.length === 0 && !skillId) || (!bang && !runOn.active && Boolean(sendBlockReason))}
                 title={
-                  sendBlockReason || (sendOnEnter
+                  bang ? `Run ${bang} and attach its output` : runOn.active ? `Send to ${runOn.picks.length} agents, each in its own worktree` : sendBlockReason || (sendOnEnter
                     ? "Send · Enter · ⌘Enter starts another thread"
                     : "Send · ⌘Enter · ⌘⇧Enter starts another thread")
                 }
-                onClick={() => void send()}
+                onClick={() => { if (bang) runBang(bang); else void submit(); }}
               >
-                <ArrowUpIcon size={14} />
+                {bang ? <TerminalIcon size={14} /> : <ArrowUpIcon size={14} />}
               </button>
             )}
         </div>
@@ -837,6 +1005,7 @@ export function Composer({
             ) : null}
           </span>
         )}
+        <RunOnControl runOn={runOn} />
         {!git?.isRepo && session?.workspaceMode === "worktree" && session.worktreeBranch && (
           <span className="workspace-mode-label">Isolated · {session.worktreeBranch}</span>
         )}
@@ -852,4 +1021,8 @@ export function Composer({
       )}
     </div>
   );
+}
+
+function approvalMenu(route: ApprovalRoute, harnessId: string | undefined) {
+  return APPROVAL_PRESETS.map((preset) => ({ id: preset.id, label: preset.label, detail: approvalOptionDetail(preset.id, { route, harnessId }) }));
 }

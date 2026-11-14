@@ -6,6 +6,8 @@ import { formatTokens, type ContextUsage } from "../../lib/context-window";
 import { AlertTriangleIcon, DiffIcon, FileIcon, HistoryIcon, MessageSquarePlusIcon, SparkIcon, TerminalIcon, XIcon } from "../shell/icons";
 import { RunElapsed } from "./RunElapsed";
 import { ThreadFind } from "./ThreadFind";
+import { PromptJump } from "./PromptJump";
+import { COMMANDS, chordSymbols, parseChord } from "../../lib/keybindings";
 import { detectUsageLimit, formatResetTime } from "@capsule/shared";
 import { useWorkspace } from "../../lib/workspace";
 import { useScopedState } from "../../lib/scoped-state";
@@ -32,13 +34,23 @@ import { shouldFollowLatest } from "../../lib/composer-rest";
 import { ApprovalDetails, APPROVE_ONCE_UNAVAILABLE } from "../harness/ApprovalDetails";
 import { TurnOutcome } from "./TurnOutcome";
 import { TurnVerification } from "./TurnVerification";
+import { PlanHandoff } from "./PlanHandoff";
+import { ThreadOrigin } from "../import/ThreadOrigin";
+import { ImportHint } from "../import/ImportSessions";
 import { TurnFilesCard } from "./TurnFilesCard";
 import { MessageBody } from "./MessageBody";
 import { MessageAttachments } from "./MessageAttachments";
 import { VirtualTurns } from "./VirtualTurns";
 import { CopyButton } from "./CopyButton";
+import { RatingButtons, useRunRatings } from "../best-of-n/RateReply";
 import { turnTranscript } from "../../lib/turn-timeline";
 import { TurnTranscript } from "./TurnTranscript";
+import { useBranching } from "./branching/use-branching";
+import { TurnMenu, type TurnAction } from "./branching/TurnMenu";
+import { RestoreDialog, type RestoreTarget } from "./branching/RestoreDialog";
+import { RedoBanner } from "./branching/RedoBanner";
+import { BranchSwitcher } from "./branching/BranchSwitcher";
+import "./branching/branching.css";
 
 /*
  * One message. Memoized because a streamed frame appends a message rather
@@ -51,6 +63,7 @@ const MessageRow = memo(function MessageRow({
   onOpenAttachment,
   onContinue,
   onRewind,
+  onTurnAction,
 }: {
   message: ChatMessage;
   isNew: boolean;
@@ -59,6 +72,8 @@ const MessageRow = memo(function MessageRow({
   onContinue?: (content: string) => void;
   /** Remove this prompt and everything after it, putting the prompt back in the composer. */
   onRewind?: (message: ChatMessage) => void;
+  /** Fork from or restore to this message's turn. Absent where the thread is read-only. */
+  onTurnAction?: (message: ChatMessage, action: TurnAction) => void;
 }) {
   return (
     <div className={`msg ${message.role}${isNew ? " motion-enter-conversation" : ""}`}>
@@ -80,6 +95,9 @@ const MessageRow = memo(function MessageRow({
             <button type="button" className="icon-btn" title="Edit from here" aria-label="Edit from here" onClick={() => onRewind(message)}>
               <HistoryIcon size={13} />
             </button>
+          ) : null}
+          {message.runId && message.kind !== "steer" && onTurnAction && !message.id.startsWith("local-") ? (
+            <TurnMenu onAction={(action) => onTurnAction(message, action)} />
           ) : null}
           {message.role === "user" && message.kind !== "steer" && message.content && onContinue ? (
             <button type="button" className="icon-btn" title="Continue in a new conversation" aria-label="Continue in a new conversation" onClick={() => onContinue(message.content)}>
@@ -241,6 +259,8 @@ export function Conversation() {
     attachFiles,
     threadFind,
     setThreadFind,
+    promptJump,
+    setPromptJump,
     pendingResume,
     scheduleResume,
     cancelResume,
@@ -252,7 +272,13 @@ export function Conversation() {
     gitDiscard,
     setConfirm,
     stoppingRunIds,
+    setSessionId,
+    reloadThread,
   } = useWorkspace();
+  const branching = useBranching({ withBranches: true });
+  const ratings = useRunRatings(session?.id);
+  const [restoreTarget, setRestoreTarget] = useState<RestoreTarget>();
+  const [dismissedRedo, setDismissedRedo] = useState<string>();
 
   // Selection changes before asynchronous history loads finish. Never render
   // a previous repository's outcomes while waiting for the next thread.
@@ -383,13 +409,25 @@ export function Conversation() {
     setOpenedTurns((current) => new Set(current).add(id));
   }, []);
   const openAttachment = useCallback((path: string) => void openPath(path), [openPath]);
-  const [focusTurn, setFocusTurn] = useState<{ id: string; nonce: number }>();
-  const locateMessage = useCallback((messageId: string) => {
+  const [focusTurn, setFocusTurn] = useState<{ id: string; nonce: number; flash?: boolean }>();
+  const locateMessage = useCallback((messageId: string, flash = false) => {
     const turn = turns.find((item) => item.messages.some((message) => message.id === messageId));
     if (!turn) return;
     openTurn(turn.id);
-    setFocusTurn((current) => ({ id: turn.id, nonce: (current?.nonce ?? 0) + 1 }));
+    setFocusTurn((current) => ({ id: turn.id, nonce: (current?.nonce ?? 0) + 1, flash }));
   }, [openTurn, turns]);
+  const jumpToPrompt = useCallback((messageId: string) => locateMessage(messageId, true), [locateMessage]);
+  useEffect(() => {
+    if (!focusTurn?.flash) return;
+    const timer = window.setTimeout(() => setFocusTurn((current) => current === focusTurn ? undefined : current), 1800);
+    return () => window.clearTimeout(timer);
+  }, [focusTurn]);
+  const jumpShortcut = useMemo(() => {
+    const command = COMMANDS.find((item) => item.id === "jump-to-prompt");
+    const saved = settings?.keybindings?.["jump-to-prompt"];
+    const override = saved ? parseChord(saved) : undefined;
+    return command ? chordSymbols(override ?? command.chord).join("") : undefined;
+  }, [settings?.keybindings]);
   /*
    * Edit from here: the conversation is cut at this prompt. The dialog says
    * what is lost and offers the file restore as a second choice rather than a
@@ -404,7 +442,8 @@ export function Conversation() {
       try {
         const result = await api.rewindSession(target, message.id, { restoreFiles });
         if (!result.ok) { setNotice(result.detail); return; }
-        await loadSession(target);
+        branching.setRedo(result.redo);
+        await reloadThread(target);
         setDraft(result.prompt ?? message.content);
         const paths = (result.attachments ?? []).map((file) => file.path);
         if (paths.length) await attachFiles(paths);
@@ -415,13 +454,32 @@ export function Conversation() {
     };
     setConfirm({
       title: "Edit from here?",
-      detail: "This prompt and every reply after it leave the conversation, and the prompt goes back into the composer. The agent starts a fresh session on the next turn, so it will not remember what was removed. Files stay as they are unless you also restore them to how the turn before stood.",
+      detail: "This prompt and every reply after it leave the conversation, and the prompt goes back into the composer. The agent starts a fresh session on the next turn that is given the turns you keep, not the ones removed. Files stay as they are unless you also restore them to how the turn before stood. Redo puts everything back until you send another message.",
       confirmLabel: "Edit from here",
       danger: true,
       onConfirm: () => void perform(false),
       secondary: { label: "Edit and restore files", onConfirm: () => void perform(true) },
     });
-  }, [api, attachFiles, loadSession, session?.id, setConfirm, setDraft, setNotice]);
+  }, [api, attachFiles, branching.setRedo, reloadThread, session?.id, setConfirm, setDraft, setNotice]);
+  /* Turn numbers as the thread counts them, oldest first, for menus and the redo banner. */
+  const turnNumbers = useMemo(() => new Map([...runs].sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0)).map((run, index) => [run.id, index + 1])), [runs]);
+  const { fork } = branching;
+  const openRestore = useCallback((run: Run, scope: RestoreTarget["scope"]) => {
+    const number = turnNumbers.get(run.id) ?? 0;
+    setRestoreTarget({ run, turnNumber: number, laterTurns: Math.max(0, turnNumbers.size - number), scope });
+  }, [turnNumbers]);
+  const turnAction = useCallback((message: ChatMessage, action: TurnAction) => {
+    const run = runs.find((item) => item.id === message.runId);
+    if (!run) { setNotice("That turn is no longer in this conversation."); return; }
+    if (action === "fork" || action === "fork-worktree") { void fork(run.id, action === "fork" ? "same" : "worktree"); return; }
+    openRestore(run, action === "restore-files" ? "files" : action === "restore-conversation" ? "conversation" : "both");
+  }, [fork, openRestore, runs, setNotice]);
+  const branchGroups = useMemo(() => new Map(branching.groups.map((group) => [group.anchorRunId, group])), [branching.groups]);
+  const branchSwitcherFor = (turn: Turn) => {
+    const runId = transcripts.get(turn.id)?.run.id ?? turn.prompt?.runId;
+    const group = runId ? branchGroups.get(runId) : undefined;
+    return group ? <BranchSwitcher key={`branches-${runId}`} group={group} onOpen={setSessionId} /> : null;
+  };
   const continueInNewConversation = useCallback((content: string) => {
     void createTask(undefined, content).catch((error) => setNotice(formatUserError(error)));
   }, [createTask, setNotice]);
@@ -500,7 +558,11 @@ export function Conversation() {
           });
         }}
       >
+        {session && visibleMessageCount > 0 && <PromptJump messages={messages} open={promptJump} onOpenChange={setPromptJump} onLocate={jumpToPrompt}
+          shortcut={jumpShortcut} hasOlder={hasOlderMessages} loadingOlder={loadingOlder}
+          onLoadOlder={() => { void loadOlderMessages().catch((error) => setNotice(formatUserError(error))); }} />}
         <div className="thread">
+          {session && <ThreadOrigin session={session} />}
           {historyError && <div className="thread-history-error" role="alert">
             <div><strong>Could not load this conversation</strong><p>{historyError}</p></div>
             <button className="chip" onClick={retryHistory}>Retry</button>
@@ -556,6 +618,7 @@ export function Conversation() {
                   </button>
                 </div>
               )}
+              {project?.workingDirectory && !session?.origin && <ImportHint projectId={project.id} />}
             </div>
           ) : (
             <>
@@ -575,7 +638,10 @@ export function Conversation() {
               {historyNavigation}
               <VirtualTurns key={`${session?.id}:${settings?.timeFormat ?? "system"}:${settings?.toolCallDisplay ?? "compact"}`} turns={turns} folded={folded} scroller={scroller} stick={stick} focus={focusTurn}>{(turn) =>
                 folded.has(turn.id) ? (
-                  <FoldedTurn key={turn.id} turn={turn} onOpen={openTurn} />
+                  <Fragment key={turn.id}>
+                    <FoldedTurn turn={turn} onOpen={openTurn} />
+                    {branchSwitcherFor(turn)}
+                  </Fragment>
                 ) : (
                   <Fragment key={turn.id}>
                   <TurnTranscript key={transcripts.get(turn.id)?.run.id ?? turn.id}
@@ -586,7 +652,8 @@ export function Conversation() {
                     {(message) => <>
                         <MessageRow message={message}
                           isNew={(messageOffsets.get(message.id) ?? 0) >= initialCountRef.current}
-                          onOpenAttachment={openAttachment} onContinue={continueInNewConversation} onRewind={rewindFrom} />
+                          onOpenAttachment={openAttachment} onContinue={continueInNewConversation} onRewind={rewindFrom}
+                          onTurnAction={branching.writable ? turnAction : undefined} />
                         {turn.id === activeTurnId && message === turn.prompt && activeRun && <TurnStatusLine
                           run={activeRun} agentName={harnessDisplayName(harnesses, session?.harnessId, "the agent")}
                           usage={contextUsage} activity={liveActivity} stopping={stoppingRunIds?.includes(activeRun.id)} />}
@@ -594,12 +661,16 @@ export function Conversation() {
                   </TurnTranscript>
                     {(turnOutcomes.get(turn.id) ?? []).map((run) => <Fragment key={run.id}>
                       {run.status === "completed" && !run.hasResult && !run.result?.trim() && !turn.messages.some((message) => message.role === "assistant") && <p className="muted turn-missing-reply" role="status">No reply was received for this turn. Review the work log before retrying.</p>}
-                      <TurnOutcome run={run} cwd={terminalCwd} />
+                      <TurnOutcome run={run} cwd={terminalCwd} onRestore={branching.writable ? () => openRestore(run, "files") : undefined} />
+                      {run.status === "completed" && session?.harnessId && (run.hasResult || run.result?.trim() || turn.messages.some((message) => message.role === "assistant")) ? (
+                        <div className="turn-rating"><RatingButtons value={ratings.ratings[run.id]} writable={ratings.writable} onRate={(value) => ratings.rate(run.id, value)} /></div>
+                      ) : null}
                       {run.id !== summaryRun?.id && <RunSummary run={run} label="Turn details">
                         <RunEventLog runId={run.id} failed={run.status === "failed" || run.status === "blocked"} />
                         <TurnVerification run={run} />
                       </RunSummary>}
                     </Fragment>)}
+                    {branchSwitcherFor(turn)}
                   </Fragment>
                 )
               }</VirtualTurns>
@@ -681,6 +752,15 @@ export function Conversation() {
               </RunSummary>
             </div>
           )}
+          <PlanHandoff />
+          {branching.redo && branching.redo.sessionId === session?.id && dismissedRedo !== branching.redo.id && (
+            <RedoBanner point={branching.redo} turnNumber={branching.redo.targetRunId ? turnNumbers.get(branching.redo.targetRunId) : undefined}
+              onRedo={branching.redoLast} onDismiss={() => setDismissedRedo(branching.redo?.id)} />
+          )}
+          {restoreTarget && (
+            <RestoreDialog target={restoreTarget} onClose={() => setRestoreTarget(undefined)}
+              onRestore={(scope) => branching.restore(restoreTarget.run.id, scope)} />
+          )}
           {pendingResume && pendingResume.sessionId === session?.id && (
             <div className="thread-resume" role="status">
               <span>Resuming at {formatResetTime(new Date(pendingResume.at))}: “{pendingResume.prompt.slice(0, 80)}{pendingResume.prompt.length > 80 ? "…" : ""}”</span>
@@ -724,7 +804,7 @@ export function Conversation() {
             <div className="conversation-approval">
               <h3>Approval required</h3>
               <div>
-                {pendingApproval.agentName} wants to <b>{pendingApproval.action}</b>
+                {harnessDisplayName(harnesses, pendingApproval.agentName, pendingApproval.agentName)} wants to <b>{pendingApproval.action}</b>
               </div>
               <div className="mono">{pendingApproval.target}</div>
               <div className="muted">{pendingApproval.reason}</div>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { taskProgress, type RunTask } from "@capsule/shared";
 import { ChevronRightIcon, ListTodoIcon } from "../shell/icons";
 
@@ -8,7 +8,7 @@ const STATUS_LABEL: Record<RunTask["status"], string> = {
   completed: "Completed",
 };
 
-export function ComposerTasks({ tasks, running = false }: { tasks: readonly RunTask[]; running?: boolean }) {
+export function ComposerTasks({ tasks, running = false, actions }: { tasks: readonly RunTask[]; running?: boolean; actions?: ReactNode }) {
   const progress = taskProgress(tasks);
   const live = running && tasks.some((task) => task.status === "inProgress");
   const [expanded, setExpanded] = useState(live);
@@ -55,6 +55,7 @@ export function ComposerTasks({ tasks, running = false }: { tasks: readonly RunT
           ))}
         </ul>
       ) : null}
+      {actions}
     </section>
   );
 }

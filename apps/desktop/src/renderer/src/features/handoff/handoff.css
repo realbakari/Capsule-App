@@ -1,0 +1,20 @@
+.handoff-dialog { width: min(40rem, calc(100vw - 2rem)); max-height: calc(100vh - 4rem); overflow: auto; }
+.dialog .handoff-lede { margin: 0.25rem 0 1.1rem; color: var(--text-muted); font-size: var(--text-sm); line-height: 1.45; }
+.handoff-field { display: grid; gap: 0.35rem; margin-bottom: 0.9rem; }
+.handoff-label { color: var(--text); font-size: var(--text-sm); font-weight: var(--weight-medium); }
+.handoff-summary {
+  min-height: 12rem;
+  max-height: 50vh;
+  resize: vertical;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--surface-0);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+.handoff-summary:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
+.handoff-hint { color: var(--text-muted); font-size: var(--text-sm); }
+.handoff-error, .dialog p.handoff-error { margin: 0 0 0.5rem; color: var(--red); font-size: var(--text-sm); }

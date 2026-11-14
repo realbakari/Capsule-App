@@ -34,8 +34,22 @@ describe("buildSessionActionMenuItems", () => {
     expect(items.at(-1)).toMatchObject({ id: "delete", destructive: true });
   });
 
+  it("offers export, copy and share links only where each can work", () => {
+    const ids = (share?: { exportOffered: boolean; shareOffered: boolean }) => buildSessionActionMenuItems({ pinned: false, ...(share ? { share } : {}) }).map((item) => item.id);
+    expect(ids()).not.toContain("copy-markdown");
+    expect(ids({ exportOffered: true, shareOffered: true })).toEqual(expect.arrayContaining(["export-markdown", "copy-markdown", "share-link"]));
+    expect(ids({ exportOffered: false, shareOffered: false })).toEqual(expect.arrayContaining(["copy-markdown"]));
+    expect(ids({ exportOffered: false, shareOffered: false })).not.toContain("share-link");
+  });
+
   it("swaps pin for unpin", () => {
     expect(buildSessionActionMenuItems({ pinned: true }).map((item) => item.id)).toContain("unpin");
+  });
+
+  it("leaves a read-only device only the items that copy", () => {
+    const items = buildSessionActionMenuItems({ pinned: false, hasFolder: true, share: { exportOffered: false, shareOffered: false }, readOnly: true });
+    expect(items.map((item) => item.id)).toEqual(["copy-path", "copy-markdown"]);
+    expect(items[0]!.separatorBefore).toBeFalsy();
   });
 });
 

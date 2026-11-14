@@ -61,7 +61,8 @@ export type MockScenario =
   | "long_running"
   | "disconnected_gateway"
   | "buzz_message"
-  | "tool_failure";
+  | "tool_failure"
+  | "tool_run";
 
 export interface RuntimeStatus {
   state: ConnectionState;
@@ -254,6 +255,8 @@ export interface Session {
    * A thread keeps the route it started on even without a live identity.
    */
   carryOver?: SessionCarryOver;
+  /** Set on a thread made by forking another one at a turn. The original is never changed. */
+  forkedFrom?: ForkOrigin;
   pinned?: boolean;
   /** Stable ordering among pinned conversations; lower values appear first. */
   pinOrder?: number;
@@ -263,13 +266,46 @@ export interface Session {
   workspaceMode?: WorkspaceMode;
   /** Branch created for a worktree conversation. */
   worktreeBranch?: string;
+  /** A board card that has not started: the prompt it will send, and what it waits for. */
+  pendingStart?: import("./board.js").PendingStart;
+  /** When the person marked this card done. Only this starts cards chained behind it. */
+  doneAt?: string;
+  /** Whether the next turn plans or acts. Absent means act. */
+  turnMode?: import("./plan-mode.js").TurnMode;
+  /** Set on a candidate of a best-of-N comparison: the ThreadGroup it belongs to. Fixed at creation. */
+  groupId?: string;
+  /** Imported from an agent's own history, or continued from another thread. Fixed at creation. */
+  origin?: import("./thread-origin.js").ThreadOrigin;
+  /** A worktree thread's pull request as last read. Written on its own, never by a turn. */
+  pullRequest?: import("./thread-pull-request.js").ThreadPullRequest;
+  /** Set while a worktree thread is paused. Written on its own, never by a turn. */
+  paused?: import("./thread-pause.js").ThreadPause;
+  /** The user's labels, canonical and sorted. Written on its own, never by a turn. */
+  tags?: string[];
+  /** Held in memory only: never written to the database, gone on quit unless kept. */
+  temporary?: boolean;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface SessionCarryOver {
-  route: "direct" | "gateway";
+  /** Absent when the thread never had an agent session to keep the route of. */
+  route?: "direct" | "gateway";
   configuration?: Record<string, string | boolean>;
+  /**
+   * The agent has not seen this thread's transcript: the next prompt carries
+   * it as context. Set by a fork and by a conversation restore, whose fresh
+   * agent session would otherwise start knowing nothing of the kept turns.
+   */
+  replayTranscript?: boolean;
+  /** A handoff summary the next prompt carries once, ahead of the request. */
+  brief?: string;
+}
+
+export interface ForkOrigin {
+  sessionId: string;
+  /** The turn in the original thread the fork copies up to and including. */
+  runId: string;
 }
 
 export interface DirectSessionIdentity {
@@ -334,6 +370,8 @@ export interface ProjectAction {
    * that has one — that was the only behaviour before this was a choice.
    */
   openPreview?: boolean;
+  /** The project's check command: what `@diagnostics` runs and attaches. */
+  check?: boolean;
 }
 
 export interface ProjectActionRun {
@@ -449,6 +487,41 @@ export type SimulatorAction =
   /** Stop resolves with the recording's file. */
   | { type: "record"; mode: "start" | "stop" };
 
+/** Landing a worktree conversation's changes on the project's own checkout. */
+export interface ApplyResult {
+  /** True when the changes were written, conflicts or not. */
+  applied: boolean;
+  /** Paths as they now stand in the checkout. */
+  files: string[];
+  /** Paths left with conflict markers. */
+  conflicts: string[];
+  /** The hidden ref holding the checkout as it was before; undo takes it. */
+  undoRef?: string;
+  detail?: string;
+}
+
+/** One apply, read back from its undo ref. */
+export interface ApplyRecord {
+  undoRef: string;
+  at: string;
+  files: string[];
+  /** Every path the apply wrote or removed, rename sources included. */
+  paths: string[];
+  conflicts: string[];
+  branch?: string;
+}
+
+/** Whether a thread can apply now, and the apply it can still undo. */
+export interface WorktreeApplyStatus {
+  available: boolean;
+  /** Why it cannot, in words for a disabled control. */
+  reason?: string;
+  /** Files the worktree would change; 0 when unknown or none. */
+  files: number;
+  /** Shown until the thread's next turn starts. */
+  lastApply?: ApplyRecord;
+}
+
 export interface RewindResult {
   ok: boolean;
   detail: string;
@@ -457,6 +530,70 @@ export interface RewindResult {
   attachments?: MessageAttachment[];
   removedMessages?: number;
   filesRestored?: boolean;
+}
+
+/**
+ * What a restore puts back. Files rewrites the folder from the turn's
+ * checkpoint; conversation hides every turn after it and starts a fresh agent
+ * session; both does the two together.
+ */
+export type RestoreScope = "files" | "conversation" | "both";
+
+export interface RestoreRequest {
+  /** The turn to go back to. */
+  runId: string;
+  scope: RestoreScope;
+}
+
+/**
+ * The one restore Redo can reverse: the latest in its thread, while nothing
+ * new has happened there since. A new turn discards it.
+ */
+export interface RedoPoint {
+  id: string;
+  sessionId: string;
+  /** Absent for Edit from here on the first prompt, which keeps no turn. */
+  targetRunId?: string;
+  scope: RestoreScope;
+  /** Edit from here is a conversation restore that also takes back its prompt. */
+  edit?: boolean;
+  createdAt: string;
+  filesSaved: boolean;
+  hiddenMessages: number;
+}
+
+export interface RestoreResult extends RewindResult {
+  redo?: RedoPoint;
+}
+
+export type ForkWorkspace = "same" | "worktree";
+
+export interface ForkSessionInput {
+  sessionId: string;
+  runId: string;
+  workspace: ForkWorkspace;
+}
+
+/** One thread in a fork group, described well enough to choose between them. */
+export interface ForkBranch {
+  sessionId: string;
+  title: string;
+  original: boolean;
+  /** When the fork was made; absent for the original. */
+  forkedAt?: string;
+  worktree: boolean;
+  /** Turns taken in this thread after the fork point. */
+  turnsSince: number;
+  latestStatus?: RunStatus;
+  archived: boolean;
+}
+
+/** The threads that share history up to one turn, anchored on that turn in the thread being read. */
+export interface ForkBranchGroup {
+  /** The turn in the current thread where the branches part. */
+  anchorRunId: string;
+  branches: ForkBranch[];
+  currentIndex: number;
 }
 
 export interface SimulatorActionResult {
@@ -658,6 +795,8 @@ export interface MessageAttachment {
    * `data:` only — so the main process makes the thumbnail and inlines it.
    */
   thumbnail?: string;
+  /** Set when the file is composer context (a conversation, a diff, a page) rather than a file the user picked. */
+  context?: import("./composer-context.js").ContextAttachment;
 }
 
 export interface ChatMessage {
@@ -860,6 +999,8 @@ export interface Run {
   workingDirectory?: string;
   revision?: WorkspaceRevision;
   verification?: VerificationResult;
+  /** The mode the turn ran in, so a plan turn can be acted on later. */
+  turnMode?: import("./plan-mode.js").TurnMode;
   createdAt: string;
   updatedAt: string;
   completedAt?: string;
@@ -900,6 +1041,11 @@ export interface CreateSessionInput {
   permissionProfile?: import("./harness.js").HarnessPermissionProfile;
   workingDirectory?: string;
   workspaceMode?: WorkspaceMode;
+  turnMode?: import("./plan-mode.js").TurnMode;
+  /** A thread that is never persisted. Always on the shared checkout, with no checkpoints. */
+  temporary?: boolean;
+  /** The worktree branch's name, before the branch prefix; e.g. issue-123-short-title. */
+  branchName?: string;
 }
 
 export interface AgentMessage {
@@ -914,6 +1060,8 @@ export interface AgentMessage {
    * (re)apply it to a session that was created before the profile changed.
    */
   permissionProfile?: HarnessPermissionProfile;
+  /** Set by the engine for the runtime: a plan turn on the demo runtime replies with a plan. */
+  turnMode?: import("./plan-mode.js").TurnMode;
 }
 
 export interface SearchResults {

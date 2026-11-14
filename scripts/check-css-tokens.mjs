@@ -63,6 +63,13 @@ for (const [file, text] of cssByFile) {
   });
 }
 
+/* --focus-ring is a whole outline ("2px solid …"). Inside another outline or as a colour it makes the declaration invalid, and the focus ring silently disappears. */
+for (const [file, text] of cssByFile) {
+  text.split("\n").forEach((line, index) => {
+    if (/(?:solid|dashed|dotted|color:|shadow:)[^;]*var\(--focus-ring\)/.test(line)) problems.push(`${path.relative(root, file)}:${index + 1} uses --focus-ring as a colour; it is a whole outline. Write outline: var(--focus-ring), or use --ring for the colour`);
+  });
+}
+
 /* A declaration whose parentheses do not balance is dropped by the browser without a word. */
 for (const [file, text] of cssByFile) {
   const body = text.replace(/\/\*[\s\S]*?\*\//g, (comment) => comment.replace(/[^\n]/g, " "));

@@ -1,0 +1,26 @@
+/* Follow agent: one quiet line above Files while a turn runs. */
+.follow-agent-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  padding: 0.3rem 0.75rem;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--surface-0);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  flex-shrink: 0;
+}
+.follow-agent-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.follow-agent-text code { font-size: var(--text-xs); color: var(--text); }
+.follow-agent-bar .ghost { flex: none; font-size: var(--text-xs); padding: 0.1rem 0.4rem; }
+.follow-agent-dot {
+  flex: none;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--green);
+  animation: follow-agent-pulse 1.6s ease-in-out infinite;
+}
+@keyframes follow-agent-pulse { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .follow-agent-dot { animation: none; } }

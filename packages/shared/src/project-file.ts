@@ -1,4 +1,5 @@
 import type { ProjectAction, WorkspaceMode } from "./types.js";
+import { normalizePromptTemplates, type PromptTemplate } from "./prompt-templates.js";
 
 /**
  * `capsule.json` — the project's own configuration, checked in beside the code.
@@ -20,6 +21,8 @@ export interface ProjectFile {
   /** Where new conversations start, unless the project or the session says otherwise. */
   defaultWorkspaceMode?: WorkspaceMode;
   actions: ProjectAction[];
+  /** Saved prompts for the composer's `/` menu, shared with whoever clones the project. */
+  prompts?: PromptTemplate[];
 }
 
 export type ProjectFileState =
@@ -86,10 +89,15 @@ export function parseProjectFile(source: string): ProjectFileState {
       ...(previewUrl ? { previewUrl } : {}),
       ...(item.runOnWorktreeCreate === true ? { runOnWorktreeCreate: true } : {}),
       ...(item.openPreview === false ? { openPreview: false } : {}),
+      ...(item.check === true ? { check: true } : {}),
     });
     if (actions.length >= MAX_ACTIONS) break;
   }
 
+  if (value.prompts !== undefined && !Array.isArray(value.prompts)) {
+    return { status: "invalid", error: "prompts must be a list." };
+  }
+  const prompts = normalizePromptTemplates(value.prompts);
   const iconPath = text(value.iconPath, MAX_PATH);
   return {
     status: "ok",
@@ -97,6 +105,7 @@ export function parseProjectFile(source: string): ProjectFileState {
       ...(iconPath ? { iconPath } : {}),
       ...(mode ? { defaultWorkspaceMode: mode } : {}),
       actions,
+      ...(prompts.length ? { prompts } : {}),
     },
   };
 }
@@ -122,7 +131,8 @@ export function projectActionOverrides(fileActions: readonly ProjectAction[], ac
     return !file || file.name !== action.name || file.command !== action.command
       || (file.previewUrl ?? "") !== (action.previewUrl ?? "")
       || Boolean(file.runOnWorktreeCreate) !== Boolean(action.runOnWorktreeCreate)
-      || (file.openPreview !== false) !== (action.openPreview !== false);
+      || (file.openPreview !== false) !== (action.openPreview !== false)
+      || Boolean(file.check) !== Boolean(action.check);
   });
 }
 

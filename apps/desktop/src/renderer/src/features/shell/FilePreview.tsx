@@ -1,5 +1,9 @@
-import type { FilePreview } from "@capsule/shared";
+import { useEffect, useRef } from "react";
+import { lineRange, type FilePreview, type SharedSelection } from "@capsule/shared";
 import { highlight } from "../../lib/highlight";
+import { showNativeContextMenu } from "../../lib/bridge";
+import { registerSelectionReader, selectionContext, touchSelectionSurface } from "../../lib/selection-share";
+import { useWorkspace } from "../../lib/workspace";
 
 export function FilePreviewView({
   doc,
@@ -31,8 +35,60 @@ export function FilePreviewView({
   onCopy?: () => void;
 }) {
   const canEdit = doc.kind === "text" && !doc.truncated && Boolean(doc.revision);
+  const { api, attachContext } = useWorkspace();
+  const code = useRef<HTMLElement>(null);
+  const area = useRef<HTMLTextAreaElement>(null);
+  /* The palette takes focus when it opens, which clears a selection in the
+     preview; the last one made here is kept until another replaces it. */
+  const lastSelection = useRef<SharedSelection | undefined>(undefined);
+  const text = editing ? contents : doc.contents ?? contents;
+
+  function readSelection(): SharedSelection | undefined {
+    const at = (selected: string, start: number) => selected.trim()
+      ? { origin: "file" as const, text: selected, path: doc.path, ...(doc.language ? { language: doc.language } : {}), ...lineRange(text, start, start + selected.length) }
+      : undefined;
+    if (editing && area.current) {
+      const { selectionStart, selectionEnd } = area.current;
+      return selectionEnd > selectionStart ? at(text.slice(selectionStart, selectionEnd), selectionStart) : undefined;
+    }
+    const selection = window.getSelection();
+    const host = code.current;
+    if (!selection || selection.isCollapsed || !host || !host.contains(selection.anchorNode) || !host.contains(selection.focusNode)) return undefined;
+    const range = selection.getRangeAt(0);
+    const before = document.createRange();
+    before.selectNodeContents(host);
+    before.setEnd(range.startContainer, range.startOffset);
+    return at(range.toString(), before.toString().length);
+  }
+
+  useEffect(() => {
+    lastSelection.current = undefined;
+    if (doc.kind !== "text" || api.isDesktop !== true) return;
+    const remember = () => {
+      const current = readSelection();
+      if (current) lastSelection.current = current;
+      else if (document.activeElement === area.current || code.current?.contains(window.getSelection()?.anchorNode ?? null)) lastSelection.current = undefined;
+    };
+    document.addEventListener("selectionchange", remember);
+    const unregister = registerSelectionReader("file", () => readSelection() ?? lastSelection.current);
+    return () => { document.removeEventListener("selectionchange", remember); unregister(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc.path, doc.kind, editing, text, api.isDesktop]);
+
+  async function selectionMenu(event: { preventDefault(): void; clientX: number; clientY: number }) {
+    const selection = readSelection();
+    if (!selection || api.isDesktop !== true) return;
+    event.preventDefault();
+    const picked = await showNativeContextMenu([
+      { id: "copy", label: "Copy" },
+      { id: "send", label: "Send selection to thread" },
+    ], { x: event.clientX, y: event.clientY });
+    if (picked === "copy") void navigator.clipboard.writeText(selection.text);
+    if (picked === "send") void attachContext(selectionContext(selection));
+  }
+
   return (
-    <div className="file-preview">
+    <div className="file-preview" onPointerDown={() => touchSelectionSurface("file")}>
       <div className="file-preview-bar">
         <span className="truncate mono" title={doc.path}>
           {doc.path}
@@ -92,6 +148,8 @@ export function FilePreviewView({
       ) : null}
       {doc.kind === "text" && editing ? (
         <textarea
+          ref={area}
+          onContextMenu={(event) => void selectionMenu(event)}
           className="mono file-editor-area"
           spellCheck={false}
           value={contents}
@@ -99,8 +157,8 @@ export function FilePreviewView({
         />
       ) : null}
       {doc.kind === "text" && !editing ? (
-        <pre className="mono file-preview-code">
-          <code>{highlight(doc.contents ?? contents, doc.language)}</code>
+        <pre className="mono file-preview-code" onContextMenu={(event) => void selectionMenu(event)}>
+          <code ref={code}>{highlight(doc.contents ?? contents, doc.language)}</code>
         </pre>
       ) : null}
       {doc.kind === "binary" ? (

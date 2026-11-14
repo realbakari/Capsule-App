@@ -14,7 +14,18 @@ export type ActionMenuIcon =
   | "star"
   | "star-off"
   | "bell"
-  | "bell-off";
+  | "bell-off"
+  | "branch"
+  | "folder-plus"
+  | "file"
+  | "message"
+  | "history"
+  | "merge"
+  | "link"
+  | "pause"
+  | "play"
+  | "tag"
+  | "bookmark";
 
 export type SessionActionId =
   | "rename"
@@ -23,11 +34,21 @@ export type SessionActionId =
   | "generate-title"
   | "open-folder"
   | "copy-path"
+  | "apply-to-local"
+  | "pause"
+  | "resume"
+  | "tags"
+  | "keep"
+  | "export-markdown"
+  | "copy-markdown"
+  | "share-link"
+  | "handoff"
   | "archive"
   | "delete";
 export type ProjectActionId =
   | "rename"
   | "new-conversation"
+  | "import-sessions"
   | "change-folder"
   | "add-folder"
   | "open-folder"
@@ -37,6 +58,8 @@ export type ProjectActionId =
 export interface ActionMenuItem extends PopupMenuItem {
   icon?: ActionMenuIcon;
   shortcut?: string;
+  /** Why a disabled item is disabled. */
+  title?: string;
 }
 
 export interface MenuAnchor {
@@ -66,11 +89,28 @@ export function copyAnchor(rect: {
   };
 }
 
+/** Thread lifecycle entries; each is absent where it does not apply or the device may only read. */
+export interface ThreadMenuState {
+  pause?: "pause" | "resume";
+  tags?: boolean;
+  /** A temporary thread can be kept. */
+  keep?: boolean;
+}
+
 export function buildSessionActionMenuItems(state: {
   pinned: boolean;
+  thread?: ThreadMenuState;
   hasFolder?: boolean;
+  /** Present for a worktree thread on the desktop; the reason disables it. */
+  applyToLocal?: { disabledReason?: string };
+  /** Export writes a file and a link opens a listener: both belong to the desktop. */
+  share?: { exportOffered: boolean; shareOffered: boolean };
+  /** Hand off to a new conversation; absent where it is unavailable. */
+  handoff?: boolean;
+  /** A read-only paired device: only the items that copy or read remain. */
+  readOnly?: boolean;
 }): ActionMenuItem[] {
-  return [
+  const items: ActionMenuItem[] = [
     { id: "rename", label: "Rename", icon: "pencil" },
     {
       id: state.pinned ? "unpin" : "pin",
@@ -78,6 +118,14 @@ export function buildSessionActionMenuItems(state: {
       icon: state.pinned ? "pin-off" : "pin",
     },
     { id: "generate-title", label: "Generate title", icon: "refresh" },
+    ...(state.thread?.keep ? [{ id: "keep" as const, label: "Keep this conversation", icon: "bookmark" as const, separatorBefore: true }] : []),
+    ...(state.thread?.tags ? [{ id: "tags" as const, label: "Tags…", icon: "tag" as const, separatorBefore: !state.thread.keep }] : []),
+    ...(state.thread?.pause ? [{
+      id: state.thread.pause,
+      label: state.thread.pause === "pause" ? "Pause" : "Resume",
+      icon: state.thread.pause === "pause" ? "pause" as const : "play" as const,
+      separatorBefore: !state.thread.keep && !state.thread.tags,
+    }] : []),
     ...(state.hasFolder
       ? [
           {
@@ -89,20 +137,44 @@ export function buildSessionActionMenuItems(state: {
           { id: "copy-path" as const, label: "Copy path", icon: "copy" as const },
         ]
       : []),
+    ...(state.applyToLocal
+      ? [{
+          id: "apply-to-local" as const,
+          label: "Apply to local checkout",
+          icon: "merge" as const,
+          separatorBefore: true,
+          enabled: !state.applyToLocal.disabledReason,
+          title: state.applyToLocal.disabledReason,
+        }]
+      : []),
+    ...(state.share
+      ? [
+          ...(state.share.exportOffered ? [{ id: "export-markdown" as const, label: "Export as Markdown…", icon: "file" as const, separatorBefore: true }] : []),
+          { id: "copy-markdown" as const, label: "Copy as Markdown", icon: "copy" as const, separatorBefore: !state.share.exportOffered },
+          ...(state.share.shareOffered ? [{ id: "share-link" as const, label: "Share read-only link…", icon: "link" as const }] : []),
+        ]
+      : []),
+    ...(state.handoff ? [{ id: "handoff" as const, label: "Hand off to a new conversation…", icon: "message" as const, separatorBefore: true }] : []),
     { id: "archive", label: "Archive", icon: "archive", separatorBefore: true },
     { id: "delete", label: "Delete", icon: "trash", destructive: true },
   ];
+  if (!state.readOnly) return items;
+  const reads = items.filter((item) => item.id === "copy-path" || item.id === "copy-markdown");
+  return reads.map((item, index) => ({ ...item, separatorBefore: index > 0 && item.separatorBefore }));
 }
 
 export function buildProjectActionMenuItems(state: {
   hasFolder: boolean;
   canDelete: boolean;
   canRename: boolean;
+  /** Import from the agents' own histories; absent where it is unavailable. */
+  canImport?: boolean;
 }): ActionMenuItem[] {
   return [
     { id: "settings", label: "Project settings", icon: "settings" },
     { id: "rename", label: "Rename", icon: "pencil", enabled: state.canRename },
     { id: "new-conversation", label: "New conversation", icon: "plus" },
+    ...(state.canImport ? [{ id: "import-sessions" as const, label: "Import sessions…", icon: "history" as const, enabled: state.hasFolder, title: state.hasFolder ? undefined : "Attach a folder first. Sessions are matched to the folder they ran in." }] : []),
     {
       id: "change-folder",
       label: state.hasFolder ? "Change folder" : "Attach folder",

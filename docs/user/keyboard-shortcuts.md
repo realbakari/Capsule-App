@@ -12,6 +12,7 @@
 | Toggle the sidebar | `⌘B` |
 | Toggle the side panel | `⌘\` |
 | Find in the current conversation | `⌘F` |
+| Jump to an earlier prompt in this conversation | `⇧⌘J` |
 | Back to the previous conversation you visited | `⌘[` |
 | Forward again | `⌘]` |
 | Stash the current prompt | `⌘S` |
@@ -23,9 +24,11 @@
 | Open the Browser | `⇧⌘B` |
 | Next conversation, by recent activity | `⌃Tab` |
 | Previous conversation | `⌃⇧Tab` |
-| Choose the mode (permissions) | `⇧⌘M` |
+| Choose approvals (Ask, Auto, Full) | `⇧⌘M` |
 | Choose the model | `⇧⌘I` |
 | Choose the reasoning effort | `⇧⌘E` |
+| Next favorite model | `⌥⌘M` |
+| Switch between Plan and Act | `⇧Tab` in the prompt |
 
 The mode, model and effort shortcuts open the composer's own controls. When the
 current agent has no such control, or it cannot change during a turn, a notice
@@ -50,12 +53,20 @@ Two things the editor will not let you do:
 
 ## In the composer
 
-- `/` for commands
-- `@` to mention a file
+- `/` for commands, `/init` and saved prompts
+- `@` to mention a file, or `@thread`, `@diff`, `@diagnostics` and `@url` to attach context
+- `!` at the start of the prompt, then `Enter`, to run a command and attach its output
 - `$` to attach a skill
 - Paperclip or drop to attach local files
 - `⌘S` to stash the current prompt, or open the stash when the composer is empty
 - `↑` in an empty prompt recalls earlier prompts from this conversation; `↓` comes back
+- `⇧Tab` switches the next turn between Plan and Act; while a suggestion menu is open, Tab picks from the menu instead
+
+## In Review
+
+With a hunk's heading focused, `j` or `↓` moves to the next hunk and `↑` to the
+previous one. `k` keeps the hunk, `u` unstages it and `x` rejects it. See
+[Reviewing changes](./review.md).
 
 ## Finding your way around
 

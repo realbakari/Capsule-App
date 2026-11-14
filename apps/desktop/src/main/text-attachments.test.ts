@@ -17,3 +17,16 @@ it("writes private, unique UTF-8 attachments without overwriting the earlier pas
     for (const invalid of [undefined, "", "界".repeat(700_000)]) await expect(saveTextAttachment(directory, invalid)).rejects.toThrow("UTF-8");
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
+
+it("names context attachments without letting the name leave the attachments folder", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "capsule-text-"));
+  try {
+    const named = await saveTextAttachment(directory, "# Diff", "Diff - Branch.md");
+    expect(path.basename(named)).toBe("Diff - Branch.md");
+    const again = await saveTextAttachment(directory, "# Diff 2", "Diff - Branch.md");
+    expect(again).not.toBe(named);
+    const escaped = await saveTextAttachment(directory, "x", "../../etc/passwd");
+    expect(escaped.startsWith(directory + path.sep)).toBe(true);
+    expect(path.basename(escaped)).toBe("etc passwd.md");
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});

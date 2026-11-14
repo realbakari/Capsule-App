@@ -37,6 +37,7 @@ export const IPC_CHANNELS = {
   createSession: "capsule:createSession",
   setSessionWorkspaceMode: "capsule:setSessionWorkspaceMode",
   renameSession: "capsule:renameSession",
+  setSessionTurnMode: "capsule:setSessionTurnMode",
   archiveSession: "capsule:archiveSession",
   restoreSession: "capsule:restoreSession",
   deleteSession: "capsule:deleteSession",
@@ -95,6 +96,10 @@ export const IPC_CHANNELS = {
   /* PNG bytes the renderer made, e.g. an annotated simulator screenshot, saved as an attachment. */
   saveImageAttachment: "capsule:saveImageAttachment",
   saveTextAttachment: "capsule:saveTextAttachment",
+  /* Composer context. Each reaches past Capsule's own state: the network, or a command in the project. */
+  fetchUrlContext: "capsule:fetchUrlContext",
+  runComposerCommand: "capsule:runComposerCommand",
+  runDiagnostics: "capsule:runDiagnostics",
   /* The browser pane's guest WebContents, so agent tools can reach it. */
   registerBrowserView: "capsule:registerBrowserView",
   setBrowserControl: "capsule:setBrowserControl",
@@ -103,6 +108,9 @@ export const IPC_CHANNELS = {
   readSharedBrowser: "capsule:readSharedBrowser",
   clearBrowserData: "capsule:clearBrowserData",
   copyBrowserScreenshot: "capsule:copyBrowserScreenshot",
+  /* Inspect mode saves the picked element's pixels; device presets set the page's pixel ratio. */
+  captureBrowserElement: "capsule:captureBrowserElement",
+  emulateBrowserDevice: "capsule:emulateBrowserDevice",
   /* The floating pet: show or hide it, and open a thread from it. */
   togglePet: "capsule:togglePet",
   getPetState: "capsule:getPetState",
@@ -123,6 +131,9 @@ export const IPC_CHANNELS = {
   gitCommit: "capsule:gitCommit",
   gitStage: "capsule:gitStage",
   gitDiscard: "capsule:gitDiscard",
+  gitScopedDiff: "capsule:gitScopedDiff",
+  gitCheckHunks: "capsule:gitCheckHunks",
+  gitApplyHunk: "capsule:gitApplyHunk",
   gitCreateBranch: "capsule:gitCreateBranch",
   gitPush: "capsule:gitPush",
   gitCreatePullRequest: "capsule:gitCreatePullRequest",
@@ -154,6 +165,13 @@ export const IPC_CHANNELS = {
   setHarnessConfig: "capsule:setHarnessConfig",
   listHarnessSessions: "capsule:listHarnessSessions",
   pinSession: "capsule:pinSession",
+  pauseSession: "capsule:pauseSession",
+  resumeSession: "capsule:resumeSession",
+  setSessionTags: "capsule:setSessionTags",
+  renameTag: "capsule:renameTag",
+  deleteTag: "capsule:deleteTag",
+  keepSession: "capsule:keepSession",
+  listGithubIssues: "capsule:listGithubIssues",
   reorderPinnedSessions: "capsule:reorderPinnedSessions",
   searchFiles: "capsule:searchFiles",
   regenerateTitle: "capsule:regenerateTitle",
@@ -177,13 +195,49 @@ export const IPC_CHANNELS = {
   usageSummary: "capsule:usageSummary",
   providerUsage: "capsule:providerUsage",
   turnDiff: "capsule:turnDiff",
-  restoreTurn: "capsule:restoreTurn",
   /* Edit from here: drop a prompt and everything after it, optionally restoring files. */
   rewindSession: "capsule:rewindSession",
+  /* Restore a turn's files, conversation or both, and reverse the latest restore. */
+  restoreToTurn: "capsule:restoreToTurn",
+  redoRestore: "capsule:redoRestore",
+  redoPoint: "capsule:redoPoint",
+  /* Diff a turn's checkpoint against the folder as it is now. Records a snapshot, so not a read. */
+  compareCheckpoint: "capsule:compareCheckpoint",
+  forkSession: "capsule:forkSession",
+  forkBranches: "capsule:forkBranches",
+  /* Import a session from an agent's own history, and continue a thread in a new one. */
+  listImportableSessions: "capsule:listImportableSessions",
+  importSession: "capsule:importSession",
+  handoffDraft: "capsule:handoffDraft",
+  handoffSession: "capsule:handoffSession",
+  /* Apply to local: land a worktree thread's changes on the project folder, and take them back. */
+  worktreeApplyStatus: "capsule:worktreeApplyStatus",
+  applyWorktreeToLocal: "capsule:applyWorktreeToLocal",
+  undoApplyToLocal: "capsule:undoApplyToLocal",
   /* A conversation's queued follow-ups and scheduled resume, kept and sent by the engine. */
   getFollowUps: "capsule:getFollowUps",
   updateFollowUps: "capsule:updateFollowUps",
+  /* Board cards: create a draft or started card, and change one (link, start, mark done). */
+  createBoardCard: "capsule:createBoardCard",
+  updateBoardCard: "capsule:updateBoardCard",
   fetchSkillDetail: "capsule:fetchSkillDetail",
+  /* A thread as Markdown, built from what a reader of the thread already sees; and saved to a file. */
+  threadMarkdown: "capsule:threadMarkdown",
+  exportThreadMarkdown: "capsule:exportThreadMarkdown",
+  /* Read-only links to one thread, and which devices are viewing which thread. Desktop only. */
+  createShareLink: "capsule:createShareLink",
+  listShareLinks: "capsule:listShareLinks",
+  revokeShareLink: "capsule:revokeShareLink",
+  threadPresence: "capsule:threadPresence",
+  /* Best-of-N: one prompt on several agents, compared, one kept; and local ratings of results. */
+  startBestOfN: "capsule:startBestOfN",
+  listThreadGroups: "capsule:listThreadGroups",
+  compareThreadGroup: "capsule:compareThreadGroup",
+  keepCandidate: "capsule:keepCandidate",
+  setAsideCandidates: "capsule:setAsideCandidates",
+  rateRun: "capsule:rateRun",
+  runRatings: "capsule:runRatings",
+  resultsLeaderboard: "capsule:resultsLeaderboard",
 } as const;
 
 export const IPC_EVENTS = {

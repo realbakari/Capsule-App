@@ -84,6 +84,7 @@ describe("cross-project status groups", () => {
     for (const value of [null, "", "unexpected", "project"]) expect(readSidebarGrouping(() => value)).toBe("project");
     expect(readSidebarGrouping(() => "status")).toBe("status");
     expect(readSidebarGrouping(() => "recent")).toBe("recent");
+    expect(readSidebarGrouping(() => "tag")).toBe("tag");
     expect(readSidebarGrouping(() => { throw new Error("Denied"); })).toBe("project");
   });
 });

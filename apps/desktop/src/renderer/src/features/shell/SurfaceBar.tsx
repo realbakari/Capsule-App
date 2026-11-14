@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
+import { ThreadDetailsRows } from "../threads/ThreadDetails";
 import { folderBasename } from "@capsule/shared";
 import { formatUserError } from "../../lib/errors";
 import { formatProjectRoot } from "../../lib/paths";
 import { useWorkspace } from "../../lib/workspace";
 import { BackgroundTasks } from "./BackgroundTasks";
+import { ApplyToLocalRow } from "../apply/ApplyToLocal";
 import { CommitControl } from "./CommitControl";
 import { ProjectActionsControl } from "./ProjectActionsControl";
 import { HeaderPopover } from "./HeaderPopover";
@@ -28,11 +30,12 @@ export function SurfaceBar() {
   const [details, setDetails] = useState(false);
   const detailsAnchor = useRef<HTMLDivElement>(null);
   const active = inspectorOpen ? toolFromTab(inspectorTab) : undefined;
-  const state = { projectId: project?.id, git, desktop: api.isDesktop !== false, platform: api.platform };
+  const state = { projectId: project?.id, git, desktop: api.isDesktop !== false, platform: api.platform, groupId: session?.groupId };
   const terminalCwd = session?.workingDirectory ?? project?.workingDirectory;
 
   /* A surface that cannot exist on this machine is left off; one that cannot open yet says why. */
-  const offered = (surface: Surface) => !(surface.tool === "simulator" && surface.blockedBy({ desktop: state.desktop, platform: state.platform }));
+  const offered = (surface: Surface) => !(surface.tool === "simulator" && surface.blockedBy({ desktop: state.desktop, platform: state.platform }))
+    && !(surface.tool === "compare" && !state.groupId);
   const toggle = (surface: Surface) => {
     if (active === surface.tool) setInspectorOpen(false);
     else openInspector(tabForTool(surface.tool));
@@ -68,7 +71,7 @@ export function SurfaceBar() {
         </button>
         {details && (
           <HeaderPopover anchor={detailsAnchor} label="Conversation details" className="session-details" onClose={() => setDetails(false)}>
-            <SessionDetails onReview={() => { setDetails(false); openInspector("changes"); }} />
+            <SessionDetails onReview={() => { setDetails(false); openInspector("changes"); }} onClose={() => setDetails(false)} />
           </HeaderPopover>
         )}
       </div>
@@ -126,7 +129,7 @@ export function SurfaceBar() {
 }
 
 /** Where this conversation runs, how full its context is, what changed, and what is running. */
-function SessionDetails({ onReview }: { onReview: () => void }) {
+function SessionDetails({ onReview, onClose }: { onReview: () => void; onClose: () => void }) {
   const { api, project, session, git, contextUsage, openTerminal, initializeGit, setNotice } = useWorkspace();
   const folder = session?.workingDirectory ?? project?.workingDirectory;
   const reveal = async () => {
@@ -151,7 +154,9 @@ function SessionDetails({ onReview }: { onReview: () => void }) {
           </div>
         )}
         {git?.branch && <p className="session-details-row"><GitBranchIcon size={14} /><span className="mono">{git.branch}</span></p>}
+        <ApplyToLocalRow onApply={onClose} />
       </section>
+      <ThreadDetailsRows />
       {/* What the titlebar used to carry: run an action, commit and push, or start Git. */}
       {folder && api.isDesktop !== false && (
         <section className="session-details-actions" aria-label="Workspace actions">

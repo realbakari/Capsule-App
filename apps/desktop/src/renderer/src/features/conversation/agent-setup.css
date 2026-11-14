@@ -1,0 +1,62 @@
+/*
+ * The agent cannot take a turn yet. A quiet line on the composer's own
+ * surface, not a tinted slab: a small amber mark carries the warning, the
+ * title says what is wrong, and the command is set as code, never in backticks.
+ */
+.agent-setup {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0.15rem 0 0.5rem;
+  padding: 0.4rem 0.4rem 0.4rem 0.65rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+}
+.agent-setup-mark {
+  flex-shrink: 0;
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: var(--radius-full);
+  background: var(--yellow);
+}
+.agent-setup[data-kind="config"] .agent-setup-mark { background: var(--red); }
+.agent-setup-text {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 0.45rem;
+  row-gap: 0.1rem;
+  color: var(--text-muted);
+}
+.agent-setup-text > strong { color: var(--text); font-weight: var(--weight-medium); }
+.agent-setup-text > span { min-width: 0; overflow-wrap: anywhere; }
+.agent-setup-text code {
+  padding: 0.05rem 0.3rem;
+  border-radius: var(--radius-xs);
+  background: var(--bg-active);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.95em;
+}
+.agent-setup-status { color: var(--text-faint); }
+.agent-setup-error { color: var(--red); }
+.agent-setup-actions { display: flex; align-items: center; gap: 0.3rem; flex-shrink: 0; }
+.agent-setup-actions :is(.chip, .ghost) { height: 1.65rem; padding: 0 0.55rem; font-size: var(--text-xs); }
+.agent-setup-actions .ghost { border-color: transparent; }
+.agent-setup-actions .chip { color: var(--text); }
+.agent-setup-actions svg.spinning { animation: agent-setup-spin 0.9s linear infinite; }
+@keyframes agent-setup-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .agent-setup-actions svg.spinning { animation: none; } }
+
+/* A narrow composer stacks the actions under the words instead of squeezing them. */
+@container composer (max-width: 30rem) {
+  .agent-setup { flex-wrap: wrap; }
+  .agent-setup-actions { margin-left: 1rem; }
+}
+.composer.composer--resting .agent-setup { display: none; }

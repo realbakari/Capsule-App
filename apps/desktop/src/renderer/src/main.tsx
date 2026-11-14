@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import { applyStoredTheme } from "./lib/appearance";
 import { createDemoBridge } from "./features/landing/demoBridge";
-import { createRemoteBridge, resolveRemoteToken } from "./lib/remote-bridge";
+import { createRemoteBridge, readShareToken, resolveRemoteToken } from "./lib/remote-bridge";
 import { WebRoot } from "./features/landing/WebRoot";
 import { PolicyPage, policyForPath } from "./features/landing/PolicyPage";
 import "@xterm/xterm/css/xterm.css";
@@ -74,15 +74,17 @@ window.addEventListener("unhandledrejection", (event) => {
 const isDesktop = Boolean(window.capsule);
 if (isDesktop) document.title = "Capsule";
 let pairingError: string | undefined;
-const remoteToken = isDesktop ? undefined : await resolveRemoteToken().catch((error: unknown) => {
+const shareToken = isDesktop ? undefined : readShareToken(window.location.hash);
+const remoteToken = isDesktop || shareToken ? undefined : await resolveRemoteToken().catch((error: unknown) => {
   pairingError = error instanceof Error && !["TypeError", "TimeoutError", "AbortError"].includes(error.name)
     ? error.message : "Could not reach your Capsule host. Check that it is running, then create a fresh pairing link.";
   return undefined;
 });
-const isShowcase = !isDesktop && !remoteToken && new URLSearchParams(window.location.search).get("showcase") === "1";
-if (!isDesktop && !remoteToken && !isShowcase && !pairingError) applyStoredTheme("light");
+const isShowcase = !isDesktop && !remoteToken && !shareToken && new URLSearchParams(window.location.search).get("showcase") === "1";
+if (!isDesktop && !remoteToken && !shareToken && !isShowcase && !pairingError) applyStoredTheme("light");
 if (!isDesktop) {
-  window.capsule = remoteToken ? createRemoteBridge(remoteToken) : createDemoBridge();
+  window.capsule = shareToken ? createRemoteBridge(shareToken, { share: true })
+    : remoteToken ? createRemoteBridge(remoteToken) : createDemoBridge();
 }
 
 /*
@@ -104,7 +106,7 @@ if (!isPet) {
           <p className="muted">Your workspace is still on the host computer. No settings were changed.</p>
         </section></main>
         : isShowcase ? <div className="showcase-preview" inert><App /></div>
-          : isDesktop || remoteToken ? <App /> : <WebRoot />}
+          : isDesktop || remoteToken || shareToken ? <App /> : <WebRoot />}
     </React.StrictMode>,
   );
 }

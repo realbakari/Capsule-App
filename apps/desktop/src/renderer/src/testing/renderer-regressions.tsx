@@ -5,6 +5,7 @@ import { ProjectActionDialog } from "../features/shell/ProjectActionDialog";
 import { SkillsDirectory } from "../features/library/SkillsDirectory";
 import { Inspector } from "../features/shell/Inspector";
 import { runFilesRegressions } from "./files-regressions";
+import { runReviewHunkRegressions } from "./review-hunk-regressions";
 import { runMarkdownRegressions } from "./markdown-regressions";
 import { EmbeddedBrowser } from "../features/shell/EmbeddedBrowser";
 import { PersistentTerminals } from "../features/terminal/TerminalDock";
@@ -27,6 +28,8 @@ import { runComposerLayoutRegressions } from "./composer-layout-regressions";
 import { runSurfaceRegressions } from "./surface-regressions";
 import { runSimulatorRegressions } from "./simulator-regressions";
 import { runFollowupRegressions } from "./followup-regressions";
+import { runBoardRegressions } from "./board-regressions";
+import { runBestOfNRegressions } from "./best-of-n-regressions";
 import { runMuseSettingsRegressions } from "./muse-settings-regressions";
 import { runWebAccessRegressions } from "./web-access-regressions";
 import { runWorktreeStorageRegressions } from "./worktree-storage-regressions";
@@ -34,6 +37,7 @@ import { WorktreeStorage } from "../features/settings/WorktreeStorage";
 import { runNavigationRecoveryRegressions } from "./navigation-recovery-regressions";
 import { runDraftAdmissionRegressions } from "./draft-admission-regressions";
 import { runWorkspaceExtensionRegressions } from "./workspace-extension-regressions";
+import { runComposerContextRegressions } from "./composer-context-regressions";
 import { runSavedPreviewRegressions, runSavedPreviewLayoutRegressions, SavedDiffFixture, focusSavedPreview } from "./saved-preview-regressions";
 import { ChevronRightIcon, FolderIcon, InboxIcon } from "../features/shell/icons";
 import { CapabilityDetails } from "../features/harness/CapabilityDetails";
@@ -51,7 +55,7 @@ import { Conversation } from "../features/conversation/Conversation";
 import { ThreadAgents } from "../features/shell/ThreadAgents";
 import { GATEWAY_CONNECTION_REQUIRED } from "../lib/harness-preflight";
 import { WorkspaceProvider, useWorkspace as useRealWorkspace } from "../lib/workspace.js";
-import { appearanceCssVars, DEFAULT_DARK_PALETTE, DEFAULT_LIGHT_PALETTE, DEFAULT_CAPSULE_SETTINGS, PRESET_HARNESSES, type Session, type Run, type RunEvent, type ChatMessage, type DiffFile } from "@capsule/shared";
+import { appearanceCssVars, modelFavoriteKey, DEFAULT_DARK_PALETTE, DEFAULT_LIGHT_PALETTE, DEFAULT_CAPSULE_SETTINGS, PRESET_HARNESSES, type Session, type Run, type RunEvent, type ChatMessage, type DiffFile } from "@capsule/shared";
 import type { Skill, Agent, HarnessStatus, AttentionState } from "@capsule/shared";
 
 declare global {
@@ -336,7 +340,11 @@ window.runRendererRegressions = async () => {
   const pickerHarnesses: HarnessStatus[] = PRESET_HARNESSES.filter((preset) => pickerAgents.some((agent) => agent.id === preset.id)).map((preset) => ({ ...preset, runtimeRoute: "openclaw", readiness: "ready", acpxEnabled: true, dedicatedProjectIds: [], liveSessionIds: [], detail: "Ready" }));
   let selectedAgent = "", selectedModel = "";
   const pickerProps = { agents: pickerAgents, harnesses: pickerHarnesses, agentId: "claude", liveHarnessId: "claude", currentModel: "example", models: { currentModelId: "example", availableModels: [{ modelId: "example", name: "Example model" }] }, onAgent: (id: string) => { selectedAgent = id; }, onModel: (id: string) => { selectedModel = id; } };
-  root.render(<AgentModelPicker {...pickerProps} availability={{ state: "available", detail: "Reported by the live session" }} />);
+  let favorites: string[] = [];
+  const renderAvailablePicker = () => root.render(<AgentModelPicker {...pickerProps} favorites={favorites}
+    onToggleFavorite={(modelId) => { favorites = [...favorites, modelFavoriteKey("claude", modelId)]; renderAvailablePicker(); }}
+    availability={{ state: "available", detail: "Reported by the live session" }} />);
+  renderAvailablePicker();
   await until(() => document.querySelector('[aria-label="Agent and model"]'));
   const pickerTrigger = document.querySelector<HTMLButtonElement>('[aria-label="Agent and model"]')!;
   assert(pickerTrigger.textContent?.includes("Example model"), "Combined picker omitted the current model");
@@ -848,6 +856,7 @@ window.runRendererRegressions = async () => {
       return { ...DEFAULT_CAPSULE_SETTINGS, defaultMode: "chat", defaultAgentId: "general" };
     },
     listSessions: async () => [...threads], listHarnessSessions: async () => [], listRuns: async () => [...savedRuns],
+    forkBranches: async () => [], redoPoint: async () => null,
     listLatestRuns: async () => [...savedRuns],
     listRunPage: async (options?: { before?: unknown }) => ({ runs: [...(options?.before ? olderRuns : savedRuns)], hasMore: false }),
     listRunEventPage: async () => { eventReads += 1; const events = deferEvents ? await new Promise<RunEvent[]>((resolve) => { holdEvents = resolve; }) : [...savedEvents]; return { events, hasMore: false }; },
@@ -1080,6 +1089,7 @@ window.runRendererRegressions = async () => {
       { id: "details-reply", runId: completed.id, sessionId: completed.sessionId, role: "assistant", content: completed.result, createdAt: completed.updatedAt },
     ],
     api: { ...actualWorkspace.api,
+      forkBranches: async () => [], redoPoint: async () => null,
       connectGateway: async () => { connectionCalls++; throw new Error("Gateway could not be reached"); },
       listRunEventPage: async () => { detailReads++; return { events: [], hasMore: false }; },
     },
@@ -1455,6 +1465,9 @@ window.runRendererRegressions = async () => {
   await runSimulatorRegressions(host, contextBase);
   phase("follow-ups");
   await runFollowupRegressions(host, contextBase);
+  phase("board");
+  await runBoardRegressions(host, contextBase);
+  await runBestOfNRegressions(host, contextBase);
   phase("activity and startup");
   await runActivityRegressions(host);
   await runChannelRegressions(host);
@@ -1470,8 +1483,12 @@ window.runRendererRegressions = async () => {
   await runSavedPreviewLayoutRegressions(host);
   phase("workspace extensions");
   await runWorkspaceExtensionRegressions(host, contextBase);
+  phase("composer context sources");
+  await runComposerContextRegressions(host, contextBase);
   phase("files layout and navigation");
   await runFilesRegressions(host, contextBase);
+  phase("review hunk actions");
+  await runReviewHunkRegressions(host, contextBase);
   phase("Markdown rendering and themes");
   await runMarkdownRegressions(host);
   phase("complete");

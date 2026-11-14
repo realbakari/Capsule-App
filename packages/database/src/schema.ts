@@ -347,4 +347,120 @@ export const MIGRATIONS: Array<{ version: number; sql: string; }> = [
     version: 19,
     sql: `ALTER TABLE sessions ADD COLUMN carry_over TEXT;`,
   },
+  {
+    version: 20,
+    sql: `
+      ALTER TABLE sessions ADD COLUMN pending_start TEXT;
+      ALTER TABLE sessions ADD COLUMN done_at TEXT;
+    `,
+  },
+  {
+    version: 21,
+    sql: `
+      ALTER TABLE sessions ADD COLUMN forked_from TEXT;
+      -- What one restore took away, so Redo can put it back. The rows a
+      -- conversation restore removed are parked here verbatim rather than
+      -- flagged in place: a flag would have to be honoured by every query that
+      -- reads a transcript or a run, and missing one would show a removed
+      -- turn. A new turn in the thread discards its points.
+      CREATE TABLE IF NOT EXISTS restore_points (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        target_run_id TEXT,
+        scope TEXT NOT NULL,
+        edit INTEGER NOT NULL DEFAULT 0,
+        files_ref TEXT,
+        files_cwd TEXT,
+        parked_rows TEXT NOT NULL DEFAULT '{}',
+        hidden_messages INTEGER NOT NULL DEFAULT 0,
+        agent_before TEXT,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_restore_points_session ON restore_points(session_id, created_at);
+    `,
+  },
+  {
+    version: 22,
+    sql: `
+      ALTER TABLE sessions ADD COLUMN turn_mode TEXT;
+      ALTER TABLE runs ADD COLUMN turn_mode TEXT;
+    `,
+  },
+  {
+    version: 23,
+    sql: `
+      -- Read-only links to one thread. The secret is never stored, only its
+      -- hash, and a revoked link keeps its row so the revocation is a fact.
+      CREATE TABLE IF NOT EXISTS share_grants (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        token_hash TEXT NOT NULL UNIQUE,
+        label TEXT,
+        created_at TEXT NOT NULL,
+        expires_at TEXT,
+        revoked_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_share_grants_session ON share_grants(session_id, created_at);
+    `,
+  },
+  {
+    version: 24,
+    sql: `
+      -- Best-of-N: a comparison is a group of ordinary threads. The thread
+      -- carries its group, written once when it is created.
+      ALTER TABLE sessions ADD COLUMN group_id TEXT;
+      CREATE INDEX IF NOT EXISTS idx_sessions_group ON sessions(group_id) WHERE group_id IS NOT NULL;
+      CREATE TABLE IF NOT EXISTS thread_groups (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        prompt TEXT NOT NULL,
+        candidates TEXT NOT NULL DEFAULT '[]',
+        winner_session_id TEXT,
+        decided_at TEXT,
+        created_at TEXT NOT NULL
+      );
+      -- Thumbs on final replies. The agent and model are copied in when the
+      -- rating is made, so the leaderboard survives the thread being deleted.
+      CREATE TABLE IF NOT EXISTS run_ratings (
+        run_id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        harness_id TEXT NOT NULL,
+        model TEXT NOT NULL DEFAULT '',
+        value INTEGER NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_run_ratings_session ON run_ratings(session_id);
+    `,
+  },
+  {
+    version: 25,
+    sql: `
+      -- Where a thread came from: an agent's own history, or another thread
+      -- it continues. Written once when the thread is created.
+      ALTER TABLE sessions ADD COLUMN origin TEXT;
+    `,
+  },
+  {
+    version: 26,
+    sql: `
+      -- A worktree thread's pull request as last read, so the sidebar can
+      -- show its state without asking GitHub for every thread.
+      ALTER TABLE sessions ADD COLUMN pull_request TEXT;
+    `,
+  },
+  {
+    version: 27,
+    sql: `
+      -- A paused worktree thread: where its work was saved and what was stopped.
+      ALTER TABLE sessions ADD COLUMN paused TEXT;
+    `,
+  },
+  {
+    version: 28,
+    sql: `
+      -- The user's labels on a thread, as a JSON array of canonical tags.
+      ALTER TABLE sessions ADD COLUMN tags TEXT;
+    `,
+  },
 ];

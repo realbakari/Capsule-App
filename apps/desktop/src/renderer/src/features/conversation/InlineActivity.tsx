@@ -1,7 +1,7 @@
 import { displayPrefs } from "../../lib/display-prefs";
 import { useState, type ComponentType, type SVGProps } from "react";
-import type { Run } from "@capsule/shared";
-import { toolGroupLabel, toolKindOrder, toolObservationState, type ToolKind, type ToolObservation } from "../../lib/turn-timeline";
+import { summarizeToolRun, type Run } from "@capsule/shared";
+import { toolKindOrder, toolObservationState, type ToolKind, type ToolObservation } from "../../lib/turn-timeline";
 import {
   ChevronRightIcon,
   ArrowRightIcon,
@@ -51,7 +51,9 @@ export function InlineActivity({ tools, run, stopping, onOpenFile }: { tools: To
   const pending = newest.find((tool) => tool.status !== "completed" && tool.status !== "failed");
   const active = newest.find((tool) => toolObservationState(tool, run, stopping) === "Running")
     ?? newest.find((tool) => ["Waiting", "Stopping"].includes(toolObservationState(tool, run, stopping)));
-  const state = active ? toolObservationState(active, run, stopping) : failedCount ? "Failed" : pending ? toolObservationState(pending, run, stopping) : "Completed";
+  // The summary already counts failures per kind ("ran 2 commands (1 failed)"); the
+  // whole-row state says Failed only when nothing in the run succeeded.
+  const state = active ? toolObservationState(active, run, stopping) : failedCount === tools.length ? "Failed" : pending ? toolObservationState(pending, run, stopping) : "Completed";
   const kinds = toolKindOrder(active ? [active, ...tools] : tools);
   return <div className="inline-activity" data-state={state}>
     <button type="button" className="inline-activity-toggle" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
@@ -59,7 +61,7 @@ export function InlineActivity({ tools, run, stopping, onOpenFile }: { tools: To
         {kinds.slice(0, 3).map((kind) => <ToolKindIcon key={kind} kind={kind} />)}
       </span>
       {kinds.length > 3 && <span className="inline-activity-overflow" title={`${kinds.length} tool categories`}>+{kinds.length - 3}</span>}
-      <span>{toolGroupLabel(tools)}</span>
+      <span className="inline-activity-summary">{summarizeToolRun(tools)}</span>
       {active && tools[0] ? <RunElapsed startedAt={tools[0].timestamp} className="inline-activity-elapsed" /> : null}
       <span className="inline-activity-state">{state}</span>
       <ChevronRightIcon size={12} className={open ? "open" : ""} aria-hidden />

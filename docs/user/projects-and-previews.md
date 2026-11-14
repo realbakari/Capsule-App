@@ -59,6 +59,40 @@ uncommitted changes, Capsule keeps it on disk rather than deleting the work.
 Choose the default for new conversations in **Settings → Agents → Conversation
 workspace**.
 
+### Apply a worktree to your checkout
+
+When a worktree conversation has work you want in the project folder itself,
+choose **Apply to local checkout**. It is in **Conversation details**, in the
+menu on the conversation's name in the titlebar, and in the command palette as
+**Apply worktree to local checkout**.
+
+Everything the worktree holds lands in the project folder as unstaged changes:
+commits on the worktree's branch, edits not yet committed, and new files.
+Deleted and renamed files, and images and other binary files, come across too.
+Your staging area is left alone, so you review and commit in the project folder
+the way you normally would. The worktree conversation keeps working afterwards.
+
+When the project folder already has its own edits to the same lines, Capsule
+still applies, and those files get the usual conflict markers. A dialog lists
+them and offers three ways forward:
+
+- **Open Review** shows the project folder's changes.
+- **Ask the agent to resolve** starts a new conversation in the project folder
+  with the list of conflicted files and the branch they came from.
+- **Undo apply** puts the files back.
+
+A clean apply shows a notice with the number of files and an **Undo** button.
+Until the conversation's next turn, Conversation details also shows **Applied
+to local** with the time and an **Undo** link. Undo restores only the files the
+apply touched, to how they were just before it, and removes files it created.
+Edits you made to other files since are kept. Undo also replaces any edits you
+made to the applied files after applying.
+
+Apply is unavailable, with the reason shown, when the worktree has no changes,
+when a turn is still running, or when the project folder is in the middle of a
+merge, rebase, cherry-pick or revert, or has unresolved conflicts. A device
+reading this computer through a pairing link does not offer it.
+
 Choose **Settings → Source control → Worktree location** to store new worktrees
 in another folder or on another drive. The location belongs to the computer
 running Capsule. **Use default** restores Capsule's application-data location.
@@ -120,12 +154,28 @@ Open **Browser** in the inspector to see local HTTP apps that are responding on
 this Mac. The list refreshes while the panel is open and excludes listening
 services that do not answer like web pages. Select a server to open it in the
 in-app browser, or type another HTTP or HTTPS address above the list. The
-toolbar supports back, forward, reload, an interactive element inspector,
+toolbar supports back, forward, reload, inspect mode, device sizes,
 screenshot capture to clipboard, opening in the system browser, zoom controls,
 DevTools, and cache/cookie clearing. The Browser home keeps recently used pages
 above the live-server list. Screenshot capture copies an actual image that can
 be pasted into an image-aware app. If capture fails, it shows an error and leaves
 the clipboard unchanged; it never substitutes image data as text.
+
+**Inspect mode** (the pointer button, or **Inspect element in browser** in the
+command palette) outlines the element under the pointer with its tag and size.
+Click to pick it: the current conversation's composer gets a **Page element**
+chip with the element's CSS selector, its HTML (cut at 6,000 characters), key
+computed styles and the page address, plus a cropped screenshot of the element as
+an image. An element scrolled out of view is attached without a screenshot.
+Press Esc or the button again to stop without picking.
+
+The **device size** button shows the page's current size. Choose **Responsive**
+to fill the panel, or **iPhone** (393 × 852 at 3x), **iPad** (820 × 1180 at 2x)
+or **Desktop** (1440 × 900 at 1x). A fixed size keeps its width and scrolls inside
+the panel when the panel is smaller, and the page sees that device's pixel ratio
+and mobile screen mode (touch input is not emulated). The palette offers **Browser size** entries for each.
+Inspect and device sizes are on the desktop only; a paired viewer does not show
+them.
 
 If server discovery fails, the last successful list stays visible with an error
 and **Retry**. A failed scan is not reported as “no servers”. Page errors from
@@ -218,6 +268,16 @@ Files opened from chat or content-search results use that conversation's folder,
 even if the Files panel was showing an extra folder. File-filter results disappear
 while a different query or folder loads. Failed searches show **Retry**, not an
 empty result.
+
+To watch the agent work, turn on **Follow agent** with the pointer button in
+the Files header (also in Settings › Appearance and the command palette). While
+a turn runs, Files opens the file the agent is reading or editing and expands
+the folders above it. As soon as you open a file, a folder or a filter
+yourself, following pauses for the rest of that turn; **Follow again** resumes
+it, and the next turn follows on its own. A file you are editing is never
+replaced. Follow agent is off until you turn it on, and Capsule remembers your
+choice. It needs an agent that reports which file it is working on; with one
+that does not, Files stays where you left it.
 
 Select a previewed image to inspect it at **Fit** or **100%**, then zoom in or out.
 Scroll, drag, or use arrow keys to pan at a fixed zoom. **Close** or Escape returns

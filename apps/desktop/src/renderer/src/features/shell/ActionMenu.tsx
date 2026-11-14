@@ -10,10 +10,21 @@ import {
 } from "../../lib/action-menu";
 import {
   ArchiveIcon,
+  BookmarkIcon,
+  HashIcon,
+  PauseIcon,
+  PlayIcon,
   BellIcon,
   BellOffIcon,
   CopyIcon,
+  FileIcon,
   FolderIcon,
+  FolderPlusIcon,
+  GitBranchIcon,
+  HistoryIcon,
+  MessageSquareIcon,
+  GitMergeIcon,
+  LinkIcon,
   PencilIcon,
   PinIcon,
   PinOffIcon,
@@ -39,6 +50,17 @@ const ICONS: Record<ActionMenuIcon, typeof PencilIcon> = {
   "star-off": StarIcon,
   bell: BellIcon,
   "bell-off": BellOffIcon,
+  branch: GitBranchIcon,
+  "folder-plus": FolderPlusIcon,
+  file: FileIcon,
+  message: MessageSquareIcon,
+  history: HistoryIcon,
+  merge: GitMergeIcon,
+  link: LinkIcon,
+  pause: PauseIcon,
+  play: PlayIcon,
+  tag: HashIcon,
+  bookmark: BookmarkIcon,
 };
 
 export function ActionMenu({
@@ -183,6 +205,7 @@ export function ActionMenu({
                 className={item.destructive ? "danger" : undefined}
                 data-highlighted={highlighted ? "true" : undefined}
                 disabled={item.enabled === false}
+                title={item.title}
                 onMouseEnter={() => {
                   if (item.enabled !== false) setActiveId(item.id);
                 }}

@@ -54,3 +54,15 @@ export class TextBudget {
   }
   clear(): void { this.entries.clear(); this.bytes = 0; }
 }
+
+/**
+ * Cut text to a byte budget without splitting a character. "tail" keeps the
+ * end, where a failing command prints its errors; "head" keeps the start.
+ */
+export function clipText(text: string, maxBytes: number, keep: "head" | "tail"): { text: string; truncated: boolean } {
+  const bytes = new TextEncoder().encode(text);
+  if (bytes.length <= maxBytes) return { text, truncated: false };
+  const slice = keep === "head" ? bytes.subarray(0, maxBytes) : bytes.subarray(bytes.length - maxBytes);
+  const decoded = new TextDecoder("utf-8", { fatal: false }).decode(slice).replace(keep === "head" ? /�+$/u : /^�+/u, "");
+  return { text: decoded, truncated: true };
+}

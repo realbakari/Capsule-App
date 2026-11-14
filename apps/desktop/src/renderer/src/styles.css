@@ -2050,6 +2050,11 @@ textarea.composer-field--resting {
   color: var(--yellow);
   font-weight: 600;
 }
+/* On a narrow composer the approvals chip keeps its shield; the preset name moves to its tooltip. */
+@container composer (max-width: 28rem) {
+  .composer-controls .menu-select-trigger[aria-label="Approvals"] > span,
+  .composer-controls .menu-select-trigger[aria-label="Approvals"] > svg:last-child { display: none; }
+}
 @container composer (max-width: 28rem) {
   .composer-context .menu-select-trigger > span { display: none; }
   .composer-context .menu-select-trigger { min-height: 1.5rem; }
@@ -3329,9 +3334,6 @@ select:focus,
 .browser-controls-capability > summary { cursor: pointer; }
 .browser-controls-popover .background-browser { margin-top: .8rem; padding: .8rem 0 0; border: 0; border-top: 1px solid var(--border-color); }
 .preview-viewport { max-width: 7rem; min-height: 1.75rem; font-size: var(--text-xs); border: 1px solid var(--border-color); border-radius: var(--control-radius); background: var(--surface-0); color: var(--text-muted); }
-.embedded-browser-frame:not([data-viewport="fill"]) { overflow: auto; background: var(--surface-0); }
-.embedded-browser-frame[data-viewport="phone"] .embedded-browser-webview { flex: 0 0 390px; width: 390px; margin-inline: auto; }
-.embedded-browser-frame[data-viewport="tablet"] .embedded-browser-webview { flex: 0 0 768px; width: 768px; margin-inline: auto; }
 @container (max-width: 540px) {
   .panel-browser-pane .preview-chrome-row { height: auto; flex-wrap: wrap; padding-block: .35rem; }
   .panel-browser-pane .preview-address-group { order: -1; flex: 1 0 100%; }
@@ -6896,6 +6898,19 @@ div.changed-files-head { cursor: default; }
   max-width: calc(100vw - 1rem);
   overflow: auto;
   -webkit-app-region: no-drag;
+}
+/*
+ * A dialog opened from a popover covers it. Menus sit above dialogs so a menu
+ * opened inside a dialog shows, which also left the popover a dialog came
+ * from drawn on top of it. Closing that popover would unmount the dialog it
+ * owns, so it is hidden instead and is back, as it was, when the dialog
+ * closes. Body-level dialogs come after the popovers they were opened from;
+ * the confirm dialog lives in the app root, before every popover, and opens
+ * no menus of its own.
+ */
+body > :is(.header-popover, .action-menu, .menu-select-pop, .agent-model-picker, .composer-tools-popover, .agent-command-popover, .pr-action-menu):has(~ .palette-backdrop),
+body:has(> #root .palette-backdrop > [role="alertdialog"]) > :is(.header-popover, .action-menu, .menu-select-pop, .agent-model-picker, .composer-tools-popover, .agent-command-popover, .pr-action-menu) {
+  visibility: hidden;
 }
 
 .topbar-dropdown-menu button:hover {

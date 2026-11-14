@@ -6,6 +6,8 @@ import {
   type AppearanceTheme,
 } from "./appearance.js";
 import type { HarnessPermissionProfile } from "./harness.js";
+import { normalizeFavoriteModels, normalizeModeModels, type ModeModels } from "./plan-mode.js";
+import { normalizePromptTemplates, type PromptTemplate } from "./prompt-templates.js";
 import type {
   Agent,
   AgentMessage,
@@ -117,6 +119,8 @@ export const DEFAULT_CAPSULE_SETTINGS: CapsuleSettings = {
   transcriptWidth: "standard",
   notifyRunComplete: true,
   notifyApprovals: true,
+  notifyLongCommands: true,
+  longCommandSeconds: 30,
   bounceDockOnAttention: true,
   showMenuBarExtra: true,
   keepAwakeWhileRunning: false,
@@ -137,9 +141,13 @@ export const DEFAULT_CAPSULE_SETTINGS: CapsuleSettings = {
   // Archiving already offers Undo, so asking first is opt-in.
   confirmArchive: false,
   toolCallDisplay: "compact",
+  followAgent: false,
   followUpBehavior: "queue",
   diffLayout: "split",
   diffFileState: "expanded",
+  startInPlanMode: false,
+  modeModels: {},
+  favoriteModels: [],
 };
 
 /**
@@ -164,6 +172,8 @@ export const SETTINGS_SECTION_KEYS: Record<string, ReadonlyArray<keyof CapsuleSe
     "autoDownloadUpdates",
     "notifyRunComplete",
     "notifyApprovals",
+    "notifyLongCommands",
+    "longCommandSeconds",
     "bounceDockOnAttention",
     "autoClassifySessions",
     "agentSimulatorAccess",
@@ -173,6 +183,7 @@ export const SETTINGS_SECTION_KEYS: Record<string, ReadonlyArray<keyof CapsuleSe
   appearance: [
     "timeFormat",
     "toolCallDisplay",
+    "followAgent",
     "appearanceTheme",
     "appearanceLight",
     "appearanceDark",
@@ -190,6 +201,8 @@ export const SETTINGS_SECTION_KEYS: Record<string, ReadonlyArray<keyof CapsuleSe
     "sandbox",
     "outputDetail",
     "reasoningSummary",
+    "startInPlanMode",
+    "modeModels",
   ],
   gateway: ["gatewayUrl"],
   projects: ["projectlessFolder"],
@@ -265,6 +278,9 @@ export interface CapsuleSettings {
   customCodeFont?: string;
   notifyRunComplete: boolean;
   notifyApprovals: boolean;
+  /** Notify when a command the agent ran without asking has been going for longCommandSeconds. */
+  notifyLongCommands: boolean;
+  longCommandSeconds: number;
   /** Direct agents may use a simulator the user attached in that thread's panel. */
   agentSimulatorAccess: boolean;
   /** When a turn stops on a usage limit that names a reset time, resume it then without asking. */
@@ -300,9 +316,24 @@ export interface CapsuleSettings {
   /** Ask before archiving a conversation. */
   confirmArchive: boolean;
   toolCallDisplay: ToolCallDisplay;
+  /** While a turn runs, Files previews the file the agent is reading or editing. */
+  followAgent: boolean;
   followUpBehavior: FollowUpBehavior;
   diffLayout: DiffLayout;
   diffFileState: DiffFileState;
+  /** New conversations begin in Plan mode. */
+  startInPlanMode: boolean;
+  /** Per agent, the model a switch to Plan or Act selects. */
+  modeModels: ModeModels;
+  /** Favorite models as JSON [agentId, modelId] keys, in the order they were starred. */
+  favoriteModels: string[];
+  /** Personal saved prompts for the composer's `/` menu. A project's own live in its capsule.json. */
+  composerPrompts?: PromptTemplate[];
+  /**
+   * Projects whose agents may start the board tasks they create. Absent means
+   * none: an agent-created card is a draft until the person starts it.
+   */
+  agentTaskAutoStart?: string[];
 }
 
 const AGENT_MODES: AgentMode[] = [
@@ -337,6 +368,9 @@ const PR_REVIEW: PrReviewDelivery[] = ["current", "new-chat"];
 function pick<T extends string>(value: string | undefined, allowed: readonly T[], fallback: T): T {
   return value && (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
 }
+
+/** The long-command alert thresholds Settings offers, in seconds. */
+export const LONG_COMMAND_SECONDS = [10, 30, 60, 120, 300] as const;
 
 function flag(value: boolean | undefined, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
@@ -497,6 +531,10 @@ export function normalizeCapsuleSettings(input: Partial<CapsuleSettings> = {}): 
     customCodeFont: sanitizeFontName(input.customCodeFont),
     notifyRunComplete: flag(input.notifyRunComplete, DEFAULT_CAPSULE_SETTINGS.notifyRunComplete),
     notifyApprovals: flag(input.notifyApprovals, DEFAULT_CAPSULE_SETTINGS.notifyApprovals),
+    notifyLongCommands: flag(input.notifyLongCommands, DEFAULT_CAPSULE_SETTINGS.notifyLongCommands),
+    longCommandSeconds: LONG_COMMAND_SECONDS.includes(input.longCommandSeconds as never)
+      ? input.longCommandSeconds!
+      : DEFAULT_CAPSULE_SETTINGS.longCommandSeconds,
     agentSimulatorAccess: flag(input.agentSimulatorAccess, DEFAULT_CAPSULE_SETTINGS.agentSimulatorAccess),
     autoResumeOnLimit: flag(input.autoResumeOnLimit, DEFAULT_CAPSULE_SETTINGS.autoResumeOnLimit),
     bounceDockOnAttention: flag(
@@ -540,8 +578,16 @@ export function normalizeCapsuleSettings(input: Partial<CapsuleSettings> = {}): 
     confirmDelete: flag(input.confirmDelete, DEFAULT_CAPSULE_SETTINGS.confirmDelete),
     confirmArchive: flag(input.confirmArchive, DEFAULT_CAPSULE_SETTINGS.confirmArchive),
     toolCallDisplay: pick(input.toolCallDisplay, TOOL_CALL_DISPLAYS, DEFAULT_CAPSULE_SETTINGS.toolCallDisplay),
+    followAgent: flag(input.followAgent, DEFAULT_CAPSULE_SETTINGS.followAgent),
     followUpBehavior: pick(input.followUpBehavior, FOLLOW_UP_BEHAVIORS, DEFAULT_CAPSULE_SETTINGS.followUpBehavior),
     diffLayout: pick(input.diffLayout, DIFF_LAYOUTS, DEFAULT_CAPSULE_SETTINGS.diffLayout),
     diffFileState: pick(input.diffFileState, DIFF_FILE_STATES, DEFAULT_CAPSULE_SETTINGS.diffFileState),
+    startInPlanMode: flag(input.startInPlanMode, DEFAULT_CAPSULE_SETTINGS.startInPlanMode),
+    modeModels: normalizeModeModels(input.modeModels),
+    favoriteModels: normalizeFavoriteModels(input.favoriteModels),
+    ...(input.composerPrompts?.length ? { composerPrompts: normalizePromptTemplates(input.composerPrompts) } : {}),
+    ...(Array.isArray(input.agentTaskAutoStart) && input.agentTaskAutoStart.length ? {
+      agentTaskAutoStart: [...new Set(input.agentTaskAutoStart.filter((id): id is string => typeof id === "string" && id.length > 0 && id.length <= 256))].slice(0, 500),
+    } : {}),
   };
 }

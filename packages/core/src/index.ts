@@ -1,5 +1,6 @@
 export { CapsuleEngine, inferMode, type CapsuleEngineOptions } from "./engine.js";
 export { defaultProjectlessFolder, isInboxProject } from "./projectless.js";
+export { fetchUrlContext } from "./url-context.js";
 export {
   createKeychainAdapter,
   CAPSULE_KEYCHAIN_SERVICE,

@@ -1,5 +1,5 @@
 import type { InspectorTab } from "../../lib/workspace";
-import { CpuIcon, DiffSquareIcon, FolderIcon, GlobeIcon, MessageSquarePlusIcon, SmartphoneIcon } from "./icons";
+import { CompareIcon, CpuIcon, DiffSquareIcon, FolderIcon, GlobeIcon, MessageSquarePlusIcon, SmartphoneIcon } from "./icons";
 
 /**
  * The panel beside the conversation shows one surface at a time. The icon bar
@@ -7,13 +7,15 @@ import { CpuIcon, DiffSquareIcon, FolderIcon, GlobeIcon, MessageSquarePlusIcon, 
  * place that says which surfaces exist, how each is named and drawn, where it
  * sits, and why it cannot open.
  */
-export type InspectorTool = "launcher" | "review" | "browser" | "simulator" | "files" | "chat" | "agents";
+export type InspectorTool = "launcher" | "review" | "browser" | "simulator" | "files" | "chat" | "agents" | "compare";
 
 export interface SurfaceState {
   projectId?: string;
   git?: { isRepo?: boolean; dirty?: boolean };
   /** `false` in a paired viewer, which has no machine to run a simulator on. */
   desktop?: boolean;
+  /** The comparison the selected thread is a candidate in. */
+  groupId?: string;
   platform?: string;
 }
 
@@ -77,6 +79,14 @@ export const SURFACES: Surface[] = [
     shortcut: "⌥⌘S",
     blockedBy: () => undefined,
   },
+  {
+    tool: "compare", key: "c",
+    label: "Compare",
+    detail: "One prompt's results from several agents, side by side.",
+    icon: CompareIcon,
+    inBar: false,
+    blockedBy: ({ groupId }) => (groupId ? undefined : "Open a thread from a comparison."),
+  },
 ];
 
 export function surfaceFor(tool: InspectorTool): Surface | undefined {
@@ -89,6 +99,7 @@ export function toolFromTab(tab: string): InspectorTool {
   if (tab === "chat") return "chat";
   if (tab === "browser") return "browser";
   if (tab === "simulator") return "simulator";
+  if (tab === "compare") return "compare";
   if (tab === "files" || tab === "preview") return "files";
   return "launcher";
 }

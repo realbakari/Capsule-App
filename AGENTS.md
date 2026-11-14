@@ -189,7 +189,7 @@ Keep files focused. Prefer a new package over growing `core` into a junk drawer.
 
 **Runs are the unit of work.** Every meaningful execution becomes a run with events, optional contract, verification, and artifacts.
 
-**Mock runtime is first-class.** The app must be developable without OpenClaw installed. Prompt tokens `[approval]`, `[fail]`, `[verify]`, `[multi]`, `[long]`, `[buzz]`, and `[tool]` trigger mock scenarios.
+**Mock runtime is first-class.** The app must be developable without OpenClaw installed. Prompt tokens `[approval]`, `[fail]`, `[verify]`, `[multi]`, `[long]`, `[buzz]`, `[tool]`, and `[work]` trigger mock scenarios.
 
 **Protocol 4.** Operator clients must send `minProtocol: 4` and `maxProtocol: 4`. Do not regress to protocol 3.
 

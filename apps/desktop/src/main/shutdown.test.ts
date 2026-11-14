@@ -33,6 +33,28 @@ describe("desktop shutdown", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it("quits from a later task, never inside the microtasks of the quit that asked", async () => {
+    const quit = vi.fn();
+    const shutdown = new Shutdown(async () => {}, vi.fn());
+    shutdown.quitWhenDone(quit, vi.fn());
+    for (let i = 0; i < 20; i += 1) await Promise.resolve();
+    expect(shutdown.ready).toBe(true);
+    expect(quit).not.toHaveBeenCalled();
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(quit).toHaveBeenCalledOnce();
+  });
+
+  it("exits outright when the quit does not take", async () => {
+    vi.useFakeTimers();
+    const exit = vi.fn();
+    const shutdown = new Shutdown(async () => {}, vi.fn());
+    shutdown.quitWhenDone(vi.fn(), exit, 1_000);
+    await vi.advanceTimersByTimeAsync(999);
+    expect(exit).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(exit).toHaveBeenCalledOnce();
+  });
+
   it("reports rejected cleanup without blocking quit", async () => {
     const report = vi.fn();
     const shutdown = new Shutdown(async () => { throw new Error("close failed"); }, report);

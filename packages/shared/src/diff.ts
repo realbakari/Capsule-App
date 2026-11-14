@@ -23,6 +23,8 @@ export interface DiffLine {
   oldLine?: number;
   /** Line number on the right — absent for a removed line. */
   newLine?: number;
+  /** Git followed this line with "\ No newline at end of file". */
+  noNewline?: true;
 }
 
 export interface DiffHunk {
@@ -45,6 +47,8 @@ export interface DiffFile {
   deletions: number;
   /** True when git declined to show the contents. */
   binary: boolean;
+  /** The file mode git reported for a created or deleted file, such as `100644`. */
+  mode?: string;
   hunks: DiffHunk[];
 }
 
@@ -112,6 +116,7 @@ export function parseUnifiedDiff(text: string): DiffFile[] {
   let newLine = 0;
   let oldRemaining = 0;
   let newRemaining = 0;
+  let lastLine: DiffLine | undefined;
 
   const closeFile = () => {
     if (file) files.push(file);
@@ -140,29 +145,43 @@ export function parseUnifiedDiff(text: string): DiffFile[] {
 
     if (!file) continue;
 
+    /*
+     * "\ No newline at end of file" annotates the line before it and is not
+     * itself a line of either side. It can follow the last line of a hunk,
+     * after the hunk has already been closed.
+     */
+    if (line.startsWith("\\")) {
+      if (lastLine) lastLine.noNewline = true;
+      lastLine = undefined;
+      continue;
+    }
+    lastLine = undefined;
+
     if (hunk && oldRemaining === 0 && newRemaining === 0) hunk = undefined;
     if (hunk && (line.startsWith("+") || line.startsWith("-") || line.startsWith(" ") || line === "")) {
       const marker = line[0];
       const body = line.slice(1);
       if (marker === "+" && newRemaining > 0) {
-        hunk.lines.push({ kind: "add", text: body, newLine: newLine++ });
+        hunk.lines.push(lastLine = { kind: "add", text: body, newLine: newLine++ });
         newRemaining--; file.additions++;
       } else if (marker === "-" && oldRemaining > 0) {
-        hunk.lines.push({ kind: "del", text: body, oldLine: oldLine++ });
+        hunk.lines.push(lastLine = { kind: "del", text: body, oldLine: oldLine++ });
         oldRemaining--; file.deletions++;
       } else if ((marker === " " || line === "") && oldRemaining > 0 && newRemaining > 0) {
-        hunk.lines.push({ kind: "context", text: body, oldLine: oldLine++, newLine: newLine++ });
+        hunk.lines.push(lastLine = { kind: "context", text: body, oldLine: oldLine++, newLine: newLine++ });
         oldRemaining--; newRemaining--;
       }
       continue;
     }
 
-    if (line.startsWith("new file mode")) {
+    if (line.startsWith("new file mode ")) {
       file.status = "added";
+      file.mode = line.slice("new file mode ".length).trim();
       continue;
     }
-    if (line.startsWith("deleted file mode")) {
+    if (line.startsWith("deleted file mode ")) {
       file.status = "deleted";
+      file.mode = line.slice("deleted file mode ".length).trim();
       continue;
     }
     if (line.startsWith("rename from ")) {
@@ -201,14 +220,6 @@ export function parseUnifiedDiff(text: string): DiffFile[] {
       newRemaining = header.newCount;
       continue;
     }
-
-    if (!hunk) continue;
-
-    /*
-     * "\ No newline at end of file" annotates the line before it and is not
-     * itself a line of either side.
-     */
-    if (line.startsWith("\\")) continue;
 
   }
 

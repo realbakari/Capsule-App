@@ -21,6 +21,14 @@ describe("ipc scopes", () => {
     expect(scopeForChannel("capsule:somethingNew")).toBe("write");
   });
 
+  it("keeps share links and presence on the desktop, and lets a reader export what it reads", () => {
+    for (const channel of ["createShareLink", "listShareLinks", "revokeShareLink", "threadPresence", "exportThreadMarkdown"]) {
+      expect(scopeForChannel(channel)).toBe("write");
+      expect(isChannelAllowed(channel, ["read", "control"])).toBe(false);
+    }
+    expect(isChannelAllowed("threadMarkdown", ["read"])).toBe(true);
+  });
+
   it("keeps the machine out of a viewer's reach", () => {
     for (const channel of [
       "sendMessage",
@@ -55,6 +63,8 @@ describe("ipc scopes", () => {
       "terminalAcknowledge",
       "clearBrowserData",
       "copyBrowserScreenshot",
+      "captureBrowserElement",
+      "emulateBrowserDevice",
       "listSimulators",
       "listSimulatorApps",
       "simulatorScreen",
@@ -63,6 +73,9 @@ describe("ipc scopes", () => {
       "attachSimulator",
       "rewindSession",
       "updateFollowUps",
+      "createBoardCard",
+      "updateBoardCard",
+      "setSessionTurnMode",
       "saveTextAttachment",
       "saveImageAttachment",
       "registerBrowserView",
@@ -141,5 +154,22 @@ describe("follow-up channels", () => {
     expect(isChannelAllowed("getFollowUps", ["read"])).toBe(true);
     expect(isChannelAllowed("updateFollowUps", ["read"])).toBe(false);
     expect(isChannelAllowed("updateFollowUps", ["control"])).toBe(true);
+  });
+});
+
+describe("board channels", () => {
+  it("keeps making, linking, starting and finishing cards away from any paired device that is not trusted to write", () => {
+    for (const channel of ["createBoardCard", "updateBoardCard"]) {
+      expect(isChannelAllowed(channel, ["read"])).toBe(false);
+      expect(isChannelAllowed(channel, ["control"])).toBe(false);
+      expect(isChannelAllowed(channel, ["write"])).toBe(true);
+    }
+  });
+});
+
+describe("plan mode channel", () => {
+  it("lets conversation control switch Plan and Act, but not a read-only device", () => {
+    expect(isChannelAllowed("setSessionTurnMode", ["read"])).toBe(false);
+    expect(isChannelAllowed("setSessionTurnMode", ["control"])).toBe(true);
   });
 });

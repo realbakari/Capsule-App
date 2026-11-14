@@ -727,6 +727,15 @@ export function UndoIcon(props: IconProps) {
   );
 }
 
+export function RedoIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="m15 14 5-5-5-5" />
+      <path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" />
+    </Svg>
+  );
+}
+
 export function ListIcon(props: IconProps) {
   return (
     <Svg {...props}>
@@ -782,4 +791,17 @@ export function FolderOpenIcon(props: IconProps) {
 
 export function GitCommitIcon(props: IconProps) {
   return <Svg {...props}><circle cx="12" cy="12" r="3" /><path d="M3 12h6M15 12h6" /></Svg>;
+}
+
+/* Side-by-side candidates: the Compare surface and its entry points. */
+export function CompareIcon(props: IconProps) {
+  return <Svg {...props}><path d="M8 19H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h3M16 5h3a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-3M12 3v18" /></Svg>;
+}
+
+export function ThumbsUpIcon(props: IconProps) {
+  return <Svg {...props}><path d="M7 10v12M15 5.9 14 10h5.8a2 2 0 0 1 1.9 2.6l-2.3 8a2 2 0 0 1-1.9 1.4H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.8a2 2 0 0 0 1.8-1.1L12 2a3.1 3.1 0 0 1 3 3.9Z" /></Svg>;
+}
+
+export function ThumbsDownIcon(props: IconProps) {
+  return <Svg {...props}><path d="M17 14V2M9 18.1 10 14H4.2a2 2 0 0 1-1.9-2.6l2.3-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.8a2 2 0 0 0-1.8 1.1L12 22a3.1 3.1 0 0 1-3-3.9Z" /></Svg>;
 }

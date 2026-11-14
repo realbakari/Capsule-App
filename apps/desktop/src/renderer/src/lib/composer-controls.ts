@@ -5,7 +5,7 @@
  * agent: the first label present wins.
  */
 export const COMPOSER_CONTROLS = {
-  mode: { labels: ["Permission mode", "Permissions", "Agent mode"], name: "mode" },
+  mode: { labels: ["Approvals", "Agent permissions", "Agent mode"], name: "mode" },
   model: { labels: ["Agent and model"], name: "model" },
   effort: { labels: ["Reasoning effort"], name: "reasoning effort" },
 } as const;

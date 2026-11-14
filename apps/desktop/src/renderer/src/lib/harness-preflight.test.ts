@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { HarnessStatus, SessionRef } from "@capsule/shared";
-import { harnessPreflightReason } from "./harness-preflight";
+import { agentSetupNotice, harnessPreflightReason, quotedCommand } from "./harness-preflight";
 
 const harness = (readiness: HarnessStatus["readiness"]): HarnessStatus => ({
   id: "codex",
@@ -39,5 +39,26 @@ describe("harness preflight", () => {
   it("allows ready and already-live harnesses", () => {
     expect(harnessPreflightReason({ harness: harness("ready"), connected: true, folder: "/x", live: false })).toBeUndefined();
     expect(harnessPreflightReason({ harness: harness("needs_login"), connected: true, folder: "/x", live: true })).toBeUndefined();
+  });
+});
+
+describe("agent setup notice", () => {
+  const signedOut = { ...harness("needs_login"), runtimeRoute: "direct" as const, loginHint: "Run `codex login`", loginState: "logged_out" as const, detail: "Codex is not signed in. Run `codex login`." };
+  it("splits a signed-out agent into a title and the command, without backticks", () => {
+    expect(agentSetupNotice(signedOut, signedOut.detail)).toEqual({ kind: "sign-in", title: "Codex isn't signed in", command: "codex login" });
+  });
+  it("reads the command out of a longer hint", () => {
+    expect(quotedCommand("Run `claude auth login` in a terminal")).toBe("claude auth login");
+    expect(quotedCommand("Sign in to its CLI")).toBeUndefined();
+  });
+  it("offers no command when the config is broken, and the install hint when the CLI is missing", () => {
+    const broken = { ...signedOut, loginState: "config_invalid" as const };
+    expect(agentSetupNotice(broken, broken.detail)).toEqual({ kind: "config", title: "Codex's settings could not be read", detail: "Fix its config file, then check again." });
+    const missing = { ...harness("missing_cli"), detail: "Install the Codex CLI so codex is on PATH, then run `codex login`." };
+    expect(agentSetupNotice(missing, missing.detail)).toEqual({ kind: "install", title: "Codex isn't installed", detail: "Install the Codex CLI so codex is on PATH, then run codex login." });
+  });
+  it("leaves other reasons, such as a paused conversation, to the plain notice", () => {
+    expect(agentSetupNotice(signedOut, "This conversation is paused. Resume it to continue.")).toBeUndefined();
+    expect(agentSetupNotice({ ...harness("ready") }, "status: ready")).toBeUndefined();
   });
 });

@@ -19,6 +19,48 @@ argument projection. Socket expiry and revocation recheck queued execution and
 outbound replies. Revocation blocks new work, but does not cancel an already
 accepted run. Reconnection refreshes state and never replays uncertain writes.
 
+## Share links and presence
+
+A share link is a `ShareGrant { id, sessionId, createdAt, expiresAt?, revokedAt?, label? }`
+in the `share_grants` table (migration 23). Only a SHA-256 of the link secret
+is stored; the URL carries the secret in its `#share=` fragment and is returned
+once by `createShareLink`. Revocation sets `revoked_at`; deleting the thread
+cascades the row away.
+
+The server stays thread-agnostic. A socket whose first frame is `{ share }`
+instead of `{ token }` is handed to `attachShareViewer`
+(`packages/remote/src/share.ts`), which asks the host's `ShareAccess` three
+things: `resolve` (secret to live grant), `invoke` (the one allowlist) and
+`event` (what to forward). The grant is resolved again before every call and
+every outbound frame, so revocation or expiry refuses the next request even
+before `revokeShare` closes the socket with 4401.
+
+The allowlist is `apps/desktop/src/main/share-scope.ts`. Anything not named is
+refused with one message. Thread reads (`listMessages`, `listMessagePage`,
+`threadMarkdown`, `getFollowUps`) require the grant's session id; run reads
+(`getRun`, `listRunEvents`, `listRunEventPage`, `listArtifacts`, `turnDiff`)
+require a run of that session; `messageImage` requires a message of it. The
+app-wide reads the renderer makes at startup are answered with the thread's
+slice: `listSessions` and `listProjects` return one row each, stripped of
+folders and live agent identities; runs drop `workingDirectory`, `revision`
+and verification evidence; settings are defaults plus appearance; skills,
+harnesses and fork lists are empty. Events pass only for that thread's
+messages, runs and approvals; state and connection events stay local.
+`share-flow.test.ts` drives the real server and engine through every refusal.
+
+Presence comes from the same server. Each live socket is a
+`RemoteViewerRecord`; a paired device's thread is the session id of its last
+`listMessagePage`, `listMessages` or `listRunPage` call (`viewedSessionId`), a
+share link's is its grant's. `aggregatePresence` groups them into
+`ThreadPresence { sessionId, viewers: { kind: "browser" | "phone" | "share-link", label, since }[] }`.
+The `threadPresence` channel and every share-link channel are writes in the
+scope table, so neither kind of viewer can list other devices or links.
+`threadMarkdown` is a read: it is the thread a reader can already see.
+
+The browser bridge now maps wire event names (`capsule:event:message`) to the
+renderer's keys (`message`). Before this, paired browsers received no live
+events and relied on reconnect refreshes.
+
 ## HTTPS deployment
 
 For a browser on the host, use Settings → Gateway → Browser access → This
@@ -36,7 +78,11 @@ Proxy that origin's `/`, `/pair`, and WebSocket `/rpc` to
 or the upstream Host. Use a valid TLS certificate. Do not bind the upstream
 listener to the LAN. Do not log pairing request bodies or WebSocket frames.
 The URL must be an HTTPS origin with no path, query or credentials. Port is
-optional (ephemeral by default); a proxy needs a stable configured port.
+optional. Without it the listener asks for the port it used last time, kept in
+`state/remote-port` under the user data folder, and takes an ephemeral one only
+when that port is busy (then remembers the new one). Share links depend on this:
+their grants survive a restart in the database, and the URL carries the port. A
+proxy still needs the configured port, which is never overwritten.
 Environment changes require restarting the host.
 
 The server does not trust forwarded-protocol headers. It requires the configured

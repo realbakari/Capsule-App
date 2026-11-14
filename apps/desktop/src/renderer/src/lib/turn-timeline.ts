@@ -1,8 +1,8 @@
 import type { ChatMessage, Run, RunEvent } from "@capsule/shared";
-import { readToolActivityDetails, type ToolActivityDetails } from "@capsule/shared";
+import { readToolActivityDetails, type ToolActivityDetails, type ToolKind } from "@capsule/shared";
 import { cleanActivityDetail } from "./activity";
 
-export type ToolKind = "read" | "edit" | "delete" | "move" | "switch_mode" | "search" | "execute" | "think" | "fetch" | "todo" | "other";
+export type { ToolKind };
 
 export interface ToolObservation {
   id: string;
@@ -80,18 +80,6 @@ export function toolObservationState(tool: ToolObservation, run: Run, stopping =
   if (run.completedAt || ["completed", "failed", "blocked"].includes(run.status)) return "Completion not reported";
   if (stopping) return "Stopping";
   return tool.status === "running" ? "Running" : tool.status === "waiting" ? "Waiting" : "Reported";
-}
-
-/** "Ran 12 commands (1 failed)": what happened, said the way a person would. */
-export function toolGroupLabel(tools: ToolObservation[]): string {
-  const commands = tools.filter((tool) => tool.command).length;
-  const others = tools.length - commands;
-  const failed = tools.filter((tool) => tool.status === "failed").length;
-  const parts = [
-    commands ? `Ran ${commands} command${commands === 1 ? "" : "s"}` : "",
-    others ? `${commands ? "used" : "Used"} ${others} tool${others === 1 ? "" : "s"}` : "",
-  ].filter(Boolean).join(", ");
-  return failed ? `${parts} (${failed} failed)` : parts;
 }
 
 export function toolKindFrom(kind: unknown, title: string, command: boolean): ToolKind {

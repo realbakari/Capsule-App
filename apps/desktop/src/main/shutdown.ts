@@ -17,6 +17,21 @@ export class Shutdown {
     return this.pending;
   }
 
+  /*
+   * Electron emits before-quit from inside its own quit call and drains
+   * microtasks before it records that the quit was prevented. A cleanup that
+   * settled within those microtasks quit re-entrantly: the windows closed, the
+   * outer call then marked the quit cancelled, and on macOS, with no window
+   * left, the process idled forever. Quit from a later task instead, and exit
+   * outright if Electron has still not quit after the grace period.
+   */
+  quitWhenDone(quit: () => void, exit: () => void, graceMs = 5_000): void {
+    void this.request().then(() => setImmediate(() => {
+      quit();
+      setTimeout(exit, graceMs).unref();
+    }));
+  }
+
   private async finish(): Promise<void> {
     let timer: ReturnType<typeof setTimeout> | undefined;
     // Attach the rejection handler even if the deadline wins the race.

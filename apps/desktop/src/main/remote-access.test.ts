@@ -28,3 +28,18 @@ it("keeps ownership when stopping fails and supports a subsequent retry", async 
   expect(lifecycle.handle).toBeUndefined();
   expect(lifecycle.error).toBeUndefined();
 });
+
+it("keeps a command-line listener when an unrelated setting is saved", async () => {
+  const stop = vi.fn(async () => {});
+  const lifecycle = new RemoteAccessLifecycle(async () => ({ stop }), vi.fn());
+  await lifecycle.follow("off");
+  await lifecycle.set("loopback");
+  await lifecycle.follow("off");
+  expect(lifecycle.reach).toBe("loopback");
+  expect(stop).not.toHaveBeenCalled();
+  await lifecycle.follow("network");
+  expect(lifecycle.reach).toBe("network");
+  await lifecycle.follow("off");
+  expect(lifecycle.reach).toBe("off");
+  expect(stop).toHaveBeenCalledTimes(2);
+});

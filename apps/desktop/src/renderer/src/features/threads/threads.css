@@ -1,0 +1,132 @@
+/* Pull request state on a worktree thread's sidebar row. */
+.thread-pr {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  color: var(--text-faint);
+}
+.thread-pr.open { color: var(--green); }
+.thread-pr.failing { color: var(--red); }
+.thread-pr.merged { color: var(--markdown-note); }
+.thread-pr.draft,
+.thread-pr.closed { color: var(--text-faint); }
+.thread-status.paused { color: var(--text-muted); }
+
+/* New conversation and, beside it, the other ways to start one. */
+.sidebar-new-row {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  order: -1;
+  width: 100%;
+}
+.sidebar-new-row .sidebar-new { flex: 1; width: auto; order: 0; }
+.sidebar-new-more { flex: none; opacity: 0; color: var(--text-muted); }
+.sidebar-new-row:hover .sidebar-new-more,
+.sidebar-new-more:focus-visible,
+.sidebar-new-more[data-open="true"] { opacity: 1; }
+
+/* Temporary threads: a word in the row, a strip above the composer. */
+.thread-title-line { display: flex; align-items: center; gap: 0.3rem; min-width: 0; }
+.thread-temporary {
+  flex: none;
+  padding: 0 0.3rem;
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: var(--text-3xs);
+  font-weight: 600;
+  line-height: 1.5;
+}
+.temporary-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0 0 0.4rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+.temporary-banner strong { color: var(--text); font-weight: 600; }
+.temporary-banner .chip { margin-left: auto; flex: none; }
+
+/* Tags: chips plus one field, in Conversation details and the Tags dialog. */
+.tag-editor {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+}
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  max-width: 100%;
+  padding: 0.1rem 0.2rem 0.1rem 0.45rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-full);
+  background: var(--surface-1);
+  color: var(--text);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+}
+.tag-editor[data-disabled="true"] .tag-chip { padding-right: 0.45rem; }
+.tag-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tag-editor .tag-chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.tag-editor .tag-chip-remove:hover { background: var(--bg-hover); color: var(--text); }
+.tag-chip-remove:focus-visible,
+.tag-editor-input:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
+.tag-editor-input {
+  flex: 1 1 6rem;
+  min-width: 6rem;
+  padding: 0.2rem 0.35rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font-size: var(--text-xs);
+}
+.tag-editor-input:hover { border-color: var(--border-color); }
+.tags-dialog { width: min(28rem, calc(100vw - 2rem)); }
+.tags-dialog .tags-dialog-lede { margin: 0.25rem 0 0.9rem; color: var(--text-muted); font-size: var(--text-sm); }
+.tags-dialog .tag-editor {
+  padding: 0.35rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--surface-0);
+}
+.session-details-tags { display: grid; gap: 0.35rem; }
+.tags-settings-list { display: grid; gap: 0.35rem; margin: 0.6rem 0 0; padding: 0; list-style: none; }
+.tags-settings-row { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
+.tags-settings-count { font-size: var(--text-xs); white-space: nowrap; }
+.tags-settings-actions { display: inline-flex; gap: 0.3rem; margin-left: auto; }
+.tags-settings-input {
+  min-width: 0;
+  padding: 0.2rem 0.4rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--surface-0);
+  color: var(--text);
+  font-size: var(--text-xs);
+}
+.tags-settings-error { margin: 0.5rem 0 0; color: var(--red); font-size: var(--text-sm); }
+.tags-settings .chip.danger { color: var(--red); border-color: color-mix(in srgb, var(--red) 40%, transparent); }
+.tag-editor .tag-chip-remove { min-height: 0; flex: none; }
+.tag-editor .tag-chip-remove svg { flex: none; width: 0.625rem; height: 0.625rem; }
+.tags-settings-row { display: grid; grid-template-columns: minmax(6rem, max-content) auto 1fr; }

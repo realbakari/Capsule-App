@@ -48,6 +48,27 @@ export function checkpointRef(sessionId: string, turn: number): string {
   return `${REF_ROOT}/${safeSession}/turn/${safeTurn}`;
 }
 
+/**
+ * A thread's other snapshots: the folder as it stood before a restore (for
+ * Redo) and as it stands now (for Compare). They sit beside the turn refs so
+ * deleting the thread's checkpoints takes them too.
+ */
+export function threadSnapshotRef(sessionId: string, kind: "redo" | "compare" | "set-aside" | "paused", id = "latest"): string {
+  const safeId = id.replace(/[^A-Za-z0-9._-]/g, "-").replace(/^[.-]+/, "") || "latest";
+  return checkpointRef(sessionId, 0).replace(/\/turn\/0$/, `/${kind}/${safeId}`);
+}
+
+/** Point another ref at the same saved snapshot, e.g. a forked thread's copy of a turn. */
+export async function copyCheckpointRef(cwd: string, from: string, to: string): Promise<boolean> {
+  const target = await git(cwd, ["rev-parse", "--verify", `${from}^{commit}`]);
+  if (!target.ok) return false;
+  return (await checkpointGit(cwd, ["update-ref", to, target.stdout.trim()])).ok;
+}
+
+export async function deleteCheckpointRef(cwd: string, ref: string): Promise<void> {
+  await git(cwd, ["update-ref", "-d", ref]);
+}
+
 export async function isGitRepository(cwd: string): Promise<boolean> {
   return (await git(cwd, ["rev-parse", "--is-inside-work-tree"])).stdout.trim() === "true";
 }

@@ -1,4 +1,6 @@
 import { applyAppearance } from "./appearance";
+import { CYCLE_FAVORITE_MODEL_EVENT, useFavoriteModels, useTurnMode } from "./turn-mode";
+import { ACT_ON_PLAN_PROMPT, type TurnMode } from "@capsule/shared";
 import { RequestScope } from "./request-scope";
 import { resolveWorkspaceSelection } from "./workspace-selection";
 import { HarnessStatusCache, harnessStatusIdentity } from "./harness-status-cache";
@@ -42,6 +44,7 @@ import {
   type HarnessPermissionProfile,
   type HarnessStatus,
   type MessageAttachment,
+  type ResolvedContext,
   EMPTY_FOLLOW_UPS,
   type FollowUpOp,
   type FollowUps,
@@ -57,6 +60,7 @@ import {
   type SkillCatalogPage,
   type SubsystemStatus,
   type WorkspaceMode,
+  type HunkApply,
 } from "@capsule/shared";
 
 import type { SettingsSectionId } from "../features/settings/settings-search";
@@ -90,7 +94,8 @@ export type View =
   | "history"
   | "approvals"
   | "usage"
-  | "settings";
+  | "settings"
+  | "board";
 export type InspectorTab =
   | "launcher"
   | "files"
@@ -101,30 +106,8 @@ export type InspectorTab =
   | "agents"
   | "chat"
   | "browser"
-  | "simulator";
-
-/*
- * The detail lines matter more than the labels here. These map onto acpx
- * permission modes, which cannot show a dialog, so "Supervised" refuses a tool
- * rather than asking about it — behaviour nobody would guess from the name.
- */
-export const PERMISSION_OPTIONS = [
-  {
-    id: "strict",
-    label: "Read-only",
-    detail: "Refuses commands and file writes. It cannot ask, so it declines.",
-  },
-  {
-    id: "default",
-    label: "Standard",
-    detail: "Reads, writes and runs commands inside the project folder.",
-  },
-  {
-    id: "approve-all",
-    label: "Full access",
-    detail: "Allow commands and file changes without approval prompts.",
-  },
-] as const;
+  | "simulator"
+  | "compare";
 
 const SIDEBAR_WIDTH_KEY = "capsule.sidebarWidth";
 const SIDEBAR_COLLAPSED_KEY = "capsule.sidebarCollapsed";
@@ -173,6 +156,16 @@ export interface ConfirmState {
   secondary?: { label: string; onConfirm: () => void };
 }
 
+/** How a new conversation starts, beyond its project and first prompt. */
+export interface CreateTaskOptions {
+  /** Held in memory only, on the shared checkout, until kept. */
+  temporary?: boolean;
+  title?: string;
+  workspaceMode?: WorkspaceMode;
+  /** The worktree branch's name before the branch prefix. */
+  branchName?: string;
+}
+
 export interface WorkspaceValue {
   api: typeof window.capsule;
   view: View;
@@ -196,6 +189,8 @@ export interface WorkspaceValue {
   loadOlderMessages: () => Promise<void>;
   hasNewerMessages: boolean;
   returnToLatest: () => Promise<void>;
+  /** Replace the open thread's messages and runs after turns were removed or put back. Merging would keep removed ones on screen. */
+  reloadThread: (id: string) => Promise<void>;
   runs: Run[];
   events: RunEvent[];
   artifacts: Artifact[];
@@ -241,6 +236,10 @@ export interface WorkspaceValue {
   attachImage: (png: Uint8Array) => Promise<boolean>;
   attachPastedText: (text: string) => Promise<boolean>;
   attachFiles: (paths: string[]) => Promise<boolean>;
+  /** Save composer context (a conversation, a diff, a page, a selection) and attach it with its chip. */
+  attachContext: (resolved: ResolvedContext) => Promise<boolean>;
+  /** Send a prompt the app wrote, such as `/init`, without touching the draft. */
+  sendPrompt: (text: string) => Promise<boolean>;
   removeAttachment: (path: string) => void;
   stashCurrentPrompt: () => void;
   restorePromptStash: (id: string) => void;
@@ -255,7 +254,7 @@ export interface WorkspaceValue {
   eventLoad?: { runId: string; state: "loading" | "loaded" | "error"; detail?: string };
   /** Start a conversation, in the given project or the selected one. */
   /** Opens a new conversation, in another project when one is named, optionally with a prompt waiting in its composer. */
-  createTask: (projectId?: string, initialPrompt?: string) => Promise<void>;
+  createTask: (projectId?: string, initialPrompt?: string, options?: CreateTaskOptions) => Promise<void>;
   /** Visited conversations, like a browser's history. */
   canGoBack: boolean;
   canGoForward: boolean;
@@ -302,6 +301,9 @@ export interface WorkspaceValue {
   ) => Promise<void>;
   draftHarnessConfig: { model?: string; options: Record<string, string> };
   setDraftHarnessConfig: (config: { model?: string; options: Record<string, string> }) => void;
+  /** Ask, Auto or Full for the conversation this draft will start; undefined uses the Settings default. */
+  draftApproval?: HarnessPermissionProfile;
+  setDraftApproval: (profile: HarnessPermissionProfile | undefined) => void;
   dedicateHarness: (harnessId: string) => Promise<void>;
   undedicateHarness: () => Promise<void>;
   doctorHarness: (harnessId: string) => Promise<void>;
@@ -368,10 +370,15 @@ export interface WorkspaceValue {
   /** The find bar over the current conversation. */
   threadFind: boolean;
   setThreadFind: (open: boolean | ((current: boolean) => boolean)) => void;
+  /** The jump list of this conversation's prompts. */
+  promptJump: boolean;
+  setPromptJump: (open: boolean | ((current: boolean) => boolean)) => void;
   setContentSearch: (open: boolean) => void;
   gitCommit: (message: string) => Promise<boolean>;
   gitStage: (relative: string) => Promise<void>;
   gitDiscard: (relative: string) => void;
+  /** Keep, Reject or Unstage a hunk. Throws git's reason when it no longer applies. */
+  gitApplyHunk: (apply: HunkApply) => Promise<void>;
   gitCreateBranch: (branch: string) => Promise<void>;
   gitPush: () => Promise<boolean>;
   gitCreatePullRequest: (input?: { title?: string; body?: string; }) => Promise<boolean>;
@@ -388,6 +395,15 @@ export interface WorkspaceValue {
   setAboutOpen: (open: boolean) => void;
   settings?: CapsuleSettings;
   updateSettings: (patch: Partial<CapsuleSettings>) => Promise<CapsuleSettings>;
+  /** Plan or Act for the next turn of the selected thread, or of the thread a first message creates. */
+  turnMode: TurnMode;
+  setTurnMode: (mode: TurnMode) => Promise<boolean>;
+  /** Switch to Act, apply the Act model, and ask the agent to implement the plan it just wrote. */
+  actOnPlan: () => Promise<void>;
+  /** Stay in Plan and return to the composer for another planning turn. */
+  keepPlanning: () => Promise<void>;
+  favoriteModels: string[];
+  toggleFavoriteModel: (agentId: string, modelId: string) => Promise<CapsuleSettings>;
 }
 
 const workspaceContextSlot = globalThis as typeof globalThis & {
@@ -497,6 +513,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   const [draftHarnessConfigs, setDraftHarnessConfigs] = useScopedState<Record<string, { model?: string; options: Record<string, string> }>>(draftScope, {});
   const draftHarnessConfig = draftHarnessConfigs[agentId] ?? { options: {} };
   const setDraftHarnessConfig = (config: { model?: string; options: Record<string, string> }) => setDraftHarnessConfigs((current) => ({ ...current, [agentId]: config }));
+  const [draftApproval, setDraftApproval] = useScopedState<HarnessPermissionProfile | undefined>(draftScope, undefined);
   const [attachments, setAttachmentValues] = useScopedState<MessageAttachment[]>(draftScope, []);
   const attachmentState = useRef({ scope: draftScope, value: attachments });
   attachmentState.current = { scope: draftScope, value: attachments };
@@ -647,6 +664,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   const activeRun = runs.find(
     (run) => run.sessionId === sessionId && ["running", "approval_required", "waiting"].includes(run.status),
   );
+  const { turnMode, draftTurnMode, setTurnMode } = useTurnMode({ api, session, settings, setNotice });
   const pendingApproval = approvals.find(
     (item) => item.status === "pending" && runs.some((run) => run.id === item.runId),
   );
@@ -657,8 +675,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   const harnessLive = Boolean(
     session?.harnessId === selectedHarness?.id && session?.openclawSessionKey && ["spawning", "running", "waiting"].includes(session.harnessState ?? ""),
   );
-  const sendBlockReason = api.isDesktop === false && api.remoteMode !== "control"
+  const sendBlockReason = api.isDesktop === false && api.remoteMode === "share"
+    ? "This is a shared, read-only conversation."
+    : api.isDesktop === false && api.remoteMode !== "control"
     ? "This browser is read-only. Create a conversation-control pairing link from the desktop to send messages."
+    : session?.paused
+    ? "This conversation is paused. Resume it to continue."
     : harnessPreflightReason({
     harness: mode === "code" ? selectedHarness : undefined,
     connected,
@@ -755,6 +777,24 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     setTranscript({ messages: bounded.messages, olderEvicted: bounded.trimmed, hasNewer: false });
     setHasOlderMessages(page.hasMore);
     await loadSession(sessionId);
+  }, [api, sessionId, scope, historyWindow, liveRunState, loadSession]);
+
+  const reloadThread = useCallback(async (id: string) => {
+    if (id !== sessionId) return;
+    const current = requests.capture("older-messages");
+    const [page, history] = await Promise.all([api.listMessagePage(id, { limit: MESSAGE_PAGE_SIZE }), api.listRunPage({ sessionId: id })]);
+    if (!current()) return;
+    const kept = new Set(history.runs.map((run) => run.id));
+    for (const [runId, run] of liveRunState.runs) if (run.sessionId === id && !kept.has(runId)) liveRunState.runs.delete(runId);
+    historyWindow.edge = "newest";
+    historyWindow.detached = false;
+    liveRunState.loadedOlder = false;
+    const bounded = boundTranscript(page.messages, "newest");
+    setTranscript({ messages: bounded.messages, olderEvicted: bounded.trimmed, hasNewer: false });
+    setHasOlderMessages(page.hasMore);
+    setRuns(history.runs);
+    setProjectRuns((runs) => [...history.runs, ...runs.filter((run) => run.sessionId !== id)]);
+    await loadSession(id);
   }, [api, sessionId, scope, historyWindow, liveRunState, loadSession]);
 
   useEffect(() => {
@@ -1052,6 +1092,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
         case "find-in-thread":
           setThreadFind((open) => !open);
           break;
+        case "jump-to-prompt":
+          setView("chat");
+          setPromptJump((open) => !open);
+          break;
         case "open-review":
           setInspectorTab("changes");
           setInspectorOpen(true);
@@ -1066,6 +1110,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
           break;
         case "show-shortcuts":
           window.dispatchEvent(new CustomEvent(SHOW_SHORTCUTS_EVENT));
+          break;
+        case "cycle-favorite-model":
+          window.dispatchEvent(new CustomEvent(CYCLE_FAVORITE_MODEL_EVENT));
           break;
         case "open-mode":
         case "open-model":
@@ -1220,7 +1267,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       .catch(() => setFiles([]));
   }, [api, scope, loadGit, projectId, project?.workingDirectory, sessionId, session?.workingDirectory, selectionExists]);
 
-  async function createTask(inProject?: string, initialPrompt?: string) {
+  async function createTask(inProject?: string, initialPrompt?: string, options?: CreateTaskOptions) {
     if (api.isDesktop === false && api.remoteMode !== "control") {
       setNotice("This browser is read-only. Pair with conversation control to create a thread.");
       return;
@@ -1231,9 +1278,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       projectId: targetProject,
       agentId,
       mode,
-      permissionProfile: settings?.defaultPermission,
-      workspaceMode: git?.isRepo ? (settings?.defaultWorkspaceMode ?? "local") : "local",
-      title: "New conversation",
+      permissionProfile: draftApproval ?? settings?.defaultPermission,
+      workspaceMode: options?.temporary ? "local" : options?.workspaceMode ?? (git?.isRepo ? (settings?.defaultWorkspaceMode ?? "local") : "local"),
+      title: options?.title ?? "New conversation",
+      ...(options?.temporary ? { temporary: true } : {}),
+      ...(options?.branchName ? { branchName: options.branchName } : {}),
     });
     if (!requests.isCurrent(scope)) return;
     // The draft scope moves with the selection, so a prompt written after the
@@ -1297,6 +1346,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   };
   const [threadFind, setThreadFind] = useState(false);
   useEffect(() => { setThreadFind(false); }, [sessionId]);
+  const [promptJump, setPromptJump] = useState(false);
+  useEffect(() => { setPromptJump(false); }, [sessionId]);
 
   const pendingResume: PendingResume | undefined = sessionId && followUps.resume ? { sessionId, ...followUps.resume } : undefined;
   // A limit stop's files live on its prompt message, not on the run.
@@ -1391,9 +1442,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
           projectId: currentProjectId,
           agentId,
           mode,
-          permissionProfile: settings?.defaultPermission,
+          permissionProfile: draftApproval ?? settings?.defaultPermission,
           workspaceMode: git?.isRepo ? workspaceMode : "local",
           title: "New conversation",
+          turnMode: draftTurnMode,
         });
         currentSessionId = created.id;
       }
@@ -1402,7 +1454,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       preparedThread = true;
       if (draftHarnessConfig.model || Object.keys(draftHarnessConfig.options).length) {
         await api.spawnHarness({ projectId: currentProjectId, sessionId: currentSessionId, harnessId: agentId,
-          model: draftHarnessConfig.model, permissionProfile: "strict" });
+          model: draftHarnessConfig.model, permissionProfile: draftApproval ?? settings?.defaultPermission });
         if (draftHarnessConfig.model) await api.setHarnessOption({ sessionId: currentSessionId, key: "model", value: draftHarnessConfig.model });
         for (const [id, value] of Object.entries(draftHarnessConfig.options)) await api.setHarnessConfig(currentSessionId, id, value);
         if (!draftScopes.isCurrent(draftScope)) return false;
@@ -1445,7 +1497,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
             projectId: currentProjectId,
             agentId,
             mode,
-            permissionProfile: settings?.defaultPermission,
+            permissionProfile: draftApproval ?? settings?.defaultPermission,
             workspaceMode: git?.isRepo ? (settings?.defaultWorkspaceMode ?? "local") : "local",
             title: "New conversation",
           }) : undefined;
@@ -1602,7 +1654,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   }
 
   /** Reserve slots before clipboard writes or validation can yield. */
-  async function prepareAttachments(count: number, resolvePaths: () => Promise<string[]>) {
+  async function prepareAttachments(count: number, resolvePaths: () => Promise<string[]>, context?: MessageAttachment["context"]) {
     if (!draftScopes.isCurrent(draftScope) || !count) return false;
     const pending = attachmentReservations.get(draftScope) ?? 0;
     if (attachmentState.current.value.length + pending + count > 8) {
@@ -1625,7 +1677,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       if (new Set([...existing, ...validated.map((item) => item.path)]).size > 8) throw new Error("You can attach up to 8 files. Remove one first.");
       setAttachments((current) => {
         const byPath = new Map(current.map((item) => [item.path, item]));
-        for (const item of validated) byPath.set(item.path, item);
+        for (const item of validated) byPath.set(item.path, context ? { ...item, context } : item);
         return [...byPath.values()];
       });
       setNotice(undefined);
@@ -1675,6 +1727,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       const paths = await api.pickFiles() as string[] | undefined;
       if (paths?.length && draftScopes.isCurrent(draftScope)) await attachFiles(paths);
     } catch (error) { setNotice(formatUserError(error)); }
+  }
+
+  async function attachContext(resolved: ResolvedContext): Promise<boolean> {
+    return prepareAttachments(1, async () => [await api.saveTextAttachment(resolved.text, resolved.fileName)], resolved.context);
   }
 
   function removeAttachment(filePath: string) {
@@ -2173,6 +2229,17 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     return next;
   }
 
+  const { favorites: favoriteModels, toggleFavorite: toggleFavoriteModel } = useFavoriteModels(settings, updateSettings, api.isDesktop !== false);
+
+  async function actOnPlan() {
+    if (await setTurnMode("act")) await send(false, ACT_ON_PLAN_PROMPT);
+  }
+
+  async function keepPlanning() {
+    if (turnMode !== "plan" && !await setTurnMode("plan")) return;
+    document.querySelector<HTMLTextAreaElement>(".composer textarea[aria-label='Message']")?.focus();
+  }
+
   async function performGit(operation: () => Promise<GitStatus>): Promise<boolean> {
     if (!requests.isCurrent(scope)) return false;
     const current = requests.capture("git");
@@ -2210,6 +2277,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
         })();
       },
     });
+  }
+
+  async function gitApplyHunk(apply: HunkApply) {
+    if (!projectId) return;
+    const current = requests.capture("git");
+    const next = await api.gitApplyHunk(projectId, apply, sessionId);
+    if (current()) setGit(next);
   }
 
   async function gitCreateBranch(branch: string) {
@@ -2335,6 +2409,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       hasOlderMessages: hasOlderMessages || transcript.olderEvicted,
       hasNewerMessages: transcript.hasNewer,
       returnToLatest,
+      reloadThread,
       loadingOlder,
       loadOlderMessages,
       runs,
@@ -2400,6 +2475,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       attachClipboardImage,
       attachImage,
       attachFiles,
+      attachContext,
+      sendPrompt: (text: string) => send(false, text),
       removeAttachment,
       stashCurrentPrompt,
       restorePromptStash,
@@ -2473,6 +2550,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       reorderPinnedSessions,
       regenerateTitle,
       setPermissionProfile,
+      draftApproval,
+      setDraftApproval,
       sendAndContinue,
       setAgentCommandsOpen,
       runAgentCommand: async (name, input = "") => {
@@ -2505,6 +2584,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       steerQueued,
       threadFind,
       setThreadFind,
+      promptJump,
+      setPromptJump,
       pendingResume,
       scheduleResume,
       cancelResume,
@@ -2512,6 +2593,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       gitCommit,
       gitStage,
       gitDiscard,
+      gitApplyHunk,
       gitCreateBranch,
       gitPush,
       gitCreatePullRequest,
@@ -2520,8 +2602,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       gitRebasePullRequestStack,
       settings,
       updateSettings,
+      turnMode,
+      setTurnMode,
+      actOnPlan,
+      keepPlanning,
+      favoriteModels,
+      toggleFavoriteModel,
     }),
     [
+      turnMode,
+      favoriteModels,
       api,
       view,
       stoppingRunIds,
@@ -2537,6 +2627,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       hasOlderMessages,
       loadingOlder,
       returnToLatest,
+      reloadThread,
       runs,
       events,
       eventLoad,
@@ -2589,6 +2680,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       queue,
       followUps.blocked,
       threadFind,
+      promptJump,
       pendingResume,
       navigation,
       inspectorTab,
@@ -2598,6 +2690,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       browserUrl,
       refresh,
       loadSession,
+      draftApproval,
     ],
   );
 

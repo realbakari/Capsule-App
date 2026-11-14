@@ -5,7 +5,7 @@ import type { AcpModelCatalog, AgentCapabilityReport, AgentPromptBlock, Reported
 import { readReportedTurnUsage, readPlanEntries } from "@capsule/shared";
 import { CodexRequestError, CodexTransport, object } from "./transport.js";
 import { nativeToolDetails } from "./tool-details.js";
-import { permissionOption, readModelSettings, turnPermissions, type ModelSettings, type NativePermissions } from "./configuration.js";
+import { modeOption, permissionOption, PLAN_TURN_PERMISSIONS, readModelSettings, turnPermissions, type CodexTurnMode, type ModelSettings, type NativePermissions } from "./configuration.js";
 
 const text = (value: unknown): string | undefined => typeof value === "string" ? value : undefined;
 const id = (value: unknown) => typeof value === "string" && value.length > 0 && value.length <= 4096 ? value : undefined;
@@ -26,6 +26,7 @@ export class DirectCodexSession implements DirectAgentSession {
   private modelSettings = new Map<string, ModelSettings>();
   private effort?: string;
   private permissions: NativePermissions = "supervised";
+  private mode: CodexTurnMode = "default";
   private closing = false;
 
   constructor(private readonly options: DirectAcpOptions & { model?: string }) {
@@ -53,6 +54,7 @@ export class DirectCodexSession implements DirectAgentSession {
         ...(settings?.efforts.length ? [{ id: "reasoning_effort", category: "thought_level", name: "Reasoning effort", currentValue: this.effort,
           description: "Applies to the next turn. Choices depend on the selected model.", choices: settings.efforts }] : []),
         permissionOption(this.permissions),
+        modeOption(this.mode),
       ] };
   }
 
@@ -132,6 +134,8 @@ export class DirectCodexSession implements DirectAgentSession {
       this.effort = value;
     } else if (configId === "permissions" && (value === "supervised" || value === "full-access")) {
       this.permissions = value;
+    } else if (configId === "mode" && (value === "default" || value === "plan")) {
+      this.mode = value;
     } else throw new Error("This setting or value is not reported by the installed agent.");
     // app-server has no session config setter: these validated overrides are
     // submitted atomically with the next turn, whose rejection remains visible.
@@ -154,7 +158,7 @@ export class DirectCodexSession implements DirectAgentSession {
       const turn: Turn = { resolve, reject, cancelling: false, starting: Promise.resolve(), finished, settle, early: [], earlyBytes: 0 };
       this.turn = turn;
       turn.starting = this.transport.request("turn/start", { threadId: this.threadId, input: blocks,
-        ...turnPermissions(this.permissions), ...(this.selectedModel ? { model: this.selectedModel } : {}), ...(this.effort ? { effort: this.effort } : {}) });
+        ...(this.mode === "plan" ? PLAN_TURN_PERMISSIONS : turnPermissions(this.permissions)), ...(this.selectedModel ? { model: this.selectedModel } : {}), ...(this.effort ? { effort: this.effort } : {}) });
       void turn.starting.then((value) => {
         if (this.turn !== turn) return;
         const turnId = id(object(object(value).turn).id);

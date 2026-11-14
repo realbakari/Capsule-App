@@ -6,7 +6,7 @@ import { build } from "esbuild";
 import { expect, it } from "vitest";
 import { resolveElectronBinary } from "./electron-path.mjs";
 
-it("keeps renderer interactions recoverable and companion motion accessible", { timeout: 90_000 }, async () => {
+it("keeps renderer interactions recoverable and companion motion accessible", { timeout: 180_000 }, async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "capsule-renderer-regressions-"));
   try {
     const bundle = await build({
@@ -16,13 +16,13 @@ it("keeps renderer interactions recoverable and companion motion accessible", { 
       define: { "process.env.NODE_ENV": '"test"' },
       plugins: [{ name: "test-workspace", setup(builder) {
         builder.onResolve({ filter: /(?:\/lib\/workspace|^\.\/workspace)$/ }, () => ({ path: "workspace", namespace: "test" }));
-        builder.onLoad({ filter: /.*/, namespace: "test" }, () => ({ contents: `export { PERMISSION_OPTIONS } from ${JSON.stringify(path.resolve("apps/desktop/src/renderer/src/lib/workspace.tsx"))}; export const useWorkspace = () => window.testWorkspace;`, loader: "js", resolveDir: process.cwd() }));
+        builder.onLoad({ filter: /.*/, namespace: "test" }, () => ({ contents: `export const useWorkspace = () => window.testWorkspace;`, loader: "js", resolveDir: process.cwd() }));
       } }],
     });
     const script = path.join(directory, "test.js");
     await writeFile(script, bundle.outputFiles[0].text);
     const petStyles = await readFile("apps/desktop/src/renderer/src/features/pet/pet.css", "utf8");
-    const composerStyles = (await readFile("packages/ui/src/tokens.css", "utf8")) + (await readFile("apps/desktop/src/renderer/src/styles.css", "utf8")).replace('@import "@capsule/ui/tokens.css";', "") + (await readFile("apps/desktop/src/renderer/src/features/channels/channels.css", "utf8")) + (await readFile("apps/desktop/src/renderer/src/features/landing/landing.css", "utf8"));
+    const composerStyles = (await readFile("packages/ui/src/tokens.css", "utf8")) + (await readFile("apps/desktop/src/renderer/src/styles.css", "utf8")).replace('@import "@capsule/ui/tokens.css";', "") + (await readFile("apps/desktop/src/renderer/src/features/channels/channels.css", "utf8")) + (await readFile("apps/desktop/src/renderer/src/features/landing/landing.css", "utf8")) + (await readFile("apps/desktop/src/renderer/src/features/review/review.css", "utf8"));
     await writeFile(path.join(directory, "index.html"), '<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; img-src \'self\' data:"><style id="pet-test-styles">' + petStyles + '</style><style id="composer-test-styles" media="not all">' + composerStyles + '</style><div id="root"></div>');
     const env = { ...process.env };
     delete env.ELECTRON_RUN_AS_NODE;
@@ -35,15 +35,18 @@ it("keeps renderer interactions recoverable and companion motion accessible", { 
       // belongs to this test and uses its disposable profile.
       // This runs all interaction, theme and narrow-screen suites. Hosted
       // runners can spend 37 seconds on interactions alone; leave room for
-      // the remaining layout matrix. Individual DOM waits still fail in
+      // the remaining layout matrix, now with the board, Review hunk and
+      // composer context phases. Individual DOM waits still fail in
       // 3–4 seconds, and phase markers identify a stalled section.
-      const timer = setTimeout(() => { child.kill("SIGKILL"); }, 75_000);
+      const timer = setTimeout(() => { child.kill("SIGKILL"); }, 150_000);
       child.on("error", (error) => { clearTimeout(timer); reject(error); });
       child.on("exit", (code, signal) => { clearTimeout(timer); resolve({ code, output: `${output}\nExit signal: ${signal ?? "none"}` }); });
     });
     expect(result.code, result.output).toBe(0);
     expect(result.output).toContain("Companion regressions passed (reduce)");
     expect(result.output).toContain("Companion regressions passed (no-preference)");
+    expect(result.output).toContain("Board regressions passed");
+    expect(result.output).toContain("Best-of-N regressions passed");
     expect(result.output).toContain("Renderer regressions passed");
   } finally { await rm(directory, { recursive: true, force: true }); }
 });

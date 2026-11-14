@@ -5,6 +5,7 @@ import { ProjectView } from "./features/project/ProjectView";
 import { RuntimesView } from "./features/harness/RuntimesView";
 import { ApprovalsView, HistoryView, SkillsView } from "./features/library/LibraryViews";
 import { UsageView } from "./features/library/UsageView";
+import { BoardView } from "./features/board/BoardView";
 import { SettingsView } from "./features/settings/SettingsView";
 import { ConfirmDialog } from "./features/shell/ConfirmDialog";
 import { TooltipLayer } from "./features/shell/TooltipLayer";
@@ -21,6 +22,12 @@ import { AboutModal } from "./features/settings/AboutModal";
 import { ViewErrorBoundary } from "./features/shell/ErrorBoundary";
 import { useSidebarSwipe } from "./lib/useSidebarSwipe";
 import { WorkspaceProvider, useWorkspace } from "./lib/workspace";
+import { ApplyToLocalProvider } from "./features/apply/ApplyToLocal";
+import { ThreadShareProvider } from "./features/share/ThreadShare";
+import { ImportSessionsProvider } from "./features/import/ImportSessions";
+import { HandoffProvider } from "./features/handoff/Handoff";
+import { ThreadActionsProvider } from "./features/threads/ThreadActions";
+import { BestOfNProvider } from "./features/best-of-n/BestOfN";
 import { StartupScreen, useAppClosing } from "./features/shell/StartupScreen";
 
 function Shell() {
@@ -86,6 +93,7 @@ function Shell() {
             {view === "history" && <HistoryView />}
             {view === "approvals" && <ApprovalsView />}
             {view === "settings" && <SettingsView />}
+            {view === "board" && <BoardView />}
           </ViewErrorBoundary>
         </div>
       </div>
@@ -115,7 +123,19 @@ function Shell() {
 export default function App() {
   return (
     <WorkspaceProvider>
-      <Shell />
+      <ApplyToLocalProvider>
+        <ThreadShareProvider>
+          <BestOfNProvider>
+            <ImportSessionsProvider>
+              <HandoffProvider>
+                <ThreadActionsProvider>
+                  <Shell />
+                </ThreadActionsProvider>
+              </HandoffProvider>
+            </ImportSessionsProvider>
+          </BestOfNProvider>
+        </ThreadShareProvider>
+      </ApplyToLocalProvider>
     </WorkspaceProvider>
   );
 }

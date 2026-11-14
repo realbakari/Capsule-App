@@ -128,6 +128,9 @@ export async function checkoutBranch(workingDirectory: string, branch: string): 
   });
 }
 
+/** The most text Review reads for one diff. */
+export const REVIEW_DIFF_BYTES = 16 * 1024 * 1024;
+
 export async function readGitDiff(workingDirectory: string, relative?: string): Promise<string> {
   return inRepository(workingDirectory, async () => {
 
@@ -137,32 +140,41 @@ export async function readGitDiff(workingDirectory: string, relative?: string): 
       ? await git(workingDirectory, ["--literal-pathspecs", "diff", "--no-ext-diff", "--no-textconv", ...CANONICAL_PATCH_FLAGS, "HEAD", ...paths])
       : { ok: true, stdout: "", stderr: "" };
     if (!result.ok) throw new Error(result.stderr || "Could not read the combined working-tree diff.");
-    const listing = await git(workingDirectory, ["--literal-pathspecs", "ls-files", "--others", "--exclude-standard", "-z", ...(!hasHead ? ["--cached"] : []), ...paths]);
-    if (!listing.ok) throw new Error(listing.stderr || "Could not read untracked files.");
-    const names = [...new Set(listing.stdout.split("\0").filter(Boolean))];
-    if (names.length > 200) throw new Error("More than 200 new files need review. Select individual files to inspect them before committing.");
-    const patches = [result.stdout];
-    let bytes = Buffer.byteLength(result.stdout);
-    for (let offset = 0; offset < names.length; offset += 8) {
-      const batch = await Promise.all(names.slice(offset, offset + 8).map(async (name) => {
-        const info = await lstat(path.join(workingDirectory, name)).catch(() => undefined);
-        if (!info) return ""; // Deleted before the first commit.
-        if (!info.isFile() && !info.isSymbolicLink()) return "";
-        if (info.size > 1_000_000) throw new Error(`New file ${name} is too large to review here. Inspect it before committing.`);
-        const patch = await git(workingDirectory, ["--literal-pathspecs", "diff", "--no-index", "--no-ext-diff", "--no-textconv", ...CANONICAL_PATCH_FLAGS, "--", "/dev/null", name]);
-        // --no-index exits 1 when files differ, which is its successful result.
-        if (!patch.stdout.startsWith("diff --git ")) throw new Error(patch.stderr || `Could not review ${name}.`);
-        return patch.stdout;
-      }));
-      for (const patch of batch) {
-        bytes += Buffer.byteLength(patch);
-        if (bytes > 16 * 1024 * 1024) throw new Error("The combined diff exceeds 16 MB. Review individual files before committing.");
-        patches.push(patch);
-      }
-    }
-    return patches.join("");
+    return result.stdout + await readUntrackedPatches(workingDirectory, relative, !hasHead, REVIEW_DIFF_BYTES - Buffer.byteLength(result.stdout));
 
   }, JSON.stringify(["readGitDiff", workingDirectory, relative]));
+}
+
+/**
+ * New files git does not track yet, as creation patches. With `cached`, files
+ * already added before the first commit count too.
+ */
+export async function readUntrackedPatches(workingDirectory: string, relative: string | undefined, cached: boolean, budget: number): Promise<string> {
+  const paths = relative ? ["--", relative] : [];
+  const listing = await git(workingDirectory, ["--literal-pathspecs", "ls-files", "--others", "--exclude-standard", "-z", ...(cached ? ["--cached"] : []), ...paths]);
+  if (!listing.ok) throw new Error(listing.stderr || "Could not read untracked files.");
+  const names = [...new Set(listing.stdout.split("\0").filter(Boolean))];
+  if (names.length > 200) throw new Error("More than 200 new files need review. Select individual files to inspect them before committing.");
+  const patches: string[] = [];
+  let bytes = 0;
+  for (let offset = 0; offset < names.length; offset += 8) {
+    const batch = await Promise.all(names.slice(offset, offset + 8).map(async (name) => {
+      const info = await lstat(path.join(workingDirectory, name)).catch(() => undefined);
+      if (!info) return ""; // Deleted before the first commit.
+      if (!info.isFile() && !info.isSymbolicLink()) return "";
+      if (info.size > 1_000_000) throw new Error(`New file ${name} is too large to review here. Inspect it before committing.`);
+      const patch = await git(workingDirectory, ["--literal-pathspecs", "diff", "--no-index", "--no-ext-diff", "--no-textconv", ...CANONICAL_PATCH_FLAGS, "--", "/dev/null", name]);
+      // --no-index exits 1 when files differ, which is its successful result.
+      if (!patch.stdout.startsWith("diff --git ")) throw new Error(patch.stderr || `Could not review ${name}.`);
+      return patch.stdout;
+    }));
+    for (const patch of batch) {
+      bytes += Buffer.byteLength(patch);
+      if (bytes > budget) throw new Error("The combined diff exceeds 16 MB. Review individual files before committing.");
+      patches.push(patch);
+    }
+  }
+  return patches.join("");
 }
 
 export async function stageFile(workingDirectory: string, relative: string): Promise<{ ok: boolean; detail: string; }> {

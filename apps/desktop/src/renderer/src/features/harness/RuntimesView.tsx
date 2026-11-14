@@ -4,7 +4,8 @@ import { CapabilityDetails } from "./CapabilityDetails";
 import { HarnessCatalogRow } from "./HarnessCatalogRow";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  PERMISSION_PROFILES,
+  APPROVAL_PRESETS,
+  approvalPreset,
   type AcpMode,
   type HarnessLiveStatus,
   type HarnessStatus,
@@ -370,17 +371,17 @@ function HarnessDetail({
           {activeSession && capabilities.route !== "direct" && (
             <fieldset className="harness-options" disabled={capabilities.tuning.state === "unavailable"} title={capabilities.tuning.detail}>
               <label>
-                <span>Permissions</span>
+                <span>Approvals</span>
                 <select
                   className="field-select"
-                  value={activeSession.permissionProfile === "strict" ? "strict" : "approve-all"}
+                  value={approvalPreset(activeSession.permissionProfile).id}
                   onChange={(event) => {
                     if (event.target.value) onOption("permissions", event.target.value);
                   }}
                 >
-                  {PERMISSION_PROFILES.filter((profile) => profile.id !== "default").map((profile) => (
-                    <option key={profile.id} value={profile.id}>
-                      {profile.id === "strict" ? "Read-only" : profile.label}
+                  {APPROVAL_PRESETS.map((preset) => (
+                    <option key={preset.id} value={preset.id}>
+                      {preset.label}
                     </option>
                   ))}
                 </select>

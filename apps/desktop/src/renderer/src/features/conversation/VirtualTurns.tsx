@@ -10,8 +10,11 @@ export function VirtualTurns({ turns, folded, scroller, stick, focus, children }
   folded: ReadonlySet<string>;
   scroller: RefObject<HTMLDivElement | null>;
   stick: boolean;
-  /** A turn to scroll to and mark, for find; the nonce lets the same turn be asked for twice. */
-  focus?: { id: string; nonce: number };
+  /**
+   * A turn to scroll to and mark; the nonce lets the same turn be asked for
+   * twice. Find keeps its mark; a jump flashes it briefly.
+   */
+  focus?: { id: string; nonce: number; flash?: boolean };
   children: (turn: Turn) => ReactNode;
 }) {
   const renderStarted = performance.now();
@@ -118,7 +121,7 @@ export function VirtualTurns({ turns, folded, scroller, stick, focus, children }
 
   return <div ref={container} className="virtual-turns" style={{ position: "relative", height: total, flexShrink: 0, overflowAnchor: "none" }}>
     {rows.filter((row) => row.top + row.height >= viewport.top - OVERSCAN && row.top <= viewport.top + viewport.height + OVERSCAN
-      || pinned.has(row.turn.id)).map((row) => <div key={row.turn.id} data-virtual-turn={row.turn.id} className={focus?.id === row.turn.id ? "turn-focus" : undefined}
+      || pinned.has(row.turn.id)).map((row) => <div key={row.turn.id} data-virtual-turn={row.turn.id} className={focus?.id === row.turn.id ? focus.flash ? "turn-flash" : "turn-focus" : undefined}
         style={{ position: "absolute", top: row.top, width: "100%", display: "flow-root" }}>
         {children(row.turn)}
       </div>)}

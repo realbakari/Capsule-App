@@ -8,6 +8,18 @@ export class RemoteAccessLifecycle<T extends { stop(): Promise<void> }> {
   pairingUrl: string | undefined;
   private generation = 0;
   private pending = Promise.resolve();
+  private followed: RemoteAccess | undefined;
+
+  /*
+   * Settings are applied on every save. Only a change to the remote setting
+   * itself moves the listener, so a listener started from the command line
+   * (`--remote`) survives saving an unrelated setting such as the theme.
+   */
+  follow(setting: RemoteAccess): Promise<void> {
+    if (setting === this.followed) return this.pending;
+    this.followed = setting;
+    return this.set(setting);
+  }
 
   constructor(private readonly start: (reach: Exclude<RemoteAccess, "off">) => Promise<T>, private readonly changed: () => void) {}
 

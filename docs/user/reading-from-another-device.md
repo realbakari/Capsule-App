@@ -112,6 +112,52 @@ Setting the reach back to **Off** revokes everything at once.
 copied credential too, use **Revoke** on the host. Neither action cancels work
 already accepted by an agent; stop that run separately if needed.
 
+## Sharing one conversation
+
+A pairing opens the whole workspace. To show someone a single conversation
+instead, give them a **share link**. It opens that conversation read-only:
+its messages, tool activity, the changes each turn made, and its artifacts.
+Nothing else is visible: no other conversations or projects, no files, no
+settings. The holder cannot send messages or answer approvals.
+
+1. Open the conversation's menu (its name in the title bar, or its row in the
+   sidebar) and choose **Share read-only link…**. The command palette has the
+   same entry.
+2. Choose how long the link works: **1 hour**, **1 day**, **7 days** or
+   **Never**.
+3. Press **Create link**. It is copied to your clipboard and shown once.
+
+The dialog lists the conversation's active links with a **Revoke** beside each.
+**Settings → Gateway → Browser access** lists every active link across all
+conversations.
+
+A share link uses the same listener as pairing, so it reaches whatever the
+**Who can reach it** setting allows: this computer only, or your network. If
+browser access is off, the dialog says so and offers to turn it on for this
+computer. Unlike a pairing link, a share link can be opened more than once and
+by more than one person, until it expires or you revoke it.
+
+Revoking a link takes effect at once. A browser that has it open loses access
+straight away, its next request is refused, and it shows that the link expired
+or was revoked. Deleting the conversation revokes its links too.
+
+A link points at this computer's address. Capsule reuses the same port each
+time it starts, so links keep working after a restart. If another app has taken
+that port in the meantime, Capsule picks a new one and older links stop
+loading; create a new one. Links made while reachable on your network also stop
+loading when this computer's network address changes.
+
+## Seeing who is viewing
+
+When another device has a conversation open, the title bar shows it beside the
+conversation's name: **Also open on iPhone**, **Open from a share link**, or
+**2 viewers** when there are several. Hover or focus it to see each device and
+when it connected. Nothing is shown while only this computer is viewing.
+
+**Settings → Gateway → Browser access** lists the devices connected right now
+and the conversation each one is reading. A paired device counts as viewing the
+conversation it opened last.
+
 ## What a read-only paired device can do
 
 It runs the same app you are looking at, so it looks familiar, but the parts

@@ -303,6 +303,7 @@ export function ProjectView() {
                 </span>
                 <div className="actions" style={{ marginTop: 0 }}>
                   {action.runOnWorktreeCreate ? <span className="chip-static">setup</span> : null}
+                  {action.check ? <span className="chip-static" title="@diagnostics runs this">check</span> : null}
                   {action.previewUrl ? <span className="chip-static">preview</span> : null}
                   {/* A shared action is edited by editing the file, not here:
                       saving it locally would fork it from the repository

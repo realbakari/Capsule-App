@@ -57,6 +57,9 @@ const READ_CHANNELS: ChannelName[] = [
   "searchFiles",
   "gitStatus",
   "gitDiff",
+  "gitScopedDiff",
+  // `git apply --check` only: it reports whether a hunk applies and writes nothing.
+  "gitCheckHunks",
   "listPullRequests",
   "getPullRequest",
   "getCommitDiff",
@@ -73,6 +76,20 @@ const READ_CHANNELS: ChannelName[] = [
   // Cached native observations only: no spawn, refresh request or provider I/O.
   "providerUsage",
   "turnDiff",
+  "redoPoint",
+  "forkBranches",
+  // A summary built from the thread's own messages: nothing a reader cannot already read.
+  "handoffDraft",
+  // Reads the worktree and the project folder; writes only Git objects, never a ref or a file.
+  "worktreeApplyStatus",
+  // The thread's messages, turns and tool activity as one document: nothing a
+  // reader of the thread cannot already read.
+  "threadMarkdown",
+  // Best-of-N reads: the groups, one group's comparison (git diffs of each worktree), and local ratings.
+  "listThreadGroups",
+  "compareThreadGroup",
+  "runRatings",
+  "resultsLeaderboard",
   "rendererReady",
   "windowBackground",
 ];
@@ -84,6 +101,8 @@ export const CONTROL_CHANNELS = [
   "createSession", "sendMessage", "stopRun", "resolveApproval",
   // Queueing a follow-up is sending one later; it belongs with sendMessage.
   "updateFollowUps",
+  // Plan or Act decides how the next message is sent, so it travels with sendMessage.
+  "setSessionTurnMode",
 ] satisfies ChannelName[];
 const CONTROL_SET = new Set<string>(CONTROL_CHANNELS);
 

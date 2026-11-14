@@ -74,6 +74,14 @@ turns must not call Gateway cancellation. Unsupported direct changes throw
 before persistence; both routes refuse live cwd retargeting. `DirectAcpHost`
 is a native CLI transport, not another Gateway. See [harnesses](harness.md).
 
+A turn is recorded before it is sent. Any failure before the Gateway accepts it
+(no connection, a session that cannot be created, a rejected `sessions.send`)
+ends that run as failed with the error. Stop on a Gateway run that has no
+Gateway run id cancels it locally, because the Gateway has nothing to abort; a
+stranded run never blocks Apply, restores or saved checks on the folder. If
+`sessions.send` returns after that Stop, the turn stays cancelled and the new
+Gateway run is aborted.
+
 ## What Capsule must not do
 
 - Import `openclaw/src/**`

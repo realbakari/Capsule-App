@@ -313,3 +313,61 @@ describe("a run's checkpoint", () => {
     db.close();
   });
 });
+
+describe("board cards on disk", () => {
+  it("adds the board columns to a database from before them and keeps a draft across a restart", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-db-board-"));
+    const file = path.join(dir, "capsule.sqlite");
+    const first = new CapsuleDatabase(file);
+    first.sqlite.exec("ALTER TABLE sessions DROP COLUMN pending_start; ALTER TABLE sessions DROP COLUMN done_at; DELETE FROM schema_migrations WHERE version = 20;");
+    first.sqlite.exec(`INSERT INTO workspaces (id, name, created_at, updated_at) VALUES ('ws', 'Local', 'x', 'x');
+      INSERT INTO projects (id, workspace_id, name, default_skill_ids, default_mode, created_at, updated_at) VALUES ('p', 'ws', 'Demo', '[]', 'code', 'x', 'x');
+      INSERT INTO sessions (id, workspace_id, project_id, agent_id, title, mode, state, created_at, updated_at) VALUES ('old', 'ws', 'p', 'a', 'Older thread', 'code', 'active', 'x', 'x');`);
+    first.close();
+
+    const db = new CapsuleDatabase(file);
+    const repos = new CapsuleRepositories(db);
+    expect(repos.getSession("old")).toMatchObject({ title: "Older thread", pendingStart: undefined, doneAt: undefined });
+    const pendingStart = { prompt: "Add the tests", dependsOn: ["old"], autoStart: true, createdAt: "2026-11-01T00:00:00.000Z" };
+    repos.insertSession({ ...repos.getSession("old")!, id: "card", title: "Tests", pendingStart });
+    repos.updateSessionBoard({ ...repos.getSession("old")!, doneAt: "2026-11-02T00:00:00.000Z" });
+    repos.updateSession({ ...repos.getSession("old")!, doneAt: undefined, title: "Renamed" });
+    db.close();
+
+    const reopened = new CapsuleRepositories(new CapsuleDatabase(file));
+    expect(reopened.getSession("card")?.pendingStart).toEqual(pendingStart);
+    expect(reopened.getSession("old")).toMatchObject({ title: "Renamed", doneAt: "2026-11-02T00:00:00.000Z" });
+    reopened.updateSessionBoard({ ...reopened.getSession("card")!, pendingStart: undefined });
+    expect(reopened.getSession("card")?.pendingStart).toBeUndefined();
+  });
+});
+
+describe("best-of-N groups and ratings on disk", () => {
+  it("keeps a thread's group through turn updates, the kept candidate, and ratings across a restart", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "capsule-db-groups-"));
+    const file = path.join(dir, "capsule.sqlite");
+    const first = new CapsuleDatabase(file);
+    first.sqlite.exec(`INSERT INTO workspaces (id, name, created_at, updated_at) VALUES ('ws', 'Local', 'x', 'x');
+      INSERT INTO projects (id, workspace_id, name, default_skill_ids, default_mode, created_at, updated_at) VALUES ('p', 'ws', 'Demo', '[]', 'code', 'x', 'x');
+      INSERT INTO sessions (id, workspace_id, project_id, agent_id, title, mode, state, created_at, updated_at) VALUES ('a', 'ws', 'p', 'codex', 'Fix it · Codex', 'code', 'active', 'x', 'x');`);
+    const repos = new CapsuleRepositories(first);
+    expect(repos.getSession("a")?.groupId).toBeUndefined();
+    repos.setSessionGroup("a", "grp1");
+    // A turn writes its thread from an object read before the group was set; the group must survive it.
+    repos.updateSession({ ...repos.getSession("a")!, groupId: undefined, title: "Renamed" });
+    repos.insertThreadGroup({ id: "grp1", projectId: "p", kind: "best-of-n", prompt: "Fix it", candidates: [{ sessionId: "a", harnessId: "codex", model: "" }], createdAt: "2026-11-01T00:00:00.000Z" });
+    repos.setThreadGroupWinner("grp1", "a", "2026-11-01T01:00:00.000Z");
+    repos.setRunRating({ runId: "r1", sessionId: "a", harnessId: "codex", model: "", value: 1, createdAt: "x" });
+    repos.setRunRating({ runId: "r1", sessionId: "a", harnessId: "codex", model: "", value: -1, createdAt: "y" });
+    first.close();
+
+    const reopened = new CapsuleRepositories(new CapsuleDatabase(file));
+    expect(reopened.getSession("a")).toMatchObject({ groupId: "grp1", title: "Renamed" });
+    expect(reopened.getThreadGroup("grp1")).toMatchObject({ winnerSessionId: "a", candidates: [{ sessionId: "a", harnessId: "codex", model: "" }] });
+    expect(reopened.listRunRatings("a")).toEqual([expect.objectContaining({ runId: "r1", value: -1 })]);
+    reopened.setThreadGroupWinner("grp1", undefined, undefined);
+    reopened.clearRunRating("r1");
+    expect(reopened.getThreadGroup("grp1")?.winnerSessionId).toBeUndefined();
+    expect(reopened.listRunRatings()).toEqual([]);
+  });
+});

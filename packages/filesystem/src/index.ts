@@ -8,6 +8,7 @@ import { readBoundedFileSync } from "./bounded-read.js";
 
 export { readBoundedFile, readBoundedFileSync, FileTooLargeError } from "./bounded-read.js";
 export { previewCheckpoint } from "./checkpoint-preview.js";
+export { applyHunk, checkHunks, readScopedDiff } from "./git-hunks.js";
 
 export type { FileEntry };
 export { inRepository } from "./git-process.js";
@@ -43,6 +44,8 @@ export {
   setPullRequestListener,
   lastCommitSubject,
   listPullRequests,
+  listIssues,
+  parseIssueList,
   parsePullRequestDetail,
   readPullRequestDetail,
   readCommitDiff,
@@ -60,6 +63,9 @@ export {
 } from "./github.js";
 export {
   captureCheckpoint,
+  copyCheckpointRef,
+  deleteCheckpointRef,
+  threadSnapshotRef,
   readWorktreeRevision,
   checkpointNumstat,
   checkpointRef,
@@ -69,6 +75,16 @@ export {
   isGitRepository,
   restoreCheckpoint,
 } from "./checkpoints.js";
+export {
+  applyUndoRef,
+  applyWorktreeChanges,
+  checkoutBlocker,
+  deleteApplyRecords,
+  latestApplyRecord,
+  readApplyRecord,
+  readWorktreeChangeCount,
+  undoWorktreeApply,
+} from "./apply-to-local.js";
 export { detectSourceControlTools, type ToolStatus } from "./tooling.js";
 export {
   listListeningPorts,
@@ -86,7 +102,8 @@ export {
   type ProcessRow,
 } from "./process-tree.js";
 export { readProjectFile } from "./project-file.js";
-export { createWorktree, removeWorktree, type WorktreeResult } from "./worktrees.js";
+export { createWorktree, removeWorktree, restoreWorktree, setAsideWorktree, type WorktreeResult } from "./worktrees.js";
+export { restorePausedWorktree, savePausedWorktree, type PausedWorktree, type ResumeOutcome } from "./pause-snapshot.js";
 export {
   isSupportedProjectIcon,
   readProjectIconDataUrl,

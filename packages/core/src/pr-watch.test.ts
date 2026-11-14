@@ -117,3 +117,28 @@ it("keeps watching through an unknown reading and never re-sends the same fix af
     expect(send).toHaveBeenCalledOnce();
   } finally { await fixture.dispose(); }
 });
+
+it("keeps the pull request a worktree thread's status read, for the sidebar", async () => {
+  const fixture = await setup(true);
+  const stored = () => fixture.engine.listSessions(fixture.project.id).find((item) => item.id === fixture.session.id)?.pullRequest;
+  try {
+    remote.enrich.mockReturnValue({ pullRequest: { number: 4, url: "https://github.com/example/repo/pull/4", state: "OPEN", isDraft: true, title: "x" }, pullRequestKnown: true });
+    await fixture.engine.gitStatus(fixture.project.id, fixture.session.id);
+    expect(stored()).toMatchObject({ number: 4, isDraft: true });
+    // A reading that did not land says nothing about the pull request.
+    remote.enrich.mockReturnValue({ pullRequestKnown: false });
+    await fixture.engine.gitStatus(fixture.project.id, fixture.session.id);
+    expect(stored()?.number).toBe(4);
+    remote.enrich.mockReturnValue({ pullRequest: undefined, pullRequestKnown: true });
+    await fixture.engine.gitStatus(fixture.project.id, fixture.session.id);
+    expect(stored()).toBeUndefined();
+  } finally { await fixture.dispose(); }
+});
+
+it("does not give a thread on the shared checkout the branch's pull request", async () => {
+  const fixture = await setup(false);
+  try {
+    await fixture.engine.gitStatus(fixture.project.id, fixture.session.id);
+    expect(fixture.engine.listSessions(fixture.project.id)[0]?.pullRequest).toBeUndefined();
+  } finally { await fixture.dispose(); }
+});

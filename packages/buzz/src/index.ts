@@ -2,6 +2,8 @@ import type { ChannelBinding, ConnectionState } from "@capsule/shared";
 export { SharedRelayClient } from "./relay.js";
 export type { RelayCredentialStore } from "./relay.js";
 export type { RelayCommand } from "./cli.js";
+/** Whether an address is on the public internet. `@url` applies the same rule as profile images. */
+export { publicAvatarAddress as publicNetworkAddress } from "./avatars.js";
 
 export interface BuzzAdapter {
   listBindings(): Promise<ChannelBinding[]>;

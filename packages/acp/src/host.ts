@@ -85,6 +85,16 @@ export function supportsDirectMode(harnessId: string): boolean {
   return Boolean(preset?.directCommand || preset?.acpxCommand || preset?.nativeCommand);
 }
 
+/**
+ * The launch identity a new direct session of this harness records, for a
+ * session Capsule did not start itself (an import) to be resumable here.
+ */
+export function directLaunchSignature(harnessId: string): string | undefined {
+  const preset = PRESET_HARNESSES.find((preset) => preset.id === harnessId);
+  const command = preset?.nativeCommand ?? preset?.directCommand ?? preset?.acpxCommand;
+  return command ? JSON.stringify(command) : undefined;
+}
+
 /** The harnesses direct mode can drive, for a settings screen to name them. */
 export function directCapableHarnesses(): HarnessId[] {
   return PRESET_HARNESSES.filter((preset) => supportsDirectMode(preset.id)).map((preset) => preset.id);

@@ -11,7 +11,7 @@ import {
   type TranscriptSize,
   type TranscriptWidth,
 } from "@capsule/shared";
-import { SettingRow } from "./controls";
+import { SettingRow, Switch } from "./controls";
 
 const THEMES: Array<{ id: AppearanceTheme; label: string }> = [
   { id: "system", label: "System" },
@@ -133,6 +133,9 @@ export function AppearanceSettings({
             <option value="compact">Folded to one line</option>
             <option value="expanded">Listed in full</option>
           </select>
+        </SettingRow>
+        <SettingRow label="Follow agent in Files" hint="While a turn runs, Files shows the file the agent is reading or editing. Opening a file yourself pauses it until the next turn.">
+          <Switch checked={settings.followAgent} label="Follow agent in Files" onChange={(followAgent) => onPatch({ followAgent })} />
         </SettingRow>
         <SettingRow
           label="Custom code font"

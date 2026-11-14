@@ -26,6 +26,9 @@ import {
 import { AboutCard } from "./AboutModal";
 import { RemoteAccessSettings } from "./RemoteAccessSettings";
 import { AnalyticsSettings } from "./AnalyticsSettings";
+import { PlanModeCard } from "./PlanModeSettings";
+import { SavedPromptsSettings } from "./SavedPromptsSettings";
+import { TagsSettings } from "../threads/TagsSettings";
 import { SettingRow, Switch } from "./controls";
 import { ChartIcon, CpuIcon, FolderIcon, GitBranchIcon, InfoIcon, KeyboardIcon, LinkIcon, SettingsIcon, SparkIcon, SunIcon, UndoIcon } from "../shell/icons";
 import { formatProjectRoot } from "../../lib/paths";
@@ -222,6 +225,8 @@ export function SettingsView() {
                 <DesktopCard settings={settings} onPatch={(next) => void patch(next)} />
                 <NotificationsCard settings={settings} onPatch={(next) => void patch(next)} />
                 <SessionsCard settings={settings} onPatch={(next) => void patch(next)} />
+                <SavedPromptsSettings settings={settings} onPatch={(next) => void patch(next)} />
+                <TagsSettings />
                 <div className="card">
                   <h3>Confirmations</h3>
                   <SettingRow label="Confirm before deleting" hint="Ask before deleting a conversation. Deleting a project always asks.">
@@ -277,6 +282,7 @@ export function SettingsView() {
                 <RuntimeModeCard settings={settings} onPatch={patch} />
                 <HarnessProvidersCard />
                 <AgentDefaultsCard settings={settings} onPatch={(next) => void patch(next)} />
+                <PlanModeCard settings={settings} harnesses={harnessList ?? []} editable={api.isDesktop !== false} onPatch={(next) => void patch(next)} />
                 <HarnessCredentialsCard settings={settings} onPatch={(next) => void patch(next)} />
               </div>
             )}

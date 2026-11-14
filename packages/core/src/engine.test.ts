@@ -967,12 +967,12 @@ describe("the turn checkpoint", () => {
     writeFileSync(path.join(repo, "second.txt"), "work from the second conversation\n");
     const later = await turn(second);
 
-    const refused = await engine.restoreTurn(earlier);
+    const refused = await engine.restoreToTurn({ runId: earlier, scope: "files" });
     expect(refused.ok).toBe(false);
     expect(refused.detail).toContain('"Second"');
     expect(readFileSync(path.join(repo, "second.txt"), "utf8")).toContain("second conversation");
 
-    expect((await engine.restoreTurn(later)).ok).toBe(true);
+    expect((await engine.restoreToTurn({ runId: later, scope: "files" })).ok).toBe(true);
     await engine.stop();
   });
 });

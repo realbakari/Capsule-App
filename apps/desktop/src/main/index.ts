@@ -7,6 +7,7 @@ import {
   id,
   num,
   optBool,
+  oneOf,
   optStr,
   parseArgs,
   str,
@@ -18,6 +19,7 @@ import { PetVoice } from "./pet-voice";
 import { ProductAnalytics } from "./analytics";
 import { readPngBytes } from "./image-attachments";
 import { remoteControlArgs } from "./remote-control";
+import { hunkApplies, hunkApply } from "./hunk-args";
 import {
   app,
   autoUpdater as nativeAutoUpdater,
@@ -49,6 +51,8 @@ import { observeBrowser } from "./browser-diagnostics";
 import { secureBrowserSession } from "./browser-security";
 import { startBrowserMcpServer, type BrowserMcpServer } from "./browser-mcp";
 import { startSimulatorMcpServer, type SimulatorMcpServer } from "./simulator-mcp";
+import { startTasksMcpServer, type TaskTarget } from "./tasks-mcp";
+import type { LocalMcpServer } from "./local-mcp";
 import { Updater, mergeUpdateStatus } from "./updater";
 import { UpdateAdmission } from "./update-admission";
 import { NativeUpdateStager } from "./native-update-stager";
@@ -57,6 +61,10 @@ import {
   IPC_CHANNELS,
   isRemoteEvent,
   readFollowUpOp,
+  readBoardCardOp,
+  readCreateBoardCard,
+  readStartBestOfN,
+  readRatingValue,
   isNewerRelease,
   pickReleaseAsset,
   PRESET_HARNESSES,
@@ -78,7 +86,11 @@ import {
   type Run,
   type SpawnHarnessInput,
   type GitPullRequestStackAction,
+  type GitDiffScope,
+  type HunkApply,
   type UpdateProjectInput,
+  isHarnessId,
+  isImportAgentId,
 } from "@capsule/shared";
 import { readAgentProcesses } from "@capsule/filesystem";
 import { startRemoteServer, type RemoteServerHandle } from "@capsule/remote";
@@ -86,6 +98,8 @@ import { startPty, TerminalOutputFlow, type PtySession } from "@capsule/terminal
 import { popupContextMenu } from "./popup-menu";
 import { remoteReachFromArgs } from "./remote-args";
 import { RemoteAccessLifecycle } from "./remote-access";
+import { registerShareHandlers, remoteShareOptions, type ShareContext } from "./share-ipc";
+import { startOnRememberedPort } from "./remote-port";
 import {
   DEFAULT_WINDOW_SIZE,
   isHexColor,
@@ -209,6 +223,7 @@ const browserReady = new Map<(contents: Electron.WebContents) => void, string | 
 
 let browserMcp: BrowserMcpServer | undefined;
 let simulatorMcp: SimulatorMcpServer | undefined;
+let tasksMcp: LocalMcpServer<TaskTarget> | undefined;
 let petWindow: BrowserWindow | undefined;
 const petVoice = new PetVoice(app.isPackaged ? path.join(process.resourcesPath, "capsule-voice") : path.join(__dirname, "../../native/capsule-voice"));
 
@@ -756,6 +771,8 @@ function reportFullscreen(): void {
  */
 const terminals = new Map<string, PtySession>();
 const terminalOutputs = new Map<string, TerminalOutputFlow>();
+/** Each open terminal's folder, so pausing a thread stops only the terminals opened in its worktree. */
+const terminalFolders = new Map<string, string>();
 
 /*
  * Resource sampling.
@@ -860,6 +877,21 @@ function stopTerminal(id: string): void {
   terminalOutputs.delete(id);
   terminals.get(id)?.kill();
   terminals.delete(id);
+  terminalFolders.delete(id);
+}
+
+function stopTerminalsIn(folder: string): number {
+  const root = path.resolve(folder);
+  let stopped = 0;
+  for (const [id, cwd] of terminalFolders) {
+    const resolved = path.resolve(cwd);
+    if (resolved !== root && !resolved.startsWith(root + path.sep)) continue;
+    stopTerminal(id);
+    // stopTerminal drops the output flow, so its exit is never announced; the dock still needs to hear it.
+    send(IPC_EVENTS.terminalExit, { id, code: -1, error: "Stopped because its conversation was paused." });
+    stopped += 1;
+  }
+  return stopped;
 }
 
 function stopAllTerminals(): void {
@@ -893,12 +925,19 @@ function notifyDesktop(title: string, body: string): void {
 
 function notifyApproval(approval: ApprovalRequest): void {
   const settings = engine?.getSettings();
-  if (settings && !settings.notifyApprovals) return;
+  if ((settings && !settings.notifyApprovals) || windowFocused()) return;
   notifyDesktop(
     "Approval required",
     `${approval.agentName} wants to ${approval.action} ${approval.target}`,
   );
   if (settings?.bounceDockOnAttention) bounceDock();
+}
+
+function notifyLongCommand(command: { title: string; seconds: number }): void {
+  const settings = engine?.getSettings();
+  if (!settings?.notifyLongCommands || windowFocused()) return;
+  notifyDesktop("Command still running", `${command.title.slice(0, 120)} has run for ${command.seconds} seconds.`);
+  if (settings.bounceDockOnAttention) bounceDock();
 }
 
 const runNotifications = new RunNotifications();
@@ -957,7 +996,7 @@ async function applyDesktopSettings(settings?: CapsuleSettings): Promise<void> {
   applyNativeTheme(settings?.appearanceTheme);
   applyMenuBar(settings);
   applyKeepAwake(settings);
-  await applyRemoteAccess(settings?.remoteAccess ?? "off");
+  await remoteAccess.follow(settings?.remoteAccess ?? "off");
 }
 
 /*
@@ -969,16 +1008,43 @@ async function applyDesktopSettings(settings?: CapsuleSettings): Promise<void> {
  * a shell.
  */
 const remoteAccess = new RemoteAccessLifecycle<RemoteServerHandle>(
-  (reach) => startRemoteServer({
-    serveDir: path.join(__dirname, "../renderer"), reach,
-    publicUrl: process.env.CAPSULE_REMOTE_PUBLIC_URL,
-    port: remotePort(process.env.CAPSULE_REMOTE_PORT),
-    invoke: (channel, args) => forwardToHandler(channel, remoteControlArgs(channel, args)),
-    subscribe: (emit) => subscribeRemote(emit),
-    onChange: () => send(IPC_EVENTS.state, { command: "remote-updated" }),
-  }),
+  (reach) => {
+    const start = (port: number | undefined) => startRemoteServer({
+      serveDir: path.join(__dirname, "../renderer"), reach,
+      publicUrl: process.env.CAPSULE_REMOTE_PUBLIC_URL,
+      port,
+      invoke: (channel, args) => forwardToHandler(channel, remoteControlArgs(channel, args)),
+      subscribe: (emit) => subscribeRemote(emit),
+      onChange: () => send(IPC_EVENTS.state, { command: "remote-updated" }),
+      ...remoteShareOptions(shareContext),
+    });
+    const fixed = remotePort(process.env.CAPSULE_REMOTE_PORT);
+    return fixed ? start(fixed) : startOnRememberedPort(path.join(app.getPath("userData"), "state", "remote-port"), start);
+  },
   () => send(IPC_EVENTS.state, { command: "remote-updated" }),
 );
+
+/* Export, share links and presence: share-ipc connects them; share-scope says what a link may read. */
+const shareContext: ShareContext = {
+  engine: () => {
+    if (!engine) throw new Error("Capsule engine is not ready");
+    return engine;
+  },
+  remote: () => remoteAccess.handle,
+  call: (channel, args) => forwardToHandler(channel, args),
+  changed: () => send(IPC_EVENTS.state, { command: "remote-updated" }),
+  saveDialog: async (defaultName) => {
+    const win = desktopWindow.current ?? BrowserWindow.getFocusedWindow();
+    const options: Electron.SaveDialogOptions = {
+      title: "Export conversation",
+      defaultPath: path.join(app.getPath("documents"), defaultName),
+      buttonLabel: "Export",
+      filters: [{ name: "Markdown", extensions: ["md"] }],
+    };
+    const result = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options);
+    return result.canceled ? undefined : result.filePath;
+  },
+};
 
 function remotePort(value?: string): number | undefined {
   if (!value) return undefined;
@@ -1160,6 +1226,23 @@ function registerIpc(): void {
   handleArgs(IPC_CHANNELS.renameSession, [id, str], (sessionId: string, title: string) =>
     requireEngine().renameSession(sessionId, title),
   );
+  handleArgs(IPC_CHANNELS.setSessionTurnMode, [id, str], (sessionId: string, mode: string) =>
+    requireEngine().setSessionTurnMode(sessionId, mode as import("@capsule/shared").TurnMode),
+  );
+  handleArgs(IPC_CHANNELS.pauseSession, [id], async (sessionId: string) => {
+    const session = await requireEngine().pauseSession(sessionId);
+    if (session.workingDirectory) stopTerminalsIn(session.workingDirectory);
+    return session;
+  });
+  handleArgs(IPC_CHANNELS.resumeSession, [id], (sessionId: string) => requireEngine().resumeSession(sessionId));
+  handle(IPC_CHANNELS.setSessionTags, (sessionId, tags) => {
+    if (!Array.isArray(tags) || tags.length > 64) throw new Error("Invalid tags");
+    return requireEngine().setSessionTags(String(sessionId), tags.map(String));
+  });
+  handleArgs(IPC_CHANNELS.renameTag, [str, str], (from: string, to: string) => requireEngine().renameTag(from, to));
+  handleArgs(IPC_CHANNELS.deleteTag, [str], (tag: string) => requireEngine().deleteTag(tag));
+  handleArgs(IPC_CHANNELS.keepSession, [id], (sessionId: string) => requireEngine().keepSession(sessionId));
+  handleArgs(IPC_CHANNELS.listGithubIssues, [id], (projectId: string) => requireEngine().listGithubIssues(projectId));
   handleArgs(IPC_CHANNELS.archiveSession, [id], (sessionId: string) => {
     const session = requireEngine().archiveSession(sessionId);
     backgroundBrowsers.close(sessionId);
@@ -1295,12 +1378,14 @@ function registerIpc(): void {
           onExit: (code) => {
             release();
             terminals.delete(id);
+            terminalFolders.delete(id);
             exitCode = code;
             output.end();
           },
         },
       );
       terminals.set(id, session);
+      terminalFolders.set(id, cwd);
       return { id, pid: session.pid, cwd };
     } catch (error) {
       output.dispose();
@@ -1453,6 +1538,13 @@ function registerIpc(): void {
       sessionId ? String(sessionId) : undefined,
     ),
   );
+  handleArgs(IPC_CHANNELS.gitScopedDiff, [id, oneOf("uncommitted", "staged", "unstaged", "branch"), optStr, optStr],
+    (projectId: string, scope: GitDiffScope, relative?: string, sessionId?: string) =>
+      requireEngine().gitScopedDiff(projectId, scope, relative, sessionId));
+  handleArgs(IPC_CHANNELS.gitCheckHunks, [id, hunkApplies, optStr], (projectId: string, applies: HunkApply[], sessionId?: string) =>
+    requireEngine().gitCheckHunks(projectId, applies, sessionId));
+  handleArgs(IPC_CHANNELS.gitApplyHunk, [id, hunkApply, optStr], (projectId: string, apply: HunkApply, sessionId?: string) =>
+    requireEngine().gitApplyHunk(projectId, apply, sessionId));
   handle(IPC_CHANNELS.gitCreateBranch, (projectId, branch, sessionId) =>
     requireEngine().gitCreateBranch(
       String(projectId),
@@ -1657,6 +1749,24 @@ function registerIpc(): void {
     await copyBrowserScreenshot(guest, (image) => clipboard.writeImage(image));
     return true;
   });
+  handle(IPC_CHANNELS.captureBrowserElement, async (id, rect) => {
+    if (typeof id !== "number" || !browserGuestIds.has(id)) throw new Error("That browser page is no longer open.");
+    const guest = webContents.fromId(id);
+    if (!guest || guest.isDestroyed()) throw new Error("That browser page is no longer open.");
+    const { captureElement } = await import("./browser-inspect.js");
+    const png = await captureElement(guest, rect);
+    if (!png) return undefined;
+    const { saveImageAttachment } = await import("./image-attachments.js");
+    return saveImageAttachment(path.join(app.getPath("userData"), "attachments"), png);
+  });
+  handle(IPC_CHANNELS.emulateBrowserDevice, async (id, device) => {
+    if (typeof id !== "number" || !browserGuestIds.has(id)) throw new Error("That browser page is no longer open.");
+    const guest = webContents.fromId(id);
+    if (!guest || guest.isDestroyed()) throw new Error("That browser page is no longer open.");
+    const { emulateDevice } = await import("./browser-inspect.js");
+    emulateDevice(guest, device);
+    return true;
+  });
   handle(IPC_CHANNELS.saveClipboardImage, async () => {
     const image = clipboard.readImage();
     if (image.isEmpty()) return undefined;
@@ -1670,10 +1780,19 @@ function registerIpc(): void {
     const { saveImageAttachment } = await import("./image-attachments.js");
     return saveImageAttachment(path.join(app.getPath("userData"), "attachments"), bytes);
   });
-  handle(IPC_CHANNELS.saveTextAttachment, async (text) => {
+  handle(IPC_CHANNELS.saveTextAttachment, async (text, name) => {
     const { saveTextAttachment } = await import("./text-attachments.js");
-    return saveTextAttachment(path.join(app.getPath("userData"), "attachments"), text);
+    return saveTextAttachment(path.join(app.getPath("userData"), "attachments"), text, name);
   });
+  handle(IPC_CHANNELS.fetchUrlContext, async (url) => {
+    if (typeof url !== "string" || url.length > 4_096) throw new Error("Type a web address.");
+    const { fetchUrlContext } = await import("@capsule/core");
+    return fetchUrlContext(url);
+  });
+  handle(IPC_CHANNELS.runComposerCommand, (projectId, command, sessionId) =>
+    requireEngine().runComposerCommand(String(projectId), String(command ?? ""), typeof sessionId === "string" ? sessionId : undefined));
+  handle(IPC_CHANNELS.runDiagnostics, (projectId, sessionId) =>
+    requireEngine().runDiagnostics(String(projectId), typeof sessionId === "string" ? sessionId : undefined));
   handle(IPC_CHANNELS.listHarnesses, () => requireEngine().listHarnesses());
   handle(IPC_CHANNELS.discoverHarness, (projectId, harnessId, model, sessionId) =>
     requireEngine().discoverHarness(String(projectId), String(harnessId), typeof model === "string" ? model : undefined, typeof sessionId === "string" ? sessionId : undefined));
@@ -1814,6 +1933,14 @@ function registerIpc(): void {
     remoteAccess.handle?.revoke(String(id));
     return true;
   });
+  registerShareHandlers(handle, {
+    threadMarkdown: IPC_CHANNELS.threadMarkdown,
+    exportThreadMarkdown: IPC_CHANNELS.exportThreadMarkdown,
+    createShareLink: IPC_CHANNELS.createShareLink,
+    listShareLinks: IPC_CHANNELS.listShareLinks,
+    revokeShareLink: IPC_CHANNELS.revokeShareLink,
+    threadPresence: IPC_CHANNELS.threadPresence,
+  }, shareContext);
   handle(IPC_CHANNELS.rendererReady, (surface) => {
     /*
      * The renderer says which window it is, because the two are the same
@@ -1877,9 +2004,44 @@ function registerIpc(): void {
     const channel = IPC_CHANNELS.turnDiff;
     return requireEngine().turnDiff(id(runId, channel, 0), { relative: optStr(value?.relative, channel, 1), summaryOnly: optBool(value?.summaryOnly, channel, 1) });
   });
-  handleArgs(IPC_CHANNELS.restoreTurn, [id], (runId: string) =>
-    requireEngine().restoreTurn(runId),
-  );
+  handle(IPC_CHANNELS.restoreToTurn, (request) => {
+    const channel = IPC_CHANNELS.restoreToTurn;
+    const value = request && typeof request === "object" ? request as { runId?: unknown; scope?: unknown } : {};
+    if (value.scope !== "files" && value.scope !== "conversation" && value.scope !== "both") throw new Error(`${channel}: choose files, conversation or both.`);
+    return requireEngine().restoreToTurn({ runId: id(value.runId, channel, 0), scope: value.scope });
+  });
+  handleArgs(IPC_CHANNELS.redoRestore, [id], (sessionId: string) => requireEngine().redoRestore(sessionId));
+  handleArgs(IPC_CHANNELS.redoPoint, [id], (sessionId: string) => requireEngine().redoPoint(sessionId) ?? null);
+  handle(IPC_CHANNELS.compareCheckpoint, (runId, options) => {
+    const value = options as { relative?: unknown; summaryOnly?: unknown } | undefined;
+    const channel = IPC_CHANNELS.compareCheckpoint;
+    return requireEngine().compareCheckpoint(id(runId, channel, 0), { relative: optStr(value?.relative, channel, 1), summaryOnly: optBool(value?.summaryOnly, channel, 1) });
+  });
+  handle(IPC_CHANNELS.forkSession, (input) => {
+    const channel = IPC_CHANNELS.forkSession;
+    const value = input && typeof input === "object" ? input as { sessionId?: unknown; runId?: unknown; workspace?: unknown } : {};
+    if (value.workspace !== "same" && value.workspace !== "worktree") throw new Error(`${channel}: choose the same folder or a new worktree.`);
+    return requireEngine().forkSession({ sessionId: id(value.sessionId, channel, 0), runId: id(value.runId, channel, 0), workspace: value.workspace });
+  });
+  handleArgs(IPC_CHANNELS.forkBranches, [id], (sessionId: string) => requireEngine().forkBranches(sessionId));
+  handleArgs(IPC_CHANNELS.listImportableSessions, [id], (projectId: string) => requireEngine().listImportableSessions(projectId));
+  handle(IPC_CHANNELS.importSession, (input) => {
+    const channel = IPC_CHANNELS.importSession;
+    const value = input && typeof input === "object" ? input as { projectId?: unknown; agent?: unknown; nativeSessionId?: unknown } : {};
+    if (!isImportAgentId(value.agent)) throw new Error(`${channel}: choose an agent Capsule can import from.`);
+    return requireEngine().importSession({ projectId: id(value.projectId, channel, 0), agent: value.agent, nativeSessionId: str(value.nativeSessionId, channel, 0) });
+  });
+  handleArgs(IPC_CHANNELS.handoffDraft, [id], (sessionId: string) => requireEngine().handoffDraft(sessionId));
+  handle(IPC_CHANNELS.handoffSession, (input) => {
+    const channel = IPC_CHANNELS.handoffSession;
+    const value = input && typeof input === "object" ? input as { sessionId?: unknown; harnessId?: unknown; summary?: unknown } : {};
+    const harnessId = str(value.harnessId, channel, 0);
+    if (!isHarnessId(harnessId)) throw new Error(`${channel}: choose an agent to continue with.`);
+    return requireEngine().handoffSession({ sessionId: id(value.sessionId, channel, 0), harnessId, summary: str(value.summary, channel, 0) });
+  });
+  handleArgs(IPC_CHANNELS.worktreeApplyStatus, [id], (sessionId: string) => requireEngine().worktreeApplyStatus(sessionId));
+  handleArgs(IPC_CHANNELS.applyWorktreeToLocal, [id], (sessionId: string) => requireEngine().applyWorktreeToLocal(sessionId));
+  handleArgs(IPC_CHANNELS.undoApplyToLocal, [id, str], (sessionId: string, undoRef: string) => requireEngine().undoApplyToLocal(sessionId, undoRef));
   handle(IPC_CHANNELS.rewindSession, (sessionId, messageId, options) => {
     const channel = IPC_CHANNELS.rewindSession;
     const value = options && typeof options === "object" ? options as { restoreFiles?: unknown } : {};
@@ -1892,6 +2054,34 @@ function registerIpc(): void {
     if (!parsed) throw new Error(`${channel}: that change to the follow-ups is not valid.`);
     return requireEngine().updateFollowUps(id(sessionId, channel, 0), parsed);
   });
+  handle(IPC_CHANNELS.createBoardCard, (input) => {
+    const parsed = readCreateBoardCard(input);
+    if (!parsed) throw new Error(`${IPC_CHANNELS.createBoardCard}: that card is not valid.`);
+    return requireEngine().createBoardCard(parsed);
+  });
+  handle(IPC_CHANNELS.updateBoardCard, (sessionId, op) => {
+    const channel = IPC_CHANNELS.updateBoardCard;
+    const parsed = readBoardCardOp(op);
+    if (!parsed) throw new Error(`${channel}: that change to the card is not valid.`);
+    return requireEngine().updateBoardCard(id(sessionId, channel, 0), parsed);
+  });
+  handle(IPC_CHANNELS.startBestOfN, (input) => {
+    const parsed = readStartBestOfN(input);
+    if (!parsed) throw new Error(`${IPC_CHANNELS.startBestOfN}: pick two to four agents and write a prompt.`);
+    return requireEngine().startBestOfN(parsed);
+  });
+  handle(IPC_CHANNELS.listThreadGroups, () => requireEngine().listThreadGroups());
+  handleArgs(IPC_CHANNELS.compareThreadGroup, [id], (groupId: string) => requireEngine().compareThreadGroup(groupId));
+  handleArgs(IPC_CHANNELS.keepCandidate, [id, id], (groupId: string, sessionId: string) => requireEngine().keepCandidate(groupId, sessionId));
+  handleArgs(IPC_CHANNELS.setAsideCandidates, [id], (groupId: string) => requireEngine().setAsideCandidates(groupId));
+  handle(IPC_CHANNELS.rateRun, (runId, value) => {
+    const channel = IPC_CHANNELS.rateRun;
+    const rating = readRatingValue(value);
+    if (rating === undefined) throw new Error(`${channel}: a rating is 1, -1 or 0.`);
+    return requireEngine().rateRun(id(runId, channel, 0), rating);
+  });
+  handleArgs(IPC_CHANNELS.runRatings, [id], (sessionId: string) => requireEngine().runRatings(sessionId));
+  handle(IPC_CHANNELS.resultsLeaderboard, () => requireEngine().resultsLeaderboard());
   handleArgs(IPC_CHANNELS.searchSkillCatalog, [str, optBool], (query: string, refresh: boolean) =>
     requireEngine().searchSkillCatalog(query, refresh),
   );
@@ -1920,6 +2110,7 @@ function bindEngineEvents(): void {
     refreshTrayAttention();
   });
   engine.events.on("run-event", (event) => send(IPC_EVENTS.run, event));
+  engine.events.on("long-command", notifyLongCommand);
   engine.events.on("message", (message) => send(IPC_EVENTS.message, message));
   engine.events.on("state", (payload) => send(IPC_EVENTS.state, payload));
   engine.events.on("approval", (approval: ApprovalRequest) => {
@@ -2207,8 +2398,17 @@ async function startEngineOnce(): Promise<void> {
         return undefined;
       });
     }
+    /* Board tasks an agent may create from its thread; the engine scopes each call to that thread's project. */
+    tasksMcp = await startTasksMcpServer(
+      (threadId, name, args) => engine ? engine.callAgentTaskTool(threadId, name, args) : Promise.resolve({ ok: false, detail: "Capsule is closing." }),
+      (operation) => updateAdmission.run(IPC_CHANNELS.createBoardCard, operation),
+    ).catch((error: unknown) => {
+      console.warn("Task tools unavailable:", error instanceof Error ? error.message : error);
+      return undefined;
+    });
     engine.offerDirectMcpServers(({ threadId, harnessId }) => {
       if (!threadId || !browserMcp) return { servers: [], dispose: () => {} };
+      const tasks = tasksMcp?.register({ threadId });
       const connection = browserMcp.register(browserAccess.target(threadId, harnessId));
       /*
        * The simulator tools reach only the device the user attached in this
@@ -2229,7 +2429,12 @@ async function startEngineOnce(): Promise<void> {
         name: "capsule-simulator",
         url: simulator.url,
         headers: Object.entries(simulator.headers).map(([name, value]) => ({ name, value })),
-      }] : [])], dispose: () => { connection.dispose(); simulator?.dispose(); backgroundBrowsers.revokeAgent(threadId); browserAccess.revoke(threadId); } };
+      }] : []), ...(tasks ? [{
+        type: "http" as const,
+        name: "capsule-tasks",
+        url: tasks.url,
+        headers: Object.entries(tasks.headers).map(([name, value]) => ({ name, value })),
+      }] : [])], dispose: () => { connection.dispose(); simulator?.dispose(); tasks?.dispose(); backgroundBrowsers.revokeAgent(threadId); browserAccess.revoke(threadId); } };
     });
   } catch (error) {
     console.warn("Browser tools unavailable:", error instanceof Error ? error.message : error);
@@ -2407,7 +2612,7 @@ const shutdown = new Shutdown(async () => {
   stopAllTerminals();
   backgroundBrowsers.closeAll();
   const results = await Promise.allSettled([
-    engine?.stop(), browserMcp?.close(), simulatorMcp?.close(), remoteAccess.set("off"), import("./simulator.js").then((m) => m.stopSimulatorBridges()),
+    engine?.stop(), browserMcp?.close(), simulatorMcp?.close(), tasksMcp?.close(), remoteAccess.set("off"), import("./simulator.js").then((m) => m.stopSimulatorBridges()),
   ]);
   for (const result of results) {
     if (result.status === "rejected") console.error("Capsule shutdown cleanup failed", result.reason);
@@ -2442,5 +2647,5 @@ app.on("before-quit", (event) => {
   startup.cancel();
   pendingCommand = undefined;
   send(IPC_EVENTS.state, { command: "app-shutting-down" });
-  void shutdown.request().then(() => app.quit());
+  shutdown.quitWhenDone(() => app.quit(), () => app.exit(0));
 });

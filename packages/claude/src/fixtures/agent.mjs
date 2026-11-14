@@ -13,6 +13,7 @@ let permissions = arg("--permission-mode");
 let effort;
 let user;
 let request;
+let planning = false;
 let turns = 0;
 const send = (value) => process.stdout.write(JSON.stringify(value) + "\n");
 const respond = (message, response = {}) => send({ type: "control_response", response: { subtype: "success", request_id: message.request_id, response } });
@@ -56,10 +57,21 @@ createInterface({ input: process.stdin }).on("line", (line) => {
       permissionMode: permissions, effort, tools: [], mcp_servers: [], slash_commands: [], skills: [], plugins: [], uuid: randomUUID() });
     if (scenario === "wait" || scenario === "wrong-id") return;
     if (scenario === "exit") { process.exit(1); return; }
-    if (scenario === "approval") {
+    if (permissions === "plan") {
+      request = randomUUID(); planning = true;
+      send({ type: "assistant", session_id: sessionId, parent_tool_use_id: null, uuid: randomUUID(), message: { id: "plan", role: "assistant", model,
+        content: [{ type: "tool_use", id: "exit-plan", name: "ExitPlanMode", input: { plan: "1. Read the code\n2. Change it" } }] } });
+      send({ type: "control_request", request_id: request, request: { subtype: "can_use_tool", tool_name: "ExitPlanMode", input: { plan: "1. Read the code\n2. Change it" }, tool_use_id: "exit-plan" } });
+    } else if (scenario === "approval") {
       request = randomUUID();
       send({ type: "control_request", request_id: request, request: { subtype: "can_use_tool", tool_name: "Bash", input: { command: "pwd" }, tool_use_id: "tool" } });
     } else finish(scenario === "fail");
+  } else if (message.type === "control_response" && message.response.request_id === request && planning) {
+    planning = false;
+    log({ planAnswer: message.response.response });
+    send({ type: "result", subtype: "error_during_execution", session_id: sessionId, uuid: randomUUID(), user_message_uuid: user.uuid, is_error: true, errors: ["Interrupted"],
+      stop_reason: null, duration_ms: 10, duration_api_ms: 5, num_turns: 1, total_cost_usd: 0,
+      usage: { input_tokens: 4, output_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }, modelUsage: {}, permission_denials: [] });
   } else if (message.type === "control_response" && message.response.request_id === request) {
     finish(message.response.response?.behavior !== "allow");
   }

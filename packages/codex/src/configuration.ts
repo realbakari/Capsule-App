@@ -33,3 +33,15 @@ export function turnPermissions(value: NativePermissions) {
     ? { approvalPolicy: "never", approvalsReviewer: "user", sandboxPolicy: { type: "dangerFullAccess" } }
     : { approvalPolicy: "untrusted", approvalsReviewer: "user", sandboxPolicy: { type: "readOnly", networkAccess: false } };
 }
+
+/** Capsule's Plan/Act switch. Codex's own collaboration mode is experimental, so a plan turn runs read-only. */
+export type CodexTurnMode = "default" | "plan";
+export function modeOption(value: CodexTurnMode): AcpConfigOption {
+  return { id: "mode", category: "mode", name: "Mode", currentValue: value, choices: [
+    { value: "default", name: "Act", description: "Work with this conversation's permissions." },
+    { value: "plan", name: "Plan", description: "Read-only sandbox without approval prompts; reply with a plan." },
+  ] };
+}
+
+/** A plan turn cannot change files and never stops to ask: what it cannot do, it reports in the plan. */
+export const PLAN_TURN_PERMISSIONS = { approvalPolicy: "never", approvalsReviewer: "user", sandboxPolicy: { type: "readOnly", networkAccess: false } } as const;

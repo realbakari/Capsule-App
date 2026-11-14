@@ -1,32 +1,95 @@
-# Restoring a turn
+# Restoring, redoing and forking turns
 
 Capsule briefly retries temporary Git lock contention while recording a turn.
 It does not remove another process's lock or alter your staging area. If the
 lock remains busy, recording fails visibly; a retry is not proof that a
 checkpoint was saved.
 
-Every turn that finishes captures the state of your project folder. When a turn
-changes files, the changed-files card under the reply offers **Restore this
-turn**, which puts the folder back to how that turn left it.
+Every turn that finishes captures the state of your project folder. That
+capture is the turn's checkpoint, and it is what you go back to.
+
+## Restoring a turn
+
+Hover a prompt or a reply and open its turn menu (the branch icon), or choose
+**Restore this turn…** on the changed-files card. You pick what to restore:
+
+- **Files** puts the project folder back to how that turn left it. Every
+  message stays. This also undoes anything you changed by hand since.
+- **Conversation** hides every turn after this one. Files stay exactly as they
+  are. The agent starts a fresh session on your next message and is given the
+  turns you kept, so it knows what came before without remembering what you
+  hid.
+- **Both** does the two together.
+
+A choice that cannot apply says why: a turn without a checkpoint cannot
+restore files, and the latest turn has nothing after it to hide.
+
+**Compare** shows what restoring the files would change before you commit to
+it: the folder as it is now against the turn's checkpoint, file by file, in the
+same diff view as a turn's changes. If the folder already matches, Compare
+says so.
 
 When two conversations share one folder, restoring an older turn would also
 undo whatever the other conversation did since. Capsule refuses that restore
 and names the conversation that changed the folder; restore from that
 conversation instead, or give each conversation its own worktree.
 
+## Redo
+
+Right after a restore, a banner says what changed and offers **Redo**. Redo
+puts back exactly what the last restore took: the folder as it stood, the
+hidden turns with their changed-files cards, and, where the agent can resume
+it, the agent session it had. **Redo last restore** in the command palette does
+the same after you dismiss the banner.
+
+Redo lasts until something new happens in the conversation. Once you send
+another message, the hidden turns and the saved folder state are discarded and
+Redo is gone. Restoring twice in a row can be redone twice, newest first.
+
+## Forking a conversation
+
+Choose **Fork from here** in a turn's menu to start a new conversation that
+shares this one's history up to and including that turn. The original is not
+changed. The fork is named after the original with "(fork)" and opens right
+away. Its first message starts a fresh agent session that is given the copied
+turns as context, on the same kind of connection and with the same agent
+settings as the original.
+
+**Fork into a new worktree** does the same in a new Git worktree whose files
+match that turn's checkpoint, so the two conversations can change files
+without stepping on each other. Without one, both conversations work in the
+same folder.
+
+**Fork conversation from last turn** in the command palette forks at the
+latest finished turn.
+
+Under the turn where conversations part, a branch row shows which branch you
+are reading, such as **Branch 2 of 3**. The arrows step to the previous or next
+branch, and the row opens a list that names each branch, when it was forked,
+whether it has its own worktree, and how far it has got since. The original is
+always first, and a fork offers **Back to original**. The row works from the
+keyboard: Tab to it, Enter opens the list, the arrow keys move, Enter opens a
+branch and Escape closes the list.
+
 ## Editing from here
 
 Hover one of your own prompts and choose **Edit from here** to try it again
 differently. The prompt and every reply after it leave the conversation, the
 prompt comes back into the composer with its attachments, and earlier turns
-stay. The agent starts a fresh session on the next turn, so it will not
-remember what was removed; what remains above is still there for you to read.
-The conversation keeps its agent settings, such as model, reasoning effort,
-permissions and mode, and how it connects to the agent.
+stay. The agent starts a fresh session on the next turn that is given the turns
+you kept, not the ones removed. The conversation keeps its agent settings, such
+as model, reasoning effort, permissions and mode, and how it connects to the
+agent.
 **Edit and restore files** does the same and also puts the project folder
 back to how the turn before stood, using that turn's checkpoint. If no earlier
-turn has a checkpoint, Capsule says so and changes nothing. Editing from here
-waits for a running turn to stop, and is desktop-only.
+turn has a checkpoint, Capsule says so and changes nothing. Edit from here is a
+restore too, so Redo brings the removed turns back until you send again.
+
+Restores, Redo and forks wait for a running turn to stop, and are available in
+the desktop app only. A paired device that reads the workspace does not show
+them.
+
+## Reading a turn's changes
 
 The card stays beneath that turn's reply when you send a follow-up. Folding
 the old turn folds its card too; expanding the turn brings it back. It does not
@@ -56,7 +119,9 @@ customize diff prefixes. Your Git configuration is not changed.
 
 Later edits do not change these saved views. The Review panel still shows your
 current repository changes; use it to stage or discard current edits. Hovering
-never changes files or restores a turn.
+never changes files or restores a turn. On the latest turn, a hunk that still
+matches your files can be rejected from the open diff; see
+[Reviewing changes](./review.md).
 
 If a saved diff cannot be read, the turn shows an error with **Retry** instead
 of looking unchanged. A missing base snapshot is never replaced with your live
@@ -74,8 +139,8 @@ Without a saved diff, a long run may show only recent reported file activity.
 That limitation is labelled, and earlier recorded activity remains in the run
 log. It is not a claim to list every file changed in the run.
 
-Restoring discards everything changed since that point — by the agent *and* by
-you — so Capsule asks first. Stop agents, checks, actions and terminal panes in
+Restoring files replaces everything changed since that point, by the agent
+and by you, so Capsule asks first and keeps a copy for Redo. Stop agents, checks, actions and terminal panes in
 that folder or overlapping project folders before restoring; Capsule refuses
 while its own work is active.
 External editors and commands are outside this guard: stop those too.
@@ -96,7 +161,10 @@ Checkpoints keep the worktree separate from your staging area and branch history
 - **Deleting a conversation deletes its checkpoints.** A checkpoint holds every
   file in the folder that git does not ignore, untracked ones included, so
   checkpoints are removed with the conversation (or project) they belong to
-  and git can reclaim the space.
+  and git can reclaim the space. The copy Redo keeps goes the same way, and
+  sooner: with your next message. A fork keeps its own copies of the
+  checkpoints it shares, so deleting the original leaves the fork's changes
+  readable.
 
 Projects that are not git repositories do not get checkpoints, and the restore
 control does not appear for them.

@@ -7,7 +7,7 @@ const fixture = fileURLToPath(new URL("./fixtures/agent.mjs", import.meta.url));
 const sessions: DirectCodexSession[] = [];
 function create(scenario = "normal", model?: string) {
   const session = new DirectCodexSession({ command: process.execPath, args: [fixture, scenario], cwd: process.cwd(), model,
-    timeoutMs: ["hang", "missing-interrupt"].includes(scenario) ? 200 : 3000, env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" } });
+    timeoutMs: ["hang", "missing-interrupt"].includes(scenario) ? 1000 : 3000, env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" } });
   sessions.push(session); return session;
 }
 afterEach(async () => { await Promise.all(sessions.splice(0).map((session) => session.close())); });
@@ -163,4 +163,18 @@ it("closes a connection whose interrupted turn never finishes", async () => {
   const turn = expect(session.prompt("Work")).rejects.toThrow("closed");
   await expect(session.cancel()).rejects.toThrow("did not confirm");
   await turn; expect(session.running).toBe(false);
+});
+
+it("runs a plan turn read-only without approval prompts and returns to the conversation's permissions for Act", async () => {
+  const session = create("settings");
+  const output: string[] = [];
+  session.on("text", (event) => output.push(event.text));
+  await session.start();
+  await session.setConfig("permissions", "full-access");
+  await session.setConfig("mode", "plan");
+  await session.prompt("Plan");
+  expect(JSON.parse(output[0]!)).toMatchObject({ approvalPolicy: "never", sandboxPolicy: { type: "readOnly", networkAccess: false } });
+  await session.setConfig("mode", "default");
+  await session.prompt("Act");
+  expect(JSON.parse(output[1]!)).toMatchObject({ approvalPolicy: "never", sandboxPolicy: { type: "dangerFullAccess" } });
 });

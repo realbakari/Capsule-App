@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { DiffFile } from "@capsule/shared";
-import { FileDiff } from "./FileDiff";
+import { FileDiff, type HunkSlot } from "./FileDiff";
 import { DIFF_PAGE_FILES, DIFF_PAGE_ROWS, DiffPager } from "./DiffPager";
 
 /** A file-to-symlink change contains separate delete/add blocks at one path. */
@@ -14,9 +14,11 @@ export function diffBlockKeys(files: readonly DiffFile[]): string[] {
   });
 }
 
-export function PagedFileDiffs({ files, split, wrap = true, onAddComment }: {
+export function PagedFileDiffs({ files, split, wrap = true, onAddComment, hunkSlot }: {
   files: DiffFile[]; split: boolean; wrap?: boolean;
   onAddComment?: (filePath: string, line: number, side: "left" | "right") => void;
+  /** Per-hunk controls for one file, when the caller can act on its hunks. */
+  hunkSlot?: (file: DiffFile) => HunkSlot | undefined;
 }) {
   const blocks = useMemo(() => {
     const keys = diffBlockKeys(files);
@@ -51,6 +53,6 @@ export function PagedFileDiffs({ files, split, wrap = true, onAddComment }: {
       </button>
     </div>
     {visible.map(({ file, key }) => <FileDiff key={key} file={file} split={split} wrap={wrap}
-      expanded={state.expanded.has(key)} onExpandedChange={(open) => expand([key], open)} onAddComment={onAddComment} />)}
+      expanded={state.expanded.has(key)} onExpandedChange={(open) => expand([key], open)} onAddComment={onAddComment} hunkSlot={hunkSlot?.(file)} />)}
   </div>;
 }
