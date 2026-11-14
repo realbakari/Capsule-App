@@ -294,6 +294,9 @@ const api = {
   pinSession: (id: string, pinned: boolean) => ipcRenderer.invoke(IPC_CHANNELS.pinSession, id, pinned),
   pauseSession: (id: string): Promise<import("@capsule/shared").Session> => ipcRenderer.invoke(IPC_CHANNELS.pauseSession, id),
   resumeSession: (id: string): Promise<{ session: import("@capsule/shared").Session; detail: string }> => ipcRenderer.invoke(IPC_CHANNELS.resumeSession, id),
+  setSessionTags: (id: string, tags: string[]): Promise<import("@capsule/shared").Session> => ipcRenderer.invoke(IPC_CHANNELS.setSessionTags, id, tags),
+  renameTag: (from: string, to: string): Promise<number> => ipcRenderer.invoke(IPC_CHANNELS.renameTag, from, to),
+  deleteTag: (tag: string): Promise<number> => ipcRenderer.invoke(IPC_CHANNELS.deleteTag, tag),
   reorderPinnedSessions: (projectId: string, orderedIds: string[]) =>
     ipcRenderer.invoke(IPC_CHANNELS.reorderPinnedSessions, projectId, orderedIds),
   searchFiles: (projectId: string, query?: string, root?: string) =>

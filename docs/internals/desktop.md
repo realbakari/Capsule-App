@@ -2388,3 +2388,23 @@ draft.
   conversation" / "Resume conversation", a Paused status in the row. Both
   channels (`pauseSession`, `resumeSession`) are write-scoped and the entries are
   hidden on a paired device.
+
+## Thread lifecycle: tags
+
+- **Data.** `Session.tags`, canonical and sorted (`normalizeTags` in
+  `@capsule/shared/thread-tags`), stored as a JSON array in `sessions.tags`
+  (migration 28) and written only by `setSessionTags`. A JSON column, like the
+  other per-thread extras, because tags are read with the thread and a global
+  rename touches few rows; `rewriteTags` walks the threads once.
+- **Grouping.** `SidebarGrouping` gains `"tag"` ("By tag"). `groupThreadsByTag`
+  makes one group per tag plus the untagged, cross-project, newest first; groups
+  show 20 with Show more. Rows render with a per-group preview id so a thread in
+  two groups keeps unique ids.
+- **Search.** `parseThreadQuery` lifts `#name` / `tag:name` out of a query. The
+  sidebar pre-filters threads by those tags in every grouping and matches the
+  rest as text; `searchSessionTitles` (palette) does the same. Message search is
+  unchanged.
+- **Surfaces.** Row and titlebar menus "Tags…" open `TagsDialog`;
+  Conversation details has a `TagEditor`; Settings, General, Tags renames and
+  deletes. `setSessionTags`, `renameTag`, `deleteTag` are write channels and the
+  editors render read-only chips on a paired device.

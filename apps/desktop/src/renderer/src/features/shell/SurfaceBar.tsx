@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { ThreadDetailsRows } from "../threads/ThreadDetails";
 import { folderBasename } from "@capsule/shared";
 import { formatUserError } from "../../lib/errors";
 import { formatProjectRoot } from "../../lib/paths";
@@ -155,6 +156,7 @@ function SessionDetails({ onReview, onClose }: { onReview: () => void; onClose: 
         {git?.branch && <p className="session-details-row"><GitBranchIcon size={14} /><span className="mono">{git.branch}</span></p>}
         <ApplyToLocalRow onApply={onClose} />
       </section>
+      <ThreadDetailsRows />
       {/* What the titlebar used to carry: run an action, commit and push, or start Git. */}
       {folder && api.isDesktop !== false && (
         <section className="session-details-actions" aria-label="Workspace actions">

@@ -208,6 +208,9 @@ import {
   type ProviderUsageSource,
   samePullRequest,
   toThreadPullRequest,
+  normalizeTag,
+  normalizeTags,
+  renameTagIn,
 } from "@capsule/shared";
 import {
   DEFAULT_SKILLS,
@@ -1970,6 +1973,39 @@ export class CapsuleEngine {
     this.repos.updateSession(session);
     this.events.emit("state", { command: "sessions-updated" });
     return session;
+  }
+
+  setSessionTags(id: string, tags: string[]): Session {
+    this.requireSession(id);
+    this.repos.setSessionTags(id, normalizeTags(tags));
+    this.events.emit("state", { command: "sessions-updated" });
+    return this.requireSession(id);
+  }
+
+  /** Rename a tag on every thread that carries it; renaming onto an existing tag merges them. */
+  renameTag(from: string, to: string): number {
+    const source = normalizeTag(from);
+    const target = normalizeTag(to);
+    if (!source || !target) throw new Error("A tag needs a name.");
+    return this.rewriteTags((tags) => renameTagIn(tags, source, target));
+  }
+
+  deleteTag(tag: string): number {
+    const name = normalizeTag(tag);
+    if (!name) return 0;
+    return this.rewriteTags((tags) => tags?.includes(name) ? tags.filter((item) => item !== name) : undefined);
+  }
+
+  private rewriteTags(change: (tags: string[] | undefined) => string[] | undefined): number {
+    let changed = 0;
+    for (const session of this.repos.listSessions()) {
+      const next = change(session.tags);
+      if (!next) continue;
+      this.repos.setSessionTags(session.id, next);
+      changed += 1;
+    }
+    if (changed) this.events.emit("state", { command: "sessions-updated" });
+    return changed;
   }
 
   /** Save a worktree thread's work to a hidden ref and stop the actions it started. */

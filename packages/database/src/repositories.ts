@@ -82,7 +82,13 @@ function sessionParams(session: Session) {
   };
 }
 
-type SessionRow = Omit<Session, "directSession" | "carryOver" | "pendingStart" | "doneAt" | "forkedFrom" | "groupId" | "origin" | "pullRequest" | "paused"> & {
+function readTags(value: string | null | undefined): string[] | undefined {
+  const tags = parseJson<unknown>(value, undefined);
+  return Array.isArray(tags) && tags.length ? tags.filter((tag): tag is string => typeof tag === "string") : undefined;
+}
+
+type SessionRow = Omit<Session, "directSession" | "carryOver" | "pendingStart" | "doneAt" | "forkedFrom" | "groupId" | "origin" | "pullRequest" | "paused" | "tags"> & {
+  tags?: string | null;
   groupId?: string | null;
   pullRequest?: string | null;
   paused?: string | null;
@@ -116,6 +122,7 @@ function normalizeSession(row: SessionRow): Session {
     origin: parseJson<Session["origin"]>(row.origin, undefined),
     pullRequest: parseJson<Session["pullRequest"]>(row.pullRequest, undefined),
     paused: parseJson<Session["paused"]>(row.paused, undefined),
+    tags: readTags(row.tags),
     pinned: Boolean(row.pinned),
     pinOrder: typeof row.pinOrder === "number" ? row.pinOrder : undefined,
     openclawSessionKey: row.openclawSessionKey || undefined,
@@ -306,6 +313,10 @@ export class CapsuleRepositories {
     this.db.sqlite.prepare("UPDATE sessions SET pull_request = ? WHERE id = ?").run(pullRequest ? JSON.stringify(pullRequest) : null, sessionId);
   }
 
+  setSessionTags(sessionId: string, tags: readonly string[]): void {
+    this.db.sqlite.prepare("UPDATE sessions SET tags = ? WHERE id = ?").run(tags.length ? JSON.stringify(tags) : null, sessionId);
+  }
+
   setSessionPaused(sessionId: string, paused: Session["paused"]): void {
     this.db.sqlite.prepare("UPDATE sessions SET paused = ? WHERE id = ?").run(paused ? JSON.stringify(paused) : null, sessionId);
   }
@@ -473,7 +484,7 @@ export class CapsuleRepositories {
                 permission_profile AS permissionProfile, model_override AS modelOverride,
                 pinned, pin_order AS pinOrder, working_directory AS workingDirectory, workspace_mode AS workspaceMode,
                 worktree_branch AS worktreeBranch, direct_session AS directSession, carry_over AS carryOver,
-                pending_start AS pendingStart, done_at AS doneAt, forked_from AS forkedFrom, turn_mode AS turnMode, group_id AS groupId, origin, pull_request AS pullRequest, paused, created_at AS createdAt, updated_at AS updatedAt`;
+                pending_start AS pendingStart, done_at AS doneAt, forked_from AS forkedFrom, turn_mode AS turnMode, group_id AS groupId, origin, pull_request AS pullRequest, paused, tags, created_at AS createdAt, updated_at AS updatedAt`;
     const sql = projectId
       ? `SELECT ${columns} FROM sessions WHERE project_id = ?
          ORDER BY pinned DESC, COALESCE(pin_order, 2147483647) ASC, updated_at DESC`

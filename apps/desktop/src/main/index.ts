@@ -1228,6 +1228,12 @@ function registerIpc(): void {
     return session;
   });
   handleArgs(IPC_CHANNELS.resumeSession, [id], (sessionId: string) => requireEngine().resumeSession(sessionId));
+  handle(IPC_CHANNELS.setSessionTags, (sessionId, tags) => {
+    if (!Array.isArray(tags) || tags.length > 64) throw new Error("Invalid tags");
+    return requireEngine().setSessionTags(String(sessionId), tags.map(String));
+  });
+  handleArgs(IPC_CHANNELS.renameTag, [str, str], (from: string, to: string) => requireEngine().renameTag(from, to));
+  handleArgs(IPC_CHANNELS.deleteTag, [str], (tag: string) => requireEngine().deleteTag(tag));
   handleArgs(IPC_CHANNELS.archiveSession, [id], (sessionId: string) => {
     const session = requireEngine().archiveSession(sessionId);
     backgroundBrowsers.close(sessionId);

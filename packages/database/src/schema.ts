@@ -456,4 +456,11 @@ export const MIGRATIONS: Array<{ version: number; sql: string; }> = [
       ALTER TABLE sessions ADD COLUMN paused TEXT;
     `,
   },
+  {
+    version: 28,
+    sql: `
+      -- The user's labels on a thread, as a JSON array of canonical tags.
+      ALTER TABLE sessions ADD COLUMN tags TEXT;
+    `,
+  },
 ];

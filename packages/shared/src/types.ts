@@ -280,6 +280,8 @@ export interface Session {
   pullRequest?: import("./thread-pull-request.js").ThreadPullRequest;
   /** Set while a worktree thread is paused. Written on its own, never by a turn. */
   paused?: import("./thread-pause.js").ThreadPause;
+  /** The user's labels, canonical and sorted. Written on its own, never by a turn. */
+  tags?: string[];
   createdAt: string;
   updatedAt: string;
 }

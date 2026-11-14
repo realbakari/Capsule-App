@@ -11,3 +11,78 @@
 .thread-pr.draft,
 .thread-pr.closed { color: var(--text-faint); }
 .thread-status.paused { color: var(--text-muted); }
+
+/* Tags: chips plus one field, in Conversation details and the Tags dialog. */
+.tag-editor {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+}
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  max-width: 100%;
+  padding: 0.1rem 0.2rem 0.1rem 0.45rem;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--surface-1);
+  color: var(--text);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+}
+.tag-editor[data-disabled="true"] .tag-chip { padding-right: 0.45rem; }
+.tag-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tag-chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.tag-chip-remove:hover { background: var(--bg-hover); color: var(--text); }
+.tag-chip-remove:focus-visible,
+.tag-editor-input:focus-visible { outline: var(--ring-width) solid var(--focus-ring); outline-offset: var(--focus-offset); }
+.tag-editor-input {
+  flex: 1 1 6rem;
+  min-width: 6rem;
+  padding: 0.2rem 0.35rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font-size: var(--text-xs);
+}
+.tag-editor-input:hover { border-color: var(--border-color); }
+.tags-dialog { width: min(28rem, calc(100vw - 2rem)); }
+.tags-dialog .tags-dialog-lede { margin: 0.25rem 0 0.9rem; color: var(--text-muted); font-size: var(--text-sm); }
+.tags-dialog .tag-editor {
+  padding: 0.35rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--surface-0);
+}
+.session-details-tags { display: grid; gap: 0.35rem; }
+.tags-settings-list { display: grid; gap: 0.35rem; margin: 0.6rem 0 0; padding: 0; list-style: none; }
+.tags-settings-row { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
+.tags-settings-count { font-size: var(--text-xs); white-space: nowrap; }
+.tags-settings-actions { display: inline-flex; gap: 0.3rem; margin-left: auto; }
+.tags-settings-input {
+  min-width: 0;
+  padding: 0.2rem 0.4rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--surface-0);
+  color: var(--text);
+  font-size: var(--text-xs);
+}
+.tags-settings-error { margin: 0.5rem 0 0; color: var(--red); font-size: var(--text-sm); }
+.tags-settings .chip.danger { color: var(--red); border-color: color-mix(in srgb, var(--red) 40%, transparent); }

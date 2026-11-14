@@ -53,3 +53,26 @@ worktree:
 
 Project actions that pausing stopped are not restarted. Start them again from
 Conversation details.
+
+## Tags
+
+Tags are your own labels on conversations, across projects.
+
+- **Add tags** from a conversation's menu (**Tags…**) in the sidebar or the
+  titlebar, or in the **Tags** field of Conversation details. Type a tag and press
+  Enter or a comma. Tags you already use are suggested. Backspace in an empty
+  field removes the last tag, and each chip has its own remove button.
+- Tags are stored in one spelling: lowercase, without a leading `#`, with spaces
+  turned into dashes. "Bug Fix" and "#bug-fix" are the same tag. A conversation
+  can have up to 12.
+- **By tag** in **Group conversations** lists one group per tag, alphabetically,
+  across every project, then the conversations with no tag. A conversation with
+  two tags appears under both.
+- **Search by tag.** Type `#name` or `tag:name` in the sidebar search or the
+  command palette to keep only conversations with that tag. Combine it with text
+  (`login #bug`) or with more tags, which must all match.
+- **Rename or delete a tag everywhere** in Settings, General, Tags. Renaming onto
+  a tag that already exists merges the two. Deleting removes the tag from every
+  conversation; the conversations stay.
+
+On a paired device that only reads, tags are shown but cannot be changed.

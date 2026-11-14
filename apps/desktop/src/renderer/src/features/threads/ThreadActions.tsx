@@ -1,8 +1,10 @@
-import { createContext, useCallback, useContext, useMemo, type ReactNode } from "react";
-import type { Session } from "@capsule/shared";
+import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
+import { collectTags, type Session } from "@capsule/shared";
 import type { ThreadMenuState } from "../../lib/action-menu";
 import { formatUserError } from "../../lib/errors";
+import { useModalFocus } from "../../lib/modal-focus";
 import { useWorkspace } from "../../lib/workspace";
+import { TagEditor } from "./TagEditor";
 
 /*
  * Thread lifecycle actions shared by the sidebar row menu, the titlebar menu,
@@ -18,6 +20,10 @@ interface ThreadActionsValue {
   run: (action: string, session: Session) => boolean;
   pause: (sessionId: string) => Promise<void>;
   resume: (sessionId: string) => Promise<void>;
+  /** Every tag in use, for suggestions. */
+  allTags: string[];
+  setTags: (sessionId: string, tags: string[]) => Promise<void>;
+  openTags: (sessionId: string) => void;
 }
 
 const ThreadActionsContext = createContext<ThreadActionsValue>({
@@ -26,6 +32,9 @@ const ThreadActionsContext = createContext<ThreadActionsValue>({
   run: () => false,
   pause: async () => undefined,
   resume: async () => undefined,
+  allTags: [],
+  setTags: async () => undefined,
+  openTags: () => undefined,
 });
 
 export function useThreadActions(): ThreadActionsValue {
@@ -33,8 +42,17 @@ export function useThreadActions(): ThreadActionsValue {
 }
 
 export function ThreadActionsProvider({ children }: { children: ReactNode }) {
-  const { api, refresh, setNotice } = useWorkspace();
+  const { api, refresh, setNotice, sessions } = useWorkspace();
   const writable = api.isDesktop !== false;
+  const [tagging, setTagging] = useState<string>();
+  const allTags = useMemo(() => collectTags(sessions).map((item) => item.tag), [sessions]);
+
+  const setTags = useCallback(async (sessionId: string, tags: string[]) => {
+    try { await api.setSessionTags(sessionId, tags); }
+    catch (error) { setNotice(formatUserError(error)); }
+    await refresh();
+  }, [api, refresh, setNotice]);
+  const openTags = useCallback((sessionId: string) => { if (writable) setTagging(sessionId); }, [writable]);
 
   const pause = useCallback(async (sessionId: string) => {
     try {
@@ -55,6 +73,7 @@ export function ThreadActionsProvider({ children }: { children: ReactNode }) {
   const menuState = useCallback((session: Session): ThreadMenuState => {
     if (!writable) return {};
     return {
+      tags: true,
       ...(session.workspaceMode === "worktree" ? { pause: session.paused ? "resume" as const : "pause" as const } : {}),
     };
   }, [writable]);
@@ -62,9 +81,37 @@ export function ThreadActionsProvider({ children }: { children: ReactNode }) {
   const run = useCallback((action: string, session: Session) => {
     if (action === "pause") { void pause(session.id); return true; }
     if (action === "resume") { void resume(session.id); return true; }
+    if (action === "tags") { openTags(session.id); return true; }
     return false;
-  }, [pause, resume]);
+  }, [pause, resume, openTags]);
 
-  const value = useMemo(() => ({ writable, menuState, run, pause, resume }), [writable, menuState, run, pause, resume]);
-  return <ThreadActionsContext.Provider value={value}>{children}</ThreadActionsContext.Provider>;
+  const value = useMemo(() => ({ writable, menuState, run, pause, resume, allTags, setTags, openTags }), [writable, menuState, run, pause, resume, allTags, setTags, openTags]);
+  return (
+    <ThreadActionsContext.Provider value={value}>
+      {children}
+      {tagging && <TagsDialog sessionId={tagging} onClose={() => setTagging(undefined)} />}
+    </ThreadActionsContext.Provider>
+  );
+}
+
+/** Tags for one thread, from its menu. Each change is saved as it is made. */
+function TagsDialog({ sessionId, onClose }: { sessionId: string; onClose: () => void }) {
+  const { sessions } = useWorkspace();
+  const { allTags, setTags } = useThreadActions();
+  const session = sessions.find((item) => item.id === sessionId);
+  const dialog = useRef<HTMLDivElement>(null);
+  useModalFocus(dialog, true, onClose, "input");
+  if (!session) return null;
+  return (
+    <div className="palette-backdrop center" onClick={onClose}>
+      <div className="dialog tags-dialog" ref={dialog} role="dialog" aria-modal="true" aria-labelledby="tags-title" tabIndex={-1} onClick={(event) => event.stopPropagation()}>
+        <h3 id="tags-title">Tags</h3>
+        <p className="tags-dialog-lede">For “{session.title}”. Group by tag in the sidebar, or search with #tag.</p>
+        <TagEditor tags={session.tags ?? []} suggestions={allTags} autoFocus onChange={(next) => void setTags(session.id, next)} />
+        <div className="actions">
+          <button className="send" data-cancel onClick={onClose}>Done</button>
+        </div>
+      </div>
+    </div>
+  );
 }
