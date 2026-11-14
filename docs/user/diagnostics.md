@@ -22,10 +22,13 @@ Below the files:
   **Trust this project**, or, once trusted, **Revoke trust**.
 - **Recent runs** lists hooks, status line commands and command shells that
   ran: when, which, and the exit code. Open one to see the command and what
-  it printed to stderr.
+  it printed to stderr, formatted as Markdown, or as a diff when it printed
+  one. HTML in the output is shown as text, never run.
 
 The card also says whether safe mode is on, with the button that restarts into
-or out of it. **Reload** reads every file again at once.
+or out of it. **Reload** reads every file again at once. **Validate plugin
+folder…** checks a [plugin](./plugins.md) folder and lists what it adds,
+without installing it.
 
 When there are problems, the Settings button in the sidebar and the
 Diagnostics section carry their count. **Show customization problems** in the

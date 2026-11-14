@@ -1,0 +1,8 @@
+{
+  "PermissionRequest": [
+    {
+      "matcher": "execute",
+      "hooks": [{ "type": "command", "command": "node \"${PLUGIN_ROOT}/gate.mjs\"" }]
+    }
+  ]
+}

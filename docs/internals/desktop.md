@@ -1985,3 +1985,41 @@ On a paired device the line, the list and the marks are visible; the
 switches, Run now, Dismiss, the templates and the status line fields are
 disabled, since each is a write channel.
 
+
+## Plugins
+
+Settings → Plugins (under Code, after Automations) and a **Plugins** tab in
+the skills library show the same panel (`features/plugins/PluginsPanel.tsx`):
+**Install from folder…**, **Install from zip…**, **Load folder for
+development…** and **Validate plugin folder…**, a Git address field with
+**Inspect**, then the installed list. Each row has the name, version, a
+**dev** tag for a development folder, the author, an On/Off switch (off and
+explained while the plugin has an error), the description, a "Needs …" line
+for missing required options, and **What it adds** behind an expansion: the
+plugin's problems, its contents, its options form with **Save options**,
+**Let this plugin approve requests** (only for a plugin with a
+PermissionRequest hook), **Open folder** and **Uninstall** (or **Remove**
+for a development folder, which leaves the folder). The empty state shows a
+minimal manifest.
+
+The install screen (`PluginInstallDialog.tsx`) is also the Validate result.
+It names the plugin, author and source (the path or address on one line,
+the full text on hover), the description, "Update from x to y" when it
+replaces one, the rights notice when anything in it runs, problems, and the
+contents: hooks with event, matcher and command line; commands with a
+"! runs shell" tag and each span; MCP servers with "starts a program" or
+"URL" and the line; the status line; themes with appearance and backdrop;
+profiles, styles and skills. A form for its options follows. The buttons
+are Cancel and the install verb, or Close in Validate and when it has
+errors. Closing discards the staged copy.
+
+Diagnostics' Customization card has **Validate plugin folder…** beside
+Reload. Its Recent runs show a run's stderr through `MessageBody`, or
+`DiffView` when `isUnifiedDiff` (`lib/run-output.ts`) says it is a patch. The palette has **Install plugin from folder**, **Install plugin from
+zip**, **Validate plugin folder**, **Load plugin from folder
+(development)**, **Turn on/off plugin <name>** and **Plugins**; the first four
+open Settings → Plugins and start there (`plugin-intent.ts`).
+
+On a paired device the list, contents and options are visible and every
+button and switch is disabled, since each is a write channel. Safe mode
+lists none.

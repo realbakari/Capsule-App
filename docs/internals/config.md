@@ -8,7 +8,8 @@ Capsule drives, on both runtime routes, on the desktop and from a paired phone.
 This document is for contributors. The user-facing pages are
 [settings files](../user/settings-files.md), [commands](../user/commands.md),
 [profiles](../user/profiles.md), [hooks](../user/hooks.md),
-[themes](../user/themes.md) and [automations](../user/automations.md).
+[themes](../user/themes.md), [automations](../user/automations.md) and
+[plugins](../user/plugins.md).
 
 ## The rule this design keeps
 
@@ -53,6 +54,7 @@ sequence:
 | `last-good.ts` | the last good parse of each file |
 | `watcher.ts` | live reload |
 | `resources.ts` | folders of one-file resources (`commands`, `profiles`, `styles`, `themes`): a kind registry and one lister, so a later feature adds only its parser |
+| `plugins.ts` | one plugin folder read as data: manifest, contents, variables, its settings values |
 | `migrate.ts` | the one-time export from SQLite |
 | `service.ts` | `ConfigService`, the one stateful owner, which the engine exposes as `engine.config` |
 
@@ -465,6 +467,79 @@ no other entry uses.
 
 `markSessionRead` clears `unread` when the desktop opens the thread.
 
+## Plugins
+
+**Shape.** A plugin is a folder with `capsule-plugin.json`
+(`parsePluginManifest` in `@capsule/shared`). `readPluginFolder`
+(`@capsule/config`) reads it without running anything: the manifest, each
+contributed folder after `realpath` (one that leaves the plugin is an
+error), the hooks and MCP JSON, checked against the registry's schema for
+those keys, and `PluginContents`, the list the install screen shows, as
+written. Given the plugin's variables it also returns `values`: hooks, MCP
+servers and the status line with `${PLUGIN_ROOT}`, `${PLUGIN_DATA}` and
+`${user_config.NAME}` filled in by `substitutePluginVariables`, whose `use`
+decides what an option becomes: an environment reference in a shell
+command, `${env:CAPSULE_PLUGIN_<PLUGIN>_<KEY>}` for a secret in an MCP
+server's `env` or `headers`, and nothing (with a warning) for a secret in
+prompt text or an argument.
+
+**Where plugins come from.** `ConfigService.readPlugins` runs with every
+read of the user file: each folder under `plugins/` and each
+`plugins.<name>.path` in the user file (a development folder). The plugin's
+name must match its folder or entry; a second plugin of a name already
+taken is skipped. Each is cached as a `KnownPlugin` with a stamp of its
+files' paths, sizes and times, and the stamps are part of the reload
+fingerprint and the command stamp, so an edit on save is a change.
+Development folders get their own watch.
+
+**Merging.** An enabled plugin is one more layer, scope `plugin`, below the
+user's file (`PRECEDENCE`), whose values were checked when the plugin was
+read. Hooks and MCP servers therefore merge like a file's, each entry
+sourced to the manifest; the user's own `statusLine` replaces a plugin's.
+Commands come in through `commandFolders`' `pluginDirs`, each with a `fill`
+that substitutes the plugin's variables before parsing; themes through
+`readThemeCatalog`'s `pluginThemes` (a plugin cannot replace a bundled
+theme); profiles and styles as resources ranked after the user's; skills
+through `pluginSkillFolders`, which `listSkills` reads as one more root.
+
+**Installing.** `PluginManager` (`core/plugins.ts`) stages a source in a
+temporary folder: a copy of a folder, `ditto -x -k` or `unzip` for a zip, or
+`git clone --depth 1` with prompts off and the `ext` protocol refused, all
+through `runProgram` (`@capsule/terminal`), which runs argv without a shell.
+It copies that again without links, `.git` or anything past 5,000 files or
+50 MB, and reads the copy. `inspect` returns the reading and a token;
+`install` hands the staged copy to `ConfigService.installPlugin`, which
+copies it beside `plugins/<name>` and swaps it in, or registers a
+development folder in place. Option values follow: secrets to the Keychain
+(`plugin.<name>.<key>`), the rest to `plugin-data/<name>/config.json`. A
+first install is turned on when no required option is missing.
+
+**Secrets at run time.** The manager reads every plugin's secrets from the
+Keychain at start and after each change, and keeps them in memory, so
+`environment(source)` gives a plugin's hook or status line command
+`CAPSULE_PLUGIN_ROOT`, `CAPSULE_PLUGIN_DATA` and every
+`CAPSULE_USER_CONFIG_<KEY>` synchronously, and `serverEnvironment()` adds
+enabled plugins' secrets to the environment MCP servers expand from.
+
+**Approving.** `HookHost.mayAllow` is `ConfigService.mayApprove`: a source of
+scope `plugin` may allow only with `plugins.<name>.mayApprove`. Otherwise
+`permissionVerdict` reads its allow as ask, and the run record's outcome says
+so.
+
+**Author loop.** Validate is `plugins:inspect` without installing.
+`scripts/capsule-plugin.mjs validate <dir>` prints the same checks and
+contents headless; `run-command <dir> <name> [args] --fixture <dir>` prints
+the expanded prompt with shell spans shown, not run.
+
+**Not built: UI extensions.** A plugin contributing a panel surface
+(`surfaces: [{id, title, entry}]`) is documented in the ranked report as P3.
+If built, it loads in a sandboxed `<webview>` partition with no Node, no
+preload and a CSP that blocks the network, talks to Capsule only through a
+`postMessage` bridge that exposes the read channels already classified in
+`ipc-scopes.ts`, and cannot restyle built-in UI or run in-process. Plugins
+stay declarative until then: there is no way for one to run code inside
+Capsule.
+
 ## Migration
 
 The first launch of a build with settings files exports the SQLite
@@ -533,6 +608,12 @@ landed while the save ran is not lost.
 | `capsule:automations:dismissMissed` | write | let missed runs go |
 | `capsule:automations:create` | write | add a template's automation, paused, then open the file |
 | `capsule:sessions:markRead` | write | clear an automation thread's unread mark |
+| `capsule:plugins:inspect` | write | copy, unzip or clone a plugin into a temporary folder and list what it adds |
+| `capsule:plugins:install` | write | install what inspect staged, or register a development folder, with option values |
+| `capsule:plugins:discard` | write | drop a staged copy when the install screen closes |
+| `capsule:plugins:setEnabled` | write | turn a plugin on or off |
+| `capsule:plugins:configure` | write | save option values, and whether its hooks may approve |
+| `capsule:plugins:uninstall` | write | remove a plugin, its options and its secrets |
 
 Main checks each write's shape where it crosses: a key and a known layer, or
 a file target naming one of the known kinds and folders, so the renderer
@@ -853,3 +934,43 @@ Decisions made while building this, and why.
 - **The anchor is when Capsule first saw the automation.** Interval rules
   such as every 2 weeks count from there, and nothing before it is missed.
 
+- **A plugin is a layer, not a fifth kind of source.** Its hooks, MCP servers
+  and status line go through `mergeLayers` with scope `plugin` below the
+  user's file, so every rule about merging, provenance and the doctor
+  already applies, and nothing downstream needed to learn about plugins
+  except the chip label.
+- **What is installed is what was listed.** Inspect copies the source into
+  a folder Capsule controls and reads that copy; install moves that copy.
+  Reading the user's folder and copying it later would let it change in
+  between.
+- **No links in an installed plugin.** A link inside a plugin can point at
+  any file on the computer. The staging copy drops links, `.git` and macOS
+  archive leftovers; a development folder is the author's own and is read
+  as it is.
+- **An option in a shell command is an environment reference.** Pasting a
+  value into a command line would let an option become shell; the command
+  reads `${CAPSULE_USER_CONFIG_<KEY>}` instead. The same rule covers
+  secrets, which never reach prompt text, arguments or a file.
+- **Secrets are cached in memory.** The Keychain adapter is async; a hook's
+  environment and an MCP server's expansion are built synchronously. The
+  manager reads them at start and after each change it makes.
+- **A first install turns the plugin on; an update keeps its state.** The
+  install screen is the moment the person sees what runs, so a separate
+  enable step would only add a click. A required option left empty keeps
+  it off, and an update that adds one turns it off.
+- **Plugin hooks may not approve without an opt-in.** A plugin is someone
+  else's code. Its PermissionRequest hook can deny or ask, but its allow is
+  read as ask until `plugins.<name>.mayApprove`; the switch is shown only
+  for a plugin that has such a hook.
+- **A plugin cannot replace a bundled theme, and names that pass for Capsule
+  are refused.** `capsule`, `capsule-*`, built-in command and agent names and
+  bundled theme ids. The user's own files can still replace a bundled theme.
+- **Project actions from plugins are not read yet.** An action belongs to a
+  project record; adding them from a user-scope plugin needs a decision on
+  which projects get them. Validate warns so an author is not surprised.
+- **Uninstall removes the plugin's data and secrets.** Keeping them would
+  leave a secret in the Keychain for something no longer installed.
+  Removing a development folder only forgets it.
+- **Run now answers when the thread exists.** It used to wait for the first
+  send, agent start-up included, which can take half a minute; the row
+  follows the run from there, like a scheduled run.

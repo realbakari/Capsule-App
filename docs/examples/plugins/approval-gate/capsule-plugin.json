@@ -1,0 +1,18 @@
+{
+  "name": "approval-gate",
+  "version": "1.0.0",
+  "description": "Approves test and lint runs, refuses force pushes and recursive deletes, and leaves everything else to you.",
+  "author": { "name": "Capsule examples" },
+  "capsule": ">=0.11",
+  "contributes": {
+    "hooks": "./hooks.json"
+  },
+  "userConfig": {
+    "allowed": {
+      "type": "string",
+      "title": "Commands to approve",
+      "description": "A regular expression matched against the whole command line.",
+      "default": "^(pnpm|npm|yarn) (run )?(test|lint|typecheck)( |$)"
+    }
+  }
+}

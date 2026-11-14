@@ -230,8 +230,9 @@ For your own format, name a command instead:
   tree changes, at most once a second, and every `refreshInterval` seconds if you
   set one. It has 5 seconds. If it fails, the last line stays dimmed with
   "status line failed", and Settings → Diagnostics shows why.
-- Only your own settings file can set a command. A project's file can
-  choose `items`, but not a command.
+- Only your own settings file, or a [plugin](./plugins.md) you installed,
+  can set a command. A project's file can choose `items`, but not a command.
+  Your own `statusLine` replaces a plugin's.
 
 A narrow window shows the first line only; hover it for the rest. A paired
 device shows the same line as the desktop, and cannot run the command.
