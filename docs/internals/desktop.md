@@ -2169,7 +2169,9 @@ Git project.
   out); one that cannot start is disabled with its readiness reason, except
   Gateway-offline under the test runtime. Picking adds a candidate row with an
   optional model field; the same agent may be picked twice. Two or more picks
-  turn send into **Run on N agents**; the **×** beside the trigger clears them.
+  turn send into **Run on N agents**, and the agent picker, Plan/Act chip, agent
+  controls and single-agent preflight give way to the picked agents' marks; the
+  **×** beside the trigger clears them.
   Each agent row carries the leaderboard hint ("Kept 2 of 3 · 4 up"). The
   palette's **Run on several agents…** opens the picker in the untouched new
   conversation, or a new one. That untouched placeholder thread is deleted once
@@ -2200,7 +2202,8 @@ Git project.
   **Restore**, which brings back the thread and its worktree.
 - **Sidebar.** In By project, a group folds into one row (prompt, a status line
   such as "3 agents · 1 working" or "Kept Codex", agent glyphs, and a Compare
-  quick action). It expands to the candidate rows and starts expanded when the
+  quick action). It expands to the candidate rows, named by agent and model, and
+  starts expanded when the
   open thread is a candidate. By status and Recent list candidates as threads.
 - **Ratings and Your results.** Every completed agent turn has thumbs up and
   down under its outcome; pressing the same one clears it. Ratings and keeps
