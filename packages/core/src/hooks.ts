@@ -263,10 +263,10 @@ export interface PermissionVerdict {
 }
 
 /**
- * PermissionRequest: deny beats allow, as with rules, and exit 2 is a deny.
- * An `ask` with a reason comes back so the person's approval card can show
- * it. A failure or silence is no verdict. An allow from a file that may not
- * allow becomes an ask.
+ * PermissionRequest: deny beats ask beats allow, as with rules, and exit 2
+ * is a deny. One hook asking is enough for the person to decide, so a gate
+ * holds even beside a hook that allows. A failure or silence is no verdict.
+ * An allow from a file that may not allow becomes an ask.
  */
 export function permissionVerdict(results: readonly HookResult[], mayAllow: (source: Provenance) => boolean = () => true): PermissionVerdict | undefined {
   const said = (result: HookResult) => result.outcome.kind === "blocked" ? "deny" : result.outcome.kind === "answered" ? result.outcome.output.permissionDecision : undefined;
@@ -277,11 +277,11 @@ export function permissionVerdict(results: readonly HookResult[], mayAllow: (sou
   };
   const deny = results.find((result) => said(result) === "deny");
   if (deny) return verdict(deny, "deny");
-  const allow = results.find((result) => said(result) === "allow" && mayAllow(result.source));
-  if (allow) return verdict(allow, "allow");
-  const ask = results.find((result) => said(result) === "ask" && reasonOf(result))
-    ?? results.find((result) => said(result) === "allow");
-  return ask ? verdict(ask, "ask") : undefined;
+  const asks = results.filter((result) => said(result) === "ask" || (said(result) === "allow" && !mayAllow(result.source)));
+  const ask = asks.find((result) => reasonOf(result)) ?? asks[0];
+  if (ask) return verdict(ask, "ask");
+  const allow = results.find((result) => said(result) === "allow");
+  return allow ? verdict(allow, "allow") : undefined;
 }
 
 /** TurnEnd: each answer's follow-up text, in file order. */

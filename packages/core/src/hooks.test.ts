@@ -124,7 +124,7 @@ it("reads the short decision form, keeps an ask's reason, and can hold a file's 
   const allowed = await g.runner.run("PermissionRequest", f.payload("PermissionRequest"), {});
   expect(permissionVerdict(allowed)).toMatchObject({ decision: "allow" });
   expect(permissionVerdict(allowed, () => false)).toMatchObject({ decision: "ask" });
-  const h = fixture({ PermissionRequest: [{ hooks: [command(ask)] }] });
+  const h = fixture({ PermissionRequest: [{ hooks: [command(allow), command(ask)] }] });
   expect(permissionVerdict(await h.runner.run("PermissionRequest", f.payload("PermissionRequest"), {})))
     .toMatchObject({ decision: "ask", reason: "Force pushes need a look." });
   const p = fixture({ PromptSubmit: [{ hooks: [command(allow)] }] });
