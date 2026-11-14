@@ -15,6 +15,7 @@ import { AgentModelPicker } from "./AgentModelPicker";
 import { RunOnControl, RunOnSummary, useRunOn } from "../best-of-n/RunOnPicker";
 import { GatewayBanner } from "../shell/GatewayBanner";
 import { TemporaryThreadBanner } from "../threads/ThreadMarks";
+import { useThreadActions } from "../threads/ThreadActions";
 import { GATEWAY_CONNECTION_REQUIRED } from "../../lib/harness-preflight";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { FileEntry } from "@capsule/shared";
@@ -127,6 +128,7 @@ export function Composer({
   awayFromLatest?: boolean;
 }) {
   const workspace = useWorkspace();
+  const threadActions = useThreadActions();
   const handoff = useHandoff();
   const { contextUsage } = workspace;
   const {
@@ -843,12 +845,16 @@ export function Composer({
           <div className={`composer-preflight${readOnlyViewer ? " read-only" : ""}`} role="status">
             <span title={sendBlockReason}>{sendBlockReason}</span>
             {/* A read-only viewer can do neither; the reason is the whole message. */}
-            {readOnlyViewer ? null : selectedHarness ? (
+            {readOnlyViewer ? null : session?.paused ? (
+              <button className="ghost" type="button" onClick={() => void threadActions.resume(session.id)}>
+                Resume
+              </button>
+            ) : selectedHarness ? (
               <button className="ghost" type="button" onClick={() => void doctorHarness(selectedHarness.id)}>
                 Run Doctor
               </button>
             ) : null}
-            {readOnlyViewer ? null : <button className="ghost" type="button" onClick={() => setView("runtimes")}>
+            {readOnlyViewer || session?.paused ? null : <button className="ghost" type="button" onClick={() => setView("runtimes")}>
               Open Agents
             </button>}
           </div>

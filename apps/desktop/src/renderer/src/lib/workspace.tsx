@@ -680,7 +680,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     : api.isDesktop === false && api.remoteMode !== "control"
     ? "This browser is read-only. Create a conversation-control pairing link from the desktop to send messages."
     : session?.paused
-    ? "This conversation is paused. Resume it from its menu to continue."
+    ? "This conversation is paused. Resume it to continue."
     : harnessPreflightReason({
     harness: mode === "code" ? selectedHarness : undefined,
     connected,
