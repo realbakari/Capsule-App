@@ -114,3 +114,18 @@ it("closes its owned child when initialization times out", async () => {
   try { await expect(f.session.discover()).rejects.toThrow("in time"); expect(f.session.running).toBe(false); }
   finally { await f.cleanup(); }
 });
+
+it("adds offered MCP servers to a real session, beside the agent's own", async () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), "capsule-claude-test-"));
+  const log = path.join(cwd, "wire.jsonl");
+  const session = new DirectClaudeSession({ command: process.execPath, args: [fixture, "normal"], cwd, timeoutMs: 2000,
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", CAPSULE_CLAUDE_TEST_LOG: log },
+    mcpServers: [{ name: "docs", command: "docs-mcp", args: [], env: [{ name: "TOKEN", value: "t" }] }] });
+  try {
+    await session.start();
+    const wire = readFileSync(log, "utf8");
+    expect(wire).toContain("--mcp-config");
+    expect(wire).toContain("docs-mcp");
+    expect(wire).not.toContain("--strict-mcp-config");
+  } finally { await session.close(); rmSync(cwd, { recursive: true, force: true }); }
+});
