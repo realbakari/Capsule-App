@@ -39,7 +39,8 @@ export const SURFACES: Surface[] = [
     icon: DiffSquareIcon,
     inBar: true,
     shortcut: "⇧⌘D",
-    blockedBy: ({ git }) => (git?.isRepo ? undefined : "Available for Git repositories."),
+    // Unknown until the status loads; only a folder known not to be a repository is blocked.
+    blockedBy: ({ git }) => (git?.isRepo === false ? "Available for Git repositories." : undefined),
   },
   {
     tool: "browser", key: "b",

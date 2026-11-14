@@ -23,6 +23,10 @@ describe("inspector surfaces", () => {
     );
   });
 
+  it("does not block review while the repository status is still loading", () => {
+    expect(reasons({ projectId: "p1" }).review).toBeUndefined();
+  });
+
   it("opens everything once there is a project and a repository", () => {
     const blocked = reasons({ projectId: "p1", git: { isRepo: true } });
     expect(Object.values(blocked).every((reason) => reason === undefined)).toBe(true);
