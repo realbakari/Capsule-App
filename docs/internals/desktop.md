@@ -2340,7 +2340,8 @@ conversation. The home screen is unchanged.
 The composer row holds `TurnModeChip` right after `AgentModelPicker`. It shows
 **Plan** or **Act** for the next turn, `aria-pressed` when planning, and its
 tooltip is the registry's label and detail (see `docs/internals/harness.md`).
-An unenforced plan turn draws the chip with a dashed border. `⇧Tab` in the
+An unenforced plan turn draws the chip with a dashed border. Below a 28rem
+composer it keeps only its icon, as the approvals chip does. `⇧Tab` in the
 prompt toggles it, after the suggestion menu's Tab branch so Tab still picks a
 suggestion. A thread with no session keeps a draft mode in `lib/turn-mode.ts`
 and passes it to `createSession`. The palette offers **Switch to Plan mode** or
