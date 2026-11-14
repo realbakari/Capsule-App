@@ -39,7 +39,7 @@ export function BrowserFindBar({ view, onClose }: { view: WebviewTag | null; onC
     <div className="browser-find" role="search" aria-label="Find on page">
       <input
         ref={input}
-        type="search"
+        type="text"
         placeholder="Find on page"
         aria-label="Find on page"
         value={query}
