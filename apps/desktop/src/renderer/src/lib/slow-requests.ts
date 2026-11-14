@@ -26,7 +26,8 @@ export function watchesRequest(name: string): boolean {
  */
 export function withSlowNotice<T extends object>(api: T, slow: (name: string, waiting: boolean) => void, delay = SLOW_REQUEST_MS): T {
   const pending = new Map<string, number>();
-  const wrapped = new Map<PropertyKey, unknown>();
+  // Keyed by the function wrapped, so a method replaced on the bridge is wrapped afresh.
+  const wrapped = new WeakMap<object, unknown>();
   const target = api;
   // An empty stand-in, so a frozen bridge's property invariants never bind the wrapper.
   return new Proxy({} as T, {
@@ -39,7 +40,7 @@ export function withSlowNotice<T extends object>(api: T, slow: (name: string, wa
     get(_, property) {
       const value = Reflect.get(target, property, target);
       if (typeof value !== "function" || typeof property !== "string" || !watchesRequest(property)) return value;
-      const cached = wrapped.get(property);
+      const cached = wrapped.get(value);
       if (cached) return cached;
       const call = (...args: unknown[]) => {
         const result = (value as (...a: unknown[]) => unknown).apply(target, args);
@@ -60,7 +61,7 @@ export function withSlowNotice<T extends object>(api: T, slow: (name: string, wa
         result.then(settle, settle);
         return result;
       };
-      wrapped.set(property, call);
+      wrapped.set(value, call);
       return call;
     },
   });

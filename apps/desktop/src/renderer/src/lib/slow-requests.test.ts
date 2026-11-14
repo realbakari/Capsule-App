@@ -18,6 +18,14 @@ describe("slow request notices", () => {
     expect(events).toEqual([["gitPush", true], ["gitPush", false]]);
   });
 
+  it("calls a method replaced on the bridge after an earlier call", async () => {
+    const bridge = { quick: async () => "first" };
+    const api = withSlowNotice(bridge, () => undefined, 100);
+    expect(await api.quick()).toBe("first");
+    bridge.quick = async () => "second";
+    expect(await api.quick()).toBe("second");
+  });
+
   it("stays quiet for fast calls and keeps plain values and getters", async () => {
     vi.useFakeTimers();
     const events: unknown[] = [];
