@@ -40,6 +40,8 @@
   cursor: zoom-in;
 }
 .md-diagram-canvas svg { max-width: 100%; height: auto; }
+/* The diagram theme draws a drop shadow under every node; the transcript is flat. */
+.md-diagram-canvas svg * { filter: none !important; }
 .md-diagram-failed { margin: 0.8em 0; }
 .md-diagram-failed .msg-code-wrap { margin-top: 0.35rem; }
 .md-media-note {

@@ -2,10 +2,11 @@
 .main:has(> .timeline-rail) { position: relative; }
 .timeline-rail {
   position: absolute;
-  right: 0.25rem;
+  /* Clear of the transcript's own scrollbar. */
+  right: calc(var(--app-scrollbar-width, 0.625rem) + 0.375rem);
   width: 0.625rem;
   z-index: var(--z-sticky);
-  opacity: 0.55;
+  opacity: 0.8;
   transition: opacity var(--motion-fast) var(--motion-ease);
 }
 .timeline-rail:hover { opacity: 1; }
@@ -19,14 +20,14 @@
 }
 .timeline-rail-mark {
   position: absolute;
-  left: 0.1875rem;
-  right: 0.1875rem;
+  left: 0.125rem;
+  right: 0.125rem;
   min-height: 2px;
   padding: 0;
   border: 0;
   border-top: 2px solid var(--background, var(--bg));
   border-radius: var(--radius-xs);
-  background: color-mix(in srgb, var(--text) 32%, transparent);
+  background: color-mix(in srgb, var(--text) 42%, transparent);
   cursor: pointer;
 }
 .timeline-rail-mark:hover { background: var(--accent); }

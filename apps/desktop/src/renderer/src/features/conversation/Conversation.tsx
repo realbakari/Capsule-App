@@ -163,7 +163,7 @@ function TurnStatusLine({
   // answer, which is that nothing has come back yet.
   const { pendingApproval } = useWorkspace();
   const asking = Boolean(pendingApproval?.runId === run.id && pendingApproval.details?.questions?.length);
-  const state = stopping ? "Stopping — waiting for the runtime" : `${runActivityLabel(run, false, asking)} · ${activity?.trim() || `Waiting for ${agentName}`}`;
+  const state = stopping ? "Stopping — waiting for the runtime" : asking ? runActivityLabel(run, false, true) : `${runActivityLabel(run)} · ${activity?.trim() || `Waiting for ${agentName}`}`;
   return (
     <div className="turn-status">
       <span>{stopping ? "Stopping" : run.status === "running" ? "Working" : runActivityLabel(run, false, asking)}</span>
@@ -179,8 +179,10 @@ function TurnStatusLine({
           </span>
         </>
       ) : null}
-      <span className="turn-status-dot" aria-hidden>·</span>
-      <span className="turn-status-state" title={state}>{activity?.trim() || `Waiting for ${agentName}`}</span>
+      {!asking && <>
+        <span className="turn-status-dot" aria-hidden>·</span>
+        <span className="turn-status-state" title={state}>{activity?.trim() || `Waiting for ${agentName}`}</span>
+      </>}
     </div>
   );
 }
