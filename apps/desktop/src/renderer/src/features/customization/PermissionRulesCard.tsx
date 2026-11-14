@@ -16,6 +16,7 @@ const SCOPE_LABELS: Record<Provenance["scope"], string> = {
   project: "Project",
   local: "Project, only me",
   legacy: "capsule.json",
+  plugin: "Plugin",
   default: "Built in",
 };
 

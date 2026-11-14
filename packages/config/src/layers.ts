@@ -45,7 +45,7 @@ export interface MergedConfig {
 }
 
 /** Lowest first. A thread's own choice sits above all of these and is not a file. */
-const PRECEDENCE: Record<LayerScope, number> = { user: 0, legacy: 1, project: 2, local: 3 };
+const PRECEDENCE: Record<LayerScope, number> = { plugin: -1, user: 0, legacy: 1, project: 2, local: 3 };
 
 const SECRET_KEYS = new Set(["gatewayToken", "skillsShToken"]);
 
@@ -55,7 +55,8 @@ const SECRET_KEYS = new Set(["gatewayToken", "skillsShToken"]);
  */
 export function readLayer(raw: Record<string, unknown>, file: { scope: LayerScope; path: string; trusted: boolean }): LayerReading {
   const { scope, path, trusted } = file;
-  const fromProject = scope !== "user";
+  // An installed plugin is the person's own choice, so it reads like their file.
+  const fromProject = scope === "project" || scope === "local" || scope === "legacy";
   const problems: ConfigProblem[] = [];
   const pending: PendingTrustItem[] = [];
   const values: Record<string, unknown> = {};

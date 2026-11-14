@@ -34,7 +34,7 @@ export function SettingSource({ setting }: { setting: FileSettingKey }) {
   return (
     <span className="setting-source">
       {chip && <SourceChip chip={chip} state={state} />}
-      {chip && chip.layer !== "legacy" && state.editable && (
+      {chip && chip.layer !== "legacy" && chip.layer !== "plugin" && state.editable && (
         <button
           type="button"
           className="setting-source-reset"

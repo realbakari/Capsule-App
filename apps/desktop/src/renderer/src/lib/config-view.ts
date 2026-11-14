@@ -25,6 +25,7 @@ const FILE_LABELS: Record<FileScope, string> = {
   project: "project",
   local: "project (local)",
   legacy: "capsule.json",
+  plugin: "plugin",
 };
 
 /** The "Save to" choices, in the order the control shows them. */
@@ -37,8 +38,8 @@ export const SAVE_TARGETS: ReadonlyArray<{ scope: WritableScope; label: string; 
 /** A file that set a value, as a provenance chip names and opens it. */
 export interface SettingSourceChip {
   label: string;
-  /** `legacy` is capsule.json, which the project screen edits; Reset cannot remove from it. */
-  layer: WritableScope | "legacy";
+  /** `legacy` is capsule.json, which the project screen edits; `plugin` is a plugin's manifest. Reset removes from neither. */
+  layer: WritableScope | "legacy" | "plugin";
   path: string;
 }
 
@@ -60,7 +61,7 @@ export function settingsFileTarget(scope: WritableScope, projectId?: string): Co
 export function sourceFileTarget(source: Pick<ConfigSourceReport, "kind" | "scope">, projectId?: string): ConfigFileTarget | undefined {
   if (source.kind === "keybindings") return { kind: "keybindings" };
   if (source.kind !== "settings" || source.scope === "legacy" || source.scope === "default") return undefined;
-  if (source.scope !== "user" && !projectId) return undefined;
+  if (source.scope === "plugin" || (source.scope !== "user" && !projectId)) return undefined;
   return settingsFileTarget(source.scope, projectId);
 }
 
@@ -128,7 +129,7 @@ export function modifiedKeys(snapshot: ConfigSnapshot | undefined): Set<string> 
   return keys;
 }
 
-const SCOPE_RANK: Record<ConfigScope, number> = { local: 0, project: 1, legacy: 2, user: 3, default: 4 };
+const SCOPE_RANK: Record<ConfigScope, number> = { local: 0, project: 1, legacy: 2, user: 3, plugin: 4, default: 5 };
 
 /** Settings files strongest first, then the other files Capsule read. */
 export function sourcesByPrecedence(sources: readonly ConfigSourceReport[]): ConfigSourceReport[] {

@@ -23,7 +23,8 @@
 }
 .setting-source-chip[data-layer="project"],
 .setting-source-chip[data-layer="local"],
-.setting-source-chip[data-layer="legacy"] {
+.setting-source-chip[data-layer="legacy"],
+.setting-source-chip[data-layer="plugin"] {
   border-color: color-mix(in srgb, var(--text) 22%, transparent);
   color: var(--text);
 }

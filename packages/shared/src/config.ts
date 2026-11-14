@@ -12,9 +12,10 @@ import type { StatusLineRender } from "./status-line.js";
 /**
  * The layers a value can come from, highest precedence first after the
  * thread's own choice. `default` is the built-in value. `legacy` is a key the
- * project's `capsule.json` sets (only `defaultWorkspaceMode`).
+ * project's `capsule.json` sets (only `defaultWorkspaceMode`). `plugin` is an
+ * enabled plugin's manifest, below the user's own file.
  */
-export type ConfigScope = "local" | "project" | "legacy" | "user" | "default";
+export type ConfigScope = "local" | "project" | "legacy" | "user" | "plugin" | "default";
 
 /** The layers a person can write to from the Settings UI. */
 export type WritableScope = "user" | "project" | "local";
@@ -319,6 +320,13 @@ export interface AutomationConfig {
 /** Other tools' folders read as Markdown only, each opt-in. */
 export type CommandSourceId = "claude-commands" | "claude-skills" | "codex-prompts";
 
+/** A plugin's entry in the user file. `path` registers a folder in place, for development. */
+export interface PluginSetting {
+  enabled?: boolean;
+  mayApprove?: boolean;
+  path?: string;
+}
+
 export interface OpenWithHandler {
   id: string;
   label: string;
@@ -336,7 +344,7 @@ export interface ExtendedConfig {
   themeOverrides?: Record<string, Record<string, string>>;
   automations?: AutomationConfig[];
   commandSources?: Partial<Record<CommandSourceId, boolean>>;
-  plugins?: Record<string, { enabled?: boolean }>;
+  plugins?: Record<string, PluginSetting>;
   style?: string;
   personalInstructions?: string;
   openWith?: OpenWithHandler[];
@@ -366,7 +374,7 @@ export interface EffectiveExtendedConfig {
   theme?: ThemeSelection;
   themeOverrides: Record<string, Record<string, string>>;
   commandSources: Partial<Record<CommandSourceId, boolean>>;
-  plugins: Record<string, { enabled?: boolean }>;
+  plugins: Record<string, PluginSetting>;
   style?: string;
   personalInstructions?: string;
   openWith: OpenWithHandler[];

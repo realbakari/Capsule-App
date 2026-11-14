@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
@@ -38,7 +38,15 @@ import {
   type ProjectFileState,
   type Provenance,
   type WritableScope,
+  BUNDLED_THEMES,
+  checkPluginOptionValue,
+  pluginOptionEnvName,
+  type PluginManifest,
+  type PluginOption,
+  type PluginOptionValue,
+  type PluginSetting,
 } from "@capsule/shared";
+import { pluginFolderStamp, pluginResources, pluginTextFiller, readPluginFolder, type PluginReading } from "./plugins.js";
 import { commandFolders, readCommandCatalog, type CommandCatalog, type CommandFolder } from "./commands.js";
 import { excludeFromGit } from "./git-exclude.js";
 import { editJsonc, parseJsonc, readJsonc, writeJsonc, type JsoncEdit, type JsoncFile } from "./jsonc.js";
@@ -70,6 +78,22 @@ export interface ConfigServiceOptions {
   watch?: boolean | ConfigWatcherOptions;
   /** Where other tools' command folders are looked for when the user turns them on. */
   homeDir?: string;
+  /** Checked against a plugin's `capsule` range. */
+  appVersion?: string;
+}
+
+/** A plugin Capsule knows of: installed under `plugins/`, or registered in place for development. */
+export interface KnownPlugin {
+  name: string;
+  root: string;
+  dev: boolean;
+  enabled: boolean;
+  mayApprove: boolean;
+  reading: PluginReading;
+  /** Option values that are not secrets, kept in the plugin's data folder. */
+  values: Record<string, PluginOptionValue>;
+  dataDir: string;
+  stamp: string;
 }
 
 /** Settings and extended configuration for one project folder. */
@@ -131,6 +155,7 @@ export class ConfigService {
   private watcher?: ConfigWatcher;
   /** What every known command and theme folder held at the last read, so an edit to one is a change. */
   private commandFiles = "";
+  private knownPlugins: KnownPlugin[] = [];
   private loaded = false;
   private closed = false;
 
@@ -151,6 +176,7 @@ export class ConfigService {
     if (this.options.watch !== false) {
       this.watcher = new ConfigWatcher(() => this.reload(), typeof this.options.watch === "object" ? this.options.watch : {});
       this.watcher.add(this.paths.userDir, "dir");
+      for (const plugin of this.knownPlugins) if (plugin.dev) this.watcher.add(plugin.root, "dir");
     }
     this.commandFiles = this.commandFilesStamp();
   }
@@ -222,6 +248,10 @@ export class ConfigService {
     problems.push(...commands.problems);
     problems.push(...this.keybindingsFor(root).problems, ...this.themesFor(root).problems);
     problems.push(...this.profiles(root).problems, ...this.styles(root).problems);
+    for (const plugin of this.enabledPlugins()) {
+      sources.push({ kind: "plugin", scope: "plugin", path: plugin.reading.manifestPath, state: plugin.reading.manifest ? "ok" : "broken" });
+      problems.push(...plugin.reading.problems);
+    }
     const personal = this.personalInstructions();
     if (personal?.problem) problems.push({ severity: "warning", path: this.paths.userSettings, key: "personalInstructions", message: personal.problem });
     if (!resolution.trusted) {
@@ -347,12 +377,12 @@ export class ConfigService {
 
   /** Agent profiles from the user's and, given a root, the project's `profiles` folder. */
   profiles(root?: string): { profiles: ProfileEntry[]; problems: ConfigProblem[] } {
-    return readProfileCatalog(this.resources("profiles", root));
+    return readProfileCatalog([...this.resources("profiles", root), ...this.enabledPlugins().flatMap((plugin) => pluginResources(plugin.reading, "profiles"))]);
   }
 
   /** Response styles: files first, then the built-ins a file does not replace. */
   styles(root?: string): { styles: StyleEntry[]; problems: ConfigProblem[] } {
-    return readStyleCatalog(this.resources("styles", root));
+    return readStyleCatalog([...this.resources("styles", root), ...this.enabledPlugins().flatMap((plugin) => pluginResources(plugin.reading, "styles"))]);
   }
 
   /** The `personalInstructions` file's text, read now. `~` is home and a relative path is in the settings folder. */
@@ -567,6 +597,255 @@ export class ConfigService {
     this.setValue({ key: "theme", value: { ...selection, backdrop: { ...backdrop, image: `backdrops/${name}` } }, scope: "user" });
   }
 
+  /* ── Plugins ── */
+
+  /** Where installed plugins live, one folder each, named after the plugin. */
+  get pluginsDir(): string {
+    return path.join(this.paths.userDir, "plugins");
+  }
+
+  /** A plugin's own folder for data that outlives an update: its option values, and whatever its hooks keep. */
+  pluginDataDir(name: string): string {
+    return path.join(this.paths.userDir, "plugin-data", name);
+  }
+
+  /** Every installed and development plugin, on or off. Safe mode knows none. */
+  plugins(): KnownPlugin[] {
+    return [...this.knownPlugins];
+  }
+
+  /** The plugin whose manifest a hook, server or status line came from. */
+  pluginFor(source: Provenance | undefined): KnownPlugin | undefined {
+    if (source?.scope !== "plugin") return undefined;
+    return this.knownPlugins.find((plugin) => plugin.reading.manifestPath === source.path);
+  }
+
+  /** A plugin's PermissionRequest hooks may answer allow only once the person has let them. */
+  mayApprove(source: Provenance): boolean {
+    return source.scope !== "plugin" || this.pluginFor(source)?.mayApprove === true;
+  }
+
+  /** What a plugin's hook or status line command finds in its environment, secrets aside. */
+  pluginEnvironment(source: Provenance | undefined): Record<string, string> {
+    const plugin = this.pluginFor(source);
+    if (!plugin) return {};
+    const env: Record<string, string> = { CAPSULE_PLUGIN_ROOT: plugin.root, CAPSULE_PLUGIN_DATA: plugin.dataDir };
+    for (const [key, value] of Object.entries(plugin.values)) env[pluginOptionEnvName(key)] = String(value);
+    return env;
+  }
+
+  /** The skills folders of plugins that are on. */
+  pluginSkillFolders(): Array<{ name: string; dir: string }> {
+    return this.enabledPlugins().flatMap((plugin) => (plugin.reading.folders.skills ? [{ name: plugin.name, dir: plugin.reading.folders.skills }] : []));
+  }
+
+  /** Read a folder as a plugin without registering it: the install screen and Validate. */
+  inspectPluginFolder(root: string): PluginReading {
+    return readPluginFolder(root, { appVersion: this.options.appVersion });
+  }
+
+  /**
+   * Copy a checked folder into `plugins/<name>`, replacing an older copy.
+   * A first install starts off; the caller turns it on once its options are
+   * filled in. The settings entry and data folder of an update are kept.
+   */
+  installPlugin(staged: string): KnownPlugin {
+    if (this.safeMode) throw new Error(SAFE_MODE_WRITE_ERROR);
+    const reading = this.inspectPluginFolder(staged);
+    const name = this.assertInstallable(reading);
+    const existing = this.knownPlugins.find((plugin) => plugin.name === name);
+    if (existing?.dev) throw new Error(`${name} is loaded from ${existing.root} for development. Remove it before installing a copy.`);
+    mkdirSync(this.pluginsDir, { recursive: true });
+    const target = path.join(this.pluginsDir, name);
+    const incoming = path.join(this.pluginsDir, `.incoming-${name}-${process.pid}`);
+    const outgoing = path.join(this.pluginsDir, `.outgoing-${name}-${process.pid}`);
+    rmSync(incoming, { recursive: true, force: true });
+    rmSync(outgoing, { recursive: true, force: true });
+    cpSync(staged, incoming, { recursive: true, verbatimSymlinks: true });
+    if (existsSync(target)) renameSync(target, outgoing);
+    renameSync(incoming, target);
+    rmSync(outgoing, { recursive: true, force: true });
+    if (!existing) this.writePluginSetting(name, { enabled: false });
+    else this.readPlugins();
+    return this.requirePlugin(name);
+  }
+
+  /** Register a folder in place, for a plugin's author. Nothing is copied, and edits apply on save. */
+  registerDevPlugin(root: string): KnownPlugin {
+    if (this.safeMode) throw new Error(SAFE_MODE_WRITE_ERROR);
+    const reading = this.inspectPluginFolder(root);
+    const name = this.assertInstallable(reading);
+    const existing = this.knownPlugins.find((plugin) => plugin.name === name);
+    if (existing && !existing.dev) throw new Error(`A plugin named ${name} is installed. Uninstall it before loading this folder.`);
+    this.writePluginSetting(name, { enabled: false, mayApprove: undefined, path: path.resolve(root) });
+    this.watcher?.add(path.resolve(root), "dir");
+    return this.requirePlugin(name);
+  }
+
+  setPluginEnabled(name: string, enabled: boolean): void {
+    const plugin = this.requirePlugin(name);
+    if (enabled && !plugin.reading.manifest) throw new Error(plugin.reading.problems[0]?.message ?? `${name} cannot be read.`);
+    this.writePluginSetting(name, { enabled });
+  }
+
+  /** Let, or stop letting, a plugin's PermissionRequest hooks answer allow. */
+  setPluginMayApprove(name: string, mayApprove: boolean): void {
+    this.requirePlugin(name);
+    this.writePluginSetting(name, { mayApprove: mayApprove || undefined });
+  }
+
+  /** Save option values that are not secrets in the plugin's data folder. `null` clears one. */
+  setPluginValues(name: string, values: Record<string, PluginOptionValue | null>): void {
+    if (this.safeMode) throw new Error(SAFE_MODE_WRITE_ERROR);
+    const plugin = this.requirePlugin(name);
+    const options = plugin.reading.manifest?.userConfig ?? [];
+    const next: Record<string, PluginOptionValue> = { ...this.storedPluginValues(name) };
+    for (const [key, value] of Object.entries(values)) {
+      const option = options.find((item) => item.key === key);
+      if (!option) throw new Error(`${name} has no option named ${key}.`);
+      if (option.type === "secret") throw new Error(`${option.title} is a secret, which is kept in the Keychain.`);
+      if (value === null) {
+        delete next[key];
+        continue;
+      }
+      const checked = checkPluginOptionValue(option, value);
+      if (!checked.ok) throw new Error(`${option.title} ${checked.message}`);
+      next[key] = checked.value;
+    }
+    const file = path.join(this.pluginDataDir(name), "config.json");
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileAtomic(file, `${JSON.stringify(next, null, 2)}\n`);
+    this.readPlugins();
+  }
+
+  /**
+   * Remove a plugin: its settings entry, its option values and, for an
+   * installed copy, its folder. A development folder is the author's own and
+   * is never deleted.
+   */
+  uninstallPlugin(name: string): void {
+    if (this.safeMode) throw new Error(SAFE_MODE_WRITE_ERROR);
+    const plugin = this.requirePlugin(name);
+    if (!plugin.dev) rmSync(plugin.root, { recursive: true, force: true });
+    rmSync(this.pluginDataDir(name), { recursive: true, force: true });
+    const current = this.userPluginSettings();
+    const { [name]: _removed, ...rest } = current;
+    this.setValues("user", { plugins: Object.keys(rest).length ? rest : undefined });
+  }
+
+  private enabledPlugins(): KnownPlugin[] {
+    return this.knownPlugins.filter((plugin) => plugin.enabled && plugin.reading.manifest);
+  }
+
+  private requirePlugin(name: string): KnownPlugin {
+    const plugin = this.knownPlugins.find((item) => item.name === name);
+    if (!plugin) throw new Error(`There is no plugin named ${name}.`);
+    return plugin;
+  }
+
+  private assertInstallable(reading: PluginReading): string {
+    const failure = reading.problems.find((problem) => problem.severity === "error");
+    if (failure || !reading.manifest) throw new Error(failure?.message ?? "This folder is not a plugin.");
+    return reading.manifest.name;
+  }
+
+  private userPluginSettings(): Record<string, PluginSetting> {
+    const value = this.user.raw?.plugins;
+    return isPlainObject(value) ? (value as Record<string, PluginSetting>) : {};
+  }
+
+  /** Merge fields into one plugin's entry in the user file; `undefined` removes a field. */
+  private writePluginSetting(name: string, patch: Partial<Record<keyof PluginSetting, unknown>>): void {
+    const current = this.userPluginSettings();
+    const entry: Record<string, unknown> = { ...(isPlainObject(current[name]) ? current[name] : {}) };
+    for (const [key, value] of Object.entries(patch)) {
+      if (value === undefined) delete entry[key];
+      else entry[key] = value;
+    }
+    this.setValues("user", { plugins: { ...current, [name]: entry } });
+  }
+
+  private storedPluginValues(name: string): Record<string, PluginOptionValue> {
+    try {
+      const value = JSON.parse(readFileSync(path.join(this.pluginDataDir(name), "config.json"), "utf8")) as unknown;
+      return isPlainObject(value) ? (value as Record<string, PluginOptionValue>) : {};
+    } catch {
+      return {};
+    }
+  }
+
+  /** Stored values checked against the manifest, with defaults for options never set. */
+  private pluginValues(manifest: PluginManifest): Record<string, PluginOptionValue> {
+    const stored = this.storedPluginValues(manifest.name);
+    const values: Record<string, PluginOptionValue> = {};
+    for (const option of manifest.userConfig) {
+      if (option.type === "secret") continue;
+      const checked = option.key in stored ? checkPluginOptionValue(option, stored[option.key]) : undefined;
+      if (checked?.ok) values[option.key] = checked.value;
+      else if (option.default !== undefined) values[option.key] = option.default;
+    }
+    return values;
+  }
+
+  private pluginVariables(manifest: PluginManifest, values: Record<string, PluginOptionValue>) {
+    return {
+      data: this.pluginDataDir(manifest.name),
+      values: Object.fromEntries(Object.entries(values).map(([key, value]) => [key, String(value)])),
+      secrets: new Set(manifest.userConfig.filter((option: PluginOption) => option.type === "secret").map((option) => option.key)),
+    };
+  }
+
+  /** Installed folders, then development folders the user file registers. A second plugin with a name already taken is skipped. */
+  private readPlugins(): void {
+    if (this.safeMode) return;
+    const settings = this.userPluginSettings();
+    const found: Array<{ root: string; dev: boolean; folder: string }> = [];
+    try {
+      for (const entry of readdirSync(this.pluginsDir, { withFileTypes: true })) {
+        if (entry.isDirectory() && !entry.name.startsWith(".")) found.push({ root: path.join(this.pluginsDir, entry.name), dev: false, folder: entry.name });
+      }
+    } catch {
+      // No plugins folder yet.
+    }
+    for (const [name, setting] of Object.entries(settings)) {
+      if (isPlainObject(setting) && typeof setting.path === "string" && setting.path.trim()) found.push({ root: this.userPath(setting.path), dev: true, folder: name });
+    }
+    const known: KnownPlugin[] = [];
+    for (const { root, dev, folder } of found) {
+      let values: Record<string, PluginOptionValue> = {};
+      const reading = readPluginFolder(root, {
+        appVersion: this.options.appVersion,
+        variables: (manifest) => {
+          values = this.pluginValues(manifest);
+          return this.pluginVariables(manifest, values);
+        },
+      });
+      const name = reading.manifest?.name ?? folder;
+      if (reading.manifest && name !== folder) {
+        reading.problems.push({ severity: "error", path: reading.manifestPath, key: "name", message: `This plugin is named ${name}, but ${dev ? "the settings entry" : "its folder"} is ${folder}. Install it again.` });
+        reading.manifest = undefined;
+      }
+      if (known.some((plugin) => plugin.name === name)) continue;
+      const setting = isPlainObject(settings[name]) ? settings[name] : {};
+      known.push({
+        name, root, dev,
+        enabled: setting.enabled === true,
+        mayApprove: setting.mayApprove === true,
+        reading, values,
+        dataDir: this.pluginDataDir(name),
+        stamp: pluginFolderStamp(root),
+      });
+      if (dev) this.watcher?.add(root, "dir");
+    }
+    this.knownPlugins = known.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  /** `~` is home and a relative path is in the settings folder, as for personal instructions. */
+  private userPath(written: string): string {
+    const home = this.options.homeDir ?? homedir();
+    return written === "~" || written.startsWith("~/") ? path.join(home, written.slice(1)) : path.resolve(this.paths.userDir, written);
+  }
+
   /** Re-read every file now. Listeners hear about it when anything changed. */
   reload(): boolean {
     if (this.safeMode || this.closed || !this.loaded) return false;
@@ -608,7 +887,8 @@ export class ConfigService {
   }
 
   private themeCatalog(root?: string): ThemeCatalog {
-    return readThemeCatalog(this.resources("themes", root));
+    const bundled = new Set(BUNDLED_THEMES.map((theme) => theme.id));
+    return readThemeCatalog(this.resources("themes", root), this.enabledPlugins().flatMap((plugin) => plugin.reading.themes.filter((entry) => !bundled.has(entry.theme.id))));
   }
 
   private themesFor(root?: string): { state: ThemeState; problems: ConfigProblem[] } {
@@ -643,6 +923,8 @@ export class ConfigService {
       reading: source.raw ? readLayer(source.raw, { scope: source.scope, path: source.path, trusted }) : undefined,
     }));
     for (const { reading } of readings) if (reading) layers.push(reading.layer);
+    // Values were checked against the registry when the plugin was read.
+    for (const plugin of this.enabledPlugins()) layers.push({ scope: "plugin", path: plugin.reading.manifestPath, values: plugin.reading.values });
     return { merged: mergeLayers(layers, this.defaults), trusted, readings, legacy };
   }
 
@@ -672,6 +954,11 @@ export class ConfigService {
       homeDir: this.options.homeDir ?? homedir(),
       root: root ? path.resolve(root) : undefined,
       sources: this.resolve().merged.extended.commandSources,
+      pluginDirs: this.enabledPlugins().flatMap((plugin) => {
+        const dir = plugin.reading.folders.commands;
+        const fill = pluginTextFiller(plugin.reading, this.pluginVariables(plugin.reading.manifest!, plugin.values));
+        return dir ? [{ dir, ...(fill ? { fill } : {}) }] : [];
+      }),
     });
     for (const folder of folders) if (folder.source === "claude" || folder.source === "codex") this.watcher?.add(folder.dir, "dir");
     return folders;
@@ -687,12 +974,14 @@ export class ConfigService {
         for (const file of this.resources(kind, root)) hash.update(`${file.path}\0${file.text}\0`);
       }
     }
+    for (const plugin of this.knownPlugins) hash.update(`${plugin.root}\0${plugin.stamp}\0`);
     return hash.digest("hex");
   }
 
   private readUser(): void {
     this.user = this.readSource("user", this.paths.userSettings);
     this.keybindingsFile = readJsonc(this.paths.keybindings);
+    this.readPlugins();
   }
 
   private readProject(root: string): ProjectSources {
@@ -727,6 +1016,7 @@ export class ConfigService {
     return JSON.stringify([
       text(this.user.file),
       text(this.keybindingsFile),
+      this.knownPlugins.map((plugin) => [plugin.root, plugin.stamp]),
       [...this.projects].map(([root, sources]) => [root, text(sources.project.file), text(sources.local.file), sources.legacy]),
     ]);
   }

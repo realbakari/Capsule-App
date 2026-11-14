@@ -15,6 +15,8 @@ export interface CommandFolder {
   source: CommandSource;
   scope: "user" | "project";
   dir: string;
+  /** A plugin's folder fills in `${PLUGIN_ROOT}`, `${PLUGIN_DATA}` and its options before the file is parsed. */
+  fill?: (text: string) => string;
 }
 
 /** A command that can be invoked, and the file it came from. */
@@ -37,21 +39,20 @@ const FOREIGN: ReadonlySet<CommandSource> = new Set(["claude", "codex"]);
 /**
  * Every folder commands come from, in precedence order: the project's, the
  * user's, then plugins', then other tools' folders the user turned on.
- * `pluginDirs` is where the plugins feature lists each enabled plugin's
- * `commands/` folder.
+ * `pluginDirs` lists each enabled plugin's `commands/` folder.
  */
 export function commandFolders(input: {
   userDir: string;
   homeDir: string;
   root?: string;
   sources: Partial<Record<CommandSourceId, boolean>>;
-  pluginDirs?: readonly string[];
+  pluginDirs?: ReadonlyArray<{ dir: string; fill?: (text: string) => string }>;
 }): CommandFolder[] {
   const { userDir, homeDir, root, sources } = input;
   const folders: CommandFolder[] = [
     ...(root ? [{ source: "project" as const, scope: "project" as const, dir: path.join(root, PROJECT_CONFIG_DIR, "commands") }] : []),
     { source: "user", scope: "user", dir: path.join(userDir, "commands") },
-    ...(input.pluginDirs ?? []).map((dir) => ({ source: "plugin" as const, scope: "user" as const, dir })),
+    ...(input.pluginDirs ?? []).map(({ dir, fill }) => ({ source: "plugin" as const, scope: "user" as const, dir, ...(fill ? { fill } : {}) })),
   ];
   if (sources["claude-commands"]) {
     if (root) folders.push({ source: "claude", scope: "project", dir: path.join(root, ".claude", "commands") });
@@ -75,7 +76,7 @@ export function readCommandCatalog(folders: readonly CommandFolder[]): CommandCa
     const foreign = FOREIGN.has(folder.source);
     for (const file of listResourceFolder("commands", folder.scope, folder.dir)) {
       const name = commandNameFromPath(foreign ? file.name.toLowerCase() : file.name);
-      const parsed = parseCommandFile(name, file.text, { ignoreUnknownKeys: foreign });
+      const parsed = parseCommandFile(name, folder.fill ? folder.fill(file.text) : file.text, { ignoreUnknownKeys: foreign });
       for (const message of parsed.problems) problems.push({ severity: parsed.command ? "warning" : "error", path: file.path, message });
       if (!parsed.command) continue;
       const winner = winners.get(name);

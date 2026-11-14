@@ -203,8 +203,8 @@ export const EXTENDED_SCHEMA: Record<ExtendedConfigKey, SettingSpec> = {
   plugins: {
     scope: "user",
     apply: "live",
-    description: "Installed plugins, and whether each is on.",
-    schema: { type: "object", additionalProperties: { type: "object", properties: { enabled: { type: "boolean" } } } },
+    description: "Installed plugins: whether each is on, whether its hooks may approve requests, and folders loaded for development.",
+    schema: { type: "object", additionalProperties: { type: "object", properties: { enabled: { type: "boolean" }, mayApprove: { type: "boolean" }, path: { type: "string" } } } },
   },
   style: text("Response style id sent with the first turn of each conversation.", "both", "next-thread"),
   personalInstructions: text("A Markdown file of standing instructions sent to every agent.", "user", "next-thread"),

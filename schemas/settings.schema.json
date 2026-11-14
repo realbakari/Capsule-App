@@ -990,10 +990,16 @@
         "properties": {
           "enabled": {
             "type": "boolean"
+          },
+          "mayApprove": {
+            "type": "boolean"
+          },
+          "path": {
+            "type": "string"
           }
         }
       },
-      "description": "Installed plugins, and whether each is on. User settings only."
+      "description": "Installed plugins: whether each is on, whether its hooks may approve requests, and folders loaded for development. User settings only."
     },
     "style": {
       "type": "string",

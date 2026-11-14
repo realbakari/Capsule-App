@@ -124,7 +124,7 @@ export function SettingsView() {
 
   function openSource(chip: SettingSourceChip) {
     setError(undefined);
-    const opened = chip.layer === "legacy" ? api.openPath(chip.path) : api.configOpenFile(settingsFileTarget(chip.layer, projectConfig?.projectId));
+    const opened = chip.layer === "legacy" || chip.layer === "plugin" ? api.openPath(chip.path) : api.configOpenFile(settingsFileTarget(chip.layer, projectConfig?.projectId));
     void Promise.resolve(opened).catch(fail);
   }
 
