@@ -1,8 +1,13 @@
-import type { ConfigSnapshot } from "@capsule/shared";
+import type { ConfigSnapshot, ThemeSelection } from "@capsule/shared";
 import { settingsFileTarget } from "../../lib/config-view";
 import { formatUserError } from "../../lib/errors";
 import type { SearchDialogItem } from "../shell/SearchDialog";
-import { ChartIcon, FileIcon, KeyboardIcon, RefreshIcon, ShieldIcon } from "../shell/icons";
+import { ChartIcon, FileIcon, FolderIcon, GridIcon, KeyboardIcon, RefreshIcon, ShieldIcon, SunIcon } from "../shell/icons";
+
+/** `theme` with the backdrop turned off, whatever the chosen theme draws. Shared with the clear-backdrop key action. */
+export function clearedBackdrop(selection: ThemeSelection | undefined): ThemeSelection {
+  return { ...selection, backdrop: { scene: "none" } };
+}
 
 /**
  * The settings files from the command palette. Each reaches the host, so a
@@ -31,6 +36,13 @@ export function customizationCommands(input: {
       onSelect: run(() => api.configOpenFile(settingsFileTarget("user"))) },
     { id: "config-open-keybindings", label: "Open keybindings file", group, icon: <KeyboardIcon size={15} />, disabledReason: desktopOnly,
       onSelect: run(() => api.configOpenFile({ kind: "keybindings" })) },
+    { id: "theme-import", label: "Import theme from a file", group, icon: <SunIcon size={15} />, disabledReason: desktopOnly,
+      onSelect: run(() => api.themesImport({ from: "file" })) },
+    { id: "theme-open-folder", label: "Open themes folder", group, icon: <FolderIcon size={15} />, disabledReason: desktopOnly,
+      onSelect: run(() => api.configOpenFile({ kind: "folder", folder: "themes", scope: "user" })) },
+    { id: "backdrop-clear", label: "Clear backdrop", group, icon: <GridIcon size={15} />,
+      disabledReason: desktopOnly ?? (config?.themes.backdrop.light || config?.themes.backdrop.dark ? undefined : "No backdrop is drawn."),
+      onSelect: run(() => api.configSetValue({ key: "theme", value: clearedBackdrop(config?.themes.selection), scope: "user" })) },
     { id: "config-reload", label: "Reload customizations", group, icon: <RefreshIcon size={15} />,
       disabledReason: desktopOnly ?? (config?.safeMode ? "Safe mode reads no settings file." : undefined),
       onSelect: run(() => api.configReload(project?.projectId)) },

@@ -201,5 +201,5 @@ export function buildThemeState(input: ThemeStateInput): { state: ThemeState; pr
 
   const backdrop = { light: view("light", light), dark: view("dark", dark) };
   const unique = problems.filter((problem, index) => problems.findIndex((other) => other.path === problem.path && other.message === problem.message) === index);
-  return { state: { light, dark, themes, backdrop }, problems: unique };
+  return { state: { selection: selection ?? {}, overrides: { ...overrides }, light, dark, themes, backdrop }, problems: unique };
 }

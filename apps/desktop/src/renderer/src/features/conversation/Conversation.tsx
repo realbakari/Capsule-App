@@ -41,6 +41,7 @@ import { CopyButton } from "./CopyButton";
 import { turnTranscript } from "../../lib/turn-timeline";
 import { TurnTranscript } from "./TurnTranscript";
 import { TrustNotice } from "../customization/TrustNotice";
+import { ConversationBackdrop } from "../appearance/ConversationBackdrop";
 
 /*
  * One message. Memoized because a streamed frame appends a message rather
@@ -472,6 +473,7 @@ export function Conversation() {
 
   return (
     <section className={`main page-content${!historyPending && !historyError && visibleMessageCount === 0 ? " conversation-empty" : ""}`}>
+      <ConversationBackdrop />
       {shownNotice && (
         <div className="notice notice-dismissable" role="status">
           <span>{shownNotice}</span>

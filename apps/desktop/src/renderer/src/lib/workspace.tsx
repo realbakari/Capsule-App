@@ -664,7 +664,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       if (generation !== configLoad.current) return;
       setConfigView({ snapshot, diagnostics });
       setSettings(snapshot.settings);
-      applyAppearance(snapshot.settings);
+      applyAppearance(snapshot.settings, snapshot.themes);
     } catch (error) {
       console.warn("Could not read the settings files", error);
     }
@@ -2229,7 +2229,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     configLoad.current++;
     setConfigView((current) => current && { ...current, snapshot });
     setSettings(snapshot.settings);
-    applyAppearance(snapshot.settings);
+    applyAppearance(snapshot.settings, snapshot.themes);
     return snapshot;
   }
 

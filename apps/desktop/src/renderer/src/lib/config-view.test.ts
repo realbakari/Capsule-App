@@ -40,7 +40,7 @@ function snapshot(overrides: Partial<ConfigSnapshot> = {}): ConfigSnapshot {
       files: { project: true, local: true },
     },
     problemCount: 0,
-    themes: { light: "capsule-light", dark: "capsule-dark", themes: [], backdrop: {} },
+    themes: { selection: {}, overrides: {}, light: "capsule-light", dark: "capsule-dark", themes: [], backdrop: {} },
     keybindings: [],
     ...overrides,
   };

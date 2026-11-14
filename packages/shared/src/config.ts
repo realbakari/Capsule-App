@@ -172,6 +172,9 @@ export interface BackdropView extends Omit<EffectiveBackdrop, "image" | "imageBa
 }
 
 export interface ThemeState {
+  /** The `theme` and `themeOverrides` settings as written, for the Appearance screen to edit. */
+  selection: ThemeSelection;
+  overrides: Record<string, Record<string, string>>;
   /** The theme each appearance uses, after an unknown or wrong-appearance id falls back to the built-in. */
   light: string;
   dark: string;
