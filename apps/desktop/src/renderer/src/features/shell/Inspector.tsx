@@ -828,7 +828,7 @@ export function Inspector() {
           <button
             type="button"
             className="icon-btn"
-            title="Close panel (⌘\\)"
+            title="Close panel (⌘\)"
             aria-label="Close panel"
             onClick={toggleInspector}
           >
