@@ -1166,6 +1166,9 @@ function registerIpc(): void {
   handleArgs(IPC_CHANNELS.renameSession, [id, str], (sessionId: string, title: string) =>
     requireEngine().renameSession(sessionId, title),
   );
+  handleArgs(IPC_CHANNELS.setSessionTurnMode, [id, str], (sessionId: string, mode: string) =>
+    requireEngine().setSessionTurnMode(sessionId, mode as import("@capsule/shared").TurnMode),
+  );
   handleArgs(IPC_CHANNELS.archiveSession, [id], (sessionId: string) => {
     const session = requireEngine().archiveSession(sessionId);
     backgroundBrowsers.close(sessionId);

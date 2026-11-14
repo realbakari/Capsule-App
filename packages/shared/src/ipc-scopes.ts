@@ -91,6 +91,8 @@ export const CONTROL_CHANNELS = [
   "createSession", "sendMessage", "stopRun", "resolveApproval",
   // Queueing a follow-up is sending one later; it belongs with sendMessage.
   "updateFollowUps",
+  // Plan or Act decides how the next message is sent, so it travels with sendMessage.
+  "setSessionTurnMode",
 ] satisfies ChannelName[];
 const CONTROL_SET = new Set<string>(CONTROL_CHANNELS);
 

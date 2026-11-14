@@ -92,6 +92,8 @@ const api = {
     ipcRenderer.invoke(IPC_CHANNELS.setSessionWorkspaceMode, id, mode),
   renameSession: (id: string, title: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.renameSession, id, title),
+  setSessionTurnMode: (id: string, mode: import("@capsule/shared").TurnMode): Promise<{ session: import("@capsule/shared").Session; detail?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.setSessionTurnMode, id, mode),
   archiveSession: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.archiveSession, id),
   restoreSession: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.restoreSession, id),
   deleteSession: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.deleteSession, id),

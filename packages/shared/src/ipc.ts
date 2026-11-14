@@ -37,6 +37,7 @@ export const IPC_CHANNELS = {
   createSession: "capsule:createSession",
   setSessionWorkspaceMode: "capsule:setSessionWorkspaceMode",
   renameSession: "capsule:renameSession",
+  setSessionTurnMode: "capsule:setSessionTurnMode",
   archiveSession: "capsule:archiveSession",
   restoreSession: "capsule:restoreSession",
   deleteSession: "capsule:deleteSession",

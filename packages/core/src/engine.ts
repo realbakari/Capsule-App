@@ -21,6 +21,8 @@ import { ChannelRoutes } from "./channel-routes.js";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { prepareDirectPrompt } from "./direct-prompt.js";
+import { carryTurnMode } from "./turn-mode.js";
+import { isTurnMode, modeModelFor, planPrompt, type TurnMode } from "@capsule/shared";
 import { DirectMuseSession } from "@capsule/muse";
 import { DirectCodexSession } from "@capsule/codex";
 import { DirectClaudeSession } from "@capsule/claude";
@@ -302,6 +304,8 @@ export class CapsuleEngine {
   private directUnsub?: () => void;
   private directApprovals = new Map<string, { runId: string; canApproveOnce?: boolean; allow: () => void; deny: () => void; cancel: () => void }>();
   private admittingSessions = new Set<string>();
+  /** Gateway sessions Capsule put in the agent's plan mode; an Act turn switches them back. */
+  private gatewayPlanSessions = new Set<string>();
   /* Queued follow-ups and scheduled resumes, sent whichever conversation is on screen. */
   private readonly followUps = new FollowUpService({
     read: (key) => this.repos.getSetting(key),
@@ -940,6 +944,8 @@ export class CapsuleEngine {
     }
     const cwd = session.workingDirectory ?? input.cwd ?? project.workingDirectory;
 
+    // A model the thread already chose for this agent (a Plan or Act model) survives a spawn that names none.
+    const keptModel = input.sessionId && (session.harnessId ?? session.agentId) === harnessId ? session.modelOverride : undefined;
     session.agentId = harnessId;
     session.mode = "code";
     session.harnessId = harnessId;
@@ -947,7 +953,7 @@ export class CapsuleEngine {
     session.acpMode = input.mode ?? "persistent";
     const permissionProfile = input.permissionProfile ?? this.settings.defaultPermission;
     session.permissionProfile = permissionProfile;
-    session.modelOverride = input.model;
+    session.modelOverride = input.model ?? keptModel;
     session.updatedAt = nowIso();
 
     if (this.usingMock) {
@@ -1746,6 +1752,10 @@ export class CapsuleEngine {
         : "local";
     const session = createSessionRecord(project, { ...input, workspaceMode }, agentId);
     session.permissionProfile = input.permissionProfile ?? this.settings.defaultPermission;
+    const turnMode = isTurnMode(input.turnMode) ? input.turnMode : this.settings.startInPlanMode ? "plan" : undefined;
+    if (turnMode) session.turnMode = turnMode;
+    const modeModel = modeModelFor(this.settings.modeModels, agentId, turnMode ?? "act");
+    if (modeModel && !session.modelOverride) session.modelOverride = modeModel;
     if (isInboxProject(project) && !session.workingDirectory) {
       session.workingDirectory = allocateThreadFolder(
         ensureProjectlessFolder(this.projectlessRoot()),
@@ -1774,6 +1784,36 @@ export class CapsuleEngine {
     // through the session, which cannot be read before it is stored.
     if (session.workspaceMode === "worktree") this.runWorktreeSetupActions(session, project);
     return session;
+  }
+
+  /**
+   * Plan or Act for the thread's next turn. A model saved for that mode moves
+   * with it: applied to a live agent now, or kept for the agent's start.
+   */
+  async setSessionTurnMode(id: string, mode: TurnMode): Promise<{ session: Session; detail?: string }> {
+    this.assertWorkAllowed();
+    if (!isTurnMode(mode)) throw new Error("Choose Plan or Act.");
+    const session = this.requireSession(id);
+    session.turnMode = mode;
+    session.updatedAt = nowIso();
+    this.repos.updateSession(session);
+    const model = modeModelFor(this.settings.modeModels, session.harnessId ?? session.agentId, mode);
+    const label = mode === "plan" ? "Plan" : "Act";
+    let detail: string | undefined;
+    if (model && model !== session.modelOverride) {
+      if (session.harnessId && isLiveHarnessState(session.harnessState)) {
+        if (this.repos.findReplyRun(id)) detail = `The ${label} model was not applied: wait for this turn to finish, then choose it.`;
+        else {
+          try { await this.setHarnessOption({ sessionId: id, key: "model", value: model }); }
+          catch (error) { detail = `The ${label} model was not applied: ${error instanceof Error ? error.message : String(error)}`; }
+        }
+      } else {
+        session.modelOverride = model;
+        this.repos.updateSession(session);
+      }
+    }
+    this.events.emit("state", { command: "harness-updated" });
+    return { session: this.requireSession(id), ...(detail ? { detail } : {}) };
   }
 
   renameSession(id: string, title: string): Session {
@@ -2025,6 +2065,8 @@ export class CapsuleEngine {
       skillId,
       prompt,
     });
+    const turnMode: TurnMode = session.turnMode ?? "act";
+    run.turnMode = turnMode;
     run.status = "running";
     run.workingDirectory = startingCwd;
     this.repos.insertRun(run);
@@ -2156,6 +2198,30 @@ export class CapsuleEngine {
       }
       session.carryOver = current.carryOver;
     }
+    const carried = await carryTurnMode(turnMode, {
+      route: this.usingMock ? "mock" : isDirectSessionKey(session.openclawSessionKey) ? "direct" : "gateway",
+      harnessId,
+      harnessName: harnessId ? presetFor(harnessId)?.name ?? harnessId : undefined,
+      switchedToPlan: this.gatewayPlanSessions.has(session.id),
+      readOptions: async () => {
+        if (isDirectSessionKey(session.openclawSessionKey)) {
+          const options = this.direct.capabilities(session.openclawSessionKey!)?.configOptions;
+          return { options, reported: Boolean(options) };
+        }
+        if (!harnessId || !session.openclawSessionKey) return { reported: false };
+        const status = await this.harnessStatus(session.id);
+        return { options: status.parsed?.reported?.configOptions, reported: Boolean(status.parsed?.reported) };
+      },
+      setMode: async (optionId, value) => {
+        // Straight to the agent: the thread's saved configuration keeps its Act choice.
+        if (isDirectSessionKey(session.openclawSessionKey)) await this.direct.setConfig(session.openclawSessionKey!, optionId, value);
+        else await this.openclaw.setAcpOption(session.openclawSessionKey!, "mode", value);
+      },
+    });
+    if (!isDirectSessionKey(session.openclawSessionKey)) {
+      if (carried.inPlan) this.gatewayPlanSessions.add(session.id); else this.gatewayPlanSessions.delete(session.id);
+    }
+    if (carried.event) this.appendEvent(run.id, "plan-mode", carried.event.message, { step: "route", ...carried.event.data });
 
     let skillInstruction = "";
     if (activeSkill?.content) {
@@ -2169,8 +2235,9 @@ export class CapsuleEngine {
       ...(session.permissionProfile
         ? { permissionProfile: session.permissionProfile as HarnessPermissionProfile }
         : {}),
-      content: carriedHistory + applyAgentInstructionHints(runtimePrompt + skillInstruction, this.settings),
+      content: (carried.instruction ? planPrompt : (text: string) => text)(carriedHistory + applyAgentInstructionHints(runtimePrompt + skillInstruction, this.settings)),
       attachments,
+      turnMode,
       sessionId: this.usingMock ? session.id : (session.openclawSessionKey ?? session.id),
       agentId: this.usingMock ? agentId : undefined,
       skillId,

@@ -65,6 +65,7 @@ describe("ipc scopes", () => {
       "updateFollowUps",
       "createBoardCard",
       "updateBoardCard",
+      "setSessionTurnMode",
       "saveTextAttachment",
       "saveImageAttachment",
       "registerBrowserView",
@@ -153,5 +154,12 @@ describe("board channels", () => {
       expect(isChannelAllowed(channel, ["control"])).toBe(false);
       expect(isChannelAllowed(channel, ["write"])).toBe(true);
     }
+  });
+});
+
+describe("plan mode channel", () => {
+  it("lets conversation control switch Plan and Act, but not a read-only device", () => {
+    expect(isChannelAllowed("setSessionTurnMode", ["read"])).toBe(false);
+    expect(isChannelAllowed("setSessionTurnMode", ["control"])).toBe(true);
   });
 });

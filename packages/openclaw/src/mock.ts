@@ -22,6 +22,13 @@ import {
 import { FilesystemAdapter } from "@capsule/filesystem";
 import { DEFAULT_GATEWAY_HOST, DEFAULT_GATEWAY_PORT, DEFAULT_GATEWAY_URL } from "./discovery.js";
 
+const MOCK_PLAN_STEPS = [
+  "Read the files the request touches",
+  "Make the change in the smallest place that carries it",
+  "Add a test for the new behaviour",
+  "Run the checks and report what changed",
+];
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export class MockAgentRuntime implements AgentRuntime {
@@ -126,7 +133,7 @@ export class MockAgentRuntime implements AgentRuntime {
       createdAt: timestamp,
       updatedAt: timestamp,
     };
-    void this.simulate(run, scenario);
+    void this.simulate(run, scenario, input.turnMode === "plan");
     return run;
   }
 
@@ -186,7 +193,7 @@ export class MockAgentRuntime implements AgentRuntime {
     this.emitter.emit("run", event);
   }
 
-  private async simulate(run: Run, scenario: MockScenario): Promise<void> {
+  private async simulate(run: Run, scenario: MockScenario, planning = false): Promise<void> {
     const delay = scenario === "long_running" ? 400 : 180;
     this.emit(run.id, "lifecycle", "Request received", { step: "understand" });
     await sleep(delay);
@@ -238,6 +245,11 @@ export class MockAgentRuntime implements AgentRuntime {
         status: "failed",
         error: "The mock agent could not complete this task.",
       });
+      return;
+    }
+    if (planning) {
+      this.emit(run.id, "plan", "Plan", { entries: MOCK_PLAN_STEPS.map((content, index) => ({ id: String(index + 1), content, status: "pending" })) });
+      await this.finishSuccess(run.id, ["Mock runtime plan. Nothing was edited.", "", ...MOCK_PLAN_STEPS.map((step, index) => `${index + 1}. ${step}`)].join("\n"));
       return;
     }
     const output =
