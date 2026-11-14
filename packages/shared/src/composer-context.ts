@@ -122,7 +122,7 @@ export function threadToMarkdown(
 }
 
 /** User prompts, plus the last assistant message of each run: the reply, not the narration before it. */
-function finalMessages(messages: readonly ChatMessage[]): ChatMessage[] {
+export function finalMessages(messages: readonly ChatMessage[]): ChatMessage[] {
   const lastReply = new Map<string, string>();
   for (const message of messages) if (message.role === "assistant" && message.runId) lastReply.set(message.runId, message.id);
   return messages.filter((message) => message.content.trim() && (message.role === "user"
