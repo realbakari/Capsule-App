@@ -1073,7 +1073,7 @@ export function Inspector() {
                 <span>Branch</span>
                 <span className="mono">{git?.branch ?? "main"}</span>
               </div>
-              <div className="git-actions">
+              {!readOnlyPeer && <div className="git-actions">
                 <button className="chip" type="button" onClick={() => void gitPush()}>
                   <CloudUploadIcon size={13} />Push
                 </button>
@@ -1096,7 +1096,7 @@ export function Inspector() {
                     <GitPullRequestIcon size={13} />{settings?.prDraft ? "Draft PR" : "Pull request"}
                   </button>
                 )}
-              </div>
+              </div>}
             </div>
 
             <PullRequestList
@@ -1123,20 +1123,20 @@ export function Inspector() {
                       <span className="truncate">{entry.path}</span>
                       <span className="meta">{entry.code}</span>
                     </button>
-                    <span className="change-row-actions">
+                    {!readOnlyPeer && <span className="change-row-actions">
                       <button type="button" className="icon-btn" title={`Stage ${entry.path}`} aria-label={`Stage ${entry.path}`} onClick={() => void gitStage(entry.path)}>
                         <PlusIcon size={13} />
                       </button>
                       <button type="button" className="icon-btn change-row-discard" title={`Discard changes to ${entry.path}`} aria-label={`Discard changes to ${entry.path}`} onClick={() => gitDiscard(entry.path)}>
                         <UndoIcon size={13} />
                       </button>
-                    </span>
+                    </span>}
                   </div>
                 ))
               )}
             </div>
 
-            {git?.isRepo && <ReviewCommitForm key={`${projectId}/${session?.id ?? ""}/${session?.workingDirectory ?? project?.workingDirectory ?? ""}`}
+            {git?.isRepo && !readOnlyPeer && <ReviewCommitForm key={`${projectId}/${session?.id ?? ""}/${session?.workingDirectory ?? project?.workingDirectory ?? ""}`}
               dirty={Boolean(git.dirty)} onCommit={gitCommit} />}
 
             {git?.isRepo && projectId ? (

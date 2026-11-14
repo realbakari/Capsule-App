@@ -221,6 +221,18 @@ export async function runPanelRegressions(host: HTMLElement, base: Record<string
     root.render(null); await settle(); renderInspector(); await settle();
     assert(inspector().style.width === "380px", "Inspector did not restore the final drag width");
 
+    const reviewApi = { ...(window.testWorkspace.api as object), listPullRequests: async () => ({ pullRequests: [] }), gitScopedDiff: async () => ({ patch: "" }) };
+    const reviewBase = { ...window.testWorkspace, api: reviewApi, inspectorTab: "changes", projectId: "review-fixture",
+      git: { isRepo: true, branch: "main", dirty: true, files: [{ path: "app.ts", code: "M" }] } };
+    const reviewWrites = () => ["Stage app.ts", "Discard changes to app.ts"].filter((label) => document.querySelector(`[aria-label="${label}"]`))
+      .concat(Array.from(document.querySelectorAll(".git-actions button, .review-commit-button")).map((button) => button.textContent ?? ""));
+    window.testWorkspace = reviewBase;
+    root.render(null); await settle(); renderInspector(); await settle();
+    assert(reviewWrites().length >= 4, "The desktop lost its Stage, Discard, Push or Commit controls");
+    window.testWorkspace = { ...reviewBase, api: { ...reviewApi, isDesktop: false, remoteMode: "read" } };
+    root.render(null); await settle(); renderInspector(); await settle();
+    assert(document.body.textContent?.includes("app.ts") && reviewWrites().length === 0, "A read-only viewer was offered Stage, Discard, Push or a pull request");
+
     let unavailable = true;
     window.testWorkspace = { api: { usageSummary: async () => ({ totals: {}, requests: 0, sessions: 0, byDay: [], byProvider: [], byModel: [], unavailableSources: unavailable ? ["codex"] : [] }) } };
     root.render(<UsageView />); await settle();
