@@ -6899,6 +6899,19 @@ div.changed-files-head { cursor: default; }
   overflow: auto;
   -webkit-app-region: no-drag;
 }
+/*
+ * A dialog opened from a popover covers it. Menus sit above dialogs so a menu
+ * opened inside a dialog shows, which also left the popover a dialog came
+ * from drawn on top of it. Closing that popover would unmount the dialog it
+ * owns, so it is hidden instead and is back, as it was, when the dialog
+ * closes. Body-level dialogs come after the popovers they were opened from;
+ * the confirm dialog lives in the app root, before every popover, and opens
+ * no menus of its own.
+ */
+body > :is(.header-popover, .action-menu, .menu-select-pop, .agent-model-picker, .composer-tools-popover, .agent-command-popover, .pr-action-menu):has(~ .palette-backdrop),
+body:has(> #root .palette-backdrop > [role="alertdialog"]) > :is(.header-popover, .action-menu, .menu-select-pop, .agent-model-picker, .composer-tools-popover, .agent-command-popover, .pr-action-menu) {
+  visibility: hidden;
+}
 
 .topbar-dropdown-menu button:hover {
   background: color-mix(in srgb, var(--text) 8%, transparent);

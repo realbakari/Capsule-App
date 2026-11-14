@@ -1668,6 +1668,17 @@ computer for direct mode and for the local acpx bridge alike. A paired device
 gets no actions (Doctor is a write, the terminal is local-only), only the
 command.
 
+### Dialogs opened from a popover
+
+Menus and header popovers sit above dialogs (`--z-menu` over `--z-palette`) so a
+menu opened inside a dialog shows. A dialog opened *from* a popover (New
+action… in the conversation details popover) would then sit under it, and
+closing the popover would unmount the dialog it owns. Instead, a body-level
+popover that comes before an open `.palette-backdrop` in document order is
+`visibility: hidden` and comes back unchanged when the dialog closes. The app
+root's confirm dialog precedes every popover, so it is matched separately by
+its `alertdialog` role; it opens no menus of its own.
+
 ### Composer context and thread agents
 
 Conversation tools offers installed skills and project-file search. Its listbox uses
