@@ -5,6 +5,10 @@ import { AnalyticsSettings } from "../features/settings/AnalyticsSettings";
 import { RemoteSessionBanner } from "../features/shell/RemoteSessionBanner";
 
 function assert(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
+async function until<T>(read: () => T | null | undefined, message: string): Promise<T> {
+  for (let tries = 0; tries < 200; tries += 1) { const value = read(); if (value) return value; await settle(); }
+  throw new Error(message);
+}
 async function settle() { await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))); }
 
 export async function runWebAccessRegressions(host: HTMLElement) {
@@ -30,7 +34,7 @@ export async function runWebAccessRegressions(host: HTMLElement) {
     window.testWorkspace = { api, sessions: [{ id: "s1", projectId: "p1", title: "Fix the login form" }], setProjectId: () => {}, setView: () => {} };
     const patch = async (value: Partial<CapsuleSettings>) => { patches.push(value); };
     root.render(<RemoteAccessSettings settings={DEFAULT_CAPSULE_SETTINGS} patch={patch} />); await settle();
-    const permissions = host.querySelector<HTMLSelectElement>('[aria-label="Device permission"]')!;
+    const permissions = await until(() => host.querySelector<HTMLSelectElement>('[aria-label="Device permission"]'), "Browser access card never showed the device permission");
     assert(permissions.value === "read", "Pairing must start read-only");
     permissions.value = "control"; permissions.dispatchEvent(new Event("change", { bubbles: true })); await settle();
     Array.from(host.querySelectorAll("button")).find((button) => button.textContent?.includes("Create link"))!.click(); await settle();
