@@ -9,6 +9,9 @@
 .composer-context .run-on-clear { display: inline-grid; place-items: center; width: 1rem; height: 1rem; border-radius: var(--radius-xs); color: var(--text-faint); }
 .composer-context .run-on-clear:hover { background: var(--bg-hover); color: var(--text); }
 
+.run-on-summary { display: inline-flex; align-items: center; gap: 0.3rem; height: var(--control-h-sm); padding: 0 0.5rem; color: var(--text); font-size: var(--text-ui); }
+.run-on-summary > span { margin-left: 0.15rem; color: var(--text-muted); }
+
 .run-on-picker {
   z-index: var(--z-menu); display: flex; flex-direction: column; overflow: hidden;
   background: var(--bg-elevated); color: var(--text); font-size: var(--text-ui);
@@ -22,7 +25,7 @@
 .run-on-picker .link-btn:hover { color: var(--text); }
 .run-on-picker button:focus-visible, .run-on-picker input:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset-inset); }
 
-.run-on-picks { display: grid; gap: 0.25rem; padding: 0.5rem; border-bottom: 1px solid var(--border-color); background: var(--surface-sunken); }
+.run-on-picks { display: grid; gap: 0.25rem; padding: 0.5rem; border-bottom: 1px solid var(--border-color); background: color-mix(in srgb, var(--text) 3%, transparent); }
 .run-on-empty { margin: 0; padding: 0.25rem; color: var(--text-muted); font-size: var(--text-xs); line-height: 1.45; }
 .run-on-pick { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 9rem) auto; align-items: center; gap: 0.5rem; padding: 0.25rem 0.25rem 0.25rem 0.375rem; border-radius: var(--radius-sm); background: var(--bg-elevated); border: 1px solid var(--border-color); }
 .run-on-pick-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -45,7 +48,7 @@
 .run-on-agent-name { min-width: 0; }
 
 /* --- Compare surface --- */
-.compare-pane { display: flex; flex-direction: column; gap: 0.75rem; padding: 0.75rem; min-width: 0; font-size: var(--text-ui); }
+.compare-pane { display: flex; flex-direction: column; gap: 0.75rem; padding: 0.75rem; min-width: 0; overflow-x: hidden; font-size: var(--text-ui); }
 .compare-empty { align-items: flex-start; color: var(--text-muted); }
 .compare-empty p { margin: 0; line-height: 1.5; }
 .compare-empty > svg { color: var(--red); }
@@ -68,7 +71,7 @@
 }
 .compare-decided .chip { display: inline-flex; align-items: center; gap: 0.3rem; }
 
-.compare-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); gap: 0.625rem; align-items: start; }
+.compare-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(17rem, 100%), 1fr)); gap: 0.625rem; align-items: start; }
 .compare-card {
   display: grid; gap: 0.625rem; min-width: 0; padding: 0.75rem;
   border: 1px solid var(--border-color); border-radius: var(--radius-lg); background: var(--bg-elevated);
@@ -100,9 +103,10 @@
 
 .compare-reply {
   margin: 0; padding: 0.5rem 0.625rem; border-radius: var(--radius-md); background: var(--surface-sunken);
-  color: var(--text-muted); font-size: var(--text-xs); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere;
-  display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden;
+  color: var(--text-muted); font-size: var(--text-xs); line-height: 1.5; overflow-wrap: anywhere;
 }
+/* Clamped inside the padded box, so the cut never shows half a line in the padding. */
+.compare-reply-text { display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-line; }
 .compare-reply.error { display: flex; gap: 0.4rem; align-items: flex-start; color: var(--red); background: color-mix(in srgb, var(--red) 7%, transparent); }
 .compare-reply.error > svg { flex-shrink: 0; margin-top: 0.15rem; }
 
@@ -119,7 +123,7 @@
   background: var(--bg-elevated); color: var(--text); font: inherit; font-family: var(--mono); font-size: var(--text-xs);
 }
 .compare-file-pick select:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
-.compare-grid.same-file { grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr)); }
+.compare-grid.same-file { grid-template-columns: repeat(auto-fill, minmax(min(20rem, 100%), 1fr)); }
 .compare-file-column { display: grid; gap: 0.375rem; min-width: 0; align-content: start; }
 .compare-file-column h4 { display: flex; align-items: center; gap: 0.4rem; margin: 0; font-size: var(--text-xs); font-weight: var(--weight-semibold); }
 .compare-file-column h4 small { color: var(--text-muted); font-weight: var(--weight-regular); }

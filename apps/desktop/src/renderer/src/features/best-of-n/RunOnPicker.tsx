@@ -176,3 +176,15 @@ export function RunOnControl({ runOn }: { runOn: RunOnState }) {
     </div>
   );
 }
+
+/** Where the agent picker sits, while Run on… is on: the picked agents' marks, in order. */
+export function RunOnSummary({ runOn }: { runOn: RunOnState }) {
+  const { harnesses } = useWorkspace();
+  const names = runOn.picks.map((pick) => `${harnesses?.find((item) => item.id === pick.harnessId)?.name ?? pick.harnessId}${pick.model ? ` (${pick.model})` : ""}`);
+  return (
+    <span className="run-on-summary" aria-label={`Runs on ${names.join(", ")}`} title={names.join(", ")}>
+      {runOn.picks.map((pick, index) => <AgentGlyph key={`${pick.harnessId}-${index}`} id={pick.harnessId} name={names[index]!} size={14} />)}
+      <span>{runOn.picks.length} agents</span>
+    </span>
+  );
+}

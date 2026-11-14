@@ -429,7 +429,7 @@ export function Sidebar() {
 
   const { startResize } = usePanelResize(!sidebarCollapsed);
 
-  function renderThread(session: Session, location: "recent" | "project" = "project") {
+  function renderThread(session: Session, location: "recent" | "project" = "project", label?: string) {
     const previewId = `${location}-thread-preview-${session.id}`;
     if (editing?.kind === "session" && editing.id === session.id && (editing.location ?? "project") === location) {
       return (
@@ -524,7 +524,7 @@ export function Sidebar() {
           ) : null}
         </span>
         <span className="thread-title">
-          <span className="truncate">{session.title}</span>
+          <span className="truncate">{label ?? session.title}</span>
           {grouping !== "project" && <small className="thread-project">{projectNames.get(session.projectId)}</small>}
         </span>
         <span className="thread-meta">
@@ -622,7 +622,7 @@ export function Sidebar() {
               onClick={(event) => { event.stopPropagation(); bestOfN.openCompare(group); }}><CompareIcon size={13} /></button>
           </span>
         </div>
-        {expanded && <div className="thread-group-members">{members.map((member) => renderThread(member))}</div>}
+        {expanded && <div className="thread-group-members">{/* Under its prompt, a candidate is named by its agent and model. */}{members.map((member) => renderThread(member, "project", member.title.split(" · ").at(-1)))}</div>}
       </div>
     );
   }

@@ -114,7 +114,7 @@ function CompareSummary({ comparison, mode, onMode }: { comparison: GroupCompari
       </div>
       {winner && writable && others.length > 0 ? (
         <div className="compare-decided">
-          <span>The other {others.length === 1 ? "candidate is" : `${others.length} candidates are`} still in the sidebar with {others.length === 1 ? "its" : "their"} worktree.</span>
+          <span>The other {others.length === 1 ? "candidate is" : `${others.length} candidates are`} still in the sidebar with {others.length === 1 ? "its worktree" : "their worktrees"}.</span>
           <button type="button" className="chip" onClick={() => setAside(group, others.length)}><ArchiveIcon size={12} />Set aside the others…</button>
         </div>
       ) : null}
@@ -166,7 +166,7 @@ function CandidateCard({ comparison, candidate }: { comparison: GroupComparison;
       <dl className="compare-facts">
         <div>
           <dt>Changes</dt>
-          <dd>{!diff ? <span className="faint">{candidate.worktree === "set-aside" ? "Saved with the set-aside worktree" : "Worktree missing"}</span>
+          <dd>{!diff ? <span className="faint">{candidate.worktree === "set-aside" ? "Saved; restore to see" : "Worktree missing"}</span>
             : "error" in diff ? <span className="faint" title={diff.error}>Not readable</span>
             : diff.files.length === 0 ? <span className="faint">No changes</span>
             : <>{diff.files.length} {diff.files.length === 1 ? "file" : "files"} <span className="added">+{diff.added}</span> <span className="removed">−{diff.removed}</span></>}</dd>
@@ -185,7 +185,7 @@ function CandidateCard({ comparison, candidate }: { comparison: GroupComparison;
         </div>
       </dl>
       {phase === "failed" ? <p className="compare-reply error" role="note"><AlertTriangleIcon size={12} />{candidate.run?.error ?? candidate.startError ?? "This candidate failed."}</p>
-        : candidate.reply ? <p className="compare-reply">{candidate.reply}</p>
+        : candidate.reply ? <p className="compare-reply"><span className="compare-reply-text">{candidate.reply}</span></p>
         : <p className="compare-reply faint">{phase === "needs-you" ? "Waiting for your approval in its thread." : phase === "done" || phase === "stopped" ? "No reply was received." : "Waiting for a reply…"}</p>}
       <footer className="compare-card-actions">
         <button type="button" className="ghost" onClick={open}><MessageSquareIcon size={13} />Open thread</button>

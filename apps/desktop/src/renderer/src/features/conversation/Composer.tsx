@@ -10,7 +10,7 @@ import { ContextWindowMeter } from "./ContextWindowMeter";
 import { ComposerTools } from "./ComposerTools";
 import { agentSwitchNotice, harnessDisplayName } from "../../lib/harness";
 import { AgentModelPicker } from "./AgentModelPicker";
-import { RunOnControl, useRunOn } from "../best-of-n/RunOnPicker";
+import { RunOnControl, RunOnSummary, useRunOn } from "../best-of-n/RunOnPicker";
 import { GatewayBanner } from "../shell/GatewayBanner";
 import { GATEWAY_CONNECTION_REQUIRED } from "../../lib/harness-preflight";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -831,7 +831,7 @@ export function Composer({
           </div>
         )}
         {gatewayUnavailable && <GatewayBanner inset />}
-        {sendBlockReason && !(gatewayUnavailable && sendBlockReason === GATEWAY_CONNECTION_REQUIRED) && (
+        {sendBlockReason && !runOn.active && !(gatewayUnavailable && sendBlockReason === GATEWAY_CONNECTION_REQUIRED) && (
           <div className={`composer-preflight${readOnlyViewer ? " read-only" : ""}`} role="status">
             <span title={sendBlockReason}>{sendBlockReason}</span>
             {/* A read-only viewer can do neither; the reason is the whole message. */}
@@ -867,7 +867,8 @@ export function Composer({
         )}
         <div className="composer-row">
           <div className="composer-controls">
-            <AgentModelPicker agents={agents} harnesses={harnesses} agentId={agentId} liveHarnessId={liveHarnessId}
+            {/* Under Run on…, the candidates are the agents; the single-agent controls would describe a turn that is not sent. */}
+            {runOn.active ? <RunOnSummary runOn={runOn} /> : <AgentModelPicker agents={agents} harnesses={harnesses} agentId={agentId} liveHarnessId={liveHarnessId}
               models={models} currentModel={currentModel} availability={!harnessLive && models?.availableModels.length ? { state: "available", detail: "Reported by the installed agent." } : capabilities.model}
               disabled={busy || Boolean(activeRun) || api.isDesktop !== true}
               loading={discovery.loading} error={discovery.error} onRetry={discovery.retry}
@@ -879,10 +880,10 @@ export function Composer({
                 const current = settings?.modeModels ?? {};
                 const row = { ...current[agentId], [mode]: current[agentId]?.[mode] === id ? undefined : id };
                 void workspace.updateSettings({ modeModels: { ...current, [agentId]: row } }).catch((error: unknown) => workspace.setNotice(error instanceof Error ? error.message : String(error)));
-              }} />
-            {!readOnlyViewer && <TurnModeChip mode={turnMode} support={planSupport} onToggle={toggleTurnMode}
+              }} />}
+            {!readOnlyViewer && !runOn.active && <TurnModeChip mode={turnMode} support={planSupport} onToggle={toggleTurnMode}
               disabledReason={busy ? "Wait for the message to send." : undefined} />}
-            {!harnessLive && capabilities.route === "direct" && (controls.effort || controls.permissions || modeControl) && <div className="composer-agent-controls">
+            {!runOn.active && !harnessLive && capabilities.route === "direct" && (controls.effort || controls.permissions || modeControl) && <div className="composer-agent-controls">
               {([ [controls.effort, "Reasoning effort"], [controls.permissions, "Permissions"], [modeControl, "Agent mode"] ] as const).map(([option, label]) => option && <MenuSelect key={option.id}
                 ariaLabel={label} value={draftConfiguration.options[option.id] ?? option.currentValue ?? ""} placeholder={`${label}: agent default`}
                 options={option.choices.map((choice) => ({ id: choice.value, label: choice.name, detail: choice.description }))}
