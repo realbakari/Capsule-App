@@ -178,6 +178,7 @@ export class MockAgentRuntime implements AgentRuntime {
     if (lower.includes("[long]")) return "long_running";
     if (lower.includes("[buzz]")) return "buzz_message";
     if (lower.includes("[tool]")) return "tool_failure";
+    if (lower.includes("[work]")) return "tool_run";
     return this.scenario;
   }
 
@@ -191,6 +192,29 @@ export class MockAgentRuntime implements AgentRuntime {
       data,
     };
     this.emitter.emit("run", event);
+  }
+
+  /** A realistic run of reads, commands and edits with file paths, one failing, slow enough to watch. */
+  private async simulateToolRun(runId: string): Promise<void> {
+    const steps: Array<{ kind: string; title: string; path?: string; command?: string; fails?: boolean }> = [
+      { kind: "read", title: "Read README.md", path: "README.md" },
+      { kind: "read", title: "Read package.json", path: "package.json" },
+      { kind: "execute", title: "git status", command: "git status --short" },
+      { kind: "read", title: "Read src/index.ts", path: "src/index.ts" },
+      { kind: "edit", title: "Edit src/index.ts", path: "src/index.ts" },
+      { kind: "execute", title: "npm test", command: "npm test", fails: true },
+      { kind: "edit", title: "Edit README.md", path: "README.md" },
+    ];
+    for (const [index, step] of steps.entries()) {
+      const toolCallId = `mock-tool-${index}`;
+      const base = {
+        toolCallId, kind: step.kind, title: step.title,
+        ...(step.path ? { locations: [{ path: step.path }], rawInput: { path: step.path } } : { rawInput: { command: step.command } }),
+      };
+      this.emit(runId, "tool", step.title, { ...base, status: "in_progress" });
+      await sleep(700);
+      this.emit(runId, "tool", step.title, { ...base, status: step.fails ? "failed" : "completed", ...(step.command ? { rawOutput: step.fails ? "1 test failed" : "" } : {}) });
+    }
   }
 
   private async simulate(run: Run, scenario: MockScenario, planning = false): Promise<void> {
@@ -223,6 +247,11 @@ export class MockAgentRuntime implements AgentRuntime {
       return;
     }
 
+    if (scenario === "tool_run") {
+      await this.simulateToolRun(run.id);
+      await this.finishSuccess(run.id, await this.describeMockReply());
+      return;
+    }
     this.emit(run.id, "tool.started", "Tool started", { step: "tools" });
     await sleep(delay);
     if (scenario === "tool_failure") {

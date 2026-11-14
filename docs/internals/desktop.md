@@ -667,8 +667,12 @@ A panel crash is isolated by `ViewErrorBoundary`. Retry remounts the panel. Fast
 
 ## Chat
 
-Tool activity inside a turn is one collapsible group labelled the way a
-person would say it: "Ran 12 commands (1 failed)", "Used 2 tools", or both.
+Each run of consecutive tool calls inside a turn is one collapsible group.
+`summarizeToolRun` in `@capsule/shared` labels it the way a person would say
+it, one phrase per tool kind in the order the work happened: "Read 6 files,
+ran 2 commands (1 failed), edited 3 files". File kinds (read, edit, delete,
+move) count distinct reported paths, and a call with no path counts as one
+file. Other kinds count calls. Failures are counted per kind, never dropped.
 While the group is live its header carries a clock from the first tool's
 timestamp, and the current step shows beneath it. An expanded command shows
 its text behind a `$` prompt with a copy control, then its output. A user
@@ -1430,7 +1434,7 @@ The renderer does not launch process-table commands while typing or rendering.
 - Do not dump Artifacts or a second “run result” copy of the assistant reply.
 - Composer: actual file attachments, `/` commands, `@` file mentions, `$`
   skills, prompt stash, permission profile, folder chip, Terminal.app.
-- Mock runtime is first-class in explicit test mode (`autoConnect: false`), never a silent production fallback. Prompt tokens: `[approval]`, `[fail]`, `[verify]`, `[multi]`, `[long]`, `[buzz]`, `[tool]`.
+- Mock runtime is first-class in explicit test mode (`autoConnect: false`), never a silent production fallback. Prompt tokens: `[approval]`, `[fail]`, `[verify]`, `[multi]`, `[long]`, `[buzz]`, `[tool]`, `[work]` (a slow run of reads, commands and edits with file paths, one command failing).
 
 ### Project actions
 

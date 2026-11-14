@@ -39,9 +39,11 @@ previews without getting write access.
 
 Hover a message you sent for **Copy** and **Continue in a new conversation**,
 which opens a fresh thread in the same project with that prompt ready to
-edit and send. Tool activity in a reply folds into one line such as
-"Ran 12 commands (1 failed)"; open it to see each step, and open a step to
-see the command and its output.
+edit and send. A run of tool calls in a reply folds into one line that says
+what the agent did, such as "Read 6 files, ran 2 commands (1 failed), edited
+3 files". A file read twice counts once, and a failure is always named next to
+the work that failed. Open the line to see each step, and open a step to see
+the command and its output.
 
 If a send fails, your draft and attachments return to the composer. Once the
 failed turn is recorded, its error appears once below the work log rather than

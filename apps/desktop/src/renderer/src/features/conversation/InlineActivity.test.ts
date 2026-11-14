@@ -18,8 +18,17 @@ describe("inline activity icons", () => {
     }));
     expect(html).toContain('data-kind="read"');
     expect(html).toContain('data-kind="execute"');
-    expect(html).toContain("1 command");
-    expect(html).toContain("1 tool");
+    expect(html).toContain("Read 1 file, ran 1 command");
+  });
+
+  it("folds a run of calls into one row that names failures", () => {
+    const html = renderToStaticMarkup(createElement(InlineActivity, {
+      tools: [tool("read", "Read a"), tool("read", "Read b"), tool("execute", "pnpm test"), { ...tool("execute", "pnpm lint"), status: "failed" }],
+      run,
+    }));
+    expect(html.match(/inline-activity-toggle/g)).toHaveLength(1);
+    expect(html).toContain("Read 2 files, ran 2 commands (1 failed)");
+    expect(html).not.toContain("pnpm test");
   });
 
   it("keeps the active tool visible after earlier categories and failures", () => {
