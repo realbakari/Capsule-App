@@ -21,6 +21,10 @@ import { prepareDirectPrompt } from "./direct-prompt.js";
 import { findCommandCall, prepareCommand, readInvocation, runCommandShell, summarizeCommand, type CommandCall, type CommandShellContext } from "./commands.js";
 import { FollowUpLoopGuard, followUpsFrom, HookRunner, hookSource, PromptBlockedError, promptVerdict, type HookPayload } from "./hooks.js";
 import { decideRequest, type PermissionAnswer } from "./request-policy.js";
+import { mcpServerViews, offeredMcpServers, type McpContext } from "./mcp-servers.js";
+import { probeMcpServer } from "./mcp-probe.js";
+import type { AcpMcpServer, DirectSpawnInput } from "@capsule/acp";
+import { expandMcpSecrets, type McpTestResult } from "@capsule/shared";
 
 /** A permission request's answer, and a hook's reason for asking when the person decides. */
 type Settled = { decision: PermissionAnswer["decision"]; note?: string };
@@ -317,7 +321,47 @@ export class CapsuleEngine {
    * started from then on, not ones already running.
    */
   offerDirectMcpServers(servers: DirectMcpOffer): void {
-    this.direct.offerMcpServers(servers);
+    this.appMcpOffer = servers;
+  }
+
+  private appMcpOffer: DirectMcpOffer = [];
+
+  /*
+   * One offer per spawn: Capsule's own servers, then the settings files'
+   * servers this thread's project allows. A file's server never
+   * takes the name of one of Capsule's own.
+   */
+  private mcpOffer(input: DirectSpawnInput): { servers: AcpMcpServer[]; dispose(): void } {
+    const app = typeof this.appMcpOffer === "function" ? this.appMcpOffer(input) : { servers: this.appMcpOffer, dispose: () => {} };
+    const session = input.threadId ? this.repos.getSession(input.threadId) : undefined;
+    const project = session ? this.repos.getProject(session.projectId) : undefined;
+    const root = project?.workingDirectory;
+    const taken = new Set(app.servers.map((server) => server.name));
+    const configured = offeredMcpServers(this.config.extended(root).mcpServers, this.mcpContext(root)).filter((server) => !taken.has(server.name));
+    return { servers: [...app.servers, ...configured], dispose: app.dispose };
+  }
+
+  private mcpContext(root: string | undefined, profileMcp?: readonly string[]): McpContext {
+    return { root, home: homedir(), env: process.env, ...(profileMcp ? { profileMcp } : {}) };
+  }
+
+  /** Start or reach one configured server and list its tools. It runs the server, so it is a desktop write. */
+  async testMcpServer(input: { name: string; projectId?: string }): Promise<McpTestResult> {
+    const root = this.configRoot(input.projectId);
+    const entry = this.config.extended(root).mcpServers[input.name];
+    if (!entry) throw new Error(`There is no MCP server named ${input.name} here. A project's server waits until you trust the folder.`);
+    const { config, missing } = expandMcpSecrets(entry.value, process.env);
+    if (missing.length) return { ok: false, error: `Set ${missing.join(", ")} in Capsule's environment first.`, durationMs: 0 };
+    return probeMcpServer(config, { cwd: root ?? homedir(), env: process.env });
+  }
+
+  /** Turn a server on or off everywhere (your user file) or in one project (its local file). */
+  setMcpServerEnabled(input: { name: string; enabled: boolean; where: "everywhere" | "project"; projectId?: string }): ConfigSnapshot {
+    const root = this.configRoot(input.projectId);
+    if (input.where === "project" && !root) throw new Error("Open a project with a folder to turn a server on or off just there.");
+    this.config.setMcpServerEnabled({ name: input.name, enabled: input.enabled, scope: input.where === "project" ? "local" : "user", root });
+    this.applyConfigChange();
+    return this.getConfigSnapshot(input.projectId);
   }
 
   private directUnsub?: () => void;
@@ -422,6 +466,7 @@ export class CapsuleEngine {
     });
     this.openclaw = this.createOpenClawAdapter();
     this.runtime = this.usingMock ? this.mock : this.openclaw;
+    this.direct.offerMcpServers((input) => this.mcpOffer(input));
   }
 
   async start(): Promise<void> {
@@ -2739,6 +2784,7 @@ export class CapsuleEngine {
       problemCount: this.config.diagnostics(scoped?.root).problems.length,
       themes: this.config.themes(scoped?.root),
       keybindings: this.config.keybindings(scoped?.root),
+      mcpServers: mcpServerViews(this.config.extended(scoped?.root).mcpServers, this.mcpContext(scoped?.root)),
     };
   }
 

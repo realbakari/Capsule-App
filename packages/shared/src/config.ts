@@ -3,6 +3,7 @@ import type { KeybindingEntry, KeymapContext } from "./keymap.js";
 import type { ContrastWarning, ThemeAppearance, ThemeProblem } from "./theme.js";
 import type { ThemeToken } from "./theme-tokens.js";
 import type { CapsuleSettings } from "./runtime.js";
+import type { McpServerView } from "./mcp.js";
 
 /**
  * The layers a value can come from, highest precedence first after the
@@ -142,6 +143,8 @@ export interface ConfigSnapshot {
   themes: ThemeState;
   /** keybindings.json, parsed. Entries that did not parse are problems in the diagnostics. */
   keybindings: KeybindingEntry[];
+  /** Configured MCP servers here, each with whether the next direct conversation gets it. */
+  mcpServers: McpServerView[];
 }
 
 export type ThemeSource = "bundled" | "user" | "project" | "plugin";

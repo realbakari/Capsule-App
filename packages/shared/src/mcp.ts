@@ -117,3 +117,8 @@ export function mcpDelivery(harnessId: string, route: "direct" | "gateway"): Mcp
   }
   return { stdio: "not-carried", http: "not-carried", note: "This agent does not run in direct mode." };
 }
+
+/** What the Test button reports: the server's tools, or why it could not list them. */
+export type McpTestResult =
+  | { ok: true; tools: string[]; durationMs: number }
+  | { ok: false; error: string; durationMs: number; stderr?: string };
