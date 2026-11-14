@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appRestartInput, commandExpandInput, configFileTarget, keybindingEdit, mcpEnabledInput, mcpTestInput, permissionRuleEdit, profileCreateInput, setConfigValueInput, themeImportInput } from "./config-args.js";
+import { pluginName, pluginsConfigureInput, pluginsEnabledInput, pluginsInspectInput, pluginsInstallInput, appRestartInput, commandExpandInput, configFileTarget, keybindingEdit, mcpEnabledInput, mcpTestInput, permissionRuleEdit, profileCreateInput, setConfigValueInput, themeImportInput } from "./config-args.js";
 
 const CHANNEL = "capsule:config:test";
 
@@ -85,5 +85,21 @@ describe("MCP and profile arguments", () => {
     expect(() => profileCreateInput({ scope: "user", from: "../x" }, "profilesCreate", 0)).toThrow(/profile id/);
     expect(configFileTarget({ kind: "resource", folder: "profiles", scope: "user", name: "team:reviewer" }, "configOpenFile", 0)).toEqual({ kind: "resource", folder: "profiles", scope: "user", name: "team:reviewer" });
     expect(() => configFileTarget({ kind: "resource", folder: "profiles", scope: "user", name: "../../etc" }, "configOpenFile", 0)).toThrow(/profile or style id/);
+  });
+});
+
+describe("plugin arguments", () => {
+  it("takes a source the renderer cannot point at a path, a token, a name and option values", () => {
+    expect(pluginsInspectInput({ from: "folder", path: "/etc" }, "pluginsInspect", 0)).toEqual({ from: "folder" });
+    expect(pluginsInspectInput({ from: "git", url: " https://example.com/team/setup.git " }, "pluginsInspect", 0)).toEqual({ from: "git", url: "https://example.com/team/setup.git" });
+    expect(() => pluginsInspectInput({ from: "git" }, "pluginsInspect", 0)).toThrow(/repository address/);
+    expect(() => pluginsInspectInput({ from: "url" }, "pluginsInspect", 0)).toThrow(/from must be/);
+    const token = "0b2f6a1e-1c1d-4e1f-9a7b-1234567890ab";
+    expect(pluginsInstallInput({ token, values: { region: "eu", retries: 2, verbose: true } }, "pluginsInstall", 0)).toEqual({ token, values: { region: "eu", retries: 2, verbose: true } });
+    expect(() => pluginsInstallInput({ token: "../x" }, "pluginsInstall", 0)).toThrow(/install token/);
+    expect(() => pluginName("../etc", "pluginsUninstall", 0)).toThrow(/plugin name/);
+    expect(pluginsConfigureInput({ name: "acme-dev", values: { token: null }, mayApprove: true }, "pluginsConfigure", 0)).toEqual({ name: "acme-dev", values: { token: null }, mayApprove: true });
+    expect(() => pluginsConfigureInput({ name: "acme-dev", values: { token: { nested: 1 } } }, "pluginsConfigure", 0)).toThrow(/values must be/);
+    expect(pluginsEnabledInput({ name: "acme-dev", enabled: false }, "pluginsSetEnabled", 0)).toEqual({ name: "acme-dev", enabled: false });
   });
 });

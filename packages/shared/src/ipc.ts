@@ -222,6 +222,13 @@ export const IPC_CHANNELS = {
   automationsCreate: "capsule:automations:create",
   /* The person opened a thread an automation left unread. */
   sessionsMarkRead: "capsule:sessions:markRead",
+  /* Plugins. Inspecting copies or fetches a plugin and lists what it adds; every one of these writes on this computer. */
+  pluginsInspect: "capsule:plugins:inspect",
+  pluginsInstall: "capsule:plugins:install",
+  pluginsDiscard: "capsule:plugins:discard",
+  pluginsSetEnabled: "capsule:plugins:setEnabled",
+  pluginsConfigure: "capsule:plugins:configure",
+  pluginsUninstall: "capsule:plugins:uninstall",
 } as const;
 
 export const IPC_EVENTS = {

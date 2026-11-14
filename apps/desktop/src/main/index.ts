@@ -87,7 +87,7 @@ import { startRemoteServer, type RemoteServerHandle } from "@capsule/remote";
 import { startPty, TerminalOutputFlow, type PtySession } from "@capsule/terminal";
 import { popupContextMenu } from "./popup-menu";
 import { remoteReachFromArgs } from "./remote-args";
-import { appRestartInput, automationCreateInput, automationEnabledInput, automationKeyInput, statusLineRequest, commandExpandInput, configFileTarget, keybindingEdit, mcpEnabledInput, mcpTestInput, permissionRuleEdit, profileCreateInput, setConfigValueInput, themeImportInput } from "./config-args";
+import { pluginName, pluginToken, pluginsConfigureInput, pluginsEnabledInput, pluginsInspectInput, pluginsInstallInput, appRestartInput, automationCreateInput, automationEnabledInput, automationKeyInput, statusLineRequest, commandExpandInput, configFileTarget, keybindingEdit, mcpEnabledInput, mcpTestInput, permissionRuleEdit, profileCreateInput, setConfigValueInput, themeImportInput } from "./config-args";
 import { registerBackdropScheme, serveBackdropImages } from "./backdrop-protocol";
 import { configDirFor, relaunchArgs, safeModeFromArgs } from "./launch-config";
 import { RemoteAccessLifecycle } from "./remote-access";
@@ -1769,6 +1769,23 @@ function registerIpc(): void {
     return file;
   });
   handleArgs(IPC_CHANNELS.sessionsMarkRead, [id], (sessionId: string) => requireEngine().markSessionRead(sessionId));
+  // A folder or zip is picked here, so the renderer never names a path to read.
+  handleArgs(IPC_CHANNELS.pluginsInspect, [pluginsInspectInput], async (input: import("@capsule/shared").PluginsInspectInput) => {
+    if (input.from === "git") return requireEngine().inspectPlugin({ kind: "git", url: input.url! });
+    const win = desktopWindow.current ?? BrowserWindow.getFocusedWindow();
+    const zip = input.from === "zip";
+    const options: Electron.OpenDialogOptions = zip
+      ? { title: "Install plugin from zip", buttonLabel: "Inspect", properties: ["openFile"], filters: [{ name: "Zip", extensions: ["zip"] }] }
+      : { title: input.from === "dev" ? "Load plugin folder for development" : "Choose plugin folder", buttonLabel: input.from === "dev" ? "Load" : "Inspect", properties: ["openDirectory"] };
+    const picked = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
+    const chosen = picked.canceled ? undefined : picked.filePaths[0];
+    return chosen ? requireEngine().inspectPlugin({ kind: input.from, path: chosen }) : undefined;
+  });
+  handleArgs(IPC_CHANNELS.pluginsInstall, [pluginsInstallInput], (input: import("@capsule/shared").PluginsInstallInput) => requireEngine().installPlugin(input));
+  handleArgs(IPC_CHANNELS.pluginsDiscard, [pluginToken], (token: string) => requireEngine().discardPluginInspection(token));
+  handleArgs(IPC_CHANNELS.pluginsSetEnabled, [pluginsEnabledInput], (input: { name: string; enabled: boolean }) => requireEngine().setPluginEnabled(input));
+  handleArgs(IPC_CHANNELS.pluginsConfigure, [pluginsConfigureInput], (input: import("@capsule/shared").PluginsConfigureInput) => requireEngine().configurePlugin(input));
+  handleArgs(IPC_CHANNELS.pluginsUninstall, [pluginName], (name: string) => requireEngine().uninstallPlugin(name));
   handleArgs(IPC_CHANNELS.profilesCreate, [profileCreateInput], async (input: import("@capsule/shared").ProfileCreateInput) => {
     const file = requireEngine().createProfile(input);
     const failure = await shell.openPath(file);

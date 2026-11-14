@@ -1,5 +1,5 @@
 import { IpcArgumentError, type ArgParser } from "@capsule/contracts";
-import { AUTOMATION_TEMPLATES, type AutomationCreateInput, type AutomationEnabledInput, type AutomationKeyInput, type StatusLineRequest, KEYMAP_CONTEXTS, MAX_THEME_SHARE_BYTES, WRITABLE_SCOPES, type CommandExpandInput, type ConfigFileTarget, type McpEnabledInput, type McpTestInput, type ProfileCreateInput, type KeybindingEdit, type KeymapContext, type PermissionRuleEdit, type SetConfigValueInput, type ThemeImportInput, type WritableScope } from "@capsule/shared";
+import { type PluginOptionValue, type PluginsConfigureInput, type PluginsInspectInput, type PluginsInstallInput, AUTOMATION_TEMPLATES, type AutomationCreateInput, type AutomationEnabledInput, type AutomationKeyInput, type StatusLineRequest, KEYMAP_CONTEXTS, MAX_THEME_SHARE_BYTES, WRITABLE_SCOPES, type CommandExpandInput, type ConfigFileTarget, type McpEnabledInput, type McpTestInput, type ProfileCreateInput, type KeybindingEdit, type KeymapContext, type PermissionRuleEdit, type SetConfigValueInput, type ThemeImportInput, type WritableScope } from "@capsule/shared";
 
 /*
  * Shapes for the settings-file channels, checked where they cross from the
@@ -158,6 +158,60 @@ export const themeImportInput: ArgParser<ThemeImportInput> = (value, channel, in
     throw new IpcArgumentError(channel, index, "text must be a share string of at most 32 KB");
   }
   return { from: "share", text: input.text };
+};
+
+const PLUGIN_SOURCES = ["folder", "zip", "git", "dev"] as const;
+const PLUGIN_NAME = /^[a-z0-9][a-z0-9-]{0,63}$/;
+
+export const pluginsInspectInput: ArgParser<PluginsInspectInput> = (value, channel, index) => {
+  const input = record(value, channel, index);
+  const from = PLUGIN_SOURCES.find((item) => item === input.from);
+  if (!from) throw new IpcArgumentError(channel, index, `from must be one of ${PLUGIN_SOURCES.join(", ")}`);
+  if (from !== "git") return { from };
+  if (typeof input.url !== "string" || !input.url.trim() || input.url.length > 2048) throw new IpcArgumentError(channel, index, "url must be a repository address");
+  return { from, url: input.url.trim() };
+};
+
+export const pluginToken: ArgParser<string> = (value, channel, index) => {
+  if (typeof value !== "string" || !/^[0-9a-f-]{36}$/.test(value)) throw new IpcArgumentError(channel, index, "must be an install token");
+  return value;
+};
+
+export const pluginName: ArgParser<string> = (value, channel, index) => {
+  if (typeof value !== "string" || !PLUGIN_NAME.test(value)) throw new IpcArgumentError(channel, index, "must be a plugin name");
+  return value;
+};
+
+function pluginValues(value: unknown, channel: string, index: number, allowNull: boolean): Record<string, PluginOptionValue | null> | undefined {
+  if (value === undefined) return undefined;
+  const input = record(value, channel, index);
+  const out: Record<string, PluginOptionValue | null> = {};
+  for (const [key, item] of Object.entries(input)) {
+    if (!/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(key)) throw new IpcArgumentError(channel, index, "option names are letters, digits and _");
+    if (item === null && allowNull) out[key] = null;
+    else if (typeof item === "string" ? item.length <= 8192 : typeof item === "number" || typeof item === "boolean") out[key] = item as PluginOptionValue;
+    else throw new IpcArgumentError(channel, index, "values must be text, numbers or true/false");
+  }
+  return out;
+}
+
+export const pluginsInstallInput: ArgParser<PluginsInstallInput> = (value, channel, index) => {
+  const input = record(value, channel, index);
+  const values = pluginValues(input.values, channel, index, false) as Record<string, PluginOptionValue> | undefined;
+  return { token: pluginToken(input.token, channel, index), ...(values ? { values } : {}) };
+};
+
+export const pluginsEnabledInput: ArgParser<{ name: string; enabled: boolean }> = (value, channel, index) => {
+  const input = record(value, channel, index);
+  if (typeof input.enabled !== "boolean") throw new IpcArgumentError(channel, index, "enabled must be true or false");
+  return { name: pluginName(input.name, channel, index), enabled: input.enabled };
+};
+
+export const pluginsConfigureInput: ArgParser<PluginsConfigureInput> = (value, channel, index) => {
+  const input = record(value, channel, index);
+  if (input.mayApprove !== undefined && typeof input.mayApprove !== "boolean") throw new IpcArgumentError(channel, index, "mayApprove must be true or false");
+  const values = pluginValues(input.values, channel, index, true);
+  return { name: pluginName(input.name, channel, index), ...(values ? { values } : {}), ...(typeof input.mayApprove === "boolean" ? { mayApprove: input.mayApprove } : {}) };
 };
 
 function record(value: unknown, channel: string, index: number): Record<string, unknown> {

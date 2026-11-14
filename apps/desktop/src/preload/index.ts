@@ -196,6 +196,17 @@ const api = {
   automationsCreate: (input: import("@capsule/shared").AutomationCreateInput): Promise<string> =>
     ipcRenderer.invoke(IPC_CHANNELS.automationsCreate, input),
   sessionsMarkRead: (sessionId: string): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.sessionsMarkRead, sessionId),
+  /** Copies or fetches a plugin and lists exactly what it adds. Folders and zips are picked here in main; undefined when the pick is cancelled. */
+  pluginsInspect: (input: import("@capsule/shared").PluginsInspectInput): Promise<import("@capsule/shared").PluginInspection | undefined> =>
+    ipcRenderer.invoke(IPC_CHANNELS.pluginsInspect, input),
+  pluginsInstall: (input: import("@capsule/shared").PluginsInstallInput): Promise<import("@capsule/shared").ConfigSnapshot> =>
+    ipcRenderer.invoke(IPC_CHANNELS.pluginsInstall, input),
+  pluginsDiscard: (token: string): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.pluginsDiscard, token),
+  pluginsSetEnabled: (input: { name: string; enabled: boolean }): Promise<import("@capsule/shared").ConfigSnapshot> =>
+    ipcRenderer.invoke(IPC_CHANNELS.pluginsSetEnabled, input),
+  pluginsConfigure: (input: import("@capsule/shared").PluginsConfigureInput): Promise<import("@capsule/shared").ConfigSnapshot> =>
+    ipcRenderer.invoke(IPC_CHANNELS.pluginsConfigure, input),
+  pluginsUninstall: (name: string): Promise<import("@capsule/shared").ConfigSnapshot> => ipcRenderer.invoke(IPC_CHANNELS.pluginsUninstall, name),
   backdropChooseImage: (): Promise<import("@capsule/shared").ConfigSnapshot | undefined> => ipcRenderer.invoke(IPC_CHANNELS.backdropChooseImage),
   search: (query: string) => ipcRenderer.invoke(IPC_CHANNELS.search, query),
   updateProject: (id: string, patch: unknown) =>

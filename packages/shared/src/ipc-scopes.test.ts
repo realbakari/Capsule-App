@@ -186,6 +186,16 @@ describe("status line, automation and unread channels", () => {
   });
 });
 
+describe("plugin channels", () => {
+  it("keeps inspecting, installing, configuring and removing plugins on the desktop", () => {
+    for (const channel of ["pluginsInspect", "pluginsInstall", "pluginsDiscard", "pluginsSetEnabled", "pluginsConfigure", "pluginsUninstall"]) {
+      expect(scopeForChannel(channel)).toBe("write");
+      expect(isChannelAllowed(channel, ["read"])).toBe(false);
+      expect(isChannelAllowed(channel, ["control"])).toBe(false);
+    }
+  });
+});
+
 describe("follow-up channels", () => {
   it("lets a viewer read the queue and conversation control change it, but not a read-only device", () => {
     expect(isChannelAllowed("getFollowUps", ["read"])).toBe(true);
