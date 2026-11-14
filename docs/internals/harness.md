@@ -701,3 +701,43 @@ gets the model, permission profile and workspace mode the thread already has.
 A harness that is not installed or not signed in fails that turn the usual way,
 and the card shows it under Needs you. The chain itself runs in the engine, so
 it does not depend on the Gateway being connected; only the turns it starts do.
+
+## Best-of-N candidates
+
+`startBestOfN` makes one worktree thread per candidate (agent plus optional
+model), records them on a `ThreadGroup`, and sends the same prompt and
+attachments to each through `sendMessage`. Nothing here picks a route or talks
+to an agent directly, so each candidate behaves exactly as a thread started
+from the composer with that agent:
+
+- **Routes.** Each candidate takes `harnessRoute` on its own: a preset that
+  runs direct spawns its CLI in the candidate's worktree; a Gateway preset gets
+  its own Gateway session and `/acp spawn`. One comparison can mix routes.
+- **No sharing.** Every candidate is a separate thread with its own session key
+  and its own worktree and branch, including two candidates of the same agent.
+  Same-agent candidates start one after the other because on the Gateway route
+  each spawn may call `ensureAcpxAgentCommand` for that agent, and two writes of
+  its registration at once can race; different agents start in parallel.
+- **Model.** The candidate's model is the thread's `modelOverride`, passed to
+  the spawn like a model chosen in the composer. A preset that does not accept
+  a model starts with its default; the card says "default model" only when none
+  was asked for.
+- **Readiness.** Before creating anything, a candidate whose agent definitely
+  cannot start (`harnessStartRefusal`: CLI missing, signed out, Gateway offline
+  for a Gateway preset) refuses the whole start with that reason. The picker
+  already disables those agents. An unknown login state does not block.
+- **Failure and approval.** A candidate whose spawn or turn fails shows as
+  Failed in Compare with the turn's error; one waiting on an approval shows
+  Needs you. Neither stops the other candidates. A prompt that was refused
+  before any turn was recorded keeps its thread and shows the reason until the
+  app quits.
+- **Project default.** Spawning an agent makes it the project's default agent.
+  A comparison restores the default the project had once all candidates have
+  started, because no single agent was chosen.
+- **Muse** is left out of the picker: it is not a coding agent and has no
+  worktree to compare.
+
+Keeping a candidate is Apply to local, so it is Git only and identical on both
+routes. Setting the others aside closes any live agent session first (its
+folder is about to go), saves the worktree to a hidden ref, and removes it;
+restoring the thread puts the worktree back before the thread is active again.

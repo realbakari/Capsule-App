@@ -2153,4 +2153,64 @@ and the chips read that table rather than keeping their own lists.
 - **Remote viewer.** Export to file and share links are desktop-only entries
   (disabled in the palette, absent from menus). Copy as Markdown works for
   paired and share-link viewers.
+## Best-of-N and Compare
+
+One prompt on two to four agents, compared side by side (`features/best-of-n/`).
+The home screen is unchanged: nothing appears until a new conversation in a
+Git project.
+
+- **Data.** `ThreadGroup` (`@capsule/shared/best-of-n`) holds the prompt, the
+  candidates (session id, agent, model) and `winnerSessionId` / `decidedAt`.
+  Each candidate is an ordinary worktree thread with `Session.groupId`, titled
+  "<prompt> · <agent>[/<model>]". Migration 24 adds `sessions.group_id`,
+  `thread_groups` and `run_ratings`. A fork of a candidate is not a candidate.
+- **Run on….** In the composer's context row, only for a new conversation in a
+  Git project on the desktop. A popover lists agents (ready first; Muse left
+  out); one that cannot start is disabled with its readiness reason, except
+  Gateway-offline under the test runtime. Picking adds a candidate row with an
+  optional model field; the same agent may be picked twice. Two or more picks
+  turn send into **Run on N agents**; the **×** beside the trigger clears them.
+  Each agent row carries the leaderboard hint ("Kept 2 of 3 · 4 up"). The
+  palette's **Run on several agents…** opens the picker in the untouched new
+  conversation, or a new one. That untouched placeholder thread is deleted once
+  the comparison starts, so it does not linger empty in the sidebar.
+- **Compare surface.** Panel surface `compare` (More menu, launcher key C),
+  offered only when the selected thread has a `groupId`, with the one header
+  row (maximize, close) every surface has. Summary: prompt (3 lines), agent
+  count and working count, "Kept <agent>", and a **Candidates / Same file**
+  switch. One card per candidate: agent glyph, model or "default model", route
+  (Direct / Gateway), phase badge with elapsed time (live while working),
+  Changes (files, +/− from the Branch diff scope), Checks (verification state),
+  Usage (reported tokens and cost, or "Not reported"), the reply excerpt or the
+  failure reason, then **Open thread**, **View diff** (Review on that worktree
+  in Branch scope), thumbs, and **Keep this one** (disabled with the reason from
+  `keepBlocker`). Data is one read, `compareThreadGroup`, refetched on run
+  events (debounced) and after every write. Loading shows skeleton cards; a
+  read error says so.
+- **Same file.** A file select (files changed by most candidates first) and one
+  column per candidate with that file's Branch-scope diff in `FileDiff`, or
+  "Not changed by this agent". It stays because a comparison usually comes down
+  to how each agent changed the same few files.
+- **Keep.** `keepCandidate` applies the worktree (Apply to local) and records
+  the winner only if something landed; the outcome uses Apply to local's toast
+  or conflict dialog through `useApplyToLocal().showOutcome`. Undo apply clears
+  the winner. Afterwards the summary offers **Set aside the others…**, a
+  confirmed step that archives the other candidates and removes their worktrees
+  after saving them; refused while any is still working. An archived card shows
+  **Restore**, which brings back the thread and its worktree.
+- **Sidebar.** In By project, a group folds into one row (prompt, a status line
+  such as "3 agents · 1 working" or "Kept Codex", agent glyphs, and a Compare
+  quick action). It expands to the candidate rows and starts expanded when the
+  open thread is a candidate. By status and Recent list candidates as threads.
+- **Ratings and Your results.** Every completed agent turn has thumbs up and
+  down under its outcome; pressing the same one clears it. Ratings and keeps
+  total per agent and model in **Your results** on the Usage view. Local only.
+- **Routes and harnesses.** See [harness.md](./harness.md#best-of-n-candidates).
+- **Remote viewer.** `listThreadGroups`, `compareThreadGroup`, `runRatings` and
+  `resultsLeaderboard` are reads; `startBestOfN`, `keepCandidate`,
+  `setAsideCandidates` and `rateRun` are writes. A paired device sees the
+  sidebar group, Compare and Your results, with no Run on…, Keep, Set aside,
+  Restore or rating controls.
+- **Not on the board.** The board's New card makes one thread; a group of N
+  with chains has no defined meaning there, so it is not offered.
 
