@@ -3,6 +3,7 @@ import { commandForEvent, keymapFrom, type Keymap } from "../../lib/keybindings"
 import { useThreadTriage } from "../../lib/thread-triage";
 import { useWorkspace } from "../../lib/workspace";
 import { cycleRegion } from "../../lib/regions";
+import { REOPEN_PANEL_EVENT } from "./useReopenPanel";
 
 /**
  * ⌘E settles the open thread and moves to whatever wants you next, so triage
@@ -24,6 +25,7 @@ export function useTriageShortcuts() {
         return;
       }
       const command = commandForEvent(event, keymap);
+      if (command?.id === "reopen-panel") { event.preventDefault(); window.dispatchEvent(new CustomEvent(REOPEN_PANEL_EVENT)); return; }
       if (command?.id !== "settle-and-next" && command?.id !== "mark-unread") return;
       const { triage: actions, sessionId: id, view: current } = live.current;
       if (!id || current !== "chat" || !actions.writable) return;

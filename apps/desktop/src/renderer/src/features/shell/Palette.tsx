@@ -9,6 +9,7 @@ import { TOGGLE_DICTATION_EVENT } from "../../lib/dictation";
 import { useThreadTriage } from "../../lib/thread-triage";
 import { useToasts } from "../../lib/toasts";
 import { useSessionActions } from "../triage/session-actions";
+import { REOPEN_PANEL_EVENT } from "../triage/useReopenPanel";
 import { ACTION_ICONS } from "./ActionMenu";
 import { ArrowLeftIcon, ArrowRightIcon, CpuIcon, DiffIcon, FileIcon, FolderIcon, GlobeIcon, HistoryIcon, InfoIcon, LaptopIcon, MessageSquareIcon, MessageSquarePlusIcon, MoonIcon, PanelLeftIcon, PanelRightIcon, PlusIcon, RefreshIcon, KeyboardIcon, LinkIcon, SearchIcon, SettingsIcon, ShieldIcon, SmartphoneIcon, SmilePlusIcon, SparkIcon, SunIcon, TerminalIcon } from "./icons";
 import { SearchDialog, type SearchDialogItem } from "./SearchDialog";
@@ -188,6 +189,8 @@ function PaletteDialog() {
       { id: "sidebar", label: sidebarCollapsed ? "Show sidebar" : "Hide sidebar", group: "Workspace", icon: icon(PanelLeftIcon), command: "toggle-sidebar", run: () => setSidebarCollapsed(!sidebarCollapsed) },
       { id: "panel", label: inspectorOpen ? "Hide panel" : "Show panel", group: "Workspace", icon: icon(PanelRightIcon), command: "toggle-inspector", keywords: "inspector", run: () => setInspectorOpen(!inspectorOpen) },
       { id: "review", label: "Open Review", group: "Workspace", icon: icon(DiffIcon), command: "open-review", keywords: "diff changes", run: () => openInspector("changes") },
+      { id: "reopen-panel", label: "Reopen the closed panel", group: "Workspace", icon: icon(PanelRightIcon), command: "reopen-panel",
+        disabledReason: inspectorOpen ? "The panel is open." : undefined, run: () => window.dispatchEvent(new CustomEvent(REOPEN_PANEL_EVENT)) },
       { id: "browser", label: "Open browser", group: "Workspace", icon: icon(GlobeIcon), command: "open-browser", run: () => openInspector("browser") },
       { id: "simulator", label: "Open iOS Simulator", group: "Workspace", icon: icon(SmartphoneIcon), disabledReason: desktopOnly ?? (api.platform && api.platform !== "darwin" ? "Available on macOS with Xcode." : undefined), run: () => openInspector("simulator") },
       { id: "open-in-favorite", label: "Open folder in favourite app", group: "Workspace", icon: icon(FolderIcon), command: "open-in-favorite", keywords: "editor open in",

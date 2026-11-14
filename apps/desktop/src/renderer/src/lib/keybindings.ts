@@ -57,6 +57,7 @@ export const COMMANDS: KeyCommand[] = [
   { id: "open-effort", label: "Choose effort", chord: { key: "e", meta: true, shift: true } },
   { id: "settle-and-next", label: "Settle and go to next", chord: { key: "e", meta: true } },
   { id: "mark-unread", label: "Mark conversation unread", chord: { key: "u", meta: true, shift: true } },
+  { id: "reopen-panel", label: "Reopen the closed panel", chord: { key: "t", meta: true, shift: true } },
   /* ⌘O stays Open folder (the menu's); the Option variant opens the conversation's folder in the favourite app. */
   { id: "open-in-favorite", label: "Open in favourite app", chord: { key: "o", meta: true, alt: true } },
   /* L for listen: ⌘⇧D already opens Review, and ⌥ chords arrive as composed characters on macOS. */

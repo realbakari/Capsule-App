@@ -2197,3 +2197,4 @@ differs from the one for folders.
   on the person (file pickers, menus, dictation, voice, the updater's own
   progress) and terminal traffic are not watched. The wrapper proxies an empty
   object so a frozen bridge's property rules never apply to it.
+- **Reopen the panel** (⇧⌘T, palette) brings back the side panel on the surface it showed when it was closed.

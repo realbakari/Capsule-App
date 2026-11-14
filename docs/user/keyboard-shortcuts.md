@@ -12,6 +12,7 @@
 | Search in files | `⇧⌘F` |
 | Toggle the sidebar | `⌘B` |
 | Toggle the side panel | `⌘\` |
+| Reopen the side panel you closed, on the same surface | `⇧⌘T` |
 | Find in the current conversation | `⌘F` (in the browser panel: find on the page) |
 | Back to the previous conversation you visited | `⌘[` |
 | Forward again | `⌘]` |
