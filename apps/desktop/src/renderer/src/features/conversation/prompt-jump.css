@@ -68,3 +68,6 @@
 @media (prefers-reduced-motion: reduce) {
   .turn-flash { animation: none; outline: 2px solid color-mix(in srgb, var(--text) 25%, transparent); outline-offset: 2px; }
 }
+
+/* In a pane too narrow for gutters, the column steps in so the trigger never sits on a message. */
+.conversation:has(> .prompt-jump) > .thread { width: min(var(--chat-max), calc(100% - 4rem)); }
