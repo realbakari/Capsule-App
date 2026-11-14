@@ -33,6 +33,19 @@ async function exchange(token: string): Promise<string | undefined> {
   return body.token;
 }
 
+const SHARE_PREFIX = "#share=";
+
+/*
+ * The secret from a share link. Unlike a pairing token it is not spent on use:
+ * it stays in the address so a reload, or the same link opened again, still
+ * reads the thread until the link is revoked or expires.
+ */
+export function readShareToken(hash: string): string | undefined {
+  if (!hash.startsWith(SHARE_PREFIX)) return undefined;
+  const token = hash.slice(SHARE_PREFIX.length).trim();
+  return token || undefined;
+}
+
 /** Whether this page is a paired browser rather than the desktop window. */
 export async function resolveRemoteToken(): Promise<string | undefined> {
   const pairing = readPairingToken(window.location.hash);
@@ -59,7 +72,7 @@ export async function resolveRemoteToken(): Promise<string | undefined> {
 }
 
 /** A CapsuleApi backed by the paired socket. */
-export function createRemoteBridge(token: string): CapsuleApi {
+export function createRemoteBridge(token: string, options: { share?: boolean } = {}): CapsuleApi {
   const listeners = new Map<string, Set<(payload: unknown) => void>>();
   const pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();
   let nextId = 1;
@@ -104,7 +117,7 @@ export function createRemoteBridge(token: string): CapsuleApi {
       connection.close();
     }, 10_000);
     connection.addEventListener("open", () => {
-      if (socket === connection) sendFrame(connection, JSON.stringify({ token }));
+      if (socket === connection) sendFrame(connection, JSON.stringify(options.share ? { share: token } : { token }));
     });
     connection.addEventListener("message", (event) => {
       if (socket !== connection) return;
@@ -156,7 +169,10 @@ export function createRemoteBridge(token: string): CapsuleApi {
     });
     connection.addEventListener("close", (event) => {
       if (socket !== connection) return;
-      if (event.code === 4401) {
+      if (event.code === 4401 && options.share) {
+        authError = "This share link expired or was revoked. Ask whoever shared it for a new link.";
+        disconnect(connection, authError, false);
+      } else if (event.code === 4401) {
         authError = "This pairing expired or was revoked. Create a new pairing link on the Capsule host.";
         try { sessionStorage.removeItem(TOKEN_KEY); } catch { /* No storage in restricted browsers. */ }
         disconnect(connection, authError, false);
@@ -188,8 +204,9 @@ export function createRemoteBridge(token: string): CapsuleApi {
       homeDir: "",
       platform: undefined,
       isDesktop: false,
-      get remoteMode() { return !ready ? "connecting" : control ? "control" : "read"; },
+      get remoteMode() { return !ready ? "connecting" : options.share ? "share" : control ? "control" : "read"; },
       get remoteError() { return authError; },
+      remoteShare: Boolean(options.share),
       getPathForFile: () => { throw new Error("File attachments are available in the desktop app, not the browser workspace."); },
       on: (channel: string, handler: (payload: unknown) => void) => {
         const set = listeners.get(channel) ?? new Set();

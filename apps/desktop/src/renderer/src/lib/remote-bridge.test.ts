@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createRemoteBridge, readPairingToken } from "./remote-bridge";
+import { createRemoteBridge, readPairingToken, readShareToken } from "./remote-bridge";
 
 describe("readPairingToken", () => {
   it("reads the token a pairing link carries", () => {
@@ -136,5 +136,24 @@ describe("paired commands across disconnects", () => {
     await vi.advanceTimersByTimeAsync(1_500); expect(TestSocket.connections).toHaveLength(3);
     const socket = TestSocket.connections[2]!; socket.open(); socket.frame({ type: "ready", scopes: ["read"] });
     expect(bridge.remoteMode).toBe("read");
+  });
+  it("opens a share link read-only, delivers host events by key, and stops for good when revoked", async () => {
+    expect(readShareToken("#share=Secret1")).toBe("Secret1");
+    expect(readShareToken("#pair=Secret1")).toBeUndefined();
+    const bridge = createRemoteBridge("Secret1", { share: true });
+    const socket = TestSocket.connections[0]!;
+    socket.open();
+    expect(socket.sent).toEqual([{ share: "Secret1" }]);
+    socket.frame({ type: "ready", scopes: ["read"], share: { sessionId: "s1" } });
+    expect(bridge.remoteMode).toBe("share");
+    const message = vi.fn();
+    bridge.on("message", message);
+    socket.frame({ type: "event", event: "capsule:event:message", payload: { id: "m1" } });
+    expect(message).toHaveBeenCalledWith({ id: "m1" });
+    socket.handlers.get("close")?.forEach((handler) => handler({ code: 4401 } as never));
+    expect(bridge.remoteError).toContain("share link expired or was revoked");
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(TestSocket.connections).toHaveLength(1);
+    await expect(bridge.listSessions()).rejects.toThrow("share link");
   });
 });

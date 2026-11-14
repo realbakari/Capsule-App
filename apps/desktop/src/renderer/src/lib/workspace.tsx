@@ -680,7 +680,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   const harnessLive = Boolean(
     session?.harnessId === selectedHarness?.id && session?.openclawSessionKey && ["spawning", "running", "waiting"].includes(session.harnessState ?? ""),
   );
-  const sendBlockReason = api.isDesktop === false && api.remoteMode !== "control"
+  const sendBlockReason = api.isDesktop === false && api.remoteMode === "share"
+    ? "This is a shared, read-only conversation."
+    : api.isDesktop === false && api.remoteMode !== "control"
     ? "This browser is read-only. Create a conversation-control pairing link from the desktop to send messages."
     : harnessPreflightReason({
     harness: mode === "code" ? selectedHarness : undefined,
