@@ -18,6 +18,7 @@ need the shipped-product voice.
 - [Drafts, attachments, and prompt stash](./user/composer.md)
 - [The board: cards, columns, and chains](./user/board.md)
 - [Running one prompt on several agents](./user/best-of-n.md)
+- [Importing sessions from Claude Code and Codex](./user/importing-sessions.md)
 - [Projects, actions, and local previews](./user/projects-and-previews.md)
 - [iOS Simulator](./user/simulator.md)
 - [capsule.json — project config in the repository](./user/project-file.md)

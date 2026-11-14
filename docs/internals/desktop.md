@@ -761,6 +761,40 @@ Home/End, Enter, Escape) and, in a fork, **Back to original**. None of the turn
 menu, dialog, banner or palette actions render for a paired viewer; the
 switcher does, because switching threads is a read.
 
+**Import and handoff.** `Session.origin` (written once, column `origin`) says
+where a thread came from: `{ kind: "import", agent, nativeSessionId,
+continuation: "resume" | "replay", reason? }` or `{ kind: "handoff", sessionId,
+fromHarnessId? }`. `ThreadOrigin` renders it as a note at the top of the
+thread: "Imported from Claude Code" with what the next message does, or
+"Continued from <title>" with a link back and, until the first prompt, the
+summary under a disclosure.
+
+`listImportableSessions(projectId)` (read) returns `ImportListing`: the
+sessions whose recorded folder is the project's, newest first, each with
+agent, title, first prompt, turn count, last activity, the continuation an
+import would get, and `importedAs` when a thread already exists; plus whether
+each agent's history folder exists. `importSession({ projectId, agent,
+nativeSessionId })` (write) creates the thread with the prompts and final
+replies as messages and returns it; importing the same session again returns
+the first thread. `ImportSessionsProvider` owns the dialog and a per-project
+listing cache. Entry points: the project menu (**Import sessions…**, disabled
+without a folder), the palette (**Import sessions from Claude Code or
+Codex…**), and an `ImportHint` chip under an empty thread's heading ("Found 12
+Claude Code sessions in this folder. Import…") that renders only when
+unimported sessions exist. The dialog filters by agent, says up front whether
+imports resume or replay and why, and notes missing histories and unsupported
+agents.
+
+`handoffDraft(sessionId)` (read) returns `{ summary }`; `handoffSession({
+sessionId, harnessId, summary })` (write) creates "<title> (continued)" in the
+same folder with `carryOver.brief` and the handoff origin. `HandoffProvider`
+owns the dialog: an agent `MenuSelect` (this thread's agent first by default)
+and an editable summary textarea. Entry points, all labelled **Continue in a
+new thread…**: the context ring's card, the thread menu (titlebar and sidebar
+row), and the palette. A paired viewer gets neither feature: the providers
+report a disabled reason off the desktop, and the menus and palette hide or
+disable the items.
+
 Sending during a running turn enqueues instead of refusing. The engine owns
 the queue: `FollowUpService` keeps up to 20 follow-ups and one scheduled resume
 per conversation in the settings table (`followups:<sessionId>`), and sends the

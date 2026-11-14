@@ -416,6 +416,56 @@ only, on one harness, would give the same menu item two behaviours. One
 mechanism for every route keeps a fork predictable; recording native message
 ids per run is the prerequisite if this is revisited.
 
+### Imported sessions per route
+
+`HistoryImport` (`packages/core/src/history-import.ts`) turns a session from an
+agent's own history into a thread. The parsers live in a registry,
+`HISTORY_SOURCES` in `history-parsers.ts`, one per agent with a documented
+local format:
+
+| Agent | Where it reads | What a turn is |
+|---|---|---|
+| Claude Code | `$CLAUDE_CONFIG_DIR/projects/<cwd with every non-alphanumeric as "-">/*.jsonl` (default `~/.claude`) | a `user` entry with text content that is not meta, a sidechain, a tool result or a command wrapper; the reply is the turn's last `assistant` text |
+| Codex | `$CODEX_HOME/sessions/**/rollout-*.jsonl` (default `~/.codex`), matched by the `session_meta` line's `cwd` | `event_msg` `user_message` / `agent_message`; `response_item` messages when a rollout has no event messages; injected `<environment_context>` blocks are skipped |
+| Everyone else | not read | no documented local history; the dialog says they cannot be imported |
+
+Files are only read. Lines that are not JSON are counted and logged, never
+fatal. A session is listed only when its recorded `cwd` equals the project's
+folder, and the import call re-finds the file by agent and native id rather
+than trusting a path from the renderer.
+
+Whether the thread resumes is decided once, at import, by
+`importContinuation(route)`:
+
+| Route / harness | Imported thread | Next message |
+|---|---|---|
+| Direct, Claude Code | `directSession` with the native session id, `carryOver.route = "direct"` | spawns the native SDK transport with `resume: <id>`; the SDK checks the session exists for this folder |
+| Direct, Codex | same, with the thread id | `thread/resume` on the app-server; an archived thread is unarchived first, as for any resume |
+| Gateway, any harness | `carryOver.replayTranscript` | a new Gateway session; the imported transcript goes with the first prompt in `<conversation-so-far>`. The Gateway runs its own agent sessions and cannot reopen a CLI session started on this computer |
+| Mock runtime | same as Gateway | lifecycle event only |
+
+The `launchSignature` an imported `directSession` records comes from
+`directLaunchSignature(harnessId)`, the same command identity a new direct
+session records, so the host's resume guard accepts it. An import always uses
+the project checkout (`workspaceMode: "local"`): a resumed session must run in
+the folder it was recorded in.
+
+### Handoff per route
+
+**Continue in a new thread…** builds its summary locally with
+`handoffSummary` (`threadToMarkdown` over prompts and final replies, newest
+24 KB). Asking the agent was considered and not used: on the Gateway a
+control turn's reply would arrive as a thread reply, an agent that is not live
+would have to be spawned to answer, and it would cost a turn on every route.
+The local summary behaves the same on direct, Gateway and mock, for every
+harness.
+
+The new thread gets `carryOver.brief` (plus the original's route and saved
+controls when the agent is the same) and `origin: { kind: "handoff",
+sessionId }`. On its first prompt the engine prefixes the brief in a
+`<handoff-summary>` block, records "Carried the handoff summary to the agent",
+and clears it. A different agent starts on that agent's default route.
+
 ### Embedded browser tools
 
 Browser operations acquire one target and grant generation. Foreground
