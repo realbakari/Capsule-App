@@ -100,7 +100,7 @@ export {
   type ProcessRow,
 } from "./process-tree.js";
 export { readProjectFile } from "./project-file.js";
-export { createWorktree, removeWorktree, type WorktreeResult } from "./worktrees.js";
+export { createWorktree, removeWorktree, restoreWorktree, setAsideWorktree, type WorktreeResult } from "./worktrees.js";
 export {
   isSupportedProjectIcon,
   readProjectIconDataUrl,
