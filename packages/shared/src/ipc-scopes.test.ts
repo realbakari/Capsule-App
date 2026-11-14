@@ -156,6 +156,66 @@ describe("remote events", () => {
   });
 });
 
+describe("settings-file channels", () => {
+  it("lets a viewer read settings and their problems, but never change a file or a folder's trust", () => {
+    for (const channel of ["configGetEffective", "configGetDiagnostics"]) expect(isChannelAllowed(channel, ["read"])).toBe(true);
+    for (const channel of ["configSetValue", "configOpenFile", "configTrust", "configReload", "configEditPermissionRule", "appRestart"]) {
+      expect(scopeForChannel(channel)).toBe("write");
+      expect(isChannelAllowed(channel, ["read"])).toBe(false);
+      expect(isChannelAllowed(channel, ["control"])).toBe(false);
+    }
+  });
+});
+
+describe("command channels", () => {
+  it("lets a viewer list commands but keeps expanding one, which may run shell, to the desktop", () => {
+    expect(isChannelAllowed("commandsList", ["read"])).toBe(true);
+    expect(scopeForChannel("commandsExpand")).toBe("write");
+    expect(isChannelAllowed("commandsExpand", ["read"])).toBe(false);
+    expect(isChannelAllowed("commandsExpand", ["control"])).toBe(false);
+  });
+});
+
+describe("theme and keybinding channels", () => {
+  it("keeps importing a theme, choosing a backdrop image and editing keybindings.json on the desktop", () => {
+    for (const channel of ["themesImport", "keybindingsSet", "backdropChooseImage"]) {
+      expect(scopeForChannel(channel)).toBe("write");
+      expect(isChannelAllowed(channel, ["read"])).toBe(false);
+      expect(isChannelAllowed(channel, ["control"])).toBe(false);
+    }
+  });
+});
+
+describe("MCP and profile channels", () => {
+  it("keeps testing a server, which runs its command, switching one, and writing a profile on the desktop", () => {
+    for (const channel of ["mcpTest", "mcpSetEnabled", "profilesCreate"]) {
+      expect(scopeForChannel(channel)).toBe("write");
+      expect(isChannelAllowed(channel, ["read"])).toBe(false);
+      expect(isChannelAllowed(channel, ["control"])).toBe(false);
+    }
+  });
+});
+
+describe("status line, automation and unread channels", () => {
+  it("keeps running a status line command, running or pausing an automation and marking a thread read on the desktop", () => {
+    for (const channel of ["statusLineRun", "automationsRunNow", "automationsSetEnabled", "automationsDismissMissed", "automationsCreate", "sessionsMarkRead"]) {
+      expect(scopeForChannel(channel)).toBe("write");
+      expect(isChannelAllowed(channel, ["read"])).toBe(false);
+      expect(isChannelAllowed(channel, ["control"])).toBe(false);
+    }
+  });
+});
+
+describe("plugin channels", () => {
+  it("keeps inspecting, installing, configuring and removing plugins on the desktop", () => {
+    for (const channel of ["pluginsInspect", "pluginsInstall", "pluginsDiscard", "pluginsSetEnabled", "pluginsConfigure", "pluginsUninstall"]) {
+      expect(scopeForChannel(channel)).toBe("write");
+      expect(isChannelAllowed(channel, ["read"])).toBe(false);
+      expect(isChannelAllowed(channel, ["control"])).toBe(false);
+    }
+  });
+});
+
 describe("follow-up channels", () => {
   it("lets a viewer read the queue and conversation control change it, but not a read-only device", () => {
     expect(isChannelAllowed("getFollowUps", ["read"])).toBe(true);

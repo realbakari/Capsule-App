@@ -12,6 +12,7 @@ export default tseslint.config(
       "apps/desktop/src/renderer/**",
       "scripts/**",
       "apps/desktop/scripts/**",
+      "docs/examples/**",
     ],
   },
   js.configs.recommended,

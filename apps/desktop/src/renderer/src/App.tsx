@@ -19,7 +19,9 @@ import { RemoteSessionBanner } from "./features/shell/RemoteSessionBanner";
 import { Toasts } from "./features/toasts/Toasts";
 import { TriageHost } from "./features/triage/TriageHost";
 import { ToastProvider } from "./lib/toasts";
+import { CustomizationNotices } from "./features/customization/CustomizationNotices";
 import { ShortcutsSheet } from "./features/shell/ShortcutsSheet";
+import { ChordHint } from "./features/settings/ChordHint";
 import { AboutModal } from "./features/settings/AboutModal";
 import { ViewErrorBoundary } from "./features/shell/ErrorBoundary";
 import { useSidebarSwipe } from "./lib/useSidebarSwipe";
@@ -81,6 +83,7 @@ function Shell() {
       <div className="workspace">
         <Titlebar />
         <RemoteSessionBanner />
+        <CustomizationNotices />
         <div className="workspace-body">
           <div className="conversation-host" hidden={view !== "chat"}>
             <ViewErrorBoundary label="Conversation"><Conversation /></ViewErrorBoundary>
@@ -116,6 +119,7 @@ function Shell() {
       <ConfirmDialog />
       <TriageHost />
       <ShortcutsSheet />
+      <ChordHint />
       <TooltipLayer />
       <Toasts />
       <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} />

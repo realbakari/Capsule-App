@@ -1,72 +1,34 @@
 /**
- * The keyboard commands the renderer owns, and how a chord is matched.
+ * The renderer's side of keybindings.json.
  *
- * Shortcuts used to live in three places that could not disagree loudly: the
- * handler in workspace.tsx tested `key === "b"` inline, the application menu
- * declared its own accelerators in the main process, and Settings rendered a
- * hardcoded list that documented neither. A key could be changed in one and
- * stay wrong in the other two.
- *
- * This registry is the handler's dispatch table and the Settings list at once,
- * so a binding is described exactly once. Menu accelerators still belong to the
- * main process — they fire before the web contents sees the event — so those
- * commands are marked `menuOwned` and shown as fixed rather than pretending to
- * be editable here.
+ * The defaults are `KEY_COMMANDS` in shared, which main also reads to check
+ * the file. keybindings.json's entries arrive parsed in the config snapshot;
+ * `resolveKeymap` lays them over the defaults, and `createChordMatcher`
+ * matches key presses, chords included, against the result. Menu
+ * accelerators still belong to the main process, which sees them before the
+ * page does, so those commands are shown as fixed.
  */
+import {
+  chordKey,
+  defaultBindings,
+  formatChord,
+  KEY_COMMANDS,
+  keyCommand,
+  KEYMAP_CONTEXTS,
+  parseKeymapAction,
+  resolveKeymap,
+  type ChordEvent,
+  type ChordSequence,
+  type CommandSummary,
+  type EffectiveBinding,
+  type KeybindingEntry,
+  type KeyChord,
+  type KeymapContext,
+} from "@capsule/shared";
 
-export interface KeyChord {
-  /** Lower-case `KeyboardEvent.key`, or the literal for punctuation. */
-  key: string;
-  meta?: boolean;
-  shift?: boolean;
-  alt?: boolean;
-  ctrl?: boolean;
-}
+export type { KeyChord } from "@capsule/shared";
 
-export interface KeyCommand {
-  id: string;
-  label: string;
-  chord: KeyChord;
-  /** Declared by the application menu, so it cannot be rebound from here. */
-  menuOwned?: boolean;
-}
-
-/** ⌘ on macOS, Ctrl elsewhere — one flag, matched against either. */
-export const COMMANDS: KeyCommand[] = [
-  { id: "palette", label: "Command palette", chord: { key: "k", meta: true }, menuOwned: true },
-  { id: "new-conversation", label: "New conversation", chord: { key: "n", meta: true }, menuOwned: true },
-  { id: "open-folder", label: "Open folder", chord: { key: "o", meta: true }, menuOwned: true },
-  { id: "open-files", label: "Open files", chord: { key: "o", meta: true, shift: true }, menuOwned: true },
-  { id: "settings", label: "Settings", chord: { key: ",", meta: true }, menuOwned: true },
-  { id: "search-files", label: "Search files", chord: { key: "p", meta: true } },
-  { id: "search-in-files", label: "Search in files", chord: { key: "f", meta: true, shift: true } },
-  { id: "toggle-sidebar", label: "Toggle sidebar", chord: { key: "b", meta: true } },
-  { id: "toggle-inspector", label: "Toggle panel", chord: { key: "\\", meta: true } },
-  { id: "toggle-terminal", label: "Toggle terminal", chord: { key: "j", meta: true } },
-  { id: "history-back", label: "Back", chord: { key: "[", meta: true } },
-  { id: "history-forward", label: "Forward", chord: { key: "]", meta: true } },
-  { id: "find-in-thread", label: "Find in conversation", chord: { key: "f", meta: true } },
-  { id: "jump-to-prompt", label: "Jump to a prompt", chord: { key: "j", meta: true, shift: true } },
-  { id: "open-review", label: "Open Review", chord: { key: "d", meta: true, shift: true } },
-  { id: "open-browser", label: "Open Browser", chord: { key: "b", meta: true, shift: true } },
-  /* ⌃Tab: `meta` matches Control as well as ⌘, and ⌘Tab never reaches the app. */
-  { id: "next-conversation", label: "Next conversation", chord: { key: "tab", meta: true } },
-  { id: "previous-conversation", label: "Previous conversation", chord: { key: "tab", meta: true, shift: true } },
-  { id: "show-shortcuts", label: "Keyboard shortcuts", chord: { key: "/", meta: true } },
-  { id: "open-mode", label: "Choose mode", chord: { key: "m", meta: true, shift: true } },
-  { id: "open-model", label: "Choose model", chord: { key: "i", meta: true, shift: true } },
-  { id: "open-effort", label: "Choose effort", chord: { key: "e", meta: true, shift: true } },
-  { id: "cycle-favorite-model", label: "Next favorite model", chord: { key: "m", meta: true, alt: true } },
-  { id: "settle-and-next", label: "Settle and go to next", chord: { key: "e", meta: true } },
-  { id: "mark-unread", label: "Mark conversation unread", chord: { key: "u", meta: true, shift: true } },
-  { id: "reopen-panel", label: "Reopen the closed panel", chord: { key: "t", meta: true, shift: true } },
-  /* ⌘O stays Open folder (the menu's); the Option variant opens the conversation's folder in the favourite app. */
-  { id: "open-in-favorite", label: "Open in favourite app", chord: { key: "o", meta: true, alt: true } },
-  /* L for listen: ⌘⇧D already opens Review, and ⌥ chords arrive as composed characters on macOS. */
-  { id: "dictation", label: "Start or finish dictation", chord: { key: "l", meta: true, shift: true } },
-];
-
-/** Shortcuts that live outside this registry (in a surface or the composer), shown in the shortcuts sheet. */
+/** Shortcuts that live outside the registry (in a surface or the composer), shown in the shortcuts sheet. */
 export const FIXED_SHORTCUTS: Array<{ label: string; keys: string[] }> = [
   { label: "Send", keys: ["↵"] },
   { label: "Stop the running turn", keys: ["Esc"] },
@@ -83,119 +45,101 @@ export const FIXED_SHORTCUTS: Array<{ label: string; keys: string[] }> = [
   { label: "Agents", keys: ["⇧", "⌘", "R"] },
 ];
 
-export type Keymap = Record<string, KeyChord>;
+export const CONTEXT_LABELS: Record<KeymapContext, string> = {
+  global: "Everywhere",
+  composer: "Composer",
+  panel: "Side panel",
+  review: "Review",
+  terminal: "Terminal",
+  palette: "Command palette",
+};
 
-/** Parse a stored chord such as "meta+shift+f". Unknown input is ignored. */
-export function parseChord(value: string): KeyChord | undefined {
-  const parts = value.split("+").map((part) => part.trim().toLowerCase()).filter(Boolean);
-  const key = parts.pop();
-  if (!key) return undefined;
-  const chord: KeyChord = { key };
-  for (const part of parts) {
-    if (part === "meta" || part === "cmd") chord.meta = true;
-    else if (part === "shift") chord.shift = true;
-    else if (part === "alt" || part === "option") chord.alt = true;
-    else if (part === "ctrl" || part === "control") chord.ctrl = true;
-    else return undefined;
-  }
-  return chord;
+/** A composer listens for this to put a command in the draft, as picking it from the `/` menu does. */
+export const INSERT_COMMAND_EVENT = "capsule:insert-command";
+
+/** A registry command the workspace does not run itself, by id, for the surface that owns it. */
+export const KEY_COMMAND_EVENT = "capsule:key-command";
+
+/** A command's first effective binding as one label, such as "⇧⌘D", or undefined when it has none. */
+export function shortcutLabel(id: string, bindings: readonly EffectiveBinding[]): string | undefined {
+  const binding = bindings.find((item) => item.action === id && item.context === "global") ?? bindings.find((item) => item.action === id);
+  return binding ? sequenceSymbols(binding.sequence).map((chord) => chord.join("")).join(" ") : undefined;
 }
 
-export function formatChord(chord: KeyChord): string {
-  const parts: string[] = [];
-  if (chord.ctrl) parts.push("ctrl");
-  if (chord.alt) parts.push("alt");
-  if (chord.shift) parts.push("shift");
-  if (chord.meta) parts.push("meta");
-  parts.push(chord.key);
-  return parts.join("+");
+export function effectiveKeymap(entries: readonly KeybindingEntry[] | undefined): EffectiveBinding[] {
+  return resolveKeymap(defaultBindings(), entries ?? []);
 }
 
-/** Display form, for the settings list. */
+/** Display form. `cmd` matches Control too; ⌘Tab belongs to the system, so a Tab chord is shown as ⌃. */
 export function chordSymbols(chord: KeyChord): string[] {
   const parts: string[] = [];
   if (chord.ctrl) parts.push("⌃");
   if (chord.alt) parts.push("⌥");
   if (chord.shift) parts.push("⇧");
-  /* `meta` matches Control too; ⌘Tab belongs to the system, so a Tab chord is shown as ⌃. */
-  if (chord.meta) parts.push(chord.key === "tab" ? "⌃" : "⌘");
-  parts.push(chord.key === " " ? "Space" : chord.key === "tab" ? "Tab" : chord.key.length === 1 ? chord.key.toUpperCase() : chord.key);
+  if (chord.meta) parts.push(chord.key === "tab" && !chord.ctrl ? "⌃" : "⌘");
+  const names: Record<string, string> = { " ": "Space", tab: "Tab", escape: "Esc", enter: "↵", arrowup: "↑", arrowdown: "↓", arrowleft: "←", arrowright: "→", backspace: "⌫" };
+  parts.push(names[chord.key] ?? (chord.key.length === 1 ? chord.key.toUpperCase() : chord.key));
   return parts;
 }
 
-/**
- * Whether an event is this chord.
- *
- * Modifiers are matched exactly in both directions: without that, ⌘B also fires
- * on ⌘⇧B, so a binding silently shadows every chord built on top of it.
- */
-export function matchesChord(event: KeyboardEvent, chord: KeyChord): boolean {
-  if (chordKey(event) !== chord.key.toLowerCase()) return false;
-  // meta covers ⌘ on macOS and Ctrl elsewhere; a chord asking for neither must
-  // not fire while one is held.
-  const primary = event.metaKey || event.ctrlKey;
-  if (Boolean(chord.meta) !== primary) return false;
-  if (Boolean(chord.shift) !== event.shiftKey) return false;
-  if (Boolean(chord.alt) !== event.altKey) return false;
-  return true;
+export function sequenceSymbols(sequence: ChordSequence): string[][] {
+  return sequence.map(chordSymbols);
 }
 
-/**
- * The person's overrides from settings. A stored chord that no longer parses
- * falls back to the default rather than leaving the command unreachable.
- */
-export function keymapFrom(stored: Record<string, string> | undefined): Keymap {
-  const map: Keymap = {};
-  for (const [id, value] of Object.entries(stored ?? {})) {
-    const chord = parseChord(value);
-    if (chord) map[id] = chord;
+/** What a binding's action does, in words. */
+export function actionLabel(action: string, commands?: readonly CommandSummary[]): string {
+  const { namespace, name } = parseKeymapAction(action);
+  if (namespace === "command") {
+    const command = commands?.find((item) => item.name === name);
+    return command?.description ? `/${name} · ${command.description}` : `/${name}`;
   }
-  return map;
+  if (namespace === "profile") return `Profile ${name}`;
+  if (namespace === "action") return `Run ${name}`;
+  return keyCommand(name)?.label ?? name;
 }
 
-/** A command's current keys as one label, such as "⇧⌘D", or undefined when it has none. */
-export function shortcutLabel(id: string, keymap: Keymap | undefined, commands: KeyCommand[] = COMMANDS): string | undefined {
-  const command = commands.find((item) => item.id === id);
-  return command ? chordSymbols(chordFor(command, keymap)).join("") : undefined;
-}
+const MODIFIER_KEYS = new Set(["meta", "control", "shift", "alt", "os", "capslock"]);
 
 /**
- * The key a chord names. Option changes the character on macOS (⌥O types
- * "ø"), so with Option held the physical letter or digit is the key.
+ * A key press as a chord, for recording a binding or searching by
+ * keystroke. ⌘ is the primary modifier on macOS and Control elsewhere; on
+ * macOS Control is kept as itself, so emacs-style ⌃A stays ⌃A.
  */
-export function chordKey(event: Pick<KeyboardEvent, "key" | "code" | "altKey">): string {
-  const physical = event.altKey ? /^(?:Key([A-Z])|Digit([0-9]))$/.exec(event.code ?? "") : null;
-  return (physical?.[1] ?? physical?.[2] ?? event.key).toLowerCase();
+export function chordFromEvent(event: ChordEvent, mac = isMac()): KeyChord | undefined {
+  if (MODIFIER_KEYS.has(event.key.toLowerCase())) return undefined;
+  const key = chordKey(event);
+  const chord: KeyChord = { key };
+  if (mac ? event.metaKey : event.ctrlKey || event.metaKey) chord.meta = true;
+  if (mac && event.ctrlKey) chord.ctrl = true;
+  if (event.altKey) chord.alt = true;
+  if (event.shiftKey) chord.shift = true;
+  return chord;
 }
 
-/** Effective chord for a command, honouring a user override. */
-export function chordFor(command: KeyCommand, keymap: Keymap | undefined): KeyChord {
-  return keymap?.[command.id] ?? command.chord;
+export function sequenceStartsWith(sequence: ChordSequence, prefix: ChordSequence): boolean {
+  return prefix.length <= sequence.length && prefix.every((chord, index) => formatChord(chord) === formatChord(sequence[index]!));
 }
 
-/** The command an event triggers, or undefined. Menu-owned commands are skipped. */
-export function commandForEvent(
-  event: KeyboardEvent,
-  keymap: Keymap | undefined,
-  commands: KeyCommand[] = COMMANDS,
-): KeyCommand | undefined {
-  return commands.find(
-    (command) => !command.menuOwned && matchesChord(event, chordFor(command, keymap)),
-  );
+/** The surfaces around an element, most specific first, from `data-keymap-context` attributes. */
+export function contextStack(target: EventTarget | null): KeymapContext[] {
+  const stack: KeymapContext[] = [];
+  let node = target instanceof Element ? target.closest("[data-keymap-context]") : null;
+  while (node) {
+    const context = node.getAttribute("data-keymap-context");
+    if ((KEYMAP_CONTEXTS as readonly string[]).includes(context ?? "") && !stack.includes(context as KeymapContext)) stack.push(context as KeymapContext);
+    node = node.parentElement?.closest("[data-keymap-context]") ?? null;
+  }
+  return stack;
 }
 
-/**
- * Commands that would answer to the same chord. A binding that silently steals
- * another's keys is worse than one that refuses to be set.
- */
-export function conflictsFor(
-  id: string,
-  chord: KeyChord,
-  keymap: Keymap | undefined,
-  commands: KeyCommand[] = COMMANDS,
-): KeyCommand[] {
-  const target = formatChord(chord);
-  return commands.filter(
-    (command) => command.id !== id && formatChord(chordFor(command, keymap)) === target,
-  );
+/** Every registry command, with its effective keys, for Settings and the shortcuts sheet. */
+export function registryRows(bindings: readonly EffectiveBinding[]) {
+  return KEY_COMMANDS.map((command) => ({
+    command,
+    bindings: command.menuOwned ? [] : bindings.filter((binding) => binding.action === command.id),
+  }));
+}
+
+function isMac(): boolean {
+  return typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 }

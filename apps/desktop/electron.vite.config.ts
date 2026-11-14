@@ -4,9 +4,9 @@ import react from "@vitejs/plugin-react";
 import type { Plugin } from "vite";
 
 const DEV_CSP =
-  "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss: http://127.0.0.1:* http://localhost:*; img-src 'self' data:; object-src 'none'; base-uri 'self';";
+  "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss: http://127.0.0.1:* http://localhost:*; img-src 'self' data: capsule-backdrop:; object-src 'none'; base-uri 'self';";
 const PROD_CSP =
-  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss: http://127.0.0.1:* http://localhost:*; img-src 'self' data:; object-src 'none'; base-uri 'self';";
+  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss: http://127.0.0.1:* http://localhost:*; img-src 'self' data: capsule-backdrop:; object-src 'none'; base-uri 'self';";
 
 function contentSecurityPolicy(): Plugin {
   return {
@@ -24,6 +24,7 @@ export default defineConfig({
       externalizeDepsPlugin({
         exclude: [
           "@capsule/core",
+          "@capsule/config",
           "@capsule/acp",
           "@capsule/muse",
           "@capsule/claude",

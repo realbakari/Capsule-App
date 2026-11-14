@@ -277,3 +277,20 @@ it("puts saved controls on a fresh session model first and drops what it rejects
     expect(kept).toEqual({ "provider-model": "b", effort: "high" });
   } finally { await host.closeAll(); start.mockRestore(); configure.mockRestore(); capabilities.mockRestore(); close.mockRestore(); }
 });
+
+it("offers MCP servers to a native session too, and releases them when it closes", async () => {
+  const servers = [{ name: "docs", command: "docs-mcp", args: [], env: [] }];
+  const dispose = vi.fn();
+  const offer = vi.fn(() => ({ servers, dispose }));
+  const session = { on: () => () => {}, busy: false, running: true, sessionId: "native", models: { availableModels: [] }, reportedCapabilities: undefined,
+    reportedContext: undefined, reportedCommands: undefined, start: vi.fn(async () => "native"), prompt: vi.fn(), cancel: vi.fn(), close: vi.fn(async () => {}), setConfig: vi.fn() };
+  const native = vi.fn(() => session);
+  const host = new DirectAcpHost(native as never);
+  host.offerMcpServers(offer);
+  try {
+    const spawned = await host.spawnAcpSession({ harnessId: "claude", threadId: "t", cwd: process.cwd() });
+    expect(native).toHaveBeenCalledWith(expect.objectContaining({ protocol: "claude", mcpServers: servers }));
+    await host.closeAcp(spawned.sessionKey);
+    expect(dispose).toHaveBeenCalledOnce();
+  } finally { await host.closeAll(); }
+});

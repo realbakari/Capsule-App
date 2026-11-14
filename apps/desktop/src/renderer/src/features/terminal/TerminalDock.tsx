@@ -433,7 +433,7 @@ export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: s
   heightRef.current = height;
 
   return (
-    <section className="terminal-dock" style={{ height }} aria-label="Terminal">
+    <section className="terminal-dock" style={{ height }} aria-label="Terminal" data-keymap-context="terminal">
       {error && <div role="alert" className="notice">{error}</div>}
       <div className="terminal-dock-rail" onPointerDown={startResize} />
       <div className="terminal-tabs">

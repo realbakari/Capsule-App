@@ -91,11 +91,11 @@ describe("agent instruction hints", () => {
     expect(applyAgentInstructionHints("Ship it", settings)).toContain("conventional commit");
   });
 
-  it("appends concise and no-web instructions to the runtime prompt only", () => {
+  it("appends no-web instructions to the runtime prompt only, and leaves output detail to the first turn's style", () => {
     const settings = normalizeCapsuleSettings({ outputDetail: "concise", webAccess: "off" });
     const next = applyAgentInstructionHints("Review this", settings);
     expect(next).toContain("Review this");
-    expect(next).toContain("Keep the reply concise");
+    expect(next).not.toContain("Keep the reply concise");
     expect(next).toContain("Do not use web search");
   });
 });

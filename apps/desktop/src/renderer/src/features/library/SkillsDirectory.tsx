@@ -6,6 +6,7 @@ import { installedCatalogSkill, installSkillWithContent } from "../../lib/skill-
 import { SkillFiles } from "../../lib/skill-files";
 import { formatUserError } from "../../lib/errors";
 import { MessageBody } from "../conversation/MessageBody";
+import { PluginsPanel } from "../plugins/PluginsPanel";
 import {
   SearchIcon,
   XIcon,
@@ -20,7 +21,7 @@ import {
   FolderIcon,
 } from "../shell/icons";
 
-type TabFilter = "packs" | "installed" | "directory";
+type TabFilter = "packs" | "installed" | "directory" | "plugins";
 
 /** Compact a count for a badge: 12480 -> "12.5k". */
 function compactCount(value: number): string {
@@ -253,6 +254,7 @@ export function SkillsDirectory() {
     searchSkillCatalog,
     fetchSkillDetail,
     refresh,
+    config,
   } = useWorkspace();
 
   const [tab, setTab] = useState<TabFilter>("installed");
@@ -547,7 +549,16 @@ export function SkillsDirectory() {
         >
           Packs <span className="tab-count">{skillPacks.length}</span>
         </button>
+        <button
+          type="button"
+          className={`skills-tab ${tab === "plugins" ? "active" : ""}`}
+          onClick={() => setTab("plugins")}
+        >
+          Plugins <span className="tab-count">{config?.plugins.length ?? 0}</span>
+        </button>
       </div>
+
+      {tab === "plugins" && <PluginsPanel />}
 
       {tab === "installed" && (
         <div className="installed-skills">

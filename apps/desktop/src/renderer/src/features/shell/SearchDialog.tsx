@@ -90,7 +90,7 @@ export function SearchDialog({ title, placeholder, query, onQueryChange, items, 
   }
 
   return <div className="palette-backdrop" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <div ref={dialog} className={`palette search-dialog${className ? ` ${className}` : ""}`} role="dialog" aria-modal="true" aria-label={title}
+    <div ref={dialog} className={`palette search-dialog${className ? ` ${className}` : ""}`} role="dialog" aria-modal="true" aria-label={title} data-keymap-context="palette"
       onKeyDown={(event) => {
         if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); }
         if (event.key !== "Tab") return;

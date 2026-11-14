@@ -1,0 +1,119 @@
+/* Agent profiles and MCP servers: lists in Settings, the composer picker and the titlebar chip. */
+
+.profile-dot {
+  flex: none;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: var(--radius-full);
+  background: var(--profile-color, var(--text-faint));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--text) 14%, transparent);
+}
+.agent-profile-choice .profile-dot { margin: 0 0.075rem 0 0.2rem; }
+
+.profile-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  height: 1.35rem;
+  margin-left: 0.25rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-full);
+  color: var(--text-muted);
+  font-size: var(--text-2xs);
+  white-space: nowrap;
+}
+
+.profiles-card-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.profiles-card-row strong { font-weight: 600; }
+.profiles-card-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-left: auto;
+}
+.profiles-card-line {
+  margin: 0.2rem 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.mcp-row-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.mcp-row-head code { font-weight: 600; }
+.mcp-row-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-left: auto;
+}
+.mcp-row-controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+.mcp-detail {
+  margin: 0.25rem 0 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mcp-status {
+  margin: 0.2rem 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+.mcp-status[data-state="offered"] { color: var(--text); }
+.mcp-status[data-state="needs-env"] { color: var(--text); font-weight: 500; }
+.mcp-test {
+  margin: 0.35rem 0 0;
+  font-size: var(--text-xs);
+}
+.mcp-test[data-ok="false"] { color: var(--red); }
+.mcp-test pre {
+  max-height: 8rem;
+  margin: 0.3rem 0 0;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+.mcp-reach {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+}
+.mcp-reach th,
+.mcp-reach td {
+  padding: 0.3rem 0.5rem 0.3rem 0;
+  border-top: 1px solid var(--border-color);
+  text-align: left;
+  vertical-align: top;
+}
+.mcp-reach th { color: var(--text-muted); font-weight: 500; }
+.mcp-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 0.15em;
+  cursor: pointer;
+}
+.mcp-link:hover { text-decoration-color: currentColor; }
+.mcp-link:disabled { color: var(--text-faint); cursor: default; }
+.mcp-link:focus-visible { outline: var(--focus-ring); outline-offset: 2px; }

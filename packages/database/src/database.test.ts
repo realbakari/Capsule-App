@@ -1,9 +1,11 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { CapsuleDatabase } from "./database.js";
 import { CapsuleRepositories } from "./repositories.js";
+import { hasColumn, MIGRATIONS } from "./schema.js";
 
 describe("CapsuleDatabase", () => {
   it("migrates and persists a project", () => {
@@ -369,5 +371,57 @@ describe("best-of-N groups and ratings on disk", () => {
     reopened.clearRunRating("r1");
     expect(reopened.getThreadGroup("grp1")?.winnerSessionId).toBeUndefined();
     expect(reopened.listRunRatings()).toEqual([]);
+  });
+});
+
+describe("profiles from builds that numbered migrations differently", () => {
+  const seed = (file: string, versions: (version: number) => boolean, extra = "") => {
+    const db = new Database(file);
+    db.exec("CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);");
+    for (const migration of MIGRATIONS.filter((item) => versions(item.version))) {
+      db.exec(migration.sql);
+      db.prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, 'x')").run(migration.version);
+    }
+    db.exec(extra);
+    db.exec(`INSERT INTO workspaces (id, name, created_at, updated_at) VALUES ('ws', 'Local', 'x', 'x');
+      INSERT INTO projects (id, workspace_id, name, default_skill_ids, default_mode, created_at, updated_at) VALUES ('p', 'ws', 'Demo', '[]', 'code', 'x', 'x');
+      INSERT INTO sessions (id, workspace_id, project_id, agent_id, title, mode, state, created_at, updated_at) VALUES ('old', 'ws', 'p', 'a', 'Older thread', 'code', 'active', 'x', 'x');`);
+    db.close();
+  };
+  const columns = ["pending_start", "done_at", "forked_from", "turn_mode", "last_viewed_at", "worktree_base_ref", "profile_id", "automation_id"];
+
+  it("upgrades a profile that recorded 20 and 21 for profiles and automations", () => {
+    const file = path.join(mkdtempSync(path.join(tmpdir(), "capsule-db-custom-")), "capsule.sqlite");
+    seed(file, (version) => version < 20, `
+      ALTER TABLE sessions ADD COLUMN profile_id TEXT;
+      INSERT INTO schema_migrations (version, applied_at) VALUES (20, 'x');
+      ALTER TABLE sessions ADD COLUMN automation_id TEXT;
+      ALTER TABLE sessions ADD COLUMN unread INTEGER NOT NULL DEFAULT 0;
+      INSERT INTO schema_migrations (version, applied_at) VALUES (21, 'x');`);
+    const raw = new Database(file);
+    raw.exec("UPDATE sessions SET profile_id = 'reviewer', automation_id = 'p:nightly', unread = 1 WHERE id = 'old'");
+    raw.close();
+
+    const db = new CapsuleDatabase(file);
+    for (const column of columns) expect(hasColumn(db.sqlite, "sessions", column), column).toBe(true);
+    const session = new CapsuleRepositories(db).getSession("old");
+    expect(session).toMatchObject({ profileId: "reviewer", automationId: "p:nightly", lastViewedAt: undefined });
+    db.close();
+    expect(() => new CapsuleDatabase(file).close()).not.toThrow();
+  });
+
+  it("upgrades a profile that ran every workflow and parity migration", () => {
+    const file = path.join(mkdtempSync(path.join(tmpdir(), "capsule-db-flow-")), "capsule.sqlite");
+    seed(file, (version) => version < 140);
+    const raw = new Database(file);
+    raw.exec("UPDATE sessions SET last_viewed_at = '2026-11-01T00:00:00.000Z'");
+    raw.close();
+    const db = new CapsuleDatabase(file);
+    for (const column of columns) expect(hasColumn(db.sqlite, "sessions", column), column).toBe(true);
+    const repos = new CapsuleRepositories(db);
+    expect(repos.getSession("old")?.lastViewedAt).toBe("2026-11-01T00:00:00.000Z");
+    repos.updateSession({ ...repos.getSession("old")!, profileId: "reviewer" });
+    expect(repos.getSession("old")?.profileId).toBe("reviewer");
+    db.close();
   });
 });

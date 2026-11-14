@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { SETTINGS_SCHEMA } from "@capsule/shared";
 import {
   SETTINGS_SEARCH_ITEMS,
   SETTINGS_SECTION_LABELS,
@@ -94,6 +95,12 @@ describe("the catalog against the panels", () => {
     "PlanModeSettings.tsx",
     "SavedPromptsSettings.tsx",
     "../open-in/OpenInSettings.tsx",
+    "CommandsCard.tsx",
+    "RuntimeModeCard.tsx",
+    "../customization/ProfilesCard.tsx",
+    "../customization/McpServersSettings.tsx",
+    "../automations/AutomationsSettings.tsx",
+    "../status-line/StatusLineSettings.tsx",
   ]
     .map((name) => {
       const path = new URL(`./${name}`, import.meta.url);
@@ -120,9 +127,32 @@ describe("the catalog against the panels", () => {
     expect(searchSettings("theme")[0]?.title).toBe("Theme");
   });
 
+  it("tags every keyed row with the same key, so its provenance chip and @modified agree", () => {
+    const untagged = SETTINGS_SEARCH_ITEMS.filter((item) => item.key && !panelSource.includes(`setting="${item.key}"`));
+    expect(untagged.map((item) => `${item.title}: ${item.key}`)).toEqual([]);
+    for (const item of SETTINGS_SEARCH_ITEMS) if (item.key) expect(Object.keys(SETTINGS_SCHEMA), item.title).toContain(item.key);
+  });
+
   it("finds a section by its own name", () => {
     const [first] = searchSettings("appearance");
     expect(first).toMatchObject({ title: "Appearance", section: "appearance" });
     expect(searchSettings("shortcuts").filter((item) => item.title === "Shortcuts")).toHaveLength(1);
+  });
+});
+
+describe("@modified", () => {
+  const modified = new Set(["diffLayout", "transcriptWidth", "permissions"]);
+
+  it("lists every row a settings file set, in panel order", () => {
+    expect(searchSettings("@modified", 8, modified).map((item) => item.title)).toEqual(["Transcript width", "Diff layout"]);
+  });
+
+  it("narrows by the words after it, and starts working before it is fully typed", () => {
+    expect(searchSettings("@modified diff", 8, modified).map((item) => item.title)).toEqual(["Diff layout"]);
+    expect(searchSettings("@mod", 8, modified)).toHaveLength(2);
+  });
+
+  it("finds nothing when no file set anything", () => {
+    expect(searchSettings("@modified")).toEqual([]);
   });
 });

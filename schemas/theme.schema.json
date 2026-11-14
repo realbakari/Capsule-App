@@ -1,0 +1,432 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/realbakari/Capsule-App/main/schemas/theme.schema.json",
+  "title": "Capsule theme",
+  "type": "object",
+  "required": [
+    "name",
+    "appearance"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "appearance": {
+      "enum": [
+        "light",
+        "dark"
+      ]
+    },
+    "tokens": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "crust": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #e8e8e4, dark #000000."
+        },
+        "mantle": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #ecece8, dark #0a0a0a."
+        },
+        "base": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #f4f4f1, dark #0a0a0a."
+        },
+        "surface-0": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #ffffff, dark #111111."
+        },
+        "surface-1": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #f0f0ec, dark #191919."
+        },
+        "overlay-0": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #6a6a66, dark #5f5f5f."
+        },
+        "overlay-1": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #7d7d78, dark #7d7d7d."
+        },
+        "subtext-0": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #5c5c58, dark #949494."
+        },
+        "subtext-1": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #3a3a36, dark #bdbdbd."
+        },
+        "text": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #161614, dark #f2f2f2."
+        },
+        "accent": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #1a1a18, dark #f3f3ee."
+        },
+        "accent-fg": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #f4f4f1, dark #111111."
+        },
+        "blue": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #4a5a66, dark #b0b0aa."
+        },
+        "green": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #3d6b3a, dark #8fbf88."
+        },
+        "yellow": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #8a7018, dark #d6c37a."
+        },
+        "red": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #a04848, dark #d98989."
+        },
+        "code-bg": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #f5f6f7, dark #1b1d1f."
+        },
+        "code-text": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #24292f, dark #e4e6e8."
+        },
+        "code-header": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #eef0f2, dark #202326."
+        },
+        "code-border": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #d5d9dd, dark #34383d."
+        },
+        "code-muted": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #59636e, dark #a0a6ad."
+        },
+        "diff-added-bg": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #edf5ed, dark #202b23."
+        },
+        "diff-removed-bg": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #fbeded, dark #302325."
+        },
+        "syntax-keyword": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #305d8a, dark #91b8e5."
+        },
+        "syntax-string": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #40632d, dark #a8c990."
+        },
+        "syntax-number": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #73550d, dark #dbc18a."
+        },
+        "syntax-function": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #28646a, dark #91c2c6."
+        },
+        "syntax-type": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #365f82, dark #a8c5df."
+        },
+        "syntax-attribute": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #705b2e, dark #c9b994."
+        },
+        "syntax-added": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #31643a, dark #a0c59a."
+        },
+        "syntax-removed": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #9b3d3d, dark #dda0a0."
+        },
+        "inline-code-bg": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light rgb(0 0 0 / 5%), dark rgb(255 255 255 / 6%)."
+        },
+        "markdown-note": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #305d8a, dark #91b8e5."
+        },
+        "markdown-tip": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #40632d, dark #a8c990."
+        },
+        "markdown-important": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #28646a, dark #91c2c6."
+        },
+        "markdown-warning": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #73550d, dark #dbc18a."
+        },
+        "markdown-caution": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #9b3d3d, dark #dda0a0."
+        },
+        "border-strong": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light rgb(0 0 0 / 14%), dark rgb(255 255 255 / 14%)."
+        },
+        "surface-message": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #e6e6e1, dark #1c1c1c."
+        },
+        "bg-hover": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light rgb(0 0 0 / 5%), dark rgb(255 255 255 / 6%)."
+        },
+        "bg-active": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light rgb(0 0 0 / 8%), dark rgb(255 255 255 / 9%)."
+        },
+        "border-color": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light rgb(0 0 0 / 8%), dark rgb(255 255 255 / 8%)."
+        },
+        "sidebar-gradient-top": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #f0f0ec, dark #0d0d0d."
+        },
+        "sidebar-gradient-bottom": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #e6e6e2, dark #050505."
+        },
+        "sidebar-row-active-surface": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light rgb(0 0 0 / 12%), dark rgb(255 255 255 / 16%)."
+        },
+        "sidebar-row-subtle-active-surface": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light rgb(0 0 0 / 7%), dark rgb(255 255 255 / 9%)."
+        }
+      }
+    },
+    "syntax": {
+      "type": "object",
+      "description": "Shorthand for the syntax-* tokens.",
+      "additionalProperties": false,
+      "properties": {
+        "keyword": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$"
+        },
+        "string": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$"
+        },
+        "number": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$"
+        },
+        "function": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$"
+        },
+        "type": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$"
+        },
+        "attribute": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$"
+        },
+        "added": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$"
+        },
+        "removed": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$"
+        }
+      }
+    },
+    "backdrop": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "What the conversation column draws behind the transcript and composer.",
+      "properties": {
+        "scene": {
+          "enum": [
+            "grain",
+            "mesh",
+            "night",
+            "dots",
+            "paper",
+            "none"
+          ]
+        },
+        "image": {
+          "type": "string",
+          "maxLength": 1024,
+          "description": "A png, jpg, webp or gif file, relative to the theme file or the settings folder. Never a URL."
+        },
+        "fit": {
+          "enum": [
+            "cover",
+            "contain",
+            "tile"
+          ]
+        },
+        "opacity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "blur": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 40
+        },
+        "dim": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "light": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "scene": {
+              "enum": [
+                "grain",
+                "mesh",
+                "night",
+                "dots",
+                "paper",
+                "none"
+              ]
+            },
+            "image": {
+              "type": "string",
+              "maxLength": 1024,
+              "description": "A png, jpg, webp or gif file, relative to the theme file or the settings folder. Never a URL."
+            },
+            "fit": {
+              "enum": [
+                "cover",
+                "contain",
+                "tile"
+              ]
+            },
+            "opacity": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "blur": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 40
+            },
+            "dim": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          }
+        },
+        "dark": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "scene": {
+              "enum": [
+                "grain",
+                "mesh",
+                "night",
+                "dots",
+                "paper",
+                "none"
+              ]
+            },
+            "image": {
+              "type": "string",
+              "maxLength": 1024,
+              "description": "A png, jpg, webp or gif file, relative to the theme file or the settings folder. Never a URL."
+            },
+            "fit": {
+              "enum": [
+                "cover",
+                "contain",
+                "tile"
+              ]
+            },
+            "opacity": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "blur": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 40
+            },
+            "dim": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          }
+        }
+      }
+    }
+  }
+}

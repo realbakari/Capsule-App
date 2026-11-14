@@ -32,11 +32,12 @@ export class CapsuleDatabase {
         .map((row) => (row as { version: number }).version),
     );
     for (const migration of MIGRATIONS) {
-      if (applied.has(migration.version)) continue;
+      if (applied.has(migration.version) && (!migration.present || migration.present(this.sqlite))) continue;
       const tx = this.sqlite.transaction(() => {
-        this.sqlite.exec(migration.sql);
+        if (migration.sql) this.sqlite.exec(migration.sql);
+        migration.run?.(this.sqlite);
         this.sqlite
-          .prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)")
+          .prepare("INSERT OR REPLACE INTO schema_migrations (version, applied_at) VALUES (?, ?)")
           .run(migration.version, nowIso());
       });
       tx();

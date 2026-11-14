@@ -1,4 +1,27 @@
-export const MIGRATIONS: Array<{ version: number; sql: string; }> = [
+import type Database from "better-sqlite3";
+
+export interface Migration {
+  version: number;
+  sql: string;
+  /**
+   * For a version number that another build also used for something else:
+   * whether this migration's own change is in the database. A recorded
+   * version whose change is missing runs again.
+   */
+  present?: (db: Database.Database) => boolean;
+  /** Work that depends on what the database already has, run after `sql`. */
+  run?: (db: Database.Database) => void;
+}
+
+export function hasColumn(db: Database.Database, table: string, column: string): boolean {
+  return (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).some((row) => row.name === column);
+}
+
+function addColumnIfMissing(db: Database.Database, table: string, column: string, definition: string): void {
+  if (!hasColumn(db, table, column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+}
+
+export const MIGRATIONS: Migration[] = [
   {
     version: 1,
     sql: `
@@ -348,7 +371,9 @@ export const MIGRATIONS: Array<{ version: number; sql: string; }> = [
     sql: `ALTER TABLE sessions ADD COLUMN carry_over TEXT;`,
   },
   {
+    // Builds of the customization work recorded 20 and 21 for other columns.
     version: 20,
+    present: (db) => hasColumn(db, "sessions", "pending_start"),
     sql: `
       ALTER TABLE sessions ADD COLUMN pending_start TEXT;
       ALTER TABLE sessions ADD COLUMN done_at TEXT;
@@ -356,6 +381,7 @@ export const MIGRATIONS: Array<{ version: number; sql: string; }> = [
   },
   {
     version: 21,
+    present: (db) => hasColumn(db, "sessions", "forked_from"),
     sql: `
       ALTER TABLE sessions ADD COLUMN forked_from TEXT;
       -- What one restore took away, so Redo can put it back. The rows a
@@ -487,5 +513,19 @@ export const MIGRATIONS: Array<{ version: number; sql: string; }> = [
     // A project order the person set by dragging; null keeps the recency order.
     version: 121,
     sql: `ALTER TABLE projects ADD COLUMN sort_order INTEGER;`,
+  },
+  {
+    // The agent profile and automation that started a thread. Builds of the
+    // customization work added these as 20 and 21, so each column is added
+    // only when missing. Those builds also kept an `unread` flag for
+    // automation threads; unread is `last_viewed_at` now, so a thread still
+    // flagged goes back to never viewed.
+    version: 140,
+    sql: "",
+    run: (db) => {
+      addColumnIfMissing(db, "sessions", "profile_id", "TEXT");
+      addColumnIfMissing(db, "sessions", "automation_id", "TEXT");
+      if (hasColumn(db, "sessions", "unread")) db.exec("UPDATE sessions SET last_viewed_at = NULL WHERE unread = 1");
+    },
   },
 ];

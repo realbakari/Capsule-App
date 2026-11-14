@@ -1,0 +1,12 @@
+export { ConfigService, SAFE_MODE_WRITE_ERROR, type ConfigServiceOptions, type KnownPlugin, type ProjectConfig } from "./service.js";
+export { createTrustStore, type TrustStore } from "./trust.js";
+export { ConfigPaths, KEYBINDINGS_FILE, LOCAL_SETTINGS_FILE, PROJECT_CONFIG_DIR, SETTINGS_FILE } from "./paths.js";
+export { migrateDatabaseSettings, fileValuesFromStored, keybindingsFromStored, type KeybindingsFile, type MigrationResult } from "./migrate.js";
+export { listResourceFolder, listResources, RESOURCE_KINDS, type ResourceFile, type ResourceKind } from "./resources.js";
+export { commandFolders, readCommandCatalog, type CommandCatalog, type CommandEntry, type CommandFolder } from "./commands.js";
+export { mergeLayers, readLayer, type Layer, type LayerReading, type MergedConfig } from "./layers.js";
+export { ConfigWatcher, type ConfigWatcherOptions } from "./watcher.js";
+export { BackdropImages, buildThemeState, readThemeCatalog, type ThemeCatalog, type ThemeEntry } from "./themes.js";
+export { editKeybindingsText, readKeybindings } from "./keybindings.js";
+export { readProfileCatalog, readStyleCatalog, type ProfileEntry, type StyleEntry } from "./profiles.js";
+export { pluginFolderStamp, readPluginFolder, type PluginReading, type ReadPluginOptions } from "./plugins.js";

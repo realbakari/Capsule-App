@@ -275,6 +275,10 @@ export class MockAgentRuntime implements AgentRuntime {
         reason: "Implement requested feature.",
         status: "pending",
         createdAt: nowIso(),
+        details: {
+          kind: "edit", locations: ["~/Projects/app/src/router.ts"], truncated: false, canApproveOnce: true,
+          subject: { kind: "edit", title: "Write", paths: ["~/Projects/app/src/router.ts"] },
+        },
       };
       this.approvals.set(approval.id, approval);
       this.emit(run.id, "approval.requested", "Approval required", {

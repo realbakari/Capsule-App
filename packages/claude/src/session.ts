@@ -8,6 +8,7 @@ import type { DirectAcpEvents, DirectAcpOptions, DirectAgentSession } from "@cap
 import { readToolQuestions, toolAnswerPayload, type AgentQuestionAnswers, readPlanEntries, readReportedContextUsage, readReportedTurnUsage, readToolActivityDetails, type AcpModelCatalog, type AgentCapabilityReport, type AgentCommand, type AgentPromptBlock, type ReportedContextUsage } from "@capsule/shared";
 import { ClaudeInput } from "./input.js";
 import { isClaudeEffort, isClaudePermission, isClaudeTurnMode, MODE_CHOICES, permissionChoices, type ClaudeTurnMode } from "./configuration.js";
+import { claudeMcpServers } from "./mcp.js";
 
 const EXIT_PLAN = "ExitPlanMode";
 
@@ -97,7 +98,8 @@ export class DirectClaudeSession implements DirectAgentSession {
       persistSession: !probe, ...(resume ? { resume } : this.nativeId ? { sessionId: this.nativeId } : {}),
       model: this.options.model, permissionMode: "default", allowDangerouslySkipPermissions: !probe,
       includePartialMessages: true, settingSources: ["user", "project", "local"],
-      ...(probe ? { settings: { disableAllHooks: true }, tools: [], mcpServers: {}, strictMcpConfig: true } : {}),
+      ...(probe ? { settings: { disableAllHooks: true }, tools: [], mcpServers: {}, strictMcpConfig: true }
+        : this.options.mcpServers?.length ? { mcpServers: claudeMcpServers(this.options.mcpServers) } : {}),
       canUseTool: this.approve,
       spawnClaudeCodeProcess: (spawnOptions) => {
         const child = spawnCommand(spawnOptions.command, [...this.options.args, ...spawnOptions.args], {

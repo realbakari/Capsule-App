@@ -1,4 +1,6 @@
 import { EventEmitter } from "node:events";
+import { homedir } from "node:os";
+import { isDeepStrictEqual } from "node:util";
 import { checkRun } from "./run-verification.js";
 import { FolderActivity, foldersOverlap } from "./folder-activity.js";
 import type { VerificationResult } from "@capsule/shared";
@@ -43,6 +45,28 @@ import path from "node:path";
 import { prepareDirectPrompt } from "./direct-prompt.js";
 import { carryTurnMode } from "./turn-mode.js";
 import { isTurnMode, modeModelFor, planPrompt, type TurnMode } from "@capsule/shared";
+import { findCommandCall, prepareCommand, readInvocation, runCommandShell, summarizeCommand, type CommandCall, type CommandShellContext } from "./commands.js";
+import { FollowUpLoopGuard, followUpsFrom, HookRunner, hookSource, PromptBlockedError, promptVerdict, type HookPayload } from "./hooks.js";
+import { decideRequest, type PermissionAnswer } from "./request-policy.js";
+import { mcpServerViews, offeredMcpServers, type McpContext } from "./mcp-servers.js";
+import { probeMcpServer } from "./mcp-probe.js";
+import { AutomationScheduler, type AutomationEntry } from "./automations.js";
+import { StatusLineRunner } from "./status-line.js";
+import { PluginManager, type PluginSource } from "./plugins.js";
+import { AUTOMATION_TEMPLATES, automationKey, automationMessage, parseStatusLineFacts, statusLineKey, statusLineStdin, type AutomationCreateInput, type AutomationView, type StatusLineRender } from "@capsule/shared";
+import type { AcpMcpServer, DirectSpawnInput } from "@capsule/acp";
+import type { ProfileEntry } from "@capsule/config";
+import {
+  expandMcpSecrets,
+  standingPreamble,
+  styleForOutputDetail,
+  summarizeProfile,
+  type AgentProfile,
+  type McpTestResult,
+} from "@capsule/shared";
+
+/** A permission request's answer, and a hook's reason for asking when the person decides. */
+type Settled = { decision: PermissionAnswer["decision"]; note?: string; undecided?: boolean };
 import { DirectMuseSession } from "@capsule/muse";
 import { DirectCodexSession } from "@capsule/codex";
 import { DirectClaudeSession } from "@capsule/claude";
@@ -53,6 +77,7 @@ import {
   supportsDirectMode,
   turnOutcome,
   type AcpReply,
+  type DirectActivity,
 } from "@capsule/acp";
 import { agentIdForMode, DEFAULT_AGENTS, excludeSystemAgents } from "@capsule/agents";
 import {
@@ -128,6 +153,7 @@ import {
   searchContents,
   stageFile,
   validateMessageAttachments,
+  MAX_MESSAGE_ATTACHMENTS,
   pollPullRequest,
   pollPullRequestList,
   pullRequestListFailure,
@@ -205,6 +231,11 @@ import {
   type UpdateProjectInput,
   isHarnessId,
   type MessagePage,
+  type PermissionRuleEdit,
+  type PermissionSubject,
+  type PluginInspection,
+  type PluginsConfigureInput,
+  type PluginsInstallInput,
   type Project,
   type ProjectActionRun,
   type SearchResults,
@@ -232,6 +263,16 @@ import {
   normalizeTags,
   renameTagIn,
   type GithubIssue,
+  SETTINGS_SCHEMA,
+  type ConfigDiagnostics,
+  type ConfigFileTarget,
+  type CommandExpandInput,
+  type CommandExpansion,
+  type CommandList,
+  type ConfigSnapshot,
+  type KeybindingEdit,
+  type ThemeImportResult,
+  type SetConfigValueInput,
 } from "@capsule/shared";
 import {
   DEFAULT_SKILLS,
@@ -251,6 +292,7 @@ import {
   type ManagedCommand,
 } from "@capsule/terminal";
 import { verifyContract } from "@capsule/verification";
+import { ConfigService, createTrustStore, migrateDatabaseSettings, SAFE_MODE_WRITE_ERROR } from "@capsule/config";
 import { commitWithSecrets, type SecretChange } from "./settings-secrets.js";
 import { LongCommandWatch } from "./long-commands.js";
 import { approvalPreset, directApprovalDecision } from "@capsule/shared";
@@ -288,7 +330,19 @@ export interface CapsuleEngineOptions {
    * used to do unconditionally.
    */
   secretEncryptor?: SecretEncryptor;
+  /**
+   * The user's settings folder. The desktop passes ~/.capsule; anything else
+   * gets a folder inside its own profile, so a test never reads a real one.
+   */
+  configDir?: string;
+  /** Start with built-in defaults and read no settings file. */
+  safeMode?: boolean;
 }
+
+/** SQLite setting holding `{ [folder]: trustedAt }` for trusted project folders. */
+const TRUSTED_FOLDERS_SETTING = "config.trustedFolders";
+/** SQLite setting recording when the settings row was exported to the user file. */
+const CONFIG_MIGRATED_SETTING = "config.migratedAt";
 
 export interface EngineState {
   projects: Project[];
@@ -335,7 +389,73 @@ export class CapsuleEngine {
    * started from then on, not ones already running.
    */
   offerDirectMcpServers(servers: DirectMcpOffer): void {
-    this.direct.offerMcpServers(servers);
+    this.appMcpOffer = servers;
+  }
+
+  private appMcpOffer: DirectMcpOffer = [];
+
+  /*
+   * One offer per spawn: Capsule's own servers, then the settings files'
+   * servers this thread's project and profile allow. A file's server never
+   * takes the name of one of Capsule's own.
+   */
+  private mcpOffer(input: DirectSpawnInput): { servers: AcpMcpServer[]; dispose(): void } {
+    const app = typeof this.appMcpOffer === "function" ? this.appMcpOffer(input) : { servers: this.appMcpOffer, dispose: () => {} };
+    const session = input.threadId ? this.repos.getSession(input.threadId) : undefined;
+    const project = session ? this.repos.getProject(session.projectId) : undefined;
+    const root = project?.workingDirectory;
+    const profile = session?.profileId && project ? this.findProfile(project, session.profileId)?.profile : undefined;
+    const taken = new Set(app.servers.map((server) => server.name));
+    const configured = offeredMcpServers(this.config.extended(root).mcpServers, this.mcpContext(root, profile?.mcp)).filter((server) => !taken.has(server.name));
+    return { servers: [...app.servers, ...configured], dispose: app.dispose };
+  }
+
+  private mcpContext(root: string | undefined, profileMcp?: readonly string[]): McpContext {
+    return { root, home: homedir(), env: this.serverEnv(), ...(profileMcp ? { profileMcp } : {}) };
+  }
+
+  /** Capsule's environment, with enabled plugins' secrets under the names their servers reference. */
+  private serverEnv(): Record<string, string | undefined> {
+    return { ...process.env, ...this.pluginManager.serverEnvironment() };
+  }
+
+  /** Start or reach one configured server and list its tools. It runs the server, so it is a desktop write. */
+  async testMcpServer(input: { name: string; projectId?: string }): Promise<McpTestResult> {
+    const root = this.configRoot(input.projectId);
+    const entry = this.config.extended(root).mcpServers[input.name];
+    if (!entry) throw new Error(`There is no MCP server named ${input.name} here. A project's server waits until you trust the folder.`);
+    const { config, missing } = expandMcpSecrets(entry.value, this.serverEnv());
+    if (missing.length) return { ok: false, error: `Set ${missing.join(", ")} in Capsule's environment first.`, durationMs: 0 };
+    return probeMcpServer(config, { cwd: root ?? homedir(), env: process.env });
+  }
+
+  /** Turn a server on or off everywhere (your user file) or in one project (its local file). */
+  setMcpServerEnabled(input: { name: string; enabled: boolean; where: "everywhere" | "project"; projectId?: string }): ConfigSnapshot {
+    const root = this.configRoot(input.projectId);
+    if (input.where === "project" && !root) throw new Error("Open a project with a folder to turn a server on or off just there.");
+    this.config.setMcpServerEnabled({ name: input.name, enabled: input.enabled, scope: input.where === "project" ? "local" : "user", root });
+    this.applyConfigChange();
+    return this.getConfigSnapshot(input.projectId);
+  }
+
+  /** Write a profile file from the template, or as a copy of `from`, and return its path. */
+  createProfile(input: { scope: "user" | "project"; projectId?: string; from?: string }): string {
+    const path = this.config.createProfile({ scope: input.scope, root: this.configRoot(input.projectId), from: input.from });
+    this.config.reload();
+    return path;
+  }
+
+  private findProfile(project: Project, id: string): ProfileEntry | undefined {
+    return this.config.profiles(project.workingDirectory).profiles.find((entry) => entry.profile.id === id);
+  }
+
+  private requireProfile(project: Project, id: string): AgentProfile {
+    const profile = this.findProfile(project, id)?.profile;
+    if (!profile) throw new Error(`There is no profile named ${id}${project.workingDirectory ? " here" : ""}.`);
+    if (profile.agent && !isHarnessId(profile.agent) && !this.repos.listAgents().some((agent) => agent.id === profile.agent)) {
+      throw new Error(`The ${profile.name} profile names the agent "${profile.agent}", which Capsule does not know.`);
+    }
+    return profile;
   }
 
   private directUnsub?: () => void;
@@ -420,10 +540,44 @@ export class CapsuleEngine {
     now: nowIso,
     };
   }
+  /* Hooks and the one permission decision path: hooks.ts and request-policy.ts. */
+  private readonly hooks = new HookRunner({
+    extended: (root) => this.config.extended(root),
+    record: (run) => this.config.recordRun(run),
+    mayAllow: (source) => this.config.mayApprove(source),
+    env: (source) => this.pluginManager.environment(source),
+  });
+  private readonly hookFollowUps = new FollowUpLoopGuard();
+  /* Automations on their schedules, and the status line command: automations.ts and status-line.ts. */
+  private readonly automations = new AutomationScheduler({
+    entries: () => this.automationEntries(),
+    read: (key) => this.repos.getSetting(key),
+    write: (key, value) => this.repos.setSetting(key, value),
+    keys: (prefix) => this.repos.listSettingKeys(prefix),
+    start: (entry, at, created) => this.startAutomationThread(entry, at, created),
+    runStatus: (runId) => this.repos.getRun(runId)?.status,
+    emit: () => { if (!this.stopped) this.events.emit("state", { command: "automations-updated" }); },
+    record: (run) => this.config.recordRun(run),
+  });
+  private readonly statusLines = new StatusLineRunner({
+    command: () => {
+      const command = this.config.extended().statusLine?.command?.trim();
+      const source = this.config.provenance().statusLine;
+      return command ? { command, source: source?.path ?? "settings.json", ...(source?.scope === "plugin" ? { env: this.pluginManager.environment(source) } : {}) } : undefined;
+    },
+    emit: (render) => { if (!this.stopped) this.events.emit("state", { command: "status-line-updated", render }); },
+    record: (run) => this.config.recordRun(run),
+  });
+  /** Runs whose TurnEnd hooks have run, and tool calls whose ToolCall hooks have, so each fires once. */
+  private readonly hookedOnce = new Set<string>();
   private startingHarnessRuns = new Set<string>();
   private folderActivity = new FolderActivity();
   private updateReserved = false;
   private settings: CapsuleSettings;
+  /** Settings files: the source of truth for preferences. */
+  readonly config: ConfigService;
+  /** Installing plugins, their secret options, and the environment their programs get: plugins.ts. */
+  private readonly pluginManager: PluginManager;
   private settingsWrite: Promise<unknown> = Promise.resolve();
   private logs: string[] = [];
   private stopped = false;
@@ -532,8 +686,21 @@ export class CapsuleEngine {
       ...DEFAULT_CAPSULE_SETTINGS,
       gatewayUrl: options.gatewayUrl ?? defaultGatewayEndpoint().url,
     });
+    this.config = new ConfigService({
+      userDir: options.configDir ?? path.join(options.userDataDir, "capsule-home"),
+      lastGoodDir: path.join(options.userDataDir, "config-last-good"),
+      trust: createTrustStore({
+        read: () => this.repos.getSetting(TRUSTED_FOLDERS_SETTING),
+        write: (value) => this.repos.setSetting(TRUSTED_FOLDERS_SETTING, value),
+      }),
+      safeMode: options.safeMode,
+      defaults: this.settings,
+      appVersion: options.capsuleVersion,
+    });
+    this.pluginManager = new PluginManager({ config: this.config, keychain: this.keychain, log: (message) => this.log(message) });
     this.openclaw = this.createOpenClawAdapter();
     this.runtime = this.usingMock ? this.mock : this.openclaw;
+    this.direct.offerMcpServers((input) => this.mcpOffer(input));
   }
 
   async start(): Promise<void> {
@@ -558,6 +725,7 @@ export class CapsuleEngine {
     }
     this.archiveInactiveSessions();
     await this.hydrateSecrets();
+    await this.pluginManager.loadSecrets();
     this.openclaw = this.createOpenClawAdapter();
     if (!this.usingMock) this.runtime = this.openclaw;
     await this.connectPreferredRuntime();
@@ -565,6 +733,8 @@ export class CapsuleEngine {
     this.channelRoutes.start();
     this.events.on("run", (run: Run) => {
       if (!this.stopped && TERMINAL_RUN_STATUSES.has(run.status)) this.followUps.runEnded(run);
+      if (!this.stopped && TERMINAL_RUN_STATUSES.has(run.status)) this.runTurnEndHooks(run);
+      if (!this.stopped && TERMINAL_RUN_STATUSES.has(run.status)) this.automations.runEnded(run.id, run.status, run.error);
     });
     this.continueInterruptedTurns();
     this.followUps.start();
@@ -573,6 +743,8 @@ export class CapsuleEngine {
       if (!this.stopped && (run.status === "running" || run.status === "queued")) this.triage.runStarted(run.sessionId);
     });
     this.triage.start();
+    // Safe mode loads no automation, so none can be counted as missed or run.
+    if (!this.config.safeMode) this.automations.start();
     this.log("Capsule engine started");
   }
 
@@ -630,6 +802,9 @@ export class CapsuleEngine {
     this.followUps.stop();
     this.board.stop();
     this.triage.stop();
+    this.automations.stop();
+    this.statusLines.stop();
+    this.config.close();
     const channelRoutesStopped = this.channelRoutes.stop();
     // Resolve approval records while the database is still open. Closing the
     // transport later cannot safely update those persisted requests.
@@ -1045,7 +1220,7 @@ export class CapsuleEngine {
           title,
           workspaceMode:
             !isInboxProject(project) &&
-              this.settings.defaultWorkspaceMode === "worktree" &&
+              this.projectSettings(project).defaultWorkspaceMode === "worktree" &&
               (await readGitStatus(project.workingDirectory)).isRepo
               ? "worktree"
               : "local",
@@ -1070,7 +1245,7 @@ export class CapsuleEngine {
     session.harnessId = harnessId;
     session.harnessState = "spawning";
     session.acpMode = input.mode ?? "persistent";
-    const permissionProfile = input.permissionProfile ?? this.settings.defaultPermission;
+    const permissionProfile = input.permissionProfile ?? this.projectSettings(project).defaultPermission;
     session.permissionProfile = permissionProfile;
     session.modelOverride = input.model ?? keptModel;
     session.updatedAt = nowIso();
@@ -1178,6 +1353,9 @@ export class CapsuleEngine {
     const session = this.requireHarnessSession(sessionId);
     const text = instruction.trim();
     if (!text) throw new Error("Steer instruction is empty");
+    if (this.commandCall(text, this.requireProject(session.projectId))) {
+      throw new Error("A Capsule command runs as its own turn.");
+    }
     if (!this.usingMock && session.openclawSessionKey) {
       await this.acpHost(session.openclawSessionKey).steerAcp(session.openclawSessionKey, text);
     }
@@ -1744,7 +1922,8 @@ export class CapsuleEngine {
     if (session && project?.id !== session.projectId) throw new Error("The skill's thread must belong to the selected project.");
     const installed = discoverGlobalSkills();
     const fromProject = discoverGlobalSkills(projectSkillRoots(project ? this.workingDirectoryFor(project, sessionId) : undefined));
-    return [...installed, ...fromProject, ...capsuleSkills];
+    const fromPlugins = discoverGlobalSkills(this.config.pluginSkillFolders().map(({ name, dir }) => ({ id: `plugin-${name}`, label: name, directory: dir })));
+    return [...installed, ...fromProject, ...fromPlugins, ...capsuleSkills];
   }
 
   private async requireSkill(skillId: string, projectId?: string, sessionId?: string): Promise<Skill> {
@@ -1867,9 +2046,19 @@ export class CapsuleEngine {
 
   async createSession(input: CreateSessionInput, origin?: ThreadOrigin, worktree?: WorktreeStart): Promise<Session> {
     const project = this.requireProject(input.projectId);
-    const agentId = input.agentId ?? project.defaultAgentId ?? agentIdForMode(input.mode ?? project.defaultMode);
+    const defaults = this.projectSettings(project);
+    // What the caller names wins; a profile fills in the rest, before the project's own defaults.
+    const profile = input.profileId ? this.requireProfile(project, input.profileId) : undefined;
+    const mode = input.mode ?? profileMode(profile);
+    // A settings file's agent is a default for a conversation started with
+    // no mode; a mode names its own agent.
+    const settingsAgent = !mode && defaults.defaultAgentId
+      && (isHarnessId(defaults.defaultAgentId) || this.repos.listAgents().some((agent) => agent.id === defaults.defaultAgentId))
+      ? defaults.defaultAgentId
+      : undefined;
+    const agentId = input.agentId ?? profile?.agent ?? project.defaultAgentId ?? settingsAgent ?? agentIdForMode(mode ?? project.defaultMode);
     const requestedWorkspaceMode =
-      input.workspaceMode ?? project.defaultWorkspaceMode ?? this.settings.defaultWorkspaceMode;
+      input.workspaceMode ?? profile?.workspace ?? project.defaultWorkspaceMode ?? defaults.defaultWorkspaceMode;
     const workspaceMode =
       !input.temporary &&
       !isInboxProject(project) &&
@@ -1877,13 +2066,17 @@ export class CapsuleEngine {
         (await readGitStatus(project.workingDirectory)).isRepo
         ? "worktree"
         : "local";
-    const session = createSessionRecord(project, { ...input, workspaceMode }, agentId);
+    const session = createSessionRecord(project, { ...input, ...(mode ? { mode } : {}), workspaceMode }, agentId);
     if (origin) session.origin = origin;
     if (input.temporary) session.temporary = true;
-    session.permissionProfile = input.permissionProfile ?? this.settings.defaultPermission;
-    const turnMode = isTurnMode(input.turnMode) ? input.turnMode : this.settings.startInPlanMode ? "plan" : undefined;
+    session.permissionProfile = input.permissionProfile ?? profile?.permission ?? defaults.defaultPermission;
+    if (profile) {
+      session.profileId = profile.id;
+      if (profile.model && isHarnessId(agentId)) session.modelOverride = profile.model;
+    }
+    const turnMode = isTurnMode(input.turnMode) ? input.turnMode : defaults.startInPlanMode ? "plan" : undefined;
     if (turnMode) session.turnMode = turnMode;
-    const modeModel = modeModelFor(this.settings.modeModels, agentId, turnMode ?? "act");
+    const modeModel = modeModelFor(defaults.modeModels, agentId, turnMode ?? "act");
     if (modeModel && !session.modelOverride) session.modelOverride = modeModel;
     if (isInboxProject(project) && !session.workingDirectory) {
       session.workingDirectory = allocateThreadFolder(
@@ -1899,6 +2092,7 @@ export class CapsuleEngine {
       try {
         const remote = await this.openclaw.createSession({
           ...input,
+          ...(mode ? { mode } : {}),
           projectId: project.id,
           agentId,
           workingDirectory: session.workingDirectory ?? project.workingDirectory,
@@ -2342,6 +2536,43 @@ export class CapsuleEngine {
     let session = this.requireSession(input.sessionId);
     if (session.openclawSessionKey) this.ignoredReplySessions.delete(session.openclawSessionKey);
     const project = this.requireProject(session.projectId);
+    // Before anything is recorded: a blocked prompt, perhaps one holding a secret, never enters the thread.
+    this.hookFollowUps.sent(session.id, input.content);
+    const hookContext = await this.submitPromptHooks(session, project, input.content);
+    /*
+     * A Capsule command is expanded here, so every way a message arrives
+     * (composer, paired device, queue, resume, channel) gets the same text,
+     * and every agent receives a plain prompt. Its mode and workspace apply
+     * when it starts the conversation.
+     */
+    const call = this.commandCall(input.content, project);
+    const priorRuns = this.repos.listRuns(session.id);
+    const firstTurn = priorRuns.length === 0;
+    // A run gets its contract once the agent is ready, so none means no earlier turn reached it.
+    const reachedAgentBefore = priorRuns.some((run) => run.contractId);
+    const commandProblems: string[] = [];
+    /*
+     * A command's profile starts the conversation the way picking that
+     * profile would have: its agent, mode, permission and model, now, before
+     * the agent is chosen for this turn.
+     */
+    let commandProfile: AgentProfile | undefined;
+    if (firstTurn && call?.entry.command.profile) {
+      try {
+        commandProfile = this.requireProfile(project, call.entry.command.profile);
+        session = this.applyProfile(session, commandProfile);
+      } catch (error) {
+        commandProblems.push(`/${call.entry.command.name} names a profile that could not apply: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    const commandWorkspace = firstTurn ? call?.entry.command.workspace ?? commandProfile?.workspace : undefined;
+    if (call && commandWorkspace && commandWorkspace !== session.workspaceMode) {
+      try {
+        session = await this.setSessionWorkspaceMode(session.id, commandWorkspace);
+      } catch (error) {
+        commandProblems.push(`/${call.entry.command.name} asks for a ${commandWorkspace} workspace, which this conversation cannot switch to: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
     const startingCwd = this.cwdFor(session, project);
     if ([...this.verificationPending.values()].some((check) => check.cwd === startingCwd)) {
       throw new Error("A workspace check is running. Cancel it or wait before starting another turn.");
@@ -2351,10 +2582,12 @@ export class CapsuleEngine {
     if (!input.content.trim() && attachments.length === 0) {
       throw new Error("Write a message or attach a file first.");
     }
+    const command = call ? prepareCommand(call, { cwd: startingCwd, room: MAX_MESSAGE_ATTACHMENTS - attachments.length }) : undefined;
+    if (command) attachments.push(...command.attachments);
     const prompt = input.content.trim() || `Review the attached file${attachments.length === 1 ? "" : "s"}.`;
-    const runtimePrompt = `${prompt}${attachmentPromptBlock(attachments)}`;
-    const mode = input.mode ?? session.mode;
-    const harnessId = this.resolveHarnessId(session, project, input.agentId, mode);
+    let runtimePrompt = `${prompt}${attachmentPromptBlock(attachments)}`;
+    const mode = (firstTurn ? call?.entry.command.mode ?? profileMode(commandProfile) : undefined) ?? input.mode ?? session.mode;
+    const harnessId = this.resolveHarnessId(session, project, commandProfile ? session.agentId : input.agentId, mode);
     const agentId = harnessId ?? input.agentId ?? session.agentId ?? agentIdForMode(mode);
     const skillId = input.skillId ?? skillIdForMode(mode);
     const activeSkill = skillId ? await this.requireSkill(skillId, project.id, session.id) : undefined;
@@ -2405,6 +2638,32 @@ export class CapsuleEngine {
     this.events.emit("run", run);
     this.appendEvent(run.id, "request", "Request received", { step: "understand" });
 
+    if (command) {
+      // Until the prompt is sent, Stop cancels the turn here.
+      this.startingHarnessRuns.add(run.id);
+      let expandedText: string;
+      try {
+        const shell = await runCommandShell(command, this.commandShellContext(project, startingCwd));
+        expandedText = shell.text;
+        commandProblems.push(...command.problems, ...shell.problems);
+      } finally {
+        this.startingHarnessRuns.delete(run.id);
+      }
+      const currentRun = this.requireRun(run.id);
+      if (currentRun.completedAt) return { session, run: currentRun, userMessage };
+      runtimePrompt = `${expandedText}${attachmentPromptBlock(attachments)}`;
+      const { entry } = command.call;
+      this.appendEvent(run.id, "command.expanded", [`Expanded /${entry.command.name} from ${entry.path}`, ...commandProblems].join("\n"), {
+        command: entry.command.name,
+        source: entry.source,
+        path: entry.path,
+        ...(entry.command.profile ? { profile: entry.command.profile } : {}),
+        shellSpans: command.shell.length,
+        attachments: command.attachments.map((file) => file.path),
+        problems: commandProblems,
+      });
+    }
+
     /*
      * Starting an agent takes seconds — a spawn, a login check, sometimes a
      * Gateway config write — and all of it used to happen before the message
@@ -2453,14 +2712,25 @@ export class CapsuleEngine {
       }
     }
 
+    if (hookContext.length) {
+      runtimePrompt = `${runtimePrompt}\n\n${hookContext.join("\n\n")}`;
+      this.appendEvent(run.id, "hook.context", "Context added by a PromptSubmit hook", { context: hookContext });
+    }
+
+    if (!reachedAgentBefore) {
+      const standing = await this.firstTurnStanding(session, project, run.id);
+      if (standing) runtimePrompt = `${standing}\n\n${runtimePrompt}`;
+    }
+
+    const settings = this.projectSettings(project);
     const contract = buildContract({
       mode,
       prompt: runtimePrompt,
       workingDirectory: this.cwdFor(session, project),
       runId: run.id,
-      outputDetail: this.settings.outputDetail,
-      webAccess: this.settings.webAccess,
-      sandbox: this.settings.sandbox,
+      outputDetail: settings.outputDetail,
+      webAccess: settings.webAccess,
+      sandbox: settings.sandbox,
     });
     this.repos.insertContract(contract);
     run.contractId = contract.id;
@@ -2563,7 +2833,7 @@ export class CapsuleEngine {
       ...(session.permissionProfile
         ? { permissionProfile: session.permissionProfile as HarnessPermissionProfile }
         : {}),
-      content: (carried.instruction ? planPrompt : (text: string) => text)(carriedHistory + applyAgentInstructionHints(runtimePrompt + skillInstruction, this.settings)),
+      content: (carried.instruction ? planPrompt : (text: string) => text)(carriedHistory + applyAgentInstructionHints(runtimePrompt + skillInstruction, settings)),
       attachments,
       turnMode,
       sessionId: this.usingMock ? session.id : (session.openclawSessionKey ?? session.id),
@@ -3135,8 +3405,12 @@ export class CapsuleEngine {
   }
 
   getSettings(): CapsuleSettings {
+    return this.masked(this.settings);
+  }
+
+  private masked(settings: CapsuleSettings): CapsuleSettings {
     return {
-      ...this.settings,
+      ...settings,
       gatewayToken: this.settings.gatewayToken ? TOKEN_PRESENT_MASK : undefined,
       skillsShToken: this.settings.skillsShToken ? TOKEN_PRESENT_MASK : undefined,
     };
@@ -3175,6 +3449,8 @@ export class CapsuleEngine {
   private async saveSettings(patch: Partial<CapsuleSettings>): Promise<CapsuleSettings> {
     if (this.stopped) throw new Error("Capsule is closing. Settings were not saved.");
     const { gatewayToken: _gatewayToken, skillsShToken: _skillsToken, ...rest } = patch;
+    const fileKeys = Object.keys(rest).filter((key): key is keyof CapsuleSettings => Object.hasOwn(SETTINGS_SCHEMA, key));
+    if (fileKeys.length && this.config.safeMode) throw new Error(SAFE_MODE_WRITE_ERROR);
     const next = normalizeCapsuleSettings({ ...this.settings, ...rest });
     if (Object.hasOwn(patch, "worktreesDirectory")) {
       if (typeof patch.worktreesDirectory !== "string") throw new Error("The worktree location must be a folder path.");
@@ -3189,21 +3465,319 @@ export class CapsuleEngine {
       secrets.push({ account, value: value || undefined });
     }
     const archived = await commitWithSecrets(this.keychain, secrets, () => this.db.sqlite.transaction(() => {
-      this.persistSettings(next);
       if (Object.hasOwn(patch, "projectlessFolder")) this.bindInboxToProjectless(next);
       if (patch.webAccess !== undefined || patch.sandbox !== undefined || patch.defaultPermission !== undefined) {
         this.applyWorkspacePolicies(next);
       }
-      return patch.archiveInactiveAfter !== undefined ? this.archiveInactiveSessions(next, false) : 0;
+      const archived = patch.archiveInactiveAfter !== undefined ? this.archiveInactiveSessions(next, false) : 0;
+      // Last, so a failed file write rolls back every database write above.
+      if (fileKeys.length) this.config.setValues("user", Object.fromEntries(fileKeys.map((key) => [key, next[key]])));
+      return archived;
     })());
     // Publish only after every persistent write succeeded. Observers and
-    // clients never see settings from a rejected save.
-    this.settings = next;
+    // clients never see settings from a rejected save. The file, not the
+    // patch, is what was saved: it may hold an edit not yet reloaded.
+    this.settings = this.withSecrets(this.config.settings(), next);
     this.skillsShClient.setToken(next.skillsShToken);
     if (!pullRequestWatchEnabled(next)) { this.stopAllPrWatch(); this.pausedPrWatches.clear(); }
     this.notifyArchivedSessions(archived);
     this.events.emit("state", { command: "settings-updated" });
     return this.getSettings();
+  }
+
+  /** Effective settings and where each came from, optionally with a project's layers. */
+  getConfigSnapshot(projectId?: string): ConfigSnapshot {
+    const project = projectId ? this.requireProject(projectId) : undefined;
+    const scoped = project?.workingDirectory ? this.config.forProject(project.workingDirectory) : undefined;
+    return {
+      safeMode: this.config.safeMode,
+      userDir: this.config.paths.userDir,
+      settings: this.getSettings(),
+      provenance: this.config.provenance(),
+      ...(project && scoped
+        ? { project: { projectId: project.id, root: scoped.root, trusted: scoped.trusted, settings: this.masked(scoped.settings), provenance: scoped.provenance, files: scoped.files } }
+        : {}),
+      problemCount: this.config.diagnostics(scoped?.root).problems.length,
+      themes: this.config.themes(scoped?.root),
+      keybindings: this.config.keybindings(scoped?.root),
+      profiles: this.config.profiles(scoped?.root).profiles.map((entry) => summarizeProfile(entry.profile, entry)),
+      styles: {
+        styles: this.config.styles(scoped?.root).styles.map((entry) => ({ id: entry.style.id, name: entry.style.name, ...(entry.style.description ? { description: entry.style.description } : {}), source: entry.source, ...(entry.path ? { path: entry.path } : {}) })),
+        selected: this.config.extended(scoped?.root).style ?? styleForOutputDetail((scoped?.settings ?? this.settings).outputDetail),
+        ...(this.config.extended().personalInstructions ? { personalInstructions: this.config.extended().personalInstructions } : {}),
+      },
+      mcpServers: mcpServerViews(this.config.extended(scoped?.root).mcpServers, this.mcpContext(scoped?.root)),
+      automations: this.automations.views((entry) => !entry.projectId || entry.projectId === project?.id),
+      statusLine: this.statusLineView(project),
+      plugins: this.pluginManager.views(),
+    };
+  }
+
+  /* ── Plugins: every one of these runs or writes on this computer, so each is a desktop write. ── */
+
+  /** Fetch or copy a plugin into a folder Capsule controls and list exactly what it adds. Nothing in it runs. */
+  inspectPlugin(source: PluginSource): Promise<PluginInspection> {
+    if (this.config.safeMode) throw new Error(SAFE_MODE_WRITE_ERROR);
+    return this.pluginManager.inspect(source);
+  }
+
+  async installPlugin(input: PluginsInstallInput): Promise<ConfigSnapshot> {
+    await this.pluginManager.install(input.token, input.values);
+    this.applyPluginChange();
+    return this.getConfigSnapshot();
+  }
+
+  discardPluginInspection(token: string): void {
+    this.pluginManager.discard(token);
+  }
+
+  setPluginEnabled(input: { name: string; enabled: boolean }): ConfigSnapshot {
+    this.pluginManager.setEnabled(input.name, input.enabled);
+    this.applyPluginChange();
+    return this.getConfigSnapshot();
+  }
+
+  async configurePlugin(input: PluginsConfigureInput): Promise<ConfigSnapshot> {
+    await this.pluginManager.configure(input.name, input.values ?? {}, input.mayApprove);
+    this.applyPluginChange();
+    return this.getConfigSnapshot();
+  }
+
+  async uninstallPlugin(name: string): Promise<ConfigSnapshot> {
+    await this.pluginManager.uninstall(name);
+    this.applyPluginChange();
+    return this.getConfigSnapshot();
+  }
+
+  /** A plugin's commands, skills and themes changed with it, so every list that shows them is told. */
+  private applyPluginChange(): void {
+    this.applyConfigChange();
+    if (!this.stopped) this.events.emit("state", { command: "skills-updated" });
+  }
+
+  private statusLineView(project: Project | undefined): ConfigSnapshot["statusLine"] {
+    const configured = this.config.extended(project?.workingDirectory).statusLine;
+    const command = this.config.extended().statusLine?.command?.trim();
+    const keys = project ? [statusLineKey(project.id), ...this.repos.listSessions(project.id).map((session) => session.id)] : [];
+    const renders = command ? keys.flatMap((key) => this.statusLines.latest(key) ?? []) : [];
+    return {
+      items: configured?.items ?? [],
+      ...(command ? { command } : {}),
+      ...(configured?.refreshInterval ? { refreshInterval: configured.refreshInterval } : {}),
+      renders,
+    };
+  }
+
+  /**
+   * Run the person's status line command for one thread. The window sends
+   * what it shows; the thread, project and folder come from the records.
+   */
+  runStatusLine(input: { projectId: string; sessionId?: string; facts: unknown }): void {
+    if (!this.config.extended().statusLine?.command?.trim()) return;
+    const project = this.requireProject(input.projectId);
+    const session = input.sessionId ? this.requireSession(input.sessionId) : undefined;
+    if (session && session.projectId !== project.id) throw new Error("That conversation is not in this project.");
+    const cwd = (session ? this.cwdFor(session, project) : project.workingDirectory) || homedir();
+    this.statusLines.request({
+      key: statusLineKey(project.id, session?.id),
+      cwd,
+      ...(project.workingDirectory ? { projectDir: project.workingDirectory } : {}),
+      input: statusLineStdin({ threadId: session?.id, projectDir: project.workingDirectory, cwd }, parseStatusLineFacts(input.facts)),
+    });
+  }
+
+  latestStatusLine(projectId: string, sessionId?: string): StatusLineRender | undefined {
+    return this.statusLines.latest(statusLineKey(projectId, sessionId));
+  }
+
+  /** Yours from the user file, and each project's own from its files. Project files are read only where one exists. */
+  private automationEntries(): AutomationEntry[] {
+    if (this.config.safeMode) return [];
+    const entries: AutomationEntry[] = this.config.extended().automations
+      .map((entry) => ({ key: automationKey(undefined, entry.value.id), automation: entry.value, source: entry.source }));
+    for (const project of this.repos.listProjects()) {
+      const root = project.workingDirectory;
+      if (!root || isInboxProject(project)) continue;
+      if (!existsSync(path.join(root, ".capsule", "settings.json")) && !existsSync(path.join(root, ".capsule", "settings.local.json"))) continue;
+      for (const entry of this.config.extended(root).automations) {
+        if (entry.source.scope === "user") continue;
+        entries.push({ key: automationKey(project.id, entry.value.id), projectId: project.id, automation: entry.value, source: entry.source });
+      }
+    }
+    return entries;
+  }
+
+  /** An automation's run: a new thread titled with its name and time, unread once it finishes until someone opens it. */
+  private async startAutomationThread(entry: AutomationEntry, at: Date, created: (sessionId: string) => void): Promise<{ sessionId: string; runId: string }> {
+    const project = entry.projectId ? this.requireProject(entry.projectId) : this.repos.listProjects().find((item) => isInboxProject(item));
+    if (!project) throw new Error("There is no Inbox to put this automation's thread in.");
+    const when = at.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    const session = await this.createSession({
+      projectId: project.id,
+      title: `${entry.automation.name} · ${when}`,
+      ...(entry.automation.profile ? { profileId: entry.automation.profile } : {}),
+      ...(entry.automation.workspace ? { workspaceMode: entry.automation.workspace } : {}),
+    });
+    session.automationId = entry.key;
+    this.repos.updateSession(session);
+    created(session.id);
+    this.events.emit("state", { command: "sessions-updated" });
+    const { run } = await this.sendMessage({ sessionId: session.id, content: automationMessage(entry.automation) });
+    return { sessionId: session.id, runId: run.id };
+  }
+
+  private requireAutomation(key: string, projectId?: string): AutomationView {
+    const view = this.automations.views((entry) => entry.key === key && (!entry.projectId || entry.projectId === projectId))[0];
+    if (!view) throw new Error("That automation is no longer in your settings files.");
+    return view;
+  }
+
+  async runAutomationNow(input: { key: string; projectId?: string }): Promise<ConfigSnapshot> {
+    this.assertWorkAllowed();
+    this.requireAutomation(input.key, input.projectId);
+    // The thread exists at once, but its agent can take half a minute to answer; the row follows the run from here.
+    await new Promise<void>((resolve, reject) => {
+      this.automations.runNow(input.key, () => resolve()).then(() => resolve(), reject);
+    });
+    return this.getConfigSnapshot(input.projectId);
+  }
+
+  dismissMissedAutomation(input: { key: string; projectId?: string }): ConfigSnapshot {
+    this.requireAutomation(input.key, input.projectId);
+    this.automations.dismissMissed(input.key);
+    return this.getConfigSnapshot(input.projectId);
+  }
+
+  /** Pause or resume by writing `enabled` where the automation is defined. */
+  setAutomationEnabled(input: { key: string; enabled: boolean; projectId?: string }): ConfigSnapshot {
+    const view = this.requireAutomation(input.key, input.projectId);
+    const entry = this.automationEntries().find((item) => item.key === view.key)!;
+    const root = entry.projectId ? this.requireProject(entry.projectId).workingDirectory : undefined;
+    this.config.setAutomationEnabled({ automation: entry.automation, source: entry.source, enabled: input.enabled, root });
+    this.applyConfigChange();
+    this.automations.tick();
+    return this.getConfigSnapshot(input.projectId);
+  }
+
+  /** Add a template's automation, paused, and return the file it went to so it can be opened. */
+  createAutomation(input: AutomationCreateInput): string {
+    const template = AUTOMATION_TEMPLATES.find((item) => item.id === input.template);
+    if (!template) throw new Error(`There is no automation template named ${input.template}.`);
+    const root = input.scope === "local" ? this.configRoot(input.projectId) : undefined;
+    this.config.addAutomation({ automation: template.automation, scope: input.scope, root });
+    this.applyConfigChange();
+    return this.configFilePath({ kind: "settings", scope: input.scope, ...(input.projectId ? { projectId: input.projectId } : {}) });
+  }
+
+  /** The person opened a thread; the same mark as any thread's "viewed". */
+  markSessionRead(id: string): void {
+    this.triage.apply(id, { kind: "viewed" });
+  }
+
+  getConfigDiagnostics(projectId?: string): ConfigDiagnostics {
+    return this.config.diagnostics(this.configRoot(projectId));
+  }
+
+  /** Write or remove one key in one settings file, then publish the result. */
+  setConfigValue(input: SetConfigValueInput): ConfigSnapshot {
+    this.config.setValue({ key: input.key, value: input.value, scope: input.scope, root: this.configRoot(input.projectId) });
+    this.applyConfigChange();
+    return this.getConfigSnapshot(input.projectId);
+  }
+
+  /** The file or folder a target names, created from a template when missing. */
+  configFilePath(target: ConfigFileTarget): string {
+    return this.config.ensureFile(target, this.configRoot("projectId" in target ? target.projectId : undefined));
+  }
+
+  trustProject(projectId: string, trusted: boolean): ConfigSnapshot {
+    const root = this.configRoot(projectId);
+    if (!root) throw new Error("This project has no folder to trust.");
+    this.config.trust(root, trusted);
+    this.applyConfigChange();
+    return this.getConfigSnapshot(projectId);
+  }
+
+  /**
+   * Add or remove one rule in the user or project-local file. An allow rule
+   * is refused for an untrusted folder, where it would wait unused.
+   */
+  editPermissionRule(edit: PermissionRuleEdit): ConfigSnapshot {
+    const root = this.configRoot(edit.projectId);
+    if (edit.scope === "local" && !root) throw new Error("This project has no folder for a personal settings file.");
+    if (edit.scope === "local" && edit.op === "add" && edit.list === "allow" && !this.config.isTrusted(root!)) {
+      throw new Error("Trust this project first. Allow rules in its files wait until the folder is trusted.");
+    }
+    this.config.editPermissionRule(edit, edit.scope === "local" ? root : undefined);
+    this.applyConfigChange();
+    return this.getConfigSnapshot(edit.projectId);
+  }
+
+  /** Change keybindings.json in place, then publish the result. */
+  editKeybindings(edit: KeybindingEdit): ConfigSnapshot {
+    this.config.editKeybindings(edit);
+    this.applyConfigChange();
+    return this.getConfigSnapshot();
+  }
+
+  /** Save a theme into the user's themes folder; main has already read the share string or the picked file. */
+  importTheme(source: Parameters<ConfigService["importTheme"]>[0]): ThemeImportResult {
+    const result = this.config.importTheme(source);
+    this.applyConfigChange();
+    return result;
+  }
+
+  /** Copy a picked image into the settings folder and draw it behind the conversation. */
+  importBackdropImage(file: string): ConfigSnapshot {
+    this.config.importBackdropImage(file);
+    this.applyConfigChange();
+    return this.getConfigSnapshot();
+  }
+
+  /** Re-read every settings file now; a change publishes as a file edit would. */
+  reloadConfig(projectId?: string): ConfigSnapshot {
+    this.config.reload();
+    return this.getConfigSnapshot(projectId);
+  }
+
+  private configRoot(projectId?: string): string | undefined {
+    return projectId ? this.requireProject(projectId).workingDirectory : undefined;
+  }
+
+  /** Capsule commands for the `/` menu, the palette and Settings. Reading runs nothing. */
+  listCommands(projectId?: string): CommandList {
+    const root = this.configRoot(projectId);
+    const catalog = this.config.commands(root);
+    const trusted = root ? this.config.isTrusted(root) : true;
+    return {
+      commands: catalog.commands.map((entry) => summarizeCommand(entry, trusted)),
+      problems: catalog.problems,
+      sources: this.config.extended().commandSources,
+    };
+  }
+
+  /** Expand a command for the person to edit before sending. It may run the command's shell spans. */
+  async expandCommand(input: CommandExpandInput): Promise<CommandExpansion> {
+    this.assertWorkAllowed();
+    const project = this.requireProject(input.projectId);
+    const session = input.sessionId ? this.requireSession(input.sessionId) : undefined;
+    if (session && session.projectId !== project.id) throw new Error("That conversation belongs to another project.");
+    const call = this.commandCall(input.text, project);
+    if (!call) throw new Error(`${input.text.trim().split(/\s/)[0]} is not a Capsule command.`);
+    const cwd = session ? this.cwdFor(session, project) : project.workingDirectory;
+    const prepared = prepareCommand(call, { cwd, room: MAX_MESSAGE_ATTACHMENTS });
+    const shell = await runCommandShell(prepared, this.commandShellContext(project, cwd));
+    return { text: shell.text, attachments: prepared.attachments, problems: [...prepared.problems, ...shell.problems] };
+  }
+
+  private commandCall(content: string, project: Project): CommandCall | undefined {
+    if (!readInvocation(content)) return undefined;
+    return findCommandCall(this.config.commands(project.workingDirectory), content);
+  }
+
+  private commandShellContext(project: Project, cwd: string | undefined): CommandShellContext {
+    const root = project.workingDirectory;
+    return { cwd, trusted: root ? this.config.isTrusted(root) : true, record: (record) => this.config.recordRun(record) };
   }
 
   getDiagnostics(): DiagnosticsSnapshot {
@@ -3263,6 +3837,7 @@ export class CapsuleEngine {
       if (payload.type === "tool") {
         this.appendEvent(run.id, "tool", payload.tool.title, { ...payload.tool });
         this.watchCommand(run.id, session!, payload.tool);
+        this.observeToolCall(session!, run, payload.tool);
         return;
       }
       if (payload.type === "plan") {
@@ -3272,49 +3847,26 @@ export class CapsuleEngine {
         });
         return;
       }
-      const asked = payload.request.details?.questions;
-      const profile = session?.permissionProfile ?? this.settings.defaultPermission;
-      const project = session && this.repos.getProject(session.projectId);
-      const workspace = project ? this.workingDirectoryFor(project, session.id) : undefined;
-      const ask = { kind: payload.request.details?.kind, locations: payload.request.details?.locations ?? [] };
-      if (!asked?.length && payload.request.canApproveOnce !== false && directApprovalDecision(profile, ask, workspace) === "allow") {
-        this.appendEvent(run.id, "approval.auto", `Allowed under ${approvalPreset(profile).label}: ${payload.request.title}`, {
-          preset: approvalPreset(profile).id, kind: ask.kind, locations: ask.locations,
-        });
-        payload.request.allow();
-        return;
-      }
-      const approval: ApprovalRequest = {
-        id: createId("approval"), runId: run.id, agentId: run.agentId,
-        agentName: session?.harnessId ?? run.agentId, action: payload.request.title,
-        target: asked?.length ? asked[0]!.question : payload.request.details?.locations.join("\n") || "Target not reported by the agent",
-        reason: asked?.length ? "The direct agent is waiting for your answer." : "The direct agent is waiting for your approval.",
-        details: payload.request.details,
-        status: "pending", createdAt: nowIso(),
-      };
-      this.directApprovals.set(approval.id, { runId: run.id, ...payload.request });
-      this.repos.insertApproval(approval);
-      run.status = "approval_required";
-      this.repos.updateRun(run);
-      this.appendEvent(run.id, "approval.requested", approval.action, { approval });
-      this.events.emit("approval", approval);
-      this.events.emit("run", run);
-      void payload.request.settled?.then(() => {
-        if (!this.directApprovals.delete(approval.id)) return;
-        const pending = this.repos.listApprovals("pending").find((item) => item.id === approval.id);
-        if (!pending) return;
-        pending.status = "cancelled";
-        pending.resolvedAt = nowIso();
-        this.repos.updateApproval(pending);
-        this.events.emit("approval", pending);
-        const current = this.requireRun(run.id);
-        if (!current.completedAt && current.status === "approval_required"
-          && !this.repos.listApprovals("pending").some((item) => item.runId === current.id)) {
-          current.status = "running";
-          this.repos.updateRun(current);
-          this.events.emit("run", current);
+      const request = payload.request;
+      // A question is the agent asking for an answer, not for permission: no rule, hook or preset answers it.
+      if (!session || request.details?.questions?.length) { this.openDirectApproval(session, run, request); return; }
+      const apply = ({ decision, note, undecided }: Settled, late: boolean) => {
+        if (decision === "allow") request.allow();
+        else if (decision === "deny") request.deny();
+        else if (undecided && this.presetAllows(session, run, request)) return;
+        else if (!late) this.openDirectApproval(session, run, request, note);
+        else {
+          // A hook took time; the turn may have ended while it ran.
+          const current = this.repos.getRun(run.id);
+          if (!current || current.completedAt) request.cancel();
+          else this.openDirectApproval(session, current, request, note);
         }
-      });
+      };
+      const subject = request.details?.subject;
+      if (!subject) { apply({ decision: "ask", undecided: true }, false); return; }
+      const decision = this.decidePermissionRequest(session, run, subject, "direct");
+      if (decision instanceof Promise) void decision.then((settled) => apply(settled, true));
+      else apply(decision, false);
     });
     this.directUnsub = () => { replies(); activity(); };
   }
@@ -3351,6 +3903,166 @@ export class CapsuleEngine {
       }
     }, thresholdMs + 50);
     timer.unref?.();
+  }
+
+  /** The thread's approval preset answering a request no rule or hook decided. */
+  private presetAllows(session: Session, run: Run, request: Extract<DirectActivity, { type: "permission" }>["request"]): boolean {
+    const profile = session.permissionProfile ?? this.settings.defaultPermission;
+    const project = this.repos.getProject(session.projectId);
+    const workspace = project ? this.workingDirectoryFor(project, session.id) : undefined;
+    const ask = { kind: request.details?.kind, locations: request.details?.locations ?? [] };
+    if (request.canApproveOnce === false || directApprovalDecision(profile, ask, workspace) !== "allow") return false;
+    this.appendEvent(run.id, "approval.auto", `Allowed under ${approvalPreset(profile).label}: ${request.title}`, {
+      preset: approvalPreset(profile).id, kind: ask.kind, locations: ask.locations,
+    });
+    request.allow();
+    return true;
+  }
+
+  private openDirectApproval(session: Session | undefined, run: Run, request: Extract<DirectActivity, { type: "permission" }>["request"], note?: string): void {
+    const asked = request.details?.questions;
+    const approval: ApprovalRequest = {
+      id: createId("approval"), runId: run.id, agentId: run.agentId,
+      agentName: session?.harnessId ?? run.agentId, action: request.title,
+      target: asked?.length ? asked[0]!.question : request.details?.locations.join("\n") || "Target not reported by the agent",
+      reason: note ?? (asked?.length ? "The direct agent is waiting for your answer." : "The direct agent is waiting for your approval."),
+      details: request.details,
+      status: "pending", createdAt: nowIso(),
+    };
+    this.directApprovals.set(approval.id, { runId: run.id, ...request });
+    this.repos.insertApproval(approval);
+    run.status = "approval_required";
+    this.repos.updateRun(run);
+    this.appendEvent(run.id, "approval.requested", approval.action, { approval });
+    this.events.emit("approval", approval);
+    this.events.emit("run", run);
+    void request.settled?.then(() => {
+      if (!this.directApprovals.delete(approval.id)) return;
+      const pending = this.repos.listApprovals("pending").find((item) => item.id === approval.id);
+      if (!pending) return;
+      pending.status = "cancelled";
+      pending.resolvedAt = nowIso();
+      this.repos.updateApproval(pending);
+      this.events.emit("approval", pending);
+      const current = this.requireRun(run.id);
+      if (!current.completedAt && current.status === "approval_required"
+        && !this.repos.listApprovals("pending").some((item) => item.runId === current.id)) {
+        current.status = "running";
+        this.repos.updateRun(current);
+        this.events.emit("run", current);
+      }
+    });
+  }
+
+  /** What every hook hears about the thread it runs for. */
+  private hookPayload(session: Session, project: Project): Omit<HookPayload, "event"> {
+    const direct = isDirectSessionKey(session.openclawSessionKey) || (!session.openclawSessionKey && this.useDirectMode(session.harnessId));
+    return {
+      thread_id: session.id,
+      ...(project.workingDirectory ? { project_dir: project.workingDirectory } : {}),
+      cwd: this.cwdFor(session, project) ?? homedir(),
+      ...(session.harnessId ? { harness: session.harnessId } : {}),
+      route: direct ? "direct" : "gateway",
+      ...(session.modelOverride ? { model: session.modelOverride } : {}),
+    };
+  }
+
+  /** PromptSubmit hooks: a block refuses the send; any context they add goes to the agent. */
+  private async submitPromptHooks(session: Session, project: Project, prompt: string): Promise<string[]> {
+    const root = project.workingDirectory;
+    if (this.hooks.handlers("PromptSubmit", root).length === 0) return [];
+    const results = await this.hooks.run("PromptSubmit", { ...this.hookPayload(session, project), event: "PromptSubmit", prompt }, { root });
+    const verdict = promptVerdict(results);
+    if (verdict.block) {
+      throw new PromptBlockedError(`Blocked by hook: ${verdict.block.reason.replace(/\.?$/, ".")} (PromptSubmit hook in ${hookSource(verdict.block.source, homedir())})`);
+    }
+    return verdict.context;
+  }
+
+  /**
+   * An agent's permission request, by rules then hooks. An automatic answer
+   * is written to the run's work log; "ask" leaves it to the person.
+   * Synchronous unless a hook runs.
+   */
+  private decidePermissionRequest(session: Session, run: Run, subject: PermissionSubject, route: "direct" | "gateway"): Settled | Promise<Settled> {
+    const project = this.requireProject(session.projectId);
+    const answer = decideRequest(subject, this.config.extended(project.workingDirectory), this.hooks, {
+      root: project.workingDirectory ?? homedir(),
+      ...(project.workingDirectory ? { projectRoot: project.workingDirectory } : {}),
+      home: homedir(),
+      caseInsensitivePaths: process.platform === "darwin" || process.platform === "win32",
+      payload: { ...this.hookPayload(session, project), route },
+    });
+    const record = (settled: PermissionAnswer): Settled => {
+      if (settled.audit) this.appendEvent(run.id, "approval.auto", settled.audit, { decision: settled.decision, request: subject.title, kind: subject.kind });
+      if (settled.decision !== "ask") return { decision: settled.decision };
+      if (settled.note) return { decision: "ask", note: settled.note };
+      return settled.audit ? { decision: "ask" } : { decision: "ask", undecided: true };
+    };
+    return answer instanceof Promise
+      ? answer.then(record, (error: unknown): Settled => {
+        this.log(`Permission hooks could not decide a request: ${String(error)}`);
+        return { decision: "ask" };
+      })
+      : record(answer);
+  }
+
+  /** ToolCall hooks, once a tool has finished, never holding up the turn. */
+  private observeToolCall(session: Session, run: Run, tool: { title: string; status?: string; kind?: string; toolCallId?: string; details?: { input?: string } }): void {
+    if (tool.status !== "completed" && tool.status !== "failed") return;
+    const key = `tool:${run.id}:${tool.toolCallId ?? tool.title}`;
+    if (!this.onceForHooks(key)) return;
+    const project = this.repos.getProject(session.projectId);
+    if (!project) return;
+    this.hooks.observe("ToolCall", {
+      ...this.hookPayload(session, project),
+      event: "ToolCall",
+      tool: { title: tool.title, status: tool.status, ...(tool.kind ? { kind: tool.kind } : {}), ...(tool.details?.input ? { input: tool.details.input } : {}) },
+    }, { root: project.workingDirectory, targets: [tool.kind ?? "", tool.title] });
+  }
+
+  /**
+   * TurnEnd hooks, once per run, when it completes, fails or is blocked. A
+   * cancelled run is someone pressing Stop, and a follow-up would overrule
+   * them. The reply may have reached the thread as a message rather than as
+   * the run's result, so the excerpt falls back to that message.
+   */
+  private runTurnEndHooks(run: Run): void {
+    if (run.status === "cancelled" || !this.onceForHooks(`turn:${run.id}`)) return;
+    const session = this.repos.getSession(run.sessionId);
+    const project = session && this.repos.getProject(session.projectId);
+    if (!session || !project) return;
+    const root = project.workingDirectory;
+    if (this.hooks.handlers("TurnEnd", root).length === 0) return;
+    const reply = run.result?.trim()
+      || [...this.repos.listMessages(session.id)].reverse().find((message) => message.runId === run.id && message.role === "assistant")?.content
+      || "";
+    void this.hooks.run("TurnEnd", {
+      ...this.hookPayload(session, project),
+      event: "TurnEnd",
+      run: { status: run.status, result_excerpt: reply.slice(0, 2000) },
+    }, { root }).then((results) => {
+      for (const text of followUpsFrom(results)) {
+        if (!this.repos.getSession(session.id)) return;
+        if (!this.hookFollowUps.admit(session.id, text)) {
+          this.appendEvent(run.id, "hook.follow-up", "A TurnEnd hook's follow-up was not queued: hooks have queued 3 in a row without a message from you.", { queued: false });
+          return;
+        }
+        try {
+          this.followUps.apply(session.id, { type: "add", prompt: { content: text, attachments: [] } });
+          this.appendEvent(run.id, "hook.follow-up", "A TurnEnd hook queued a follow-up", { queued: true, content: text });
+        } catch (error) {
+          this.log(`A TurnEnd hook's follow-up could not be queued: ${String(error)}`);
+        }
+      }
+    }).catch((error: unknown) => this.log(`TurnEnd hooks failed: ${String(error)}`));
+  }
+
+  private onceForHooks(key: string): boolean {
+    if (this.hookedOnce.has(key)) return false;
+    this.hookedOnce.add(key);
+    if (this.hookedOnce.size > 2000) this.hookedOnce.delete(this.hookedOnce.values().next().value!);
+    return true;
   }
 
   private settleDirectApprovals(runId: string): void {
@@ -3589,9 +4301,33 @@ export class CapsuleEngine {
     });
     this.repos.insertRunEvent(mapped);
     this.events.emit("run-event", { ...mapped, sessionId: run.sessionId });
+    if (mapped.type === "tool") {
+      const data = mapped.data ?? {};
+      const text = (value: unknown) => (typeof value === "string" ? value : undefined);
+      this.observeToolCall(session, run, {
+        title: text(data.title) ?? mapped.message,
+        status: text(data.status),
+        kind: text(data.kind),
+        toolCallId: text(data.toolCallId),
+        details: data.details as { input?: string } | undefined,
+      });
+    }
 
     if (event.type === "approval.requested" && event.data?.approval) {
       const approval = event.data.approval as ApprovalRequest;
+      if (approval.details?.subject) {
+        const { decision, note } = await this.decidePermissionRequest(session, run, approval.details.subject, "gateway");
+        if (note) approval.reason = note;
+        if (decision !== "ask") {
+          try {
+            await this.runtime.resolveApproval?.(approval.id, decision === "allow" ? "approved_once" : "denied");
+            return;
+          } catch (error) {
+            this.appendEvent(run.id, "approval.auto", `The Gateway did not take that answer, so the request waits for you: ${error instanceof Error ? error.message : String(error)}`, { decision: "ask" });
+          }
+        }
+        if (this.repos.getRun(run.id)?.completedAt) return;
+      }
       this.repos.insertApproval({ ...approval, runId: run.id });
       run.status = "approval_required";
       run.updatedAt = nowIso();
@@ -3864,17 +4600,68 @@ export class CapsuleEngine {
     for (const rule of DEFAULT_POLICIES) this.repos.insertPolicy(rule);
   }
 
+  /*
+   * The user's settings file is the source of truth. The first launch that
+   * has one exports the database row into it; the row stays as a backup.
+   */
   private loadSettings(): void {
-    const raw = this.repos.getSetting("settings");
-    if (!raw) return;
-    try {
-      this.settings = normalizeCapsuleSettings({
-        ...this.settings,
-        ...(JSON.parse(raw) as Partial<CapsuleSettings>),
-      });
-    } catch {
-      // Keep defaults if persisted settings are unreadable.
+    if (!this.config.safeMode) {
+      try {
+        const result = migrateDatabaseSettings({
+          paths: this.config.paths,
+          stored: this.repos.getSetting("settings"),
+          defaults: this.config.defaults,
+          record: {
+            read: () => this.repos.getSetting(CONFIG_MIGRATED_SETTING),
+            write: (at) => this.repos.setSetting(CONFIG_MIGRATED_SETTING, at),
+          },
+        });
+        if (result.status === "migrated") this.log(`Moved settings to ${this.config.paths.userSettings}`);
+      } catch (error) {
+        this.log(`Settings could not be moved to ${this.config.paths.userSettings}: ${String(error)}`);
+      }
     }
+    this.config.load();
+    this.config.onChange(() => this.applyConfigChange());
+    this.settings = this.withSecrets(this.config.settings());
+  }
+
+  private withSecrets(settings: CapsuleSettings, from = this.settings): CapsuleSettings {
+    const next = { ...settings };
+    if (from.gatewayToken) next.gatewayToken = from.gatewayToken;
+    if (from.skillsShToken) next.skillsShToken = from.skillsShToken;
+    return next;
+  }
+
+  /*
+   * A settings file changed on disk. Publish it the way a save from the
+   * Settings screen would: the same derived records, then the same events.
+   */
+  private applyConfigChange(): void {
+    if (this.stopped) return;
+    const previous = this.settings;
+    const next = this.withSecrets(this.config.settings());
+    const changed = (key: keyof CapsuleSettings) => !isDeepStrictEqual(previous[key], next[key]);
+    try {
+      const archived = this.db.sqlite.transaction(() => {
+        if (changed("projectlessFolder")) this.bindInboxToProjectless(next);
+        if (changed("webAccess") || changed("sandbox")) this.applyWorkspacePolicies(next);
+        return changed("archiveInactiveAfter") ? this.archiveInactiveSessions(next, false) : 0;
+      })();
+      this.notifyArchivedSessions(archived);
+    } catch (error) {
+      this.log(`Settings from ${this.config.paths.userSettings} were read but not applied: ${String(error)}`);
+    }
+    this.settings = next;
+    if (!pullRequestWatchEnabled(next)) { this.stopAllPrWatch(); this.pausedPrWatches.clear(); }
+    if (!isDeepStrictEqual(previous, next)) this.events.emit("state", { command: "settings-updated" });
+    this.events.emit("state", { command: "config-updated" });
+  }
+
+  /** Settings for work in a project: its own files layered over the user's. */
+  private projectSettings(project: Project): CapsuleSettings {
+    if (!project.workingDirectory) return this.settings;
+    return this.withSecrets(this.config.forProject(project.workingDirectory).settings);
   }
 
   private schedulePrWatch(projectId: string, sessionId?: string, restart = false): void {
@@ -4043,11 +4830,14 @@ export class CapsuleEngine {
     return true;
   }
 
-  private persistSettings(settings = this.settings): void {
-    const stored = { ...settings };
-    delete stored.gatewayToken;
-    delete stored.skillsShToken;
-    this.repos.setSetting("settings", JSON.stringify(stored));
+  /** The settings row older builds wrote. Kept as a backup; read only for secrets left in it. */
+  private storedSettingsRow(): Record<string, unknown> {
+    try {
+      const parsed: unknown = JSON.parse(this.repos.getSetting("settings") ?? "{}");
+      return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+    } catch {
+      return {};
+    }
   }
 
   private applyWorkspacePolicies(settings = this.settings): void {
@@ -4380,14 +5170,18 @@ export class CapsuleEngine {
   private async hydrateSecrets(): Promise<void> {
     // Migrate legacy settings only after secure storage succeeds. Never lose
     // the only copy on a Keychain failure or send a stored mask as a token.
+    const stored = this.storedSettingsRow();
     for (const [key, account] of [["gatewayToken", GATEWAY_TOKEN_ACCOUNT], ["skillsShToken", SKILLS_SH_TOKEN_ACCOUNT]] as const) {
-      const legacy = this.settings[key];
-      if (legacy && legacy !== TOKEN_PRESENT_MASK && !(await this.keychain.get(CAPSULE_KEYCHAIN_SERVICE, account))) {
+      const legacy = stored[key];
+      if (typeof legacy === "string" && legacy && legacy !== TOKEN_PRESENT_MASK && !(await this.keychain.get(CAPSULE_KEYCHAIN_SERVICE, account))) {
         await this.keychain.set(CAPSULE_KEYCHAIN_SERVICE, account, legacy);
       }
       delete this.settings[key];
     }
-    this.persistSettings();
+    if ("gatewayToken" in stored || "skillsShToken" in stored) {
+      const { gatewayToken: _gateway, skillsShToken: _catalog, ...preferences } = stored;
+      this.repos.setSetting("settings", JSON.stringify(preferences));
+    }
     const token = await this.keychain.get(CAPSULE_KEYCHAIN_SERVICE, GATEWAY_TOKEN_ACCOUNT);
     if (token) this.settings.gatewayToken = token;
     if (process.env.OPENCLAW_GATEWAY_TOKEN) {
@@ -4416,6 +5210,84 @@ export class CapsuleEngine {
     if (isHarnessId(session.agentId)) return session.agentId;
     if (mode === "code" && isHarnessId(project.defaultAgentId)) return project.defaultAgentId;
     return undefined;
+  }
+
+  /** A profile's agent, mode, permission and model on a conversation that has not started yet. */
+  private applyProfile(session: Session, profile: AgentProfile): Session {
+    const current = this.requireSession(session.id);
+    current.profileId = profile.id;
+    if (profile.agent) current.agentId = profile.agent;
+    const mode = profileMode(profile);
+    if (mode) current.mode = mode;
+    if (profile.permission) current.permissionProfile = profile.permission;
+    if (profile.model && isHarnessId(current.agentId)) current.modelOverride = profile.model;
+    current.updatedAt = nowIso();
+    this.repos.updateSession(current);
+    return current;
+  }
+
+  /*
+   * What the conversation's first turn carries before the person's words:
+   * the response style, personal instructions, and the starting profile's
+   * body and skills, plus the profile's effort where the route has an effort
+   * control. Each part that cannot apply is a problem on the run's event,
+   * never a silent drop.
+   */
+  private async firstTurnStanding(session: Session, project: Project, runId: string): Promise<string | undefined> {
+    const root = project.workingDirectory;
+    const problems: string[] = [];
+    const profile = session.profileId ? this.findProfile(project, session.profileId)?.profile : undefined;
+    if (session.profileId && !profile) problems.push(`The profile ${session.profileId} is gone, so its instructions were not sent.`);
+    if (profile) problems.push(...await this.applyProfileControls(session, profile));
+    const styleId = profile?.style ?? this.config.extended(root).style ?? styleForOutputDetail(this.projectSettings(project).outputDetail);
+    const style = this.config.styles(root).styles.find((entry) => entry.style.id === styleId)?.style;
+    if (!style) problems.push(`There is no response style named ${styleId}.`);
+    const personal = this.config.personalInstructions();
+    if (personal?.problem) problems.push(personal.problem);
+    const skills: Array<{ name: string; content: string }> = [];
+    for (const id of profile?.skills ?? []) {
+      const skill = await this.requireSkill(id, project.id, session.id).catch(() => undefined);
+      if (skill?.status === "installed" && skill.content?.trim()) skills.push({ name: skill.name, content: skill.content });
+      else problems.push(`The skill ${id} is not installed, so the profile's copy of it was not sent.`);
+    }
+    const text = standingPreamble({ style, personal: personal?.text, ...(profile ? { profile: { name: profile.name, instructions: profile.instructions } } : {}), skills });
+    if (text || problems.length) {
+      this.appendEvent(runId, "standing.instructions", text ? "Standing instructions sent with the first turn" : "No standing instructions sent", {
+        style: styleId, ...(profile ? { profile: profile.id } : {}), ...(personal?.text ? { personal: personal.path } : {}),
+        skills: skills.map((skill) => skill.name), problems,
+      });
+    }
+    return text;
+  }
+
+  /*
+   * A coding agent's effort, and a mode such as plan, are its own controls,
+   * reported per agent; set each where the agent reports a control that
+   * takes the profile's value. Returns why each one could not be set.
+   */
+  private async applyProfileControls(session: Session, profile: AgentProfile): Promise<string[]> {
+    const current = this.requireSession(session.id);
+    const wanted = [
+      ...(profile.effort ? [{ label: "effort", value: profile.effort, categories: ["thought_level"] }] : []),
+      ...(profile.mode && profile.mode !== "code" && isHarnessId(profile.agent) ? [{ label: "mode", value: profile.mode, categories: ["mode", "permissions"] }] : []),
+    ];
+    if (!wanted.length || this.usingMock || !current.harnessId) return [];
+    if (!isDirectSessionKey(current.openclawSessionKey)) {
+      return wanted.map((item) => `The Gateway route has no ${item.label} control, so the profile's ${item.label} ${item.value} was not applied.`);
+    }
+    const problems: string[] = [];
+    for (const item of wanted) {
+      try {
+        const options = (await this.harnessStatus(current.id)).parsed?.reported?.configOptions ?? [];
+        const option = options.find((candidate) => item.categories.includes(candidate.category ?? "") && candidate.type !== "boolean"
+          && (item.label === "effort" || candidate.choices.some((choice) => choice.value === item.value)));
+        if (!option) problems.push(`This agent reports no ${item.label} control that takes ${item.value}, so the profile's ${item.label} was not applied.`);
+        else if (option.currentValue !== item.value) await this.setHarnessConfig(current.id, option.id, item.value);
+      } catch (error) {
+        problems.push(`The profile's ${item.label} ${item.value} was not applied: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    return problems;
   }
 
   private async ensureHarnessSession(session: Session, harnessId: HarnessId, admittingRunId?: string): Promise<Session> {
@@ -4658,3 +5530,9 @@ export function inferMode(prompt: string, current?: AgentMode): AgentMode {
   return current ?? "chat";
 }
 import { compactRunEvent, type RunEventCursor } from "@capsule/shared";
+
+/** A coding agent always runs in code mode; a profile's other mode is applied through the agent's own controls. */
+function profileMode(profile: AgentProfile | undefined): AgentMode | undefined {
+  if (!profile) return undefined;
+  return isHarnessId(profile.agent) ? "code" : profile.mode;
+}

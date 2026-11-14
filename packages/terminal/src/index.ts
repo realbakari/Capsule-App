@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { spawn as spawnPty } from "node-pty";
-import { stopChild } from "@capsule/process";
+import { spawnCommand, stopChild } from "@capsule/process";
 import { commandShell, interactiveShellArgs, windowsPowerShell } from "./shell.js";
 
 export interface ExecResult {
@@ -164,6 +164,169 @@ export function runInDirectory(
         stderr: stderr.read(),
         code: code ?? 1,
       });
+    });
+  });
+}
+
+export interface CappedRun {
+  /** Standard output and error in the order they arrived, cut at the byte cap. */
+  output: string;
+  /** Null when the command was stopped at the time limit. */
+  code: number | null;
+  timedOut: boolean;
+  truncated: boolean;
+  durationMs: number;
+}
+
+/**
+ * One command whose output becomes text someone reads, such as a prompt: the
+ * first `maxBytes` of both streams together, and whatever it printed before
+ * the time limit rather than an error in its place.
+ */
+export function runCapped(cwd: string, command: string, limits: { timeoutMs: number; maxBytes: number }): Promise<CappedRun> {
+  if (!cwd || !existsSync(cwd)) return Promise.reject(new Error("Working directory is missing"));
+  const started = Date.now();
+  return new Promise((resolve, reject) => {
+    const shell = commandShell(command);
+    const child = spawn(shell.file, shell.args, {
+      cwd,
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: process.platform !== "win32",
+      windowsHide: true,
+    });
+    const chunks: Buffer[] = [];
+    let bytes = 0;
+    let truncated = false;
+    let timedOut = false;
+    let killTimer: ReturnType<typeof setTimeout> | undefined;
+    const collect = (chunk: Buffer) => {
+      if (bytes >= limits.maxBytes) { truncated = true; return; }
+      const kept = chunk.subarray(0, limits.maxBytes - bytes);
+      if (kept.length < chunk.length) truncated = true;
+      chunks.push(kept);
+      bytes += kept.length;
+    };
+    child.stdout.on("data", collect);
+    child.stderr.on("data", collect);
+    const timer = setTimeout(() => {
+      timedOut = true;
+      stopChild(child, "SIGTERM", true);
+      killTimer = setTimeout(() => stopChild(child, "SIGKILL", true), 1000);
+    }, limits.timeoutMs);
+    child.on("error", (error) => { clearTimeout(timer); clearTimeout(killTimer); reject(error); });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      clearTimeout(killTimer);
+      resolve({ output: Buffer.concat(chunks).toString("utf8"), code: timedOut ? null : code ?? 1, timedOut, truncated, durationMs: Date.now() - started });
+    });
+  });
+}
+
+export interface InputRun {
+  stdout: string;
+  stderr: string;
+  /** Null when the command was stopped at the time limit. */
+  code: number | null;
+  timedOut: boolean;
+  durationMs: number;
+}
+
+/**
+ * One command fed `input` on stdin, with extra environment, its streams kept
+ * apart and each cut at `maxBytes`. A hook reads JSON this way and answers
+ * on stdout, with its reason on stderr.
+ */
+export function runWithInput(
+  cwd: string,
+  command: string,
+  options: { input: string; env?: Record<string, string>; timeoutMs: number; maxBytes: number },
+): Promise<InputRun> {
+  if (!cwd || !existsSync(cwd)) return Promise.reject(new Error("Working directory is missing"));
+  const started = Date.now();
+  return new Promise((resolve, reject) => {
+    const shell = commandShell(command);
+    const child = spawn(shell.file, shell.args, {
+      cwd,
+      env: { ...process.env, ...options.env },
+      stdio: ["pipe", "pipe", "pipe"],
+      detached: process.platform !== "win32",
+      windowsHide: true,
+    });
+    const collected = { stdout: [] as Buffer[], stderr: [] as Buffer[] };
+    const sizes = { stdout: 0, stderr: 0 };
+    const collect = (stream: "stdout" | "stderr") => (chunk: Buffer) => {
+      const room = options.maxBytes - sizes[stream];
+      if (room <= 0) return;
+      const kept = chunk.subarray(0, room);
+      collected[stream].push(kept);
+      sizes[stream] += kept.length;
+    };
+    child.stdout.on("data", collect("stdout"));
+    child.stderr.on("data", collect("stderr"));
+    // A command that never reads stdin closes it early; that is not a failure.
+    child.stdin.on("error", () => undefined);
+    child.stdin.end(options.input);
+    let timedOut = false;
+    let killTimer: ReturnType<typeof setTimeout> | undefined;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      stopChild(child, "SIGTERM", true);
+      killTimer = setTimeout(() => stopChild(child, "SIGKILL", true), 1000);
+    }, options.timeoutMs);
+    child.on("error", (error) => { clearTimeout(timer); clearTimeout(killTimer); reject(error); });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      clearTimeout(killTimer);
+      resolve({
+        stdout: Buffer.concat(collected.stdout).toString("utf8"),
+        stderr: Buffer.concat(collected.stderr).toString("utf8"),
+        code: timedOut ? null : code ?? 1,
+        timedOut,
+        durationMs: Date.now() - started,
+      });
+    });
+  });
+}
+
+/**
+ * A program with its arguments, never through a shell, so a URL or a path
+ * someone typed is one argument however it is written. Installing a plugin
+ * runs `git` and `ditto` or `unzip` this way.
+ */
+export function runProgram(
+  cwd: string,
+  file: string,
+  args: readonly string[],
+  options: { env?: Record<string, string>; timeoutMs: number; maxBytes: number },
+): Promise<Omit<InputRun, "durationMs">> {
+  if (!cwd || !existsSync(cwd)) return Promise.reject(new Error("Working directory is missing"));
+  return new Promise((resolve, reject) => {
+    const child = spawnCommand(file, [...args], {
+      cwd,
+      env: { ...process.env, ...options.env },
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: process.platform !== "win32",
+      windowsHide: true,
+    });
+    const out = { stdout: "", stderr: "" };
+    const collect = (stream: "stdout" | "stderr") => (chunk: Buffer) => {
+      if (out[stream].length < options.maxBytes) out[stream] += chunk.toString("utf8").slice(0, options.maxBytes - out[stream].length);
+    };
+    child.stdout?.on("data", collect("stdout"));
+    child.stderr?.on("data", collect("stderr"));
+    let timedOut = false;
+    let killTimer: ReturnType<typeof setTimeout> | undefined;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      stopChild(child, "SIGTERM", true);
+      killTimer = setTimeout(() => stopChild(child, "SIGKILL", true), 1000);
+    }, options.timeoutMs);
+    child.on("error", (error) => { clearTimeout(timer); clearTimeout(killTimer); reject(error); });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      clearTimeout(killTimer);
+      resolve({ ...out, code: timedOut ? null : code ?? 1, timedOut });
     });
   });
 }

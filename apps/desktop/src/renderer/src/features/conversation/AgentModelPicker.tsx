@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { modelFavoriteKey, type Agent, type HarnessStatus, type AcpModelCatalog, type FeatureAvailability, type TurnMode } from "@capsule/shared";
+import { modelFavoriteKey, type Agent, type HarnessStatus, type AcpModelCatalog, type FeatureAvailability, type ProfileSummary, type TurnMode } from "@capsule/shared";
+import { profileLine } from "../customization/profile-view";
 import { AgentGlyph } from "../shell/AgentGlyph";
 import { ChevronDownIcon, SearchIcon, XIcon } from "../shell/icons";
 import { useAnchoredPopover } from "../../lib/anchored-popover";
@@ -16,6 +17,8 @@ export function AgentModelPicker(props: {
   favorites?: readonly string[]; onToggleFavorite?: (modelId: string) => void;
   /** The models saved for Plan and Act with this agent. */
   modeModels?: { plan?: string; act?: string }; onModeModel?: (mode: TurnMode, modelId: string) => void;
+  /** Profiles start a new conversation, so they sit above the raw agents. */
+  profiles?: ProfileSummary[]; onProfile?: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -88,6 +91,15 @@ export function AgentModelPicker(props: {
         </nav>
         <section aria-label={`${agent?.name ?? "Agent"} models`}>
           {choosingHarness ? <>
+            {props.onProfile && props.profiles?.some((profile) => `${profile.name} ${profile.description ?? ""}`.toLowerCase().includes(needle)) && <>
+              <p className="agent-model-heading">Profiles</p>
+              {props.profiles.filter((profile) => `${profile.name} ${profile.description ?? ""}`.toLowerCase().includes(needle)).map((profile) =>
+                <button type="button" className="agent-harness-choice agent-profile-choice" data-harness-choice key={profile.id} disabled={props.disabled}
+                  title={profile.description} onClick={() => { close(); props.onProfile?.(profile.id); }}>
+                  <span className="profile-dot" style={profile.color ? { "--profile-color": profile.color } as CSSProperties : undefined} aria-hidden="true" />
+                  <span>{profile.name}<small>{profileLine(profile, agents)}</small></span>
+                </button>)}
+            </>}
             <p className="agent-model-heading">Agents</p>
             {props.liveHarnessId && <small className="agent-model-note">Start a new conversation to switch agents.</small>}
             {agents.filter((item) => item.name.toLowerCase().includes(needle)).map((item) => {

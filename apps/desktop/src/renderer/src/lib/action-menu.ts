@@ -64,6 +64,8 @@ export type ProjectActionId =
   | "add-folder"
   | "open-folder"
   | "copy-path"
+  | "trust"
+  | "revoke-trust"
   | "delete";
 
 export interface ActionMenuItem extends PopupMenuItem {
@@ -192,6 +194,8 @@ export function buildProjectActionMenuItems(state: {
   canRename: boolean;
   /** Import from the agents' own histories; absent where it is unavailable. */
   canImport?: boolean;
+  /** The folder's trust, when known and when its settings files hold something that waits for it. */
+  trust?: "trusted" | "untrusted";
 }): ActionMenuItem[] {
   return [
     { id: "settings", label: "Project settings", icon: "settings" },
@@ -212,6 +216,11 @@ export function buildProjectActionMenuItems(state: {
       enabled: state.hasFolder,
     },
     { id: "copy-path", label: "Copy path", icon: "copy", enabled: state.hasFolder },
+    ...(state.trust === "trusted"
+      ? [{ id: "revoke-trust", label: "Revoke trust", separatorBefore: true }]
+      : state.trust === "untrusted"
+        ? [{ id: "trust", label: "Trust this project", separatorBefore: true }]
+        : []),
     {
       id: "delete",
       label: "Delete project",

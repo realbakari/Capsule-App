@@ -23,10 +23,10 @@ export function PlanModeCard({ settings, harnesses, onPatch, editable }: {
       <p className="muted">
         A plan turn reads and investigates, then replies with a plan instead of changing files. Press ⇧Tab in the composer to switch.
       </p>
-      <SettingRow label="Start in Plan mode" hint="New conversations begin in Plan. Each conversation keeps its own choice afterwards.">
+      <SettingRow label="Start in Plan mode" setting="startInPlanMode" hint="New conversations begin in Plan. Each conversation keeps its own choice afterwards.">
         <Switch label="Start in Plan mode" checked={settings.startInPlanMode} onChange={(value) => onPatch({ startInPlanMode: value })} />
       </SettingRow>
-      <SettingRow label="Plan and Act models" stacked
+      <SettingRow label="Plan and Act models" setting="modeModels" stacked
         hint="Switching mode also switches to the model saved for it. Save one with Plan or Act on a model's row in the composer's model picker.">
         {saved.length === 0 ? <p className="faint plan-mode-models-empty">No models saved for a mode. Each mode keeps the conversation's current model.</p> : (
           <ul className="plan-mode-models" aria-label="Models saved per mode">

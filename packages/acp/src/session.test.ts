@@ -355,7 +355,7 @@ describe("talking to an agent directly", () => {
     } finally { request.mockRestore(); await session.close(); rmSync(path.dirname(agent), { recursive: true, force: true }); }
   });
 
-  it.each([true, false, undefined, "true"])("forwards HTTP MCP only for advertised boolean support (%s)", async (http) => {
+  it.each([true, false, undefined, "true"])("forwards stdio MCP always and HTTP MCP only for advertised boolean support (%s)", async (http) => {
     const agent = fakeAgent(`function handle(message) {
       if (message.method === "initialize") send({ id: message.id, result: { protocolVersion: 1, agentCapabilities: { mcpCapabilities: ${JSON.stringify({ http })} } } });
       if (message.method === "session/new") send({ id: message.id, result: { sessionId: JSON.stringify(message.params.mcpServers) } });
@@ -365,9 +365,11 @@ describe("talking to an agent directly", () => {
       { type: "http" as const, name: "fixture-tools", url: "http://127.0.0.1:1/mcp", headers: [{ name: "Authorization", value: "fixture-only" }] },
       { type: "http" as const, name: "fixture-public", url: "http://127.0.0.1:1/public" },
     ];
-    const session = new DirectAcpSession({ command: "node", args: [agent], mcpServers: servers });
+    const local = { name: "fixture-local", command: "node", args: ["server.mjs"], env: [{ name: "TOKEN", value: "fixture-only" }], cwd: "/not-sent" };
+    const session = new DirectAcpSession({ command: "node", args: [agent], mcpServers: [...servers, local] });
     try {
-      expect(JSON.parse(await session.start())).toEqual(http === true ? servers.map((server) => ({ ...server, headers: server.headers ?? [] })) : []);
+      const { cwd: _cwd, ...stdio } = local;
+      expect(JSON.parse(await session.start())).toEqual([...(http === true ? servers.map((server) => ({ ...server, headers: server.headers ?? [] })) : []), stdio]);
       expect(session.reportedCapabilities?.httpMcp).toBe(typeof http === "boolean" ? http : undefined);
       // Missing optional browser transport must not disable an ordinary turn.
       expect(await session.prompt("Hello")).toEqual({ stopReason: "end_turn" });

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { normalizePromptTemplates, templateCommand, templateVariables, type CapsuleSettings, type PromptTemplate } from "@capsule/shared";
 import { PlusIcon } from "../shell/icons";
+import { SettingSource } from "../customization/SettingSource";
 import "../conversation/composer-context.css";
 
 /**
@@ -28,7 +29,7 @@ export function SavedPromptsSettings({ settings, onPatch }: { settings: CapsuleS
     <div className="card saved-prompts">
       <div className="row">
         <div>
-          <h3>Saved prompts</h3>
+          <h3>Saved prompts <SettingSource setting="composerPrompts" /></h3>
           <p className="muted">
             Type / in the composer to use one. Write {"{{name}}"} for a blank to fill in, or {"{{name:one|two}}"} for a choice. A project can share its own in capsule.json.
           </p>

@@ -1,0 +1,101 @@
+/* The status line sits at the end of the workspace strip under the composer and gives way to it. */
+.status-line {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  margin-left: auto;
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: var(--text-2xs);
+  line-height: 1.35;
+  text-align: right;
+}
+.status-line-row {
+  display: block;
+  overflow: hidden;
+  white-space: pre;
+  text-overflow: ellipsis;
+}
+.status-line[data-mode="items"] .status-line-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  white-space: nowrap;
+}
+.status-line-part {
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.status-line-part + .status-line-part::before {
+  content: "·";
+  margin-right: 0.6rem;
+  color: var(--text-faint);
+}
+.status-line-part[data-tone="warn"] { color: var(--yellow); }
+.status-line-part[data-tone="critical"] { color: var(--red); }
+.status-line[data-failed="true"] .status-line-row { opacity: 0.5; }
+.status-line-failed { color: var(--text-faint); font-style: italic; }
+
+.status-line-seg[data-fg="red"] { color: var(--red); }
+.status-line-seg[data-fg="green"] { color: var(--green); }
+.status-line-seg[data-fg="yellow"] { color: var(--yellow); }
+.status-line-seg[data-fg="blue"] { color: var(--blue); }
+.status-line-seg[data-fg="cyan"] { color: color-mix(in srgb, var(--blue) 55%, var(--green)); }
+.status-line-seg[data-fg="magenta"] { color: color-mix(in srgb, var(--red) 55%, var(--blue)); }
+.status-line-seg[data-fg="white"] { color: var(--text); }
+.status-line-seg[data-fg="black"] { color: var(--text-faint); }
+.status-line-seg[data-bg] { border-radius: 0.2rem; padding: 0 0.15rem; }
+.status-line-seg[data-bg="red"] { background: color-mix(in srgb, var(--red) 22%, transparent); }
+.status-line-seg[data-bg="green"] { background: color-mix(in srgb, var(--green) 22%, transparent); }
+.status-line-seg[data-bg="yellow"] { background: color-mix(in srgb, var(--yellow) 22%, transparent); }
+.status-line-seg[data-bg="blue"] { background: color-mix(in srgb, var(--blue) 22%, transparent); }
+.status-line-seg[data-bg="cyan"], .status-line-seg[data-bg="magenta"], .status-line-seg[data-bg="white"], .status-line-seg[data-bg="black"] {
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+}
+
+/* Narrow: one line, the rest in the tooltip. */
+@media (max-width: 1000px) {
+  .status-line .status-line-row + .status-line-row { display: none; }
+}
+
+/* Settings → Appearance → Status line. */
+.status-line-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: 0.25rem 1rem;
+  margin: 0.4rem 0 0.75rem;
+  padding: 0;
+  list-style: none;
+}
+.status-line-items li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 1.8rem;
+  font-size: var(--text-sm);
+}
+.status-line-items label { display: inline-flex; align-items: center; gap: 0.45rem; }
+.status-line-move { display: inline-flex; gap: 0.15rem; }
+.status-line-move .icon-btn { width: 1.4rem; height: 1.4rem; font-size: var(--text-xs); }
+.status-line-preview {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 2.25rem;
+  padding: 0.4rem 0.75rem;
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+}
+.status-line-preview .status-line { margin-left: auto; }
+.status-line-preview-live { display: flex; flex: 1; min-width: 0; }
+.status-line-command {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+.status-line-command input[type="text"] { flex: 1; min-width: 0; font-family: var(--mono); }
+.status-line-command input[type="number"] { width: 7rem; }

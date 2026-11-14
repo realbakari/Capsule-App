@@ -74,7 +74,7 @@ export function AgentDefaultsCard({ settings, onPatch }: SectionProps) {
         Approvals, reasoning and agent settings can also be changed per conversation in the composer.
       </p>
       <SettingRow
-        label="Approvals for new conversations"
+        label="Approvals for new conversations" setting="defaultPermission"
         hint={`${approvalPreset(settings.defaultPermission).summary} Change it per conversation from the composer.`}
       >
         <select
@@ -95,7 +95,7 @@ export function AgentDefaultsCard({ settings, onPatch }: SectionProps) {
         </select>
       </SettingRow>
       <SettingRow
-        label="Sandbox"
+        label="Sandbox" setting="sandbox"
         hint="How much local command access Capsule grants. Strict blocks the project terminal."
       >
         <select
@@ -111,7 +111,7 @@ export function AgentDefaultsCard({ settings, onPatch }: SectionProps) {
         </select>
       </SettingRow>
       <SettingRow
-        label="Web search"
+        label="Web search" setting="webAccess"
         hint="Whether agents may use the public web. Off is written into the run contract."
       >
         <select
@@ -127,8 +127,8 @@ export function AgentDefaultsCard({ settings, onPatch }: SectionProps) {
         </select>
       </SettingRow>
       <SettingRow
-        label="Output detail"
-        hint="How much detail the agent should include in replies."
+        label="Output detail" setting="outputDetail"
+        hint="How much detail the agent includes in replies. A response style, yours or a profile's, replaces it."
       >
         <select
           className="field-select"
@@ -143,7 +143,7 @@ export function AgentDefaultsCard({ settings, onPatch }: SectionProps) {
         </select>
       </SettingRow>
       <SettingRow
-        label="Reasoning summary"
+        label="Reasoning summary" setting="reasoningSummary"
         hint="How thinking frames appear while a run is in progress."
       >
         <select
@@ -169,7 +169,7 @@ export function NotificationsCard({ settings, onPatch }: SectionProps) {
     <div className="card">
       <h3>Notifications</h3>
       <SettingRow
-        label="Response completions"
+        label="Response completions" setting="notifyRunComplete"
         hint="Notify with the conversation's name when a turn finishes or a snooze ends while Capsule is in the background. Clicking the notification opens it. In front of you, another conversation finishing shows in the app instead."
       >
         <Switch
@@ -179,7 +179,7 @@ export function NotificationsCard({ settings, onPatch }: SectionProps) {
         />
       </SettingRow>
       <SettingRow
-        label="Approval requests"
+        label="Approval requests" setting="notifyApprovals"
         hint="Notify when an agent needs approval or asks you a question and Capsule is in the background."
       >
         <Switch
@@ -189,7 +189,7 @@ export function NotificationsCard({ settings, onPatch }: SectionProps) {
         />
       </SettingRow>
       <SettingRow
-        label="Long-running commands"
+        label="Long-running commands" setting="notifyLongCommands"
         hint="Notify when a command that ran without asking, under Auto or Full, is still going and Capsule is in the background."
       >
         <div className="setting-inline">
@@ -214,7 +214,7 @@ export function NotificationsCard({ settings, onPatch }: SectionProps) {
         </div>
       </SettingRow>
       <SettingRow
-        label="Draw attention"
+        label="Draw attention" setting="bounceDockOnAttention"
         hint="Bounce the Dock icon when Capsule needs you and the window is not focused."
       >
         <Switch
@@ -224,12 +224,12 @@ export function NotificationsCard({ settings, onPatch }: SectionProps) {
         />
       </SettingRow>
       <SettingRow
-        label="Dock badge"
+        label="Dock badge" setting="dockBadge"
         hint="Count the conversations waiting on you: a decision, a failure, or a finished turn you have not read."
       >
         <Switch checked={settings.dockBadge} label="Dock badge" onChange={(dockBadge) => onPatch({ dockBadge })} />
       </SettingRow>
-      <SettingRow label="Notification sound" hint="Play the system sound with each notification.">
+      <SettingRow label="Notification sound" setting="notificationSound" hint="Play the system sound with each notification.">
         <Switch checked={settings.notificationSound} label="Notification sound" onChange={(notificationSound) => onPatch({ notificationSound })} />
       </SettingRow>
     </div>
@@ -243,20 +243,20 @@ export function DesktopCard({ settings, onPatch }: SectionProps) {
       <SettingRow label="Desktop companion" hint="An animated capsule for activity across all projects, even outside chat. Click to open threads; drag its handle to move it. Size and motion controls are inside.">
         <PetControl />
       </SettingRow>
-      <SettingRow label="Download updates automatically" hint="Download compatible releases in the background. Capsule only restarts to install when you ask, after active work finishes.">
+      <SettingRow label="Download updates automatically" setting="autoDownloadUpdates" hint="Download compatible releases in the background. Capsule only restarts to install when you ask, after active work finishes.">
         <Switch checked={settings.autoDownloadUpdates} label="Download updates automatically" onChange={(autoDownloadUpdates) => onPatch({ autoDownloadUpdates })} />
       </SettingRow>
-      <SettingRow label="Auto-resume limited conversations" hint="When a turn stops because the provider's usage limit is reached and it says when the limit lifts, send the prompt again at that time. Off asks each time with Resume at reset.">
+      <SettingRow label="Auto-resume limited conversations" setting="autoResumeOnLimit" hint="When a turn stops because the provider's usage limit is reached and it says when the limit lifts, send the prompt again at that time. Off asks each time with Resume at reset.">
         <Switch checked={settings.autoResumeOnLimit} label="Auto-resume limited conversations" onChange={(autoResumeOnLimit) => onPatch({ autoResumeOnLimit })} />
       </SettingRow>
-      <SettingRow label="Continue after a restart" hint="If Capsule quits or restarts in the middle of a turn, queue that turn's prompt again when it reopens, so the agent picks up where it stopped. It waits in the conversation's queue, where you can remove it. Gateway-hosted turns are left alone, because the Gateway may still be running them.">
+      <SettingRow label="Continue after a restart" setting="continueAfterRestart" hint="If Capsule quits or restarts in the middle of a turn, queue that turn's prompt again when it reopens, so the agent picks up where it stopped. It waits in the conversation's queue, where you can remove it. Gateway-hosted turns are left alone, because the Gateway may still be running them.">
         <Switch checked={settings.continueAfterRestart} label="Continue after a restart" onChange={(continueAfterRestart) => onPatch({ continueAfterRestart })} />
       </SettingRow>
-      <SettingRow label="Agent simulator access" hint="Let a direct agent see and drive the iOS Simulator you attach in a conversation's Simulator panel. Off hides the simulator tools from agents started from now on and refuses calls from running ones.">
+      <SettingRow label="Agent simulator access" setting="agentSimulatorAccess" hint="Let a direct agent see and drive the iOS Simulator you attach in a conversation's Simulator panel. Off hides the simulator tools from agents started from now on and refuses calls from running ones.">
         <Switch checked={settings.agentSimulatorAccess} label="Agent simulator access" onChange={(agentSimulatorAccess) => onPatch({ agentSimulatorAccess })} />
       </SettingRow>
       <SettingRow
-        label="Menu bar"
+        label="Menu bar" setting="showMenuBarExtra"
         hint="Show Capsule in the menu bar for Open, Settings, Approvals, and active runs."
       >
         <Switch
@@ -266,7 +266,7 @@ export function DesktopCard({ settings, onPatch }: SectionProps) {
         />
       </SettingRow>
       <SettingRow
-        label="Keep computer awake"
+        label="Keep computer awake" setting="keepAwakeWhileRunning"
         hint="Prevent idle sleep while a run or live harness is active. The display can still turn off."
       >
         <Switch
@@ -284,7 +284,7 @@ export function SessionsCard({ settings, onPatch }: SectionProps) {
     <div className="card">
       <h3>Sessions</h3>
       <SettingRow
-        label="Classify session states"
+        label="Classify session states" setting="autoClassifySessions"
         hint="Mark threads as blocked or done from the latest run. Live harness sessions stay unmarked."
       >
         <Switch
@@ -294,7 +294,7 @@ export function SessionsCard({ settings, onPatch }: SectionProps) {
         />
       </SettingRow>
       <SettingRow
-        label="Archive inactive sessions"
+        label="Archive inactive sessions" setting="archiveInactiveAfter"
         hint="Automatically archive idle local threads. Running work and pinned threads are never archived."
       >
         <select
@@ -395,7 +395,7 @@ export function GitCard({ settings, onPatch }: SectionProps) {
         signed in. Capsule does not add a second GitHub login.
       </p>
       <SettingRow
-        label="Branch prefix"
+        label="Branch prefix" setting="branchPrefix"
         hint="Prefixed onto branches created from the inspector, e.g. capsule/fix-login."
       >
         <input
@@ -411,7 +411,7 @@ export function GitCard({ settings, onPatch }: SectionProps) {
         />
       </SettingRow>
       <SettingRow
-        label="Pull request merge method"
+        label="Pull request merge method" setting="prMergeMethod"
         hint="Used when Capsule merges a pull request with gh."
       >
         <select
@@ -426,7 +426,7 @@ export function GitCard({ settings, onPatch }: SectionProps) {
           ))}
         </select>
       </SettingRow>
-      <SettingRow label="Diff layout" hint="Side by side or one column, for Review and pull request diffs. Turn diffs in the conversation stay one column.">
+      <SettingRow label="Diff layout" setting="diffLayout" hint="Side by side or one column, for Review and pull request diffs. Turn diffs in the conversation stay one column.">
         <select
           className="field-select"
           value={settings.diffLayout}
@@ -436,7 +436,7 @@ export function GitCard({ settings, onPatch }: SectionProps) {
           <option value="unified">One column</option>
         </select>
       </SettingRow>
-      <SettingRow label="Diff files" hint="Whether each changed file in a diff starts open or folded.">
+      <SettingRow label="Diff files" setting="diffFileState" hint="Whether each changed file in a diff starts open or folded.">
         <select
           className="field-select"
           value={settings.diffFileState}
@@ -446,7 +446,7 @@ export function GitCard({ settings, onPatch }: SectionProps) {
           <option value="collapsed">Folded</option>
         </select>
       </SettingRow>
-      <SettingRow label="Ignore whitespace" hint="Review starts with whitespace-only changes hidden. Each conversation can still switch it from the Review header.">
+      <SettingRow label="Ignore whitespace" setting="diffIgnoreWhitespace" hint="Review starts with whitespace-only changes hidden. Each conversation can still switch it from the Review header.">
         <Switch
           checked={settings.diffIgnoreWhitespace}
           onChange={(value) => onPatch({ diffIgnoreWhitespace: value })}
@@ -454,7 +454,7 @@ export function GitCard({ settings, onPatch }: SectionProps) {
         />
       </SettingRow>
       <SettingRow
-        label="Always force push"
+        label="Always force push" setting="gitForceWithLease"
         hint="Use --force-with-lease when pushing from Capsule, never --force."
       >
         <Switch
@@ -464,7 +464,7 @@ export function GitCard({ settings, onPatch }: SectionProps) {
         />
       </SettingRow>
       <SettingRow
-        label="Create draft pull requests"
+        label="Create draft pull requests" setting="prDraft"
         hint="Open pull requests as drafts by default."
       >
         <Switch
@@ -474,7 +474,7 @@ export function GitCard({ settings, onPatch }: SectionProps) {
         />
       </SettingRow>
       <SettingRow
-        label="Review delivery"
+        label="Review delivery" setting="prReviewDelivery"
         hint="When checks fail, send the fix prompt in this thread or start a new one."
       >
         <select
@@ -492,7 +492,7 @@ export function GitCard({ settings, onPatch }: SectionProps) {
         </select>
       </SettingRow>
       <SettingRow
-        label="Watch and fix pull requests"
+        label="Watch and fix pull requests" setting="prWatchAndFix"
         hint="If CI fails, Capsule asks the agent to fix and push. Requires gh."
       >
         <Switch
@@ -502,7 +502,7 @@ export function GitCard({ settings, onPatch }: SectionProps) {
         />
       </SettingRow>
       <SettingRow
-        label="Auto-merge when ready"
+        label="Auto-merge when ready" setting="prAutoMerge"
         hint="Queue GitHub auto-merge after opening a PR, and merge when checks pass."
       >
         <Switch
@@ -512,7 +512,7 @@ export function GitCard({ settings, onPatch }: SectionProps) {
         />
       </SettingRow>
       <SettingRow
-        label="Continue watching until merged"
+        label="Continue watching until merged" setting="prWatchUntilMerged"
         hint="Keep polling the open pull request until GitHub reports it merged or closed."
       >
         <Switch
@@ -521,11 +521,11 @@ export function GitCard({ settings, onPatch }: SectionProps) {
           onChange={(prWatchUntilMerged) => onPatch({ prWatchUntilMerged })}
         />
       </SettingRow>
-      <SettingRow label="Settle merged conversations" hint="When a watched pull request merges, settle the conversation that opened it. It comes back as soon as you send it another message.">
+      <SettingRow label="Settle merged conversations" setting="autoSettleMerged" hint="When a watched pull request merges, settle the conversation that opened it. It comes back as soon as you send it another message.">
         <Switch checked={settings.autoSettleMerged} label="Settle merged conversations" onChange={(autoSettleMerged) => onPatch({ autoSettleMerged })} />
       </SettingRow>
       <SettingRow
-        label="Commit instructions"
+        label="Commit instructions" setting="commitInstructions"
         hint="Added to agent prompts when writing commit messages."
         stacked
       >
@@ -539,7 +539,7 @@ export function GitCard({ settings, onPatch }: SectionProps) {
         />
       </SettingRow>
       <SettingRow
-        label="Pull request instructions"
+        label="Pull request instructions" setting="prInstructions"
         hint="Added to PR title/description generation and to the body Capsule opens with gh."
         stacked
       >

@@ -164,9 +164,18 @@ export class FollowUpService {
     try {
       await this.host.send(sessionId, { content: next.content, attachments: next.attachments, ...(next.skillId ? { skillId: next.skillId } : {}) });
     } catch (error) {
-      // Back to the front, with the reason, and tried again later: never dropped.
       const current = this.get(sessionId);
       const blocked = error instanceof Error ? error.message : String(error);
+      /*
+       * A hook refused this text. Sending it again gets the same answer and
+       * runs the hook every retry, so it leaves the queue, and the reason
+       * stays until the next turn goes through.
+       */
+      if (error instanceof Error && error.name === "PromptBlockedError") {
+        this.save(sessionId, { ...current, queue: current.queue.filter((item) => item.id !== next.id), blocked: `${blocked} The queued message was removed.` });
+        return;
+      }
+      // Back to the front, with the reason, and tried again later: never dropped.
       this.save(sessionId, { ...current, queue: [next, ...current.queue.filter((item) => item.id !== next.id)], blocked });
       this.host.log(`A queued follow-up could not be sent yet: ${blocked}`);
       this.schedule(sessionId, this.options.retryMs ?? 30_000);

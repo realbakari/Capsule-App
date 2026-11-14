@@ -258,6 +258,51 @@ export const IPC_CHANNELS = {
   setSessionWorktreeBase: "capsule:setSessionWorktreeBase",
   /* Check out a pull request into a worktree or the project folder and open a thread on it. */
   startPullRequestThread: "capsule:startPullRequestThread",
+  /* Settings files: the effective values with where each came from, and writes to one layer. */
+  configGetEffective: "capsule:config:getEffective",
+  configGetDiagnostics: "capsule:config:getDiagnostics",
+  configSetValue: "capsule:config:setValue",
+  configOpenFile: "capsule:config:openFile",
+  configTrust: "capsule:config:trust",
+  configReload: "capsule:config:reload",
+  /* Add or remove one permission rule in your user or project-local file. Never from a paired device. */
+  configEditPermissionRule: "capsule:config:editPermissionRule",
+  /* Capsule commands: list them for the menu (a read), expand one for review (may run its shell). */
+  commandsList: "capsule:commands:list",
+  commandsExpand: "capsule:commands:expand",
+  /* Quit and start again, into or out of safe mode. */
+  appRestart: "capsule:app:restart",
+  /* Save a theme from a share string or a picked file into the themes folder. */
+  themesImport: "capsule:themes:import",
+  /* Bind, unbind or reset one key sequence in keybindings.json. */
+  keybindingsSet: "capsule:keybindings:set",
+  /* Pick an image, copy it into the settings folder and draw it behind the conversation. */
+  backdropChooseImage: "capsule:backdrop:chooseImage",
+  /* Start or reach one configured MCP server and list its tools. It runs the server's command. */
+  mcpTest: "capsule:mcp:test",
+  /* Turn one MCP server on or off everywhere, or in one project. */
+  mcpSetEnabled: "capsule:mcp:setEnabled",
+  /* Write a new profile file, or a copy of one, and open it. */
+  profilesCreate: "capsule:profiles:create",
+  /* Run a status line command for one thread. It runs the person's command, so it is a write. */
+  statusLineRun: "capsule:statusLine:run",
+  /* Start an automation now, or answer its missed occurrences by running it. */
+  automationsRunNow: "capsule:automations:runNow",
+  /* Pause or resume an automation by writing its `enabled`. */
+  automationsSetEnabled: "capsule:automations:setEnabled",
+  /* Let missed occurrences go without running them. */
+  automationsDismissMissed: "capsule:automations:dismissMissed",
+  /* Add an automation from a template, paused, to a settings file, and open it. */
+  automationsCreate: "capsule:automations:create",
+  /* The person opened a thread an automation left unread. */
+  sessionsMarkRead: "capsule:sessions:markRead",
+  /* Plugins. Inspecting copies or fetches a plugin and lists what it adds; every one of these writes on this computer. */
+  pluginsInspect: "capsule:plugins:inspect",
+  pluginsInstall: "capsule:plugins:install",
+  pluginsDiscard: "capsule:plugins:discard",
+  pluginsSetEnabled: "capsule:plugins:setEnabled",
+  pluginsConfigure: "capsule:plugins:configure",
+  pluginsUninstall: "capsule:plugins:uninstall",
 } as const;
 
 export const IPC_EVENTS = {

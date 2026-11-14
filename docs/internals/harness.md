@@ -14,7 +14,7 @@ direct, including when new Gateway threads are the default; existing threads
 retain their route. Doctor reports executable readiness, not authentication or
 SDK entitlement. Live status carries the session's model catalog and exact
 mutable model selector. Model and reasoning changes require acknowledgement.
-Forms, permission settings, steering and browser MCP injection are unsupported.
+Forms, permission settings and steering are unsupported. Its session protocol has no way to add MCP servers, so neither Capsule's own tools nor the settings files' servers reach it; Settings says so.
 
 Reasoning exposes the eight exact native tiers through the existing
 `setHarnessConfig` write channel and shared Agent settings component. An accepted
@@ -110,8 +110,9 @@ the owned process. Resume requires the exact saved UUID and canonical working
 folder, and replays saved settings before the next prompt. Missing transcripts
 fail explicitly instead of silently starting a different conversation. Text,
 images, tool activity and per-turn usage feed the existing run records; cumulative
-session costs are not added as turn totals. Workspace MCP injection is not
-provided by this transport. Tests cover the SDK wire, approvals, setting changes,
+session costs are not added as turn totals. The direct MCP offer (Capsule's
+own tools and the settings files' servers) goes in the SDK's `mcpServers`
+option, beside the agent's own servers; discovery still passes none. Tests cover the SDK wire, approvals, setting changes,
 cancellation and database-reopen resume; provider inference is not exercised.
 
 OpenCode, Qwen, Kimi, Kiro, Qoder and Kilo also have direct commands for their
@@ -143,8 +144,10 @@ approvals expose once-only decisions and fail closed without a listener.
 Command previews include the reported input and output; nonzero exit codes mark
 the tool step failed. File-change diffs and paths, and MCP text/error results,
 map to the shared bounded preview shape without dumping image or binary payloads.
-Unsupported interactive requests fail visibly; native steering, arbitrary
-configuration and browser MCP attachment are not carried.
+Unsupported interactive requests fail visibly; native steering and arbitrary
+configuration are not carried. The direct MCP offer goes on `thread/start`
+and `thread/resume` as one `mcp_servers.<name>` configuration override per
+server, so the person's own Codex servers are kept.
 Interrupt waits for terminal confirmation before accepting another turn.
 
 The native model catalog supplies supported reasoning efforts and defaults.
@@ -680,6 +683,77 @@ No. Capsule **picks them up**:
 2. From the OpenClaw Gateway host when acpx is enabled — even if the desktop process cannot see the binary. acpx may fetch adapters on first use.
 
 If the UI says a CLI is already detected, the remaining step is **start/connect the Gateway**, not another install.
+
+## Capsule commands on both routes
+
+A Capsule command (`/name` naming a file in a commands folder) is expanded by
+the engine before either route is chosen, so the Gateway's ACP bridge and a
+direct ACP session receive the same plain prompt, and no harness needs a
+native command of its own. A Capsule command wins over an agent's command of
+the same name; anything else starting with `/` is sent as typed.
+
+## MCP servers on both routes
+
+One offer per direct spawn, built by the engine (`mcpOffer`): the desktop's
+own servers (browser, simulator) first, then each `mcpServers` entry the
+thread's project and starting profile allow, with `${env:NAME}` expanded at
+spawn time. A file's server never takes the name of one of Capsule's own.
+The offer goes to every direct transport; each carries what its session API
+takes and releases the registrations when the session closes.
+
+| Route / harness | Local command (stdio) | HTTP | How |
+| --- | --- | --- | --- |
+| Direct ACP (Grok, Gemini, other acpx agents, the ACP adapters) | Yes | When `mcpCapabilities.http` is reported | `session/new` and `session/load` `mcpServers`; `cwd` is not part of ACP |
+| Claude Code, native | Yes | Yes | SDK `mcpServers` |
+| Codex, native | Yes | Yes | `config` overrides on thread start and resume |
+| Muse, native | No | No | Not carried; the protocol has no field for it |
+| Gateway, any harness | No | No | The Gateway owns its tools; Capsule offers none |
+| Model discovery probes | No | No | As before |
+
+The Claude and Codex rows were checked against the installed CLIs with a
+small stdio server: each reported it connected with its tools before any
+prompt. `mcpDelivery` in `@capsule/shared` holds this table for Settings.
+
+## Profiles and standing instructions on both routes
+
+`createSession({ profileId })` applies the profile's agent, mode,
+permission, workspace and model through the same fields the composer sets,
+so either route starts with them; the model reaches the spawn through
+`modelOverride`. On the first turn that reaches the agent (no earlier run
+has a contract), `firstTurnStanding` adds the labelled standing block
+(style, personal instructions, the profile's body and skills) to the
+runtime prompt, which both routes send unchanged, and sets the profile's
+effort, and a coding agent's mode such as `plan`, through the agent's
+reported `thought_level`, `mode` or `permissions` controls. Those are
+direct-only; on the Gateway the `standing.instructions` run event names what
+was not applied. Capsule does not see compaction on either route, so the
+block is sent once.
+
+## Permission rules and hooks on both routes
+
+Rules and hooks act where Capsule already sits, so they need nothing from a
+harness beyond the ACP it speaks. `packages/core/src/request-policy.ts` is
+the one decision path for a permission request; `packages/core/src/hooks.ts`
+runs hooks.
+
+| Seam | Direct route | Gateway route |
+| --- | --- | --- |
+| `PromptSubmit` hooks | In `sendAdmittedMessage`, before anything is recorded | Same; the route is chosen later |
+| Permission rules and `PermissionRequest` hooks | `session/request_permission`, read by `readPermissionRequest` into `details.subject` | A relayed ACP permission request or a host exec approval, read by `readAcpPermissionSubject`; answered through `resolveApproval` the moment it arrives |
+| `ToolCall` hooks | `session/update` tool events that reach `completed` or `failed` | `agent` tool frames with the same statuses |
+| `TurnEnd` hooks | A run reaching `completed`, `failed` or `blocked` | Same |
+
+Per harness: every harness whose agent asks permission over ACP gets rules
+and `PermissionRequest` hooks on either route; an agent running in a mode
+that never asks gets none, because no request reaches Capsule. A Gateway
+plugin approval (`plugin.approval.requested`) carries no tool call, so it
+has no subject and always goes to the person. MCP tools are matched when an
+agent titles them `mcp__server__tool`; an agent that names them otherwise
+reaches rules as `other` with its title.
+
+An automatically answered request leaves an `approval.auto` run event and no
+approval row. An `ask` from a hook replaces the approval's `reason` with the
+hook's reason and file, so the card says why on every device.
 
 ## What Capsule does not do
 

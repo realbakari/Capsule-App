@@ -295,6 +295,10 @@ export interface Session {
   snoozedUntil?: string;
   /** What that branch started from, as chosen or resolved: `origin/main`, `HEAD`. */
   worktreeBaseRef?: string;
+  /** The agent profile that started this conversation, by id. */
+  profileId?: string;
+  /** The automation that started this conversation, by its key. */
+  automationId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -1066,6 +1070,8 @@ export interface CreateSessionInput {
   temporary?: boolean;
   /** The worktree branch's name, before the branch prefix; e.g. issue-123-short-title. */
   branchName?: string;
+  /** An agent profile's id. Its agent, mode, permission, workspace and model apply unless the input names its own. */
+  profileId?: string;
 }
 
 export interface AgentMessage {

@@ -3,6 +3,7 @@ import { SidebarToggle } from "./SidebarControl";
 import { SurfaceBar } from "./SurfaceBar";
 import { ThreadTitleMenu } from "./ThreadTitleMenu";
 import { PresenceIndicator } from "../share/Presence";
+import { ThreadProfileChip } from "../customization/ThreadProfileChip";
 import { gatewayConnectionLabel } from "../../lib/harness";
 import { ArrowLeftIcon, ArrowRightIcon, StopIcon } from "./icons";
 
@@ -72,6 +73,7 @@ export function Titlebar() {
                   <span className="breadcrumb-separator">/</span>
                   <ThreadTitleMenu />
                   <PresenceIndicator />
+                  <ThreadProfileChip />
                 </>
               ) : null}
             </div>

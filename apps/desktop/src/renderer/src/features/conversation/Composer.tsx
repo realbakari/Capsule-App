@@ -12,6 +12,7 @@ import { useHandoff } from "../handoff/Handoff";
 import { ComposerTools } from "./ComposerTools";
 import { DictationButton, DictationStatus, useDictation } from "./Dictation";
 import { dictationUnavailableReason } from "../../lib/dictation";
+import { StatusLine } from "../status-line/StatusLine";
 import { agentSwitchNotice, harnessDisplayName } from "../../lib/harness";
 import { AgentModelPicker } from "./AgentModelPicker";
 import { RunOnControl, RunOnSummary, useRunOn } from "../best-of-n/RunOnPicker";
@@ -44,6 +45,8 @@ import { QueuedPrompts } from "./QueuedPrompts";
 import { recallablePrompts } from "../../lib/prompt-queue";
 import { searchComposerSkills, skillSource } from "../../lib/composer-skills";
 import { composerPlaceholder, shouldRestComposer } from "../../lib/composer-rest";
+import { COMMAND_SOURCE_LABELS, commandDetail, commandInDraft } from "../../lib/commands";
+import { INSERT_COMMAND_EVENT } from "../../lib/keybindings";
 import { tasksFromRunEvents } from "@capsule/shared";
 import { initPrompt, mentionSources, parseBangCommand, templateCommand, templateVariables, type PromptTemplate } from "@capsule/shared";
 import { CONTEXT_ICONS, ContextChip, ContextPicker, PendingChip, TemplateForm, useContextResolver, type ContextPickerKind } from "./ComposerContext";
@@ -157,6 +160,7 @@ export function Composer({
     checkoutBranch,
     openInspector,
     settings,
+    projectSettings,
     setTerminalOpen,
     sendBlockReason,
     doctorHarness,
@@ -180,8 +184,6 @@ export function Composer({
   } = workspace;
   const harnesses = workspace.harnesses ?? [];
   const runOn = useRunOn();
-  /* With two or more agents picked under Run on…, sending starts the comparison instead. */
-  const submit = () => runOn.active ? runOn.start() : send();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dictation = useDictation({ api, draft, setDraft, field: textareaRef, scope: `${projectId ?? ""}:${session?.id ?? ""}` });
   const [recall, setRecall] = useState<{ index: number; original: string }>();
@@ -223,6 +225,17 @@ export function Composer({
     }
     setPendingSelection(undefined);
   }, [pendingSelection, selectionScope, contextPicker, template]);
+  /* A key bound to `command:<name>` puts the command in the draft, as picking it from the `/` menu does. */
+  useEffect(() => {
+    const insert = (event: Event) => {
+      const text = (event as CustomEvent<{ text?: string }>).detail?.text;
+      if (!text) return;
+      setDraft(text);
+      setPendingSelection({ scope: JSON.stringify([projectId, session?.id, text]), position: text.length });
+    };
+    window.addEventListener(INSERT_COMMAND_EVENT, insert);
+    return () => window.removeEventListener(INSERT_COMMAND_EVENT, insert);
+  }, [projectId, session?.id, setDraft]);
   const liveHarnessSessionId =
     session?.harnessId && session.harnessState && session.harnessState !== "closed"
       ? session.id
@@ -333,9 +346,21 @@ export function Composer({
     ];
   }, [project?.projectFile, settings?.composerPrompts]);
 
+  const commands = workspace.commands?.list?.commands;
+  /* Capsule's own commands lead the menu; the rest sit under one heading once there are any. */
   const slashItems = useMemo<SuggestItem[]>(
-    () =>
-      slashCommands({
+    () => {
+      const query = trigger?.kind === "slash" ? trigger.query.toLowerCase() : "___";
+      const own: SuggestItem[] = (commands ?? []).filter((command) => command.name.includes(query)).map((command) => ({
+        id: `command-${command.name}`,
+        label: `/${command.name}`,
+        detail: commandDetail(command),
+        badge: COMMAND_SOURCE_LABELS[command.source],
+        group: "Commands",
+        kind: "command" as const,
+        insert: `/${command.name} `,
+      }));
+      const builtIn = slashCommands({
         harnesses,
         skills: skills.filter((skill) => skill.status === "installed"),
         setSkillId,
@@ -349,11 +374,14 @@ export function Composer({
         init: projectId && folderPath ? () => void runInit() : undefined,
         templates,
         useTemplate: setTemplate,
-      }),
+      });
+      return own.length ? [...own, ...builtIn.map((item) => ({ ...item, group: "Capsule" }))] : builtIn;
+    },
     [
       templates,
       folderPath,
       projectId,
+      commands,
       createTask,
       harnesses,
       skills,
@@ -424,6 +452,32 @@ export function Composer({
     setMenuDismissed(false);
   }, [searchKind, searchQuery]);
 
+  const [expanding, setExpanding] = useState(false);
+  /*
+   * A `send: review` command fills the composer with its expansion for
+   * editing. Expanding can run shell on the desktop, so a paired device sends
+   * it instead, and the desktop expands it as it would any command.
+   */
+  async function submit(continueToNew = false) {
+    /* With two or more agents picked under Run on…, sending starts the comparison instead. */
+    if (runOn.active) return runOn.start();
+    const review = api.isDesktop === true && projectId ? commandInDraft(draft, commands) : undefined;
+    if (review?.send !== "review") return continueToNew ? sendAndContinue() : send();
+    if (expanding) return;
+    setExpanding(true);
+    try {
+      const result = await api.commandsExpand({ projectId: projectId!, ...(session ? { sessionId: session.id } : {}), text: draft });
+      setDraft(result.text);
+      setPendingSelection({ scope: JSON.stringify([projectId, session?.id, result.text]), position: result.text.length });
+      if (result.attachments.length) await attachFiles(result.attachments.map((file) => file.path));
+      if (result.problems.length) workspace.setNotice(result.problems.join(" "));
+    } catch (error) {
+      workspace.setNotice(error instanceof Error ? error.message : String(error));
+    } finally {
+      setExpanding(false);
+    }
+  }
+
   function syncCaret() {
     const el = textareaRef.current;
     if (el) setCaret(el.selectionStart);
@@ -473,7 +527,7 @@ export function Composer({
     setPendingSelection({ scope: JSON.stringify([projectId, session?.id, nextDraft]), position: nextDraft.length });
   }
 
-  const approval = approvalPreset(session ? session.permissionProfile ?? settings?.defaultPermission : draftApproval ?? settings?.defaultPermission);
+  const approval = approvalPreset(session ? session.permissionProfile ?? projectSettings?.defaultPermission ?? settings?.defaultPermission : draftApproval ?? projectSettings?.defaultPermission ?? settings?.defaultPermission);
   const approvalRoute = capabilities.route === "direct" ? "direct" : capabilities.route === "openclaw" ? "gateway" : undefined;
   const approvalOptions = approvalRoute ? approvalMenu(approvalRoute, session?.harnessId ?? capabilityHarness?.id) : [];
   const sendOnEnter = settings?.composerSendKey !== "cmd-enter";
@@ -506,7 +560,7 @@ export function Composer({
   }, []);
 
   return (
-    <div ref={composerRef} className={`composer composer-dock composer-overlay-corner-masks${busy ? " composer-dock--with-activity" : ""}${resting ? " composer--resting" : ""}`}>
+    <div ref={composerRef} data-keymap-context="composer" className={`composer composer-dock composer-overlay-corner-masks${busy ? " composer-dock--with-activity" : ""}${resting ? " composer--resting" : ""}`}>
       <ComposerTasks tasks={tasks} running={Boolean(activeRun)} actions={planTasks ? <PlanHandoff compact /> : undefined} />
       <div
         className={`composer-glass${dropping ? " dropping" : ""}${resting ? " composer-glass--resting" : ""}`}
@@ -601,6 +655,7 @@ export function Composer({
         </div>}
         {contextPicker && !picker && <ContextPicker kind={contextPicker} resolver={resolver} onClose={() => { setContextPicker(undefined); textareaRef.current?.focus(); }} />}
         {template && !picker && !contextPicker && <TemplateForm key={template.name} template={template} onCancel={() => { setTemplate(undefined); textareaRef.current?.focus(); }} onFill={fillFromTemplate} />}
+        {expanding && <div className="meta" role="status">Expanding {commandInDraft(draft, commands) ? `/${commandInDraft(draft, commands)!.name}` : "the command"} for review…</div>}
         {workspace.preparingAttachments > 0 && <div className="meta" role="status">Preparing {workspace.preparingAttachments} attachment{workspace.preparingAttachments === 1 ? "" : "s"}…</div>}
         {!picker && <ComposerMenu
           id={menuId}
@@ -730,9 +785,7 @@ export function Composer({
             }
             if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
               event.preventDefault();
-              if (runOn.active) void runOn.start();
-              else if (event.shiftKey || sendOnEnter) void sendAndContinue();
-              else void send();
+              void submit(event.shiftKey || sendOnEnter);
               return;
             }
             if (event.key === "Enter" && !event.shiftKey) {
@@ -873,7 +926,8 @@ export function Composer({
                 const current = settings?.modeModels ?? {};
                 const row = { ...current[agentId], [mode]: current[agentId]?.[mode] === id ? undefined : id };
                 void workspace.updateSettings({ modeModels: { ...current, [agentId]: row } }).catch((error: unknown) => workspace.setNotice(error instanceof Error ? error.message : String(error)));
-              }} />}
+              }}
+              profiles={workspace.config?.profiles} onProfile={(id) => void workspace.startWithProfile(id)} />}
             {!readOnlyViewer && !runOn.active && <TurnModeChip mode={turnMode} support={planSupport} onToggle={toggleTurnMode}
               disabledReason={busy ? "Wait for the message to send." : undefined} />}
             {!runOn.active && !harnessLive && capabilities.route === "direct" && (controls.effort || controls.permissions || modeControl) && <div className="composer-agent-controls">
@@ -926,7 +980,7 @@ export function Composer({
               <button
                 className="send-btn"
                 aria-label={bang ? "Run command" : runOn.active ? `Run on ${runOn.picks.length} agents` : "Send message"}
-                disabled={busy || picking || dictation.active || runOn.starting || (!draft.trim() && attachments.length === 0 && !skillId) || (!bang && !runOn.active && Boolean(sendBlockReason))}
+                disabled={busy || picking || expanding || dictation.active || runOn.starting || (!draft.trim() && attachments.length === 0 && !skillId) || (!bang && !runOn.active && Boolean(sendBlockReason))}
                 title={
                   bang ? `Run ${bang} and attach its output` : runOn.active ? `Send to ${runOn.picks.length} agents, each in its own worktree` : sendBlockReason || (sendOnEnter
                     ? "Send · Enter · ⌘Enter starts another thread"
@@ -991,6 +1045,7 @@ export function Composer({
         {!git?.isRepo && session?.workspaceMode === "worktree" && session.worktreeBranch && (
           <span className="workspace-mode-label">Isolated · {session.worktreeBranch}</span>
         )}
+        <StatusLine />
       </div>
       {busy && (
         <div className="composer-dock-activity" aria-live="polite">

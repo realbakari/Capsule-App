@@ -12,6 +12,7 @@ import { SteeringDrafts } from "./steering-drafts";
 import { DraftRecovery } from "./draft-recovery";
 import { fileMentionTarget, parentFolder } from "./file-context";
 import { activityFromEvents, type RunActivity } from "./activity";
+import { useCommandList, type CommandListState } from "./commands";
 import {
   createContext,
   useCallback,
@@ -64,9 +65,13 @@ import {
   type StartPullRequestInput,
 } from "@capsule/shared";
 
+import { parseKeymapAction, type ConfigDiagnostics, type ConfigSnapshot, type EffectiveBinding, type KeyChord, type SetConfigValueInput } from "@capsule/shared";
 import type { SettingsSectionId } from "../features/settings/settings-search";
-import { commandForEvent, keymapFrom, type Keymap } from "./keybindings";
 import { TOGGLE_DICTATION_EVENT } from "./dictation";
+import { fromProjectFile, projectSettingsFor } from "./config-view";
+import { effectiveKeymap, INSERT_COMMAND_EVENT, KEY_COMMAND_EVENT } from "./keybindings";
+import { useKeymap } from "./use-keymap";
+import { clearedBackdrop } from "../features/customization/customization-commands";
 import { adjacentSession } from "./session-cycle";
 import { isNarrow } from "./narrow";
 import { setDisplayPrefs } from "./display-prefs";
@@ -260,6 +265,8 @@ export interface WorkspaceValue {
   /** Start a conversation, in the given project or the selected one. */
   /** Opens a new conversation, in another project when one is named, optionally with a prompt waiting in its composer. */
   createTask: (projectId?: string, initialPrompt?: string, options?: CreateTaskOptions) => Promise<void>;
+  /** Start a new conversation from an agent profile, in the open project or the one named. */
+  startWithProfile: (profileId: string, projectId?: string) => Promise<void>;
   /** Visited conversations, like a browser's history. */
   canGoBack: boolean;
   canGoForward: boolean;
@@ -269,6 +276,8 @@ export interface WorkspaceValue {
   runAgentCommand: (name: string, input?: string) => Promise<boolean>;
   agentCommandsOpen: boolean;
   setAgentCommandsOpen: (open: boolean) => void;
+  /** Capsule commands for the selected project, for the `/` menu, the palette and Settings. */
+  commands: CommandListState;
   createProject: () => Promise<void>;
   git?: GitStatus;
   files: FileEntry[];
@@ -411,6 +420,18 @@ export interface WorkspaceValue {
   keepPlanning: () => Promise<void>;
   favoriteModels: string[];
   toggleFavoriteModel: (agentId: string, modelId: string) => Promise<CapsuleSettings>;
+  /** The settings files' effective values and where each came from, for the selected project. */
+  config?: ConfigSnapshot;
+  /** What the customization doctor shows for the selected project: files, problems, trust and runs. */
+  configDiagnostics?: ConfigDiagnostics;
+  /** Settings for work in the selected project, its files over yours. New conversations start from these. */
+  projectSettings?: CapsuleSettings;
+  /** Write or remove one key in one settings file, then show the result. */
+  setConfigValue: (input: SetConfigValueInput) => Promise<ConfigSnapshot>;
+  /** The default shortcuts with keybindings.json laid over them. */
+  keyBindings: EffectiveBinding[];
+  /** The first chord of a sequence, while Capsule waits up to 1.5 s for the second. */
+  keyChordPending?: KeyChord;
 }
 
 const workspaceContextSlot = globalThis as typeof globalThis & {
@@ -610,6 +631,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   const [requestedFile, setRequestedFile] = useState<WorkspaceValue["requestedFile"]>();
   const [projectRuns, setProjectRuns] = useState<Run[]>([]);
   const [settings, setSettings] = useState<CapsuleSettings>();
+  const [configView, setConfigView] = useState<{ snapshot: ConfigSnapshot; diagnostics: ConfigDiagnostics }>();
+  const config = configView?.snapshot;
+  const configDiagnostics = configView?.diagnostics;
+  const projectSettings = projectSettingsFor(config, projectId) ?? settings;
   const [workspaceMode, setWorkspaceModeState] = useState<WorkspaceMode>("local");
   // A page address belongs to its thread. A small in-memory cache preserves
   // recent tabs without keeping browser guests running in the background.
@@ -643,17 +668,62 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   /* Set during render, before the transcript and diffs that read them draw. */
   useMemo(() => setDisplayPrefs({
     timeFormat: settings?.timeFormat ?? "system",
-    toolCallDisplay: settings?.toolCallDisplay ?? "compact",
-    diffLayout: settings?.diffLayout ?? "split",
-    diffFileState: settings?.diffFileState ?? "expanded",
-  }), [settings?.timeFormat, settings?.toolCallDisplay, settings?.diffLayout, settings?.diffFileState]);
+    toolCallDisplay: projectSettings?.toolCallDisplay ?? "compact",
+    diffLayout: projectSettings?.diffLayout ?? "split",
+    diffFileState: projectSettings?.diffFileState ?? "expanded",
+  }), [settings?.timeFormat, projectSettings?.toolCallDisplay, projectSettings?.diffLayout, projectSettings?.diffFileState]);
 
-  const keymap = useMemo<Keymap>(() => keymapFrom(settings?.keybindings), [settings?.keybindings]);
+  const keyBindings = useMemo(() => effectiveKeymap(configView?.snapshot.keybindings), [configView?.snapshot.keybindings]);
 
 
   const project = projects.find((item) => item.id === projectId);
   const session = sessions.find((item) => item.id === sessionId && item.projectId === projectId);
   const selectionExists = Boolean(project && (!sessionId || session));
+
+  /*
+   * The settings files as the renderer sees them, reloaded whenever a file,
+   * a save or a trust decision changes them, so an edit made in another
+   * editor shows here the way a change in Settings does. The user-level
+   * settings come with each snapshot.
+   */
+  const configLoad = useRef(0);
+  const loadConfig = useCallback(async () => {
+    const generation = ++configLoad.current;
+    try {
+      const [snapshot, diagnostics] = await Promise.all([api.configGetEffective(projectId), api.configGetDiagnostics(projectId)]);
+      if (generation !== configLoad.current) return;
+      setConfigView({ snapshot, diagnostics });
+      setSettings(snapshot.settings);
+      applyAppearance(snapshot.settings, snapshot.themes);
+    } catch (error) {
+      console.warn("Could not read the settings files", error);
+    }
+  }, [api, projectId]);
+  useEffect(() => {
+    void loadConfig();
+    const off = api.on("state", (payload) => {
+      const command = (payload as { command?: string }).command;
+      if (command === "config-updated" || command === "settings-updated" || command === "projects-updated" || command === "automations-updated") void loadConfig();
+    });
+    return () => { off(); };
+  }, [api, loadConfig]);
+
+  /*
+   * A new conversation starts from the project's defaults: its record first,
+   * then its settings files. Once per project, so a later file edit does not
+   * undo a choice made in the composer.
+   */
+  const projectDefaultsApplied = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const scoped = config?.project;
+    if (!ready || !agents.length || !scoped || scoped.projectId !== projectId || projectDefaultsApplied.current === projectId) return;
+    projectDefaultsApplied.current = projectId;
+    if (sessionId) return;
+    setWorkspaceModeState(project?.defaultWorkspaceMode ?? scoped.settings.defaultWorkspaceMode);
+    if (fromProjectFile(scoped.provenance.defaultMode)) setMode(scoped.settings.defaultMode);
+    const fileAgent = fromProjectFile(scoped.provenance.defaultAgentId) ? scoped.settings.defaultAgentId : undefined;
+    if (!project?.defaultAgentId && fileAgent && agents.some((item) => item.id === fileAgent)) setAgentId(fileAgent);
+  }, [ready, agents, config, projectId, sessionId, project?.defaultWorkspaceMode, project?.defaultAgentId]);
   const currentDraftKey = promptDraftKey(projectId, sessionId);
   const latestDraft = useRef({ key: currentDraftKey, value: { prompt: draft, attachments, skillId } });
   latestDraft.current = { key: currentDraftKey, value: { prompt: draft, attachments, skillId } };
@@ -708,6 +778,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     threadAgentSynced.current = sessionId;
     const threadAgent = current.harnessId ?? current.agentId;
     if (threadAgent && agents.some((item) => item.id === threadAgent)) setAgentId(threadAgent);
+    // A profile chose this thread's mode; the composer sends its own mode with every message.
+    if (current.profileId) setMode(current.mode);
   }, [agents, sessionId, sessions]);
 
   const loadSession = useCallback(
@@ -1059,87 +1131,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
         }
       }),
     ];
-    const onKey = (event: KeyboardEvent) => {
-      const typing =
-        event.target instanceof HTMLElement &&
-        Boolean(event.target.closest("input, textarea, select, [contenteditable]"));
-
-      const command = commandForEvent(event, keymap);
-      if (!command) return;
-      // Typing a letter into a field must stay typing, even when the same
-      // letter is a shortcut somewhere else.
-      if (typing && !event.metaKey && !event.ctrlKey) return;
-
-      event.preventDefault();
-      switch (command.id) {
-        case "search-files":
-          setFilePicker((open) => !open);
-          break;
-        case "search-in-files":
-          setContentSearch((open) => !open);
-          break;
-        case "toggle-sidebar":
-          setSidebarCollapsed((open) => !open);
-          break;
-        case "toggle-inspector":
-          setInspectorOpen((open) => !open);
-          break;
-        case "toggle-terminal":
-          setTerminalOpen((open) => !open);
-          break;
-        case "history-back":
-          goBack();
-          break;
-        case "history-forward":
-          goForward();
-          break;
-        case "find-in-thread":
-          // In the browser pane, ⌘F finds on the page rather than in the thread.
-          if (document.activeElement?.closest(".panel-browser-pane")) window.dispatchEvent(new CustomEvent(BROWSER_FIND_EVENT));
-          else setThreadFind((open) => !open);
-          break;
-        case "jump-to-prompt":
-          setView("chat");
-          setPromptJump((open) => !open);
-          break;
-        case "open-review":
-          setInspectorTab("changes");
-          setInspectorOpen(true);
-          break;
-        case "open-browser":
-          setInspectorTab("browser");
-          setInspectorOpen(true);
-          break;
-        case "next-conversation":
-        case "previous-conversation":
-          cycleSession.current(command.id === "next-conversation" ? 1 : -1);
-          break;
-        case "show-shortcuts":
-          window.dispatchEvent(new CustomEvent(SHOW_SHORTCUTS_EVENT));
-          break;
-        case "cycle-favorite-model":
-          window.dispatchEvent(new CustomEvent(CYCLE_FAVORITE_MODEL_EVENT));
-          break;
-        case "open-in-favorite":
-          window.dispatchEvent(new CustomEvent(OPEN_IN_EVENT));
-          break;
-        case "dictation":
-          window.dispatchEvent(new CustomEvent(TOGGLE_DICTATION_EVENT));
-          break;
-        case "open-mode":
-        case "open-model":
-        case "open-effort": {
-          const reason = openComposerControl(command.id.slice("open-".length) as ComposerControl);
-          if (reason) setNotice(reason);
-          break;
-        }
-      }
-    };
-    window.addEventListener("keydown", onKey, true);
     return () => {
       batch.dispose();
       off.forEach((fn) => fn());
-      window.removeEventListener("keydown", onKey, true);
     };
   }, [api, loadGit, loadSession, projectId, refresh, sessionId, scope, liveRunState, setBrowserUrl, selectionExists]);
 
@@ -1300,14 +1294,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     }
     const targetProject = inProject ?? projectId ?? projects[0]?.id;
     if (!targetProject) return;
+    // Permission and workspace come from the target project's record and
+    // settings files, which the engine reads; it also keeps a folder that is
+    // not a Git repository local.
     const created = await api.createSession({
       projectId: targetProject,
       agentId,
       mode,
-      permissionProfile: draftApproval ?? settings?.defaultPermission,
-      workspaceMode: options?.temporary ? "local" : options?.workspaceMode ?? (git?.isRepo ? (settings?.defaultWorkspaceMode ?? "local") : "local"),
+      ...(draftApproval ? { permissionProfile: draftApproval } : {}),
+      ...(options?.temporary ? { temporary: true, workspaceMode: "local" as const } : options?.workspaceMode ? { workspaceMode: options.workspaceMode } : {}),
       title: options?.title ?? "New conversation",
-      ...(options?.temporary ? { temporary: true } : {}),
       ...(options?.branchName ? { branchName: options.branchName } : {}),
     });
     if (!requests.isCurrent(scope)) return;
@@ -1320,6 +1316,26 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     setSessionId(created.id);
     setView("chat");
     await refresh();
+  }
+
+  /* A profile picks the agent, mode, permission, workspace and model; the engine applies it. */
+  async function startWithProfile(profileId: string, inProject?: string) {
+    if (api.isDesktop === false && api.remoteMode !== "control") {
+      setNotice("This browser is read-only. Pair with conversation control to create a thread.");
+      return;
+    }
+    const targetProject = inProject ?? projectId ?? projects[0]?.id;
+    if (!targetProject) return;
+    try {
+      const created = await api.createSession({ projectId: targetProject, profileId, title: "New conversation" });
+      if (!requests.isCurrent(scope)) return;
+      setProjectId(targetProject);
+      setSessionId(created.id);
+      setView("chat");
+      await refresh();
+    } catch (error) {
+      setNotice(formatUserError(error));
+    }
   }
 
   /*
@@ -1468,7 +1484,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
           projectId: currentProjectId,
           agentId,
           mode,
-          permissionProfile: draftApproval ?? settings?.defaultPermission,
+          ...(draftApproval ? { permissionProfile: draftApproval } : {}),
           workspaceMode: git?.isRepo ? workspaceMode : "local",
           title: "New conversation",
           turnMode: draftTurnMode,
@@ -1480,7 +1496,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       preparedThread = true;
       if (draftHarnessConfig.model || Object.keys(draftHarnessConfig.options).length) {
         await api.spawnHarness({ projectId: currentProjectId, sessionId: currentSessionId, harnessId: agentId,
-          model: draftHarnessConfig.model, permissionProfile: draftApproval ?? settings?.defaultPermission });
+          model: draftHarnessConfig.model, permissionProfile: draftApproval ?? projectSettings?.defaultPermission ?? settings?.defaultPermission });
         if (draftHarnessConfig.model) await api.setHarnessOption({ sessionId: currentSessionId, key: "model", value: draftHarnessConfig.model });
         for (const [id, value] of Object.entries(draftHarnessConfig.options)) await api.setHarnessConfig(currentSessionId, id, value);
         if (!draftScopes.isCurrent(draftScope)) return false;
@@ -1523,8 +1539,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
             projectId: currentProjectId,
             agentId,
             mode,
-            permissionProfile: draftApproval ?? settings?.defaultPermission,
-            workspaceMode: git?.isRepo ? (settings?.defaultWorkspaceMode ?? "local") : "local",
+            ...(draftApproval ? { permissionProfile: draftApproval } : {}),
             title: "New conversation",
           }) : undefined;
           if (draftScopes.isCurrent(draftScope)) {
@@ -2084,7 +2099,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
           session?.permissionProfile === "approve-all" ||
           session?.permissionProfile === "default"
             ? (session.permissionProfile as HarnessPermissionProfile)
-            : settings?.defaultPermission,
+            : projectSettings?.defaultPermission,
       });
       setSessionId(result.session.id);
       setAgentId(harnessId);
@@ -2273,6 +2288,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     setView("chat");
   }
 
+  async function setConfigValue(input: SetConfigValueInput): Promise<ConfigSnapshot> {
+    const snapshot = await api.configSetValue({ ...input, projectId: input.projectId ?? projectId });
+    configLoad.current++;
+    setConfigView((current) => current && { ...current, snapshot });
+    setSettings(snapshot.settings);
+    applyAppearance(snapshot.settings, snapshot.themes);
+    return snapshot;
+  }
+
   async function updateSettings(patch: Partial<CapsuleSettings>) {
     const next = await api.updateSettings(patch) as CapsuleSettings;
     setSettings(next);
@@ -2422,8 +2446,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   );
 
   const steps = useMemo(() => activityFromEvents(events, !activeRun || activeRun.status !== "running", {
-    reasoning: settings?.reasoningSummary,
-  }), [events, activeRun?.status, settings?.reasoningSummary]);
+    reasoning: projectSettings?.reasoningSummary,
+  }), [events, activeRun?.status, projectSettings?.reasoningSummary]);
 
   /* ⌃Tab reads the latest list and selection, not the ones its key handler closed over. */
   cycleSession.current = (step) => {
@@ -2435,9 +2459,119 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     setView("chat");
   };
 
+  const commands = useCommandList(api, projectId);
+
+  /*
+   * What a key binding runs: a registry command, a Capsule command (put in
+   * the composer as the `/` menu would), a project action by name, or a
+   * profile, which starts a new conversation from it.
+   */
+  const runKeyAction = (action: string) => {
+    const { namespace, name } = parseKeymapAction(action);
+    if (namespace === "command") {
+      if (!commands.list?.commands.some((command) => command.name === name)) {
+        setNotice(`There is no /${name} command.`);
+        return;
+      }
+      setView("chat");
+      window.dispatchEvent(new CustomEvent(INSERT_COMMAND_EVENT, { detail: { text: `/${name} ` } }));
+      return;
+    }
+    if (namespace === "profile") {
+      if (!config?.profiles.some((profile) => profile.id === name)) {
+        setNotice(`There is no profile named ${name}.`);
+        return;
+      }
+      void startWithProfile(name);
+      return;
+    }
+    if (namespace === "action") {
+      const found = project?.actions?.find((item) => item.name === name || item.id === name);
+      if (!project || !found) {
+        setNotice(`This project has no action named ${name}.`);
+        return;
+      }
+      void api.runProjectAction(project.id, found.id, sessionId).catch((error: unknown) => setNotice(formatUserError(error)));
+      return;
+    }
+    switch (name) {
+      case "search-files":
+        setFilePicker((open) => !open);
+        break;
+      case "search-in-files":
+        setContentSearch((open) => !open);
+        break;
+      case "toggle-sidebar":
+        setSidebarCollapsed((open) => !open);
+        break;
+      case "toggle-inspector":
+        setInspectorOpen((open) => !open);
+        break;
+      case "toggle-terminal":
+        setTerminalOpen((open) => !open);
+        break;
+      case "history-back":
+        goBack();
+        break;
+      case "history-forward":
+        goForward();
+        break;
+      case "find-in-thread":
+        // In the browser pane, ⌘F finds on the page rather than in the thread.
+        if (document.activeElement?.closest(".panel-browser-pane")) window.dispatchEvent(new CustomEvent(BROWSER_FIND_EVENT));
+        else setThreadFind((open) => !open);
+        break;
+      case "jump-to-prompt":
+        setView("chat");
+        setPromptJump((open) => !open);
+        break;
+      case "open-review":
+        setInspectorTab("changes");
+        setInspectorOpen(true);
+        break;
+      case "open-browser":
+        setInspectorTab("browser");
+        setInspectorOpen(true);
+        break;
+      case "next-conversation":
+      case "previous-conversation":
+        cycleSession.current(name === "next-conversation" ? 1 : -1);
+        break;
+      case "show-shortcuts":
+        window.dispatchEvent(new CustomEvent(SHOW_SHORTCUTS_EVENT));
+        break;
+      case "cycle-favorite-model":
+        window.dispatchEvent(new CustomEvent(CYCLE_FAVORITE_MODEL_EVENT));
+        break;
+      case "open-in-favorite":
+        window.dispatchEvent(new CustomEvent(OPEN_IN_EVENT));
+        break;
+      case "dictation":
+        window.dispatchEvent(new CustomEvent(TOGGLE_DICTATION_EVENT));
+        break;
+      case "open-mode":
+      case "open-model":
+      case "open-effort": {
+        const reason = openComposerControl(name.slice("open-".length) as ComposerControl);
+        if (reason) setNotice(reason);
+        break;
+      }
+      case "clear-backdrop":
+        void api.configSetValue({ key: "theme", value: clearedBackdrop(configView?.snapshot.themes.selection), scope: "user" }).catch((error: unknown) => setNotice(formatUserError(error)));
+        break;
+      default:
+        // Commands owned below the workspace, such as triage and the closed panel, listen for this.
+        window.dispatchEvent(new CustomEvent(KEY_COMMAND_EVENT, { detail: { id: name } }));
+    }
+  };
+  const keyChordPending = useKeymap(keyBindings, runKeyAction);
+
   const value = useMemo<WorkspaceValue>(
     () => ({
       api,
+      commands,
+      keyBindings,
+      keyChordPending,
       view,
       setView,
       settingsTab,
@@ -2542,6 +2676,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       refresh,
       loadSession,
       createTask,
+      startWithProfile,
       send,
       createProject,
       pickProjectDirectory,
@@ -2661,11 +2796,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       keepPlanning,
       favoriteModels,
       toggleFavoriteModel,
+      config,
+      configDiagnostics,
+      projectSettings,
+      setConfigValue,
     }),
     [
       turnMode,
       favoriteModels,
       api,
+      commands,
       view,
       stoppingRunIds,
       status,
@@ -2738,11 +2878,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       inspectorTab,
       projectRuns,
       settings,
+      configView,
+      projectSettings,
       workspaceMode,
       browserUrl,
       refresh,
       loadSession,
       draftApproval,
+      keyBindings,
+      keyChordPending,
     ],
   );
 

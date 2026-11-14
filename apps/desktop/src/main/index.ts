@@ -1,9 +1,11 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import { pathToFileURL } from "node:url";
 
 /** Where releases are published. */
 const UPDATE_REPO = "realbakari/Capsule-App";
 import {
+  bool,
   id,
   num,
   optBool,
@@ -102,6 +104,9 @@ import { startRemoteServer, type RemoteServerHandle } from "@capsule/remote";
 import { startPty, TerminalOutputFlow, type PtySession } from "@capsule/terminal";
 import { popupContextMenu } from "./popup-menu";
 import { remoteReachFromArgs } from "./remote-args";
+import { pluginName, pluginToken, pluginsConfigureInput, pluginsEnabledInput, pluginsInspectInput, pluginsInstallInput, appRestartInput, automationCreateInput, automationEnabledInput, automationKeyInput, statusLineRequest, commandExpandInput, configFileTarget, keybindingEdit, mcpEnabledInput, mcpTestInput, permissionRuleEdit, profileCreateInput, setConfigValueInput, themeImportInput } from "./config-args";
+import { registerBackdropScheme, serveBackdropImages } from "./backdrop-protocol";
+import { configDirFor, relaunchArgs, safeModeFromArgs } from "./launch-config";
 import { RemoteAccessLifecycle } from "./remote-access";
 import { registerShareHandlers, remoteShareOptions, type ShareContext } from "./share-ipc";
 import { startOnRememberedPort } from "./remote-port";
@@ -117,6 +122,8 @@ import { Shutdown } from "./shutdown";
 import { Startup } from "./startup";
 
 const desktopWindow = new WindowReference<BrowserWindow>();
+/** Started with built-in defaults only: no settings file, command, hook or theme loads. */
+const safeMode = safeModeFromArgs(process.argv, process.env);
 let tray: Tray | undefined;
 let engine: CapsuleEngine | undefined;
 let analytics: ProductAnalytics | undefined;
@@ -1049,7 +1056,9 @@ async function applyDesktopSettings(settings?: CapsuleSettings): Promise<void> {
   applyNativeTheme(settings?.appearanceTheme);
   applyMenuBar(settings);
   applyKeepAwake(settings);
-  await remoteAccess.follow(settings?.remoteAccess ?? "off");
+  // A reach asked for at launch holds for that launch; a settings change,
+  // including an edit to the settings file, must not close it.
+  await remoteAccess.follow(remoteReachFromArgs(process.argv, process.env) ?? settings?.remoteAccess ?? "off");
 }
 
 /*
@@ -1969,6 +1978,81 @@ function registerIpc(): void {
     await applyDesktopSettings(next);
     return next;
   });
+  // A change any of these makes reaches the desktop through the engine's
+  // "config-updated" event, the same way a hand edit to a file does.
+  handleArgs(IPC_CHANNELS.configGetEffective, [optStr], (projectId?: string) => requireEngine().getConfigSnapshot(projectId));
+  handleArgs(IPC_CHANNELS.configGetDiagnostics, [optStr], (projectId?: string) => requireEngine().getConfigDiagnostics(projectId));
+  handleArgs(IPC_CHANNELS.configSetValue, [setConfigValueInput], (input: import("@capsule/shared").SetConfigValueInput) =>
+    requireEngine().setConfigValue(input));
+  handleArgs(IPC_CHANNELS.configOpenFile, [configFileTarget], async (target: import("@capsule/shared").ConfigFileTarget) => {
+    const location = requireEngine().configFilePath(target);
+    const failure = await shell.openPath(location);
+    if (failure) throw new Error(failure);
+    return location;
+  });
+  handleArgs(IPC_CHANNELS.configTrust, [id, bool], (projectId: string, trusted: boolean) => requireEngine().trustProject(projectId, trusted));
+  handleArgs(IPC_CHANNELS.configReload, [optStr], (projectId?: string) => requireEngine().reloadConfig(projectId));
+  handleArgs(IPC_CHANNELS.configEditPermissionRule, [permissionRuleEdit], (edit: import("@capsule/shared").PermissionRuleEdit) =>
+    requireEngine().editPermissionRule(edit));
+  handleArgs(IPC_CHANNELS.commandsList, [optStr], (projectId?: string) => requireEngine().listCommands(projectId));
+  handleArgs(IPC_CHANNELS.commandsExpand, [commandExpandInput], (input: import("@capsule/shared").CommandExpandInput) =>
+    requireEngine().expandCommand(input));
+  handleArgs(IPC_CHANNELS.appRestart, [appRestartInput], (input: { safeMode: boolean }) => restartWithSafeMode(input.safeMode));
+  handleArgs(IPC_CHANNELS.keybindingsSet, [keybindingEdit], (edit: import("@capsule/shared").KeybindingEdit) => requireEngine().editKeybindings(edit));
+  handleArgs(IPC_CHANNELS.mcpTest, [mcpTestInput], (input: import("@capsule/shared").McpTestInput) => requireEngine().testMcpServer(input));
+  handleArgs(IPC_CHANNELS.mcpSetEnabled, [mcpEnabledInput], (input: import("@capsule/shared").McpEnabledInput) => requireEngine().setMcpServerEnabled(input));
+  handleArgs(IPC_CHANNELS.statusLineRun, [statusLineRequest], (input: import("@capsule/shared").StatusLineRequest) => requireEngine().runStatusLine(input));
+  handleArgs(IPC_CHANNELS.automationsRunNow, [automationKeyInput], (input: import("@capsule/shared").AutomationKeyInput) => requireEngine().runAutomationNow(input));
+  handleArgs(IPC_CHANNELS.automationsSetEnabled, [automationEnabledInput], (input: import("@capsule/shared").AutomationEnabledInput) => requireEngine().setAutomationEnabled(input));
+  handleArgs(IPC_CHANNELS.automationsDismissMissed, [automationKeyInput], (input: import("@capsule/shared").AutomationKeyInput) => requireEngine().dismissMissedAutomation(input));
+  handleArgs(IPC_CHANNELS.automationsCreate, [automationCreateInput], async (input: import("@capsule/shared").AutomationCreateInput) => {
+    const file = requireEngine().createAutomation(input);
+    const failure = await shell.openPath(file);
+    if (failure) throw new Error(failure);
+    return file;
+  });
+  handleArgs(IPC_CHANNELS.sessionsMarkRead, [id], (sessionId: string) => requireEngine().markSessionRead(sessionId));
+  // A folder or zip is picked here, so the renderer never names a path to read.
+  handleArgs(IPC_CHANNELS.pluginsInspect, [pluginsInspectInput], async (input: import("@capsule/shared").PluginsInspectInput) => {
+    if (input.from === "git") return requireEngine().inspectPlugin({ kind: "git", url: input.url! });
+    const win = desktopWindow.current ?? BrowserWindow.getFocusedWindow();
+    const zip = input.from === "zip";
+    const options: Electron.OpenDialogOptions = zip
+      ? { title: "Install plugin from zip", buttonLabel: "Inspect", properties: ["openFile"], filters: [{ name: "Zip", extensions: ["zip"] }] }
+      : { title: input.from === "dev" ? "Load plugin folder for development" : "Choose plugin folder", buttonLabel: input.from === "dev" ? "Load" : "Inspect", properties: ["openDirectory"] };
+    const picked = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
+    const chosen = picked.canceled ? undefined : picked.filePaths[0];
+    return chosen ? requireEngine().inspectPlugin({ kind: input.from, path: chosen }) : undefined;
+  });
+  handleArgs(IPC_CHANNELS.pluginsInstall, [pluginsInstallInput], (input: import("@capsule/shared").PluginsInstallInput) => requireEngine().installPlugin(input));
+  handleArgs(IPC_CHANNELS.pluginsDiscard, [pluginToken], (token: string) => requireEngine().discardPluginInspection(token));
+  handleArgs(IPC_CHANNELS.pluginsSetEnabled, [pluginsEnabledInput], (input: { name: string; enabled: boolean }) => requireEngine().setPluginEnabled(input));
+  handleArgs(IPC_CHANNELS.pluginsConfigure, [pluginsConfigureInput], (input: import("@capsule/shared").PluginsConfigureInput) => requireEngine().configurePlugin(input));
+  handleArgs(IPC_CHANNELS.pluginsUninstall, [pluginName], (name: string) => requireEngine().uninstallPlugin(name));
+  handleArgs(IPC_CHANNELS.profilesCreate, [profileCreateInput], async (input: import("@capsule/shared").ProfileCreateInput) => {
+    const file = requireEngine().createProfile(input);
+    const failure = await shell.openPath(file);
+    if (failure) throw new Error(failure);
+    return file;
+  });
+  // A file pick happens here, so the renderer never names a path to read.
+  handleArgs(IPC_CHANNELS.themesImport, [themeImportInput], async (input: import("@capsule/shared").ThemeImportInput): Promise<import("@capsule/shared").ThemeImportResult> => {
+    if (input.from === "share") return requireEngine().importTheme({ kind: "share", text: input.text });
+    const win = desktopWindow.current ?? BrowserWindow.getFocusedWindow();
+    const options: Electron.OpenDialogOptions = { title: "Import theme", buttonLabel: "Import", properties: ["openFile"], filters: [{ name: "Theme", extensions: ["json"] }] };
+    const picked = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
+    const file = picked.canceled ? undefined : picked.filePaths[0];
+    if (!file) return { imported: false };
+    if (statSync(file).size > 256 * 1024) throw new Error("A theme file is at most 256 KB.");
+    return requireEngine().importTheme({ kind: "file", text: readFileSync(file, "utf8"), name: path.basename(file) });
+  });
+  handle(IPC_CHANNELS.backdropChooseImage, async () => {
+    const win = desktopWindow.current ?? BrowserWindow.getFocusedWindow();
+    const options: Electron.OpenDialogOptions = { title: "Choose backdrop image", buttonLabel: "Choose", properties: ["openFile"], filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }] };
+    const picked = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
+    const file = picked.canceled ? undefined : picked.filePaths[0];
+    return file ? requireEngine().importBackdropImage(file) : undefined;
+  });
   /*
    * Both routes, one answer. The updater knows whether this build can replace
    * itself; the GitHub check knows what the latest release is even when that
@@ -2254,11 +2338,12 @@ function bindEngineEvents(): void {
   engine.events.on("run-event", (event) => send(IPC_EVENTS.run, event));
   engine.events.on("long-command", notifyLongCommand);
   engine.events.on("message", (message) => send(IPC_EVENTS.message, message));
-  engine.events.on("state", (payload) => {
+  engine.events.on("state", (payload: { command?: string } | undefined) => {
     send(IPC_EVENTS.state, payload);
     // Read, settle and snooze change what is waiting; settings may turn the badge off.
-    const command = (payload as { command?: string } | undefined)?.command;
-    if (command === "sessions-updated" || command === "settings-updated") { refreshDockBadge(); refreshTrayAttention(); }
+    const command = payload?.command;
+    if (command === "sessions-updated" || command === "settings-updated" || command === "config-updated") { refreshDockBadge(); refreshTrayAttention(); }
+    if (command === "config-updated") void applyDesktopSettings(engine?.getSettings());
   });
   engine.events.on("approval", (approval: ApprovalRequest) => {
     send(IPC_EVENTS.approval, approval);
@@ -2284,6 +2369,10 @@ function applyLaunchAtLogin(enabled: boolean): void {
 function createMenu(): void {
   const openSettings = () => send(IPC_EVENTS.state, { command: "settings" });
   const openAbout = () => send(IPC_EVENTS.state, { command: "about" });
+  const restartItem: Electron.MenuItemConstructorOptions = {
+    label: safeMode ? "Restart Normally" : "Restart Without Customizations",
+    click: () => restartWithSafeMode(!safeMode),
+  };
   const mac = process.platform === "darwin";
   const template: Electron.MenuItemConstructorOptions[] = [
     ...(mac
@@ -2301,6 +2390,7 @@ function createMenu(): void {
                 accelerator: "CommandOrControl+,",
                 click: openSettings,
               },
+              restartItem,
               { type: "separator" as const },
               { role: "services" as const },
               { type: "separator" as const },
@@ -2344,6 +2434,7 @@ function createMenu(): void {
                 accelerator: "CommandOrControl+,",
                 click: openSettings,
               },
+              restartItem,
             ]
           : []),
         { role: "close" },
@@ -2517,6 +2608,13 @@ async function startEngineOnce(): Promise<void> {
     // CAPSULE_MOCK_RUNTIME=1 runs a development profile on the mock runtime, so
     // turns can be driven without a Gateway or an installed agent.
     ...(process.env.CAPSULE_SMOKE_TEST || process.env.CAPSULE_MOCK_RUNTIME === "1" ? { autoConnect: false } : {}),
+    configDir: configDirFor({
+      env: process.env,
+      home: os.homedir(),
+      userData: userDataDir(),
+      ownProfile: app.commandLine.hasSwitch("user-data-dir") || Boolean(process.env.CAPSULE_SMOKE_TEST),
+    }),
+    safeMode,
     // The Gateway operator token and the skills.sh token; the settings screen
     // calls this the Keychain and now it is one.
     secretEncryptor: {
@@ -2686,8 +2784,11 @@ app.on("open-url", (event, url) => {
   handleDeepLink(url);
 });
 
+registerBackdropScheme();
+
 app.whenReady().then(() => startup.run(async () => {
   app.setName("Capsule");
+  serveBackdropImages((token) => engine?.config.backdropImage(token));
   if (process.platform === "win32") app.setAppUserModelId("ai.capsule.desktop");
   app.setAsDefaultProtocolClient(APP_SCHEME);
   augmentPath();
@@ -2749,6 +2850,22 @@ app.on("window-all-closed", () => {
  * app is a dialog that teaches people to dismiss dialogs.
  */
 let quitConfirmed = false;
+/** Arguments for the instance that starts once this one has quit, if any. */
+let pendingRelaunch: string[] | undefined;
+
+/*
+ * Into or out of safe mode. The relaunch is registered only once quitting is
+ * settled, so choosing "Keep working" over running turns cancels it too.
+ */
+function restartWithSafeMode(on: boolean): void {
+  if (!on) delete process.env.CAPSULE_SAFE_MODE;
+  pendingRelaunch = relaunchArgs(process.argv, on);
+  app.quit();
+}
+
+app.on("will-quit", () => {
+  if (pendingRelaunch) app.relaunch({ args: pendingRelaunch });
+});
 const shutdown = new Shutdown(async () => {
   petVoice.cancel();
   // Startup may be opening the database or a server when Quit arrives. Stop
@@ -2790,7 +2907,10 @@ app.on("before-quit", (event) => {
       message: running === 1 ? "A turn is still running." : `${running} turns are still running.`,
       detail: "Quitting stops agents started directly by Capsule and disconnects from the Gateway. Gateway-hosted work may continue. Anything already written stays.",
     });
-    if (choice !== 0) return;
+    if (choice !== 0) {
+      pendingRelaunch = undefined;
+      return;
+    }
     quitConfirmed = true;
   }
   startup.cancel();

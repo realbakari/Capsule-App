@@ -1,3 +1,4 @@
+import { IPC_EVENTS } from "@capsule/shared";
 import type { CapsuleApi } from "../../../preload/index";
 
 /*
@@ -11,6 +12,12 @@ import type { CapsuleApi } from "../../../preload/index";
  */
 
 const PAIR_PREFIX = "#pair=";
+
+/*
+ * The host forwards each event under its channel, "capsule:event:state";
+ * the renderer listens by key, "state", as it does through the preload.
+ */
+const EVENT_KEYS = new Map<string, string>(Object.entries(IPC_EVENTS).map(([key, channel]) => [channel, key]));
 const TOKEN_KEY = "capsule.remote.token";
 
 /** The one-time token from a pairing link, if this page was opened with one. */
@@ -154,9 +161,7 @@ export function createRemoteBridge(token: string, options: { share?: boolean } =
         return;
       }
       if (frame.type === "event" && frame.event) {
-        // The host names events by their wire name; the renderer subscribes by key.
-        const name = frame.event.replace(/^capsule:event:/u, "");
-        for (const listener of listeners.get(name) ?? []) listener(frame.payload);
+        for (const listener of listeners.get(EVENT_KEYS.get(frame.event) ?? frame.event) ?? []) listener(frame.payload);
         return;
       }
       if (frame.type === "result" && typeof frame.id === "number") {

@@ -12,6 +12,7 @@ need the shipped-product voice.
 - [Supported behavior and current limits](./user/compatibility.md)
 - [Keyboard shortcuts](./user/keyboard-shortcuts.md)
 - [Keeping track of conversations](./user/staying-on-top.md)
+- [Themes and backdrops](./user/themes.md)
 - [Skills](./user/skills.md)
 - [Reviewing changes](./user/review.md)
 - [Restoring, redoing and forking turns](./user/checkpoints.md)
@@ -24,6 +25,12 @@ need the shipped-product voice.
 - [Projects, actions, and local previews](./user/projects-and-previews.md)
 - [iOS Simulator](./user/simulator.md)
 - [capsule.json — project config in the repository](./user/project-file.md)
+- [Settings files](./user/settings-files.md)
+- [Commands](./user/commands.md)
+- [Profiles](./user/profiles.md)
+- [Hooks](./user/hooks.md)
+- [Automations](./user/automations.md)
+- [Plugins](./user/plugins.md)
 - [Providers and credentials](./user/providers.md)
 - [Reading from another device](./user/reading-from-another-device.md)
 - [Exporting a conversation](./user/exporting-conversations.md)
@@ -47,6 +54,7 @@ Setup is in the [root README](../README.md); agent rules in
 - [Shared-channel adapter](./internals/channels.md)
 - [Architecture pointer](./internals/architecture.md)
 - [Browser control and analytics](./internals/web-access-and-analytics.md)
+- [Customization and settings files](./internals/config.md)
 
 ## Where a change belongs
 

@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { APPROVAL_PRESETS, approvalPreset, BROWSER_DEVICES, DIFF_SCOPES, initPrompt, threadShelf, type AppearanceTheme, type DiffScope, type HarnessPermissionProfile, type SearchResults, type Session } from "@capsule/shared";
 import { requestBrowserCommand } from "../../lib/browser-commands";
 import { chooseReview } from "../../lib/review-scope";
+import { requestPluginIntent } from "../plugins/plugin-intent";
 import { useWorkspace } from "../../lib/workspace";
 import { formatUserError } from "../../lib/errors";
-import { keymapFrom, shortcutLabel } from "../../lib/keybindings";
+import { shortcutLabel } from "../../lib/keybindings";
 import { rankPalette, type PaletteEntry } from "../../lib/palette";
 import { OPEN_IN_EVENT, SHOW_SHORTCUTS_EVENT } from "../../lib/shortcuts-event";
 import { TOGGLE_DICTATION_EVENT } from "../../lib/dictation";
@@ -25,6 +26,8 @@ import { HANDOFF_LABEL } from "../handoff/Handoff";
 import { useThreadActions } from "../threads/ThreadActions";
 import { useImportSessions } from "../import/ImportSessions";
 import { detectInstructionFiles } from "../project/ProjectInstructions";
+import { commandDetail } from "../../lib/commands";
+import { customizationCommands } from "../customization/customization-commands";
 import "./palette.css";
 
 /*
@@ -94,6 +97,7 @@ function PaletteDialog() {
     sessions, session, setProjectId, setAboutOpen, openInspector, setAgentCommandsOpen, setFilePicker, setContentSearch,
     project, terminalOpen, setTerminalOpen, sidebarCollapsed, setSidebarCollapsed, inspectorOpen, setInspectorOpen, refresh,
     setPromptJump, runs, turnMode, setTurnMode, attachContext, setNotice, setPermissionProfile, draftApproval, setDraftApproval,
+    setDraft, commands, config, setSettingsTab, startWithProfile, keyBindings,
   } = workspace;
   const branching = useBranching();
   const lastTurn = useMemo(() => runs
@@ -110,7 +114,6 @@ function PaletteDialog() {
   const [retry, setRetry] = useState(0);
   const [search, setSearch] = useState<{ query: string; hits?: SearchResults; error?: string }>();
   const currentSearch = search?.query === query ? search : undefined;
-  const keymap = useMemo(() => keymapFrom(settings?.keybindings), [settings?.keybindings]);
 
   useEffect(() => {
     if (!searchesMessages) return;
@@ -264,6 +267,33 @@ function PaletteDialog() {
     ];
   }
 
+  /* Settings files, plugins, profiles, automations and Capsule commands. */
+  function customizationEntries(): Entry[] {
+    const readOnly = api.isDesktop === false && api.remoteMode !== "control" ? "Read only on this device." : undefined;
+    const goTo = (tab: Parameters<typeof setSettingsTab>[0]) => () => { setSettingsTab(tab); setView("settings"); };
+    const files = customizationCommands({
+      api, config, onError: setNotice,
+      showProblems: goTo("diagnostics"),
+      openPlugins: (intent) => { if (intent) requestPluginIntent(intent); goTo("plugins")(); },
+    }).map(({ onSelect, icon: glyph, ...item }): Entry => ({ ...item, icon: glyph, run: onSelect }));
+    return [
+      ...files,
+      { id: "settings-plugins", label: "Plugins", detail: "Settings", group: "Go to", icon: icon(SettingsIcon), run: goTo("plugins") },
+      ...(config?.profiles ?? []).map((profile): Entry => ({
+        id: `profile-${profile.id}`, label: `New conversation with ${profile.name}`, detail: profile.description, group: "Profiles",
+        icon: icon(MessageSquarePlusIcon), disabledReason: readOnly, run: () => void startWithProfile(profile.id),
+      })),
+      { id: "settings-automations", label: "Automations", detail: "Settings", group: "Go to", icon: icon(SettingsIcon), run: goTo("automations") },
+      { id: "settings-status-line", label: "Status line", detail: "Settings", group: "Go to", icon: icon(SettingsIcon), run: goTo("appearance") },
+      { id: "settings-tools", label: "MCP servers", detail: "Settings", group: "Go to", icon: icon(SettingsIcon), run: goTo("tools") },
+      /* A command takes arguments, so choosing one puts it in the message box rather than sending it. */
+      ...(commands?.list?.commands ?? []).map((command): Entry => ({
+        id: `command-${command.name}`, label: `Run command: /${command.name}`, detail: commandDetail(command), group: "Commands",
+        icon: icon(TerminalIcon), disabledReason: readOnly, run: () => { setView("chat"); setDraft(`/${command.name} `); },
+      })),
+    ];
+  }
+
   /* Rebuilt per render: ranking a few hundred rows is cheaper than keeping a memo honest. */
   function buildEntries(): Entry[] {
     if (page === "new-in") {
@@ -327,6 +357,7 @@ function PaletteDialog() {
       ] : []),
       { id: "update", label: "Check for updates", group: "Workspace", icon: icon(RefreshIcon), run: () => setAboutOpen(true) },
       { id: "about", label: "About Capsule", group: "Workspace", icon: icon(InfoIcon), run: () => setAboutOpen(true) },
+      ...customizationEntries(),
     ];
     const projectNames = new Map(projects.map((item) => [item.id, item.name]));
     const recency = (item: Session) => Date.parse(item.updatedAt) || 0;
@@ -348,7 +379,7 @@ function PaletteDialog() {
     const ranked = rankPalette(buildEntries(), query, { Conversations: query ? 30 : 5, Projects: 20 }) as Array<Entry & { matches: number[] }>;
     const rows: SearchDialogItem[] = ranked.map((entry) => ({
       id: entry.id, label: entry.label, detail: entry.detail, group: entry.group, icon: entry.icon, matches: entry.matches,
-      shortcut: entry.command ? shortcutLabel(entry.command, keymap) : entry.shortcut, disabledReason: entry.disabledReason,
+      shortcut: entry.command ? shortcutLabel(entry.command, keyBindings) : entry.shortcut, disabledReason: entry.disabledReason,
       keepOpen: entry.keepOpen, onSelect: entry.run,
     }));
     if (!searchesMessages) return rows;

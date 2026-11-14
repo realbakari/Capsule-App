@@ -14,7 +14,7 @@ export {
   type SessionUpdate,
   type TurnOutcome,
 } from "./protocol.js";
-export { DirectAcpSession, type DirectAcpOptions, type DirectAcpEvents, type AcpMcpServer } from "./session.js";
+export { DirectAcpSession, type DirectAcpOptions, type DirectAcpEvents, type AcpMcpServer, type AcpHttpMcpServer, type AcpStdioMcpServer, sessionMcpServers } from "./session.js";
 export { readCliError, explainDirectFailure } from "./errors.js";
 export {
   DirectAcpHost,
@@ -27,5 +27,6 @@ export {
   type DirectSpawnInput,
   type DirectMcpOffer,
   type DirectAgentSession,
+  type DirectActivity,
   type NativeSessionFactory,
 } from "./host.js";

@@ -48,6 +48,11 @@ const READ_CHANNELS: ChannelName[] = [
   "getSubsystemStatus",
   "getSettings",
   "getDiagnostics",
+  // Settings files are read-only here: values, provenance and problems.
+  "configGetEffective",
+  "configGetDiagnostics",
+  // Command names, descriptions and paths. Expanding one may run shell, so it is a write.
+  "commandsList",
   "getPetState",
   // Unlike checkForUpdates, this only reports what is already known: no
   // network call, no check started, nothing downloaded.

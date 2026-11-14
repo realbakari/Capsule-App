@@ -192,6 +192,61 @@ const api = {
   getSettings: () => ipcRenderer.invoke(IPC_CHANNELS.getSettings),
   updateSettings: (patch: unknown) => ipcRenderer.invoke(IPC_CHANNELS.updateSettings, patch),
   getDiagnostics: () => ipcRenderer.invoke(IPC_CHANNELS.getDiagnostics),
+  configGetEffective: (projectId?: string): Promise<import("@capsule/shared").ConfigSnapshot> =>
+    ipcRenderer.invoke(IPC_CHANNELS.configGetEffective, projectId),
+  configGetDiagnostics: (projectId?: string): Promise<import("@capsule/shared").ConfigDiagnostics> =>
+    ipcRenderer.invoke(IPC_CHANNELS.configGetDiagnostics, projectId),
+  configSetValue: (input: import("@capsule/shared").SetConfigValueInput): Promise<import("@capsule/shared").ConfigSnapshot> =>
+    ipcRenderer.invoke(IPC_CHANNELS.configSetValue, input),
+  /** Creates the file or folder from a template when missing, opens it, and returns its path. */
+  configOpenFile: (target: import("@capsule/shared").ConfigFileTarget): Promise<string> =>
+    ipcRenderer.invoke(IPC_CHANNELS.configOpenFile, target),
+  configTrust: (projectId: string, trusted: boolean): Promise<import("@capsule/shared").ConfigSnapshot> =>
+    ipcRenderer.invoke(IPC_CHANNELS.configTrust, projectId, trusted),
+  configReload: (projectId?: string): Promise<import("@capsule/shared").ConfigSnapshot> =>
+    ipcRenderer.invoke(IPC_CHANNELS.configReload, projectId),
+  /** Adds or removes one permission rule in the user or project-local file. */
+  configEditPermissionRule: (edit: import("@capsule/shared").PermissionRuleEdit): Promise<import("@capsule/shared").ConfigSnapshot> =>
+    ipcRenderer.invoke(IPC_CHANNELS.configEditPermissionRule, edit),
+  commandsList: (projectId?: string): Promise<import("@capsule/shared").CommandList> =>
+    ipcRenderer.invoke(IPC_CHANNELS.commandsList, projectId),
+  /** Expands a command for editing in the composer. It may run the command's shell spans. */
+  commandsExpand: (input: import("@capsule/shared").CommandExpandInput): Promise<import("@capsule/shared").CommandExpansion> =>
+    ipcRenderer.invoke(IPC_CHANNELS.commandsExpand, input),
+  /** Quits and starts again, with or without customizations. Running turns may hold the quit. */
+  appRestart: (input: { safeMode: boolean }): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.appRestart, input),
+  themesImport: (input: import("@capsule/shared").ThemeImportInput): Promise<import("@capsule/shared").ThemeImportResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.themesImport, input),
+  keybindingsSet: (edit: import("@capsule/shared").KeybindingEdit): Promise<import("@capsule/shared").ConfigSnapshot> =>
+    ipcRenderer.invoke(IPC_CHANNELS.keybindingsSet, edit),
+  mcpTest: (input: import("@capsule/shared").McpTestInput): Promise<import("@capsule/shared").McpTestResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.mcpTest, input),
+  mcpSetEnabled: (input: import("@capsule/shared").McpEnabledInput): Promise<import("@capsule/shared").ConfigSnapshot> =>
+    ipcRenderer.invoke(IPC_CHANNELS.mcpSetEnabled, input),
+  profilesCreate: (input: import("@capsule/shared").ProfileCreateInput): Promise<string> =>
+    ipcRenderer.invoke(IPC_CHANNELS.profilesCreate, input),
+  statusLineRun: (input: import("@capsule/shared").StatusLineRequest): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.statusLineRun, input),
+  automationsRunNow: (input: import("@capsule/shared").AutomationKeyInput): Promise<import("@capsule/shared").ConfigSnapshot> =>
+    ipcRenderer.invoke(IPC_CHANNELS.automationsRunNow, input),
+  automationsSetEnabled: (input: import("@capsule/shared").AutomationEnabledInput): Promise<import("@capsule/shared").ConfigSnapshot> =>
+    ipcRenderer.invoke(IPC_CHANNELS.automationsSetEnabled, input),
+  automationsDismissMissed: (input: import("@capsule/shared").AutomationKeyInput): Promise<import("@capsule/shared").ConfigSnapshot> =>
+    ipcRenderer.invoke(IPC_CHANNELS.automationsDismissMissed, input),
+  automationsCreate: (input: import("@capsule/shared").AutomationCreateInput): Promise<string> =>
+    ipcRenderer.invoke(IPC_CHANNELS.automationsCreate, input),
+  sessionsMarkRead: (sessionId: string): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.sessionsMarkRead, sessionId),
+  /** Copies or fetches a plugin and lists exactly what it adds. Folders and zips are picked here in main; undefined when the pick is cancelled. */
+  pluginsInspect: (input: import("@capsule/shared").PluginsInspectInput): Promise<import("@capsule/shared").PluginInspection | undefined> =>
+    ipcRenderer.invoke(IPC_CHANNELS.pluginsInspect, input),
+  pluginsInstall: (input: import("@capsule/shared").PluginsInstallInput): Promise<import("@capsule/shared").ConfigSnapshot> =>
+    ipcRenderer.invoke(IPC_CHANNELS.pluginsInstall, input),
+  pluginsDiscard: (token: string): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.pluginsDiscard, token),
+  pluginsSetEnabled: (input: { name: string; enabled: boolean }): Promise<import("@capsule/shared").ConfigSnapshot> =>
+    ipcRenderer.invoke(IPC_CHANNELS.pluginsSetEnabled, input),
+  pluginsConfigure: (input: import("@capsule/shared").PluginsConfigureInput): Promise<import("@capsule/shared").ConfigSnapshot> =>
+    ipcRenderer.invoke(IPC_CHANNELS.pluginsConfigure, input),
+  pluginsUninstall: (name: string): Promise<import("@capsule/shared").ConfigSnapshot> => ipcRenderer.invoke(IPC_CHANNELS.pluginsUninstall, name),
+  backdropChooseImage: (): Promise<import("@capsule/shared").ConfigSnapshot | undefined> => ipcRenderer.invoke(IPC_CHANNELS.backdropChooseImage),
   search: (query: string) => ipcRenderer.invoke(IPC_CHANNELS.search, query),
   updateProject: (id: string, patch: unknown) =>
     ipcRenderer.invoke(IPC_CHANNELS.updateProject, id, patch),

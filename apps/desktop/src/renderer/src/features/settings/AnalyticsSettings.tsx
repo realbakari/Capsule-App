@@ -23,7 +23,7 @@ export function AnalyticsSettings({ settings, patch }: {
     <p className="muted">Optional usage reports help the maintainers measure reliability and performance.
       Reports include a random installation identifier, app version, operating system, harness, runtime route,
       run outcome and duration, and Capsule CPU/memory samples. They never include prompts, code, file paths, credentials or raw logs.</p>
-    <SettingRow label="Share usage reports" hint="Off by default. Reports go to our US analytics service. No session recording or automatic click tracking.">
+    <SettingRow label="Share usage reports" setting="analyticsEnabled" hint="Off by default. Reports go to our US analytics service. No session recording or automatic click tracking.">
       <input type="checkbox" aria-label="Share usage reports" checked={settings.analyticsEnabled}
         disabled={!api.isDesktop || busy}
         onChange={(event) => {

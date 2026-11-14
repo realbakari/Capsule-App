@@ -6,6 +6,7 @@ import type { AcpModelCatalog, AgentCapabilityReport, AgentPromptBlock, Reported
 import { readReportedTurnUsage, readPlanEntries } from "@capsule/shared";
 import { CodexRequestError, CodexTransport, object } from "./transport.js";
 import { nativeToolDetails } from "./tool-details.js";
+import { codexMcpConfig } from "./mcp.js";
 import { modeOption, permissionOption, PLAN_TURN_PERMISSIONS, readModelSettings, turnPermissions, type CodexTurnMode, type ModelSettings, type NativePermissions } from "./configuration.js";
 
 const text = (value: unknown): string | undefined => typeof value === "string" ? value : undefined;
@@ -97,6 +98,7 @@ export class DirectCodexSession implements DirectAgentSession {
         // Never inherit a saved session's full-access policy or automatic reviewer.
         approvalPolicy: "untrusted", approvalsReviewer: "user", sandbox: "read-only",
         ...(this.options.model ? { model: this.options.model } : {}),
+        ...(this.options.mcpServers?.length ? { config: codexMcpConfig(this.options.mcpServers) } : {}),
       });
       let response: unknown;
       try { response = await openThread(); }

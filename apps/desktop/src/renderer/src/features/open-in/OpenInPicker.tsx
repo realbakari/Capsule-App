@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { favoriteOpenInApp, OPEN_IN_DEFAULT_APP, orderOpenInApps, type OpenInApp, type OpenInTarget } from "@capsule/shared";
-import { chordFor, chordSymbols, COMMANDS, parseChord, type Keymap } from "../../lib/keybindings";
+import { shortcutLabel } from "../../lib/keybindings";
 import { formatUserError } from "../../lib/errors";
 import { useWorkspace } from "../../lib/workspace";
 import { HeaderPopover } from "../shell/HeaderPopover";
@@ -8,16 +8,10 @@ import { ChevronDownIcon, ExternalLinkIcon, PlusIcon, SettingsIcon, StarIcon } f
 import { useOpenIn, useOpenInCatalog } from "./useOpenIn";
 import "./open-in.css";
 
-const COMMAND = COMMANDS.find((command) => command.id === "open-in-favorite")!;
-
 /** The favourite's chord as the user has it bound, for the button and the shortcuts list. */
 export function useOpenInChord(): string {
-  const { settings } = useWorkspace();
-  const keymap: Keymap = {};
-  const stored = settings?.keybindings?.[COMMAND.id];
-  const parsed = stored ? parseChord(stored) : undefined;
-  if (parsed) keymap[COMMAND.id] = parsed;
-  return chordSymbols(chordFor(COMMAND, keymap)).join("");
+  const { keyBindings } = useWorkspace();
+  return shortcutLabel("open-in-favorite", keyBindings) ?? "";
 }
 
 export function AppIcon({ app }: { app: Pick<OpenInApp, "icon" | "name"> }) {

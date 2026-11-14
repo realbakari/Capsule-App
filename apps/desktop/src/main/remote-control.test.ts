@@ -12,3 +12,7 @@ it("allows text and once-only decisions, but rejects file paths and permanent ap
   expect(remoteControlArgs("resolveApproval", ["a", "approved_once"])).toEqual(["a", "approved_once"]);
   expect(() => remoteControlArgs("resolveApproval", ["a", "approved_session"])).toThrow("once-only");
 });
+it("starts a thread from a profile on a paired device, still supervised and local", () => {
+  expect(remoteControlArgs("createSession", [{ projectId: "p", profileId: "reviewer", permissionProfile: "approve-all", workspaceMode: "worktree" }]))
+    .toEqual([{ projectId: "p", agentId: undefined, mode: undefined, title: undefined, permissionProfile: "strict", workspaceMode: "local", profileId: "reviewer" }]);
+});

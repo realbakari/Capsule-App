@@ -226,11 +226,11 @@ export class DirectAcpHost {
     }
 
     /*
-     * Whatever the host wants this agent to be able to reach. Capsule passes
-     * its browser tools here; an empty list is the old behaviour.
+     * Whatever the host wants this agent to be able to reach: Capsule's own
+     * tools and the servers in the settings files. A native session takes
+     * what its own session API accepts and ignores the rest.
      */
-    const offer = native ? { servers: [], dispose: () => {} }
-      : typeof this.mcpServers === "function" ? this.mcpServers(input) : { servers: this.mcpServers, dispose: () => {} };
+    const offer = typeof this.mcpServers === "function" ? this.mcpServers(input) : { servers: this.mcpServers, dispose: () => {} };
     const options = {
       command: this.executable(command.command),
       args,

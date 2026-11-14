@@ -1,0 +1,17 @@
+{
+  "name": "git-status-line",
+  "version": "1.0.0",
+  "description": "A status line with the branch, uncommitted changes and a label you choose, and a command that explains the current diff.",
+  "author": { "name": "Capsule examples" },
+  "contributes": {
+    "statusLine": {
+      "items": ["model", "context"],
+      "command": "sh \"${PLUGIN_ROOT}/line.sh\"",
+      "refreshInterval": 10
+    }
+  },
+  "userConfig": {
+    "label": { "type": "string", "title": "Label", "description": "Shown at the start of the line.", "default": "dev" },
+    "color": { "type": "enum", "title": "Branch colour", "options": ["green", "cyan", "yellow"], "default": "green" }
+  }
+}

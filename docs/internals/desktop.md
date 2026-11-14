@@ -1716,14 +1716,14 @@ result names the section it lives in.
 | Section | Owns |
 |---------|------|
 | General | Launch at login, send key, menu bar extra, keep awake, notifications, session archiving |
-| Appearance | System / Light / Dark, per-theme accent / background / foreground, UI and code fonts, translucent sidebar, contrast, transcript size / width, with live type previews |
+| Appearance | System / Light / Dark; Themes (a list per appearance with swatches, live preview on hover or arrow-key focus, Escape or leaving reverts, click or Enter chooses; paste a share string, import a file, copy a share string, open the themes folder; contrast pairs under 4.5:1 behind a disclosure); Backdrop (None and five scenes with hover preview, opacity, dim, blur, fit for an image, Choose image…, Reset, a one-line desktop-only note for images); per-theme accent / background / foreground (a Customize layer over a non-built-in theme), UI and code fonts, translucent sidebar, contrast, transcript size / width, with live type previews |
 | Agents | Default agent and conversation workspace, Gateway approval policy, sandbox, web access, output detail, reasoning, harness credentials |
 | Gateway | URL, connect / disconnect, token in Keychain, reading from another device |
 | Projects | Create, delete, attach primary folder, choose or reset project icon |
 | Source control | Branch prefix, force-with-lease, draft PRs, merge method, review delivery, watch-and-fix, auto-merge, commit / PR instructions |
 | Skills | skills.sh token for the catalog |
-| Shortcuts | Editable key bindings — see below |
-| Diagnostics | Process monitor, subsystem versions, export |
+| Shortcuts | keybindings.json — see below |
+| Diagnostics | Customization doctor, process monitor, subsystem versions, export |
 | About | App icon squircle, version, copyright, copy version info |
 
 Gateway also owns **Browser access**: off, this computer, or this
@@ -1792,12 +1792,25 @@ Permissions are Capsule-native and mapped onto Gateway acpx (see [harness.md](ha
 
 ## Global shortcuts
 
-Shortcuts are declared once, in `apps/desktop/src/renderer/src/lib/keybindings.ts`,
-which is both the handler's dispatch table and the Settings list. Renderer
-commands can be rebound in Settings → Shortcuts by pressing the keys; a rebind
-that would take another command's keys is refused. Commands marked *menu* are
-declared by the application menu in the main process, which receives the key
-before the web contents does, so they are shown but not editable.
+The defaults are `KEY_COMMANDS` in `@capsule/shared`, which main also reads to
+check `keybindings.json`. The renderer lays the file's entries over them and
+matches presses, sequences included, with the shared chord matcher
+(`lib/use-keymap.ts`). Settings → Shortcuts reads and writes the file through
+`capsule:keybindings:set`, keeping comments: record one key or two in a row,
+Unbind (shown on hover or focus), Reset, search by name or by keystroke, a
+Conflicts box, Add a binding (an action, a `/command`, a project action, and a
+context), and Open keybindings.json. Commands marked *menu* are declared by the
+application menu, which receives the key before the web contents does, so they
+are shown fixed; a user binding that starts with a menu key is struck through.
+While a sequence waits, a pill near the bottom of the window shows the first
+chord and "… waiting for the next key" for up to 1.5 s. The shortcuts sheet
+(`⌘/`) shows effective bindings, sequences and custom actions included, and
+leaves out bindings the menu would take. On a paired device the screen is read
+only.
+
+Surfaces that carry a keymap context: the composer (`composer`), the side panel
+(`panel`), its Review pane (`review`), the terminal dock (`terminal`) and the
+command palette (`palette`).
 
 | Action | Keys | |
 |--------|------|---|
@@ -1886,6 +1899,29 @@ tool completion is **Launch completed · child status unknown**, not proof that
 the child finished. Closed threads display their recorded runtime route rather
 than the current harness default. Card borders and typography are explicitly
 scoped so generic inspector heading rules cannot restyle the empty state.
+
+### Capsule commands
+
+The composer's `/` menu lists Capsule commands (`commands:list`) first under
+a **Commands** heading, each with its argument hint, description and a source
+badge (`project`, `user`, `plugin`, `from claude`, `from codex`); the built-in
+items then sit under **Capsule**. With no command matching, the menu looks as
+before, without headings. Choosing a command inserts `/name ` so arguments
+can follow. Sending a draft that starts with a `send: review` command calls
+`commands:expand` instead, puts the expansion and its `@` files in the
+composer, and shows any problem as a notice; a status line reads "Expanding
+/name for review…" meanwhile. A paired device sends it instead.
+
+The palette has a **Commands** group, "Run command: /name", which puts
+`/name ` in the composer of the open conversation.
+
+**Settings → Skills → Commands** lists each command with its path, source,
+"review first" and its shell state ("runs shell", or "shell waits for trust"
+in yellow for an untrusted project). It opens the user's and the project's
+commands folders through `config:openFile`, folds problems into an expansion,
+shows a one-line example when there are no commands, and has a switch for
+each of other tools' folders, which writes `commandSources` to the user file.
+The menu, palette and card re-read the list on `config-updated`.
 
 ### Draft admission and inspection
 
@@ -2916,3 +2952,206 @@ differs from the one for folders.
 - **Project order**: dragging a project row onto another sets `projects.sort_order` for every project (migration 121, write channel `reorderProjects`). Projects never placed sort first, newest first. Only in project grouping with no search; not on a paired viewer.
 - **Viewed marks** also apply to a pull request's diff, keyed by the pull request's URL and each file's diff, so a new push to a file clears its mark. Not on a single commit's diff.
 - **Window title** reads "Capsule (n)" while n threads wait on you (the Dock badge's count, minus the thread on screen); window switchers and screen readers pick it up.
+
+## Settings files in the interface
+
+`lib/workspace.tsx` loads `config` (`capsule:config:getEffective`) and
+`configDiagnostics` (`capsule:config:getDiagnostics`) for the selected project
+on selection and on the `config-updated`, `settings-updated` and
+`projects-updated` state events, and replaces `settings` with the snapshot's
+user-level settings. `projectSettings` is the open project's merged settings;
+new-thread defaults, `diffLayout`, `diffFileState`, `toolCallDisplay` and the
+reasoning display read it. `setConfigValue` writes one key to one layer and
+shows the returned snapshot at once. The pure rules live in
+`lib/config-view.ts`.
+
+Settings rows pass `setting="<key>"` to `SettingRow`, which draws a provenance
+chip (user file, project, project (local), capsule.json) that opens the file,
+and a reset arrow that removes the key from that file. Theme, Runtime and the
+Gateway URL draw `SettingSource` themselves. With a project open, sections
+that hold a `both` key show **Save to** (You, This project, This project only
+me); rows show that layer's merged values, and user-only rows say on hover
+that they save to the user file. The section header has **Open
+settings.json** (or `settings.local.json`) beside **Restore defaults**, and
+save errors show under the header in every section.
+
+Settings → Diagnostics opens with the **Customization** card: sources in
+precedence order with state, keys, parse error and Open or Create; problems;
+trust with Trust or Revoke; safe mode with its restart; and the run log with
+stderr on expand. `problemCount` badges the sidebar's Settings button and the
+Diagnostics nav item. Typing `@modified` in the settings search lists rows a
+file sets.
+
+Below the titlebar, `CustomizationNotices` shows **Safe mode: customizations
+are off.** with **Restart normally** (`capsule:app:restart`), and a notice
+when a settings file breaks, once per mistake, with **Open file**. Above an
+open thread, `TrustNotice` says how many things an untrusted project wants to
+run, lists them on request, and offers **Trust this project** and **Not
+now**. The sidebar's project menu gains Trust or Revoke trust for the open
+project. The palette has Open user, project and project local settings, Open
+keybindings file, Reload customizations, Trust or Revoke, Restart without
+customizations or Restart normally, and Show customization problems.
+
+A paired device reads all of it, and the snapshot reloads there on the same
+events, which the remote bridge maps from their channel names to the keys the
+renderer listens on. Opening files, Save to, reset, Restore defaults, reload,
+trust and restart are hidden there, or disabled in the palette.
+
+### Permission rules, hooks and always-allow
+
+The approval card in the conversation and in Approvals replaces **Approve
+session** with **Always allow…** (`features/customization/AlwaysAllow.tsx`).
+It opens a panel below the card's buttons that names the rule it would save
+(`suggestAllowRule` over `details.subject`) and offers **In this thread**
+(`approved_session`; disabled for direct threads), **In this project, only
+me** (the project-local file; disabled until the folder is trusted, or when
+the card is not in the open project) and **Everywhere** (the user file). The
+two file choices call `capsule:config:editPermissionRule` and then approve
+once. A request no rule can say exactly offers only the thread. The whole
+control is absent on a paired device, which approves once or denies.
+
+Settings → Agents ends with **Permission rules**
+(`PermissionRulesCard.tsx`), a collapsed card: deny, ask and allow lists with
+each rule's file, allow rules waiting for trust, **Remove** for rules in the
+user or local file, and an add row (list, rule, save to) that checks the
+rule's syntax as it is typed. Settings → Diagnostics' Customization card
+gains **Hooks** (`HooksList.tsx`) above Recent runs: each hook's event and
+matcher, on or off, command or URL, file, and its last run. The palette has
+**Open hooks settings**. A blocked prompt reaches the composer as the
+send's error, so the notice above the thread reads **Blocked by hook:** and
+the draft is restored. Work-log lines `approval.auto`, `hook.context` and
+`hook.follow-up` show in the turn's Run log.
+
+## Themes and the conversation backdrop
+
+`applyAppearance(settings, themes)` in `lib/appearance.ts` applies the chosen
+theme for the resolved appearance (stylesheet, then palette-derived variables,
+then the theme's tokens and overrides) and the backdrop variables, and removes
+inline variables the previous theme set. Previews from the Appearance screen
+use the same path and are never written to local storage or the window frame.
+
+The backdrop draws on `.conversation-backdrop`, the first child of the
+conversation column, behind the transcript and composer only. Scenes are
+defined in `features/appearance/backdrop.css` from tokens; none animates. Over
+a backdrop the composer's fade and corner masks in the page colour are hidden,
+since they would draw bands of it. A paired browser follows the host's theme
+and scenes, and draws no image.
+
+## Profiles, response styles and MCP servers
+
+**Profiles.** The composer's agent menu (`AgentModelPicker`) lists the
+snapshot's profiles under **Profiles**, above **Agents**, in its **…** view,
+each with its colour dot and one line from `profileLine` (agent, model,
+effort, permission label, worktree). Choosing one calls the workspace's
+`startWithProfile`, which creates a conversation with `profileId` and
+selects it, as **New conversation with** a profile does in the palette, a
+`profile:<id>` key binding, and **Start** in Settings → Agents → Profiles
+(`ProfilesCard.tsx`). That card also has **New profile**, **New <project>
+profile**, **Duplicate** and **Open file** per row, and the profile files'
+problems behind an expansion. When a thread with a profile is selected, the
+composer takes the thread's agent and mode, since it sends both with every
+message. The titlebar shows `ThreadProfileChip` after the thread title:
+the profile's dot and name, or its id if the file is gone.
+
+**Response style.** Settings → Agents has a **Response style** card under
+Profiles: a select over the snapshot's styles (built-ins, then files marked
+yours or project), writing `style` to the user file, and a **Personal
+instructions** path field writing `personalInstructions`. **Output detail**
+stays in Agent defaults; its hint says a style replaces it.
+
+**Tools (MCP).** A Settings tab under Agents (`McpServersSettings.tsx`).
+Each configured server shows its name, Local command or HTTP, the file that
+defines it as a source chip, the command line or URL, and its state for the
+next direct conversation (`mcpStatusText`). With a project open the switch
+is **In <project>**, writing the project's local file; **Turn off
+everywhere** (or on) writes the user file, for a server defined there and
+not switched in the project. Without a project the switch is **On**. **Test**
+shows the tool count, the first twelve names and the time, or the error with
+what the server printed behind an expansion. Servers waiting for trust are
+listed in an open expansion. **Where these servers reach** is a collapsed
+table from `mcpDelivery`: per agent, local command and HTTP on direct, and
+Gateway threads, which never get them. The empty state shows an
+`mcpServers` example with `${env:NAME}`. The palette has **MCP servers**.
+
+A paired device sees all three read-only: the lists come with the config
+snapshot, and Test, the switches and profile files are write channels. A
+device with conversation control can start a thread from a profile.
+
+## Status line and automations
+
+**Status line.** `features/status-line/StatusLine.tsx` sits at the end of
+the composer's workspace strip (`.composer-context`), right-aligned and
+shrinking before the folder and branch controls. With `statusLine.items` it
+shows each chosen item with a value, separated by dots, with warn and
+critical tones for context and limits over 75% and 90% and a failing PR or
+run. With a command it shows the command's latest output for the thread:
+named ANSI colours map to the theme's red, green, yellow, blue and text
+tokens, `#rrggbb` is kept, and bold, dim, italic and underline apply. Under
+1000 px only the first line shows; the full text is the tooltip. A failed
+command dims the last line and adds "status line failed". Nothing shows
+when nothing is configured, so the default composer is unchanged.
+
+Settings → Appearance has a **Status line** card (`StatusLineSettings.tsx`):
+checkboxes for each item with up and down buttons to order the chosen ones,
+a preview drawn from sample values (or the live line when a command is
+set), the command and refresh fields with a Save button and a note that
+only the user file can set a command, and **What the command reads** behind
+an expansion. The palette has **Status line**.
+
+**Automations.** Settings → Automations (`features/automations/
+AutomationsSettings.tsx`, under Code in the nav) lists each automation:
+name, source chip, command if any, an On/Paused switch, **Run now**, the
+schedule in words, next run, Inbox for the user's own, the prompt in two
+lines, the last run with **Open thread**, a skipped note, and a **Missed
+while closed: N** notice with **Run now** and **Dismiss**. Above the list a
+template select with **Add to your settings** and **Add to <project>**, and
+**Open settings.json**. The empty state shows an example; automations
+waiting for trust are listed in an open expansion; **How automations run**
+is collapsed. The palette has **Automations** and **Run automation <name>**.
+
+In the sidebar, a thread an automation started shows `AutomationChip` under
+its title: a clock and "Automation", with "Automation: <name>" on hover.
+Until the desktop opens it, the row is bold with a dot.
+
+On a paired device the line, the list and the marks are visible; the
+switches, Run now, Dismiss, the templates and the status line fields are
+disabled, since each is a write channel.
+
+
+## Plugins
+
+Settings → Plugins (under Code, after Automations) and a **Plugins** tab in
+the skills library show the same panel (`features/plugins/PluginsPanel.tsx`):
+**Install from folder…**, **Install from zip…**, **Load folder for
+development…** and **Validate plugin folder…**, a Git address field with
+**Inspect**, then the installed list. Each row has the name, version, a
+**dev** tag for a development folder, the author, an On/Off switch (off and
+explained while the plugin has an error), the description, a "Needs …" line
+for missing required options, and **What it adds** behind an expansion: the
+plugin's problems, its contents, its options form with **Save options**,
+**Let this plugin approve requests** (only for a plugin with a
+PermissionRequest hook), **Open folder** and **Uninstall** (or **Remove**
+for a development folder, which leaves the folder). The empty state shows a
+minimal manifest.
+
+The install screen (`PluginInstallDialog.tsx`) is also the Validate result.
+It names the plugin, author and source (the path or address on one line,
+the full text on hover), the description, "Update from x to y" when it
+replaces one, the rights notice when anything in it runs, problems, and the
+contents: hooks with event, matcher and command line; commands with a
+"! runs shell" tag and each span; MCP servers with "starts a program" or
+"URL" and the line; the status line; themes with appearance and backdrop;
+profiles, styles and skills. A form for its options follows. The buttons
+are Cancel and the install verb, or Close in Validate and when it has
+errors. Closing discards the staged copy.
+
+Diagnostics' Customization card has **Validate plugin folder…** beside
+Reload. Its Recent runs show a run's stderr through `MessageBody`, or
+`DiffView` when `isUnifiedDiff` (`lib/run-output.ts`) says it is a patch. The palette has **Install plugin from folder**, **Install plugin from
+zip**, **Validate plugin folder**, **Load plugin from folder
+(development)**, **Turn on/off plugin <name>** and **Plugins**; the first four
+open Settings → Plugins and start there (`plugin-intent.ts`).
+
+On a paired device the list, contents and options are visible and every
+button and switch is disabled, since each is a write channel. Safe mode
+lists none.

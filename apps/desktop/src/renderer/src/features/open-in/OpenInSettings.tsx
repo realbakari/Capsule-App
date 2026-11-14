@@ -4,6 +4,7 @@ import { formatUserError } from "../../lib/errors";
 import { formatProjectRoot } from "../../lib/paths";
 import { useWorkspace } from "../../lib/workspace";
 import { PlusIcon, StarIcon } from "../shell/icons";
+import { SettingSource } from "../customization/SettingSource";
 import { AppIcon, useOpenInChord } from "./OpenInPicker";
 import { useOpenInCatalog } from "./useOpenIn";
 import "./open-in.css";
@@ -37,7 +38,7 @@ export function OpenInSettings() {
   if (api.isDesktop === false) return null;
   return (
     <div className="card open-in-settings">
-      <h3>Open in</h3>
+      <h3>Open in <SettingSource setting="openInFavorite" /></h3>
       <p className="muted">
         Apps that can open a project folder or file, as {state.catalog?.discovery === "manual" ? "you add them" : "the system reports them, plus any you add"}.
         Choosing one makes it the favourite, which {chord} opens the conversation’s folder in.

@@ -11,7 +11,7 @@ import { AlertTriangleIcon, DiffIcon, FileIcon, HistoryIcon, MessageSquarePlusIc
 import { RunElapsed } from "./RunElapsed";
 import { ThreadFind } from "./ThreadFind";
 import { PromptJump } from "./PromptJump";
-import { COMMANDS, chordSymbols, parseChord } from "../../lib/keybindings";
+import { shortcutLabel } from "../../lib/keybindings";
 import { detectUsageLimit, formatResetTime } from "@capsule/shared";
 import { useWorkspace } from "../../lib/workspace";
 import { useScopedState } from "../../lib/scoped-state";
@@ -36,6 +36,7 @@ import { outcomesByTurn } from "../../lib/turn-outcomes";
 import { threadFeedback } from "../../lib/thread-error";
 import { shouldFollowLatest } from "../../lib/composer-rest";
 import { ApprovalDetails, APPROVE_ONCE_UNAVAILABLE } from "../harness/ApprovalDetails";
+import { AlwaysAllow } from "../customization/AlwaysAllow";
 import { TurnOutcome } from "./TurnOutcome";
 import { TurnVerification } from "./TurnVerification";
 import { PlanHandoff } from "./PlanHandoff";
@@ -55,6 +56,8 @@ import { RestoreDialog, type RestoreTarget } from "./branching/RestoreDialog";
 import { RedoBanner } from "./branching/RedoBanner";
 import { BranchSwitcher } from "./branching/BranchSwitcher";
 import "./branching/branching.css";
+import { TrustNotice } from "../customization/TrustNotice";
+import { ConversationBackdrop } from "../appearance/ConversationBackdrop";
 
 /*
  * One message. Memoized because a streamed frame appends a message rather
@@ -261,6 +264,7 @@ export function Conversation() {
     createProjectFromFolder,
     pickProjectDirectory,
     settings,
+    keyBindings,
     openPath,
     terminalOpen,
     setDraft,
@@ -441,12 +445,7 @@ export function Conversation() {
     const timer = window.setTimeout(() => setFocusTurn((current) => current === focusTurn ? undefined : current), 1800);
     return () => window.clearTimeout(timer);
   }, [focusTurn]);
-  const jumpShortcut = useMemo(() => {
-    const command = COMMANDS.find((item) => item.id === "jump-to-prompt");
-    const saved = settings?.keybindings?.["jump-to-prompt"];
-    const override = saved ? parseChord(saved) : undefined;
-    return command ? chordSymbols(override ?? command.chord).join("") : undefined;
-  }, [settings?.keybindings]);
+  const jumpShortcut = useMemo(() => shortcutLabel("jump-to-prompt", keyBindings), [keyBindings]);
   /*
    * Edit from here: the conversation is cut at this prompt. The dialog says
    * what is lost and offers the file restore as a second choice rather than a
@@ -547,6 +546,7 @@ export function Conversation() {
 
   return (
     <section className={`main page-content${!historyPending && !historyError && visibleMessageCount === 0 ? " conversation-empty" : ""}`}>
+      <ConversationBackdrop />
       {shownNotice && (
         <div className="notice notice-dismissable" role="status">
           <span>{shownNotice}</span>
@@ -563,6 +563,7 @@ export function Conversation() {
       )}
       {api.isDesktop !== false && <QuoteSelection scroller={scroller} />}
       <TimelineRail scroller={scroller} turns={turns} layout={turnLayout} />
+      <TrustNotice />
       {threadFind && <ThreadFind messages={messages} onLocate={locateMessage} onClose={() => setThreadFind(false)} />}
       <div
         className="conversation"
@@ -841,14 +842,11 @@ export function Conversation() {
                 >
                   Approve once
                 </button>
-                <button
-                  className="chip"
-                  disabled={api.isDesktop === false || session?.openclawSessionKey?.startsWith("direct:")}
-                  title={api.isDesktop === false ? "Browser approvals are once-only." : session?.openclawSessionKey?.startsWith("direct:") ? "Direct agents support approval once here." : undefined}
-                  onClick={() => void api.resolveApproval(pendingApproval.id, "approved_session").catch((error) => setNotice(formatUserError(error)))}
-                >
-                  Approve session
-                </button>
+                <AlwaysAllow
+                  approval={pendingApproval}
+                  projectId={session?.projectId}
+                  thread={session?.openclawSessionKey?.startsWith("direct:") ? "Direct agents support approval once here." : true}
+                />
                 <button
                   className="ghost"
                   onClick={() => void api.resolveApproval(pendingApproval.id, "denied").catch((error) => setNotice(formatUserError(error)))}

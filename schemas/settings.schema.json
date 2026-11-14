@@ -1,0 +1,1155 @@
+{
+  "$id": "https://raw.githubusercontent.com/realbakari/Capsule-App/main/schemas/settings.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Capsule settings",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "gatewayUrl": {
+      "type": "string",
+      "format": "uri",
+      "description": "Address of the OpenClaw Gateway. User settings only."
+    },
+    "runtimeMode": {
+      "type": "string",
+      "enum": [
+        "auto",
+        "openclaw",
+        "direct"
+      ],
+      "description": "Who carries a coding turn: the Gateway, Capsule directly, or whichever is available. User settings only."
+    },
+    "launchAtLogin": {
+      "type": "boolean",
+      "description": "Open Capsule when you log in. User settings only."
+    },
+    "composerSendKey": {
+      "type": "string",
+      "enum": [
+        "enter",
+        "cmd-enter"
+      ],
+      "description": "Which key sends a prompt. User settings only."
+    },
+    "defaultMode": {
+      "type": "string",
+      "enum": [
+        "chat",
+        "agent",
+        "plan",
+        "code",
+        "research",
+        "browser",
+        "automation"
+      ],
+      "description": "Mode for new conversations."
+    },
+    "defaultWorkspaceMode": {
+      "type": "string",
+      "enum": [
+        "local",
+        "worktree"
+      ],
+      "description": "Where new conversations in a Git project run."
+    },
+    "defaultPermission": {
+      "type": "string",
+      "enum": [
+        "default",
+        "strict",
+        "approve-all"
+      ],
+      "description": "Permission profile for new conversations."
+    },
+    "defaultAgentId": {
+      "type": "string",
+      "description": "Agent for new conversations."
+    },
+    "projectlessFolder": {
+      "type": "string",
+      "description": "Folder for conversations started outside a project. User settings only."
+    },
+    "remoteAccess": {
+      "type": "string",
+      "enum": [
+        "off",
+        "loopback",
+        "network"
+      ],
+      "description": "Who may read this Capsule from another device. User settings only."
+    },
+    "analyticsEnabled": {
+      "type": "boolean",
+      "description": "Send anonymous usage reports. User settings only."
+    },
+    "appearanceTheme": {
+      "type": "string",
+      "enum": [
+        "system",
+        "dark",
+        "light"
+      ],
+      "description": "Light, dark, or follow the system. User settings only."
+    },
+    "appearanceLight": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "accent": {
+          "type": "string",
+          "pattern": "^#?[0-9A-Fa-f]{6}$"
+        },
+        "background": {
+          "type": "string",
+          "pattern": "^#?[0-9A-Fa-f]{6}$"
+        },
+        "foreground": {
+          "type": "string",
+          "pattern": "^#?[0-9A-Fa-f]{6}$"
+        },
+        "contrast": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "translucentSidebar": {
+          "type": "boolean"
+        },
+        "uiFont": {
+          "enum": [
+            "system",
+            "rounded",
+            "serif"
+          ]
+        },
+        "codeFont": {
+          "enum": [
+            "sf-mono",
+            "menlo",
+            "jetbrains"
+          ]
+        }
+      },
+      "description": "Colours and fonts for the light appearance. User settings only."
+    },
+    "appearanceDark": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "accent": {
+          "type": "string",
+          "pattern": "^#?[0-9A-Fa-f]{6}$"
+        },
+        "background": {
+          "type": "string",
+          "pattern": "^#?[0-9A-Fa-f]{6}$"
+        },
+        "foreground": {
+          "type": "string",
+          "pattern": "^#?[0-9A-Fa-f]{6}$"
+        },
+        "contrast": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "translucentSidebar": {
+          "type": "boolean"
+        },
+        "uiFont": {
+          "enum": [
+            "system",
+            "rounded",
+            "serif"
+          ]
+        },
+        "codeFont": {
+          "enum": [
+            "sf-mono",
+            "menlo",
+            "jetbrains"
+          ]
+        }
+      },
+      "description": "Colours and fonts for the dark appearance. User settings only."
+    },
+    "webAccess": {
+      "type": "string",
+      "enum": [
+        "off",
+        "ask",
+        "on"
+      ],
+      "description": "Whether agents may search and fetch the web."
+    },
+    "sandbox": {
+      "type": "string",
+      "enum": [
+        "off",
+        "ask",
+        "strict"
+      ],
+      "description": "How freely agents may run commands."
+    },
+    "outputDetail": {
+      "type": "string",
+      "enum": [
+        "concise",
+        "standard",
+        "verbose"
+      ],
+      "description": "How much an agent's replies include."
+    },
+    "reasoningSummary": {
+      "type": "string",
+      "enum": [
+        "hidden",
+        "collapsed",
+        "visible"
+      ],
+      "description": "How reasoning is shown in a turn."
+    },
+    "transcriptSize": {
+      "type": "string",
+      "enum": [
+        "s",
+        "m",
+        "l"
+      ],
+      "description": "Text size in conversations. User settings only."
+    },
+    "transcriptWidth": {
+      "type": "string",
+      "enum": [
+        "narrow",
+        "standard",
+        "wide"
+      ],
+      "description": "Width of the conversation column. User settings only."
+    },
+    "customCodeFont": {
+      "type": "string",
+      "maxLength": 80,
+      "description": "A font family put first in the code font stack. User settings only."
+    },
+    "notifyRunComplete": {
+      "type": "boolean",
+      "description": "Notify when a turn finishes. User settings only."
+    },
+    "notifyApprovals": {
+      "type": "boolean",
+      "description": "Notify when an agent asks for approval. User settings only."
+    },
+    "agentSimulatorAccess": {
+      "type": "boolean",
+      "description": "Let direct agents use a simulator attached in the thread's panel. User settings only."
+    },
+    "autoResumeOnLimit": {
+      "type": "boolean",
+      "description": "Resume a turn stopped by a usage limit when the limit resets. User settings only."
+    },
+    "bounceDockOnAttention": {
+      "type": "boolean",
+      "description": "Bounce the Dock icon when a conversation needs you. User settings only."
+    },
+    "showMenuBarExtra": {
+      "type": "boolean",
+      "description": "Show Capsule in the menu bar. User settings only."
+    },
+    "keepAwakeWhileRunning": {
+      "type": "boolean",
+      "description": "Keep the Mac awake while a turn runs. User settings only."
+    },
+    "autoDownloadUpdates": {
+      "type": "boolean",
+      "description": "Download updates in the background. User settings only."
+    },
+    "autoClassifySessions": {
+      "type": "boolean",
+      "description": "Mark conversations as blocked or done from their last turn. User settings only."
+    },
+    "archiveInactiveAfter": {
+      "type": "string",
+      "enum": [
+        "never",
+        "1d",
+        "7d",
+        "30d"
+      ],
+      "description": "Archive conversations left alone this long. User settings only."
+    },
+    "branchPrefix": {
+      "type": "string",
+      "description": "Prefix for branches Capsule creates."
+    },
+    "worktreesDirectory": {
+      "type": "string",
+      "description": "Folder for new worktrees. Empty uses Capsule's own. User settings only."
+    },
+    "gitForceWithLease": {
+      "type": "boolean",
+      "description": "Ask agents to push with --force-with-lease."
+    },
+    "prDraft": {
+      "type": "boolean",
+      "description": "Ask agents to open pull requests as drafts."
+    },
+    "prMergeMethod": {
+      "type": "string",
+      "enum": [
+        "merge",
+        "squash",
+        "rebase"
+      ],
+      "description": "How pull requests are merged."
+    },
+    "prReviewDelivery": {
+      "type": "string",
+      "enum": [
+        "current",
+        "new-chat"
+      ],
+      "description": "Where a pull request review lands."
+    },
+    "prWatchAndFix": {
+      "type": "boolean",
+      "description": "Watch an open pull request and fix failing checks."
+    },
+    "prAutoMerge": {
+      "type": "boolean",
+      "description": "Merge a watched pull request when it is green."
+    },
+    "prWatchUntilMerged": {
+      "type": "boolean",
+      "description": "Keep watching a pull request until it merges."
+    },
+    "commitInstructions": {
+      "type": "string",
+      "maxLength": 2000,
+      "description": "Guidance for commit messages, sent to agents."
+    },
+    "prInstructions": {
+      "type": "string",
+      "maxLength": 2000,
+      "description": "Guidance for pull request titles and descriptions."
+    },
+    "keybindings": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Superseded by keybindings.json. Read once and moved there. User settings only."
+    },
+    "timeFormat": {
+      "type": "string",
+      "enum": [
+        "system",
+        "12h",
+        "24h"
+      ],
+      "description": "Clock style for message times. User settings only."
+    },
+    "confirmDelete": {
+      "type": "boolean",
+      "description": "Ask before deleting a conversation or project. User settings only."
+    },
+    "confirmArchive": {
+      "type": "boolean",
+      "description": "Ask before archiving a conversation. User settings only."
+    },
+    "toolCallDisplay": {
+      "type": "string",
+      "enum": [
+        "compact",
+        "expanded"
+      ],
+      "description": "How a turn's tool calls first appear."
+    },
+    "followUpBehavior": {
+      "type": "string",
+      "enum": [
+        "queue",
+        "steer"
+      ],
+      "description": "What sending during a running turn does. User settings only."
+    },
+    "diffLayout": {
+      "type": "string",
+      "enum": [
+        "split",
+        "unified"
+      ],
+      "description": "Diff layout."
+    },
+    "diffFileState": {
+      "type": "string",
+      "enum": [
+        "expanded",
+        "collapsed"
+      ],
+      "description": "Whether files in a diff start open."
+    },
+    "diffIgnoreWhitespace": {
+      "type": "boolean",
+      "description": "Review starts with whitespace-only changes hidden."
+    },
+    "notifyLongCommands": {
+      "type": "boolean",
+      "description": "Notify when a command an agent ran without asking runs long. User settings only."
+    },
+    "longCommandSeconds": {
+      "type": "number",
+      "enum": [
+        10,
+        30,
+        60,
+        120,
+        300
+      ],
+      "description": "Seconds before a command counts as running long. User settings only."
+    },
+    "dockBadge": {
+      "type": "boolean",
+      "description": "Count conversations waiting on you on the Dock icon. User settings only."
+    },
+    "notificationSound": {
+      "type": "boolean",
+      "description": "Play the system sound with notifications. User settings only."
+    },
+    "continueAfterRestart": {
+      "type": "boolean",
+      "description": "After a quit or crash mid-turn, send that turn's prompt again. User settings only."
+    },
+    "followAgent": {
+      "type": "boolean",
+      "description": "While a turn runs, Files previews the file the agent is reading or editing. User settings only."
+    },
+    "autoSettleMerged": {
+      "type": "boolean",
+      "description": "Settle a conversation once the pull request it watches merges."
+    },
+    "startInPlanMode": {
+      "type": "boolean",
+      "description": "New conversations begin in Plan."
+    },
+    "modeModels": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "plan": {
+            "type": "string"
+          },
+          "act": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Per agent, the model a switch to Plan or Act selects."
+    },
+    "favoriteModels": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Starred models, as JSON [agent, model] keys, in the order they were starred. User settings only."
+    },
+    "composerPrompts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "prompt"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Your saved prompts for the composer's / menu. User settings only."
+    },
+    "openInApps": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Apps you added to Open in, by location on disk. User settings only."
+    },
+    "openInHidden": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Apps you removed from Open in. User settings only."
+    },
+    "openInFavorite": {
+      "type": "string",
+      "description": "The app Open in uses first. User settings only."
+    },
+    "agentTaskAutoStart": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Projects whose agents may start the board tasks they create. User settings only."
+    },
+    "permissions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "allow": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z]+(\\(.*\\))?$"
+          }
+        },
+        "ask": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z]+(\\(.*\\))?$"
+          }
+        },
+        "deny": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z]+(\\(.*\\))?$"
+          }
+        }
+      },
+      "description": "Rules that answer agents' permission requests. deny wins over ask, ask over allow."
+    },
+    "hooks": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "PromptSubmit": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "hooks"
+            ],
+            "properties": {
+              "matcher": {
+                "type": "string"
+              },
+              "hooks": {
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "type",
+                        "command"
+                      ],
+                      "properties": {
+                        "type": {
+                          "const": "command"
+                        },
+                        "command": {
+                          "type": "string"
+                        },
+                        "timeout": {
+                          "type": "number",
+                          "minimum": 1
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "type",
+                        "url"
+                      ],
+                      "properties": {
+                        "type": {
+                          "const": "http"
+                        },
+                        "url": {
+                          "type": "string",
+                          "format": "uri"
+                        },
+                        "headers": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "string"
+                          }
+                        },
+                        "timeout": {
+                          "type": "number",
+                          "minimum": 1
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "PermissionRequest": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "hooks"
+            ],
+            "properties": {
+              "matcher": {
+                "type": "string"
+              },
+              "hooks": {
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "type",
+                        "command"
+                      ],
+                      "properties": {
+                        "type": {
+                          "const": "command"
+                        },
+                        "command": {
+                          "type": "string"
+                        },
+                        "timeout": {
+                          "type": "number",
+                          "minimum": 1
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "type",
+                        "url"
+                      ],
+                      "properties": {
+                        "type": {
+                          "const": "http"
+                        },
+                        "url": {
+                          "type": "string",
+                          "format": "uri"
+                        },
+                        "headers": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "string"
+                          }
+                        },
+                        "timeout": {
+                          "type": "number",
+                          "minimum": 1
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "ToolCall": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "hooks"
+            ],
+            "properties": {
+              "matcher": {
+                "type": "string"
+              },
+              "hooks": {
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "type",
+                        "command"
+                      ],
+                      "properties": {
+                        "type": {
+                          "const": "command"
+                        },
+                        "command": {
+                          "type": "string"
+                        },
+                        "timeout": {
+                          "type": "number",
+                          "minimum": 1
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "type",
+                        "url"
+                      ],
+                      "properties": {
+                        "type": {
+                          "const": "http"
+                        },
+                        "url": {
+                          "type": "string",
+                          "format": "uri"
+                        },
+                        "headers": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "string"
+                          }
+                        },
+                        "timeout": {
+                          "type": "number",
+                          "minimum": 1
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "TurnEnd": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "hooks"
+            ],
+            "properties": {
+              "matcher": {
+                "type": "string"
+              },
+              "hooks": {
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "type",
+                        "command"
+                      ],
+                      "properties": {
+                        "type": {
+                          "const": "command"
+                        },
+                        "command": {
+                          "type": "string"
+                        },
+                        "timeout": {
+                          "type": "number",
+                          "minimum": 1
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "type",
+                        "url"
+                      ],
+                      "properties": {
+                        "type": {
+                          "const": "http"
+                        },
+                        "url": {
+                          "type": "string",
+                          "format": "uri"
+                        },
+                        "headers": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "string"
+                          }
+                        },
+                        "timeout": {
+                          "type": "number",
+                          "minimum": 1
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "description": "Commands Capsule runs at PromptSubmit, PermissionRequest, ToolCall and TurnEnd."
+    },
+    "disableAllHooks": {
+      "type": "boolean",
+      "description": "Turn every hook off without deleting it."
+    },
+    "mcpServers": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "env": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "cwd": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "projects": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "description": "MCP servers offered to every direct conversation."
+    },
+    "statusLine": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "branch",
+              "changes",
+              "context",
+              "limits",
+              "pr",
+              "model",
+              "harness",
+              "run",
+              "cost"
+            ]
+          }
+        },
+        "command": {
+          "type": "string"
+        },
+        "refreshInterval": {
+          "type": "number",
+          "minimum": 1
+        }
+      },
+      "description": "What the status line under the composer shows."
+    },
+    "theme": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "light": {
+          "type": "string"
+        },
+        "dark": {
+          "type": "string"
+        },
+        "backdrop": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "What the conversation column draws behind the transcript and composer.",
+          "properties": {
+            "scene": {
+              "enum": [
+                "grain",
+                "mesh",
+                "night",
+                "dots",
+                "paper",
+                "none"
+              ]
+            },
+            "image": {
+              "type": "string",
+              "maxLength": 1024,
+              "description": "A png, jpg, webp or gif file, relative to the theme file or the settings folder. Never a URL."
+            },
+            "fit": {
+              "enum": [
+                "cover",
+                "contain",
+                "tile"
+              ]
+            },
+            "opacity": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "blur": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 40
+            },
+            "dim": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "light": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "scene": {
+                  "enum": [
+                    "grain",
+                    "mesh",
+                    "night",
+                    "dots",
+                    "paper",
+                    "none"
+                  ]
+                },
+                "image": {
+                  "type": "string",
+                  "maxLength": 1024,
+                  "description": "A png, jpg, webp or gif file, relative to the theme file or the settings folder. Never a URL."
+                },
+                "fit": {
+                  "enum": [
+                    "cover",
+                    "contain",
+                    "tile"
+                  ]
+                },
+                "opacity": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "blur": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 40
+                },
+                "dim": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              }
+            },
+            "dark": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "scene": {
+                  "enum": [
+                    "grain",
+                    "mesh",
+                    "night",
+                    "dots",
+                    "paper",
+                    "none"
+                  ]
+                },
+                "image": {
+                  "type": "string",
+                  "maxLength": 1024,
+                  "description": "A png, jpg, webp or gif file, relative to the theme file or the settings folder. Never a URL."
+                },
+                "fit": {
+                  "enum": [
+                    "cover",
+                    "contain",
+                    "tile"
+                  ]
+                },
+                "opacity": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "blur": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 40
+                },
+                "dim": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              }
+            }
+          }
+        }
+      },
+      "description": "Theme ids for the light and dark appearances, and a backdrop that overrides the theme's. User settings only."
+    },
+    "themeOverrides": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      },
+      "description": "Token values that patch a theme, keyed by theme id. User settings only."
+    },
+    "automations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "schedule"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]*$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "schedule": {
+            "type": "string",
+            "pattern": "^RRULE:"
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "command": {
+            "type": "string"
+          },
+          "profile": {
+            "type": "string"
+          },
+          "workspace": {
+            "enum": [
+              "local",
+              "worktree"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        }
+      },
+      "description": "Prompts or commands Capsule runs on a schedule. Results land in the Inbox."
+    },
+    "commandSources": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "claude-commands": {
+          "type": "boolean"
+        },
+        "claude-skills": {
+          "type": "boolean"
+        },
+        "codex-prompts": {
+          "type": "boolean"
+        }
+      },
+      "description": "Other tools' command and skill folders, read as Markdown only. User settings only."
+    },
+    "plugins": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "mayApprove": {
+            "type": "boolean"
+          },
+          "path": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Installed plugins: whether each is on, whether its hooks may approve requests, and folders loaded for development. User settings only."
+    },
+    "style": {
+      "type": "string",
+      "description": "Response style id sent with the first turn of each conversation."
+    },
+    "personalInstructions": {
+      "type": "string",
+      "description": "A Markdown file of standing instructions sent to every agent. User settings only."
+    },
+    "openWith": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "command"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "command": {
+            "type": "string"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "description": "Your own Open with entries for files. User settings only."
+    }
+  }
+}

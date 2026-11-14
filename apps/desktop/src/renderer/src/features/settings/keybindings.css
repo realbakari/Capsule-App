@@ -1,0 +1,78 @@
+/* Settings → Shortcuts, the shortcuts sheet's chords, and the sequence hint. */
+.shortcut-chord { display: inline-flex; gap: 0.2rem; }
+.shortcut-chord + .shortcut-chord { margin-left: 0.35rem; }
+.shortcut-binding + .shortcut-binding { margin-left: 0.6rem; }
+.shortcut-context {
+  margin-left: 0.45rem;
+  padding: 0 0.35rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xs);
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+}
+.keybindings-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; }
+.keybindings-head .ghost { flex-shrink: 0; }
+.keybindings-search { display: flex; align-items: center; gap: 0.45rem; margin: 0.75rem 0 0.5rem; }
+.keybindings-search > :first-child { flex: 1; min-width: 0; }
+.keybindings-keysearch {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: var(--control-h-md);
+  cursor: text;
+}
+.keybindings-keysearch.capturing { box-shadow: 0 0 0 var(--ring-width) var(--ring); }
+.keybindings-keysearch kbd,
+.shortcut-keys kbd,
+.chord-hint kbd {
+  min-width: 1.35rem;
+  padding: 0 0.3rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xs);
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+  font: inherit;
+  font-size: var(--text-xs);
+  text-align: center;
+  color: var(--text-muted);
+}
+.keybindings-conflicts {
+  margin: 0.25rem 0 0.6rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid color-mix(in srgb, var(--yellow) 45%, var(--border-color));
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.keybindings-conflicts strong { color: var(--text); font-weight: var(--weight-semibold); }
+.keybindings-conflicts ul { margin: 0.3rem 0 0; padding-left: 1.1rem; display: grid; gap: 0.15rem; }
+.keybindings-empty { margin: 0.75rem 0; font-size: var(--text-ui); }
+.keybindings-add { margin-top: 0.6rem; }
+.keybindings-add-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.45rem; margin-top: 0.6rem; }
+.keybindings-add-row select { flex: 1 1 10rem; min-width: 0; }
+.keybindings-note { margin: 0.6rem 0 0; font-size: var(--text-xs); }
+.chord-hint {
+  position: fixed;
+  left: 50%;
+  bottom: 1.25rem;
+  z-index: var(--z-palette);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.7rem;
+  transform: translateX(-50%);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-full);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-raised);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+.shortcut-row .shortcut-unbind { opacity: 0; transition: opacity var(--motion-fast) var(--motion-ease); }
+.shortcut-row:hover .shortcut-unbind,
+.shortcut-row:focus-within .shortcut-unbind { opacity: 1; }
+.shortcut-binding.is-dead kbd { text-decoration: line-through; color: var(--text-faint); }
+/* A sequence is four keys wide, so the sheet makes room and its columns may shrink their labels. */
+.shortcuts-sheet { width: min(46rem, calc(100vw - 2rem)); }
+.shortcuts-sheet .shortcuts-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 52rem) { .shortcuts-sheet .shortcuts-list { grid-template-columns: minmax(0, 1fr); } }

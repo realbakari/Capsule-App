@@ -1,4 +1,5 @@
 import type { AcpConfigOption } from "./harness.js";
+import type { PermissionSubject } from "./permission-rules.js";
 
 /** Agent-reported facts. Reporting a feature never grants permission to use it. */
 export interface AgentCapabilityReport {
@@ -39,6 +40,8 @@ export interface ApprovalToolDetails {
   canApproveOnce: boolean;
   /** Set when the request is a question with choices rather than a permission. */
   questions?: import("./agent-question.js").AgentQuestion[];
+  /** The request in permission-rule terms, read from the full tool call before any preview was clipped. */
+  subject?: PermissionSubject;
 }
 
 const object = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
