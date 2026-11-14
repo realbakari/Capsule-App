@@ -886,6 +886,8 @@ function stopTerminalsIn(folder: string): number {
     const resolved = path.resolve(cwd);
     if (resolved !== root && !resolved.startsWith(root + path.sep)) continue;
     stopTerminal(id);
+    // stopTerminal drops the output flow, so its exit is never announced; the dock still needs to hear it.
+    send(IPC_EVENTS.terminalExit, { id, code: -1, error: "Stopped because its conversation was paused." });
     stopped += 1;
   }
   return stopped;
