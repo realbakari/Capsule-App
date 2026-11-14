@@ -141,9 +141,11 @@ Revoking a link takes effect at once. A browser that has it open loses access
 straight away, its next request is refused, and it shows that the link expired
 or was revoked. Deleting the conversation revokes its links too.
 
-A link points at this computer's current address. If Capsule starts on a
-different address, for example after a restart without a fixed port, older
-links stop loading; create a new one.
+A link points at this computer's address. Capsule reuses the same port each
+time it starts, so links keep working after a restart. If another app has taken
+that port in the meantime, Capsule picks a new one and older links stop
+loading; create a new one. Links made while reachable on your network also stop
+loading when this computer's network address changes.
 
 ## Seeing who is viewing
 

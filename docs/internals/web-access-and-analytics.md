@@ -78,7 +78,11 @@ Proxy that origin's `/`, `/pair`, and WebSocket `/rpc` to
 or the upstream Host. Use a valid TLS certificate. Do not bind the upstream
 listener to the LAN. Do not log pairing request bodies or WebSocket frames.
 The URL must be an HTTPS origin with no path, query or credentials. Port is
-optional (ephemeral by default); a proxy needs a stable configured port.
+optional. Without it the listener asks for the port it used last time, kept in
+`state/remote-port` under the user data folder, and takes an ephemeral one only
+when that port is busy (then remembers the new one). Share links depend on this:
+their grants survive a restart in the database, and the URL carries the port. A
+proxy still needs the configured port, which is never overwritten.
 Environment changes require restarting the host.
 
 The server does not trust forwarded-protocol headers. It requires the configured

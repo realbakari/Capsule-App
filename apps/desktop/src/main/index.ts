@@ -99,6 +99,7 @@ import { popupContextMenu } from "./popup-menu";
 import { remoteReachFromArgs } from "./remote-args";
 import { RemoteAccessLifecycle } from "./remote-access";
 import { registerShareHandlers, remoteShareOptions, type ShareContext } from "./share-ipc";
+import { startOnRememberedPort } from "./remote-port";
 import {
   DEFAULT_WINDOW_SIZE,
   isHexColor,
@@ -1007,15 +1008,19 @@ async function applyDesktopSettings(settings?: CapsuleSettings): Promise<void> {
  * a shell.
  */
 const remoteAccess = new RemoteAccessLifecycle<RemoteServerHandle>(
-  (reach) => startRemoteServer({
-    serveDir: path.join(__dirname, "../renderer"), reach,
-    publicUrl: process.env.CAPSULE_REMOTE_PUBLIC_URL,
-    port: remotePort(process.env.CAPSULE_REMOTE_PORT),
-    invoke: (channel, args) => forwardToHandler(channel, remoteControlArgs(channel, args)),
-    subscribe: (emit) => subscribeRemote(emit),
-    onChange: () => send(IPC_EVENTS.state, { command: "remote-updated" }),
-    ...remoteShareOptions(shareContext),
-  }),
+  (reach) => {
+    const start = (port: number | undefined) => startRemoteServer({
+      serveDir: path.join(__dirname, "../renderer"), reach,
+      publicUrl: process.env.CAPSULE_REMOTE_PUBLIC_URL,
+      port,
+      invoke: (channel, args) => forwardToHandler(channel, remoteControlArgs(channel, args)),
+      subscribe: (emit) => subscribeRemote(emit),
+      onChange: () => send(IPC_EVENTS.state, { command: "remote-updated" }),
+      ...remoteShareOptions(shareContext),
+    });
+    const fixed = remotePort(process.env.CAPSULE_REMOTE_PORT);
+    return fixed ? start(fixed) : startOnRememberedPort(path.join(app.getPath("userData"), "state", "remote-port"), start);
+  },
   () => send(IPC_EVENTS.state, { command: "remote-updated" }),
 );
 
