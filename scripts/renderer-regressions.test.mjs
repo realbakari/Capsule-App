@@ -6,7 +6,7 @@ import { build } from "esbuild";
 import { expect, it } from "vitest";
 import { resolveElectronBinary } from "./electron-path.mjs";
 
-it("keeps renderer interactions recoverable and companion motion accessible", { timeout: 90_000 }, async () => {
+it("keeps renderer interactions recoverable and companion motion accessible", { timeout: 180_000 }, async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "capsule-renderer-regressions-"));
   try {
     const bundle = await build({
@@ -35,9 +35,10 @@ it("keeps renderer interactions recoverable and companion motion accessible", { 
       // belongs to this test and uses its disposable profile.
       // This runs all interaction, theme and narrow-screen suites. Hosted
       // runners can spend 37 seconds on interactions alone; leave room for
-      // the remaining layout matrix. Individual DOM waits still fail in
+      // the remaining layout matrix, now with the board, Review hunk and
+      // composer context phases. Individual DOM waits still fail in
       // 3–4 seconds, and phase markers identify a stalled section.
-      const timer = setTimeout(() => { child.kill("SIGKILL"); }, 75_000);
+      const timer = setTimeout(() => { child.kill("SIGKILL"); }, 150_000);
       child.on("error", (error) => { clearTimeout(timer); reject(error); });
       child.on("exit", (code, signal) => { clearTimeout(timer); resolve({ code, output: `${output}\nExit signal: ${signal ?? "none"}` }); });
     });
