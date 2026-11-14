@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -118,4 +119,26 @@ it("lists commands for the menu and expands one for review without sending it", 
   expect(f.engine.listCommands(f.project.id).commands[0]?.shell).toBe("runs");
   await expect(f.engine.expandCommand({ projectId: f.project.id, text: "/draft caching" })).resolves.toEqual({ text: "Notes on caching: ok", attachments: [], problems: [] });
   await expect(f.engine.expandCommand({ projectId: f.project.id, text: "/nothing" })).rejects.toThrow("/nothing is not a Capsule command.");
+});
+
+/*
+ * A command's worktree can be asked for from a paired device, a queue or a
+ * channel, in a folder nobody trusted. What it may start is the setup
+ * actions saved in Capsule, which are the person's own; the repository's
+ * capsule.json setup actions must not run from here.
+ */
+it("starts a command's worktree in an untrusted folder running only the person's saved setup actions", async () => {
+  const f = await fixture();
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: f.root, encoding: "utf8" });
+  git("init", "-q");
+  git("config", "user.email", "capsule@example.test");
+  git("config", "user.name", "Capsule Test");
+  writeFileSync(path.join(f.root, "capsule.json"), JSON.stringify({ actions: [{ name: "Install", command: "pwd", runOnWorktreeCreate: true }] }));
+  git("add", ".");
+  git("commit", "-qm", "initial");
+  f.engine.updateProject(f.project.id, { actions: [{ id: "setup", name: "Setup", command: "pwd", runOnWorktreeCreate: true }] });
+  f.user("wt.md", "---\nworkspace: worktree\n---\nStart fresh.");
+  const started = await f.send("/wt");
+  expect(f.engine.listSessions().find((item) => item.id === started.session.id)?.workspaceMode).toBe("worktree");
+  expect(f.engine.listProjectActionRuns(f.project.id, started.session.id).map((run) => run.actionId)).toEqual(["setup"]);
 });
