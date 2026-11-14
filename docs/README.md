@@ -22,6 +22,7 @@ need the shipped-product voice.
 - [capsule.json — project config in the repository](./user/project-file.md)
 - [Providers and credentials](./user/providers.md)
 - [Reading from another device](./user/reading-from-another-device.md)
+- [Exporting a conversation](./user/exporting-conversations.md)
 - [Optional usage reports](./user/usage-reports.md)
 - [Shared channels](./user/channels.md)
 - [Updating](./user/updating.md)

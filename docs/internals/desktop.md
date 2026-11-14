@@ -2112,3 +2112,45 @@ and the chips read that table rather than keeping their own lists.
   palette entry is disabled. The three new channels are writes, so read and
   control peers cannot call them. Templates and `/init` are plain prompts and
   stay available to a control peer.
+
+## Export, share links and presence
+
+- **Export.** The thread menu (title bar and sidebar row) has **Export as
+  Markdown…**, **Copy as Markdown** and **Share read-only link…**; the palette
+  has the same three. Export opens a dialog with two checkboxes (tool activity,
+  changed files; off by default and remembered in local storage) and **Copy** /
+  **Save as…**. Save goes through main's save dialog (`exportThreadMarkdown`),
+  defaulting to the thread title in Documents. Copy uses `threadMarkdown` and
+  the clipboard, falling back to the copy command on a non-secure browser
+  origin. A result toast sits bottom-centre.
+- **Formatter.** `threadExportMarkdown` in `@capsule/shared/thread-markdown.ts`:
+  title, header list (agent, model, project, UTC start, turn count), `## Turn N`
+  with the prompt quoted, final reply verbatim, steers as quotes, attachment
+  names only, failed or stopped turns noted, a run result used when no reply
+  message carries it. Tool activity is a `<details>` list; changed files come
+  from `turnDiff(summaryOnly)`. It keeps the same messages as the composer's
+  `threadToMarkdown` (`finalMessages`), which stays the budget-capped version
+  written for an agent.
+- **Share dialog.** Lede naming what the link exposes, the current reach in
+  one line, an expiry pill group (1 hour, 1 day, 7 days, Never; default 1 day),
+  **Create link** (copies and shows the URL once with **Copy link**), and the
+  thread's active links with **Revoke**. With browser access off it shows a
+  notice with **Turn on for this computer** (sets reach to loopback) and a
+  link to settings, and no Create button.
+- **Settings › Gateway › Browser access** gains **Connected now** (device,
+  thread it is viewing, since) and **Share links** (thread, expiry, Revoke)
+  under the paired devices.
+- **Presence.** A pill after the thread name in the title bar: "Also open on
+  iPhone", "Open from a share link" or "N viewers", with each device and its
+  connect time in the tooltip. Hidden when no remote device is on the thread,
+  and on paired browsers. Below 760px only the icon shows.
+- **Share-link viewer.** `#share=` opens the normal renderer over the socket
+  with `remoteMode: "share"`; the banner reads "Shared conversation · Read
+  only" with no Disconnect, and the composer is read-only. The server
+  allowlist is the boundary; the renderer hides nothing for safety.
+- **Routes and harnesses.** Export and sharing read Capsule's own records, so
+  they behave the same for Gateway and direct threads and for every harness.
+- **Remote viewer.** Export to file and share links are desktop-only entries
+  (disabled in the palette, absent from menus). Copy as Markdown works for
+  paired and share-link viewers.
+
