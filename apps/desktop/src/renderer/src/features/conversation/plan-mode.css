@@ -26,6 +26,11 @@
 .turn-mode-chip.is-plan.is-asked { border-style: dashed; }
 .turn-mode-chip[aria-disabled="true"] { opacity: 0.5; cursor: default; }
 .turn-mode-chip[aria-disabled="true"]:hover { background: transparent; color: var(--text-muted); }
+/* On a narrow composer the chip keeps its icon, like the approvals chip; Plan or Act moves to its tooltip. */
+@container composer (max-width: 28rem) {
+  .turn-mode-chip { padding: 0 0.35rem; }
+  .turn-mode-chip > span { display: none; }
+}
 
 /* Act on this plan / Keep planning, under the latest plan turn and in the task list. */
 .plan-handoff {
