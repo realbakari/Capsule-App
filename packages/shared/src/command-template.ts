@@ -110,7 +110,7 @@ export function parseCommandFile(name: string, text: string, options: { ignoreUn
   return { command: Object.fromEntries(defined) as unknown as CommandTemplate, problems };
 }
 
-function splitFrontmatter(
+export function splitFrontmatter(
   text: string,
   problems: string[],
 ): { fields: Map<string, { value: FrontmatterValue; line: number }>; body: string } {
