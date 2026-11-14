@@ -7,7 +7,7 @@
 }
 .thread-pr.open { color: var(--green); }
 .thread-pr.failing { color: var(--red); }
-.thread-pr.merged { color: var(--blue); }
+.thread-pr.merged { color: var(--markdown-note); }
 .thread-pr.draft,
 .thread-pr.closed { color: var(--text-faint); }
 .thread-status.paused { color: var(--text-muted); }
