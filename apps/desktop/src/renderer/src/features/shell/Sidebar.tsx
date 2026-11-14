@@ -66,8 +66,11 @@ import {
   SparkIcon,
   ChevronDownIcon,
   ChevronRightIcon,
+  CompareIcon,
   XIcon,
 } from "./icons";
+import { comparisonStatus, foldComparisons, type SidebarEntry } from "../../lib/best-of-n";
+import { useBestOfN } from "../best-of-n/BestOfN";
 
 /*
  * The footer rail, not a full navigation. Seven unlabelled glyphs in a 264px
@@ -151,6 +154,8 @@ export function Sidebar() {
   } = useWorkspace();
   const share = useThreadShare();
   const [menu, setMenu] = useState<MenuState>();
+  const bestOfN = useBestOfN();
+  const [openComparisons, setOpenComparisons] = useState<Set<string>>(new Set());
   const sidebarRef = useRef<HTMLElement>(null);
   const focusedInside = useRef(false);
   useLayoutEffect(() => {
@@ -569,6 +574,60 @@ export function Sidebar() {
   }
 
   /*
+   * A comparison is one row: its prompt, its agents and where it stands, with
+   * Compare beside it. Its candidates open under it, and it starts open when
+   * the thread on screen is one of them.
+   */
+  function renderEntry(entry: SidebarEntry) {
+    if (entry.kind === "thread") return renderThread(entry.session);
+    const { group, sessions: members } = entry;
+    const holdsActive = members.some((member) => member.id === sessionId);
+    const expanded = openComparisons.has(group.id) !== holdsActive;
+    const toggle = () => setOpenComparisons((current) => {
+      const next = new Set(current);
+      if (next.has(group.id)) next.delete(group.id);
+      else next.add(group.id);
+      return next;
+    });
+    const agentName = (member: Session) => (harnesses ?? []).find((item) => item.id === member.harnessId)?.name ?? member.harnessId ?? "agent";
+    const status = comparisonStatus(group, members, latestRuns, agentName);
+    const prompt = group.prompt.split("\n").find((line) => line.trim())?.trim() || "Comparison";
+    return (
+      <div key={`group-${group.id}`} className="thread-group" role="group" aria-label={`Comparison: ${prompt}`}>
+        <div
+          role="button"
+          tabIndex={0}
+          className={`thread-row thread-group-row${holdsActive && !expanded ? " active" : ""}`}
+          aria-expanded={expanded}
+          aria-label={`${prompt}, ${status}`}
+          onClick={toggle}
+          onKeyDown={(event) => {
+            if (event.target !== event.currentTarget) return;
+            if (event.key === "Enter" || event.key === " ") { event.preventDefault(); toggle(); }
+          }}
+        >
+          <span className="row-slot" aria-hidden />
+          <span className="row-slot" aria-hidden>{expanded ? <ChevronDownIcon size={11} /> : <ChevronRightIcon size={11} />}</span>
+          <span className="thread-title">
+            <span className="truncate">{prompt}</span>
+            <small className="thread-group-status">{status}</small>
+          </span>
+          <span className="thread-meta">
+            <span className="thread-group-agents" aria-hidden>
+              {members.slice(0, 4).map((member) => <AgentGlyph key={member.id} id={member.harnessId} name={agentName(member)} size={11} />)}
+            </span>
+          </span>
+          <span className="thread-quick-actions">
+            <button type="button" className="thread-quick-action" aria-label="Compare candidates" title="Compare candidates"
+              onClick={(event) => { event.stopPropagation(); bestOfN.openCompare(group); }}><CompareIcon size={13} /></button>
+          </span>
+        </div>
+        {expanded && <div className="thread-group-members">{members.map((member) => renderThread(member))}</div>}
+      </div>
+    );
+  }
+
+  /*
    * Settings takes over the sidebar rather than opening a second nav column
    * inside the panel. Ten sections is more than anyone keeps in their head, so
    * the nav doubles as a way in by name, and a result names the section it
@@ -886,9 +945,7 @@ export function Sidebar() {
                   ) : (
                     <>
                       {groups.pinned.length > 0 && <div className="session-label">Pinned</div>}
-                      {groups.pinned.map((session) => renderThread(session))}
-                      {groups.live.map((session) => renderThread(session))}
-                      {groups.rest.map((session) => renderThread(session))}
+                      {foldComparisons([groups.pinned, groups.live, groups.rest], bestOfN.groups, threads).map((entries) => entries.map(renderEntry))}
                       {groups.hidden > 0 && (
                         <button
                           type="button"
