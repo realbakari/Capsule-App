@@ -96,6 +96,8 @@ describe("the catalog against the panels", () => {
     "RuntimeModeCard.tsx",
     "../customization/ProfilesCard.tsx",
     "../customization/McpServersSettings.tsx",
+    "../automations/AutomationsSettings.tsx",
+    "../status-line/StatusLineSettings.tsx",
   ]
     .map((name) => {
       const path = new URL(`./${name}`, import.meta.url);

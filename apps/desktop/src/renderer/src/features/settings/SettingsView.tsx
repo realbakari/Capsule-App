@@ -30,11 +30,13 @@ import {
 import { AboutCard } from "./AboutModal";
 import { CommandsCard } from "./CommandsCard";
 import { McpServersSettings } from "../customization/McpServersSettings";
+import { AutomationsSettings } from "../automations/AutomationsSettings";
+import { StatusLineSettings } from "../status-line/StatusLineSettings";
 import { ProfilesCard, ResponseStyleCard } from "../customization/ProfilesCard";
 import { RemoteAccessSettings } from "./RemoteAccessSettings";
 import { AnalyticsSettings } from "./AnalyticsSettings";
 import { SettingRow, Switch } from "./controls";
-import { ChartIcon, CpuIcon, FileIcon, FolderIcon, GitBranchIcon, InfoIcon, KeyboardIcon, LinkIcon, SettingsIcon, SparkIcon, SunIcon, UndoIcon, WrenchIcon } from "../shell/icons";
+import { ChartIcon, CpuIcon, FileIcon, FolderIcon, GitBranchIcon, HistoryIcon, InfoIcon, KeyboardIcon, LinkIcon, SettingsIcon, SparkIcon, SunIcon, UndoIcon, WrenchIcon } from "../shell/icons";
 import { formatProjectRoot } from "../../lib/paths";
 import { useWorkspace } from "../../lib/workspace";
 
@@ -54,6 +56,7 @@ export const SETTINGS_TABS: Array<{ id: SettingsSectionId; label: string; icon: 
   { id: "projects", label: "Projects", icon: FolderIcon, group: "Code" },
   { id: "sourceControl", label: "Source control", icon: GitBranchIcon },
   { id: "skills", label: "Skills", icon: SparkIcon },
+  { id: "automations", label: "Automations", icon: HistoryIcon },
   { id: "shortcuts", label: "Shortcuts", icon: KeyboardIcon, group: "App" },
   { id: "diagnostics", label: "Diagnostics", icon: ChartIcon },
   { id: "about", label: "About", icon: InfoIcon },
@@ -302,6 +305,16 @@ export function SettingsView() {
 
             {tab === "appearance" && (
               <AppearanceSettings settings={settings} onPatch={(next) => void patch(next)} />
+            )}
+            {tab === "appearance" && (
+              <div className="appearance-page">
+                <StatusLineSettings />
+              </div>
+            )}
+            {tab === "automations" && (
+              <div className="appearance-page">
+                <AutomationsSettings />
+              </div>
             )}
 
             {tab === "agents" && (

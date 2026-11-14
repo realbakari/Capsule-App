@@ -647,6 +647,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   const project = projects.find((item) => item.id === projectId);
   const session = sessions.find((item) => item.id === sessionId && item.projectId === projectId);
   const selectionExists = Boolean(project && (!sessionId || session));
+  /* Opening a thread an automation started is reading it. Only the desktop can say so. */
+  useEffect(() => {
+    if (session?.unread && api.isDesktop === true) void api.sessionsMarkRead(session.id).catch(() => undefined);
+  }, [api, session?.id, session?.unread]);
 
   /*
    * The settings files as the renderer sees them, reloaded whenever a file,
@@ -671,7 +675,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     void loadConfig();
     const off = api.on("state", (payload) => {
       const command = (payload as { command?: string }).command;
-      if (command === "config-updated" || command === "settings-updated" || command === "projects-updated") void loadConfig();
+      if (command === "config-updated" || command === "settings-updated" || command === "projects-updated" || command === "automations-updated") void loadConfig();
     });
     return () => { off(); };
   }, [api, loadConfig]);

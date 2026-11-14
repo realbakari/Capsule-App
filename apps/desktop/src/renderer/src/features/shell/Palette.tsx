@@ -70,6 +70,8 @@ export function Palette() {
         icon: <MessageSquarePlusIcon size={15} />, disabledReason: api.isDesktop === false && api.remoteMode !== "control" ? "Read only on this device." : undefined,
         onSelect: () => void startWithProfile(profile.id),
       })),
+      { id: "settings-automations", label: "Automations", detail: "Settings", group: "Go to", icon: <SettingsIcon size={15} />, onSelect: () => { setSettingsTab("automations"); setView("settings"); } },
+      { id: "settings-status-line", label: "Status line", detail: "Settings", group: "Go to", icon: <SettingsIcon size={15} />, onSelect: () => { setSettingsTab("appearance"); setView("settings"); } },
       { id: "settings-tools", label: "MCP servers", detail: "Settings", group: "Go to", icon: <SettingsIcon size={15} />, onSelect: () => { setSettingsTab("tools"); setView("settings"); } },
     ].filter((item) => item.label.toLowerCase().includes(query));
     /* A command takes arguments, so choosing one puts it in the message box rather than sending it. */

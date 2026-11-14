@@ -22,6 +22,7 @@ export type SettingsSectionId =
   | "projects"
   | "sourceControl"
   | "skills"
+  | "automations"
   | "shortcuts"
   | "diagnostics"
   | "about";
@@ -45,12 +46,15 @@ export const SETTINGS_SECTION_LABELS: Record<SettingsSectionId, string> = {
   projects: "Projects",
   sourceControl: "Source control",
   skills: "Skills",
+  automations: "Automations",
   shortcuts: "Shortcuts",
   diagnostics: "Diagnostics",
   about: "About",
 };
 
 export const SETTINGS_SEARCH_ITEMS: SettingsSearchItem[] = [
+  { title: "Automations", section: "automations", keywords: ["schedule", "rrule", "cron", "recurring", "nightly", "inbox"] },
+  { title: "Status line", section: "appearance", keywords: ["statusline", "status bar", "branch", "context", "script", "footer"] },
   { title: "MCP servers", section: "tools", keywords: ["mcp", "tools", "server", "model context protocol", "env"] },
   { title: "Profiles", section: "agents", keywords: ["profile", "preset", "agent", "model", "effort"] },
   { title: "Response style", section: "agents", keywords: ["style", "concise", "explanatory", "personal instructions", "tone"] },

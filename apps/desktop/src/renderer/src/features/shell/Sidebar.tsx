@@ -43,6 +43,7 @@ import { CloneRepositoryDialog } from "./CloneRepositoryDialog";
 import { SidebarToggle } from "./SidebarControl";
 import { SidebarThreadPreview } from "./SidebarThreadPreview";
 import { AgentGlyph } from "./AgentGlyph";
+import { AutomationChip } from "../automations/AutomationChip";
 import {
   ArchiveIcon,
   CpuIcon,
@@ -461,7 +462,7 @@ export function Sidebar() {
         aria-label={session.title}
         aria-current={active ? "page" : undefined}
         aria-describedby={previewId}
-        className={`thread-row ${location === "recent" ? "sidebar-recent-row" : ""} ${active ? "active" : ""} ${recede ? "recede" : ""}`}
+        className={`thread-row ${location === "recent" ? "sidebar-recent-row" : ""} ${active ? "active" : ""} ${recede ? "recede" : ""}${session.unread ? " unread" : ""}`}
         draggable={location === "project" && grouping === "project" && Boolean(session.pinned)}
         onDragStart={(event) => {
           if (grouping !== "project" || !session.pinned) return;
@@ -516,6 +517,7 @@ export function Sidebar() {
         <span className="thread-title">
           <span className="truncate">{session.title}</span>
           {grouping !== "project" && <small className="thread-project">{projectNames.get(session.projectId)}</small>}
+          <AutomationChip session={session} />
         </span>
         <span className="thread-meta">
           {kind === "working" ? (

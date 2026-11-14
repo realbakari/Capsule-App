@@ -2,7 +2,7 @@ import type { ConfigSnapshot, ThemeSelection } from "@capsule/shared";
 import { settingsFileTarget } from "../../lib/config-view";
 import { formatUserError } from "../../lib/errors";
 import type { SearchDialogItem } from "../shell/SearchDialog";
-import { ChartIcon, FileIcon, FolderIcon, GridIcon, KeyboardIcon, RefreshIcon, ShieldIcon, SunIcon } from "../shell/icons";
+import { ChartIcon, FileIcon, FolderIcon, GridIcon, HistoryIcon, KeyboardIcon, RefreshIcon, ShieldIcon, SunIcon } from "../shell/icons";
 
 /** `theme` with the backdrop turned off, whatever the chosen theme draws. Shared with the clear-backdrop key action. */
 export function clearedBackdrop(selection: ThemeSelection | undefined): ThemeSelection {
@@ -50,6 +50,15 @@ export function customizationCommands(input: {
       disabledReason: needsProject, onSelect: run(() => api.configTrust(project!.projectId, !project!.trusted)) },
     { id: "config-restart", label: config?.safeMode ? "Restart normally" : "Restart without customizations", group, icon: <RefreshIcon size={15} />,
       disabledReason: desktopOnly, onSelect: run(() => api.appRestart({ safeMode: !config?.safeMode })) },
+    ...(config?.automations ?? []).map((automation) => ({
+      id: `automation-run-${automation.key}`,
+      label: `Run automation ${automation.name}`,
+      detail: automation.missed ? `Missed ${automation.missed.count} while closed` : automation.scheduleText,
+      group,
+      icon: <HistoryIcon size={15} />,
+      disabledReason: (api.isDesktop === true && !config?.safeMode ? undefined : "Available in the desktop app.") ?? (automation.running ? "It is still running." : automation.problem),
+      onSelect: run(() => api.automationsRunNow({ key: automation.key, ...(project ? { projectId: project.projectId } : {}) })),
+    })),
     { id: "config-problems", label: "Show customization problems", group, icon: <ChartIcon size={15} />,
       detail: config?.problemCount ? `${config.problemCount} ${config.problemCount === 1 ? "problem" : "problems"}` : undefined,
       onSelect: showProblems },
