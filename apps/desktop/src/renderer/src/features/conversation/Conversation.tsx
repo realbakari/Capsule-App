@@ -804,7 +804,7 @@ export function Conversation() {
             <div className="conversation-approval">
               <h3>Approval required</h3>
               <div>
-                {pendingApproval.agentName} wants to <b>{pendingApproval.action}</b>
+                {harnessDisplayName(harnesses, pendingApproval.agentName, pendingApproval.agentName)} wants to <b>{pendingApproval.action}</b>
               </div>
               <div className="mono">{pendingApproval.target}</div>
               <div className="muted">{pendingApproval.reason}</div>
