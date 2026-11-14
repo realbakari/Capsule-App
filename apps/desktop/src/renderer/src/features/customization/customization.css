@@ -206,15 +206,14 @@ button.setting-source-chip:hover { border-color: var(--border-strong); color: va
 .doctor-exit { color: var(--text-faint); font-size: var(--text-2xs); }
 .doctor-exit.is-failed { color: var(--red); }
 .doctor-run-body { display: grid; gap: 0.3rem; margin-top: 0.4rem; padding-left: 0.6rem; border-left: 2px solid var(--border-color); }
-.doctor-run-body pre {
-  margin: 0;
-  max-height: 10rem;
+.doctor-run-output {
+  max-height: 12rem;
+  min-width: 0;
   overflow: auto;
-  color: var(--red);
-  font-size: var(--text-2xs);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  font-size: var(--text-xs);
 }
+.doctor-run-output .body > :first-child { margin-top: 0; }
+.doctor-run-output .body > :last-child { margin-bottom: 0; }
 
 .trust-items { display: grid; gap: 0.3rem; width: 100%; margin: 0.35rem 0 0; padding: 0; list-style: none; }
 .trust-items li {

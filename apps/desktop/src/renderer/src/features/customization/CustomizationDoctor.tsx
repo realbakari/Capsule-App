@@ -5,6 +5,9 @@ import { formatUserError } from "../../lib/errors";
 import { useWorkspace } from "../../lib/workspace";
 import { RefreshIcon } from "../shell/icons";
 import { HooksList } from "./HooksList";
+import { isUnifiedDiff } from "../../lib/run-output";
+import { DiffView } from "../shell/DiffView";
+import { MessageBody } from "../conversation/MessageBody";
 import { requestPluginIntent } from "../plugins/plugin-intent";
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -204,7 +207,9 @@ export function CustomizationDoctor() {
                 <div className="doctor-run-body">
                   <code>{record.command}</code>
                   <span className="doctor-keys">{shortConfigPath(record.source, home)} · {record.durationMs} ms{record.outcome ? ` · ${record.outcome}` : ""}</span>
-                  {record.stderr ? <pre>{record.stderr}</pre> : <span className="doctor-keys">Nothing on stderr.</span>}
+                  {record.stderr
+                    ? <div className="doctor-run-output">{isUnifiedDiff(record.stderr) ? <DiffView text={record.stderr} /> : <MessageBody content={record.stderr} />}</div>
+                    : <span className="doctor-keys">Nothing on stderr.</span>}
                 </div>
               </details>
             </li>
