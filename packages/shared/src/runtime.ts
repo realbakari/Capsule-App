@@ -209,7 +209,7 @@ export const SETTINGS_SECTION_KEYS: Record<string, ReadonlyArray<keyof CapsuleSe
     "prInstructions",
   ],
   skills: [],
-  shortcuts: ["keybindings"],
+  shortcuts: [],
   diagnostics: [],
   about: [],
 };

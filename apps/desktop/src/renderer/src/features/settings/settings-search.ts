@@ -116,7 +116,9 @@ export const SETTINGS_SEARCH_ITEMS: SettingsSearchItem[] = [
   { title: "Commands", section: "skills", keywords: ["slash", "custom commands", "prompt", "template", "commands folder"] },
   { title: "Other tools' folders", section: "skills", keywords: ["commands", "prompts", "import"] },
 
-  { title: "Shortcuts", section: "shortcuts", keywords: ["keys", "bindings", "keyboard"] },
+  { title: "Shortcuts", section: "shortcuts", keywords: ["keys", "bindings", "keyboard", "keybindings.json", "chord", "vim", "emacs"] },
+  { title: "Themes", section: "appearance", keywords: ["theme", "colours", "colors", "import", "share string", "themes folder"] },
+  { title: "Backdrop", section: "appearance", keywords: ["background", "wallpaper", "image", "scene", "dim"] },
   { title: "Diagnostics", section: "diagnostics", keywords: ["logs", "support", "export"] },
   { title: "Version", section: "about", keywords: ["build", "release"] },
 ];

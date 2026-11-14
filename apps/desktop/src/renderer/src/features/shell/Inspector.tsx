@@ -692,6 +692,7 @@ export function Inspector() {
     <aside
       ref={inspectorElement}
       className={`inspector panel-inspector${isMaximized ? " maximized" : ""}`}
+      data-keymap-context="panel"
       data-resizing={resizing || sizing ? "true" : undefined}
       style={!isMaximized ? { width: `${panelWidth}px` } : undefined}
     >
@@ -935,7 +936,7 @@ export function Inspector() {
         )}
 
         {activeTool === "review" && (
-          <div className="panel-tool-pane" ref={reviewScroll}>
+          <div className="panel-tool-pane" ref={reviewScroll} data-keymap-context="review">
             {selectedPullRequest ? (
               <PullRequestDetailView
                 key={selectedPullRequest.number}

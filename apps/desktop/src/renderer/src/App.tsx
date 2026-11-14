@@ -18,6 +18,7 @@ import { RemoteSessionBanner } from "./features/shell/RemoteSessionBanner";
 import { CustomizationNotices } from "./features/customization/CustomizationNotices";
 import { ArchiveUndoNotice } from "./features/shell/ArchiveUndoNotice";
 import { ShortcutsSheet } from "./features/shell/ShortcutsSheet";
+import { ChordHint } from "./features/settings/ChordHint";
 import { AboutModal } from "./features/settings/AboutModal";
 import { ViewErrorBoundary } from "./features/shell/ErrorBoundary";
 import { useSidebarSwipe } from "./lib/useSidebarSwipe";
@@ -108,6 +109,7 @@ function Shell() {
       </ViewErrorBoundary>
       <ConfirmDialog />
       <ShortcutsSheet />
+      <ChordHint />
       <TooltipLayer />
       <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} />
     </div>

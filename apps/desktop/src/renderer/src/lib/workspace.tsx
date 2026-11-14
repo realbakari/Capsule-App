@@ -60,10 +60,12 @@ import {
   type WorkspaceMode,
 } from "@capsule/shared";
 
-import type { ConfigDiagnostics, ConfigSnapshot, SetConfigValueInput } from "@capsule/shared";
+import { parseKeymapAction, type ConfigDiagnostics, type ConfigSnapshot, type EffectiveBinding, type KeyChord, type SetConfigValueInput } from "@capsule/shared";
 import type { SettingsSectionId } from "../features/settings/settings-search";
 import { fromProjectFile, projectSettingsFor } from "./config-view";
-import { commandForEvent, parseChord, type Keymap } from "./keybindings";
+import { effectiveKeymap, INSERT_COMMAND_EVENT } from "./keybindings";
+import { useKeymap } from "./use-keymap";
+import { clearedBackdrop } from "../features/customization/customization-commands";
 import { adjacentSession } from "./session-cycle";
 import { isNarrow } from "./narrow";
 import { setDisplayPrefs } from "./display-prefs";
@@ -401,6 +403,10 @@ export interface WorkspaceValue {
   projectSettings?: CapsuleSettings;
   /** Write or remove one key in one settings file, then show the result. */
   setConfigValue: (input: SetConfigValueInput) => Promise<ConfigSnapshot>;
+  /** The default shortcuts with keybindings.json laid over them. */
+  keyBindings: EffectiveBinding[];
+  /** The first chord of a sequence, while Capsule waits up to 1.5 s for the second. */
+  keyChordPending?: KeyChord;
 }
 
 const workspaceContextSlot = globalThis as typeof globalThis & {
@@ -633,17 +639,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     diffFileState: projectSettings?.diffFileState ?? "expanded",
   }), [settings?.timeFormat, projectSettings?.toolCallDisplay, projectSettings?.diffLayout, projectSettings?.diffFileState]);
 
-  const keymap = useMemo<Keymap>(() => {
-    const stored = settings?.keybindings ?? {};
-    const map: Keymap = {};
-    for (const [id, value] of Object.entries(stored)) {
-      const chord = parseChord(value);
-      // A stored chord that no longer parses falls back to the default rather
-      // than leaving the command unreachable.
-      if (chord) map[id] = chord;
-    }
-    return map;
-  }, [settings?.keybindings]);
+  const keyBindings = useMemo(() => effectiveKeymap(configView?.snapshot.keybindings), [configView?.snapshot.keybindings]);
 
 
   const project = projects.find((item) => item.id === projectId);
@@ -1077,72 +1073,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
         }
       }),
     ];
-    const onKey = (event: KeyboardEvent) => {
-      const typing =
-        event.target instanceof HTMLElement &&
-        Boolean(event.target.closest("input, textarea, select, [contenteditable]"));
-
-      const command = commandForEvent(event, keymap);
-      if (!command) return;
-      // Typing a letter into a field must stay typing, even when the same
-      // letter is a shortcut somewhere else.
-      if (typing && !event.metaKey && !event.ctrlKey) return;
-
-      event.preventDefault();
-      switch (command.id) {
-        case "search-files":
-          setFilePicker((open) => !open);
-          break;
-        case "search-in-files":
-          setContentSearch((open) => !open);
-          break;
-        case "toggle-sidebar":
-          setSidebarCollapsed((open) => !open);
-          break;
-        case "toggle-inspector":
-          setInspectorOpen((open) => !open);
-          break;
-        case "toggle-terminal":
-          setTerminalOpen((open) => !open);
-          break;
-        case "history-back":
-          goBack();
-          break;
-        case "history-forward":
-          goForward();
-          break;
-        case "find-in-thread":
-          setThreadFind((open) => !open);
-          break;
-        case "open-review":
-          setInspectorTab("changes");
-          setInspectorOpen(true);
-          break;
-        case "open-browser":
-          setInspectorTab("browser");
-          setInspectorOpen(true);
-          break;
-        case "next-conversation":
-        case "previous-conversation":
-          cycleSession.current(command.id === "next-conversation" ? 1 : -1);
-          break;
-        case "show-shortcuts":
-          window.dispatchEvent(new CustomEvent(SHOW_SHORTCUTS_EVENT));
-          break;
-        case "open-mode":
-        case "open-model":
-        case "open-effort": {
-          const reason = openComposerControl(command.id.slice("open-".length) as ComposerControl);
-          if (reason) setNotice(reason);
-          break;
-        }
-      }
-    };
-    window.addEventListener("keydown", onKey, true);
     return () => {
       batch.dispose();
       off.forEach((fn) => fn());
-      window.removeEventListener("keydown", onKey, true);
     };
   }, [api, loadGit, loadSession, projectId, refresh, sessionId, scope, liveRunState, setBrowserUrl, selectionExists]);
 
@@ -2379,10 +2312,95 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
 
   const commands = useCommandList(api, projectId);
 
+  /*
+   * What a key binding runs: a registry command, a Capsule command (put in
+   * the composer as the `/` menu would), a project action by name, or a
+   * profile, which is not available yet.
+   */
+  const runKeyAction = (action: string) => {
+    const { namespace, name } = parseKeymapAction(action);
+    if (namespace === "command") {
+      if (!commands.list?.commands.some((command) => command.name === name)) {
+        setNotice(`There is no /${name} command.`);
+        return;
+      }
+      setView("chat");
+      window.dispatchEvent(new CustomEvent(INSERT_COMMAND_EVENT, { detail: { text: `/${name} ` } }));
+      return;
+    }
+    if (namespace === "profile") {
+      setNotice(`Profiles are not available yet, so ${action} does nothing.`);
+      return;
+    }
+    if (namespace === "action") {
+      const found = project?.actions?.find((item) => item.name === name || item.id === name);
+      if (!project || !found) {
+        setNotice(`This project has no action named ${name}.`);
+        return;
+      }
+      void api.runProjectAction(project.id, found.id, sessionId).catch((error: unknown) => setNotice(formatUserError(error)));
+      return;
+    }
+    switch (name) {
+      case "search-files":
+        setFilePicker((open) => !open);
+        break;
+      case "search-in-files":
+        setContentSearch((open) => !open);
+        break;
+      case "toggle-sidebar":
+        setSidebarCollapsed((open) => !open);
+        break;
+      case "toggle-inspector":
+        setInspectorOpen((open) => !open);
+        break;
+      case "toggle-terminal":
+        setTerminalOpen((open) => !open);
+        break;
+      case "history-back":
+        goBack();
+        break;
+      case "history-forward":
+        goForward();
+        break;
+      case "find-in-thread":
+        setThreadFind((open) => !open);
+        break;
+      case "open-review":
+        setInspectorTab("changes");
+        setInspectorOpen(true);
+        break;
+      case "open-browser":
+        setInspectorTab("browser");
+        setInspectorOpen(true);
+        break;
+      case "next-conversation":
+      case "previous-conversation":
+        cycleSession.current(name === "next-conversation" ? 1 : -1);
+        break;
+      case "show-shortcuts":
+        window.dispatchEvent(new CustomEvent(SHOW_SHORTCUTS_EVENT));
+        break;
+      case "open-mode":
+      case "open-model":
+      case "open-effort": {
+        const reason = openComposerControl(name.slice("open-".length) as ComposerControl);
+        if (reason) setNotice(reason);
+        break;
+      }
+      case "clear-backdrop":
+        void api.configSetValue({ key: "theme", value: clearedBackdrop(configView?.snapshot.themes.selection), scope: "user" }).catch((error: unknown) => setNotice(formatUserError(error)));
+        break;
+    }
+  };
+  const keyChordPending = useKeymap(keyBindings, runKeyAction);
+
   const value = useMemo<WorkspaceValue>(
     () => ({
       api,
       commands,
+      keyBindings,
+      keyChordPending,
       view,
       setView,
       settingsTab,
@@ -2677,6 +2695,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       browserUrl,
       refresh,
       loadSession,
+      keyBindings,
+      keyChordPending,
     ],
   );
 

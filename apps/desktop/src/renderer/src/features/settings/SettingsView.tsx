@@ -612,7 +612,7 @@ export function SettingsView() {
             )}
 
             {tab === "shortcuts" && (
-              <KeybindingsSettings settings={settings} onPatch={(next) => void patch(next)} />
+              <KeybindingsSettings />
             )}
 
             {tab === "diagnostics" && (

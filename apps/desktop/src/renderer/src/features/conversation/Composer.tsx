@@ -31,6 +31,7 @@ import { recallablePrompts } from "../../lib/prompt-queue";
 import { searchComposerSkills, skillSource } from "../../lib/composer-skills";
 import { composerPlaceholder, shouldRestComposer } from "../../lib/composer-rest";
 import { COMMAND_SOURCE_LABELS, commandDetail, commandInDraft } from "../../lib/commands";
+import { INSERT_COMMAND_EVENT } from "../../lib/keybindings";
 import { tasksFromRunEvents } from "@capsule/shared";
 
 const SUGGESTIONS = [
@@ -199,6 +200,17 @@ export function Composer({
     }
     setPendingSelection(undefined);
   }, [pendingSelection, selectionScope]);
+  /* A key bound to `command:<name>` puts the command in the draft, as picking it from the `/` menu does. */
+  useEffect(() => {
+    const insert = (event: Event) => {
+      const text = (event as CustomEvent<{ text?: string }>).detail?.text;
+      if (!text) return;
+      setDraft(text);
+      setPendingSelection({ scope: JSON.stringify([projectId, session?.id, text]), position: text.length });
+    };
+    window.addEventListener(INSERT_COMMAND_EVENT, insert);
+    return () => window.removeEventListener(INSERT_COMMAND_EVENT, insert);
+  }, [projectId, session?.id, setDraft]);
   const liveHarnessSessionId =
     session?.harnessId && session.harnessState && session.harnessState !== "closed"
       ? session.id
@@ -438,7 +450,7 @@ export function Composer({
   const tasks = useMemo(() => tasksFromRunEvents(taskEvents), [taskEvents]);
 
   return (
-    <div ref={composerRef} className={`composer composer-dock composer-overlay-corner-masks${busy ? " composer-dock--with-activity" : ""}${resting ? " composer--resting" : ""}`}>
+    <div ref={composerRef} data-keymap-context="composer" className={`composer composer-dock composer-overlay-corner-masks${busy ? " composer-dock--with-activity" : ""}${resting ? " composer--resting" : ""}`}>
       {showSuggestions && (
         <div className="suggestions">
           {SUGGESTIONS.map((item) => (

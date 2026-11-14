@@ -3,6 +3,7 @@ import {
   formatChordSequence,
   parseChordSequence,
   parseKeymapAction,
+  type ChordSequence,
   type DefaultBinding,
   type KeybindingEntry,
   type KeymapContext,
@@ -68,6 +69,11 @@ const MENU_FIRST_CHORDS = new Set(
   }),
 );
 
+/** Whether the application menu takes this sequence's first key, so the binding never fires. */
+export function takenByMenu(sequence: ChordSequence): boolean {
+  return sequence.length > 0 && MENU_FIRST_CHORDS.has(formatChord(sequence[0]!));
+}
+
 export function keyCommand(id: string): KeyCommand | undefined {
   return KEY_COMMANDS.find((command) => command.id === id);
 }
@@ -95,7 +101,7 @@ export function keybindingWarnings(entries: readonly KeybindingEntry[], known: {
   const problems: KeymapProblem[] = [];
   for (const entry of entries) {
     const key = keybindingLocator(entry);
-    if (MENU_FIRST_CHORDS.has(formatChord(entry.sequence[0]!))) {
+    if (takenByMenu(entry.sequence)) {
       problems.push({ key, message: `${formatChord(entry.sequence[0]!)} belongs to the application menu, which takes it before Capsule can. This binding never fires.` });
       continue;
     }
