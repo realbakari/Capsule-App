@@ -1,4 +1,6 @@
+import { threadToMarkdown } from "./composer-context.js";
 import type { HarnessId } from "./harness.js";
+import type { ChatMessage } from "./types.js";
 
 /** Agents whose own session history Capsule can read from disk. */
 export const IMPORT_AGENT_IDS = ["claude", "codex"] as const satisfies readonly HarnessId[];
@@ -17,7 +19,7 @@ export type ImportContinuation = "resume" | "replay";
 
 /** Where a thread came from, when it did not start as a blank conversation. Written once, at creation. */
 export type ThreadOrigin =
-  {
+  | {
     kind: "import";
     agent: ImportAgentId;
     nativeSessionId: string;
@@ -25,8 +27,13 @@ export type ThreadOrigin =
     /** Why the thread replays rather than resumes; absent on resume. */
     reason?: string;
     importedAt: string;
+  }
+  | {
+    kind: "handoff";
+    /** The thread this one continues. It is never changed. */
+    sessionId: string;
+    fromHarnessId?: HarnessId;
   };
-
 
 /** One session found in an agent's history, before it is imported. */
 export interface ImportableSession {
@@ -71,4 +78,26 @@ export function importContinuation(route: "direct" | "gateway" | "mock"): { cont
   if (route === "direct") return { continuation: "resume" };
   if (route === "gateway") return { continuation: "replay", reason: "The OpenClaw Gateway runs its own agent sessions and cannot reopen one started on this computer." };
   return { continuation: "replay", reason: "The mock runtime has no agent session to reopen." };
+}
+
+export interface HandoffInput {
+  sessionId: string;
+  harnessId: HarnessId;
+  summary: string;
+}
+
+export const HANDOFF_SUMMARY_LIMIT = 24 * 1024;
+
+/**
+ * A starting summary for continuing a thread elsewhere, built from the
+ * transcript: the prompts and final replies, newest kept when long. It is a
+ * draft the user edits, not a promise of what the agent understood.
+ */
+export function handoffSummary(thread: { title: string; project?: string }, messages: readonly ChatMessage[]): string {
+  return threadToMarkdown(thread, messages, HANDOFF_SUMMARY_LIMIT);
+}
+
+/** The summary as it rides ahead of the first prompt of the new thread. */
+export function handoffContext(summary: string): string {
+  return `<handoff-summary>\nThis conversation continues earlier work. The summary below describes it, for context; the request follows after.\n\n${summary.trim()}\n</handoff-summary>\n\n`;
 }

@@ -25,6 +25,7 @@ import { WorkspaceProvider, useWorkspace } from "./lib/workspace";
 import { ApplyToLocalProvider } from "./features/apply/ApplyToLocal";
 import { ThreadShareProvider } from "./features/share/ThreadShare";
 import { ImportSessionsProvider } from "./features/import/ImportSessions";
+import { HandoffProvider } from "./features/handoff/Handoff";
 import { BestOfNProvider } from "./features/best-of-n/BestOfN";
 import { StartupScreen, useAppClosing } from "./features/shell/StartupScreen";
 
@@ -125,7 +126,9 @@ export default function App() {
         <ThreadShareProvider>
           <BestOfNProvider>
             <ImportSessionsProvider>
-              <Shell />
+              <HandoffProvider>
+                <Shell />
+              </HandoffProvider>
             </ImportSessionsProvider>
           </BestOfNProvider>
         </ThreadShareProvider>

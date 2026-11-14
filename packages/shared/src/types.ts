@@ -289,6 +289,8 @@ export interface SessionCarryOver {
    * agent session would otherwise start knowing nothing of the kept turns.
    */
   replayTranscript?: boolean;
+  /** A handoff summary the next prompt carries once, ahead of the request. */
+  brief?: string;
 }
 
 export interface ForkOrigin {

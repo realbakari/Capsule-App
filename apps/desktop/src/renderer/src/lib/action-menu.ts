@@ -34,6 +34,7 @@ export type SessionActionId =
   | "export-markdown"
   | "copy-markdown"
   | "share-link"
+  | "handoff"
   | "archive"
   | "delete";
 export type ProjectActionId =
@@ -87,6 +88,8 @@ export function buildSessionActionMenuItems(state: {
   applyToLocal?: { disabledReason?: string };
   /** Export writes a file and a link opens a listener: both belong to the desktop. */
   share?: { exportOffered: boolean; shareOffered: boolean };
+  /** Continue in a new thread; absent where it is unavailable. */
+  handoff?: boolean;
 }): ActionMenuItem[] {
   return [
     { id: "rename", label: "Rename", icon: "pencil" },
@@ -124,6 +127,7 @@ export function buildSessionActionMenuItems(state: {
           ...(state.share.shareOffered ? [{ id: "share-link" as const, label: "Share read-only link…", icon: "link" as const }] : []),
         ]
       : []),
+    ...(state.handoff ? [{ id: "handoff" as const, label: "Continue in a new thread…", icon: "message" as const, separatorBefore: true }] : []),
     { id: "archive", label: "Archive", icon: "archive", separatorBefore: true },
     { id: "delete", label: "Delete", icon: "trash", destructive: true },
   ];

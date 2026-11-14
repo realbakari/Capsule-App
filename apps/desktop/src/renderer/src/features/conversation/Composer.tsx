@@ -7,6 +7,7 @@ import { CYCLE_FAVORITE_MODEL_EVENT, latestPlanRun } from "../../lib/turn-mode";
 import { useHarnessDiscovery } from "../../lib/harness-discovery";
 import { AgentControl } from "../harness/AgentControl";
 import { ContextWindowMeter } from "./ContextWindowMeter";
+import { useHandoff } from "../handoff/Handoff";
 import { ComposerTools } from "./ComposerTools";
 import { agentSwitchNotice, harnessDisplayName } from "../../lib/harness";
 import { AgentModelPicker } from "./AgentModelPicker";
@@ -124,6 +125,7 @@ export function Composer({
   awayFromLatest?: boolean;
 }) {
   const workspace = useWorkspace();
+  const handoff = useHandoff();
   const { contextUsage } = workspace;
   const {
     draft,
@@ -919,6 +921,7 @@ export function Composer({
                 size={22}
                 onCompact={compactCommand ? () => void runAgentCommand(compactCommand) : undefined}
                 onFresh={() => void createTask()}
+                onHandoff={session && !handoff.disabledReason ? () => handoff.openHandoff(session.id) : undefined}
                 compactUnavailable={compactCommand ? undefined : harnessLive ? "This agent does not offer a compact command." : "Start an agent conversation first."}
                 idleMinutes={idleMinutes}
               />

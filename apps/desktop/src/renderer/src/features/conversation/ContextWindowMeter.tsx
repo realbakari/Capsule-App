@@ -15,6 +15,8 @@ interface ContextWindowMeterProps {
   idleMinutes?: number;
   /** Start a new conversation in this project. */
   onFresh?: () => void;
+  /** Continue this thread in a new one with a summary; absent where that is unavailable. */
+  onHandoff?: () => void;
 }
 
 export function ContextWindowMeter({
@@ -27,6 +29,7 @@ export function ContextWindowMeter({
   compactUnavailable,
   idleMinutes,
   onFresh,
+  onHandoff,
 }: ContextWindowMeterProps) {
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -129,6 +132,7 @@ export function ContextWindowMeter({
           <div className="context-card-actions">
             {onFresh && tone !== "normal" ? <button type="button" className="chip" onClick={() => { setOpen(false); onFresh(); }}>New conversation</button> : null}
             <button type="button" className="chip" disabled={!onCompact} title={onCompact ? "Ask the agent to summarize its context into less" : compactUnavailable} onClick={() => { onCompact?.(); setOpen(false); }}>Compact conversation</button>
+            {onHandoff && <button type="button" className="chip" title="Start a new thread from a summary of this one, on this agent or another" onClick={() => { setOpen(false); onHandoff(); }}>Continue in a new thread…</button>}
             {!onCompact && compactUnavailable && <span className="faint">{compactUnavailable}</span>}
           </div>
 

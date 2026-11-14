@@ -1,11 +1,14 @@
 import type { Session } from "@capsule/shared";
+import { harnessDisplayName } from "../../lib/harness";
+import { useWorkspace } from "../../lib/workspace";
 import { agentName } from "./ImportSessions";
 
 /** Where this thread came from, and what that means for its next message. Nothing for a thread started here. */
 export function ThreadOrigin({ session }: { session: Session }) {
+  const { sessions, harnesses, setProjectId, setView } = useWorkspace();
   const origin = session.origin;
   if (!origin) return null;
-  {
+  if (origin.kind === "import") {
     const name = agentName(origin.agent);
     return (
       <div className="thread-origin" role="note">
@@ -20,4 +23,25 @@ export function ThreadOrigin({ session }: { session: Session }) {
       </div>
     );
   }
+  const from = sessions.find((item) => item.id === origin.sessionId);
+  const brief = session.carryOver?.brief;
+  return (
+    <div className="thread-origin" role="note">
+      <div className="thread-origin-text">
+        <strong>
+          Continued from{" "}
+          {from ? (
+            <button type="button" className="link-button" onClick={() => { setProjectId(from.projectId, from.id); setView("chat"); }}>{from.title}</button>
+          ) : "a thread that no longer exists"}
+          {origin.fromHarnessId && origin.fromHarnessId !== session.harnessId ? ` on ${harnessDisplayName(harnesses, origin.fromHarnessId, origin.fromHarnessId)}` : ""}
+        </strong>
+        {brief ? (
+          <details>
+            <summary>The handoff summary goes with your first message.</summary>
+            <pre>{brief}</pre>
+          </details>
+        ) : <span>The handoff summary went with the first message.</span>}
+      </div>
+    </div>
+  );
 }

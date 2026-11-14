@@ -37,6 +37,7 @@ import { searchSettings } from "../settings/settings-search";
 import { useWorkspace, type View } from "../../lib/workspace";
 import { ActionMenu } from "./ActionMenu";
 import { useThreadShare } from "../share/ThreadShare";
+import { useHandoff } from "../handoff/Handoff";
 import { useImportSessions } from "../import/ImportSessions";
 import { MenuSelect } from "./MenuSelect";
 import { AddProjectPicker, type ProjectSourceId } from "./AddProjectPicker";
@@ -154,6 +155,7 @@ export function Sidebar() {
     harnesses,
   } = useWorkspace();
   const share = useThreadShare();
+  const handoff = useHandoff();
   const importSessions = useImportSessions();
   const [menu, setMenu] = useState<MenuState>();
   const bestOfN = useBestOfN();
@@ -341,6 +343,10 @@ export function Sidebar() {
       share.copyMarkdown(id);
       return;
     }
+    if (action === "handoff") {
+      handoff.openHandoff(id);
+      return;
+    }
     if (action === "share-link") {
       share.openShare(id);
       return;
@@ -371,6 +377,7 @@ export function Sidebar() {
       pinned: Boolean(session?.pinned),
       hasFolder: Boolean(folder),
       share: { exportOffered: share.exportOffered, shareOffered: share.shareOffered },
+      handoff: !handoff.disabledReason,
     });
   }
 

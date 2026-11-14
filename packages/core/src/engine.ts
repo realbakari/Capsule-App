@@ -13,7 +13,8 @@ import type { GroupComparison, LeaderboardRow, RatingValue, StartBestOfNInput, S
 import type { BoardCardOp, CreateBoardCardInput } from "@capsule/shared";
 import { Branching, transcriptContext } from "./branching.js";
 import { HistoryImport } from "./history-import.js";
-import type { ImportListing, ImportSessionInput } from "@capsule/shared";
+import { Handoff } from "./handoff.js";
+import { handoffContext, type HandoffInput, type ImportListing, type ImportSessionInput } from "@capsule/shared";
 import type { CommandResult, DiagnosticsResult } from "@capsule/shared";
 import { COMPOSER_COMMAND_TIMEOUT_MS, DIAGNOSTICS_TIMEOUT_MS, findCheckCommand, runContextCommand } from "./context-commands.js";
 
@@ -401,6 +402,7 @@ export class CapsuleEngine {
   private readonly projectIcons = new ProjectIconCache();
   private readonly branching: Branching;
   private readonly historyImport: HistoryImport;
+  private readonly handoff: Handoff;
 
   private branchingHost(): import("./branching.js").BranchingHost {
     return {
@@ -457,6 +459,7 @@ export class CapsuleEngine {
       emit: emitState,
       log: (message) => this.log(message),
     });
+    this.handoff = new Handoff({ repos: this.repos, assertWorkAllowed: () => this.assertWorkAllowed(), requireProject: (id) => this.requireProject(id), emit: emitState, log: (message) => this.log(message) });
     this.bestOfN = new BestOfNService(this.bestOfNHost());
     this.keychain = createKeychainAdapter(options.userDataDir, options.secretEncryptor);
     this.sharedChannels = new SharedRelayClient(undefined, createRelayCredentialStore(options.userDataDir, options.secretEncryptor));
@@ -2141,6 +2144,7 @@ export class CapsuleEngine {
     await this.branching.discard(session.id);
     // Read before this turn's own prompt is written: the history is what came before it.
     const replay = session.carryOver?.replayTranscript ? this.repos.listMessages(session.id) : undefined;
+    const brief = session.carryOver?.brief;
 
     const run = createRunRecord({
       sessionId: session.id,
@@ -2273,6 +2277,18 @@ export class CapsuleEngine {
       const current = this.requireSession(session.id);
       if (current.carryOver?.replayTranscript) {
         const { replayTranscript: _carried, ...rest } = current.carryOver;
+        current.carryOver = Object.keys(rest).length ? rest : undefined;
+        this.repos.updateSession(current);
+      }
+      session.carryOver = current.carryOver;
+    }
+    if (brief) {
+      // A handoff: the summary of the thread this one continues goes with its first prompt, once.
+      if (!this.usingMock) carriedHistory = handoffContext(brief) + carriedHistory;
+      this.appendEvent(run.id, "lifecycle", "Carried the handoff summary to the agent.", { step: "harness", streamKind: "lifecycle" });
+      const current = this.requireSession(session.id);
+      if (current.carryOver?.brief) {
+        const { brief: _carried, ...rest } = current.carryOver;
         current.carryOver = Object.keys(rest).length ? rest : undefined;
         this.repos.updateSession(current);
       }
@@ -3956,6 +3972,14 @@ export class CapsuleEngine {
 
   importSession(input: ImportSessionInput): Promise<Session> {
     return this.historyImport.import(input);
+  }
+
+  handoffDraft(sessionId: string): { summary: string } {
+    return this.handoff.draft(sessionId);
+  }
+
+  handoffSession(input: HandoffInput): Session {
+    return this.handoff.start(input);
   }
 
   private async hydrateSecrets(): Promise<void> {

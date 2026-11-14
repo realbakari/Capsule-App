@@ -87,6 +87,7 @@ import {
   type GitDiffScope,
   type HunkApply,
   type UpdateProjectInput,
+  isHarnessId,
   isImportAgentId,
 } from "@capsule/shared";
 import { readAgentProcesses } from "@capsule/filesystem";
@@ -1963,6 +1964,14 @@ function registerIpc(): void {
     const value = input && typeof input === "object" ? input as { projectId?: unknown; agent?: unknown; nativeSessionId?: unknown } : {};
     if (!isImportAgentId(value.agent)) throw new Error(`${channel}: choose an agent Capsule can import from.`);
     return requireEngine().importSession({ projectId: id(value.projectId, channel, 0), agent: value.agent, nativeSessionId: str(value.nativeSessionId, channel, 0) });
+  });
+  handleArgs(IPC_CHANNELS.handoffDraft, [id], (sessionId: string) => requireEngine().handoffDraft(sessionId));
+  handle(IPC_CHANNELS.handoffSession, (input) => {
+    const channel = IPC_CHANNELS.handoffSession;
+    const value = input && typeof input === "object" ? input as { sessionId?: unknown; harnessId?: unknown; summary?: unknown } : {};
+    const harnessId = str(value.harnessId, channel, 0);
+    if (!isHarnessId(harnessId)) throw new Error(`${channel}: choose an agent to continue with.`);
+    return requireEngine().handoffSession({ sessionId: id(value.sessionId, channel, 0), harnessId, summary: str(value.summary, channel, 0) });
   });
   handleArgs(IPC_CHANNELS.worktreeApplyStatus, [id], (sessionId: string) => requireEngine().worktreeApplyStatus(sessionId));
   handleArgs(IPC_CHANNELS.applyWorktreeToLocal, [id], (sessionId: string) => requireEngine().applyWorktreeToLocal(sessionId));

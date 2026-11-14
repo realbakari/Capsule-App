@@ -195,9 +195,11 @@ export const IPC_CHANNELS = {
   compareCheckpoint: "capsule:compareCheckpoint",
   forkSession: "capsule:forkSession",
   forkBranches: "capsule:forkBranches",
-  /* Import a session from an agent's own history. */
+  /* Import a session from an agent's own history, and continue a thread in a new one. */
   listImportableSessions: "capsule:listImportableSessions",
   importSession: "capsule:importSession",
+  handoffDraft: "capsule:handoffDraft",
+  handoffSession: "capsule:handoffSession",
   /* Apply to local: land a worktree thread's changes on the project folder, and take them back. */
   worktreeApplyStatus: "capsule:worktreeApplyStatus",
   applyWorktreeToLocal: "capsule:applyWorktreeToLocal",
