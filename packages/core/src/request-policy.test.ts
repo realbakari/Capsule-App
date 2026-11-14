@@ -190,3 +190,15 @@ it("writes an always-allow rule to the file it names, and waits for trust before
   expect(permissions.allow.map((entry) => [entry.value, entry.source.scope])).toEqual([[rule, "local"]]);
   expect(permissions.deny.map((entry) => [entry.value, entry.source.scope])).toEqual([["fetch(domain:example.com)", "user"]]);
 });
+
+it("shows a hook's reason for asking on the approval card, with the hook's file", async () => {
+  const f = await fixture();
+  const ask = f.script("ask.sh", `echo '{"decision": "ask", "reason": "Writes to the router need a look"}'\n`);
+  write(path.join(f.configDir, "settings.json"), JSON.stringify({ hooks: { PermissionRequest: [{ matcher: "edit", hooks: [{ type: "command", command: ask }] }] } }));
+  f.engine.reloadConfig();
+  const session = await f.thread();
+  await f.engine.sendMessage({ sessionId: session.id, content: "[approval] change the router", mode: "chat", agentId: "general" });
+  await vi.waitFor(() => expect(f.engine.listApprovals("pending")).toHaveLength(1), { timeout: 8000 });
+  expect(f.engine.listApprovals("pending")[0]?.reason)
+    .toBe(`Writes to the router need a look. (a PermissionRequest hook in ${path.join(f.configDir, "settings.json")})`);
+});

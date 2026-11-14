@@ -115,3 +115,18 @@ it("caps hook follow-ups in a row until the person writes", () => {
   guard.sent("t", "A message from the person");
   expect(guard.admit("t", "next")).toBe(true);
 });
+
+it("reads the short decision form, keeps an ask's reason, and can hold a file's allow back to ask", async () => {
+  const f = fixture({});
+  const allow = f.script("short-allow.sh", `echo '{"decision": "allow"}'\n`);
+  const ask = f.script("short-ask.sh", `echo '{"decision": "ask", "reason": "Force pushes need a look."}'\n`);
+  const g = fixture({ PermissionRequest: [{ hooks: [command(allow)] }] });
+  const allowed = await g.runner.run("PermissionRequest", f.payload("PermissionRequest"), {});
+  expect(permissionVerdict(allowed)).toMatchObject({ decision: "allow" });
+  expect(permissionVerdict(allowed, () => false)).toMatchObject({ decision: "ask" });
+  const h = fixture({ PermissionRequest: [{ hooks: [command(ask)] }] });
+  expect(permissionVerdict(await h.runner.run("PermissionRequest", f.payload("PermissionRequest"), {})))
+    .toMatchObject({ decision: "ask", reason: "Force pushes need a look." });
+  const p = fixture({ PromptSubmit: [{ hooks: [command(allow)] }] });
+  expect(promptVerdict(await p.runner.run("PromptSubmit", f.payload("PromptSubmit"), {}))).toEqual({ context: [] });
+});

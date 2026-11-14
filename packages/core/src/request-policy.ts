@@ -15,8 +15,11 @@ import { hookSource, permissionVerdict, type HookPayload, type HookRunner } from
 
 export type PermissionAnswer =
   | { decision: "allow" | "deny"; audit: string }
-  /** The person decides. `audit` says why when a rule or hook had a say. */
-  | { decision: "ask"; audit?: string };
+  /**
+   * The person decides. `audit` says why when a rule or hook had a say;
+   * `note` is a hook's reason for asking, shown on the approval card.
+   */
+  | { decision: "ask"; audit?: string; note?: string };
 
 export interface RequestContext {
   /** Where relative path rules resolve: the project folder, or home for a thread without one. */
@@ -70,9 +73,13 @@ export function decideRequest(
       ...(subject.url ? { url: subject.url } : {}),
     },
   }, { root: context.projectRoot, targets }).then((results): PermissionAnswer => {
-    const verdict = permissionVerdict(results);
-    if (!verdict || (verdict.decision === "allow" && asked.audit)) return asked;
+    const verdict = permissionVerdict(results, (source) => hooks.mayAllow(source));
+    if (!verdict) return asked;
+    const where = `a PermissionRequest hook in ${hookSource(verdict.source, context.home)}`;
+    if (verdict.decision === "ask" || (verdict.decision === "allow" && asked.audit)) {
+      return { ...asked, ...(verdict.reason ? { note: `${verdict.reason.replace(/\.?$/, ".")} (${where})` } : {}) };
+    }
     const verb = verdict.decision === "deny" ? "Denied" : "Allowed";
-    return { decision: verdict.decision, audit: `${verb} by a PermissionRequest hook in ${hookSource(verdict.source, context.home)}${verdict.reason ? `: ${verdict.reason}` : ""}` };
+    return { decision: verdict.decision, audit: `${verb} by ${where}${verdict.reason ? `: ${verdict.reason}` : ""}` };
   });
 }

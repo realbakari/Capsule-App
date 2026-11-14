@@ -46,7 +46,8 @@ export interface HookPayload {
 
 /** The JSON a hook may answer with. Unknown fields are ignored. */
 export interface HookOutput {
-  decision?: "block";
+  /** `block` for PromptSubmit; `allow`, `deny` or `ask` for PermissionRequest, short for `permissionDecision`. */
+  decision?: "block" | "allow" | "deny" | "ask";
   reason?: string;
   additionalContext?: string;
   permissionDecision?: "allow" | "deny" | "ask";
@@ -68,6 +69,12 @@ export interface HookResult {
 export interface HookHost {
   extended(root?: string): EffectiveExtendedConfig;
   record(run: CustomizationRunRecord): void;
+  /**
+   * Whether a hook from this file may allow a permission request. One that
+   * may not has its allow read as ask, so the person decides. Every file
+   * may today; a source Capsule trusts less can be held back here.
+   */
+  mayAllow?(source: Provenance): boolean;
   /** Overridable for tests. */
   fetch?: typeof fetch;
 }
@@ -108,10 +115,11 @@ function readOutput(text: string): HookOutput | undefined {
   try {
     const value = JSON.parse(trimmed) as Record<string, unknown>;
     const output: HookOutput = {};
-    if (value.decision === "block") output.decision = "block";
+    if (value.decision === "block" || value.decision === "allow" || value.decision === "deny" || value.decision === "ask") output.decision = value.decision;
     if (typeof value.reason === "string") output.reason = value.reason;
     if (typeof value.additionalContext === "string") output.additionalContext = value.additionalContext;
     if (value.permissionDecision === "allow" || value.permissionDecision === "deny" || value.permissionDecision === "ask") output.permissionDecision = value.permissionDecision;
+    else if (output.decision && output.decision !== "block") output.permissionDecision = output.decision;
     if (typeof value.followUp === "string") output.followUp = value.followUp;
     return output;
   } catch {
@@ -140,6 +148,10 @@ export class HookRunner {
   private readonly waiting: Array<() => void> = [];
 
   constructor(private readonly host: HookHost) {}
+
+  mayAllow(source: Provenance): boolean {
+    return this.host.mayAllow?.(source) ?? true;
+  }
 
   /** The handlers that would run for this event, in file order. */
   handlers(event: HookEvent, root: string | undefined, targets: readonly string[] = []): Array<{ handler: HookHandler; source: Provenance; matcher?: string }> {
@@ -244,17 +256,32 @@ export function promptVerdict(results: readonly HookResult[]): { block?: { reaso
   };
 }
 
+export interface PermissionVerdict {
+  decision: "allow" | "deny" | "ask";
+  reason?: string;
+  source: Provenance;
+}
+
 /**
- * PermissionRequest: deny beats allow, as with rules. Exit 2 is a deny. An
- * `ask`, a failure or silence leaves the request to the person.
+ * PermissionRequest: deny beats allow, as with rules, and exit 2 is a deny.
+ * An `ask` with a reason comes back so the person's approval card can show
+ * it. A failure or silence is no verdict. An allow from a file that may not
+ * allow becomes an ask.
  */
-export function permissionVerdict(results: readonly HookResult[]): { decision: "allow" | "deny"; reason?: string; source: Provenance } | undefined {
-  const deny = results.find((result) => result.outcome.kind === "blocked"
-    || (result.outcome.kind === "answered" && result.outcome.output.permissionDecision === "deny"));
-  const pick = deny ?? results.find((result) => result.outcome.kind === "answered" && result.outcome.output.permissionDecision === "allow");
-  if (!pick) return undefined;
-  const reason = pick.outcome.kind === "blocked" ? pick.outcome.reason : pick.outcome.kind === "answered" ? pick.outcome.output.reason : undefined;
-  return { decision: deny ? "deny" : "allow", ...(reason?.trim() ? { reason: reason.trim() } : {}), source: pick.source };
+export function permissionVerdict(results: readonly HookResult[], mayAllow: (source: Provenance) => boolean = () => true): PermissionVerdict | undefined {
+  const said = (result: HookResult) => result.outcome.kind === "blocked" ? "deny" : result.outcome.kind === "answered" ? result.outcome.output.permissionDecision : undefined;
+  const reasonOf = (result: HookResult) => (result.outcome.kind === "blocked" ? result.outcome.reason : result.outcome.kind === "answered" ? result.outcome.output.reason : undefined)?.trim();
+  const verdict = (result: HookResult, decision: PermissionVerdict["decision"]): PermissionVerdict => {
+    const reason = reasonOf(result);
+    return { decision, ...(reason ? { reason } : {}), source: result.source };
+  };
+  const deny = results.find((result) => said(result) === "deny");
+  if (deny) return verdict(deny, "deny");
+  const allow = results.find((result) => said(result) === "allow" && mayAllow(result.source));
+  if (allow) return verdict(allow, "allow");
+  const ask = results.find((result) => said(result) === "ask" && reasonOf(result))
+    ?? results.find((result) => said(result) === "allow");
+  return ask ? verdict(ask, "ask") : undefined;
 }
 
 /** TurnEnd: each answer's follow-up text, in file order. */

@@ -22,7 +22,8 @@ import { findCommandCall, prepareCommand, readInvocation, runCommandShell, summa
 import { FollowUpLoopGuard, followUpsFrom, HookRunner, hookSource, PromptBlockedError, promptVerdict, type HookPayload } from "./hooks.js";
 import { decideRequest, type PermissionAnswer } from "./request-policy.js";
 
-type Decision = PermissionAnswer["decision"];
+/** A permission request's answer, and a hook's reason for asking when the person decides. */
+type Settled = { decision: PermissionAnswer["decision"]; note?: string };
 import { DirectMuseSession } from "@capsule/muse";
 import { DirectCodexSession } from "@capsule/codex";
 import { DirectClaudeSession } from "@capsule/claude";
@@ -2891,15 +2892,15 @@ export class CapsuleEngine {
       const request = payload.request;
       const subject = request.details?.subject;
       if (!session || !subject) { this.openDirectApproval(session, run, request); return; }
-      const apply = (decision: Decision, late: boolean) => {
+      const apply = ({ decision, note }: Settled, late: boolean) => {
         if (decision === "allow") request.allow();
         else if (decision === "deny") request.deny();
-        else if (!late) this.openDirectApproval(session, run, request);
+        else if (!late) this.openDirectApproval(session, run, request, note);
         else {
           // A hook took time; the turn may have ended while it ran.
           const current = this.repos.getRun(run.id);
           if (!current || current.completedAt) request.cancel();
-          else this.openDirectApproval(session, current, request);
+          else this.openDirectApproval(session, current, request, note);
         }
       };
       const decision = this.decidePermissionRequest(session, run, subject, "direct");
@@ -2909,12 +2910,12 @@ export class CapsuleEngine {
     this.directUnsub = () => { replies(); activity(); };
   }
 
-  private openDirectApproval(session: Session | undefined, run: Run, request: Extract<DirectActivity, { type: "permission" }>["request"]): void {
+  private openDirectApproval(session: Session | undefined, run: Run, request: Extract<DirectActivity, { type: "permission" }>["request"], note?: string): void {
     const approval: ApprovalRequest = {
       id: createId("approval"), runId: run.id, agentId: run.agentId,
       agentName: session?.harnessId ?? run.agentId, action: request.title,
       target: request.details?.locations.join("\n") || "Target not reported by the agent",
-      reason: "The direct agent is waiting for your approval.",
+      reason: note ?? "The direct agent is waiting for your approval.",
       details: request.details,
       status: "pending", createdAt: nowIso(),
     };
@@ -2973,7 +2974,7 @@ export class CapsuleEngine {
    * is written to the run's work log; "ask" leaves it to the person.
    * Synchronous unless a hook runs.
    */
-  private decidePermissionRequest(session: Session, run: Run, subject: PermissionSubject, route: "direct" | "gateway"): Decision | Promise<Decision> {
+  private decidePermissionRequest(session: Session, run: Run, subject: PermissionSubject, route: "direct" | "gateway"): Settled | Promise<Settled> {
     const project = this.requireProject(session.projectId);
     const answer = decideRequest(subject, this.config.extended(project.workingDirectory), this.hooks, {
       root: project.workingDirectory ?? homedir(),
@@ -2982,14 +2983,14 @@ export class CapsuleEngine {
       caseInsensitivePaths: process.platform === "darwin" || process.platform === "win32",
       payload: { ...this.hookPayload(session, project), route },
     });
-    const record = (settled: PermissionAnswer): Decision => {
+    const record = (settled: PermissionAnswer): Settled => {
       if (settled.audit) this.appendEvent(run.id, "approval.auto", settled.audit, { decision: settled.decision, request: subject.title, kind: subject.kind });
-      return settled.decision;
+      return settled.decision === "ask" && settled.note ? { decision: "ask", note: settled.note } : { decision: settled.decision };
     };
     return answer instanceof Promise
-      ? answer.then(record, (error: unknown) => {
+      ? answer.then(record, (error: unknown): Settled => {
         this.log(`Permission hooks could not decide a request: ${String(error)}`);
-        return "ask" as const;
+        return { decision: "ask" };
       })
       : record(answer);
   }
@@ -3302,7 +3303,8 @@ export class CapsuleEngine {
     if (event.type === "approval.requested" && event.data?.approval) {
       const approval = event.data.approval as ApprovalRequest;
       if (approval.details?.subject) {
-        const decision = await this.decidePermissionRequest(session, run, approval.details.subject, "gateway");
+        const { decision, note } = await this.decidePermissionRequest(session, run, approval.details.subject, "gateway");
+        if (note) approval.reason = note;
         if (decision !== "ask") {
           try {
             await this.runtime.resolveApproval?.(approval.id, decision === "allow" ? "approved_once" : "denied");
