@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appRestartInput, commandExpandInput, configFileTarget, permissionRuleEdit, setConfigValueInput } from "./config-args.js";
+import { appRestartInput, commandExpandInput, configFileTarget, keybindingEdit, permissionRuleEdit, setConfigValueInput, themeImportInput } from "./config-args.js";
 
 const CHANNEL = "capsule:config:test";
 
@@ -52,5 +52,25 @@ describe("permission rule edits", () => {
       { op: "add", list: "allow", rule: " ", scope: "user" },
       { op: "add", list: "allow", rule: "edit", scope: "local" },
     ]) expect(() => permissionRuleEdit(bad, CHANNEL, 0)).toThrow(CHANNEL);
+  });
+});
+
+describe("keybinding and theme import inputs", () => {
+  it("accepts each keybinding edit and keeps only its fields", () => {
+    expect(keybindingEdit({ op: "bind", action: "toggle-sidebar", context: "global", sequence: "cmd+e", extra: 1 }, CHANNEL, 0))
+      .toEqual({ op: "bind", action: "toggle-sidebar", context: "global", sequence: "cmd+e" });
+    expect(keybindingEdit({ op: "unbind", context: "composer", sequence: "alt+r" }, CHANNEL, 0)).toEqual({ op: "unbind", context: "composer", sequence: "alt+r" });
+    expect(keybindingEdit({ op: "reset", action: "x", context: "panel" }, CHANNEL, 0)).toEqual({ op: "reset", action: "x", context: "panel" });
+    for (const bad of [null, { op: "bind", context: "global", sequence: "cmd+e" }, { op: "unbind", context: "window", sequence: "x" }, { op: "delete", context: "global" }, { op: "bind", action: "a".repeat(201), context: "global", sequence: "x" }]) {
+      expect(() => keybindingEdit(bad, CHANNEL, 0)).toThrow(CHANNEL);
+    }
+  });
+
+  it("accepts a share string or a file pick, never a path", () => {
+    expect(themeImportInput({ from: "file", path: "/etc/passwd" }, CHANNEL, 0)).toEqual({ from: "file" });
+    expect(themeImportInput({ from: "share", text: "capsule-theme:abc" }, CHANNEL, 0)).toEqual({ from: "share", text: "capsule-theme:abc" });
+    for (const bad of [{ from: "share", text: "" }, { from: "share", text: "x".repeat(33 * 1024) }, { from: "url", text: "https://x" }]) {
+      expect(() => themeImportInput(bad, CHANNEL, 0)).toThrow(CHANNEL);
+    }
   });
 });

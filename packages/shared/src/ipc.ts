@@ -198,6 +198,12 @@ export const IPC_CHANNELS = {
   commandsExpand: "capsule:commands:expand",
   /* Quit and start again, into or out of safe mode. */
   appRestart: "capsule:app:restart",
+  /* Save a theme from a share string or a picked file into the themes folder. */
+  themesImport: "capsule:themes:import",
+  /* Bind, unbind or reset one key sequence in keybindings.json. */
+  keybindingsSet: "capsule:keybindings:set",
+  /* Pick an image, copy it into the settings folder and draw it behind the conversation. */
+  backdropChooseImage: "capsule:backdrop:chooseImage",
 } as const;
 
 export const IPC_EVENTS = {

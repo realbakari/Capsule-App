@@ -176,6 +176,11 @@ const api = {
     ipcRenderer.invoke(IPC_CHANNELS.commandsExpand, input),
   /** Quits and starts again, with or without customizations. Running turns may hold the quit. */
   appRestart: (input: { safeMode: boolean }): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.appRestart, input),
+  themesImport: (input: import("@capsule/shared").ThemeImportInput): Promise<import("@capsule/shared").ThemeImportResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.themesImport, input),
+  keybindingsSet: (edit: import("@capsule/shared").KeybindingEdit): Promise<import("@capsule/shared").ConfigSnapshot> =>
+    ipcRenderer.invoke(IPC_CHANNELS.keybindingsSet, edit),
+  backdropChooseImage: (): Promise<import("@capsule/shared").ConfigSnapshot | undefined> => ipcRenderer.invoke(IPC_CHANNELS.backdropChooseImage),
   search: (query: string) => ipcRenderer.invoke(IPC_CHANNELS.search, query),
   updateProject: (id: string, patch: unknown) =>
     ipcRenderer.invoke(IPC_CHANNELS.updateProject, id, patch),

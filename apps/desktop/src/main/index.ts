@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import { pathToFileURL } from "node:url";
 
@@ -87,7 +87,8 @@ import { startRemoteServer, type RemoteServerHandle } from "@capsule/remote";
 import { startPty, TerminalOutputFlow, type PtySession } from "@capsule/terminal";
 import { popupContextMenu } from "./popup-menu";
 import { remoteReachFromArgs } from "./remote-args";
-import { appRestartInput, commandExpandInput, configFileTarget, permissionRuleEdit, setConfigValueInput } from "./config-args";
+import { appRestartInput, commandExpandInput, configFileTarget, keybindingEdit, permissionRuleEdit, setConfigValueInput, themeImportInput } from "./config-args";
+import { registerBackdropScheme, serveBackdropImages } from "./backdrop-protocol";
 import { configDirFor, relaunchArgs, safeModeFromArgs } from "./launch-config";
 import { RemoteAccessLifecycle } from "./remote-access";
 import {
@@ -1754,6 +1755,25 @@ function registerIpc(): void {
   handleArgs(IPC_CHANNELS.commandsExpand, [commandExpandInput], (input: import("@capsule/shared").CommandExpandInput) =>
     requireEngine().expandCommand(input));
   handleArgs(IPC_CHANNELS.appRestart, [appRestartInput], (input: { safeMode: boolean }) => restartWithSafeMode(input.safeMode));
+  handleArgs(IPC_CHANNELS.keybindingsSet, [keybindingEdit], (edit: import("@capsule/shared").KeybindingEdit) => requireEngine().editKeybindings(edit));
+  // A file pick happens here, so the renderer never names a path to read.
+  handleArgs(IPC_CHANNELS.themesImport, [themeImportInput], async (input: import("@capsule/shared").ThemeImportInput): Promise<import("@capsule/shared").ThemeImportResult> => {
+    if (input.from === "share") return requireEngine().importTheme({ kind: "share", text: input.text });
+    const win = desktopWindow.current ?? BrowserWindow.getFocusedWindow();
+    const options: Electron.OpenDialogOptions = { title: "Import theme", buttonLabel: "Import", properties: ["openFile"], filters: [{ name: "Theme", extensions: ["json"] }] };
+    const picked = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
+    const file = picked.canceled ? undefined : picked.filePaths[0];
+    if (!file) return { imported: false };
+    if (statSync(file).size > 256 * 1024) throw new Error("A theme file is at most 256 KB.");
+    return requireEngine().importTheme({ kind: "file", text: readFileSync(file, "utf8"), name: path.basename(file) });
+  });
+  handle(IPC_CHANNELS.backdropChooseImage, async () => {
+    const win = desktopWindow.current ?? BrowserWindow.getFocusedWindow();
+    const options: Electron.OpenDialogOptions = { title: "Choose backdrop image", buttonLabel: "Choose", properties: ["openFile"], filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }] };
+    const picked = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
+    const file = picked.canceled ? undefined : picked.filePaths[0];
+    return file ? requireEngine().importBackdropImage(file) : undefined;
+  });
   /*
    * Both routes, one answer. The updater knows whether this build can replace
    * itself; the GitHub check knows what the latest release is even when that
@@ -2376,8 +2396,11 @@ app.on("open-url", (event, url) => {
   handleDeepLink(url);
 });
 
+registerBackdropScheme();
+
 app.whenReady().then(() => startup.run(async () => {
   app.setName("Capsule");
+  serveBackdropImages((token) => engine?.config.backdropImage(token));
   if (process.platform === "win32") app.setAppUserModelId("ai.capsule.desktop");
   app.setAsDefaultProtocolClient(APP_SCHEME);
   augmentPath();

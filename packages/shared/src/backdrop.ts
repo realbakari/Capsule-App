@@ -7,6 +7,9 @@ export type BackdropScene = (typeof BACKDROP_SCENES)[number];
 export const BACKDROP_FITS = ["cover", "contain", "tile"] as const;
 export type BackdropFit = (typeof BACKDROP_FITS)[number];
 
+/** The scheme main serves checked backdrop images under, so the renderer never names a path. */
+export const BACKDROP_SCHEME = "capsule-backdrop";
+
 export const BACKDROP_IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".gif"] as const;
 export const MAX_BACKDROP_IMAGE_BYTES = 8 * 1024 * 1024;
 export const MAX_BACKDROP_BLUR = 40;

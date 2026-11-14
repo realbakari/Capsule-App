@@ -6,5 +6,5 @@ export { listResourceFolder, listResources, RESOURCE_KINDS, type ResourceFile, t
 export { commandFolders, readCommandCatalog, type CommandCatalog, type CommandEntry, type CommandFolder } from "./commands.js";
 export { mergeLayers, readLayer, type Layer, type LayerReading, type MergedConfig } from "./layers.js";
 export { ConfigWatcher, type ConfigWatcherOptions } from "./watcher.js";
-export { BACKDROP_SCHEME, BackdropImages, buildThemeState, readThemeCatalog, type ThemeCatalog, type ThemeEntry } from "./themes.js";
+export { BackdropImages, buildThemeState, readThemeCatalog, type ThemeCatalog, type ThemeEntry } from "./themes.js";
 export { editKeybindingsText, readKeybindings } from "./keybindings.js";

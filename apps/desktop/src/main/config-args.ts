@@ -1,5 +1,5 @@
 import { IpcArgumentError, type ArgParser } from "@capsule/contracts";
-import { WRITABLE_SCOPES, type CommandExpandInput, type ConfigFileTarget, type PermissionRuleEdit, type SetConfigValueInput, type WritableScope } from "@capsule/shared";
+import { KEYMAP_CONTEXTS, MAX_THEME_SHARE_BYTES, WRITABLE_SCOPES, type CommandExpandInput, type ConfigFileTarget, type KeybindingEdit, type KeymapContext, type PermissionRuleEdit, type SetConfigValueInput, type ThemeImportInput, type WritableScope } from "@capsule/shared";
 
 /*
  * Shapes for the settings-file channels, checked where they cross from the
@@ -65,6 +65,38 @@ export const appRestartInput: ArgParser<{ safeMode: boolean }> = (value, channel
   const input = record(value, channel, index);
   if (typeof input.safeMode !== "boolean") throw new IpcArgumentError(channel, index, "safeMode must be true or false");
   return { safeMode: input.safeMode };
+};
+
+/** The sequence's own syntax is checked by the config service, which names what is wrong. */
+export const keybindingEdit: ArgParser<KeybindingEdit> = (value, channel, index) => {
+  const input = record(value, channel, index);
+  const context = KEYMAP_CONTEXTS.find((item) => item === input.context) as KeymapContext | undefined;
+  if (!context) throw new IpcArgumentError(channel, index, `context must be one of ${KEYMAP_CONTEXTS.join(", ")}`);
+  const text = (field: "action" | "sequence") => {
+    const raw = input[field];
+    if (typeof raw !== "string" || !raw.trim() || raw.length > 200) throw new IpcArgumentError(channel, index, `${field} must be text of at most 200 characters`);
+    return raw;
+  };
+  switch (input.op) {
+    case "bind":
+      return { op: "bind", action: text("action"), context, sequence: text("sequence") };
+    case "unbind":
+      return { op: "unbind", context, sequence: text("sequence") };
+    case "reset":
+      return { op: "reset", action: text("action"), context };
+    default:
+      throw new IpcArgumentError(channel, index, "op must be bind, unbind or reset");
+  }
+};
+
+export const themeImportInput: ArgParser<ThemeImportInput> = (value, channel, index) => {
+  const input = record(value, channel, index);
+  if (input.from === "file") return { from: "file" };
+  if (input.from !== "share") throw new IpcArgumentError(channel, index, "from must be share or file");
+  if (typeof input.text !== "string" || !input.text.trim() || input.text.length > MAX_THEME_SHARE_BYTES) {
+    throw new IpcArgumentError(channel, index, "text must be a share string of at most 32 KB");
+  }
+  return { from: "share", text: input.text };
 };
 
 function record(value: unknown, channel: string, index: number): Record<string, unknown> {

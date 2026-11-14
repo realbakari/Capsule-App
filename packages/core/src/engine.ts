@@ -200,6 +200,8 @@ import {
   type CommandExpansion,
   type CommandList,
   type ConfigSnapshot,
+  type KeybindingEdit,
+  type ThemeImportResult,
   type SetConfigValueInput,
 } from "@capsule/shared";
 import {
@@ -2735,6 +2737,8 @@ export class CapsuleEngine {
         ? { project: { projectId: project.id, root: scoped.root, trusted: scoped.trusted, settings: this.masked(scoped.settings), provenance: scoped.provenance, files: scoped.files } }
         : {}),
       problemCount: this.config.diagnostics(scoped?.root).problems.length,
+      themes: this.config.themes(scoped?.root),
+      keybindings: this.config.keybindings(scoped?.root),
     };
   }
 
@@ -2775,6 +2779,27 @@ export class CapsuleEngine {
     this.config.editPermissionRule(edit, edit.scope === "local" ? root : undefined);
     this.applyConfigChange();
     return this.getConfigSnapshot(edit.projectId);
+  }
+
+  /** Change keybindings.json in place, then publish the result. */
+  editKeybindings(edit: KeybindingEdit): ConfigSnapshot {
+    this.config.editKeybindings(edit);
+    this.applyConfigChange();
+    return this.getConfigSnapshot();
+  }
+
+  /** Save a theme into the user's themes folder; main has already read the share string or the picked file. */
+  importTheme(source: Parameters<ConfigService["importTheme"]>[0]): ThemeImportResult {
+    const result = this.config.importTheme(source);
+    this.applyConfigChange();
+    return result;
+  }
+
+  /** Copy a picked image into the settings folder and draw it behind the conversation. */
+  importBackdropImage(file: string): ConfigSnapshot {
+    this.config.importBackdropImage(file);
+    this.applyConfigChange();
+    return this.getConfigSnapshot();
   }
 
   /** Re-read every settings file now; a change publishes as a file edit would. */

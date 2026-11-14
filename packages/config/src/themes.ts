@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import {
   BACKDROP_IMAGE_EXTENSIONS,
+  BACKDROP_SCHEME,
   BUNDLED_THEMES,
   MAX_BACKDROP_IMAGE_BYTES,
   mergeBackdrop,
@@ -22,8 +23,6 @@ import {
 } from "@capsule/shared";
 import { parseJsonc } from "./jsonc.js";
 import type { ResourceFile } from "./resources.js";
-
-export const BACKDROP_SCHEME = "capsule-backdrop";
 
 /** A theme that can be picked, and the file it came from. */
 export interface ThemeEntry {
