@@ -12,7 +12,7 @@ describe("inspector surfaces", () => {
 
   it("puts the panel surfaces on the bar in order, with the rest under More", () => {
     expect(SURFACES.filter((s) => s.inBar).map((s) => s.tool)).toEqual(["review", "browser", "simulator", "files"]);
-    expect(SURFACES.filter((s) => !s.inBar).map((s) => s.tool)).toEqual(["agents", "chat"]);
+    expect(SURFACES.filter((s) => !s.inBar).map((s) => s.tool)).toEqual(["agents", "chat", "compare"]);
     // The terminal is the real dock, toggled from the bar, not a panel surface.
     expect(SURFACES.some((s) => (s.tool as string) === "terminal")).toBe(false);
   });
@@ -23,8 +23,8 @@ describe("inspector surfaces", () => {
     );
   });
 
-  it("opens everything once there is a project and a repository", () => {
-    const blocked = reasons({ projectId: "p1", git: { isRepo: true } });
+  it("opens everything once there is a project, a repository and a comparison", () => {
+    const blocked = Object.fromEntries(SURFACES.map((s) => [s.tool, s.blockedBy({ projectId: "p1", git: { isRepo: true }, groupId: "g1" })]));
     expect(Object.values(blocked).every((reason) => reason === undefined)).toBe(true);
   });
 

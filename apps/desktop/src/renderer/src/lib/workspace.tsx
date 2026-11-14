@@ -106,7 +106,8 @@ export type InspectorTab =
   | "agents"
   | "chat"
   | "browser"
-  | "simulator";
+  | "simulator"
+  | "compare";
 
 /*
  * The detail lines matter more than the labels here. These map onto acpx

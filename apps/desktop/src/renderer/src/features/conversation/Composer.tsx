@@ -10,6 +10,7 @@ import { ContextWindowMeter } from "./ContextWindowMeter";
 import { ComposerTools } from "./ComposerTools";
 import { agentSwitchNotice, harnessDisplayName } from "../../lib/harness";
 import { AgentModelPicker } from "./AgentModelPicker";
+import { RunOnControl, useRunOn } from "../best-of-n/RunOnPicker";
 import { GatewayBanner } from "../shell/GatewayBanner";
 import { GATEWAY_CONNECTION_REQUIRED } from "../../lib/harness-preflight";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -186,6 +187,9 @@ export function Composer({
     runs,
   } = workspace;
   const harnesses = workspace.harnesses ?? [];
+  const runOn = useRunOn();
+  /* With two or more agents picked under Run on…, sending starts the comparison instead. */
+  const submit = () => runOn.active ? runOn.start() : send();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [recall, setRecall] = useState<{ index: number; original: string }>();
   useEffect(() => { setRecall(undefined); }, [session?.id]);
@@ -740,14 +744,15 @@ export function Composer({
             }
             if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
               event.preventDefault();
-              if (event.shiftKey || sendOnEnter) void sendAndContinue();
+              if (runOn.active) void runOn.start();
+              else if (event.shiftKey || sendOnEnter) void sendAndContinue();
               else void send();
               return;
             }
             if (event.key === "Enter" && !event.shiftKey) {
               if (!sendOnEnter) return;
               event.preventDefault();
-              void send();
+              void submit();
             }
           }}
         />
@@ -924,14 +929,14 @@ export function Composer({
             ) : (
               <button
                 className="send-btn"
-                aria-label={bang ? "Run command" : "Send message"}
-                disabled={busy || picking || (!draft.trim() && attachments.length === 0 && !skillId) || (!bang && Boolean(sendBlockReason))}
+                aria-label={bang ? "Run command" : runOn.active ? `Run on ${runOn.picks.length} agents` : "Send message"}
+                disabled={busy || picking || runOn.starting || (!draft.trim() && attachments.length === 0 && !skillId) || (!bang && !runOn.active && Boolean(sendBlockReason))}
                 title={
-                  bang ? `Run ${bang} and attach its output` : sendBlockReason || (sendOnEnter
+                  bang ? `Run ${bang} and attach its output` : runOn.active ? `Send to ${runOn.picks.length} agents, each in its own worktree` : sendBlockReason || (sendOnEnter
                     ? "Send · Enter · ⌘Enter starts another thread"
                     : "Send · ⌘Enter · ⌘⇧Enter starts another thread")
                 }
-                onClick={() => { if (bang) runBang(bang); else void send(); }}
+                onClick={() => { if (bang) runBang(bang); else void submit(); }}
               >
                 {bang ? <TerminalIcon size={14} /> : <ArrowUpIcon size={14} />}
               </button>
@@ -980,6 +985,7 @@ export function Composer({
             ) : null}
           </span>
         )}
+        <RunOnControl runOn={runOn} />
         {!git?.isRepo && session?.workspaceMode === "worktree" && session.worktreeBranch && (
           <span className="workspace-mode-label">Isolated · {session.worktreeBranch}</span>
         )}

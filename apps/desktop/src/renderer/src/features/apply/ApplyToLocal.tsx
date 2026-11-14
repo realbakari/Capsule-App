@@ -31,9 +31,11 @@ interface ApplyToLocalValue {
   undo: (undoRef: string) => void;
   /** Read the status again, e.g. when a surface showing it opens. */
   refresh: () => void;
+  /** Show the toast or conflict dialog for an apply made elsewhere, e.g. keeping a compared candidate. */
+  showOutcome: (session: Session, result: ApplyResult) => void;
 }
 
-const ApplyToLocalContext = createContext<ApplyToLocalValue>({ offered: false, apply: () => undefined, undo: () => undefined, refresh: () => undefined });
+const ApplyToLocalContext = createContext<ApplyToLocalValue>({ offered: false, apply: () => undefined, undo: () => undefined, refresh: () => undefined, showOutcome: () => undefined });
 
 export function useApplyToLocal(): ApplyToLocalValue {
   return useContext(ApplyToLocalContext);
@@ -82,12 +84,17 @@ export function ApplyToLocalProvider({ children }: { children: ReactNode }) {
     ).finally(() => { setBusy(undefined); setReload((value) => value + 1); });
   }, [api, session?.id, outcome, busy]);
 
+  const showOutcome = useCallback((target: Session, result: ApplyResult) => {
+    setOutcome(result.applied ? { kind: "applied", session: target, result } : { kind: "failed", action: "apply", detail: result.detail ?? "Nothing was applied." });
+    setReload((value) => value + 1);
+  }, []);
+
   const value = useMemo<ApplyToLocalValue>(() => {
     const known = status?.sessionId === sessionId ? status?.value : undefined;
     const disabledReason = busy === "apply" ? "Applying…" : !known ? "Checking the worktree…" : known.available ? undefined : known.reason;
     const refresh = () => setReload((value) => value + 1);
-    return { offered, status: known, busy, disabledReason, apply, undo, refresh };
-  }, [offered, status, sessionId, busy, apply, undo]);
+    return { offered, status: known, busy, disabledReason, apply, undo, refresh, showOutcome };
+  }, [offered, status, sessionId, busy, apply, undo, showOutcome]);
 
   return (
     <ApplyToLocalContext.Provider value={value}>

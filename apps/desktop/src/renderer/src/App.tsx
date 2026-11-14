@@ -24,6 +24,7 @@ import { useSidebarSwipe } from "./lib/useSidebarSwipe";
 import { WorkspaceProvider, useWorkspace } from "./lib/workspace";
 import { ApplyToLocalProvider } from "./features/apply/ApplyToLocal";
 import { ThreadShareProvider } from "./features/share/ThreadShare";
+import { BestOfNProvider } from "./features/best-of-n/BestOfN";
 import { StartupScreen, useAppClosing } from "./features/shell/StartupScreen";
 
 function Shell() {
@@ -121,7 +122,9 @@ export default function App() {
     <WorkspaceProvider>
       <ApplyToLocalProvider>
         <ThreadShareProvider>
-          <Shell />
+          <BestOfNProvider>
+            <Shell />
+          </BestOfNProvider>
         </ThreadShareProvider>
       </ApplyToLocalProvider>
     </WorkspaceProvider>

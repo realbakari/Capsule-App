@@ -6,7 +6,8 @@ import { formatUserError } from "../../lib/errors";
 import { SHOW_SHORTCUTS_EVENT } from "../../lib/shortcuts-event";
 import { CYCLE_FAVORITE_MODEL_EVENT } from "../../lib/turn-mode";
 import { requestNewBoardCard } from "../../lib/board";
-import { CopyIcon, FileIcon, GitBranchIcon, GitMergeIcon, RedoIcon, ArrowLeftIcon, ArrowRightIcon, ColumnsIcon, CpuIcon, ListTodoIcon, StarIcon, DiffIcon, FolderIcon, GlobeIcon, HistoryIcon, InfoIcon, RefreshIcon, KeyboardIcon, LinkIcon, MessageSquareIcon, PlusIcon, SearchIcon, SettingsIcon, ShieldIcon, SmartphoneIcon, SmilePlusIcon, SparkIcon, TerminalIcon } from "./icons";
+import { requestRunOn } from "../../lib/best-of-n";
+import { CompareIcon, CopyIcon, FileIcon, GitBranchIcon, GitMergeIcon, RedoIcon, ArrowLeftIcon, ArrowRightIcon, ColumnsIcon, CpuIcon, ListTodoIcon, StarIcon, DiffIcon, FolderIcon, GlobeIcon, HistoryIcon, InfoIcon, RefreshIcon, KeyboardIcon, LinkIcon, MessageSquareIcon, PlusIcon, SearchIcon, SettingsIcon, ShieldIcon, SmartphoneIcon, SmilePlusIcon, SparkIcon, TerminalIcon } from "./icons";
 import { SearchDialog, type SearchDialogItem } from "./SearchDialog";
 import { useBranching } from "../conversation/branching/use-branching";
 import { useApplyToLocal } from "../apply/ApplyToLocal";
@@ -60,6 +61,15 @@ export function Palette() {
     const readOnly = api.isDesktop === false && api.remoteMode !== "control" ? "Read only on this device." : undefined;
     const actions: SearchDialogItem[] = [
       { id: "new", label: "New conversation", group: "Actions", icon: <PlusIcon size={15} />, shortcut: "⌘N", disabledReason: desktopOnly, onSelect: () => createTask() },
+      { id: "run-on-several", label: "Run on several agents…", detail: "One prompt, two to four agents, each in its own worktree", group: "Actions", icon: <CompareIcon size={15} />,
+        disabledReason: desktopOnly ?? (projects.length === 0 ? "Add a project first." : undefined),
+        onSelect: () => {
+          setView("chat");
+          requestRunOn();
+          /* An untouched new conversation is where the prompt goes; anything else gets a fresh one. */
+          if (!session || runs.some((run) => run.sessionId === session.id)) void createTask();
+        } },
+      ...(session?.groupId ? [{ id: "compare", label: "Compare candidates", group: "Workspace", icon: <CompareIcon size={15} />, onSelect: () => { setView("chat"); openInspector("compare"); } }] : []),
       { id: "new-board-card", label: "New board card", group: "Actions", icon: <ColumnsIcon size={15} />, disabledReason: desktopOnly ?? (projects.length === 0 ? "Add a project first." : undefined), onSelect: () => { setView("board"); requestNewBoardCard(); } },
       { id: "new-project", label: "New project from folder", group: "Actions", icon: <FolderIcon size={15} />, disabledReason: desktopOnly, onSelect: createProjectFromFolder },
       { id: "open-folder", label: "Open folder", group: "Actions", icon: <FolderIcon size={15} />, disabledReason: desktopOnly, onSelect: pickProjectDirectory },
@@ -134,7 +144,7 @@ export function Palette() {
       onSelect: () => { setProjectId(message.projectId, message.sessionId); setView("chat"); },
     }));
     return [...actions, ...projectItems, ...threads, ...messages];
-  }, [api, query, currentSearch, projects, sessions, session, project, terminalOpen, setTerminalOpen, attachContext, setNotice, createTask, createProjectFromFolder, pickProjectDirectory, pickFilesToMention, setView, setProjectId, setAboutOpen, openInspector, setAgentCommandsOpen, canGoBack, canGoForward, goBack, goForward, setThreadFind, lastTurn, branching.fork, branching.redo, branching.redoLast, applyToLocal, share, turnMode, setTurnMode]);
+  }, [api, query, currentSearch, projects, sessions, session, project, terminalOpen, setTerminalOpen, attachContext, setNotice, createTask, createProjectFromFolder, pickProjectDirectory, pickFilesToMention, setView, setProjectId, setAboutOpen, openInspector, setAgentCommandsOpen, canGoBack, canGoForward, goBack, goForward, setThreadFind, lastTurn, branching.fork, branching.redo, branching.redoLast, applyToLocal, share, turnMode, setTurnMode, runs]);
 
   if (!palette) return null;
   return <SearchDialog title="Search workspace" placeholder="Search commands, projects, conversations…" query={paletteQuery}

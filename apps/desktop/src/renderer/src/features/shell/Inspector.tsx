@@ -28,6 +28,7 @@ import { SimulatorPane } from "./SimulatorPane";
 import { FilePreviewView } from "./FilePreview";
 import { FileTreePane, sortTreeEntries } from "./FileTree";
 import { ThreadAgents } from "./ThreadAgents";
+import { ComparePane } from "../best-of-n/ComparePane";
 import { SURFACES, tabForTool, toolFromTab, type InspectorTool } from "./surfaces";
 import { InspectorHeadSlot } from "./inspector-slot";
 import { GitPullRequestDetail as PullRequestDetailView } from "./PullRequestDetail";
@@ -739,6 +740,8 @@ export function Inspector() {
             null
           ) : activeTool === "agents" ? (
             <span>Agents</span>
+          ) : activeTool === "compare" ? (
+            <span>Compare</span>
           ) : activeTool === "chat" ? (
             <>
               <span>Side chat</span>
@@ -796,7 +799,7 @@ export function Inspector() {
             <div className="panel-launcher-cards">
               {SURFACES.map((surface) => {
                 const Icon = surface.icon;
-                const blocked = surface.blockedBy({ projectId, git, desktop: api.isDesktop, platform: api.platform });
+                const blocked = surface.blockedBy({ projectId, git, desktop: api.isDesktop, platform: api.platform, groupId: session?.groupId });
                 return (
                   <button
                     key={surface.tool}
@@ -1119,6 +1122,8 @@ export function Inspector() {
         )}
 
         {activeTool === "agents" && <div className="panel-tool-pane"><ThreadAgents /></div>}
+
+        {activeTool === "compare" && <div className="panel-tool-pane"><ComparePane /></div>}
 
         {activeTool === "chat" && (
           <div className="panel-tool-pane" ref={chatScroll}>

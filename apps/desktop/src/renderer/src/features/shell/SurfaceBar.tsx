@@ -29,11 +29,12 @@ export function SurfaceBar() {
   const [details, setDetails] = useState(false);
   const detailsAnchor = useRef<HTMLDivElement>(null);
   const active = inspectorOpen ? toolFromTab(inspectorTab) : undefined;
-  const state = { projectId: project?.id, git, desktop: api.isDesktop !== false, platform: api.platform };
+  const state = { projectId: project?.id, git, desktop: api.isDesktop !== false, platform: api.platform, groupId: session?.groupId };
   const terminalCwd = session?.workingDirectory ?? project?.workingDirectory;
 
   /* A surface that cannot exist on this machine is left off; one that cannot open yet says why. */
-  const offered = (surface: Surface) => !(surface.tool === "simulator" && surface.blockedBy({ desktop: state.desktop, platform: state.platform }));
+  const offered = (surface: Surface) => !(surface.tool === "simulator" && surface.blockedBy({ desktop: state.desktop, platform: state.platform }))
+    && !(surface.tool === "compare" && !state.groupId);
   const toggle = (surface: Surface) => {
     if (active === surface.tool) setInspectorOpen(false);
     else openInspector(tabForTool(surface.tool));
