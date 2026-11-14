@@ -7,11 +7,15 @@ import { spawnCommand, stopChild } from "@capsule/process";
 import type { DirectAcpEvents, DirectAcpOptions, DirectAgentSession } from "@capsule/acp";
 import { readPlanEntries, readReportedContextUsage, readReportedTurnUsage, readToolActivityDetails, type AcpModelCatalog, type AgentCapabilityReport, type AgentCommand, type AgentPromptBlock, type ReportedContextUsage } from "@capsule/shared";
 import { ClaudeInput } from "./input.js";
-import { isClaudeEffort, isClaudePermission, permissionChoices } from "./configuration.js";
+import { isClaudeEffort, isClaudePermission, isClaudeTurnMode, MODE_CHOICES, permissionChoices, type ClaudeTurnMode } from "./configuration.js";
+
+const EXIT_PLAN = "ExitPlanMode";
 
 type Turn = {
   uuid: string; resolve(value: { stopReason?: string }): void; reject(error: Error): void;
   finished: Promise<void>; settle(): void; cancelling: boolean; hasText: boolean;
+  /** Claude asked to leave plan mode; its plan is the reply and the turn ends there. */
+  planned?: boolean;
   /** The latest root request: its prompt plus reply is what the context window holds now. */
   request?: { model: string; tokens: number };
 };
@@ -33,7 +37,9 @@ export class DirectClaudeSession implements DirectAgentSession {
   private modelRows: ModelInfo[] = [];
   private selectedModel?: string;
   private effort?: string;
+  /** The permission an Act turn runs with; kept while a plan turn holds Claude in plan mode. */
   private permissions: PermissionMode = "default";
+  private mode: ClaudeTurnMode = "default";
   private commands?: AgentCommand[];
   private context?: ReportedContextUsage;
   private turn?: Turn;
@@ -65,6 +71,7 @@ export class DirectClaudeSession implements DirectAgentSession {
         ...(this.model?.supportsEffort && this.model.supportedEffortLevels?.length ? [{ id: "effort", category: "thought_level", name: "Reasoning effort", currentValue: this.effort,
           choices: this.model.supportedEffortLevels.map((value) => ({ value, name: value === "xhigh" ? "Extra high" : value[0]!.toUpperCase() + value.slice(1) })) }] : []),
         { id: "permissions", category: "permissions", name: "Permissions", currentValue: this.permissions, choices: permissionChoices(this.model) },
+        { id: "mode", category: "mode", name: "Mode", currentValue: this.mode, choices: MODE_CHOICES },
       ] };
   }
 
@@ -131,13 +138,18 @@ export class DirectClaudeSession implements DirectAgentSession {
         // Tighten Auto before moving to a model that cannot classify permissions.
         const next = this.modelRows.find((row) => row.value === value);
         if (this.permissions === "auto" && !next?.supportsAutoMode) {
-          await this.control(this.connection.setPermissionMode("default")); this.permissions = "default";
+          if (this.mode !== "plan") await this.control(this.connection.setPermissionMode("default"));
+          this.permissions = "default";
         }
         await this.control(this.connection.setModel(value)); this.selectedModel = value; this.effort = undefined;
       } else if (configId === "effort" && isClaudeEffort(value)) {
         await this.control(this.connection.applyFlagSettings({ effortLevel: value })); this.effort = value;
       } else if (configId === "permissions" && isClaudePermission(value)) {
-        await this.control(this.connection.setPermissionMode(value)); this.permissions = value;
+        // In plan mode the choice waits for the next Act turn.
+        if (this.mode !== "plan") await this.control(this.connection.setPermissionMode(value));
+        this.permissions = value;
+      } else if (configId === "mode" && isClaudeTurnMode(value)) {
+        await this.control(this.connection.setPermissionMode(value === "plan" ? "plan" : this.permissions)); this.mode = value;
       } else throw new Error("Unsupported agent setting.");
     } finally { this.setting = false; this.emitter.emit("configuration"); }
   }
@@ -226,7 +238,9 @@ export class DirectClaudeSession implements DirectAgentSession {
         this.finish(new Error("Claude opened a different session or working folder. The connection was closed.")); void this.close().catch(() => undefined); return;
       }
       this.selectedModel = this.modelRows.find((row) => row.value === message.model || row.resolvedModel === message.model)?.value ?? message.model;
-      this.permissions = message.permissionMode; this.effort = message.effort ?? undefined;
+      if (message.permissionMode === "plan") this.mode = "plan";
+      else { this.mode = "default"; this.permissions = message.permissionMode; }
+      this.effort = message.effort ?? undefined;
       this.emitter.emit("configuration"); return;
     }
     const turn = this.turn;
@@ -250,6 +264,7 @@ export class DirectClaudeSession implements DirectAgentSession {
         if (block.type === "thinking" && !this.streamed.has(message.message.id)) this.emitter.emit("text", { text: block.thinking, thought: true });
         if (block.type === "tool_use") {
           if (this.tools.size < 256) this.tools.set(block.id, block.name);
+          if (block.name === EXIT_PLAN) continue;
           this.emitter.emit("tool", { toolCallId: block.id, title: block.name, status: "in_progress", details: readToolActivityDetails({ rawInput: block.input }) });
           if (block.name === "TodoWrite" && block.input && typeof block.input === "object" && "todos" in block.input) {
             const entries = readPlanEntries(block.input.todos); if (entries) this.emitter.emit("plan", { entries });
@@ -258,7 +273,7 @@ export class DirectClaudeSession implements DirectAgentSession {
       }
       this.emitter.emit("message-end");
     } else if (message.type === "user" && Array.isArray(message.message.content)) {
-      for (const block of message.message.content) if (block.type === "tool_result") {
+      for (const block of message.message.content) if (block.type === "tool_result" && this.tools.get(block.tool_use_id) !== EXIT_PLAN) {
         const output = typeof block.content === "string" ? block.content : block.content?.filter((row) => row.type === "text").map((row) => row.text).join("\n");
         this.emitter.emit("tool", { toolCallId: block.tool_use_id, title: this.tools.get(block.tool_use_id) ?? "Tool result", status: block.is_error ? "failed" : "completed", details: readToolActivityDetails({ rawOutput: output }) });
       }
@@ -273,6 +288,7 @@ export class DirectClaudeSession implements DirectAgentSession {
       if (changed) this.context = context;
       this.emitter.emit("usage", { turn: reported, ...(changed ? { context } : {}) });
       if (turn.cancelling) this.finish(undefined, "cancelled");
+      else if (turn.planned) this.finish();
       else if (message.subtype !== "success" || message.is_error) this.finish(new Error(message.subtype === "success" ? message.result : message.errors.join("\n")));
       else {
         if (!turn.hasText && message.result) this.emitter.emit("text", { text: message.result, thought: false });
@@ -283,6 +299,13 @@ export class DirectClaudeSession implements DirectAgentSession {
   private cancelApprovals(): void { for (const cancel of this.approvals) cancel(); this.approvals.clear(); }
   private readonly approve: CanUseTool = (name, input, options) => {
     if (!this.turn || this.turn.cancelling || this.closed || options.signal.aborted || this.approvals.size >= 64) return Promise.resolve({ behavior: "deny", message: "No active user turn can approve this action.", interrupt: true });
+    if (name === EXIT_PLAN && this.mode === "plan") {
+      // Capsule owns the handoff: the plan is the reply, and Act is the user's next turn.
+      const plan = input && typeof input === "object" && "plan" in input && typeof input.plan === "string" ? input.plan.trim() : "";
+      if (plan) { this.emitter.emit("text", { text: `${this.turn.hasText ? "\n\n" : ""}${plan}`, thought: false }); this.turn.hasText = true; }
+      this.turn.planned = true;
+      return Promise.resolve({ behavior: "deny", message: "The user reviews this plan in Capsule and switches to Act when ready. End this turn now.", interrupt: true });
+    }
     return new Promise<PermissionResult>((resolve) => {
       let answered = false;
       let settle!: () => void;

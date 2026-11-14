@@ -18,3 +18,13 @@ export function isClaudePermission(value: string | boolean): value is "default" 
 export function isClaudeEffort(value: string | boolean): value is "low" | "medium" | "high" | "xhigh" | "max" {
   return value === "low" || value === "medium" || value === "high" || value === "xhigh" || value === "max";
 }
+
+/** Capsule's Plan/Act switch, carried by Claude Code's own plan permission mode. */
+export type ClaudeTurnMode = "default" | "plan";
+export const MODE_CHOICES: AcpConfigOption["choices"] = [
+  { value: "default", name: "Act", description: "Work with this conversation's permissions." },
+  { value: "plan", name: "Plan", description: "Read and investigate without editing files, then reply with a plan." },
+];
+export function isClaudeTurnMode(value: string | boolean): value is ClaudeTurnMode {
+  return value === "default" || value === "plan";
+}

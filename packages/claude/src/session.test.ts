@@ -114,3 +114,23 @@ it("closes its owned child when initialization times out", async () => {
   try { await expect(f.session.discover()).rejects.toThrow("in time"); expect(f.session.running).toBe(false); }
   finally { await f.cleanup(); }
 });
+
+it("runs a plan turn in Claude's plan mode, shows the plan as the reply, and restores the Act permission", async () => {
+  const f = setup();
+  try {
+    await f.session.start();
+    await f.session.setConfig("permissions", "acceptEdits");
+    await f.session.setConfig("mode", "plan");
+    const tool = vi.fn(); f.session.on("tool", tool);
+    expect(await f.session.prompt("Plan it")).toEqual({ stopReason: "end_turn" });
+    expect(f.output.join("")).toBe("1. Read the code\n2. Change it");
+    expect(tool).not.toHaveBeenCalled();
+    expect(f.wire()).toContain('"planAnswer":{"behavior":"deny"');
+    await f.session.setConfig("permissions", "bypassPermissions");
+    expect(f.session.reportedCapabilities.configOptions.find((row) => row.id === "mode")?.currentValue).toBe("plan");
+    await f.session.setConfig("mode", "default");
+    f.output.length = 0;
+    await f.session.prompt("Do it");
+    expect(JSON.parse(f.output.join(""))).toMatchObject({ permissions: "bypassPermissions" });
+  } finally { await f.cleanup(); }
+});
