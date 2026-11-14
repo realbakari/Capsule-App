@@ -1,0 +1,193 @@
+/* Composer context: chips for attached conversations, diffs, pages and output, and the pickers that make them. */
+.composer-context-chip {
+  position: relative;
+  max-width: 20rem;
+  padding-left: 0.2rem;
+}
+.composer-context-chip > .composer-context-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  width: auto;
+  height: auto;
+  padding: 0.05rem 0.25rem;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font: inherit;
+}
+.composer-context-chip > .composer-context-open:hover,
+.composer-context-chip > .composer-context-open[aria-expanded="true"] {
+  background: var(--bg-active);
+  color: var(--text);
+}
+.composer-context-chip > .composer-context-open:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: 1px;
+}
+.composer-context-kind {
+  flex-shrink: 0;
+  color: var(--text-faint);
+}
+.composer-context-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+.composer-context-chip.is-loading,
+.composer-context-chip.is-error {
+  padding-left: 0.45rem;
+}
+.composer-context-chip.is-loading .composer-context-label { color: var(--text-muted); }
+.composer-context-chip.is-error {
+  max-width: 28rem;
+  border-color: color-mix(in srgb, var(--red) 40%, var(--border-color));
+  background: color-mix(in srgb, var(--red) 8%, var(--bg-hover));
+  color: var(--red);
+}
+.composer-context-chip.is-error .composer-context-label { color: var(--text); white-space: normal; }
+.composer-context-chip > .composer-context-action {
+  width: auto;
+  height: auto;
+  padding: 0.05rem 0.4rem;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font: inherit;
+  white-space: nowrap;
+}
+.composer-context-spinner {
+  flex-shrink: 0;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+  border: 1.5px solid color-mix(in srgb, var(--text) 20%, transparent);
+  border-top-color: var(--text-muted);
+  animation: composer-context-spin 0.8s linear infinite;
+}
+@keyframes composer-context-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .composer-context-spinner { animation-duration: 2.4s; } }
+
+.composer-context-preview {
+  position: absolute;
+  z-index: 9;
+  left: 0;
+  bottom: calc(100% + 0.4rem);
+  width: min(30rem, calc(100vw - 4rem));
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  background: var(--surface-0);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  cursor: auto;
+}
+.composer-context-preview-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.5rem 0.65rem 0.35rem;
+  border-bottom: 1px solid var(--border-color);
+  font-size: var(--text-ui);
+  font-weight: 600;
+}
+.composer-context-preview-head small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-faint);
+  font-weight: 400;
+  font-size: var(--text-2xs);
+}
+.composer-context-preview pre {
+  margin: 0;
+  max-height: 14rem;
+  overflow: auto;
+  padding: 0.5rem 0.65rem;
+  font-family: var(--mono);
+  font-size: var(--text-2xs);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text-muted);
+}
+.composer-context-preview-foot {
+  padding: 0.3rem 0.65rem 0.45rem;
+  border-top: 1px solid var(--border-color);
+  color: var(--text-faint);
+  font-size: var(--text-2xs);
+}
+
+.composer-context-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.4rem;
+  font-size: var(--text-ui);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.composer-template-description {
+  margin: 0 0.4rem 0.35rem;
+  color: var(--text-muted);
+  font-size: var(--text-ui);
+}
+.composer-template-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: 0.5rem;
+  padding: 0.25rem 0.4rem;
+}
+.composer-template-fields label {
+  display: grid;
+  gap: 0.25rem;
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+}
+.composer-template-fields label > span { font-family: var(--mono); }
+.composer-context-picker .composer-template-fields input,
+.composer-template-fields select {
+  margin: 0;
+  width: 100%;
+  box-sizing: border-box;
+  font-size: var(--text-sm);
+}
+.composer-template-error {
+  margin: 0.25rem 0.4rem 0;
+  color: var(--red);
+  font-size: var(--text-ui);
+}
+.composer-template-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.4rem;
+  padding: 0.5rem 0.4rem 0.15rem;
+}
+
+.composer-bang-hint {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.35rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: var(--radius-md);
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  font-size: var(--text-2xs);
+}
+.composer-bang-hint code {
+  font-family: var(--mono);
+  color: var(--text);
+}
+
+/* Settings › General › Saved prompts. */
+.saved-prompt-row { gap: 0.75rem; }
+.saved-prompt-copy { display: flex; min-width: 0; flex: 1; gap: 0.6rem; align-items: baseline; }
+.saved-prompt-copy > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-ui); }
+.saved-prompt-form { display: grid; gap: 0.6rem; margin-top: 0.5rem; padding-top: 0.6rem; border-top: 1px solid var(--border-color); }
+.saved-prompt-form label { display: grid; gap: 0.3rem; font-size: var(--text-ui); color: var(--text-muted); }
+.saved-prompt-form textarea { font-family: var(--mono); font-size: var(--text-sm); }

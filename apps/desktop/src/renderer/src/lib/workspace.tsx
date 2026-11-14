@@ -44,6 +44,7 @@ import {
   type HarnessPermissionProfile,
   type HarnessStatus,
   type MessageAttachment,
+  type ResolvedContext,
   EMPTY_FOLLOW_UPS,
   type FollowUpOp,
   type FollowUps,
@@ -247,6 +248,10 @@ export interface WorkspaceValue {
   attachImage: (png: Uint8Array) => Promise<boolean>;
   attachPastedText: (text: string) => Promise<boolean>;
   attachFiles: (paths: string[]) => Promise<boolean>;
+  /** Save composer context (a conversation, a diff, a page, a selection) and attach it with its chip. */
+  attachContext: (resolved: ResolvedContext) => Promise<boolean>;
+  /** Send a prompt the app wrote, such as `/init`, without touching the draft. */
+  sendPrompt: (text: string) => Promise<boolean>;
   removeAttachment: (path: string) => void;
   stashCurrentPrompt: () => void;
   restorePromptStash: (id: string) => void;
@@ -1642,7 +1647,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   }
 
   /** Reserve slots before clipboard writes or validation can yield. */
-  async function prepareAttachments(count: number, resolvePaths: () => Promise<string[]>) {
+  async function prepareAttachments(count: number, resolvePaths: () => Promise<string[]>, context?: MessageAttachment["context"]) {
     if (!draftScopes.isCurrent(draftScope) || !count) return false;
     const pending = attachmentReservations.get(draftScope) ?? 0;
     if (attachmentState.current.value.length + pending + count > 8) {
@@ -1665,7 +1670,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       if (new Set([...existing, ...validated.map((item) => item.path)]).size > 8) throw new Error("You can attach up to 8 files. Remove one first.");
       setAttachments((current) => {
         const byPath = new Map(current.map((item) => [item.path, item]));
-        for (const item of validated) byPath.set(item.path, item);
+        for (const item of validated) byPath.set(item.path, context ? { ...item, context } : item);
         return [...byPath.values()];
       });
       setNotice(undefined);
@@ -1715,6 +1720,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       const paths = await api.pickFiles() as string[] | undefined;
       if (paths?.length && draftScopes.isCurrent(draftScope)) await attachFiles(paths);
     } catch (error) { setNotice(formatUserError(error)); }
+  }
+
+  async function attachContext(resolved: ResolvedContext): Promise<boolean> {
+    return prepareAttachments(1, async () => [await api.saveTextAttachment(resolved.text, resolved.fileName)], resolved.context);
   }
 
   function removeAttachment(filePath: string) {
@@ -2459,6 +2468,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       attachClipboardImage,
       attachImage,
       attachFiles,
+      attachContext,
+      sendPrompt: (text: string) => send(false, text),
       removeAttachment,
       stashCurrentPrompt,
       restorePromptStash,

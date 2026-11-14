@@ -26,6 +26,7 @@ import {
   PaperclipIcon,
   ShieldIcon,
   StopIcon,
+  TerminalIcon,
   XIcon,
 } from "../shell/icons";
 import { ComposerMenu, detectTrigger, type SuggestItem } from "./ComposerMenu";
@@ -35,6 +36,9 @@ import { recallablePrompts } from "../../lib/prompt-queue";
 import { searchComposerSkills, skillSource } from "../../lib/composer-skills";
 import { composerPlaceholder, shouldRestComposer } from "../../lib/composer-rest";
 import { tasksFromRunEvents } from "@capsule/shared";
+import { initPrompt, mentionSources, parseBangCommand, templateCommand, templateVariables, type PromptTemplate } from "@capsule/shared";
+import { CONTEXT_ICONS, ContextChip, ContextPicker, PendingChip, TemplateForm, useContextResolver, type ContextPickerKind } from "./ComposerContext";
+import { detectInstructionFiles } from "../project/ProjectInstructions";
 
 const SUGGESTIONS = [
   {
@@ -67,6 +71,10 @@ function slashCommands(input: {
   openTerminal: () => void;
   pickProjectDirectory: () => void;
   setView: (view: View) => void;
+  /** Absent when there is no project folder to write AGENTS.md into. */
+  init?: () => void;
+  templates: Array<{ template: PromptTemplate; scope: "Project" | "Personal" }>;
+  useTemplate: (template: PromptTemplate) => void;
 }): SuggestItem[] {
   const targets =
     input.harnesses.length > 0
@@ -77,6 +85,14 @@ function slashCommands(input: {
         ];
   return [
     { id: "new", label: "/new", detail: "New conversation", run: () => input.createTask() },
+    ...(input.init ? [{ id: "init", label: "/init", detail: "Ask the agent to write or refresh AGENTS.md", run: input.init }] : []),
+    ...input.templates.map(({ template, scope }) => ({
+      id: `template-${scope}-${template.name}`,
+      label: templateCommand(template),
+      detail: template.description ?? template.prompt.replace(/\s+/gu, " "),
+      badge: scope,
+      ...(templateVariables(template.prompt).length ? { run: () => input.useTemplate(template) } : { insert: template.prompt }),
+    })),
     ...targets.map((harness) => ({
       id: `spawn-${harness.id}`,
       label: `/${harness.id}`,
@@ -188,6 +204,9 @@ export function Composer({
   const [menuDismissed, setMenuDismissed] = useState(false);
   const menuId = useId();
   const [picker, setPicker] = useState<"file" | "skill">();
+  const [contextPicker, setContextPicker] = useState<ContextPickerKind>();
+  const [template, setTemplate] = useState<PromptTemplate>();
+  const resolver = useContextResolver();
   const [pickerQuery, setPickerQuery] = useState("");
   const [fileState, setFileState] = useState("Searching files…");
   const [picking, setPicking] = useState(false);
@@ -257,9 +276,9 @@ export function Composer({
   const menuOpen = Boolean(picker || trigger) && !menuDismissed;
   const resting = shouldRestComposer({
     awayFromLatest,
-    blocking: Boolean(picker || modelPickerOpen || stashOpen || dropping || menuOpen),
+    blocking: Boolean(picker || contextPicker || template || modelPickerOpen || stashOpen || dropping || menuOpen),
     multiline: draft.includes("\n"),
-    hasAttachments: attachments.length > 0,
+    hasAttachments: attachments.length > 0 || resolver.pending.length > 0,
     hasSkill: Boolean(skillId),
   });
   const searchKind = picker ?? trigger?.kind;
@@ -272,7 +291,7 @@ export function Composer({
     document.addEventListener("pointerdown", close);
     return () => document.removeEventListener("pointerdown", close);
   }, [menuOpen]);
-  useEffect(() => { setPicker(undefined); setPickerQuery(""); setMenuDismissed(true); }, [projectId, session?.id]);
+  useEffect(() => { setPicker(undefined); setPickerQuery(""); setMenuDismissed(true); setContextPicker(undefined); setTemplate(undefined); }, [projectId, session?.id]);
 
   useLayoutEffect(() => {
     const el = textareaRef.current;
@@ -306,6 +325,16 @@ export function Composer({
     return () => { cancelled = true; window.clearTimeout(timer); };
   }, [folderPath, projectId, searchKind, searchQuery, menuOpen]);
 
+  /* A project's saved prompts come first and win a name clash: they are what the repository agreed on. */
+  const templates = useMemo(() => {
+    const shared = project?.projectFile?.status === "ok" ? project.projectFile.file.prompts ?? [] : [];
+    const taken = new Set(shared.map((item) => templateCommand(item)));
+    return [
+      ...shared.map((item) => ({ template: item, scope: "Project" as const })),
+      ...(settings?.composerPrompts ?? []).filter((item) => !taken.has(templateCommand(item))).map((item) => ({ template: item, scope: "Personal" as const })),
+    ];
+  }, [project?.projectFile, settings?.composerPrompts]);
+
   const slashItems = useMemo<SuggestItem[]>(
     () =>
       slashCommands({
@@ -319,8 +348,14 @@ export function Composer({
         openTerminal: () => setTerminalOpen(true),
         pickProjectDirectory,
         setView,
+        init: projectId && folderPath ? () => void runInit() : undefined,
+        templates,
+        useTemplate: setTemplate,
       }),
     [
+      templates,
+      folderPath,
+      projectId,
       createTask,
       harnesses,
       skills,
@@ -360,6 +395,22 @@ export function Composer({
     [files, folderPath, attachFiles],
   );
 
+  /* `@` offers the context sources first, then files. Each source reaches past this
+     window (git, a command, the network), so a paired browser is not offered them. */
+  const contextItems = useMemo<SuggestItem[]>(() => !picker && trigger?.kind === "file" && api.isDesktop === true && projectId
+    ? mentionSources(trigger.query).map((source) => ({
+      id: `context-${source.kind}`,
+      label: `@${source.keyword}`,
+      detail: source.detail,
+      icon: CONTEXT_ICONS[source.kind](14),
+      insert: "",
+      run: () => {
+        if (source.kind === "thread" || source.kind === "diff" || source.kind === "url") setContextPicker(source.kind);
+        else void resolver.attachDiagnostics();
+      },
+    }))
+    : [], [api.isDesktop, picker, projectId, resolver, trigger]);
+
   const items = !menuOpen
     ? []
     : searchKind === "slash"
@@ -367,7 +418,7 @@ export function Composer({
       : searchKind === "skill"
         ? skillItems
         : searchKind === "file"
-          ? fileItems
+          ? [...contextItems, ...fileItems]
           : [];
 
   useEffect(() => {
@@ -402,12 +453,35 @@ export function Composer({
     return Boolean(event.nativeEvent.isComposing) || event.keyCode === 229;
   }
 
+  async function runInit() {
+    if (!projectId) return;
+    const found = await detectInstructionFiles(api, projectId);
+    await workspace.sendPrompt(initPrompt(found));
+  }
+
+  function runBang(command: string) {
+    if (api.isDesktop !== true) { workspace.setNotice("Commands after ! run only in the desktop app."); return; }
+    setDraft("");
+    void resolver.runCommand(command).then((attached) => {
+      // Give a failed command back so it can be fixed and run again.
+      if (!attached) setDraft((current) => current || `!${command}`);
+    });
+  }
+
+  function fillFromTemplate(text: string) {
+    setTemplate(undefined);
+    const nextDraft = draft.trim() ? `${draft.trimEnd()}\n${text}` : text;
+    setDraft(nextDraft);
+    setPendingSelection({ scope: JSON.stringify([projectId, session?.id, nextDraft]), position: nextDraft.length });
+  }
+
   const permission = session?.permissionProfile ?? settings?.defaultPermission ?? "default";
   const permissionOptions = PERMISSION_OPTIONS.map((item) => ({ id: item.id, label: item.id === "strict" ? "Read-only" : item.label, detail: item.detail }));
   const sendOnEnter = settings?.composerSendKey !== "cmd-enter";
   /* A paired browser without conversation control can read but never send. */
   const readOnlyViewer = api.isDesktop === false && api.remoteMode !== "control";
   const selectedHarness = harnesses.find((item) => item.id === agentId);
+  const bang = parseBangCommand(draft);
   const taskEvents = useMemo(() => activeRun ? (events ?? []).filter((event) => event.runId === activeRun.id) : events ?? [], [events, activeRun?.id]);
   const tasks = useMemo(() => tasksFromRunEvents(taskEvents), [taskEvents]);
   const planTasks = !activeRun && Boolean(latestPlanRun(runs, session?.id));
@@ -541,6 +615,8 @@ export function Composer({
             }} />
           <ComposerMenu id={menuId} items={items} index={menuIndex} onHover={setMenuIndex} onPick={(item) => void applyItem(item)} empty={picker === "file" ? fileState : "No installed skills match. Browse Skills to install one."} />
         </div>}
+        {contextPicker && !picker && <ContextPicker kind={contextPicker} resolver={resolver} onClose={() => { setContextPicker(undefined); textareaRef.current?.focus(); }} />}
+        {template && !picker && !contextPicker && <TemplateForm key={template.name} template={template} onCancel={() => { setTemplate(undefined); textareaRef.current?.focus(); }} onFill={fillFromTemplate} />}
         {workspace.preparingAttachments > 0 && <div className="meta" role="status">Preparing {workspace.preparingAttachments} attachment{workspace.preparingAttachments === 1 ? "" : "s"}…</div>}
         {!picker && <ComposerMenu
           id={menuId}
@@ -655,6 +731,12 @@ export function Composer({
                 return;
               }
             }
+            /* `!command` runs here instead of reaching the agent. */
+            if (bang && event.key === "Enter" && !event.shiftKey && (sendOnEnter || event.metaKey || event.ctrlKey)) {
+              event.preventDefault();
+              runBang(bang);
+              return;
+            }
             if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
               event.preventDefault();
               if (event.shiftKey || sendOnEnter) void sendAndContinue();
@@ -669,9 +751,19 @@ export function Composer({
           }}
         />
         </div>
-        {attachments.length > 0 && (
+        {bang && (
+          <div className="composer-bang-hint" role="status">
+            <TerminalIcon size={12} />
+            {api.isDesktop === true
+              ? <span>{sendOnEnter ? "Enter" : "⌘Enter"} runs <code>{bang}</code> in {folder ?? "the project folder"}. The output is attached; nothing is sent yet.</span>
+              : <span>Commands after ! run only in the desktop app.</span>}
+          </div>
+        )}
+        {(attachments.length > 0 || resolver.pending.length > 0) && (
           <div className="composer-attachments" aria-label="Attached files">
-            {attachments.map((attachment) => (
+            {attachments.map((attachment) => attachment.context ? (
+              <ContextChip key={attachment.path} attachment={attachment} context={attachment.context} onRemove={() => removeAttachment(attachment.path)} />
+            ) : (
               <span
                 className={`composer-attachment${attachment.thumbnail ? " composer-attachment--image" : ""}`}
                 key={attachment.path}
@@ -694,6 +786,7 @@ export function Composer({
                 </button>
               </span>
             ))}
+            {resolver.pending.map((item) => <PendingChip key={item.id} item={item} onDismiss={() => resolver.dismiss(item.id)} />)}
           </div>
         )}
         {stashOpen && (
@@ -830,16 +923,16 @@ export function Composer({
             ) : (
               <button
                 className="send-btn"
-                aria-label="Send message"
-                disabled={busy || picking || (!draft.trim() && attachments.length === 0 && !skillId) || Boolean(sendBlockReason)}
+                aria-label={bang ? "Run command" : "Send message"}
+                disabled={busy || picking || (!draft.trim() && attachments.length === 0 && !skillId) || (!bang && Boolean(sendBlockReason))}
                 title={
-                  sendBlockReason || (sendOnEnter
+                  bang ? `Run ${bang} and attach its output` : sendBlockReason || (sendOnEnter
                     ? "Send · Enter · ⌘Enter starts another thread"
                     : "Send · ⌘Enter · ⌘⇧Enter starts another thread")
                 }
-                onClick={() => void send()}
+                onClick={() => { if (bang) runBang(bang); else void send(); }}
               >
-                <ArrowUpIcon size={14} />
+                {bang ? <TerminalIcon size={14} /> : <ArrowUpIcon size={14} />}
               </button>
             )}
         </div>

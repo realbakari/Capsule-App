@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { FileIcon, CpuIcon } from "../shell/icons";
 
 export interface SuggestItem {
@@ -7,6 +7,8 @@ export interface SuggestItem {
   detail?: string;
   badge?: string;
   kind?: "file" | "skill";
+  /** For items that are neither a file nor a skill, such as an `@` context source. */
+  icon?: ReactNode;
   insert?: string;
   run?: () => void | Promise<void>;
 }
@@ -49,7 +51,7 @@ export function ComposerMenu({
           }}
           onClick={() => onPick(item)}
         >
-          {item.kind === "file" ? <FileIcon size={14} /> : item.kind === "skill" ? <CpuIcon size={14} /> : null}
+          {item.icon ?? (item.kind === "file" ? <FileIcon size={14} /> : item.kind === "skill" ? <CpuIcon size={14} /> : null)}
           <span className="suggest-copy"><span className="suggest-name">{item.label}</span>
             {item.detail ? <span className="meta" title={item.detail}>{item.detail}</span> : null}
           </span>

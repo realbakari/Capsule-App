@@ -10,6 +10,8 @@ import { GitBranchIcon, GitMergeIcon, RedoIcon, ArrowLeftIcon, ArrowRightIcon, C
 import { SearchDialog, type SearchDialogItem } from "./SearchDialog";
 import { useBranching } from "../conversation/branching/use-branching";
 import { useApplyToLocal } from "../apply/ApplyToLocal";
+import { initPrompt } from "@capsule/shared";
+import { detectInstructionFiles } from "../project/ProjectInstructions";
 
 const REVIEW_SCOPE_LABEL: Record<DiffScope, string> = {
   uncommitted: "Review uncommitted changes",
@@ -70,6 +72,9 @@ export function Palette() {
         onSelect: () => { if (project) setReviewScope(project.id, scope.id); openInspector("changes"); },
       })),
       ...(applyToLocal.offered ? [{ id: "apply-to-local", label: "Apply worktree to local checkout", group: "Workspace", icon: <GitMergeIcon size={15} />, disabledReason: applyToLocal.disabledReason, onSelect: applyToLocal.apply }] : []),
+      { id: "init", label: "Write or refresh AGENTS.md", detail: "Start a conversation with the /init prompt drafted", group: "Actions", icon: <SparkIcon size={15} />,
+        disabledReason: desktopOnly ?? (!project?.workingDirectory ? "Open a project folder first." : undefined),
+        onSelect: () => { if (project) void detectInstructionFiles(api, project.id).then((found) => createTask(project.id, initPrompt(found))); } },
       { id: "browser", label: "Open browser", group: "Workspace", icon: <GlobeIcon size={15} />, onSelect: () => openInspector("browser") },
       { id: "simulator", label: "Open iOS Simulator", group: "Workspace", icon: <SmartphoneIcon size={15} />, disabledReason: desktopOnly ?? (api.platform && api.platform !== "darwin" ? "Available on macOS with Xcode." : undefined), onSelect: () => openInspector("simulator") },
       { id: "fork-last-turn", label: "Fork conversation from last turn", group: "Actions", icon: <GitBranchIcon size={15} />,

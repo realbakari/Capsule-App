@@ -36,6 +36,7 @@ import { WorktreeStorage } from "../features/settings/WorktreeStorage";
 import { runNavigationRecoveryRegressions } from "./navigation-recovery-regressions";
 import { runDraftAdmissionRegressions } from "./draft-admission-regressions";
 import { runWorkspaceExtensionRegressions } from "./workspace-extension-regressions";
+import { runComposerContextRegressions } from "./composer-context-regressions";
 import { runSavedPreviewRegressions, runSavedPreviewLayoutRegressions, SavedDiffFixture, focusSavedPreview } from "./saved-preview-regressions";
 import { ChevronRightIcon, FolderIcon, InboxIcon } from "../features/shell/icons";
 import { CapabilityDetails } from "../features/harness/CapabilityDetails";
@@ -1476,6 +1477,8 @@ window.runRendererRegressions = async () => {
   await runSavedPreviewLayoutRegressions(host);
   phase("workspace extensions");
   await runWorkspaceExtensionRegressions(host, contextBase);
+  phase("composer context sources");
+  await runComposerContextRegressions(host, contextBase);
   phase("files layout and navigation");
   await runFilesRegressions(host, contextBase);
   phase("review hunk actions");
