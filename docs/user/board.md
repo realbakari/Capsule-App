@@ -67,6 +67,26 @@ waiting on a conversation you archived keeps waiting until you restore it or
 remove the link. Deleting a conversation removes it from every card that waited
 for it, and those cards wait for you to start them.
 
+## Cards an agent creates
+
+An agent can put follow-up work on the board from inside a conversation: a
+card with its own prompt, optionally waiting for other cards. The card says
+**Created by** and the conversation it came from, and opening it shows the same
+note with a link back.
+
+By default every card an agent creates waits in **Draft**, even when it is
+chained, so nothing runs until you press **Start**. To let agents start the
+cards they create in a project, open **Agent tasks** in the board toolbar
+(with that project shown) and turn on **Let agents start the tasks they
+create**. Then a card with nothing to wait for starts at once, and a chained
+one starts when its cards are marked done. An agent can only start cards it
+created, and only in its own project. Delete a card you do not want, like any
+other conversation.
+
+Which agents can create cards: agents running in direct mode that accept
+Capsule's tools. Claude Code, Codex and Muse Code in direct mode, and every
+conversation on the OpenClaw Gateway, do not get these tools yet.
+
 ## Keyboard
 
 Tab to the board, then use the arrow keys to move between cards and Enter to

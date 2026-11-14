@@ -10,7 +10,8 @@ import { FollowUpService } from "./follow-up-service.js";
 import { BoardService } from "./board-service.js";
 import { BestOfNService } from "./best-of-n.js";
 import type { GroupComparison, LeaderboardRow, RatingValue, StartBestOfNInput, StartBestOfNResult, ThreadGroup } from "@capsule/shared";
-import type { BoardCardOp, CreateBoardCardInput } from "@capsule/shared";
+import type { BoardCardOp, CreateBoardCardInput, ThreadOrigin } from "@capsule/shared";
+import { AgentTasks, type AgentTaskResult } from "./agent-tasks.js";
 import { Branching, transcriptContext } from "./branching.js";
 import { HistoryImport } from "./history-import.js";
 import { Handoff } from "./handoff.js";
@@ -341,11 +342,20 @@ export class CapsuleEngine {
     saveCard: (session) => this.repos.updateSessionBoard(session),
     latestRuns: () => new Map(this.repos.listLatestRuns().map((run) => [run.sessionId, run])),
     isBusy: (sessionId) => this.admittingSessions.has(sessionId) || this.listRuns(sessionId).some((run) => ACTIVE_RUN_STATUSES.has(run.status)),
-    createSession: (input) => this.createSession(input),
+    createSession: (input, origin) => this.createSession(input, origin),
     send: async (sessionId, content) => { await this.sendMessage({ sessionId, content }); },
     emit: () => this.events.emit("state", { command: "sessions-updated" }),
     log: (message) => this.log(message),
     now: nowIso,
+  });
+  /* Tasks an agent creates from a thread: board cards in its project, drafts unless the project allows starts. */
+  private readonly agentTasks = new AgentTasks({
+    getSession: (id) => this.repos.getSession(id),
+    listSessions: () => this.repos.listSessions(),
+    latestRuns: () => new Map(this.repos.listLatestRuns().map((run) => [run.sessionId, run])),
+    allowsStarts: (projectId) => Boolean(this.settings.agentTaskAutoStart?.includes(projectId)),
+    createCard: (input, origin) => { this.assertWorkAllowed(); return this.board.createCard(input, origin); },
+    startCard: (id) => { this.assertWorkAllowed(); return this.board.apply(id, { type: "start" }); },
   });
   /* Best-of-N comparisons: candidate threads made together, compared, one kept; and local ratings. */
   private readonly bestOfN: BestOfNService;
@@ -1794,7 +1804,7 @@ export class CapsuleEngine {
     return this.repos.listSessions(projectId);
   }
 
-  async createSession(input: CreateSessionInput): Promise<Session> {
+  async createSession(input: CreateSessionInput, origin?: ThreadOrigin): Promise<Session> {
     const project = this.requireProject(input.projectId);
     const agentId = input.agentId ?? project.defaultAgentId ?? agentIdForMode(input.mode ?? project.defaultMode);
     const requestedWorkspaceMode =
@@ -1806,6 +1816,7 @@ export class CapsuleEngine {
         ? "worktree"
         : "local";
     const session = createSessionRecord(project, { ...input, workspaceMode }, agentId);
+    if (origin) session.origin = origin;
     session.permissionProfile = input.permissionProfile ?? this.settings.defaultPermission;
     const turnMode = isTurnMode(input.turnMode) ? input.turnMode : this.settings.startInPlanMode ? "plan" : undefined;
     if (turnMode) session.turnMode = turnMode;
@@ -2052,6 +2063,17 @@ export class CapsuleEngine {
   createBoardCard(input: CreateBoardCardInput): Promise<Session> {
     this.assertWorkAllowed();
     return this.board.createCard(input);
+  }
+
+  /**
+   * The task tools, called by an agent through the desktop's local MCP server
+   * for the thread it runs in. Never reachable from the renderer.
+   */
+  callAgentTaskTool(threadId: string, name: string, args: Record<string, unknown>): Promise<AgentTaskResult> {
+    if (name === "create_task") return this.agentTasks.create(threadId, args);
+    if (name === "start_task") return this.agentTasks.start(threadId, args.id);
+    if (name === "list_tasks") return Promise.resolve(this.agentTasks.list(threadId));
+    return Promise.resolve({ ok: false, detail: `No such tool: ${name}.` });
   }
 
   updateBoardCard(sessionId: string, op: BoardCardOp): Promise<Session> {

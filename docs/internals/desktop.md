@@ -2069,6 +2069,21 @@ conversation. The home screen is unchanged.
 - **Remote viewer.** `createBoardCard` and `updateBoardCard` are write
   channels: read and control peers cannot call them, and the board hides every
   write control when `api.isDesktop === false`.
+- **Agent-created cards.** An agent calls `create_task` / `start_task` /
+  `list_tasks` on the `capsule-tasks` MCP server (see
+  `docs/internals/harness.md`). `AgentTasks` in core scopes each call to the
+  calling thread's project and creates cards through `BoardService.createCard`
+  with `origin: { kind: "task", sessionId }`, written once at creation. The card
+  shows **Created by <thread>**; the thread's `ThreadOrigin` note links back.
+  `agentTaskStart` in `@capsule/shared` is the rule: unless
+  `settings.agentTaskAutoStart` lists the project, a card is a draft with
+  `autoStart: false` even when chained, and `start_task` is refused. When
+  listed, a card with no dependencies starts at once and a chained one
+  auto-starts. An agent may start only cards it created. The per-project switch
+  is **Agent tasks** in the board toolbar (project scope, desktop only), which
+  also says which routes and harnesses get the tools. It writes through
+  `updateSettings`, so no new IPC channel exists; MCP calls never reach the
+  renderer.
 
 ## Plan mode chip, handoff and favorites
 

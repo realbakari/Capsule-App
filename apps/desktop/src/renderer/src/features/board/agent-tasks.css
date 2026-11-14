@@ -1,0 +1,27 @@
+/* Agent-created tasks: who made a card, and whether such cards may start. */
+.board-card-origin { display: flex; align-items: center; gap: 0.25rem; margin: 0; font-size: var(--text-xs); color: var(--text-faint); min-width: 0; }
+.board-card-origin > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.board-card-origin > svg { flex: none; }
+.board-agent-tasks { position: relative; margin-left: auto; }
+.board-agent-tasks > summary { list-style: none; cursor: pointer; gap: 0.35rem; }
+.board-agent-tasks > summary::-webkit-details-marker { display: none; }
+.board-agent-tasks-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.35rem);
+  z-index: 20;
+  width: min(22rem, calc(100vw - 2rem));
+  padding: 0.75rem;
+  display: grid;
+  gap: 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-raised);
+  font-size: var(--text-ui);
+  color: var(--text);
+}
+.board-agent-tasks-panel p { margin: 0; font-size: var(--text-xs); line-height: 1.45; color: var(--text-muted); }
+.board-agent-tasks-panel p.muted { color: var(--text-faint); }
+.board-agent-tasks-switch { display: flex; align-items: flex-start; gap: 0.5rem; cursor: pointer; }
+.board-agent-tasks-switch input { margin-top: 0.15rem; }

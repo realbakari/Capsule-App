@@ -24,15 +24,24 @@ export function ThreadOrigin({ session }: { session: Session }) {
     );
   }
   const from = sessions.find((item) => item.id === origin.sessionId);
+  const openFrom = from ? <button type="button" className="link-button" onClick={() => { setProjectId(from.projectId, from.id); setView("chat"); }}>{from.title}</button> : null;
+  if (origin.kind === "task") {
+    return (
+      <div className="thread-origin" role="note">
+        <div className="thread-origin-text">
+          <strong>Created by {openFrom ?? "a thread that no longer exists"}</strong>
+          <span>An agent in that thread put this task on the board with its task tools.</span>
+        </div>
+      </div>
+    );
+  }
   const brief = session.carryOver?.brief;
   return (
     <div className="thread-origin" role="note">
       <div className="thread-origin-text">
         <strong>
           Continued from{" "}
-          {from ? (
-            <button type="button" className="link-button" onClick={() => { setProjectId(from.projectId, from.id); setView("chat"); }}>{from.title}</button>
-          ) : "a thread that no longer exists"}
+          {openFrom ?? "a thread that no longer exists"}
           {origin.fromHarnessId && origin.fromHarnessId !== session.harnessId ? ` on ${harnessDisplayName(harnesses, origin.fromHarnessId, origin.fromHarnessId)}` : ""}
         </strong>
         {brief ? (

@@ -33,6 +33,11 @@ export type ThreadOrigin =
     /** The thread this one continues. It is never changed. */
     sessionId: string;
     fromHarnessId?: HarnessId;
+  }
+  | {
+    kind: "task";
+    /** The thread whose agent created this card through the task tools. */
+    sessionId: string;
   };
 
 /** One session found in an agent's history, before it is imported. */

@@ -8,6 +8,7 @@ import {
   type CreateBoardCardInput,
   type CreateSessionInput,
   type Session,
+  type ThreadOrigin,
 } from "@capsule/shared";
 import { titleFromPrompt } from "@capsule/sessions";
 
@@ -31,7 +32,7 @@ export interface BoardHost {
   latestRuns(): ReadonlyMap<string, BoardRun>;
   /** A turn is running or being admitted in this thread. */
   isBusy(sessionId: string): boolean;
-  createSession(input: CreateSessionInput): Promise<Session>;
+  createSession(input: CreateSessionInput, origin?: ThreadOrigin): Promise<Session>;
   /** The same path as pressing send in the thread. */
   send(sessionId: string, prompt: string): Promise<void>;
   emit(): void;
@@ -46,7 +47,7 @@ export class BoardService {
   constructor(private readonly host: BoardHost) {}
 
   /** Create a card. Reusable by anything that makes cards, not only the board UI. */
-  async createCard(input: CreateBoardCardInput): Promise<Session> {
+  async createCard(input: CreateBoardCardInput, origin?: ThreadOrigin): Promise<Session> {
     for (const id of input.dependsOn) {
       if (!this.host.getSession(id)) throw new Error("A card this one depends on no longer exists.");
     }
@@ -55,7 +56,7 @@ export class BoardService {
       title: input.title ?? titleFromPrompt(input.prompt),
       ...(input.agentId ? { agentId: input.agentId } : {}),
       ...(input.workspaceMode ? { workspaceMode: input.workspaceMode } : {}),
-    });
+    }, origin);
     const session: Session = {
       ...created,
       pendingStart: { prompt: input.prompt, dependsOn: input.dependsOn, autoStart: input.autoStart, createdAt: this.host.now() },

@@ -329,6 +329,11 @@ export interface CapsuleSettings {
   favoriteModels: string[];
   /** Personal saved prompts for the composer's `/` menu. A project's own live in its capsule.json. */
   composerPrompts?: PromptTemplate[];
+  /**
+   * Projects whose agents may start the board tasks they create. Absent means
+   * none: an agent-created card is a draft until the person starts it.
+   */
+  agentTaskAutoStart?: string[];
 }
 
 const AGENT_MODES: AgentMode[] = [
@@ -581,5 +586,8 @@ export function normalizeCapsuleSettings(input: Partial<CapsuleSettings> = {}): 
     modeModels: normalizeModeModels(input.modeModels),
     favoriteModels: normalizeFavoriteModels(input.favoriteModels),
     ...(input.composerPrompts?.length ? { composerPrompts: normalizePromptTemplates(input.composerPrompts) } : {}),
+    ...(Array.isArray(input.agentTaskAutoStart) && input.agentTaskAutoStart.length ? {
+      agentTaskAutoStart: [...new Set(input.agentTaskAutoStart.filter((id): id is string => typeof id === "string" && id.length > 0 && id.length <= 256))].slice(0, 500),
+    } : {}),
   };
 }

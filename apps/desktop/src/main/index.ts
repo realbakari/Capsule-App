@@ -51,6 +51,8 @@ import { observeBrowser } from "./browser-diagnostics";
 import { secureBrowserSession } from "./browser-security";
 import { startBrowserMcpServer, type BrowserMcpServer } from "./browser-mcp";
 import { startSimulatorMcpServer, type SimulatorMcpServer } from "./simulator-mcp";
+import { startTasksMcpServer, type TaskTarget } from "./tasks-mcp";
+import type { LocalMcpServer } from "./local-mcp";
 import { Updater, mergeUpdateStatus } from "./updater";
 import { UpdateAdmission } from "./update-admission";
 import { NativeUpdateStager } from "./native-update-stager";
@@ -220,6 +222,7 @@ const browserReady = new Map<(contents: Electron.WebContents) => void, string | 
 
 let browserMcp: BrowserMcpServer | undefined;
 let simulatorMcp: SimulatorMcpServer | undefined;
+let tasksMcp: LocalMcpServer<TaskTarget> | undefined;
 let petWindow: BrowserWindow | undefined;
 const petVoice = new PetVoice(app.isPackaged ? path.join(process.resourcesPath, "capsule-voice") : path.join(__dirname, "../../native/capsule-voice"));
 
@@ -2357,8 +2360,17 @@ async function startEngineOnce(): Promise<void> {
         return undefined;
       });
     }
+    /* Board tasks an agent may create from its thread; the engine scopes each call to that thread's project. */
+    tasksMcp = await startTasksMcpServer(
+      (threadId, name, args) => engine ? engine.callAgentTaskTool(threadId, name, args) : Promise.resolve({ ok: false, detail: "Capsule is closing." }),
+      (operation) => updateAdmission.run(IPC_CHANNELS.createBoardCard, operation),
+    ).catch((error: unknown) => {
+      console.warn("Task tools unavailable:", error instanceof Error ? error.message : error);
+      return undefined;
+    });
     engine.offerDirectMcpServers(({ threadId, harnessId }) => {
       if (!threadId || !browserMcp) return { servers: [], dispose: () => {} };
+      const tasks = tasksMcp?.register({ threadId });
       const connection = browserMcp.register(browserAccess.target(threadId, harnessId));
       /*
        * The simulator tools reach only the device the user attached in this
@@ -2379,7 +2391,12 @@ async function startEngineOnce(): Promise<void> {
         name: "capsule-simulator",
         url: simulator.url,
         headers: Object.entries(simulator.headers).map(([name, value]) => ({ name, value })),
-      }] : [])], dispose: () => { connection.dispose(); simulator?.dispose(); backgroundBrowsers.revokeAgent(threadId); browserAccess.revoke(threadId); } };
+      }] : []), ...(tasks ? [{
+        type: "http" as const,
+        name: "capsule-tasks",
+        url: tasks.url,
+        headers: Object.entries(tasks.headers).map(([name, value]) => ({ name, value })),
+      }] : [])], dispose: () => { connection.dispose(); simulator?.dispose(); tasks?.dispose(); backgroundBrowsers.revokeAgent(threadId); browserAccess.revoke(threadId); } };
     });
   } catch (error) {
     console.warn("Browser tools unavailable:", error instanceof Error ? error.message : error);
@@ -2557,7 +2574,7 @@ const shutdown = new Shutdown(async () => {
   stopAllTerminals();
   backgroundBrowsers.closeAll();
   const results = await Promise.allSettled([
-    engine?.stop(), browserMcp?.close(), simulatorMcp?.close(), remoteAccess.set("off"), import("./simulator.js").then((m) => m.stopSimulatorBridges()),
+    engine?.stop(), browserMcp?.close(), simulatorMcp?.close(), tasksMcp?.close(), remoteAccess.set("off"), import("./simulator.js").then((m) => m.stopSimulatorBridges()),
   ]);
   for (const result of results) {
     if (result.status === "rejected") console.error("Capsule shutdown cleanup failed", result.reason);

@@ -542,6 +542,27 @@ open_url, apps, launch. No list, boot, shutdown, install or settings tool
 exists for agents. Gestures go through the XCUITest touch bridge the panel
 uses, started on demand. Gateway sessions are not given these tools.
 
+### Task tools
+
+The same transport offers `capsule-tasks` beside the browser tools. A token
+resolves only its thread; `Engine.callAgentTaskTool` scopes each call to that
+thread's project. Tools: `create_task(title, prompt, agent?, workspace?,
+depends_on?)`, `start_task(id)` and `list_tasks()`. Created cards carry
+`origin: { kind: "task", sessionId }`. Unless the person allowed agent starts
+for the project (`settings.agentTaskAutoStart`), a card is a draft that never
+starts on its own and `start_task` is refused; an agent may start only cards it
+created. Calls go through desktop update admission under `createBoardCard`.
+
+Who receives it:
+
+| Route / harness | Gets `capsule-tasks` |
+|---|---|
+| Direct ACP harness whose handshake reports `mcpCapabilities.http === true` | Yes, on `session/new` |
+| Direct ACP harness without HTTP MCP support | No; the conversation works without it |
+| Claude Code, Codex and Muse Code (native session protocols) | No. The direct host gives native sessions no MCP offer yet |
+| Gateway route | No. The Gateway owns its agents' tools; the board's **Agent tasks** panel says so |
+| Mock runtime, probes | No |
+
 ### Turn evidence
 
 Turn verification is a workspace capability shared by every harness and both

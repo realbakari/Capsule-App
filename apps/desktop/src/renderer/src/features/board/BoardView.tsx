@@ -18,8 +18,9 @@ import {
 import { formatUserError } from "../../lib/errors";
 import { floatingPlacement } from "../../lib/floating-placement";
 import { AgentGlyph } from "../shell/AgentGlyph";
-import { CheckIcon, GitBranchIcon, LinkIcon, PlayIcon, PlusIcon, UndoIcon, XIcon } from "../shell/icons";
+import { CheckIcon, GitBranchIcon, LinkIcon, PlayIcon, PlusIcon, SparkIcon, UndoIcon, XIcon } from "../shell/icons";
 import { NewCardDialog } from "./NewCardDialog";
+import { AgentTasksSetting } from "./AgentTasksSetting";
 import "./board.css";
 
 const STEP_COLUMNS = new Set(["running", "needs-you", "review"]);
@@ -143,6 +144,7 @@ export function BoardView() {
             All projects
           </button>
         </div>
+        {canEdit && project && !scoped && <AgentTasksSetting project={project} />}
         {canEdit ? (
           <button type="button" className="chip board-new" onClick={() => setCreating(true)} disabled={!project && projects.length === 0}>
             <PlusIcon size={13} /> New card
@@ -287,6 +289,7 @@ function Card({
         </p>
       )}
       {pending?.error && <p className="board-card-alert">Did not start: {pending.error}</p>}
+      {session.origin?.kind === "task" && <p className="board-card-origin" title={`Created by an agent in ${titleOf(session.origin.sessionId)}`}><SparkIcon size={11} /><span>Created by {titleOf(session.origin.sessionId)}</span></p>}
       {waitsFor.length > 0 && !(state.column === "needs-you" && state.reason === "blocked") && (
         <p className="board-card-after">
           <LinkIcon size={11} />
