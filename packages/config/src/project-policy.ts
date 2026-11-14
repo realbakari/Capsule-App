@@ -1,3 +1,4 @@
+import { isMcpServerPatch } from "@capsule/shared";
 import type {
   ConfigKey,
   ExtendedConfig,
@@ -89,13 +90,18 @@ const TRUST_GATES: { [K in ExtendedConfigKey]?: Gate<Value<K>> } = {
           path,
         })))),
   })) satisfies Gate<HooksConfig>,
-  mcpServers: ((value: Record<string, McpServerConfig>, path) => ({
-    held: Object.entries(value).map(([name, server]) => ({
-      kind: "mcp-server" as const,
-      detail: `${name}: ${"url" in server ? server.url : server.command}`,
-      path,
-    })),
-  })) satisfies Gate<Record<string, McpServerConfig>>,
+  // Turning a server off only restricts, so it applies at once; anything that starts or enables one waits.
+  mcpServers: ((value: Record<string, McpServerConfig>, path) => {
+    const off = Object.entries(value).filter(([, server]) => isMcpServerPatch(server) && server.enabled === false);
+    return {
+      applied: off.length ? Object.fromEntries(off) : undefined,
+      held: Object.entries(value).filter(([, server]) => !off.some(([, item]) => item === server)).map(([name, server]) => ({
+        kind: "mcp-server" as const,
+        detail: `${name}: ${"url" in server ? server.url : "command" in server ? server.command : "turn on"}`,
+        path,
+      })),
+    };
+  }) satisfies Gate<Record<string, McpServerConfig>>,
   automations: ((value: Value<"automations">, path) => ({
     held: value.map((automation) => ({
       kind: "automation" as const,

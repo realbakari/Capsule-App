@@ -1,5 +1,6 @@
 import {
   HOOK_EVENTS,
+  isMcpServerPatch,
   normalizeCapsuleSettings,
   settingSpec,
   SETTINGS_SCHEMA,
@@ -126,9 +127,13 @@ const MERGERS: { [K in ExtendedConfigKey]: Merger<K> } = {
   },
   // Any file can turn hooks off; none can turn them back on for another.
   disableAllHooks: (current, next) => current || next === true,
+  // An entry with neither command nor url only turns a server defined in an earlier file on or off here.
   mcpServers: (current, next, source) => {
     const merged = { ...current };
-    for (const [name, server] of Object.entries(next) as [string, McpServerConfig][]) merged[name] = sourced(server, source);
+    for (const [name, server] of Object.entries(next) as [string, McpServerConfig][]) {
+      if (!isMcpServerPatch(server)) merged[name] = sourced(server, source);
+      else if (merged[name]) merged[name] = { value: { ...merged[name].value, ...server } as McpServerConfig, source: merged[name].source, override: source };
+    }
     return merged;
   },
   automations: (current, next, source) => {

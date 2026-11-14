@@ -18,6 +18,7 @@ import {
   type Theme,
   type ThemeImportResult,
   type ThemeState,
+  isMcpServerPatch,
   parsePermissionRule,
   profileTemplate,
   SETTINGS_SCHEMA,
@@ -364,6 +365,46 @@ export class ConfigService {
       return { path: file, text: readFileSync(file, "utf8") };
     } catch {
       return { path: file, problem: `${file} could not be read, so no personal instructions are sent.` };
+    }
+  }
+
+  /**
+   * Turn one MCP server on or off in the user file, or for one project in its
+   * local file. A local entry that only says `enabled` patches the server
+   * wherever it is defined; turning one back on removes that patch, and writes
+   * `enabled: true` only when the server is off underneath.
+   */
+  setMcpServerEnabled(input: { name: string; enabled: boolean; scope: "user" | "local"; root?: string }): void {
+    const file = this.paths.settingsFile(input.scope, input.root);
+    const read = () => {
+      const current = readJsonc(file);
+      if (current.state === "broken") throw new Error(`${file} has an error at line ${current.error.line}, column ${current.error.column}. Fix it before Capsule writes to it.`);
+      const value = current.state === "ok" && isPlainObject(current.value) ? current.value : {};
+      return isPlainObject(value.mcpServers) ? (value.mcpServers as Record<string, Record<string, unknown>>) : {};
+    };
+    const servers = read();
+    const entry = isPlainObject(servers[input.name]) ? servers[input.name] : undefined;
+    if (input.scope === "user") {
+      if (!entry || isMcpServerPatch(entry)) throw new Error(`${input.name} is not defined in ${file}.`);
+      this.setValues("user", { mcpServers: { ...servers, [input.name]: { ...entry, enabled: input.enabled } } });
+      return;
+    }
+    if (!input.enabled && entry && !isMcpServerPatch(entry)) {
+      this.setValues("local", { mcpServers: { ...servers, [input.name]: { ...entry, enabled: false } } }, input.root);
+      return;
+    }
+    const { [input.name]: _dropped, ...rest } = servers;
+    if (!input.enabled) {
+      this.setValues("local", { mcpServers: { ...servers, [input.name]: { enabled: false } } }, input.root);
+      return;
+    }
+    if (entry && !isMcpServerPatch(entry)) {
+      this.setValues("local", { mcpServers: { ...servers, [input.name]: { ...entry, enabled: true } } }, input.root);
+      return;
+    }
+    this.setValues("local", { mcpServers: Object.keys(rest).length ? rest : undefined }, input.root);
+    if (this.resolve(input.root).merged.extended.mcpServers[input.name]?.value.enabled === false) {
+      this.setValues("local", { mcpServers: { ...read(), [input.name]: { enabled: true } } }, input.root);
     }
   }
 

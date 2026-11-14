@@ -70,3 +70,42 @@ describe("profiles and styles", () => {
   });
 });
 
+describe("MCP servers per project", () => {
+  it("turns a user's server off for one project with a patch, even before trust, and back on by removing it", () => {
+    const { service, write, userFile, localFile, project } = fixture();
+    write(userFile, JSON.stringify({ mcpServers: { docs: { command: "docs-mcp" } } }));
+    service.reload();
+    service.setMcpServerEnabled({ name: "docs", enabled: false, scope: "local", root: project });
+    expect(JSON.parse(readFileSync(localFile, "utf8")).mcpServers).toEqual({ docs: { enabled: false } });
+    const off = service.extended(project).mcpServers.docs;
+    expect(off?.value).toEqual({ command: "docs-mcp", enabled: false });
+    expect(off?.source.path).toBe(userFile);
+    expect(off?.override?.path).toBe(localFile);
+    expect(service.extended().mcpServers.docs?.value.enabled).toBeUndefined();
+
+    service.setMcpServerEnabled({ name: "docs", enabled: true, scope: "local", root: project });
+    expect(JSON.parse(readFileSync(localFile, "utf8")).mcpServers).toBeUndefined();
+    expect(service.extended(project).mcpServers.docs?.override).toBeUndefined();
+  });
+
+  it("turns a server on in one project when it is off everywhere else, which waits for trust", () => {
+    const { service, write, userFile, localFile, project } = fixture();
+    write(userFile, JSON.stringify({ mcpServers: { docs: { command: "docs-mcp", enabled: false } } }));
+    service.reload();
+    service.setMcpServerEnabled({ name: "docs", enabled: true, scope: "local", root: project });
+    expect(JSON.parse(readFileSync(localFile, "utf8")).mcpServers).toEqual({ docs: { enabled: true } });
+    expect(service.extended(project).mcpServers.docs?.value.enabled).toBe(false);
+    expect(service.diagnostics(project).trust?.pending).toEqual([expect.objectContaining({ kind: "mcp-server", detail: "docs: turn on" })]);
+    service.trust(project, true);
+    expect(service.extended(project).mcpServers.docs?.value.enabled).toBe(true);
+  });
+
+  it("turns a user server off everywhere in the user file", () => {
+    const { service, write, userFile } = fixture();
+    write(userFile, JSON.stringify({ mcpServers: { docs: { command: "docs-mcp" } } }));
+    service.reload();
+    service.setMcpServerEnabled({ name: "docs", enabled: false, scope: "user" });
+    expect(service.extended().mcpServers.docs?.value).toEqual({ command: "docs-mcp", enabled: false });
+    expect(() => service.setMcpServerEnabled({ name: "nope", enabled: false, scope: "user" })).toThrow(/not defined/);
+  });
+});
