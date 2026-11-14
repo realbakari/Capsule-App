@@ -61,7 +61,7 @@ export const INSERT_COMMAND_EVENT = "capsule:insert-command";
 export const KEY_COMMAND_EVENT = "capsule:key-command";
 
 /** A command's first effective binding as one label, such as "⇧⌘D", or undefined when it has none. */
-export function shortcutLabel(id: string, bindings: readonly EffectiveBinding[]): string | undefined {
+export function shortcutLabel(id: string, bindings: readonly EffectiveBinding[] = []): string | undefined {
   const binding = bindings.find((item) => item.action === id && item.context === "global") ?? bindings.find((item) => item.action === id);
   return binding ? sequenceSymbols(binding.sequence).map((chord) => chord.join("")).join(" ") : undefined;
 }
