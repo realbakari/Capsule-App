@@ -4,6 +4,7 @@ import { PENDING_KIND_LABELS, asSentence, shortConfigPath, sourceFileTarget, sou
 import { formatUserError } from "../../lib/errors";
 import { useWorkspace } from "../../lib/workspace";
 import { RefreshIcon } from "../shell/icons";
+import { HooksList } from "./HooksList";
 
 const SOURCE_LABELS: Record<string, string> = {
   "settings:local": "Project, only you",
@@ -174,6 +175,8 @@ export function CustomizationDoctor() {
           )}
         </>
       )}
+
+      <HooksList diagnostics={diagnostics} home={home} />
 
       <h4 className="doctor-heading">Recent runs</h4>
       {runs.length === 0 ? (

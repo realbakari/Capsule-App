@@ -4,6 +4,7 @@ import type { CapsuleSettings, WritableScope } from "@capsule/shared";
 import { routeSettingsPatch, sectionTakesProjectValues, settingsFileTarget, settingsLayerView, type SettingSourceChip } from "../../lib/config-view";
 import { SaveToControl, SettingSource, SettingSourceContext, type SettingSourceState } from "../customization/SettingSource";
 import { CustomizationDoctor } from "../customization/CustomizationDoctor";
+import { PermissionRulesCard } from "../customization/PermissionRulesCard";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { KeybindingsSettings } from "./KeybindingsSettings";
 import { ProcessMonitor } from "./ProcessMonitor";
@@ -338,6 +339,7 @@ export function SettingsView() {
                 <RuntimeModeCard settings={settings} onPatch={patch} />
                 <HarnessProvidersCard />
                 <AgentDefaultsCard settings={settings} onPatch={(next) => void patch(next)} />
+                <PermissionRulesCard />
                 <HarnessCredentialsCard settings={settings} onPatch={(next) => void patch(next)} />
               </div>
             )}

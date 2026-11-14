@@ -30,6 +30,7 @@ import { outcomesByTurn } from "../../lib/turn-outcomes";
 import { threadFeedback } from "../../lib/thread-error";
 import { shouldFollowLatest } from "../../lib/composer-rest";
 import { ApprovalDetails, APPROVE_ONCE_UNAVAILABLE } from "../harness/ApprovalDetails";
+import { AlwaysAllow } from "../customization/AlwaysAllow";
 import { TurnOutcome } from "./TurnOutcome";
 import { TurnVerification } from "./TurnVerification";
 import { TurnFilesCard } from "./TurnFilesCard";
@@ -740,14 +741,11 @@ export function Conversation() {
                 >
                   Approve once
                 </button>
-                <button
-                  className="chip"
-                  disabled={api.isDesktop === false || session?.openclawSessionKey?.startsWith("direct:")}
-                  title={api.isDesktop === false ? "Browser approvals are once-only." : session?.openclawSessionKey?.startsWith("direct:") ? "Direct agents support approval once here." : undefined}
-                  onClick={() => void api.resolveApproval(pendingApproval.id, "approved_session").catch((error) => setNotice(formatUserError(error)))}
-                >
-                  Approve session
-                </button>
+                <AlwaysAllow
+                  approval={pendingApproval}
+                  projectId={session?.projectId}
+                  thread={session?.openclawSessionKey?.startsWith("direct:") ? "Direct agents support approval once here." : true}
+                />
                 <button
                   className="ghost"
                   onClick={() => void api.resolveApproval(pendingApproval.id, "denied").catch((error) => setNotice(formatUserError(error)))}

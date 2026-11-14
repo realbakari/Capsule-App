@@ -3,6 +3,7 @@ import { formatUserError } from "../../lib/errors";
 import { SkillsDirectory } from "./SkillsDirectory";
 import { TurnVerification } from "../conversation/TurnVerification";
 import { ApprovalDetails, APPROVE_ONCE_UNAVAILABLE } from "../harness/ApprovalDetails";
+import { AlwaysAllow } from "../customization/AlwaysAllow";
 import { useEffect, useRef, useState } from "react";
 import type { RunHistoryPage, RunHistoryCursor } from "@capsule/shared";
 
@@ -122,6 +123,7 @@ export function ApprovalsView() {
                 onClick={() => void api.resolveApproval(item.id, "approved_once").catch((error) => setNotice(formatUserError(error)))}>
                 Approve once
               </button>
+              <AlwaysAllow approval={item} thread={false} />
               <button className="ghost" onClick={() => void api.resolveApproval(item.id, "denied").catch((error) => setNotice(formatUserError(error)))}>
                 Deny
               </button>

@@ -44,6 +44,8 @@ function snapshot(overrides: Partial<ConfigSnapshot> = {}): ConfigSnapshot {
   };
 }
 
+const NO_RULES = { permissions: { allow: [], ask: [], deny: [] }, hooks: {}, hooksDisabled: false };
+
 describe("provenance chips", () => {
   it("names the file that set a value and leaves defaults unmarked", () => {
     expect(sourceChip({ scope: "user", path: USER_FILE })).toEqual({ label: "user file", layer: "user", path: USER_FILE });
@@ -137,7 +139,7 @@ describe("the doctor", () => {
 
   it("lists what waits for trust only for an untrusted project it describes", () => {
     const pending = [{ kind: "hook" as const, detail: "./scripts/check.sh", path: PROJECT_FILE }];
-    const diagnostics = (root: string): ConfigDiagnostics => ({ safeMode: false, userDir: "/home/ana/.capsule", sources: [], problems: [], runs: [], trust: { root, trusted: false, pending } });
+    const diagnostics = (root: string): ConfigDiagnostics => ({ safeMode: false, userDir: "/home/ana/.capsule", sources: [], problems: [], runs: [], ...NO_RULES, trust: { root, trusted: false, pending } });
     expect(pendingTrust(snapshot(), diagnostics("/work/app"))).toEqual(pending);
     expect(pendingTrust(snapshot(), diagnostics("/work/other"))).toEqual([]);
     const trusted = snapshot();
@@ -148,7 +150,7 @@ describe("the doctor", () => {
 
 describe("announcing a broken file", () => {
   const diagnostics = (...sources: ConfigSourceReport[]): ConfigDiagnostics =>
-    ({ safeMode: false, userDir: "/home/ana/.capsule", sources, problems: [], runs: [] });
+    ({ safeMode: false, userDir: "/home/ana/.capsule", sources, problems: [], runs: [], ...NO_RULES });
   const broken = (line: number): ConfigSourceReport =>
     ({ kind: "settings", scope: "user", path: USER_FILE, state: "broken", error: { message: "Expected a comma", line, column: 3 }, usingLastGood: true });
   const fixed: ConfigSourceReport = { kind: "settings", scope: "user", path: USER_FILE, state: "ok" };

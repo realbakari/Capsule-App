@@ -27,6 +27,8 @@ export function customizationCommands(input: {
       onSelect: run(() => api.configOpenFile(settingsFileTarget("project", project?.projectId))) },
     { id: "config-open-local", label: "Open project local settings", group, icon: <FileIcon size={15} />, disabledReason: needsProject,
       onSelect: run(() => api.configOpenFile(settingsFileTarget("local", project?.projectId))) },
+    { id: "config-open-hooks", label: "Open hooks settings", detail: "Hooks live in your user settings file", group, icon: <FileIcon size={15} />, disabledReason: desktopOnly,
+      onSelect: run(() => api.configOpenFile(settingsFileTarget("user"))) },
     { id: "config-open-keybindings", label: "Open keybindings file", group, icon: <KeyboardIcon size={15} />, disabledReason: desktopOnly,
       onSelect: run(() => api.configOpenFile({ kind: "keybindings" })) },
     { id: "config-reload", label: "Reload customizations", group, icon: <RefreshIcon size={15} />,
