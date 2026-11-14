@@ -180,6 +180,12 @@ const api = {
     ipcRenderer.invoke(IPC_CHANNELS.themesImport, input),
   keybindingsSet: (edit: import("@capsule/shared").KeybindingEdit): Promise<import("@capsule/shared").ConfigSnapshot> =>
     ipcRenderer.invoke(IPC_CHANNELS.keybindingsSet, edit),
+  mcpTest: (input: import("@capsule/shared").McpTestInput): Promise<import("@capsule/shared").McpTestResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.mcpTest, input),
+  mcpSetEnabled: (input: import("@capsule/shared").McpEnabledInput): Promise<import("@capsule/shared").ConfigSnapshot> =>
+    ipcRenderer.invoke(IPC_CHANNELS.mcpSetEnabled, input),
+  profilesCreate: (input: import("@capsule/shared").ProfileCreateInput): Promise<string> =>
+    ipcRenderer.invoke(IPC_CHANNELS.profilesCreate, input),
   backdropChooseImage: (): Promise<import("@capsule/shared").ConfigSnapshot | undefined> => ipcRenderer.invoke(IPC_CHANNELS.backdropChooseImage),
   search: (query: string) => ipcRenderer.invoke(IPC_CHANNELS.search, query),
   updateProject: (id: string, patch: unknown) =>

@@ -1,5 +1,5 @@
 import { IpcArgumentError, type ArgParser } from "@capsule/contracts";
-import { KEYMAP_CONTEXTS, MAX_THEME_SHARE_BYTES, WRITABLE_SCOPES, type CommandExpandInput, type ConfigFileTarget, type KeybindingEdit, type KeymapContext, type PermissionRuleEdit, type SetConfigValueInput, type ThemeImportInput, type WritableScope } from "@capsule/shared";
+import { KEYMAP_CONTEXTS, MAX_THEME_SHARE_BYTES, WRITABLE_SCOPES, type CommandExpandInput, type ConfigFileTarget, type McpEnabledInput, type McpTestInput, type ProfileCreateInput, type KeybindingEdit, type KeymapContext, type PermissionRuleEdit, type SetConfigValueInput, type ThemeImportInput, type WritableScope } from "@capsule/shared";
 
 /*
  * Shapes for the settings-file channels, checked where they cross from the
@@ -33,9 +33,40 @@ export const configFileTarget: ArgParser<ConfigFileTarget> = (value, channel, in
       if (input.scope !== "user" && input.scope !== "project") throw new IpcArgumentError(channel, index, "scope must be user or project");
       return { kind: "folder", folder, scope: input.scope, ...projectId(input.projectId, channel, index) };
     }
+    case "resource": {
+      if (input.folder !== "profiles" && input.folder !== "styles") throw new IpcArgumentError(channel, index, "folder must be profiles or styles");
+      if (input.scope !== "user" && input.scope !== "project") throw new IpcArgumentError(channel, index, "scope must be user or project");
+      if (typeof input.name !== "string" || !/^[a-z0-9][a-z0-9:_-]*$/.test(input.name)) throw new IpcArgumentError(channel, index, "name must be a profile or style id");
+      return { kind: "resource", folder: input.folder, scope: input.scope, name: input.name, ...projectId(input.projectId, channel, index) };
+    }
     default:
-      throw new IpcArgumentError(channel, index, "kind must be settings, keybindings or folder");
+      throw new IpcArgumentError(channel, index, "kind must be settings, keybindings, folder or resource");
   }
+};
+
+const MCP_NAME = /^[A-Za-z0-9_-]{1,64}$/;
+
+export const mcpTestInput: ArgParser<McpTestInput> = (value, channel, index) => {
+  const input = record(value, channel, index);
+  if (typeof input.name !== "string" || !MCP_NAME.test(input.name)) throw new IpcArgumentError(channel, index, "name must be an MCP server name");
+  return { name: input.name, ...projectId(input.projectId, channel, index) };
+};
+
+export const mcpEnabledInput: ArgParser<McpEnabledInput> = (value, channel, index) => {
+  const input = record(value, channel, index);
+  if (typeof input.name !== "string" || !MCP_NAME.test(input.name)) throw new IpcArgumentError(channel, index, "name must be an MCP server name");
+  if (typeof input.enabled !== "boolean") throw new IpcArgumentError(channel, index, "enabled must be true or false");
+  if (input.where !== "everywhere" && input.where !== "project") throw new IpcArgumentError(channel, index, "where must be everywhere or project");
+  if (input.where === "project" && input.projectId === undefined) throw new IpcArgumentError(channel, index, "a project switch needs a projectId");
+  return { name: input.name, enabled: input.enabled, where: input.where, ...projectId(input.projectId, channel, index) };
+};
+
+export const profileCreateInput: ArgParser<ProfileCreateInput> = (value, channel, index) => {
+  const input = record(value, channel, index);
+  if (input.scope !== "user" && input.scope !== "project") throw new IpcArgumentError(channel, index, "scope must be user or project");
+  if (input.scope === "project" && input.projectId === undefined) throw new IpcArgumentError(channel, index, "a project profile needs a projectId");
+  if (input.from !== undefined && (typeof input.from !== "string" || !/^[a-z0-9][a-z0-9:_-]*$/.test(input.from))) throw new IpcArgumentError(channel, index, "from must be a profile id");
+  return { scope: input.scope, ...projectId(input.projectId, channel, index), ...(input.from === undefined ? {} : { from: input.from }) };
 };
 
 export const commandExpandInput: ArgParser<CommandExpandInput> = (value, channel, index) => {

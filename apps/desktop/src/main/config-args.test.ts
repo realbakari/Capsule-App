@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appRestartInput, commandExpandInput, configFileTarget, keybindingEdit, permissionRuleEdit, setConfigValueInput, themeImportInput } from "./config-args.js";
+import { appRestartInput, commandExpandInput, configFileTarget, keybindingEdit, mcpEnabledInput, mcpTestInput, permissionRuleEdit, profileCreateInput, setConfigValueInput, themeImportInput } from "./config-args.js";
 
 const CHANNEL = "capsule:config:test";
 
@@ -72,5 +72,18 @@ describe("keybinding and theme import inputs", () => {
     for (const bad of [{ from: "share", text: "" }, { from: "share", text: "x".repeat(33 * 1024) }, { from: "url", text: "https://x" }]) {
       expect(() => themeImportInput(bad, CHANNEL, 0)).toThrow(CHANNEL);
     }
+  });
+});
+
+describe("MCP and profile arguments", () => {
+  it("takes a server name, a switch with where it applies, and a profile to create or copy", () => {
+    expect(mcpTestInput({ name: "docs", projectId: "p" }, "mcpTest", 0)).toEqual({ name: "docs", projectId: "p" });
+    expect(() => mcpTestInput({ name: "../x" }, "mcpTest", 0)).toThrow(/MCP server name/);
+    expect(mcpEnabledInput({ name: "docs", enabled: false, where: "project", projectId: "p" }, "mcpSetEnabled", 0)).toEqual({ name: "docs", enabled: false, where: "project", projectId: "p" });
+    expect(() => mcpEnabledInput({ name: "docs", enabled: false, where: "project" }, "mcpSetEnabled", 0)).toThrow(/needs a projectId/);
+    expect(profileCreateInput({ scope: "user", from: "reviewer" }, "profilesCreate", 0)).toEqual({ scope: "user", from: "reviewer" });
+    expect(() => profileCreateInput({ scope: "user", from: "../x" }, "profilesCreate", 0)).toThrow(/profile id/);
+    expect(configFileTarget({ kind: "resource", folder: "profiles", scope: "user", name: "team:reviewer" }, "configOpenFile", 0)).toEqual({ kind: "resource", folder: "profiles", scope: "user", name: "team:reviewer" });
+    expect(() => configFileTarget({ kind: "resource", folder: "profiles", scope: "user", name: "../../etc" }, "configOpenFile", 0)).toThrow(/profile or style id/);
   });
 });

@@ -204,6 +204,12 @@ export const IPC_CHANNELS = {
   keybindingsSet: "capsule:keybindings:set",
   /* Pick an image, copy it into the settings folder and draw it behind the conversation. */
   backdropChooseImage: "capsule:backdrop:chooseImage",
+  /* Start or reach one configured MCP server and list its tools. It runs the server's command. */
+  mcpTest: "capsule:mcp:test",
+  /* Turn one MCP server on or off everywhere, or in one project. */
+  mcpSetEnabled: "capsule:mcp:setEnabled",
+  /* Write a new profile file, or a copy of one, and open it. */
+  profilesCreate: "capsule:profiles:create",
 } as const;
 
 export const IPC_EVENTS = {

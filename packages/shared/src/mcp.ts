@@ -118,6 +118,11 @@ export function mcpDelivery(harnessId: string, route: "direct" | "gateway"): Mcp
   return { stdio: "not-carried", http: "not-carried", note: "This agent does not run in direct mode." };
 }
 
+export interface McpTestInput { name: string; projectId?: string }
+
+/** `everywhere` writes your user file; `project` writes the project's local file. */
+export interface McpEnabledInput { name: string; enabled: boolean; where: "everywhere" | "project"; projectId?: string }
+
 /** What the Test button reports: the server's tools, or why it could not list them. */
 export type McpTestResult =
   | { ok: true; tools: string[]; durationMs: number }

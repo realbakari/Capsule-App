@@ -166,6 +166,16 @@ describe("theme and keybinding channels", () => {
   });
 });
 
+describe("MCP and profile channels", () => {
+  it("keeps testing a server, which runs its command, switching one, and writing a profile on the desktop", () => {
+    for (const channel of ["mcpTest", "mcpSetEnabled", "profilesCreate"]) {
+      expect(scopeForChannel(channel)).toBe("write");
+      expect(isChannelAllowed(channel, ["read"])).toBe(false);
+      expect(isChannelAllowed(channel, ["control"])).toBe(false);
+    }
+  });
+});
+
 describe("follow-up channels", () => {
   it("lets a viewer read the queue and conversation control change it, but not a read-only device", () => {
     expect(isChannelAllowed("getFollowUps", ["read"])).toBe(true);

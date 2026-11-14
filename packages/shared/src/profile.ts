@@ -39,6 +39,13 @@ export interface ProfileSummary extends Omit<AgentProfile, "instructions"> {
   hasInstructions: boolean;
 }
 
+export interface ProfileCreateInput {
+  scope: "user" | "project";
+  projectId?: string;
+  /** Duplicate this profile instead of starting from the template. */
+  from?: string;
+}
+
 export interface ParsedProfileFile {
   profile?: AgentProfile;
   problems: string[];

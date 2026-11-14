@@ -16,8 +16,10 @@ export function remoteControlArgs(channel: string, args: unknown[]): unknown[] {
   if (mode !== undefined && (typeof mode !== "string" || !["chat", "agent", "code", "plan", "research", "browser", "automation"].includes(mode))) throw new Error("Invalid conversation mode.");
   const common = { agentId: optStr(field("agentId"), channel, 0), mode };
   if (channel === "createSession") {
+    const profileId = optStr(field("profileId"), channel, 0);
+    // A profile may pick the agent and model; the paired device still cannot loosen permission or leave the checkout.
     return [{ ...common, projectId: id(field("projectId"), channel, 0),
-      title: optStr(field("title"), channel, 0), workspaceMode: "local", permissionProfile: "strict" }];
+      title: optStr(field("title"), channel, 0), workspaceMode: "local", permissionProfile: "strict", ...(profileId ? { profileId } : {}) }];
   }
   const attachments = field("attachments");
   if (attachments !== undefined && (!Array.isArray(attachments) || attachments.length)) throw new Error("Attach local files from the desktop app.");
