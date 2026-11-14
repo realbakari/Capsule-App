@@ -46,7 +46,7 @@ describe("parseChordSequence", () => {
   });
 
   it("formats one canonical spelling", () => {
-    expect(formatChordSequence(seq("shift+meta+k  control+alt+space"))).toBe("shift+cmd+k ctrl+alt+space");
+    expect(formatChordSequence(seq("shift+meta+k  control+alt+space"))).toBe("cmd+shift+k ctrl+alt+space");
     expect(formatChordSequence(seq("cmd++"))).toBe("cmd+plus");
   });
 });
@@ -120,7 +120,7 @@ describe("resolveKeymap", () => {
   it("moves an action to the user's keys", () => {
     const { entries } = parseKeybindingsFile([{ context: "global", bindings: { "cmd+shift+b": "toggle-sidebar" } }]);
     const effective = table(resolveKeymap(DEFAULTS, entries));
-    expect(effective).toContain("global shift+cmd+b toggle-sidebar user");
+    expect(effective).toContain("global cmd+shift+b toggle-sidebar user");
     expect(effective.some((line) => line.startsWith("global cmd+b "))).toBe(false);
   });
 

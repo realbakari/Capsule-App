@@ -68,12 +68,13 @@ export function parseChordSequence(text: string): ParsedSequence {
   return { ok: true, sequence };
 }
 
+/** Modifiers in the order people write them, `cmd+shift+k`, since Capsule writes this spelling into keybindings.json. */
 export function formatChord(chord: KeyChord): string {
   const parts: string[] = [];
+  if (chord.meta) parts.push("cmd");
   if (chord.ctrl) parts.push("ctrl");
   if (chord.alt) parts.push("alt");
   if (chord.shift) parts.push("shift");
-  if (chord.meta) parts.push("cmd");
   parts.push(KEY_NAMES[chord.key] ?? chord.key);
   return parts.join("+");
 }
