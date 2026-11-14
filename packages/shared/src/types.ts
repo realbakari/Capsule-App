@@ -271,6 +271,8 @@ export interface Session {
   doneAt?: string;
   /** Whether the next turn plans or acts. Absent means act. */
   turnMode?: import("./plan-mode.js").TurnMode;
+  /** Set on a candidate of a best-of-N comparison: the ThreadGroup it belongs to. Fixed at creation. */
+  groupId?: string;
   createdAt: string;
   updatedAt: string;
 }
