@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { homedir } from "node:os";
 import { isDeepStrictEqual } from "node:util";
 import { checkRun } from "./run-verification.js";
 import { FolderActivity, foldersOverlap } from "./folder-activity.js";
@@ -18,6 +19,10 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { prepareDirectPrompt } from "./direct-prompt.js";
 import { findCommandCall, prepareCommand, readInvocation, runCommandShell, summarizeCommand, type CommandCall, type CommandShellContext } from "./commands.js";
+import { FollowUpLoopGuard, followUpsFrom, HookRunner, hookSource, PromptBlockedError, promptVerdict, type HookPayload } from "./hooks.js";
+import { decideRequest, type PermissionAnswer } from "./request-policy.js";
+
+type Decision = PermissionAnswer["decision"];
 import { DirectMuseSession } from "@capsule/muse";
 import { DirectCodexSession } from "@capsule/codex";
 import { DirectClaudeSession } from "@capsule/claude";
@@ -28,6 +33,7 @@ import {
   supportsDirectMode,
   turnOutcome,
   type AcpReply,
+  type DirectActivity,
 } from "@capsule/acp";
 import { agentIdForMode, DEFAULT_AGENTS, excludeSystemAgents } from "@capsule/agents";
 import {
@@ -166,6 +172,7 @@ import {
   type UpdateProjectInput,
   isHarnessId,
   type MessagePage,
+  type PermissionSubject,
   type Project,
   type ProjectActionRun,
   type SearchResults,
@@ -328,6 +335,11 @@ export class CapsuleEngine {
     attachmentsFor: (runId) => this.repos.listMessages(this.repos.getRun(runId)?.sessionId ?? "").find((message) => message.runId === runId && message.role === "user")?.attachments ?? [],
     log: (message) => this.log(message),
   });
+  /* Hooks and the one permission decision path: hooks.ts and request-policy.ts. */
+  private readonly hooks = new HookRunner({ extended: (root) => this.config.extended(root), record: (run) => this.config.recordRun(run) });
+  private readonly hookFollowUps = new FollowUpLoopGuard();
+  /** Runs whose TurnEnd hooks have run, and tool calls whose ToolCall hooks have, so each fires once. */
+  private readonly hookedOnce = new Set<string>();
   private startingHarnessRuns = new Set<string>();
   private folderActivity = new FolderActivity();
   private updateReserved = false;
@@ -437,6 +449,7 @@ export class CapsuleEngine {
     this.channelRoutes.start();
     this.events.on("run", (run: Run) => {
       if (!this.stopped && TERMINAL_RUN_STATUSES.has(run.status)) this.followUps.runEnded(run);
+      if (!this.stopped && TERMINAL_RUN_STATUSES.has(run.status)) this.runTurnEndHooks(run);
     });
     this.followUps.start();
     this.log("Capsule engine started");
@@ -1942,6 +1955,9 @@ export class CapsuleEngine {
     let session = this.requireSession(input.sessionId);
     if (session.openclawSessionKey) this.ignoredReplySessions.delete(session.openclawSessionKey);
     const project = this.requireProject(session.projectId);
+    // Before anything is recorded: a blocked prompt, perhaps one holding a secret, never enters the thread.
+    this.hookFollowUps.sent(session.id, input.content);
+    const hookContext = await this.submitPromptHooks(session, project, input.content);
     /*
      * A Capsule command is expanded here, so every way a message arrives
      * (composer, paired device, queue, resume, channel) gets the same text,
@@ -2092,6 +2108,11 @@ export class CapsuleEngine {
           streamKind: "lifecycle",
         });
       }
+    }
+
+    if (hookContext.length) {
+      runtimePrompt = `${runtimePrompt}\n\n${hookContext.join("\n\n")}`;
+      this.appendEvent(run.id, "hook.context", "Context added by a PromptSubmit hook", { context: hookContext });
     }
 
     const settings = this.projectSettings(project);
@@ -2841,6 +2862,7 @@ export class CapsuleEngine {
       }
       if (payload.type === "tool") {
         this.appendEvent(run.id, "tool", payload.tool.title, { ...payload.tool });
+        if (session) this.observeToolCall(session, run, payload.tool);
         return;
       }
       if (payload.type === "plan") {
@@ -2850,39 +2872,168 @@ export class CapsuleEngine {
         });
         return;
       }
-      const approval: ApprovalRequest = {
-        id: createId("approval"), runId: run.id, agentId: run.agentId,
-        agentName: session?.harnessId ?? run.agentId, action: payload.request.title,
-        target: payload.request.details?.locations.join("\n") || "Target not reported by the agent",
-        reason: "The direct agent is waiting for your approval.",
-        details: payload.request.details,
-        status: "pending", createdAt: nowIso(),
-      };
-      this.directApprovals.set(approval.id, { runId: run.id, ...payload.request });
-      this.repos.insertApproval(approval);
-      run.status = "approval_required";
-      this.repos.updateRun(run);
-      this.appendEvent(run.id, "approval.requested", approval.action, { approval });
-      this.events.emit("approval", approval);
-      this.events.emit("run", run);
-      void payload.request.settled?.then(() => {
-        if (!this.directApprovals.delete(approval.id)) return;
-        const pending = this.repos.listApprovals("pending").find((item) => item.id === approval.id);
-        if (!pending) return;
-        pending.status = "cancelled";
-        pending.resolvedAt = nowIso();
-        this.repos.updateApproval(pending);
-        this.events.emit("approval", pending);
-        const current = this.requireRun(run.id);
-        if (!current.completedAt && current.status === "approval_required"
-          && !this.repos.listApprovals("pending").some((item) => item.runId === current.id)) {
-          current.status = "running";
-          this.repos.updateRun(current);
-          this.events.emit("run", current);
+      const request = payload.request;
+      const subject = request.details?.subject;
+      if (!session || !subject) { this.openDirectApproval(session, run, request); return; }
+      const apply = (decision: Decision, late: boolean) => {
+        if (decision === "allow") request.allow();
+        else if (decision === "deny") request.deny();
+        else if (!late) this.openDirectApproval(session, run, request);
+        else {
+          // A hook took time; the turn may have ended while it ran.
+          const current = this.repos.getRun(run.id);
+          if (!current || current.completedAt) request.cancel();
+          else this.openDirectApproval(session, current, request);
         }
-      });
+      };
+      const decision = this.decidePermissionRequest(session, run, subject, "direct");
+      if (decision instanceof Promise) void decision.then((settled) => apply(settled, true));
+      else apply(decision, false);
     });
     this.directUnsub = () => { replies(); activity(); };
+  }
+
+  private openDirectApproval(session: Session | undefined, run: Run, request: Extract<DirectActivity, { type: "permission" }>["request"]): void {
+    const approval: ApprovalRequest = {
+      id: createId("approval"), runId: run.id, agentId: run.agentId,
+      agentName: session?.harnessId ?? run.agentId, action: request.title,
+      target: request.details?.locations.join("\n") || "Target not reported by the agent",
+      reason: "The direct agent is waiting for your approval.",
+      details: request.details,
+      status: "pending", createdAt: nowIso(),
+    };
+    this.directApprovals.set(approval.id, { runId: run.id, ...request });
+    this.repos.insertApproval(approval);
+    run.status = "approval_required";
+    this.repos.updateRun(run);
+    this.appendEvent(run.id, "approval.requested", approval.action, { approval });
+    this.events.emit("approval", approval);
+    this.events.emit("run", run);
+    void request.settled?.then(() => {
+      if (!this.directApprovals.delete(approval.id)) return;
+      const pending = this.repos.listApprovals("pending").find((item) => item.id === approval.id);
+      if (!pending) return;
+      pending.status = "cancelled";
+      pending.resolvedAt = nowIso();
+      this.repos.updateApproval(pending);
+      this.events.emit("approval", pending);
+      const current = this.requireRun(run.id);
+      if (!current.completedAt && current.status === "approval_required"
+        && !this.repos.listApprovals("pending").some((item) => item.runId === current.id)) {
+        current.status = "running";
+        this.repos.updateRun(current);
+        this.events.emit("run", current);
+      }
+    });
+  }
+
+  /** What every hook hears about the thread it runs for. */
+  private hookPayload(session: Session, project: Project): Omit<HookPayload, "event"> {
+    const direct = isDirectSessionKey(session.openclawSessionKey) || (!session.openclawSessionKey && this.useDirectMode(session.harnessId));
+    return {
+      thread_id: session.id,
+      ...(project.workingDirectory ? { project_dir: project.workingDirectory } : {}),
+      cwd: this.cwdFor(session, project) ?? homedir(),
+      ...(session.harnessId ? { harness: session.harnessId } : {}),
+      route: direct ? "direct" : "gateway",
+      ...(session.modelOverride ? { model: session.modelOverride } : {}),
+    };
+  }
+
+  /** PromptSubmit hooks: a block refuses the send; any context they add goes to the agent. */
+  private async submitPromptHooks(session: Session, project: Project, prompt: string): Promise<string[]> {
+    const root = project.workingDirectory;
+    if (this.hooks.handlers("PromptSubmit", root).length === 0) return [];
+    const results = await this.hooks.run("PromptSubmit", { ...this.hookPayload(session, project), event: "PromptSubmit", prompt }, { root });
+    const verdict = promptVerdict(results);
+    if (verdict.block) {
+      throw new PromptBlockedError(`Blocked by hook: ${verdict.block.reason.replace(/\.?$/, ".")} (PromptSubmit hook in ${hookSource(verdict.block.source, homedir())})`);
+    }
+    return verdict.context;
+  }
+
+  /**
+   * An agent's permission request, by rules then hooks. An automatic answer
+   * is written to the run's work log; "ask" leaves it to the person.
+   * Synchronous unless a hook runs.
+   */
+  private decidePermissionRequest(session: Session, run: Run, subject: PermissionSubject, route: "direct" | "gateway"): Decision | Promise<Decision> {
+    const project = this.requireProject(session.projectId);
+    const answer = decideRequest(subject, this.config.extended(project.workingDirectory), this.hooks, {
+      root: project.workingDirectory ?? homedir(),
+      ...(project.workingDirectory ? { projectRoot: project.workingDirectory } : {}),
+      home: homedir(),
+      caseInsensitivePaths: process.platform === "darwin" || process.platform === "win32",
+      payload: { ...this.hookPayload(session, project), route },
+    });
+    const record = (settled: PermissionAnswer): Decision => {
+      if (settled.audit) this.appendEvent(run.id, "approval.auto", settled.audit, { decision: settled.decision, request: subject.title, kind: subject.kind });
+      return settled.decision;
+    };
+    return answer instanceof Promise
+      ? answer.then(record, (error: unknown) => {
+        this.log(`Permission hooks could not decide a request: ${String(error)}`);
+        return "ask" as const;
+      })
+      : record(answer);
+  }
+
+  /** ToolCall hooks, once a tool has finished, never holding up the turn. */
+  private observeToolCall(session: Session, run: Run, tool: { title: string; status?: string; kind?: string; toolCallId?: string; details?: { input?: string } }): void {
+    if (tool.status !== "completed" && tool.status !== "failed") return;
+    const key = `tool:${run.id}:${tool.toolCallId ?? tool.title}`;
+    if (!this.onceForHooks(key)) return;
+    const project = this.repos.getProject(session.projectId);
+    if (!project) return;
+    this.hooks.observe("ToolCall", {
+      ...this.hookPayload(session, project),
+      event: "ToolCall",
+      tool: { title: tool.title, status: tool.status, ...(tool.kind ? { kind: tool.kind } : {}), ...(tool.details?.input ? { input: tool.details.input } : {}) },
+    }, { root: project.workingDirectory, targets: [tool.kind ?? "", tool.title] });
+  }
+
+  /**
+   * TurnEnd hooks, once per run, when it completes, fails or is blocked. A
+   * cancelled run is someone pressing Stop, and a follow-up would overrule
+   * them. The reply may have reached the thread as a message rather than as
+   * the run's result, so the excerpt falls back to that message.
+   */
+  private runTurnEndHooks(run: Run): void {
+    if (run.status === "cancelled" || !this.onceForHooks(`turn:${run.id}`)) return;
+    const session = this.repos.getSession(run.sessionId);
+    const project = session && this.repos.getProject(session.projectId);
+    if (!session || !project) return;
+    const root = project.workingDirectory;
+    if (this.hooks.handlers("TurnEnd", root).length === 0) return;
+    const reply = run.result?.trim()
+      || [...this.repos.listMessages(session.id)].reverse().find((message) => message.runId === run.id && message.role === "assistant")?.content
+      || "";
+    void this.hooks.run("TurnEnd", {
+      ...this.hookPayload(session, project),
+      event: "TurnEnd",
+      run: { status: run.status, result_excerpt: reply.slice(0, 2000) },
+    }, { root }).then((results) => {
+      for (const text of followUpsFrom(results)) {
+        if (!this.repos.getSession(session.id)) return;
+        if (!this.hookFollowUps.admit(session.id, text)) {
+          this.appendEvent(run.id, "hook.follow-up", "A TurnEnd hook's follow-up was not queued: hooks have queued 3 in a row without a message from you.", { queued: false });
+          return;
+        }
+        try {
+          this.followUps.apply(session.id, { type: "add", prompt: { content: text, attachments: [] } });
+          this.appendEvent(run.id, "hook.follow-up", "A TurnEnd hook queued a follow-up", { queued: true, content: text });
+        } catch (error) {
+          this.log(`A TurnEnd hook's follow-up could not be queued: ${String(error)}`);
+        }
+      }
+    }).catch((error: unknown) => this.log(`TurnEnd hooks failed: ${String(error)}`));
+  }
+
+  private onceForHooks(key: string): boolean {
+    if (this.hookedOnce.has(key)) return false;
+    this.hookedOnce.add(key);
+    if (this.hookedOnce.size > 2000) this.hookedOnce.delete(this.hookedOnce.values().next().value!);
+    return true;
   }
 
   private settleDirectApprovals(runId: string): void {
@@ -3120,9 +3271,32 @@ export class CapsuleEngine {
     });
     this.repos.insertRunEvent(mapped);
     this.events.emit("run-event", { ...mapped, sessionId: run.sessionId });
+    if (mapped.type === "tool") {
+      const data = mapped.data ?? {};
+      const text = (value: unknown) => (typeof value === "string" ? value : undefined);
+      this.observeToolCall(session, run, {
+        title: text(data.title) ?? mapped.message,
+        status: text(data.status),
+        kind: text(data.kind),
+        toolCallId: text(data.toolCallId),
+        details: data.details as { input?: string } | undefined,
+      });
+    }
 
     if (event.type === "approval.requested" && event.data?.approval) {
       const approval = event.data.approval as ApprovalRequest;
+      if (approval.details?.subject) {
+        const decision = await this.decidePermissionRequest(session, run, approval.details.subject, "gateway");
+        if (decision !== "ask") {
+          try {
+            await this.runtime.resolveApproval?.(approval.id, decision === "allow" ? "approved_once" : "denied");
+            return;
+          } catch (error) {
+            this.appendEvent(run.id, "approval.auto", `The Gateway did not take that answer, so the request waits for you: ${error instanceof Error ? error.message : String(error)}`, { decision: "ask" });
+          }
+        }
+        if (this.repos.getRun(run.id)?.completedAt) return;
+      }
       this.repos.insertApproval({ ...approval, runId: run.id });
       run.status = "approval_required";
       run.updatedAt = nowIso();

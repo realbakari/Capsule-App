@@ -26,5 +26,6 @@ export {
   type DirectSpawnInput,
   type DirectMcpOffer,
   type DirectAgentSession,
+  type DirectActivity,
   type NativeSessionFactory,
 } from "./host.js";

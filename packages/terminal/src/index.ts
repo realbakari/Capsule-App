@@ -223,6 +223,72 @@ export function runCapped(cwd: string, command: string, limits: { timeoutMs: num
   });
 }
 
+export interface InputRun {
+  stdout: string;
+  stderr: string;
+  /** Null when the command was stopped at the time limit. */
+  code: number | null;
+  timedOut: boolean;
+  durationMs: number;
+}
+
+/**
+ * One command fed `input` on stdin, with extra environment, its streams kept
+ * apart and each cut at `maxBytes`. A hook reads JSON this way and answers
+ * on stdout, with its reason on stderr.
+ */
+export function runWithInput(
+  cwd: string,
+  command: string,
+  options: { input: string; env?: Record<string, string>; timeoutMs: number; maxBytes: number },
+): Promise<InputRun> {
+  if (!cwd || !existsSync(cwd)) return Promise.reject(new Error("Working directory is missing"));
+  const started = Date.now();
+  return new Promise((resolve, reject) => {
+    const shell = commandShell(command);
+    const child = spawn(shell.file, shell.args, {
+      cwd,
+      env: { ...process.env, ...options.env },
+      stdio: ["pipe", "pipe", "pipe"],
+      detached: process.platform !== "win32",
+      windowsHide: true,
+    });
+    const collected = { stdout: [] as Buffer[], stderr: [] as Buffer[] };
+    const sizes = { stdout: 0, stderr: 0 };
+    const collect = (stream: "stdout" | "stderr") => (chunk: Buffer) => {
+      const room = options.maxBytes - sizes[stream];
+      if (room <= 0) return;
+      const kept = chunk.subarray(0, room);
+      collected[stream].push(kept);
+      sizes[stream] += kept.length;
+    };
+    child.stdout.on("data", collect("stdout"));
+    child.stderr.on("data", collect("stderr"));
+    // A command that never reads stdin closes it early; that is not a failure.
+    child.stdin.on("error", () => undefined);
+    child.stdin.end(options.input);
+    let timedOut = false;
+    let killTimer: ReturnType<typeof setTimeout> | undefined;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      stopChild(child, "SIGTERM", true);
+      killTimer = setTimeout(() => stopChild(child, "SIGKILL", true), 1000);
+    }, options.timeoutMs);
+    child.on("error", (error) => { clearTimeout(timer); clearTimeout(killTimer); reject(error); });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      clearTimeout(killTimer);
+      resolve({
+        stdout: Buffer.concat(collected.stdout).toString("utf8"),
+        stderr: Buffer.concat(collected.stderr).toString("utf8"),
+        code: timedOut ? null : code ?? 1,
+        timedOut,
+        durationMs: Date.now() - started,
+      });
+    });
+  });
+}
+
 export function startInDirectory(
   cwd: string,
   command: string,
