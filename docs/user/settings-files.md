@@ -193,6 +193,49 @@ A Gateway thread uses the tools configured on the Gateway, in its own plugin
 settings. A server joins the agent's own servers; it does not replace them.
 Servers apply to conversations started after the change.
 
+## Status line
+
+A status line under the composer shows what you want at a glance. Set it up
+in Settings → Appearance → Status line, or under `statusLine`.
+
+```jsonc
+{
+  "statusLine": {
+    "items": ["branch", "changes", "context", "limits", "pr", "model", "run"]
+  }
+}
+```
+
+`items` picks from `branch`, `changes`, `context`, `limits` (the usage limit
+and when it resets, where the agent reports one), `pr`, `model`, `harness`
+(the agent and route), `run` (the latest turn) and `cost` (where the agent
+reports it), in the order you list them. An item without a value for the
+open thread is left out.
+
+For your own format, name a command instead:
+
+```jsonc
+{
+  "statusLine": { "command": "~/.capsule/statusline.sh", "refreshInterval": 10 }
+}
+```
+
+- The command reads the thread as JSON on stdin: `thread_id`,
+  `project_dir`, `cwd`, `harness`, `route`, `model`, `context_percent`,
+  `rate_limits`, `pr`, `run_status`, `branch`, `changes` and `cost`. A value
+  Capsule does not have is `null`.
+- It prints up to two lines. Colours and bold, dim, italic and underline
+  are kept; anything else in the output is shown as plain text.
+- It runs when the thread changes, a turn starts or ends, or the working
+  tree changes, at most once a second, and every `refreshInterval` seconds if you
+  set one. It has 5 seconds. If it fails, the last line stays dimmed with
+  "status line failed", and Settings → Diagnostics shows why.
+- Only your own settings file can set a command. A project's file can
+  choose `items`, but not a command.
+
+A narrow window shows the first line only; hover it for the rest. A paired
+device shows the same line as the desktop, and cannot run the command.
+
 ## Response style and personal instructions
 
 `style` picks how replies should read: `concise`, `standard` or
@@ -288,7 +331,8 @@ files you are about to fix. Edit them in your own editor, then choose
 
 The palette (⌘K) has the settings files too: **Open user settings**, **Open
 project settings**, **Open project local settings**, **Open hooks
-settings**, **Open keybindings file**, **MCP servers**, **New conversation
+settings**, **Open keybindings file**, **MCP servers**, **Status line**,
+**Automations**, **Run automation** for each automation, **New conversation
 with** each profile, **Reload customizations**, **Trust this project** or **Revoke trust
 for this project**, **Restart without customizations** or **Restart
 normally**, and **Show customization problems**.

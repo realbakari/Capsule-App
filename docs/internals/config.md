@@ -413,6 +413,58 @@ before the runtime prompt. A `standing.instructions` run event records what
 was sent and every part that was not. The user message keeps what was
 typed.
 
+## Status line
+
+`statusLine.items` is drawn in the window by `StatusLine.tsx` from values
+the window already holds: git status, the context meter's reading, the
+agent's cost report, a provider usage report for the thread, the pull
+request, the harness, route and model, and the latest run. `statusLineParts`
+in `@capsule/shared` turns them into text, so the preview in Settings and the
+line under the composer agree.
+
+`statusLine.command` runs in main (`core/status-line.ts`). The window sends
+`StatusLineFacts` over `capsule:statusLine:run` when its facts change
+(debounced 300 ms), when the thread changes, and every `refreshInterval`.
+Main keeps only known fields (`parseStatusLineFacts`), takes the thread,
+project and folder from its records, and builds the stdin JSON with
+`statusLineStdin`. `StatusLineRunner` gives each thread one lane: at most one
+start a second, requests meanwhile collapse into one trailing run with the
+newest facts. Output goes through `ansiToSegments` (two lines), is kept per
+thread, pushed as the `status-line-updated` state event, and included in the
+config snapshot's `statusLine.renders` for the open project's threads.
+
+## Automations
+
+`core/automations.ts` holds `AutomationScheduler`, started by the engine
+outside safe mode and ticking every 30 s. Its entries are the user file's
+automations (key `user:<id>`, Inbox) and each project's own (key
+`<projectId>:<id>`), read only for projects that have a `.capsule` settings
+file. Per key it stores, in the SQLite settings table under `automation:`,
+the anchor (`firstSeenAt`), `checkedAt`, the last run, the last skip and the
+missed count.
+
+Each tick takes `occurrencesBetween(checkedAt, now)` from the anchor. An
+occurrence more than two minutes old is missed and counted; the newest
+on-time one runs, unless a run of that automation is still going, in which
+case it is skipped and recorded. A paused automation, or a key no longer in
+the files, only moves `checkedAt`.
+
+A run is `startAutomationThread`: `createSession` with the profile, the
+workspace and the title "<name> · <time>", then `automationId` and `unread`
+on the session, then `sendMessage` with the prompt or `/command`. The last
+run follows the run's terminal status from the engine's run listener. On
+start, a run left "running" by a closed app is settled from the run record,
+or marked failed if it never started. Every outcome is a
+`CustomizationRunRecord` of kind `automation`.
+
+Pause and resume (`ConfigService.setAutomationEnabled`) write `enabled` in
+the file that defines the automation; a project's shared entry is paused by
+a full copy in `settings.local.json`, and resuming drops a copy that only
+differs in `enabled`. `addAutomation` appends a template's entry with an id
+no other entry uses.
+
+`markSessionRead` clears `unread` when the desktop opens the thread.
+
 ## Migration
 
 The first launch of a build with settings files exports the SQLite
@@ -475,6 +527,12 @@ landed while the save ran is not lost.
 | `capsule:mcp:test` | write | start or reach one configured MCP server and list its tools |
 | `capsule:mcp:setEnabled` | write | turn a server on or off everywhere, or in one project |
 | `capsule:profiles:create` | write | write a profile from the template or a copy, then open it |
+| `capsule:statusLine:run` | write | run the status line command for one thread |
+| `capsule:automations:runNow` | write | start an automation now, which also answers its missed runs |
+| `capsule:automations:setEnabled` | write | pause or resume an automation in its file |
+| `capsule:automations:dismissMissed` | write | let missed runs go |
+| `capsule:automations:create` | write | add a template's automation, paused, then open the file |
+| `capsule:sessions:markRead` | write | clear an automation thread's unread mark |
 
 Main checks each write's shape where it crosses: a key and a known layer, or
 a file target naming one of the known kinds and folders, so the renderer
@@ -759,6 +817,39 @@ Decisions made while building this, and why.
   over a profile.
 - **Personal instructions are user-only.** A project naming a file on your
   computer to send to every agent would be a way to read it.
-- **Automations reference profiles by id.** Automations have not landed;
-  their runner should call `createSession({ projectId, profileId })`.
+- **Automations reference profiles by id.** The runner calls
+  `createSession({ projectId, profileId })`, so a profile applies the same
+  way it does from the composer.
+- **The window sends the status line's facts.** It already holds git, the
+  context reading, the PR, the model and the run, for the items. Deriving
+  them again in main would be a second copy of each. Main takes the thread,
+  project and folder from its own records and drops unknown fields, so the
+  window cannot point the command at another folder.
+- **No new read channel for the status line.** The latest output per thread
+  is pushed as an event and rides in the config snapshot, which a paired
+  device already reads on every change.
+- **Running the status line command is a write.** It runs a program on this
+  computer. A paired device shows the desktop's latest output and the items,
+  which need nothing from main.
+- **A status line failure is recorded when its reason changes.** A broken
+  script would otherwise put a row in the doctor's log every second.
+- **Missed runs are counted, never replayed.** Two minutes is the line
+  between due and missed, which covers a 30 s tick and a slow start. One
+  run per automation at a time; an occurrence during a run is skipped and
+  noted, not queued.
+- **An entry absent from the files is treated as paused.** Otherwise
+  removing an automation and adding it back would count the gap as missed.
+- **Pausing a team automation writes your local file.** The shared file
+  belongs to the team, as for MCP switches. Merge by id makes a full copy
+  win.
+- **Templates are added paused.** A triage prompt that fires at 9:00 before
+  anyone has read it would be a surprise.
+- **Automation runs and pausing are desktop-only.** They start agents and
+  write files, so they are writes, not control. The list, schedules, last
+  runs and missed counts reach a paired device in the snapshot.
+- **Unread is stored on the session.** A paired device shows the same mark
+  as the desktop; only the desktop clears it, through
+  `capsule:sessions:markRead`.
+- **The anchor is when Capsule first saw the automation.** Interval rules
+  such as every 2 weeks count from there, and nothing before it is missed.
 

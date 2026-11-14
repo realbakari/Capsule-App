@@ -23,6 +23,7 @@ need the shipped-product voice.
 - [Commands](./user/commands.md)
 - [Profiles](./user/profiles.md)
 - [Hooks](./user/hooks.md)
+- [Automations](./user/automations.md)
 - [Providers and credentials](./user/providers.md)
 - [Reading from another device](./user/reading-from-another-device.md)
 - [Optional usage reports](./user/usage-reports.md)

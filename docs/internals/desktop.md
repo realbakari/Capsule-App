@@ -1945,3 +1945,43 @@ A paired device sees all three read-only: the lists come with the config
 snapshot, and Test, the switches and profile files are write channels. A
 device with conversation control can start a thread from a profile.
 
+## Status line and automations
+
+**Status line.** `features/status-line/StatusLine.tsx` sits at the end of
+the composer's workspace strip (`.composer-context`), right-aligned and
+shrinking before the folder and branch controls. With `statusLine.items` it
+shows each chosen item with a value, separated by dots, with warn and
+critical tones for context and limits over 75% and 90% and a failing PR or
+run. With a command it shows the command's latest output for the thread:
+named ANSI colours map to the theme's red, green, yellow, blue and text
+tokens, `#rrggbb` is kept, and bold, dim, italic and underline apply. Under
+1000 px only the first line shows; the full text is the tooltip. A failed
+command dims the last line and adds "status line failed". Nothing shows
+when nothing is configured, so the default composer is unchanged.
+
+Settings → Appearance has a **Status line** card (`StatusLineSettings.tsx`):
+checkboxes for each item with up and down buttons to order the chosen ones,
+a preview drawn from sample values (or the live line when a command is
+set), the command and refresh fields with a Save button and a note that
+only the user file can set a command, and **What the command reads** behind
+an expansion. The palette has **Status line**.
+
+**Automations.** Settings → Automations (`features/automations/
+AutomationsSettings.tsx`, under Code in the nav) lists each automation:
+name, source chip, command if any, an On/Paused switch, **Run now**, the
+schedule in words, next run, Inbox for the user's own, the prompt in two
+lines, the last run with **Open thread**, a skipped note, and a **Missed
+while closed: N** notice with **Run now** and **Dismiss**. Above the list a
+template select with **Add to your settings** and **Add to <project>**, and
+**Open settings.json**. The empty state shows an example; automations
+waiting for trust are listed in an open expansion; **How automations run**
+is collapsed. The palette has **Automations** and **Run automation <name>**.
+
+In the sidebar, a thread an automation started shows `AutomationChip` under
+its title: a clock and "Automation", with "Automation: <name>" on hover.
+Until the desktop opens it, the row is bold with a dot.
+
+On a paired device the line, the list and the marks are visible; the
+switches, Run now, Dismiss, the templates and the status line fields are
+disabled, since each is a write channel.
+
