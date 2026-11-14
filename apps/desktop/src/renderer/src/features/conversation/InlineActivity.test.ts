@@ -29,6 +29,15 @@ describe("inline activity icons", () => {
     expect(html.match(/inline-activity-toggle/g)).toHaveLength(1);
     expect(html).toContain("Read 2 files, ran 2 commands (1 failed)");
     expect(html).not.toContain("pnpm test");
+    expect(html).toContain('data-state="Completed"');
+  });
+
+  it("calls the whole row failed only when every call in it failed", () => {
+    const html = renderToStaticMarkup(createElement(InlineActivity, {
+      tools: [{ ...tool("execute", "pnpm test"), status: "failed" }, { ...tool("execute", "pnpm lint"), status: "failed" }],
+      run,
+    }));
+    expect(html).toContain('data-state="Failed"');
   });
 
   it("keeps the active tool visible after earlier categories and failures", () => {

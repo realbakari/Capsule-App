@@ -51,7 +51,9 @@ export function InlineActivity({ tools, run, stopping, onOpenFile }: { tools: To
   const pending = newest.find((tool) => tool.status !== "completed" && tool.status !== "failed");
   const active = newest.find((tool) => toolObservationState(tool, run, stopping) === "Running")
     ?? newest.find((tool) => ["Waiting", "Stopping"].includes(toolObservationState(tool, run, stopping)));
-  const state = active ? toolObservationState(active, run, stopping) : failedCount ? "Failed" : pending ? toolObservationState(pending, run, stopping) : "Completed";
+  // The summary already counts failures per kind ("ran 2 commands (1 failed)"); the
+  // whole-row state says Failed only when nothing in the run succeeded.
+  const state = active ? toolObservationState(active, run, stopping) : failedCount === tools.length ? "Failed" : pending ? toolObservationState(pending, run, stopping) : "Completed";
   const kinds = toolKindOrder(active ? [active, ...tools] : tools);
   return <div className="inline-activity" data-state={state}>
     <button type="button" className="inline-activity-toggle" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
