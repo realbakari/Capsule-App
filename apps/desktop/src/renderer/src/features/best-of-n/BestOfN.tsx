@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { BestOfNCandidate, GroupComparison, ThreadGroup } from "@capsule/shared";
 import { formatUserError } from "../../lib/errors";
 import { useWorkspace } from "../../lib/workspace";
@@ -129,14 +129,26 @@ export function useComparison(groupId: string | undefined): { comparison?: Group
     return () => { clearTimeout(timer); unsubscribe(); };
   }, [api, groupId]);
 
+  /*
+   * A read takes a couple of seconds (a Git diff per worktree) while threads
+   * update several times a second during a run. Cancelling the read on each
+   * update left Compare loading for as long as agents worked, so every read
+   * lands unless a newer one already has.
+   */
+  const issued = useRef(0);
+  const applied = useRef(0);
   useEffect(() => {
-    if (!groupId) return undefined;
-    let current = true;
+    if (!groupId) return;
+    const seq = ++issued.current;
+    const land = (next: { groupId: string; comparison?: GroupComparison; error?: string }) => {
+      if (seq < applied.current) return;
+      applied.current = seq;
+      setState(next);
+    };
     void api.compareThreadGroup(groupId).then(
-      (comparison) => { if (current) setState({ groupId, comparison }); },
-      (error) => { if (current) setState({ groupId, error: formatUserError(error) }); },
+      (comparison) => land({ groupId, comparison }),
+      (error) => land({ groupId, error: formatUserError(error) }),
     );
-    return () => { current = false; };
   }, [api, groupId, memberKey, revision, tick]);
 
   const known = state?.groupId === groupId ? state : undefined;
