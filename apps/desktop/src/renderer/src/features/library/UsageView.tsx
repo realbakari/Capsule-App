@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { ResultsLeaderboard } from "../best-of-n/Leaderboard";
 import { useWorkspace } from "../../lib/workspace";
 import { ProviderQuota } from "./ProviderQuota";
 
@@ -281,6 +282,9 @@ export function UsageView() {
               </table>
             </>
           )}
+        </div>
+        <div className="card">
+          <ResultsLeaderboard key={nonce} />
         </div>
       </div>
     </section>

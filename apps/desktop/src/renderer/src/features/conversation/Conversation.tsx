@@ -38,6 +38,7 @@ import { MessageBody } from "./MessageBody";
 import { MessageAttachments } from "./MessageAttachments";
 import { VirtualTurns } from "./VirtualTurns";
 import { CopyButton } from "./CopyButton";
+import { RatingButtons, useRunRatings } from "../best-of-n/RateReply";
 import { turnTranscript } from "../../lib/turn-timeline";
 import { TurnTranscript } from "./TurnTranscript";
 import { useBranching } from "./branching/use-branching";
@@ -269,6 +270,7 @@ export function Conversation() {
     reloadThread,
   } = useWorkspace();
   const branching = useBranching({ withBranches: true });
+  const ratings = useRunRatings(session?.id);
   const [restoreTarget, setRestoreTarget] = useState<RestoreTarget>();
   const [dismissedRedo, setDismissedRedo] = useState<string>();
 
@@ -637,6 +639,9 @@ export function Conversation() {
                     {(turnOutcomes.get(turn.id) ?? []).map((run) => <Fragment key={run.id}>
                       {run.status === "completed" && !run.hasResult && !run.result?.trim() && !turn.messages.some((message) => message.role === "assistant") && <p className="muted turn-missing-reply" role="status">No reply was received for this turn. Review the work log before retrying.</p>}
                       <TurnOutcome run={run} cwd={terminalCwd} onRestore={branching.writable ? () => openRestore(run, "files") : undefined} />
+                      {run.status === "completed" && session?.harnessId && (run.hasResult || run.result?.trim() || turn.messages.some((message) => message.role === "assistant")) ? (
+                        <div className="turn-rating"><RatingButtons value={ratings.ratings[run.id]} writable={ratings.writable} onRate={(value) => ratings.rate(run.id, value)} /></div>
+                      ) : null}
                       {run.id !== summaryRun?.id && <RunSummary run={run} label="Turn details">
                         <RunEventLog runId={run.id} failed={run.status === "failed" || run.status === "blocked"} />
                         <TurnVerification run={run} />
