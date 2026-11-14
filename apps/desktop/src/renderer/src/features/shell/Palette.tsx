@@ -33,7 +33,7 @@ export function Palette() {
     createProjectFromFolder, pickProjectDirectory, pickFilesToMention, projects,
     sessions, session, setProjectId, setAboutOpen, openInspector, setAgentCommandsOpen,
     project, terminalOpen, setTerminalOpen, runs, turnMode, setTurnMode, attachContext, setNotice,
-    settings, setPermissionProfile, draftApproval, setDraftApproval,
+    settings, setPermissionProfile, draftApproval, setDraftApproval, updateSettings,
   } = useWorkspace();
   const branching = useBranching();
   const lastTurn = useMemo(() => runs
@@ -97,6 +97,12 @@ export function Palette() {
       { id: "init", label: "Write or refresh AGENTS.md", detail: "Start a conversation with the /init prompt drafted", group: "Actions", icon: <SparkIcon size={15} />,
         disabledReason: desktopOnly ?? (!project?.workingDirectory ? "Open a project folder first." : undefined),
         onSelect: () => { if (project) void detectInstructionFiles(api, project.id).then((found) => createTask(project.id, initPrompt(found))); } },
+      { id: "follow-agent", label: settings?.followAgent ? "Stop following the agent in Files" : "Follow the agent in Files", group: "Workspace", icon: <MousePointerClickIcon size={15} />,
+        disabledReason: api.isDesktop === false && api.remoteMode !== "control" ? "Read-only viewers cannot change this." : undefined,
+        onSelect: () => {
+          const on = !settings?.followAgent;
+          void updateSettings({ followAgent: on }).then(() => { if (on) openInspector("files"); }, (error: unknown) => setNotice(error instanceof Error ? error.message : String(error)));
+        } },
       { id: "browser", label: "Open browser", group: "Workspace", icon: <GlobeIcon size={15} />, onSelect: () => openInspector("browser") },
       { id: "browser-inspect", label: "Inspect element in browser", detail: "Pick an element and attach its selector, HTML, styles and a screenshot", group: "Workspace", icon: <MousePointerClickIcon size={15} />,
         disabledReason: desktopOnly, onSelect: () => { openInspector("browser"); requestBrowserCommand({ type: "inspect" }); } },
@@ -168,7 +174,7 @@ export function Palette() {
       onSelect: () => { setProjectId(message.projectId, message.sessionId); setView("chat"); },
     }));
     return [...actions, ...projectItems, ...threads, ...messages];
-  }, [api, query, currentSearch, projects, sessions, session, project, terminalOpen, setTerminalOpen, attachContext, setNotice, createTask, createProjectFromFolder, pickProjectDirectory, pickFilesToMention, setView, setProjectId, setAboutOpen, openInspector, setAgentCommandsOpen, canGoBack, canGoForward, goBack, goForward, setThreadFind, setPromptJump, lastTurn, branching.fork, branching.redo, branching.redoLast, applyToLocal, share, turnMode, setTurnMode, runs, handoff, importSessions, settings, setPermissionProfile, draftApproval, setDraftApproval]);
+  }, [api, query, currentSearch, projects, sessions, session, project, terminalOpen, setTerminalOpen, attachContext, setNotice, createTask, createProjectFromFolder, pickProjectDirectory, pickFilesToMention, setView, setProjectId, setAboutOpen, openInspector, setAgentCommandsOpen, canGoBack, canGoForward, goBack, goForward, setThreadFind, setPromptJump, lastTurn, branching.fork, branching.redo, branching.redoLast, applyToLocal, share, turnMode, setTurnMode, runs, handoff, importSessions, settings, setPermissionProfile, draftApproval, setDraftApproval, updateSettings]);
 
   if (!palette) return null;
   return <SearchDialog title="Search workspace" placeholder="Search commands, projects, conversations…" query={paletteQuery}

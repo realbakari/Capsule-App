@@ -31,6 +31,8 @@ import { ThreadAgents } from "./ThreadAgents";
 import { ComparePane } from "../best-of-n/ComparePane";
 import { SURFACES, tabForTool, toolFromTab, type InspectorTool } from "./surfaces";
 import { InspectorHeadSlot } from "./inspector-slot";
+import { useFollowAgent } from "./use-follow-agent";
+import "./follow-agent.css";
 import { GitPullRequestDetail as PullRequestDetailView } from "./PullRequestDetail";
 import { PullRequestList } from "./PullRequestList";
 import { ReviewCommitForm } from "./ReviewCommitForm";
@@ -41,6 +43,7 @@ import {
   FileIcon,
   MaximizeIcon,
   MinimizeIcon,
+  MousePointerClickIcon,
   PlusIcon,
   UndoIcon,
   CloudUploadIcon,
@@ -135,6 +138,8 @@ export function Inspector() {
     setBrowserUrl,
     requestedFile,
     clearRequestedFile,
+    events,
+    updateSettings,
   } = useWorkspace();
 
   const [panelWidth, setPanelWidth] = useState<number>(() => {
@@ -604,6 +609,7 @@ export function Inspector() {
     if (activeRoot !== root) { setFileRoot(root); return; }
     const relative = toWorkspaceRelative(requestedFile.path, root);
     clearRequestedFile();
+    followAgent.pause();
     void previewFile(relative);
     // The request is the trigger; folder ownership is checked inside previewFile.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -671,6 +677,40 @@ export function Inspector() {
       setShowTree(false);
     }
   }, [api, projectId, activeRoot, setInspectorOpen]);
+
+  /*
+   * Follow agent. A path outside the open folder, or a file being edited by
+   * hand, is left alone: following must never take a draft away.
+   */
+  const readOnlyPeer = api.isDesktop === false && api.remoteMode !== "control";
+  const followAgent = useFollowAgent({
+    enabled: settings?.followAgent === true,
+    visible: inspectorOpen && activeTool === "files",
+    run: activeRun?.sessionId === session?.id ? activeRun : undefined,
+    events,
+    onFollow: (path) => {
+      if (!activeRoot || previewEditing) return;
+      const absolute = /^(?:\/|[A-Za-z]:[\\/])/u.test(path);
+      if (absolute && !path.replace(/\\/gu, "/").toLowerCase().startsWith(`${activeRoot.replace(/\\/gu, "/").toLowerCase()}/`)) return;
+      const relative = toWorkspaceRelative(path, activeRoot);
+      const parts = relative.split("/").slice(0, -1);
+      const parents = parts.map((_, index) => parts.slice(0, index + 1).join("/"));
+      if (parents.length) {
+        setExpanded((current) => new Set([...current, ...parents]));
+        for (const parent of parents) void directoryCache.load(parent, true);
+      }
+      void previewFile(relative);
+    },
+  });
+  const setFollowAgent = (on: boolean) => {
+    followAgent.resume();
+    void updateSettings({ followAgent: on }).catch((error: unknown) => setNotice(formatUserError(error)));
+  };
+  const pauseFollow = followAgent.pause;
+  const previewByHand = useCallback((path: string) => { pauseFollow(); void previewFile(path); }, [pauseFollow, previewFile]);
+  const toggleFolderByHand = useCallback((path: string) => { pauseFollow(); toggleFolder(path); }, [pauseFollow, toggleFolder]);
+  const openRootByHand = useCallback((root: string) => { pauseFollow(); openRoot(root); }, [pauseFollow, openRoot]);
+  const searchByHand = useCallback((value: string) => { pauseFollow(); setFileSearch(value); }, [pauseFollow]);
 
   function showFileDiff(relative: string) {
     if (!projectId) return;
@@ -752,6 +792,18 @@ export function Inspector() {
           )}
         </span>
         <div className="panel-chrome-actions">
+          {activeTool === "files" && !readOnlyPeer && (
+            <button
+              type="button"
+              className={`icon-btn${followAgent.status !== "off" ? " active" : ""}`}
+              title={followAgent.status === "off" ? "Follow agent: show the file the agent is on while a turn runs" : "Stop following the agent"}
+              aria-label="Follow agent"
+              aria-pressed={followAgent.status !== "off"}
+              onClick={() => setFollowAgent(followAgent.status === "off")}
+            >
+              <MousePointerClickIcon size={14} />
+            </button>
+          )}
           {activeTool === "files" && (
             <button
               type="button"
@@ -836,6 +888,18 @@ export function Inspector() {
                 void previewFile(owner.path);
               }
             }} />
+            {(followAgent.status === "following" || followAgent.status === "paused") && (
+              <div className="follow-agent-bar" role="status">
+                {followAgent.status === "following" ? <>
+                  <span className="follow-agent-dot" aria-hidden />
+                  <span className="follow-agent-text">Following the agent{followAgent.path ? <> · <code title={followAgent.path}>{followAgent.path}</code></> : null}</span>
+                  <button type="button" className="ghost" onClick={pauseFollow}>Pause</button>
+                </> : <>
+                  <span className="follow-agent-text">Paused because you opened a file.</span>
+                  <button type="button" className="ghost" onClick={followAgent.resume}>Follow again</button>
+                </>}
+              </div>
+            )}
             <div className={`panel-files-workspace${compactFiles ? " compact" : ""}${showTree && activeRoot ? " tree-visible" : ""}`}>
               <div className="panel-file-preview-pane">
                 {previewDoc ? (
@@ -918,11 +982,11 @@ export function Inspector() {
                   activeRoot={activeRoot}
                   previewPath={previewDoc?.path}
                   gitFiles={git?.files}
-                  onFileSearchChange={setFileSearch}
+                  onFileSearchChange={searchByHand}
                   onClearSearch={clearFileSearch}
-                  onOpenRoot={openRoot}
-                  onToggleFolder={toggleFolder}
-                  onPreviewFile={previewFile}
+                  onOpenRoot={openRootByHand}
+                  onToggleFolder={toggleFolderByHand}
+                  onPreviewFile={previewByHand}
                 />
               ) : null}
             </div>

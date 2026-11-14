@@ -418,6 +418,20 @@ that row through `InspectorHeadSlot`; the simulator puts its Edit / Device /
 View menus there. Opening the panel with no surface chosen (`⌘\` on a fresh
 window) shows the chooser cards.
 - **Files** is a split: preview on the left, expandable tree on the right. Folders expand **in place**. There is no navigate-into-directory / `← ..` stack and no `dir` current-path state.
+  **Follow agent** (`settings.followAgent`, off by default; the header's
+  pointer toggle, Settings › Appearance and the palette) runs
+  `useFollowAgent`: while the conversation's turn is queued, running, waiting
+  or needs approval and Files is on screen, each new read or edit path from
+  `latestAgentFile` (`@capsule/shared`; reported locations, else
+  `rawInput.file_path`/`path`; searches, commands and failed calls ignored)
+  expands its parent folders and previews it. A path outside the open folder,
+  or a preview being edited, is skipped. Any navigation by hand (tree click,
+  folder toggle, root switch, filter, a file opened from chat) pauses following
+  for that run; a status line offers **Pause** / **Follow again**, and the next
+  turn follows again. It reads events, so it works the same on the Gateway and
+  direct routes and for every harness that reports tool locations; a harness
+  that reports none leaves Files alone. Read-only paired viewers do not get the
+  toggle, since it writes settings.
   Below 480 CSS pixels of actual panel width, the tree becomes full-width
   navigation rather than a translucent preview overlay. Opening a file shows its
   preview; the tree toggle returns to navigation. Maximizing uses the measured

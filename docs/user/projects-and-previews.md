@@ -269,6 +269,16 @@ even if the Files panel was showing an extra folder. File-filter results disappe
 while a different query or folder loads. Failed searches show **Retry**, not an
 empty result.
 
+To watch the agent work, turn on **Follow agent** with the pointer button in
+the Files header (also in Settings › Appearance and the command palette). While
+a turn runs, Files opens the file the agent is reading or editing and expands
+the folders above it. As soon as you open a file, a folder or a filter
+yourself, following pauses for the rest of that turn; **Follow again** resumes
+it, and the next turn follows on its own. A file you are editing is never
+replaced. Follow agent is off until you turn it on, and Capsule remembers your
+choice. It needs an agent that reports which file it is working on; with one
+that does not, Files stays where you left it.
+
 Select a previewed image to inspect it at **Fit** or **100%**, then zoom in or out.
 Scroll, drag, or use arrow keys to pan at a fixed zoom. **Close** or Escape returns
 to the file preview. This does not edit the original image.

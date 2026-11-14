@@ -141,6 +141,7 @@ export const DEFAULT_CAPSULE_SETTINGS: CapsuleSettings = {
   // Archiving already offers Undo, so asking first is opt-in.
   confirmArchive: false,
   toolCallDisplay: "compact",
+  followAgent: false,
   followUpBehavior: "queue",
   diffLayout: "split",
   diffFileState: "expanded",
@@ -182,6 +183,7 @@ export const SETTINGS_SECTION_KEYS: Record<string, ReadonlyArray<keyof CapsuleSe
   appearance: [
     "timeFormat",
     "toolCallDisplay",
+    "followAgent",
     "appearanceTheme",
     "appearanceLight",
     "appearanceDark",
@@ -314,6 +316,8 @@ export interface CapsuleSettings {
   /** Ask before archiving a conversation. */
   confirmArchive: boolean;
   toolCallDisplay: ToolCallDisplay;
+  /** While a turn runs, Files previews the file the agent is reading or editing. */
+  followAgent: boolean;
   followUpBehavior: FollowUpBehavior;
   diffLayout: DiffLayout;
   diffFileState: DiffFileState;
@@ -569,6 +573,7 @@ export function normalizeCapsuleSettings(input: Partial<CapsuleSettings> = {}): 
     confirmDelete: flag(input.confirmDelete, DEFAULT_CAPSULE_SETTINGS.confirmDelete),
     confirmArchive: flag(input.confirmArchive, DEFAULT_CAPSULE_SETTINGS.confirmArchive),
     toolCallDisplay: pick(input.toolCallDisplay, TOOL_CALL_DISPLAYS, DEFAULT_CAPSULE_SETTINGS.toolCallDisplay),
+    followAgent: flag(input.followAgent, DEFAULT_CAPSULE_SETTINGS.followAgent),
     followUpBehavior: pick(input.followUpBehavior, FOLLOW_UP_BEHAVIORS, DEFAULT_CAPSULE_SETTINGS.followUpBehavior),
     diffLayout: pick(input.diffLayout, DIFF_LAYOUTS, DEFAULT_CAPSULE_SETTINGS.diffLayout),
     diffFileState: pick(input.diffFileState, DIFF_FILE_STATES, DEFAULT_CAPSULE_SETTINGS.diffFileState),
