@@ -61,6 +61,7 @@ import {
   isAcpPermissionRequestEvent,
   readAcpAllowedAgents,
   readAcpPermissionRequest,
+  readAcpPermissionSubject,
   readAcpxAgentCommand,
   readAcpxHarnessPolicy,
   resolveAcpxEnabled,
@@ -1169,6 +1170,7 @@ export class OpenClawAdapter implements AgentRuntime {
   private mapApproval(row: unknown, fallbackRunId = "", fallbackSessionKey?: string): ApprovalRequest {
     const record = asRecord(row);
     const fields = readAcpPermissionRequest(record);
+    const subject = readAcpPermissionSubject(record);
     const tool = fields.tool ?? asString(record.tool);
     const runId =
       fields.runId ||
@@ -1189,6 +1191,7 @@ export class OpenClawAdapter implements AgentRuntime {
       ),
       status: "pending",
       createdAt: nowIso(),
+      ...(subject ? { details: { kind: subject.kind, locations: subject.paths.slice(0, 16), truncated: false, canApproveOnce: true, subject } } : {}),
     };
   }
 }

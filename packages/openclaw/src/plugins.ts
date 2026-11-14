@@ -1,3 +1,4 @@
+import { permissionSubject, type PermissionSubject } from "@capsule/shared";
 import { asRecord, asString } from "./events.js";
 
 export function looksLikeAcpx(value: string): boolean {
@@ -319,4 +320,33 @@ export function readAcpPermissionRequest(payload: Record<string, unknown>): {
     agentId: agentId || undefined,
     action: action || undefined,
   };
+}
+
+/**
+ * The request in permission-rule terms, when the Gateway says enough to
+ * judge it: a relayed ACP tool call, or a host exec approval's command.
+ * Anything else, such as a plugin approval, is left to the person.
+ */
+export function readAcpPermissionSubject(payload: Record<string, unknown>): PermissionSubject | undefined {
+  const params = asRecord(payload.params);
+  const toolCall = asRecord(params.toolCall ?? payload.toolCall);
+  if (toolCall.kind || toolCall.title) {
+    const locations = (Array.isArray(toolCall.locations) ? toolCall.locations : [])
+      .slice(0, 16)
+      .flatMap((location) => {
+        const path = asRecord(location).path;
+        return typeof path === "string" ? [path] : [];
+      });
+    return permissionSubject({
+      kind: asString(toolCall.kind) || undefined,
+      title: asString(toolCall.title),
+      rawInput: toolCall.rawInput,
+      locations,
+    });
+  }
+  const command = payload.command ?? asRecord(payload.request).command;
+  if (typeof command === "string" || Array.isArray(command)) {
+    return permissionSubject({ kind: "execute", title: typeof command === "string" ? command : "", rawInput: { command } });
+  }
+  return undefined;
 }

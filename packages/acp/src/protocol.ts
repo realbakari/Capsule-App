@@ -1,4 +1,4 @@
-import { readAgentCommands, readDelegationDetails, readPlanEntries, readReportedContextUsage, sanitizeUntrusted, type AgentCommand, type AcpModelCatalog, type DelegationDetails, type ApprovalToolDetails, type ReportedContextUsage, type RunTask } from "@capsule/shared";
+import { permissionSubject, readAgentCommands, readDelegationDetails, readPlanEntries, readReportedContextUsage, sanitizeUntrusted, type AgentCommand, type AcpModelCatalog, type DelegationDetails, type ApprovalToolDetails, type ReportedContextUsage, type RunTask } from "@capsule/shared";
 import { readAgentCapabilities, readToolActivityDetails, type ToolActivityDetails, type AcpConfigOption } from "@capsule/shared";
 
 export const LEGACY_MODE_CONFIG_ID = "capsule:session-mode";
@@ -310,6 +310,13 @@ export function readPermissionRequest(params: unknown): PermissionRequest | unde
       locations, preview: preview ? sanitizeUntrusted(preview.slice(0, 8192)) : undefined,
       truncated: truncated || preview.length > 8192 || (Array.isArray(tool?.content) && tool.content.length > 8),
       canApproveOnce: chooseOption(options, "allow") !== undefined,
+      subject: permissionSubject({
+        kind: typeof tool?.kind === "string" ? tool.kind : undefined,
+        // Past the command limit, so a title too long to read whole is never matched as a command.
+        title: typeof tool?.title === "string" ? tool.title.slice(0, 4097) : undefined,
+        rawInput: tool?.rawInput,
+        locations,
+      }),
     },
   };
 }

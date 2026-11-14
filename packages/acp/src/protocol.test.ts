@@ -178,6 +178,18 @@ describe("readPermissionRequest", () => {
       toolCall: { title: "Run command", rawInput: { command: "x".repeat(10000) }, locations: [{ path: "src/fixture.ts" }] } });
     expect(request?.details).toMatchObject({ canApproveOnce: false, truncated: true, locations: ["src/fixture.ts"] });
     expect(request?.details.preview?.length).toBeLessThanOrEqual(8192);
+    // A command too long to read whole is never one a rule matches.
+    expect(request?.details.subject).toMatchObject({ kind: "other", paths: ["src/fixture.ts"] });
+    expect(request?.details.subject?.command).toBeUndefined();
+  });
+  it("keeps the whole command for rules even when the preview is clipped", () => {
+    const command = `pnpm test ${"a".repeat(4100)}`;
+    const request = readPermissionRequest({ options: [{ optionId: "a", kind: "allow_once" }],
+      toolCall: { kind: "execute", title: "Run", rawInput: { command: `pnpm test --run` } } });
+    expect(request?.details.subject).toMatchObject({ kind: "execute", command: "pnpm test --run" });
+    const long = readPermissionRequest({ options: [{ optionId: "a", kind: "allow_once" }],
+      toolCall: { kind: "execute", title: "Run", rawInput: { command } } });
+    expect(long?.details.subject?.command).toBeUndefined();
   });
   it("reads what is being asked and what may be answered", () => {
     expect(
@@ -192,7 +204,7 @@ describe("readPermissionRequest", () => {
     ).toEqual({
       sessionId: "s1",
       title: "Write src/index.ts",
-      details: { locations: [], truncated: false, canApproveOnce: true },
+      details: { locations: [], truncated: false, canApproveOnce: true, subject: { kind: "other", title: "Write src/index.ts", paths: [] } },
       options: [
         { optionId: "a", name: "Allow", kind: "allow_once" },
         { optionId: "r", name: "Reject", kind: "reject_once" },

@@ -285,6 +285,21 @@ describe("OpenClawAdapter ACP lifecycle", () => {
     expect(approval.runId).toBe("run-1");
     expect(approval.action).toMatch(/edit/i);
   });
+
+  it("reads the request in rule terms, so rules apply on the Gateway route", () => {
+    const adapter = new OpenClawAdapter();
+    const seen: Array<{ type: string; data?: Record<string, unknown> }> = [];
+    adapter.subscribeToRun("run-1", (event) => seen.push(event));
+    const handle = (adapter as unknown as { handleEvent: (event: { event: string; payload: Record<string, unknown> }) => void }).handleEvent.bind(adapter);
+    handle({ event: "agent", payload: { method: "session/request_permission", runId: "run-1", requestId: "req-1",
+      params: { toolCall: { kind: "execute", title: "Run tests", rawInput: { command: "pnpm test" } } } } });
+    handle({ event: "exec.approval.requested", payload: { id: "exec-1", runId: "run-1", command: "git push" } });
+    handle({ event: "plugin.approval.requested", payload: { id: "plugin-1", runId: "run-1", tool: "deploy" } });
+    const details = seen.map((event) => (event.data?.approval as { details?: { subject?: unknown } }).details?.subject);
+    expect(details[0]).toMatchObject({ kind: "execute", command: "pnpm test" });
+    expect(details[1]).toMatchObject({ kind: "execute", command: "git push" });
+    expect(details[2]).toBeUndefined();
+  });
 });
 
 describe("control command replies stay out of the conversation", () => {
