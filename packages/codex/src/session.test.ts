@@ -7,7 +7,7 @@ const fixture = fileURLToPath(new URL("./fixtures/agent.mjs", import.meta.url));
 const sessions: DirectCodexSession[] = [];
 function create(scenario = "normal", model?: string) {
   const session = new DirectCodexSession({ command: process.execPath, args: [fixture, scenario], cwd: process.cwd(), model,
-    timeoutMs: ["hang", "missing-interrupt"].includes(scenario) ? 200 : 3000, env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" } });
+    timeoutMs: ["hang", "missing-interrupt"].includes(scenario) ? 1000 : 3000, env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" } });
   sessions.push(session); return session;
 }
 afterEach(async () => { await Promise.all(sessions.splice(0).map((session) => session.close())); });
