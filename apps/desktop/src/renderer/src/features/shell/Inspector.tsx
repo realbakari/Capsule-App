@@ -892,10 +892,10 @@ export function Inspector() {
               <div className="follow-agent-bar" role="status">
                 {followAgent.status === "following" ? <>
                   <span className="follow-agent-dot" aria-hidden />
-                  <span className="follow-agent-text">Following the agent{followAgent.path ? <> · <code title={followAgent.path}>{followAgent.path}</code></> : null}</span>
+                  <span className="follow-agent-text">Following the agent{followAgent.path ? <> · <code title={followAgent.path}>{toWorkspaceRelative(followAgent.path, activeRoot)}</code></> : null}</span>
                   <button type="button" className="ghost" onClick={pauseFollow}>Pause</button>
                 </> : <>
-                  <span className="follow-agent-text">Paused because you opened a file.</span>
+                  <span className="follow-agent-text">Paused while you browse Files.</span>
                   <button type="button" className="ghost" onClick={followAgent.resume}>Follow again</button>
                 </>}
               </div>
