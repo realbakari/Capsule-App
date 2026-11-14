@@ -996,7 +996,7 @@ async function applyDesktopSettings(settings?: CapsuleSettings): Promise<void> {
   applyNativeTheme(settings?.appearanceTheme);
   applyMenuBar(settings);
   applyKeepAwake(settings);
-  await applyRemoteAccess(settings?.remoteAccess ?? "off");
+  await remoteAccess.follow(settings?.remoteAccess ?? "off");
 }
 
 /*
