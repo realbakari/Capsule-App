@@ -96,6 +96,10 @@ export const IPC_CHANNELS = {
   /* PNG bytes the renderer made, e.g. an annotated simulator screenshot, saved as an attachment. */
   saveImageAttachment: "capsule:saveImageAttachment",
   saveTextAttachment: "capsule:saveTextAttachment",
+  /* Composer context. Each reaches past Capsule's own state: the network, or a command in the project. */
+  fetchUrlContext: "capsule:fetchUrlContext",
+  runComposerCommand: "capsule:runComposerCommand",
+  runDiagnostics: "capsule:runDiagnostics",
   /* The browser pane's guest WebContents, so agent tools can reach it. */
   registerBrowserView: "capsule:registerBrowserView",
   setBrowserControl: "capsule:setBrowserControl",

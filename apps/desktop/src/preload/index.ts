@@ -222,7 +222,12 @@ const api = {
   pickFiles: () => ipcRenderer.invoke(IPC_CHANNELS.pickFiles),
   saveClipboardImage: () => ipcRenderer.invoke(IPC_CHANNELS.saveClipboardImage),
   saveImageAttachment: (png: Uint8Array): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.saveImageAttachment, png),
-  saveTextAttachment: (text: string): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.saveTextAttachment, text),
+  saveTextAttachment: (text: string, name?: string): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.saveTextAttachment, text, name),
+  fetchUrlContext: (url: string): Promise<import("@capsule/shared").UrlContext> => ipcRenderer.invoke(IPC_CHANNELS.fetchUrlContext, url),
+  runComposerCommand: (projectId: string, command: string, sessionId?: string): Promise<import("@capsule/shared").CommandResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.runComposerCommand, projectId, command, sessionId),
+  runDiagnostics: (projectId: string, sessionId?: string): Promise<import("@capsule/shared").DiagnosticsResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.runDiagnostics, projectId, sessionId),
   registerBrowserView: (webContentsId: number | undefined, threadId?: string, ready?: boolean) =>
     ipcRenderer.invoke(IPC_CHANNELS.registerBrowserView, webContentsId, threadId, ready),
   setBrowserControl: (threadId: string, allowed: boolean) =>

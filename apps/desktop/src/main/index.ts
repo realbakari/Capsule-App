@@ -1686,10 +1686,19 @@ function registerIpc(): void {
     const { saveImageAttachment } = await import("./image-attachments.js");
     return saveImageAttachment(path.join(app.getPath("userData"), "attachments"), bytes);
   });
-  handle(IPC_CHANNELS.saveTextAttachment, async (text) => {
+  handle(IPC_CHANNELS.saveTextAttachment, async (text, name) => {
     const { saveTextAttachment } = await import("./text-attachments.js");
-    return saveTextAttachment(path.join(app.getPath("userData"), "attachments"), text);
+    return saveTextAttachment(path.join(app.getPath("userData"), "attachments"), text, name);
   });
+  handle(IPC_CHANNELS.fetchUrlContext, async (url) => {
+    if (typeof url !== "string" || url.length > 4_096) throw new Error("Type a web address.");
+    const { fetchUrlContext } = await import("@capsule/core");
+    return fetchUrlContext(url);
+  });
+  handle(IPC_CHANNELS.runComposerCommand, (projectId, command, sessionId) =>
+    requireEngine().runComposerCommand(String(projectId), String(command ?? ""), typeof sessionId === "string" ? sessionId : undefined));
+  handle(IPC_CHANNELS.runDiagnostics, (projectId, sessionId) =>
+    requireEngine().runDiagnostics(String(projectId), typeof sessionId === "string" ? sessionId : undefined));
   handle(IPC_CHANNELS.listHarnesses, () => requireEngine().listHarnesses());
   handle(IPC_CHANNELS.discoverHarness, (projectId, harnessId, model, sessionId) =>
     requireEngine().discoverHarness(String(projectId), String(harnessId), typeof model === "string" ? model : undefined, typeof sessionId === "string" ? sessionId : undefined));

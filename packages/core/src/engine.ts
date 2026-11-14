@@ -10,6 +10,8 @@ import { FollowUpService } from "./follow-up-service.js";
 import { BoardService } from "./board-service.js";
 import type { BoardCardOp, CreateBoardCardInput } from "@capsule/shared";
 import { Branching, transcriptContext } from "./branching.js";
+import type { CommandResult, DiagnosticsResult } from "@capsule/shared";
+import { COMPOSER_COMMAND_TIMEOUT_MS, DIAGNOSTICS_TIMEOUT_MS, findCheckCommand, runContextCommand } from "./context-commands.js";
 
 const ACTIVE_RUN_STATUSES = new Set<RunStatus>(["queued", "running", "waiting", "approval_required"]);
 const TERMINAL_RUN_STATUSES = new Set<RunStatus>(["completed", "failed", "cancelled", "blocked"]);
@@ -1261,6 +1263,7 @@ export class CapsuleEngine {
           // Stored only when it is off: an action with a preview URL opened it
           // before this was a choice, and that stays the default.
           ...(action.openPreview === false ? { openPreview: false } : {}),
+          ...(action.check ? { check: true } : {}),
         }))
         .filter((action) => action.id && action.name && action.command)
         .slice(0, 24);
@@ -2627,6 +2630,26 @@ export class CapsuleEngine {
     if (!cwd) throw new Error("Choose a project folder first");
     const release = this.folderActivity.enter(cwd);
     try { return await runInDirectory(cwd, command); } finally { release(); }
+  }
+
+  /** `!command` in the composer: the same guarded runner, with output kept for an attachment. */
+  async runComposerCommand(projectId: string, command: string, sessionId?: string): Promise<CommandResult> {
+    this.assertLocalCommandsAllowed();
+    const cwd = this.workingDirectoryFor(this.requireProject(projectId), sessionId);
+    if (!cwd) throw new Error("Choose a project folder first");
+    return runContextCommand(cwd, command, COMPOSER_COMMAND_TIMEOUT_MS, () => this.folderActivity.enter(cwd));
+  }
+
+  /** `@diagnostics`: the project's own check command, or an honest "none". */
+  async runDiagnostics(projectId: string, sessionId?: string): Promise<DiagnosticsResult> {
+    this.assertLocalCommandsAllowed();
+    const project = this.requireProject(projectId);
+    const cwd = this.workingDirectoryFor(project, sessionId);
+    if (!cwd) throw new Error("Choose a project folder first");
+    const check = findCheckCommand(cwd, project.actions ?? []);
+    if (!check) return { status: "none" };
+    const result = await runContextCommand(cwd, check.command, DIAGNOSTICS_TIMEOUT_MS, () => this.folderActivity.enter(cwd));
+    return { status: "ran", check, ...result };
   }
 
   runProjectAction(projectId: string, actionId: string, sessionId?: string): ProjectActionRun {
