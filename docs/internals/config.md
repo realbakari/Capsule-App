@@ -7,8 +7,8 @@ Capsule drives, on both runtime routes, on the desktop and from a paired phone.
 
 This document is for contributors. The user-facing pages are
 [settings files](../user/settings-files.md), [commands](../user/commands.md),
-[hooks](../user/hooks.md), [themes](../user/themes.md) and
-[automations](../user/automations.md).
+[profiles](../user/profiles.md), [hooks](../user/hooks.md),
+[themes](../user/themes.md) and [automations](../user/automations.md).
 
 ## The rule this design keeps
 
@@ -350,6 +350,69 @@ context, then writes the canonical spelling; `unbind` removes the sequence and
 writes `null` only when a default would still hold it; `reset` removes the
 action's lines and a `null` over its default.
 
+## MCP servers
+
+**Merge.** `mcpServers` merges by name. An entry with neither `command` nor
+`url` is a patch: it changes `enabled` or `projects` on the server of that
+name from an earlier file, and the effective entry records the patching file
+as `override`. A patch with nothing beneath it is dropped. In an untrusted
+project a patch that only says `enabled: false` applies at once, because it
+only restricts; anything that defines or turns on a server waits, listed as
+`mcp-server` pending trust.
+
+**Status.** `mcpServerStatus` (shared) decides one server for one
+conversation: a name agents' configuration can hold, `enabled`, `projects`
+globs against the project folder (`folderMatchesGlob`, `~` for home),
+the starting profile's `mcp` list, and whether every `${env:NAME}` in `env`
+and `headers` is set. The snapshot's `mcpServers` carries every server with
+its status; `offeredMcpServers` (core) turns the offered ones into the ACP
+shape with secrets expanded.
+
+**Offer.** The engine sets the direct host's offer once, in its constructor,
+to `mcpOffer(input)`: the desktop's own offer (`offerDirectMcpServers`) and
+then the configured servers for the thread's project and profile. Delivery
+per transport is in [harness.md](./harness.md#mcp-servers-on-both-routes).
+
+**Switches.** `ConfigService.setMcpServerEnabled` writes `enabled` on the
+user file's definition (everywhere) or a patch in the project's local file
+(here). Turning a server back on here removes the patch, and writes
+`enabled: true` only when the server is still off underneath. Like a rule
+edit, it rewrites the `mcpServers` key, so comments inside that object are
+lost.
+
+**Test.** `testMcpServer` probes the effective definition with secrets
+expanded: a stdio server is started in its `cwd`, the project folder or home,
+in its own process group, which is killed afterwards; an HTTP server gets
+`initialize`, `notifications/initialized` and `tools/list` with its session
+header, reading a JSON or event-stream answer. Ten seconds in all.
+
+## Profiles, styles and standing instructions
+
+**Catalogs.** `ConfigService.profiles(root)` and `styles(root)` parse the
+`profiles` and `styles` resources with `parseProfileFile` and
+`parseStyleFile` (shared, both on the command file's frontmatter reader).
+A project's file wins over the user's of the same id and the shadowed file
+is a warning; a style file named after a built-in replaces it. Both folders
+are in the reload stamp, and their problems are in the doctor.
+`personalInstructions()` reads the named file when asked, at most 32 KB.
+
+**Applying a profile.** `createSession` takes `profileId`. What the caller
+names wins, then the profile, then the project's record and files. A coding
+agent always runs in Capsule's `code` mode; the profile's `mode` for one is
+applied through the agent's own controls. The session stores `profileId`
+(column `profile_id`, migration 20). A command's `profile` applies the same
+way through `applyProfile` when the command starts the conversation, before
+the turn's agent is chosen.
+
+**The first turn.** `firstTurnStanding` runs once the agent is ready, on a
+turn with no earlier contracted run. It sets the profile's effort and mode
+controls, then builds `standingPreamble` from the style (the profile's,
+else `style`, else `outputDetail` read as a built-in), the personal
+instructions file, and the profile's body and installed skills, and puts it
+before the runtime prompt. A `standing.instructions` run event records what
+was sent and every part that was not. The user message keeps what was
+typed.
+
 ## Migration
 
 The first launch of a build with settings files exports the SQLite
@@ -409,6 +472,9 @@ landed while the save ran is not lost.
 | `capsule:themes:import` | write | save a theme from a share string, or a file main picks, into the themes folder |
 | `capsule:keybindings:set` | write | bind, unbind or reset one sequence in keybindings.json |
 | `capsule:backdrop:chooseImage` | write | pick an image in main, copy it into `backdrops/`, draw it |
+| `capsule:mcp:test` | write | start or reach one configured MCP server and list its tools |
+| `capsule:mcp:setEnabled` | write | turn a server on or off everywhere, or in one project |
+| `capsule:profiles:create` | write | write a profile from the template or a copy, then open it |
 
 Main checks each write's shape where it crosses: a key and a known layer, or
 a file target naming one of the known kinds and folders, so the renderer
@@ -652,4 +718,47 @@ Decisions made while building this, and why.
   is not an undo. Each binding has Reset.
 - **A paired browser follows the host's theme.** It was locked to the
   website's dark at start-up and never unlocked; a paired device is the app.
+- **MCP servers reach every direct transport, Capsule's own included.**
+  Native sessions used to get an empty offer by construction. Claude Code
+  and Codex now get the browser and simulator tools too, because the offer
+  is one list; Muse gets none, and Settings says so.
+- **A project switch is a patch, not a copy.** Copying a user server into
+  the project's local file to turn it off would fork its definition, and an
+  edit to the user's server would stop applying there.
+- **Turning a server off in a project needs no trust.** It only restricts,
+  like a deny rule. Turning one on in an untrusted folder waits.
+- **Codex gets one override key per server.** An override of the whole
+  `mcp_servers` table would replace the person's own Codex servers.
+- **`${env:NAME}` expands at spawn, and a missing variable holds the server.**
+  Sending an empty token would fail later and less clearly; the status says
+  which variable is missing.
+- **Test is a write.** It changes no file, but it runs the server's command
+  on this computer, which a paired device must not trigger.
+- **The profile key is `harness`, read as any agent id.** The report's
+  name is kept for anyone writing from it; `agent` is accepted too. A value
+  that is neither a harness nor a known agent refuses to start.
+- **A coding agent's profile mode goes through its controls.** Capsule runs
+  every coding agent in `code` mode and the spawn sets it; `plan` and the
+  like are the agent's own options, so they are set where it reports one.
+- **Effort and agent modes are direct-only.** The Gateway has no control for
+  either. The run event says so instead of dropping it.
+- **Standing instructions go with the first turn that reaches the agent.**
+  A first turn that failed to start its agent sent nothing, so the next one
+  carries the block; a contract on an earlier run is the signal.
+- **`outputDetail` became a style.** Its per-turn hint moved into the first
+  turn's block as Concise or Explanatory; Standard sends nothing. The
+  setting still works, and `style` replaces it.
+- **Compaction is not seen.** Neither route tells Capsule an agent compacted
+  its context, so the block is not sent again. If one later does, the seam
+  is `firstTurnStanding`.
+- **Profiles and styles ride in the config snapshot.** No new read channel
+  was allowed, and the snapshot is re-read on every change already. Profile
+  bodies stay out of it.
+- **A profile from a paired device stays supervised and local.** The remote
+  argument filter still forces `strict` and `local`, and explicit input wins
+  over a profile.
+- **Personal instructions are user-only.** A project naming a file on your
+  computer to send to every agent would be a way to read it.
+- **Automations reference profiles by id.** Automations have not landed;
+  their runner should call `createSession({ projectId, profileId })`.
 

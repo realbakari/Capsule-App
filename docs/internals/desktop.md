@@ -1905,3 +1905,43 @@ a backdrop the composer's fade and corner masks in the page colour are hidden,
 since they would draw bands of it. A paired browser follows the host's theme
 and scenes, and draws no image.
 
+## Profiles, response styles and MCP servers
+
+**Profiles.** The composer's agent menu (`AgentModelPicker`) lists the
+snapshot's profiles under **Profiles**, above **Agents**, in its **…** view,
+each with its colour dot and one line from `profileLine` (agent, model,
+effort, permission label, worktree). Choosing one calls the workspace's
+`startWithProfile`, which creates a conversation with `profileId` and
+selects it, as **New conversation with** a profile does in the palette, a
+`profile:<id>` key binding, and **Start** in Settings → Agents → Profiles
+(`ProfilesCard.tsx`). That card also has **New profile**, **New <project>
+profile**, **Duplicate** and **Open file** per row, and the profile files'
+problems behind an expansion. When a thread with a profile is selected, the
+composer takes the thread's agent and mode, since it sends both with every
+message. The titlebar shows `ThreadProfileChip` after the thread title:
+the profile's dot and name, or its id if the file is gone.
+
+**Response style.** Settings → Agents has a **Response style** card under
+Profiles: a select over the snapshot's styles (built-ins, then files marked
+yours or project), writing `style` to the user file, and a **Personal
+instructions** path field writing `personalInstructions`. **Output detail**
+stays in Agent defaults; its hint says a style replaces it.
+
+**Tools (MCP).** A Settings tab under Agents (`McpServersSettings.tsx`).
+Each configured server shows its name, Local command or HTTP, the file that
+defines it as a source chip, the command line or URL, and its state for the
+next direct conversation (`mcpStatusText`). With a project open the switch
+is **In <project>**, writing the project's local file; **Turn off
+everywhere** (or on) writes the user file, for a server defined there and
+not switched in the project. Without a project the switch is **On**. **Test**
+shows the tool count, the first twelve names and the time, or the error with
+what the server printed behind an expansion. Servers waiting for trust are
+listed in an open expansion. **Where these servers reach** is a collapsed
+table from `mcpDelivery`: per agent, local command and HTTP on direct, and
+Gateway threads, which never get them. The empty state shows an
+`mcpServers` example with `${env:NAME}`. The palette has **MCP servers**.
+
+A paired device sees all three read-only: the lists come with the config
+snapshot, and Test, the switches and profile files are write channels. A
+device with conversation control can start a thread from a profile.
+

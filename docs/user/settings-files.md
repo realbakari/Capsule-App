@@ -139,12 +139,83 @@ file) or **Everywhere** (your user file). It is on the desktop only.
 **Settings → Agents → Permission rules** lists every rule with its file,
 removes rules from your own files, and adds new ones.
 
+## MCP servers
+
+Add an MCP server once and every agent Capsule starts directly gets it, in
+every project or only the ones you name. Settings → Tools (MCP) lists them.
+
+```jsonc
+{
+  "mcpServers": {
+    "docs": {
+      "command": "npx",
+      "args": ["-y", "docs-mcp-server"],
+      "env": { "DOCS_TOKEN": "${env:DOCS_TOKEN}" }
+    },
+    "tracker": {
+      "url": "https://mcp.example.com/mcp",
+      "headers": { "Authorization": "Bearer ${env:TRACKER_TOKEN}" },
+      "projects": ["~/work/**"]
+    }
+  }
+}
+```
+
+- A server with `command` is a local command the agent starts. One with
+  `url` is an HTTP server it reaches.
+- `${env:NAME}` in `env` and `headers` is read from Capsule's environment
+  when a conversation starts, so a token never sits in the file. A server
+  whose variable is not set waits, and Settings says which variable.
+- `projects` lists folders, with `~` for your home folder and `*` or `**`
+  for any name. The server reaches only conversations in a matching project.
+- `"enabled": false` turns a server off without deleting it.
+- `cwd` sets the folder the server starts in for **Test**. Agents that start
+  servers themselves start them where they choose.
+
+In Settings → Tools (MCP), each server shows where its definition lives and
+whether the next conversation gets it. **Test** starts the server, or
+reaches it, and lists its tools, giving up after ten seconds. With a project
+open, the switch turns a server on or off in that project only. Capsule
+writes that to the project's `settings.local.json`, so your teammates are
+not affected, and **Turn off everywhere** changes your own file.
+
+Where a server reaches:
+
+| Conversation | Local command | HTTP |
+| --- | --- | --- |
+| Claude Code, direct | Yes | Yes |
+| Codex, direct | Yes | Yes |
+| Other agents, direct | Yes | When the agent says it supports HTTP servers |
+| Muse | No | No |
+| Any Gateway thread | No | No |
+
+A Gateway thread uses the tools configured on the Gateway, in its own plugin
+settings. A server joins the agent's own servers; it does not replace them.
+Servers apply to conversations started after the change.
+
+## Response style and personal instructions
+
+`style` picks how replies should read: `concise`, `standard` or
+`explanatory`, or the name of a file in your `styles` folder. A style file
+is Markdown with a `name` and `description`, and its text is the style.
+`personalInstructions` names a Markdown file of your own standing
+instructions, such as the tools you prefer. A relative path is in your
+settings folder.
+
+Capsule sends both, labelled as standing instructions and not as your
+words, before your first message in a conversation, with any agent and on
+either route. They are advice the agent reads, not a mode Capsule can
+enforce. The older **Output detail** setting still works, and a style
+replaces it. Capsule cannot tell when an agent compacts its context, so the
+instructions are not sent again after that. A [profile](./profiles.md) can
+choose its own style.
+
 ## What a project can set
 
 Some settings are yours alone, and Capsule ignores them in a project file:
 remote access, Open with entries, other tools' command folders, plugins, a
-status line command, HTTP hooks, and MCP servers that start a local command.
-A project can still list MCP servers by URL.
+status line command, HTTP hooks, MCP servers that start a local command, and
+personal instructions. A project can still list MCP servers by URL.
 
 ## Trusting a project
 
@@ -157,6 +228,8 @@ automations and `allow` permission rules. Until then:
 - `deny` and `ask` permission rules apply at once, because they only make
   agents ask more or do less.
 - Turning every hook off with `"disableAllHooks": true` applies at once.
+- Turning an MCP server off for the project applies at once. Turning one on
+  waits.
 
 Trust is remembered per folder on this computer. Revoking trust puts those
 entries back on hold.
@@ -215,6 +288,7 @@ files you are about to fix. Edit them in your own editor, then choose
 
 The palette (⌘K) has the settings files too: **Open user settings**, **Open
 project settings**, **Open project local settings**, **Open hooks
-settings**, **Open keybindings file**, **Reload customizations**, **Trust this project** or **Revoke trust
+settings**, **Open keybindings file**, **MCP servers**, **New conversation
+with** each profile, **Reload customizations**, **Trust this project** or **Revoke trust
 for this project**, **Restart without customizations** or **Restart
 normally**, and **Show customization problems**.
