@@ -4,6 +4,8 @@ import type { ContrastWarning, ThemeAppearance, ThemeProblem } from "./theme.js"
 import type { ThemeToken } from "./theme-tokens.js";
 import type { CapsuleSettings } from "./runtime.js";
 import type { McpServerView } from "./mcp.js";
+import type { ProfileSummary } from "./profile.js";
+import type { StyleSummary } from "./style.js";
 
 /**
  * The layers a value can come from, highest precedence first after the
@@ -143,6 +145,10 @@ export interface ConfigSnapshot {
   themes: ThemeState;
   /** keybindings.json, parsed. Entries that did not parse are problems in the diagnostics. */
   keybindings: KeybindingEntry[];
+  /** Agent profiles for this project, without their bodies. */
+  profiles: ProfileSummary[];
+  /** Response styles, built-ins included, and the one new conversations here get. */
+  styles: { styles: StyleSummary[]; selected: string };
   /** Configured MCP servers here, each with whether the next direct conversation gets it. */
   mcpServers: McpServerView[];
 }

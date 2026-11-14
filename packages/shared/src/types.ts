@@ -263,6 +263,8 @@ export interface Session {
   workspaceMode?: WorkspaceMode;
   /** Branch created for a worktree conversation. */
   worktreeBranch?: string;
+  /** The agent profile that started this conversation, by id. */
+  profileId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -900,6 +902,8 @@ export interface CreateSessionInput {
   permissionProfile?: import("./harness.js").HarnessPermissionProfile;
   workingDirectory?: string;
   workspaceMode?: WorkspaceMode;
+  /** An agent profile's id. Its agent, mode, permission, workspace and model apply unless the input names its own. */
+  profileId?: string;
 }
 
 export interface AgentMessage {

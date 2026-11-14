@@ -347,4 +347,8 @@ export const MIGRATIONS: Array<{ version: number; sql: string; }> = [
     version: 19,
     sql: `ALTER TABLE sessions ADD COLUMN carry_over TEXT;`,
   },
+  {
+    version: 20,
+    sql: `ALTER TABLE sessions ADD COLUMN profile_id TEXT;`,
+  },
 ];

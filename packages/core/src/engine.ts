@@ -24,7 +24,15 @@ import { decideRequest, type PermissionAnswer } from "./request-policy.js";
 import { mcpServerViews, offeredMcpServers, type McpContext } from "./mcp-servers.js";
 import { probeMcpServer } from "./mcp-probe.js";
 import type { AcpMcpServer, DirectSpawnInput } from "@capsule/acp";
-import { expandMcpSecrets, type McpTestResult } from "@capsule/shared";
+import type { ProfileEntry } from "@capsule/config";
+import {
+  expandMcpSecrets,
+  standingPreamble,
+  styleForOutputDetail,
+  summarizeProfile,
+  type AgentProfile,
+  type McpTestResult,
+} from "@capsule/shared";
 
 /** A permission request's answer, and a hook's reason for asking when the person decides. */
 type Settled = { decision: PermissionAnswer["decision"]; note?: string };
@@ -328,7 +336,7 @@ export class CapsuleEngine {
 
   /*
    * One offer per spawn: Capsule's own servers, then the settings files'
-   * servers this thread's project allows. A file's server never
+   * servers this thread's project and profile allow. A file's server never
    * takes the name of one of Capsule's own.
    */
   private mcpOffer(input: DirectSpawnInput): { servers: AcpMcpServer[]; dispose(): void } {
@@ -336,8 +344,9 @@ export class CapsuleEngine {
     const session = input.threadId ? this.repos.getSession(input.threadId) : undefined;
     const project = session ? this.repos.getProject(session.projectId) : undefined;
     const root = project?.workingDirectory;
+    const profile = session?.profileId && project ? this.findProfile(project, session.profileId)?.profile : undefined;
     const taken = new Set(app.servers.map((server) => server.name));
-    const configured = offeredMcpServers(this.config.extended(root).mcpServers, this.mcpContext(root)).filter((server) => !taken.has(server.name));
+    const configured = offeredMcpServers(this.config.extended(root).mcpServers, this.mcpContext(root, profile?.mcp)).filter((server) => !taken.has(server.name));
     return { servers: [...app.servers, ...configured], dispose: app.dispose };
   }
 
@@ -362,6 +371,26 @@ export class CapsuleEngine {
     this.config.setMcpServerEnabled({ name: input.name, enabled: input.enabled, scope: input.where === "project" ? "local" : "user", root });
     this.applyConfigChange();
     return this.getConfigSnapshot(input.projectId);
+  }
+
+  /** Write a profile file from the template, or as a copy of `from`, and return its path. */
+  createProfile(input: { scope: "user" | "project"; projectId?: string; from?: string }): string {
+    const path = this.config.createProfile({ scope: input.scope, root: this.configRoot(input.projectId), from: input.from });
+    this.config.reload();
+    return path;
+  }
+
+  private findProfile(project: Project, id: string): ProfileEntry | undefined {
+    return this.config.profiles(project.workingDirectory).profiles.find((entry) => entry.profile.id === id);
+  }
+
+  private requireProfile(project: Project, id: string): AgentProfile {
+    const profile = this.findProfile(project, id)?.profile;
+    if (!profile) throw new Error(`There is no profile named ${id}${project.workingDirectory ? " here" : ""}.`);
+    if (profile.agent && !isHarnessId(profile.agent) && !this.repos.listAgents().some((agent) => agent.id === profile.agent)) {
+      throw new Error(`The ${profile.name} profile names the agent "${profile.agent}", which Capsule does not know.`);
+    }
+    return profile;
   }
 
   private directUnsub?: () => void;
@@ -1765,23 +1794,30 @@ export class CapsuleEngine {
   async createSession(input: CreateSessionInput): Promise<Session> {
     const project = this.requireProject(input.projectId);
     const defaults = this.projectSettings(project);
+    // What the caller names wins; a profile fills in the rest, before the project's own defaults.
+    const profile = input.profileId ? this.requireProfile(project, input.profileId) : undefined;
+    const mode = input.mode ?? profileMode(profile);
     // A settings file's agent is a default for a conversation started with
     // no mode; a mode names its own agent.
-    const settingsAgent = !input.mode && defaults.defaultAgentId
+    const settingsAgent = !mode && defaults.defaultAgentId
       && (isHarnessId(defaults.defaultAgentId) || this.repos.listAgents().some((agent) => agent.id === defaults.defaultAgentId))
       ? defaults.defaultAgentId
       : undefined;
-    const agentId = input.agentId ?? project.defaultAgentId ?? settingsAgent ?? agentIdForMode(input.mode ?? project.defaultMode);
+    const agentId = input.agentId ?? profile?.agent ?? project.defaultAgentId ?? settingsAgent ?? agentIdForMode(mode ?? project.defaultMode);
     const requestedWorkspaceMode =
-      input.workspaceMode ?? project.defaultWorkspaceMode ?? defaults.defaultWorkspaceMode;
+      input.workspaceMode ?? profile?.workspace ?? project.defaultWorkspaceMode ?? defaults.defaultWorkspaceMode;
     const workspaceMode =
       !isInboxProject(project) &&
         requestedWorkspaceMode === "worktree" &&
         (await readGitStatus(project.workingDirectory)).isRepo
         ? "worktree"
         : "local";
-    const session = createSessionRecord(project, { ...input, workspaceMode }, agentId);
-    session.permissionProfile = input.permissionProfile ?? defaults.defaultPermission;
+    const session = createSessionRecord(project, { ...input, ...(mode ? { mode } : {}), workspaceMode }, agentId);
+    session.permissionProfile = input.permissionProfile ?? profile?.permission ?? defaults.defaultPermission;
+    if (profile) {
+      session.profileId = profile.id;
+      if (profile.model && isHarnessId(agentId)) session.modelOverride = profile.model;
+    }
     if (isInboxProject(project) && !session.workingDirectory) {
       session.workingDirectory = allocateThreadFolder(
         ensureProjectlessFolder(this.projectlessRoot()),
@@ -1796,6 +1832,7 @@ export class CapsuleEngine {
       try {
         const remote = await this.openclaw.createSession({
           ...input,
+          ...(mode ? { mode } : {}),
           projectId: project.id,
           agentId,
           workingDirectory: session.workingDirectory ?? project.workingDirectory,
@@ -2014,9 +2051,26 @@ export class CapsuleEngine {
      * when it starts the conversation.
      */
     const call = this.commandCall(input.content, project);
-    const firstTurn = this.repos.listRuns(session.id).length === 0;
+    const priorRuns = this.repos.listRuns(session.id);
+    const firstTurn = priorRuns.length === 0;
+    // A run gets its contract once the agent is ready, so none means no earlier turn reached it.
+    const reachedAgentBefore = priorRuns.some((run) => run.contractId);
     const commandProblems: string[] = [];
-    const commandWorkspace = firstTurn ? call?.entry.command.workspace : undefined;
+    /*
+     * A command's profile starts the conversation the way picking that
+     * profile would have: its agent, mode, permission and model, now, before
+     * the agent is chosen for this turn.
+     */
+    let commandProfile: AgentProfile | undefined;
+    if (firstTurn && call?.entry.command.profile) {
+      try {
+        commandProfile = this.requireProfile(project, call.entry.command.profile);
+        session = this.applyProfile(session, commandProfile);
+      } catch (error) {
+        commandProblems.push(`/${call.entry.command.name} names a profile that could not apply: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    const commandWorkspace = firstTurn ? call?.entry.command.workspace ?? commandProfile?.workspace : undefined;
     if (call && commandWorkspace && commandWorkspace !== session.workspaceMode) {
       try {
         session = await this.setSessionWorkspaceMode(session.id, commandWorkspace);
@@ -2037,8 +2091,8 @@ export class CapsuleEngine {
     if (command) attachments.push(...command.attachments);
     const prompt = input.content.trim() || `Review the attached file${attachments.length === 1 ? "" : "s"}.`;
     let runtimePrompt = `${prompt}${attachmentPromptBlock(attachments)}`;
-    const mode = (firstTurn ? call?.entry.command.mode : undefined) ?? input.mode ?? session.mode;
-    const harnessId = this.resolveHarnessId(session, project, input.agentId, mode);
+    const mode = (firstTurn ? call?.entry.command.mode ?? profileMode(commandProfile) : undefined) ?? input.mode ?? session.mode;
+    const harnessId = this.resolveHarnessId(session, project, commandProfile ? session.agentId : input.agentId, mode);
     const agentId = harnessId ?? input.agentId ?? session.agentId ?? agentIdForMode(mode);
     const skillId = input.skillId ?? skillIdForMode(mode);
     const activeSkill = skillId ? await this.requireSkill(skillId, project.id, session.id) : undefined;
@@ -2162,6 +2216,11 @@ export class CapsuleEngine {
     if (hookContext.length) {
       runtimePrompt = `${runtimePrompt}\n\n${hookContext.join("\n\n")}`;
       this.appendEvent(run.id, "hook.context", "Context added by a PromptSubmit hook", { context: hookContext });
+    }
+
+    if (!reachedAgentBefore) {
+      const standing = await this.firstTurnStanding(session, project, run.id);
+      if (standing) runtimePrompt = `${standing}\n\n${runtimePrompt}`;
     }
 
     const settings = this.projectSettings(project);
@@ -2784,6 +2843,11 @@ export class CapsuleEngine {
       problemCount: this.config.diagnostics(scoped?.root).problems.length,
       themes: this.config.themes(scoped?.root),
       keybindings: this.config.keybindings(scoped?.root),
+      profiles: this.config.profiles(scoped?.root).profiles.map((entry) => summarizeProfile(entry.profile, entry)),
+      styles: {
+        styles: this.config.styles(scoped?.root).styles.map((entry) => ({ id: entry.style.id, name: entry.style.name, ...(entry.style.description ? { description: entry.style.description } : {}), source: entry.source, ...(entry.path ? { path: entry.path } : {}) })),
+        selected: this.config.extended(scoped?.root).style ?? styleForOutputDetail((scoped?.settings ?? this.settings).outputDetail),
+      },
       mcpServers: mcpServerViews(this.config.extended(scoped?.root).mcpServers, this.mcpContext(scoped?.root)),
     };
   }
@@ -4148,6 +4212,84 @@ export class CapsuleEngine {
     return undefined;
   }
 
+  /** A profile's agent, mode, permission and model on a conversation that has not started yet. */
+  private applyProfile(session: Session, profile: AgentProfile): Session {
+    const current = this.requireSession(session.id);
+    current.profileId = profile.id;
+    if (profile.agent) current.agentId = profile.agent;
+    const mode = profileMode(profile);
+    if (mode) current.mode = mode;
+    if (profile.permission) current.permissionProfile = profile.permission;
+    if (profile.model && isHarnessId(current.agentId)) current.modelOverride = profile.model;
+    current.updatedAt = nowIso();
+    this.repos.updateSession(current);
+    return current;
+  }
+
+  /*
+   * What the conversation's first turn carries before the person's words:
+   * the response style, personal instructions, and the starting profile's
+   * body and skills, plus the profile's effort where the route has an effort
+   * control. Each part that cannot apply is a problem on the run's event,
+   * never a silent drop.
+   */
+  private async firstTurnStanding(session: Session, project: Project, runId: string): Promise<string | undefined> {
+    const root = project.workingDirectory;
+    const problems: string[] = [];
+    const profile = session.profileId ? this.findProfile(project, session.profileId)?.profile : undefined;
+    if (session.profileId && !profile) problems.push(`The profile ${session.profileId} is gone, so its instructions were not sent.`);
+    if (profile) problems.push(...await this.applyProfileControls(session, profile));
+    const styleId = profile?.style ?? this.config.extended(root).style ?? styleForOutputDetail(this.projectSettings(project).outputDetail);
+    const style = this.config.styles(root).styles.find((entry) => entry.style.id === styleId)?.style;
+    if (!style) problems.push(`There is no response style named ${styleId}.`);
+    const personal = this.config.personalInstructions();
+    if (personal?.problem) problems.push(personal.problem);
+    const skills: Array<{ name: string; content: string }> = [];
+    for (const id of profile?.skills ?? []) {
+      const skill = await this.requireSkill(id, project.id, session.id).catch(() => undefined);
+      if (skill?.status === "installed" && skill.content?.trim()) skills.push({ name: skill.name, content: skill.content });
+      else problems.push(`The skill ${id} is not installed, so the profile's copy of it was not sent.`);
+    }
+    const text = standingPreamble({ style, personal: personal?.text, ...(profile ? { profile: { name: profile.name, instructions: profile.instructions } } : {}), skills });
+    if (text || problems.length) {
+      this.appendEvent(runId, "standing.instructions", text ? "Standing instructions sent with the first turn" : "No standing instructions sent", {
+        style: styleId, ...(profile ? { profile: profile.id } : {}), ...(personal?.text ? { personal: personal.path } : {}),
+        skills: skills.map((skill) => skill.name), problems,
+      });
+    }
+    return text;
+  }
+
+  /*
+   * A coding agent's effort, and a mode such as plan, are its own controls,
+   * reported per agent; set each where the agent reports a control that
+   * takes the profile's value. Returns why each one could not be set.
+   */
+  private async applyProfileControls(session: Session, profile: AgentProfile): Promise<string[]> {
+    const current = this.requireSession(session.id);
+    const wanted = [
+      ...(profile.effort ? [{ label: "effort", value: profile.effort, categories: ["thought_level"] }] : []),
+      ...(profile.mode && profile.mode !== "code" && isHarnessId(profile.agent) ? [{ label: "mode", value: profile.mode, categories: ["mode", "permissions"] }] : []),
+    ];
+    if (!wanted.length || this.usingMock || !current.harnessId) return [];
+    if (!isDirectSessionKey(current.openclawSessionKey)) {
+      return wanted.map((item) => `The Gateway route has no ${item.label} control, so the profile's ${item.label} ${item.value} was not applied.`);
+    }
+    const problems: string[] = [];
+    for (const item of wanted) {
+      try {
+        const options = (await this.harnessStatus(current.id)).parsed?.reported?.configOptions ?? [];
+        const option = options.find((candidate) => item.categories.includes(candidate.category ?? "") && candidate.type !== "boolean"
+          && (item.label === "effort" || candidate.choices.some((choice) => choice.value === item.value)));
+        if (!option) problems.push(`This agent reports no ${item.label} control that takes ${item.value}, so the profile's ${item.label} was not applied.`);
+        else if (option.currentValue !== item.value) await this.setHarnessConfig(current.id, option.id, item.value);
+      } catch (error) {
+        problems.push(`The profile's ${item.label} ${item.value} was not applied: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    return problems;
+  }
+
   private async ensureHarnessSession(session: Session, harnessId: HarnessId, admittingRunId?: string): Promise<Session> {
     const current = this.requireSession(session.id);
     const live = isLiveHarnessState(current.harnessState) && (this.usingMock || (current.openclawSessionKey &&
@@ -4378,3 +4520,9 @@ export function inferMode(prompt: string, current?: AgentMode): AgentMode {
   return current ?? "chat";
 }
 import { compactRunEvent, type RunEventCursor } from "@capsule/shared";
+
+/** A coding agent always runs in code mode; a profile's other mode is applied through the agent's own controls. */
+function profileMode(profile: AgentProfile | undefined): AgentMode | undefined {
+  if (!profile) return undefined;
+  return isHarnessId(profile.agent) ? "code" : profile.mode;
+}

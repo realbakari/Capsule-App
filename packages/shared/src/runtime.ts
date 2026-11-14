@@ -389,13 +389,8 @@ export function classifySessionFromRun(
 }
 
 export function agentInstructionHints(settings: CapsuleSettings): string[] {
+  // outputDetail is a response style now, sent once with the first turn.
   const hints: string[] = [];
-  if (settings.outputDetail === "concise") {
-    hints.push("Keep the reply concise. Do not restate the request.");
-  }
-  if (settings.outputDetail === "verbose") {
-    hints.push("Include files touched, commands run, and how to verify.");
-  }
   if (settings.webAccess === "off") {
     hints.push("Do not use web search or fetch URLs.");
   }
