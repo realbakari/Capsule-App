@@ -379,4 +379,11 @@ export const MIGRATIONS: Array<{ version: number; sql: string; }> = [
       CREATE INDEX IF NOT EXISTS idx_restore_points_session ON restore_points(session_id, created_at);
     `,
   },
+  {
+    version: 22,
+    sql: `
+      ALTER TABLE sessions ADD COLUMN turn_mode TEXT;
+      ALTER TABLE runs ADD COLUMN turn_mode TEXT;
+    `,
+  },
 ];

@@ -18,7 +18,9 @@ import type {
   SkillPack,
   Workspace,
 } from "@capsule/shared";
-import { isHarnessId, readPendingStart, TextBudget, REPLY_BYTE_LIMIT } from "@capsule/shared";
+import { isHarnessId, isTurnMode, readPendingStart, TextBudget, REPLY_BYTE_LIMIT } from "@capsule/shared";
+
+const runTurnMode = (value: unknown) => isTurnMode(value) ? value : undefined;
 import type { CapsuleDatabase } from "./database.js";
 import { copyTranscript, parkRows, splitTranscript, unparkRows, type CopyTranscriptOptions, type TranscriptRows, type TranscriptSplit } from "./transcript-rows.js";
 
@@ -70,6 +72,7 @@ function sessionParams(session: Session) {
     workingDirectory: session.workingDirectory ?? null,
     workspaceMode: session.workspaceMode ?? "local",
     worktreeBranch: session.worktreeBranch ?? null,
+    turnMode: session.turnMode ?? null,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
   };
@@ -107,6 +110,7 @@ function normalizeSession(row: SessionRow): Session {
     workingDirectory: row.workingDirectory || undefined,
     workspaceMode: row.workspaceMode === "worktree" ? "worktree" : "local",
     worktreeBranch: row.worktreeBranch || undefined,
+    turnMode: isTurnMode(row.turnMode) ? row.turnMode : undefined,
   };
 }
 
@@ -250,12 +254,12 @@ export class CapsuleRepositories {
           id, workspace_id, project_id, agent_id, title, mode, state,
           openclaw_session_key, harness_id, harness_state, acp_mode,
           permission_profile, model_override, pinned, pin_order, working_directory, workspace_mode,
-          worktree_branch, direct_session, carry_over, pending_start, done_at, forked_from, created_at, updated_at
+          worktree_branch, direct_session, carry_over, pending_start, done_at, forked_from, turn_mode, created_at, updated_at
         ) VALUES (
           @id, @workspaceId, @projectId, @agentId, @title, @mode, @state,
           @openclawSessionKey, @harnessId, @harnessState, @acpMode,
           @permissionProfile, @modelOverride, @pinned, @pinOrder, @workingDirectory, @workspaceMode,
-          @worktreeBranch, @directSession, @carryOver, @pendingStart, @doneAt, @forkedFrom, @createdAt, @updatedAt
+          @worktreeBranch, @directSession, @carryOver, @pendingStart, @doneAt, @forkedFrom, @turnMode, @createdAt, @updatedAt
         )`,
       )
       .run(sessionParams(session));
@@ -269,7 +273,7 @@ export class CapsuleRepositories {
          harness_state = @harnessState, acp_mode = @acpMode,
          permission_profile = @permissionProfile, model_override = @modelOverride,
          pinned = @pinned, pin_order = @pinOrder, working_directory = @workingDirectory, workspace_mode = @workspaceMode,
-         worktree_branch = @worktreeBranch, direct_session = @directSession, carry_over = @carryOver, forked_from = @forkedFrom, updated_at = @updatedAt WHERE id = @id`,
+         worktree_branch = @worktreeBranch, direct_session = @directSession, carry_over = @carryOver, forked_from = @forkedFrom, turn_mode = @turnMode, updated_at = @updatedAt WHERE id = @id`,
       )
       .run(sessionParams(session));
   }
@@ -386,7 +390,7 @@ export class CapsuleRepositories {
                 permission_profile AS permissionProfile, model_override AS modelOverride,
                 pinned, pin_order AS pinOrder, working_directory AS workingDirectory, workspace_mode AS workspaceMode,
                 worktree_branch AS worktreeBranch, direct_session AS directSession, carry_over AS carryOver,
-                pending_start AS pendingStart, done_at AS doneAt, forked_from AS forkedFrom, created_at AS createdAt, updated_at AS updatedAt`;
+                pending_start AS pendingStart, done_at AS doneAt, forked_from AS forkedFrom, turn_mode AS turnMode, created_at AS createdAt, updated_at AS updatedAt`;
     const sql = projectId
       ? `SELECT ${columns} FROM sessions WHERE project_id = ?
          ORDER BY pinned DESC, COALESCE(pin_order, 2147483647) ASC, updated_at DESC`
@@ -717,10 +721,10 @@ export class CapsuleRepositories {
       .prepare(
         `INSERT INTO runs (
           id, session_id, project_id, agent_id, skill_id, contract_id, status, prompt, result,
-          error, openclaw_run_id, checkpoint_ref, working_directory, revision, verification, created_at, updated_at, completed_at
+          error, openclaw_run_id, checkpoint_ref, working_directory, revision, verification, turn_mode, created_at, updated_at, completed_at
         ) VALUES (
           @id, @sessionId, @projectId, @agentId, @skillId, @contractId, @status, @prompt, @result,
-          @error, @openclawRunId, @checkpointRef, @workingDirectory, @revision, @verification, @createdAt, @updatedAt, @completedAt
+          @error, @openclawRunId, @checkpointRef, @workingDirectory, @revision, @verification, @turnMode, @createdAt, @updatedAt, @completedAt
         )`,
       )
       .run({
@@ -734,6 +738,7 @@ export class CapsuleRepositories {
         workingDirectory: run.workingDirectory ?? null,
         revision: run.revision ? JSON.stringify(run.revision) : null,
         verification: run.verification ? JSON.stringify(run.verification) : null,
+        turnMode: run.turnMode ?? null,
         completedAt: run.completedAt ?? null,
       });
   }
@@ -767,12 +772,12 @@ export class CapsuleRepositories {
     const row = this.db.sqlite.prepare(
       `SELECT id, session_id AS sessionId, project_id AS projectId, agent_id AS agentId,
               skill_id AS skillId, contract_id AS contractId, status, prompt, result, error,
-              openclaw_run_id AS openclawRunId, checkpoint_ref AS checkpointRef,
+              openclaw_run_id AS openclawRunId, checkpoint_ref AS checkpointRef, turn_mode AS turnMode,
               working_directory AS workingDirectory, revision, verification,
               created_at AS createdAt, updated_at AS updatedAt, completed_at AS completedAt
        FROM runs WHERE id = ?`,
     ).get(id) as (Omit<Run, "revision" | "verification"> & { revision: string | null; verification: string | null }) | undefined;
-    return row ? { ...row, revision: row.revision ? JSON.parse(row.revision) : undefined, verification: row.verification ? JSON.parse(row.verification) : undefined } : undefined;
+    return row ? { ...row, turnMode: runTurnMode(row.turnMode), revision: row.revision ? JSON.parse(row.revision) : undefined, verification: row.verification ? JSON.parse(row.verification) : undefined } : undefined;
   }
 
   getRunProgress(id: string): Partial<Run> | undefined {
@@ -802,7 +807,7 @@ export class CapsuleRepositories {
              skill_id AS skillId, contract_id AS contractId, status,
              substr(prompt, 1, 512) AS prompt, substr(error, 1, 2048) AS error,
              length(trim(result)) > 0 AS hasResult,
-             openclaw_run_id AS openclawRunId, checkpoint_ref AS checkpointRef,
+             openclaw_run_id AS openclawRunId, checkpoint_ref AS checkpointRef, turn_mode AS turnMode,
              working_directory AS workingDirectory, revision, verification,
              created_at AS createdAt, updated_at AS updatedAt, completed_at AS completedAt
       FROM runs ${filters.length ? `WHERE ${filters.join(" AND ")}` : ""}
@@ -810,7 +815,7 @@ export class CapsuleRepositories {
     `).all(...values, limit + 1) as Array<Omit<Run, "revision" | "verification" | "hasResult"> & {
       revision: string | null; verification: string | null; hasResult: number | null;
     }>;
-    const runs = rows.slice(0, limit).map((row) => ({ ...row, hasResult: Boolean(row.hasResult),
+    const runs = rows.slice(0, limit).map((row) => ({ ...row, hasResult: Boolean(row.hasResult), turnMode: runTurnMode(row.turnMode),
       revision: row.revision ? JSON.parse(row.revision) : undefined,
       verification: row.verification ? JSON.parse(row.verification) : undefined,
     }));
@@ -858,20 +863,20 @@ export class CapsuleRepositories {
     const sql = sessionId
       ? `SELECT id, session_id AS sessionId, project_id AS projectId, agent_id AS agentId,
                 skill_id AS skillId, contract_id AS contractId, status, prompt, result, error,
-                openclaw_run_id AS openclawRunId, checkpoint_ref AS checkpointRef,
+                openclaw_run_id AS openclawRunId, checkpoint_ref AS checkpointRef, turn_mode AS turnMode,
                 working_directory AS workingDirectory, revision, verification,
                 created_at AS createdAt, updated_at AS updatedAt,
                 completed_at AS completedAt FROM runs WHERE session_id = ? ORDER BY created_at DESC`
       : `SELECT id, session_id AS sessionId, project_id AS projectId, agent_id AS agentId,
                 skill_id AS skillId, contract_id AS contractId, status, prompt, result, error,
-                openclaw_run_id AS openclawRunId, checkpoint_ref AS checkpointRef,
+                openclaw_run_id AS openclawRunId, checkpoint_ref AS checkpointRef, turn_mode AS turnMode,
                 working_directory AS workingDirectory, revision, verification,
                 created_at AS createdAt, updated_at AS updatedAt,
                 completed_at AS completedAt FROM runs ORDER BY created_at DESC`;
     const rows = (sessionId
       ? this.db.sqlite.prepare(sql).all(sessionId)
       : this.db.sqlite.prepare(sql).all()) as Array<Omit<Run, "revision" | "verification"> & { revision: string | null; verification: string | null; }>;
-    return rows.map((row) => ({ ...row, revision: row.revision ? JSON.parse(row.revision) : undefined, verification: row.verification ? JSON.parse(row.verification) : undefined }));
+    return rows.map((row) => ({ ...row, turnMode: runTurnMode(row.turnMode), revision: row.revision ? JSON.parse(row.revision) : undefined, verification: row.verification ? JSON.parse(row.verification) : undefined }));
   }
 
   /** One indexed lookup per visible thread, without loading prompts or result JSON. */
