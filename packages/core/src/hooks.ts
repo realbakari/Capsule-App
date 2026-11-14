@@ -71,10 +71,12 @@ export interface HookHost {
   record(run: CustomizationRunRecord): void;
   /**
    * Whether a hook from this file may allow a permission request. One that
-   * may not has its allow read as ask, so the person decides. Every file
-   * may today; a source Capsule trusts less can be held back here.
+   * may not has its allow read as ask, so the person decides. A plugin's
+   * hooks may not until the person lets that plugin approve requests.
    */
   mayAllow?(source: Provenance): boolean;
+  /** Extra environment for a command hook from this file: a plugin's folders and options. */
+  env?(source: Provenance): Record<string, string>;
   /** Overridable for tests. */
   fetch?: typeof fetch;
 }
@@ -169,7 +171,8 @@ export class HookRunner {
     return Promise.all(selected.map(async ({ handler, source, matcher }) => {
       const startedAt = new Date().toISOString();
       const started = Date.now();
-      const { outcome, exitCode, stderr } = await this.execute(handler, payload, event);
+      const { outcome, exitCode, stderr } = await this.execute(handler, payload, event, this.host.env?.(source) ?? {});
+      const held = event === "PermissionRequest" && outcome.kind === "answered" && outcome.output.permissionDecision === "allow" && !this.mayAllow(source);
       this.host.record({
         id: createId("hook"),
         kind: "hook",
@@ -180,7 +183,7 @@ export class HookRunner {
         durationMs: Date.now() - started,
         exitCode,
         ...(stderr ? { stderr: stderr.slice(-STDERR_KEPT) } : {}),
-        outcome: describeOutcome(outcome, event),
+        outcome: held ? "answered allow, read as ask: this plugin may not approve requests until you let it in Settings" : describeOutcome(outcome, event),
       });
       return { handler, source, outcome };
     }));
@@ -201,7 +204,7 @@ export class HookRunner {
     };
   }
 
-  private async execute(handler: HookHandler, payload: HookPayload, event: HookEvent): Promise<{ outcome: HookOutcome; exitCode: number | null; stderr?: string }> {
+  private async execute(handler: HookHandler, payload: HookPayload, event: HookEvent, env: Record<string, string>): Promise<{ outcome: HookOutcome; exitCode: number | null; stderr?: string }> {
     const body = JSON.stringify(payload);
     const limit = timeoutMs(handler);
     if (handler.type === "http") {
@@ -224,7 +227,7 @@ export class HookRunner {
     try {
       const result = await runWithInput(payload.cwd, handler.command, {
         input: body,
-        env: { CAPSULE_PROJECT_DIR: payload.project_dir ?? payload.cwd },
+        env: { ...env, CAPSULE_PROJECT_DIR: payload.project_dir ?? payload.cwd },
         timeoutMs: limit,
         maxBytes: OUTPUT_BYTES,
       });

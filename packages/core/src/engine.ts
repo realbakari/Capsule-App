@@ -25,6 +25,7 @@ import { mcpServerViews, offeredMcpServers, type McpContext } from "./mcp-server
 import { probeMcpServer } from "./mcp-probe.js";
 import { AutomationScheduler, type AutomationEntry } from "./automations.js";
 import { StatusLineRunner } from "./status-line.js";
+import { PluginManager, type PluginSource } from "./plugins.js";
 import { AUTOMATION_TEMPLATES, automationKey, automationMessage, parseStatusLineFacts, statusLineKey, statusLineStdin, type AutomationCreateInput, type AutomationView, type StatusLineRender } from "@capsule/shared";
 import type { AcpMcpServer, DirectSpawnInput } from "@capsule/acp";
 import type { ProfileEntry } from "@capsule/config";
@@ -190,6 +191,9 @@ import {
   type MessagePage,
   type PermissionRuleEdit,
   type PermissionSubject,
+  type PluginInspection,
+  type PluginsConfigureInput,
+  type PluginsInstallInput,
   type Project,
   type ProjectActionRun,
   type SearchResults,
@@ -354,7 +358,12 @@ export class CapsuleEngine {
   }
 
   private mcpContext(root: string | undefined, profileMcp?: readonly string[]): McpContext {
-    return { root, home: homedir(), env: process.env, ...(profileMcp ? { profileMcp } : {}) };
+    return { root, home: homedir(), env: this.serverEnv(), ...(profileMcp ? { profileMcp } : {}) };
+  }
+
+  /** Capsule's environment, with enabled plugins' secrets under the names their servers reference. */
+  private serverEnv(): Record<string, string | undefined> {
+    return { ...process.env, ...this.pluginManager.serverEnvironment() };
   }
 
   /** Start or reach one configured server and list its tools. It runs the server, so it is a desktop write. */
@@ -362,7 +371,7 @@ export class CapsuleEngine {
     const root = this.configRoot(input.projectId);
     const entry = this.config.extended(root).mcpServers[input.name];
     if (!entry) throw new Error(`There is no MCP server named ${input.name} here. A project's server waits until you trust the folder.`);
-    const { config, missing } = expandMcpSecrets(entry.value, process.env);
+    const { config, missing } = expandMcpSecrets(entry.value, this.serverEnv());
     if (missing.length) return { ok: false, error: `Set ${missing.join(", ")} in Capsule's environment first.`, durationMs: 0 };
     return probeMcpServer(config, { cwd: root ?? homedir(), env: process.env });
   }
@@ -416,7 +425,12 @@ export class CapsuleEngine {
     log: (message) => this.log(message),
   });
   /* Hooks and the one permission decision path: hooks.ts and request-policy.ts. */
-  private readonly hooks = new HookRunner({ extended: (root) => this.config.extended(root), record: (run) => this.config.recordRun(run) });
+  private readonly hooks = new HookRunner({
+    extended: (root) => this.config.extended(root),
+    record: (run) => this.config.recordRun(run),
+    mayAllow: (source) => this.config.mayApprove(source),
+    env: (source) => this.pluginManager.environment(source),
+  });
   private readonly hookFollowUps = new FollowUpLoopGuard();
   /* Automations on their schedules, and the status line command: automations.ts and status-line.ts. */
   private readonly automations = new AutomationScheduler({
@@ -432,7 +446,8 @@ export class CapsuleEngine {
   private readonly statusLines = new StatusLineRunner({
     command: () => {
       const command = this.config.extended().statusLine?.command?.trim();
-      return command ? { command, source: this.config.provenance().statusLine?.path ?? "settings.json" } : undefined;
+      const source = this.config.provenance().statusLine;
+      return command ? { command, source: source?.path ?? "settings.json", ...(source?.scope === "plugin" ? { env: this.pluginManager.environment(source) } : {}) } : undefined;
     },
     emit: (render) => { if (!this.stopped) this.events.emit("state", { command: "status-line-updated", render }); },
     record: (run) => this.config.recordRun(run),
@@ -445,6 +460,8 @@ export class CapsuleEngine {
   private settings: CapsuleSettings;
   /** Settings files: the source of truth for preferences. */
   readonly config: ConfigService;
+  /** Installing plugins, their secret options, and the environment their programs get: plugins.ts. */
+  private readonly pluginManager: PluginManager;
   private settingsWrite: Promise<unknown> = Promise.resolve();
   private logs: string[] = [];
   private stopped = false;
@@ -514,7 +531,9 @@ export class CapsuleEngine {
       }),
       safeMode: options.safeMode,
       defaults: this.settings,
+      appVersion: options.capsuleVersion,
     });
+    this.pluginManager = new PluginManager({ config: this.config, keychain: this.keychain, log: (message) => this.log(message) });
     this.openclaw = this.createOpenClawAdapter();
     this.runtime = this.usingMock ? this.mock : this.openclaw;
     this.direct.offerMcpServers((input) => this.mcpOffer(input));
@@ -542,6 +561,7 @@ export class CapsuleEngine {
     }
     this.archiveInactiveSessions();
     await this.hydrateSecrets();
+    await this.pluginManager.loadSecrets();
     this.openclaw = this.createOpenClawAdapter();
     if (!this.usingMock) this.runtime = this.openclaw;
     await this.connectPreferredRuntime();
@@ -1697,7 +1717,8 @@ export class CapsuleEngine {
     if (session && project?.id !== session.projectId) throw new Error("The skill's thread must belong to the selected project.");
     const installed = discoverGlobalSkills();
     const fromProject = discoverGlobalSkills(projectSkillRoots(project ? this.workingDirectoryFor(project, sessionId) : undefined));
-    return [...installed, ...fromProject, ...capsuleSkills];
+    const fromPlugins = discoverGlobalSkills(this.config.pluginSkillFolders().map(({ name, dir }) => ({ id: `plugin-${name}`, label: name, directory: dir })));
+    return [...installed, ...fromProject, ...fromPlugins, ...capsuleSkills];
   }
 
   private async requireSkill(skillId: string, projectId?: string, sessionId?: string): Promise<Skill> {
@@ -2879,7 +2900,50 @@ export class CapsuleEngine {
       mcpServers: mcpServerViews(this.config.extended(scoped?.root).mcpServers, this.mcpContext(scoped?.root)),
       automations: this.automations.views((entry) => !entry.projectId || entry.projectId === project?.id),
       statusLine: this.statusLineView(project),
+      plugins: this.pluginManager.views(),
     };
+  }
+
+  /* ── Plugins: every one of these runs or writes on this computer, so each is a desktop write. ── */
+
+  /** Fetch or copy a plugin into a folder Capsule controls and list exactly what it adds. Nothing in it runs. */
+  inspectPlugin(source: PluginSource): Promise<PluginInspection> {
+    if (this.config.safeMode) throw new Error(SAFE_MODE_WRITE_ERROR);
+    return this.pluginManager.inspect(source);
+  }
+
+  async installPlugin(input: PluginsInstallInput): Promise<ConfigSnapshot> {
+    await this.pluginManager.install(input.token, input.values);
+    this.applyPluginChange();
+    return this.getConfigSnapshot();
+  }
+
+  discardPluginInspection(token: string): void {
+    this.pluginManager.discard(token);
+  }
+
+  setPluginEnabled(input: { name: string; enabled: boolean }): ConfigSnapshot {
+    this.pluginManager.setEnabled(input.name, input.enabled);
+    this.applyPluginChange();
+    return this.getConfigSnapshot();
+  }
+
+  async configurePlugin(input: PluginsConfigureInput): Promise<ConfigSnapshot> {
+    await this.pluginManager.configure(input.name, input.values ?? {}, input.mayApprove);
+    this.applyPluginChange();
+    return this.getConfigSnapshot();
+  }
+
+  async uninstallPlugin(name: string): Promise<ConfigSnapshot> {
+    await this.pluginManager.uninstall(name);
+    this.applyPluginChange();
+    return this.getConfigSnapshot();
+  }
+
+  /** A plugin's commands, skills and themes changed with it, so every list that shows them is told. */
+  private applyPluginChange(): void {
+    this.applyConfigChange();
+    if (!this.stopped) this.events.emit("state", { command: "skills-updated" });
   }
 
   private statusLineView(project: Project | undefined): ConfigSnapshot["statusLine"] {

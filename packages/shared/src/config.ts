@@ -8,6 +8,7 @@ import type { ProfileSummary } from "./profile.js";
 import type { StyleSummary } from "./style.js";
 import type { AutomationView } from "./automations.js";
 import type { StatusLineRender } from "./status-line.js";
+import type { PluginView } from "./plugin.js";
 
 /**
  * The layers a value can come from, highest precedence first after the
@@ -158,6 +159,8 @@ export interface ConfigSnapshot {
   automations: AutomationView[];
   /** The status line as configured, and the latest command output for each thread here. */
   statusLine: { items: StatusLineItem[]; command?: string; refreshInterval?: number; renders: StatusLineRender[] };
+  /** Installed and development plugins, each with exactly what it adds. Empty in safe mode. */
+  plugins: PluginView[];
 }
 
 export type ThemeSource = "bundled" | "user" | "project" | "plugin";

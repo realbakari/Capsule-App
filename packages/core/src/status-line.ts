@@ -22,14 +22,14 @@ export type StatusLineResult =
 export async function runStatusLineCommand(
   command: string,
   job: Pick<StatusLineJob, "cwd" | "projectDir" | "input">,
-  options: { timeoutMs?: number; run?: typeof runWithInput } = {},
+  options: { timeoutMs?: number; run?: typeof runWithInput; env?: Record<string, string> } = {},
 ): Promise<StatusLineResult> {
   const timeoutMs = options.timeoutMs ?? STATUS_LINE_TIMEOUT_MS;
   const started = Date.now();
   try {
     const result = await (options.run ?? runWithInput)(job.cwd, command, {
       input: JSON.stringify(job.input),
-      env: { CAPSULE_PROJECT_DIR: job.projectDir ?? job.cwd },
+      env: { ...options.env, CAPSULE_PROJECT_DIR: job.projectDir ?? job.cwd },
       timeoutMs,
       maxBytes: OUTPUT_BYTES,
     });
@@ -44,8 +44,8 @@ export async function runStatusLineCommand(
 }
 
 export interface StatusLineHost {
-  /** The person's own command; a project file never supplies one. */
-  command(): { command: string; source: string } | undefined;
+  /** The person's own command, or an enabled plugin's with its environment; a project file never supplies one. */
+  command(): { command: string; source: string; env?: Record<string, string> } | undefined;
   emit(render: StatusLineRender): void;
   record(run: CustomizationRunRecord): void;
 }
@@ -118,7 +118,7 @@ export class StatusLineRunner {
     const command = this.host.command();
     if (!command) return;
     const startedAt = new Date(this.now).toISOString();
-    const result = await runStatusLineCommand(command.command, job, { timeoutMs: this.options.timeoutMs, run: this.options.run });
+    const result = await runStatusLineCommand(command.command, job, { timeoutMs: this.options.timeoutMs, run: this.options.run, ...(command.env ? { env: command.env } : {}) });
     if (this.stopped) return;
     const previous = this.renders.get(job.key);
     const render: StatusLineRender = result.ok

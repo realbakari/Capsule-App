@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { spawn as spawnPty } from "node-pty";
-import { stopChild } from "@capsule/process";
+import { spawnCommand, stopChild } from "@capsule/process";
 import { commandShell, interactiveShellArgs, windowsPowerShell } from "./shell.js";
 
 export interface ExecResult {
@@ -285,6 +285,48 @@ export function runWithInput(
         timedOut,
         durationMs: Date.now() - started,
       });
+    });
+  });
+}
+
+/**
+ * A program with its arguments, never through a shell, so a URL or a path
+ * someone typed is one argument however it is written. Installing a plugin
+ * runs `git` and `ditto` or `unzip` this way.
+ */
+export function runProgram(
+  cwd: string,
+  file: string,
+  args: readonly string[],
+  options: { env?: Record<string, string>; timeoutMs: number; maxBytes: number },
+): Promise<Omit<InputRun, "durationMs">> {
+  if (!cwd || !existsSync(cwd)) return Promise.reject(new Error("Working directory is missing"));
+  return new Promise((resolve, reject) => {
+    const child = spawnCommand(file, [...args], {
+      cwd,
+      env: { ...process.env, ...options.env },
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: process.platform !== "win32",
+      windowsHide: true,
+    });
+    const out = { stdout: "", stderr: "" };
+    const collect = (stream: "stdout" | "stderr") => (chunk: Buffer) => {
+      if (out[stream].length < options.maxBytes) out[stream] += chunk.toString("utf8").slice(0, options.maxBytes - out[stream].length);
+    };
+    child.stdout?.on("data", collect("stdout"));
+    child.stderr?.on("data", collect("stderr"));
+    let timedOut = false;
+    let killTimer: ReturnType<typeof setTimeout> | undefined;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      stopChild(child, "SIGTERM", true);
+      killTimer = setTimeout(() => stopChild(child, "SIGKILL", true), 1000);
+    }, options.timeoutMs);
+    child.on("error", (error) => { clearTimeout(timer); clearTimeout(killTimer); reject(error); });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      clearTimeout(killTimer);
+      resolve({ ...out, code: timedOut ? null : code ?? 1, timedOut });
     });
   });
 }

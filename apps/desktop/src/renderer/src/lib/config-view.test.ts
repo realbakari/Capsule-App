@@ -42,6 +42,7 @@ function snapshot(overrides: Partial<ConfigSnapshot> = {}): ConfigSnapshot {
     problemCount: 0,
     themes: { selection: {}, overrides: {}, light: "capsule-light", dark: "capsule-dark", themes: [], backdrop: {} },
     keybindings: [],
+    plugins: [],
     profiles: [],
     styles: { styles: [], selected: "standard" },
     mcpServers: [],
