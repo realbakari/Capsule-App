@@ -4,6 +4,7 @@ import { useHarnessDiscovery } from "../../lib/harness-discovery";
 import { AgentControl } from "../harness/AgentControl";
 import { ContextWindowMeter } from "./ContextWindowMeter";
 import { ComposerTools } from "./ComposerTools";
+import { StatusLine } from "../status-line/StatusLine";
 import { agentSwitchNotice, harnessDisplayName } from "../../lib/harness";
 import { AgentModelPicker } from "./AgentModelPicker";
 import { GatewayBanner } from "../shell/GatewayBanner";
@@ -894,6 +895,7 @@ export function Composer({
         {!git?.isRepo && session?.workspaceMode === "worktree" && session.worktreeBranch && (
           <span className="workspace-mode-label">Isolated · {session.worktreeBranch}</span>
         )}
+        <StatusLine />
       </div>
       {busy && (
         <div className="composer-dock-activity" aria-live="polite">
