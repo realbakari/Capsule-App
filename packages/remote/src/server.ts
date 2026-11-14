@@ -3,10 +3,11 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { networkInterfaces } from "node:os";
 import path from "node:path";
 
-import { isChannelAllowed, type IpcScope } from "@capsule/shared";
+import { isChannelAllowed, type IpcScope, type RemoteViewerRecord } from "@capsule/shared";
 import { WebSocketServer, type WebSocket } from "ws";
 import { MAX_OUTBOUND_BYTES, outboundFrame } from "./outbound.js";
 import { publicOrigin, secureControl, trustedOrigin } from "./origin.js";
+import { attachShareViewer, type ShareAccess, type ShareViewerHandle } from "./share.js";
 
 import {
   exchangeGrant,
@@ -38,6 +39,10 @@ export interface RemoteServerOptions {
   /** Subscribes to the events the desktop window receives. */
   subscribe: (send: (event: string, payload: unknown) => void) => () => void;
   onChange?: () => void;
+  /** Read-only links to one thread. Absent: a share secret is refused like any unknown token. */
+  share?: ShareAccess;
+  /** The thread a paired device's call shows it reading, for presence. */
+  viewing?: (channel: string, args: unknown[]) => string | undefined;
 }
 
 export interface RemoteServerHandle {
@@ -48,6 +53,10 @@ export interface RemoteServerHandle {
   pair: (scopes: IpcScope[]) => string;
   sessions: () => RemoteSession[];
   revoke: (id: string) => void;
+  /** Every live connection, paired or by share link, and the thread it is reading. */
+  viewers: () => RemoteViewerRecord[];
+  /** Disconnects every viewer holding this share grant. */
+  revokeShare: (grantId: string) => void;
   stop: () => Promise<void>;
 }
 
@@ -106,6 +115,9 @@ export async function startRemoteServer(
   let sessions: RemoteSession[] = [];
   const sockets = new Set<WebSocket>();
   const disconnectBySocket = new Map<WebSocket, { sessionId: string; disconnect: () => void }>();
+  const shareViewers = new Map<WebSocket, ShareViewerHandle>();
+  const viewers = new Map<WebSocket, RemoteViewerRecord>();
+  let viewerCount = 0;
 
   const host = options.reach === "network" ? "0.0.0.0" : "127.0.0.1";
 
@@ -201,7 +213,7 @@ export async function startRemoteServer(
      * one is a bearer credential.
      */
     const authTimer = setTimeout(() => {
-      if (!session) socket.close(4401, "unauthenticated");
+      if (!session && !shareViewers.has(socket)) socket.close(4401, "unauthenticated");
     }, 3_000);
 
     let unsubscribe: (() => void) | undefined;
@@ -239,6 +251,21 @@ export async function startRemoteServer(
         return;
       }
 
+      const shared = shareViewers.get(socket);
+      if (shared) {
+        shared.handle(frame);
+        return;
+      }
+      if (!session && options.share && typeof frame.share === "string") {
+        clearTimeout(authTimer);
+        const viewer = attachShareViewer({ socket, token: frame.share, access: options.share, subscribe: options.subscribe });
+        if (!viewer) return;
+        shareViewers.set(socket, viewer);
+        viewers.set(socket, { id: `viewer_${++viewerCount}`, access: "share", label: "Share link", since: Date.now(), sessionId: viewer.grant.sessionId });
+        options.onChange?.();
+        return;
+      }
+
       if (!session) {
         const candidate = typeof frame.token === "string"
           ? resolveSession(pruneExpired(sessions), frame.token) : undefined;
@@ -249,6 +276,7 @@ export async function startRemoteServer(
         }
         session = candidate;
         disconnectBySocket.set(socket, { sessionId: session.id, disconnect });
+        viewers.set(socket, { id: `viewer_${++viewerCount}`, access: "paired", label: session.label, since: Date.now() });
         expiryTimer = setTimeout(disconnect, Math.max(0, session.expiresAt - Date.now()));
         expiryTimer.unref();
         clearTimeout(authTimer);
@@ -274,6 +302,12 @@ export async function startRemoteServer(
         return;
       }
       const args = frame.args;
+      const viewed = options.viewing?.(channel, args);
+      const viewer = viewers.get(socket);
+      if (viewed && viewer && viewer.sessionId !== viewed) {
+        viewer.sessionId = viewed;
+        options.onChange?.();
+      }
       if (inFlight >= 32) {
         send({ type: "result", id, error: "Too many pending requests. Wait for them to finish." });
         return;
@@ -297,6 +331,9 @@ export async function startRemoteServer(
       unsubscribe?.();
       sockets.delete(socket);
       disconnectBySocket.delete(socket);
+      shareViewers.get(socket)?.close();
+      shareViewers.delete(socket);
+      viewers.delete(socket);
       options.onChange?.();
     });
     socket.on("error", disconnect);
@@ -340,6 +377,12 @@ export async function startRemoteServer(
         if (connection.sessionId === id) connection.disconnect();
       }
       options.onChange?.();
+    },
+    viewers: () => [...viewers.values()].map((viewer) => ({ ...viewer })),
+    revokeShare: (grantId) => {
+      for (const viewer of shareViewers.values()) {
+        if (viewer.grant.id === grantId) viewer.disconnect();
+      }
     },
     stop: async () => {
       for (const socket of sockets) socket.close(1001, "server stopping");

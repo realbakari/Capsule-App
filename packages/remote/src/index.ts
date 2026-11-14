@@ -19,3 +19,4 @@ export {
   type RemoteServerHandle,
   type RemoteServerOptions,
 } from "./server.js";
+export { attachShareViewer, type ShareAccess, type ShareViewerGrant } from "./share.js";
