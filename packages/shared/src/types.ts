@@ -1178,9 +1178,13 @@ export interface RemoteAccessStatus {
   /** Undefined until someone asks for a link; it is only shown once. */
   pairingUrl?: string;
   controlAvailable?: boolean;
+  /** Whether the encrypted phone listener is running, so a phone code can be made. */
+  phoneAvailable?: boolean;
   devices: Array<{
     id: string;
     label: string;
+    /** "phone" for a device paired with a phone code. */
+    transport?: "browser" | "phone";
     scopes: string[];
     createdAt: number;
     lastSeenAt: number;

@@ -1,4 +1,7 @@
+import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import os from "node:os";
 import { pathToFileURL } from "node:url";
 
@@ -20,7 +23,7 @@ import { BackgroundBrowsers } from "./background-browsers";
 import { PetVoice } from "./pet-voice";
 import { ProductAnalytics } from "./analytics";
 import { readPngBytes } from "./image-attachments";
-import { remoteControlArgs } from "./remote-control";
+import { RemoteUploads, remoteControlArgs, UPLOAD_LIMIT_BYTES } from "./remote-control";
 import { hunkApplies, hunkApply } from "./hunk-args";
 import {
   app,
@@ -100,7 +103,7 @@ import {
   parseStartPullRequestInput,
 } from "@capsule/shared";
 import { readAgentProcesses } from "@capsule/filesystem";
-import { startRemoteServer, type RemoteServerHandle } from "@capsule/remote";
+import { loadOrCreateTlsIdentity, phonePortFile, phoneSessionFile, startRemoteServer, type RemoteServerHandle } from "@capsule/remote";
 import { startPty, TerminalOutputFlow, type PtySession } from "@capsule/terminal";
 import { popupContextMenu } from "./popup-menu";
 import { remoteReachFromArgs } from "./remote-args";
@@ -1075,7 +1078,18 @@ const remoteAccess = new RemoteAccessLifecycle<RemoteServerHandle>(
       serveDir: path.join(__dirname, "../renderer"), reach,
       publicUrl: process.env.CAPSULE_REMOTE_PUBLIC_URL,
       port,
-      invoke: (channel, args) => forwardToHandler(channel, remoteControlArgs(channel, args)),
+      // The phone listener needs a certificate; behind an HTTPS proxy the
+      // proxy is the secure path and no second listener is opened.
+      ...(process.env.CAPSULE_REMOTE_PUBLIC_URL ? {} : {
+        tls: loadOrCreateTlsIdentity(path.join(app.getPath("userData"), "remote")),
+        hostName: computerName(),
+        appVersion: app.getVersion(),
+        phoneSessions: phoneSessionFile(path.join(app.getPath("userData"), "remote")),
+        phonePortStore: phonePortFile(path.join(app.getPath("userData"), "remote")),
+        advertise: advertisePhoneListener,
+        phonePort: remotePort(process.env.CAPSULE_REMOTE_PHONE_PORT),
+      }),
+      invoke: (channel, args, caller) => forwardToHandler(channel, remoteControlArgs(channel, args, { transport: caller.transport, uploads: remoteUploads })),
       subscribe: (emit) => subscribeRemote(emit),
       onChange: () => send(IPC_EVENTS.state, { command: "remote-updated" }),
       ...remoteShareOptions(shareContext),
@@ -1108,6 +1122,39 @@ const shareContext: ShareContext = {
   },
 };
 
+/*
+ * Bonjour for the phone listener, through the system's own dns-sd: no
+ * dependency, and the advert lives exactly as long as the child we spawned.
+ * Only that child is ever stopped. The TXT record carries the first 16 hex
+ * characters of the certificate fingerprint, which identifies this computer
+ * to a paired phone without being enough to impersonate it.
+ */
+function advertisePhoneListener(advert: { port: number; fingerprint: string; name: string }): () => void {
+  if (process.platform !== "darwin") return () => {};
+  let child: ReturnType<typeof spawn> | undefined;
+  try {
+    child = spawn("/usr/bin/dns-sd", ["-R", advert.name, "_capsule._tcp", "local", String(advert.port),
+      `fp=${advert.fingerprint.slice(0, 16)}`, "v=1"], { stdio: "ignore" });
+    child.on("error", () => { child = undefined; });
+  } catch {
+    child = undefined;
+  }
+  return () => {
+    child?.kill();
+    child = undefined;
+  };
+}
+
+/** The name people gave this Mac ("Sam's MacBook Air"), not its network hostname. */
+function computerName(): string | undefined {
+  if (process.platform !== "darwin") return undefined;
+  try {
+    return execFileSync("/usr/sbin/scutil", ["--get", "ComputerName"], { encoding: "utf8", timeout: 2_000 }).trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function remotePort(value?: string): number | undefined {
   if (!value) return undefined;
   const port = Number(value);
@@ -1116,7 +1163,12 @@ function remotePort(value?: string): number | undefined {
 }
 
 async function applyRemoteAccess(reach: RemoteAccess): Promise<void> {
+  const wasOn = remoteAccess.reach !== "off";
   await remoteAccess.set(reach);
+  // Turning access off forgets every paired device, phones included. Starting
+  // up with it off is not a change: that must not wipe phones paired while a
+  // `--remote` launch had it on.
+  if (reach === "off" && wasOn) phoneSessionFile(path.join(app.getPath("userData"), "remote")).clear();
 }
 
 /*
@@ -1158,6 +1210,10 @@ async function announceRemoteAccess(): Promise<void> {
   console.log(`\nCapsule is readable at ${remote.url}`);
   console.log(`Pair a device: ${remotePairingUrl}`);
   console.log("The link works once and expires in five minutes. Read only.\n");
+  if (remote.phoneAvailable) {
+    console.log(`Pair a phone: ${remote.pair(["read", "control"], "phone")}`);
+    console.log("Open it on the phone or paste it into the Capsule app. Works once, for five minutes, and can send messages and answer approvals.\n");
+  }
   send(IPC_EVENTS.state, { command: "remote-updated" });
   /*
    * And open it, because a link printed in a terminal is a link somebody has
@@ -1172,6 +1228,39 @@ async function announceRemoteAccess(): Promise<void> {
 }
 
 const remoteListeners = new Set<(event: string, payload: unknown) => void>();
+
+/*
+ * A phone's photo or text file. Arguments are already rebuilt and capped by
+ * remoteControlArgs; here the bytes are checked against the declared type,
+ * written under Capsule's own folder for that thread, and recorded so the
+ * phone can attach it — by this path, and only to this thread.
+ */
+const remoteUploads = new RemoteUploads();
+async function saveRemoteUpload(sessionId: string, name: string, mimeType: string, data: string): Promise<MessageAttachment> {
+  requireRemoteThread(sessionId);
+  const bytes = Buffer.from(data, "base64");
+  if (!bytes.length || bytes.length > UPLOAD_LIMIT_BYTES) throw new Error("That file is empty or over 3 MB.");
+  const isJpeg = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  if (mimeType === "image/jpeg" && !isJpeg) throw new Error("That photo isn't a JPEG.");
+  if (mimeType === "image/png" && !readPngBytes(new Uint8Array(bytes))) throw new Error("That image isn't a PNG.");
+  if (mimeType.startsWith("text/") || mimeType === "application/json") {
+    if (bytes.includes(0)) throw new Error("That file isn't plain text.");
+  }
+  const directory = path.join(app.getPath("userData"), "attachments", "remote", sessionId.replace(/[^\w-]/gu, "_"));
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  const file = path.join(directory, `${randomUUID()}-${name}`);
+  await writeFile(file, bytes, { flag: "wx", mode: 0o600 });
+  const image = mimeType.startsWith("image/") ? nativeImage.createFromBuffer(bytes) : undefined;
+  const thumbnail = image && !image.isEmpty() ? image.resize({ width: 240, quality: "good" }).toDataURL() : undefined;
+  const attachment: MessageAttachment = { name, path: file, size: bytes.length, mimeType,
+    ...(thumbnail && thumbnail.length <= 96 * 1024 ? { thumbnail } : {}) };
+  remoteUploads.add(sessionId, attachment);
+  return attachment;
+}
+
+function requireRemoteThread(sessionId: string): void {
+  if (!engine?.repos.getSession(sessionId)) throw new Error("That thread isn't on this computer.");
+}
 
 function subscribeRemote(emit: (event: string, payload: unknown) => void): () => void {
   const forward = (event: string, payload: unknown) => {
@@ -2116,12 +2205,14 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.remoteStatus, () => ({
     reach: remoteAccess.reach,
     controlAvailable: remoteAccess.handle?.controlAvailable ?? false,
+    phoneAvailable: remoteAccess.handle?.phoneAvailable ?? false,
     ...(remoteAccess.handle ? { url: remoteAccess.handle.url } : {}),
     ...(remoteAccess.pairingUrl ? { pairingUrl: remoteAccess.pairingUrl } : {}),
     ...(remoteAccess.error ? { error: remoteAccess.error } : {}),
     devices: (remoteAccess.handle?.sessions() ?? []).map((session) => ({
       id: session.id,
       label: session.label,
+      ...(session.transport ? { transport: session.transport } : {}),
       scopes: session.scopes,
       createdAt: session.createdAt,
       lastSeenAt: session.lastSeenAt,
@@ -2132,6 +2223,12 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.remotePair, (access = "read") => {
     const remote = remoteAccess.handle;
     if (!remote) throw new Error("Turn on browser access first.");
+    if (access === "phone") {
+      // A phone code is shown as a QR code, not kept as the browser link.
+      const code = remote.pair(["read", "control"], "phone");
+      send(IPC_EVENTS.state, { command: "remote-updated" });
+      return code;
+    }
     if (access !== "read" && access !== "control") throw new Error("Choose read or conversation control.");
     remoteAccess.pairingUrl = remote.pair(access === "control" ? ["read", "control"] : ["read"]);
     send(IPC_EVENTS.state, { command: "remote-updated" });
@@ -2256,6 +2353,8 @@ function registerIpc(): void {
     return requireEngine().rewindSession(id(sessionId, channel, 0), id(messageId, channel, 1), { restoreFiles: optBool(value.restoreFiles, channel, 2) });
   });
   handleArgs(IPC_CHANNELS.getFollowUps, [id], (sessionId: string) => requireEngine().getFollowUps(sessionId));
+  handle(IPC_CHANNELS.uploadAttachment, (sessionId, name, mimeType, data) =>
+    saveRemoteUpload(String(sessionId), String(name), String(mimeType), String(data)));
   handle(IPC_CHANNELS.updateFollowUps, (sessionId, op) => {
     const channel = IPC_CHANNELS.updateFollowUps;
     const parsed = readFollowUpOp(op);

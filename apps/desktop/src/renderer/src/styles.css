@@ -11094,3 +11094,12 @@ fieldset.harness-options:disabled { opacity: .7; }
    layer and lets the page show through; menus there are plain and solid. */
 .panel-browser-pane :is(.preview-more-menu, .browser-controls-popover),
 .preview-more-menu { backdrop-filter: none; -webkit-backdrop-filter: none; }
+
+/* Phone pairing code. A fixed light tile so scanners read it in either theme. */
+.remote-phone-pairing { display: grid; gap: 0.5rem; justify-items: start; }
+.remote-qr {
+  width: 11rem;
+  height: 11rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border-color);
+}

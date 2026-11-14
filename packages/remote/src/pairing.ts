@@ -14,9 +14,23 @@ import type { IpcScope } from "@capsule/shared";
 export const GRANT_TTL_MS = 5 * 60_000;
 /** How long a paired device stays paired without being used. */
 export const SESSION_TTL_MS = 12 * 60 * 60_000;
+/**
+ * A phone pairing lasts thirty days from its last connection. A phone is a
+ * device someone keeps, over a pinned channel; making it re-pair every
+ * morning is what gets an app deleted. Browser tabs keep the short limit.
+ */
+export const PHONE_SESSION_TTL_MS = 30 * 24 * 60 * 60_000;
+
+/**
+ * Which listener a grant or session belongs to. A phone pairing is made for
+ * the pinned TLS listener and is refused on the plain one, so a control
+ * token can never be spent over a connection anyone on the network can read.
+ */
+export type RemoteTransport = "browser" | "phone";
 
 export interface PairingGrant {
   id: string;
+  transport?: RemoteTransport;
   /** Only the hash is kept: a stolen store cannot be replayed as a link. */
   tokenHash: string;
   scopes: IpcScope[];
@@ -26,6 +40,7 @@ export interface PairingGrant {
 
 export interface RemoteSession {
   id: string;
+  transport?: RemoteTransport;
   tokenHash: string;
   scopes: IpcScope[];
   label: string;
@@ -54,6 +69,7 @@ export function issueGrant(input: {
   scopes: IpcScope[];
   now?: number;
   token?: string;
+  transport?: RemoteTransport;
 }): { grant: PairingGrant; token: string } {
   const now = input.now ?? Date.now();
   const token = input.token ?? createToken();
@@ -64,6 +80,7 @@ export function issueGrant(input: {
       tokenHash: hashToken(token),
       scopes: [...input.scopes],
       expiresAt: now + GRANT_TTL_MS,
+      ...(input.transport === "phone" ? { transport: "phone" as const } : {}),
     },
   };
 }
@@ -93,12 +110,13 @@ export function exchangeGrant(input: {
     token,
     session: {
       id: `remote_${randomBytes(6).toString("hex")}`,
+      ...(grant.transport === "phone" ? { transport: "phone" as const } : {}),
       tokenHash: hashToken(token),
       scopes: [...grant.scopes],
       label: input.label.slice(0, 80) || "Paired device",
       createdAt: now,
       lastSeenAt: now,
-      expiresAt: now + SESSION_TTL_MS,
+      expiresAt: now + (grant.transport === "phone" ? PHONE_SESSION_TTL_MS : SESSION_TTL_MS),
     },
   };
 }

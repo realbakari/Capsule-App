@@ -1740,6 +1740,13 @@ rechecks authorization. JSON primitives, malformed RPC shapes, oversized frames,
 invalid pairing bodies and malformed URL encodings fail closed. UI tests use a
 hidden, isolated renderer with network requests blocked, never the live profile.
 
+Below the pairing link, **Phone** has a Pair a phone button. It shows a QR code
+(dark modules on a fixed light tile in both themes) with a live five-minute
+countdown, a Copy link button, and New code. The code pairs the mobile app over
+the pinned TLS listener with `read` + `control`, so it is offered on This network
+too. Paired devices label phone pairings "phone, encrypted". See
+[mobile.md](mobile.md).
+
 Harnesses uses a two-pane catalog/detail layout. Installed and ready entries
 sort first; selecting one reveals project dedication, Doctor output, start,
 live sessions, and advanced session options. Project cwd and persistent/one-turn
@@ -2189,7 +2196,8 @@ the default pairing permission. Conversation control adds new supervised/local
 threads in existing projects, text prompts, stopping runs and once-only approval
 decisions. The permission explanation warns that agents can edit files and run
 commands under their existing permissions. Plain LAN HTTP cannot issue control
-grants. The paired browser shows its connection/permission banner and a local
+grants; phone codes are the exception, over the pinned TLS listener described in
+[mobile.md](mobile.md). The paired browser shows its connection/permission banner and a local
 Disconnect action; host settings list devices with Revoke. Remote settings,
 terminals, local file attachments and channel identities remain host-only.
 

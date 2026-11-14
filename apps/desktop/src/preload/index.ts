@@ -160,7 +160,7 @@ const api = {
   remoteError: undefined as string | undefined,
   /* True in a browser opened from a share link: one thread, read only, nothing to disconnect. */
   remoteShare: false as boolean,
-  remotePair: (access: "read" | "control" = "read") => ipcRenderer.invoke(IPC_CHANNELS.remotePair, access),
+  remotePair: (access: "read" | "control" | "phone" = "read") => ipcRenderer.invoke(IPC_CHANNELS.remotePair, access),
   analyticsStatus: (): Promise<{ enabled: boolean; configured: boolean; host: string; pending: number; lastSentAt?: string; error?: string }> => ipcRenderer.invoke(IPC_CHANNELS.analyticsStatus),
   remoteRevoke: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.remoteRevoke, id),
   threadMarkdown: (sessionId: string, options?: import("@capsule/shared").ThreadMarkdownOptions): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.threadMarkdown, sessionId, options),

@@ -100,6 +100,14 @@ A link is **single use** and lasts **five minutes**. Pairing a second device
 means creating a second link. A paired device stays paired for twelve hours of
 elapsed time since pairing, then has to pair again, even if it stayed connected.
 
+## Pairing a phone or tablet
+
+The Capsule mobile app pairs with a **phone code** instead of a link. Under
+**Phone**, choose **Pair a phone** and scan the code with the app. The
+connection is encrypted and tied to this computer, so a phone can send
+messages, stop runs and answer approvals even on **This network**. See
+[Capsule on iPhone and iPad](mobile-app.md).
+
 ## Taking access away
 
 Every paired device is listed under **Paired devices** with a **Revoke**

@@ -58,3 +58,9 @@ Escape closes the tray.
 **Hide companion** removes it until you show it again. It initially appears
 without taking keyboard focus, but clicking it allows keyboard interaction.
 The companion is desktop-only; paired viewers cannot move or control it.
+
+## On your phone
+
+The desktop companion stays on your Mac. To follow your threads away from
+the desk, pair the Capsule app for iPhone and iPad. See
+[Capsule on iPhone and iPad](mobile-app.md).

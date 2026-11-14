@@ -220,6 +220,8 @@ export const IPC_CHANNELS = {
   /* Board cards: create a draft or started card, and change one (link, start, mark done). */
   createBoardCard: "capsule:createBoardCard",
   updateBoardCard: "capsule:updateBoardCard",
+  /** A paired phone's photo or text file, written into Capsule's own folder. */
+  uploadAttachment: "capsule:uploadAttachment",
   fetchSkillDetail: "capsule:fetchSkillDetail",
   /* A thread as Markdown, built from what a reader of the thread already sees; and saved to a file. */
   threadMarkdown: "capsule:threadMarkdown",

@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CapsuleSettings, RemoteAccessStatus } from "@capsule/shared";
+import { encode } from "uqr";
 
 import { useWorkspace } from "../../lib/workspace";
 import { SettingRow } from "./controls";
@@ -119,6 +120,7 @@ export function RemoteAccessSettings({
               </button>
             </div>
           </SettingRow>
+          {status.phoneAvailable && <PhonePairing create={() => api.remotePair("phone") as Promise<string>} />}
           {status.pairingUrl && (
             <p className="faint mono remote-pairing-url">
               {status.pairingUrl}
@@ -138,7 +140,7 @@ export function RemoteAccessSettings({
                 <div>
                   <b>{device.label}</b>
                   <div className="faint">
-                    {device.scopes.join(", ")} · last seen {ago(device.lastSeenAt)}
+                    {device.transport === "phone" ? "phone, encrypted · " : ""}{device.scopes.join(", ")} · last seen {ago(device.lastSeenAt)}
                   </div>
                 </div>
                 <button
@@ -157,5 +159,77 @@ export function RemoteAccessSettings({
       )}
       <ShareSettings />
     </div>
+  );
+}
+
+/*
+ * Pairing the mobile app. The code carries this computer's address and the
+ * fingerprint of its own certificate, so the phone connects encrypted and
+ * trusts nothing else. Because the channel is encrypted end to end, a phone
+ * gets conversation control even on This network.
+ */
+function PhonePairing({ create }: { create: () => Promise<string> }) {
+  const [code, setCode] = useState<{ url: string; expiresAt: number }>();
+  const [error, setError] = useState<string>();
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    if (!code) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [code]);
+
+  const remaining = code ? Math.max(0, Math.round((code.expiresAt - now) / 1000)) : 0;
+  const expired = Boolean(code) && remaining === 0;
+
+  return (
+    <SettingRow
+      label="Phone"
+      hint="Scan with the Capsule mobile app, or the camera, to pair a phone or tablet. The connection is encrypted and can send messages, stop runs, and answer approvals once. Single use, valid for five minutes."
+    >
+      <div className="remote-phone-pairing">
+        <div className="actions" style={{ marginTop: 0 }}>
+          <button
+            className="chip"
+            type="button"
+            onClick={() => {
+              setError(undefined);
+              void create()
+                .then((url) => { setCode({ url, expiresAt: Date.now() + 5 * 60_000 }); setNow(Date.now()); })
+                .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : String(caught)));
+            }}
+          >
+            {code ? "New code" : "Pair a phone"}
+          </button>
+        </div>
+        {error && <p className="settings-keybind-error">{error}</p>}
+        {code && !expired && (
+          <>
+            <QrCode value={code.url} label="Phone pairing code" />
+            <p className="faint">
+              Expires in {Math.floor(remaining / 60)}:{String(remaining % 60).padStart(2, "0")}.{" "}
+              <button className="chip" type="button" onClick={() => void navigator.clipboard.writeText(code.url)}>Copy link</button>
+            </p>
+          </>
+        )}
+        {expired && <p className="faint">That code expired. Create a new one.</p>}
+      </div>
+    </SettingRow>
+  );
+}
+
+/** Dark modules on a light tile in both themes, which is what scanners read best. */
+function QrCode({ value, label }: { value: string; label: string }) {
+  const { path, size } = useMemo(() => {
+    const qr = encode(value, { ecc: "M", border: 2 });
+    let d = "";
+    qr.data.forEach((row, y) => row.forEach((on, x) => { if (on) d += `M${x} ${y}h1v1h-1z`; }));
+    return { path: d, size: qr.size };
+  }, [value]);
+  return (
+    <svg className="remote-qr" role="img" aria-label={label} viewBox={`0 0 ${size} ${size}`} shapeRendering="crispEdges">
+      <rect width={size} height={size} fill="#ffffff" />
+      <path d={path} fill="#111111" />
+    </svg>
   );
 }

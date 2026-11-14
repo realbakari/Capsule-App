@@ -20,7 +20,11 @@ const main = readFileSync(
 );
 
 /** Channels the renderer is deliberately not given. */
-const RENDERER_EXEMPT = new Set<string>([]);
+const RENDERER_EXEMPT = new Set<string>([
+  // A paired phone's upload: only the remote server calls it, with the phone's
+  // bytes. The desktop attaches files from its own picker, never through here.
+  "uploadAttachment",
+]);
 
 describe("ipc contract", () => {
   it("exposes every channel to the renderer", () => {

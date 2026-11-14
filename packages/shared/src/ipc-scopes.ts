@@ -112,6 +112,10 @@ export const CONTROL_CHANNELS = [
   "updateFollowUps",
   // Plan or Act decides how the next message is sent, so it travels with sendMessage.
   "setSessionTurnMode",
+  // Tidying the thread list. Reversible, and never deleting: delete stays on the computer.
+  "renameSession", "archiveSession", "restoreSession", "pinSession",
+  // A phone's own file, into a folder Capsule owns; it never names a path here.
+  "uploadAttachment",
 ] satisfies ChannelName[];
 const CONTROL_SET = new Set<string>(CONTROL_CHANNELS);
 
