@@ -1,3 +1,7 @@
+import type { EffectiveBackdrop, ThemeBackdrop } from "./backdrop.js";
+import type { KeybindingEntry, KeymapContext } from "./keymap.js";
+import type { ContrastWarning, ThemeAppearance, ThemeProblem } from "./theme.js";
+import type { ThemeToken } from "./theme-tokens.js";
 import type { CapsuleSettings } from "./runtime.js";
 
 /**
@@ -135,7 +139,60 @@ export interface ConfigSnapshot {
   project?: ProjectConfigSnapshot;
   /** Count of problems, for the doctor badge. */
   problemCount: number;
+  themes: ThemeState;
+  /** keybindings.json, parsed. Entries that did not parse are problems in the diagnostics. */
+  keybindings: KeybindingEntry[];
 }
+
+export type ThemeSource = "bundled" | "user" | "project" | "plugin";
+
+/** One theme the person can pick, already parsed in main. The renderer never reads a theme file. */
+export interface ThemeSummary {
+  id: string;
+  name: string;
+  appearance: ThemeAppearance;
+  source: ThemeSource;
+  path?: string;
+  /** Capsule Light and Capsule Dark, which the Light and Dark palettes colour. */
+  builtin: boolean;
+  /** The theme's own tokens with the person's `themeOverrides` for it on top. */
+  tokens: Partial<Record<ThemeToken, string>>;
+  backdrop?: ThemeBackdrop;
+  problems: ThemeProblem[];
+  /** Pairs that read under 4.5:1 once the theme and its overrides are resolved. */
+  contrast: ContrastWarning[];
+}
+
+/** A backdrop ready to draw: a scene, or an image main has checked and serves. */
+export interface BackdropView extends Omit<EffectiveBackdrop, "image" | "imageBase"> {
+  /** A `capsule-backdrop:` URL, desktop only. */
+  imageUrl?: string;
+  /** The file's name, for the Appearance screen. */
+  imageName?: string;
+}
+
+export interface ThemeState {
+  /** The theme each appearance uses, after an unknown or wrong-appearance id falls back to the built-in. */
+  light: string;
+  dark: string;
+  themes: ThemeSummary[];
+  backdrop: { light?: BackdropView; dark?: BackdropView };
+}
+
+/** One change to keybindings.json. Capsule edits the file in place and keeps its comments. */
+export type KeybindingEdit =
+  /** Give an action this sequence in this context, replacing its other keys there. */
+  | { op: "bind"; action: string; context: KeymapContext; sequence: string }
+  /** Make this sequence do nothing in this context, whatever held it. */
+  | { op: "unbind"; context: KeymapContext; sequence: string }
+  /** Drop every line of the file about this action in this context, so its default returns. */
+  | { op: "reset"; action: string; context: KeymapContext };
+
+export type ThemeImportInput = { from: "share"; text: string } | { from: "file" };
+
+export type ThemeImportResult =
+  | { imported: true; id: string; name: string; appearance: ThemeAppearance; path: string; problems: ThemeProblem[] }
+  | { imported: false };
 
 export interface ProjectConfigSnapshot {
   projectId: string;
@@ -217,11 +274,13 @@ export interface StatusLineConfig {
   refreshInterval?: number;
 }
 
+/** Which themes the two appearances use. Which appearance shows is `appearanceTheme`. */
 export interface ThemeSelection {
-  mode?: "system" | "light" | "dark";
   /** Theme ids used for light and dark appearances. */
   light?: string;
   dark?: string;
+  /** Overrides the selected theme's own backdrop, field by field. */
+  backdrop?: ThemeBackdrop;
 }
 
 export interface AutomationConfig {

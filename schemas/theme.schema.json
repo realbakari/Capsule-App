@@ -297,6 +297,136 @@
           "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$"
         }
       }
+    },
+    "backdrop": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "What the conversation column draws behind the transcript and composer.",
+      "properties": {
+        "scene": {
+          "enum": [
+            "grain",
+            "mesh",
+            "night",
+            "dots",
+            "paper",
+            "none"
+          ]
+        },
+        "image": {
+          "type": "string",
+          "maxLength": 1024,
+          "description": "A png, jpg, webp or gif file, relative to the theme file or the settings folder. Never a URL."
+        },
+        "fit": {
+          "enum": [
+            "cover",
+            "contain",
+            "tile"
+          ]
+        },
+        "opacity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "blur": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 40
+        },
+        "dim": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "light": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "scene": {
+              "enum": [
+                "grain",
+                "mesh",
+                "night",
+                "dots",
+                "paper",
+                "none"
+              ]
+            },
+            "image": {
+              "type": "string",
+              "maxLength": 1024,
+              "description": "A png, jpg, webp or gif file, relative to the theme file or the settings folder. Never a URL."
+            },
+            "fit": {
+              "enum": [
+                "cover",
+                "contain",
+                "tile"
+              ]
+            },
+            "opacity": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "blur": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 40
+            },
+            "dim": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          }
+        },
+        "dark": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "scene": {
+              "enum": [
+                "grain",
+                "mesh",
+                "night",
+                "dots",
+                "paper",
+                "none"
+              ]
+            },
+            "image": {
+              "type": "string",
+              "maxLength": 1024,
+              "description": "A png, jpg, webp or gif file, relative to the theme file or the settings folder. Never a URL."
+            },
+            "fit": {
+              "enum": [
+                "cover",
+                "contain",
+                "tile"
+              ]
+            },
+            "opacity": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "blur": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 40
+            },
+            "dim": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          }
+        }
+      }
     }
   }
 }

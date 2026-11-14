@@ -1,3 +1,4 @@
+import { BACKDROP_JSON_SCHEMA } from "./backdrop.js";
 import { HOOK_EVENTS, STATUS_LINE_ITEMS, type ExtendedConfigKey, type FileSettingKey } from "./config.js";
 import { SETTINGS_SECTION_KEYS } from "./runtime.js";
 
@@ -166,8 +167,8 @@ export const EXTENDED_SCHEMA: Record<ExtendedConfigKey, SettingSpec> = {
   theme: {
     scope: "user",
     apply: "live",
-    description: "Theme ids for the light and dark appearances.",
-    schema: { type: "object", additionalProperties: false, properties: { mode: { enum: ["system", "light", "dark"] }, light: { type: "string" }, dark: { type: "string" } } },
+    description: "Theme ids for the light and dark appearances, and a backdrop that overrides the theme's.",
+    schema: { type: "object", additionalProperties: false, properties: { light: { type: "string" }, dark: { type: "string" }, backdrop: BACKDROP_JSON_SCHEMA } },
   },
   themeOverrides: {
     scope: "user",

@@ -41,6 +41,8 @@ export * from "./rrule.js";
 export * from "./command-template.js";
 export * from "./commands.js";
 export * from "./theme.js";
+export * from "./backdrop.js";
+export * from "./keymap-defaults.js";
 export * from "./theme-tokens.js";
 export * from "./keymap.js";
 export * from "./ansi.js";

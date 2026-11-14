@@ -1,4 +1,5 @@
 import { contrastRatio, rgbToHex } from "./appearance.js";
+import { backdropHasImage, parseBackdrop, stripBackdropImages, type ThemeBackdrop } from "./backdrop.js";
 import { BUILTIN_TOKENS, THEME_TOKENS, type ThemeToken } from "./theme-tokens.js";
 
 export type ThemeAppearance = "light" | "dark";
@@ -9,6 +10,8 @@ export interface Theme {
   name: string;
   appearance: ThemeAppearance;
   tokens: Partial<Record<ThemeToken, string>>;
+  /** What the conversation column draws behind it. Settings may override it. */
+  backdrop?: ThemeBackdrop;
 }
 
 export interface ThemeProblem {
@@ -139,8 +142,8 @@ export function isThemeColor(value: unknown): value is string {
   return typeof value === "string" && parseColour(value) !== undefined;
 }
 
-/** `#rrggbb` for an opaque colour, for contrast checks. Translucent colours have no fixed contrast. */
-function opaqueHex(value: string): string | undefined {
+/** `#RRGGBB` for an opaque colour, for contrast checks. Translucent colours have no fixed contrast. */
+export function themeColorHex(value: string): string | undefined {
   const rgba = parseColour(value);
   return rgba && rgba.a === 1 ? rgbToHex(rgba.r, rgba.g, rgba.b) : undefined;
 }
@@ -149,7 +152,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-const THEME_KEYS = new Set(["$schema", "name", "appearance", "tokens", "syntax"]);
+const THEME_KEYS = new Set(["$schema", "name", "appearance", "tokens", "syntax", "backdrop"]);
 
 export function parseTheme(json: unknown, id: string): { theme?: Theme; problems: ThemeProblem[] } {
   const problems: ThemeProblem[] = [];
@@ -191,8 +194,13 @@ export function parseTheme(json: unknown, id: string): { theme?: Theme; problems
   };
   take("syntax", json.syntax, (key) => `syntax-${key}`);
   take("tokens", json.tokens, (key) => key.replace(/^--/, ""));
+  const backdrop = parseBackdrop(json.backdrop);
+  problems.push(...backdrop.problems);
 
-  return { theme: { id, name, appearance: appearance as ThemeAppearance, tokens }, problems };
+  return {
+    theme: { id, name, appearance: appearance as ThemeAppearance, tokens, ...(backdrop.backdrop ? { backdrop: backdrop.backdrop } : {}) },
+    problems,
+  };
 }
 
 /**
@@ -242,8 +250,8 @@ export interface ContrastWarning {
 export function themeContrastWarnings(tokens: Readonly<Record<ThemeToken, string>>): ContrastWarning[] {
   const warnings: ContrastWarning[] = [];
   for (const [foreground, background] of CONTRAST_PAIRS) {
-    const fg = opaqueHex(tokens[foreground]);
-    const bg = opaqueHex(tokens[background]);
+    const fg = themeColorHex(tokens[foreground]);
+    const bg = themeColorHex(tokens[background]);
     if (!fg || !bg) continue;
     const ratio = contrastRatio(fg, bg);
     if (ratio < MIN_TEXT_CONTRAST) {
@@ -292,8 +300,10 @@ function fromBase64Url(text: string): Uint8Array | undefined {
   return Uint8Array.from(bytes);
 }
 
+/** A backdrop travels as its scene and numbers. An image path never leaves the machine. */
 export function encodeThemeShareString(theme: Theme): string {
-  const json = JSON.stringify({ name: theme.name, appearance: theme.appearance, tokens: theme.tokens });
+  const backdrop = stripBackdropImages(theme.backdrop);
+  const json = JSON.stringify({ name: theme.name, appearance: theme.appearance, tokens: theme.tokens, ...(backdrop ? { backdrop } : {}) });
   return THEME_SHARE_PREFIX + toBase64Url(new TextEncoder().encode(json));
 }
 
@@ -311,6 +321,9 @@ export function decodeThemeShareString(text: string): DecodedThemeShare {
     json = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
   } catch {
     return { ok: false, message: "This shared theme is damaged: it does not hold valid JSON." };
+  }
+  if (isRecord(json) && isRecord(json.backdrop) && backdropHasImage(json.backdrop as ThemeBackdrop)) {
+    return { ok: false, message: "This shared theme names an image file. A shared theme can carry a scene, never a file." };
   }
   const name = isRecord(json) && typeof json.name === "string" ? json.name : "";
   const id =

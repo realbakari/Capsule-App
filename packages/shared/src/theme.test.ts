@@ -138,3 +138,26 @@ describe("share strings", () => {
     expect(decodeThemeShareString(`${THEME_SHARE_PREFIX}${"A".repeat(33 * 1024)}`)).toMatchObject({ ok: false, message: expect.stringMatching(/32 KB/) });
   });
 });
+
+describe("share strings and backdrops", () => {
+  const base: Theme = { id: "dusk", name: "Dusk", appearance: "dark", tokens: {} };
+
+  it("carry a scene and its numbers but never an image path", () => {
+    const theme: Theme = { ...base, backdrop: { scene: "mesh", dim: 0.3, light: { image: "/Users/me/secret.png", opacity: 0.5 } } };
+    const decoded = decodeThemeShareString(encodeThemeShareString(theme));
+    expect(decoded).toMatchObject({ ok: true, theme: { backdrop: { scene: "mesh", dim: 0.3, light: { opacity: 0.5 } } } });
+    expect(JSON.stringify(decoded)).not.toContain("secret.png");
+  });
+
+  it("refuses a hand-made string that names an image", () => {
+    const json = JSON.stringify({ name: "Dusk", appearance: "dark", backdrop: { dark: { image: "../../etc/x.png" } } });
+    const text = THEME_SHARE_PREFIX + Buffer.from(json).toString("base64url");
+    expect(decodeThemeShareString(text)).toMatchObject({ ok: false, message: expect.stringMatching(/image/) });
+  });
+
+  it("parses a theme file's backdrop and reports a wrong field without dropping the theme", () => {
+    const { theme, problems } = parseTheme({ name: "Dusk", appearance: "dark", backdrop: { scene: "dots", opacity: 3, image: "https://x/y.png" } }, "dusk");
+    expect(theme?.backdrop).toEqual({ scene: "dots" });
+    expect(problems.map((p) => p.key)).toEqual(["backdrop.image", "backdrop.opacity"]);
+  });
+});

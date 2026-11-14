@@ -20,6 +20,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { build } from "esbuild";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const cssFile = path.join(root, "packages/ui/src/tokens.css");
@@ -95,7 +96,21 @@ ${record("dark")}
 const COLOUR_PATTERN =
   "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$";
 
-function renderSchema(tokens) {
+/* The backdrop key's schema lives in TypeScript beside its parser; see gen-settings-schema.mjs for why it is bundled. */
+async function backdropSchema() {
+  const bundle = await build({
+    stdin: { contents: 'export { BACKDROP_JSON_SCHEMA } from "./backdrop.js";', resolveDir: path.join(root, "packages/shared/src"), loader: "ts" },
+    bundle: true,
+    write: false,
+    format: "esm",
+    platform: "node",
+    logLevel: "silent",
+  });
+  const module = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString("base64")}`);
+  return module.BACKDROP_JSON_SCHEMA;
+}
+
+async function renderSchema(tokens) {
   const colour = { type: "string", pattern: COLOUR_PATTERN };
   const syntax = tokens.filter((t) => t.name.startsWith("syntax-"));
   const schema = {
@@ -122,6 +137,7 @@ function renderSchema(tokens) {
         additionalProperties: false,
         properties: Object.fromEntries(syntax.map((t) => [t.name.slice("syntax-".length), colour])),
       },
+      backdrop: await backdropSchema(),
     },
   };
   return `${JSON.stringify(schema, null, 2)}\n`;
@@ -138,7 +154,7 @@ function read(file) {
 const tokens = themableTokens(readFileSync(cssFile, "utf8"));
 const outputs = [
   [tsFile, renderTs(tokens)],
-  [schemaFile, renderSchema(tokens)],
+  [schemaFile, await renderSchema(tokens)],
 ];
 
 if (process.argv.includes("--check")) {
