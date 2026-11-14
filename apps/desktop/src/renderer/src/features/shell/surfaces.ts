@@ -38,7 +38,7 @@ export const SURFACES: Surface[] = [
     detail: "Changed files and their diff.",
     icon: DiffSquareIcon,
     inBar: true,
-    shortcut: "⌃⇧G",
+    shortcut: "⇧⌘D",
     blockedBy: ({ git }) => (git?.isRepo ? undefined : "Available for Git repositories."),
   },
   {

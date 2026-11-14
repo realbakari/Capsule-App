@@ -542,10 +542,7 @@ export function Inspector() {
         event.target instanceof HTMLElement &&
         Boolean(event.target.closest("input, textarea, select, [contenteditable]"));
       if (typing) return;
-      if (event.ctrlKey && event.shiftKey && event.code === "KeyG") {
-        event.preventDefault();
-        selectTool("review");
-      } else if (event.ctrlKey && (event.key === "`" || event.code === "Backquote")) {
+      if (event.ctrlKey && (event.key === "`" || event.code === "Backquote")) {
         event.preventDefault();
         setTerminalOpen(true);
       } else if ((event.metaKey || event.ctrlKey) && event.altKey && event.code === "KeyS") {

@@ -697,7 +697,7 @@ Inspector-only shortcuts (ignored while typing, do not steal global `⌘P`):
 
 | Action | Keys |
 |--------|------|
-| Review | `⌃⇧G` |
+| Review | `⇧⌘D` |
 | Commands | `⌃\`` |
 | Side chat | `⌥⌘S` |
 | Close / toggle inspector | `⌘\` |
