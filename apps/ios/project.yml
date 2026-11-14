@@ -1,0 +1,116 @@
+# Regenerate the Xcode project with `xcodegen generate` from this folder after
+# adding or removing files. The generated project is committed so a release
+# build needs only Xcode.
+name: Capsule
+options:
+  bundleIdPrefix: dev.capsule
+  deploymentTarget:
+    iOS: "26.0"
+  xcodeVersion: "26.0"
+  createIntermediateGroups: true
+  developmentLanguage: en
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+    SWIFT_APPROACHABLE_CONCURRENCY: "YES"
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    SUPPORTS_MACCATALYST: "NO"
+    SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: "NO"
+    SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: "NO"
+    ENABLE_USER_SCRIPT_SANDBOXING: "YES"
+    LOCALIZATION_PREFERS_STRING_CATALOGS: "YES"
+    SWIFT_EMIT_LOC_STRINGS: "YES"
+    # Set your own team in Xcode (Signing & Capabilities) before archiving.
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+targets:
+  Capsule:
+    type: application
+    attributes:
+      SystemCapabilities:
+        com.apple.ApplicationGroups.iOS:
+          enabled: 1
+    platform: iOS
+    sources:
+      - path: Capsule
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.capsule.mobile
+        PRODUCT_NAME: Capsule
+        INFOPLIST_FILE: Capsule/Resources/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        ENABLE_PREVIEWS: "YES"
+        CODE_SIGN_ENTITLEMENTS: Capsule/Resources/Capsule.entitlements
+    dependencies:
+      - target: CapsuleWidgets
+        embed: true
+      - target: CapsuleShare
+        embed: true
+  # Live Activity and Home Screen widget. Shares Capsule/Shared with the app
+  # and the App Group group.dev.capsule.mobile.shared.
+  CapsuleWidgets:
+    type: app-extension
+    attributes:
+      SystemCapabilities:
+        com.apple.ApplicationGroups.iOS:
+          enabled: 1
+    platform: iOS
+    sources:
+      - path: CapsuleWidgets
+      - path: Capsule/Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.capsule.mobile.widgets
+        PRODUCT_NAME: CapsuleWidgets
+        INFOPLIST_FILE: CapsuleWidgets/Info.plist
+        CODE_SIGN_ENTITLEMENTS: CapsuleWidgets/CapsuleWidgets.entitlements
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        SKIP_INSTALL: "YES"
+        ENABLE_PREVIEWS: "YES"
+  # Share sheet: keeps shared text, a link and photos in the App Group for
+  # the app to offer as a new thread.
+  CapsuleShare:
+    type: app-extension
+    attributes:
+      SystemCapabilities:
+        com.apple.ApplicationGroups.iOS:
+          enabled: 1
+    platform: iOS
+    sources:
+      - path: CapsuleShare
+      - path: Capsule/Shared/SharedStore.swift
+      - path: Capsule/Shared/SharedInbox.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.capsule.mobile.share
+        PRODUCT_NAME: CapsuleShare
+        INFOPLIST_FILE: CapsuleShare/Info.plist
+        CODE_SIGN_ENTITLEMENTS: CapsuleShare/CapsuleShare.entitlements
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        SKIP_INSTALL: "YES"
+  CapsuleTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: CapsuleTests
+    dependencies:
+      - target: Capsule
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.capsule.mobile.tests
+        GENERATE_INFOPLIST_FILE: "YES"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Capsule.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Capsule"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+schemes:
+  Capsule:
+    build:
+      targets:
+        Capsule: all
+        CapsuleTests: [test]
+    test:
+      targets:
+        - CapsuleTests

@@ -1,0 +1,100 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "%lld" : {
+
+    },
+    "%lld need you" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld needs you"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld need you"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld working" : {
+
+    },
+    "All quiet" : {
+
+    },
+    "Allow once" : {
+
+    },
+    "Approval" : {
+
+    },
+    "Capsule" : {
+
+    },
+    "Deny" : {
+
+    },
+    "Failed" : {
+
+    },
+    "Finished" : {
+
+    },
+    "Finished — open to read the reply" : {
+
+    },
+    "Needs approval" : {
+
+    },
+    "Needs you" : {
+
+    },
+    "Nothing running." : {
+
+    },
+    "Offline" : {
+
+    },
+    "Pair with a computer in Capsule to see your threads here." : {
+
+    },
+    "Stopped" : {
+
+    },
+    "The agent is asking to continue" : {
+
+    },
+    "The turn failed" : {
+
+    },
+    "Threads that need you, and turns still running." : {
+
+    },
+    "Working" : {
+
+    },
+    "Working…" : {
+
+    },
+    "need you" : {
+
+    },
+    "needs you" : {
+
+    },
+    "working" : {
+
+    }
+  },
+  "version" : "1.0"
+}

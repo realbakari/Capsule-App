@@ -179,6 +179,26 @@ does not read thread titles or message contents. Automatic spoken status is off
 by default and can be enabled for the open tray. Paired viewers and embedded
 browser pages cannot access companion voice.
 
+## Capsule for iPhone and iPad
+
+The mobile app talks only to the computers you pair it with.
+
+- **Collected.** Nothing. The app collects no analytics, crash reports or
+  identifiers, and contains no third-party SDKs.
+- **Connection.** Conversations, diffs and files travel directly between your
+  device and your computer. A phone pairing is encrypted and tied to your
+  computer's own certificate.
+- **On the device.** The app keeps a copy of your recent threads so it can
+  show them while offline. The copy is protected by the device's file
+  protection and is excluded from backups. Pairing credentials are kept in
+  the device's keychain and are not restored to other devices.
+- **Notifications.** Notifications are created on the device itself. They
+  show thread titles, never message contents.
+- **Camera and local network.** The camera is used only to scan a pairing
+  code. Local-network access is used only to reach your computer.
+- **Removing data.** Forgetting a computer in the app deletes its saved copy
+  and credential. Deleting the app removes everything.
+
 ## What Capsule does *not* do
 
 - It does not send your prompts, code, file contents or conversation history to

@@ -1,0 +1,36 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Cancel" : {
+
+    },
+    "Capsule keeps this on your phone until you open the app, pick a project and start the thread. Nothing is sent until then." : {
+
+    },
+    "Couldn't save this for Capsule." : {
+
+    },
+    "Done" : {
+
+    },
+    "Message" : {
+
+    },
+    "New thread" : {
+
+    },
+    "Open Capsule to choose a project and start the thread." : {
+
+    },
+    "Photo %lld" : {
+
+    },
+    "Save" : {
+
+    },
+    "There's nothing here Capsule can use." : {
+
+    }
+  },
+  "version" : "1.0"
+}

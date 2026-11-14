@@ -34,6 +34,7 @@ need the shipped-product voice.
 - [Providers and credentials](./user/providers.md)
 - [Reading from another device](./user/reading-from-another-device.md)
 - [Exporting a conversation](./user/exporting-conversations.md)
+- [Capsule on iPhone and iPad](./user/mobile-app.md)
 - [Optional usage reports](./user/usage-reports.md)
 - [Shared channels](./user/channels.md)
 - [Updating](./user/updating.md)
@@ -55,6 +56,8 @@ Setup is in the [root README](../README.md); agent rules in
 - [Architecture pointer](./internals/architecture.md)
 - [Browser control and analytics](./internals/web-access-and-analytics.md)
 - [Customization and settings files](./internals/config.md)
+- [Mobile app and phone pairing](./internals/mobile.md)
+- [Archiving and uploading the mobile app](./internals/mobile-release.md)
 
 ## Where a change belongs
 

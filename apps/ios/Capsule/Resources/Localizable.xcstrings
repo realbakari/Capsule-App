@@ -1,0 +1,1351 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "" : {
+
+    },
+    " for %@" : {
+
+    },
+    " · %lld steps" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : " · %lld step"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : " · %lld steps"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    " · 1 step" : {
+
+    },
+    "%@" : {
+
+    },
+    "%@ is waiting for you" : {
+
+    },
+    "%@%@%@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@%2$@%3$@"
+          }
+        }
+      }
+    },
+    "%@, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@"
+          }
+        }
+      }
+    },
+    "%@, %lld lines added, %lld removed" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$lld lines added, %3$lld removed"
+          }
+        }
+      }
+    },
+    "%@: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@: %2$@"
+          }
+        }
+      }
+    },
+    "%lld" : {
+
+    },
+    "%lld ahead" : {
+
+    },
+    "%lld behind" : {
+
+    },
+    "%lld changed files" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld changed file"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld changed files"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld files" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld file"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld files"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld need you" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld needs you"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld need you"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld queued" : {
+
+    },
+    "%lld working" : {
+
+    },
+    "%lld%%" : {
+
+    },
+    "%lld/%lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld/%2$lld"
+          }
+        }
+      }
+    },
+    "%lldd" : {
+
+    },
+    "%lldh" : {
+
+    },
+    "%lldm" : {
+
+    },
+    "+%lld" : {
+
+    },
+    "1 changed file" : {
+
+    },
+    "1 file" : {
+
+    },
+    "1 queued" : {
+
+    },
+    "A phone code from your computer is encrypted and lets you send messages and answer approvals. A browser link over plain HTTP only lets you read." : {
+
+    },
+    "A running turn stays on the Lock Screen and in the Dynamic Island, with Allow and Deny when the agent asks. Turns started while Capsule is closed don't get one." : {
+
+    },
+    "About" : {
+
+    },
+    "Add a skill" : {
+
+    },
+    "Added: %@" : {
+
+    },
+    "Address" : {
+
+    },
+    "Agent" : {
+
+    },
+    "Agent command. Adds it to the message box." : {
+
+    },
+    "Agent is replying: %@" : {
+
+    },
+    "All" : {
+
+    },
+    "All projects" : {
+
+    },
+    "Allow for this thread" : {
+
+    },
+    "Allow once" : {
+
+    },
+    "Allow the microphone for Capsule in Settings to dictate." : {
+
+    },
+    "Allows this kind of request until the agent session ends." : {
+
+    },
+    "An agent is waiting for you" : {
+
+    },
+    "Another computer needs you" : {
+
+    },
+    "Answer this on your computer. This device can read but not approve." : {
+
+    },
+    "Approval" : {
+
+    },
+    "Approval needed: %@" : {
+
+    },
+    "Approvals" : {
+
+    },
+    "Archive" : {
+
+    },
+    "Archived" : {
+
+    },
+    "As last reported by a running agent; not a live balance." : {
+
+    },
+    "Ask about %lld lines" : {
+
+    },
+    "Ask about this file" : {
+
+    },
+    "Ask about this line" : {
+
+    },
+    "Attach" : {
+
+    },
+    "Binary changes can't be shown as text." : {
+
+    },
+    "Binary file" : {
+
+    },
+    "Camera viewfinder for the pairing code" : {
+
+    },
+    "Can send and approve" : {
+
+    },
+    "Can't reach your computer." : {
+
+    },
+    "Can't show this image" : {
+
+    },
+    "Cancel" : {
+
+    },
+    "Capsule" : {
+
+    },
+    "Capsule couldn't save the pairing securely on this device (%d)." : {
+
+    },
+    "Capsule finds your computer on the same network by itself. Set an address for a VPN or private network. The computer's identity is still checked." : {
+
+    },
+    "Capsule on your computer" : {
+
+    },
+    "Capsule talks only to the computers you pair. Conversations stay between this device and your computer; nothing is sent to any other server." : {
+
+    },
+    "Capsule version" : {
+
+    },
+    "Changes" : {
+
+    },
+    "Changes aren't available" : {
+
+    },
+    "Chat" : {
+
+    },
+    "Checks" : {
+
+    },
+    "Choose a project" : {
+
+    },
+    "Choose a thread" : {
+
+    },
+    "Clear saved copy" : {
+
+    },
+    "Clear selection" : {
+
+    },
+    "Code" : {
+
+    },
+    "Coding agent" : {
+
+    },
+    "Computers" : {
+
+    },
+    "Connect" : {
+
+    },
+    "Connected" : {
+
+    },
+    "Connecting" : {
+
+    },
+    "Connecting…" : {
+
+    },
+    "Connection" : {
+
+    },
+    "Connection lost." : {
+
+    },
+    "Conversation" : {
+
+    },
+    "Conversations from your computer appear in the list." : {
+
+    },
+    "Copied" : {
+
+    },
+    "Copy" : {
+
+    },
+    "Copy code" : {
+
+    },
+    "Copy its link and paste it below." : {
+
+    },
+    "Copy link" : {
+
+    },
+    "Copy path" : {
+
+    },
+    "Copy thread title" : {
+
+    },
+    "Couldn't confirm your answer" : {
+
+    },
+    "Couldn't load" : {
+
+    },
+    "Couldn't load changes" : {
+
+    },
+    "Couldn't load earlier messages · Try again" : {
+
+    },
+    "Couldn't load the image" : {
+
+    },
+    "Couldn't load this file" : {
+
+    },
+    "Couldn't reach your computer. Check that Capsule is open and that this device is on the same network. (%@)" : {
+
+    },
+    "Couldn't read that file." : {
+
+    },
+    "Couldn't verify your computer's identity." : {
+
+    },
+    "Dark" : {
+
+    },
+    "Deny" : {
+
+    },
+    "Description" : {
+
+    },
+    "Detached" : {
+
+    },
+    "Dictate" : {
+
+    },
+    "Dictation couldn't start. Try the keyboard's microphone instead." : {
+
+    },
+    "Dictation isn't available in your language on this device." : {
+
+    },
+    "Dictation stopped." : {
+
+    },
+    "Discard dictation" : {
+
+    },
+    "Dismiss" : {
+
+    },
+    "Display" : {
+
+    },
+    "Done" : {
+
+    },
+    "Done dictating" : {
+
+    },
+    "Edit address" : {
+
+    },
+    "Edited" : {
+
+    },
+    "Editing" : {
+
+    },
+    "Empty folder" : {
+
+    },
+    "Encrypted (HTTPS)" : {
+
+    },
+    "Encrypted to your computer, verified by its code" : {
+
+    },
+    "Encrypted, verified by pairing code" : {
+
+    },
+    "Ended" : {
+
+    },
+    "Ends" : {
+
+    },
+    "Error" : {
+
+    },
+    "Every turn's changes, file by file" : {
+
+    },
+    "Exit" : {
+
+    },
+    "Expired" : {
+
+    },
+    "Explore Capsule with made-up threads. Nothing is sent anywhere." : {
+
+    },
+    "Failed" : {
+
+    },
+    "Fetched" : {
+
+    },
+    "Fetching" : {
+
+    },
+    "File" : {
+
+    },
+    "Files" : {
+
+    },
+    "Find a file" : {
+
+    },
+    "Finished turns" : {
+
+    },
+    "Forget" : {
+
+    },
+    "Forget %@" : {
+
+    },
+    "Forget this computer" : {
+
+    },
+    "Forget this computer?" : {
+
+    },
+    "Getting ready to listen" : {
+
+    },
+    "Group by project" : {
+
+    },
+    "Hides the output." : {
+
+    },
+    "Hides the queued messages." : {
+
+    },
+    "Hides the steps." : {
+
+    },
+    "Idle" : {
+
+    },
+    "Image" : {
+
+    },
+    "Image %@" : {
+
+    },
+    "In messages" : {
+
+    },
+    "In progress" : {
+
+    },
+    "Input" : {
+
+    },
+    "It expired or was removed on your computer. Pair again to see live updates." : {
+
+    },
+    "Jump to latest" : {
+
+    },
+    "Just answers" : {
+
+    },
+    "Know when an agent needs you, while Capsule is open" : {
+
+    },
+    "Last connected" : {
+
+    },
+    "Last problem" : {
+
+    },
+    "Latest turn's changes" : {
+
+    },
+    "Leave the sample workspace" : {
+
+    },
+    "Light" : {
+
+    },
+    "Listening" : {
+
+    },
+    "Live Activities" : {
+
+    },
+    "Loading steps…" : {
+
+    },
+    "Loads the image from the internet." : {
+
+    },
+    "Lost the connection to your computer. Check the thread before trying again — the request may have gone through." : {
+
+    },
+    "Made-up threads to explore. Nothing is sent anywhere." : {
+
+    },
+    "Mark as read" : {
+
+    },
+    "Mark as unread" : {
+
+    },
+    "Merged" : {
+
+    },
+    "Message" : {
+
+    },
+    "Messages sent from your computer appear here." : {
+
+    },
+    "Mode" : {
+
+    },
+    "Mode: %@" : {
+
+    },
+    "More" : {
+
+    },
+    "Move down" : {
+
+    },
+    "Move up" : {
+
+    },
+    "Needs you" : {
+
+    },
+    "Needs your approval" : {
+
+    },
+    "New" : {
+
+    },
+    "New thread" : {
+
+    },
+    "New thread in" : {
+
+    },
+    "New thread in %@" : {
+
+    },
+    "No file changes" : {
+
+    },
+    "No line changes" : {
+
+    },
+    "No messages match." : {
+
+    },
+    "No messages yet" : {
+
+    },
+    "No network connection." : {
+
+    },
+    "No open pull requests" : {
+
+    },
+    "No patch here" : {
+
+    },
+    "No project" : {
+
+    },
+    "No threads match this filter." : {
+
+    },
+    "No threads yet" : {
+
+    },
+    "No tool steps were recorded." : {
+
+    },
+    "None" : {
+
+    },
+    "Not a Git repository" : {
+
+    },
+    "Not connected" : {
+
+    },
+    "Not connected to your computer." : {
+
+    },
+    "Not encrypted — reading only" : {
+
+    },
+    "Nothing here" : {
+
+    },
+    "Notifications" : {
+
+    },
+    "Offline" : {
+
+    },
+    "Offline · retrying" : {
+
+    },
+    "On your computer, open Capsule → Settings → Gateway → Browser access." : {
+
+    },
+    "On your computer: Settings → Gateway → Browser access → Pair a phone." : {
+
+    },
+    "On your other computers" : {
+
+    },
+    "Only failures" : {
+
+    },
+    "Only the file's mode or name changed." : {
+
+    },
+    "Open" : {
+
+    },
+    "Open %@" : {
+
+    },
+    "Open Capsule on your computer and keep this device on the same network." : {
+
+    },
+    "Open Capsule to check the approval before answering again." : {
+
+    },
+    "Open in New Window" : {
+
+    },
+    "Open it on your computer." : {
+
+    },
+    "Open on the web" : {
+
+    },
+    "Opens a larger view." : {
+
+    },
+    "Options for queued message %lld" : {
+
+    },
+    "Other" : {
+
+    },
+    "Output" : {
+
+    },
+    "Pair" : {
+
+    },
+    "Pair a computer" : {
+
+    },
+    "Pair again" : {
+
+    },
+    "Pair another computer" : {
+
+    },
+    "Pair with your computer" : {
+
+    },
+    "Paired" : {
+
+    },
+    "Pairing" : {
+
+    },
+    "Pairing ended" : {
+
+    },
+    "Pairing ends %@" : {
+
+    },
+    "Pairing expired — pair again" : {
+
+    },
+    "Pairing link" : {
+
+    },
+    "Paste" : {
+
+    },
+    "Photo %lld" : {
+
+    },
+    "Photo library" : {
+
+    },
+    "Pin" : {
+
+    },
+    "Pinned" : {
+
+    },
+    "Plan" : {
+
+    },
+    "Plans first, without changing files" : {
+
+    },
+    "Port" : {
+
+    },
+    "Privacy policy" : {
+
+    },
+    "Project" : {
+
+    },
+    "Project default" : {
+
+    },
+    "Pull requests" : {
+
+    },
+    "Pull requests unavailable" : {
+
+    },
+    "Queue" : {
+
+    },
+    "Queued" : {
+
+    },
+    "Ran" : {
+
+    },
+    "Read" : {
+
+    },
+    "Read only" : {
+
+    },
+    "Read only. Pair with a phone code to send messages and approve." : {
+
+    },
+    "Reading" : {
+
+    },
+    "Reading text" : {
+
+    },
+    "Reading text sets how agent replies are set. Code, tables and the rest of the app always use the system font." : {
+
+    },
+    "Reads and explains, without changing files" : {
+
+    },
+    "Recent" : {
+
+    },
+    "Recent threads kept on this device for when your computer can't be reached." : {
+
+    },
+    "Reconnect" : {
+
+    },
+    "Reconnecting…" : {
+
+    },
+    "Refresh" : {
+
+    },
+    "Remove" : {
+
+    },
+    "Remove %@" : {
+
+    },
+    "Removed: %@" : {
+
+    },
+    "Removes the skill." : {
+
+    },
+    "Rename" : {
+
+    },
+    "Rename thread" : {
+
+    },
+    "Renamed" : {
+
+    },
+    "Reply" : {
+
+    },
+    "Research" : {
+
+    },
+    "Resets %@" : {
+
+    },
+    "Restore" : {
+
+    },
+    "Restored" : {
+
+    },
+    "Retry now" : {
+
+    },
+    "Retrying automatically." : {
+
+    },
+    "Rounded" : {
+
+    },
+    "Running" : {
+
+    },
+    "Runs in %@'s folder with supervised permissions. Change permissions on your computer if the agent needs more." : {
+
+    },
+    "Sample workspace" : {
+
+    },
+    "Save" : {
+
+    },
+    "Saved copy" : {
+
+    },
+    "Scan pairing code" : {
+
+    },
+    "Scan the code it shows, or paste its link below." : {
+
+    },
+    "Search" : {
+
+    },
+    "Search threads and messages" : {
+
+    },
+    "Searched" : {
+
+    },
+    "Searching" : {
+
+    },
+    "Searching messages needs your computer. Showing title matches only." : {
+
+    },
+    "Section" : {
+
+    },
+    "Section %@" : {
+
+    },
+    "Send" : {
+
+    },
+    "Send the first message below." : {
+
+    },
+    "Send, stop and approve" : {
+
+    },
+    "Sends after the current turn finishes." : {
+
+    },
+    "Sent %@" : {
+
+    },
+    "Sent by this device from what it sees while connected, and from occasional background checks. Notifications show thread titles, never message contents." : {
+
+    },
+    "Serif" : {
+
+    },
+    "Set the reach to This network, then choose Pair a phone." : {
+
+    },
+    "Settings" : {
+
+    },
+    "Shortened by your computer." : {
+
+    },
+    "Shortened here. Open it on your computer for the full reply." : {
+
+    },
+    "Show all %lld lines" : {
+
+    },
+    "Show archived" : {
+
+    },
+    "Show earlier messages" : {
+
+    },
+    "Show formatted" : {
+
+    },
+    "Show less" : {
+
+    },
+    "Show source" : {
+
+    },
+    "Showing what was saved %@." : {
+
+    },
+    "Shows each step." : {
+
+    },
+    "Shows less." : {
+
+    },
+    "Shows the queued messages." : {
+
+    },
+    "Shows the whole command." : {
+
+    },
+    "Shows what it ran and returned." : {
+
+    },
+    "Skill" : {
+
+    },
+    "Skill: %@" : {
+
+    },
+    "Someone" : {
+
+    },
+    "Start" : {
+
+    },
+    "Start a conversation in Capsule on your computer and it appears here." : {
+
+    },
+    "Steered the running turn" : {
+
+    },
+    "Stop" : {
+
+    },
+    "Stop the running turn" : {
+
+    },
+    "Stopped" : {
+
+    },
+    "Switches to %@ and opens the thread." : {
+
+    },
+    "System" : {
+
+    },
+    "Take photo" : {
+
+    },
+    "Tap lines to ask the agent about them." : {
+
+    },
+    "Text file" : {
+
+    },
+    "That file is over 3 MB." : {
+
+    },
+    "That isn't a Capsule pairing code. On your computer, open Settings → Gateway → Browser access and create a new one." : {
+
+    },
+    "The computer's security certificate doesn't match the pairing code. Nothing was sent. Create a new code on your computer." : {
+
+    },
+    "The pairing code doesn't include a valid computer address." : {
+
+    },
+    "The pairing code is incomplete. Create a new one on your computer." : {
+
+    },
+    "The pairing code's security fingerprint is invalid. Create a new one on your computer." : {
+
+    },
+    "The rest of this file is on your computer." : {
+
+    },
+    "The rest of this file's change is on your computer." : {
+
+    },
+    "Theme" : {
+
+    },
+    "Thinking" : {
+
+    },
+    "This change is large; some files are shown on your computer only." : {
+
+    },
+    "This device can" : {
+
+    },
+    "This device fell behind; refreshing." : {
+
+    },
+    "This device stops connecting and deletes its saved copy. To cut off access on the computer too, choose Revoke under Paired devices there." : {
+
+    },
+    "This file is new and untracked, binary, or only its mode changed." : {
+
+    },
+    "This file's change is too large to show on the phone." : {
+
+    },
+    "This pairing code expired. Codes last five minutes — create a new one on your computer." : {
+
+    },
+    "This pairing code was already used. Create a new one on your computer." : {
+
+    },
+    "This pairing expired or was removed on your computer. Pair again to continue." : {
+
+    },
+    "This pairing isn't encrypted, so the address isn't verified. Pair with a phone code for a checked connection." : {
+
+    },
+    "This project's folder isn't tracked by Git." : {
+
+    },
+    "This session" : {
+
+    },
+    "This turn didn't change any files." : {
+
+    },
+    "This turn ended before it was answered." : {
+
+    },
+    "This turn's saved snapshots are missing on your computer." : {
+
+    },
+    "This week" : {
+
+    },
+    "Thread" : {
+
+    },
+    "Threads" : {
+
+    },
+    "Title" : {
+
+    },
+    "Title (optional)" : {
+
+    },
+    "To do" : {
+
+    },
+    "Today" : {
+
+    },
+    "Too many requests are waiting. Try again in a moment." : {
+
+    },
+    "Transcribed on this device. The words go in the message box; nothing is sent." : {
+
+    },
+    "Try a sample workspace" : {
+
+    },
+    "Try again" : {
+
+    },
+    "Try the sample workspace" : {
+
+    },
+    "Turn failed" : {
+
+    },
+    "Turn finished" : {
+
+    },
+    "Turn stopped" : {
+
+    },
+    "Uncommitted changes" : {
+
+    },
+    "Undo" : {
+
+    },
+    "Unpin" : {
+
+    },
+    "Unpinned" : {
+
+    },
+    "Untitled thread" : {
+
+    },
+    "Up to date" : {
+
+    },
+    "Update Capsule on your computer for everything in this app to work." : {
+
+    },
+    "Usage limits" : {
+
+    },
+    "Use this computer" : {
+
+    },
+    "Version" : {
+
+    },
+    "Waiting for your approval" : {
+
+    },
+    "Waiting for your computer" : {
+
+    },
+    "What should the agent do?" : {
+
+    },
+    "Worked" : {
+
+    },
+    "Working" : {
+
+    },
+    "Working tree clean" : {
+
+    },
+    "Works on its own, asking when it needs to" : {
+
+    },
+    "Writes and changes code in the project" : {
+
+    },
+    "Yesterday" : {
+
+    },
+    "You can reply once your computer is connected." : {
+
+    },
+    "You: %@" : {
+
+    },
+    "Your coding agents, in your pocket. Follow threads as they stream, review every change, and answer approvals while the work runs on your computer." : {
+
+    },
+    "Your computer closed the connection." : {
+
+    },
+    "Your computer couldn't load threads" : {
+
+    },
+    "Your computer didn't accept this pairing code. Create a new one and try again." : {
+
+    },
+    "Your computer sent a reply this app doesn't understand. Update Capsule on your computer." : {
+
+    },
+    "Your computer sent data this app doesn't understand (%@). Update Capsule on your computer and on this device." : {
+
+    },
+    "Your computer took too long to answer. Try again." : {
+
+    },
+    "added" : {
+
+    },
+    "capsule://pair?…" : {
+
+    },
+    "code" : {
+
+    },
+    "connected" : {
+
+    },
+    "connecting" : {
+
+    },
+    "deleted" : {
+
+    },
+    "line %lld" : {
+
+    },
+    "lines %lld–%lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "lines %1$lld–%2$lld"
+          }
+        }
+      }
+    },
+    "modified" : {
+
+    },
+    "not connected" : {
+
+    },
+    "now" : {
+
+    },
+    "offline" : {
+
+    },
+    "pairing ended" : {
+
+    },
+    "renamed" : {
+
+    },
+    "untracked" : {
+
+    },
+    "· %@" : {
+
+    },
+    "−%lld" : {
+
+    }
+  },
+  "version" : "1.0"
+}
