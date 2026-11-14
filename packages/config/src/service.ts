@@ -1,11 +1,22 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { readProjectFile } from "@capsule/filesystem";
 import {
+  BACKDROP_IMAGE_EXTENSIONS,
+  decodeThemeShareString,
   DEFAULT_CAPSULE_SETTINGS,
+  MAX_BACKDROP_IMAGE_BYTES,
+  parseTheme,
+  stripBackdropImages,
+  THEME_SCHEMA_URL,
+  type KeybindingEdit,
+  type KeybindingEntry,
+  type Theme,
+  type ThemeImportResult,
+  type ThemeState,
   parsePermissionRule,
   SETTINGS_SCHEMA,
   SETTINGS_SCHEMA_URL,
@@ -26,10 +37,12 @@ import {
 } from "@capsule/shared";
 import { commandFolders, readCommandCatalog, type CommandCatalog, type CommandFolder } from "./commands.js";
 import { excludeFromGit } from "./git-exclude.js";
-import { editJsonc, readJsonc, writeJsonc, type JsoncEdit, type JsoncFile } from "./jsonc.js";
+import { editJsonc, parseJsonc, readJsonc, writeJsonc, type JsoncEdit, type JsoncFile } from "./jsonc.js";
 import { LastGoodStore } from "./last-good.js";
 import { mergeLayers, readLayer, type Layer, type LayerReading, type MergedConfig } from "./layers.js";
+import { editKeybindingsText, readKeybindings } from "./keybindings.js";
 import { ConfigPaths } from "./paths.js";
+import { BackdropImages, buildThemeState, readThemeCatalog, type ThemeCatalog } from "./themes.js";
 import { listResourceFolder, listResources, type ResourceFile, type ResourceKind } from "./resources.js";
 import { isPlainObject, pruneToSchema, type SchemaIssue } from "./schema-check.js";
 import type { TrustStore } from "./trust.js";
@@ -108,9 +121,10 @@ export class ConfigService {
   private readonly projects = new Map<string, ProjectSources>();
   private readonly runLog: CustomizationRunRecord[] = [];
   private user: SettingsSource;
-  private keybindings: JsoncFile = { state: "missing" };
+  private keybindingsFile: JsoncFile = { state: "missing" };
+  private readonly images = new BackdropImages();
   private watcher?: ConfigWatcher;
-  /** What every known command folder held at the last read, so an edit to one is a change. */
+  /** What every known command and theme folder held at the last read, so an edit to one is a change. */
   private commandFiles = "";
   private loaded = false;
   private closed = false;
@@ -193,14 +207,15 @@ export class ConfigService {
       sources.push(sourceReport(source, reading, resolution.trusted));
       if (source.file.state === "broken") problems.push(brokenProblem(source.path, source.file.error, source.usingLastGood));
     }
-    sources.splice(1, 0, { kind: "keybindings", scope: "user", path: this.paths.keybindings, state: this.keybindings.state, ...(this.keybindings.state === "broken" ? { error: this.keybindings.error } : {}) });
-    if (this.keybindings.state === "broken") problems.push(brokenProblem(this.paths.keybindings, this.keybindings.error, false));
+    sources.splice(1, 0, { kind: "keybindings", scope: "user", path: this.paths.keybindings, state: this.keybindingsFile.state, ...(this.keybindingsFile.state === "broken" ? { error: this.keybindingsFile.error } : {}) });
+    if (this.keybindingsFile.state === "broken") problems.push(brokenProblem(this.paths.keybindings, this.keybindingsFile.error, false));
     if (resolution.legacy) {
       const { path: file, state } = resolution.legacy;
       sources.push({ kind: "settings", scope: "legacy", path: file, state: state.status === "ok" ? "ok" : "broken", keys: state.status === "ok" && state.file.defaultWorkspaceMode ? ["defaultWorkspaceMode"] : [] });
     }
     const commands = this.commands(root);
     problems.push(...commands.problems);
+    problems.push(...this.keybindingsFor(root).problems, ...this.themesFor(root).problems);
     if (!resolution.trusted) {
       for (const entry of commands.commands) {
         if (entry.scope !== "project") continue;
@@ -315,6 +330,96 @@ export class ConfigService {
     return readCommandCatalog(this.commandFolders(root));
   }
 
+  /** keybindings.json's entries. Problems are in `diagnostics`. Safe mode reads none. */
+  keybindings(root?: string): KeybindingEntry[] {
+    return this.keybindingsFor(root).entries;
+  }
+
+  /** Change keybindings.json in place, keeping its comments. */
+  editKeybindings(edit: KeybindingEdit): void {
+    if (this.safeMode) throw new Error(SAFE_MODE_WRITE_ERROR);
+    const file = this.paths.keybindings;
+    const current = readJsonc(file);
+    if (current.state === "broken") {
+      throw new Error(`${file} has an error at line ${current.error.line}, column ${current.error.column}. Fix it before Capsule writes to it.`);
+    }
+    const before = current.state === "missing" ? "" : current.text;
+    const text = editKeybindingsText(before, edit);
+    if (text !== before) writeJsonc(file, text);
+    this.keybindingsFile = readJsonc(file);
+  }
+
+  /** Every theme that can be picked, and what each appearance draws. Problems are in `diagnostics`. */
+  themes(root?: string): ThemeState {
+    return this.themesFor(root).state;
+  }
+
+  /** The checked file behind a `capsule-backdrop:` URL this service handed out. */
+  backdropImage(token: string): string | undefined {
+    return this.images.file(token);
+  }
+
+  /**
+   * Save a theme from a share string or a file's text into the user's themes
+   * folder. A theme read from elsewhere on disk loses its image, whose path
+   * meant something only beside the original file.
+   */
+  importTheme(source: { kind: "share"; text: string } | { kind: "file"; text: string; name: string }): Extract<ThemeImportResult, { imported: true }> {
+    if (this.safeMode) throw new Error(SAFE_MODE_WRITE_ERROR);
+    let theme: Theme;
+    let problems;
+    if (source.kind === "share") {
+      const decoded = decodeThemeShareString(source.text);
+      if (!decoded.ok) throw new Error(decoded.message);
+      ({ theme, problems } = decoded);
+    } else {
+      const read = parseJsonc(source.text);
+      if (read.state !== "ok") throw new Error(read.state === "broken" ? `This file is not valid JSON: ${read.error.message} Line ${read.error.line}, column ${read.error.column}.` : "This file could not be read.");
+      const id = source.name.toLowerCase().replace(/\.json$/, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "imported-theme";
+      const parsed = parseTheme(read.value, id);
+      if (!parsed.theme) throw new Error(parsed.problems[0]?.message ?? "This file is not a theme.");
+      theme = parsed.theme;
+      problems = parsed.problems;
+      if (theme.backdrop && JSON.stringify(stripBackdropImages(theme.backdrop)) !== JSON.stringify(theme.backdrop)) {
+        problems = [...problems, { severity: "warning" as const, key: "backdrop.image", message: "The theme's image was left behind. Choose an image again in Appearance." }];
+      }
+    }
+    const dir = path.join(this.paths.userDir, "themes");
+    mkdirSync(dir, { recursive: true });
+    let id = theme.id;
+    for (let n = 2; existsSync(path.join(dir, `${id}.json`)); n++) id = `${theme.id}-${n}`;
+    const file = path.join(dir, `${id}.json`);
+    const backdrop = stripBackdropImages(theme.backdrop);
+    writeJsonc(file, JSON.stringify({ $schema: THEME_SCHEMA_URL, name: theme.name, appearance: theme.appearance, tokens: theme.tokens, ...(backdrop ? { backdrop } : {}) }, null, 2));
+    this.commandFiles = this.commandFilesStamp();
+    return { imported: true, id, name: theme.name, appearance: theme.appearance, path: file, problems };
+  }
+
+  /**
+   * Copy an image into the settings folder's `backdrops/` and draw it behind
+   * the conversation, in place of any scene.
+   */
+  importBackdropImage(source: string): void {
+    if (this.safeMode) throw new Error(SAFE_MODE_WRITE_ERROR);
+    const extension = path.extname(source).toLowerCase();
+    if (!(BACKDROP_IMAGE_EXTENSIONS as readonly string[]).includes(extension)) throw new Error("Choose a png, jpg, webp or gif image.");
+    const stat = statSync(source);
+    if (!stat.isFile()) throw new Error("Choose an image file.");
+    if (stat.size > MAX_BACKDROP_IMAGE_BYTES) throw new Error("Choose an image of 8 MB or less.");
+    const dir = path.join(this.paths.userDir, "backdrops");
+    mkdirSync(dir, { recursive: true });
+    const stem = path.basename(source, path.extname(source)).replace(/[^A-Za-z0-9._-]+/g, "-").slice(0, 60) || "backdrop";
+    let name = `${stem}${extension}`;
+    for (let n = 2; existsSync(path.join(dir, name)); n++) {
+      if (readFileSync(path.join(dir, name)).equals(readFileSync(source))) break;
+      name = `${stem}-${n}${extension}`;
+    }
+    if (!existsSync(path.join(dir, name))) copyFileSync(source, path.join(dir, name));
+    const selection = this.resolve().merged.extended.theme ?? {};
+    const { scene: _scene, ...backdrop } = selection.backdrop ?? {};
+    this.setValue({ key: "theme", value: { ...selection, backdrop: { ...backdrop, image: `backdrops/${name}` } }, scope: "user" });
+  }
+
   /** Re-read every file now. Listeners hear about it when anything changed. */
   reload(): boolean {
     if (this.safeMode || this.closed || !this.loaded) return false;
@@ -347,6 +452,27 @@ export class ConfigService {
     this.closed = true;
     this.watcher?.close();
     this.listeners.clear();
+  }
+
+  private keybindingsFor(root?: string): { entries: KeybindingEntry[]; problems: ConfigProblem[] } {
+    if (this.safeMode) return { entries: [], problems: [] };
+    return readKeybindings(this.keybindingsFile, this.paths.keybindings, this.commands(root).commands.map((entry) => entry.command.name));
+  }
+
+  private themeCatalog(root?: string): ThemeCatalog {
+    return readThemeCatalog(this.resources("themes", root));
+  }
+
+  private themesFor(root?: string): { state: ThemeState; problems: ConfigProblem[] } {
+    const { extended } = this.resolve().merged;
+    return buildThemeState({
+      catalog: this.safeMode ? readThemeCatalog([]) : this.themeCatalog(root),
+      selection: extended.theme,
+      overrides: extended.themeOverrides,
+      userDir: this.paths.userDir,
+      settingsPath: this.paths.userSettings,
+      images: this.images,
+    });
   }
 
   private resolve(root?: string): Resolution {
@@ -409,13 +535,14 @@ export class ConfigService {
       for (const folder of this.commandFolders(root)) {
         for (const file of listResourceFolder("commands", folder.scope, folder.dir)) hash.update(`${file.path}\0${file.text}\0`);
       }
+      for (const file of this.resources("themes", root)) hash.update(`${file.path}\0${file.text}\0`);
     }
     return hash.digest("hex");
   }
 
   private readUser(): void {
     this.user = this.readSource("user", this.paths.userSettings);
-    this.keybindings = readJsonc(this.paths.keybindings);
+    this.keybindingsFile = readJsonc(this.paths.keybindings);
   }
 
   private readProject(root: string): ProjectSources {
@@ -449,7 +576,7 @@ export class ConfigService {
     const text = (file: JsoncFile) => (file.state === "missing" ? null : file.text);
     return JSON.stringify([
       text(this.user.file),
-      text(this.keybindings),
+      text(this.keybindingsFile),
       [...this.projects].map(([root, sources]) => [root, text(sources.project.file), text(sources.local.file), sources.legacy]),
     ]);
   }
