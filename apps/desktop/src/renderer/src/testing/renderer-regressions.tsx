@@ -29,6 +29,7 @@ import { runSurfaceRegressions } from "./surface-regressions";
 import { runSimulatorRegressions } from "./simulator-regressions";
 import { runFollowupRegressions } from "./followup-regressions";
 import { runBoardRegressions } from "./board-regressions";
+import { runBestOfNRegressions } from "./best-of-n-regressions";
 import { runMuseSettingsRegressions } from "./muse-settings-regressions";
 import { runWebAccessRegressions } from "./web-access-regressions";
 import { runWorktreeStorageRegressions } from "./worktree-storage-regressions";
@@ -1466,6 +1467,7 @@ window.runRendererRegressions = async () => {
   await runFollowupRegressions(host, contextBase);
   phase("board");
   await runBoardRegressions(host, contextBase);
+  await runBestOfNRegressions(host, contextBase);
   phase("activity and startup");
   await runActivityRegressions(host);
   await runChannelRegressions(host);

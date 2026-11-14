@@ -46,6 +46,7 @@ it("keeps renderer interactions recoverable and companion motion accessible", { 
     expect(result.output).toContain("Companion regressions passed (reduce)");
     expect(result.output).toContain("Companion regressions passed (no-preference)");
     expect(result.output).toContain("Board regressions passed");
+    expect(result.output).toContain("Best-of-N regressions passed");
     expect(result.output).toContain("Renderer regressions passed");
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
