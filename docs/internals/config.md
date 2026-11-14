@@ -272,6 +272,84 @@ tool paths, and `runTurnEndHooks` from the run listener.
 in the user or project-local file through `ConfigService.editPermissionRule`,
 comparing rules by canonical text.
 
+## Themes and backdrops
+
+**Catalog.** `readThemeCatalog` (`themes.ts` in `@capsule/config`) parses the
+`themes` resources with `parseTheme`: the project's folder, the user's, a
+plugin seam (`pluginThemes`, empty until plugins land), then
+`BUNDLED_THEMES`. An id's first theme wins, a file named after a bundled theme
+replaces it, and each shadowed file is a warning. A theme file's id is its path
+below `themes/`. Theme folders are part of the reload stamp, so editing a theme
+emits `config-updated`.
+
+**State.** `buildThemeState` resolves every theme with the person's
+`themeOverrides` for it, runs `themeContrastWarnings`, picks the theme for each
+appearance (an unknown id, or a dark theme in the light slot, falls back to the
+built-in with a doctor warning), and merges each appearance's backdrop with
+`mergeBackdrop`. `ConfigSnapshot.themes` carries the result, the raw `theme`
+and `themeOverrides` values for the Appearance screen to edit, and nothing the
+renderer would have to read from disk. Safe mode lists only the bundled themes.
+
+**Applying.** The renderer applies one ordering rule, lowest first: the
+stylesheet's tokens, the palette's derived variables, then the theme's tokens
+with overrides (`themeVars` in `lib/theme-apply.ts`). Capsule Light and Dark
+declare no tokens, so their palette shows exactly as before. Another theme lends
+its accent, base and text to the palette, so derived sidebar, hover and border
+colours follow it, and fonts, contrast and translucency stay the palette's.
+Inline variables the previous theme set and the new one does not are removed.
+A preview (`previewThemeId`, `previewBackdropScene`) re-runs the same apply
+without remembering anything, and switches `data-theme` when it shows the
+other appearance.
+
+**Backdrop.** `ThemeBackdrop` is `{scene, image, fit, opacity, blur, dim}` plus
+`light` and `dark` layers. Layers apply theme, theme appearance, settings,
+settings appearance; a layer naming a scene or an image replaces both, since a
+backdrop draws one thing. It is drawn on `.conversation-backdrop`, a layer
+inside the conversation column with `z-index: -1` in an isolated stacking
+context, so the sidebar, panels and titlebar are untouched and no child needs a
+new stacking order. Scenes are CSS over the theme's tokens; none animates.
+`backdropScrim` (shared) returns the veil of page colour that keeps text at
+4.5:1 over the backdrop's worst colour, never under the person's `dim` and never
+asking more than the bare theme manages. A scene's worst colour is the text
+mixed into the page at the scene's `SCENE_INK`; an image's is sampled from a
+16 × 16 draw, and until the sample arrives the text colour stands in.
+
+**Images.** `BackdropImages.check` resolves a path against the theme file's
+folder (or the settings folder for settings), follows `realpath`, and accepts
+only files inside the settings folder or that theme's folder, png, jpg, webp or
+gif, 8 MB or less. It hands out `capsule-backdrop://image/<token>`, where the
+token hashes the real path, size and mtime. Main's protocol handler serves only
+tokens the service handed out, checking size and type again, with CORS so the
+renderer can sample. Both CSPs allow the scheme for images only. A paired
+browser cannot load the scheme, and the renderer draws no image off the
+desktop.
+
+## Key bindings
+
+`KEY_COMMANDS` in `@capsule/shared` (`keymap-defaults.ts`) is the default keymap,
+the Shortcuts list and the dispatch table, each command with a context;
+`MENU_OWNED_KEYS` lists the menu's accelerators, its standard roles included.
+`readKeybindings` parses `keybindings.json` with `parseKeybindingsFile` and adds
+`keybindingWarnings`: a sequence that starts with a menu key, an unknown or
+menu-owned action, a missing `/command`, and `profile:` actions, which are inert
+until profiles land. Problems go to the doctor; entries travel in
+`ConfigSnapshot.keybindings`.
+
+The renderer resolves them with `resolveKeymap(defaultBindings(), entries)` and
+matches with two `createChordMatcher`s (`lib/use-keymap.ts`): one for every
+binding, one without `global` for a key pressed in a text field with neither ⌘
+nor Control, so typing stays typing while a composer-context binding still
+fires. The context stack comes from `data-keymap-context` on the composer, the
+side panel, Review, the terminal dock and the palette. While a sequence waits,
+`keyChordPending` drives the hint. An element with `data-keymap-capture` (a
+recorder, search by keystroke) gets every key itself.
+
+`editKeybindingsText` edits the file through `jsonc-parser` paths: `bind`
+removes the action's other keys and the sequence's other holder in that
+context, then writes the canonical spelling; `unbind` removes the sequence and
+writes `null` only when a default would still hold it; `reset` removes the
+action's lines and a `null` over its default.
+
 ## Migration
 
 The first launch of a build with settings files exports the SQLite
@@ -328,6 +406,9 @@ landed while the save ran is not lost.
 | `capsule:config:reload` | write | re-read every file now |
 | `capsule:app:restart` | write | quit and start again, into or out of safe mode |
 | `commands:expand` | write | expand a command for review in the composer. It may run `!` |
+| `capsule:themes:import` | write | save a theme from a share string, or a file main picks, into the themes folder |
+| `capsule:keybindings:set` | write | bind, unbind or reset one sequence in keybindings.json |
+| `capsule:backdrop:chooseImage` | write | pick an image in main, copy it into `backdrops/`, draw it |
 
 Main checks each write's shape where it crosses: a key and a known layer, or
 a file target naming one of the known kinds and folders, so the renderer
@@ -530,3 +611,45 @@ Decisions made while building this, and why.
   are not run by that switch, which reads the stored project. A test fails if
   the switch ever starts the repository's scripts; that is the point to add
   a trust gate.
+- **`theme.mode` was dropped.** `appearanceTheme` already says which
+  appearance shows; a second key for the same choice would disagree with it.
+  `theme` holds the two theme ids and the backdrop.
+- **Capsule Light and Dark keep the palette pickers.** With another theme
+  chosen, Accent, Background and Foreground write `themeOverrides[<id>]` as a
+  Customize layer; fonts, contrast and translucency stay in the palette for
+  every theme. Nothing set before themes existed changes.
+- **Themes ride in the snapshot, not a new read.** `config:getEffective` was
+  already re-read on every change, and no new read channel was allowed.
+- **Backdrop images use a scoped scheme, not data URLs.** A data URL of an
+  8 MB image would be cloned into every snapshot and sent to every paired
+  device. The scheme serves only tokens main handed out, and a token changes
+  with the file, so a replaced image is never served from cache.
+- **A failed image draws nothing.** Falling back to a scene the person did not
+  pick would hide the problem; the doctor names it instead.
+- **The readability veil uses the worst colour, not the average.** Text sits
+  on every part of the backdrop; an average lets a bright patch through.
+- **Share strings carry scenes and numbers, never image paths.** Encoding
+  strips them, decoding refuses them, and a theme file imported from elsewhere
+  loses its image, whose path meant something only beside the original.
+- **Imported themes get a fresh id when theirs is taken.** Overwriting a file
+  the person may have edited is worse than `name-2`.
+- **Keybinding edits are three operations.** `{action, sequence|null}` could
+  not tell "unbind" from "reset"; `bind`, `unbind` and `reset` each say what
+  changes in the file.
+- **Chords are written `cmd+shift+k`.** Capsule now writes the canonical
+  spelling into a file people edit, so it follows the order people type.
+- **Every default stays global.** Each registry command acts on the window,
+  not on the surface with focus. Contexts are for a person's own bindings;
+  the surfaces carry `data-keymap-context` for them.
+- **`command:<name>` inserts, it does not send.** It goes through the same
+  path as picking the command from the `/` menu, so arguments can follow and
+  `send: review` commands still expand for review.
+- **A menu key cannot start a sequence.** The menu takes `⌘K` before the page
+  sees it. Such a binding is struck through in Settings, left off the shortcuts
+  sheet, and named in the doctor.
+- **Shortcuts lost Restore defaults.** It reset the old `keybindings` setting,
+  which nothing reads now; emptying someone's keybindings.json from one button
+  is not an undo. Each binding has Reset.
+- **A paired browser follows the host's theme.** It was locked to the
+  website's dark at start-up and never unlocked; a paired device is the app.
+

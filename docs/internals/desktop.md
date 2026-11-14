@@ -1314,13 +1314,13 @@ result names the section it lives in.
 | Section | Owns |
 |---------|------|
 | General | Launch at login, send key, menu bar extra, keep awake, notifications, session archiving |
-| Appearance | System / Light / Dark, per-theme accent / background / foreground, UI and code fonts, translucent sidebar, contrast, transcript size / width, with live type previews |
+| Appearance | System / Light / Dark; Themes (a list per appearance with swatches, live preview on hover or arrow-key focus, Escape or leaving reverts, click or Enter chooses; paste a share string, import a file, copy a share string, open the themes folder; contrast pairs under 4.5:1 behind a disclosure); Backdrop (None and five scenes with hover preview, opacity, dim, blur, fit for an image, Choose image…, Reset, a one-line desktop-only note for images); per-theme accent / background / foreground (a Customize layer over a non-built-in theme), UI and code fonts, translucent sidebar, contrast, transcript size / width, with live type previews |
 | Agents | Default agent and conversation workspace, Gateway approval policy, sandbox, web access, output detail, reasoning, harness credentials |
 | Gateway | URL, connect / disconnect, token in Keychain, reading from another device |
 | Projects | Create, delete, attach primary folder, choose or reset project icon |
 | Source control | Branch prefix, force-with-lease, draft PRs, merge method, review delivery, watch-and-fix, auto-merge, commit / PR instructions |
 | Skills | skills.sh token for the catalog |
-| Shortcuts | Editable key bindings — see below |
+| Shortcuts | keybindings.json — see below |
 | Diagnostics | Customization doctor, process monitor, subsystem versions, export |
 | About | App icon squircle, version, copyright, copy version info |
 
@@ -1390,12 +1390,25 @@ Permissions are Capsule-native and mapped onto Gateway acpx (see [harness.md](ha
 
 ## Global shortcuts
 
-Shortcuts are declared once, in `apps/desktop/src/renderer/src/lib/keybindings.ts`,
-which is both the handler's dispatch table and the Settings list. Renderer
-commands can be rebound in Settings → Shortcuts by pressing the keys; a rebind
-that would take another command's keys is refused. Commands marked *menu* are
-declared by the application menu in the main process, which receives the key
-before the web contents does, so they are shown but not editable.
+The defaults are `KEY_COMMANDS` in `@capsule/shared`, which main also reads to
+check `keybindings.json`. The renderer lays the file's entries over them and
+matches presses, sequences included, with the shared chord matcher
+(`lib/use-keymap.ts`). Settings → Shortcuts reads and writes the file through
+`capsule:keybindings:set`, keeping comments: record one key or two in a row,
+Unbind (shown on hover or focus), Reset, search by name or by keystroke, a
+Conflicts box, Add a binding (an action, a `/command`, a project action, and a
+context), and Open keybindings.json. Commands marked *menu* are declared by the
+application menu, which receives the key before the web contents does, so they
+are shown fixed; a user binding that starts with a menu key is struck through.
+While a sequence waits, a pill near the bottom of the window shows the first
+chord and "… waiting for the next key" for up to 1.5 s. The shortcuts sheet
+(`⌘/`) shows effective bindings, sequences and custom actions included, and
+leaves out bindings the menu would take. On a paired device the screen is read
+only.
+
+Surfaces that carry a keymap context: the composer (`composer`), the side panel
+(`panel`), its Review pane (`review`), the terminal dock (`terminal`) and the
+command palette (`palette`).
 
 | Action | Keys | |
 |--------|------|---|
@@ -1876,3 +1889,19 @@ matcher, on or off, command or URL, file, and its last run. The palette has
 send's error, so the notice above the thread reads **Blocked by hook:** and
 the draft is restored. Work-log lines `approval.auto`, `hook.context` and
 `hook.follow-up` show in the turn's Run log.
+
+## Themes and the conversation backdrop
+
+`applyAppearance(settings, themes)` in `lib/appearance.ts` applies the chosen
+theme for the resolved appearance (stylesheet, then palette-derived variables,
+then the theme's tokens and overrides) and the backdrop variables, and removes
+inline variables the previous theme set. Previews from the Appearance screen
+use the same path and are never written to local storage or the window frame.
+
+The backdrop draws on `.conversation-backdrop`, the first child of the
+conversation column, behind the transcript and composer only. Scenes are
+defined in `features/appearance/backdrop.css` from tokens; none animates. Over
+a backdrop the composer's fade and corner masks in the page colour are hidden,
+since they would draw bands of it. A paired browser follows the host's theme
+and scenes, and draws no image.
+
