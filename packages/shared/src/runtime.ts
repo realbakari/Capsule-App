@@ -6,6 +6,7 @@ import {
   type AppearanceTheme,
 } from "./appearance.js";
 import type { HarnessPermissionProfile } from "./harness.js";
+import { normalizeFavoriteModels, normalizeModeModels, type ModeModels } from "./plan-mode.js";
 import type {
   Agent,
   AgentMessage,
@@ -140,6 +141,9 @@ export const DEFAULT_CAPSULE_SETTINGS: CapsuleSettings = {
   followUpBehavior: "queue",
   diffLayout: "split",
   diffFileState: "expanded",
+  startInPlanMode: false,
+  modeModels: {},
+  favoriteModels: [],
 };
 
 /**
@@ -190,6 +194,8 @@ export const SETTINGS_SECTION_KEYS: Record<string, ReadonlyArray<keyof CapsuleSe
     "sandbox",
     "outputDetail",
     "reasoningSummary",
+    "startInPlanMode",
+    "modeModels",
   ],
   gateway: ["gatewayUrl"],
   projects: ["projectlessFolder"],
@@ -303,6 +309,12 @@ export interface CapsuleSettings {
   followUpBehavior: FollowUpBehavior;
   diffLayout: DiffLayout;
   diffFileState: DiffFileState;
+  /** New conversations begin in Plan mode. */
+  startInPlanMode: boolean;
+  /** Per agent, the model a switch to Plan or Act selects. */
+  modeModels: ModeModels;
+  /** Favorite models as JSON [agentId, modelId] keys, in the order they were starred. */
+  favoriteModels: string[];
 }
 
 const AGENT_MODES: AgentMode[] = [
@@ -543,5 +555,8 @@ export function normalizeCapsuleSettings(input: Partial<CapsuleSettings> = {}): 
     followUpBehavior: pick(input.followUpBehavior, FOLLOW_UP_BEHAVIORS, DEFAULT_CAPSULE_SETTINGS.followUpBehavior),
     diffLayout: pick(input.diffLayout, DIFF_LAYOUTS, DEFAULT_CAPSULE_SETTINGS.diffLayout),
     diffFileState: pick(input.diffFileState, DIFF_FILE_STATES, DEFAULT_CAPSULE_SETTINGS.diffFileState),
+    startInPlanMode: flag(input.startInPlanMode, DEFAULT_CAPSULE_SETTINGS.startInPlanMode),
+    modeModels: normalizeModeModels(input.modeModels),
+    favoriteModels: normalizeFavoriteModels(input.favoriteModels),
   };
 }

@@ -269,6 +269,8 @@ export interface Session {
   pendingStart?: import("./board.js").PendingStart;
   /** When the person marked this card done. Only this starts cards chained behind it. */
   doneAt?: string;
+  /** Whether the next turn plans or acts. Absent means act. */
+  turnMode?: import("./plan-mode.js").TurnMode;
   createdAt: string;
   updatedAt: string;
 }
@@ -978,6 +980,8 @@ export interface Run {
   workingDirectory?: string;
   revision?: WorkspaceRevision;
   verification?: VerificationResult;
+  /** The mode the turn ran in, so a plan turn can be acted on later. */
+  turnMode?: import("./plan-mode.js").TurnMode;
   createdAt: string;
   updatedAt: string;
   completedAt?: string;
@@ -1018,6 +1022,7 @@ export interface CreateSessionInput {
   permissionProfile?: import("./harness.js").HarnessPermissionProfile;
   workingDirectory?: string;
   workspaceMode?: WorkspaceMode;
+  turnMode?: import("./plan-mode.js").TurnMode;
 }
 
 export interface AgentMessage {
@@ -1032,6 +1037,8 @@ export interface AgentMessage {
    * (re)apply it to a session that was created before the profile changed.
    */
   permissionProfile?: HarnessPermissionProfile;
+  /** Set by the engine for the runtime: a plan turn on the demo runtime replies with a plan. */
+  turnMode?: import("./plan-mode.js").TurnMode;
 }
 
 export interface SearchResults {
