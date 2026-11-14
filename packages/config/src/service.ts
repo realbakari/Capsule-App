@@ -6,6 +6,7 @@ import { isDeepStrictEqual } from "node:util";
 import { readProjectFile } from "@capsule/filesystem";
 import {
   DEFAULT_CAPSULE_SETTINGS,
+  parsePermissionRule,
   SETTINGS_SCHEMA,
   SETTINGS_SCHEMA_URL,
   settingSpec,
@@ -18,6 +19,7 @@ import {
   type CustomizationRunRecord,
   type EffectiveExtendedConfig,
   type PendingTrustItem,
+  type PermissionRuleEdit,
   type ProjectFileState,
   type Provenance,
   type WritableScope,
@@ -179,7 +181,7 @@ export class ConfigService {
       const skipped = (scope: ConfigSourceReport["scope"], file: string, kind: ConfigSourceReport["kind"] = "settings"): ConfigSourceReport => ({ kind, scope, path: file, state: "skipped" });
       const sources = [skipped("user", this.paths.userSettings), skipped("user", this.paths.keybindings, "keybindings")];
       if (root) sources.push(skipped("project", this.paths.settingsFile("project", root)), skipped("local", this.paths.settingsFile("local", root)));
-      return { safeMode: true, userDir, sources, problems: [], trust: root ? this.trustFor(root, []) : undefined, runs };
+      return { safeMode: true, userDir, sources, problems: [], trust: root ? this.trustFor(root, []) : undefined, runs, permissions: { allow: [], ask: [], deny: [] }, hooks: {}, hooksDisabled: false };
     }
     const resolution = this.resolve(root);
     const sources: ConfigSourceReport[] = [];
@@ -205,7 +207,36 @@ export class ConfigService {
         for (const command of shellSpanCommands(entry.command.body)) pending.push({ kind: "command-shell", detail: `/${entry.command.name}: ${command}`, path: entry.path });
       }
     }
-    return { safeMode: false, userDir, sources, problems, trust: root ? this.trustFor(root, pending) : undefined, runs };
+    const { permissions, hooks, disableAllHooks } = resolution.merged.extended;
+    return { safeMode: false, userDir, sources, problems, trust: root ? this.trustFor(root, pending) : undefined, runs, permissions, hooks, hooksDisabled: disableAllHooks };
+  }
+
+  /**
+   * Add a rule to, or remove one from, a list in the user or project-local
+   * file. Rules compare by their canonical text, so `execute( pnpm  test * )`
+   * and `execute(pnpm test *)` are the same rule.
+   */
+  editPermissionRule(edit: Omit<PermissionRuleEdit, "projectId">, root?: string): void {
+    const parsed = parsePermissionRule(edit.rule);
+    if (!parsed.ok) throw new Error(parsed.message);
+    const rule = parsed.rule.text;
+    const file = this.paths.settingsFile(edit.scope, root);
+    const current = readJsonc(file);
+    if (current.state === "broken") {
+      throw new Error(`${file} has an error at line ${current.error.line}, column ${current.error.column}. Fix it before Capsule writes to it.`);
+    }
+    const value = current.state === "ok" && isPlainObject(current.value) ? current.value : {};
+    const permissions = isPlainObject(value.permissions) ? value.permissions : {};
+    const list = Array.isArray(permissions[edit.list]) ? (permissions[edit.list] as unknown[]) : [];
+    const same = (entry: unknown) => {
+      if (typeof entry !== "string") return false;
+      const other = parsePermissionRule(entry);
+      return other.ok && other.rule.text === rule;
+    };
+    const next = edit.op === "add" ? (list.some(same) ? list : [...list, rule]) : list.filter((entry) => !same(entry));
+    if (next.length === list.length && edit.op === "remove") throw new Error(`${rule} is not in ${file}.`);
+    if (next === list) return;
+    this.setValues(edit.scope, { permissions: { ...permissions, [edit.list]: next } }, root);
   }
 
   /** Write one key to one layer. `value: undefined` removes it (Reset). */

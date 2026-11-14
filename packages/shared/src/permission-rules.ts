@@ -45,6 +45,12 @@ export interface PermissionSubject {
 export interface PermissionContext {
   root: string;
   home: string;
+  /**
+   * Match deny and ask path rules without regard to case, for a file system
+   * that ignores it. Allow rules stay exact, so `.ENV` cannot slip past
+   * `deny edit(.env)` and `Src/` is not allowed by `allow edit(src/**)`.
+   */
+  caseInsensitivePaths?: boolean;
 }
 
 export interface SourcedPermissionRule {
@@ -159,7 +165,7 @@ function ruleMatches(rule: PermissionRule, subject: PermissionSubject, context: 
       return [collapseSpaces(subject.command), ...split.segments].some((s) => pattern.test(s));
     }
     case "path": {
-      const pattern = pathPattern(target.pattern, context);
+      const pattern = pathPattern(target.pattern, context, mode === "any" && context.caseInsensitivePaths === true);
       return matchList(subject.paths.map((p) => resolvePath(p, context)), (p) => pattern.test(p), mode);
     }
     case "domain": {
@@ -314,7 +320,7 @@ function resolvePath(path: string, context: PermissionContext): string {
   return `${drive}/${parts.join("/")}`;
 }
 
-function pathPattern(glob: string, context: PermissionContext): RegExp {
+function pathPattern(glob: string, context: PermissionContext, ignoreCase: boolean): RegExp {
   const resolved = resolvePath(glob, context);
   let source = "";
   const segments = resolved.split("/");
@@ -334,5 +340,94 @@ function pathPattern(glob: string, context: PermissionContext): RegExp {
       else source += escapeRegex(ch);
     }
   });
-  return new RegExp(`^${source}$`);
+  return new RegExp(`^${source}$`, ignoreCase ? "i" : "");
+}
+
+/** What an ACP tool call carries that a rule can read. */
+export interface PermissionToolCall {
+  kind?: string;
+  title?: string;
+  rawInput?: unknown;
+  locations?: readonly string[];
+}
+
+const MCP_TOOL = /^mcp__(.+?)__(.+)$/;
+const SHELLS = new Set(["bash", "sh", "zsh", "dash", "fish", "ksh"]);
+const PATH_FIELDS = ["path", "file_path", "filePath", "notebook_path", "abs_path"];
+/** Longer than this, a command is not matched at all, so a clipped copy can never be what an allow rule saw. */
+const MAX_COMMAND_LENGTH = 4096;
+
+/**
+ * The request in rule terms. Agents describe a tool call differently; this
+ * reads the ACP `kind`, the command from `rawInput.command` (a string or an
+ * argv array) or the title, paths from `locations` and the usual `rawInput`
+ * path fields, the URL from `rawInput.url`, and an MCP tool from a
+ * `mcp__server__tool` title.
+ */
+export function permissionSubject(call: PermissionToolCall): PermissionSubject {
+  const title = (call.title ?? "").trim().slice(0, MAX_COMMAND_LENGTH + 1);
+  const input = call.rawInput && typeof call.rawInput === "object" && !Array.isArray(call.rawInput)
+    ? call.rawInput as Record<string, unknown>
+    : {};
+  const mcp = MCP_TOOL.exec(title);
+  const written = (call.kind ?? "").toLowerCase();
+  const kind: PermissionKind = mcp ? "mcp" : written !== "mcp" && (PERMISSION_KINDS as readonly string[]).includes(written) ? written as PermissionKind : "other";
+  const paths = new Set<string>();
+  const addPath = (value: unknown) => { if (typeof value === "string" && value && value.length <= MAX_COMMAND_LENGTH) paths.add(value); };
+  for (const location of call.locations ?? []) addPath(location);
+  for (const field of PATH_FIELDS) addPath(input[field]);
+  if (Array.isArray(input.paths)) for (const item of input.paths.slice(0, 64)) addPath(item);
+  const command = kind === "execute" ? commandOf(input, title) : undefined;
+  const url = typeof input.url === "string" && input.url.length <= MAX_COMMAND_LENGTH ? input.url : undefined;
+  return {
+    kind,
+    title,
+    ...(command !== undefined ? { command } : {}),
+    paths: [...paths],
+    ...(url ? { url } : {}),
+    ...(mcp ? { mcp: { server: mcp[1]!, tool: mcp[2]! } } : {}),
+  };
+}
+
+function commandOf(input: Record<string, unknown>, title: string): string | undefined {
+  const raw = input.command ?? input.cmd;
+  const text = typeof raw === "string"
+    ? raw
+    : Array.isArray(raw) && raw.length > 0 && raw.every((item) => typeof item === "string")
+      ? argvCommand(raw as string[])
+      : title.replace(/^`+|`+$/g, "");
+  const command = text.trim();
+  return command && command.length <= MAX_COMMAND_LENGTH ? command : undefined;
+}
+
+/** `["bash", "-lc", "pnpm test"]` is the script; any other argv is its words. */
+function argvCommand(argv: string[]): string {
+  const [file, flag, script] = argv;
+  const shell = file?.split("/").pop() ?? "";
+  if (argv.length === 3 && SHELLS.has(shell) && flag && /^-l?c$/.test(flag) && script !== undefined) return script;
+  return argv.map((word) => (/^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replace(/'/g, "'\\''")}'`)).join(" ");
+}
+
+/**
+ * The allow rule an "always allow" choice writes for a request: a command's
+ * first two words and ` *`, a single exact path, a host, or an MCP tool.
+ * Undefined when no rule would say what the person approved.
+ */
+export function suggestAllowRule(subject: PermissionSubject): string | undefined {
+  let rule: string | undefined;
+  if (subject.kind === "execute" && subject.command) {
+    const words = collapseSpaces(subject.command).split(" ").slice(0, 2);
+    if (!words.some((word) => /[*()]/.test(word))) rule = `execute(${words.join(" ")} *)`;
+  } else if (PATH_KINDS.has(subject.kind) && subject.paths.length === 1) {
+    const only = subject.paths[0]!;
+    if (!/[*?()]/.test(only)) rule = `${subject.kind}(${only})`;
+  } else if (subject.kind === "fetch") {
+    const host = hostOf(subject.url);
+    if (host) rule = `fetch(domain:${host})`;
+  } else if (subject.kind === "mcp" && subject.mcp) {
+    rule = `mcp(${subject.mcp.server}:${subject.mcp.tool})`;
+  }
+  if (!rule) return undefined;
+  const parsed = parsePermissionRule(rule);
+  return parsed.ok ? parsed.rule.text : undefined;
 }

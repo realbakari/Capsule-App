@@ -124,7 +124,8 @@ const MERGERS: { [K in ExtendedConfigKey]: Merger<K> } = {
     }
     return merged;
   },
-  disableAllHooks: replace(),
+  // Any file can turn hooks off; none can turn them back on for another.
+  disableAllHooks: (current, next) => current || next === true,
   mcpServers: (current, next, source) => {
     const merged = { ...current };
     for (const [name, server] of Object.entries(next) as [string, McpServerConfig][]) merged[name] = sourced(server, source);

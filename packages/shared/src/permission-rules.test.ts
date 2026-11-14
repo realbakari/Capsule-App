@@ -4,6 +4,8 @@ import {
   decidePermission,
   describeDecision,
   parsePermissionRule,
+  permissionSubject,
+  suggestAllowRule,
   type PermissionSubject,
   type SourcedPermissionRule,
 } from "./permission-rules.js";
@@ -205,5 +207,75 @@ describe("decidePermission", () => {
       "Denied by edit(.env) in /work/app/.capsule/settings.json",
     );
     expect(describeDecision({ decision: "none" })).toBe("No permission rule matched");
+  });
+});
+
+describe("case on a file system that ignores it", () => {
+  const insensitive = { ...context, caseInsensitivePaths: true };
+  const decideIn = (rules: Array<[SourcedPermissionRule["list"], string]>, request: PermissionSubject) =>
+    decidePermission(rules.map(([list, rule]) => ({ list, rule, source: USER })), request, insensitive).decision;
+
+  it("denies and asks whatever the case, and allows only the exact path", () => {
+    expect(decideIn([["deny", "edit(**/.env*)"]], edit("/work/app/.ENV"))).toBe("deny");
+    expect(decideIn([["ask", "edit(Secrets/**)"]], edit("secrets/key.pem"))).toBe("ask");
+    expect(decideIn([["allow", "edit(src/**)"]], edit("/work/app/Src/a.ts"))).toBe("none");
+    expect(decideIn([["allow", "edit(src/**)"]], edit("/work/app/src/a.ts"))).toBe("allow");
+  });
+
+  it("stays exact when the option is off", () => {
+    expect(decide([["deny", "edit(**/.env*)"]], edit("/work/app/.ENV"))).toBe("none");
+  });
+});
+
+describe("permissionSubject", () => {
+  it("reads a command from a string, a shell argv, other argv, or the title", () => {
+    expect(permissionSubject({ kind: "execute", title: "Run tests", rawInput: { command: "pnpm test" } }).command).toBe("pnpm test");
+    expect(permissionSubject({ kind: "execute", rawInput: { command: ["/bin/bash", "-lc", "git status && ls"] } }).command).toBe("git status && ls");
+    expect(permissionSubject({ kind: "execute", rawInput: { command: ["git", "commit", "-m", "a b"] } }).command).toBe("git commit -m 'a b'");
+    expect(permissionSubject({ kind: "execute", title: "`pnpm lint`" }).command).toBe("pnpm lint");
+  });
+
+  it("leaves out a command too long to read whole", () => {
+    expect(permissionSubject({ kind: "execute", rawInput: { command: `echo ${"x".repeat(5000)}` } }).command).toBeUndefined();
+  });
+
+  it("gathers paths from locations and input fields, once each", () => {
+    const read = permissionSubject({ kind: "edit", title: "Edit", locations: ["/w/a.ts"], rawInput: { file_path: "/w/a.ts", paths: ["/w/b.ts"] } });
+    expect(read).toMatchObject({ kind: "edit", paths: ["/w/a.ts", "/w/b.ts"] });
+  });
+
+  it("names MCP tools and URLs, and keeps unknown kinds as other", () => {
+    expect(permissionSubject({ kind: "other", title: "mcp__capsule_browser__navigate" })).toMatchObject({ kind: "mcp", mcp: { server: "capsule_browser", tool: "navigate" } });
+    expect(permissionSubject({ kind: "fetch", title: "Fetch", rawInput: { url: "https://github.com/x" } }).url).toBe("https://github.com/x");
+    expect(permissionSubject({ kind: "switch_mode", title: "Plan" }).kind).toBe("other");
+    expect(permissionSubject({ kind: "mcp", title: "x" }).kind).toBe("other");
+  });
+
+  it("produces a subject the rules decide on", () => {
+    const request = permissionSubject({ kind: "execute", rawInput: { command: ["bash", "-c", "pnpm test --run"] } });
+    expect(decide([["allow", "execute(pnpm test *)"]], request)).toBe("allow");
+  });
+});
+
+describe("suggestAllowRule", () => {
+  it("writes the rule an always-allow choice saves", () => {
+    expect(suggestAllowRule(run("pnpm test --run src"))).toBe("execute(pnpm test *)");
+    expect(suggestAllowRule(run("ls"))).toBe("execute(ls *)");
+    expect(suggestAllowRule(edit("/work/app/src/a.ts"))).toBe("edit(/work/app/src/a.ts)");
+    expect(suggestAllowRule(fetchUrl("https://Docs.Example.com/a?b=1"))).toBe("fetch(domain:docs.example.com)");
+    expect(suggestAllowRule(subject({ kind: "mcp", mcp: { server: "browser", tool: "navigate" } }))).toBe("mcp(browser:navigate)");
+  });
+
+  it("allows the request it was made from", () => {
+    for (const request of [run("pnpm test --run"), edit("/work/app/src/a.ts"), fetchUrl("https://github.com/a")]) {
+      expect(decide([["allow", suggestAllowRule(request)!]], request)).toBe("allow");
+    }
+  });
+
+  it("offers nothing it cannot say exactly", () => {
+    expect(suggestAllowRule(edit("/a.ts", "/b.ts"))).toBeUndefined();
+    expect(suggestAllowRule(edit("/w/*.ts"))).toBeUndefined();
+    expect(suggestAllowRule(run("echo *"))).toBeUndefined();
+    expect(suggestAllowRule(subject({ kind: "think", title: "Plan" }))).toBeUndefined();
   });
 });

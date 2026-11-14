@@ -333,6 +333,47 @@ describe("settings files", () => {
   });
 });
 
+describe("permission rules and hooks", () => {
+  it("adds a rule once, keeps the file's comments, and removes it by its canonical text", () => {
+    const { open, write, userFile } = fixture();
+    write(userFile, `{
+  // Mine.
+  "permissions": { "deny": ["edit(**/.env*)"] },
+}
+`);
+    const service = open();
+    service.editPermissionRule({ op: "add", list: "allow", rule: "execute( pnpm  test * )", scope: "user" });
+    service.editPermissionRule({ op: "add", list: "allow", rule: "execute(pnpm test *)", scope: "user" });
+    const text = readFileSync(userFile, "utf8");
+    expect(text).toContain("// Mine.");
+    expect(service.extended().permissions.allow.map((entry) => entry.value)).toEqual(["execute(pnpm test *)"]);
+    expect(service.extended().permissions.deny.map((entry) => entry.value)).toEqual(["edit(**/.env*)"]);
+    service.editPermissionRule({ op: "remove", list: "allow", rule: "execute(pnpm   test *)", scope: "user" });
+    expect(service.extended().permissions.allow).toEqual([]);
+    expect(() => service.editPermissionRule({ op: "remove", list: "allow", rule: "execute(pnpm test *)", scope: "user" })).toThrow("is not in");
+    expect(() => service.editPermissionRule({ op: "add", list: "allow", rule: "exec(x)", scope: "user" })).toThrow('Unknown kind "exec"');
+  });
+
+  it("writes a project's personal rule to the local file, kept out of Git", () => {
+    const { open, project, localFile } = fixture();
+    execFileSync("git", ["init", "-q"], { cwd: project });
+    const service = open();
+    service.editPermissionRule({ op: "add", list: "allow", rule: "fetch(domain:github.com)", scope: "local" }, project);
+    expect(JSON.parse(readFileSync(localFile, "utf8").replace(/^\s*\/\/.*$/gm, "")).permissions.allow).toEqual(["fetch(domain:github.com)"]);
+    expect(readFileSync(path.join(project, ".git", "info", "exclude"), "utf8")).toContain(".capsule/settings.local.json");
+  });
+
+  it("reports rules and hooks with their files, and lets any file turn hooks off but not on", () => {
+    const { open, write, userFile, projectFile, project } = fixture();
+    write(userFile, JSON.stringify({ disableAllHooks: true, hooks: { TurnEnd: [{ hooks: [{ type: "command", command: "say done" }] }] } }));
+    write(projectFile, JSON.stringify({ disableAllHooks: false, permissions: { ask: ["execute(git push *)"] } }));
+    const diagnostics = open().diagnostics(project);
+    expect(diagnostics.hooksDisabled).toBe(true);
+    expect(diagnostics.hooks.TurnEnd?.[0]?.source.path).toBe(userFile);
+    expect(diagnostics.permissions.ask).toEqual([{ value: "execute(git push *)", source: { scope: "project", path: projectFile } }]);
+  });
+});
+
 describe("key registry", () => {
   it("gives every key that waits for trust a rule for what waits", () => {
     const gated = (Object.keys(EXTENDED_SCHEMA) as ExtendedConfigKey[]).filter((key) => EXTENDED_SCHEMA[key].needsTrust);

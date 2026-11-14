@@ -103,6 +103,22 @@ export interface ConfigDiagnostics {
   problems: ConfigProblem[];
   trust?: ProjectTrust;
   runs: CustomizationRunRecord[];
+  /** Rules in effect, each with its file. An untrusted project's allow rules are in `trust.pending` instead. */
+  permissions: EffectiveExtendedConfig["permissions"];
+  /** Hook groups in effect, each with its file. Empty in safe mode. */
+  hooks: EffectiveExtendedConfig["hooks"];
+  /** `disableAllHooks` is set in some file, so none of `hooks` runs. */
+  hooksDisabled: boolean;
+}
+
+/** One change to a permission rule list in one settings file. */
+export interface PermissionRuleEdit {
+  op: "add" | "remove";
+  list: "allow" | "ask" | "deny";
+  rule: string;
+  /** The team file is edited by hand; Capsule writes only to files that are yours. */
+  scope: "user" | "local";
+  projectId?: string;
 }
 
 /** Settings keys a file may hold. Secrets never appear in a file. */
