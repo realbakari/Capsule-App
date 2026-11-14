@@ -46,3 +46,6 @@ export * from "./keymap-defaults.js";
 export * from "./theme-tokens.js";
 export * from "./keymap.js";
 export * from "./ansi.js";
+export * from "./profile.js";
+export * from "./style.js";
+export * from "./mcp.js";

@@ -342,7 +342,8 @@ export interface EffectiveExtendedConfig {
   permissions: Record<keyof PermissionRules, Sourced<string>[]>;
   hooks: Partial<Record<HookEvent, Sourced<HookMatcherGroup>[]>>;
   disableAllHooks: boolean;
-  mcpServers: Record<string, Sourced<McpServerConfig>>;
+  /** `override` is the later file that turned a server on or off without redefining it. */
+  mcpServers: Record<string, Sourced<McpServerConfig> & { override?: Provenance }>;
   automations: Sourced<AutomationConfig>[];
   statusLine?: StatusLineConfig;
   theme?: ThemeSelection;

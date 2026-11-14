@@ -431,3 +431,9 @@ export function suggestAllowRule(subject: PermissionSubject): string | undefined
   const parsed = parsePermissionRule(rule);
   return parsed.ok ? parsed.rule.text : undefined;
 }
+
+/** Whether an absolute folder matches a path glob such as `~/work/**`. Case-sensitive. */
+export function folderMatchesGlob(folder: string, glob: string, home: string): boolean {
+  const context: PermissionContext = { root: "/", home };
+  return pathPattern(glob, context, false).test(resolvePath(folder, context));
+}
