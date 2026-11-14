@@ -2191,15 +2191,7 @@ export class CapsuleEngine {
       } catch (error) {
         const currentRun = this.requireRun(run.id);
         if (currentRun.completedAt) return { session, run: currentRun, userMessage };
-        const detail = error instanceof Error ? error.message : String(error);
-        run.status = "failed";
-        run.error = detail;
-        run.updatedAt = nowIso();
-        run.completedAt = nowIso();
-        this.repos.updateRun(run);
-        this.appendEvent(run.id, "lifecycle", detail, { status: "failed", error: detail });
-        this.events.emit("run", run);
-        throw new Error(detail);
+        throw this.failUndispatchedRun(run, error);
       } finally {
         this.startingHarnessRuns.delete(run.id);
       }
@@ -2242,11 +2234,15 @@ export class CapsuleEngine {
     if (this.usingMock) this.mock.setWorkspace(this.cwdFor(session, project));
 
     if (!this.usingMock && !harnessId) {
-      session.openclawSessionKey = await this.openclaw.ensureOperatorSession({
-        sessionKey: session.openclawSessionKey,
-        label: gatewaySessionLabel(session.title, session.id),
-        requestedAgentId: agentId,
-      });
+      try {
+        session.openclawSessionKey = await this.openclaw.ensureOperatorSession({
+          sessionKey: session.openclawSessionKey,
+          label: gatewaySessionLabel(session.title, session.id),
+          requestedAgentId: agentId,
+        });
+      } catch (error) {
+        throw this.failUndispatchedRun(run, error);
+      }
       this.repos.updateSession(session);
     }
 
@@ -2375,15 +2371,13 @@ export class CapsuleEngine {
     try {
       runtimeRun = await this.runtime.sendMessage(runtimeMessage);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      run.status = "failed";
-      run.error = message;
-      run.updatedAt = nowIso();
-      run.completedAt = nowIso();
-      this.repos.updateRun(run);
-      this.appendEvent(run.id, "lifecycle", message, { status: "failed", error: message });
-      this.events.emit("run", run);
-      throw new Error(message);
+      throw this.failUndispatchedRun(run, error);
+    }
+    const stopped = this.requireRun(run.id);
+    if (stopped.completedAt) {
+      // Stop settled this turn while sessions.send was in flight; the Gateway run exists only now.
+      void this.runtime.cancelRun(runtimeRun.id).catch(() => undefined);
+      return { session, run: stopped, userMessage };
     }
     run.openclawRunId = runtimeRun.openclawRunId ?? runtimeRun.id;
     // A subscribed reply may arrive before sessions.send acknowledges it.
@@ -2395,6 +2389,23 @@ export class CapsuleEngine {
     });
     this.events.emit("run", run);
     return { session, run, userMessage };
+  }
+
+  /*
+   * A turn is on the record before it is sent, so every failure between the
+   * two must close that record. A run left "running" with no agent behind it
+   * blocks every check that asks whether an agent is working in the folder.
+   */
+  private failUndispatchedRun(run: Run, error: unknown): Error {
+    const detail = error instanceof Error ? error.message : String(error);
+    run.status = "failed";
+    run.error = detail;
+    run.updatedAt = nowIso();
+    run.completedAt = nowIso();
+    this.repos.updateRun(run);
+    this.appendEvent(run.id, "lifecycle", detail, { status: "failed", error: detail });
+    this.events.emit("run", run);
+    return new Error(detail);
   }
 
   async stopRun(runId: string): Promise<Run> {
@@ -2417,9 +2428,10 @@ export class CapsuleEngine {
       await this.direct.cancelAcp(session.openclawSessionKey!);
       const latest = this.requireRun(runId);
       if (latest.completedAt) return latest;
-    } else {
+    } else if (run.openclawRunId || this.usingMock) {
       await this.runtime.cancelRun(run.openclawRunId ?? run.id);
     }
+    // Otherwise the Gateway never accepted this turn: there is nothing to abort there.
     run.result = this.resultWriter.finish(runId) ?? run.result;
     if (session.openclawSessionKey) {
       const reply = this.replyBuffers.take(`acp:${session.openclawSessionKey}`);
