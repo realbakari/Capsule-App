@@ -81,6 +81,15 @@ export async function runComposerContextRegressions(host: HTMLElement, base: Rec
     assert(Array.from(document.querySelectorAll("button")).some((item) => item.textContent === "Project actions"), "No-check chip has no way to project actions");
     assert(field().value === "", "Choosing a source left its @ text in the prompt");
 
+    type("@dif");
+    await until(() => options().includes("@diff"), "@dif offers @diff");
+    Array.from(document.querySelectorAll<HTMLElement>('[role="option"]')).find((item) => item.querySelector(".suggest-name")?.textContent === "@diff")!.click();
+    await until(() => document.querySelector('[data-picker="diff"]'), "diff picker opens");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert(document.querySelector('[data-picker="diff"]')!.contains(document.activeElement), "The prompt took focus back from the diff picker");
+    document.querySelector<HTMLButtonElement>('[data-picker="diff"] [aria-label="Close context picker"]')!.click();
+    await until(() => !document.querySelector('[data-picker="diff"]'), "diff picker closes");
+
     type("!ls -a");
     await until(() => document.querySelector(".composer-bang-hint")?.textContent?.includes("ls -a"), "! hint");
     assert(document.querySelector('[aria-label="Run command"]'), "Send did not become Run for a ! command");

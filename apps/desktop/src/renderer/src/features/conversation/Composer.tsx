@@ -219,12 +219,13 @@ export function Composer({
     // React must commit the controlled value before restoring its caret. An
     // animation frame can run first under load and then lose the selection.
     if (pendingSelection.scope === selectionScope) {
-      textareaRef.current?.focus();
+      // A source that opened its own picker or form keeps the focus it took.
+      if (!contextPicker && !template) textareaRef.current?.focus();
       textareaRef.current?.setSelectionRange(pendingSelection.position, pendingSelection.position);
       setCaret(pendingSelection.position);
     }
     setPendingSelection(undefined);
-  }, [pendingSelection, selectionScope]);
+  }, [pendingSelection, selectionScope, contextPicker, template]);
   const liveHarnessSessionId =
     session?.harnessId && session.harnessState && session.harnessState !== "closed"
       ? session.id
