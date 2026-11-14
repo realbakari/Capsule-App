@@ -769,7 +769,7 @@ thread: "Imported from Claude Code" with what the next message does, or
 "Continued from <title>" with a link back and, until the first prompt, the
 summary under a disclosure.
 
-`listImportableSessions(projectId)` (read) returns `ImportListing`: the
+`listImportableSessions(projectId)` (a write-scoped channel: it shows first prompts of terminal sessions that are not in Capsule yet, which a read-only peer must not see) returns `ImportListing`: the
 sessions whose recorded folder is the project's, newest first, each with
 agent, title, first prompt, turn count, last activity, the continuation an
 import would get, and `importedAs` when a thread already exists; plus whether

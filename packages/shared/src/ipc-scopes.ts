@@ -78,8 +78,6 @@ const READ_CHANNELS: ChannelName[] = [
   "turnDiff",
   "redoPoint",
   "forkBranches",
-  // Reads the agents' session files for this project's folder; never writes them.
-  "listImportableSessions",
   // A summary built from the thread's own messages: nothing a reader cannot already read.
   "handoffDraft",
   // Reads the worktree and the project folder; writes only Git objects, never a ref or a file.
