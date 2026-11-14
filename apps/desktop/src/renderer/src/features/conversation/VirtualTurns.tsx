@@ -5,6 +5,11 @@ import { recallTurnAnchor, rememberTurnAnchor, type TurnAnchor } from "../../lib
 
 const OVERSCAN = 700;
 
+/** Only a view actually scrolled up from the latest turn is a place worth coming back to. */
+function awayFromLatest(root: HTMLElement, following: boolean): boolean {
+  return !following && root.scrollHeight - root.scrollTop - root.clientHeight > 48;
+}
+
 /** Variable-height rows. Measurements and focus belong to stable turn IDs. */
 export interface TurnLayout { rows: Array<{ id: string; top: number; height: number }>; total: number; listOffset: number }
 
@@ -49,7 +54,8 @@ export function VirtualTurns({ turns, folded, scroller, stick, focus, restoreKey
     // Leaving the thread records where it was left, following or not.
     return () => {
       const { restoreKey: key, stick: following } = live.current;
-      if (key && !restoring.current) rememberTurnAnchor(key, following ? undefined : previous.current);
+      const root = scroller.current;
+      if (key && !restoring.current) rememberTurnAnchor(key, root && awayFromLatest(root, following) ? previous.current : undefined);
     };
   }, []);
   useEffect(() => {
@@ -76,7 +82,7 @@ export function VirtualTurns({ turns, folded, scroller, stick, focus, restoreKey
       // Until the first rows arrive there is nothing to read the view from.
       if (restoring.current && live.current.rows.length === 0) return;
       previous.current = row ? { id: row.turn.id, offset: top - row.top } : undefined;
-      if (live.current.restoreKey && !restoring.current) rememberTurnAnchor(live.current.restoreKey, live.current.stick ? undefined : previous.current);
+      if (live.current.restoreKey && !restoring.current) rememberTurnAnchor(live.current.restoreKey, awayFromLatest(root, live.current.stick) ? previous.current : undefined);
     };
     const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(readViewport); };
     // Keep focused and selected text mounted while the viewport moves away.
