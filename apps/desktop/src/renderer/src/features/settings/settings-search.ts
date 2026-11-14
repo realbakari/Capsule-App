@@ -58,6 +58,7 @@ export const SETTINGS_SEARCH_ITEMS: SettingsSearchItem[] = [
   { title: "Local performance", section: "diagnostics", keywords: ["freeze", "timings", "slow", "git", "preview"] },
   { title: "Keep computer awake", section: "general", keywords: ["sleep", "power", "running"] },
   { title: "Response completions", section: "general", keywords: ["notification", "alert", "run complete"] },
+  { title: "Long-running commands", section: "general", keywords: ["notification", "alert", "command", "timeout", "approval"] },
   { title: "Approvals", section: "general", keywords: ["notification", "permission"] },
   { title: "Bounce the Dock", section: "general", keywords: ["notification", "attention"] },
   { title: "Classify session states", section: "general", keywords: ["title", "auto", "conversations"] },
@@ -78,7 +79,7 @@ export const SETTINGS_SEARCH_ITEMS: SettingsSearchItem[] = [
 
   { title: "Default agent", section: "agents", keywords: ["harness", "new thread", "model", "provider"] },
   { title: "Conversation workspace", section: "agents", keywords: ["worktree", "isolation", "local"] },
-  { title: "Gateway approval policy", section: "agents", keywords: ["permission", "access", "sandbox"] },
+  { title: "Approvals for new conversations", section: "agents", keywords: ["permission", "approval", "ask", "auto", "full", "access", "sandbox"] },
   { title: "Web search", section: "agents", keywords: ["internet", "fetch", "web access"] },
   { title: "Sandbox", section: "agents", keywords: ["filesystem", "safety"] },
   { title: "Output detail", section: "agents", keywords: ["verbose", "concise"] },

@@ -23,7 +23,7 @@
 | Open the Browser | `⇧⌘B` |
 | Next conversation, by recent activity | `⌃Tab` |
 | Previous conversation | `⌃⇧Tab` |
-| Choose the mode (permissions) | `⇧⌘M` |
+| Choose approvals (Ask, Auto, Full) | `⇧⌘M` |
 | Choose the model | `⇧⌘I` |
 | Choose the reasoning effort | `⇧⌘E` |
 | Next favorite model | `⌥⌘M` |

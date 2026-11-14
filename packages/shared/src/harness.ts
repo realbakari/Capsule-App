@@ -44,33 +44,7 @@ export type AcpMode = "persistent" | "oneshot";
 
 export type HarnessPermissionProfile = "default" | "strict" | "approve-all";
 
-/*
- * An ACP session has no channel to ask a question through: acpx throws
- * PermissionPromptUnavailableError the moment a tool needs approval and no
- * terminal is attached. Its own modes are ranked deny-all(0) <
- * approve-reads(1) < approve-all(2), and only the two ends are non-fatal —
- * approve-reads still falls through to the prompt for writes and commands.
- *
- * So "ask me" cannot be honoured here, and the labels say what actually
- * happens rather than what we would prefer.
- */
-export const PERMISSION_PROFILES: Array<{ id: HarnessPermissionProfile; label: string; detail: string }> = [
-  {
-    id: "strict",
-    label: "Supervised",
-    detail: "Refuse tools that would need a prompt. ACP cannot show a dialog, so it never asks.",
-  },
-  {
-    id: "default",
-    label: "Standard",
-    detail: "Gateway approve-all: read, write, shell, and network without a TTY prompt.",
-  },
-  {
-    id: "approve-all",
-    label: "Full access",
-    detail: "Same as Standard for ACP: approve-all. Use when you want that spelled out.",
-  },
-];
+/* Ask, Auto and Full label these ids; see approval-presets.ts. */
 
 export type HarnessSessionState =
   | "idle"

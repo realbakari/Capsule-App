@@ -57,7 +57,7 @@ export async function runWebAccessRegressions(host: HTMLElement) {
     root.render(<AnalyticsSettings settings={DEFAULT_CAPSULE_SETTINGS} patch={patch} />); await settle();
     assert(host.querySelector<HTMLInputElement>("input")?.disabled && host.textContent?.includes("host computer"), "Browser could change host consent");
     root.render(<RemoteSessionBanner />); await settle();
-    assert(host.textContent?.includes("Conversation control") && host.textContent?.includes("Supervised"), "Browser control permission is not visible");
+    assert(host.textContent?.includes("Conversation control") && host.textContent?.includes("New threads use Ask"), "Browser control permission is not visible");
     root.render(<RemoteAccessSettings settings={DEFAULT_CAPSULE_SETTINGS} patch={patch} />); await settle();
     assert(host.textContent?.includes("Manage pairing") && !host.querySelector("select"), "Remote browser offered administrative pairing");
   } finally {

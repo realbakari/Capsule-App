@@ -109,29 +109,6 @@ export type InspectorTab =
   | "simulator"
   | "compare";
 
-/*
- * The detail lines matter more than the labels here. These map onto acpx
- * permission modes, which cannot show a dialog, so "Supervised" refuses a tool
- * rather than asking about it — behaviour nobody would guess from the name.
- */
-export const PERMISSION_OPTIONS = [
-  {
-    id: "strict",
-    label: "Read-only",
-    detail: "Refuses commands and file writes. It cannot ask, so it declines.",
-  },
-  {
-    id: "default",
-    label: "Standard",
-    detail: "Reads, writes and runs commands inside the project folder.",
-  },
-  {
-    id: "approve-all",
-    label: "Full access",
-    detail: "Allow commands and file changes without approval prompts.",
-  },
-] as const;
-
 const SIDEBAR_WIDTH_KEY = "capsule.sidebarWidth";
 const SIDEBAR_COLLAPSED_KEY = "capsule.sidebarCollapsed";
 const INSPECTOR_OPEN_KEY = "capsule.inspectorOpen";
@@ -314,6 +291,9 @@ export interface WorkspaceValue {
   ) => Promise<void>;
   draftHarnessConfig: { model?: string; options: Record<string, string> };
   setDraftHarnessConfig: (config: { model?: string; options: Record<string, string> }) => void;
+  /** Ask, Auto or Full for the conversation this draft will start; undefined uses the Settings default. */
+  draftApproval?: HarnessPermissionProfile;
+  setDraftApproval: (profile: HarnessPermissionProfile | undefined) => void;
   dedicateHarness: (harnessId: string) => Promise<void>;
   undedicateHarness: () => Promise<void>;
   doctorHarness: (harnessId: string) => Promise<void>;
@@ -520,6 +500,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   const [draftHarnessConfigs, setDraftHarnessConfigs] = useScopedState<Record<string, { model?: string; options: Record<string, string> }>>(draftScope, {});
   const draftHarnessConfig = draftHarnessConfigs[agentId] ?? { options: {} };
   const setDraftHarnessConfig = (config: { model?: string; options: Record<string, string> }) => setDraftHarnessConfigs((current) => ({ ...current, [agentId]: config }));
+  const [draftApproval, setDraftApproval] = useScopedState<HarnessPermissionProfile | undefined>(draftScope, undefined);
   const [attachments, setAttachmentValues] = useScopedState<MessageAttachment[]>(draftScope, []);
   const attachmentState = useRef({ scope: draftScope, value: attachments });
   attachmentState.current = { scope: draftScope, value: attachments };
@@ -1278,7 +1259,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       projectId: targetProject,
       agentId,
       mode,
-      permissionProfile: settings?.defaultPermission,
+      permissionProfile: draftApproval ?? settings?.defaultPermission,
       workspaceMode: git?.isRepo ? (settings?.defaultWorkspaceMode ?? "local") : "local",
       title: "New conversation",
     });
@@ -1438,7 +1419,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
           projectId: currentProjectId,
           agentId,
           mode,
-          permissionProfile: settings?.defaultPermission,
+          permissionProfile: draftApproval ?? settings?.defaultPermission,
           workspaceMode: git?.isRepo ? workspaceMode : "local",
           title: "New conversation",
           turnMode: draftTurnMode,
@@ -1450,7 +1431,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       preparedThread = true;
       if (draftHarnessConfig.model || Object.keys(draftHarnessConfig.options).length) {
         await api.spawnHarness({ projectId: currentProjectId, sessionId: currentSessionId, harnessId: agentId,
-          model: draftHarnessConfig.model, permissionProfile: "strict" });
+          model: draftHarnessConfig.model, permissionProfile: draftApproval ?? settings?.defaultPermission });
         if (draftHarnessConfig.model) await api.setHarnessOption({ sessionId: currentSessionId, key: "model", value: draftHarnessConfig.model });
         for (const [id, value] of Object.entries(draftHarnessConfig.options)) await api.setHarnessConfig(currentSessionId, id, value);
         if (!draftScopes.isCurrent(draftScope)) return false;
@@ -1493,7 +1474,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
             projectId: currentProjectId,
             agentId,
             mode,
-            permissionProfile: settings?.defaultPermission,
+            permissionProfile: draftApproval ?? settings?.defaultPermission,
             workspaceMode: git?.isRepo ? (settings?.defaultWorkspaceMode ?? "local") : "local",
             title: "New conversation",
           }) : undefined;
@@ -2546,6 +2527,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       reorderPinnedSessions,
       regenerateTitle,
       setPermissionProfile,
+      draftApproval,
+      setDraftApproval,
       sendAndContinue,
       setAgentCommandsOpen,
       runAgentCommand: async (name, input = "") => {
@@ -2681,6 +2664,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       browserUrl,
       refresh,
       loadSession,
+      draftApproval,
     ],
   );
 

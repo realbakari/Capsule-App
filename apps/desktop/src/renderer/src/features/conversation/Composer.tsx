@@ -1,5 +1,6 @@
 import { contextTone } from "../../lib/context-window";
 import { agentControls, reportedAgentControls, harnessCapabilities, nextFavoriteModel, planModeSupport, withoutPlanChoice, type PlanRoute } from "@capsule/shared";
+import { APPROVAL_PRESETS, approvalOptionDetail, approvalPreset, isApprovalPresetId, type ApprovalRoute } from "@capsule/shared";
 import { TurnModeChip } from "./TurnModeChip";
 import "./plan-mode.css";
 import { PlanHandoff } from "./PlanHandoff";
@@ -17,7 +18,7 @@ import { GATEWAY_CONNECTION_REQUIRED } from "../../lib/harness-preflight";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { FileEntry } from "@capsule/shared";
 import { searchProjectFiles } from "../../lib/bridge";
-import { PERMISSION_OPTIONS, useWorkspace, type View } from "../../lib/workspace";
+import { useWorkspace, type View } from "../../lib/workspace";
 import { formatProjectRoot, projectFolderName } from "../../lib/paths";
 import { MenuSelect } from "../shell/MenuSelect";
 import {
@@ -157,6 +158,8 @@ export function Composer({
     setSkillId,
     skillId,
     setPermissionProfile,
+    draftApproval,
+    setDraftApproval,
     harnessStatuses,
     loadHarnessStatus,
     setHarnessOption,
@@ -482,8 +485,9 @@ export function Composer({
     setPendingSelection({ scope: JSON.stringify([projectId, session?.id, nextDraft]), position: nextDraft.length });
   }
 
-  const permission = session?.permissionProfile ?? settings?.defaultPermission ?? "default";
-  const permissionOptions = PERMISSION_OPTIONS.map((item) => ({ id: item.id, label: item.id === "strict" ? "Read-only" : item.label, detail: item.detail }));
+  const approval = approvalPreset(session ? session.permissionProfile ?? settings?.defaultPermission : draftApproval ?? settings?.defaultPermission);
+  const approvalRoute = capabilities.route === "direct" ? "direct" : capabilities.route === "openclaw" ? "gateway" : undefined;
+  const approvalOptions = approvalRoute ? approvalMenu(approvalRoute, session?.harnessId ?? capabilityHarness?.id) : [];
   const sendOnEnter = settings?.composerSendKey !== "cmd-enter";
   /* A paired browser without conversation control can read but never send. */
   const readOnlyViewer = api.isDesktop === false && api.remoteMode !== "control";
@@ -886,7 +890,7 @@ export function Composer({
             {!readOnlyViewer && !runOn.active && <TurnModeChip mode={turnMode} support={planSupport} onToggle={toggleTurnMode}
               disabledReason={busy ? "Wait for the message to send." : undefined} />}
             {!runOn.active && !harnessLive && capabilities.route === "direct" && (controls.effort || controls.permissions || modeControl) && <div className="composer-agent-controls">
-              {([ [controls.effort, "Reasoning effort"], [controls.permissions, "Permissions"], [modeControl, "Agent mode"] ] as const).map(([option, label]) => option && <MenuSelect key={option.id}
+              {([ [controls.effort, "Reasoning effort"], [controls.permissions, "Agent permissions"], [modeControl, "Agent mode"] ] as const).map(([option, label]) => option && <MenuSelect key={option.id}
                 ariaLabel={label} value={draftConfiguration.options[option.id] ?? option.currentValue ?? ""} placeholder={`${label}: agent default`}
                 options={option.choices.map((choice) => ({ id: choice.value, label: choice.name, detail: choice.description }))}
                 unavailableReason={busy || api.isDesktop !== true ? "Change settings when the desktop is ready." : undefined}
@@ -894,16 +898,16 @@ export function Composer({
             </div>}
             {session && harnessLive && capabilities.route === "direct" && (controls.effort || controls.permissions || modeControl) && <div className="composer-agent-controls">
               {controls.effort && <AgentControl key={`${session.id}:effort`} sessionId={session.id} option={controls.effort} label="Reasoning effort" disabled={busy || Boolean(activeRun)} />}
-              {controls.permissions && <AgentControl key={`${session.id}:permissions`} sessionId={session.id} option={controls.permissions} label="Permissions" disabled={busy || Boolean(activeRun)} />}
+              {controls.permissions && <AgentControl key={`${session.id}:permissions`} sessionId={session.id} option={controls.permissions} label="Agent permissions" disabled={busy || Boolean(activeRun)} />}
               {modeControl && <AgentControl key={`${session.id}:mode`} sessionId={session.id} option={modeControl} label="Agent mode" disabled={busy || Boolean(activeRun)} />}
             </div>}
-            {harnessLive && capabilities.route !== "direct" && <MenuSelect
-              ariaLabel="Permission mode"
+            {!readOnlyViewer && !runOn.active && approvalRoute && <MenuSelect
+              ariaLabel="Approvals"
               icon={<ShieldIcon size={13} />}
-              value={permission === "default" ? "approve-all" : permission}
-              options={permissionOptions.filter((option) => option.id !== "default")}
-              unavailableReason={api.isDesktop !== true ? "Change permissions on the desktop." : !harnessLive ? "Start the agent before changing permissions." : activeRun ? "Wait for this turn to finish." : undefined}
-              onChange={(id) => void setPermissionProfile(id)}
+              value={approval.id}
+              options={approvalOptions}
+              unavailableReason={api.isDesktop !== true ? "Change approvals on the desktop." : busy ? "Wait for the message to send." : approvalRoute === "gateway" && activeRun ? "Wait for this turn to finish." : undefined}
+              onChange={(id) => { if (!isApprovalPresetId(id)) return; if (session) void setPermissionProfile(id); else setDraftApproval(id); }}
             />}
           </div>
         <div className="composer-prompt-actions">
@@ -1005,4 +1009,8 @@ export function Composer({
       )}
     </div>
   );
+}
+
+function approvalMenu(route: ApprovalRoute, harnessId: string | undefined) {
+  return APPROVAL_PRESETS.map((preset) => ({ id: preset.id, label: preset.label, detail: approvalOptionDetail(preset.id, { route, harnessId }) }));
 }

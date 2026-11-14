@@ -1,3 +1,4 @@
+import { APPROVAL_PRESETS, approvalPreset, LONG_COMMAND_SECONDS } from "@capsule/shared";
 import type {
   ArchiveInactiveAfter,
   CapsuleSettings,
@@ -8,7 +9,7 @@ import type {
   SandboxMode,
   WebAccess,
 } from "@capsule/shared";
-import { PERMISSION_OPTIONS, useWorkspace } from "../../lib/workspace";
+import { useWorkspace } from "../../lib/workspace";
 import { SettingRow, Switch } from "./controls";
 import { PetControl } from "../pet/PetControl";
 
@@ -70,28 +71,29 @@ export function AgentDefaultsCard({ settings, onPatch }: SectionProps) {
     <div className="card">
       <h3>Agent defaults</h3>
       <p className="muted">
-        Local agent permissions and reasoning are configured per conversation in the composer.
+        Approvals, reasoning and agent settings can also be changed per conversation in the composer.
       </p>
-      {settings.runtimeMode === "openclaw" && <SettingRow
-        label="Gateway approval policy"
-        hint="Read-only refuses tools that need approval. Full access lets the Gateway approve them without a prompt."
+      <SettingRow
+        label="Approvals for new conversations"
+        hint={`${approvalPreset(settings.defaultPermission).summary} Change it per conversation from the composer.`}
       >
         <select
           className="field-select"
-          value={settings.defaultPermission === "default" ? "approve-all" : settings.defaultPermission}
+          aria-label="Approvals for new conversations"
+          value={approvalPreset(settings.defaultPermission).id}
           onChange={(event) =>
             onPatch({
               defaultPermission: event.target.value as CapsuleSettings["defaultPermission"],
             })
           }
         >
-          {PERMISSION_OPTIONS.filter((item) => item.id !== "default").map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.label}
+          {APPROVAL_PRESETS.map((preset) => (
+            <option key={preset.id} value={preset.id}>
+              {preset.label}
             </option>
           ))}
         </select>
-      </SettingRow>}
+      </SettingRow>
       <SettingRow
         label="Sandbox"
         hint="How much local command access Capsule grants. Strict blocks the project terminal."
@@ -178,13 +180,38 @@ export function NotificationsCard({ settings, onPatch }: SectionProps) {
       </SettingRow>
       <SettingRow
         label="Approval requests"
-        hint="Notify when an agent needs approval to run a command."
+        hint="Notify when an agent is waiting for your approval and Capsule is in the background."
       >
         <Switch
           checked={settings.notifyApprovals}
           label="Approval requests"
           onChange={(notifyApprovals) => onPatch({ notifyApprovals })}
         />
+      </SettingRow>
+      <SettingRow
+        label="Long-running commands"
+        hint="Notify when a command that ran without asking, under Auto or Full, is still going and Capsule is in the background."
+      >
+        <div className="setting-inline">
+          <select
+            className="field-select"
+            aria-label="Long-running command threshold"
+            value={settings.longCommandSeconds}
+            disabled={!settings.notifyLongCommands}
+            onChange={(event) => onPatch({ longCommandSeconds: Number(event.target.value) })}
+          >
+            {LONG_COMMAND_SECONDS.map((seconds) => (
+              <option key={seconds} value={seconds}>
+                {seconds < 60 ? `After ${seconds} seconds` : `After ${seconds / 60} minute${seconds === 60 ? "" : "s"}`}
+              </option>
+            ))}
+          </select>
+          <Switch
+            checked={settings.notifyLongCommands}
+            label="Long-running commands"
+            onChange={(notifyLongCommands) => onPatch({ notifyLongCommands })}
+          />
+        </div>
       </SettingRow>
       <SettingRow
         label="Draw attention"

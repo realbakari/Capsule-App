@@ -822,8 +822,13 @@ The composer is one box: the prompt, then a single row of the controls that
 shape a turn — model, reported effort and permissions, and the context meter. The strip
 below it is reference (folder, branch, terminal), not state. The steer field
 appears only while a turn is running, which is the only time it means
-anything. Permission choices describe their route-specific behavior: native
-Supervised can ask; Gateway Read-only declines actions requiring approval.
+anything. The shield chip is the approval preset (Ask, Auto, Full) on both
+routes, for a draft as well as a live thread. Each menu row is the preset's
+summary plus, when the route does not carry it exactly, a caveat sentence from
+`approvalOptionDetail`, and the agent mode that matches it where known. A draft
+keeps its choice in `draftApproval` and creates the thread with it. The chip is
+hidden for a read-only viewer and for an agent with no runtime route. An agent's
+own reported permission option keeps its own names under **Agent permissions**.
 Attach and send share the controls row in the expanded layout at both narrow
 and wide widths. In compact mode those actions share the prompt line; checkout
 controls remain entirely below the glass surface. Geometry is tested in the
@@ -1572,8 +1577,8 @@ deleting records; user-pasted reports and agent explanations are preserved.
 
 Permissions are Capsule-native and mapped onto Gateway acpx (see [harness.md](harness.md)):
 
-- Standard / Full access → `permissionMode=approve-all`
-- Supervised → `deny-all` (refuse; never fake a prompt)
+- Auto / Full → `permissionMode=approve-all`
+- Ask → `deny-all` (refuse; never fake a prompt)
 - Capsule Approvals only if OpenClaw forwards `session/request_permission`
 
 ---
@@ -1675,6 +1680,12 @@ loading/retry states and no stale interactive rows. The tree's retry callback is
 stable so editor keystrokes do not invalidate its memoization. Image previews
 offer a native modal with fit, 100%, bounded zoom, pointer/keyboard pan and focus
 restoration. The original source is not rewritten.
+
+Approval notifications fire only while the window is unfocused, like
+completions. **Long-running commands** (Settings → Notifications, on by default,
+10 s to 5 min, default 30 s) notifies when a command an agent ran without a
+person approving it, under Auto or Full, is still running past the threshold;
+see "Approval presets" in docs/internals/harness.md.
 
 Desktop completion notifications deduplicate terminal run IDs in a bounded
 4,096-entry set before checking focus/preferences. Later checkpoint or metadata

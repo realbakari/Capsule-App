@@ -7,7 +7,7 @@ export function RemoteSessionBanner() {
   useEffect(() => { const off = api.on("connection", () => refresh((value) => value + 1)); return () => { off(); }; }, [api]);
   if (api.isDesktop || !["read", "control", "connecting", "share"].includes(api.remoteMode)) return null;
   return <div className="remote-session-banner" role="status">
-    <span>{api.remoteError ?? (api.remoteMode === "control" ? "Connected to your Capsule host · Conversation control · New threads are Supervised"
+    <span>{api.remoteError ?? (api.remoteMode === "control" ? "Connected to your Capsule host · Conversation control · New threads use Ask"
       : api.remoteMode === "read" ? "Connected to your Capsule host · Read only"
       : api.remoteMode === "share" ? "Shared conversation · Read only"
       : "Reconnecting to your Capsule host… Your loaded conversation stays here.")}</span>

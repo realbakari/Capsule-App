@@ -119,6 +119,8 @@ export const DEFAULT_CAPSULE_SETTINGS: CapsuleSettings = {
   transcriptWidth: "standard",
   notifyRunComplete: true,
   notifyApprovals: true,
+  notifyLongCommands: true,
+  longCommandSeconds: 30,
   bounceDockOnAttention: true,
   showMenuBarExtra: true,
   keepAwakeWhileRunning: false,
@@ -169,6 +171,8 @@ export const SETTINGS_SECTION_KEYS: Record<string, ReadonlyArray<keyof CapsuleSe
     "autoDownloadUpdates",
     "notifyRunComplete",
     "notifyApprovals",
+    "notifyLongCommands",
+    "longCommandSeconds",
     "bounceDockOnAttention",
     "autoClassifySessions",
     "agentSimulatorAccess",
@@ -272,6 +276,9 @@ export interface CapsuleSettings {
   customCodeFont?: string;
   notifyRunComplete: boolean;
   notifyApprovals: boolean;
+  /** Notify when a command the agent ran without asking has been going for longCommandSeconds. */
+  notifyLongCommands: boolean;
+  longCommandSeconds: number;
   /** Direct agents may use a simulator the user attached in that thread's panel. */
   agentSimulatorAccess: boolean;
   /** When a turn stops on a usage limit that names a reset time, resume it then without asking. */
@@ -352,6 +359,9 @@ const PR_REVIEW: PrReviewDelivery[] = ["current", "new-chat"];
 function pick<T extends string>(value: string | undefined, allowed: readonly T[], fallback: T): T {
   return value && (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
 }
+
+/** The long-command alert thresholds Settings offers, in seconds. */
+export const LONG_COMMAND_SECONDS = [10, 30, 60, 120, 300] as const;
 
 function flag(value: boolean | undefined, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
@@ -512,6 +522,10 @@ export function normalizeCapsuleSettings(input: Partial<CapsuleSettings> = {}): 
     customCodeFont: sanitizeFontName(input.customCodeFont),
     notifyRunComplete: flag(input.notifyRunComplete, DEFAULT_CAPSULE_SETTINGS.notifyRunComplete),
     notifyApprovals: flag(input.notifyApprovals, DEFAULT_CAPSULE_SETTINGS.notifyApprovals),
+    notifyLongCommands: flag(input.notifyLongCommands, DEFAULT_CAPSULE_SETTINGS.notifyLongCommands),
+    longCommandSeconds: LONG_COMMAND_SECONDS.includes(input.longCommandSeconds as never)
+      ? input.longCommandSeconds!
+      : DEFAULT_CAPSULE_SETTINGS.longCommandSeconds,
     agentSimulatorAccess: flag(input.agentSimulatorAccess, DEFAULT_CAPSULE_SETTINGS.agentSimulatorAccess),
     autoResumeOnLimit: flag(input.autoResumeOnLimit, DEFAULT_CAPSULE_SETTINGS.autoResumeOnLimit),
     bounceDockOnAttention: flag(

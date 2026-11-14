@@ -224,6 +224,8 @@ import {
 } from "@capsule/terminal";
 import { verifyContract } from "@capsule/verification";
 import { commitWithSecrets, type SecretChange } from "./settings-secrets.js";
+import { LongCommandWatch } from "./long-commands.js";
+import { approvalPreset, directApprovalDecision } from "@capsule/shared";
 import { createRelayCredentialStore } from "./relay-credentials.js";
 import {
   CAPSULE_KEYCHAIN_SERVICE,
@@ -309,6 +311,9 @@ export class CapsuleEngine {
   }
 
   private directUnsub?: () => void;
+  /** Commands an agent ran without a person approving them, for the long-command alert. */
+  private longCommands = new LongCommandWatch();
+  private userApprovedTools = new Set<string>();
   private directApprovals = new Map<string, { runId: string; canApproveOnce?: boolean; allow: () => void; deny: () => void; cancel: () => void }>();
   private admittingSessions = new Set<string>();
   /** Gateway sessions Capsule put in the agent's plan mode; an Act turn switches them back. */
@@ -2000,10 +2005,9 @@ export class CapsuleEngine {
 
   async setPermissionProfile(sessionId: string, profile: HarnessPermissionProfile): Promise<Session> {
     const session = this.requireSession(sessionId);
-    if (!this.usingMock && session.openclawSessionKey && isLiveHarnessState(session.harnessState)) {
-      if (!isDirectSessionKey(session.openclawSessionKey)) {
-        await this.openclaw.ensureAcpxPermissionMode(acpxPermissionMode(profile)).catch(() => undefined);
-      }
+    // Direct mode carries the preset in Capsule: each permission request is answered from it, so nothing is sent.
+    if (!this.usingMock && session.openclawSessionKey && isLiveHarnessState(session.harnessState) && !isDirectSessionKey(session.openclawSessionKey)) {
+      await this.openclaw.ensureAcpxPermissionMode(acpxPermissionMode(profile)).catch(() => undefined);
       await this.acpHost(session.openclawSessionKey).setAcpOption(
         session.openclawSessionKey,
         "permissions",
@@ -2600,6 +2604,8 @@ export class CapsuleEngine {
     this.repos.updateApproval(approval);
     if (direct) {
       this.directApprovals.delete(approvalId);
+      const toolCallId = approval.details?.toolCallId;
+      if (toolCallId && decision !== "denied") this.rememberUserApproval(toolCallId);
       if (decision === "denied") direct.deny(); else direct.allow();
       const run = this.requireRun(direct.runId);
       if (!run.completedAt && !this.repos.listApprovals("pending").some((item) => item.runId === run.id)) {
@@ -2968,6 +2974,7 @@ export class CapsuleEngine {
       }
       if (payload.type === "tool") {
         this.appendEvent(run.id, "tool", payload.tool.title, { ...payload.tool });
+        this.watchCommand(run.id, session!, payload.tool);
         return;
       }
       if (payload.type === "plan") {
@@ -2975,6 +2982,17 @@ export class CapsuleEngine {
           streamKind: "plan",
           entries: payload.plan.entries,
         });
+        return;
+      }
+      const profile = session?.permissionProfile ?? this.settings.defaultPermission;
+      const project = session && this.repos.getProject(session.projectId);
+      const workspace = project ? this.workingDirectoryFor(project, session.id) : undefined;
+      const ask = { kind: payload.request.details?.kind, locations: payload.request.details?.locations ?? [] };
+      if (payload.request.canApproveOnce !== false && directApprovalDecision(profile, ask, workspace) === "allow") {
+        this.appendEvent(run.id, "approval.auto", `Allowed under ${approvalPreset(profile).label}: ${payload.request.title}`, {
+          preset: approvalPreset(profile).id, kind: ask.kind, locations: ask.locations,
+        });
+        payload.request.allow();
         return;
       }
       const approval: ApprovalRequest = {
@@ -3012,7 +3030,42 @@ export class CapsuleEngine {
     this.directUnsub = () => { replies(); activity(); };
   }
 
+  private rememberUserApproval(toolCallId: string): void {
+    this.userApprovedTools.add(toolCallId);
+    if (this.userApprovedTools.size > 1024) this.userApprovedTools.delete(this.userApprovedTools.values().next().value!);
+  }
+
+  /**
+   * Time a command the agent runs without a person approving it. Under Ask
+   * every command waits for a person, so only Auto and Full are watched.
+   */
+  private watchCommand(runId: string, session: Session, tool: { kind?: string; status?: string; toolCallId?: string; title?: string }): void {
+    if (!tool.toolCallId) return;
+    const id = `${runId}:${tool.toolCallId}`;
+    if (tool.status === "completed" || tool.status === "failed") {
+      this.longCommands.finish(id);
+      return;
+    }
+    if (tool.kind !== "execute" || this.userApprovedTools.has(tool.toolCallId)) return;
+    if (approvalPreset(session.permissionProfile ?? this.settings.defaultPermission).id === "strict") return;
+    this.longCommands.start(id, Date.now(), { runId, sessionId: session.id, title: tool.title || "A command" });
+    const thresholdMs = this.settings.longCommandSeconds * 1000;
+    const timer = setTimeout(() => {
+      if (this.stopped) return;
+      for (const command of this.longCommands.overdue(Date.now(), thresholdMs)) {
+        const current = this.repos.getRun(command.runId);
+        if (!current || current.completedAt) {
+          this.longCommands.finishRun(command.runId);
+          continue;
+        }
+        this.events.emit("long-command", command);
+      }
+    }, thresholdMs + 50);
+    timer.unref?.();
+  }
+
   private settleDirectApprovals(runId: string): void {
+    this.longCommands.finishRun(runId);
     for (const [id, pending] of this.directApprovals) {
       if (pending.runId !== runId) continue;
       pending.cancel();

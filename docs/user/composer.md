@@ -141,16 +141,40 @@ Model changes reset draft settings to the new model's defaults and can change th
 levels. Controls are unavailable during a turn and in a paired browser viewer.
 Rejected settings show an error rather than claiming success.
 
-Native Codex starts **Supervised**, with a read-only sandbox and approval
-requests for actions that need them. **Full access** allows commands, network
-access, and file changes without prompts; choose **Supervised** to switch back
-before the next turn. Other agents expose their own reported permission or mode
-choices. Capsule does not translate them into invented policies.
+### Approvals: Ask, Auto and Full
 
-The Gateway route has separate **Read-only** and **Full access** choices.
-Read-only declines actions requiring approval; it cannot display an approval
-prompt. Full access approves tools automatically. Old Standard settings have
-the same Gateway behavior as Full access and display that name.
+The shield chip in the composer sets how much the agent may do before you say
+yes. It applies to the conversation; **Settings → Agent defaults → Approvals for
+new conversations** sets the starting choice. The command palette offers
+**Approvals: Ask**, **Auto** and **Full** too.
+
+- **Ask**: every edit and command asks first.
+- **Auto**: reads and edits inside the conversation's folder go ahead.
+  Commands, web requests and anything outside the folder ask.
+- **Full**: nothing asks.
+
+Each choice in the menu says how this agent and route carry it, because they
+differ:
+
+- **On this computer**, Capsule answers the agent's own permission requests from
+  your choice and shows you the rest. A change applies to the next request, even
+  mid-turn. The agent's own mode still decides what it asks about: Claude Code's
+  default mode asks for edits and commands, so all three choices hold. Codex in
+  its own auto mode edits workspace files and runs sandboxed commands without
+  asking, so under Ask and Auto those never reach you; set its agent mode to
+  read-only for every edit to ask. The menu names the agent mode that matches
+  each choice where Capsule knows it.
+- **Through the Gateway**, the agent cannot show a prompt. Ask refuses tools that
+  need approval instead of asking, and Auto lets commands run as well as edits.
+  Full approves everything.
+
+Auto-approved work is recorded in the turn's activity as "Allowed under Auto"
+or "Allowed under Full". A paired read-only viewer sees the choice but cannot
+change it.
+
+Some agents also report their own permission or mode setting, such as Codex's
+sandbox. Those appear beside the chip as **Agent permissions** and **Agent
+mode**, with the agent's own names. Capsule does not translate them.
 To inspect the session's raw status, open **Agents**, select the
 session with **Refresh**, and expand **Session diagnostics**. Diagnostics stay
 with that session and are collapsed by default.

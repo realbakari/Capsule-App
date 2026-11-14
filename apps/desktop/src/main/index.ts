@@ -904,12 +904,19 @@ function notifyDesktop(title: string, body: string): void {
 
 function notifyApproval(approval: ApprovalRequest): void {
   const settings = engine?.getSettings();
-  if (settings && !settings.notifyApprovals) return;
+  if ((settings && !settings.notifyApprovals) || windowFocused()) return;
   notifyDesktop(
     "Approval required",
     `${approval.agentName} wants to ${approval.action} ${approval.target}`,
   );
   if (settings?.bounceDockOnAttention) bounceDock();
+}
+
+function notifyLongCommand(command: { title: string; seconds: number }): void {
+  const settings = engine?.getSettings();
+  if (!settings?.notifyLongCommands || windowFocused()) return;
+  notifyDesktop("Command still running", `${command.title.slice(0, 120)} has run for ${command.seconds} seconds.`);
+  if (settings.bounceDockOnAttention) bounceDock();
 }
 
 const runNotifications = new RunNotifications();
@@ -2044,6 +2051,7 @@ function bindEngineEvents(): void {
     refreshTrayAttention();
   });
   engine.events.on("run-event", (event) => send(IPC_EVENTS.run, event));
+  engine.events.on("long-command", notifyLongCommand);
   engine.events.on("message", (message) => send(IPC_EVENTS.message, message));
   engine.events.on("state", (payload) => send(IPC_EVENTS.state, payload));
   engine.events.on("approval", (approval: ApprovalRequest) => {

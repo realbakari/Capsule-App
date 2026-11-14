@@ -2050,6 +2050,11 @@ textarea.composer-field--resting {
   color: var(--yellow);
   font-weight: 600;
 }
+/* On a narrow composer the approvals chip keeps its shield; the preset name moves to its tooltip. */
+@container composer (max-width: 28rem) {
+  .composer-controls .menu-select-trigger[aria-label="Approvals"] > span,
+  .composer-controls .menu-select-trigger[aria-label="Approvals"] > svg:last-child { display: none; }
+}
 @container composer (max-width: 28rem) {
   .composer-context .menu-select-trigger > span { display: none; }
   .composer-context .menu-select-trigger { min-height: 1.5rem; }

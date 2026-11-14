@@ -60,14 +60,14 @@ async function fixture() {
     protocol.handle({ jsonrpc: "2.0", method: "session/update", params: { sessionId, update: { sessionUpdate, ...fields } } });
   };
   const text = (value: string) => update("agent_message_chunk", { content: { type: "text", text: value } });
-  const permission = (sessionId = "fixture") => protocol.handle({
+  const permission = (sessionId = "fixture", toolCall: Record<string, unknown> = { title: "Write file" }) => protocol.handle({
     jsonrpc: "2.0", id: 99, method: "session/request_permission", params: {
-      sessionId, toolCall: { title: "Write file" },
+      sessionId, toolCall,
       options: [{ kind: "allow_once", optionId: "once" }, { kind: "reject_once", optionId: "deny" }],
     },
   });
   const messages = () => engine.listMessages(thread.id).map((message) => message.content);
-  return { engine, internal, thread, run, update, text, permission, permissionResponses, messages, sending, resolve, reject };
+  return { engine, internal, thread, run, update, text, permission, permissionResponses, messages, sending, resolve, reject, directory };
 }
 
 it("keeps progress separate from the final reply while preserving token and code chunks", async () => {
@@ -184,6 +184,28 @@ it("ends the progress message before an approval without completing the turn", a
   f.resolve({ stopReason: "end_turn" });
   await f.sending;
   expect(f.messages()).toEqual(["The file needs permission.", "The file is updated."]);
+});
+
+it("answers a request the approval preset covers without asking, and asks for the rest", async () => {
+  const f = await fixture();
+  f.permission("fixture", { title: "Edit notes", kind: "edit", locations: [{ path: path.join(f.directory, "notes.md") }] });
+  expect(f.permissionResponses.mock.calls).toEqual([[99, { outcome: { outcome: "selected", optionId: "once" } }]]);
+  expect(f.engine.listApprovals("pending")).toEqual([]);
+  expect(f.engine.listRunEvents(f.run.id).some((event) => event.type === "approval.auto" && event.message === "Allowed under Auto: Edit notes")).toBe(true);
+  f.permission("fixture", { title: "Run tests", kind: "execute" });
+  expect(f.engine.listApprovals("pending")).toHaveLength(1);
+});
+
+it("asks for every request under Ask and none under Full", async () => {
+  const f = await fixture();
+  await f.engine.setPermissionProfile(f.thread.id, "strict");
+  f.permission("fixture", { title: "Edit notes", kind: "edit", locations: [{ path: path.join(f.directory, "notes.md") }] });
+  expect(f.engine.listApprovals("pending")).toHaveLength(1);
+  await f.engine.resolveApproval(f.engine.listApprovals("pending")[0]!.id, "denied");
+  await f.engine.setPermissionProfile(f.thread.id, "approve-all");
+  f.permission("fixture", { title: "Run tests", kind: "execute" });
+  expect(f.engine.listApprovals("pending")).toEqual([]);
+  expect(f.permissionResponses.mock.calls.at(-1)).toEqual([99, { outcome: { outcome: "selected", optionId: "once" } }]);
 });
 
 it.each(["stop", "output-limit", "completion"])("cancels pending permission outcomes on %s, without selecting denial", async (ending) => {

@@ -562,15 +562,51 @@ contains no output. No session loop or transport is replaced by this handling.
 - Folder as the coding cwd, git branch/dirty status, file mention (`@path`)
 - Optional per-conversation Git worktree isolation; ACP always receives the resolved thread cwd
 - Slash commands (`/`), skills (`$`), plan vs code modes
-- Per-thread permission mode (supervised / standard / full access)
+- Per-thread approval preset (Ask / Auto / Full; see "Approval presets" below)
 - Approvals, run timeline, artifacts
 - ACP harnesses through OpenClaw acpx
 
 Gateway ACP sessions run on the Gateway host. OpenClaw sandbox policy does not wrap them. The Gateway's non-interactive policy is:
 
-- **Standard / Full access** → `plugins.entries.acpx.config.permissionMode=approve-all` (and `/acp permissions approve-all` on the session). Coding harnesses cannot write or fetch without this.
-- **Supervised** → `deny-all`. Tools that would need a prompt are refused.
+- **Auto / Full** → `plugins.entries.acpx.config.permissionMode=approve-all` (and `/acp permissions approve-all` on the session). Coding harnesses cannot write or fetch without this.
+- **Ask** → `deny-all`. Tools that would need a prompt are refused.
 - If OpenClaw later forwards `session/request_permission` on the operator socket, Capsule maps it to Approvals. Until that exists, plugin config is the real switch. Old ACP workers keep the flags they started with — restart the Gateway after changing them.
+
+### Approval presets
+
+`APPROVAL_PRESETS` in `@capsule/shared` (`approval-presets.ts`) is the one
+registry. The stored ids are the old permission profiles, so saved threads keep
+their meaning: `strict` is **Ask**, `default` is **Auto**, `approve-all` is
+**Full**. `approvalCarrier(profile, { route, harnessId })` says how a route
+carries a preset (`enforced`, `approximated` or `not-carried`) with a sentence
+the composer menu shows; `directApprovalDecision` is the direct route's answer
+to one permission request.
+
+| Route / harness | Ask | Auto | Full |
+| --- | --- | --- | --- |
+| Direct, Claude Code | Enforced: every request the agent makes is shown. Matching agent mode `default`. | Enforced: `read`/`search`/`think` and `edit`/`delete`/`move` requests whose locations are all inside the thread's folder are allowed; the rest are shown. Matching mode `acceptEdits`. | Enforced: every request is allowed. Matching mode `bypassPermissions`. |
+| Direct, Codex | Approximated: Codex's own `auto` mode edits workspace files without asking, so those never reach Capsule. Matching mode `read-only`. | Approximated: as Auto above, but Codex's `auto` mode also runs sandboxed commands without asking. Matching mode `auto`. | Enforced. Matching mode `full-access`. |
+| Direct, other ACP agents | Approximated: Capsule answers only what the agent asks; its own mode decides that. | Approximated, same reason. | Enforced. |
+| Gateway, every harness | Approximated: acpx `deny-all`; a tool needing approval is refused, not asked. | Approximated: acpx `approve-all`; acpx has no middle mode that keeps a turn alive (`approve-reads` throws on the first write), so commands run too. | Enforced: acpx `approve-all`. |
+| Mock runtime | Not carried: the demo asks only for `[approval]` prompts. | Not carried. | Not carried. |
+
+Direct mode never switches the agent's own mode to match a preset. Plan mode
+owns that option and restores the user's Act value; a second writer would fight
+it. The matching mode is named in the menu so a person can line the two up in
+Agent settings. A request is auto-allowed only when the agent offers an
+allow-once option, and the run log records it as `approval.auto` ("Allowed under
+Auto: …"). Changing the preset on a live direct thread sends nothing: the next
+request is answered from the stored profile. On the Gateway a change sends
+`/acp permissions <mode> <target>` as before. No new global acpx config write
+was added for presets; the existing per-change `ensureAcpxPermissionMode` write
+predates this and is unchanged.
+
+Under Auto and Full, a direct `execute` tool call that a person did not approve
+is timed (`LongCommandWatch`, `packages/core/src/long-commands.ts`). When it is
+still running after `longCommandSeconds` (default 30) the engine emits
+`long-command` once, and the desktop notifies if the window is unfocused and
+**Long-running commands** is on. The Gateway route does not report tool calls to
+Capsule, so it has no long-command alert.
 
 ### Apply to local
 
