@@ -84,6 +84,8 @@ if (!isDesktop && !remoteToken && !isShowcase && !pairingError) applyStoredTheme
 if (!isDesktop) {
   window.capsule = remoteToken ? createRemoteBridge(remoteToken) : createDemoBridge();
 }
+// A paired browser is the app, so it takes the host's theme and backdrop rather than the website's locked dark.
+if (remoteToken) applyStoredTheme();
 
 /*
  * The public pages are reachable by their own URL — /privacy, /security,
