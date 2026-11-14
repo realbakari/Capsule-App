@@ -140,6 +140,8 @@ it("decides a direct agent's request by rule, and by a hook when no rule matches
   };
   const key = "direct:acp:grok:policy";
   thread.openclawSessionKey = key;
+  // Ask: the approval preset then leaves a request no rule or hook decided to the person.
+  thread.permissionProfile = "strict";
   internal.repos.updateSession(thread);
   const createdAt = new Date().toISOString();
   const run: Run = { id: "policy-run", projectId: f.project.id, sessionId: thread.id, agentId: "grok", prompt: "Work", status: "running", createdAt, updatedAt: createdAt };
