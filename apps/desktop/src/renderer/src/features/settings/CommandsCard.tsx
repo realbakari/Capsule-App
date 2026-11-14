@@ -21,6 +21,9 @@ export function CommandsCard() {
   const [failure, setFailure] = useState<string>();
   const desktop = api.isDesktop === true;
   const home = api.homeDir || undefined;
+  const root = project?.workingDirectory?.replace(/\/$/, "");
+  /* A project's file reads from the project, anything else from home; the file name stays visible either way. */
+  const shown = (file: string) => <bdi>{root && file.startsWith(`${root}/`) ? file.slice(root.length + 1) : formatProjectRoot(file, { home })}</bdi>;
   const run = (work: () => Promise<unknown>) => {
     setFailure(undefined);
     void work().catch((caught: unknown) => setFailure(formatUserError(caught)));
@@ -71,7 +74,7 @@ export function CommandsCard() {
                 </span>
               </div>
               {command.description && <p className="commands-card-description">{command.description}</p>}
-              <p className="commands-card-path" title={command.path}>{formatProjectRoot(command.path, { home })}</p>
+              <p className="commands-card-path" title={command.path}>{shown(command.path)}</p>
             </li>
           ))}
         </ul>
@@ -82,7 +85,7 @@ export function CommandsCard() {
           <ul>
             {list.problems.map((problem, index) => (
               <li key={`${problem.path}-${index}`}>
-                <span className="commands-card-path" title={problem.path}>{formatProjectRoot(problem.path, { home })}</span>
+                <span className="commands-card-path" title={problem.path}>{shown(problem.path)}</span>
                 <span>{problem.message}</span>
               </li>
             ))}

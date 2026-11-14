@@ -87,6 +87,9 @@
 }
 .commands-card-path {
   margin: 0.15rem 0 0;
+  /* Cut a long path at its start, so the file name is what stays. */
+  direction: rtl;
+  text-align: left;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -98,8 +101,8 @@
   margin-top: 0.5rem;
 }
 .commands-card-problems ul {
-  margin: 0.4rem 0 0;
-  padding: 0;
+  margin: 0;
+  padding: 0 0.75rem 0.4rem;
   list-style: none;
 }
 .commands-card-problems li {
