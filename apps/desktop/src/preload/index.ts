@@ -254,6 +254,10 @@ const api = {
     ipcRenderer.invoke(IPC_CHANNELS.setBrowserControl, threadId, allowed),
   clearBrowserData: (webContentsId: number, kind: "cache" | "storage") =>
     ipcRenderer.invoke(IPC_CHANNELS.clearBrowserData, webContentsId, kind),
+  captureBrowserElement: (webContentsId: number, rect: { x: number; y: number; width: number; height: number }): Promise<string | undefined> =>
+    ipcRenderer.invoke(IPC_CHANNELS.captureBrowserElement, webContentsId, rect),
+  emulateBrowserDevice: (webContentsId: number, device: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.emulateBrowserDevice, webContentsId, device),
   copyBrowserScreenshot: (webContentsId: number) =>
     ipcRenderer.invoke(IPC_CHANNELS.copyBrowserScreenshot, webContentsId),
   togglePet: (visible?: boolean) => ipcRenderer.invoke(IPC_CHANNELS.togglePet, visible),

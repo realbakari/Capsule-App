@@ -1,12 +1,15 @@
 import type { WebviewTag } from "electron";
 import { useWorkspace } from "../../lib/workspace";
-import { useCallback, useContext, useEffect, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { InspectorHeadSlot } from "./inspector-slot";
 import type { LocalServer } from "@capsule/shared";
-import { harnessCapabilities } from "@capsule/shared";
+import { BROWSER_DEVICES, browserDevice, browserDeviceLabel, elementToMarkdown, harnessCapabilities, resolvedContext, type BrowserDeviceId } from "@capsule/shared";
+import { CANCEL_PICKER_SCRIPT, elementPickerScript, readInspectedElement } from "./browser-inspect";
+import { BROWSER_COMMAND_EVENT, takeBrowserCommand } from "../../lib/browser-commands";
 import { BackgroundBrowser } from "./BackgroundBrowser";
 import { BrowserControls } from "./BrowserControls";
+import "./browser-inspect.css";
 import { showNativeContextMenu } from "../../lib/bridge";
 import { NO_SELECTION, registerSelectionReader, selectionContext, touchSelectionSurface } from "../../lib/selection-share";
 // Electron's custom element reads a string attribute. React drops boolean
@@ -24,6 +27,7 @@ import {
   PlusIcon,
   XIcon,
   RefreshIcon,
+  SmartphoneIcon,
   TerminalIcon,
 } from "./icons";
 
@@ -35,124 +39,6 @@ export interface BrowserRecent {
 
 const BROWSER_RECENTS_KEY = "capsule.browser.recents";
 const MAX_RECENTS = 6;
-
-const ELEMENT_PICKER_SCRIPT = String.raw`
-(() => {
-  if (window.__capsulePickerActive) {
-    if (window.__capsulePickerCleanup) window.__capsulePickerCleanup();
-    return Promise.resolve(null);
-  }
-  window.__capsulePickerActive = true;
-
-  return new Promise((resolve) => {
-    const overlay = document.createElement('div');
-    overlay.id = '__capsule_picker_overlay';
-    overlay.style.position = 'fixed';
-    overlay.style.pointerEvents = 'none';
-    overlay.style.zIndex = '2147483647';
-    overlay.style.border = '2px solid #3b82f6';
-    overlay.style.background = 'rgba(59, 130, 246, 0.18)';
-    overlay.style.borderRadius = '3px';
-    overlay.style.transition = 'all 40ms ease';
-    overlay.style.display = 'none';
-
-    const badge = document.createElement('div');
-    badge.style.position = 'absolute';
-    badge.style.bottom = '100%';
-    badge.style.left = '0';
-    badge.style.marginBottom = '4px';
-    badge.style.padding = '2px 6px';
-    badge.style.background = '#18181b';
-    badge.style.border = '1px solid rgba(255,255,255,0.15)';
-    badge.style.color = '#f4f4f5';
-    badge.style.fontFamily = 'monospace';
-    badge.style.fontSize = '11px';
-    badge.style.fontWeight = '500';
-    badge.style.borderRadius = '4px';
-    badge.style.whiteSpace = 'nowrap';
-    badge.style.pointerEvents = 'none';
-    badge.style.boxShadow = '0 4px 12px rgba(0,0,0,0.5)';
-    overlay.appendChild(badge);
-    document.documentElement.appendChild(overlay);
-
-    let currentTarget = null;
-
-    function onMouseMove(e) {
-      const target = document.elementFromPoint(e.clientX, e.clientY);
-      if (!target || target === overlay || overlay.contains(target)) return;
-      currentTarget = target;
-      const rect = target.getBoundingClientRect();
-      overlay.style.display = 'block';
-      overlay.style.top = rect.top + 'px';
-      overlay.style.left = rect.left + 'px';
-      overlay.style.width = rect.width + 'px';
-      overlay.style.height = rect.height + 'px';
-
-      let label = target.tagName.toLowerCase();
-      if (target.id) label += '#' + target.id;
-      else if (target.className && typeof target.className === 'string') {
-        const cls = target.className.trim().split(/\s+/).filter(Boolean).slice(0, 2).join('.');
-        if (cls) label += '.' + cls;
-      }
-      badge.textContent = label + ' (' + Math.round(rect.width) + ' × ' + Math.round(rect.height) + ')';
-    }
-
-    function onClick(e) {
-      e.preventDefault();
-      e.stopPropagation();
-      if (currentTarget) {
-        let tag = currentTarget.tagName.toLowerCase();
-        let id = currentTarget.id ? '#' + CSS.escape(currentTarget.id) : '';
-        let cls = currentTarget.className && typeof currentTarget.className === 'string'
-          ? '.' + currentTarget.className.trim().split(/\s+/).filter(Boolean).slice(0, 3).map(value => CSS.escape(value)).join('.')
-          : '';
-        let selector = tag + id + cls;
-        if (document.querySelectorAll(selector).length !== 1) {
-          const parts = [];
-          let element = currentTarget;
-          while (element && parts.length < 12) {
-            const tagName = element.tagName.toLowerCase();
-            const siblings = [...(element.parentElement?.children || [])].filter(item => item.tagName === element.tagName);
-            parts.unshift(tagName + ':nth-of-type(' + (siblings.indexOf(element) + 1) + ')');
-            element = element.parentElement;
-          }
-          selector = parts.join(' > ');
-        }
-        cleanup();
-        resolve({ selector, tag });
-        return;
-      }
-      cleanup();
-      resolve(null);
-    }
-
-    function onKeyDown(e) {
-      if (e.key === 'Escape') {
-        cleanup();
-        resolve(null);
-      }
-    }
-
-    function cleanup() {
-      window.__capsulePickerActive = false;
-      document.removeEventListener('mousemove', onMouseMove, true);
-      document.removeEventListener('click', onClick, true);
-      document.removeEventListener('keydown', onKeyDown, true);
-      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
-      delete window.__capsulePickerCleanup;
-    }
-
-    window.__capsulePickerCleanup = () => {
-      cleanup();
-      resolve(null);
-    };
-
-    document.addEventListener('mousemove', onMouseMove, true);
-    document.addEventListener('click', onClick, true);
-    document.addEventListener('keydown', onKeyDown, true);
-  });
-})()
-`;
 
 export function parseBrowserRecents(raw: string | null): BrowserRecent[] {
   if (!raw) return [];
@@ -223,8 +109,10 @@ export function EmbeddedBrowser({
   onRetryServers?: () => void;
   onOpenExternal: (url: string) => void;
 }) {
-  const { api, session, agentId, harnesses, harnessStatuses, view: workspaceView, inspectorOpen, setConfirm, attachContext } = useWorkspace();
+  const { api, session, agentId, harnesses, harnessStatuses, view: workspaceView, inspectorOpen, setConfirm, attachContext, attachFiles } = useWorkspace();
   const desktopBrowser = navigator.userAgent.includes("Electron/");
+  /* Inspect and device sizes change the page or the draft: the desktop only, never a paired viewer. */
+  const canInspect = api.isDesktop === true && desktopBrowser;
   const browserCapability = harnessCapabilities({ harness: harnesses?.find((item) => item.id === agentId), session, status: session ? harnessStatuses?.[session.id] : undefined }).browser;
   const initialUrl = normalizedBrowserUrl(address);
   const [agentControl, setAgentControl] = useState(false);
@@ -239,7 +127,11 @@ export function EmbeddedBrowser({
   const [tabs, setTabs] = useState<BrowserTab[]>(() => [{ id: newTabId(), url: initialUrl ?? "", title: "" }]);
   const [activeTab, setActiveTab] = useState(() => tabs[0]!.id);
   const headSlot = useContext(InspectorHeadSlot);
-  const [viewport, setViewport] = useState("fill");
+  const [deviceId, setDeviceId] = useState<BrowserDeviceId>("responsive");
+  const [deviceMenuOpen, setDeviceMenuOpen] = useState(false);
+  const [frameSize, setFrameSize] = useState<{ width: number; height: number }>();
+  const frameObserver = useRef<ResizeObserver | undefined>(undefined);
+  const deviceMenuRef = useRef<HTMLDivElement>(null);
   const controlEpoch = useRef(0);
   const [currentUrl, setCurrentUrl] = useState(initialUrl);
   // Keep the guest's initial src stable across committed navigations.
@@ -518,33 +410,87 @@ export function EmbeddedBrowser({
     else { setGuestUrl(next); setCurrentUrl(next); }
   };
 
+  const cancelPick = useCallback(() => {
+    setPickActive(false);
+    void webviewRef.current?.executeJavaScript(CANCEL_PICKER_SCRIPT).catch(() => undefined);
+  }, []);
+
   const handlePickElement = async () => {
     const view = webviewRef.current;
-    if (!view || !currentUrl) return;
-
+    if (!view || !currentUrl || !canInspect) return;
     if (pickActive) {
-      setPickActive(false);
-      try {
-        await view.executeJavaScript("if (window.__capsulePickerCleanup) window.__capsulePickerCleanup();");
-      } catch {
-        // ignore
-      }
+      cancelPick();
       return;
     }
-
     setPickActive(true);
     try {
-      const result = (await view.executeJavaScript(ELEMENT_PICKER_SCRIPT)) as { selector?: string; tag?: string } | null;
+      const element = readInspectedElement(await view.executeJavaScript(elementPickerScript()));
       setPickActive(false);
-      if (result?.selector) {
-        await navigator.clipboard.writeText(result.selector);
-        showToast(`Copied selector: ${result.selector}`);
-      }
+      if (!element) return;
+      const label = element.selector.length > 60 ? `${element.selector.slice(0, 59)}…` : element.selector;
+      const attached = await attachContext(resolvedContext("element", label, elementToMarkdown(element), element.url));
+      if (!attached) return;
+      const image = await api.captureBrowserElement(view.getWebContentsId(), element.rect).catch(() => undefined);
+      if (image) await attachFiles([image]);
+      showToast(image ? "Element and screenshot attached to the conversation" : "Element attached. It was off screen, so there is no screenshot.");
     } catch (error) {
       setPickActive(false);
-      showToast(`Element inspection failed: ${String(error)}`);
+      showToast(`Element inspection failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
+  const pickRef = useRef(handlePickElement);
+  pickRef.current = handlePickElement;
+
+  /* Esc leaves inspect mode wherever focus is; the page handles it itself when it has focus. */
+  useEffect(() => {
+    if (!pickActive) return;
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); cancelPick(); } };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [pickActive, cancelPick]);
+
+  const device = browserDevice(deviceId) ?? BROWSER_DEVICES[0]!;
+  const chooseDevice = useCallback((next: BrowserDeviceId) => {
+    setDeviceMenuOpen(false);
+    setDeviceId(next);
+  }, []);
+  /* Emulation lives on the guest, so it is reapplied whenever the guest is replaced. */
+  useEffect(() => {
+    if (!mountedView || !ready || !canInspect) return;
+    void api.emulateBrowserDevice(mountedView.getWebContentsId(), deviceId).catch((error: unknown) =>
+      showToast(`Could not change the device size: ${error instanceof Error ? error.message : String(error)}`));
+  }, [api, mountedView, ready, deviceId, canInspect]);
+  const observeFrame = useCallback((frame: HTMLDivElement | null) => {
+    frameObserver.current?.disconnect();
+    if (!frame) return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) setFrameSize({ width: entry.contentRect.width, height: entry.contentRect.height });
+    });
+    observer.observe(frame);
+    frameObserver.current = observer;
+  }, []);
+  useEffect(() => {
+    if (!deviceMenuOpen) return;
+    const close = (event: PointerEvent) => { if (!deviceMenuRef.current?.contains(event.target as Node)) setDeviceMenuOpen(false); };
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setDeviceMenuOpen(false); };
+    window.addEventListener("pointerdown", close);
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("pointerdown", close); window.removeEventListener("keydown", onKey); };
+  }, [deviceMenuOpen]);
+
+  /* Palette requests: taken on mount too, since opening the panel is what mounts this page. */
+  useEffect(() => {
+    const run = () => {
+      const command = takeBrowserCommand();
+      if (!command) return;
+      if (command.type === "device") chooseDevice(command.device);
+      else if (ready) void pickRef.current();
+      else showToast("Open a page in the browser first, then inspect it.");
+    };
+    run();
+    window.addEventListener(BROWSER_COMMAND_EVENT, run);
+    return () => window.removeEventListener(BROWSER_COMMAND_EVENT, run);
+  }, [chooseDevice, ready]);
 
   const handleCaptureScreenshot = async () => {
     const view = webviewRef.current;
@@ -638,16 +584,42 @@ export function EmbeddedBrowser({
           active={inspectorOpen !== false && (workspaceView === undefined || workspaceView === "chat")}
           backgroundAvailable={browserCapability.state !== "unavailable" && Boolean(session?.harnessId && session.openclawSessionKey?.startsWith("direct:"))}
           onToggle={() => void toggleAgentControl()} onBackgroundControl={() => setAgentControl(false)} />
-        <button
+        {canInspect && <button
           className={`preview-chrome-btn ${pickActive ? "active" : ""}`}
           type="button"
           aria-label="Inspect element"
-          title={pickActive ? "Cancel inspection (Esc)" : "Inspect element"}
+          aria-pressed={pickActive}
+          title={pickActive ? "Stop inspecting (Esc)" : "Inspect an element and attach it to the conversation"}
           disabled={!ready}
-          onClick={handlePickElement}
+          onClick={() => void handlePickElement()}
         >
           <MousePointerClickIcon size={14} />
-        </button>
+        </button>}
+        {canInspect && <div className="preview-menu-anchor" ref={deviceMenuRef}>
+          <button
+            className={`preview-chrome-btn browser-device-btn ${deviceMenuOpen ? "active" : ""}`}
+            type="button"
+            aria-label={`Device size: ${browserDeviceLabel(device, frameSize)}`}
+            aria-haspopup="menu"
+            aria-expanded={deviceMenuOpen}
+            title={browserDeviceLabel(device, frameSize)}
+            onClick={() => setDeviceMenuOpen((open) => !open)}
+          >
+            <SmartphoneIcon size={14} />
+            <span className="browser-device-size">{device.width ? `${device.width}×${device.height}` : frameSize ? `${Math.round(frameSize.width)}×${Math.round(frameSize.height)}` : device.label}</span>
+          </button>
+          {deviceMenuOpen && (
+            <div className="preview-more-menu browser-device-menu" role="menu" aria-label="Device size">
+              {BROWSER_DEVICES.map((item) => (
+                <button key={item.id} type="button" role="menuitemradio" aria-checked={item.id === deviceId}
+                  className="preview-menu-item browser-device-item" onClick={() => chooseDevice(item.id)}>
+                  <span>{item.label}</span>
+                  <small>{item.width ? `${item.width} × ${item.height} @${item.scale}x` : "Fills the panel"}</small>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>}
 
         <button
           className="preview-chrome-btn"
@@ -674,14 +646,6 @@ export function EmbeddedBrowser({
 
           {moreMenuOpen && (
             <div className="preview-more-menu" role="menu">
-              {/* The page's width lives here with zoom, so the header keeps its room for tabs. */}
-              <label className="preview-menu-item-row preview-viewport-row">
-                <span>Page width</span>
-                <select className="preview-viewport" aria-label="Preview viewport" value={viewport} onChange={(event) => setViewport(event.target.value)}>
-                  <option value="fill">Fit panel</option><option value="phone">Phone · 390px</option><option value="tablet">Tablet · 768px</option>
-                </select>
-              </label>
-              <div className="preview-menu-divider" />
               <button
                 type="button"
                 className="preview-menu-item"
@@ -896,7 +860,8 @@ export function EmbeddedBrowser({
       )}
 
       {currentUrl ? (
-        <div className="embedded-browser-frame" data-viewport={viewport}>
+        <div className="embedded-browser-frame" ref={observeFrame} data-device={device.id} data-inspecting={pickActive || undefined}
+          style={device.width ? { "--device-width": `${device.width}px`, "--device-height": `${device.height}px` } as CSSProperties : undefined}>
           <webview
             ref={attachView}
             className="embedded-browser-webview"

@@ -10,7 +10,7 @@ import { clipText } from "./text-budget.js";
  * so the composer, the palette and the context menus read one table instead
  * of each keeping its own list.
  */
-export type ContextKind = "thread" | "diff" | "diagnostics" | "url" | "selection" | "command";
+export type ContextKind = "thread" | "diff" | "diagnostics" | "url" | "selection" | "command" | "element";
 
 /** What resolving a source does beyond reading Capsule's own state. */
 export type ContextEffect = "read" | "network" | "command";
@@ -34,6 +34,7 @@ export const CONTEXT_SOURCES: readonly ContextSourceSpec[] = [
   { kind: "url", keyword: "url", label: "Web page", detail: "Fetch a page and attach its readable text", effect: "network", surfaces: ["mention"] },
   { kind: "selection", label: "Selection", detail: "Quote selected text from the terminal, a file or the browser", effect: "read", surfaces: ["palette", "context-menu"] },
   { kind: "command", label: "Command output", detail: "Run a shell command and attach its output", effect: "command", surfaces: ["bang"] },
+  { kind: "element", label: "Page element", detail: "Pick an element in the Browser page and attach its selector, HTML, styles and a screenshot", effect: "read", surfaces: ["palette"] },
 ];
 
 export function contextSource(kind: ContextKind): ContextSourceSpec {

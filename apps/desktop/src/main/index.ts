@@ -1708,6 +1708,24 @@ function registerIpc(): void {
     await copyBrowserScreenshot(guest, (image) => clipboard.writeImage(image));
     return true;
   });
+  handle(IPC_CHANNELS.captureBrowserElement, async (id, rect) => {
+    if (typeof id !== "number" || !browserGuestIds.has(id)) throw new Error("That browser page is no longer open.");
+    const guest = webContents.fromId(id);
+    if (!guest || guest.isDestroyed()) throw new Error("That browser page is no longer open.");
+    const { captureElement } = await import("./browser-inspect.js");
+    const png = await captureElement(guest, rect);
+    if (!png) return undefined;
+    const { saveImageAttachment } = await import("./image-attachments.js");
+    return saveImageAttachment(path.join(app.getPath("userData"), "attachments"), png);
+  });
+  handle(IPC_CHANNELS.emulateBrowserDevice, async (id, device) => {
+    if (typeof id !== "number" || !browserGuestIds.has(id)) throw new Error("That browser page is no longer open.");
+    const guest = webContents.fromId(id);
+    if (!guest || guest.isDestroyed()) throw new Error("That browser page is no longer open.");
+    const { emulateDevice } = await import("./browser-inspect.js");
+    emulateDevice(guest, device);
+    return true;
+  });
   handle(IPC_CHANNELS.saveClipboardImage, async () => {
     const image = clipboard.readImage();
     if (image.isEmpty()) return undefined;

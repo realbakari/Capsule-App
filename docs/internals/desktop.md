@@ -2267,3 +2267,40 @@ Git project.
 - **Not on the board.** The board's New card makes one thread; a group of N
   with chains has no defined meaning there, so it is not offered.
 
+
+## Browser inspect mode and device sizes
+
+The Browser toolbar has an inspect toggle and a device-size menu, both hidden
+off the desktop (`api.isDesktop !== true`) because they change the page or the
+draft.
+
+- **Inspect.** `elementPickerScript()` (`features/shell/browser-inspect.ts`) runs
+  in the page through the webview's `executeJavaScript`. It outlines the hovered
+  element with a tag-and-size badge and resolves on click with an
+  `InspectedElement` (selector, outer HTML cut at `INSPECT_HTML_LIMIT`, the
+  `INSPECT_STYLE_PROPERTIES` computed styles, rect, URL, title), or null on Esc.
+  The selector comes from `cssSelectorFor` in `@capsule/shared`, inlined into the
+  script by its source text, so it must stay self-contained (a test rebuilds it
+  from `toString()`). The renderer re-reads the answer with
+  `readInspectedElement` because the page controls it, attaches
+  `elementToMarkdown` through `attachContext` as a `element` context chip
+  ("Page element"), then calls `captureBrowserElement(webContentsId, rect)`. Main
+  clips the rect to the visible page (scaled by page zoom), captures it, saves a
+  PNG attachment and returns its path, which the composer attaches as an image.
+  An element off screen yields no image and the toast says so. Esc in Capsule
+  also cancels; the page handles Esc when it has focus.
+- **Device sizes.** `BROWSER_DEVICES`: Responsive (fills the panel, emulation
+  off), iPhone 393 × 852 @3x, iPad 820 × 1180 @2x, Desktop 1440 × 900 @1x. The
+  frame sizes the webview to the device's CSS size and scrolls when the panel is
+  smaller; `emulateBrowserDevice(webContentsId, id)` sets the view size, pixel
+  ratio and screen mode with `enableDeviceEmulation`, or
+  `disableDeviceEmulation` for Responsive. The view size must be passed
+  explicitly: with an empty one the guest keeps the viewport it had before. It
+  is reapplied when the guest is replaced. The button shows the fixed size or,
+  for Responsive, the measured frame size. The user agent and touch input are not
+  emulated.
+- **Palette.** "Inspect element in browser" and "Browser size: …" open the
+  Browser panel and queue a `BrowserCommand` (`lib/browser-commands.ts`) that a
+  mounted page takes on mount or on the event.
+- Both new channels are write-scoped. The old Page width select is gone; device
+  sizes replace it.

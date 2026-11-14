@@ -108,6 +108,9 @@ export const IPC_CHANNELS = {
   readSharedBrowser: "capsule:readSharedBrowser",
   clearBrowserData: "capsule:clearBrowserData",
   copyBrowserScreenshot: "capsule:copyBrowserScreenshot",
+  /* Inspect mode saves the picked element's pixels; device presets set the page's pixel ratio. */
+  captureBrowserElement: "capsule:captureBrowserElement",
+  emulateBrowserDevice: "capsule:emulateBrowserDevice",
   /* The floating pet: show or hide it, and open a thread from it. */
   togglePet: "capsule:togglePet",
   getPetState: "capsule:getPetState",

@@ -21,7 +21,7 @@ import {
 } from "@capsule/shared";
 import { formatUserError } from "../../lib/errors";
 import { useWorkspace } from "../../lib/workspace";
-import { AlertTriangleIcon, BookmarkIcon, DiffIcon, GlobeIcon, MessageSquareIcon, TerminalIcon, XIcon } from "../shell/icons";
+import { AlertTriangleIcon, BookmarkIcon, DiffIcon, GlobeIcon, MessageSquareIcon, TerminalIcon, XIcon, MousePointerClickIcon } from "../shell/icons";
 import { ComposerMenu, type SuggestItem } from "./ComposerMenu";
 import "./composer-context.css";
 
@@ -32,6 +32,7 @@ export const CONTEXT_ICONS: Record<ContextKind, (size: number) => ReactNode> = {
   url: (size) => <GlobeIcon size={size} />,
   selection: (size) => <BookmarkIcon size={size} />,
   command: (size) => <TerminalIcon size={size} />,
+  element: (size) => <MousePointerClickIcon size={size} />,
 };
 
 export interface PendingContext {

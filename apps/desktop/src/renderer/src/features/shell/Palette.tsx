@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { APPROVAL_PRESETS, approvalPreset, DIFF_SCOPES, searchSessionTitles, type DiffScope, type SearchResults } from "@capsule/shared";
+import { APPROVAL_PRESETS, approvalPreset, BROWSER_DEVICES, DIFF_SCOPES, searchSessionTitles, type DiffScope, type SearchResults } from "@capsule/shared";
+import { requestBrowserCommand } from "../../lib/browser-commands";
 import { setReviewScope } from "../../lib/review-scope";
 import { useWorkspace } from "../../lib/workspace";
 import { formatUserError } from "../../lib/errors";
@@ -7,7 +8,7 @@ import { SHOW_SHORTCUTS_EVENT } from "../../lib/shortcuts-event";
 import { CYCLE_FAVORITE_MODEL_EVENT } from "../../lib/turn-mode";
 import { requestNewBoardCard } from "../../lib/board";
 import { requestRunOn } from "../../lib/best-of-n";
-import { CompareIcon, CopyIcon, FileIcon, GitBranchIcon, GitMergeIcon, RedoIcon, ArrowLeftIcon, ArrowRightIcon, ColumnsIcon, CpuIcon, ListTodoIcon, StarIcon, DiffIcon, FolderIcon, GlobeIcon, HistoryIcon, InfoIcon, RefreshIcon, KeyboardIcon, LinkIcon, MessageSquareIcon, PlusIcon, SearchIcon, SettingsIcon, ShieldIcon, SmartphoneIcon, SmilePlusIcon, SparkIcon, TerminalIcon } from "./icons";
+import { CompareIcon, CopyIcon, FileIcon, GitBranchIcon, GitMergeIcon, RedoIcon, ArrowLeftIcon, ArrowRightIcon, ColumnsIcon, CpuIcon, ListTodoIcon, StarIcon, DiffIcon, FolderIcon, GlobeIcon, HistoryIcon, InfoIcon, RefreshIcon, KeyboardIcon, LinkIcon, MessageSquareIcon, MousePointerClickIcon, PlusIcon, SearchIcon, SettingsIcon, ShieldIcon, SmartphoneIcon, SmilePlusIcon, SparkIcon, TerminalIcon } from "./icons";
 import { SearchDialog, type SearchDialogItem } from "./SearchDialog";
 import { useBranching } from "../conversation/branching/use-branching";
 import { useApplyToLocal } from "../apply/ApplyToLocal";
@@ -97,6 +98,12 @@ export function Palette() {
         disabledReason: desktopOnly ?? (!project?.workingDirectory ? "Open a project folder first." : undefined),
         onSelect: () => { if (project) void detectInstructionFiles(api, project.id).then((found) => createTask(project.id, initPrompt(found))); } },
       { id: "browser", label: "Open browser", group: "Workspace", icon: <GlobeIcon size={15} />, onSelect: () => openInspector("browser") },
+      { id: "browser-inspect", label: "Inspect element in browser", detail: "Pick an element and attach its selector, HTML, styles and a screenshot", group: "Workspace", icon: <MousePointerClickIcon size={15} />,
+        disabledReason: desktopOnly, onSelect: () => { openInspector("browser"); requestBrowserCommand({ type: "inspect" }); } },
+      ...BROWSER_DEVICES.map((device) => ({
+        id: `browser-device-${device.id}`, label: `Browser size: ${device.label}`, detail: device.width ? `${device.width} × ${device.height} at ${device.scale}x` : "Fill the panel", group: "Workspace", icon: <SmartphoneIcon size={15} />,
+        disabledReason: desktopOnly, onSelect: () => { openInspector("browser"); requestBrowserCommand({ type: "device", device: device.id }); },
+      })),
       ...APPROVAL_PRESETS.map((preset) => ({
         id: `approvals-${preset.label.toLowerCase()}`, label: `Approvals: ${preset.label}`, detail: preset.summary, group: "Actions", icon: <ShieldIcon size={15} />,
         disabledReason: readOnly ?? (approvalPreset(session ? session.permissionProfile ?? settings?.defaultPermission : draftApproval ?? settings?.defaultPermission).id === preset.id ? "Already in use for this conversation." : undefined),

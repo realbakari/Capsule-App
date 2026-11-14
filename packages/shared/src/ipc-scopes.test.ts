@@ -63,6 +63,8 @@ describe("ipc scopes", () => {
       "terminalAcknowledge",
       "clearBrowserData",
       "copyBrowserScreenshot",
+      "captureBrowserElement",
+      "emulateBrowserDevice",
       "listSimulators",
       "listSimulatorApps",
       "simulatorScreen",

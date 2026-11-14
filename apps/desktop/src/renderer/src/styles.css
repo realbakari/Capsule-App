@@ -3334,9 +3334,6 @@ select:focus,
 .browser-controls-capability > summary { cursor: pointer; }
 .browser-controls-popover .background-browser { margin-top: .8rem; padding: .8rem 0 0; border: 0; border-top: 1px solid var(--border-color); }
 .preview-viewport { max-width: 7rem; min-height: 1.75rem; font-size: var(--text-xs); border: 1px solid var(--border-color); border-radius: var(--control-radius); background: var(--surface-0); color: var(--text-muted); }
-.embedded-browser-frame:not([data-viewport="fill"]) { overflow: auto; background: var(--surface-0); }
-.embedded-browser-frame[data-viewport="phone"] .embedded-browser-webview { flex: 0 0 390px; width: 390px; margin-inline: auto; }
-.embedded-browser-frame[data-viewport="tablet"] .embedded-browser-webview { flex: 0 0 768px; width: 768px; margin-inline: auto; }
 @container (max-width: 540px) {
   .panel-browser-pane .preview-chrome-row { height: auto; flex-wrap: wrap; padding-block: .35rem; }
   .panel-browser-pane .preview-address-group { order: -1; flex: 1 0 100%; }

@@ -154,12 +154,28 @@ Open **Browser** in the inspector to see local HTTP apps that are responding on
 this Mac. The list refreshes while the panel is open and excludes listening
 services that do not answer like web pages. Select a server to open it in the
 in-app browser, or type another HTTP or HTTPS address above the list. The
-toolbar supports back, forward, reload, an interactive element inspector,
+toolbar supports back, forward, reload, inspect mode, device sizes,
 screenshot capture to clipboard, opening in the system browser, zoom controls,
 DevTools, and cache/cookie clearing. The Browser home keeps recently used pages
 above the live-server list. Screenshot capture copies an actual image that can
 be pasted into an image-aware app. If capture fails, it shows an error and leaves
 the clipboard unchanged; it never substitutes image data as text.
+
+**Inspect mode** (the pointer button, or **Inspect element in browser** in the
+command palette) outlines the element under the pointer with its tag and size.
+Click to pick it: the current conversation's composer gets a **Page element**
+chip with the element's CSS selector, its HTML (cut at 6,000 characters), key
+computed styles and the page address, plus a cropped screenshot of the element as
+an image. An element scrolled out of view is attached without a screenshot.
+Press Esc or the button again to stop without picking.
+
+The **device size** button shows the page's current size. Choose **Responsive**
+to fill the panel, or **iPhone** (393 × 852 at 3x), **iPad** (820 × 1180 at 2x)
+or **Desktop** (1440 × 900 at 1x). A fixed size keeps its width and scrolls inside
+the panel when the panel is smaller, and the page sees that device's pixel ratio
+and mobile screen mode (touch input is not emulated). The palette offers **Browser size** entries for each.
+Inspect and device sizes are on the desktop only; a paired viewer does not show
+them.
 
 If server discovery fails, the last successful list stays visible with an error
 and **Retry**. A failed scan is not reported as “no servers”. Page errors from
