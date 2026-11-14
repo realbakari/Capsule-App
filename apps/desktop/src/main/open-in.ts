@@ -34,9 +34,28 @@ const LAUNCH_SERVICES_SCRIPT = `function run(argv) {
     return "data:image/png;base64," + bitmap.representationUsingTypeProperties($.NSBitmapImageFileTypePNG, $()).base64EncodedStringWithOptions(0).js;
   };
   const described = (p) => ({ id: p, name: files.displayNameAtPath(p).js, icon: icon(p) });
-  const urls = workspace.URLsForApplicationsToOpenURL($.NSURL.fileURLWithPath(argv[0]));
-  const handlers = [];
-  for (let i = 0; i < urls.count; i++) handlers.push(described(urls.objectAtIndex(i).path.js));
+  const target = $.NSURL.fileURLWithPath(argv[0]);
+  const urls = workspace.URLsForApplicationsToOpenURL(target);
+  const paths = [];
+  for (let i = 0; i < urls.count; i++) paths.push(urls.objectAtIndex(i).path.js);
+  // Many apps claim folders (archivers, readers, chat apps). For a folder, keep
+  // the ones that also open source code, which is what a project is opened
+  // in, plus the system's own folder handler.
+  let keep = paths;
+  if (target.hasDirectoryPath) {
+    const code = new Set();
+    // LaunchServices answers for a real file, so write empty probes once.
+    for (const probe of ["capsule-open-in-probe.c", "capsule-open-in-probe.py"]) {
+      const file = $.NSTemporaryDirectory().js + probe;
+      if (!files.fileExistsAtPath(file)) $("").writeToFileAtomicallyEncodingError(file, true, 4, null);
+      const editors = workspace.URLsForApplicationsToOpenURL($.NSURL.fileURLWithPath(file));
+      for (let i = 0; i < editors.count; i++) code.add(editors.objectAtIndex(i).path.js);
+    }
+    const fallback = workspace.URLForApplicationToOpenURL(target);
+    const system = fallback.isNil() ? "" : fallback.path.js;
+    if (code.size > 0) keep = paths.filter((p) => p === system || code.has(p));
+  }
+  const handlers = keep.map(described);
   return JSON.stringify({ handlers, added: argv.slice(1).map(described) });
 }`;
 
