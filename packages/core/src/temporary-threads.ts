@@ -127,18 +127,20 @@ export class TemporaryThreads {
   readonly repos: Repo;
 
   constructor(private readonly persistent: Repo) {
-    const wrappers = new Map<PropertyKey, unknown>();
+    /* Keyed by the method it wraps, so a method replaced on the object (a test spy) is honoured. */
+    const wrappers = new Map<PropertyKey, { source: unknown; wrapper: unknown }>();
     this.repos = new Proxy(persistent, {
       get: (target, property) => {
         const route = ROUTES[property as Method];
         const value = Reflect.get(target, property) as unknown;
         if (typeof value !== "function") return value;
-        if (!wrappers.has(property)) {
-          wrappers.set(property, route
-            ? (...args: unknown[]) => this.call(property as Method, route(this.ids, args), args)
-            : value.bind(target));
-        }
-        return wrappers.get(property);
+        const cached = wrappers.get(property);
+        if (cached?.source === value) return cached.wrapper;
+        const wrapper = route
+          ? (...args: unknown[]) => this.call(property as Method, route(this.ids, args), args)
+          : value.bind(target);
+        wrappers.set(property, { source: value, wrapper });
+        return wrapper;
       },
     });
   }
