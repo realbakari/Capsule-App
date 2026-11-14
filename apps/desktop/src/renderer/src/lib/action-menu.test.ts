@@ -45,6 +45,12 @@ describe("buildSessionActionMenuItems", () => {
   it("swaps pin for unpin", () => {
     expect(buildSessionActionMenuItems({ pinned: true }).map((item) => item.id)).toContain("unpin");
   });
+
+  it("leaves a read-only device only the items that copy", () => {
+    const items = buildSessionActionMenuItems({ pinned: false, hasFolder: true, share: { exportOffered: false, shareOffered: false }, readOnly: true });
+    expect(items.map((item) => item.id)).toEqual(["copy-path", "copy-markdown"]);
+    expect(items[0]!.separatorBefore).toBeFalsy();
+  });
 });
 
 describe("buildProjectActionMenuItems", () => {

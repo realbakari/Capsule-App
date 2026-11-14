@@ -14,7 +14,7 @@ import { ChevronDownIcon } from "./icons";
  * happens in place, in the titlebar.
  */
 export function ThreadTitleMenu() {
-  const { session, project, renameSession, pinSession, regenerateTitle, archiveSession, deleteSession, openPath } = useWorkspace();
+  const { api, session, project, renameSession, pinSession, regenerateTitle, archiveSession, deleteSession, openPath } = useWorkspace();
   const applyToLocal = useApplyToLocal();
   const share = useThreadShare();
   const handoff = useHandoff();
@@ -65,7 +65,7 @@ export function ThreadTitleMenu() {
       </button>
       {anchor && (
         <ActionMenu
-          items={buildSessionActionMenuItems({ pinned: Boolean(session.pinned), thread: threadActions.menuState(session), hasFolder: Boolean(folder), ...(applyToLocal.offered ? { applyToLocal: { disabledReason: applyToLocal.disabledReason } } : {}), share: { exportOffered: share.exportOffered, shareOffered: share.shareOffered }, handoff: !handoff.disabledReason })}
+          items={buildSessionActionMenuItems({ pinned: Boolean(session.pinned), thread: threadActions.menuState(session), hasFolder: Boolean(folder), ...(applyToLocal.offered ? { applyToLocal: { disabledReason: applyToLocal.disabledReason } } : {}), share: { exportOffered: share.exportOffered, shareOffered: share.shareOffered }, handoff: !handoff.disabledReason, readOnly: api.isDesktop === false && api.remoteMode !== "control" })}
           point={{ x: anchor.left, y: anchor.bottom }}
           anchor={anchor}
           keyboard={false}

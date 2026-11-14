@@ -107,8 +107,10 @@ export function buildSessionActionMenuItems(state: {
   share?: { exportOffered: boolean; shareOffered: boolean };
   /** Hand off to a new conversation; absent where it is unavailable. */
   handoff?: boolean;
+  /** A read-only paired device: only the items that copy or read remain. */
+  readOnly?: boolean;
 }): ActionMenuItem[] {
-  return [
+  const items: ActionMenuItem[] = [
     { id: "rename", label: "Rename", icon: "pencil" },
     {
       id: state.pinned ? "unpin" : "pin",
@@ -156,6 +158,9 @@ export function buildSessionActionMenuItems(state: {
     { id: "archive", label: "Archive", icon: "archive", separatorBefore: true },
     { id: "delete", label: "Delete", icon: "trash", destructive: true },
   ];
+  if (!state.readOnly) return items;
+  const reads = items.filter((item) => item.id === "copy-path" || item.id === "copy-markdown");
+  return reads.map((item, index) => ({ ...item, separatorBefore: index > 0 && item.separatorBefore }));
 }
 
 export function buildProjectActionMenuItems(state: {

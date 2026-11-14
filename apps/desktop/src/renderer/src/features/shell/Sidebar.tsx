@@ -160,6 +160,8 @@ export function Sidebar() {
   } = useWorkspace();
   const share = useThreadShare();
   const handoff = useHandoff();
+  /* A read-only paired device sees the list; changing it belongs to the desktop or a control pairing. */
+  const readOnlyPeer = api.isDesktop === false && api.remoteMode !== "control";
   const importSessions = useImportSessions();
   const [menu, setMenu] = useState<MenuState>();
   const bestOfN = useBestOfN();
@@ -395,6 +397,7 @@ export function Sidebar() {
       hasFolder: Boolean(folder),
       share: { exportOffered: share.exportOffered, shareOffered: share.shareOffered },
       handoff: !handoff.disabledReason,
+      readOnly: readOnlyPeer,
     });
   }
 
@@ -582,11 +585,13 @@ export function Sidebar() {
           ) : null}
         </span>
         <span className="thread-quick-actions">
+        {!readOnlyPeer && <>
         <button type="button" className="thread-quick-action" aria-label={session.pinned ? "Unpin conversation" : "Pin conversation"}
           title={session.pinned ? "Unpin conversation" : "Pin conversation"}
           onClick={(event) => { event.stopPropagation(); void pinSession(session.id, !session.pinned); }}><PinIcon size={13} /></button>
         <button type="button" className="thread-quick-action" aria-label="Archive conversation" title="Archive conversation"
           onClick={(event) => { event.stopPropagation(); void archiveSession(session.id); }}><ArchiveIcon size={13} /></button>
+        </>}
         <button
           type="button"
           className="thread-more"
@@ -822,7 +827,7 @@ export function Sidebar() {
             if (view === "board") setView("chat");
           }} />}
         <div className="sidebar-scope-actions">
-          <button
+          {!readOnlyPeer && <button
             type="button"
             className="icon-btn"
             title="Add project"
@@ -830,7 +835,7 @@ export function Sidebar() {
             onClick={() => setAddProjectOpen(true)}
           >
             <FolderPlusIcon size={13} />
-          </button>
+          </button>}
         </div>
       </div>
       <div className="sidebar-scroll">
