@@ -46,6 +46,7 @@ export async function runComposerContextRegressions(host: HTMLElement, base: Rec
   const originalApi = window.capsule;
   const ran: string[] = [];
   const attached: ResolvedContext[] = [];
+  const sent: string[] = [];
   const api = {
     ...(base.api as object), isDesktop: true,
     runDiagnostics: async () => ({ status: "none" }),
@@ -54,6 +55,7 @@ export async function runComposerContextRegressions(host: HTMLElement, base: Rec
   window.capsule = api as unknown as typeof window.capsule;
   const fixture = {
     ...base, api, attached, sessions: [], projects: [],
+    sendPrompt: async (text: string) => { sent.push(text); return true; },
     settings: { ...(base.settings as object), composerPrompts: [{ name: "Review", prompt: "Review {{file}} for {{focus:bugs|speed}}" }] },
     attachments: [{ name: "Web page - Example.md", path: "/tmp/page.md", size: 5000, context: { kind: "url", label: "Example", excerpt: "Hello from the page", detail: "https://example.com/" } }],
   };
@@ -98,6 +100,12 @@ export async function runComposerContextRegressions(host: HTMLElement, base: Rec
     select.value = "speed"; select.dispatchEvent(new Event("change", { bubbles: true }));
     document.querySelector<HTMLButtonElement>('form[aria-label="Fill in Review"] button[type="submit"]')!.click();
     await until(() => field().value === "Review src/a.ts for speed", "template filled the prompt");
+
+    type("/init");
+    await until(() => options().includes("/init"), "/ offers /init");
+    key("Enter");
+    await until(() => sent.some((text) => text.includes("Write or refresh AGENTS.md")), "/init sent its prompt");
+    assert(field().value === "", "/init left its command in the prompt");
 
     root.render(<Fixture base={{ ...fixture, attachments: [], api: { ...api, isDesktop: false, remoteMode: "control" } }} />);
     window.capsule = { ...api, isDesktop: false, remoteMode: "control" } as unknown as typeof window.capsule;
