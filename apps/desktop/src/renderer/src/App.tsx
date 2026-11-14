@@ -23,6 +23,7 @@ import { ViewErrorBoundary } from "./features/shell/ErrorBoundary";
 import { useSidebarSwipe } from "./lib/useSidebarSwipe";
 import { WorkspaceProvider, useWorkspace } from "./lib/workspace";
 import { ApplyToLocalProvider } from "./features/apply/ApplyToLocal";
+import { ThreadShareProvider } from "./features/share/ThreadShare";
 import { StartupScreen, useAppClosing } from "./features/shell/StartupScreen";
 
 function Shell() {
@@ -119,7 +120,9 @@ export default function App() {
   return (
     <WorkspaceProvider>
       <ApplyToLocalProvider>
-        <Shell />
+        <ThreadShareProvider>
+          <Shell />
+        </ThreadShareProvider>
       </ApplyToLocalProvider>
     </WorkspaceProvider>
   );

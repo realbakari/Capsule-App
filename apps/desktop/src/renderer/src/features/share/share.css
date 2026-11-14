@@ -1,0 +1,87 @@
+/* Export, share links and presence. */
+.dialog.share-dialog { width: min(34rem, calc(100vw - 2rem)); }
+.dialog .share-dialog-lede { margin: 0.25rem 0 0.9rem; color: var(--text-muted); font-size: var(--text-ui); line-height: 1.45; overflow-wrap: anywhere; }
+.share-dialog-lede b { color: var(--text); font-weight: 500; }
+.dialog .share-reach, .dialog .share-hint, .dialog .share-empty { margin: 0 0 0.6rem; color: var(--text-muted); font-size: var(--text-xs); line-height: 1.4; }
+.dialog .share-hint { margin-top: 0.5rem; color: var(--text-faint); }
+.share-error { margin: 0.5rem 0 0; color: var(--red); font-size: var(--text-xs); overflow-wrap: anywhere; }
+
+.share-options { display: flex; flex-direction: column; gap: 0.35rem; margin: 0; padding: 0; border: 0; }
+.share-option {
+  display: flex; align-items: flex-start; gap: 0.6rem; padding: 0.55rem 0.65rem;
+  border: 1px solid var(--border-color); border-radius: var(--radius-md); cursor: pointer;
+}
+.share-option:hover { background: var(--bg-hover); }
+.share-option:has(input:focus-visible) { outline: var(--focus-ring); outline-offset: 1px; }
+.share-option input { margin: 0.15rem 0 0; accent-color: var(--text); }
+.share-option span { display: flex; flex-direction: column; gap: 0.1rem; font-size: var(--text-ui); }
+.share-option b { font-weight: 500; }
+.share-option small { color: var(--text-muted); font-size: var(--text-xs); }
+
+.share-expiry { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; margin: 0.25rem 0 0.75rem; }
+.share-expiry-label { margin-right: 0.35rem; color: var(--text-muted); font-size: var(--text-xs); }
+.share-expiry-option {
+  position: relative; padding: 0.25rem 0.65rem; border: 1px solid var(--border-color); border-radius: var(--radius-full);
+  color: var(--text-muted); font-size: var(--text-xs); cursor: pointer;
+}
+.share-expiry-option:hover { background: var(--bg-hover); color: var(--text); }
+.share-expiry-option.selected { border-color: var(--text); color: var(--text); font-weight: 500; }
+.share-expiry-option input { position: absolute; opacity: 0; pointer-events: none; }
+.share-expiry-option:has(input:focus-visible) { outline: var(--focus-ring); outline-offset: 1px; }
+
+.share-created { display: flex; gap: 0.4rem; align-items: stretch; }
+.share-url {
+  flex: 1 1 auto; min-width: 0; padding: 0.4rem 0.55rem; border: 1px solid var(--border-color); border-radius: var(--control-radius);
+  background: color-mix(in srgb, var(--text) 3%, transparent); color: var(--text); font-size: var(--text-xs);
+}
+.share-url:focus-visible { outline: var(--focus-ring); outline-offset: 1px; }
+.share-copy { display: inline-flex; align-items: center; gap: 0.35rem; flex-shrink: 0; }
+
+.share-notice {
+  display: flex; gap: 0.6rem; padding: 0.7rem 0.75rem; margin-bottom: 0.75rem;
+  border: 1px solid var(--border-color); border-radius: var(--radius-md); background: color-mix(in srgb, var(--text) 3%, transparent);
+  font-size: var(--text-ui);
+}
+.share-notice > svg { flex-shrink: 0; margin-top: 0.15rem; color: var(--text-muted); }
+.dialog .share-notice p { margin: 0 0 0.55rem; }
+.share-notice-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+
+.share-links-heading { margin: 1rem 0 0.4rem; color: var(--text-muted); font-size: var(--text-xs); font-weight: 500; }
+.share-links { margin: 0; padding: 0; list-style: none; border: 1px solid var(--border-color); border-radius: var(--radius-md); max-height: 12rem; overflow: auto; }
+.share-links li { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.35rem 0.4rem 0.35rem 0.7rem; font-size: var(--text-xs); }
+.share-links li + li { border-top: 1px solid var(--border-color); }
+.share-link-meta { min-width: 0; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.share-revoke { flex-shrink: 0; }
+.dialog.share-dialog .actions { flex-wrap: wrap; margin-top: 1rem; }
+
+.share-toast {
+  position: fixed; z-index: var(--z-toast); bottom: 1rem; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 0.5rem; max-width: min(36rem, calc(100vw - 2rem));
+  padding: 0.5rem 0.5rem 0.5rem 0.75rem; border: 1px solid var(--border-color); border-radius: var(--control-radius);
+  background: var(--bg-elevated); box-shadow: var(--shadow-raised); color: var(--text); font-size: var(--text-ui);
+}
+.share-toast > svg { flex-shrink: 0; color: var(--text-muted); }
+.share-toast > span { min-width: 0; overflow-wrap: anywhere; }
+.share-toast.error > svg { color: var(--red); }
+
+.presence-indicator {
+  display: inline-flex; align-items: center; gap: 0.3rem; flex-shrink: 0; margin-left: 0.5rem; padding: 0.1rem 0.45rem;
+  border-radius: var(--radius-full); background: color-mix(in srgb, var(--text) 6%, transparent);
+  color: var(--text-muted); font-size: var(--text-xs); white-space: nowrap; cursor: default;
+}
+.presence-indicator:hover { color: var(--text); }
+.presence-indicator:focus-visible { outline: var(--focus-ring); outline-offset: 1px; }
+@media (max-width: 760px) { .presence-indicator > span { display: none; } }
+
+.share-settings { margin-top: 0.75rem; }
+.share-settings-label { padding-left: 0 !important; margin-top: 0.75rem; }
+.share-settings-list { margin: 0; padding: 0; list-style: none; }
+.share-settings-list li { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-top: 6px; }
+.share-settings-list li > div { min-width: 0; }
+.share-thread-link {
+  padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left;
+  text-decoration: underline; text-decoration-color: var(--border-strong); text-underline-offset: 2px; cursor: pointer;
+}
+.share-thread-link.strong { color: var(--text); font-weight: 600; }
+.share-thread-link:hover { text-decoration-color: currentColor; }
+.share-thread-link:focus-visible { outline: var(--focus-ring); outline-offset: 1px; border-radius: 2px; }

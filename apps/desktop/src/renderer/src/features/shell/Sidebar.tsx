@@ -36,6 +36,7 @@ import { SETTINGS_TABS } from "../settings/SettingsView";
 import { searchSettings } from "../settings/settings-search";
 import { useWorkspace, type View } from "../../lib/workspace";
 import { ActionMenu } from "./ActionMenu";
+import { useThreadShare } from "../share/ThreadShare";
 import { MenuSelect } from "./MenuSelect";
 import { AddProjectPicker, type ProjectSourceId } from "./AddProjectPicker";
 import { CloneRepositoryDialog } from "./CloneRepositoryDialog";
@@ -148,6 +149,7 @@ export function Sidebar() {
     ready,
     harnesses,
   } = useWorkspace();
+  const share = useThreadShare();
   const [menu, setMenu] = useState<MenuState>();
   const sidebarRef = useRef<HTMLElement>(null);
   const focusedInside = useRef(false);
@@ -320,6 +322,18 @@ export function Sidebar() {
       void navigator.clipboard.writeText(folder);
       return;
     }
+    if (action === "export-markdown") {
+      share.openExport(id);
+      return;
+    }
+    if (action === "copy-markdown") {
+      share.copyMarkdown(id);
+      return;
+    }
+    if (action === "share-link") {
+      share.openShare(id);
+      return;
+    }
     if (action === "archive") {
       void archiveSession(id);
       return;
@@ -344,6 +358,7 @@ export function Sidebar() {
     return buildSessionActionMenuItems({
       pinned: Boolean(session?.pinned),
       hasFolder: Boolean(folder),
+      share: { exportOffered: share.exportOffered, shareOffered: share.shareOffered },
     });
   }
 

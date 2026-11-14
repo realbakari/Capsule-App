@@ -6,10 +6,11 @@ import { formatUserError } from "../../lib/errors";
 import { SHOW_SHORTCUTS_EVENT } from "../../lib/shortcuts-event";
 import { CYCLE_FAVORITE_MODEL_EVENT } from "../../lib/turn-mode";
 import { requestNewBoardCard } from "../../lib/board";
-import { GitBranchIcon, GitMergeIcon, RedoIcon, ArrowLeftIcon, ArrowRightIcon, ColumnsIcon, CpuIcon, ListTodoIcon, StarIcon, DiffIcon, FolderIcon, GlobeIcon, HistoryIcon, InfoIcon, RefreshIcon, KeyboardIcon, LinkIcon, MessageSquareIcon, PlusIcon, SearchIcon, SettingsIcon, ShieldIcon, SmartphoneIcon, SmilePlusIcon, SparkIcon, TerminalIcon } from "./icons";
+import { CopyIcon, FileIcon, GitBranchIcon, GitMergeIcon, RedoIcon, ArrowLeftIcon, ArrowRightIcon, ColumnsIcon, CpuIcon, ListTodoIcon, StarIcon, DiffIcon, FolderIcon, GlobeIcon, HistoryIcon, InfoIcon, RefreshIcon, KeyboardIcon, LinkIcon, MessageSquareIcon, PlusIcon, SearchIcon, SettingsIcon, ShieldIcon, SmartphoneIcon, SmilePlusIcon, SparkIcon, TerminalIcon } from "./icons";
 import { SearchDialog, type SearchDialogItem } from "./SearchDialog";
 import { useBranching } from "../conversation/branching/use-branching";
 import { useApplyToLocal } from "../apply/ApplyToLocal";
+import { useThreadShare } from "../share/ThreadShare";
 import { initPrompt } from "@capsule/shared";
 import { currentSelection, NO_SELECTION, selectionContext } from "../../lib/selection-share";
 import { detectInstructionFiles } from "../project/ProjectInstructions";
@@ -34,6 +35,7 @@ export function Palette() {
     .filter((run) => run.sessionId === session?.id && !["queued", "running", "waiting", "approval_required"].includes(run.status))
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0], [runs, session?.id]);
   const applyToLocal = useApplyToLocal();
+  const share = useThreadShare();
   const query = paletteQuery.trim().toLowerCase();
   const [retry, setRetry] = useState(0);
   const [search, setSearch] = useState<{ query: string; hits?: SearchResults; error?: string }>();
@@ -87,6 +89,12 @@ export function Palette() {
       { id: "redo-restore", label: "Redo last restore", group: "Actions", icon: <RedoIcon size={15} />,
         disabledReason: desktopOnly ?? (!session ? "Open a conversation first." : !branching.redo ? "Nothing to redo. Redo lasts until the next message after a restore." : undefined),
         onSelect: () => void branching.redoLast() },
+      { id: "export-markdown", label: "Export conversation as Markdown…", group: "Actions", icon: <FileIcon size={15} />,
+        disabledReason: desktopOnly ?? (!session ? "Open a conversation first." : undefined), onSelect: () => { if (session) share.openExport(session.id); } },
+      { id: "copy-markdown", label: "Copy conversation as Markdown", group: "Actions", icon: <CopyIcon size={15} />,
+        disabledReason: !session ? "Open a conversation first." : undefined, onSelect: () => { if (session) share.copyMarkdown(session.id); } },
+      { id: "share-link", label: "Share read-only link…", group: "Actions", icon: <LinkIcon size={15} />,
+        disabledReason: desktopOnly ?? (!session ? "Open a conversation first." : undefined), onSelect: () => { if (session) share.openShare(session.id); } },
       { id: "back", label: "Back", group: "Go to", icon: <ArrowLeftIcon size={15} />, shortcut: "⌘[", disabledReason: canGoBack ? undefined : "No earlier conversation to go back to.", onSelect: goBack },
       { id: "forward", label: "Forward", group: "Go to", icon: <ArrowRightIcon size={15} />, shortcut: "⌘]", disabledReason: canGoForward ? undefined : "No later conversation to go forward to.", onSelect: goForward },
       { id: "find-in-thread", label: "Find in conversation", group: "Workspace", icon: <SearchIcon size={15} />, shortcut: "⌘F", disabledReason: !session ? "Open a conversation first." : undefined, onSelect: () => { setView("chat"); setThreadFind(true); } },
@@ -126,7 +134,7 @@ export function Palette() {
       onSelect: () => { setProjectId(message.projectId, message.sessionId); setView("chat"); },
     }));
     return [...actions, ...projectItems, ...threads, ...messages];
-  }, [api, query, currentSearch, projects, sessions, session, project, terminalOpen, setTerminalOpen, attachContext, setNotice, createTask, createProjectFromFolder, pickProjectDirectory, pickFilesToMention, setView, setProjectId, setAboutOpen, openInspector, setAgentCommandsOpen, canGoBack, canGoForward, goBack, goForward, setThreadFind, lastTurn, branching.fork, branching.redo, branching.redoLast, applyToLocal, turnMode, setTurnMode]);
+  }, [api, query, currentSearch, projects, sessions, session, project, terminalOpen, setTerminalOpen, attachContext, setNotice, createTask, createProjectFromFolder, pickProjectDirectory, pickFilesToMention, setView, setProjectId, setAboutOpen, openInspector, setAgentCommandsOpen, canGoBack, canGoForward, goBack, goForward, setThreadFind, lastTurn, branching.fork, branching.redo, branching.redoLast, applyToLocal, share, turnMode, setTurnMode]);
 
   if (!palette) return null;
   return <SearchDialog title="Search workspace" placeholder="Search commands, projects, conversations…" query={paletteQuery}

@@ -20,6 +20,7 @@ import {
   HistoryIcon,
   MessageSquareIcon,
   GitMergeIcon,
+  LinkIcon,
   PencilIcon,
   PinIcon,
   PinOffIcon,
@@ -51,6 +52,7 @@ const ICONS: Record<ActionMenuIcon, typeof PencilIcon> = {
   message: MessageSquareIcon,
   history: HistoryIcon,
   merge: GitMergeIcon,
+  link: LinkIcon,
 };
 
 export function ActionMenu({

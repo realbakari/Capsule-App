@@ -3,6 +3,7 @@ import { buildSessionActionMenuItems, copyAnchor, type MenuAnchor } from "../../
 import { useWorkspace } from "../../lib/workspace";
 import { ActionMenu } from "./ActionMenu";
 import { useApplyToLocal } from "../apply/ApplyToLocal";
+import { useThreadShare } from "../share/ThreadShare";
 import { ChevronDownIcon } from "./icons";
 
 /**
@@ -13,6 +14,7 @@ import { ChevronDownIcon } from "./icons";
 export function ThreadTitleMenu() {
   const { session, project, renameSession, pinSession, regenerateTitle, archiveSession, deleteSession, openPath } = useWorkspace();
   const applyToLocal = useApplyToLocal();
+  const share = useThreadShare();
   const [anchor, setAnchor] = useState<MenuAnchor>();
   const [editing, setEditing] = useState<string>();
   const input = useRef<HTMLInputElement>(null);
@@ -59,7 +61,7 @@ export function ThreadTitleMenu() {
       </button>
       {anchor && (
         <ActionMenu
-          items={buildSessionActionMenuItems({ pinned: Boolean(session.pinned), hasFolder: Boolean(folder), ...(applyToLocal.offered ? { applyToLocal: { disabledReason: applyToLocal.disabledReason } } : {}) })}
+          items={buildSessionActionMenuItems({ pinned: Boolean(session.pinned), hasFolder: Boolean(folder), ...(applyToLocal.offered ? { applyToLocal: { disabledReason: applyToLocal.disabledReason } } : {}), share: { exportOffered: share.exportOffered, shareOffered: share.shareOffered } })}
           point={{ x: anchor.left, y: anchor.bottom }}
           anchor={anchor}
           keyboard={false}
@@ -72,6 +74,9 @@ export function ThreadTitleMenu() {
             else if (action === "open-folder" && folder) void openPath(folder);
             else if (action === "copy-path" && folder) void navigator.clipboard.writeText(folder);
             else if (action === "apply-to-local") applyToLocal.apply();
+            else if (action === "export-markdown") share.openExport(session.id);
+            else if (action === "copy-markdown") share.copyMarkdown(session.id);
+            else if (action === "share-link") share.openShare(session.id);
             else if (action === "archive") void archiveSession(session.id);
             else if (action === "delete") deleteSession(session.id);
           }}

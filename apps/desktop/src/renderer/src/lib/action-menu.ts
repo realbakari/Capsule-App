@@ -20,7 +20,8 @@ export type ActionMenuIcon =
   | "file"
   | "message"
   | "history"
-  | "merge";
+  | "merge"
+  | "link";
 
 export type SessionActionId =
   | "rename"
@@ -30,6 +31,9 @@ export type SessionActionId =
   | "open-folder"
   | "copy-path"
   | "apply-to-local"
+  | "export-markdown"
+  | "copy-markdown"
+  | "share-link"
   | "archive"
   | "delete";
 export type ProjectActionId =
@@ -80,6 +84,8 @@ export function buildSessionActionMenuItems(state: {
   hasFolder?: boolean;
   /** Present for a worktree thread on the desktop; the reason disables it. */
   applyToLocal?: { disabledReason?: string };
+  /** Export writes a file and a link opens a listener: both belong to the desktop. */
+  share?: { exportOffered: boolean; shareOffered: boolean };
 }): ActionMenuItem[] {
   return [
     { id: "rename", label: "Rename", icon: "pencil" },
@@ -109,6 +115,13 @@ export function buildSessionActionMenuItems(state: {
           enabled: !state.applyToLocal.disabledReason,
           title: state.applyToLocal.disabledReason,
         }]
+      : []),
+    ...(state.share
+      ? [
+          ...(state.share.exportOffered ? [{ id: "export-markdown" as const, label: "Export as Markdown…", icon: "file" as const, separatorBefore: true }] : []),
+          { id: "copy-markdown" as const, label: "Copy as Markdown", icon: "copy" as const, separatorBefore: !state.share.exportOffered },
+          ...(state.share.shareOffered ? [{ id: "share-link" as const, label: "Share read-only link…", icon: "link" as const }] : []),
+        ]
       : []),
     { id: "archive", label: "Archive", icon: "archive", separatorBefore: true },
     { id: "delete", label: "Delete", icon: "trash", destructive: true },
