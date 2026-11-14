@@ -22,7 +22,7 @@ describe("keybindingWarnings", () => {
     const { entries } = parseKeybindingsFile([
       { bindings: { "cmd+k cmd+t": "toggle-terminal", "cmd+g": "palette", "cmd+e": "nope", "cmd+u": "command:ship", "cmd+y": "command:review", "alt+p": "profile:fast", "cmd+w": null } },
     ]);
-    const warnings = keybindingWarnings(entries, { commands: ["review"] });
+    const warnings = keybindingWarnings(entries, { commands: ["review"], profiles: ["reviewer"] });
     expect(warnings.map((w) => w.key)).toEqual([
       'global "cmd+k cmd+t"',
       'global "cmd+g"',
@@ -31,6 +31,6 @@ describe("keybindingWarnings", () => {
       'global "alt+p"',
       'global "cmd+w"',
     ]);
-    expect(warnings[4]!.message).toMatch(/not available yet/);
+    expect(warnings[4]!.message).toBe("There is no profile named fast.");
   });
 });

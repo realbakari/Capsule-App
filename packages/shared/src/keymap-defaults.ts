@@ -94,10 +94,10 @@ export function keybindingLocator(entry: Pick<KeybindingEntry, "context" | "sequ
 
 /**
  * Entries that parse but cannot do what they say: rebinding a key the menu
- * takes first, an action no one knows, a command that does not exist, or a
- * profile, which is not available yet.
+ * takes first, an action no one knows, or a command or profile that does not
+ * exist.
  */
-export function keybindingWarnings(entries: readonly KeybindingEntry[], known: { commands?: readonly string[] } = {}): KeymapProblem[] {
+export function keybindingWarnings(entries: readonly KeybindingEntry[], known: { commands?: readonly string[]; profiles?: readonly string[] } = {}): KeymapProblem[] {
   const problems: KeymapProblem[] = [];
   for (const entry of entries) {
     const key = keybindingLocator(entry);
@@ -111,8 +111,8 @@ export function keybindingWarnings(entries: readonly KeybindingEntry[], known: {
       const command = keyCommand(name);
       if (!command) problems.push({ key, message: `"${name}" is not a Capsule shortcut action.` });
       else if (command.menuOwned) problems.push({ key, message: `"${name}" is fixed by the application menu and cannot be rebound.` });
-    } else if (namespace === "profile") {
-      problems.push({ key, message: `Profiles are not available yet, so "${entry.action}" does nothing.` });
+    } else if (namespace === "profile" && known.profiles && !known.profiles.includes(name)) {
+      problems.push({ key, message: `There is no profile named ${name}.` });
     } else if (namespace === "command" && known.commands && !known.commands.includes(name)) {
       problems.push({ key, message: `There is no /${name} command.` });
     }

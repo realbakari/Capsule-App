@@ -219,7 +219,9 @@ export interface SetConfigValueInput {
 export type ConfigFileTarget =
   | { kind: "settings"; scope: WritableScope; projectId?: string }
   | { kind: "keybindings" }
-  | { kind: "folder"; folder: "commands" | "profiles" | "styles" | "themes" | "plugins"; scope: "user" | "project"; projectId?: string };
+  | { kind: "folder"; folder: "commands" | "profiles" | "styles" | "themes" | "plugins"; scope: "user" | "project"; projectId?: string }
+  /** An existing profile or style file, by its id. Never created here. */
+  | { kind: "resource"; folder: "profiles" | "styles"; scope: "user" | "project"; projectId?: string; name: string };
 
 /**
  * Schema URLs written into new files for editor completion. They point at the

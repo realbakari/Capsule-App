@@ -8,3 +8,4 @@ export { mergeLayers, readLayer, type Layer, type LayerReading, type MergedConfi
 export { ConfigWatcher, type ConfigWatcherOptions } from "./watcher.js";
 export { BackdropImages, buildThemeState, readThemeCatalog, type ThemeCatalog, type ThemeEntry } from "./themes.js";
 export { editKeybindingsText, readKeybindings } from "./keybindings.js";
+export { readProfileCatalog, readStyleCatalog, type ProfileEntry, type StyleEntry } from "./profiles.js";

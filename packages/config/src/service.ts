@@ -3,7 +3,8 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync } from "nod
 import { homedir } from "node:os";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { readProjectFile } from "@capsule/filesystem";
+import { readProjectFile, writeFileAtomic } from "@capsule/filesystem";
+import { readProfileCatalog, readStyleCatalog, type ProfileEntry, type StyleEntry } from "./profiles.js";
 import {
   BACKDROP_IMAGE_EXTENSIONS,
   decodeThemeShareString,
@@ -18,6 +19,7 @@ import {
   type ThemeImportResult,
   type ThemeState,
   parsePermissionRule,
+  profileTemplate,
   SETTINGS_SCHEMA,
   SETTINGS_SCHEMA_URL,
   settingSpec,
@@ -51,6 +53,7 @@ import { ConfigWatcher, type ConfigWatcherOptions } from "./watcher.js";
 export const SAFE_MODE_WRITE_ERROR = "Safe mode is on. Restart normally to change settings files.";
 
 const MAX_RUNS = 50;
+const MAX_PERSONAL_BYTES = 32 * 1024;
 
 export interface ConfigServiceOptions {
   userDir: string;
@@ -216,6 +219,9 @@ export class ConfigService {
     const commands = this.commands(root);
     problems.push(...commands.problems);
     problems.push(...this.keybindingsFor(root).problems, ...this.themesFor(root).problems);
+    problems.push(...this.profiles(root).problems, ...this.styles(root).problems);
+    const personal = this.personalInstructions();
+    if (personal?.problem) problems.push({ severity: "warning", path: this.paths.userSettings, key: "personalInstructions", message: personal.problem });
     if (!resolution.trusted) {
       for (const entry of commands.commands) {
         if (entry.scope !== "project") continue;
@@ -295,6 +301,13 @@ export class ConfigService {
       if (!existsSync(this.paths.keybindings)) writeJsonc(this.paths.keybindings, "[]");
       return this.paths.keybindings;
     }
+    if (target.kind === "resource") {
+      if (target.scope === "project" && !root) throw new Error("Open a project to use its customization folder.");
+      const dir = path.join(target.scope === "user" ? this.paths.userDir : this.paths.projectDir(root!), target.folder);
+      const file = path.resolve(dir, `${target.name.split(":").join("/")}.md`);
+      if (!file.startsWith(`${dir}${path.sep}`) || !existsSync(file)) throw new Error(`There is no ${target.folder.slice(0, -1)} file named ${target.name}.`);
+      return file;
+    }
     if (target.kind === "folder") {
       if (target.scope === "project" && !root) throw new Error("Open a project to use its customization folder.");
       const dir = path.join(target.scope === "user" ? this.paths.userDir : this.paths.projectDir(root!), target.folder);
@@ -328,6 +341,47 @@ export class ConfigService {
     if (this.safeMode) return { commands: [], problems: [] };
     if (root) this.trackProject(root);
     return readCommandCatalog(this.commandFolders(root));
+  }
+
+  /** Agent profiles from the user's and, given a root, the project's `profiles` folder. */
+  profiles(root?: string): { profiles: ProfileEntry[]; problems: ConfigProblem[] } {
+    return readProfileCatalog(this.resources("profiles", root));
+  }
+
+  /** Response styles: files first, then the built-ins a file does not replace. */
+  styles(root?: string): { styles: StyleEntry[]; problems: ConfigProblem[] } {
+    return readStyleCatalog(this.resources("styles", root));
+  }
+
+  /** The `personalInstructions` file's text, read now. `~` is home and a relative path is in the settings folder. */
+  personalInstructions(): { path: string; text?: string; problem?: string } | undefined {
+    const written = this.resolve().merged.extended.personalInstructions?.trim();
+    if (!written) return undefined;
+    const home = this.options.homeDir ?? homedir();
+    const file = written === "~" || written.startsWith("~/") ? path.join(home, written.slice(1)) : path.resolve(this.paths.userDir, written);
+    try {
+      if (statSync(file).size > MAX_PERSONAL_BYTES) return { path: file, problem: `${file} is larger than 32 KB, so it is not sent.` };
+      return { path: file, text: readFileSync(file, "utf8") };
+    } catch {
+      return { path: file, problem: `${file} could not be read, so no personal instructions are sent.` };
+    }
+  }
+
+  /** Write a new profile file, from the template or as a copy of another profile, and return its path. */
+  createProfile(input: { scope: "user" | "project"; root?: string; from?: string }): string {
+    if (this.safeMode) throw new Error(SAFE_MODE_WRITE_ERROR);
+    const source = input.from ? this.profiles(input.root).profiles.find((entry) => entry.profile.id === input.from) : undefined;
+    if (input.from && !source) throw new Error(`There is no profile named ${input.from}.`);
+    const dir = this.ensureFile({ kind: "folder", folder: "profiles", scope: input.scope }, input.root);
+    const base = source ? `${source.profile.id.split(":").pop()}-copy` : "new-profile";
+    let id = base;
+    for (let n = 2; existsSync(path.join(dir, `${id}.md`)); n++) id = `${base}-${n}`;
+    const text = source
+      ? readFileSync(source.path, "utf8").replace(/^(---\r?\n(?:[^\n]*\n)*?)name:[^\n]*\n/, `$1name: ${source.profile.name} copy\n`)
+      : profileTemplate("New profile");
+    const file = path.join(dir, `${id}.md`);
+    writeFileAtomic(file, text);
+    return file;
   }
 
   /** keybindings.json's entries. Problems are in `diagnostics`. Safe mode reads none. */
@@ -456,7 +510,8 @@ export class ConfigService {
 
   private keybindingsFor(root?: string): { entries: KeybindingEntry[]; problems: ConfigProblem[] } {
     if (this.safeMode) return { entries: [], problems: [] };
-    return readKeybindings(this.keybindingsFile, this.paths.keybindings, this.commands(root).commands.map((entry) => entry.command.name));
+    return readKeybindings(this.keybindingsFile, this.paths.keybindings, this.commands(root).commands.map((entry) => entry.command.name),
+      this.profiles(root).profiles.map((entry) => entry.profile.id));
   }
 
   private themeCatalog(root?: string): ThemeCatalog {
@@ -535,7 +590,9 @@ export class ConfigService {
       for (const folder of this.commandFolders(root)) {
         for (const file of listResourceFolder("commands", folder.scope, folder.dir)) hash.update(`${file.path}\0${file.text}\0`);
       }
-      for (const file of this.resources("themes", root)) hash.update(`${file.path}\0${file.text}\0`);
+      for (const kind of ["themes", "profiles", "styles"] as const) {
+        for (const file of this.resources(kind, root)) hash.update(`${file.path}\0${file.text}\0`);
+      }
     }
     return hash.digest("hex");
   }

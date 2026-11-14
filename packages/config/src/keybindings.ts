@@ -15,14 +15,14 @@ import type { JsoncFile } from "./jsonc.js";
 const FORMAT = { insertSpaces: true, tabSize: 2, eol: "\n" } as const;
 
 /** keybindings.json's entries, and each entry that cannot do what it says. */
-export function readKeybindings(file: JsoncFile, path: string, commands?: readonly string[]): { entries: KeybindingEntry[]; problems: ConfigProblem[] } {
+export function readKeybindings(file: JsoncFile, path: string, commands?: readonly string[], profiles?: readonly string[]): { entries: KeybindingEntry[]; problems: ConfigProblem[] } {
   if (file.state !== "ok") return { entries: [], problems: [] };
   const { entries, problems } = parseKeybindingsFile(file.value);
   return {
     entries,
     problems: [
       ...problems.map((problem): ConfigProblem => ({ severity: "error", path, ...(problem.key ? { key: problem.key } : {}), message: problem.message })),
-      ...keybindingWarnings(entries, { commands }).map((problem): ConfigProblem => ({ severity: "warning", path, key: problem.key, message: problem.message })),
+      ...keybindingWarnings(entries, { commands, profiles }).map((problem): ConfigProblem => ({ severity: "warning", path, key: problem.key, message: problem.message })),
     ],
   };
 }
