@@ -1,3 +1,4 @@
+import { requestPluginIntent } from "../plugins/plugin-intent";
 import { useEffect, useMemo, useState } from "react";
 import { searchSessionTitles, type SearchResults } from "@capsule/shared";
 import { useWorkspace } from "../../lib/workspace";
@@ -64,7 +65,12 @@ export function Palette() {
       ] : []),
       { id: "update", label: "Check for updates", group: "Workspace", icon: <RefreshIcon size={15} />, onSelect: () => setAboutOpen(true) },
       { id: "about", label: "About Capsule", group: "Workspace", icon: <InfoIcon size={15} />, onSelect: () => setAboutOpen(true) },
-      ...customizationCommands({ api, config, onError: setNotice, showProblems: () => { setSettingsTab("diagnostics"); setView("settings"); } }),
+      ...customizationCommands({
+        api, config, onError: setNotice,
+        showProblems: () => { setSettingsTab("diagnostics"); setView("settings"); },
+        openPlugins: (intent) => { if (intent) requestPluginIntent(intent); setSettingsTab("plugins"); setView("settings"); },
+      }),
+      { id: "settings-plugins", label: "Plugins", detail: "Settings", group: "Go to", icon: <SettingsIcon size={15} />, onSelect: () => { setSettingsTab("plugins"); setView("settings"); } },
       ...(config?.profiles ?? []).map((profile) => ({
         id: `profile-${profile.id}`, label: `New conversation with ${profile.name}`, detail: profile.description, group: "Profiles",
         icon: <MessageSquarePlusIcon size={15} />, disabledReason: api.isDesktop === false && api.remoteMode !== "control" ? "Read only on this device." : undefined,

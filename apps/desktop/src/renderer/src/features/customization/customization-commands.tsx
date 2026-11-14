@@ -2,6 +2,7 @@ import type { ConfigSnapshot, ThemeSelection } from "@capsule/shared";
 import { settingsFileTarget } from "../../lib/config-view";
 import { formatUserError } from "../../lib/errors";
 import type { SearchDialogItem } from "../shell/SearchDialog";
+import type { PluginIntent } from "../plugins/plugin-intent";
 import { ChartIcon, FileIcon, FolderIcon, GridIcon, HistoryIcon, KeyboardIcon, RefreshIcon, ShieldIcon, SunIcon } from "../shell/icons";
 
 /** `theme` with the backdrop turned off, whatever the chosen theme draws. Shared with the clear-backdrop key action. */
@@ -17,14 +18,17 @@ export function customizationCommands(input: {
   api: typeof window.capsule;
   config?: ConfigSnapshot;
   showProblems: () => void;
+  /** Settings → Plugins, optionally starting an install or a validation there. */
+  openPlugins: (intent?: PluginIntent) => void;
   onError: (message: string) => void;
 }): SearchDialogItem[] {
-  const { api, config, showProblems, onError } = input;
+  const { api, config, showProblems, openPlugins, onError } = input;
   const run = (action: () => Promise<unknown>) => () => { void action().catch((error: unknown) => onError(formatUserError(error))); };
   const desktopOnly = api.isDesktop === true ? undefined : "Available in the desktop app.";
   const project = config?.project;
   const needsProject = desktopOnly ?? (project ? undefined : "Open a project with a folder first.");
   const group = "Customization";
+  const writable = desktopOnly ?? (config?.safeMode ? "Safe mode loads no plugin." : undefined);
   return [
     { id: "config-open-user", label: "Open user settings", group, icon: <FileIcon size={15} />, disabledReason: desktopOnly,
       onSelect: run(() => api.configOpenFile(settingsFileTarget("user"))) },
@@ -58,6 +62,19 @@ export function customizationCommands(input: {
       icon: <HistoryIcon size={15} />,
       disabledReason: (api.isDesktop === true && !config?.safeMode ? undefined : "Available in the desktop app.") ?? (automation.running ? "It is still running." : automation.problem),
       onSelect: run(() => api.automationsRunNow({ key: automation.key, ...(project ? { projectId: project.projectId } : {}) })),
+    })),
+    { id: "plugin-install-folder", label: "Install plugin from folder", group, icon: <GridIcon size={15} />, disabledReason: writable, onSelect: () => openPlugins("folder") },
+    { id: "plugin-install-zip", label: "Install plugin from zip", group, icon: <GridIcon size={15} />, disabledReason: writable, onSelect: () => openPlugins("zip") },
+    { id: "plugin-validate", label: "Validate plugin folder", group, icon: <GridIcon size={15} />, disabledReason: writable, onSelect: () => openPlugins("validate") },
+    { id: "plugin-dev", label: "Load plugin from folder (development)", group, icon: <GridIcon size={15} />, disabledReason: writable, onSelect: () => openPlugins("dev") },
+    ...(config?.plugins ?? []).map((plugin) => ({
+      id: `plugin-toggle-${plugin.name}`,
+      label: `${plugin.enabled ? "Turn off" : "Turn on"} plugin ${plugin.name}`,
+      detail: plugin.description,
+      group,
+      icon: <GridIcon size={15} />,
+      disabledReason: writable ?? (!plugin.enabled && plugin.missing.length ? `Needs ${plugin.missing.join(", ")}.` : undefined),
+      onSelect: run(() => api.pluginsSetEnabled({ name: plugin.name, enabled: !plugin.enabled })),
     })),
     { id: "config-problems", label: "Show customization problems", group, icon: <ChartIcon size={15} />,
       detail: config?.problemCount ? `${config.problemCount} ${config.problemCount === 1 ? "problem" : "problems"}` : undefined,

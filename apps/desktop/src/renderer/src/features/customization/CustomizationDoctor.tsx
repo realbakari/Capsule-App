@@ -5,6 +5,7 @@ import { formatUserError } from "../../lib/errors";
 import { useWorkspace } from "../../lib/workspace";
 import { RefreshIcon } from "../shell/icons";
 import { HooksList } from "./HooksList";
+import { requestPluginIntent } from "../plugins/plugin-intent";
 
 const SOURCE_LABELS: Record<string, string> = {
   "settings:local": "Project, only you",
@@ -35,7 +36,7 @@ const RUN_KINDS: Record<CustomizationRunRecord["kind"], string> = {
  * device; every button here changes the host.
  */
 export function CustomizationDoctor() {
-  const { api, config, configDiagnostics: diagnostics } = useWorkspace();
+  const { api, config, configDiagnostics: diagnostics, setSettingsTab } = useWorkspace();
   const [error, setError] = useState<string>();
   const canWrite = api.isDesktop === true;
   const projectId = config?.project?.projectId;
@@ -75,6 +76,12 @@ export function CustomizationDoctor() {
           <button type="button" className="ghost" title="Read every settings file again now" onClick={() => run(() => api.configReload(projectId))}>
             <RefreshIcon size={13} />
             Reload
+          </button>
+        )}
+        {canWrite && !diagnostics.safeMode && (
+          <button type="button" className="ghost" title="Run a plugin folder's checks and list what it adds, without installing it"
+            onClick={() => { requestPluginIntent("validate"); setSettingsTab("plugins"); }}>
+            Validate plugin folder…
           </button>
         )}
       </div>

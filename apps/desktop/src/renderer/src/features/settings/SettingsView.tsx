@@ -36,7 +36,8 @@ import { ProfilesCard, ResponseStyleCard } from "../customization/ProfilesCard";
 import { RemoteAccessSettings } from "./RemoteAccessSettings";
 import { AnalyticsSettings } from "./AnalyticsSettings";
 import { SettingRow, Switch } from "./controls";
-import { ChartIcon, CpuIcon, FileIcon, FolderIcon, GitBranchIcon, HistoryIcon, InfoIcon, KeyboardIcon, LinkIcon, SettingsIcon, SparkIcon, SunIcon, UndoIcon, WrenchIcon } from "../shell/icons";
+import { PluginsPanel } from "../plugins/PluginsPanel";
+import { ChartIcon, CpuIcon, FileIcon, FolderIcon, GitBranchIcon, GridIcon, HistoryIcon, InfoIcon, KeyboardIcon, LinkIcon, SettingsIcon, SparkIcon, SunIcon, UndoIcon, WrenchIcon } from "../shell/icons";
 import { formatProjectRoot } from "../../lib/paths";
 import { useWorkspace } from "../../lib/workspace";
 
@@ -57,6 +58,7 @@ export const SETTINGS_TABS: Array<{ id: SettingsSectionId; label: string; icon: 
   { id: "sourceControl", label: "Source control", icon: GitBranchIcon },
   { id: "skills", label: "Skills", icon: SparkIcon },
   { id: "automations", label: "Automations", icon: HistoryIcon },
+  { id: "plugins", label: "Plugins", icon: GridIcon },
   { id: "shortcuts", label: "Shortcuts", icon: KeyboardIcon, group: "App" },
   { id: "diagnostics", label: "Diagnostics", icon: ChartIcon },
   { id: "about", label: "About", icon: InfoIcon },
@@ -314,6 +316,11 @@ export function SettingsView() {
             {tab === "automations" && (
               <div className="appearance-page">
                 <AutomationsSettings />
+              </div>
+            )}
+            {tab === "plugins" && (
+              <div className="appearance-page">
+                <PluginsPanel />
               </div>
             )}
 
