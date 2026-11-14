@@ -355,6 +355,8 @@ export interface ProjectAction {
    * that has one — that was the only behaviour before this was a choice.
    */
   openPreview?: boolean;
+  /** The project's check command: what `@diagnostics` runs and attaches. */
+  check?: boolean;
 }
 
 export interface ProjectActionRun {
@@ -778,6 +780,8 @@ export interface MessageAttachment {
    * `data:` only — so the main process makes the thumbnail and inlines it.
    */
   thumbnail?: string;
+  /** Set when the file is composer context (a conversation, a diff, a page) rather than a file the user picked. */
+  context?: import("./composer-context.js").ContextAttachment;
 }
 
 export interface ChatMessage {

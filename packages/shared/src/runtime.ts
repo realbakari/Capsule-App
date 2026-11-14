@@ -7,6 +7,7 @@ import {
 } from "./appearance.js";
 import type { HarnessPermissionProfile } from "./harness.js";
 import { normalizeFavoriteModels, normalizeModeModels, type ModeModels } from "./plan-mode.js";
+import { normalizePromptTemplates, type PromptTemplate } from "./prompt-templates.js";
 import type {
   Agent,
   AgentMessage,
@@ -315,6 +316,8 @@ export interface CapsuleSettings {
   modeModels: ModeModels;
   /** Favorite models as JSON [agentId, modelId] keys, in the order they were starred. */
   favoriteModels: string[];
+  /** Personal saved prompts for the composer's `/` menu. A project's own live in its capsule.json. */
+  composerPrompts?: PromptTemplate[];
 }
 
 const AGENT_MODES: AgentMode[] = [
@@ -558,5 +561,6 @@ export function normalizeCapsuleSettings(input: Partial<CapsuleSettings> = {}): 
     startInPlanMode: flag(input.startInPlanMode, DEFAULT_CAPSULE_SETTINGS.startInPlanMode),
     modeModels: normalizeModeModels(input.modeModels),
     favoriteModels: normalizeFavoriteModels(input.favoriteModels),
+    ...(input.composerPrompts?.length ? { composerPrompts: normalizePromptTemplates(input.composerPrompts) } : {}),
   };
 }

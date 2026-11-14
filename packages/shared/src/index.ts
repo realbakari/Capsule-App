@@ -20,6 +20,8 @@ export * from "./types.js";
 export * from "./run-events.js";
 export * from "./run-tasks.js";
 export * from "./text-budget.js";
+export * from "./composer-context.js";
+export * from "./prompt-templates.js";
 export * from "./run-history.js";
 export * from "./performance.js";
 export * from "./run-activity.js";
