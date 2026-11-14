@@ -188,6 +188,8 @@ export const IPC_CHANNELS = {
   triageSession: "capsule:triageSession",
   /* Answers to a question the agent asked; conversation control, like approvals. */
   answerAgentQuestion: "capsule:answerAgentQuestion",
+  /* The project order set by dragging in the sidebar. */
+  reorderProjects: "capsule:reorderProjects",
   /* Open in: the apps that can open a folder or file, adding one, and opening with one. */
   listOpenInApps: "capsule:listOpenInApps",
   addOpenInApp: "capsule:addOpenInApp",

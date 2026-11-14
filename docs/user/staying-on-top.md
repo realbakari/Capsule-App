@@ -77,3 +77,8 @@ sidebar, the conversation, the message box and the side panel.
 When Capsule is watching a pull request for a conversation and the pull request
 merges, that conversation is settled for you. Turn this off in Settings › Source
 control › **Settle merged conversations**.
+
+## Arranging projects
+
+Drag a project in the sidebar onto another to put it in that place. A project
+you add later appears at the top until you move it.

@@ -263,6 +263,7 @@ const api = {
   pinSession: (id: string, pinned: boolean) => ipcRenderer.invoke(IPC_CHANNELS.pinSession, id, pinned),
   answerAgentQuestion: (approvalId: string, answers: import("@capsule/shared").AgentQuestionAnswers): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.answerAgentQuestion, approvalId, answers),
+  reorderProjects: (orderedIds: string[]) => ipcRenderer.invoke(IPC_CHANNELS.reorderProjects, orderedIds),
   triageSession: (id: string, action: import("@capsule/shared").ThreadTriageAction): Promise<import("@capsule/shared").Session> =>
     ipcRenderer.invoke(IPC_CHANNELS.triageSession, id, action),
   reorderPinnedSessions: (projectId: string, orderedIds: string[]) =>

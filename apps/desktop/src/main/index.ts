@@ -1428,6 +1428,9 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.answerAgentQuestion, (approvalId, answers) =>
     requireEngine().answerAgentQuestion(String(approvalId), answers),
   );
+  handle(IPC_CHANNELS.reorderProjects, (orderedIds) =>
+    requireEngine().reorderProjects(Array.isArray(orderedIds) ? orderedIds.map(String) : []),
+  );
   handle(IPC_CHANNELS.triageSession, (id, action) =>
     requireEngine().triageSession(String(id), parseThreadTriageAction(action)),
   );

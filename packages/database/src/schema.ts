@@ -367,4 +367,9 @@ export const MIGRATIONS: Array<{ version: number; sql: string; }> = [
       ALTER TABLE projects ADD COLUMN default_worktree_base_ref TEXT;
     `,
   },
+  {
+    // A project order the person set by dragging; null keeps the recency order.
+    version: 121,
+    sql: `ALTER TABLE projects ADD COLUMN sort_order INTEGER;`,
+  },
 ];

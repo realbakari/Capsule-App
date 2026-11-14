@@ -170,7 +170,7 @@ export class CapsuleRepositories {
                 default_workspace_mode AS defaultWorkspaceMode,
                 default_worktree_base_ref AS defaultWorktreeBaseRef,
                 created_at AS createdAt, updated_at AS updatedAt
-         FROM projects ORDER BY updated_at DESC`,
+         FROM projects ORDER BY sort_order IS NOT NULL, sort_order, updated_at DESC`,
       )
       .all() as Array<
       Omit<Project, "defaultSkillIds" | "extraFolders" | "actions"> & {
@@ -345,6 +345,12 @@ export class CapsuleRepositories {
     this.db.sqlite
       .prepare("UPDATE sessions SET last_viewed_at = ?, settled_at = ?, snoozed_until = ? WHERE id = ?")
       .run(session.lastViewedAt ?? null, session.settledAt ?? null, session.snoozedUntil ?? null, session.id);
+  }
+
+  /** Places projects in this order; ones not named keep no position and list first. */
+  setProjectOrder(orderedIds: readonly string[]): void {
+    const update = this.db.sqlite.prepare("UPDATE projects SET sort_order = ? WHERE id = ?");
+    this.db.sqlite.transaction(() => orderedIds.forEach((id, index) => update.run(index, id)))();
   }
 
   getSession(id: string): Session | undefined {

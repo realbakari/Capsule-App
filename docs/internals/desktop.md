@@ -2198,3 +2198,4 @@ differs from the one for folders.
   progress) and terminal traffic are not watched. The wrapper proxies an empty
   object so a frozen bridge's property rules never apply to it.
 - **Reopen the panel** (⇧⌘T, palette) brings back the side panel on the surface it showed when it was closed.
+- **Project order**: dragging a project row onto another sets `projects.sort_order` for every project (migration 121, write channel `reorderProjects`). Projects never placed sort first, newest first. Only in project grouping with no search; not on a paired viewer.

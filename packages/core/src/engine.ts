@@ -1811,6 +1811,17 @@ export class CapsuleEngine {
     return session;
   }
 
+  /** The order projects list in, set by dragging them in the sidebar. */
+  reorderProjects(orderedIds: string[]): Project[] {
+    const known = new Set(this.repos.listProjects().map((project) => project.id));
+    if (orderedIds.length === 0 || orderedIds.some((id) => !known.has(id)) || new Set(orderedIds).size !== orderedIds.length) {
+      throw new Error("The project order is out of date. Refresh and try again.");
+    }
+    this.repos.setProjectOrder(orderedIds);
+    this.events.emit("state", { command: "projects-updated" });
+    return this.listProjects();
+  }
+
   /** Read, unread, settle, snooze: the person's bookkeeping, never the agent's. */
   triageSession(id: string, action: ThreadTriageAction): Session {
     return this.triage.apply(id, action);

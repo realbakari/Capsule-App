@@ -44,6 +44,7 @@ import { CloneRepositoryDialog } from "./CloneRepositoryDialog";
 import { SidebarToggle } from "./SidebarControl";
 import { SidebarThreadPreview } from "./SidebarThreadPreview";
 import { useFolderDrop } from "./useFolderDrop";
+import { formatUserError } from "../../lib/errors";
 import { AgentGlyph } from "./AgentGlyph";
 import {
   ArchiveIcon,
@@ -150,6 +151,8 @@ export function Sidebar() {
     openPath,
     ready,
     harnesses,
+    refresh,
+    setNotice,
   } = useWorkspace();
   const [menu, setMenu] = useState<MenuState>();
   const sessionActions = useSessionActions();
@@ -196,6 +199,18 @@ export function Sidebar() {
   const update = useUpdates();
   const { status: updateResult, busy: checkingUpdate, label: updateLabel, run: runUpdateCheck } = update;
   const [draggedPinnedId, setDraggedPinnedId] = useState<string>();
+  const [draggedProjectId, setDraggedProjectId] = useState<string>();
+  const [projectDropTarget, setProjectDropTarget] = useState<string>();
+  async function moveProject(sourceId: string, targetId: string) {
+    const ordered = projects.map((project) => project.id);
+    const from = ordered.indexOf(sourceId);
+    const to = ordered.indexOf(targetId);
+    if (from < 0 || to < 0 || from === to) return;
+    ordered.splice(from, 1);
+    ordered.splice(to, 0, sourceId);
+    try { await api.reorderProjects(ordered); await refresh(); }
+    catch (error) { setNotice(formatUserError(error)); }
+  }
   const [cloneOpen, setCloneOpen] = useState<"git-url" | "github">();
   const [addProjectOpen, setAddProjectOpen] = useState(false);
 
@@ -224,6 +239,7 @@ export function Sidebar() {
   const threadsByProject = useMemo(() => indexSidebarThreads(sessions), [sessions]);
   const projectNames = useMemo(() => new Map(projects.map((project) => [project.id, project.name])), [projects]);
   const needle = query.trim().toLowerCase();
+  const canReorderProjects = grouping === "project" && !needle && api.isDesktop !== false && projects.length > 1;
   /* Recent is a way of grouping the one list, not a second copy of it under the projects. */
   const recentThreads = useMemo(() => grouping === "recent" ? [...threadsByProject.values()].flat()
     .filter((thread) => projectNames.has(thread.projectId) && threadShelf(thread) !== "snoozed" && (!needle || thread.title.toLowerCase().includes(needle)))
@@ -780,7 +796,30 @@ export function Sidebar() {
                 <div
                   role="button"
                   tabIndex={0}
-                  className={`project-row ${item.id === projectId ? "active" : ""}`}
+                  className={`project-row ${item.id === projectId ? "active" : ""}${projectDropTarget === item.id && draggedProjectId !== item.id ? " project-drop-target" : ""}`}
+                  draggable={canReorderProjects}
+                  onDragStart={(event) => {
+                    if (!canReorderProjects) return;
+                    setDraggedProjectId(item.id);
+                    event.dataTransfer.effectAllowed = "move";
+                    event.dataTransfer.setData("application/x-capsule-project", item.id);
+                  }}
+                  onDragEnd={() => { setDraggedProjectId(undefined); setProjectDropTarget(undefined); }}
+                  onDragOver={(event) => {
+                    if (!draggedProjectId || !Array.from(event.dataTransfer.types).includes("application/x-capsule-project")) return;
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "move";
+                    setProjectDropTarget(item.id);
+                  }}
+                  onDrop={(event) => {
+                    const sourceId = event.dataTransfer.getData("application/x-capsule-project");
+                    if (!sourceId) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setDraggedProjectId(undefined);
+                    setProjectDropTarget(undefined);
+                    void moveProject(sourceId, item.id);
+                  }}
                   aria-describedby={`project-preview-${item.id}`}
                   data-menu-open={menu?.kind === "project" && menu.id === item.id ? "true" : undefined}
                   aria-label={item.name}
