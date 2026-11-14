@@ -44,7 +44,7 @@
 .prompt-jump-panel ul { list-style: none; margin: 0; padding: 0; overflow: auto; overscroll-behavior: contain; }
 .prompt-jump-panel li {
   display: grid;
-  grid-template-columns: 1.75rem minmax(0, 1fr);
+  grid-template-columns: 1.25rem minmax(0, 1fr);
   align-items: baseline;
   gap: 0.35rem;
   padding: 0.4rem 0.45rem;
