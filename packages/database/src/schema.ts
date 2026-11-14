@@ -386,4 +386,21 @@ export const MIGRATIONS: Array<{ version: number; sql: string; }> = [
       ALTER TABLE runs ADD COLUMN turn_mode TEXT;
     `,
   },
+  {
+    version: 23,
+    sql: `
+      -- Read-only links to one thread. The secret is never stored, only its
+      -- hash, and a revoked link keeps its row so the revocation is a fact.
+      CREATE TABLE IF NOT EXISTS share_grants (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        token_hash TEXT NOT NULL UNIQUE,
+        label TEXT,
+        created_at TEXT NOT NULL,
+        expires_at TEXT,
+        revoked_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_share_grants_session ON share_grants(session_id, created_at);
+    `,
+  },
 ];
