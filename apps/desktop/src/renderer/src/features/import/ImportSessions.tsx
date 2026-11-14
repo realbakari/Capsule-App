@@ -178,7 +178,7 @@ export function ImportHint({ projectId }: { projectId: string }) {
   const found = listing(projectId)?.sessions.filter((session) => !session.importedAs);
   if (disabledReason || !found?.length) return null;
   const agents = [...new Set(found.map((session) => session.agent))];
-  const who = agents.length === 1 ? agentName(agents[0]!) : "agent";
+  const who = agents.map(agentName).join(" and ");
   return (
     <button type="button" className="import-hint" onClick={() => openImport(projectId)}>
       Found {found.length} {who} {found.length === 1 ? "session" : "sessions"} in this folder. <span>Import…</span>
