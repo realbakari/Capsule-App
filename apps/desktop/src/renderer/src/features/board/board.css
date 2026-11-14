@@ -210,7 +210,7 @@
 .board-card-after > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .board-card-after small { flex: none; font-size: inherit; }
 
-.board-card-actions { display: flex; gap: 0.25rem; margin-top: 0.15rem; min-width: 0; }
+.board-card-actions { display: flex; gap: 0.25rem; margin-top: 0.15rem; min-width: 0; container-type: inline-size; }
 .board-card-actions .chip { height: var(--control-h-xs); padding: 0 0.5rem; font-size: var(--text-2xs); gap: 0.25rem; }
 .board-card-actions .chip.quiet { border-color: transparent; padding: 0 0.375rem; }
 .board-card-actions .chip.quiet:hover { border-color: var(--border-color); }
@@ -218,6 +218,10 @@
 .board-link-menu { position: relative; display: inline-flex; min-width: 0; }
 .board-link-menu > .chip { flex-shrink: 1; min-width: 0; }
 .board-link-menu > .chip > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* A clipped "Depe…" reads as broken; on a narrow card the link icon stands alone, named by its tooltip. */
+@container (max-width: 15.5rem) {
+  .board-link-menu > .chip > span { display: none; }
+}
 .board-menu {
   position: fixed;
   z-index: var(--z-menu);

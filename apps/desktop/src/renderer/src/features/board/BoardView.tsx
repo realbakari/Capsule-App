@@ -303,7 +303,7 @@ function Card({
           )}
           {pending && (
             <span className="board-link-menu">
-              <button ref={menuAnchor} type="button" className="chip quiet" title="Depends on" aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}>
+              <button ref={menuAnchor} type="button" className="chip quiet" title="Depends on" aria-label="Depends on" aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}>
                 <LinkIcon size={11} /><span>Depends on</span>
               </button>
               {menuOpen && (
