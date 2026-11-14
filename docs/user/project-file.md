@@ -19,6 +19,18 @@ run — without adding anything by hand.
       "name": "Dev server",
       "command": "pnpm dev",
       "previewUrl": "localhost:5173"
+    },
+    {
+      "name": "Check",
+      "command": "pnpm typecheck && pnpm lint",
+      "check": true
+    }
+  ],
+  "prompts": [
+    {
+      "name": "Review",
+      "description": "Review one file",
+      "prompt": "Review {{file}} for {{focus:bugs|performance|readability}} and list what you would change."
     }
   ]
 }
@@ -31,6 +43,7 @@ run — without adding anything by hand.
 | `iconPath` | A workspace-relative image used as the project icon. Checked before Capsule's own guesses. |
 | `defaultWorkspaceMode` | `"local"` to run new conversations in the project folder, `"worktree"` to give each one an isolated checkout. |
 | `actions` | Commands available from the top bar, up to 50. |
+| `prompts` | Saved prompts for the composer's `/` menu, up to 50. |
 
 Each action takes:
 
@@ -41,6 +54,18 @@ Each action takes:
 | `previewUrl` | Opened in Capsule's browser panel when the action runs. |
 | `runOnWorktreeCreate` | Runs once, automatically, when a conversation gets its own worktree. For the install step a fresh checkout needs. |
 | `openPreview` | Set to `false` to keep the preview from opening by itself. |
+| `check` | Set to `true` to make this the project's check: `@diagnostics` in the composer runs it and attaches the output. |
+
+Each prompt takes:
+
+| Field | Meaning |
+| --- | --- |
+| `name` | What it is called. Typing `/` and the name in the composer finds it. Required. |
+| `prompt` | The text. `{{name}}` is a blank to fill in; `{{name:one|two}}` is a choice. Required. |
+| `description` | A short line shown in the `/` menu. |
+
+Choosing a prompt with blanks opens a small form for them, then puts the
+filled-in text in the composer for you to read and send.
 
 ## Who wins
 
@@ -54,6 +79,9 @@ app-wide default:
 - **Actions** — the file's actions are listed first, marked `shared`. An action
   you add on this machine with the same name replaces the shared one, so you
   can change a command locally without editing the repository.
+- **Prompts** — the file's prompts are listed first, marked **Project**. Your
+  own saved prompts from **Settings › General › Saved prompts** follow, marked
+  **Personal**; one with the same name as a project prompt is hidden.
 
 A shared action cannot be edited or deleted from the project screen. It comes
 from the file; change it there and everyone gets the change.

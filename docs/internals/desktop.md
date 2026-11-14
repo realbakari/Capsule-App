@@ -2029,3 +2029,86 @@ Settings → Agents → **Plan mode** has **Start in Plan mode** and **Plan and 
 models**, which lists saved per-agent choices with Clear. Models are chosen in
 the picker, not here, so Settings never spawns an agent to list its models.
 
+## Composer context sources
+
+`CONTEXT_SOURCES` in `@capsule/shared` (`composer-context.ts`) is the one
+registry of what the composer can attach besides files: kind, `@` keyword,
+label, what resolving it touches (`read`, `network`, `command`) and which
+surfaces offer it (`mention`, `palette`, `context-menu`, `bang`). The `@` menu
+and the chips read that table rather than keeping their own lists.
+
+- **One shape out.** Every source resolves to a `ResolvedContext`: a bounded
+  Markdown document (`CONTEXT_BYTE_LIMIT`, 200 KB, cut by `clipText` in
+  `text-budget.ts`), a file name, and a `ContextAttachment` (kind, label,
+  1.6 KB excerpt, detail). `attachContext` in the workspace saves it through
+  `saveTextAttachment`, which now takes an optional name and writes
+  `attachments/<uuid>/<name>.md`, then attaches it like any file. The
+  `context` field rides on `MessageAttachment` so a restored draft keeps its
+  chip. The engine re-validates attachments at send and drops the field, so a
+  sent message shows the plain file name.
+- **Pure builders.** `threadToMarkdown` (prompts, steers and each run's last
+  assistant message, newest kept first under budget, with an omitted count) is
+  the export a later Markdown-export feature reuses. `diffToMarkdown`,
+  `selectionToMarkdown`, `commandToMarkdown`, `diagnosticsToMarkdown`,
+  `urlToMarkdown`, `lineRange`, `parseBangCommand`, `detectCheckCommand` and
+  `initPrompt` sit beside it.
+- **Where each resolves.** `@thread` reads `listMessages` and `@diff` reads
+  `gitScopedDiff` (`branch` or `uncommitted`), both read channels; only the
+  attachment save is a write. `@url` is `fetchUrlContext`, `@diagnostics` is
+  `runDiagnostics` and `!command` is `runComposerCommand`: three new channels,
+  all write-scoped. `fetchUrlContext` reaches the network and the other two run
+  a command in the conversation's folder.
+- **@url safety** (`packages/core/src/url-context.ts`). http and https only, no
+  credentials, a ten-second deadline, a 1 MB read cap and three redirects. Every
+  resolved address must pass `publicNetworkAddress` (the profile-image rule
+  from `@capsule/buzz`), checked in a pinned `lookup` so there is no second
+  resolution. Single-label, `.local` and `.localhost` names are refused.
+  Loopback is allowed only when the typed host is `localhost`, `127.0.0.1` or
+  `[::1]`, and a redirect cannot turn a public request into a loopback one.
+  HTML becomes text with a regex pass that drops scripts, styles, navigation
+  and forms, prefers `<main>` or `<article>`, and keeps headings and list items.
+- **Commands.** `runComposerCommand` and `runDiagnostics` call
+  `runContextCommand` (`packages/core/src/context-commands.ts`): the same
+  `runInDirectory` the engine's other captured commands use, under the folder
+  activity lease and `assertLocalCommandsAllowed`, so strict sandbox blocks
+  them. `!` stops at 60 s and diagnostics at 180 s; output keeps its last
+  64 KB. This is not a command-runner surface: there is no panel, only an
+  attachment chip.
+- **Diagnostics are the project's check.** No LSP exists. `findCheckCommand`
+  picks the action with `check: true` (new on `ProjectAction`, editable in the
+  action dialog and in `capsule.json`), else the `typecheck`, `lint` or `check`
+  script, run with the package manager its lockfile names. None found is a
+  result (`{ status: "none" }`), shown as an error chip linking to the project
+  screen, not an exception.
+- **Chips.** `ComposerContext.tsx` owns `ContextChip` (preview on hover and
+  focus, pinned on click, Escape closes), `PendingChip` (spinner, then an error
+  with an optional action; dismissing a pending one discards its late result),
+  `ContextPicker` (thread, diff, url) and `TemplateForm`. Pending state resets
+  when the project or conversation changes, and the workspace's draft scope
+  drops a result that lands after a switch.
+- **Selections.** `lib/selection-share.ts` keeps one reader per surface
+  (terminal, file, browser) and remembers the surface touched last, because
+  opening the palette moves focus. The terminal reads xterm's selection; the
+  file preview maps a DOM range or textarea offsets to `path:start-end` and
+  keeps its last selection across the focus change; the browser asks its
+  webview. Right-click on a selection shows a native menu with **Copy** and
+  **Send selection to thread**; the browser's More menu and the palette offer
+  the same.
+- **`/init` and templates.** `/init` sends `initPrompt(found)` through
+  `sendPrompt`, which leaves the draft alone. The project screen's **Write /
+  Refresh AGENTS.md** button and the palette entry draft it in a new
+  conversation instead. `INSTRUCTION_FILES` moved to `@capsule/shared`. Saved
+  prompts parse through `normalizePromptTemplates` from `capsule.json`
+  `prompts` and from the `composerPrompts` setting (the only settings key this
+  adds, edited in Settings › General › Saved prompts). `templateVariables` and
+  `fillTemplate` handle `{{name}}` and `{{name:a|b}}`.
+- **Routes and harnesses.** Context is an attachment, so it follows the
+  attachment rules: the direct route sends it as an embedded text resource and
+  needs an agent that reports `embeddedContext`; otherwise the turn is refused
+  with the existing message. The Gateway route passes the file path in the
+  prompt's attached-files block. No harness gets special handling.
+- **Remote viewer.** `@` sources and `!` are hidden or refused when
+  `api.isDesktop !== true`, the selection menus are not registered, and the
+  palette entry is disabled. The three new channels are writes, so read and
+  control peers cannot call them. Templates and `/init` are plain prompts and
+  stay available to a control peer.

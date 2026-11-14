@@ -319,6 +319,99 @@ local path. A missing file is refused instead of being silently omitted. Each
 turn accepts up to eight files, with a 50 MB limit per file. The harness still
 applies the conversation's permission mode when it reads those paths.
 
+## Attach context
+
+Besides files, the composer can attach a conversation, a diff, the project's
+check output, a web page, a selection or a command's output. Each becomes a
+chip under the prompt that says what it is. Hover or focus a chip to preview
+the start of it, or click it to keep the preview open; **×** removes it. Each
+attachment is Markdown, at most 200 KB, and counts toward the eight-attachment
+limit. While one is being prepared its chip shows a spinner; if it fails, the
+chip says why and stays until you dismiss it. Nothing is sent until you send.
+
+These sources are offered only in the desktop app. A paired browser does not
+see them, because each one reads from this computer, runs a command or
+reaches the network.
+
+### @thread
+
+Type `@thread` (or `@th` and pick it) and choose another conversation. This
+project's conversations come first, then the rest. The attachment holds that
+conversation's prompts, steers and final replies, oldest first, without tool
+steps or progress messages. A long conversation keeps its most recent turns
+and says how many earlier messages it left out.
+
+### @diff
+
+Type `@diff` and choose **Branch changes**, everything since this branch left
+the default branch, or **Uncommitted changes**, staged and unstaged edits
+against the last commit. A diff with nothing in it is reported instead of
+attached. A long diff is cut to fit and says so.
+
+### @diagnostics
+
+Capsule does not run a language server, so it does not invent diagnostics.
+`@diagnostics` runs the project's own check command in the conversation's
+folder and attaches its exit code and the end of its output. The check is the
+project action marked **Use as the project's check** (or `"check": true` in
+`capsule.json`). Without one, Capsule uses the `typecheck`, `lint` or `check`
+script in `package.json`, in that order, run with the project's package
+manager. If there is none, the chip says **No check command found** and links
+to **Project actions**. The check stops after three minutes. Strict sandbox
+blocks it.
+
+### @url
+
+Type `@url`, then an address, and press Enter. Capsule fetches the page,
+keeps its readable text (headings, paragraphs and lists, not scripts or
+navigation) and attaches up to 200 KB of it. Pages that do not answer within
+ten seconds, are not text, or are larger than 1 MB are refused or cut, and the
+chip says which. Addresses on a private network (your router, another
+machine on the LAN, a cloud metadata address) are refused, including when a
+public page redirects to one. Type `localhost`, `127.0.0.1` or `[::1]` to
+fetch a server on this computer. The request carries no cookies or sign-in.
+
+### Send selection to thread
+
+Select text in the terminal, in a file preview or on a page in the browser,
+then right-click and choose **Send selection to thread**, or choose it from the
+command palette. A file selection is quoted with its path and line range, such
+as `src/app.ts:12-30`. A page selection is quoted with the page's address. The
+browser's **More options** menu has the same command.
+
+## Run a command with !
+
+Start the prompt with `!`, as in `!git log --oneline -5`, and press Enter.
+Capsule runs the command in the conversation's folder instead of sending it to
+the agent, then attaches the exit code and the last part of the output as a
+chip. The prompt is cleared so you can write what you want the agent to do
+with it. A hint under the prompt says what Enter will do. Commands stop after
+sixty seconds; a failed start puts the command back in the prompt. Strict
+sandbox blocks commands, and a paired browser cannot run them.
+
+## /init
+
+`/init` asks the agent to write or refresh `AGENTS.md`, the file coding agents
+read at the start of every turn. The prompt names the instruction files the
+project already has (`AGENTS.md`, `CLAUDE.md`, `CLAUDE.local.md`,
+`.claude/CLAUDE.md`, `GEMINI.md`) so the agent reads them first and refreshes
+rather than duplicates. It asks for verified commands, layout and conventions,
+in under 200 lines. Choosing `/init` sends it right away. **Write AGENTS.md**
+(or **Refresh AGENTS.md**) beside the instruction files in the project's
+settings, and **Write or refresh AGENTS.md** in the command palette, start a
+new conversation with the same prompt drafted so you can read it first.
+
+## Saved prompts
+
+Type `/` to see saved prompts alongside commands. A project's own, from its
+`capsule.json`, are marked **Project**; your own, from **Settings › General ›
+Saved prompts**, are marked **Personal**. A prompt can have blanks:
+`{{file}}` asks for text and `{{focus:bugs|performance}}` asks you to pick.
+Choosing a prompt with blanks opens a small form above the prompt; **Insert
+prompt** fills them in and puts the text in the composer, after anything you
+already wrote. A prompt without blanks goes straight in. Nothing is sent
+until you send.
+
 ## Stash a prompt
 
 Press `⌘S` while the composer contains text or attachments to move that draft

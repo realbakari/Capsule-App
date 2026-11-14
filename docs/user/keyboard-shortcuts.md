@@ -52,8 +52,9 @@ Two things the editor will not let you do:
 
 ## In the composer
 
-- `/` for commands
-- `@` to mention a file
+- `/` for commands, `/init` and saved prompts
+- `@` to mention a file, or `@thread`, `@diff`, `@diagnostics` and `@url` to attach context
+- `!` at the start of the prompt, then `Enter`, to run a command and attach its output
 - `$` to attach a skill
 - Paperclip or drop to attach local files
 - `⌘S` to stash the current prompt, or open the stash when the composer is empty
