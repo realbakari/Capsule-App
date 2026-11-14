@@ -56,12 +56,14 @@ function sessionParams(session: Session) {
     workspaceMode: session.workspaceMode ?? "local",
     worktreeBranch: session.worktreeBranch ?? null,
     profileId: session.profileId ?? null,
+    automationId: session.automationId ?? null,
+    unread: session.unread ? 1 : 0,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
   };
 }
 
-type SessionRow = Omit<Session, "directSession" | "carryOver"> & { directSession?: string | null; carryOver?: string | null };
+type SessionRow = Omit<Session, "directSession" | "carryOver" | "unread"> & { directSession?: string | null; carryOver?: string | null; unread?: number | null };
 
 function normalizeSession(row: SessionRow): Session {
   const harnessId = isHarnessId(row.harnessId)
@@ -77,6 +79,8 @@ function normalizeSession(row: SessionRow): Session {
     permissionProfile: row.permissionProfile || undefined,
     modelOverride: row.modelOverride || undefined,
     profileId: row.profileId || undefined,
+    automationId: row.automationId || undefined,
+    unread: row.unread ? true : undefined,
     directSession: parseJson<Session["directSession"]>(row.directSession, undefined),
     carryOver: parseJson<Session["carryOver"]>(row.carryOver, undefined),
     pinned: Boolean(row.pinned),
@@ -228,12 +232,12 @@ export class CapsuleRepositories {
           id, workspace_id, project_id, agent_id, title, mode, state,
           openclaw_session_key, harness_id, harness_state, acp_mode,
           permission_profile, model_override, pinned, pin_order, working_directory, workspace_mode,
-          worktree_branch, direct_session, carry_over, profile_id, created_at, updated_at
+          worktree_branch, direct_session, carry_over, profile_id, automation_id, unread, created_at, updated_at
         ) VALUES (
           @id, @workspaceId, @projectId, @agentId, @title, @mode, @state,
           @openclawSessionKey, @harnessId, @harnessState, @acpMode,
           @permissionProfile, @modelOverride, @pinned, @pinOrder, @workingDirectory, @workspaceMode,
-          @worktreeBranch, @directSession, @carryOver, @profileId, @createdAt, @updatedAt
+          @worktreeBranch, @directSession, @carryOver, @profileId, @automationId, @unread, @createdAt, @updatedAt
         )`,
       )
       .run(sessionParams(session));
@@ -247,7 +251,7 @@ export class CapsuleRepositories {
          harness_state = @harnessState, acp_mode = @acpMode,
          permission_profile = @permissionProfile, model_override = @modelOverride,
          pinned = @pinned, pin_order = @pinOrder, working_directory = @workingDirectory, workspace_mode = @workspaceMode,
-         worktree_branch = @worktreeBranch, direct_session = @directSession, carry_over = @carryOver, profile_id = @profileId, updated_at = @updatedAt WHERE id = @id`,
+         worktree_branch = @worktreeBranch, direct_session = @directSession, carry_over = @carryOver, profile_id = @profileId, automation_id = @automationId, unread = @unread, updated_at = @updatedAt WHERE id = @id`,
       )
       .run(sessionParams(session));
   }
@@ -316,7 +320,7 @@ export class CapsuleRepositories {
                 harness_id AS harnessId, harness_state AS harnessState, acp_mode AS acpMode,
                 permission_profile AS permissionProfile, model_override AS modelOverride,
                 pinned, pin_order AS pinOrder, working_directory AS workingDirectory, workspace_mode AS workspaceMode,
-                worktree_branch AS worktreeBranch, direct_session AS directSession, carry_over AS carryOver, profile_id AS profileId, created_at AS createdAt, updated_at AS updatedAt`;
+                worktree_branch AS worktreeBranch, direct_session AS directSession, carry_over AS carryOver, profile_id AS profileId, automation_id AS automationId, unread, created_at AS createdAt, updated_at AS updatedAt`;
     const sql = projectId
       ? `SELECT ${columns} FROM sessions WHERE project_id = ?
          ORDER BY pinned DESC, COALESCE(pin_order, 2147483647) ASC, updated_at DESC`

@@ -6,6 +6,8 @@ import type { CapsuleSettings } from "./runtime.js";
 import type { McpServerView } from "./mcp.js";
 import type { ProfileSummary } from "./profile.js";
 import type { StyleSummary } from "./style.js";
+import type { AutomationView } from "./automations.js";
+import type { StatusLineRender } from "./status-line.js";
 
 /**
  * The layers a value can come from, highest precedence first after the
@@ -151,6 +153,10 @@ export interface ConfigSnapshot {
   styles: { styles: StyleSummary[]; selected: string; personalInstructions?: string };
   /** Configured MCP servers here, each with whether the next direct conversation gets it. */
   mcpServers: McpServerView[];
+  /** Your automations and this project's, with what the scheduler knows of each. */
+  automations: AutomationView[];
+  /** The status line as configured, and the latest command output for each thread here. */
+  statusLine: { items: StatusLineItem[]; command?: string; refreshInterval?: number; renders: StatusLineRender[] };
 }
 
 export type ThemeSource = "bundled" | "user" | "project" | "plugin";

@@ -25,6 +25,7 @@ import {
   SETTINGS_SCHEMA_URL,
   settingSpec,
   shellSpanCommands,
+  type AutomationConfig,
   type CapsuleSettings,
   type ConfigDiagnostics,
   type ConfigFileTarget,
@@ -406,6 +407,57 @@ export class ConfigService {
     if (this.resolve(input.root).merged.extended.mcpServers[input.name]?.value.enabled === false) {
       this.setValues("local", { mcpServers: { ...read(), [input.name]: { enabled: true } } }, input.root);
     }
+  }
+
+  /** The `automations` array exactly as one file holds it, entries the schema would drop included. */
+  private fileAutomations(scope: WritableScope, root?: string): Record<string, unknown>[] {
+    const file = this.paths.settingsFile(scope, root);
+    const current = readJsonc(file);
+    if (current.state === "broken") throw new Error(`${file} has an error at line ${current.error.line}, column ${current.error.column}. Fix it before Capsule writes to it.`);
+    const value = current.state === "ok" && isPlainObject(current.value) ? current.value : {};
+    return Array.isArray(value.automations) ? (value.automations as Record<string, unknown>[]) : [];
+  }
+
+  /**
+   * Pause or resume an automation where it is defined. One from a project's
+   * shared file is paused by a full copy in your local file, which wins by
+   * id, so the team's file is never rewritten; resuming drops that copy.
+   */
+  setAutomationEnabled(input: { automation: AutomationConfig; source: Provenance; enabled: boolean; root?: string }): void {
+    if (this.safeMode) throw new Error(SAFE_MODE_WRITE_ERROR);
+    const { automation, enabled } = input;
+    const scope: WritableScope = input.source.scope === "user" ? "user" : "local";
+    const root = scope === "user" ? undefined : input.root;
+    const list = this.fileAutomations(scope, root);
+    const index = list.findIndex((entry) => isPlainObject(entry) && entry.id === automation.id);
+    if (scope === "user") {
+      if (index === -1) throw new Error(`${automation.name} is not in ${this.paths.settingsFile("user")}.`);
+      this.setValues("user", { automations: list.map((entry, at) => (at === index ? { ...entry, enabled } : entry)) });
+      return;
+    }
+    const shared = this.fileAutomations("project", root).find((entry) => isPlainObject(entry) && entry.id === automation.id);
+    const copyOfShared = (entry: Record<string, unknown>) => shared !== undefined && isDeepStrictEqual({ ...entry, enabled: undefined }, { ...shared, enabled: undefined });
+    if (enabled && shared && shared.enabled !== false && (index === -1 || copyOfShared(list[index]!))) {
+      const kept = list.filter((_, at) => at !== index);
+      this.setValues("local", { automations: kept.length ? kept : undefined }, root);
+      return;
+    }
+    const next = index === -1 ? [...list, { ...(shared ?? automation), enabled }] : list.map((entry, at) => (at === index ? { ...entry, enabled } : entry));
+    this.setValues("local", { automations: next }, root);
+  }
+
+  /** Append an automation to your file or a project's local file, with an id no other entry there uses. */
+  addAutomation(input: { automation: AutomationConfig; scope: "user" | "local"; root?: string }): AutomationConfig {
+    if (this.safeMode) throw new Error(SAFE_MODE_WRITE_ERROR);
+    const root = input.scope === "user" ? undefined : input.root;
+    if (input.scope === "local" && !root) throw new Error("Open a project with a folder to add an automation to it.");
+    const list = this.fileAutomations(input.scope, root);
+    const taken = new Set([...list.map((entry) => entry.id), ...this.extended(root).automations.map((entry) => entry.value.id)]);
+    let id = input.automation.id;
+    for (let n = 2; taken.has(id); n++) id = `${input.automation.id}-${n}`;
+    const automation = { ...input.automation, id };
+    this.setValues(input.scope, { automations: [...list, automation] }, root);
+    return automation;
   }
 
   /** Write a new profile file, from the template or as a copy of another profile, and return its path. */

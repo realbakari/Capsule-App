@@ -210,6 +210,18 @@ export const IPC_CHANNELS = {
   mcpSetEnabled: "capsule:mcp:setEnabled",
   /* Write a new profile file, or a copy of one, and open it. */
   profilesCreate: "capsule:profiles:create",
+  /* Run a status line command for one thread. It runs the person's command, so it is a write. */
+  statusLineRun: "capsule:statusLine:run",
+  /* Start an automation now, or answer its missed occurrences by running it. */
+  automationsRunNow: "capsule:automations:runNow",
+  /* Pause or resume an automation by writing its `enabled`. */
+  automationsSetEnabled: "capsule:automations:setEnabled",
+  /* Let missed occurrences go without running them. */
+  automationsDismissMissed: "capsule:automations:dismissMissed",
+  /* Add an automation from a template, paused, to a settings file, and open it. */
+  automationsCreate: "capsule:automations:create",
+  /* The person opened a thread an automation left unread. */
+  sessionsMarkRead: "capsule:sessions:markRead",
 } as const;
 
 export const IPC_EVENTS = {

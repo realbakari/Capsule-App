@@ -265,6 +265,10 @@ export interface Session {
   worktreeBranch?: string;
   /** The agent profile that started this conversation, by id. */
   profileId?: string;
+  /** The automation that started this conversation, by its key. */
+  automationId?: string;
+  /** Started by an automation and not opened on the desktop since. */
+  unread?: boolean;
   createdAt: string;
   updatedAt: string;
 }

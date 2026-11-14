@@ -186,6 +186,16 @@ const api = {
     ipcRenderer.invoke(IPC_CHANNELS.mcpSetEnabled, input),
   profilesCreate: (input: import("@capsule/shared").ProfileCreateInput): Promise<string> =>
     ipcRenderer.invoke(IPC_CHANNELS.profilesCreate, input),
+  statusLineRun: (input: import("@capsule/shared").StatusLineRequest): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.statusLineRun, input),
+  automationsRunNow: (input: import("@capsule/shared").AutomationKeyInput): Promise<import("@capsule/shared").ConfigSnapshot> =>
+    ipcRenderer.invoke(IPC_CHANNELS.automationsRunNow, input),
+  automationsSetEnabled: (input: import("@capsule/shared").AutomationEnabledInput): Promise<import("@capsule/shared").ConfigSnapshot> =>
+    ipcRenderer.invoke(IPC_CHANNELS.automationsSetEnabled, input),
+  automationsDismissMissed: (input: import("@capsule/shared").AutomationKeyInput): Promise<import("@capsule/shared").ConfigSnapshot> =>
+    ipcRenderer.invoke(IPC_CHANNELS.automationsDismissMissed, input),
+  automationsCreate: (input: import("@capsule/shared").AutomationCreateInput): Promise<string> =>
+    ipcRenderer.invoke(IPC_CHANNELS.automationsCreate, input),
+  sessionsMarkRead: (sessionId: string): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.sessionsMarkRead, sessionId),
   backdropChooseImage: (): Promise<import("@capsule/shared").ConfigSnapshot | undefined> => ipcRenderer.invoke(IPC_CHANNELS.backdropChooseImage),
   search: (query: string) => ipcRenderer.invoke(IPC_CHANNELS.search, query),
   updateProject: (id: string, patch: unknown) =>

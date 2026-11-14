@@ -176,6 +176,16 @@ describe("MCP and profile channels", () => {
   });
 });
 
+describe("status line, automation and unread channels", () => {
+  it("keeps running a status line command, running or pausing an automation and marking a thread read on the desktop", () => {
+    for (const channel of ["statusLineRun", "automationsRunNow", "automationsSetEnabled", "automationsDismissMissed", "automationsCreate", "sessionsMarkRead"]) {
+      expect(scopeForChannel(channel)).toBe("write");
+      expect(isChannelAllowed(channel, ["read"])).toBe(false);
+      expect(isChannelAllowed(channel, ["control"])).toBe(false);
+    }
+  });
+});
+
 describe("follow-up channels", () => {
   it("lets a viewer read the queue and conversation control change it, but not a read-only device", () => {
     expect(isChannelAllowed("getFollowUps", ["read"])).toBe(true);

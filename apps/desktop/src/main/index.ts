@@ -87,7 +87,7 @@ import { startRemoteServer, type RemoteServerHandle } from "@capsule/remote";
 import { startPty, TerminalOutputFlow, type PtySession } from "@capsule/terminal";
 import { popupContextMenu } from "./popup-menu";
 import { remoteReachFromArgs } from "./remote-args";
-import { appRestartInput, commandExpandInput, configFileTarget, keybindingEdit, mcpEnabledInput, mcpTestInput, permissionRuleEdit, profileCreateInput, setConfigValueInput, themeImportInput } from "./config-args";
+import { appRestartInput, automationCreateInput, automationEnabledInput, automationKeyInput, statusLineRequest, commandExpandInput, configFileTarget, keybindingEdit, mcpEnabledInput, mcpTestInput, permissionRuleEdit, profileCreateInput, setConfigValueInput, themeImportInput } from "./config-args";
 import { registerBackdropScheme, serveBackdropImages } from "./backdrop-protocol";
 import { configDirFor, relaunchArgs, safeModeFromArgs } from "./launch-config";
 import { RemoteAccessLifecycle } from "./remote-access";
@@ -1758,6 +1758,17 @@ function registerIpc(): void {
   handleArgs(IPC_CHANNELS.keybindingsSet, [keybindingEdit], (edit: import("@capsule/shared").KeybindingEdit) => requireEngine().editKeybindings(edit));
   handleArgs(IPC_CHANNELS.mcpTest, [mcpTestInput], (input: import("@capsule/shared").McpTestInput) => requireEngine().testMcpServer(input));
   handleArgs(IPC_CHANNELS.mcpSetEnabled, [mcpEnabledInput], (input: import("@capsule/shared").McpEnabledInput) => requireEngine().setMcpServerEnabled(input));
+  handleArgs(IPC_CHANNELS.statusLineRun, [statusLineRequest], (input: import("@capsule/shared").StatusLineRequest) => requireEngine().runStatusLine(input));
+  handleArgs(IPC_CHANNELS.automationsRunNow, [automationKeyInput], (input: import("@capsule/shared").AutomationKeyInput) => requireEngine().runAutomationNow(input));
+  handleArgs(IPC_CHANNELS.automationsSetEnabled, [automationEnabledInput], (input: import("@capsule/shared").AutomationEnabledInput) => requireEngine().setAutomationEnabled(input));
+  handleArgs(IPC_CHANNELS.automationsDismissMissed, [automationKeyInput], (input: import("@capsule/shared").AutomationKeyInput) => requireEngine().dismissMissedAutomation(input));
+  handleArgs(IPC_CHANNELS.automationsCreate, [automationCreateInput], async (input: import("@capsule/shared").AutomationCreateInput) => {
+    const file = requireEngine().createAutomation(input);
+    const failure = await shell.openPath(file);
+    if (failure) throw new Error(failure);
+    return file;
+  });
+  handleArgs(IPC_CHANNELS.sessionsMarkRead, [id], (sessionId: string) => requireEngine().markSessionRead(sessionId));
   handleArgs(IPC_CHANNELS.profilesCreate, [profileCreateInput], async (input: import("@capsule/shared").ProfileCreateInput) => {
     const file = requireEngine().createProfile(input);
     const failure = await shell.openPath(file);

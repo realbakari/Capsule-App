@@ -1,5 +1,5 @@
 import { IpcArgumentError, type ArgParser } from "@capsule/contracts";
-import { KEYMAP_CONTEXTS, MAX_THEME_SHARE_BYTES, WRITABLE_SCOPES, type CommandExpandInput, type ConfigFileTarget, type McpEnabledInput, type McpTestInput, type ProfileCreateInput, type KeybindingEdit, type KeymapContext, type PermissionRuleEdit, type SetConfigValueInput, type ThemeImportInput, type WritableScope } from "@capsule/shared";
+import { AUTOMATION_TEMPLATES, type AutomationCreateInput, type AutomationEnabledInput, type AutomationKeyInput, type StatusLineRequest, KEYMAP_CONTEXTS, MAX_THEME_SHARE_BYTES, WRITABLE_SCOPES, type CommandExpandInput, type ConfigFileTarget, type McpEnabledInput, type McpTestInput, type ProfileCreateInput, type KeybindingEdit, type KeymapContext, type PermissionRuleEdit, type SetConfigValueInput, type ThemeImportInput, type WritableScope } from "@capsule/shared";
 
 /*
  * Shapes for the settings-file channels, checked where they cross from the
@@ -67,6 +67,36 @@ export const profileCreateInput: ArgParser<ProfileCreateInput> = (value, channel
   if (input.scope === "project" && input.projectId === undefined) throw new IpcArgumentError(channel, index, "a project profile needs a projectId");
   if (input.from !== undefined && (typeof input.from !== "string" || !/^[a-z0-9][a-z0-9:_-]*$/.test(input.from))) throw new IpcArgumentError(channel, index, "from must be a profile id");
   return { scope: input.scope, ...projectId(input.projectId, channel, index), ...(input.from === undefined ? {} : { from: input.from }) };
+};
+
+const AUTOMATION_KEY = /^[A-Za-z0-9_-]{1,80}:[a-z0-9][a-z0-9-]{0,80}$/;
+
+export const automationKeyInput: ArgParser<AutomationKeyInput> = (value, channel, index) => {
+  const input = record(value, channel, index);
+  if (typeof input.key !== "string" || !AUTOMATION_KEY.test(input.key)) throw new IpcArgumentError(channel, index, "key must name an automation");
+  return { key: input.key, ...projectId(input.projectId, channel, index) };
+};
+
+export const automationEnabledInput: ArgParser<AutomationEnabledInput> = (value, channel, index) => {
+  const input = record(value, channel, index);
+  if (typeof input.enabled !== "boolean") throw new IpcArgumentError(channel, index, "enabled must be true or false");
+  return { ...automationKeyInput(value, channel, index), enabled: input.enabled };
+};
+
+export const automationCreateInput: ArgParser<AutomationCreateInput> = (value, channel, index) => {
+  const input = record(value, channel, index);
+  if (!AUTOMATION_TEMPLATES.some((template) => template.id === input.template)) throw new IpcArgumentError(channel, index, "template must be a known automation template");
+  if (input.scope !== "user" && input.scope !== "local") throw new IpcArgumentError(channel, index, "scope must be user or local");
+  if (input.scope === "local" && input.projectId === undefined) throw new IpcArgumentError(channel, index, "a project automation needs a projectId");
+  return { template: input.template as string, scope: input.scope, ...projectId(input.projectId, channel, index) };
+};
+
+/** The facts stay unknown here; the engine keeps only the fields it knows. */
+export const statusLineRequest: ArgParser<StatusLineRequest> = (value, channel, index) => {
+  const input = record(value, channel, index);
+  if (typeof input.projectId !== "string" || !input.projectId.trim()) throw new IpcArgumentError(channel, index, "needs a projectId");
+  if (input.sessionId !== undefined && (typeof input.sessionId !== "string" || !input.sessionId.trim())) throw new IpcArgumentError(channel, index, "sessionId must be a string");
+  return { projectId: input.projectId, ...(input.sessionId ? { sessionId: input.sessionId as string } : {}), facts: input.facts as StatusLineRequest["facts"] };
 };
 
 export const commandExpandInput: ArgParser<CommandExpandInput> = (value, channel, index) => {

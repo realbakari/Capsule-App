@@ -45,6 +45,8 @@ function snapshot(overrides: Partial<ConfigSnapshot> = {}): ConfigSnapshot {
     profiles: [],
     styles: { styles: [], selected: "standard" },
     mcpServers: [],
+    automations: [],
+    statusLine: { items: [], renders: [] },
     ...overrides,
   };
 }

@@ -23,6 +23,9 @@ import { FollowUpLoopGuard, followUpsFrom, HookRunner, hookSource, PromptBlocked
 import { decideRequest, type PermissionAnswer } from "./request-policy.js";
 import { mcpServerViews, offeredMcpServers, type McpContext } from "./mcp-servers.js";
 import { probeMcpServer } from "./mcp-probe.js";
+import { AutomationScheduler, type AutomationEntry } from "./automations.js";
+import { StatusLineRunner } from "./status-line.js";
+import { AUTOMATION_TEMPLATES, automationKey, automationMessage, parseStatusLineFacts, statusLineKey, statusLineStdin, type AutomationCreateInput, type AutomationView, type StatusLineRender } from "@capsule/shared";
 import type { AcpMcpServer, DirectSpawnInput } from "@capsule/acp";
 import type { ProfileEntry } from "@capsule/config";
 import {
@@ -415,6 +418,25 @@ export class CapsuleEngine {
   /* Hooks and the one permission decision path: hooks.ts and request-policy.ts. */
   private readonly hooks = new HookRunner({ extended: (root) => this.config.extended(root), record: (run) => this.config.recordRun(run) });
   private readonly hookFollowUps = new FollowUpLoopGuard();
+  /* Automations on their schedules, and the status line command: automations.ts and status-line.ts. */
+  private readonly automations = new AutomationScheduler({
+    entries: () => this.automationEntries(),
+    read: (key) => this.repos.getSetting(key),
+    write: (key, value) => this.repos.setSetting(key, value),
+    keys: (prefix) => this.repos.listSettingKeys(prefix),
+    start: (entry, at, created) => this.startAutomationThread(entry, at, created),
+    runStatus: (runId) => this.repos.getRun(runId)?.status,
+    emit: () => { if (!this.stopped) this.events.emit("state", { command: "automations-updated" }); },
+    record: (run) => this.config.recordRun(run),
+  });
+  private readonly statusLines = new StatusLineRunner({
+    command: () => {
+      const command = this.config.extended().statusLine?.command?.trim();
+      return command ? { command, source: this.config.provenance().statusLine?.path ?? "settings.json" } : undefined;
+    },
+    emit: (render) => { if (!this.stopped) this.events.emit("state", { command: "status-line-updated", render }); },
+    record: (run) => this.config.recordRun(run),
+  });
   /** Runs whose TurnEnd hooks have run, and tool calls whose ToolCall hooks have, so each fires once. */
   private readonly hookedOnce = new Set<string>();
   private startingHarnessRuns = new Set<string>();
@@ -528,8 +550,11 @@ export class CapsuleEngine {
     this.events.on("run", (run: Run) => {
       if (!this.stopped && TERMINAL_RUN_STATUSES.has(run.status)) this.followUps.runEnded(run);
       if (!this.stopped && TERMINAL_RUN_STATUSES.has(run.status)) this.runTurnEndHooks(run);
+      if (!this.stopped && TERMINAL_RUN_STATUSES.has(run.status)) this.automations.runEnded(run.id, run.status, run.error);
     });
     this.followUps.start();
+    // Safe mode loads no automation, so none can be counted as missed or run.
+    if (!this.config.safeMode) this.automations.start();
     this.log("Capsule engine started");
   }
 
@@ -585,6 +610,8 @@ export class CapsuleEngine {
     // promise, which surfaces as an unhandled rejection with no run to blame.
     this.stopped = true;
     this.followUps.stop();
+    this.automations.stop();
+    this.statusLines.stop();
     this.config.close();
     const channelRoutesStopped = this.channelRoutes.stop();
     // Resolve approval records while the database is still open. Closing the
@@ -2850,7 +2877,130 @@ export class CapsuleEngine {
         ...(this.config.extended().personalInstructions ? { personalInstructions: this.config.extended().personalInstructions } : {}),
       },
       mcpServers: mcpServerViews(this.config.extended(scoped?.root).mcpServers, this.mcpContext(scoped?.root)),
+      automations: this.automations.views((entry) => !entry.projectId || entry.projectId === project?.id),
+      statusLine: this.statusLineView(project),
     };
+  }
+
+  private statusLineView(project: Project | undefined): ConfigSnapshot["statusLine"] {
+    const configured = this.config.extended(project?.workingDirectory).statusLine;
+    const command = this.config.extended().statusLine?.command?.trim();
+    const keys = project ? [statusLineKey(project.id), ...this.repos.listSessions(project.id).map((session) => session.id)] : [];
+    const renders = command ? keys.flatMap((key) => this.statusLines.latest(key) ?? []) : [];
+    return {
+      items: configured?.items ?? [],
+      ...(command ? { command } : {}),
+      ...(configured?.refreshInterval ? { refreshInterval: configured.refreshInterval } : {}),
+      renders,
+    };
+  }
+
+  /**
+   * Run the person's status line command for one thread. The window sends
+   * what it shows; the thread, project and folder come from the records.
+   */
+  runStatusLine(input: { projectId: string; sessionId?: string; facts: unknown }): void {
+    if (!this.config.extended().statusLine?.command?.trim()) return;
+    const project = this.requireProject(input.projectId);
+    const session = input.sessionId ? this.requireSession(input.sessionId) : undefined;
+    if (session && session.projectId !== project.id) throw new Error("That conversation is not in this project.");
+    const cwd = (session ? this.cwdFor(session, project) : project.workingDirectory) || homedir();
+    this.statusLines.request({
+      key: statusLineKey(project.id, session?.id),
+      cwd,
+      ...(project.workingDirectory ? { projectDir: project.workingDirectory } : {}),
+      input: statusLineStdin({ threadId: session?.id, projectDir: project.workingDirectory, cwd }, parseStatusLineFacts(input.facts)),
+    });
+  }
+
+  latestStatusLine(projectId: string, sessionId?: string): StatusLineRender | undefined {
+    return this.statusLines.latest(statusLineKey(projectId, sessionId));
+  }
+
+  /** Yours from the user file, and each project's own from its files. Project files are read only where one exists. */
+  private automationEntries(): AutomationEntry[] {
+    if (this.config.safeMode) return [];
+    const entries: AutomationEntry[] = this.config.extended().automations
+      .map((entry) => ({ key: automationKey(undefined, entry.value.id), automation: entry.value, source: entry.source }));
+    for (const project of this.repos.listProjects()) {
+      const root = project.workingDirectory;
+      if (!root || isInboxProject(project)) continue;
+      if (!existsSync(path.join(root, ".capsule", "settings.json")) && !existsSync(path.join(root, ".capsule", "settings.local.json"))) continue;
+      for (const entry of this.config.extended(root).automations) {
+        if (entry.source.scope === "user") continue;
+        entries.push({ key: automationKey(project.id, entry.value.id), projectId: project.id, automation: entry.value, source: entry.source });
+      }
+    }
+    return entries;
+  }
+
+  /** An automation's run: a new thread titled with its name and time, unread until someone opens it. */
+  private async startAutomationThread(entry: AutomationEntry, at: Date, created: (sessionId: string) => void): Promise<{ sessionId: string; runId: string }> {
+    const project = entry.projectId ? this.requireProject(entry.projectId) : this.repos.listProjects().find((item) => isInboxProject(item));
+    if (!project) throw new Error("There is no Inbox to put this automation's thread in.");
+    const when = at.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    const session = await this.createSession({
+      projectId: project.id,
+      title: `${entry.automation.name} · ${when}`,
+      ...(entry.automation.profile ? { profileId: entry.automation.profile } : {}),
+      ...(entry.automation.workspace ? { workspaceMode: entry.automation.workspace } : {}),
+    });
+    session.automationId = entry.key;
+    session.unread = true;
+    this.repos.updateSession(session);
+    created(session.id);
+    this.events.emit("state", { command: "sessions-updated" });
+    const { run } = await this.sendMessage({ sessionId: session.id, content: automationMessage(entry.automation) });
+    return { sessionId: session.id, runId: run.id };
+  }
+
+  private requireAutomation(key: string, projectId?: string): AutomationView {
+    const view = this.automations.views((entry) => entry.key === key && (!entry.projectId || entry.projectId === projectId))[0];
+    if (!view) throw new Error("That automation is no longer in your settings files.");
+    return view;
+  }
+
+  async runAutomationNow(input: { key: string; projectId?: string }): Promise<ConfigSnapshot> {
+    this.assertWorkAllowed();
+    this.requireAutomation(input.key, input.projectId);
+    await this.automations.runNow(input.key);
+    return this.getConfigSnapshot(input.projectId);
+  }
+
+  dismissMissedAutomation(input: { key: string; projectId?: string }): ConfigSnapshot {
+    this.requireAutomation(input.key, input.projectId);
+    this.automations.dismissMissed(input.key);
+    return this.getConfigSnapshot(input.projectId);
+  }
+
+  /** Pause or resume by writing `enabled` where the automation is defined. */
+  setAutomationEnabled(input: { key: string; enabled: boolean; projectId?: string }): ConfigSnapshot {
+    const view = this.requireAutomation(input.key, input.projectId);
+    const entry = this.automationEntries().find((item) => item.key === view.key)!;
+    const root = entry.projectId ? this.requireProject(entry.projectId).workingDirectory : undefined;
+    this.config.setAutomationEnabled({ automation: entry.automation, source: entry.source, enabled: input.enabled, root });
+    this.applyConfigChange();
+    this.automations.tick();
+    return this.getConfigSnapshot(input.projectId);
+  }
+
+  /** Add a template's automation, paused, and return the file it went to so it can be opened. */
+  createAutomation(input: AutomationCreateInput): string {
+    const template = AUTOMATION_TEMPLATES.find((item) => item.id === input.template);
+    if (!template) throw new Error(`There is no automation template named ${input.template}.`);
+    const root = input.scope === "local" ? this.configRoot(input.projectId) : undefined;
+    this.config.addAutomation({ automation: template.automation, scope: input.scope, root });
+    this.applyConfigChange();
+    return this.configFilePath({ kind: "settings", scope: input.scope, ...(input.projectId ? { projectId: input.projectId } : {}) });
+  }
+
+  /** The person opened a thread an automation left unread. */
+  markSessionRead(id: string): void {
+    const session = this.requireSession(id);
+    if (!session.unread) return;
+    session.unread = false;
+    this.repos.updateSession(session);
+    this.events.emit("state", { command: "sessions-updated" });
   }
 
   getConfigDiagnostics(projectId?: string): ConfigDiagnostics {
