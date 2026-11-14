@@ -166,6 +166,9 @@ const api = {
     ipcRenderer.invoke(IPC_CHANNELS.configTrust, projectId, trusted),
   configReload: (projectId?: string): Promise<import("@capsule/shared").ConfigSnapshot> =>
     ipcRenderer.invoke(IPC_CHANNELS.configReload, projectId),
+  /** Adds or removes one permission rule in the user or project-local file. */
+  configEditPermissionRule: (edit: import("@capsule/shared").PermissionRuleEdit): Promise<import("@capsule/shared").ConfigSnapshot> =>
+    ipcRenderer.invoke(IPC_CHANNELS.configEditPermissionRule, edit),
   commandsList: (projectId?: string): Promise<import("@capsule/shared").CommandList> =>
     ipcRenderer.invoke(IPC_CHANNELS.commandsList, projectId),
   /** Expands a command for editing in the composer. It may run the command's shell spans. */

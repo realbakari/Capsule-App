@@ -176,3 +176,17 @@ it("decides a direct agent's request by rule, and by a hook when no rule matches
     expect.stringMatching(/^Allowed by a PermissionRequest hook in .*settings\.json: Reads are fine here\.$/),
   ]));
 });
+
+it("writes an always-allow rule to the file it names, and waits for trust before a project's", async () => {
+  const f = await fixture();
+  const rule = "execute(pnpm test *)";
+  expect(() => f.engine.editPermissionRule({ op: "add", list: "allow", rule, scope: "local", projectId: f.project.id })).toThrow("Trust this project first");
+  f.engine.trustProject(f.project.id, true);
+  f.engine.editPermissionRule({ op: "add", list: "allow", rule, scope: "local", projectId: f.project.id });
+  f.engine.editPermissionRule({ op: "add", list: "deny", rule: "fetch(domain:example.com)", scope: "user" });
+  expect(readFileSync(path.join(f.root, ".capsule", "settings.local.json"), "utf8")).toContain(rule);
+  expect(readFileSync(path.join(f.configDir, "settings.json"), "utf8")).toContain("fetch(domain:example.com)");
+  const permissions = f.engine.getConfigDiagnostics(f.project.id).permissions;
+  expect(permissions.allow.map((entry) => [entry.value, entry.source.scope])).toEqual([[rule, "local"]]);
+  expect(permissions.deny.map((entry) => [entry.value, entry.source.scope])).toEqual([["fetch(domain:example.com)", "user"]]);
+});

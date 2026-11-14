@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appRestartInput, commandExpandInput, configFileTarget, setConfigValueInput } from "./config-args.js";
+import { appRestartInput, commandExpandInput, configFileTarget, permissionRuleEdit, setConfigValueInput } from "./config-args.js";
 
 const CHANNEL = "capsule:config:test";
 
@@ -38,5 +38,19 @@ describe("settings-file channel arguments", () => {
     for (const bad of [undefined, true, {}, { safeMode: "true" }, { safeMode: 1 }]) {
       expect(() => appRestartInput(bad, CHANNEL, 0)).toThrow(CHANNEL);
     }
+  });
+});
+
+describe("permission rule edits", () => {
+  it("passes an add or remove to your own files and nothing else", () => {
+    expect(permissionRuleEdit({ op: "add", list: "allow", rule: "execute(pnpm test *)", scope: "local", projectId: "proj_1" }, CHANNEL, 0))
+      .toEqual({ op: "add", list: "allow", rule: "execute(pnpm test *)", scope: "local", projectId: "proj_1" });
+    for (const bad of [
+      { op: "replace", list: "allow", rule: "edit", scope: "user" },
+      { op: "add", list: "always", rule: "edit", scope: "user" },
+      { op: "add", list: "allow", rule: "edit", scope: "project", projectId: "proj_1" },
+      { op: "add", list: "allow", rule: " ", scope: "user" },
+      { op: "add", list: "allow", rule: "edit", scope: "local" },
+    ]) expect(() => permissionRuleEdit(bad, CHANNEL, 0)).toThrow(CHANNEL);
   });
 });

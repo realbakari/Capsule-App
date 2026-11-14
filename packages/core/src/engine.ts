@@ -172,6 +172,7 @@ import {
   type UpdateProjectInput,
   isHarnessId,
   type MessagePage,
+  type PermissionRuleEdit,
   type PermissionSubject,
   type Project,
   type ProjectActionRun,
@@ -2758,6 +2759,21 @@ export class CapsuleEngine {
     this.config.trust(root, trusted);
     this.applyConfigChange();
     return this.getConfigSnapshot(projectId);
+  }
+
+  /**
+   * Add or remove one rule in the user or project-local file. An allow rule
+   * is refused for an untrusted folder, where it would wait unused.
+   */
+  editPermissionRule(edit: PermissionRuleEdit): ConfigSnapshot {
+    const root = this.configRoot(edit.projectId);
+    if (edit.scope === "local" && !root) throw new Error("This project has no folder for a personal settings file.");
+    if (edit.scope === "local" && edit.op === "add" && edit.list === "allow" && !this.config.isTrusted(root!)) {
+      throw new Error("Trust this project first. Allow rules in its files wait until the folder is trusted.");
+    }
+    this.config.editPermissionRule(edit, edit.scope === "local" ? root : undefined);
+    this.applyConfigChange();
+    return this.getConfigSnapshot(edit.projectId);
   }
 
   /** Re-read every settings file now; a change publishes as a file edit would. */

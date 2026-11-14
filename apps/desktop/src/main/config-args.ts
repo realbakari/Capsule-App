@@ -1,5 +1,5 @@
 import { IpcArgumentError, type ArgParser } from "@capsule/contracts";
-import { WRITABLE_SCOPES, type CommandExpandInput, type ConfigFileTarget, type SetConfigValueInput, type WritableScope } from "@capsule/shared";
+import { WRITABLE_SCOPES, type CommandExpandInput, type ConfigFileTarget, type PermissionRuleEdit, type SetConfigValueInput, type WritableScope } from "@capsule/shared";
 
 /*
  * Shapes for the settings-file channels, checked where they cross from the
@@ -48,6 +48,17 @@ export const commandExpandInput: ArgParser<CommandExpandInput> = (value, channel
     throw new IpcArgumentError(channel, index, "sessionId must be a non-empty string");
   }
   return { projectId: input.projectId, text: input.text, ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }) };
+};
+
+/** The rule's own syntax is checked by the config service, which names what is wrong. */
+export const permissionRuleEdit: ArgParser<PermissionRuleEdit> = (value, channel, index) => {
+  const input = record(value, channel, index);
+  if (input.op !== "add" && input.op !== "remove") throw new IpcArgumentError(channel, index, "op must be add or remove");
+  if (input.list !== "allow" && input.list !== "ask" && input.list !== "deny") throw new IpcArgumentError(channel, index, "list must be allow, ask or deny");
+  if (input.scope !== "user" && input.scope !== "local") throw new IpcArgumentError(channel, index, "scope must be user or local");
+  if (typeof input.rule !== "string" || !input.rule.trim() || input.rule.length > 4096) throw new IpcArgumentError(channel, index, "rule must be text of at most 4,096 characters");
+  if (input.scope === "local" && input.projectId === undefined) throw new IpcArgumentError(channel, index, "a local rule needs a projectId");
+  return { op: input.op, list: input.list, scope: input.scope, rule: input.rule, ...projectId(input.projectId, channel, index) };
 };
 
 export const appRestartInput: ArgParser<{ safeMode: boolean }> = (value, channel, index) => {

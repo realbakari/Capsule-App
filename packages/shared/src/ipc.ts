@@ -191,6 +191,8 @@ export const IPC_CHANNELS = {
   configOpenFile: "capsule:config:openFile",
   configTrust: "capsule:config:trust",
   configReload: "capsule:config:reload",
+  /* Add or remove one permission rule in your user or project-local file. Never from a paired device. */
+  configEditPermissionRule: "capsule:config:editPermissionRule",
   /* Capsule commands: list them for the menu (a read), expand one for review (may run its shell). */
   commandsList: "capsule:commands:list",
   commandsExpand: "capsule:commands:expand",
