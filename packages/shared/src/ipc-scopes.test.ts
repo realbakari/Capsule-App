@@ -21,6 +21,14 @@ describe("ipc scopes", () => {
     expect(scopeForChannel("capsule:somethingNew")).toBe("write");
   });
 
+  it("keeps share links and presence on the desktop, and lets a reader export what it reads", () => {
+    for (const channel of ["createShareLink", "listShareLinks", "revokeShareLink", "threadPresence", "exportThreadMarkdown"]) {
+      expect(scopeForChannel(channel)).toBe("write");
+      expect(isChannelAllowed(channel, ["read", "control"])).toBe(false);
+    }
+    expect(isChannelAllowed("threadMarkdown", ["read"])).toBe(true);
+  });
+
   it("keeps the machine out of a viewer's reach", () => {
     for (const channel of [
       "sendMessage",

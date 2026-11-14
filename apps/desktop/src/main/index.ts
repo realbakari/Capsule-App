@@ -92,6 +92,7 @@ import { startPty, TerminalOutputFlow, type PtySession } from "@capsule/terminal
 import { popupContextMenu } from "./popup-menu";
 import { remoteReachFromArgs } from "./remote-args";
 import { RemoteAccessLifecycle } from "./remote-access";
+import { registerShareHandlers, remoteShareOptions, type ShareContext } from "./share-ipc";
 import {
   DEFAULT_WINDOW_SIZE,
   isHexColor,
@@ -982,9 +983,32 @@ const remoteAccess = new RemoteAccessLifecycle<RemoteServerHandle>(
     invoke: (channel, args) => forwardToHandler(channel, remoteControlArgs(channel, args)),
     subscribe: (emit) => subscribeRemote(emit),
     onChange: () => send(IPC_EVENTS.state, { command: "remote-updated" }),
+    ...remoteShareOptions(shareContext),
   }),
   () => send(IPC_EVENTS.state, { command: "remote-updated" }),
 );
+
+/* Export, share links and presence: share-ipc connects them; share-scope says what a link may read. */
+const shareContext: ShareContext = {
+  engine: () => {
+    if (!engine) throw new Error("Capsule engine is not ready");
+    return engine;
+  },
+  remote: () => remoteAccess.handle,
+  call: (channel, args) => forwardToHandler(channel, args),
+  changed: () => send(IPC_EVENTS.state, { command: "remote-updated" }),
+  saveDialog: async (defaultName) => {
+    const win = desktopWindow.current ?? BrowserWindow.getFocusedWindow();
+    const options: Electron.SaveDialogOptions = {
+      title: "Export conversation",
+      defaultPath: path.join(app.getPath("documents"), defaultName),
+      buttonLabel: "Export",
+      filters: [{ name: "Markdown", extensions: ["md"] }],
+    };
+    const result = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options);
+    return result.canceled ? undefined : result.filePath;
+  },
+};
 
 function remotePort(value?: string): number | undefined {
   if (!value) return undefined;
@@ -1839,6 +1863,14 @@ function registerIpc(): void {
     remoteAccess.handle?.revoke(String(id));
     return true;
   });
+  registerShareHandlers(handle, {
+    threadMarkdown: IPC_CHANNELS.threadMarkdown,
+    exportThreadMarkdown: IPC_CHANNELS.exportThreadMarkdown,
+    createShareLink: IPC_CHANNELS.createShareLink,
+    listShareLinks: IPC_CHANNELS.listShareLinks,
+    revokeShareLink: IPC_CHANNELS.revokeShareLink,
+    threadPresence: IPC_CHANNELS.threadPresence,
+  }, shareContext);
   handle(IPC_CHANNELS.rendererReady, (surface) => {
     /*
      * The renderer says which window it is, because the two are the same

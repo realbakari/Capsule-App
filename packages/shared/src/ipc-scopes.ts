@@ -80,6 +80,9 @@ const READ_CHANNELS: ChannelName[] = [
   "forkBranches",
   // Reads the worktree and the project folder; writes only Git objects, never a ref or a file.
   "worktreeApplyStatus",
+  // The thread's messages, turns and tool activity as one document: nothing a
+  // reader of the thread cannot already read.
+  "threadMarkdown",
   "rendererReady",
   "windowBackground",
 ];

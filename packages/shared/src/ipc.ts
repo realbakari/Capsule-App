@@ -206,6 +206,14 @@ export const IPC_CHANNELS = {
   createBoardCard: "capsule:createBoardCard",
   updateBoardCard: "capsule:updateBoardCard",
   fetchSkillDetail: "capsule:fetchSkillDetail",
+  /* A thread as Markdown, built from what a reader of the thread already sees; and saved to a file. */
+  threadMarkdown: "capsule:threadMarkdown",
+  exportThreadMarkdown: "capsule:exportThreadMarkdown",
+  /* Read-only links to one thread, and which devices are viewing which thread. Desktop only. */
+  createShareLink: "capsule:createShareLink",
+  listShareLinks: "capsule:listShareLinks",
+  revokeShareLink: "capsule:revokeShareLink",
+  threadPresence: "capsule:threadPresence",
 } as const;
 
 export const IPC_EVENTS = {
