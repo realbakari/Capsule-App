@@ -1,6 +1,7 @@
 /* Composer context: chips for attached conversations, diffs, pages and output, and the pickers that make them. */
+/* The preview anchors to the attachment row, not the chip, so it stays inside the dock at any width. */
 .composer-context-chip {
-  position: relative;
+  position: static;
   max-width: 20rem;
   padding-left: 0.2rem;
 }
@@ -25,6 +26,8 @@
   outline: var(--focus-ring);
   outline-offset: 1px;
 }
+.composer-context-chip > svg,
+.composer-context-open > svg { flex-shrink: 0; }
 .composer-context-kind {
   flex-shrink: 0;
   color: var(--text-faint);
@@ -76,7 +79,8 @@
   z-index: 9;
   left: 0;
   bottom: calc(100% + 0.4rem);
-  width: min(30rem, calc(100vw - 4rem));
+  width: min(30rem, 100%);
+  box-sizing: border-box;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   background: var(--surface-0);
