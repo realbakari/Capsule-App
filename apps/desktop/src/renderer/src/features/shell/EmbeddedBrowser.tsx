@@ -7,6 +7,8 @@ import type { LocalServer } from "@capsule/shared";
 import { harnessCapabilities } from "@capsule/shared";
 import { BackgroundBrowser } from "./BackgroundBrowser";
 import { BrowserControls } from "./BrowserControls";
+import { showNativeContextMenu } from "../../lib/bridge";
+import { NO_SELECTION, registerSelectionReader, selectionContext, touchSelectionSurface } from "../../lib/selection-share";
 // Electron's custom element reads a string attribute. React drops boolean
 // `true` on this non-standard attribute despite WebViewHTMLAttributes' type.
 const guestAttributes: Record<string, string> = { allowpopups: "true" };
@@ -221,7 +223,7 @@ export function EmbeddedBrowser({
   onRetryServers?: () => void;
   onOpenExternal: (url: string) => void;
 }) {
-  const { api, session, agentId, harnesses, harnessStatuses, view: workspaceView, inspectorOpen, setConfirm } = useWorkspace();
+  const { api, session, agentId, harnesses, harnessStatuses, view: workspaceView, inspectorOpen, setConfirm, attachContext } = useWorkspace();
   const desktopBrowser = navigator.userAgent.includes("Electron/");
   const browserCapability = harnessCapabilities({ harness: harnesses?.find((item) => item.id === agentId), session, status: session ? harnessStatuses?.[session.id] : undefined }).browser;
   const initialUrl = normalizedBrowserUrl(address);
@@ -438,6 +440,50 @@ export function EmbeddedBrowser({
   useEffect(() => {
     setTabs((current) => current.map((tab) => tab.id === activeTab ? { ...tab, url: currentUrl ?? "", title: pageTitle ?? (currentUrl ? tab.title : "") } : tab));
   }, [activeTab, currentUrl, pageTitle]);
+
+  /* "Send selection to thread": the page's selected text and where it came from. The guest keeps its selection while the palette has focus. */
+  const attachRef = useRef(attachContext);
+  attachRef.current = attachContext;
+  const readPageSelection = useCallback(async () => {
+    const view = webviewRef.current;
+    if (!view || !ready) return undefined;
+    const text = String(await view.executeJavaScript("String(window.getSelection ? window.getSelection() : '')"));
+    return text.trim() ? { origin: "browser" as const, text, url: view.getURL(), title: view.getTitle() } : undefined;
+  }, [ready]);
+
+  useEffect(() => {
+    const view = mountedView;
+    if (!view || api.isDesktop !== true) return undefined;
+    const unregister = registerSelectionReader("browser", readPageSelection);
+    const touched = () => touchSelectionSurface("browser");
+    const menu = (event: Event) => {
+      const params = (event as Event & { params?: { selectionText?: string; x: number; y: number } }).params;
+      const text = params?.selectionText ?? "";
+      if (!params || !text.trim()) return;
+      const rect = view.getBoundingClientRect();
+      void showNativeContextMenu([
+        { id: "copy", label: "Copy" },
+        { id: "send", label: "Send selection to thread" },
+      ], { x: rect.left + params.x, y: rect.top + params.y }).then((picked) => {
+        if (picked === "copy") void navigator.clipboard.writeText(text);
+        if (picked === "send") void attachRef.current(selectionContext({ origin: "browser", text, url: view.getURL(), title: view.getTitle() }));
+      });
+    };
+    view.addEventListener("focus", touched);
+    view.addEventListener("context-menu", menu);
+    return () => { unregister(); view.removeEventListener("focus", touched); view.removeEventListener("context-menu", menu); };
+  }, [api.isDesktop, mountedView, readPageSelection]);
+
+  const sendPageSelection = async () => {
+    setMoreMenuOpen(false);
+    try {
+      const selection = await readPageSelection();
+      if (!selection) { showToast(NO_SELECTION); return; }
+      if (await attachContext(selectionContext(selection))) showToast("Selection attached to the conversation");
+    } catch (failure) {
+      showToast(`Could not read the selection: ${failure instanceof Error ? failure.message : String(failure)}`);
+    }
+  };
 
   const showTab = (tab: BrowserTab) => {
     setActiveTab(tab.id);
@@ -663,6 +709,9 @@ export function EmbeddedBrowser({
                 Open DevTools
               </button>
 
+              {api.isDesktop === true && <button type="button" className="preview-menu-item" disabled={!ready} onClick={() => void sendPageSelection()}>
+                Send selection to thread
+              </button>}
               <div className="preview-menu-divider" />
 
               <div className="preview-zoom-row">

@@ -11,6 +11,7 @@ import { SearchDialog, type SearchDialogItem } from "./SearchDialog";
 import { useBranching } from "../conversation/branching/use-branching";
 import { useApplyToLocal } from "../apply/ApplyToLocal";
 import { initPrompt } from "@capsule/shared";
+import { currentSelection, NO_SELECTION, selectionContext } from "../../lib/selection-share";
 import { detectInstructionFiles } from "../project/ProjectInstructions";
 
 const REVIEW_SCOPE_LABEL: Record<DiffScope, string> = {
@@ -26,7 +27,7 @@ export function Palette() {
     api, palette, paletteQuery, setPalette, setPaletteQuery, setView, createTask, canGoBack, canGoForward, goBack, goForward, setThreadFind,
     createProjectFromFolder, pickProjectDirectory, pickFilesToMention, projects,
     sessions, session, setProjectId, setAboutOpen, openInspector, setAgentCommandsOpen,
-    project, terminalOpen, setTerminalOpen, runs, turnMode, setTurnMode,
+    project, terminalOpen, setTerminalOpen, runs, turnMode, setTurnMode, attachContext, setNotice,
   } = useWorkspace();
   const branching = useBranching();
   const lastTurn = useMemo(() => runs
@@ -72,6 +73,9 @@ export function Palette() {
         onSelect: () => { if (project) setReviewScope(project.id, scope.id); openInspector("changes"); },
       })),
       ...(applyToLocal.offered ? [{ id: "apply-to-local", label: "Apply worktree to local checkout", group: "Workspace", icon: <GitMergeIcon size={15} />, disabledReason: applyToLocal.disabledReason, onSelect: applyToLocal.apply }] : []),
+      { id: "send-selection", label: "Send selection to thread", detail: "Quote the selected terminal, file or browser text in the composer", group: "Workspace", icon: <MessageSquareIcon size={15} />,
+        disabledReason: desktopOnly ?? (!session ? "Open a conversation first." : undefined),
+        onSelect: () => { void currentSelection().then((selection) => { if (selection) { setView("chat"); void attachContext(selectionContext(selection)); } else setNotice(NO_SELECTION); }); } },
       { id: "init", label: "Write or refresh AGENTS.md", detail: "Start a conversation with the /init prompt drafted", group: "Actions", icon: <SparkIcon size={15} />,
         disabledReason: desktopOnly ?? (!project?.workingDirectory ? "Open a project folder first." : undefined),
         onSelect: () => { if (project) void detectInstructionFiles(api, project.id).then((found) => createTask(project.id, initPrompt(found))); } },
@@ -122,7 +126,7 @@ export function Palette() {
       onSelect: () => { setProjectId(message.projectId, message.sessionId); setView("chat"); },
     }));
     return [...actions, ...projectItems, ...threads, ...messages];
-  }, [api, query, currentSearch, projects, sessions, session, project, terminalOpen, setTerminalOpen, createTask, createProjectFromFolder, pickProjectDirectory, pickFilesToMention, setView, setProjectId, setAboutOpen, openInspector, setAgentCommandsOpen, canGoBack, canGoForward, goBack, goForward, setThreadFind, lastTurn, branching.fork, branching.redo, branching.redoLast, applyToLocal, turnMode, setTurnMode]);
+  }, [api, query, currentSearch, projects, sessions, session, project, terminalOpen, setTerminalOpen, attachContext, setNotice, createTask, createProjectFromFolder, pickProjectDirectory, pickFilesToMention, setView, setProjectId, setAboutOpen, openInspector, setAgentCommandsOpen, canGoBack, canGoForward, goBack, goForward, setThreadFind, lastTurn, branching.fork, branching.redo, branching.redoLast, applyToLocal, turnMode, setTurnMode]);
 
   if (!palette) return null;
   return <SearchDialog title="Search workspace" placeholder="Search commands, projects, conversations…" query={paletteQuery}

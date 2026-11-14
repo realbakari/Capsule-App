@@ -7,6 +7,8 @@ import { FitAddon } from "@xterm/addon-fit";
 import { PlusIcon, TerminalIcon, XIcon } from "../shell/icons";
 import { projectFolderName } from "../../lib/paths";
 import { useWorkspace } from "../../lib/workspace";
+import { showNativeContextMenu } from "../../lib/bridge";
+import { registerSelectionReader, selectionContext, touchSelectionSurface } from "../../lib/selection-share";
 
 const MIN_HEIGHT = 140;
 const MAX_HEIGHT = 720;
@@ -29,7 +31,7 @@ interface Pane {
  * because tearing down an xterm loses the scrollback and the running command.
  */
 export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: string; onClose: () => void; onEmpty?: () => void; visible?: boolean }) {
-  const { api } = useWorkspace();
+  const { api, attachContext } = useWorkspace();
   const [error, setError] = useState<string>();
   const alive = useRef(true);
   const [panes, setPanes] = useState<Pane[]>([]);
@@ -233,6 +235,28 @@ export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: s
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
   };
+  const activePane = panes.find((pane) => pane.id === activeId);
+  useEffect(() => {
+    if (!visible || !activePane || api.isDesktop !== true) return;
+    return registerSelectionReader("terminal", () => {
+      const text = activePane.terminal.getSelection();
+      return text.trim() ? { origin: "terminal", text } : undefined;
+    });
+  }, [activePane, api.isDesktop, visible]);
+
+  /* Right-click on a selection offers to quote it into the conversation; without one, xterm keeps its own menu. */
+  async function selectionMenu(event: { preventDefault(): void; clientX: number; clientY: number }) {
+    const text = activePane?.terminal.getSelection() ?? "";
+    if (!text.trim() || api.isDesktop !== true) return;
+    event.preventDefault();
+    const picked = await showNativeContextMenu([
+      { id: "copy", label: "Copy" },
+      { id: "send", label: "Send selection to thread" },
+    ], { x: event.clientX, y: event.clientY });
+    if (picked === "copy") void navigator.clipboard.writeText(text);
+    if (picked === "send") void attachContext(selectionContext({ origin: "terminal", text }));
+  }
+
   const heightRef = useRef(height);
   heightRef.current = height;
 
@@ -281,7 +305,7 @@ export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: s
           <XIcon size={13} />
         </button>
       </div>
-      <div className="terminal-panes">
+      <div className="terminal-panes" onPointerDown={() => touchSelectionSurface("terminal")} onContextMenu={(event) => void selectionMenu(event)}>
         {panes.map((pane) => (
           <div
             key={pane.id}
