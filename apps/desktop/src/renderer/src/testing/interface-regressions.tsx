@@ -112,7 +112,8 @@ export async function runInterfaceRegressions(host: HTMLElement, base: Record<st
     } };
     root.render(<PaletteFixture base={{ ...base, api: searchApi, projects: [], sessions: [] }} />);
     await until(() => document.querySelector('[aria-label="Search workspace"]'));
-    assert(document.querySelector('[role="option"]')?.getAttribute("aria-disabled") === "true", "Viewer offers desktop-only creation without explaining availability");
+    const creation = Array.from(document.querySelectorAll('[role="option"]')).find((option) => option.textContent?.startsWith("New conversation"));
+    assert(creation?.getAttribute("aria-disabled") === "true", "Viewer offers desktop-only creation without explaining availability");
     fill('[role="combobox"]', "older");
     await until(() => resolveOld);
     fill('[role="combobox"]', "newer");
