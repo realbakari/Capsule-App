@@ -61,7 +61,7 @@ describe("buildSessionActionMenuItems", () => {
 
   it("leaves a read-only device only the items that copy", () => {
     const items = buildSessionActionMenuItems({ pinned: false, hasFolder: true, share: { exportOffered: false, shareOffered: false }, readOnly: true });
-    expect(items.map((item) => item.id)).toEqual(["copy-path", "copy-markdown"]);
+    expect(items.map((item) => item.id)).toEqual(["copy-markdown", "copy-path"]);
     expect(items[0]!.separatorBefore).toBeFalsy();
   });
 });
