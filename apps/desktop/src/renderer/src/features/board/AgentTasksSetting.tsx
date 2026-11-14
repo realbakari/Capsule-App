@@ -25,7 +25,7 @@ export function AgentTasksSetting({ project }: { project: Project }) {
     <details className="board-agent-tasks" ref={details}>
       <summary className="chip">
         <SparkIcon size={13} />
-        <span>Agent tasks: {allowed ? "start on their own" : "drafts"}</span>
+        <span>Agent tasks · {allowed ? "Auto-start" : "Drafts"}</span>
       </summary>
       <div className="board-agent-tasks-panel" role="group" aria-label={`Agent tasks in ${project.name}`}>
         <label className="board-agent-tasks-switch">
