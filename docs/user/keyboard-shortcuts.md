@@ -26,6 +26,8 @@
 | Choose the mode (permissions) | `⇧⌘M` |
 | Choose the model | `⇧⌘I` |
 | Choose the reasoning effort | `⇧⌘E` |
+| Next favorite model | `⌥⌘M` |
+| Switch between Plan and Act | `⇧Tab` in the prompt |
 
 The mode, model and effort shortcuts open the composer's own controls. When the
 current agent has no such control, or it cannot change during a turn, a notice
@@ -56,6 +58,7 @@ Two things the editor will not let you do:
 - Paperclip or drop to attach local files
 - `⌘S` to stash the current prompt, or open the stash when the composer is empty
 - `↑` in an empty prompt recalls earlier prompts from this conversation; `↓` comes back
+- `⇧Tab` switches the next turn between Plan and Act; while a suggestion menu is open, Tab picks from the menu instead
 
 ## In Review
 

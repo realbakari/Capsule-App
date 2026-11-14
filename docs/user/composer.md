@@ -119,7 +119,9 @@ a new conversation to use the native connection without changing old history.
 OpenCode, Qwen, Kimi, Kiro, Qoder and Kilo can also use their installed CLI's
 built-in ACP support. Model availability and sign-in still belong to each agent;
 Capsule only offers the choices that installation reports.
-Favorites stay on this device. **All agents** opens a named list with
+Favorites are saved with your settings, so every window and a paired device
+see the same stars. `⌥⌘M` moves to the next favorite of the selected agent,
+skipping any model the agent no longer offers. **All agents** opens a named list with
 installation status, and **Manage agents** opens setup. Legacy models are grouped only when the agent
 identifies them as legacy. A running conversation keeps its agent; start a new
 conversation to use another one.
@@ -172,6 +174,41 @@ their names remain in tooltips and menus. **Conversation tools** holds prompt
 stash and advanced agent settings. Supported agent controls wrap on narrow
 screens; there is no separate conversation-mode selector. Menus support keyboard navigation and Escape; closing one returns
 focus to its trigger.
+
+## Plan mode
+
+The **Plan / Act** chip beside the model control decides what the next turn
+does. In **Plan**, the agent reads and investigates, then replies with a
+numbered plan instead of changing files. In **Act**, it works with the
+conversation's permissions. Press `⇧Tab` in the prompt, click the chip, or use
+**Switch to Plan mode** in the command palette. Each conversation keeps its own
+choice; **Settings → Agents → Plan mode → Start in Plan mode** makes new
+conversations begin in Plan.
+
+Hover the chip to see how a plan turn is held to planning:
+
+- **Enforced by Claude Code** uses Claude Code's own plan mode. When Claude
+  finishes its plan, the plan is the reply and the turn ends; nothing is edited.
+- **Read-only, enforced by Codex** runs the plan turn in Codex's read-only
+  sandbox without approval prompts.
+- **Enforced by** another agent means the agent reported a plan mode of its own,
+  and Capsule switches it on for the plan turn and back for Act. This works on
+  the Gateway route too.
+- **Asked, not enforced** means the agent has no plan mode Capsule can switch.
+  Capsule asks it to plan without editing, but cannot stop it from changing
+  files. The chip's border is dashed in this case.
+
+When a plan turn finishes, **Act on this plan** switches to Act and asks the
+agent to implement the plan above. **Keep planning** stays in Plan and returns
+you to the prompt. Both appear under the latest plan and in the task list.
+
+In the model control, **Plan** and **Act** on a model's row save it for that
+mode. Switching mode then switches to that model too. Saved choices are listed,
+and can be cleared, in **Settings → Agents → Plan mode → Plan and Act models**.
+When a conversation starts in Plan, the agent starts with the Plan model.
+
+A paired browser without conversation control sees the plan, not the chip or
+the buttons.
 
 ## Read activity accurately
 

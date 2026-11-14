@@ -530,6 +530,41 @@ and Gateway routes and for every harness. The resolve-conflicts thread it can
 start is an ordinary local thread on the same agent as the worktree thread. See
 [desktop.md](./desktop.md#apply-to-local).
 
+## Plan mode
+
+`Session.turnMode` (`"plan" | "act"`, absent means act) says what the next turn
+does, and `Run.turnMode` records what each turn did, so the renderer can offer
+**Act on this plan** on the right turn. Both are nullable `turn_mode` columns.
+One registry, `planModeSupport` in `@capsule/shared/plan-mode.ts`, decides how a
+plan turn is carried; the engine's `carryTurnMode` (`packages/core/src/turn-mode.ts`)
+applies it in `sendAdmittedMessage` and records the carrier as a `plan-mode` run
+event. Nothing else branches on harness or route for plan mode.
+
+| Harness and route | Carrier | Chip says | Instruction added |
+|---|---|---|---|
+| Claude Code, direct | The adapter's `mode` setting maps to the SDK `plan` permission mode and restores the Act permission afterwards. A permission chosen while planning waits for Act. When Claude calls `ExitPlanMode`, Capsule denies it, shows the plan as the reply and ends the turn. | Enforced by Claude Code | No |
+| Codex, direct | The adapter's `mode` setting sends the turn with a read-only sandbox and `approvalPolicy: never`. Codex's own collaboration mode is experimental and not used. | Read-only, enforced by Codex | Yes |
+| Other ACP agent, direct | If the agent reports a `mode` option with a plan choice, `direct.setConfig` switches it before the turn and back to the saved, current or likeliest working choice for Act. | Enforced by *agent* | No |
+| Any agent, Gateway | Same detection from `/acp status`. `/acp set-mode <value>` goes out as a control command on the control session, never as a thread message. The engine keeps the sessions it switched in memory and switches them back on the next Act turn. | Enforced by *agent* | No |
+| No plan mode reported (Muse, agents without one, a Gateway agent without a harness) | Instruction only. | Asked, not enforced | Yes |
+| Demo runtime | `AgentMessage.turnMode` reaches the mock, which replies with a numbered plan and a plan event, and edits nothing. | Demo runtime, no edits | No |
+
+Direct mode switches go straight to `DirectAcpHost.setConfig`, not through
+`setHarnessConfig`, so the thread's saved configuration keeps the Act choice
+and a resumed session does not come back in plan. A failed switch to plan falls
+back to the instruction and the run event says the turn was not enforced. The
+"strict" permission profile is never used as a fallback: on the Gateway it is a
+global acpx write that would change every session.
+
+`setSessionTurnMode(sessionId, mode)` saves the mode and, when
+`settings.modeModels[harnessId][mode]` is set, applies that model through the
+existing model option path if the agent is live (deferred with a notice while a
+turn runs), or sets `modelOverride` so the agent starts with it.
+`createSession` honours `turnMode` from the input, then `settings.startInPlanMode`,
+and starts with the matching mode model. The IPC channel `setSessionTurnMode` is
+a control channel like `sendMessage`: a paired viewer with conversation control
+may switch, a read-only viewer may not.
+
 ## Do you need to install Claude Code in Capsule?
 
 No. Capsule **picks them up**:

@@ -1995,3 +1995,37 @@ conversation. The home screen is unchanged.
   channels: read and control peers cannot call them, and the board hides every
   write control when `api.isDesktop === false`.
 
+## Plan mode chip, handoff and favorites
+
+The composer row holds `TurnModeChip` right after `AgentModelPicker`. It shows
+**Plan** or **Act** for the next turn, `aria-pressed` when planning, and its
+tooltip is the registry's label and detail (see `docs/internals/harness.md`).
+An unenforced plan turn draws the chip with a dashed border. `⇧Tab` in the
+prompt toggles it, after the suggestion menu's Tab branch so Tab still picks a
+suggestion. A thread with no session keeps a draft mode in `lib/turn-mode.ts`
+and passes it to `createSession`. The palette offers **Switch to Plan mode** or
+**Switch to Act mode** and **Next favorite model**. The composer's agent-mode
+picker drops the plan choice (`withoutPlanChoice`), and disappears when the
+agent's only other choice is the act mode.
+
+`PlanHandoff` renders **Act on this plan** and **Keep planning** under the
+latest completed plan turn and, compact, at the foot of `ComposerTasks`. Act
+switches the thread to Act (applying the Act model) and sends
+`ACT_ON_PLAN_PROMPT`. Keep planning stays in Plan and focuses the prompt. Both
+are hidden from a read-only viewer and from a running turn.
+
+Model picker rows gain **Plan** and **Act** buttons that save the row's model in
+`settings.modeModels[agentId]`; pressing a chosen one clears it. They appear on
+row hover or focus and stay visible when chosen. Favorites moved from the
+window's `capsule.model-favorites` storage into `settings.favoriteModels`
+(`[agentId, modelId]` keys); the old key is imported once on the desktop and
+removed. `⌥⌘M` (`cycle-favorite-model`) dispatches `CYCLE_FAVORITE_MODEL_EVENT`;
+the composer, which knows the agent's reported models, moves to the next
+favorite in starred order, wrapping and skipping unreported ones. `⇧⌘M` was
+already Choose mode. Option chords match on `event.code` because Option changes
+`event.key` (`⌥M` is `µ`).
+
+Settings → Agents → **Plan mode** has **Start in Plan mode** and **Plan and Act
+models**, which lists saved per-agent choices with Clear. Models are chosen in
+the picker, not here, so Settings never spawns an agent to list its models.
+
