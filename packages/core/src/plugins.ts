@@ -10,7 +10,6 @@ import {
   type PluginInspection,
   type PluginOptionValue,
   type PluginProblem,
-  type PluginSourceKind,
   type PluginView,
   type Provenance,
 } from "@capsule/shared";
