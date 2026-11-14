@@ -12,6 +12,7 @@
 | Toggle the sidebar | `⌘B` |
 | Toggle the side panel | `⌘\` |
 | Find in the current conversation | `⌘F` |
+| Jump to an earlier prompt in this conversation | `⇧⌘J` |
 | Back to the previous conversation you visited | `⌘[` |
 | Forward again | `⌘]` |
 | Stash the current prompt | `⌘S` |

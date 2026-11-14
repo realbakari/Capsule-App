@@ -46,6 +46,7 @@ export const COMMANDS: KeyCommand[] = [
   { id: "history-back", label: "Back", chord: { key: "[", meta: true } },
   { id: "history-forward", label: "Forward", chord: { key: "]", meta: true } },
   { id: "find-in-thread", label: "Find in conversation", chord: { key: "f", meta: true } },
+  { id: "jump-to-prompt", label: "Jump to a prompt", chord: { key: "j", meta: true, shift: true } },
   { id: "open-review", label: "Open Review", chord: { key: "d", meta: true, shift: true } },
   { id: "open-browser", label: "Open Browser", chord: { key: "b", meta: true, shift: true } },
   /* ⌃Tab: `meta` matches Control as well as ⌘, and ⌘Tab never reaches the app. */

@@ -45,6 +45,13 @@ what the agent did, such as "Read 6 files, ran 2 commands (1 failed), edited
 the work that failed. Open the line to see each step, and open a step to see
 the command and its output.
 
+To get back to an earlier prompt in a long conversation, press `⇧⌘J`, choose
+**Jump to a prompt…** in the command palette, or click the list button in the
+conversation's top-right corner. It lists this conversation's prompts, newest
+first. Type to filter, use the arrow keys, and press `Enter`: the conversation
+scrolls to that turn and outlines it for a moment. If older messages are not
+loaded yet, **Load earlier prompts** brings them in.
+
 If a send fails, your draft and attachments return to the composer. Once the
 failed turn is recorded, its error appears once below the work log rather than
 also appearing at the top. Dismiss hides that attempt's error; a later attempt

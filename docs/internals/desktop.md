@@ -815,7 +815,14 @@ opens. `↑` in an empty or caret-at-start prompt recalls earlier user prompts
 the original draft; typing ends the walk. `⌘F` (`find-in-thread`, also in the
 palette) opens `ThreadFind` above the transcript: it counts matching messages,
 Enter / Shift+Enter walk them, and the matching turn is unfolded, scrolled to
-through `VirtualTurns`' `focus` prop and outlined.
+through `VirtualTurns`' `focus` prop and outlined. `⇧⌘J` (`jump-to-prompt`,
+also **Jump to a prompt…** in the palette, and a list button pinned to the
+transcript's top-right corner once a thread has two prompts) opens
+`PromptJump`: the thread's loaded prompts from `promptIndex` in
+`@capsule/shared`, newest first, numbered in thread order, filtered by every
+typed word. Arrows move, Enter or click scrolls through the same `focus` prop
+with `flash`, which outlines the turn for 1.6 s (`turn-flash`) and then clears.
+When older history is not loaded, the list offers **Load earlier prompts**.
 
 Conversation details shows `+added −removed` from Git status beside
 **Review** when the checkout is dirty; pull requests are created from Commit &

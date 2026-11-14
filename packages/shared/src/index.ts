@@ -34,6 +34,7 @@ export * from "./delegation.js";
 export * from "./session-search.js";
 export * from "./tool-activity.js";
 export * from "./tool-run-summary.js";
+export * from "./prompt-index.js";
 export * from "./channels.js";
 export type { PetVoiceStatus } from "./pet-voice.js";
 export * from "./usage-limit.js";

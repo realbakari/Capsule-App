@@ -360,6 +360,9 @@ export interface WorkspaceValue {
   /** The find bar over the current conversation. */
   threadFind: boolean;
   setThreadFind: (open: boolean | ((current: boolean) => boolean)) => void;
+  /** The jump list of this conversation's prompts. */
+  promptJump: boolean;
+  setPromptJump: (open: boolean | ((current: boolean) => boolean)) => void;
   setContentSearch: (open: boolean) => void;
   gitCommit: (message: string) => Promise<boolean>;
   gitStage: (relative: string) => Promise<void>;
@@ -1077,6 +1080,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
         case "find-in-thread":
           setThreadFind((open) => !open);
           break;
+        case "jump-to-prompt":
+          setView("chat");
+          setPromptJump((open) => !open);
+          break;
         case "open-review":
           setInspectorTab("changes");
           setInspectorOpen(true);
@@ -1325,6 +1332,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   };
   const [threadFind, setThreadFind] = useState(false);
   useEffect(() => { setThreadFind(false); }, [sessionId]);
+  const [promptJump, setPromptJump] = useState(false);
+  useEffect(() => { setPromptJump(false); }, [sessionId]);
 
   const pendingResume: PendingResume | undefined = sessionId && followUps.resume ? { sessionId, ...followUps.resume } : undefined;
   // A limit stop's files live on its prompt message, not on the run.
@@ -2561,6 +2570,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       steerQueued,
       threadFind,
       setThreadFind,
+      promptJump,
+      setPromptJump,
       pendingResume,
       scheduleResume,
       cancelResume,
@@ -2655,6 +2666,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       queue,
       followUps.blocked,
       threadFind,
+      promptJump,
       pendingResume,
       navigation,
       inspectorTab,

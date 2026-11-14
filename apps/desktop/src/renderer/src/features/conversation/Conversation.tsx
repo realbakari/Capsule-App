@@ -6,6 +6,8 @@ import { formatTokens, type ContextUsage } from "../../lib/context-window";
 import { AlertTriangleIcon, DiffIcon, FileIcon, HistoryIcon, MessageSquarePlusIcon, SparkIcon, TerminalIcon, XIcon } from "../shell/icons";
 import { RunElapsed } from "./RunElapsed";
 import { ThreadFind } from "./ThreadFind";
+import { PromptJump } from "./PromptJump";
+import { COMMANDS, chordSymbols, parseChord } from "../../lib/keybindings";
 import { detectUsageLimit, formatResetTime } from "@capsule/shared";
 import { useWorkspace } from "../../lib/workspace";
 import { useScopedState } from "../../lib/scoped-state";
@@ -257,6 +259,8 @@ export function Conversation() {
     attachFiles,
     threadFind,
     setThreadFind,
+    promptJump,
+    setPromptJump,
     pendingResume,
     scheduleResume,
     cancelResume,
@@ -405,13 +409,25 @@ export function Conversation() {
     setOpenedTurns((current) => new Set(current).add(id));
   }, []);
   const openAttachment = useCallback((path: string) => void openPath(path), [openPath]);
-  const [focusTurn, setFocusTurn] = useState<{ id: string; nonce: number }>();
-  const locateMessage = useCallback((messageId: string) => {
+  const [focusTurn, setFocusTurn] = useState<{ id: string; nonce: number; flash?: boolean }>();
+  const locateMessage = useCallback((messageId: string, flash = false) => {
     const turn = turns.find((item) => item.messages.some((message) => message.id === messageId));
     if (!turn) return;
     openTurn(turn.id);
-    setFocusTurn((current) => ({ id: turn.id, nonce: (current?.nonce ?? 0) + 1 }));
+    setFocusTurn((current) => ({ id: turn.id, nonce: (current?.nonce ?? 0) + 1, flash }));
   }, [openTurn, turns]);
+  const jumpToPrompt = useCallback((messageId: string) => locateMessage(messageId, true), [locateMessage]);
+  useEffect(() => {
+    if (!focusTurn?.flash) return;
+    const timer = window.setTimeout(() => setFocusTurn((current) => current === focusTurn ? undefined : current), 1800);
+    return () => window.clearTimeout(timer);
+  }, [focusTurn]);
+  const jumpShortcut = useMemo(() => {
+    const command = COMMANDS.find((item) => item.id === "jump-to-prompt");
+    const saved = settings?.keybindings?.["jump-to-prompt"];
+    const override = saved ? parseChord(saved) : undefined;
+    return command ? chordSymbols(override ?? command.chord).join("") : undefined;
+  }, [settings?.keybindings]);
   /*
    * Edit from here: the conversation is cut at this prompt. The dialog says
    * what is lost and offers the file restore as a second choice rather than a
@@ -542,6 +558,9 @@ export function Conversation() {
           });
         }}
       >
+        {session && visibleMessageCount > 0 && <PromptJump messages={messages} open={promptJump} onOpenChange={setPromptJump} onLocate={jumpToPrompt}
+          shortcut={jumpShortcut} hasOlder={hasOlderMessages} loadingOlder={loadingOlder}
+          onLoadOlder={() => { void loadOlderMessages().catch((error) => setNotice(formatUserError(error))); }} />}
         <div className="thread">
           {session && <ThreadOrigin session={session} />}
           {historyError && <div className="thread-history-error" role="alert">

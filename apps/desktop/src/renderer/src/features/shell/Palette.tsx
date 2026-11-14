@@ -8,7 +8,7 @@ import { SHOW_SHORTCUTS_EVENT } from "../../lib/shortcuts-event";
 import { CYCLE_FAVORITE_MODEL_EVENT } from "../../lib/turn-mode";
 import { requestNewBoardCard } from "../../lib/board";
 import { requestRunOn } from "../../lib/best-of-n";
-import { CompareIcon, CopyIcon, FileIcon, GitBranchIcon, GitMergeIcon, RedoIcon, ArrowLeftIcon, ArrowRightIcon, ColumnsIcon, CpuIcon, ListTodoIcon, StarIcon, DiffIcon, FolderIcon, GlobeIcon, HistoryIcon, InfoIcon, RefreshIcon, KeyboardIcon, LinkIcon, MessageSquareIcon, MousePointerClickIcon, PlusIcon, SearchIcon, SettingsIcon, ShieldIcon, SmartphoneIcon, SmilePlusIcon, SparkIcon, TerminalIcon } from "./icons";
+import { CompareIcon, CopyIcon, FileIcon, GitBranchIcon, GitMergeIcon, RedoIcon, ArrowLeftIcon, ArrowRightIcon, ColumnsIcon, CpuIcon, ListIcon, ListTodoIcon, StarIcon, DiffIcon, FolderIcon, GlobeIcon, HistoryIcon, InfoIcon, RefreshIcon, KeyboardIcon, LinkIcon, MessageSquareIcon, MousePointerClickIcon, PlusIcon, SearchIcon, SettingsIcon, ShieldIcon, SmartphoneIcon, SmilePlusIcon, SparkIcon, TerminalIcon } from "./icons";
 import { SearchDialog, type SearchDialogItem } from "./SearchDialog";
 import { useBranching } from "../conversation/branching/use-branching";
 import { useApplyToLocal } from "../apply/ApplyToLocal";
@@ -29,7 +29,7 @@ const REVIEW_SCOPE_LABEL: Record<DiffScope, string> = {
 
 export function Palette() {
   const {
-    api, palette, paletteQuery, setPalette, setPaletteQuery, setView, createTask, canGoBack, canGoForward, goBack, goForward, setThreadFind,
+    api, palette, paletteQuery, setPalette, setPaletteQuery, setView, createTask, canGoBack, canGoForward, goBack, goForward, setThreadFind, setPromptJump,
     createProjectFromFolder, pickProjectDirectory, pickFilesToMention, projects,
     sessions, session, setProjectId, setAboutOpen, openInspector, setAgentCommandsOpen,
     project, terminalOpen, setTerminalOpen, runs, turnMode, setTurnMode, attachContext, setNotice,
@@ -131,6 +131,7 @@ export function Palette() {
       { id: "back", label: "Back", group: "Go to", icon: <ArrowLeftIcon size={15} />, shortcut: "⌘[", disabledReason: canGoBack ? undefined : "No earlier conversation to go back to.", onSelect: goBack },
       { id: "forward", label: "Forward", group: "Go to", icon: <ArrowRightIcon size={15} />, shortcut: "⌘]", disabledReason: canGoForward ? undefined : "No later conversation to go forward to.", onSelect: goForward },
       { id: "find-in-thread", label: "Find in conversation", group: "Workspace", icon: <SearchIcon size={15} />, shortcut: "⌘F", disabledReason: !session ? "Open a conversation first." : undefined, onSelect: () => { setView("chat"); setThreadFind(true); } },
+      { id: "jump-to-prompt", label: "Jump to a prompt…", group: "Workspace", icon: <ListIcon size={15} />, shortcut: "⇧⌘J", disabledReason: !session ? "Open a conversation first." : undefined, onSelect: () => { setView("chat"); setPromptJump(true); } },
       { id: "board", label: "Board", group: "Go to", icon: <ColumnsIcon size={15} />, onSelect: () => setView("board") },
       { id: "chat", label: "Open conversation", group: "Go to", icon: <MessageSquareIcon size={15} />, onSelect: () => setView("chat") },
       { id: "channels", label: "Shared channels", group: "Go to", icon: <MessageSquareIcon size={15} />, disabledReason: desktopOnly, onSelect: () => setView("channels") },
@@ -167,7 +168,7 @@ export function Palette() {
       onSelect: () => { setProjectId(message.projectId, message.sessionId); setView("chat"); },
     }));
     return [...actions, ...projectItems, ...threads, ...messages];
-  }, [api, query, currentSearch, projects, sessions, session, project, terminalOpen, setTerminalOpen, attachContext, setNotice, createTask, createProjectFromFolder, pickProjectDirectory, pickFilesToMention, setView, setProjectId, setAboutOpen, openInspector, setAgentCommandsOpen, canGoBack, canGoForward, goBack, goForward, setThreadFind, lastTurn, branching.fork, branching.redo, branching.redoLast, applyToLocal, share, turnMode, setTurnMode, runs, handoff, importSessions, settings, setPermissionProfile, draftApproval, setDraftApproval]);
+  }, [api, query, currentSearch, projects, sessions, session, project, terminalOpen, setTerminalOpen, attachContext, setNotice, createTask, createProjectFromFolder, pickProjectDirectory, pickFilesToMention, setView, setProjectId, setAboutOpen, openInspector, setAgentCommandsOpen, canGoBack, canGoForward, goBack, goForward, setThreadFind, setPromptJump, lastTurn, branching.fork, branching.redo, branching.redoLast, applyToLocal, share, turnMode, setTurnMode, runs, handoff, importSessions, settings, setPermissionProfile, draftApproval, setDraftApproval]);
 
   if (!palette) return null;
   return <SearchDialog title="Search workspace" placeholder="Search commands, projects, conversations…" query={paletteQuery}
