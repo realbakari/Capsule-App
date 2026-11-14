@@ -17,6 +17,7 @@ export type SettingsSectionId =
   | "general"
   | "appearance"
   | "agents"
+  | "tools"
   | "gateway"
   | "projects"
   | "sourceControl"
@@ -39,6 +40,7 @@ export const SETTINGS_SECTION_LABELS: Record<SettingsSectionId, string> = {
   general: "General",
   appearance: "Appearance",
   agents: "Agents",
+  tools: "Tools (MCP)",
   gateway: "Gateway",
   projects: "Projects",
   sourceControl: "Source control",
@@ -49,6 +51,7 @@ export const SETTINGS_SECTION_LABELS: Record<SettingsSectionId, string> = {
 };
 
 export const SETTINGS_SEARCH_ITEMS: SettingsSearchItem[] = [
+  { title: "MCP servers", section: "tools", keywords: ["mcp", "tools", "server", "model context protocol", "env"] },
   { title: "Worktree location", section: "sourceControl", key: "worktreesDirectory", keywords: ["storage", "folder", "drive", "directory", "worktrees"] },
   { title: "Launch at login", section: "general", key: "launchAtLogin", keywords: ["startup", "boot", "open"] },
   { title: "Send key", section: "general", key: "composerSendKey", keywords: ["enter", "composer", "submit"] },

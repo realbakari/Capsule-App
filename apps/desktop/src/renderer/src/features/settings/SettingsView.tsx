@@ -29,10 +29,11 @@ import {
 } from "./ConfigurationSettings";
 import { AboutCard } from "./AboutModal";
 import { CommandsCard } from "./CommandsCard";
+import { McpServersSettings } from "../customization/McpServersSettings";
 import { RemoteAccessSettings } from "./RemoteAccessSettings";
 import { AnalyticsSettings } from "./AnalyticsSettings";
 import { SettingRow, Switch } from "./controls";
-import { ChartIcon, CpuIcon, FileIcon, FolderIcon, GitBranchIcon, InfoIcon, KeyboardIcon, LinkIcon, SettingsIcon, SparkIcon, SunIcon, UndoIcon } from "../shell/icons";
+import { ChartIcon, CpuIcon, FileIcon, FolderIcon, GitBranchIcon, InfoIcon, KeyboardIcon, LinkIcon, SettingsIcon, SparkIcon, SunIcon, UndoIcon, WrenchIcon } from "../shell/icons";
 import { formatProjectRoot } from "../../lib/paths";
 import { useWorkspace } from "../../lib/workspace";
 
@@ -47,6 +48,7 @@ export const SETTINGS_TABS: Array<{ id: SettingsSectionId; label: string; icon: 
   { id: "general", label: "General", icon: SettingsIcon },
   { id: "appearance", label: "Appearance", icon: SunIcon },
   { id: "agents", label: "Agents", icon: CpuIcon, group: "Runtime" },
+  { id: "tools", label: "Tools (MCP)", icon: WrenchIcon },
   { id: "gateway", label: "Gateway", icon: LinkIcon },
   { id: "projects", label: "Projects", icon: FolderIcon, group: "Code" },
   { id: "sourceControl", label: "Source control", icon: GitBranchIcon },
@@ -341,6 +343,12 @@ export function SettingsView() {
                 <AgentDefaultsCard settings={settings} onPatch={(next) => void patch(next)} />
                 <PermissionRulesCard />
                 <HarnessCredentialsCard settings={settings} onPatch={(next) => void patch(next)} />
+              </div>
+            )}
+
+            {tab === "tools" && (
+              <div className="appearance-page">
+                <McpServersSettings />
               </div>
             )}
 

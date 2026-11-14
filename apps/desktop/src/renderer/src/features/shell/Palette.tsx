@@ -65,6 +65,7 @@ export function Palette() {
       { id: "update", label: "Check for updates", group: "Workspace", icon: <RefreshIcon size={15} />, onSelect: () => setAboutOpen(true) },
       { id: "about", label: "About Capsule", group: "Workspace", icon: <InfoIcon size={15} />, onSelect: () => setAboutOpen(true) },
       ...customizationCommands({ api, config, onError: setNotice, showProblems: () => { setSettingsTab("diagnostics"); setView("settings"); } }),
+      { id: "settings-tools", label: "MCP servers", detail: "Settings", group: "Go to", icon: <SettingsIcon size={15} />, onSelect: () => { setSettingsTab("tools"); setView("settings"); } },
     ].filter((item) => item.label.toLowerCase().includes(query));
     /* A command takes arguments, so choosing one puts it in the message box rather than sending it. */
     actions.push(...(commands?.list?.commands ?? []).filter((command) => `run command: /${command.name}`.includes(query)).map((command) => ({
