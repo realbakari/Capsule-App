@@ -36,7 +36,7 @@
 .branch-point-current[aria-expanded="true"] { background: var(--bg-hover); }
 .branch-point-current:focus-visible,
 .branch-step:focus-visible,
-.branch-point-back:focus-visible { outline: var(--ring-width) solid var(--focus-ring); outline-offset: var(--focus-offset); }
+.branch-point-back:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
 .branch-point-count { color: var(--text-muted); white-space: nowrap; }
 .branch-point-title { font-weight: var(--weight-medium); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 18rem; }
 .branch-point-back { margin-left: 0.25rem; font-size: var(--text-xs); }
@@ -73,7 +73,7 @@
   background: var(--accent);
   vertical-align: middle;
 }
-.branch-point-list:focus-visible li[data-active="true"] { box-shadow: inset 0 0 0 1px var(--focus-ring); }
+.branch-point-list:focus-visible li[data-active="true"] { box-shadow: inset 0 0 0 1px var(--ring); }
 .branch-point-option-title { color: var(--text); font-weight: var(--weight-medium); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .branch-point-option-meta { color: var(--text-muted); font-size: var(--text-xs); }
 
@@ -92,7 +92,7 @@
 .restore-scope:hover:not(.unavailable) { background: var(--bg-hover); }
 .restore-scope.selected { border-color: var(--border-strong); background: var(--surface-0); }
 .restore-scope.unavailable { cursor: not-allowed; opacity: 0.7; }
-.restore-scope:has(input:focus-visible) { outline: var(--ring-width) solid var(--focus-ring); outline-offset: var(--focus-offset); }
+.restore-scope:has(input:focus-visible) { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
 .restore-scope input { margin: 0.2rem 0 0; accent-color: var(--accent); }
 .restore-scope-text { display: grid; gap: 0.15rem; }
 .restore-scope-label { color: var(--text); font-weight: var(--weight-medium); }

@@ -15,6 +15,6 @@
   font-size: var(--text-sm);
   line-height: 1.5;
 }
-.handoff-summary:focus-visible { outline: var(--ring-width) solid var(--focus-ring); outline-offset: var(--focus-offset); }
+.handoff-summary:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
 .handoff-hint { color: var(--text-muted); font-size: var(--text-sm); }
 .handoff-error, .dialog p.handoff-error { margin: 0 0 0.5rem; color: var(--red); font-size: var(--text-sm); }

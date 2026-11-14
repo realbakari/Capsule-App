@@ -91,7 +91,7 @@
 }
 .tag-editor .tag-chip-remove:hover { background: var(--bg-hover); color: var(--text); }
 .tag-chip-remove:focus-visible,
-.tag-editor-input:focus-visible { outline: var(--ring-width) solid var(--focus-ring); outline-offset: var(--focus-offset); }
+.tag-editor-input:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
 .tag-editor-input {
   flex: 1 1 6rem;
   min-width: 6rem;

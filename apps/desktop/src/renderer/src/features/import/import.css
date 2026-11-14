@@ -45,7 +45,7 @@
 }
 .import-hint span { color: var(--text); }
 .import-hint:hover { background: var(--bg-hover); color: var(--text); }
-.import-hint:focus-visible { outline: var(--ring-width) solid var(--focus-ring); outline-offset: var(--focus-offset); }
+.import-hint:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
 
 .thread-origin {
   display: flex;
