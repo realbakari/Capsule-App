@@ -95,7 +95,7 @@ export function CommandsCard() {
       <h4 className="commands-card-subhead">Other tools' folders</h4>
       {FOREIGN_SOURCES.map((source) => (
         <SettingRow key={source.id} label={source.label} hint={`Read as Markdown only: ${source.hint}`}>
-          <Switch label={source.label} checked={list?.sources[source.id] === true} onChange={(on) => setSource(source.id, on)} />
+          <Switch label={source.label} checked={list?.sources[source.id] === true} disabled={!desktop} title={desktop ? undefined : "Change this on the desktop."} onChange={(on) => setSource(source.id, on)} />
         </SettingRow>
       ))}
     </div>

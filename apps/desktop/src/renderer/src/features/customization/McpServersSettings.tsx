@@ -8,6 +8,8 @@ import { mcpStatusText, testDuration } from "./profile-view";
 import "../conversation/commands.css";
 import "./profiles.css";
 
+const DESKTOP_ONLY = "Change this on the desktop.";
+
 const CARRY: Record<McpCarry, string> = { carried: "Yes", "if-reported": "If the agent reports it", "not-carried": "No" };
 
 const EXAMPLE = `"mcpServers": {
@@ -78,9 +80,9 @@ export function McpServersSettings() {
                   {chip && <span className="setting-source-chip" data-layer={chip.layer} title={chip.path}>{chip.label}</span>}
                   <span className="mcp-row-controls">
                     {here ? (
-                      <label>In {here.name}<Switch label={`${server.name} in ${here.name}`} checked={server.enabled} onChange={(on) => desktop && toggle(server, on, "project")} /></label>
+                      <label>In {here.name}<Switch label={`${server.name} in ${here.name}`} checked={server.enabled} disabled={!desktop} title={desktop ? undefined : DESKTOP_ONLY} onChange={(on) => toggle(server, on, "project")} /></label>
                     ) : (
-                      <label>On<Switch label={`${server.name} on`} checked={server.enabled} onChange={(on) => desktop && userServer && toggle(server, on, "everywhere")} /></label>
+                      <label>On<Switch label={`${server.name} on`} checked={server.enabled} disabled={!desktop || !userServer} title={!desktop ? DESKTOP_ONLY : userServer ? undefined : "Set in the project's file. Open a project to switch it there."} onChange={(on) => toggle(server, on, "everywhere")} /></label>
                     )}
                     <button type="button" className="chip" disabled={!desktop || result === "running"} title={desktop ? "Start the server and list its tools" : "Available in the desktop app."}
                       onClick={() => test(server.name)}>{result === "running" ? "Testing…" : "Test"}</button>

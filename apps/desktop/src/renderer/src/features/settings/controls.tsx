@@ -31,17 +31,23 @@ export function Switch({
   checked,
   onChange,
   label,
+  disabled,
+  title,
 }: {
   checked: boolean;
   onChange: (value: boolean) => void;
   label: string;
+  disabled?: boolean;
+  /** Why it is off, said on hover. */
+  title?: string;
 }) {
   return (
-    <label className="switch">
+    <label className="switch" title={title}>
       <input
         type="checkbox"
         checked={checked}
         aria-label={label}
+        disabled={disabled}
         onChange={(event) => onChange(event.target.checked)}
       />
       <span />

@@ -4818,6 +4818,12 @@ label.field input {
   outline: var(--focus-ring);
   outline-offset: var(--focus-offset);
 }
+.switch input:disabled {
+  cursor: not-allowed;
+}
+.switch input:disabled + span {
+  opacity: 0.45;
+}
 
 
 /* Changed-files card: the turn's outcome on disk, summarised. */
