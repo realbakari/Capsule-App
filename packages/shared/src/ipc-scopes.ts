@@ -83,6 +83,11 @@ const READ_CHANNELS: ChannelName[] = [
   // The thread's messages, turns and tool activity as one document: nothing a
   // reader of the thread cannot already read.
   "threadMarkdown",
+  // Best-of-N reads: the groups, one group's comparison (git diffs of each worktree), and local ratings.
+  "listThreadGroups",
+  "compareThreadGroup",
+  "runRatings",
+  "resultsLeaderboard",
   "rendererReady",
   "windowBackground",
 ];

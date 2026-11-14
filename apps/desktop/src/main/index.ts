@@ -61,6 +61,8 @@ import {
   readFollowUpOp,
   readBoardCardOp,
   readCreateBoardCard,
+  readStartBestOfN,
+  readRatingValue,
   isNewerRelease,
   pickReleaseAsset,
   PRESET_HARNESSES,
@@ -1980,6 +1982,23 @@ function registerIpc(): void {
     if (!parsed) throw new Error(`${channel}: that change to the card is not valid.`);
     return requireEngine().updateBoardCard(id(sessionId, channel, 0), parsed);
   });
+  handle(IPC_CHANNELS.startBestOfN, (input) => {
+    const parsed = readStartBestOfN(input);
+    if (!parsed) throw new Error(`${IPC_CHANNELS.startBestOfN}: pick two to four agents and write a prompt.`);
+    return requireEngine().startBestOfN(parsed);
+  });
+  handle(IPC_CHANNELS.listThreadGroups, () => requireEngine().listThreadGroups());
+  handleArgs(IPC_CHANNELS.compareThreadGroup, [id], (groupId: string) => requireEngine().compareThreadGroup(groupId));
+  handleArgs(IPC_CHANNELS.keepCandidate, [id, id], (groupId: string, sessionId: string) => requireEngine().keepCandidate(groupId, sessionId));
+  handleArgs(IPC_CHANNELS.setAsideCandidates, [id], (groupId: string) => requireEngine().setAsideCandidates(groupId));
+  handle(IPC_CHANNELS.rateRun, (runId, value) => {
+    const channel = IPC_CHANNELS.rateRun;
+    const rating = readRatingValue(value);
+    if (rating === undefined) throw new Error(`${channel}: a rating is 1, -1 or 0.`);
+    return requireEngine().rateRun(id(runId, channel, 0), rating);
+  });
+  handleArgs(IPC_CHANNELS.runRatings, [id], (sessionId: string) => requireEngine().runRatings(sessionId));
+  handle(IPC_CHANNELS.resultsLeaderboard, () => requireEngine().resultsLeaderboard());
   handleArgs(IPC_CHANNELS.searchSkillCatalog, [str, optBool], (query: string, refresh: boolean) =>
     requireEngine().searchSkillCatalog(query, refresh),
   );

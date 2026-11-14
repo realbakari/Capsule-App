@@ -62,7 +62,7 @@ it.each(["normal", "approval", "settings"])("carries %s native turns through run
       expect(engine.listSessions().find((item) => item.id === session.id)?.directSession?.configuration?.permissions).toBe("supervised");
     } else expect(answers).toEqual(["Hello model-one", "Hello model-one"]);
     const before = engine.listSessions().find((item) => item.id === session.id)!;
-    engine.archiveSession(session.id); engine.restoreSession(session.id); engine.restoreSession(session.id);
+    engine.archiveSession(session.id); await engine.restoreSession(session.id); await engine.restoreSession(session.id);
     expect(engine.listSessions().find((item) => item.id === session.id)).toMatchObject({ state: "active", directSession: before.directSession, openclawSessionKey: before.openclawSessionKey });
     expect(engine.listMessages(session.id).filter((message) => message.role === "assistant")).toHaveLength(2);
   } finally {

@@ -214,6 +214,15 @@ export const IPC_CHANNELS = {
   listShareLinks: "capsule:listShareLinks",
   revokeShareLink: "capsule:revokeShareLink",
   threadPresence: "capsule:threadPresence",
+  /* Best-of-N: one prompt on several agents, compared, one kept; and local ratings of results. */
+  startBestOfN: "capsule:startBestOfN",
+  listThreadGroups: "capsule:listThreadGroups",
+  compareThreadGroup: "capsule:compareThreadGroup",
+  keepCandidate: "capsule:keepCandidate",
+  setAsideCandidates: "capsule:setAsideCandidates",
+  rateRun: "capsule:rateRun",
+  runRatings: "capsule:runRatings",
+  resultsLeaderboard: "capsule:resultsLeaderboard",
 } as const;
 
 export const IPC_EVENTS = {

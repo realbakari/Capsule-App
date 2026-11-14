@@ -8,6 +8,8 @@ import type { ApplyResult, WorktreeApplyStatus } from "@capsule/shared";
 import { applyUndoRef, applyWorktreeChanges, checkoutBlocker, deleteApplyRecords, latestApplyRecord, readWorktreeChangeCount, undoWorktreeApply } from "@capsule/filesystem";
 import { FollowUpService } from "./follow-up-service.js";
 import { BoardService } from "./board-service.js";
+import { BestOfNService } from "./best-of-n.js";
+import type { GroupComparison, LeaderboardRow, RatingValue, StartBestOfNInput, StartBestOfNResult, ThreadGroup } from "@capsule/shared";
 import type { BoardCardOp, CreateBoardCardInput } from "@capsule/shared";
 import { Branching, transcriptContext } from "./branching.js";
 import type { CommandResult, DiagnosticsResult } from "@capsule/shared";
@@ -337,6 +339,33 @@ export class CapsuleEngine {
     log: (message) => this.log(message),
     now: nowIso,
   });
+  /* Best-of-N comparisons: candidate threads made together, compared, one kept; and local ratings. */
+  private readonly bestOfN: BestOfNService;
+  private bestOfNHost(): import("./best-of-n.js").BestOfNHost {
+    return {
+    repos: this.repos,
+    assertWorkAllowed: () => this.assertWorkAllowed(),
+    requireProject: (id) => this.requireProject(id),
+    isGitRepository: async (folder) => (await readGitStatus(folder)).isRepo === true,
+    startRefusal: (harnessId) => this.usingMock ? undefined : this.harnessStartRefusal(undefined, harnessId, this.useDirectMode(harnessId)),
+    validateAttachments: (attachments) => validateMessageAttachments(attachments),
+    createSession: (input) => this.createSession(input),
+    deleteSession: (id) => this.deleteSession(id),
+    send: (message) => this.sendMessage(message),
+    isBusy: (sessionId) => this.admittingSessions.has(sessionId) || this.listRuns(sessionId).some((run) => ACTIVE_RUN_STATUSES.has(run.status)),
+    route: (session) => session.harnessId ? this.harnessRoute(session, session.harnessId) : undefined,
+    applyToLocal: (sessionId) => this.applyWorktreeToLocal(sessionId),
+    closeAgent: async (sessionId) => {
+      const session = this.repos.getSession(sessionId);
+      if (!session?.harnessId || !isLiveHarnessState(session.harnessState)) return;
+      await this.closeHarnessSession(sessionId).catch((error) => this.log(`Could not close the agent before setting its worktree aside: ${String(error)}`));
+    },
+    scopedDiff: (folder) => readScopedDiff(folder, "branch"),
+    emit: () => this.events.emit("state", { command: "sessions-updated" }),
+    log: (message) => this.log(message),
+    now: nowIso,
+    };
+  }
   private startingHarnessRuns = new Set<string>();
   private folderActivity = new FolderActivity();
   private updateReserved = false;
@@ -414,6 +443,7 @@ export class CapsuleEngine {
     });
     this.repos = new CapsuleRepositories(this.db);
     this.branching = new Branching(this.branchingHost());
+    this.bestOfN = new BestOfNService(this.bestOfNHost());
     this.keychain = createKeychainAdapter(options.userDataDir, options.secretEncryptor);
     this.sharedChannels = new SharedRelayClient(undefined, createRelayCredentialStore(options.userDataDir, options.secretEncryptor));
     this.channelHarness = new ChannelHarness(this.sharedChannels, this);
@@ -1835,9 +1865,11 @@ export class CapsuleEngine {
     return session;
   }
 
-  restoreSession(id: string): Session {
+  async restoreSession(id: string): Promise<Session> {
     const session = this.requireSession(id);
     if (session.state === "active") return session;
+    // A candidate set aside from a comparison gets its worktree back first.
+    await this.bestOfN.beforeRestore(session);
     session.state = "active";
     session.updatedAt = nowIso();
     this.repos.updateSession(session);
@@ -2004,6 +2036,41 @@ export class CapsuleEngine {
   updateBoardCard(sessionId: string, op: BoardCardOp): Promise<Session> {
     this.assertWorkAllowed();
     return this.board.apply(sessionId, op);
+  }
+
+  /** Send one prompt to several agents, each in its own new worktree thread, grouped for comparison. */
+  startBestOfN(input: StartBestOfNInput): Promise<StartBestOfNResult> {
+    return this.bestOfN.start(input);
+  }
+
+  listThreadGroups(): ThreadGroup[] {
+    return this.bestOfN.listGroups();
+  }
+
+  compareThreadGroup(groupId: string): Promise<GroupComparison> {
+    return this.bestOfN.compare(groupId);
+  }
+
+  /** Apply one candidate to the project folder and record it as the comparison's kept result. */
+  keepCandidate(groupId: string, sessionId: string): Promise<ApplyResult> {
+    return this.bestOfN.keep(groupId, sessionId);
+  }
+
+  /** Archive the candidates that were not kept and take their worktrees off disk; restoring a thread brings it back. */
+  setAsideCandidates(groupId: string) {
+    return this.bestOfN.setAside(groupId);
+  }
+
+  rateRun(runId: string, value: RatingValue | 0): void {
+    this.bestOfN.rate(runId, value);
+  }
+
+  runRatings(sessionId: string): Record<string, RatingValue> {
+    return this.bestOfN.ratings(sessionId);
+  }
+
+  resultsLeaderboard(): LeaderboardRow[] {
+    return this.bestOfN.leaderboard();
   }
 
   async sendMessage(input: AgentMessage): Promise<{ session: Session; run: Run; userMessage: ChatMessage; }> {
@@ -3820,7 +3887,7 @@ export class CapsuleEngine {
     const release = this.folderActivity.restore(checkout);
     try {
       const result = await undoWorktreeApply(checkout, undoRef);
-      if (result.ok) { clearFileIndex(checkout); this.events.emit("state", { command: "files-updated" }); }
+      if (result.ok) { clearFileIndex(checkout); this.bestOfN.applyUndone(session.id); this.events.emit("state", { command: "files-updated" }); }
       return result;
     } finally { release(); }
   }
