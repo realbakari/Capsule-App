@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ProfileSummary } from "@capsule/shared";
-import { mcpStatusText, profileLine } from "./profile-view";
+import { mcpStatusText, profileLine, testDuration } from "./profile-view";
 
 const base: ProfileSummary = { id: "r", name: "Reviewer", skills: [], scope: "user", path: "/p/r.md", hasInstructions: false };
 
@@ -14,5 +14,8 @@ describe("profile view", () => {
   it("names a server's state in words", () => {
     expect(mcpStatusText({ state: "needs-env", missing: ["TOKEN"] })).toBe("Waiting for ${env:TOKEN}");
     expect(mcpStatusText({ state: "offered" })).toBe("Offered to direct conversations");
+    expect(mcpStatusText({ state: "off", reason: "project", detail: "Only in ~/work/**." })).toBe("Only in ~/work/**");
+    expect(testDuration(42)).toBe("42 ms");
+    expect(testDuration(1520)).toBe("1.5 s");
   });
 });

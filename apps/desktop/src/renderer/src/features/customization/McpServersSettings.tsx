@@ -4,7 +4,7 @@ import { settingsFileTarget, shortConfigPath, sourceChip } from "../../lib/confi
 import { formatUserError } from "../../lib/errors";
 import { useWorkspace } from "../../lib/workspace";
 import { Switch } from "../settings/controls";
-import { mcpStatusText } from "./profile-view";
+import { mcpStatusText, testDuration } from "./profile-view";
 import "../conversation/commands.css";
 import "./profiles.css";
 
@@ -97,7 +97,7 @@ export function McpServersSettings() {
                 {result && result !== "running" && (
                   <div className="mcp-test" data-ok={result.ok} role="status">
                     {result.ok
-                      ? `${result.tools.length} ${result.tools.length === 1 ? "tool" : "tools"} in ${(result.durationMs / 1000).toFixed(1)} s${result.tools.length ? `: ${result.tools.slice(0, 12).join(", ")}${result.tools.length > 12 ? "…" : ""}` : ""}`
+                      ? `${result.tools.length} ${result.tools.length === 1 ? "tool" : "tools"} in ${testDuration(result.durationMs)}${result.tools.length ? `: ${result.tools.slice(0, 12).join(", ")}${result.tools.length > 12 ? "…" : ""}` : ""}`
                       : result.error}
                     {!result.ok && result.stderr && <details><summary>What it printed</summary><pre>{result.stderr}</pre></details>}
                   </div>

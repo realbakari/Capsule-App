@@ -73,7 +73,7 @@ export function ProfilesCard() {
           <ul>
             {problems.map((problem, index) => (
               <li key={`${problem.path}-${index}`}>
-                <span className="commands-card-path" title={problem.path}>{shortConfigPath(problem.path, api.homeDir || undefined)}</span>
+                <span className="commands-card-path" title={problem.path}><bdi>{shortConfigPath(problem.path, api.homeDir || undefined)}</bdi></span>
                 <span>{problem.message}</span>
               </li>
             ))}

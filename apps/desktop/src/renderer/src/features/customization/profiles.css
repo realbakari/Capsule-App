@@ -8,14 +8,14 @@
   background: var(--profile-color, var(--text-faint));
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--text) 14%, transparent);
 }
-.agent-profile-choice .profile-dot { margin: 0 0.3rem 0 0.15rem; }
+.agent-profile-choice .profile-dot { margin: 0 0.075rem 0 0.2rem; }
 
 .profile-chip {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
   height: 1.35rem;
-  margin-left: 0.5rem;
+  margin-left: 0.25rem;
   padding: 0 0.5rem;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-full);
@@ -78,7 +78,7 @@
   font-size: var(--text-xs);
 }
 .mcp-status[data-state="offered"] { color: var(--text); }
-.mcp-status[data-state="needs-env"] { color: hsl(var(--warn)); }
+.mcp-status[data-state="needs-env"] { color: var(--text); font-weight: 500; }
 .mcp-test {
   margin: 0.35rem 0 0;
   font-size: var(--text-xs);

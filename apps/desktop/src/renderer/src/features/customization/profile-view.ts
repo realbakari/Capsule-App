@@ -1,4 +1,4 @@
-import { PERMISSION_PROFILES, type McpServerStatus, type McpServerView, type ProfileSummary } from "@capsule/shared";
+import { PERMISSION_PROFILES, type McpServerStatus, type ProfileSummary } from "@capsule/shared";
 
 /** What a profile starts, in one line: agent, model, effort, permission and workspace. */
 export function profileLine(profile: ProfileSummary, agents: ReadonlyArray<{ id: string; name: string }>): string {
@@ -17,11 +17,12 @@ export function mcpStatusText(status: McpServerStatus): string {
   switch (status.state) {
     case "offered": return "Offered to direct conversations";
     case "needs-env": return `Waiting for ${status.missing.map((name) => `\${env:${name}}`).join(", ")}`;
-    case "off": return status.detail;
+    case "off": return status.detail.replace(/\.$/, "");
   }
 }
 
-/** Whether the project's local file holds this server's switch. */
-export function switchedHere(server: McpServerView): boolean {
-  return server.override?.scope === "local" || (server.source.scope === "local");
+/** A test's duration: milliseconds under a second. */
+export function testDuration(ms: number): string {
+  return ms < 1000 ? `${Math.max(1, Math.round(ms))} ms` : `${(ms / 1000).toFixed(1)} s`;
 }
+
