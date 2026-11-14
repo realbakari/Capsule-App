@@ -16,7 +16,8 @@ import { RunOnControl, RunOnSummary, useRunOn } from "../best-of-n/RunOnPicker";
 import { GatewayBanner } from "../shell/GatewayBanner";
 import { TemporaryThreadBanner } from "../threads/ThreadMarks";
 import { useThreadActions } from "../threads/ThreadActions";
-import { GATEWAY_CONNECTION_REQUIRED } from "../../lib/harness-preflight";
+import { GATEWAY_CONNECTION_REQUIRED, agentSetupNotice } from "../../lib/harness-preflight";
+import { AgentSetupNotice } from "./AgentSetupNotice";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { FileEntry } from "@capsule/shared";
 import { searchProjectFiles } from "../../lib/bridge";
@@ -495,6 +496,7 @@ export function Composer({
   /* A paired browser without conversation control can read but never send. */
   const readOnlyViewer = api.isDesktop === false && api.remoteMode !== "control";
   const selectedHarness = harnesses.find((item) => item.id === agentId);
+  const setupNotice = session?.paused ? undefined : agentSetupNotice(selectedHarness, sendBlockReason);
   const bang = parseBangCommand(draft);
   const taskEvents = useMemo(() => activeRun ? (events ?? []).filter((event) => event.runId === activeRun.id) : events ?? [], [events, activeRun?.id]);
   const tasks = useMemo(() => tasksFromRunEvents(taskEvents), [taskEvents]);
@@ -841,7 +843,9 @@ export function Composer({
         )}
         <TemporaryThreadBanner />
         {gatewayUnavailable && <GatewayBanner inset />}
-        {sendBlockReason && !runOn.active && !(gatewayUnavailable && sendBlockReason === GATEWAY_CONNECTION_REQUIRED) && (
+        {setupNotice && selectedHarness && !runOn.active ? (
+          <AgentSetupNotice notice={setupNotice} harness={selectedHarness} canAct={!readOnlyViewer && api.isDesktop !== false} />
+        ) : sendBlockReason && !runOn.active && !(gatewayUnavailable && sendBlockReason === GATEWAY_CONNECTION_REQUIRED) && (
           <div className={`composer-preflight${readOnlyViewer ? " read-only" : ""}`} role="status">
             <span title={sendBlockReason}>{sendBlockReason}</span>
             {/* A read-only viewer can do neither; the reason is the whole message. */}

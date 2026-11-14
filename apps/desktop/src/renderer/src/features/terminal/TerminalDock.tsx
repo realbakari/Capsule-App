@@ -9,6 +9,7 @@ import { projectFolderName } from "../../lib/paths";
 import { useWorkspace } from "../../lib/workspace";
 import { showNativeContextMenu } from "../../lib/bridge";
 import { registerSelectionReader, selectionContext, touchSelectionSurface } from "../../lib/selection-share";
+import { onTerminalCommand, takeTerminalCommand } from "../../lib/terminal-requests";
 
 const MIN_HEIGHT = 140;
 const MAX_HEIGHT = 720;
@@ -76,10 +77,17 @@ export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: s
     return { id: handle.id, label: projectFolderName(cwd) ?? "Shell", terminal, fit, exited: false };
   }, [api, cwd]);
 
-  const openPane = useCallback(async () => {
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
+  /* Typed, never run: the person reads the command and presses Return. */
+  const typeInto = useCallback((pane: Pane, command: string) => {
+    void api.terminalInput(pane.id, command).catch((error) => setError(String(error)));
+  }, [api]);
+
+  const openPane = useCallback(async (): Promise<Pane | undefined> => {
     if (panesRef.current.length + openingPanes.current >= 8) {
       setError("This folder has eight shell tabs. Close a tab before opening another.");
-      return;
+      return undefined;
     }
     openingPanes.current++;
     try {
@@ -89,7 +97,8 @@ export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: s
       panesRef.current = [...panesRef.current, pane];
       setPanes(panesRef.current);
       setActiveId(pane.id);
-    } catch (error) { if (alive.current) setError(String(error)); }
+      return pane;
+    } catch (error) { if (alive.current) setError(String(error)); return undefined; }
     finally { openingPanes.current--; }
   }, [api, createPane]);
 
@@ -125,6 +134,9 @@ export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: s
       panesRef.current = [...panesRef.current, pane];
       setPanes(panesRef.current);
       setActiveId(pane.id);
+      // Opened to run something: the first shell takes it.
+      const command = visibleRef.current ? takeTerminalCommand() : undefined;
+      if (command) typeInto(pane, command);
     }).catch((error) => { if (!unmounted) setError(String(error)); })
       .finally(() => { openingPanes.current--; });
     return () => {
@@ -135,7 +147,26 @@ export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: s
       setPanes([]);
       setActiveId(undefined);
     };
-  }, [createPane, disposePane]);
+  }, [createPane, disposePane, typeInto]);
+
+  /*
+   * A command for a dock already on screen gets a shell of its own, so it
+   * never lands in the middle of whatever the open one is running. While the
+   * first shell is still starting, the request waits for it instead.
+   */
+  useEffect(() => {
+    if (!visible) return;
+    const run = (command: string) => void openPane().then((pane) => { if (pane) typeInto(pane, command); });
+    if (panesRef.current.length > 0) {
+      const waiting = takeTerminalCommand();
+      if (waiting) run(waiting);
+    }
+    return onTerminalCommand((command) => {
+      if (panesRef.current.length === 0) return false;
+      run(command);
+      return true;
+    });
+  }, [visible, openPane, typeInto]);
 
   useEffect(() => {
     if (!visible) return;

@@ -204,6 +204,15 @@ is not ready. Gateway-only agents need the Gateway and acpx; direct mode needs
 a detected native ACP CLI but no Gateway. Both check login when a probe exists.
 Run the check shown in the detail panel to see which prerequisite is missing.
 
+When the agent picked in the composer is not signed in, a short line above the
+composer says so and names the command that signs it in. **Sign in** opens a
+terminal tab with that command typed in; press Return to run it and finish the
+sign-in there. Then choose **Check again**: the line goes away once the agent
+reports that it is signed in, or says it is still signed out. An agent that is
+not installed shows the install step the same way, and one whose own settings
+file cannot be read asks you to fix that file. On a paired device the line only
+names the command, because a terminal opens on the computer running Capsule.
+
 Direct connections check protocol compatibility before opening a conversation.
 If the agent selects an unsupported version, Capsule reports the mismatch and
 closes that connection. Use a compatible agent version or update Capsule.

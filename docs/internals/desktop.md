@@ -1646,6 +1646,28 @@ Public onboarding starts at `docs/user/getting-started.md`. README and policy
 pages distinguish actual routes, local verification, optional signing, browser
 traffic and global skill discovery. Regenerate public policy pages after changes.
 
+### Agent setup notice
+
+When the picked agent's readiness is `needs_login` or `missing_cli` and that is
+why the composer cannot send, the composer shows `AgentSetupNotice` instead of
+the plain preflight row. `agentSetupNotice()` (lib/harness-preflight.ts) splits
+the state into a title, the command quoted in the preset's `loginHint` (no
+backticks reach the UI) or the install detail, and a kind (`sign-in`, `config`,
+`install`). Other send blocks (paused, read-only, no folder, Gateway) keep the
+plain row. The row sits on the composer's own surface with a small amber mark,
+not a tinted slab.
+
+**Sign in** hands the command to the terminal dock through
+`lib/terminal-requests.ts`: a dock already on screen opens a fresh shell tab for
+it, so it never lands inside a running program, and a dock that opens because of
+the request types it into its first shell. The command is typed, never run.
+**Check again** calls `doctorHarness`, which clears the cached binary and login
+lookups, then refreshes the workspace; a still-signed-out answer is shown inline
+rather than as a toast. Both routes: the CLI being signed in is the one on this
+computer for direct mode and for the local acpx bridge alike. A paired device
+gets no actions (Doctor is a write, the terminal is local-only), only the
+command.
+
 ### Composer context and thread agents
 
 Conversation tools offers installed skills and project-file search. Its listbox uses
