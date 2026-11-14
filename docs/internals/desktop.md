@@ -2200,3 +2200,4 @@ differs from the one for folders.
 - **Reopen the panel** (⇧⌘T, palette) brings back the side panel on the surface it showed when it was closed.
 - **Project order**: dragging a project row onto another sets `projects.sort_order` for every project (migration 121, write channel `reorderProjects`). Projects never placed sort first, newest first. Only in project grouping with no search; not on a paired viewer.
 - **Viewed marks** also apply to a pull request's diff, keyed by the pull request's URL and each file's diff, so a new push to a file clears its mark. Not on a single commit's diff.
+- **Window title** reads "Capsule (n)" while n threads wait on you (the Dock badge's count, minus the thread on screen); window switchers and screen readers pick it up.
