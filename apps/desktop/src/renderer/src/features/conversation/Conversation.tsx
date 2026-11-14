@@ -2,6 +2,10 @@ import { formatClock } from "../../lib/display-prefs";
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChatMessage, Run } from "@capsule/shared";
 import { harnessDisplayName } from "../../lib/harness";
+import { useMarkThreadViewed } from "../../lib/thread-triage";
+import { QuestionCard } from "../questions/QuestionCard";
+import { QuoteSelection } from "./QuoteSelection";
+import { TimelineRail } from "./TimelineRail";
 import { formatTokens, type ContextUsage } from "../../lib/context-window";
 import { AlertTriangleIcon, DiffIcon, FileIcon, HistoryIcon, MessageSquarePlusIcon, SparkIcon, TerminalIcon, XIcon } from "../shell/icons";
 import { RunElapsed } from "./RunElapsed";
@@ -40,7 +44,7 @@ import { ImportHint } from "../import/ImportSessions";
 import { TurnFilesCard } from "./TurnFilesCard";
 import { MessageBody } from "./MessageBody";
 import { MessageAttachments } from "./MessageAttachments";
-import { VirtualTurns } from "./VirtualTurns";
+import { VirtualTurns, type TurnLayout } from "./VirtualTurns";
 import { CopyButton } from "./CopyButton";
 import { RatingButtons, useRunRatings } from "../best-of-n/RateReply";
 import { turnTranscript } from "../../lib/turn-timeline";
@@ -80,7 +84,7 @@ const MessageRow = memo(function MessageRow({
       <h2 className="sr-only">
         {message.role === "user" ? (message.kind === "steer" ? "You, steering" : "You") : "Agent"}
       </h2>
-      {message.content ? <MessageBody content={message.content} /> : null}
+      {message.content ? <MessageBody content={message.content} threadImages /> : null}
       {message.contentTruncated ? <p className="faint">Display excerpt. The full message is retained in local history.</p> : null}
       <MessageAttachments message={message} onOpen={onOpenAttachment} />
       {/* Visual alignment carries authorship; the heading exposes it to
@@ -175,10 +179,12 @@ function TurnStatusLine({
 }) {
   // The agent's own most recent step when there is one; otherwise the honest
   // answer, which is that nothing has come back yet.
-  const state = stopping ? "Stopping — waiting for the runtime" : `${runActivityLabel(run)} · ${activity?.trim() || `Waiting for ${agentName}`}`;
+  const { pendingApproval } = useWorkspace();
+  const asking = Boolean(pendingApproval?.runId === run.id && pendingApproval.details?.questions?.length);
+  const state = stopping ? "Stopping — waiting for the runtime" : asking ? runActivityLabel(run, false, true) : `${runActivityLabel(run)} · ${activity?.trim() || `Waiting for ${agentName}`}`;
   return (
     <div className="turn-status">
-      <span>{stopping ? "Stopping" : run.status === "running" ? "Working" : runActivityLabel(run)}</span>
+      <span>{stopping ? "Stopping" : run.status === "running" ? "Working" : runActivityLabel(run, false, asking)}</span>
       {run.createdAt && <><span>for</span><RunElapsed startedAt={run.createdAt} /></>}
       {usage ? (
         <>
@@ -191,8 +197,10 @@ function TurnStatusLine({
           </span>
         </>
       ) : null}
-      <span className="turn-status-dot" aria-hidden>·</span>
-      <span className="turn-status-state" title={state}>{activity?.trim() || `Waiting for ${agentName}`}</span>
+      {!asking && <>
+        <span className="turn-status-dot" aria-hidden>·</span>
+        <span className="turn-status-state" title={state}>{activity?.trim() || `Waiting for ${agentName}`}</span>
+      </>}
     </div>
   );
 }
@@ -318,6 +326,17 @@ export function Conversation() {
     previousTurns.current = next;
     return next;
   }, [messages]);
+  useMarkThreadViewed(view === "chat");
+  const [turnLayout, setTurnLayout] = useState<TurnLayout>();
+  /* Where the person left off, read once per opening: marking the thread read
+     must not move the line while they are reading below it. */
+  const [visit, setVisit] = useState<{ id?: string; mark?: string }>({});
+  if (session && visit.id !== session.id) setVisit({ id: session.id, mark: session.lastViewedAt });
+  const firstNewTurnId = useMemo(() => {
+    if (!visit.mark || visit.id !== session?.id) return undefined;
+    const index = turns.findIndex((turn) => turn.messages.some((message) => message.role === "assistant" && message.createdAt > visit.mark!));
+    return index > 0 ? turns[index]!.id : undefined;
+  }, [session?.id, turns, visit]);
   const visibleMessageCount = useMemo(() => turns.reduce((count, turn) => count + turn.messages.length, 0), [turns]);
   const historyPending = !ready || Boolean(session && historyLoad?.state === "loading");
   const historyError = session && historyLoad?.state === "error" ? historyLoad.detail : undefined;
@@ -542,6 +561,8 @@ export function Conversation() {
           </button>
         </div>
       )}
+      {api.isDesktop !== false && <QuoteSelection scroller={scroller} />}
+      <TimelineRail scroller={scroller} turns={turns} layout={turnLayout} />
       {threadFind && <ThreadFind messages={messages} onLocate={locateMessage} onClose={() => setThreadFind(false)} />}
       <div
         className="conversation"
@@ -636,7 +657,7 @@ export function Conversation() {
                 </div>
               )}
               {historyNavigation}
-              <VirtualTurns key={`${session?.id}:${settings?.timeFormat ?? "system"}:${settings?.toolCallDisplay ?? "compact"}`} turns={turns} folded={folded} scroller={scroller} stick={stick} focus={focusTurn}>{(turn) =>
+              <VirtualTurns key={`${session?.id}:${settings?.timeFormat ?? "system"}:${settings?.toolCallDisplay ?? "compact"}`} turns={turns} folded={folded} scroller={scroller} stick={stick} focus={focusTurn} restoreKey={session?.id} onRestore={() => setStick(false)} onLayout={setTurnLayout}>{(turn) =>
                 folded.has(turn.id) ? (
                   <Fragment key={turn.id}>
                     <FoldedTurn turn={turn} onOpen={openTurn} />
@@ -644,6 +665,7 @@ export function Conversation() {
                   </Fragment>
                 ) : (
                   <Fragment key={turn.id}>
+                  {turn.id === firstNewTurnId && <div className="thread-visit-rule" role="note">New since your last visit</div>}
                   <TurnTranscript key={transcripts.get(turn.id)?.run.id ?? turn.id}
                     onOpenFile={openFile}
                     rows={transcripts.get(turn.id)?.rows ?? turn.messages.map((message) => ({ kind: "message" as const, id: message.id, message }))}
@@ -701,6 +723,7 @@ export function Conversation() {
                 label={[...transcripts.values()].some((item) => item.run.id === summaryRun.id && item.hasActivity) ? "Turn details" : `${events.some((event) => event.data?.earlierEvents) ? "Recent activity · " : ""}${summariseWork(steps).label}`}
                 run={summaryRun}
                 stopping={Boolean(activeRun && stoppingRunIds?.includes(activeRun.id))}
+                asking={Boolean(pendingApproval?.runId === summaryRun?.id && pendingApproval?.details?.questions?.length)}
                 touchedFiles={touchedFiles}
                 onOpenFile={openAttachment}
               >
@@ -800,7 +823,7 @@ export function Conversation() {
               </button>
             </div>
           ) : null}
-          {pendingApproval && (
+          {pendingApproval?.details?.questions?.length ? <QuestionCard approval={pendingApproval} /> : pendingApproval && (
             <div className="conversation-approval">
               <h3>Approval required</h3>
               <div>
@@ -851,7 +874,7 @@ export function Conversation() {
         </button>
       )}
       <ViewErrorBoundary compact label="Composer">
-        <Composer showSuggestions={false} awayFromLatest={!stick && visibleMessageCount > 0} />
+        <Composer awayFromLatest={!stick && visibleMessageCount > 0} />
       </ViewErrorBoundary>
       <ViewErrorBoundary compact label="Terminal">
         <PersistentTerminals cwd={terminalCwd} visible={terminalOpen && view === "chat"} onClose={() => setTerminalOpen(false)} />

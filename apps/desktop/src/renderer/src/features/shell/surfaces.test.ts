@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { SURFACES } from "./surfaces.js";
 
-const reasons = (state: { projectId?: string; git?: { isRepo?: boolean } }) =>
+const reasons = (state: { projectId?: string; git?: { isRepo?: boolean }; groupId?: string }) =>
   Object.fromEntries(SURFACES.map((s) => [s.tool, s.blockedBy(state)]));
 
 describe("inspector surfaces", () => {
@@ -23,8 +23,12 @@ describe("inspector surfaces", () => {
     );
   });
 
+  it("does not block review while the repository status is still loading", () => {
+    expect(reasons({ projectId: "p1" }).review).toBeUndefined();
+  });
+
   it("opens everything once there is a project, a repository and a comparison", () => {
-    const blocked = Object.fromEntries(SURFACES.map((s) => [s.tool, s.blockedBy({ projectId: "p1", git: { isRepo: true }, groupId: "g1" })]));
+    const blocked = reasons({ projectId: "p1", git: { isRepo: true }, groupId: "g1" });
     expect(Object.values(blocked).every((reason) => reason === undefined)).toBe(true);
   });
 

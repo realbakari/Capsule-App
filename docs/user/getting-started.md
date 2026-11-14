@@ -5,6 +5,30 @@ conversation, in the conversation’s folder. You can also use **Show terminal**
 in the command palette, `/term` in the composer, or `⌘J`. Hiding the drawer
 keeps running shells; closing a shell tab ends it.
 
+Links in terminal output are underlined when you point at them, and a hint
+says what a click does. A click keeps you inside Capsule; `⌘`-click leaves it.
+
+- **A local server** (`localhost`, `127.0.0.1`, `0.0.0.0`, `*.localhost`):
+  click to open it in this conversation's **Browser**. `⌘`-click opens your
+  default browser instead.
+- **Any other web address** needs `⌘`-click, which opens your default browser.
+  A plain click does nothing, so selecting text never sends you away.
+- **A file**, such as `src/app.ts:12:3` from a compiler or test runner: click to
+  open it in **Files**. Paths are read from the shell's folder, and only files
+  inside this conversation's folders become links.
+
+A link that wraps onto the next row is still one link. On Windows and Linux,
+use `Ctrl` where these notes say `⌘`.
+
+To ask about some output, select it. **Add to chat** appears beside the
+selection; click it, press `⌘L` (`Ctrl+Shift+L` on Windows and Linux), or
+right-click and choose **Add Selection to Chat**. The text lands in the message
+you are writing, at the cursor, as a code block named after the shell tab, and
+the cursor moves to the message so you can type your question. A selection
+longer than 200 lines or 12,000 characters keeps its end, where errors usually
+are, and says how much was left out. The right-click menu also has **Copy**,
+**Paste**, and **Clear**.
+
 The icons beside it open the panel next to the conversation, one surface at a
 time: **Review** for changed files, **Browser**, **Simulator** on a Mac, and
 **Files**. Click the icon that is showing to close the panel. The list icon

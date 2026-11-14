@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { lineRange, type FilePreview, type SharedSelection } from "@capsule/shared";
 import { highlight } from "../../lib/highlight";
 import { showNativeContextMenu } from "../../lib/bridge";
@@ -19,6 +19,7 @@ export function FilePreviewView({
   onOverwrite,
   onRetry,
   onCopy,
+  openIn,
 }: {
   doc: FilePreview;
   editing: boolean;
@@ -33,6 +34,8 @@ export function FilePreviewView({
   onOverwrite: () => void;
   onRetry?: () => void;
   onCopy?: () => void;
+  /** Opens the file in another app; absent where there is no machine to open it on. */
+  openIn?: ReactNode;
 }) {
   const canEdit = doc.kind === "text" && !doc.truncated && Boolean(doc.revision);
   const { api, attachContext } = useWorkspace();
@@ -102,6 +105,7 @@ export function FilePreviewView({
         <button type="button" className="ghost" onClick={onOpen}>
           Open
         </button>
+        {openIn}
         {canEdit ? (
           editing ? (
             <button type="button" className="ghost" onClick={onView}>

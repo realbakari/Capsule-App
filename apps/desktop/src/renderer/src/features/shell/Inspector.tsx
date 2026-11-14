@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useEffect, useLayoutEffect, useReducer, useRef, useState, useSyncExternalStore } from "react";
 import { usePanelResize } from "../../lib/panel-resize";
 import type {
   FileEntry,
@@ -9,13 +9,11 @@ import type {
   LocalServer,
 } from "@capsule/shared";
 import { mergePrompt, rebasePrompt } from "../../lib/pull-request-stack";
-import { folderBasename, projectFolderList, type HarnessReadiness } from "@capsule/shared";
+import { folderBasename, conversationFolderRoots, type HarnessReadiness } from "@capsule/shared";
 import { useRememberedScroll } from "../../lib/remembered-scroll";
 import { FileSaveCoordinator, isConflictError } from "../../lib/file-save";
 import { fileDrafts, fileOwnerKey } from "../../lib/file-drafts";
 import { RecoverableFiles } from "./RecoverableFiles";
-import { RequestScope } from "../../lib/request-scope";
-import { useScopedState } from "../../lib/scoped-state";
 import { DirectoryListings } from "../../lib/directory-listings";
 import { formatUserError } from "../../lib/errors";
 import { clampPanelWidth, fitPanelWidth, restorePanelWidth } from "../../lib/panel-size";
@@ -26,6 +24,7 @@ import { ReviewDiff } from "../review/ReviewDiff";
 import { EmbeddedBrowser } from "./EmbeddedBrowser";
 import { SimulatorPane } from "./SimulatorPane";
 import { FilePreviewView } from "./FilePreview";
+import { OpenInControl } from "../open-in/OpenInPicker";
 import { FileTreePane, sortTreeEntries } from "./FileTree";
 import { ThreadAgents } from "./ThreadAgents";
 import { ComparePane } from "../best-of-n/ComparePane";
@@ -35,7 +34,19 @@ import { useFollowAgent } from "./use-follow-agent";
 import "./follow-agent.css";
 import { GitPullRequestDetail as PullRequestDetailView } from "./PullRequestDetail";
 import { PullRequestList } from "./PullRequestList";
+import { PullRequestCheckoutDialog } from "../worktree-base/PullRequestCheckoutDialog";
 import { ReviewCommitForm } from "./ReviewCommitForm";
+import { RequestScope } from "../../lib/request-scope";
+import { useScopedState } from "../../lib/scoped-state";
+import { ReviewScopeBar, useReviewTurns } from "../review/ReviewScopeBar";
+import {
+  chooseReview,
+  ignoreWhitespaceFor,
+  rememberIgnoreWhitespace,
+  reviewSelection,
+  useReviewChoices,
+  useReviewScope,
+} from "../../lib/review-scope";
 import {
   ColumnsIcon,
   CpuIcon,
@@ -232,6 +243,9 @@ export function Inspector() {
   const [pullRequestDetailLoading, setPullRequestDetailLoading] = useState(false);
   const [pullRequestDetailError, setPullRequestDetailError] = useState<string>();
   const [stackBusy, setStackBusy] = useState(false);
+  const [checkoutPullRequest, setCheckoutPullRequest] = useState<GitPullRequest>();
+  // Checking a pull request out writes to the repository; a paired viewer only reads.
+  const workOnPullRequest = api.isDesktop === false ? undefined : setCheckoutPullRequest;
   const reviewScope = JSON.stringify([projectId, session?.id]);
   const latestReview = useRef({ scope: reviewScope, refresh: () => {} });
   const pullRequestRequest = useRef(0);
@@ -241,12 +255,7 @@ export function Inspector() {
   const harnesses = harnessList ?? [];
   const dedicated = harnesses.find((item) => item.id === project?.defaultAgentId);
 
-  const folderRoots = useMemo(() => {
-    const projectRoots = projectFolderList(project ?? {});
-    return session?.workingDirectory && session.workingDirectory !== project?.workingDirectory
-      ? [session.workingDirectory, ...projectRoots.filter((root) => root !== project?.workingDirectory)]
-      : projectRoots;
-  }, [project, session?.workingDirectory]);
+  const folderRoots = useMemo(() => conversationFolderRoots(project ?? {}, session?.workingDirectory), [project, session?.workingDirectory]);
   const activeRoot =
     (fileRoot && folderRoots.find((root) => root.toLowerCase() === fileRoot.toLowerCase())) ||
     (session?.workingDirectory ?? project?.workingDirectory);
@@ -258,8 +267,16 @@ export function Inspector() {
   const fileSearchLoading = searchingFiles && (currentFileSearch?.loading ?? true);
   const scope = JSON.stringify([projectId, session?.id, activeRoot]);
   const diffRequests = useRef(new RequestScope()).current;
-  const diffScope = diffRequests.select(JSON.stringify([scope, git?.branch]));
-  const [reviewPath, setReviewPath] = useScopedState<string | undefined>(diffScope, undefined);
+  const reviewPathScope = diffRequests.select(JSON.stringify([scope, git?.branch]));
+  const [reviewPath, setReviewPath] = useScopedState<string | undefined>(reviewPathScope, undefined);
+  /* What Review compares: the project's scope, and for a turn this thread's pick, remembered for this window's life. */
+  const reviewThread = session?.id ?? `project:${projectId ?? ""}`;
+  const reviewKind = useReviewScope(projectId);
+  useReviewChoices();
+  const reviewTurnList = useReviewTurns(session?.id);
+  const diffScope = reviewSelection(reviewKind, reviewThread, reviewTurnList.turns, reviewTurnList.loading);
+  const diffTurn = diffScope.kind === "turn" ? reviewTurnList.turns.find((turn) => turn.runId === diffScope.runId) : undefined;
+  const ignoreWhitespace = ignoreWhitespaceFor(reviewThread, settings?.diffIgnoreWhitespace ?? false);
   const directoryCache = useMemo(() => new DirectoryListings(async (path) => {
     if (!projectId || !activeRoot) return [];
     return sortTreeEntries(await api.listFiles(projectId, path || undefined, activeRoot));
@@ -512,7 +529,6 @@ export function Inspector() {
   }, [activeRoot, api, fileSearch, projectId, fileSearchKey, fileSearchRetry]);
 
   function selectTool(tool: InspectorTool) {
-    if (tool !== "review") diffRequests.capture("diff");
     if (tool !== "files") fileRequest.current += 1;
     setInspectorTab(tabForTool(tool, Boolean(previewDoc)));
   }
@@ -532,10 +548,7 @@ export function Inspector() {
         event.target instanceof HTMLElement &&
         Boolean(event.target.closest("input, textarea, select, [contenteditable]"));
       if (typing) return;
-      if (event.ctrlKey && event.shiftKey && event.code === "KeyG") {
-        event.preventDefault();
-        selectTool("review");
-      } else if (event.ctrlKey && (event.key === "`" || event.code === "Backquote")) {
+      if (event.ctrlKey && (event.key === "`" || event.code === "Backquote")) {
         event.preventDefault();
         setTerminalOpen(true);
       } else if ((event.metaKey || event.ctrlKey) && event.altKey && event.code === "KeyS") {
@@ -634,7 +647,6 @@ export function Inspector() {
 
   const previewFile = useCallback(async (relative: string) => {
     if (!projectId || !activeRoot) return;
-    diffRequests.capture("diff");
     const request = ++fileRequest.current;
     const requestedScope = fileScope.current;
     const current = () => request === fileRequest.current && requestedScope === fileScope.current;
@@ -722,6 +734,8 @@ export function Inspector() {
   }
 
   return (
+    <>
+    {checkoutPullRequest ? <PullRequestCheckoutDialog pullRequest={checkoutPullRequest} onClose={() => setCheckoutPullRequest(undefined)} /> : null}
     <aside
       ref={inspectorElement}
       className={`inspector panel-inspector${isMaximized ? " maximized" : ""}`}
@@ -767,7 +781,9 @@ export function Inspector() {
               <span>Review</span>
               <span className="panel-breadcrumb-sep">·</span>
               <span className="mono" title={git?.branch}>{git?.branch ?? "No branch"}</span>
-              {git?.changed ? (
+              {diffScope.kind === "turn" && !selectedPullRequest ? (
+                <span className="panel-breadcrumb-count">{diffTurn ? `Turn ${diffTurn.number}` : "Saved turn"}</span>
+              ) : git?.changed ? (
                 <span className="panel-breadcrumb-count">{git.changed} changed</span>
               ) : null}
             </>
@@ -928,6 +944,13 @@ export function Inspector() {
                       if (!activeRoot) return;
                       void openPath(`${activeRoot.replace(/\/$/, "")}/${previewDoc.path}`);
                     }}
+                    openIn={projectId && activeRoot ? (
+                      <OpenInControl
+                        target={{ projectId, sessionId: session?.id, path: `${activeRoot.replace(/\/$/, "")}/${previewDoc.path}` }}
+                        what="file"
+                        variant="bar"
+                      />
+                    ) : undefined}
                     onEdit={() => setPreviewEditing(true)}
                     onView={() => {
                       void saverRef.current?.flush();
@@ -1026,6 +1049,7 @@ export function Inspector() {
                   setView("chat");
                 }}
                 stackBusy={stackBusy}
+                onWork={workOnPullRequest ? () => workOnPullRequest(selectedPullRequest) : undefined}
                 onSelectLayer={(number) => {
                   const listed = pullRequests?.find((item) => item.number === number);
                   if (listed) {
@@ -1068,6 +1092,32 @@ export function Inspector() {
               />
             ) : (
               <>
+            <ReviewScopeBar
+              selection={diffScope}
+              turns={reviewTurnList.turns}
+              loadingTurns={reviewTurnList.loading}
+              hasThread={Boolean(session)}
+              onChoose={(value) => { if (projectId) chooseReview(projectId, reviewThread, value); }}
+              ignoreWhitespace={ignoreWhitespace}
+              onIgnoreWhitespace={(value) => rememberIgnoreWhitespace(reviewThread, value, settings?.diffIgnoreWhitespace ?? false)}
+            />
+            {diffScope.kind === "turn" ? (
+              <>
+                <div className="review-turn-banner" role="note">
+                  <span>
+                    Read-only. What {diffTurn ? `turn ${diffTurn.number}` : "this turn"} changed, from its saved checkpoint.
+                  </span>
+                  <button type="button" className="chip" onClick={() => { if (projectId) chooseReview(projectId, reviewThread, "uncommitted"); }}>
+                    Back to uncommitted changes
+                  </button>
+                </div>
+                {projectId ? (
+                  <ReviewDiff key={`${projectId}/${session?.id ?? ""}`} projectId={projectId} sessionId={session?.id} thread={reviewThread}
+                    selection={diffScope} ignoreWhitespace={ignoreWhitespace} onShowAll={() => setReviewPath(undefined)} />
+                ) : null}
+              </>
+            ) : (
+              <>
             <div className="panel-review-header">
               <div className="kv">
                 <span>Branch</span>
@@ -1105,6 +1155,7 @@ export function Inspector() {
               loading={pullRequestsLoading}
               error={pullRequestsError}
               onSelect={openPullRequest}
+              onWork={workOnPullRequest}
               onRefresh={() => {
                 forceNextListRead.current = true;
                 setListRefreshVersion((value) => value + 1);
@@ -1140,8 +1191,8 @@ export function Inspector() {
               dirty={Boolean(git.dirty)} onCommit={gitCommit} />}
 
             {git?.isRepo && projectId ? (
-              <ReviewDiff key={`${projectId}/${session?.id ?? ""}`} projectId={projectId} sessionId={session?.id}
-                path={reviewPath} onShowAll={() => setReviewPath(undefined)} />
+              <ReviewDiff key={`${projectId}/${session?.id ?? ""}`} projectId={projectId} sessionId={session?.id} thread={reviewThread}
+                selection={diffScope} ignoreWhitespace={ignoreWhitespace} path={reviewPath} onShowAll={() => setReviewPath(undefined)} />
             ) : (
               <div className="panel-diff-section">
                 <h4>Diff</h4>
@@ -1157,6 +1208,8 @@ export function Inspector() {
                   <p className="faint">No diff to show. This folder is not a git repository.</p>
                 )}
               </div>
+            )}
+              </>
             )}
               </>
             )}
@@ -1273,5 +1326,6 @@ export function Inspector() {
         )}
       </div>
     </aside>
+    </>
   );
 }

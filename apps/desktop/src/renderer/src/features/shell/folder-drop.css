@@ -1,0 +1,35 @@
+/* ───────────── Folder drop on the sidebar ───────────── */
+.sidebar.folder-drop-over { position: relative; }
+.sidebar-drop-hint {
+  position: absolute;
+  inset: 0.5rem;
+  z-index: var(--z-sticky);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  border: 1.5px dashed var(--accent);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--bg-sidebar) 88%, transparent);
+  color: var(--text);
+  font-size: var(--text-ui);
+  text-align: center;
+  pointer-events: none;
+}
+
+/* ───────────── Dragging a project into place ───────────── */
+.project-row.project-drop-target { position: relative; }
+.project-row.project-drop-target::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: 0.5rem;
+  right: 0.5rem;
+  height: 2px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  pointer-events: none;
+}
+.project-row[draggable="true"] { cursor: default; }

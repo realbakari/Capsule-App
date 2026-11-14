@@ -6,25 +6,46 @@ bar, with `⇧⌘D`, or from the command palette.
 
 ## Choosing what to compare
 
-The menu next to **Diff** picks the comparison. Capsule remembers your choice
-for each project.
+The menu at the top of Review picks the comparison. Capsule remembers the kind
+of comparison for each project.
 
 | Scope | Shows | You can |
 |-------|-------|---------|
 | **Uncommitted** (the default) | Everything not yet committed, staged or not | Keep, Unstage, Reject |
 | **Staged** | Only what is staged for the next commit | Unstage |
 | **Unstaged** | Only what is not staged yet, new files included | Keep, Reject |
-| **This turn** | What the conversation's latest turn changed | Read only |
+| **Turn N** | What one turn of this conversation changed | Read only |
 | **Branch** | Everything since this branch left the default branch, plus what is not committed yet | Read only |
 
 **Branch** compares against the remote's default branch, or a local `main` or
 `master`. In a worktree conversation that is the whole conversation's work.
 
+The menu lists every turn of the conversation that saved a checkpoint, newest
+first, as **Turn N** with the start of its prompt. Turns from either runtime
+route appear once they have a checkpoint; a turn in a folder that is not a git
+repository has none. The turn you pick is remembered for the conversation until
+you quit; otherwise Review shows the newest turn. A turn's view hides staging,
+discard and commit, and **Back to uncommitted changes** returns. The first
+checkpointed turn of a conversation has nothing earlier to compare against,
+and Review says so instead of guessing.
+
 With no file selected, the diff covers every changed file. Select a file in the
 changed-files list to see just that file; **All files** goes back.
 
+**Ignore whitespace** hides changes that only touch spaces, tabs or line
+endings. **Settings › Source control** sets whether Review starts with it on;
+switching it in Review changes it for that conversation until you quit. While
+whitespace is hidden the diff is not the exact patch Git would apply, so Keep,
+Unstage and Reject are off until you switch it back.
+
+**Collapse all** and **Expand all** fold or open the files on the current page.
+Tick **Viewed** on a file to fold it and count it in "3 of 8 viewed". The mark
+belongs to that version of the file's changes: when the file changes again, it
+reads as not viewed. Marks are kept on this device only, per conversation.
+
 The command palette has an entry for each scope, such as **Review staged
-changes**. Choosing one switches the scope and opens Review.
+changes**. Choosing one switches the scope and opens Review; **Review this
+turn's changes** opens the newest turn.
 
 ## Keep, Unstage and Reject
 

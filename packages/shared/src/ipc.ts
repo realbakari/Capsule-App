@@ -238,6 +238,26 @@ export const IPC_CHANNELS = {
   rateRun: "capsule:rateRun",
   runRatings: "capsule:runRatings",
   resultsLeaderboard: "capsule:resultsLeaderboard",
+  /* Read, unread, settle, snooze: a thread's triage state. */
+  triageSession: "capsule:triageSession",
+  /* Answers to a question the agent asked; conversation control, like approvals. */
+  answerAgentQuestion: "capsule:answerAgentQuestion",
+  /* The project order set by dragging in the sidebar. */
+  reorderProjects: "capsule:reorderProjects",
+  /* Open in: the apps that can open a folder or file, adding one, and opening with one. */
+  listOpenInApps: "capsule:listOpenInApps",
+  addOpenInApp: "capsule:addOpenInApp",
+  openInApp: "capsule:openInApp",
+  /* Composer dictation through the on-device macOS speech helper. Desktop window only. */
+  startDictation: "capsule:startDictation",
+  finishDictation: "capsule:finishDictation",
+  cancelDictation: "capsule:cancelDictation",
+  openDictationSettings: "capsule:openDictationSettings",
+  /* Base branches a new worktree conversation can start from. */
+  listWorktreeBases: "capsule:listWorktreeBases",
+  setSessionWorktreeBase: "capsule:setSessionWorktreeBase",
+  /* Check out a pull request into a worktree or the project folder and open a thread on it. */
+  startPullRequestThread: "capsule:startPullRequestThread",
 } as const;
 
 export const IPC_EVENTS = {
@@ -250,4 +270,5 @@ export const IPC_EVENTS = {
   fullscreen: "capsule:event:fullscreen",
   terminalData: "capsule:event:terminalData",
   terminalExit: "capsule:event:terminalExit",
+  dictation: "capsule:event:dictation",
 } as const;

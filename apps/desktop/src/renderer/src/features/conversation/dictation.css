@@ -1,0 +1,60 @@
+.dictation-btn.is-recording {
+  background: color-mix(in srgb, var(--red) 16%, transparent);
+  color: var(--red);
+}
+.dictation-btn.is-recording:hover { background: color-mix(in srgb, var(--red) 24%, transparent); color: var(--red); }
+.dictation-btn.is-unavailable { opacity: 0.55; }
+.composer.composer--resting .dictation-btn:not(.is-recording) { display: none; }
+
+.dictation-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+  margin: 0 0 0.35rem;
+  padding: 0.3rem 0.35rem 0.3rem 0.6rem;
+  border-radius: var(--control-radius);
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+}
+.dictation-status.is-error { color: var(--text); background: color-mix(in srgb, var(--red) 10%, transparent); }
+.dictation-message { min-width: 0; overflow-wrap: anywhere; }
+.dictation-status:not(.is-error) .dictation-message { color: var(--text); }
+.dictation-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+.dictation-dot.is-live { background: var(--red); animation: dictation-pulse 1.4s ease-in-out infinite; }
+@keyframes dictation-pulse { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .dictation-dot.is-live { animation: none; } }
+.dictation-level { display: inline-flex; align-items: center; gap: 2px; height: 0.75rem; }
+.dictation-level i {
+  width: 3px;
+  border-radius: 1px;
+  background: var(--text-faint);
+  opacity: 0.4;
+}
+.dictation-level i:nth-child(1) { height: 30%; }
+.dictation-level i:nth-child(2) { height: 55%; }
+.dictation-level i:nth-child(3) { height: 80%; }
+.dictation-level i:nth-child(4) { height: 100%; }
+.dictation-level i.on { background: var(--text); opacity: 1; }
+.dictation-clock { font-variant-numeric: tabular-nums; }
+.dictation-status.is-ending .dictation-clock { color: var(--red); font-weight: 600; }
+.dictation-actions { display: inline-flex; gap: 0.25rem; margin-left: auto; }
+.dictation-status button.ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.45rem;
+  font-size: var(--text-xs);
+}
+.dictation-status kbd { font-family: inherit; color: var(--text-faint); }
+.dictation-dismiss { width: 1.5rem; height: 1.5rem; }
+.dictation-status.is-error .dictation-message { flex: 1 1 12rem; }
+.composer-field[readonly] { caret-color: transparent; }

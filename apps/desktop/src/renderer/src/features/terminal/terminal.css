@@ -1,0 +1,47 @@
+/* Floats over the terminal next to a selection; the pane box positions it. */
+.terminal-add-to-chat {
+  position: absolute;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.22rem 0.3rem 0.22rem 0.55rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--control-radius);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.terminal-add-to-chat:hover {
+  background: var(--bg-hover);
+}
+.terminal-add-to-chat:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset);
+}
+.terminal-add-to-chat kbd {
+  padding: 0.05rem 0.3rem;
+  border-radius: calc(var(--control-radius) - 2px);
+  background: var(--bg-active);
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: var(--text-3xs);
+}
+
+.terminal-link-hint {
+  position: absolute;
+  z-index: 5;
+  max-width: 18.5rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--control-radius);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: 1.35;
+  pointer-events: none;
+}

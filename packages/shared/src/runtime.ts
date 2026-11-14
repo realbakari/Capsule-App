@@ -46,6 +46,8 @@ export interface AgentRuntime {
     decision: "approved_once" | "approved_session" | "denied",
   ): Promise<void>;
   listApprovals?(): Promise<ApprovalRequest[]>;
+  /** Answers a question approval; only runtimes whose agents ask questions implement it. */
+  answerQuestion?(approvalId: string, answers: import("./agent-question.js").AgentQuestionAnswers): Promise<void>;
 }
 
 export type ComposerSendKey = "enter" | "cmd-enter";
@@ -122,12 +124,15 @@ export const DEFAULT_CAPSULE_SETTINGS: CapsuleSettings = {
   notifyLongCommands: true,
   longCommandSeconds: 30,
   bounceDockOnAttention: true,
+  dockBadge: true,
+  notificationSound: true,
   showMenuBarExtra: true,
   keepAwakeWhileRunning: false,
   autoDownloadUpdates: true,
   autoClassifySessions: true,
   agentSimulatorAccess: true,
   autoResumeOnLimit: false,
+  continueAfterRestart: false,
   archiveInactiveAfter: "never",
   gitForceWithLease: false,
   prDraft: false,
@@ -136,6 +141,7 @@ export const DEFAULT_CAPSULE_SETTINGS: CapsuleSettings = {
   prWatchAndFix: false,
   prAutoMerge: false,
   prWatchUntilMerged: false,
+  autoSettleMerged: true,
   timeFormat: "system",
   confirmDelete: true,
   // Archiving already offers Undo, so asking first is opt-in.
@@ -148,6 +154,7 @@ export const DEFAULT_CAPSULE_SETTINGS: CapsuleSettings = {
   startInPlanMode: false,
   modeModels: {},
   favoriteModels: [],
+  diffIgnoreWhitespace: false,
 };
 
 /**
@@ -175,9 +182,12 @@ export const SETTINGS_SECTION_KEYS: Record<string, ReadonlyArray<keyof CapsuleSe
     "notifyLongCommands",
     "longCommandSeconds",
     "bounceDockOnAttention",
+    "dockBadge",
+    "notificationSound",
     "autoClassifySessions",
     "agentSimulatorAccess",
     "autoResumeOnLimit",
+    "continueAfterRestart",
     "archiveInactiveAfter",
   ],
   appearance: [
@@ -205,10 +215,11 @@ export const SETTINGS_SECTION_KEYS: Record<string, ReadonlyArray<keyof CapsuleSe
     "modeModels",
   ],
   gateway: ["gatewayUrl"],
-  projects: ["projectlessFolder"],
+  projects: ["projectlessFolder", "openInApps", "openInHidden", "openInFavorite"],
   sourceControl: [
     "diffLayout",
     "diffFileState",
+    "diffIgnoreWhitespace",
     "worktreesDirectory",
     "branchPrefix",
     "gitForceWithLease",
@@ -218,6 +229,7 @@ export const SETTINGS_SECTION_KEYS: Record<string, ReadonlyArray<keyof CapsuleSe
     "prWatchAndFix",
     "prAutoMerge",
     "prWatchUntilMerged",
+    "autoSettleMerged",
     "commitInstructions",
     "prInstructions",
   ],
@@ -285,7 +297,13 @@ export interface CapsuleSettings {
   agentSimulatorAccess: boolean;
   /** When a turn stops on a usage limit that names a reset time, resume it then without asking. */
   autoResumeOnLimit: boolean;
+  /** After a quit or crash mid-turn, queue that turn's prompt again in direct-route threads. */
+  continueAfterRestart: boolean;
   bounceDockOnAttention: boolean;
+  /** The Dock icon counts threads waiting on you: decisions, failures, unread finishes. */
+  dockBadge: boolean;
+  /** Desktop notifications play the system sound. */
+  notificationSound: boolean;
   showMenuBarExtra: boolean;
   keepAwakeWhileRunning: boolean;
   autoDownloadUpdates: boolean;
@@ -302,6 +320,8 @@ export interface CapsuleSettings {
   prWatchAndFix: boolean;
   prAutoMerge: boolean;
   prWatchUntilMerged: boolean;
+  /** Settle the thread watching a pull request once it merges. */
+  autoSettleMerged: boolean;
   commitInstructions?: string;
   prInstructions?: string;
   /**
@@ -310,6 +330,12 @@ export interface CapsuleSettings {
    * declared by the application menu in the main process.
    */
   keybindings?: Record<string, string>;
+  /** Apps the user added to Open in, by location on disk. */
+  openInApps?: string[];
+  /** System-reported apps the user removed from Open in. */
+  openInHidden?: string[];
+  /** The app the Open in shortcut and primary button use. */
+  openInFavorite?: string;
   timeFormat: TimeFormat;
   /** Ask before deleting a conversation or project. */
   confirmDelete: boolean;
@@ -334,6 +360,8 @@ export interface CapsuleSettings {
    * none: an agent-created card is a draft until the person starts it.
    */
   agentTaskAutoStart?: string[];
+  /** Review starts with whitespace-only changes hidden; each thread can override it. */
+  diffIgnoreWhitespace: boolean;
 }
 
 const AGENT_MODES: AgentMode[] = [
@@ -374,6 +402,22 @@ export const LONG_COMMAND_SECONDS = [10, 30, 60, 120, 300] as const;
 
 function flag(value: boolean | undefined, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
+}
+
+/** Distinct non-empty paths, bounded so a corrupt file cannot grow the list without limit. */
+function pathList(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const paths = [...new Set(value.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter((item) => item && item.length <= 1024))].slice(0, 50);
+  return paths.length ? paths : undefined;
+}
+
+/** Command id to stored chord. Anything that is not a short string pair is dropped. */
+function normalizeKeybindings(value: unknown): Record<string, string> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[0].length <= 64 && entry[1].length <= 64)
+    .slice(0, 100);
+  return entries.length ? Object.fromEntries(entries) : undefined;
 }
 
 export function sanitizeFontName(value: string | undefined): string | undefined {
@@ -537,10 +581,13 @@ export function normalizeCapsuleSettings(input: Partial<CapsuleSettings> = {}): 
       : DEFAULT_CAPSULE_SETTINGS.longCommandSeconds,
     agentSimulatorAccess: flag(input.agentSimulatorAccess, DEFAULT_CAPSULE_SETTINGS.agentSimulatorAccess),
     autoResumeOnLimit: flag(input.autoResumeOnLimit, DEFAULT_CAPSULE_SETTINGS.autoResumeOnLimit),
+    continueAfterRestart: flag(input.continueAfterRestart, DEFAULT_CAPSULE_SETTINGS.continueAfterRestart),
     bounceDockOnAttention: flag(
       input.bounceDockOnAttention,
       DEFAULT_CAPSULE_SETTINGS.bounceDockOnAttention,
     ),
+    dockBadge: flag(input.dockBadge, DEFAULT_CAPSULE_SETTINGS.dockBadge),
+    notificationSound: flag(input.notificationSound, DEFAULT_CAPSULE_SETTINGS.notificationSound),
     showMenuBarExtra: flag(input.showMenuBarExtra, DEFAULT_CAPSULE_SETTINGS.showMenuBarExtra),
     autoDownloadUpdates: flag(input.autoDownloadUpdates, DEFAULT_CAPSULE_SETTINGS.autoDownloadUpdates),
     keepAwakeWhileRunning: flag(
@@ -572,8 +619,13 @@ export function normalizeCapsuleSettings(input: Partial<CapsuleSettings> = {}): 
       input.prWatchUntilMerged,
       DEFAULT_CAPSULE_SETTINGS.prWatchUntilMerged,
     ),
+    autoSettleMerged: flag(input.autoSettleMerged, DEFAULT_CAPSULE_SETTINGS.autoSettleMerged),
     commitInstructions: sanitizeGuidance(input.commitInstructions),
     prInstructions: sanitizeGuidance(input.prInstructions),
+    keybindings: normalizeKeybindings(input.keybindings),
+    openInApps: pathList(input.openInApps),
+    openInHidden: pathList(input.openInHidden),
+    openInFavorite: typeof input.openInFavorite === "string" && input.openInFavorite.trim() ? input.openInFavorite.trim() : undefined,
     timeFormat: pick(input.timeFormat, TIME_FORMATS, DEFAULT_CAPSULE_SETTINGS.timeFormat),
     confirmDelete: flag(input.confirmDelete, DEFAULT_CAPSULE_SETTINGS.confirmDelete),
     confirmArchive: flag(input.confirmArchive, DEFAULT_CAPSULE_SETTINGS.confirmArchive),
@@ -589,5 +641,6 @@ export function normalizeCapsuleSettings(input: Partial<CapsuleSettings> = {}): 
     ...(Array.isArray(input.agentTaskAutoStart) && input.agentTaskAutoStart.length ? {
       agentTaskAutoStart: [...new Set(input.agentTaskAutoStart.filter((id): id is string => typeof id === "string" && id.length > 0 && id.length <= 256))].slice(0, 500),
     } : {}),
+    diffIgnoreWhitespace: flag(input.diffIgnoreWhitespace, DEFAULT_CAPSULE_SETTINGS.diffIgnoreWhitespace),
   };
 }

@@ -2,7 +2,7 @@ import { inRepository } from "./git-process.js";
 import fs from "node:fs";
 import { lstat, unlink, realpath } from "node:fs/promises";
 import path from "node:path";
-import type { GitChange, GitStatus } from "@capsule/shared";
+import type { GitChange, GitDiffOptions, GitStatus } from "@capsule/shared";
 import { git } from "./git-process.js";
 import { CANONICAL_PATCH_FLAGS, parsePorcelain, parseNumstat } from "./git-output.js";
 import { readBoundedFile } from "./bounded-read.js";
@@ -131,18 +131,19 @@ export async function checkoutBranch(workingDirectory: string, branch: string): 
 /** The most text Review reads for one diff. */
 export const REVIEW_DIFF_BYTES = 16 * 1024 * 1024;
 
-export async function readGitDiff(workingDirectory: string, relative?: string): Promise<string> {
+export async function readGitDiff(workingDirectory: string, relative?: string, options: GitDiffOptions = {}): Promise<string> {
   return inRepository(workingDirectory, async () => {
 
     const paths = relative ? ["--", relative] : [];
+    const whitespace = options.ignoreWhitespace ? ["-w"] : [];
     const hasHead = (await git(workingDirectory, ["rev-parse", "--verify", "HEAD"])).ok;
     const result = hasHead
-      ? await git(workingDirectory, ["--literal-pathspecs", "diff", "--no-ext-diff", "--no-textconv", ...CANONICAL_PATCH_FLAGS, "HEAD", ...paths])
+      ? await git(workingDirectory, ["--literal-pathspecs", "diff", "--no-ext-diff", "--no-textconv", ...CANONICAL_PATCH_FLAGS, ...whitespace, "HEAD", ...paths])
       : { ok: true, stdout: "", stderr: "" };
     if (!result.ok) throw new Error(result.stderr || "Could not read the combined working-tree diff.");
     return result.stdout + await readUntrackedPatches(workingDirectory, relative, !hasHead, REVIEW_DIFF_BYTES - Buffer.byteLength(result.stdout));
 
-  }, JSON.stringify(["readGitDiff", workingDirectory, relative]));
+  }, JSON.stringify(["readGitDiff", workingDirectory, relative, Boolean(options.ignoreWhitespace)]));
 }
 
 /**

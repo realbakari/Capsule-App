@@ -189,3 +189,44 @@ describe("contract verdicts in the sidebar", () => {
     ).toBe("failed");
   });
 });
+
+describe("settled and snoozed shelves", () => {
+  const projects = [{ id: "a", name: "Alpha" }];
+  const later = new Date(Date.now() + 3_600_000).toISOString();
+  const thread = (id: string, extra: Partial<Session> = {}): Session => ({
+    id, title: id, projectId: "a", state: "active", updatedAt: "2026-09-01T00:00:00Z", ...extra,
+  } as Session);
+  const run = (sessionId: string, status: Run["status"]): Run => ({
+    id: `run-${sessionId}`, sessionId, status, createdAt: "2026-09-01T00:00:00Z", hasResult: true,
+  } as Run);
+
+  it("takes settled threads out of Ready for review and folds the shelves", () => {
+    const sessions = [thread("done", { settledAt: "2026-09-02T00:00:00Z" }), thread("later", { snoozedUntil: later }), thread("fresh")];
+    const latest = latestSidebarRuns([run("done", "completed"), run("later", "completed"), run("fresh", "completed")]);
+    const groups = groupSidebarThreads(sessions, projects, latest);
+    expect(groups.map((group) => [group.id, group.threads.map((item) => item.id)])).toEqual([
+      ["review", ["fresh"]], ["snoozed", ["later"]], ["settled", ["done"]],
+    ]);
+    expect(visibleStatusThreads(groups[2]!, false)).toEqual([]);
+    expect(visibleStatusThreads(groups[2]!, false, "done").map((item) => item.id)).toEqual(["done"]);
+  });
+
+  it("never hides a decision or running work on a shelf", () => {
+    const sessions = [thread("asks", { settledAt: "2026-09-02T00:00:00Z" }), thread("busy", { snoozedUntil: later })];
+    const latest = latestSidebarRuns([run("asks", "approval_required"), run("busy", "running")]);
+    expect(groupSidebarThreads(sessions, projects, latest).map((group) => group.id)).toEqual(["attention", "working"]);
+    const kinds: Record<string, "approval" | "working"> = { asks: "approval", busy: "working" };
+    const split = splitProjectThreads(sessions, (item) => kinds[item.id]!);
+    expect(split.live.map((item) => item.id)).toEqual(["asks", "busy"]);
+    expect(split.shelvedSettled).toEqual([]);
+  });
+
+  it("splits a project's threads into its shelves, soonest wake first", () => {
+    const soon = new Date(Date.now() + 60_000).toISOString();
+    const threads = [thread("a", { snoozedUntil: later }), thread("b", { snoozedUntil: soon }), thread("c", { settledAt: "x" }), thread("d")];
+    const split = splitProjectThreads(threads, () => "ready");
+    expect(split.shelvedSnoozed.map((item) => item.id)).toEqual(["b", "a"]);
+    expect(split.shelvedSettled.map((item) => item.id)).toEqual(["c"]);
+    expect(split.rest.map((item) => item.id)).toEqual(["d"]);
+  });
+});

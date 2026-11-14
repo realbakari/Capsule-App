@@ -1,0 +1,88 @@
+/* ───────────── Snooze dialog ───────────── */
+.snooze-dialog { width: min(24rem, calc(100vw - 2rem)); }
+.snooze-dialog h3 { margin: 0; }
+.snooze-dialog .snooze-subject { margin: 0.25rem 0 0; color: var(--text-muted); font-size: var(--text-ui); }
+.snooze-presets { display: flex; flex-direction: column; gap: 0.125rem; margin-top: 1rem; }
+.snooze-preset {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  height: var(--control-h-lg);
+  padding-inline: 0.5rem;
+  border: 0;
+  border-radius: var(--control-radius);
+  background: transparent;
+  color: var(--text);
+  font-size: var(--text-ui);
+  text-align: left;
+  cursor: pointer;
+}
+.snooze-preset:hover, .snooze-preset:focus-visible { background: var(--bg-hover); }
+.snooze-preset:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset-inset); }
+.snooze-preset kbd {
+  display: inline-grid;
+  place-items: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xs);
+  color: var(--text-muted);
+  font-family: var(--font);
+  font-size: var(--text-2xs);
+}
+.snooze-preset-time { margin-left: auto; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.snooze-custom { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color); }
+.snooze-custom label { display: block; margin-bottom: 0.375rem; color: var(--text-muted); font-size: var(--text-xs); }
+.snooze-custom-row { display: flex; gap: 0.5rem; }
+.snooze-custom-row input { flex: 1; min-width: 0; height: var(--control-h-md); }
+.snooze-custom-row button { flex-shrink: 0; }
+.snooze-dialog .snooze-error { margin: 0.375rem 0 0; color: var(--red); font-size: var(--text-xs); }
+.snooze-dialog .snooze-hint { margin: 0.75rem 0 0; color: var(--text-faint); font-size: var(--text-xs); }
+
+/* ───────────── Unread and shelves in the sidebar ───────────── */
+.thread-unread-dot {
+  display: block;
+  width: 0.4375rem;
+  height: 0.4375rem;
+  margin: auto;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+}
+.thread-row.unread .thread-title .truncate { font-weight: var(--weight-semibold); color: var(--text); }
+.thread-wake { color: var(--text-muted); font-size: var(--text-2xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sidebar-shelf-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  width: 100%;
+  height: var(--control-h-sm);
+  padding-left: var(--sidebar-title-inset);
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  text-align: left;
+  cursor: pointer;
+}
+.sidebar-shelf-toggle:hover { color: var(--text); }
+.sidebar-shelf-toggle:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset-inset); border-radius: var(--control-radius); }
+.sidebar-shelf-toggle .shelf-count { color: var(--text-faint); font-variant-numeric: tabular-nums; }
+
+/* ───────────── Where the last visit ended, in the transcript ───────────── */
+.thread-visit-rule {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  margin: 0.5rem 0 1rem;
+  color: var(--accent);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.01em;
+}
+.thread-visit-rule::before, .thread-visit-rule::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+

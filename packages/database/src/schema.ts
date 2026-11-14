@@ -463,4 +463,29 @@ export const MIGRATIONS: Array<{ version: number; sql: string; }> = [
       ALTER TABLE sessions ADD COLUMN tags TEXT;
     `,
   },
+  {
+    // Triage state, apart from run status. Existing threads count as read up
+    // to now, or every finished thread would light up unread on upgrade.
+    version: 120,
+    sql: `
+      ALTER TABLE sessions ADD COLUMN last_viewed_at TEXT;
+      ALTER TABLE sessions ADD COLUMN settled_at TEXT;
+      ALTER TABLE sessions ADD COLUMN snoozed_until TEXT;
+      UPDATE sessions SET last_viewed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now');
+    `,
+  },
+  {
+    version: 130,
+    sql: `
+      -- What a worktree conversation's branch started from, and a project's
+      -- choice for new ones. Null means the remote default branch, else HEAD.
+      ALTER TABLE sessions ADD COLUMN worktree_base_ref TEXT;
+      ALTER TABLE projects ADD COLUMN default_worktree_base_ref TEXT;
+    `,
+  },
+  {
+    // A project order the person set by dragging; null keeps the recency order.
+    version: 121,
+    sql: `ALTER TABLE projects ADD COLUMN sort_order INTEGER;`,
+  },
 ];

@@ -76,9 +76,8 @@ describe("what is not waiting for you", () => {
 
   it("drops a finished thread once it has been seen", () => {
     const summary = summariseAttention({
-      sessions: [session("a", "Read already")],
+      sessions: [{ ...session("a", "Read already"), lastViewedAt: "2026-09-04T11:00:00Z" }],
       runs: [run("a", "completed")],
-      seenSessionIds: new Set(["a"]),
     });
     expect(summary.items).toHaveLength(0);
   });

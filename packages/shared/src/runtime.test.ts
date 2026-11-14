@@ -56,6 +56,12 @@ describe("normalizeCapsuleSettings", () => {
     expect(pullRequestWatchEnabled(DEFAULT_CAPSULE_SETTINGS)).toBe(false);
     expect(pullRequestWatchEnabled(normalizeCapsuleSettings({ prWatchAndFix: true }))).toBe(true);
   });
+
+  it("keeps rebound shortcuts across a save", () => {
+    const saved = normalizeCapsuleSettings({ keybindings: { "toggle-sidebar": "meta+shift+b" } });
+    expect(normalizeCapsuleSettings(saved).keybindings).toEqual({ "toggle-sidebar": "meta+shift+b" });
+    expect(normalizeCapsuleSettings({ keybindings: { bad: 3 } as never }).keybindings).toBeUndefined();
+  });
 });
 
 describe("font and branch helpers", () => {

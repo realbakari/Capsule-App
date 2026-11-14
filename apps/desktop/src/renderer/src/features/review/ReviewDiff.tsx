@@ -9,16 +9,15 @@ import {
   type DiffScope,
   type HunkAction,
   type ReviewFileDiffs,
-  type Run,
 } from "@capsule/shared";
 import { formatUserError } from "../../lib/errors";
-import { latestTurn, setReviewScope, useReviewScope } from "../../lib/review-scope";
+import type { ReviewSelection } from "../../lib/review-scope";
 import { useWorkspace } from "../../lib/workspace";
 import { DIFF_PAGE_FILES, DiffPager } from "../shell/DiffPager";
 import { FileDiff } from "../shell/FileDiff";
-import { MenuSelect } from "../shell/MenuSelect";
 import { diffBlockKeys } from "../shell/PagedFileDiffs";
 import { HunkTools, type HunkProgress } from "./HunkTools";
+import { useViewedFiles } from "./useViewedFiles";
 
 interface Reading {
   files: DiffFile[];
@@ -32,7 +31,7 @@ const EMPTY: Record<DiffScope, string> = {
   uncommitted: "No uncommitted changes.",
   staged: "Nothing is staged.",
   unstaged: "No unstaged changes.",
-  turn: "The latest turn changed no files.",
+  turn: "This turn changed no files.",
   branch: "No changes on this branch yet.",
 };
 
@@ -44,52 +43,55 @@ function byPath(text: string): Map<string, DiffFile> {
 
 type Api = ReturnType<typeof useWorkspace>["api"];
 
-async function readScope(api: Api, projectId: string, sessionId: string | undefined, scope: DiffScope, path: string | undefined, turn: Run | undefined): Promise<Reading & { base?: string }> {
+async function readScope(api: Api, projectId: string, sessionId: string | undefined, selection: ReviewSelection, path: string | undefined, ignoreWhitespace: boolean): Promise<Reading & { base?: string }> {
   const none = { staged: new Map<string, DiffFile>(), unstaged: new Map<string, DiffFile>() };
-  if (scope === "turn") {
-    if (!turn?.checkpointRef) return { ...none, files: [], note: "No turn in this conversation has saved changes yet." };
-    const result = await api.turnDiff(turn.id, { relative: path });
-    if (result.available === false) return { ...none, files: [], note: "The latest turn's saved changes are not available. Turns before checkpoints were recorded have none." };
+  const options = { ignoreWhitespace };
+  if (selection.kind === "turn") {
+    if (!selection.runId) return { ...none, files: [], note: "No turn in this conversation has saved changes yet." };
+    const result = await api.turnDiff(selection.runId, { relative: path, ignoreWhitespace });
+    if (result.available === false) return { ...none, files: [], note: "This turn has no earlier checkpoint to compare against, so its changes cannot be told apart from what came before it." };
     return { ...none, files: parseUnifiedDiff(result.patch), note: result.patchTruncated ? "Preview limited to 512 KB. Select a file to see all of its changes." : undefined };
   }
-  if (scope === "uncommitted") {
+  if (selection.kind === "uncommitted") {
     const [shown, staged, unstaged] = await Promise.all([
-      api.gitScopedDiff(projectId, "uncommitted", path, sessionId),
-      api.gitScopedDiff(projectId, "staged", path, sessionId),
-      api.gitScopedDiff(projectId, "unstaged", path, sessionId),
+      api.gitScopedDiff(projectId, "uncommitted", path, sessionId, options),
+      api.gitScopedDiff(projectId, "staged", path, sessionId, options),
+      api.gitScopedDiff(projectId, "unstaged", path, sessionId, options),
     ]);
     return { files: parseUnifiedDiff(shown.patch), staged: byPath(staged.patch), unstaged: byPath(unstaged.patch) };
   }
-  const result = await api.gitScopedDiff(projectId, scope, path, sessionId);
+  const result = await api.gitScopedDiff(projectId, selection.kind, path, sessionId, options);
   return { ...none, files: parseUnifiedDiff(result.patch), base: result.base };
 }
 
 /**
- * Review's diff: one scope of the checkout's changes, with Keep, Reject and
- * Unstage on each hunk where the scope allows them. Acting refreshes the diff
- * in place; a refusal leaves everything as it was and says why on the hunk.
+ * Review's diff: one scope of the checkout's changes or one saved turn, with
+ * Keep, Reject and Unstage on each hunk where the scope allows them, and a
+ * Viewed mark per file. Acting refreshes the diff in place; a refusal leaves
+ * everything as it was and says why on the hunk.
  */
-export function ReviewDiff({ projectId, sessionId, path, onShowAll }: {
+export function ReviewDiff({ projectId, sessionId, thread, selection, ignoreWhitespace, path, onShowAll }: {
   projectId: string;
   sessionId?: string;
+  /** Whose Viewed marks these are: the conversation, or the project without one. */
+  thread: string;
+  selection: ReviewSelection;
+  ignoreWhitespace: boolean;
   /** One file, when chosen in the changed-files list; otherwise the whole scope. */
   path?: string;
   onShowAll: () => void;
 }) {
-  const { api, runs, git, gitApplyHunk, setConfirm } = useWorkspace();
+  const { api, git, gitApplyHunk, setConfirm } = useWorkspace();
   // Staging a file from the list, or an agent editing one, changes the status; read again.
   const changes = JSON.stringify(git?.files ?? []);
-  const scope = useReviewScope(projectId);
-  const turn = useMemo(() => {
-    const latest = latestTurn(runs, sessionId);
-    return latest?.checkpointRef ? latest : undefined;
-  }, [runs, sessionId]);
+  const scope: DiffScope = selection.kind;
+  const viewed = useViewedFiles(thread);
   const readOnly = api.isDesktop === false;
-  const key = JSON.stringify([projectId, sessionId, scope, path, scope === "turn" ? turn?.id : undefined]);
+  const key = JSON.stringify([projectId, sessionId, selection, path, ignoreWhitespace]);
   const [reading, setReading] = useState<{ key: string; value?: Reading & { base?: string }; error?: string }>();
   const [reload, setReload] = useState(0);
   const [progress, setProgress] = useState<Record<string, HunkProgress>>({});
-  const [collapsed, setCollapsed] = useState<{ key: string; blocks: Set<string> }>({ key, blocks: new Set() });
+  const [collapsed, setCollapsed] = useState<{ key: string; blocks: Map<string, boolean> }>({ key, blocks: new Map() });
   const [page, setPage] = useState({ key, page: 0 });
   const root = useRef<HTMLDivElement>(null);
   const refocus = useRef<{ path: string; index: number } | undefined>(undefined);
@@ -99,12 +101,12 @@ export function ReviewDiff({ projectId, sessionId, path, onShowAll }: {
     // A refresh after an action keeps the old reading on screen, so nothing
     // jumps; a new scope or file starts from a loading state.
     setReading((previous) => previous?.key === key ? previous : undefined);
-    readScope(api, projectId, sessionId, scope, path, turn).then(
+    readScope(api, projectId, sessionId, selection, path, ignoreWhitespace).then(
       (value) => { if (current) { setReading({ key, value }); setProgress({}); } },
       (error) => { if (current) setReading({ key, error: formatUserError(error) }); },
     );
     return () => { current = false; };
-    // `turn` is part of `key` when it matters.
+    // `selection` and the rest are part of `key`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, key, reload, changes]);
 
@@ -178,38 +180,45 @@ export function ReviewDiff({ projectId, sessionId, path, onShowAll }: {
     act(file, [index], action, `${file.path}\0${index}`);
   }
 
-  const actsOnHunks = !readOnly && (scope === "uncommitted" || scope === "staged" || scope === "unstaged");
+  // A whitespace-blind diff is not the patch git would apply, so hunks act only on the full diff.
+  const actsOnHunks = !readOnly && !ignoreWhitespace && (scope === "uncommitted" || scope === "staged" || scope === "unstaged");
   const visible = (files ?? []).map((file, index) => ({ file, key: blockKeys[index]! }));
   const currentPage = page.key === key ? page.page : 0;
   const shown = visible.slice(currentPage * DIFF_PAGE_FILES, (currentPage + 1) * DIFF_PAGE_FILES);
-  const closed = collapsed.key === key ? collapsed.blocks : new Set<string>();
-  const options = DIFF_SCOPES.map((item) => ({
-    id: item.id,
-    label: item.label,
-    detail: item.detail,
-    disabledReason: item.id === "turn" && !sessionId ? "Open a conversation to see its latest turn." : undefined,
-  }));
+  // A file's own fold wins; otherwise a viewed file starts folded.
+  const folds = collapsed.key === key ? collapsed.blocks : new Map<string, boolean>();
+  const isOpen = (file: DiffFile, block: string) => folds.get(block) ?? !viewed.isViewed(file);
+  const fold = (block: string, open: boolean) => setCollapsed(() => ({ key, blocks: new Map(folds).set(block, open) }));
 
   return (
     <div className="panel-diff-section review-diff" ref={root} onKeyDown={onKeyDown}>
       <div className="review-diff-bar">
         <h4>Diff</h4>
         {path ? <button type="button" className="chip" onClick={onShowAll} title={`Showing ${path}`}>All files</button> : null}
-        <MenuSelect value={scope} options={options} ariaLabel="Diff scope" onChange={(id) => setReviewScope(projectId, id as DiffScope)} />
       </div>
       {current?.value?.base ? <p className="faint review-diff-note">Since this branch left {current.value.base}.</p> : null}
       {scope === "turn" || scope === "branch" ? <p className="faint review-diff-note">Read only. Keep and Reject work on Uncommitted, Staged and Unstaged.</p> : null}
       {readOnly && scope !== "turn" && scope !== "branch" ? <p className="faint review-diff-note">Keep and Reject are available on the host.</p> : null}
+      {!readOnly && ignoreWhitespace && scope !== "turn" && scope !== "branch" ? <p className="faint review-diff-note">Whitespace is hidden. Turn Ignore whitespace off to keep or reject hunks.</p> : null}
       {!current ? (
         <p className="faint" role="status">Loading diff…</p>
       ) : current.error ? (
         <p role="alert">{current.error} <button type="button" className="ghost" onClick={() => setReload((value) => value + 1)}>Retry</button></p>
       ) : !files?.length ? (
-        <p className="faint">{current.value?.note ?? (path ? `No ${DIFF_SCOPES.find((item) => item.id === scope)!.label.toLowerCase()} changes in ${path}.` : EMPTY[scope])}</p>
+        <p className="faint">{current.value?.note ?? (path ? `No ${DIFF_SCOPES.find((item) => item.id === scope)!.label.toLowerCase()} changes in ${path}.` : ignoreWhitespace ? "No changes besides whitespace." : EMPTY[scope])}</p>
       ) : (
         <div className="review-diff-files">
           {current.value?.note ? <p className="faint review-diff-note">{current.value.note}</p> : null}
-          {visible.length > DIFF_PAGE_FILES ? <DiffPager page={currentPage} pages={Math.ceil(visible.length / DIFF_PAGE_FILES)} label="Files" onChange={(next) => setPage({ key, page: next })} /> : null}
+          <div className="diff-list-controls">
+            {visible.length > DIFF_PAGE_FILES ? <DiffPager page={currentPage} pages={Math.ceil(visible.length / DIFF_PAGE_FILES)} label="Files" onChange={(next) => setPage({ key, page: next })} /> : null}
+            <span className="diff-viewed-count" role="status">{visible.filter(({ file }) => viewed.isViewed(file)).length} of {visible.length} viewed</span>
+            <button type="button" className="chip" onClick={() => {
+              const open = !shown.every(({ file, key: block }) => isOpen(file, block));
+              setCollapsed(() => ({ key, blocks: new Map([...folds, ...shown.map(({ key: block }) => [block, open] as const)]) }));
+            }}>
+              {shown.every(({ file, key: block }) => isOpen(file, block)) ? "Collapse" : "Expand"} {visible.length > DIFF_PAGE_FILES ? "page" : "all"}
+            </button>
+          </div>
           {shown.map(({ file, key: block }) => {
             const diffs = diffsFor(file);
             const everything = allHunks(file);
@@ -220,12 +229,10 @@ export function ReviewDiff({ projectId, sessionId, path, onShowAll }: {
                 <FileDiff
                   file={file}
                   split={false}
-                  expanded={!closed.has(block)}
-                  onExpandedChange={(open) => setCollapsed(() => {
-                    const blocks = new Set(closed);
-                    if (open) blocks.delete(block); else blocks.add(block);
-                    return { key, blocks };
-                  })}
+                  expanded={isOpen(file, block)}
+                  onExpandedChange={(open) => fold(block, open)}
+                  viewed={viewed.isViewed(file)}
+                  onViewedChange={(next) => { viewed.mark(file, next); fold(block, !next); }}
                   tools={fileActions.length > 0 && file.hunks.length > 1 ? (
                     <div className="file-diff-tools">
                       <HunkTools actions={fileActions} scopeLabel="all" progress={progress[fileSlot]}

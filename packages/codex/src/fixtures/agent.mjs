@@ -62,6 +62,14 @@ createInterface({ input: process.stdin }).on("line", (line) => {
     if (scenario === "fail") { finish("failed", "Model unavailable for this account"); return; }
     if (["wait", "slow-interrupt", "missing-interrupt"].includes(scenario)) return;
     if (scenario === "image" && !params.input.some((block) => block.type === "image" && block.url === "data:image/png;base64,aW1hZ2U=")) throw new Error("Missing image");
+    if (scenario === "question") {
+      approvalId = 900 + counter;
+      send({ id: approvalId, method: "item/tool/requestUserInput", params: { threadId, turnId, itemId: "ask", isBlocking: true, questions: [
+        { id: "db", header: "Database", question: "Which database?", options: [{ label: "SQLite", description: "Local file" }, { label: "Postgres", description: "Server" }] },
+        { id: "token", header: "Token", question: "Paste the API token", isSecret: true, options: null },
+      ] } });
+      return;
+    }
     if (scenario === "approval" || scenario === "file-approval" || scenario === "unsupported") {
       approvalId = 900 + counter;
       send({ id: approvalId, method: scenario === "unsupported" ? "item/tool/requestUserInput" : scenario === "file-approval" ? "item/fileChange/requestApproval" : "item/commandExecution/requestApproval", params: { threadId, turnId, itemId: "command", command: "pwd", reason: "Inspect the working folder", availableDecisions: ["accept", "decline", "cancel"] } });
@@ -74,6 +82,11 @@ createInterface({ input: process.stdin }).on("line", (line) => {
     if (scenario === "missing-interrupt") return;
     if (scenario === "slow-interrupt") setTimeout(() => finish("interrupted"), 150);
     else finish("interrupted");
+  }
+  else if (id === approvalId && scenario === "question") {
+    const answers = message.result?.answers ?? {};
+    notify("item/agentMessage/delta", { itemId: "answer", delta: `Using ${answers.db?.answers?.[0] ?? "nothing"} with ${answers.token?.answers?.length ?? 0} token` });
+    finish("completed");
   }
   else if (id === approvalId) {
     const decision = message.result?.decision;

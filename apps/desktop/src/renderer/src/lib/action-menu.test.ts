@@ -16,6 +16,7 @@ describe("buildSessionActionMenuItems", () => {
       "rename",
       "pin",
       "generate-title",
+      "copy-markdown",
       "archive",
       "delete",
     ]);
@@ -25,6 +26,7 @@ describe("buildSessionActionMenuItems", () => {
       "rename",
       "pin",
       "generate-title",
+      "copy-markdown",
       "open-folder",
       "copy-path",
       "archive",
@@ -36,10 +38,21 @@ describe("buildSessionActionMenuItems", () => {
 
   it("offers export, copy and share links only where each can work", () => {
     const ids = (share?: { exportOffered: boolean; shareOffered: boolean }) => buildSessionActionMenuItems({ pinned: false, ...(share ? { share } : {}) }).map((item) => item.id);
-    expect(ids()).not.toContain("copy-markdown");
+    expect(ids()).toContain("copy-markdown");
+    expect(ids()).not.toContain("export-markdown");
     expect(ids({ exportOffered: true, shareOffered: true })).toEqual(expect.arrayContaining(["export-markdown", "copy-markdown", "share-link"]));
     expect(ids({ exportOffered: false, shareOffered: false })).toEqual(expect.arrayContaining(["copy-markdown"]));
     expect(ids({ exportOffered: false, shareOffered: false })).not.toContain("share-link");
+  });
+
+  it("leads with triage on the desktop and swaps each action for its way back", () => {
+    const fresh = buildSessionActionMenuItems({ pinned: false, triage: { unread: false, canMarkUnread: true, shelf: "active" } });
+    expect(fresh.slice(0, 3).map((item) => item.id)).toEqual(["mark-unread", "settle", "snooze"]);
+    const shelved = buildSessionActionMenuItems({ pinned: false, triage: { unread: true, canMarkUnread: true, shelf: "settled" } });
+    expect(shelved.slice(0, 3).map((item) => item.id)).toEqual(["mark-read", "unsettle", "snooze"]);
+    const snoozed = buildSessionActionMenuItems({ pinned: false, triage: { unread: false, canMarkUnread: false, shelf: "snoozed" } });
+    expect(snoozed.slice(0, 3).map((item) => [item.id, item.enabled])).toEqual([["mark-unread", false], ["settle", undefined], ["wake", undefined]]);
+    expect(buildSessionActionMenuItems({ pinned: false, branch: "feat/x" }).map((item) => item.id)).toContain("copy-branch");
   });
 
   it("swaps pin for unpin", () => {

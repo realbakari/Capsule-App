@@ -8,6 +8,8 @@ import { runFilesRegressions } from "./files-regressions";
 import { runReviewHunkRegressions } from "./review-hunk-regressions";
 import { runMarkdownRegressions } from "./markdown-regressions";
 import { EmbeddedBrowser } from "../features/shell/EmbeddedBrowser";
+import { Toasts } from "../features/toasts/Toasts";
+import { ToastProvider } from "../lib/toasts";
 import { PersistentTerminals } from "../features/terminal/TerminalDock";
 import { FileDiff } from "../features/shell/FileDiff";
 import { PagedFileDiffs } from "../features/shell/PagedFileDiffs";
@@ -25,6 +27,7 @@ import { runPanelRegressions } from "./panel-regressions";
 import { runActivityRegressions, renderActivityPreview } from "./activity-regressions";
 import { runChannelRegressions, renderChannelPreview } from "./channel-regressions";
 import { runComposerLayoutRegressions } from "./composer-layout-regressions";
+import { runDictationRegressions } from "./dictation-regressions";
 import { runSurfaceRegressions } from "./surface-regressions";
 import { runSimulatorRegressions } from "./simulator-regressions";
 import { runFollowupRegressions } from "./followup-regressions";
@@ -112,7 +115,7 @@ function fill(selector: string, value: string) {
 
 function BrowserFixture({ onOpenExternal }: { onOpenExternal: (url: string) => void }) {
   const [address, setAddress] = useState("https://example.test/first");
-  return <EmbeddedBrowser address={address} onAddressChange={setAddress} localServers={[]} serversLoading={false} onOpenExternal={onOpenExternal} />;
+  return <ToastProvider><EmbeddedBrowser address={address} onAddressChange={setAddress} localServers={[]} serversLoading={false} onOpenExternal={onOpenExternal} /><Toasts /></ToastProvider>;
 }
 
 let actualWorkspace: ReturnType<typeof useRealWorkspace>;
@@ -1473,6 +1476,8 @@ window.runRendererRegressions = async () => {
   await runChannelRegressions(host);
   phase("composer layout matrix");
   await runComposerLayoutRegressions(host, contextBase);
+  phase("dictation");
+  await runDictationRegressions(host, contextBase);
   phase("native settings");
   await runMuseSettingsRegressions(host, contextBase);
   await runWebAccessRegressions(host);

@@ -35,6 +35,17 @@ export function projectFolderList(project: ProjectFolderSource): string[] {
   return out;
 }
 
+/**
+ * The folders a conversation can open files from: its own checkout first (a
+ * worktree replaces the project's primary folder), then the project's extras.
+ */
+export function conversationFolderRoots(project: ProjectFolderSource, sessionWorkingDirectory?: string): string[] {
+  const projectRoots = projectFolderList(project);
+  return sessionWorkingDirectory && sessionWorkingDirectory !== project.workingDirectory
+    ? [sessionWorkingDirectory, ...projectRoots.filter((root) => root !== project.workingDirectory)]
+    : projectRoots;
+}
+
 export function isAttachedFolder(project: ProjectFolderSource, path: string): boolean {
   const needle = normalizeFolderPath(path).toLowerCase();
   return projectFolderList(project).some((item) => item.toLowerCase() === needle);

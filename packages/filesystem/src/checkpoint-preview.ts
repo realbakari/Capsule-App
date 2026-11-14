@@ -26,7 +26,7 @@ export async function previewCheckpoint(cwd: string, to: string, from: string, o
     // A literal pathspec keeps punctuation in a filename from becoming a glob.
     // The parser needs canonical prefixes even for binary/metadata-only patches
     // without ---/+++ headers. Never inherit diff.noprefix or mnemonicPrefix.
-    const base = ["--literal-pathspecs", "diff", "--no-ext-diff", "--no-textconv", "--no-renames", ...CANONICAL_PATCH_FLAGS];
+    const base = ["--literal-pathspecs", "diff", "--no-ext-diff", "--no-textconv", "--no-renames", ...CANONICAL_PATCH_FLAGS, ...(options.ignoreWhitespace ? ["-w"] : [])];
     const range = [from, to, "--", ...(relative ? [relative] : [])];
     const files: TurnDiffResult["files"] = [];
     let filesTruncated = false;

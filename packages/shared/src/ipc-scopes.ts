@@ -92,13 +92,17 @@ const READ_CHANNELS: ChannelName[] = [
   "resultsLeaderboard",
   "rendererReady",
   "windowBackground",
+  // Names and icons of installed apps the system reports; opening one is a write.
+  "listOpenInApps",
+  // Local refs and the FETCH_HEAD time only; never fetches.
+  "listWorktreeBases",
 ];
 
 const READ_SET = new Set<string>(READ_CHANNELS);
 
 // Paired conversation control is not desktop administration or a generic shell.
 export const CONTROL_CHANNELS = [
-  "createSession", "sendMessage", "stopRun", "resolveApproval",
+  "createSession", "sendMessage", "stopRun", "resolveApproval", "answerAgentQuestion",
   // Queueing a follow-up is sending one later; it belongs with sendMessage.
   "updateFollowUps",
   // Plan or Act decides how the next message is sent, so it travels with sendMessage.
@@ -127,7 +131,11 @@ export const READ_ONLY_CHANNELS: readonly string[] = READ_CHANNELS;
  * shell's output has no business on the wire: a read-only viewer would see
  * whatever the user prints, credentials included.
  */
-const LOCAL_ONLY_EVENTS = new Set<string>([IPC_EVENTS.terminalData, IPC_EVENTS.terminalExit]);
+const LOCAL_ONLY_EVENTS = new Set<string>([
+  IPC_EVENTS.terminalData, IPC_EVENTS.terminalExit,
+  // What the person is saying, before they decide to keep it.
+  IPC_EVENTS.dictation,
+]);
 
 /** Whether an event may be forwarded to a paired device. */
 export function isRemoteEvent(event: string): boolean {

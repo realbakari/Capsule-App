@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import type { TerminalDataEvent, TerminalExitEvent, TerminalHandle } from "@capsule/shared";
-import { localTimings } from "@capsule/shared";
+import { conversationFolderRoots, localTimings } from "@capsule/shared";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 
@@ -10,6 +10,10 @@ import { useWorkspace } from "../../lib/workspace";
 import { showNativeContextMenu } from "../../lib/bridge";
 import { registerSelectionReader, selectionContext, touchSelectionSurface } from "../../lib/selection-share";
 import { onTerminalCommand, takeTerminalCommand } from "../../lib/terminal-requests";
+import { osc7Folder, type TerminalLinkTarget } from "../../lib/terminal-links";
+import { insertBlock, terminalSnippet } from "../../lib/terminal-selection";
+import { registerTerminalLinks } from "./terminalLinks";
+import "./terminal.css";
 
 const MIN_HEIGHT = 140;
 const MAX_HEIGHT = 720;
@@ -32,7 +36,20 @@ interface Pane {
  * because tearing down an xterm loses the scrollback and the running command.
  */
 export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: string; onClose: () => void; onEmpty?: () => void; visible?: boolean }) {
-  const { api, attachContext } = useWorkspace();
+  const { api, attachContext, project, session, setBrowserUrl, openInspector, openFile, setDraft } = useWorkspace();
+  const mac = (api.platform ?? (navigator.platform.startsWith("Mac") ? "darwin" : "")) === "darwin";
+  /*
+   * xterm keeps one link provider for a pane's life, so it reads the current
+   * conversation through a ref: switching to another thread in the same folder
+   * must change where a click goes, not keep the first thread's handlers.
+   */
+  const links = useRef({ roots: [] as string[], setBrowserUrl, openInspector, openFile, setDraft });
+  links.current = { roots: project ? conversationFolderRoots(project, session?.workingDirectory) : [], setBrowserUrl, openInspector, openFile, setDraft };
+  const shellFolders = useRef(new Map<string, string>());
+  const [hint, setHint] = useState<{ text: string; x: number; y: number }>();
+  const [chip, setChip] = useState<{ paneId: string; x: number; y: number }>();
+  const panesBox = useRef<HTMLDivElement>(null);
+  const selecting = useRef(false);
   const [error, setError] = useState<string>();
   const alive = useRef(true);
   const [panes, setPanes] = useState<Pane[]>([]);
@@ -74,7 +91,29 @@ export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: s
     catch (error) { terminal.dispose(); throw error; }
     terminal.onData((data) => void api.terminalInput(handle.id, data).catch((error) => setError(String(error))));
     terminal.onResize(({ cols, rows }) => void api.terminalResize(handle.id, cols, rows));
+    terminal.parser.registerOscHandler(7, (data) => {
+      const folder = osc7Folder(data);
+      if (folder) shellFolders.current.set(handle.id, folder);
+      return false;
+    });
+    registerTerminalLinks(terminal, {
+      context: () => ({ cwd: shellFolders.current.get(handle.id) ?? cwd, roots: links.current.roots }),
+      modifier: { label: mac ? "⌘" : "Ctrl", held: (event) => mac ? event.metaKey : event.ctrlKey },
+      open: (target, outside) => openLinkRef.current(target, outside),
+      hover: (next) => setHint(next && placeHintRef.current(next)),
+    });
+    terminal.onSelectionChange(() => { if (!selecting.current) placeChipRef.current(handle.id); });
+    terminal.onScroll(() => placeChipRef.current(handle.id));
+    terminal.attachCustomKeyEventHandler((event) => {
+      const chord = mac ? event.metaKey && !event.shiftKey : event.ctrlKey && event.shiftKey;
+      if (event.type !== "keydown" || !chord || event.key.toLowerCase() !== "l" || !terminal.hasSelection()) return true;
+      event.preventDefault();
+      addToChatRef.current(handle.id);
+      return false;
+    });
     return { id: handle.id, label: projectFolderName(cwd) ?? "Shell", terminal, fit, exited: false };
+    // Everything else it reads is a ref; `mac` follows a platform that never changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, cwd]);
 
   const visibleRef = useRef(visible);
@@ -108,6 +147,7 @@ export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: s
       pane.terminal.dispose();
       hosts.current.delete(pane.id);
       readyPanes.current.delete(pane.id);
+      shellFolders.current.delete(pane.id);
     },
     [api],
   );
@@ -231,9 +271,14 @@ export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: s
       } catch {
         // Same as above: an unmeasurable pane is refit on the next change.
       }
+      if (activeId) placeChipRef.current(activeId);
     };
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    // The pane box, not the window: opening the side panel narrows the dock too.
+    const box = panesBox.current;
+    if (!box) return;
+    const observer = new ResizeObserver(onResize);
+    observer.observe(box);
+    return () => observer.disconnect();
   }, [activeId]);
 
   const closePane = useCallback(
@@ -249,6 +294,115 @@ export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: s
     },
     [disposePane, onClose, onEmpty],
   );
+
+  const openLink = (target: TerminalLinkTarget, outside: boolean) => {
+    if (target.kind === "file") {
+      links.current.openFile(target.path, target.root);
+      return;
+    }
+    if (outside) {
+      window.open(target.url, "_blank", "noopener");
+      return;
+    }
+    links.current.setBrowserUrl(target.url);
+    links.current.openInspector("browser");
+  };
+  const openLinkRef = useRef(openLink);
+  openLinkRef.current = openLink;
+
+  /** Hints and the chip live inside the pane box, so they clip and move with it. */
+  const placeHint = (next: { text: string; x: number; y: number }) => {
+    const box = panesBox.current?.getBoundingClientRect();
+    if (!box) return undefined;
+    return { text: next.text, x: Math.max(0, Math.min(next.x - box.left, box.width - 300)), y: next.y - box.top };
+  };
+  const placeHintRef = useRef(placeHint);
+  placeHintRef.current = placeHint;
+
+  const placeChip = (paneId: string) => {
+    const pane = panesRef.current.find((item) => item.id === paneId);
+    const box = panesBox.current?.getBoundingClientRect();
+    const screen = hosts.current.get(paneId)?.querySelector(".xterm-screen")?.getBoundingClientRect();
+    const position = pane?.terminal.getSelectionPosition();
+    if (!pane || !box || !screen || !position || !pane.terminal.getSelection().trim()) {
+      setChip((current) => current?.paneId === paneId ? undefined : current);
+      return;
+    }
+    const { cols, rows } = pane.terminal;
+    const cellWidth = screen.width / cols;
+    const cellHeight = screen.height / rows;
+    const row = Math.min(rows - 1, Math.max(0, position.end.y - pane.terminal.buffer.active.viewportY));
+    const below = (row + 1) * cellHeight + 4;
+    const y = screen.top - box.top + (below + 26 > screen.height ? Math.max(0, row * cellHeight - 28) : below);
+    const x = screen.left - box.left + Math.min(Math.max(0, position.end.x * cellWidth - 40), screen.width - 130);
+    setChip({ paneId, x, y });
+  };
+  const placeChipRef = useRef(placeChip);
+  placeChipRef.current = placeChip;
+
+  const addToChat = (paneId: string) => {
+    const index = panesRef.current.findIndex((item) => item.id === paneId);
+    const pane = panesRef.current[index];
+    if (!pane) return;
+    const label = panesRef.current.length > 1 ? `${pane.label} (tab ${index + 1})` : pane.label;
+    const snippet = terminalSnippet(pane.terminal.getSelection(), label);
+    if (!snippet) return;
+    const field = document.querySelector<HTMLTextAreaElement>("textarea.composer-field");
+    let caret = 0;
+    links.current.setDraft((current) => {
+      // A restored draft that was never clicked into reports its caret at 0; that is no choice.
+      const placed = field && field.value === current && (field.selectionEnd > 0 || document.activeElement === field);
+      const at = placed ? field.selectionEnd : current.length;
+      const next = insertBlock(current, at, snippet.text);
+      caret = next.caret;
+      return next.draft;
+    });
+    pane.terminal.clearSelection();
+    setChip(undefined);
+    // The draft commits on the next render; the caret goes after the block once it has.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (!field?.isConnected) return;
+      field.focus();
+      field.setSelectionRange(caret, caret);
+    }));
+  };
+  const addToChatRef = useRef(addToChat);
+  addToChatRef.current = addToChat;
+
+  useEffect(() => {
+    if (activeId) placeChipRef.current(activeId);
+    else setChip(undefined);
+  }, [activeId, height]);
+
+  const onPaneMouseDown = (event: ReactMouseEvent) => {
+    if (event.button !== 0) return;
+    selecting.current = true;
+    setChip(undefined);
+    const done = () => {
+      selecting.current = false;
+      window.removeEventListener("mouseup", done);
+      if (activeId) requestAnimationFrame(() => placeChipRef.current(activeId));
+    };
+    window.addEventListener("mouseup", done);
+  };
+
+  const onPaneContextMenu = async (event: ReactMouseEvent, pane: Pane) => {
+    event.preventDefault();
+    const selection = pane.terminal.hasSelection();
+    const picked = await showNativeContextMenu([
+      { id: "add", label: "Add Selection to Chat", enabled: selection },
+      ...(api.isDesktop === true ? [{ id: "send", label: "Send Selection to Thread", enabled: selection }] : []),
+      { id: "copy", label: "Copy", enabled: selection, separatorBefore: true },
+      { id: "paste", label: "Paste" },
+      { id: "clear", label: "Clear", separatorBefore: true },
+    ], { x: event.clientX, y: event.clientY });
+    if (picked === "add") addToChat(pane.id);
+    else if (picked === "send") void attachContext(selectionContext({ origin: "terminal", text: pane.terminal.getSelection() }));
+    else if (picked === "copy") void navigator.clipboard.writeText(pane.terminal.getSelection()).catch(() => undefined);
+    else if (picked === "paste") void navigator.clipboard.readText().then((text) => pane.terminal.paste(text)).catch(() => undefined);
+    else if (picked === "clear") pane.terminal.clear();
+    if (picked && picked !== "add" && picked !== "send" && picked !== "unavailable") pane.terminal.focus();
+  };
 
   const startResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -274,19 +428,6 @@ export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: s
       return text.trim() ? { origin: "terminal", text } : undefined;
     });
   }, [activePane, api.isDesktop, visible]);
-
-  /* Right-click on a selection offers to quote it into the conversation; without one, xterm keeps its own menu. */
-  async function selectionMenu(event: { preventDefault(): void; clientX: number; clientY: number }) {
-    const text = activePane?.terminal.getSelection() ?? "";
-    if (!text.trim() || api.isDesktop !== true) return;
-    event.preventDefault();
-    const picked = await showNativeContextMenu([
-      { id: "copy", label: "Copy" },
-      { id: "send", label: "Send selection to thread" },
-    ], { x: event.clientX, y: event.clientY });
-    if (picked === "copy") void navigator.clipboard.writeText(text);
-    if (picked === "send") void attachContext(selectionContext({ origin: "terminal", text }));
-  }
 
   const heightRef = useRef(height);
   heightRef.current = height;
@@ -336,7 +477,7 @@ export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: s
           <XIcon size={13} />
         </button>
       </div>
-      <div className="terminal-panes" onPointerDown={() => touchSelectionSurface("terminal")} onContextMenu={(event) => void selectionMenu(event)}>
+      <div className="terminal-panes" ref={panesBox} onPointerDown={() => touchSelectionSurface("terminal")}>
         {panes.map((pane) => (
           <div
             key={pane.id}
@@ -344,8 +485,24 @@ export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: s
             ref={(node) => {
               if (node) hosts.current.set(pane.id, node);
             }}
+            onMouseDown={onPaneMouseDown}
+            onContextMenu={(event) => void onPaneContextMenu(event, pane)}
           />
         ))}
+        {chip && chip.paneId === activeId && (
+          <button
+            type="button"
+            className="terminal-add-to-chat"
+            style={{ left: chip.x, top: chip.y }}
+            title="Add the selection to this conversation's message"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => addToChat(chip.paneId)}
+          >
+            Add to chat
+            <kbd>{mac ? "⌘L" : "Ctrl+Shift+L"}</kbd>
+          </button>
+        )}
+        {hint && <div className="terminal-link-hint" role="tooltip" style={{ left: hint.x, top: hint.y + 14 }}>{hint.text}</div>}
       </div>
     </section>
   );
@@ -370,11 +527,27 @@ export function PersistentTerminals({ cwd, visible, onClose }: { cwd?: string; v
 function terminalTheme(): Record<string, string> {
   const styles = getComputedStyle(document.documentElement);
   const read = (name: string, fallback: string) => styles.getPropertyValue(name).trim() || fallback;
+  /*
+   * The surface tokens are translucent `rgb(0 0 0 / 0.06)`, which xterm cannot
+   * parse; it falls back to a dark selection that hides black text in light
+   * mode. The selection is mixed on a canvas into one opaque colour instead.
+   */
+  const solidSelection = () => {
+    const canvas = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+    if (!canvas) return "#5a5a5a";
+    canvas.fillStyle = read("--base", "#1a1a1a");
+    canvas.fillRect(0, 0, 1, 1);
+    canvas.globalAlpha = 0.22;
+    canvas.fillStyle = read("--text", "#f2f2f2");
+    canvas.fillRect(0, 0, 1, 1);
+    const [red, green, blue] = canvas.getImageData(0, 0, 1, 1).data;
+    return `rgb(${red}, ${green}, ${blue})`;
+  };
   return {
     background: "#00000000",
     foreground: read("--text", "#f2f2f2"),
     cursor: read("--text", "#f2f2f2"),
-    selectionBackground: read("--bg-active", "#2a2a2a"),
+    selectionBackground: solidSelection(),
     black: read("--bg-active", "#1f1f1f"),
     red: read("--red", "#d98989"),
     green: read("--green", "#8fbf88"),

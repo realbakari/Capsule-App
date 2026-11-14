@@ -45,7 +45,9 @@ node scripts/ensure-native.mjs
 Normal launches do not substitute a mock when the Gateway is unavailable.
 Connect a Gateway for Gateway-only harnesses, or use direct mode with a native
 ACP CLI. Tests select mock execution explicitly with `autoConnect: false`;
-the engine first-flow tests need no provider account.
+the engine first-flow tests need no provider account. To drive turns in a
+built app the same way, launch it with `CAPSULE_MOCK_RUNTIME=1` against a
+throwaway profile; the prompt tokens in AGENTS.md pick the mock scenario.
 
 The live Gateway integration test is opt-in. Set `CAPSULE_TEST_GATEWAY_URL`
 and, when required, `CAPSULE_TEST_GATEWAY_TOKEN` for a disposable test Gateway

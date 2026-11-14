@@ -62,4 +62,17 @@ describe("FilesystemAdapter", () => {
     expect((await readGitStatus(root)).dirty).toBe(false);
     expect((await searchContents(root, "three")).some((hit) => hit.path.includes("README"))).toBe(true);
   });
+
+  it("ignores whitespace-only working-tree edits when asked", { timeout: 20_000 }, async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "capsule-git-ws-"));
+    spawnSync("git", ["init"], { cwd: root });
+    spawnSync("git", ["config", "user.email", "dev@capsule.local"], { cwd: root });
+    spawnSync("git", ["config", "user.name", "Capsule"], { cwd: root });
+    writeFileSync(path.join(root, "README.md"), "one\n");
+    spawnSync("git", ["add", "."], { cwd: root });
+    spawnSync("git", ["commit", "-m", "init"], { cwd: root });
+    writeFileSync(path.join(root, "README.md"), "  one\n");
+    expect(await readGitDiff(root, "README.md")).toContain("+  one");
+    expect(await readGitDiff(root, "README.md", { ignoreWhitespace: true })).not.toContain("+  one");
+  });
 });

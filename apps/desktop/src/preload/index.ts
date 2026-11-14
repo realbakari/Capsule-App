@@ -5,6 +5,7 @@ import {
   IPC_EVENTS,
   type FilePreview,
   type FileReadResult,
+  type OpenInCatalog,
   type MessagePage,
   type PopupMenuRequest,
   type ProviderUsageSnapshot,
@@ -98,6 +99,12 @@ const api = {
   rateRun: (runId: string, value: import("@capsule/shared").RatingValue | 0): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.rateRun, runId, value),
   runRatings: (sessionId: string): Promise<Record<string, import("@capsule/shared").RatingValue>> => ipcRenderer.invoke(IPC_CHANNELS.runRatings, sessionId),
   resultsLeaderboard: (): Promise<import("@capsule/shared").LeaderboardRow[]> => ipcRenderer.invoke(IPC_CHANNELS.resultsLeaderboard),
+  listWorktreeBases: (projectId: string): Promise<import("@capsule/shared").WorktreeBases> =>
+    ipcRenderer.invoke(IPC_CHANNELS.listWorktreeBases, projectId),
+  setSessionWorktreeBase: (sessionId: string, ref: string): Promise<import("@capsule/shared").Session> =>
+    ipcRenderer.invoke(IPC_CHANNELS.setSessionWorktreeBase, sessionId, ref),
+  startPullRequestThread: (input: import("@capsule/shared").StartPullRequestInput): Promise<{ session: import("@capsule/shared").Session; draft: string; detail: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.startPullRequestThread, input),
   listSessions: (projectId?: string) => ipcRenderer.invoke(IPC_CHANNELS.listSessions, projectId),
   createSession: (input: unknown) => ipcRenderer.invoke(IPC_CHANNELS.createSession, input),
   setSessionWorkspaceMode: (id: string, mode: "local" | "worktree") =>
@@ -198,8 +205,8 @@ const api = {
   getCommitDiff: (projectId: string, oid: string, sessionId?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.getCommitDiff, projectId, oid, sessionId),
   gitInit: (projectId: string) => ipcRenderer.invoke(IPC_CHANNELS.gitInit, projectId),
-  gitDiff: (projectId: string, relative?: string, sessionId?: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.gitDiff, projectId, relative, sessionId),
+  gitDiff: (projectId: string, relative?: string, sessionId?: string, options?: import("@capsule/shared").GitDiffOptions) =>
+    ipcRenderer.invoke(IPC_CHANNELS.gitDiff, projectId, relative, sessionId, options),
   checkoutBranch: (projectId: string, branch: string, sessionId?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.checkoutBranch, projectId, branch, sessionId),
   gitCommit: (projectId: string, message: string, sessionId?: string) =>
@@ -208,8 +215,8 @@ const api = {
     ipcRenderer.invoke(IPC_CHANNELS.gitStage, projectId, relative, sessionId),
   gitDiscard: (projectId: string, relative: string, sessionId?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.gitDiscard, projectId, relative, sessionId),
-  gitScopedDiff: (projectId: string, scope: import("@capsule/shared").GitDiffScope, relative?: string, sessionId?: string): Promise<import("@capsule/shared").ScopedDiff> =>
-    ipcRenderer.invoke(IPC_CHANNELS.gitScopedDiff, projectId, scope, relative, sessionId),
+  gitScopedDiff: (projectId: string, scope: import("@capsule/shared").GitDiffScope, relative?: string, sessionId?: string, options?: import("@capsule/shared").GitDiffOptions): Promise<import("@capsule/shared").ScopedDiff> =>
+    ipcRenderer.invoke(IPC_CHANNELS.gitScopedDiff, projectId, scope, relative, sessionId, options),
   gitCheckHunks: (projectId: string, applies: import("@capsule/shared").HunkApply[], sessionId?: string): Promise<boolean[]> =>
     ipcRenderer.invoke(IPC_CHANNELS.gitCheckHunks, projectId, applies, sessionId),
   gitApplyHunk: (projectId: string, apply: import("@capsule/shared").HunkApply, sessionId?: string): Promise<import("@capsule/shared").GitStatus> =>
@@ -238,6 +245,11 @@ const api = {
   readSimulatorSettings: (udid: string): Promise<import("@capsule/shared").SimulatorDeviceSettings> => ipcRenderer.invoke(IPC_CHANNELS.readSimulatorSettings, udid),
   attachSimulator: (threadId: string, udid: string | undefined): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.attachSimulator, threadId, udid),
   openPath: (target: string) => ipcRenderer.invoke(IPC_CHANNELS.openPath, target),
+  listOpenInApps: (projectId?: string, sessionId?: string, target?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.listOpenInApps, projectId, sessionId, target) as Promise<OpenInCatalog>,
+  addOpenInApp: () => ipcRenderer.invoke(IPC_CHANNELS.addOpenInApp) as Promise<string | undefined>,
+  openInApp: (appId: string, projectId: string, sessionId?: string, target?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.openInApp, appId, projectId, sessionId, target) as Promise<void>,
   pickDirectory: () => ipcRenderer.invoke(IPC_CHANNELS.pickDirectory),
   pickFiles: () => ipcRenderer.invoke(IPC_CHANNELS.pickFiles),
   saveClipboardImage: () => ipcRenderer.invoke(IPC_CHANNELS.saveClipboardImage),
@@ -266,6 +278,10 @@ const api = {
   finishPetCommand: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.finishPetCommand),
   cancelPetVoice: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.cancelPetVoice),
   speakPetStatus: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.speakPetStatus),
+  startDictation: (): Promise<import("@capsule/shared").DictationOutcome> => ipcRenderer.invoke(IPC_CHANNELS.startDictation),
+  finishDictation: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.finishDictation),
+  cancelDictation: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.cancelDictation),
+  openDictationSettings: (pane: import("@capsule/shared").DictationSettingsPane): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.openDictationSettings, pane),
   getPetState: (): Promise<{ visible: boolean; summary: import("@capsule/shared").AttentionSummary }> => ipcRenderer.invoke(IPC_CHANNELS.getPetState),
   setPetExpanded: (expanded: boolean) => ipcRenderer.invoke(IPC_CHANNELS.setPetExpanded, expanded),
   focusSession: (sessionId: string) => ipcRenderer.invoke(IPC_CHANNELS.focusSession, sessionId),
@@ -299,6 +315,11 @@ const api = {
   deleteTag: (tag: string): Promise<number> => ipcRenderer.invoke(IPC_CHANNELS.deleteTag, tag),
   keepSession: (id: string): Promise<import("@capsule/shared").Session> => ipcRenderer.invoke(IPC_CHANNELS.keepSession, id),
   listGithubIssues: (projectId: string): Promise<{ items?: import("@capsule/shared").GithubIssue[]; error?: string }> => ipcRenderer.invoke(IPC_CHANNELS.listGithubIssues, projectId),
+  answerAgentQuestion: (approvalId: string, answers: import("@capsule/shared").AgentQuestionAnswers): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.answerAgentQuestion, approvalId, answers),
+  reorderProjects: (orderedIds: string[]) => ipcRenderer.invoke(IPC_CHANNELS.reorderProjects, orderedIds),
+  triageSession: (id: string, action: import("@capsule/shared").ThreadTriageAction): Promise<import("@capsule/shared").Session> =>
+    ipcRenderer.invoke(IPC_CHANNELS.triageSession, id, action),
   reorderPinnedSessions: (projectId: string, orderedIds: string[]) =>
     ipcRenderer.invoke(IPC_CHANNELS.reorderPinnedSessions, projectId, orderedIds),
   searchFiles: (projectId: string, query?: string, root?: string) =>

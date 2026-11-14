@@ -62,7 +62,8 @@ export type MockScenario =
   | "disconnected_gateway"
   | "buzz_message"
   | "tool_failure"
-  | "tool_run";
+  | "tool_run"
+  | "agent_question";
 
 export interface RuntimeStatus {
   state: ConnectionState;
@@ -223,6 +224,8 @@ export interface Project {
    * expressed by one global switch.
    */
   defaultWorkspaceMode?: WorkspaceMode;
+  /** Base for new worktree conversations. Unset means the remote default branch, else HEAD. */
+  defaultWorktreeBaseRef?: string;
   /**
    * What capsule.json in this project's folder says, if anything. Read on
    * every list rather than stored: it is a file someone edits with the app
@@ -284,6 +287,14 @@ export interface Session {
   tags?: string[];
   /** Held in memory only: never written to the database, gone on quit unless kept. */
   temporary?: boolean;
+  /** When the person last had this thread on screen; see `thread-state.ts`. */
+  lastViewedAt?: string;
+  /** Set when the person called the thread done; a new turn clears it. */
+  settledAt?: string;
+  /** Hidden from the active list until this time; a new turn clears it. */
+  snoozedUntil?: string;
+  /** What that branch started from, as chosen or resolved: `origin/main`, `HEAD`. */
+  worktreeBaseRef?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -346,6 +357,8 @@ export interface UpdateProjectInput {
   defaultMode?: AgentMode;
   /** null clears the override and returns the project to the app-wide default. */
   defaultWorkspaceMode?: WorkspaceMode | null;
+  /** null returns new worktrees to the remote default branch. */
+  defaultWorktreeBaseRef?: string | null;
 }
 
 export interface FileEntry {
@@ -968,6 +981,13 @@ export interface TurnDiffOptions {
   summaryOnly?: boolean;
   /** A literal repository-relative filename, scoped to this saved turn. */
   relative?: string;
+  /** Compare lines with all whitespace ignored (git diff -w). */
+  ignoreWhitespace?: boolean;
+}
+
+export interface GitDiffOptions {
+  /** Compare lines with all whitespace ignored (git diff -w). */
+  ignoreWhitespace?: boolean;
 }
 
 export interface TurnDiffResult {

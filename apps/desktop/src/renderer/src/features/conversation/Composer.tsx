@@ -10,6 +10,8 @@ import { AgentControl } from "../harness/AgentControl";
 import { ContextWindowMeter } from "./ContextWindowMeter";
 import { useHandoff } from "../handoff/Handoff";
 import { ComposerTools } from "./ComposerTools";
+import { DictationButton, DictationStatus, useDictation } from "./Dictation";
+import { dictationUnavailableReason } from "../../lib/dictation";
 import { agentSwitchNotice, harnessDisplayName } from "../../lib/harness";
 import { AgentModelPicker } from "./AgentModelPicker";
 import { RunOnControl, RunOnSummary, useRunOn } from "../best-of-n/RunOnPicker";
@@ -23,6 +25,7 @@ import type { FileEntry } from "@capsule/shared";
 import { searchProjectFiles } from "../../lib/bridge";
 import { useWorkspace, type View } from "../../lib/workspace";
 import { formatProjectRoot, projectFolderName } from "../../lib/paths";
+import { WorktreeBasePicker } from "../worktree-base/WorktreeBasePicker";
 import { MenuSelect } from "../shell/MenuSelect";
 import {
   ArrowUpIcon,
@@ -45,24 +48,6 @@ import { tasksFromRunEvents } from "@capsule/shared";
 import { initPrompt, mentionSources, parseBangCommand, templateCommand, templateVariables, type PromptTemplate } from "@capsule/shared";
 import { CONTEXT_ICONS, ContextChip, ContextPicker, PendingChip, TemplateForm, useContextResolver, type ContextPickerKind } from "./ComposerContext";
 import { detectInstructionFiles } from "../project/ProjectInstructions";
-
-const SUGGESTIONS = [
-  {
-    label: "Review this repo",
-    mode: "code" as const,
-    text: "Review the working directory and summarize the main risks.",
-  },
-  {
-    label: "Plan a change",
-    mode: "code" as const,
-    text: "Help me plan the next change for this project.",
-  },
-  {
-    label: "Research options",
-    mode: "code" as const,
-    text: "Research options for this problem and cite sources.",
-  },
-];
 
 function slashCommands(input: {
   harnesses: Array<{ id: string; name: string }>;
@@ -121,10 +106,8 @@ function slashCommands(input: {
 }
 
 export function Composer({
-  showSuggestions = false,
   awayFromLatest = false,
 }: {
-  showSuggestions?: boolean;
   /** True while the thread is scrolled away from the latest messages. */
   awayFromLatest?: boolean;
 }) {
@@ -200,6 +183,7 @@ export function Composer({
   /* With two or more agents picked under Run on…, sending starts the comparison instead. */
   const submit = () => runOn.active ? runOn.start() : send();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const dictation = useDictation({ api, draft, setDraft, field: textareaRef, scope: `${projectId ?? ""}:${session?.id ?? ""}` });
   const [recall, setRecall] = useState<{ index: number; original: string }>();
   useEffect(() => { setRecall(undefined); }, [session?.id]);
   useEffect(() => {
@@ -287,10 +271,10 @@ export function Composer({
   const folderPath = session?.workingDirectory || project?.workingDirectory;
   const folder = projectFolderName(folderPath);
   const trigger = detectTrigger(draft, caret);
-  const menuOpen = Boolean(picker || trigger) && !menuDismissed;
+  const menuOpen = Boolean(picker || trigger) && !menuDismissed && !dictation.active;
   const resting = shouldRestComposer({
     awayFromLatest,
-    blocking: Boolean(picker || contextPicker || template || modelPickerOpen || stashOpen || dropping || menuOpen),
+    blocking: Boolean(picker || contextPicker || template || modelPickerOpen || stashOpen || dropping || menuOpen || dictation.state.phase !== "idle"),
     multiline: draft.includes("\n"),
     hasAttachments: attachments.length > 0 || resolver.pending.length > 0,
     hasSkill: Boolean(skillId),
@@ -523,22 +507,6 @@ export function Composer({
 
   return (
     <div ref={composerRef} className={`composer composer-dock composer-overlay-corner-masks${busy ? " composer-dock--with-activity" : ""}${resting ? " composer--resting" : ""}`}>
-      {showSuggestions && (
-        <div className="suggestions">
-          {SUGGESTIONS.map((item) => (
-            <button
-              key={item.label}
-              className="chip"
-              onClick={() => {
-                setMode(item.mode);
-                setDraft(item.text);
-              }}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-      )}
       <ComposerTasks tasks={tasks} running={Boolean(activeRun)} actions={planTasks ? <PlanHandoff compact /> : undefined} />
       <div
         className={`composer-glass${dropping ? " dropping" : ""}${resting ? " composer-glass--resting" : ""}`}
@@ -649,9 +617,11 @@ export function Composer({
           </span>
           <button type="button" className="ghost" onClick={() => openPicker("skill")}>Change</button>
         </div>}
+        <DictationStatus state={dictation.state} api={api} onCancel={dictation.cancel} onFinish={dictation.finish} onDismiss={dictation.dismiss} />
         <div className="composer-prompt">
         <textarea
           ref={textareaRef}
+          readOnly={dictation.active}
           className={resting ? "composer-field composer-field--resting" : "composer-field"}
           rows={1}
           value={draft}
@@ -723,6 +693,11 @@ export function Composer({
             /* With nothing to dismiss, Escape stops the turn that is running, the way the Stop button does. */
             if (!menuOpen && event.key === "Escape" && activeRun && !workspace.stoppingRunIds?.includes(activeRun.id)) { event.preventDefault(); void stopRun(); return; }
             if (menuOpen && event.key === "Enter" && !event.metaKey && !event.ctrlKey && !event.shiftKey) { event.preventDefault(); return; }
+            /* ⌥↑ in an empty prompt takes the last queued follow-up back to edit. */
+            if (event.key === "ArrowUp" && event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey && !menuOpen && !event.currentTarget.value.trim()) {
+              const last = workspace.queue.at(-1);
+              if (last) { event.preventDefault(); workspace.editQueued(last.id); return; }
+            }
             /*
              * ArrowUp in an empty prompt, or at its start, walks back through
              * what this thread was asked before; ArrowDown walks forward and
@@ -928,6 +903,7 @@ export function Composer({
             <button className="icon-btn" title="Attach files" aria-label="Attach files" onClick={() => void pickAttachments()}>
               <PaperclipIcon size={14} />
             </button>
+            <DictationButton state={dictation.state} unavailable={dictationUnavailableReason(api)} onToggle={dictation.toggle} />
             {contextUsage && (
               <ContextWindowMeter
                 used={contextUsage.used}
@@ -950,7 +926,7 @@ export function Composer({
               <button
                 className="send-btn"
                 aria-label={bang ? "Run command" : runOn.active ? `Run on ${runOn.picks.length} agents` : "Send message"}
-                disabled={busy || picking || runOn.starting || (!draft.trim() && attachments.length === 0 && !skillId) || (!bang && !runOn.active && Boolean(sendBlockReason))}
+                disabled={busy || picking || dictation.active || runOn.starting || (!draft.trim() && attachments.length === 0 && !skillId) || (!bang && !runOn.active && Boolean(sendBlockReason))}
                 title={
                   bang ? `Run ${bang} and attach its output` : runOn.active ? `Send to ${runOn.picks.length} agents, each in its own worktree` : sendBlockReason || (sendOnEnter
                     ? "Send · Enter · ⌘Enter starts another thread"
@@ -989,6 +965,12 @@ export function Composer({
           <FolderIcon size={12} />
           {folder ?? "No folder"}
         </button>}
+        {git?.isRepo && projectId && session?.workspaceMode === "worktree" && session.worktreeBranch && messages.length === 0 && !activeRun && api.isDesktop !== false ? (
+          <span className="worktree-base-slot" title="The branch this worktree starts from. It can change until the first message.">
+            <span className="worktree-base-from">from</span>
+            <WorktreeBasePicker projectId={projectId} value={session.worktreeBaseRef} onChange={(ref) => workspace.setWorktreeBase(ref)} />
+          </span>
+        ) : null}
         {git?.isRepo && git.branches.length > 0 && (
           <span className="inline-icon composer-branch">
             <GitBranchIcon size={12} />

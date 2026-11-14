@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { COMMANDS, FIXED_SHORTCUTS, chordFor, chordSymbols, parseChord, type Keymap } from "../../lib/keybindings";
+import { COMMANDS, FIXED_SHORTCUTS, chordFor, chordSymbols, keymapFrom, type Keymap } from "../../lib/keybindings";
 import { useModalFocus } from "../../lib/modal-focus";
 import { SHOW_SHORTCUTS_EVENT } from "../../lib/shortcuts-event";
 import { useWorkspace } from "../../lib/workspace";
@@ -20,14 +20,7 @@ export function ShortcutsSheet() {
     window.addEventListener(SHOW_SHORTCUTS_EVENT, show);
     return () => window.removeEventListener(SHOW_SHORTCUTS_EVENT, show);
   }, []);
-  const keymap = useMemo<Keymap>(() => {
-    const map: Keymap = {};
-    for (const [id, value] of Object.entries(settings?.keybindings ?? {})) {
-      const chord = parseChord(value);
-      if (chord) map[id] = chord;
-    }
-    return map;
-  }, [settings?.keybindings]);
+  const keymap = useMemo<Keymap>(() => keymapFrom(settings?.keybindings), [settings?.keybindings]);
   if (!open) return null;
   const rows = [
     ...COMMANDS.map((command) => ({ label: command.label, keys: chordSymbols(chordFor(command, keymap)) })),

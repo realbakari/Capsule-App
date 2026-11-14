@@ -9,6 +9,8 @@ interface RunSummaryProps {
   duration?: string;
   run?: Run;
   stopping?: boolean;
+  /** The pending request on this run is a question for the person. */
+  asking?: boolean;
   touchedFiles?: TouchedFile[];
   onOpenFile?: (path: string) => void;
   children?: React.ReactNode;
@@ -19,13 +21,14 @@ export function RunSummary({
   duration,
   run,
   stopping,
+  asking,
   touchedFiles,
   onOpenFile,
   children,
 }: RunSummaryProps) {
   const [expanded, setExpanded] = useState(false);
   const [visited, setVisited] = useState(false);
-  const activity = runActivityLabel(run, stopping);
+  const activity = runActivityLabel(run, stopping, asking);
   const showActivity = activity !== "Completed · not verified";
 
   if (!run && !label && !duration && (!touchedFiles || touchedFiles.length === 0)) return null;

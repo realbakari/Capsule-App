@@ -3,6 +3,6 @@
 <plist version="1.0"><dict>
   <key>CFBundleIdentifier</key><string>ai.capsule.desktop.voice</string>
   <key>CFBundleName</key><string>Capsule Voice</string>
-  <key>NSMicrophoneUsageDescription</key><string>Capsule listens only when you press Talk to control the desktop companion.</string>
-  <key>NSSpeechRecognitionUsageDescription</key><string>Capsule recognizes short companion commands on this device. Audio is not sent to a speech service.</string>
+  <key>NSMicrophoneUsageDescription</key><string>Capsule listens only while you press Talk in the companion or dictate into the composer.</string>
+  <key>NSSpeechRecognitionUsageDescription</key><string>Capsule recognizes companion commands and dictation on this device. Audio is not sent to a speech service.</string>
 </dict></plist>

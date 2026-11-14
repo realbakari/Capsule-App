@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import path from "node:path";
 import type { DirectAcpEvents, DirectAcpOptions, DirectAgentSession } from "@capsule/acp";
+import { readRequestQuestions, requestAnswerPayload, type AgentQuestionAnswers } from "@capsule/shared";
 import type { AcpModelCatalog, AgentCapabilityReport, AgentPromptBlock, ReportedContextUsage } from "@capsule/shared";
 import { readReportedTurnUsage, readPlanEntries } from "@capsule/shared";
 import { CodexRequestError, CodexTransport, object } from "./transport.js";
@@ -258,6 +259,8 @@ export class DirectCodexSession implements DirectAgentSession {
   }
 
   private serverRequest(requestId: string | number, method: string | undefined, params: Record<string, unknown>): void {
+    // A request with no readable question still ends the turn as unsupported below.
+    if (method === "item/tool/requestUserInput" && readRequestQuestions(params).length > 0) { this.userInputRequest(requestId, params); return; }
     const approval = method === "item/commandExecution/requestApproval" || method === "item/fileChange/requestApproval";
     if (!approval) {
       this.transport.send({ id: requestId, error: { code: -32601, message: "This client does not support this interactive request." } });
@@ -286,5 +289,32 @@ export class DirectCodexSession implements DirectAgentSession {
     this.emitter.emit("permission", { title: method === "item/fileChange/requestApproval" ? "Allow proposed file changes?" : "Allow this command?", canApproveOnce, settled,
       details: { toolCallId: id(params.itemId), kind: method === "item/fileChange/requestApproval" ? "edit" : "execute", locations: typeof params.cwd === "string" ? [params.cwd] : [], preview: preview.slice(0, 8000), truncated: preview.length > 8000, canApproveOnce },
       allow: () => answer(canApproveOnce ? "accept" : "decline"), deny: () => answer("decline"), cancel: () => answer("cancel") });
+  }
+
+  /*
+   * The agent's request_user_input: questions with choices or free text. It
+   * used to end the turn as an unsupported interaction; now it reaches the
+   * question card and the answers go back keyed by question id.
+   */
+  private userInputRequest(requestId: string | number, params: Record<string, unknown>): void {
+    const questions = readRequestQuestions(params);
+    if (!this.turn || params.threadId !== this.threadId || this.approvals.size >= 64 || !this.emitter.listenerCount("permission")) {
+      this.transport.send({ id: requestId, error: { code: -32603, message: "No one is available to answer right now." } });
+      return;
+    }
+    let answered = false;
+    let settle!: () => void;
+    const settled = new Promise<void>((resolve) => { settle = () => { answered = true; resolve(); }; });
+    const reply = (message: Record<string, unknown>) => {
+      if (answered) return;
+      settle(); this.approvals.delete(requestId); this.transport.send({ id: requestId, ...message });
+    };
+    this.approvals.set(requestId, settle);
+    const decline = () => reply({ result: { answers: {} } });
+    this.emitter.emit("permission", { title: "The agent has a question", canApproveOnce: true, settled,
+      details: { toolCallId: id(params.itemId), kind: "question", locations: [], truncated: false, canApproveOnce: true, questions },
+      allow: decline, deny: decline,
+      cancel: () => reply({ error: { code: -32800, message: "The question was cancelled." } }),
+      answer: (answers: AgentQuestionAnswers) => reply({ result: { answers: requestAnswerPayload(answers) } }) });
   }
 }

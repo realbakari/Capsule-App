@@ -1,5 +1,8 @@
 import type { WebviewTag } from "electron";
 import { useWorkspace } from "../../lib/workspace";
+import { useToasts } from "../../lib/toasts";
+import { BROWSER_FIND_EVENT } from "../../lib/browser-find";
+import { BrowserFindBar } from "./BrowserFindBar";
 import { useCallback, useContext, useEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { InspectorHeadSlot } from "./inspector-slot";
@@ -109,7 +112,7 @@ export function EmbeddedBrowser({
   onRetryServers?: () => void;
   onOpenExternal: (url: string) => void;
 }) {
-  const { api, session, agentId, harnesses, harnessStatuses, view: workspaceView, inspectorOpen, setConfirm, attachContext, attachFiles } = useWorkspace();
+  const { api, session, agentId, harnesses, harnessStatuses, view: workspaceView, inspectorOpen, setConfirm, attachContext, attachFiles, attachClipboardImage } = useWorkspace();
   const desktopBrowser = navigator.userAgent.includes("Electron/");
   /* Inspect and device sizes change the page or the draft: the desktop only, never a paired viewer. */
   const canInspect = api.isDesktop === true && desktopBrowser;
@@ -143,7 +146,7 @@ export function EmbeddedBrowser({
   const [pickActive, setPickActive] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [zoomFactor, setZoomFactor] = useState(1.0);
-  const [toast, setToast] = useState<string | null>(null);
+  const [finding, setFinding] = useState(false);
   const [recents, setRecents] = useState<BrowserRecent[]>(() => {
     try {
       return parseBrowserRecents(localStorage.getItem(BROWSER_RECENTS_KEY));
@@ -161,7 +164,18 @@ export function EmbeddedBrowser({
   const publishedAddress = useRef(address);
   const ownerId = session?.id;
   const moreMenuAnchorRef = useRef<HTMLDivElement>(null);
-  const toastTimerRef = useRef<number | undefined>(undefined);
+  const toasts = useToasts();
+  /* ⌘F from the page itself (forwarded by main) or from elsewhere in the pane opens find. */
+  useEffect(() => {
+    if (!desktopBrowser) return;
+    const open = () => setFinding(true);
+    const off = api.on?.("state", (payload: unknown) => {
+      const message = payload as { command?: string; webContentsId?: number };
+      if (message.command === "browser-find" && message.webContentsId === mountedView?.getWebContentsId?.()) open();
+    });
+    window.addEventListener(BROWSER_FIND_EVENT, open);
+    return () => { off?.(); window.removeEventListener(BROWSER_FIND_EVENT, open); };
+  }, [api, desktopBrowser, mountedView]);
 
   useEffect(() => {
     if (!desktopBrowser) return;
@@ -173,7 +187,6 @@ export function EmbeddedBrowser({
       disposed = true;
       controlEpoch.current++;
       if (ownerId) void api.setBrowserControl?.(ownerId, false).catch(() => undefined);
-      window.clearTimeout(toastTimerRef.current);
     };
   }, [api, ownerId, desktopBrowser]);
 
@@ -196,13 +209,10 @@ export function EmbeddedBrowser({
     finally { setControlBusy(false); }
   };
 
-  const showToast = useCallback((message: string) => {
-    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
-    setToast(message);
-    toastTimerRef.current = window.setTimeout(() => {
-      setToast(null);
-    }, 2400);
-  }, []);
+  const { show: showNotice } = toasts;
+  const showToast = useCallback((message: string, tone: "success" | "error" = "success") => {
+    showNotice({ key: "browser", tone, title: message });
+  }, [showNotice]);
 
   const publishAddress = useCallback((value: string) => {
     publishedAddress.current = value;
@@ -435,7 +445,7 @@ export function EmbeddedBrowser({
       showToast(image ? "Element and screenshot attached to the conversation" : "Element attached. It was off screen, so there is no screenshot.");
     } catch (error) {
       setPickActive(false);
-      showToast(`Element inspection failed: ${error instanceof Error ? error.message : String(error)}`);
+      showToast(`Element inspection failed: ${error instanceof Error ? error.message : String(error)}`, "error");
     }
   };
   const pickRef = useRef(handlePickElement);
@@ -498,9 +508,11 @@ export function EmbeddedBrowser({
 
     try {
       await api.copyBrowserScreenshot(view.getWebContentsId());
-      showToast("Screenshot copied to clipboard");
+      // Already on the clipboard, so attaching it is the composer's own paste path.
+      showNotice({ key: "browser", tone: "success", title: "Screenshot copied to clipboard",
+        action: attachClipboardImage ? { label: "Attach to message", run: () => { void attachClipboardImage(); } } : undefined });
     } catch (failure) {
-      showToast(`Could not copy screenshot: ${failure instanceof Error ? failure.message : String(failure)}`);
+      showToast(`Could not copy screenshot: ${failure instanceof Error ? failure.message : String(failure)}`, "error");
     }
   };
 
@@ -528,7 +540,7 @@ export function EmbeddedBrowser({
       await api.clearBrowserData(view.getWebContentsId(), "cache");
       showToast("Browser HTTP cache cleared");
     } catch {
-      showToast("Unable to clear cache");
+      showToast("Unable to clear cache", "error");
     }
     setMoreMenuOpen(false);
   };
@@ -551,7 +563,7 @@ export function EmbeddedBrowser({
             view.reload();
             showToast("Browser cookies and site storage cleared");
           } catch {
-            showToast("Unable to clear cookies");
+            showToast("Unable to clear cookies", "error");
           }
         })();
       },
@@ -646,6 +658,9 @@ export function EmbeddedBrowser({
 
           {moreMenuOpen && (
             <div className="preview-more-menu" role="menu">
+              <button type="button" className="preview-menu-item" disabled={!ready} onClick={() => { setFinding(true); setMoreMenuOpen(false); }}>
+                Find on page <kbd className="preview-menu-kbd">⌘F</kbd>
+              </button>
               <button
                 type="button"
                 className="preview-menu-item"
@@ -853,12 +868,7 @@ export function EmbeddedBrowser({
 
       {error ? <div className="browser-error" role="alert"><span>{error}</span>{currentUrl && <button type="button" className="chip" onClick={() => navigate(currentUrl)}>Retry page</button>}</div> : null}
 
-      {toast && (
-        <div className="preview-toast" role="status">
-          <span>{toast}</span>
-        </div>
-      )}
-
+      {finding && currentUrl ? <BrowserFindBar view={mountedView} onClose={() => { setFinding(false); mountedView?.focus(); }} /> : null}
       {currentUrl ? (
         <div className="embedded-browser-frame" ref={observeFrame} data-device={device.id} data-inspecting={pickActive || undefined}
           style={device.width ? { "--device-width": `${device.width}px`, "--device-height": `${device.height}px` } as CSSProperties : undefined}>

@@ -30,10 +30,16 @@ export async function runComposerLayoutRegressions(host: HTMLElement, base: Reco
         document.documentElement.style.fontSize = `${fontSize}px`;
         for (const width of [320, 360, 640, 900]) {
           host.style.cssText = `width:${width}px;max-width:100%;padding:0`;
-          for (const scenario of ["empty", "long", "multiline", "attachment", "menu", "running", "stopping", "resting"]) {
+          for (const scenario of ["empty", "long", "multiline", "attachment", "menu", "running", "stopping", "resting", "dictating"]) {
             const label = `${theme}/${fontSize}/${width}/${scenario}`;
             const activeRun = ["running", "stopping"].includes(scenario) ? { id: "layout-run", status: "running" } : undefined;
-            window.testWorkspace = { ...base, busy: false, sendBlockReason: undefined,
+            let emitDictation: ((payload: unknown) => void) | undefined;
+            const baseApi = base.api as { on?: (event: string, handler: (payload: unknown) => void) => () => void };
+            const api = scenario === "dictating" ? { ...baseApi, isDesktop: true, platform: "darwin",
+              startDictation: () => new Promise(() => {}), finishDictation: async () => {}, cancelDictation: async () => {},
+              on: (event: string, handler: (payload: unknown) => void) => { if (event === "dictation") { emitDictation = handler; return () => {}; } return baseApi.on?.(event, handler) ?? (() => {}); },
+            } : base.api;
+            window.testWorkspace = { ...base, api, busy: false, sendBlockReason: undefined,
               session: undefined, sessionId: undefined, skillId: undefined, events: [], contextUsage: undefined,
               draft: scenario === "multiline" ? "First line\nSecond line" : scenario === "long" ? "A long draft ".repeat(30) : "",
               attachments: scenario === "attachment" ? [{ path: "/fixture/example.txt", name: "example.txt", size: 12 }] : [],
@@ -42,6 +48,16 @@ export async function runComposerLayoutRegressions(host: HTMLElement, base: Reco
             };
             root.render(<Composer key={label} awayFromLatest={scenario === "resting"} />);
             await settle();
+            if (scenario === "dictating") {
+              host.querySelector<HTMLButtonElement>(".dictation-btn")!.click(); await settle();
+              emitDictation?.({ phase: "listening", limitMs: 120_000 });
+              emitDictation?.({ phase: "partial", text: "A spoken request that keeps going for a while" });
+              await settle();
+              const status = host.querySelector<HTMLElement>(".dictation-status");
+              assert(status?.textContent?.includes("Listening"), `${label}: no recording state`);
+              const statusRect = status!.getBoundingClientRect();
+              assert(statusRect.right <= host.querySelector<HTMLElement>(".composer-glass")!.getBoundingClientRect().right + 1, `${label}: dictation status escaped the glass`);
+            }
             const glass = host.querySelector<HTMLElement>(".composer-glass")!.getBoundingClientRect();
             const field = host.querySelector<HTMLTextAreaElement>("textarea")!;
             const controls = host.querySelector<HTMLElement>(".composer-controls")!.getBoundingClientRect();

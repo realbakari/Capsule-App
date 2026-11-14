@@ -40,9 +40,8 @@ export async function runReviewHunkRegressions(host: HTMLElement, base: Record<s
   const workspace = { ...base, api, runs: [], git: { files: [] }, setConfirm: () => {},
     gitApplyHunk: async (apply: HunkApply) => { if (refuse) throw new Error(refuse); applied.push(apply); } };
   try {
-    setReviewScope("review-fixture", "uncommitted");
     window.testWorkspace = workspace;
-    root.render(<ReviewDiff projectId="review-fixture" sessionId="review-thread" onShowAll={() => {}} />);
+    root.render(<ReviewDiff projectId="review-fixture" sessionId="review-thread" thread="review-thread" selection={{ kind: "uncommitted" }} ignoreWhitespace={false} onShowAll={() => {}} />);
     await until(() => heads().length === 2);
     const [staged, unstaged] = heads() as [HTMLElement, HTMLElement];
     assert(staged.textContent?.includes("Staged") && staged.textContent.includes("Unstage") && !staged.textContent.includes("Keep"), "A staged hunk offers Keep or hides its state");
@@ -76,13 +75,12 @@ export async function runReviewHunkRegressions(host: HTMLElement, base: Record<s
     assert(reads === afterKeep && applied.length === 1, "A refused action reloaded or applied anyway");
 
     window.testWorkspace = { ...workspace, api: { ...api, isDesktop: false } };
-    root.render(<ReviewDiff key="viewer" projectId="review-fixture" sessionId="review-thread" onShowAll={() => {}} />);
+    root.render(<ReviewDiff key="viewer" projectId="review-fixture" sessionId="review-thread" thread="review-thread" selection={{ kind: "uncommitted" }} ignoreWhitespace={false} onShowAll={() => {}} />);
     await until(() => document.querySelector(".review-diff .file-diff") && !document.querySelector(".hunk-action"));
     assert(heads().length === 0, "A read-only viewer can focus hunk actions");
 
-    setReviewScope("review-fixture", "turn");
     window.testWorkspace = workspace;
-    root.render(<ReviewDiff key="turn" projectId="review-fixture" sessionId="review-thread" onShowAll={() => {}} />);
+    root.render(<ReviewDiff key="turn" projectId="review-fixture" sessionId="review-thread" thread="review-thread" selection={{ kind: "turn" }} ignoreWhitespace={false} onShowAll={() => {}} />);
     await until(() => document.querySelector(".review-diff")?.textContent?.includes("No turn in this conversation has saved changes yet."));
 
     // The latest turn: Reject only where git says the hunk still reverses cleanly.

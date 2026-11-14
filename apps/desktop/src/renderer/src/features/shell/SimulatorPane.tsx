@@ -1,3 +1,4 @@
+import { useToasts } from "../../lib/toasts";
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Simulator, SimulatorAction, SimulatorApp, SimulatorFrame, SimulatorInventory, SimulatorOrientation } from "@capsule/shared";
@@ -72,6 +73,7 @@ interface PointerTrack {
 
 export function SimulatorPane() {
   const { api, session, settings, setNotice, openPath, attachImage, activeRun, events } = useWorkspace();
+  const { show: showToast } = useToasts();
   const headSlot = useContext(InspectorHeadSlot);
   const threadId = session?.id;
   const attachedKey = `${ATTACHED_KEY}:${threadId ?? "inbox"}`;
@@ -399,10 +401,10 @@ export function SimulatorPane() {
 
   const copyPng = async (png: Uint8Array) => {
     await navigator.clipboard.write([new ClipboardItem({ "image/png": new Blob([new Uint8Array(png)], { type: "image/png" }) })]);
-    setNotice("Screenshot copied.");
+    showToast({ key: "simulator", tone: "success", title: "Screenshot copied" });
   };
   const addPng = async (png: Uint8Array) => {
-    if (await attachImage(png)) setNotice("Screenshot added to your message.");
+    if (await attachImage(png)) showToast({ key: "simulator", tone: "success", title: "Screenshot added to your message" });
   };
 
   /** A fresh frame, not the last one shown, sent where the person chose. */
@@ -440,8 +442,8 @@ export function SimulatorPane() {
     const result = (await act({ type: "record", mode: "stop" }, "record")) as { file?: string } | undefined;
     refreshInventory.current();
     if (result?.file) {
-      setNotice(`Recording saved to ${result.file}`);
-      void openPath(result.file);
+      const file = result.file;
+      showToast({ key: "simulator", tone: "success", title: "Recording saved", detail: file, action: { label: "Open", run: () => openPath(file) } });
     }
   }
 

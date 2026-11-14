@@ -71,6 +71,7 @@ import {
   type AttentionState,
   attentionLabel,
   summariseAttention,
+  parseThreadTriageAction,
   type MessageAttachment,
   type UpdateCheck,
   IPC_EVENTS,
@@ -84,6 +85,7 @@ import {
   type ResourceHistoryPoint,
   type ResourceSample,
   type Run,
+  type Session,
   type SpawnHarnessInput,
   type GitPullRequestStackAction,
   type GitDiffScope,
@@ -91,6 +93,9 @@ import {
   type UpdateProjectInput,
   isHarnessId,
   isImportAgentId,
+  type GitRefName,
+  parseGitRefName,
+  parseStartPullRequestInput,
 } from "@capsule/shared";
 import { readAgentProcesses } from "@capsule/filesystem";
 import { startRemoteServer, type RemoteServerHandle } from "@capsule/remote";
@@ -300,12 +305,12 @@ function openPetWindow(): void {
     fallback.unref?.();
   });
   petWindow.on("closed", () => {
-    petVoice.cancel();
+    petVoice.cancel("companion");
     petWindow = undefined;
   });
-  petWindow.on("hide", () => petVoice.cancel());
-  petWindow.webContents.on("render-process-gone", () => petVoice.cancel());
-  petWindow.webContents.on("did-start-navigation", () => petVoice.cancel());
+  petWindow.on("hide", () => petVoice.cancel("companion"));
+  petWindow.webContents.on("render-process-gone", () => petVoice.cancel("companion"));
+  petWindow.webContents.on("did-start-navigation", () => petVoice.cancel("companion"));
 
   const rendererURL = process.env.ELECTRON_RENDERER_URL;
   if (rendererURL) void petWindow.loadURL(`${rendererURL}#pet`);
@@ -634,6 +639,12 @@ function createWindow(): BrowserWindow {
     // filesystem privileges through a preview. These rules cover redirects too.
     secureBrowserSession(contents.session);
     browserGuestIds.add(contents.id);
+    // A focused page receives ⌘F itself; hand it to the browser's own find bar.
+    contents.on("before-input-event", (event, input) => {
+      if (input.type !== "keyDown" || input.key.toLowerCase() !== "f" || !(input.meta || input.control) || input.shift || input.alt) return;
+      event.preventDefault();
+      desktopWindow.send(IPC_EVENTS.state, { command: "browser-find", webContentsId: contents.id });
+    });
     contents.once("destroyed", () => {
       browserGuestIds.delete(contents.id);
       if (browserViewId === contents.id) browserViewId = undefined;
@@ -918,18 +929,31 @@ function bounceDock(): void {
   app.dock.bounce("informational");
 }
 
-function notifyDesktop(title: string, body: string): void {
+/*
+ * A notification names the thread and opens it. "Response complete" with the
+ * prompt as its body said neither which of a dozen threads finished nor took
+ * you there.
+ */
+function notifyDesktop(title: string, body: string, sessionId?: string): void {
   if (!Notification.isSupported()) return;
-  new Notification({ title, body }).show();
+  const notification = new Notification({ title, body, silent: engine?.getSettings().notificationSound === false });
+  if (sessionId) notification.on("click", () => commandWindow({ command: "open-session", sessionId }));
+  notification.show();
+}
+
+function threadLabel(sessionId: string | undefined): { title: string; project?: string; sessionId?: string } {
+  const session = sessionId ? engine?.repos.getSession(sessionId) : undefined;
+  const project = session ? engine?.repos.getProject(session.projectId)?.name : undefined;
+  return { title: session?.title ?? "Capsule", project, sessionId: session?.id };
 }
 
 function notifyApproval(approval: ApprovalRequest): void {
   const settings = engine?.getSettings();
   if ((settings && !settings.notifyApprovals) || windowFocused()) return;
-  notifyDesktop(
-    "Approval required",
-    `${approval.agentName} wants to ${approval.action} ${approval.target}`,
-  );
+  const thread = threadLabel(engine?.getRun(approval.runId)?.sessionId);
+  const question = approval.details?.questions?.[0]?.question;
+  const what = question ? `Has a question: ${question}` : `Needs approval: ${approval.agentName} wants to ${approval.action} ${approval.target}`;
+  notifyDesktop(thread.title, thread.project ? `${thread.project} · ${what}` : what, thread.sessionId);
   if (settings?.bounceDockOnAttention) bounceDock();
 }
 
@@ -940,16 +964,45 @@ function notifyLongCommand(command: { title: string; seconds: number }): void {
   if (settings.bounceDockOnAttention) bounceDock();
 }
 
+const SETTLED_LABEL: Partial<Record<Run["status"], string>> = { completed: "Finished", failed: "Failed", cancelled: "Stopped" };
+
 const runNotifications = new RunNotifications();
 function notifyRunSettled(run: Run): void {
   if (!runNotifications.firstSettlement(run)) return;
   const settings = engine?.getSettings();
   if (!settings?.notifyRunComplete) return;
+  // In front of you, the window says it itself: an in-app toast for another thread.
   if (windowFocused()) return;
-  const title =
-    run.status === "completed" ? "Response complete" : run.status === "failed" ? "Run failed" : "Run cancelled";
-  notifyDesktop(title, (run.prompt ?? "Task").slice(0, 140));
+  // Stopping a turn yourself is not news.
+  if (run.status === "cancelled") return;
+  const thread = threadLabel(run.sessionId);
+  const status = SETTLED_LABEL[run.status] ?? "Finished";
+  notifyDesktop(thread.title, thread.project ? `${thread.project} · ${status}` : status, thread.sessionId);
   if (settings.bounceDockOnAttention) bounceDock();
+}
+
+function notifySessionWoke(session: Session): void {
+  const settings = engine?.getSettings();
+  if (!settings?.notifyRunComplete || windowFocused()) return;
+  const project = engine?.repos.getProject(session.projectId)?.name;
+  notifyDesktop(session.title, project ? `${project} · Snooze ended` : "Snooze ended", session.id);
+}
+
+/**
+ * The Dock counts threads waiting on a person: a decision, a failure, or a
+ * finish not yet read. It falls as you read, rather than clearing on focus
+ * and lying about what is left.
+ */
+function refreshDockBadge(): void {
+  if (!engine) return;
+  try {
+    const enabled = engine.getSettings().dockBadge !== false;
+    const summary = summariseAttention({ sessions: engine.listSessions(), runs: engine.listLatestRunStates() });
+    const waiting = summary.counts["needs-input"] + summary.counts.blocked + summary.counts.ready;
+    app.setBadgeCount(enabled ? waiting : 0);
+  } catch {
+    // The badge is a hint; never let it take a notification path down.
+  }
 }
 
 function desktopHasWork(): boolean {
@@ -1457,6 +1510,15 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.pinSession, (id, pinned) =>
     requireEngine().pinSession(String(id), Boolean(pinned)),
   );
+  handle(IPC_CHANNELS.answerAgentQuestion, (approvalId, answers) =>
+    requireEngine().answerAgentQuestion(String(approvalId), answers),
+  );
+  handle(IPC_CHANNELS.reorderProjects, (orderedIds) =>
+    requireEngine().reorderProjects(Array.isArray(orderedIds) ? orderedIds.map(String) : []),
+  );
+  handle(IPC_CHANNELS.triageSession, (id, action) =>
+    requireEngine().triageSession(String(id), parseThreadTriageAction(action)),
+  );
   handle(IPC_CHANNELS.reorderPinnedSessions, (projectId, orderedIds) =>
     requireEngine().reorderPinnedSessions(
       String(projectId),
@@ -1503,11 +1565,12 @@ function registerIpc(): void {
     ),
   );
   handle(IPC_CHANNELS.gitInit, (projectId) => requireEngine().gitInit(String(projectId)));
-  handle(IPC_CHANNELS.gitDiff, (projectId, relative, sessionId) =>
+  handle(IPC_CHANNELS.gitDiff, (projectId, relative, sessionId, options) =>
     requireEngine().gitDiff(
       String(projectId),
       relative ? String(relative) : undefined,
       sessionId ? String(sessionId) : undefined,
+      { ignoreWhitespace: optBool((options as { ignoreWhitespace?: unknown } | undefined)?.ignoreWhitespace, IPC_CHANNELS.gitDiff, 3) },
     ),
   );
   handle(IPC_CHANNELS.checkoutBranch, (projectId, branch, sessionId) =>
@@ -1538,9 +1601,16 @@ function registerIpc(): void {
       sessionId ? String(sessionId) : undefined,
     ),
   );
-  handleArgs(IPC_CHANNELS.gitScopedDiff, [id, oneOf("uncommitted", "staged", "unstaged", "branch"), optStr, optStr],
-    (projectId: string, scope: GitDiffScope, relative?: string, sessionId?: string) =>
-      requireEngine().gitScopedDiff(projectId, scope, relative, sessionId));
+  handle(IPC_CHANNELS.gitScopedDiff, (projectId, scope, relative, sessionId, options) => {
+    const channel = IPC_CHANNELS.gitScopedDiff;
+    return requireEngine().gitScopedDiff(
+      id(projectId, channel, 0),
+      oneOf("uncommitted", "staged", "unstaged", "branch")(scope, channel, 1) as GitDiffScope,
+      optStr(relative, channel, 2),
+      optStr(sessionId, channel, 3),
+      { ignoreWhitespace: optBool((options as { ignoreWhitespace?: unknown } | undefined)?.ignoreWhitespace, channel, 4) },
+    );
+  });
   handleArgs(IPC_CHANNELS.gitCheckHunks, [id, hunkApplies, optStr], (projectId: string, applies: HunkApply[], sessionId?: string) =>
     requireEngine().gitCheckHunks(projectId, applies, sessionId));
   handleArgs(IPC_CHANNELS.gitApplyHunk, [id, hunkApply, optStr], (projectId: string, apply: HunkApply, sessionId?: string) =>
@@ -1605,6 +1675,28 @@ function registerIpc(): void {
       return;
     }
     await shell.openPath(location);
+  });
+  /*
+   * Open in: the list reads what the system reports; opening resolves the
+   * target through the engine, which refuses anything outside the project's
+   * folders or the conversation's worktree, and only launches a listed app.
+   */
+  handleArgs(IPC_CHANNELS.listOpenInApps, [optStr, optStr, optStr], async (projectId?: string, sessionId?: string, target?: string) => {
+    const engine = requireEngine();
+    const location = projectId ? engine.resolveOpenTarget(projectId, sessionId, target) : undefined;
+    return (await import("./open-in.js")).openInCatalog(engine.getSettings(), location);
+  });
+  handle(IPC_CHANNELS.addOpenInApp, async () => {
+    const engine = requireEngine();
+    const patch = await (await import("./open-in.js")).pickOpenInApp(engine.getSettings(), desktopWindow.current ?? BrowserWindow.getFocusedWindow());
+    if (patch) await engine.updateSettings(patch);
+    return patch?.openInApps?.at(-1);
+  });
+  handleArgs(IPC_CHANNELS.openInApp, [str, id, optStr, optStr], async (appId: string, projectId: string, sessionId?: string, target?: string) => {
+    const engine = requireEngine();
+    const location = engine.resolveOpenTarget(projectId, sessionId, target);
+    const { openInCatalog, openWithApp } = await import("./open-in.js");
+    await openWithApp(await openInCatalog(engine.getSettings(), location), appId, location);
   });
   handle(IPC_CHANNELS.pickDirectory, async () => {
     const win = desktopWindow.current ?? BrowserWindow.getFocusedWindow();
@@ -1675,8 +1767,40 @@ function registerIpc(): void {
   voiceHandler(IPC_CHANNELS.listenPetCommand, () => petVoice.listen(() => {
     if (petWindow && !petWindow.isDestroyed()) petWindow.webContents.send(IPC_EVENTS.petVoice, { phase: "listening" });
   }), true);
-  voiceHandler(IPC_CHANNELS.finishPetCommand, () => petVoice.finish());
-  voiceHandler(IPC_CHANNELS.cancelPetVoice, () => petVoice.cancel());
+  voiceHandler(IPC_CHANNELS.finishPetCommand, () => petVoice.finish("companion"));
+  voiceHandler(IPC_CHANNELS.cancelPetVoice, () => petVoice.cancel("companion"));
+  /*
+   * Composer dictation. Like companion voice these stay out of the remote
+   * handler map: only the desktop window's own frame may start the microphone,
+   * and partial text goes back to that frame alone.
+   */
+  const dictationHandler = (channel: string, action: (sender: Electron.WebContents, ...args: unknown[]) => unknown) => ipcMain.handle(channel, (event, ...args) => {
+    const window = desktopWindow.current;
+    if (shutdown.started || !window || window.isDestroyed() || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame) throw new Error("Dictation is available only in the desktop window.");
+    return action(event.sender, ...args);
+  });
+  dictationHandler(IPC_CHANNELS.startDictation, (sender) => {
+    const release = () => petVoice.cancel("dictation");
+    sender.once("did-start-navigation", release);
+    sender.once("render-process-gone", release);
+    sender.once("destroyed", release);
+    return petVoice.dictate((payload) => { if (!sender.isDestroyed()) sender.send(IPC_EVENTS.dictation, payload); }).finally(() => {
+      sender.off("did-start-navigation", release);
+      sender.off("render-process-gone", release);
+      sender.off("destroyed", release);
+    });
+  });
+  dictationHandler(IPC_CHANNELS.finishDictation, () => petVoice.finish("dictation"));
+  dictationHandler(IPC_CHANNELS.cancelDictation, () => petVoice.cancel("dictation"));
+  dictationHandler(IPC_CHANNELS.openDictationSettings, (_sender, pane) => {
+    if (process.platform !== "darwin") return;
+    const target = pane === "microphone" ? "com.apple.preference.security?Privacy_Microphone"
+      : pane === "speech" ? "com.apple.preference.security?Privacy_SpeechRecognition"
+      : pane === "dictation" ? "com.apple.preference.keyboard?Dictation"
+      : undefined;
+    if (!target) throw new Error("Unknown settings pane.");
+    return shell.openExternal(`x-apple.systempreferences:${target}`);
+  });
   voiceHandler(IPC_CHANNELS.speakPetStatus, () => {
     const engine = requireEngine();
     return petVoice.speak(summariseAttention({ sessions: engine.listSessions(), runs: engine.listLatestRunStates() }));
@@ -2000,9 +2124,9 @@ function registerIpc(): void {
   );
   handle(IPC_CHANNELS.providerUsage, () => requireEngine().providerUsage());
   handle(IPC_CHANNELS.turnDiff, (runId, options) => {
-    const value = options as { relative?: unknown; summaryOnly?: unknown } | undefined;
+    const value = options as { relative?: unknown; summaryOnly?: unknown; ignoreWhitespace?: unknown } | undefined;
     const channel = IPC_CHANNELS.turnDiff;
-    return requireEngine().turnDiff(id(runId, channel, 0), { relative: optStr(value?.relative, channel, 1), summaryOnly: optBool(value?.summaryOnly, channel, 1) });
+    return requireEngine().turnDiff(id(runId, channel, 0), { relative: optStr(value?.relative, channel, 1), summaryOnly: optBool(value?.summaryOnly, channel, 1), ignoreWhitespace: optBool(value?.ignoreWhitespace, channel, 1) });
   });
   handle(IPC_CHANNELS.restoreToTurn, (request) => {
     const channel = IPC_CHANNELS.restoreToTurn;
@@ -2088,6 +2212,22 @@ function registerIpc(): void {
   handleArgs(IPC_CHANNELS.fetchSkillDetail, [id], (skillId: string) =>
     requireEngine().fetchSkillDetail(skillId),
   );
+  handleArgs(IPC_CHANNELS.listWorktreeBases, [id], (projectId: string) =>
+    requireEngine().listWorktreeBases(projectId),
+  );
+  const gitRef: ArgParser<GitRefName> = (value, channel, index) => {
+    const ref = parseGitRefName(value);
+    if (!ref) throw new Error(`${channel} argument ${index + 1} must be a branch name.`);
+    return ref;
+  };
+  handleArgs(IPC_CHANNELS.setSessionWorktreeBase, [id, gitRef], (sessionId: string, ref: GitRefName) =>
+    requireEngine().setSessionWorktreeBase(sessionId, ref),
+  );
+  handle(IPC_CHANNELS.startPullRequestThread, (input) => {
+    const parsed = parseStartPullRequestInput(input);
+    if (!parsed) throw new Error("That pull request could not be read. Refresh the list and try again.");
+    return requireEngine().startPullRequestThread(parsed);
+  });
 
   ipcMain.handle(IPC_CHANNELS.showContextMenu, async (event, payload: PopupMenuRequest) => {
     try {
@@ -2108,15 +2248,23 @@ function bindEngineEvents(): void {
     notifyRunSettled(run);
     applyKeepAwake(engine?.getSettings());
     refreshTrayAttention();
+    refreshDockBadge();
   });
+  engine.events.on("session-woke", (session: Session) => notifySessionWoke(session));
   engine.events.on("run-event", (event) => send(IPC_EVENTS.run, event));
   engine.events.on("long-command", notifyLongCommand);
   engine.events.on("message", (message) => send(IPC_EVENTS.message, message));
-  engine.events.on("state", (payload) => send(IPC_EVENTS.state, payload));
+  engine.events.on("state", (payload) => {
+    send(IPC_EVENTS.state, payload);
+    // Read, settle and snooze change what is waiting; settings may turn the badge off.
+    const command = (payload as { command?: string } | undefined)?.command;
+    if (command === "sessions-updated" || command === "settings-updated") { refreshDockBadge(); refreshTrayAttention(); }
+  });
   engine.events.on("approval", (approval: ApprovalRequest) => {
     send(IPC_EVENTS.approval, approval);
     if (approval.status === "pending") notifyApproval(approval);
     refreshTrayAttention();
+    refreshDockBadge();
   });
 }
 
@@ -2320,9 +2468,7 @@ function buildTrayMenu(): void {
         },
         { label: "About Capsule", click: () => commandWindow({ command: "about" }) },
         { label: "Settings…", click: () => commandWindow({ command: "settings" }) },
-        { label: "Skills & Packs", click: () => commandWindow({ command: "skills" }) },
         { label: "Approvals", click: () => commandWindow({ command: "approvals" }) },
-        { label: "Active runs", click: () => commandWindow({ command: "runs" }) },
         { type: "separator" },
         { label: "Quit", click: () => app.quit() },
       ]),
@@ -2368,7 +2514,9 @@ async function startEngineOnce(): Promise<void> {
     userDataDir: userDataDir(),
     capsuleVersion: app.getVersion(),
     clientVersion: app.getVersion(),
-    ...(process.env.CAPSULE_SMOKE_TEST ? { autoConnect: false } : {}),
+    // CAPSULE_MOCK_RUNTIME=1 runs a development profile on the mock runtime, so
+    // turns can be driven without a Gateway or an installed agent.
+    ...(process.env.CAPSULE_SMOKE_TEST || process.env.CAPSULE_MOCK_RUNTIME === "1" ? { autoConnect: false } : {}),
     // The Gateway operator token and the skills.sh token; the settings screen
     // calls this the Keychain and now it is one.
     secretEncryptor: {
@@ -2441,6 +2589,7 @@ async function startEngineOnce(): Promise<void> {
   }
   if (shutdown.started) return;
   bindEngineEvents();
+  refreshDockBadge();
   await applyDesktopSettings(engine.getSettings());
   if (shutdown.started) return;
   scheduleUpdateCheck();

@@ -2,11 +2,12 @@ import { useState } from "react";
 import type { CapsuleSettings } from "@capsule/shared";
 import {
   COMMANDS,
+  chordKey,
   chordFor,
   chordSymbols,
   conflictsFor,
   formatChord,
-  parseChord,
+  keymapFrom,
   type KeyChord,
   type Keymap,
 } from "../../lib/keybindings";
@@ -30,11 +31,7 @@ export function KeybindingsSettings({
   const [capturing, setCapturing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const keymap: Keymap = {};
-  for (const [id, value] of Object.entries(settings.keybindings ?? {})) {
-    const chord = parseChord(value);
-    if (chord) keymap[id] = chord;
-  }
+  const keymap: Keymap = keymapFrom(settings.keybindings);
 
   function commit(id: string, chord: KeyChord) {
     const clash = conflictsFor(id, chord, keymap);
@@ -101,7 +98,7 @@ export function KeybindingsSettings({
                       // A modifier on its own is not a chord yet — keep listening.
                       if (["Meta", "Shift", "Alt", "Control"].includes(event.key)) return;
                       commit(command.id, {
-                        key: event.key.toLowerCase(),
+                        key: chordKey(event.nativeEvent),
                         meta: event.metaKey || event.ctrlKey,
                         shift: event.shiftKey,
                         alt: event.altKey,

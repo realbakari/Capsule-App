@@ -8,6 +8,7 @@ import { PerformanceDiagnostics } from "./PerformanceDiagnostics";
 import { RuntimeModeCard } from "./RuntimeModeCard";
 import { SourceControlTools } from "./SourceControlTools";
 import { WorktreeStorage } from "./WorktreeStorage";
+import { OpenInSettings } from "../open-in/OpenInSettings";
 import {
   SETTINGS_SECTION_LABELS,
   SECTIONS_WITH_DEFAULTS,
@@ -552,6 +553,7 @@ export function SettingsView() {
                 </div>
               </div>
             )}
+            {tab === "projects" && <OpenInSettings />}
 
             {tab === "shortcuts" && (
               <KeybindingsSettings settings={settings} onPatch={(next) => void patch(next)} />

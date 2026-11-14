@@ -77,6 +77,7 @@ function sessionParams(session: Session) {
     workspaceMode: session.workspaceMode ?? "local",
     worktreeBranch: session.worktreeBranch ?? null,
     turnMode: session.turnMode ?? null,
+    worktreeBaseRef: session.worktreeBaseRef ?? null,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
   };
@@ -130,6 +131,10 @@ function normalizeSession(row: SessionRow): Session {
     workspaceMode: row.workspaceMode === "worktree" ? "worktree" : "local",
     worktreeBranch: row.worktreeBranch || undefined,
     turnMode: isTurnMode(row.turnMode) ? row.turnMode : undefined,
+    lastViewedAt: row.lastViewedAt || undefined,
+    settledAt: row.settledAt || undefined,
+    snoozedUntil: row.snoozedUntil || undefined,
+    worktreeBaseRef: row.worktreeBaseRef || undefined,
   };
 }
 
@@ -182,10 +187,10 @@ export class CapsuleRepositories {
       .prepare(
         `INSERT INTO projects (
           id, workspace_id, name, description, working_directory, extra_folders, project_actions, icon_path, default_agent_id,
-          default_skill_ids, default_mode, default_workspace_mode, created_at, updated_at
+          default_skill_ids, default_mode, default_workspace_mode, default_worktree_base_ref, created_at, updated_at
         ) VALUES (
           @id, @workspaceId, @name, @description, @workingDirectory, @extraFolders, @actions, @iconPath, @defaultAgentId,
-          @defaultSkillIds, @defaultMode, @defaultWorkspaceMode, @createdAt, @updatedAt
+          @defaultSkillIds, @defaultMode, @defaultWorkspaceMode, @defaultWorktreeBaseRef, @createdAt, @updatedAt
         )`,
       )
       .run({
@@ -197,6 +202,7 @@ export class CapsuleRepositories {
         iconPath: project.iconPath ?? null,
         defaultAgentId: project.defaultAgentId ?? null,
         defaultWorkspaceMode: project.defaultWorkspaceMode ?? null,
+        defaultWorktreeBaseRef: project.defaultWorktreeBaseRef ?? null,
         defaultSkillIds: JSON.stringify(project.defaultSkillIds),
       });
   }
@@ -209,8 +215,9 @@ export class CapsuleRepositories {
                 default_agent_id AS defaultAgentId,
                 default_skill_ids AS defaultSkillIds, default_mode AS defaultMode,
                 default_workspace_mode AS defaultWorkspaceMode,
+                default_worktree_base_ref AS defaultWorktreeBaseRef,
                 created_at AS createdAt, updated_at AS updatedAt
-         FROM projects ORDER BY updated_at DESC`,
+         FROM projects ORDER BY sort_order IS NOT NULL, sort_order, updated_at DESC`,
       )
       .all() as Array<
       Omit<Project, "defaultSkillIds" | "extraFolders" | "actions"> & {
@@ -231,6 +238,7 @@ export class CapsuleRepositories {
         iconPath: row.iconPath || undefined,
         defaultAgentId: row.defaultAgentId || undefined,
         defaultWorkspaceMode: row.defaultWorkspaceMode || undefined,
+        defaultWorktreeBaseRef: row.defaultWorktreeBaseRef || undefined,
         defaultSkillIds: parseJson<string[]>(row.defaultSkillIds, []),
       };
     });
@@ -248,6 +256,7 @@ export class CapsuleRepositories {
          default_agent_id = @defaultAgentId,
          default_skill_ids = @defaultSkillIds, default_mode = @defaultMode,
          default_workspace_mode = @defaultWorkspaceMode,
+         default_worktree_base_ref = @defaultWorktreeBaseRef,
          updated_at = @updatedAt WHERE id = @id`,
       )
       .run({
@@ -260,6 +269,7 @@ export class CapsuleRepositories {
         iconPath: project.iconPath ?? null,
         defaultAgentId: project.defaultAgentId ?? null,
         defaultWorkspaceMode: project.defaultWorkspaceMode ?? null,
+        defaultWorktreeBaseRef: project.defaultWorktreeBaseRef ?? null,
         defaultSkillIds: JSON.stringify(project.defaultSkillIds),
         defaultMode: project.defaultMode,
         updatedAt: project.updatedAt,
@@ -273,12 +283,12 @@ export class CapsuleRepositories {
           id, workspace_id, project_id, agent_id, title, mode, state,
           openclaw_session_key, harness_id, harness_state, acp_mode,
           permission_profile, model_override, pinned, pin_order, working_directory, workspace_mode,
-          worktree_branch, direct_session, carry_over, pending_start, done_at, forked_from, turn_mode, group_id, origin, created_at, updated_at
+          worktree_branch, worktree_base_ref, direct_session, carry_over, pending_start, done_at, forked_from, turn_mode, group_id, origin, created_at, updated_at
         ) VALUES (
           @id, @workspaceId, @projectId, @agentId, @title, @mode, @state,
           @openclawSessionKey, @harnessId, @harnessState, @acpMode,
           @permissionProfile, @modelOverride, @pinned, @pinOrder, @workingDirectory, @workspaceMode,
-          @worktreeBranch, @directSession, @carryOver, @pendingStart, @doneAt, @forkedFrom, @turnMode, @groupId, @origin, @createdAt, @updatedAt
+          @worktreeBranch, @worktreeBaseRef, @directSession, @carryOver, @pendingStart, @doneAt, @forkedFrom, @turnMode, @groupId, @origin, @createdAt, @updatedAt
         )`,
       )
       .run(sessionParams(session));
@@ -292,7 +302,7 @@ export class CapsuleRepositories {
          harness_state = @harnessState, acp_mode = @acpMode,
          permission_profile = @permissionProfile, model_override = @modelOverride,
          pinned = @pinned, pin_order = @pinOrder, working_directory = @workingDirectory, workspace_mode = @workspaceMode,
-         worktree_branch = @worktreeBranch, direct_session = @directSession, carry_over = @carryOver, forked_from = @forkedFrom, turn_mode = @turnMode, updated_at = @updatedAt WHERE id = @id`,
+         worktree_branch = @worktreeBranch, worktree_base_ref = @worktreeBaseRef, direct_session = @directSession, carry_over = @carryOver, forked_from = @forkedFrom, turn_mode = @turnMode, updated_at = @updatedAt WHERE id = @id`,
       )
       .run(sessionParams(session));
   }
@@ -483,8 +493,9 @@ export class CapsuleRepositories {
                 harness_id AS harnessId, harness_state AS harnessState, acp_mode AS acpMode,
                 permission_profile AS permissionProfile, model_override AS modelOverride,
                 pinned, pin_order AS pinOrder, working_directory AS workingDirectory, workspace_mode AS workspaceMode,
-                worktree_branch AS worktreeBranch, direct_session AS directSession, carry_over AS carryOver,
-                pending_start AS pendingStart, done_at AS doneAt, forked_from AS forkedFrom, turn_mode AS turnMode, group_id AS groupId, origin, pull_request AS pullRequest, paused, tags, created_at AS createdAt, updated_at AS updatedAt`;
+                worktree_branch AS worktreeBranch, worktree_base_ref AS worktreeBaseRef, direct_session AS directSession, carry_over AS carryOver,
+                pending_start AS pendingStart, done_at AS doneAt, forked_from AS forkedFrom, turn_mode AS turnMode, group_id AS groupId, origin, pull_request AS pullRequest, paused, tags, created_at AS createdAt, updated_at AS updatedAt,
+                last_viewed_at AS lastViewedAt, settled_at AS settledAt, snoozed_until AS snoozedUntil`;
     const sql = projectId
       ? `SELECT ${columns} FROM sessions WHERE project_id = ?
          ORDER BY pinned DESC, COALESCE(pin_order, 2147483647) ASC, updated_at DESC`
@@ -494,6 +505,22 @@ export class CapsuleRepositories {
       projectId ? this.db.sqlite.prepare(sql).all(projectId) : this.db.sqlite.prepare(sql).all()
     ) as SessionRow[];
     return rows.map(normalizeSession);
+  }
+
+  /**
+   * Triage is the person's bookkeeping, written apart from the row so that
+   * reading a thread never bumps `updated_at` and reorders the sidebar.
+   */
+  updateSessionTriage(session: Pick<Session, "id" | "lastViewedAt" | "settledAt" | "snoozedUntil">): void {
+    this.db.sqlite
+      .prepare("UPDATE sessions SET last_viewed_at = ?, settled_at = ?, snoozed_until = ? WHERE id = ?")
+      .run(session.lastViewedAt ?? null, session.settledAt ?? null, session.snoozedUntil ?? null, session.id);
+  }
+
+  /** Places projects in this order; ones not named keep no position and list first. */
+  setProjectOrder(orderedIds: readonly string[]): void {
+    const update = this.db.sqlite.prepare("UPDATE projects SET sort_order = ? WHERE id = ?");
+    this.db.sqlite.transaction(() => orderedIds.forEach((id, index) => update.run(index, id)))();
   }
 
   getSession(id: string): Session | undefined {

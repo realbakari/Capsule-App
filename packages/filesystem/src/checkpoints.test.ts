@@ -301,3 +301,21 @@ describe("deleteCheckpoints", () => {
     expect(await hasCheckpoint(dir, checkpointRef("keep", 1))).toBe(true);
   });
 });
+
+describe("previewCheckpoint whitespace", () => {
+  it("leaves whitespace-only edits out of a saved turn when asked", { timeout: 20_000 }, async () => {
+    const dir = repo();
+    const from = checkpointRef("spaces", 1);
+    const to = checkpointRef("spaces", 2);
+    fs.writeFileSync(path.join(dir, "code.ts"), "if (a) {\nreturn 1;\n}\n");
+    await captureCheckpoint(dir, from);
+    fs.writeFileSync(path.join(dir, "code.ts"), "if (a) {\n  return 1;\n}\n");
+    fs.writeFileSync(path.join(dir, "kept.txt"), "two\n");
+    await captureCheckpoint(dir, to);
+    const plain = parseUnifiedDiff((await previewCheckpoint(dir, to, from)).patch);
+    expect(plain.find((file) => file.path === "code.ts")?.additions).toBe(1);
+    const ignored = parseUnifiedDiff((await previewCheckpoint(dir, to, from, { ignoreWhitespace: true })).patch);
+    expect(ignored.find((file) => file.path === "code.ts")?.hunks ?? []).toHaveLength(0);
+    expect(ignored.find((file) => file.path === "kept.txt")?.additions).toBe(1);
+  });
+});

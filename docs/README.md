@@ -11,6 +11,7 @@ need the shipped-product voice.
 - [Windows preview](./user/windows.md)
 - [Supported behavior and current limits](./user/compatibility.md)
 - [Keyboard shortcuts](./user/keyboard-shortcuts.md)
+- [Keeping track of conversations](./user/staying-on-top.md)
 - [Skills](./user/skills.md)
 - [Reviewing changes](./user/review.md)
 - [Restoring, redoing and forking turns](./user/checkpoints.md)

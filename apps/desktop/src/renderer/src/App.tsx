@@ -16,7 +16,9 @@ import { Palette } from "./features/shell/Palette";
 import { Sidebar } from "./features/shell/Sidebar";
 import { Titlebar } from "./features/shell/Titlebar";
 import { RemoteSessionBanner } from "./features/shell/RemoteSessionBanner";
-import { ArchiveUndoNotice } from "./features/shell/ArchiveUndoNotice";
+import { Toasts } from "./features/toasts/Toasts";
+import { TriageHost } from "./features/triage/TriageHost";
+import { ToastProvider } from "./lib/toasts";
 import { ShortcutsSheet } from "./features/shell/ShortcutsSheet";
 import { AboutModal } from "./features/settings/AboutModal";
 import { ViewErrorBoundary } from "./features/shell/ErrorBoundary";
@@ -74,7 +76,6 @@ function Shell() {
       style={style}
     >
       <Sidebar />
-      <ArchiveUndoNotice />
       <div className="sidebar-swipe-edge" aria-hidden />
       {!sidebarCollapsed && <button type="button" className="sidebar-scrim" aria-label="Close sidebar" tabIndex={-1} onClick={() => setSidebarCollapsed(true)} />}
       <div className="workspace">
@@ -113,8 +114,10 @@ function Shell() {
         <ContentSearch />
       </ViewErrorBoundary>
       <ConfirmDialog />
+      <TriageHost />
       <ShortcutsSheet />
       <TooltipLayer />
+      <Toasts />
       <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} />
     </div>
   );
@@ -122,20 +125,22 @@ function Shell() {
 
 export default function App() {
   return (
-    <WorkspaceProvider>
-      <ApplyToLocalProvider>
-        <ThreadShareProvider>
-          <BestOfNProvider>
-            <ImportSessionsProvider>
-              <HandoffProvider>
-                <ThreadActionsProvider>
-                  <Shell />
-                </ThreadActionsProvider>
-              </HandoffProvider>
-            </ImportSessionsProvider>
-          </BestOfNProvider>
-        </ThreadShareProvider>
-      </ApplyToLocalProvider>
-    </WorkspaceProvider>
+    <ToastProvider>
+      <WorkspaceProvider>
+        <ApplyToLocalProvider>
+          <ThreadShareProvider>
+            <BestOfNProvider>
+              <ImportSessionsProvider>
+                <HandoffProvider>
+                  <ThreadActionsProvider>
+                    <Shell />
+                  </ThreadActionsProvider>
+                </HandoffProvider>
+              </ImportSessionsProvider>
+            </BestOfNProvider>
+          </ThreadShareProvider>
+        </ApplyToLocalProvider>
+      </WorkspaceProvider>
+    </ToastProvider>
   );
 }

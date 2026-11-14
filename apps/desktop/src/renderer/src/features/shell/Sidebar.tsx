@@ -2,17 +2,17 @@ import { useUpdates } from "../../lib/updates";
 import { gatewayConnectionLabel } from "../../lib/harness";
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type MouseEvent } from "react";
 import { usePanelResize } from "../../lib/panel-resize";
-import { groupThreadsByTag, hasTags, parseThreadQuery, type Session } from "@capsule/shared";
+import { groupThreadsByTag, hasTags, parseThreadQuery, threadShelf, type Session } from "@capsule/shared";
+import { useSessionActions } from "../triage/session-actions";
+import { formatWakeTime, useThreadTriage } from "../../lib/thread-triage";
 import {
   buildProjectActionMenuItems,
-  buildSessionActionMenuItems,
   copyAnchor,
   type ActionMenuItem,
   type MenuAnchor,
 } from "../../lib/action-menu";
 import { showNativeContextMenu } from "../../lib/bridge";
 import { ThreadPullRequestMark, ThreadTemporaryMark } from "../threads/ThreadMarks";
-import { useThreadActions } from "../threads/ThreadActions";
 import { NewConversationMenu } from "../threads/NewConversationMenu";
 import { CHANNEL_PREFS_EVENT, loadChannelPrefs, unreadChannelCount } from "../../lib/channel-prefs";
 import {
@@ -26,6 +26,7 @@ import {
   SIDEBAR_GROUPING_KEY,
   STATUS_THREAD_PREVIEW,
   visibleStatusThreads,
+  SHELF_GROUPS,
   type SidebarGrouping,
   type SidebarStatusGroupId,
   resolveSidebarThreadKind,
@@ -39,14 +40,14 @@ import { SETTINGS_TABS } from "../settings/SettingsView";
 import { searchSettings } from "../settings/settings-search";
 import { useWorkspace, type View } from "../../lib/workspace";
 import { ActionMenu } from "./ActionMenu";
-import { useThreadShare } from "../share/ThreadShare";
-import { useHandoff } from "../handoff/Handoff";
 import { useImportSessions } from "../import/ImportSessions";
 import { MenuSelect } from "./MenuSelect";
 import { AddProjectPicker, type ProjectSourceId } from "./AddProjectPicker";
 import { CloneRepositoryDialog } from "./CloneRepositoryDialog";
 import { SidebarToggle } from "./SidebarControl";
 import { SidebarThreadPreview } from "./SidebarThreadPreview";
+import { useFolderDrop } from "./useFolderDrop";
+import { formatUserError } from "../../lib/errors";
 import { AgentGlyph } from "./AgentGlyph";
 import {
   ArchiveIcon,
@@ -157,15 +158,25 @@ export function Sidebar() {
     openPath,
     ready,
     harnesses,
+    refresh,
+    setNotice,
   } = useWorkspace();
-  const share = useThreadShare();
-  const handoff = useHandoff();
   /* A read-only paired device sees the list; changing it belongs to the desktop or a control pairing. */
   const readOnlyPeer = api.isDesktop === false && api.remoteMode !== "control";
   const importSessions = useImportSessions();
   const [menu, setMenu] = useState<MenuState>();
   const bestOfN = useBestOfN();
   const [openComparisons, setOpenComparisons] = useState<Set<string>>(new Set());
+  const sessionActions = useSessionActions();
+  const folderDrop = useFolderDrop();
+  const triage = useThreadTriage();
+  const [openShelves, setOpenShelves] = useState<Set<string>>(new Set());
+  const toggleShelf = (key: string) => setOpenShelves((current) => {
+    const next = new Set(current);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    return next;
+  });
   const sidebarRef = useRef<HTMLElement>(null);
   const focusedInside = useRef(false);
   useLayoutEffect(() => {
@@ -200,6 +211,18 @@ export function Sidebar() {
   const update = useUpdates();
   const { status: updateResult, busy: checkingUpdate, label: updateLabel, run: runUpdateCheck } = update;
   const [draggedPinnedId, setDraggedPinnedId] = useState<string>();
+  const [draggedProjectId, setDraggedProjectId] = useState<string>();
+  const [projectDropTarget, setProjectDropTarget] = useState<string>();
+  async function moveProject(sourceId: string, targetId: string) {
+    const ordered = projects.map((project) => project.id);
+    const from = ordered.indexOf(sourceId);
+    const to = ordered.indexOf(targetId);
+    if (from < 0 || to < 0 || from === to) return;
+    ordered.splice(from, 1);
+    ordered.splice(to, 0, sourceId);
+    try { await api.reorderProjects(ordered); await refresh(); }
+    catch (error) { setNotice(formatUserError(error)); }
+  }
   const [cloneOpen, setCloneOpen] = useState<"git-url" | "github">();
   const [addProjectOpen, setAddProjectOpen] = useState(false);
 
@@ -214,10 +237,10 @@ export function Sidebar() {
   const [restLimit, setRestLimit] = useState<Record<string, number>>({});
   const [recentLimit, setRecentLimit] = useState(20);
   const [grouping, setGrouping] = useState(() => readSidebarGrouping(() => localStorage.getItem(SIDEBAR_GROUPING_KEY)));
-  const threadActions = useThreadActions();
   const [expandedGroups, setExpandedGroups] = useState<Set<SidebarStatusGroupId>>(new Set());
   const latestRuns = useMemo(() => latestSidebarRuns(projectRuns), [projectRuns]);
   const pendingApprovals = approvals.filter((item) => item.status === "pending").length;
+  const askingRuns = useMemo(() => new Set(approvals.filter((item) => item.status === "pending" && item.details?.questions?.length).map((item) => item.runId)), [approvals]);
   const [channelUnread, setChannelUnread] = useState(() => unreadChannelCount(loadChannelPrefs()));
   useEffect(() => {
     const sync = () => setChannelUnread(unreadChannelCount(loadChannelPrefs()));
@@ -233,9 +256,10 @@ export function Sidebar() {
   const visibleSessions = useMemo(() => threadQuery.tags.length ? sessions.filter((session) => hasTags(session, threadQuery.tags)) : sessions, [sessions, threadQuery]);
   const threadsByProject = useMemo(() => indexSidebarThreads(visibleSessions), [visibleSessions]);
   const projectNames = useMemo(() => new Map(projects.map((project) => [project.id, project.name])), [projects]);
+  const canReorderProjects = grouping === "project" && !searching && api.isDesktop !== false && projects.length > 1;
   /* Recent is a way of grouping the one list, not a second copy of it under the projects. */
   const recentThreads = useMemo(() => grouping === "recent" ? [...threadsByProject.values()].flat()
-    .filter((thread) => projectNames.has(thread.projectId) && (!needle || thread.title.toLowerCase().includes(needle)))
+    .filter((thread) => projectNames.has(thread.projectId) && threadShelf(thread) !== "snoozed" && (!needle || thread.title.toLowerCase().includes(needle)))
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)) : [], [grouping, threadsByProject, projectNames, needle]);
 
   const kindOf = (session: Session): SidebarThreadKind => {
@@ -325,55 +349,10 @@ export function Sidebar() {
       return;
     }
     const session = sessions.find((item) => item.id === id);
-    const folder =
-      session?.workingDirectory ||
-      projects.find((item) => item.id === session?.projectId)?.workingDirectory;
-    if (session && threadActions.run(action, session)) return;
-    if (action === "rename") {
-      setEditing({ kind: "session", id, value: session?.title ?? "", location });
-      return;
+    if (!session) return;
+    if (sessionActions.run(session, action) === "rename") {
+      setEditing({ kind: "session", id, value: session.title, location });
     }
-    if (action === "pin") {
-      void pinSession(id, true);
-      return;
-    }
-    if (action === "unpin") {
-      void pinSession(id, false);
-      return;
-    }
-    if (action === "generate-title") {
-      void regenerateTitle(id);
-      return;
-    }
-    if (action === "open-folder" && folder) {
-      void openPath(folder);
-      return;
-    }
-    if (action === "copy-path" && folder) {
-      void navigator.clipboard.writeText(folder);
-      return;
-    }
-    if (action === "export-markdown") {
-      share.openExport(id);
-      return;
-    }
-    if (action === "copy-markdown") {
-      share.copyMarkdown(id);
-      return;
-    }
-    if (action === "handoff") {
-      handoff.openHandoff(id);
-      return;
-    }
-    if (action === "share-link") {
-      share.openShare(id);
-      return;
-    }
-    if (action === "archive") {
-      void archiveSession(id);
-      return;
-    }
-    if (action === "delete") deleteSession(id);
   }
 
   function itemsFor(kind: MenuState["kind"], id: string): ActionMenuItem[] {
@@ -388,17 +367,7 @@ export function Sidebar() {
       });
     }
     const session = sessions.find((item) => item.id === id);
-    const folder =
-      session?.workingDirectory ||
-      projects.find((item) => item.id === session?.projectId)?.workingDirectory;
-    return buildSessionActionMenuItems({
-      pinned: Boolean(session?.pinned),
-      ...(session ? { thread: threadActions.menuState(session) } : {}),
-      hasFolder: Boolean(folder),
-      share: { exportOffered: share.exportOffered, shareOffered: share.shareOffered },
-      handoff: !handoff.disabledReason,
-      readOnly: readOnlyPeer,
-    });
+    return session ? sessionActions.items(session) : [];
   }
 
   async function openActions(
@@ -486,7 +455,9 @@ export function Sidebar() {
     }
     const kind = kindOf(session);
     const active = session.id === sessionId;
-    const recede = shouldRecedeThread(kind, active);
+    const unread = !active && triage.isUnread(session);
+    const shelf = threadShelf(session);
+    const recede = !unread && shouldRecedeThread(kind, active);
     const run = latestRuns.get(session.id);
     const startedAt =
       kind === "working" && run && ["running", "queued", "waiting"].includes(run.status)
@@ -502,10 +473,10 @@ export function Sidebar() {
         data-menu-open={menu?.kind === "session" && menu.id === session.id ? "true" : undefined}
         /* The row is a button made of divs, so it has no name of its own —
            every conversation in the sidebar read as an unnamed control. */
-        aria-label={session.title}
+        aria-label={unread ? `${session.title}, unread` : shelf === "snoozed" && session.snoozedUntil ? `${session.title}, snoozed until ${formatWakeTime(session.snoozedUntil, new Date(), settings?.timeFormat)}` : session.title}
         aria-current={active ? "page" : undefined}
         aria-describedby={previewId}
-        className={`thread-row ${location === "recent" ? "sidebar-recent-row" : ""} ${active ? "active" : ""} ${recede ? "recede" : ""}`}
+        className={`thread-row ${location === "recent" ? "sidebar-recent-row" : ""} ${active ? "active" : ""} ${recede ? "recede" : ""} ${unread ? "unread" : ""}`}
         draggable={location === "project" && grouping === "project" && Boolean(session.pinned)}
         onDragStart={(event) => {
           if (grouping !== "project" || !session.pinned) return;
@@ -551,7 +522,7 @@ export function Sidebar() {
         }}
         onContextMenu={(event) => void openActions(event, "session", session.id)}
       >
-        <span className="row-slot" aria-hidden />
+        <span className="row-slot" aria-hidden>{unread ? <span className="thread-unread-dot" title="Unread" /> : null}</span>
         <span className="row-slot">
           {session.pinned ? <PinIcon size={11} /> : session.workspaceMode === "worktree" ? (
             <span className="thread-worktree" title={session.worktreeBranch ? `Own worktree on ${session.worktreeBranch}` : "Own worktree"} aria-label="Runs in its own worktree"><GitBranchIcon size={11} /></span>
@@ -571,9 +542,12 @@ export function Sidebar() {
               {startedAt ? <WorkingDuration startedAt={startedAt} /> : null}
             </span>
           ) : kind === "approval" ? (
-            <span className="thread-status approval"><ShieldIcon size={10} />Approval</span>
+            askingRuns.has(run?.id ?? "") ? <span className="thread-status approval"><MessageSquareIcon size={10} />Question</span>
+              : <span className="thread-status approval"><ShieldIcon size={10} />Approval</span>
           ) : kind === "failed" ? (
             <span className="thread-status failed"><AlertTriangleIcon size={10} />Failed</span>
+          ) : shelf === "snoozed" && session.snoozedUntil ? (
+            <span className="thread-wake" title={`Wakes ${formatWakeTime(session.snoozedUntil, new Date(), settings?.timeFormat)}`}>{formatWakeTime(session.snoozedUntil, new Date(), settings?.timeFormat, true)}</span>
           ) : (
             <span className="thread-time">{compactRelativeTime(session.updatedAt)}</span>
           )}
@@ -761,7 +735,8 @@ export function Sidebar() {
   }
 
   return (
-    <aside {...focusProps} className="sidebar" data-testid="app-sidebar">
+    <aside {...focusProps} {...folderDrop.handlers} className={`sidebar${folderDrop.over ? " folder-drop-over" : ""}`} data-testid="app-sidebar">
+      {folderDrop.over && <div className="sidebar-drop-hint" aria-hidden><FolderPlusIcon size={18} />Drop a folder to add it as a project</div>}
       <div className="sidebar-header">
         <SidebarToggle />
         <span className="brand">Capsule</span>
@@ -865,7 +840,12 @@ export function Sidebar() {
             return <section className="sidebar-status-group" key={group.id} aria-label={group.label}>
               <h3 className="session-label">{group.label}<span>{group.threads.length}</span></h3>
               {visible.map((session) => renderThread(session))}
-              {hidden > 0 || (expanded && group.threads.length > STATUS_THREAD_PREVIEW) ? <button type="button" className="show-more" onClick={() => setExpandedGroups((current) => {
+              {SHELF_GROUPS.has(group.id) ? <button type="button" className="show-more" aria-expanded={expanded} onClick={() => setExpandedGroups((current) => {
+                const next = new Set(current);
+                if (next.has(group.id)) next.delete(group.id);
+                else next.add(group.id);
+                return next;
+              })}>{expanded ? "Hide" : `Show ${group.label.toLowerCase()}`}</button> : hidden > 0 || (expanded && group.threads.length > STATUS_THREAD_PREVIEW) ? <button type="button" className="show-more" onClick={() => setExpandedGroups((current) => {
                 const next = new Set(current);
                 if (next.has(group.id)) next.delete(group.id);
                 else next.add(group.id);
@@ -929,7 +909,30 @@ export function Sidebar() {
                 <div
                   role="button"
                   tabIndex={0}
-                  className={`project-row ${item.id === projectId ? "active" : ""}`}
+                  className={`project-row ${item.id === projectId ? "active" : ""}${projectDropTarget === item.id && draggedProjectId !== item.id ? " project-drop-target" : ""}`}
+                  draggable={canReorderProjects}
+                  onDragStart={(event) => {
+                    if (!canReorderProjects) return;
+                    setDraggedProjectId(item.id);
+                    event.dataTransfer.effectAllowed = "move";
+                    event.dataTransfer.setData("application/x-capsule-project", item.id);
+                  }}
+                  onDragEnd={() => { setDraggedProjectId(undefined); setProjectDropTarget(undefined); }}
+                  onDragOver={(event) => {
+                    if (!draggedProjectId || !Array.from(event.dataTransfer.types).includes("application/x-capsule-project")) return;
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "move";
+                    setProjectDropTarget(item.id);
+                  }}
+                  onDrop={(event) => {
+                    const sourceId = event.dataTransfer.getData("application/x-capsule-project");
+                    if (!sourceId) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setDraggedProjectId(undefined);
+                    setProjectDropTarget(undefined);
+                    void moveProject(sourceId, item.id);
+                  }}
                   aria-describedby={`project-preview-${item.id}`}
                   data-menu-open={menu?.kind === "project" && menu.id === item.id ? "true" : undefined}
                   aria-label={item.name}
@@ -1023,6 +1026,19 @@ export function Sidebar() {
                       )}
                       {!searching && limit > SETTLED_THREAD_PREVIEW && <button type="button" className="show-more"
                         onClick={() => setRestLimit((current) => ({ ...current, [item.id]: SETTLED_THREAD_PREVIEW }))}>Show fewer</button>}
+                      {([["snoozed", "Snoozed", groups.shelvedSnoozed], ["settled", "Settled", groups.shelvedSettled]] as const).map(([shelfId, label, shelved]) => {
+                        if (shelved.length === 0) return null;
+                        const key = `${item.id}:${shelfId}`;
+                        const open = Boolean(needle) || openShelves.has(key);
+                        const shown = open ? shelved : shelved.filter((thread) => thread.id === sessionId);
+                        return <Fragment key={shelfId}>
+                          <button type="button" className="sidebar-shelf-toggle" aria-expanded={open} onClick={() => toggleShelf(key)}>
+                            {open ? <ChevronDownIcon size={11} /> : <ChevronRightIcon size={11} />}
+                            {label}<span className="shelf-count">{shelved.length}</span>
+                          </button>
+                          {shown.map((thread) => renderThread(thread))}
+                        </Fragment>;
+                      })}
                     </>
                   )}
                 </div>

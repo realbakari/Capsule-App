@@ -25,7 +25,10 @@ export type ActionMenuIcon =
   | "pause"
   | "play"
   | "tag"
-  | "bookmark";
+  | "bookmark"
+  | "check"
+  | "clock"
+  | "dot";
 
 export type SessionActionId =
   | "rename"
@@ -44,7 +47,15 @@ export type SessionActionId =
   | "share-link"
   | "handoff"
   | "archive"
-  | "delete";
+  | "delete"
+  | "mark-unread"
+  | "mark-read"
+  | "settle"
+  | "unsettle"
+  | "snooze"
+  | "wake"
+  | "copy-markdown"
+  | "copy-branch";
 export type ProjectActionId =
   | "rename"
   | "new-conversation"
@@ -109,15 +120,32 @@ export function buildSessionActionMenuItems(state: {
   handoff?: boolean;
   /** A read-only paired device: only the items that copy or read remain. */
   readOnly?: boolean;
+  /** Triage needs the desktop; a paired viewer reads but never writes it. */
+  triage?: { unread: boolean; canMarkUnread: boolean; shelf: "active" | "settled" | "snoozed" };
+  branch?: string;
 }): ActionMenuItem[] {
+  const triage = state.triage;
+  const triageItems: ActionMenuItem[] = triage ? [
+    triage.unread
+      ? { id: "mark-read", label: "Mark as read", icon: "check" }
+      : { id: "mark-unread", label: "Mark unread", icon: "dot", enabled: triage.canMarkUnread, shortcut: "⇧⌘U" },
+    triage.shelf === "settled"
+      ? { id: "unsettle", label: "Return to active", icon: "refresh" }
+      : { id: "settle", label: "Settle", icon: "check" },
+    triage.shelf === "snoozed"
+      ? { id: "wake", label: "Wake now", icon: "bell" }
+      : { id: "snooze", label: "Snooze…", icon: "clock" },
+  ] : [];
   const items: ActionMenuItem[] = [
-    { id: "rename", label: "Rename", icon: "pencil" },
+    ...triageItems,
+    { id: "rename", label: "Rename", icon: "pencil", separatorBefore: triageItems.length > 0 },
     {
       id: state.pinned ? "unpin" : "pin",
       label: state.pinned ? "Unpin" : "Pin",
       icon: state.pinned ? "pin-off" : "pin",
     },
     { id: "generate-title", label: "Generate title", icon: "refresh" },
+    ...(state.branch ? [{ id: "copy-branch" as const, label: "Copy branch name", icon: "copy" as const }] : []),
     ...(state.thread?.keep ? [{ id: "keep" as const, label: "Keep this conversation", icon: "bookmark" as const, separatorBefore: true }] : []),
     ...(state.thread?.tags ? [{ id: "tags" as const, label: "Tags…", icon: "tag" as const, separatorBefore: !state.thread.keep }] : []),
     ...(state.thread?.pause ? [{
@@ -132,7 +160,6 @@ export function buildSessionActionMenuItems(state: {
             id: "open-folder" as const,
             label: "Open folder",
             icon: "folder" as const,
-            separatorBefore: true,
           },
           { id: "copy-path" as const, label: "Copy path", icon: "copy" as const },
         ]
@@ -147,19 +174,15 @@ export function buildSessionActionMenuItems(state: {
           title: state.applyToLocal.disabledReason,
         }]
       : []),
-    ...(state.share
-      ? [
-          ...(state.share.exportOffered ? [{ id: "export-markdown" as const, label: "Export as Markdown…", icon: "file" as const, separatorBefore: true }] : []),
-          { id: "copy-markdown" as const, label: "Copy as Markdown", icon: "copy" as const, separatorBefore: !state.share.exportOffered },
-          ...(state.share.shareOffered ? [{ id: "share-link" as const, label: "Share read-only link…", icon: "link" as const }] : []),
-        ]
-      : []),
+    ...(state.share?.exportOffered ? [{ id: "export-markdown" as const, label: "Export as Markdown…", icon: "file" as const, separatorBefore: true }] : []),
+    { id: "copy-markdown", label: "Copy as Markdown", icon: "copy", separatorBefore: !state.share?.exportOffered },
+    ...(state.share?.shareOffered ? [{ id: "share-link" as const, label: "Share read-only link…", icon: "link" as const }] : []),
     ...(state.handoff ? [{ id: "handoff" as const, label: "Hand off to a new conversation…", icon: "message" as const, separatorBefore: true }] : []),
     { id: "archive", label: "Archive", icon: "archive", separatorBefore: true },
     { id: "delete", label: "Delete", icon: "trash", destructive: true },
   ];
   if (!state.readOnly) return items;
-  const reads = items.filter((item) => item.id === "copy-path" || item.id === "copy-markdown");
+  const reads = items.filter((item) => item.id === "copy-path" || item.id === "copy-markdown" || item.id === "copy-branch");
   return reads.map((item, index) => ({ ...item, separatorBefore: index > 0 && item.separatorBefore }));
 }
 

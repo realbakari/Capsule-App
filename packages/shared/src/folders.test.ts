@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addFolderToProject,
+  conversationFolderRoots,
   folderBasename,
   isAttachedFolder,
   makePrimaryFolder,
@@ -63,5 +64,14 @@ describe("project folders", () => {
     expect(isAttachedFolder(project, "/Users/me/Open Source/Capsule/")).toBe(true);
     expect(isAttachedFolder(project, "/tmp")).toBe(false);
     expect(folderBasename(project.workingDirectory)).toBe("Capsule");
+  });
+});
+
+describe("conversationFolderRoots", () => {
+  it("puts a worktree in place of the primary folder and keeps the extras", () => {
+    const project = { workingDirectory: "/code/app", extraFolders: ["/code/docs"] };
+    expect(conversationFolderRoots(project)).toEqual(["/code/app", "/code/docs"]);
+    expect(conversationFolderRoots(project, "/code/app")).toEqual(["/code/app", "/code/docs"]);
+    expect(conversationFolderRoots(project, "/trees/app-fix")).toEqual(["/trees/app-fix", "/code/docs"]);
   });
 });

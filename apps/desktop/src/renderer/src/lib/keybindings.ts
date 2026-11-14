@@ -57,16 +57,28 @@ export const COMMANDS: KeyCommand[] = [
   { id: "open-model", label: "Choose model", chord: { key: "i", meta: true, shift: true } },
   { id: "open-effort", label: "Choose effort", chord: { key: "e", meta: true, shift: true } },
   { id: "cycle-favorite-model", label: "Next favorite model", chord: { key: "m", meta: true, alt: true } },
+  { id: "settle-and-next", label: "Settle and go to next", chord: { key: "e", meta: true } },
+  { id: "mark-unread", label: "Mark conversation unread", chord: { key: "u", meta: true, shift: true } },
+  { id: "reopen-panel", label: "Reopen the closed panel", chord: { key: "t", meta: true, shift: true } },
+  /* ⌘O stays Open folder (the menu's); the Option variant opens the conversation's folder in the favourite app. */
+  { id: "open-in-favorite", label: "Open in favourite app", chord: { key: "o", meta: true, alt: true } },
+  /* L for listen: ⌘⇧D already opens Review, and ⌥ chords arrive as composed characters on macOS. */
+  { id: "dictation", label: "Start or finish dictation", chord: { key: "l", meta: true, shift: true } },
 ];
 
 /** Shortcuts that live outside this registry (in a surface or the composer), shown in the shortcuts sheet. */
 export const FIXED_SHORTCUTS: Array<{ label: string; keys: string[] }> = [
   { label: "Send", keys: ["↵"] },
   { label: "Stop the running turn", keys: ["Esc"] },
+  { label: "Cancel dictation and restore the draft", keys: ["Esc"] },
   { label: "Previous prompt", keys: ["↑"] },
   { label: "Switch Plan and Act", keys: ["⇧", "Tab"] },
+  { label: "Edit the last queued follow-up", keys: ["⌥", "↑"] },
+  { label: "Next region: sidebar, conversation, composer, panel", keys: ["F6"] },
+  { label: "Previous region", keys: ["⇧", "F6"] },
   { label: "Side chat", keys: ["⌥", "⌘", "S"] },
   { label: "Open the terminal", keys: ["⌃", "`"] },
+  { label: "Add terminal selection to the message", keys: ["⌘", "L"] },
   { label: "Skills", keys: ["⇧", "⌘", "S"] },
   { label: "Agents", keys: ["⇧", "⌘", "R"] },
 ];
@@ -118,9 +130,7 @@ export function chordSymbols(chord: KeyChord): string[] {
  * on ⌘⇧B, so a binding silently shadows every chord built on top of it.
  */
 export function matchesChord(event: KeyboardEvent, chord: KeyChord): boolean {
-  // Option turns a letter into another character (⌥M is µ); the physical key still names the letter.
-  const key = event.altKey && /^Key[A-Z]$/.test(event.code ?? "") ? event.code.slice(3).toLowerCase() : event.key.toLowerCase();
-  if (key !== chord.key.toLowerCase()) return false;
+  if (chordKey(event) !== chord.key.toLowerCase()) return false;
   // meta covers ⌘ on macOS and Ctrl elsewhere; a chord asking for neither must
   // not fire while one is held.
   const primary = event.metaKey || event.ctrlKey;
@@ -128,6 +138,34 @@ export function matchesChord(event: KeyboardEvent, chord: KeyChord): boolean {
   if (Boolean(chord.shift) !== event.shiftKey) return false;
   if (Boolean(chord.alt) !== event.altKey) return false;
   return true;
+}
+
+/**
+ * The person's overrides from settings. A stored chord that no longer parses
+ * falls back to the default rather than leaving the command unreachable.
+ */
+export function keymapFrom(stored: Record<string, string> | undefined): Keymap {
+  const map: Keymap = {};
+  for (const [id, value] of Object.entries(stored ?? {})) {
+    const chord = parseChord(value);
+    if (chord) map[id] = chord;
+  }
+  return map;
+}
+
+/** A command's current keys as one label, such as "⇧⌘D", or undefined when it has none. */
+export function shortcutLabel(id: string, keymap: Keymap | undefined, commands: KeyCommand[] = COMMANDS): string | undefined {
+  const command = commands.find((item) => item.id === id);
+  return command ? chordSymbols(chordFor(command, keymap)).join("") : undefined;
+}
+
+/**
+ * The key a chord names. Option changes the character on macOS (⌥O types
+ * "ø"), so with Option held the physical letter or digit is the key.
+ */
+export function chordKey(event: Pick<KeyboardEvent, "key" | "code" | "altKey">): string {
+  const physical = event.altKey ? /^(?:Key([A-Z])|Digit([0-9]))$/.exec(event.code ?? "") : null;
+  return (physical?.[1] ?? physical?.[2] ?? event.key).toLowerCase();
 }
 
 /** Effective chord for a command, honouring a user override. */

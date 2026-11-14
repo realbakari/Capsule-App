@@ -100,6 +100,25 @@ still be inside the conversation's allowed workspace. Image links open a file
 preview or web destination only when clicked, without loading remote images
 automatically. Review links continue to resolve against their web page.
 
+Replies can draw diagrams, typeset math and show images:
+
+- A `mermaid` code block appears as a diagram once the block is complete, in
+  the current light or dark theme. **Source** shows the text behind it, the
+  expand button opens it larger, and a diagram with a syntax error shows its
+  code with a short reason.
+- `$x^2$` typesets inline math; `$$ … $$` on its own lines and `math` code
+  blocks typeset display math. Prices such as "$5 and $10", shell variables
+  such as `$HOME`, and anything in code stay as written. If a pair of dollar
+  signs is read as math by mistake, write `\$` instead.
+- An image that points to a file in the conversation's folder shows inline.
+  Images from the web do not load inside replies; their placeholder shows the
+  address and an **Open** button that shows the image in the built-in browser.
+  Click an image to see it larger, switch between **Fit** and **100%**, and
+  press Escape to close.
+- An `html` code block has a **Preview** button. The preview runs offline in an
+  isolated frame with scripts off. Turn on **Run scripts** only for code you
+  trust; even then the page cannot reach the network, Capsule, or your files.
+
 Paragraph spacing, list markers and medium-weight emphasis keep long replies
 readable without changing your chosen conversation text size or rewriting
 saved messages.
@@ -202,7 +221,9 @@ runtime route cannot carry. Missing information stays labelled as not reported.
 
 The workspace strip below the prompt holds the folder, terminal, checkout mode
 and branch. For Git folders, **Current checkout** or **Worktree** also offers
-**Change folder**. In compact panes the workspace and branch labels become icons;
+**Change folder**. An empty worktree conversation also shows **from**, the branch
+its worktree starts from; choose another or search for one before the first
+message. In compact panes the workspace and branch labels become icons;
 their names remain in tooltips and menus. **Conversation tools** holds prompt
 stash and advanced agent settings. Supported agent controls wrap on narrow
 screens; there is no separate conversation-mode selector. Menus support keyboard navigation and Escape; closing one returns
@@ -445,6 +466,32 @@ prompt** fills them in and puts the text in the composer, after anything you
 already wrote. A prompt without blanks goes straight in. Nothing is sent
 until you send.
 
+## Dictate a prompt
+
+On a Mac, press the microphone beside the paperclip, or `⇧⌘L`, and speak.
+Recognition runs on the Mac itself: audio is never sent to a speech service.
+The words appear where the cursor was, or replace the text you had selected,
+and they refine as you keep talking. The prompt is read-only while you dictate.
+
+- `⇧⌘L` again, **Done**, the microphone button or `Enter` keeps the text.
+- `Esc` or **Cancel** stops listening and puts the draft back exactly as it was.
+  While you dictate, `Esc` cancels dictation rather than stopping a running turn.
+- Dictation stops on its own after two minutes. The last 15 seconds count down
+  beside the recording dot, and what you said so far is kept.
+
+The first time, macOS asks to allow the microphone and speech recognition. If
+either is turned off, or speech recognition is not available for your language
+on this Mac, the composer says so and offers a button that opens the right page
+of System Settings. Dictation uses your system language when the Mac can
+recognize it on device, and US English otherwise.
+
+Switching to another conversation stops dictation. The companion and the
+composer share the microphone, so one waits while the other is listening.
+
+A paired browser cannot dictate: its microphone button explains that dictation
+runs on the Mac. On Windows and Linux the button explains that dictation is not
+available.
+
 ## Stash a prompt
 
 Press `⌘S` while the composer contains text or attachments to move that draft
@@ -525,3 +572,9 @@ original thread is not changed.
 The summary is written from the transcript rather than asked of the agent, so
 it works for every agent, on direct mode and through the Gateway, and whether
 or not the agent is still running. It costs no turn.
+
+## Quoting a reply
+
+Select part of an agent's reply and choose **Quote in reply**. The text goes into
+your message as a quote where your cursor was, so you can ask about exactly that
+part. Quoting works within one reply at a time.

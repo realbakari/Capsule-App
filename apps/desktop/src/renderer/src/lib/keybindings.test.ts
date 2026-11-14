@@ -6,8 +6,10 @@ import {
   commandForEvent,
   conflictsFor,
   formatChord,
+  keymapFrom,
   matchesChord,
   parseChord,
+  shortcutLabel,
 } from "./keybindings.js";
 
 function key(init: Partial<KeyboardEvent> & { key: string }): KeyboardEvent {
@@ -49,6 +51,13 @@ describe("matchesChord", () => {
 
   it("is case insensitive on the key", () => {
     expect(matchesChord(key({ key: "B", metaKey: true }), { key: "b", meta: true })).toBe(true);
+  });
+
+  it("reads the physical key when Option changes the character", () => {
+    const optionO = key({ key: "ø", code: "KeyO", metaKey: true, altKey: true });
+    expect(matchesChord(optionO, { key: "o", meta: true, alt: true })).toBe(true);
+    expect(commandForEvent(optionO, undefined)?.id).toBe("open-in-favorite");
+    expect(commandForEvent(key({ key: "o", code: "KeyO", metaKey: true }), undefined)).toBeUndefined();
   });
 });
 
@@ -139,5 +148,15 @@ describe("Option chords", () => {
     const event = key({ key: "µ", code: "KeyM", metaKey: true, altKey: true });
     expect(commandForEvent(event, undefined)?.id).toBe("cycle-favorite-model");
     expect(commandForEvent(key({ key: "m", code: "KeyM", metaKey: true, shiftKey: true }), undefined)?.id).toBe("open-mode");
+  });
+});
+
+describe("keymapFrom and shortcutLabel", () => {
+  it("keeps parsable overrides, drops the rest, and labels the effective chord", () => {
+    const keymap = keymapFrom({ "toggle-sidebar": "meta+shift+l", "toggle-terminal": "nonsense+j" });
+    expect(Object.keys(keymap)).toEqual(["toggle-sidebar"]);
+    expect(shortcutLabel("toggle-sidebar", keymap)).toBe("⇧⌘L");
+    expect(shortcutLabel("toggle-terminal", keymap)).toBe("⌘J");
+    expect(shortcutLabel("not-a-command", keymap)).toBeUndefined();
   });
 });

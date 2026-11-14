@@ -1,0 +1,38 @@
+/* A file header with a "Viewed" box: the row, not the button, sticks. */
+.file-diff-head-row {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  display: flex;
+  align-items: center;
+  background: var(--code-header);
+}
+.file-diff-head-row:hover { background: var(--bg-hover); }
+.file-diff-head-row > .file-diff-head {
+  position: static;
+  flex: 1 1 auto;
+  min-width: 0;
+  background: transparent;
+}
+.file-diff-head-row > .file-diff-head:hover { background: transparent; }
+.file-diff-viewed {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: var(--control-h-md);
+  padding: 0 0.6rem 0 0.4rem;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  user-select: none;
+}
+.file-diff-viewed:hover { color: var(--text); }
+.file-diff-viewed input { margin: 0; accent-color: var(--text-muted); cursor: pointer; }
+.file-diff.is-viewed .file-diff-name { color: var(--text-muted); }
+.diff-viewed-count {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}

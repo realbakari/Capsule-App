@@ -251,6 +251,15 @@ export function PaperclipIcon(props: IconProps) {
   );
 }
 
+export function MicIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" />
+    </Svg>
+  );
+}
+
 export function BookmarkIcon(props: IconProps) {
   return (
     <Svg {...props}>
@@ -804,4 +813,21 @@ export function ThumbsUpIcon(props: IconProps) {
 
 export function ThumbsDownIcon(props: IconProps) {
   return <Svg {...props}><path d="M17 14V2M9 18.1 10 14H4.2a2 2 0 0 1-1.9-2.6l2.3-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.8a2 2 0 0 0-1.8 1.1L12 22a3.1 3.1 0 0 1-3-3.9Z" /></Svg>;
+}
+
+export function ClockIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <polyline points="12 7 12 12 15.5 14" />
+    </Svg>
+  );
+}
+
+export function DotIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="4" fill="currentColor" stroke="none" />
+    </Svg>
+  );
 }

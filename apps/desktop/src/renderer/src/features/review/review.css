@@ -111,3 +111,35 @@
 .review-diff-bar .menu-select { margin-left: auto; }
 .review-diff-note { margin: 0.25rem 0 0.5rem; font-size: var(--text-xs); }
 .review-diff-files { display: flex; flex-direction: column; }
+/* Review: what is compared, and the diff for it. */
+.review-scope-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+.review-scope-select { display: flex; flex: 1 1 14rem; min-width: 0; }
+.review-scope-select .field-select { width: 100%; min-width: 0; text-overflow: ellipsis; }
+.review-ws-toggle { flex: none; min-height: 2rem; }
+.review-ws-toggle.active {
+  background: var(--bg-active);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.review-ws-toggle.active::before { content: "✓"; margin-right: 0.35rem; }
+.review-turn-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 0.75rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+.review-turn-banner span { flex: 1 1 14rem; min-width: 0; }
+.review-turn-banner .chip { flex: none; }

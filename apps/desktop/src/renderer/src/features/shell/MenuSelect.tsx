@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 
 import { ChevronDownIcon } from "./icons";
 import { floatingPlacement } from "../../lib/floating-placement";
+import { filterMenuOptions } from "../../lib/worktree-base";
+import "./menu-select-search.css";
 
 export interface MenuOption {
   id: string;
@@ -28,6 +30,8 @@ export function MenuSelect({
   icon,
   unavailableReason,
   iconOnly = false,
+  search,
+  footer,
 }: {
   value: string;
   options: MenuOption[];
@@ -38,8 +42,15 @@ export function MenuSelect({
   icon?: ReactNode;
   unavailableReason?: string;
   iconOnly?: boolean;
+  /** A filter field above the options, for lists too long to scan. */
+  search?: { label: string; placeholder: string; empty: string };
+  /** A note under the options, such as what the default means here. */
+  footer?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const searchField = useRef<HTMLInputElement>(null);
+  const shown = search ? filterMenuOptions(options, query) : options;
   const root = useRef<HTMLDivElement>(null);
   const pop = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -73,10 +84,11 @@ export function MenuSelect({
   }, [open]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) { setQuery(""); return; }
     const selected = pop.current?.querySelector<HTMLElement>('[aria-selected="true"]') ?? pop.current?.querySelector<HTMLElement>('[role="option"]');
     selected?.scrollIntoView({ block: "nearest" });
-    selected?.focus({ preventScroll: true });
+    if (searchField.current) searchField.current.focus({ preventScroll: true });
+    else selected?.focus({ preventScroll: true });
     const onPointer = (event: PointerEvent) => {
       const node = event.target as Node;
       if (root.current?.contains(node) || pop.current?.contains(node)) return;
@@ -88,7 +100,8 @@ export function MenuSelect({
         setOpen(false);
         trigger.current?.focus();
       }
-      if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+      const typing = event.target === searchField.current;
+      if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key) && !(typing && (event.key === "Home" || event.key === "End"))) {
         event.preventDefault();
         const rows = Array.from(pop.current?.querySelectorAll<HTMLButtonElement>('[role="option"]') ?? []);
         if (!rows.length) return;
@@ -135,9 +148,31 @@ export function MenuSelect({
             aria-label={ariaLabel}
             style={pos}
           >
-            {options.map((item, index) => (
+            {search ? (
+              <div className="menu-select-search" role="presentation">
+                <input
+                  ref={searchField}
+                  type="search"
+                  aria-label={search.label}
+                  placeholder={search.placeholder}
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter") return;
+                    const first = shown.find((item) => !item.disabledReason);
+                    if (!first) return;
+                    event.preventDefault();
+                    onChange(first.id);
+                    setOpen(false);
+                    trigger.current?.focus();
+                  }}
+                />
+              </div>
+            ) : null}
+            {search && shown.length === 0 ? <p className="menu-select-empty" role="presentation">{search.empty}</p> : null}
+            {shown.map((item, index) => (
               <div key={item.id} role="presentation">
-              {item.group && item.group !== options[index - 1]?.group && <div className="menu-option-group" role="presentation">{item.group}</div>}
+              {item.group && item.group !== shown[index - 1]?.group && <div className="menu-option-group" role="presentation">{item.group}</div>}
               <button
                 type="button"
                 key={item.id}
@@ -161,6 +196,7 @@ export function MenuSelect({
               </button>
               </div>
             ))}
+            {footer ? <div className="menu-select-footer" role="presentation">{footer}</div> : null}
           </div>,
           document.body,
         )}

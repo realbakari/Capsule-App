@@ -61,20 +61,25 @@ import {
   type SubsystemStatus,
   type WorkspaceMode,
   type HunkApply,
+  type StartPullRequestInput,
 } from "@capsule/shared";
 
 import type { SettingsSectionId } from "../features/settings/settings-search";
-import { commandForEvent, parseChord, type Keymap } from "./keybindings";
+import { commandForEvent, keymapFrom, type Keymap } from "./keybindings";
+import { TOGGLE_DICTATION_EVENT } from "./dictation";
 import { adjacentSession } from "./session-cycle";
 import { isNarrow } from "./narrow";
 import { setDisplayPrefs } from "./display-prefs";
 import { openComposerControl, type ComposerControl } from "./composer-controls";
-import { SHOW_SHORTCUTS_EVENT } from "./shortcuts-event";
+import { OPEN_IN_EVENT, SHOW_SHORTCUTS_EVENT } from "./shortcuts-event";
 import { formatUserError } from "./errors";
 import { loadQueue, saveQueue, type QueuedPrompt } from "./prompt-queue";
 import { EMPTY_NAVIGATION, canGoBack as navigationCanGoBack, canGoForward as navigationCanGoForward, goBack as navigationBack, goForward as navigationForward, pruneNavigation, recordNavigation, type NavigationHistory } from "./navigation-history";
 import { contextUsageFromEvents, type ContextUsage } from "./context-window";
 import { harnessPreflightReason } from "./harness-preflight";
+import { useToasts } from "./toasts";
+import { BROWSER_FIND_EVENT } from "./browser-find";
+import { requestLabel, withSlowNotice } from "./slow-requests";
 import {
   promptDraftKey,
   readPromptStash,
@@ -282,13 +287,15 @@ export interface WorkspaceValue {
   deleteSession: (id: string) => void;
   archiveSession: (id: string) => Promise<void>;
   restoreSession: (id: string) => Promise<void>;
-  archiveUndo?: { id: string; title: string };
-  dismissArchiveUndo: () => void;
   openTerminal: () => Promise<void>;
   initializeGit: () => Promise<void>;
   saveProjectActions: (actions: ProjectAction[]) => Promise<{ saved: true } | { saved: false; error: string }>;
   workspaceMode: WorkspaceMode;
   setWorkspaceMode: (mode: WorkspaceMode) => Promise<void>;
+  /** Move a not-yet-started worktree thread to another base branch. */
+  setWorktreeBase: (ref: string) => Promise<void>;
+  /** Check a pull request out and open a thread on it with a draft that names it. Throws on failure. */
+  startPullRequestThread: (input: Omit<StartPullRequestInput, "projectId">) => Promise<{ detail: string }>;
   browserUrl: string;
   setBrowserUrl: (url: string) => void;
   projectRuns: Run[];
@@ -423,7 +430,9 @@ export function useWorkspace(): WorkspaceValue {
 const MESSAGE_PAGE_SIZE = 60;
 
 export function WorkspaceProvider({ children }: { children: ReactNode; }) {
-  const api = window.capsule;
+  /* Set below, once toasts exist; the bridge is wrapped once and stays stable. */
+  const slowNotice = useRef<(name: string, waiting: boolean) => void>(() => undefined);
+  const api = useMemo(() => withSlowNotice(window.capsule, (name, waiting) => slowNotice.current(name, waiting)), []);
   const stoppingRuns = useRef(new Set<string>());
   const [stoppingRunIds, setStoppingRunIds] = useState<string[]>([]);
   const [view, setView] = useState<View>("chat");
@@ -560,7 +569,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     return values;
   }, [sessions, projects, statusCache, statusVersion]);
   const [notice, setNotice] = useScopedState<string | undefined>(scope, undefined);
-  const [archiveUndo, setArchiveUndo] = useState<{ id: string; title: string }>();
+  const toasts = useToasts();
+  const slowToasts = useRef(new Map<string, string>());
+  slowNotice.current = (name, waiting) => {
+    const shown = slowToasts.current.get(name);
+    if (!waiting) { if (shown) toasts.dismiss(shown); slowToasts.current.delete(name); return; }
+    slowToasts.current.set(name, toasts.show({ key: `slow:${name}`, tone: "info", title: `Still waiting on ${requestLabel(name)}…`, detail: "This is taking longer than usual. The notice goes away when it finishes.", timeoutMs: 0 }));
+  };
   const archiving = useRef(new Set<string>());
   const restoring = useRef(new Set<string>());
   const currentSelection = useRef({ projectId, sessionId });
@@ -633,17 +648,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     diffFileState: settings?.diffFileState ?? "expanded",
   }), [settings?.timeFormat, settings?.toolCallDisplay, settings?.diffLayout, settings?.diffFileState]);
 
-  const keymap = useMemo<Keymap>(() => {
-    const stored = settings?.keybindings ?? {};
-    const map: Keymap = {};
-    for (const [id, value] of Object.entries(stored)) {
-      const chord = parseChord(value);
-      // A stored chord that no longer parses falls back to the default rather
-      // than leaving the command unreachable.
-      if (chord) map[id] = chord;
-    }
-    return map;
-  }, [settings?.keybindings]);
+  const keymap = useMemo<Keymap>(() => keymapFrom(settings?.keybindings), [settings?.keybindings]);
 
 
   const project = projects.find((item) => item.id === projectId);
@@ -1010,7 +1015,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
         if (command === "skills") setView("skills");
         if (command === "about") setAboutOpen(true);
         if (command === "approvals") setView("approvals");
-        if (command === "runs") setView("history");
         /*
          * Opened from the menu bar, which lists the threads waiting on a
          * person. Landing on the thread is the whole point of the entry, so
@@ -1090,7 +1094,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
           goForward();
           break;
         case "find-in-thread":
-          setThreadFind((open) => !open);
+          // In the browser pane, ⌘F finds on the page rather than in the thread.
+          if (document.activeElement?.closest(".panel-browser-pane")) window.dispatchEvent(new CustomEvent(BROWSER_FIND_EVENT));
+          else setThreadFind((open) => !open);
           break;
         case "jump-to-prompt":
           setView("chat");
@@ -1113,6 +1119,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
           break;
         case "cycle-favorite-model":
           window.dispatchEvent(new CustomEvent(CYCLE_FAVORITE_MODEL_EVENT));
+          break;
+        case "open-in-favorite":
+          window.dispatchEvent(new CustomEvent(OPEN_IN_EVENT));
+          break;
+        case "dictation":
+          window.dispatchEvent(new CustomEvent(TOGGLE_DICTATION_EVENT));
           break;
         case "open-mode":
         case "open-model":
@@ -1243,6 +1255,20 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     }
     setMode("code");
   }
+
+  /*
+   * Review reads its diff fresh when it opens, but the status beside it was
+   * only loaded with the project, so an edit made outside the app showed a
+   * diff next to "Working tree clean". Reload it with Review, and on focus.
+   */
+  const reviewShowing = inspectorOpen && inspectorTab === "changes";
+  useEffect(() => {
+    if (!reviewShowing || !projectId || !selectionExists) return;
+    void loadGit();
+    const onFocus = () => void loadGit();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [reviewShowing, projectId, selectionExists, loadGit]);
 
   useEffect(() => {
     if (!projectId || !selectionExists) {
@@ -1753,7 +1779,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       setDraft("");
       setAttachments([]);
       setSkillId(undefined);
-      setNotice("Prompt stashed. Press ⌘S with an empty composer to open the stash.");
+      toasts.show({ key: "stash", tone: "success", title: "Prompt stashed", detail: "Press ⌘S with an empty composer to open the stash." });
     } catch {
       setNotice("Could not save the prompt stash.");
     }
@@ -1934,7 +1960,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     try {
       const archived = await api.archiveSession(id);
       if (currentSelection.current.sessionId === id) setSessionId(undefined);
-      setArchiveUndo({ id, title: archived.title });
+      toasts.show({
+        key: `archive:${id}`,
+        title: `Archived “${archived.title}”`,
+        action: { label: "Undo", undo: true, run: () => restoreSession(id) },
+      });
       await refresh();
     } catch (error) { setNotice(formatUserError(error)); }
     finally { archiving.current.delete(id); }
@@ -1945,7 +1975,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     restoring.current.add(id);
     try {
       await api.restoreSession(id);
-      setArchiveUndo((current) => current?.id === id ? undefined : current);
+      toasts.dismissKey(`archive:${id}`);
       await refresh();
     } catch (error) { setNotice(formatUserError(error)); }
     finally { restoring.current.delete(id); }
@@ -1969,7 +1999,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   async function initializeGit() {
     if (!projectId) return;
     if (await performGit(() => api.gitInit(projectId))) {
-      setNotice("Git initialized. Create the first commit before using worktree conversations.");
+      toasts.show({ key: "git-init", tone: "success", title: "Git initialized", detail: "Create the first commit before using worktree conversations." });
     }
   }
 
@@ -2000,6 +2030,29 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       setWorkspaceModeState(previous);
       setNotice(formatUserError(error));
     }
+  }
+
+  async function setWorktreeBase(ref: string) {
+    if (!sessionId) return;
+    try {
+      await api.setSessionWorktreeBase(sessionId, ref);
+      setNotice(undefined);
+      await refresh();
+    } catch (error) {
+      setNotice(formatUserError(error));
+    }
+  }
+
+  async function startPullRequestThread(input: Omit<StartPullRequestInput, "projectId">) {
+    if (!projectId) throw new Error("Select a project first.");
+    const targetProject = projectId;
+    const started = await api.startPullRequestThread({ ...input, projectId: targetProject });
+    promotedDrafts.current.set(promptDraftKey(targetProject, started.session.id), { prompt: started.draft, attachments: [] });
+    setProjectId(targetProject);
+    setSessionId(started.session.id);
+    setView("chat");
+    await refresh();
+    return { detail: started.detail };
   }
 
   async function openPath(target: string) {
@@ -2504,13 +2557,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       deleteSession,
       archiveSession: (id: string) => archiveSession(id),
       restoreSession,
-      archiveUndo,
-      dismissArchiveUndo: () => setArchiveUndo(undefined),
       openTerminal,
       initializeGit,
       saveProjectActions,
       workspaceMode,
       setWorkspaceMode,
+      setWorktreeBase,
+      startPullRequestThread,
       browserUrl,
       setBrowserUrl,
       projectRuns,
@@ -2656,7 +2709,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       diagnostics,
       notice,
       setNotice,
-      archiveUndo,
       steerDraft,
       steeringPending,
       steeringVersion,

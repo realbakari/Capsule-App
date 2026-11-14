@@ -1,3 +1,5 @@
+import { useToasts } from "../../lib/toasts";
+import { useViewedFiles } from "../review/useViewedFiles";
 import { displayPrefs } from "../../lib/display-prefs";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -28,6 +30,7 @@ import {
   MoreHorizontalIcon,
   RefreshIcon,
   WrenchIcon,
+  GitBranchIcon,
   XIcon,
 } from "./icons";
 
@@ -152,6 +155,7 @@ export function GitPullRequestDetail({
   onMergeStack,
   onRebaseStack,
   stackBusy,
+  onWork,
 }: {
   summary: GitPullRequest;
   detail?: PullRequestDetail;
@@ -167,6 +171,8 @@ export function GitPullRequestDetail({
   onMergeStack?: (action: GitPullRequestStackAction) => void;
   onRebaseStack?: (action: GitPullRequestStackAction) => void;
   stackBusy?: boolean;
+  /** Check the pull request out and open a thread on it. Absent on a read-only viewer. */
+  onWork?: () => void;
 }) {
   const [tab, setTab] = useState<PullRequestTab>("summary");
   const [newestFirst, setNewestFirst] = useState(true);
@@ -179,14 +185,14 @@ export function GitPullRequestDetail({
   const [stagedComments, setStagedComments] = useState<StagedComment[]>([]);
   const [pendingComment, setPendingComment] = useState<Omit<StagedComment, "id">>();
   const [quickComment, setQuickComment] = useState("");
-  const [copiedNotification, setCopiedNotification] = useState("");
   const [selectedCommit, setSelectedCommit] = useState("");
   const [commitDiff, setCommitDiff] = useState("");
   const [commitLoading, setCommitLoading] = useState(false);
   const [commitError, setCommitError] = useState<string>();
   const commitRequest = useRef(0);
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => () => clearTimeout(toastTimer.current), []);
+  const { show: showNotice } = useToasts();
+  // Marks are keyed by each file's diff, so a new push to a file clears its mark by itself.
+  const viewed = useViewedFiles(`pr:${summary.url}`);
   useEffect(() => () => { commitRequest.current += 1; }, []);
 
   async function selectCommit(oid: string) {
@@ -220,10 +226,8 @@ export function GitPullRequestDetail({
   const shownComments = useMemo(() => [...(detail?.activity ?? [])].sort((a, b) =>
     (activityTime(a.createdAt) - activityTime(b.createdAt)) * (newestFirst ? -1 : 1)), [detail?.activity, newestFirst]);
 
-  const showToast = (msg: string) => {
-    clearTimeout(toastTimer.current);
-    setCopiedNotification(msg);
-    toastTimer.current = setTimeout(() => setCopiedNotification(""), 2500);
+  const showToast = (msg: string, tone: "success" | "error" | "info" = "success") => {
+    showNotice({ key: "pull-request", tone, title: msg });
   };
 
   const handleCopyLink = async () => {
@@ -231,14 +235,14 @@ export function GitPullRequestDetail({
       await navigator.clipboard.writeText(summary.url);
       showToast("Link copied to clipboard");
     } catch {
-      showToast("Could not copy the link. Try again.");
+      showToast("Could not copy the link. Try again.", "error");
     }
     setMenuOpen(false);
   };
 
   const handleAddComment = (filePath: string, line: number, side: "left" | "right") => {
     if (pendingComment?.text.trim()) {
-      showToast("Save or cancel the current note before starting another.");
+      showToast("Save or cancel the current note before starting another.", "info");
       return;
     }
     setPendingComment({ filePath, line, side, text: "" });
@@ -271,7 +275,7 @@ export function GitPullRequestDetail({
         showToast("Review notes copied");
       }
     } catch {
-      showToast("Could not copy the notes. Your draft has been kept.");
+      showToast("Could not copy the notes. Your draft has been kept.", "error");
       return;
     }
 
@@ -321,10 +325,6 @@ export function GitPullRequestDetail({
 
   return (
     <section className="pr-detail">
-      {copiedNotification && (
-        <div className="pr-toast-notification">{copiedNotification}</div>
-      )}
-
       <div className="pr-detail-actions">
         <button className="ghost" type="button" onClick={onBack}>
           ← Pull requests
@@ -374,6 +374,18 @@ export function GitPullRequestDetail({
                 >
                   <WrenchIcon size={15} /> Fix findings in this thread
                 </button>
+                {onWork ? (
+                  <button
+                    type="button"
+                    className="pr-action-item"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onWork();
+                    }}
+                  >
+                    <GitBranchIcon size={15} /> Work on this PR
+                  </button>
+                ) : null}
                 <hr className="pr-menu-divider" />
                 <button
                   type="button"
@@ -701,7 +713,7 @@ export function GitPullRequestDetail({
           {commitError ? <div className="notice" role="alert">{commitError} <button className="chip" type="button" onClick={() => void selectCommit(selectedCommit)}>Retry diff</button></div> : null}
 
           {diffFiles.length > 0 ? (
-            <PagedFileDiffs files={diffFiles} split={split} wrap={wrap} onAddComment={selectedCommit ? undefined : handleAddComment} />
+            <PagedFileDiffs files={diffFiles} split={split} wrap={wrap} onAddComment={selectedCommit ? undefined : handleAddComment} viewed={selectedCommit ? undefined : viewed} />
           ) : shownDiff.trim() ? (
             <DiffView text={shownDiff} />
           ) : !commitLoading && !commitError ? (

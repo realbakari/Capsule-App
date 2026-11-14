@@ -1,7 +1,8 @@
 import type { Run } from "./types.js";
 
 /** Completion is not evidence that a check passed. */
-export function runActivityLabel(run?: Run, stopping = false): string {
+/** `asking`: the pending request is a question, not a permission. */
+export function runActivityLabel(run?: Run, stopping = false, asking = false): string {
   if (!run) return "Activity";
   if (run.status === "failed") return "Failed";
   if (run.status === "cancelled") return "Stopped";
@@ -15,7 +16,7 @@ export function runActivityLabel(run?: Run, stopping = false): string {
     return "Completed · not verified";
   }
   if (stopping) return "Stopping";
-  if (run.status === "approval_required") return "Needs approval";
+  if (run.status === "approval_required") return asking ? "Waiting for your answer" : "Needs approval";
   if (run.status === "queued") return "Queued";
   if (run.status === "waiting") return "Waiting";
   return "Running";

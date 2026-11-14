@@ -40,8 +40,9 @@ export const SURFACES: Surface[] = [
     detail: "Changed files and their diff.",
     icon: DiffSquareIcon,
     inBar: true,
-    shortcut: "⌃⇧G",
-    blockedBy: ({ git }) => (git?.isRepo ? undefined : "Available for Git repositories."),
+    shortcut: "⇧⌘D",
+    // Unknown until the status loads; only a folder known not to be a repository is blocked.
+    blockedBy: ({ git }) => (git?.isRepo === false ? "Available for Git repositories." : undefined),
   },
   {
     tool: "browser", key: "b",

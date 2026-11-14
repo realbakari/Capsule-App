@@ -104,6 +104,12 @@ describe("ipc scopes", () => {
       "cancelPetVoice",
       "speakPetStatus",
       "setPetExpanded",
+      "openInApp",
+      "addOpenInApp",
+      "startDictation",
+      "finishDictation",
+      "cancelDictation",
+      "openDictationSettings",
     ]) {
       expect(scopeForChannel(channel)).toBe("write");
       expect(isChannelAllowed(channel, ["read"])).toBe(false);
@@ -140,6 +146,7 @@ describe("remote events", () => {
   it("keeps shell output on this machine", () => {
     expect(isRemoteEvent(IPC_EVENTS.terminalData)).toBe(false);
     expect(isRemoteEvent(IPC_EVENTS.terminalExit)).toBe(false);
+    expect(isRemoteEvent(IPC_EVENTS.dictation)).toBe(false);
   });
 
   it("forwards conversation state", () => {

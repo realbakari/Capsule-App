@@ -45,6 +45,7 @@ export const SETTINGS_SECTION_LABELS: Record<SettingsSectionId, string> = {
 };
 
 export const SETTINGS_SEARCH_ITEMS: SettingsSearchItem[] = [
+  { title: "Open in", section: "projects", keywords: ["editor", "app", "application", "favourite", "favorite", "open with", "external"] },
   { title: "Worktree location", section: "sourceControl", keywords: ["storage", "folder", "drive", "directory", "worktrees"] },
   { title: "Launch at login", section: "general", keywords: ["startup", "boot", "open"] },
   { title: "Send key", section: "general", keywords: ["enter", "composer", "submit"] },
@@ -60,6 +61,10 @@ export const SETTINGS_SEARCH_ITEMS: SettingsSearchItem[] = [
   { title: "Keep computer awake", section: "general", keywords: ["sleep", "power", "running"] },
   { title: "Response completions", section: "general", keywords: ["notification", "alert", "run complete"] },
   { title: "Long-running commands", section: "general", keywords: ["notification", "alert", "command", "timeout", "approval"] },
+  { title: "Settle merged conversations", section: "sourceControl", keywords: ["pull request", "merged", "settle", "done"] },
+  { title: "Continue after a restart", section: "general", keywords: ["crash", "quit", "resume", "interrupted", "restart"] },
+  { title: "Dock badge", section: "general", keywords: ["notification", "unread", "count", "icon"] },
+  { title: "Notification sound", section: "general", keywords: ["notification", "sound", "silent", "alert"] },
   { title: "Approvals", section: "general", keywords: ["notification", "permission"] },
   { title: "Bounce the Dock", section: "general", keywords: ["notification", "attention"] },
   { title: "Classify session states", section: "general", keywords: ["title", "auto", "conversations"] },
@@ -105,6 +110,7 @@ export const SETTINGS_SEARCH_ITEMS: SettingsSearchItem[] = [
   { title: "Pull request merge method", section: "sourceControl", keywords: ["squash", "rebase", "pr"] },
   { title: "Diff layout", section: "sourceControl", keywords: ["split", "unified", "side by side"] },
   { title: "Diff files", section: "sourceControl", keywords: ["collapsed", "expanded", "folded"] },
+  { title: "Ignore whitespace", section: "sourceControl", keywords: ["diff", "review", "spaces", "indentation"] },
   { title: "Review delivery", section: "sourceControl", keywords: ["pr", "chat"] },
   { title: "Commit instructions", section: "sourceControl", keywords: ["message", "template"] },
   { title: "Pull request instructions", section: "sourceControl", keywords: ["pr", "template"] },

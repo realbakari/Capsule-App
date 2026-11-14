@@ -27,6 +27,31 @@ available. To choose another PNG, JPEG, WebP, AVIF, GIF, ICO, or SVG file, open
 icon discovery. Choosing an icon updates it immediately. If you edit an icon
 file outside Capsule, it can take up to a minute to appear.
 
+## Open in another app
+
+**Open in** opens the conversation's folder, or a file, in an app installed on
+this computer. Find it in **Conversation details** (the list icon in the
+titlebar), under the folder, and beside **Open** when you preview a file in
+**Files**.
+
+On a Mac the list is what macOS reports can open that folder or file, with each
+app's own name and icon. Many editors do not tell macOS they open folders, so
+yours may be missing: choose **Add app…** and pick it from Applications. On
+Windows and Linux the system gives no such list, so **Open in** offers the
+default app plus the programs you add.
+
+The app you choose becomes your favourite. The button then reads **Open in**
+followed by its name, and `⌥⌘O` opens the conversation's folder there. The
+arrow beside it chooses another app.
+
+**Settings → Projects → Open in** lists the apps for folders. The star sets or
+clears the favourite, **Remove** takes an app off the list, and **Show removed
+apps** brings back the ones macOS reported that you removed.
+
+Open in only opens what belongs to the conversation: its folder, its worktree,
+and the project's other folders. A paired browser does not show it, because it
+has no apps of its own to open this computer's files in.
+
 ## Git and conversation workspaces
 
 Folders containing spaces work with a Gateway running on this Mac. Capsule
@@ -92,6 +117,28 @@ Apply is unavailable, with the reason shown, when the worktree has no changes,
 when a turn is still running, or when the project folder is in the middle of a
 merge, rebase, cherry-pick or revert, or has unresolved conflicts. A device
 reading this computer through a pairing link does not offer it.
+
+### Which branch a worktree starts from
+
+A new worktree branches from the repository's remote default branch, usually
+`origin/main`, not from whatever the project folder has checked out. Capsule
+fetches that branch first when it has not fetched it in the last five minutes.
+If the fetch fails, for example offline, the worktree starts from the copy
+fetched earlier and the engine log says so. A project with no `origin` remote
+has nothing to fetch, so its worktrees start from the project folder's current
+commit (`HEAD`).
+
+While a worktree conversation is still empty, **from** beside the workspace
+choice in the composer picks another base. It lists the default, then remote
+and local branches by most recent commit, with a search field. Changing it moves
+the empty worktree's branch to the new base. Once the worktree has changes or
+its own commits, the base stays fixed.
+
+To change the default for one project, open the project page and set
+**Worktree base**. **Default** follows the remote default branch.
+
+The new branch has no upstream, so a push never aims at the base branch by
+mistake. Both local and Gateway agents work in the resulting folder the same way.
 
 Choose **Settings → Source control → Worktree location** to store new worktrees
 in another folder or on another drive. The location belongs to the computer
@@ -324,10 +371,17 @@ Stop and close remain available; close shell tabs before restoring files.
 
 ## Pull requests
 
-**Settings › Source control** sets the **Diff layout** for pull request diffs
-(side by side or one column) and whether **Diff files** start open or folded.
-Turn diffs in the conversation always use one column.
+**Settings › Source control** sets the **Diff layout** for Review and pull
+request diffs (side by side or one column), whether **Diff files** start open
+or folded, and whether Review starts with **Ignore whitespace** on. Turn diffs
+in the conversation always use one column.
 
+## Reviewing changes
+
+Review shows every changed file of the conversation's folder at once, paged ten
+files at a time, and lets you keep or reject each change. What to compare,
+Ignore whitespace, Viewed marks and the hunk buttons are described in
+[Reviewing changes](./review.md).
 
 Sending a PR question or suggested fix to the composer appends it after your
 existing draft. It does not discard unfinished text or send automatically.
@@ -353,6 +407,27 @@ local checkout. Both ask for confirmation. A draft in the merge set, a stack
 that changed since it was loaded, or GitHub.com not reporting stacks hides
 those actions. Merging the current branch's pull request from the Review header
 is unchanged.
+
+### Work on a pull request
+
+Hover a pull request in the list and choose **Work on this**, or choose **Work
+on this PR** from the detail view's **···** menu. Pick where to check it out:
+
+- **New worktree** (the default) fetches the pull request from `origin` into a
+  separate branch and folder. The project folder is not touched.
+- **Project folder** switches the project folder itself to the pull request. It
+  refuses while the folder has uncommitted changes.
+
+Capsule then opens a new conversation there with a draft naming the pull
+request's number, title and link. Finish the sentence and send it.
+
+When the pull request's branch lives in the same repository, the new branch
+takes that name and tracks it, so a push updates the pull request. A pull
+request from a fork gets a branch named `pr-<number>` with no upstream. If the
+pull request no longer exists, or origin is not the repository it was opened
+on, Capsule says so and creates nothing. Fetching uses Git, so it works even
+where the GitHub CLI is not signed in, but the list itself needs it. A paired
+browser cannot start this.
 
 Filter the loaded list by title, author, branch, or PR number, and sort by recent
 updates or creation time. The list shows up to 50 open pull requests. **Refresh**
@@ -412,3 +487,10 @@ a clean working tree leaves **Commit** unavailable with an explanation.
 The pull request action menu can prepare a question, explanation request or
 fix request in your thread draft. These actions do not send the message for you.
 Escape closes the menu and returns focus to its button.
+
+After **Capture screenshot** in the browser, the notice offers **Attach to
+message**, which adds the screenshot to the message you are writing.
+
+To find text on the page, press `⌘F` while the browser has focus, or choose
+**Find on page** from its menu. `Enter` goes to the next match, `⇧Enter` to the
+previous one, and `Esc` closes the bar.

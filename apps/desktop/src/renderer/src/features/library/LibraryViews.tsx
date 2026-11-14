@@ -5,6 +5,7 @@ import { TurnVerification } from "../conversation/TurnVerification";
 import { ApprovalDetails, APPROVE_ONCE_UNAVAILABLE } from "../harness/ApprovalDetails";
 import { useEffect, useRef, useState } from "react";
 import type { RunHistoryPage, RunHistoryCursor } from "@capsule/shared";
+import { QuestionCard } from "../questions/QuestionCard";
 
 export function SkillsView() {
   return (
@@ -109,7 +110,9 @@ export function ApprovalsView() {
         <p>Host execution and policy gates waiting on you.</p>
       </div>
       {approvals.length === 0 && <p className="muted">Nothing is waiting on you. When an agent asks to run a command or edit outside its permissions, the request appears here and in its conversation.</p>}
-      {approvals.map((item) => (
+      {approvals.map((item) => item.status === "pending" && item.details?.questions?.length ? (
+        <QuestionCard key={item.id} approval={item} compact />
+      ) : (
         <div className="card" key={item.id}>
           <b>{item.action}</b>
           <div className="mono">{item.target}</div>

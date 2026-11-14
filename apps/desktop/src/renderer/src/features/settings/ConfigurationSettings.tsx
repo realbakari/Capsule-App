@@ -170,7 +170,7 @@ export function NotificationsCard({ settings, onPatch }: SectionProps) {
       <h3>Notifications</h3>
       <SettingRow
         label="Response completions"
-        hint="Notify when a run finishes and Capsule is in the background."
+        hint="Notify with the conversation's name when a turn finishes or a snooze ends while Capsule is in the background. Clicking the notification opens it. In front of you, another conversation finishing shows in the app instead."
       >
         <Switch
           checked={settings.notifyRunComplete}
@@ -180,7 +180,7 @@ export function NotificationsCard({ settings, onPatch }: SectionProps) {
       </SettingRow>
       <SettingRow
         label="Approval requests"
-        hint="Notify when an agent is waiting for your approval and Capsule is in the background."
+        hint="Notify when an agent needs approval or asks you a question and Capsule is in the background."
       >
         <Switch
           checked={settings.notifyApprovals}
@@ -223,6 +223,15 @@ export function NotificationsCard({ settings, onPatch }: SectionProps) {
           onChange={(bounceDockOnAttention) => onPatch({ bounceDockOnAttention })}
         />
       </SettingRow>
+      <SettingRow
+        label="Dock badge"
+        hint="Count the conversations waiting on you: a decision, a failure, or a finished turn you have not read."
+      >
+        <Switch checked={settings.dockBadge} label="Dock badge" onChange={(dockBadge) => onPatch({ dockBadge })} />
+      </SettingRow>
+      <SettingRow label="Notification sound" hint="Play the system sound with each notification.">
+        <Switch checked={settings.notificationSound} label="Notification sound" onChange={(notificationSound) => onPatch({ notificationSound })} />
+      </SettingRow>
     </div>
   );
 }
@@ -239,6 +248,9 @@ export function DesktopCard({ settings, onPatch }: SectionProps) {
       </SettingRow>
       <SettingRow label="Auto-resume limited conversations" hint="When a turn stops because the provider's usage limit is reached and it says when the limit lifts, send the prompt again at that time. Off asks each time with Resume at reset.">
         <Switch checked={settings.autoResumeOnLimit} label="Auto-resume limited conversations" onChange={(autoResumeOnLimit) => onPatch({ autoResumeOnLimit })} />
+      </SettingRow>
+      <SettingRow label="Continue after a restart" hint="If Capsule quits or restarts in the middle of a turn, queue that turn's prompt again when it reopens, so the agent picks up where it stopped. It waits in the conversation's queue, where you can remove it. Gateway-hosted turns are left alone, because the Gateway may still be running them.">
+        <Switch checked={settings.continueAfterRestart} label="Continue after a restart" onChange={(continueAfterRestart) => onPatch({ continueAfterRestart })} />
       </SettingRow>
       <SettingRow label="Agent simulator access" hint="Let a direct agent see and drive the iOS Simulator you attach in a conversation's Simulator panel. Off hides the simulator tools from agents started from now on and refuses calls from running ones.">
         <Switch checked={settings.agentSimulatorAccess} label="Agent simulator access" onChange={(agentSimulatorAccess) => onPatch({ agentSimulatorAccess })} />
@@ -414,7 +426,7 @@ export function GitCard({ settings, onPatch }: SectionProps) {
           ))}
         </select>
       </SettingRow>
-      <SettingRow label="Diff layout" hint="Side by side or one column, for pull request diffs. Turn diffs in the conversation stay one column.">
+      <SettingRow label="Diff layout" hint="Side by side or one column, for Review and pull request diffs. Turn diffs in the conversation stay one column.">
         <select
           className="field-select"
           value={settings.diffLayout}
@@ -433,6 +445,13 @@ export function GitCard({ settings, onPatch }: SectionProps) {
           <option value="expanded">Open</option>
           <option value="collapsed">Folded</option>
         </select>
+      </SettingRow>
+      <SettingRow label="Ignore whitespace" hint="Review starts with whitespace-only changes hidden. Each conversation can still switch it from the Review header.">
+        <Switch
+          checked={settings.diffIgnoreWhitespace}
+          onChange={(value) => onPatch({ diffIgnoreWhitespace: value })}
+          label="Ignore whitespace in Review"
+        />
       </SettingRow>
       <SettingRow
         label="Always force push"
@@ -501,6 +520,9 @@ export function GitCard({ settings, onPatch }: SectionProps) {
           label="Continue watching until merged"
           onChange={(prWatchUntilMerged) => onPatch({ prWatchUntilMerged })}
         />
+      </SettingRow>
+      <SettingRow label="Settle merged conversations" hint="When a watched pull request merges, settle the conversation that opened it. It comes back as soon as you send it another message.">
+        <Switch checked={settings.autoSettleMerged} label="Settle merged conversations" onChange={(autoSettleMerged) => onPatch({ autoSettleMerged })} />
       </SettingRow>
       <SettingRow
         label="Commit instructions"

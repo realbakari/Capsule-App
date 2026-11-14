@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { buildSessionActionMenuItems, copyAnchor, type MenuAnchor } from "../../lib/action-menu";
+import { copyAnchor, type MenuAnchor } from "../../lib/action-menu";
+import { useSessionActions } from "../triage/session-actions";
 import { useWorkspace } from "../../lib/workspace";
 import { ActionMenu } from "./ActionMenu";
-import { useApplyToLocal } from "../apply/ApplyToLocal";
-import { useThreadShare } from "../share/ThreadShare";
-import { useHandoff } from "../handoff/Handoff";
-import { useThreadActions } from "../threads/ThreadActions";
 import { ChevronDownIcon } from "./icons";
+
+const RENAME_THREAD_EVENT = "capsule:rename-thread";
+
+/** Starts renaming the open conversation in place, in the titlebar. */
+export function requestRename(sessionId: string): void {
+  window.dispatchEvent(new CustomEvent(RENAME_THREAD_EVENT, { detail: sessionId }));
+}
 
 /**
  * The conversation's name in the titlebar is also its menu: the same actions
@@ -14,18 +18,21 @@ import { ChevronDownIcon } from "./icons";
  * happens in place, in the titlebar.
  */
 export function ThreadTitleMenu() {
-  const { api, session, project, renameSession, pinSession, regenerateTitle, archiveSession, deleteSession, openPath } = useWorkspace();
-  const applyToLocal = useApplyToLocal();
-  const share = useThreadShare();
-  const handoff = useHandoff();
-  const threadActions = useThreadActions();
+  const { session, renameSession } = useWorkspace();
+  const actions = useSessionActions();
   const [anchor, setAnchor] = useState<MenuAnchor>();
   const [editing, setEditing] = useState<string>();
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => { setAnchor(undefined); setEditing(undefined); }, [session?.id]);
   useEffect(() => { if (editing !== undefined) input.current?.select(); }, [editing !== undefined]);
+  useEffect(() => {
+    const start = (event: Event) => {
+      if (session && (event as CustomEvent<string>).detail === session.id) { setAnchor(undefined); setEditing(session.title); }
+    };
+    window.addEventListener(RENAME_THREAD_EVENT, start);
+    return () => window.removeEventListener(RENAME_THREAD_EVENT, start);
+  }, [session]);
   if (!session) return null;
-  const folder = session.workingDirectory || project?.workingDirectory;
 
   const commit = () => {
     const title = editing?.trim();
@@ -65,26 +72,14 @@ export function ThreadTitleMenu() {
       </button>
       {anchor && (
         <ActionMenu
-          items={buildSessionActionMenuItems({ pinned: Boolean(session.pinned), thread: threadActions.menuState(session), hasFolder: Boolean(folder), ...(applyToLocal.offered ? { applyToLocal: { disabledReason: applyToLocal.disabledReason } } : {}), share: { exportOffered: share.exportOffered, shareOffered: share.shareOffered }, handoff: !handoff.disabledReason, readOnly: api.isDesktop === false && api.remoteMode !== "control" })}
+          items={actions.items(session)}
           point={{ x: anchor.left, y: anchor.bottom }}
           anchor={anchor}
           keyboard={false}
           onClose={() => setAnchor(undefined)}
           onSelect={(action) => {
             setAnchor(undefined);
-            if (threadActions.run(action, session)) return;
-            if (action === "rename") setEditing(session.title);
-            else if (action === "pin" || action === "unpin") void pinSession(session.id, action === "pin");
-            else if (action === "generate-title") void regenerateTitle(session.id);
-            else if (action === "open-folder" && folder) void openPath(folder);
-            else if (action === "copy-path" && folder) void navigator.clipboard.writeText(folder);
-            else if (action === "apply-to-local") applyToLocal.apply();
-            else if (action === "export-markdown") share.openExport(session.id);
-            else if (action === "copy-markdown") share.copyMarkdown(session.id);
-            else if (action === "share-link") share.openShare(session.id);
-            else if (action === "handoff") handoff.openHandoff(session.id);
-            else if (action === "archive") void archiveSession(session.id);
-            else if (action === "delete") deleteSession(session.id);
+            if (actions.run(session, action) === "rename") setEditing(session.title);
           }}
         />
       )}

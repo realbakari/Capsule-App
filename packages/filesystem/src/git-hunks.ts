@@ -1,7 +1,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { GitDiffScope, HunkApply, PatchApplication, ScopedDiff } from "@capsule/shared";
+import type { GitDiffOptions, GitDiffScope, HunkApply, PatchApplication, ScopedDiff } from "@capsule/shared";
 import { git, inRepository } from "./git-process.js";
 import { CANONICAL_PATCH_FLAGS } from "./git-output.js";
 import { readGitDiff, readUntrackedPatches, REVIEW_DIFF_BYTES } from "./git.js";
@@ -30,21 +30,22 @@ async function defaultBranch(cwd: string): Promise<string | undefined> {
   return undefined;
 }
 
-export async function readScopedDiff(cwd: string, scope: GitDiffScope, relative?: string): Promise<ScopedDiff> {
+export async function readScopedDiff(cwd: string, scope: GitDiffScope, relative?: string, options: GitDiffOptions = {}): Promise<ScopedDiff> {
+  const whitespace = options.ignoreWhitespace ? ["-w"] : [];
   return inRepository(cwd, async () => {
-    if (scope === "uncommitted") return { patch: await readGitDiff(cwd, relative) };
-    if (scope === "staged") return { patch: await diffText(cwd, ["--cached"], relative, "staged") };
+    if (scope === "uncommitted") return { patch: await readGitDiff(cwd, relative, options) };
+    if (scope === "staged") return { patch: await diffText(cwd, ["--cached", ...whitespace], relative, "staged") };
     if (scope === "unstaged") {
-      const tracked = await diffText(cwd, [], relative, "unstaged");
+      const tracked = await diffText(cwd, whitespace, relative, "unstaged");
       return { patch: tracked + await readUntrackedPatches(cwd, relative, false, REVIEW_DIFF_BYTES - Buffer.byteLength(tracked)) };
     }
     const base = await defaultBranch(cwd);
     if (!base) throw new Error("No default branch was found. Branch compares against main, master, or the remote's default branch.");
     const mergeBase = await git(cwd, ["merge-base", base, "HEAD"]);
     if (!mergeBase.ok) throw new Error(`This branch shares no history with ${base}.`);
-    const tracked = await diffText(cwd, [mergeBase.stdout.trim()], relative, "branch");
+    const tracked = await diffText(cwd, [...whitespace, mergeBase.stdout.trim()], relative, "branch");
     return { base, patch: tracked + await readUntrackedPatches(cwd, relative, false, REVIEW_DIFF_BYTES - Buffer.byteLength(tracked)) };
-  }, JSON.stringify(["readScopedDiff", cwd, scope, relative]));
+  }, JSON.stringify(["readScopedDiff", cwd, scope, relative, Boolean(options.ignoreWhitespace)]));
 }
 
 type Target = "index" | "worktree";
