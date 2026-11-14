@@ -7,7 +7,7 @@ const base: ProfileSummary = { id: "r", name: "Reviewer", skills: [], scope: "us
 describe("profile view", () => {
   it("says what a profile starts in one line", () => {
     expect(profileLine({ ...base, agent: "codex", model: "gpt-5.5", effort: "high", permission: "strict", workspace: "worktree" }, [{ id: "codex", name: "Codex" }]))
-      .toBe("Codex · gpt-5.5 · high effort · Supervised · worktree");
+      .toBe("Codex · gpt-5.5 · high effort · Ask approvals · worktree");
     expect(profileLine(base, [])).toBe("Your default agent");
   });
 
