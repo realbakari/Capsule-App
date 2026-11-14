@@ -25,7 +25,7 @@
   min-height: 2px;
   padding: 0;
   border: 0;
-  border-top: 2px solid var(--background, var(--bg));
+  border-top: 2px solid var(--bg);
   border-radius: var(--radius-xs);
   background: color-mix(in srgb, var(--text) 42%, transparent);
   cursor: pointer;
