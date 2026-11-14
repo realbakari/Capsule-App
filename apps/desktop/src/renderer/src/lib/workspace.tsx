@@ -1197,6 +1197,20 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     setMode("code");
   }
 
+  /*
+   * Review reads its diff fresh when it opens, but the status beside it was
+   * only loaded with the project, so an edit made outside the app showed a
+   * diff next to "Working tree clean". Reload it with Review, and on focus.
+   */
+  const reviewShowing = inspectorOpen && inspectorTab === "changes";
+  useEffect(() => {
+    if (!reviewShowing || !projectId || !selectionExists) return;
+    void loadGit();
+    const onFocus = () => void loadGit();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [reviewShowing, projectId, selectionExists, loadGit]);
+
   useEffect(() => {
     if (!projectId || !selectionExists) {
       setGit(undefined);

@@ -34,7 +34,9 @@ export function PullRequestList({ items, loading, error, onRefresh, onSelect, on
           <option value="created">Newest created</option>
         </select>
       </div>
-      {error ? <p className="notice" role="alert">{error}{items ? " Showing the last successful result." : ""}</p> : null}
+      {/* No remote is a state of the folder, not a failure to retry. */}
+      {error && /no GitHub remote/.test(error) ? <p className="faint">{error}</p>
+        : error ? <p className="notice" role="alert">{error}{items ? " Showing the last successful result." : ""}</p> : null}
       {!loading && items?.length === 0 && !error ? <p className="faint">No open pull requests were found for this repository.</p> : null}
       {items && items.length > 0 && shown.length === 0 ? <p className="faint">No loaded pull requests match this filter.</p> : null}
       {shown.map((item) => (
