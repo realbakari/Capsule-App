@@ -49,3 +49,5 @@ export * from "./ansi.js";
 export * from "./profile.js";
 export * from "./style.js";
 export * from "./mcp.js";
+export * from "./automations.js";
+export * from "./status-line.js";
