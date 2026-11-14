@@ -17,7 +17,7 @@
 }
 .md-media-button:hover { background: var(--bg-hover); color: var(--text); }
 .md-media-button[aria-pressed="true"] { background: var(--bg-active); color: var(--text); border-color: var(--border-strong); }
-.md-media-button:focus-visible { outline: var(--ring-width) solid var(--focus-ring); outline-offset: var(--focus-offset); }
+.md-media-button:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
 
 .md-diagram-tools { display: inline-flex; align-items: center; gap: 0.25rem; }
 .msg-code-bar .md-media-button { color: var(--code-muted); border-color: var(--code-border); }
@@ -84,7 +84,7 @@
 }
 .md-image img { display: block; max-width: 100%; max-height: 24rem; object-fit: contain; }
 .md-image:hover { border-color: var(--border-strong); }
-.md-image:focus-visible { outline: var(--ring-width) solid var(--focus-ring); outline-offset: var(--focus-offset); }
+.md-image:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
 .md-image-inline { max-height: 1.25em; vertical-align: middle; }
 
 .md-image-card {
@@ -155,7 +155,7 @@
   overflow: auto;
   background: var(--surface-sunken);
 }
-.md-zoom-stage:focus-visible { outline: var(--ring-width) solid var(--focus-ring); outline-offset: calc(-1 * var(--ring-width)); }
+.md-zoom-stage:focus-visible { outline: var(--focus-ring); outline-offset: calc(-1 * var(--ring-width)); }
 .md-zoom-stage--fit {
   display: flex;
   align-items: center;
