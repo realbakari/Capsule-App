@@ -2432,3 +2432,25 @@ draft.
   row; `TemporaryThreadBanner` above the composer with Keep; Keep in the thread
   menus and palette. `createSession` stays a control channel; `keepSession` is a
   write channel and Keep is hidden on a paired device.
+
+## Thread lifecycle: threads from GitHub issues
+
+- **Listing.** `listIssues` (`filesystem/github.ts`) runs one
+  `gh issue list --state open --limit 100 --json ...` when the picker opens: no
+  cache, no polling, no retry. A missing `gh` is reported before spawning;
+  other failures go through `listFailureReason(stderr, "issues")`.
+  `engine.listGithubIssues` adds the not-a-repository and Inbox cases. The
+  channel is write-scoped: issue titles and bodies are repository content a
+  viewer could not otherwise read, and the list only serves starting a thread,
+  which a viewer cannot do.
+- **Starting.** `issueBranchName` and `issuePrompt` (`@capsule/shared/github-issue`)
+  build `issue-<n>-<first words>` and a prompt whose issue text is fenced as
+  untrusted (`FENCE_LABELS.githubIssue`). `CreateSessionInput.branchName` reaches
+  `attachSessionWorktree`, which sanitises it, applies the branch prefix, and
+  retries with the thread's suffix when the branch exists. The prompt is handed
+  to the new thread's draft through `createTask(projectId, prompt, options)`, not
+  sent.
+- **Routes and agents.** Nothing here is route- or harness-specific; the thread
+  starts like any worktree thread.
+- **Surfaces.** `IssuePicker` (a `SearchDialog`) from the palette and the
+  `NewConversationMenu`; both entries are hidden on a paired device.

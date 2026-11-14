@@ -5,6 +5,7 @@ import { formatUserError } from "../../lib/errors";
 import { useModalFocus } from "../../lib/modal-focus";
 import { useWorkspace } from "../../lib/workspace";
 import { TagEditor } from "./TagEditor";
+import { IssuePicker } from "./IssuePicker";
 
 /*
  * Thread lifecycle actions shared by the sidebar row menu, the titlebar menu,
@@ -26,6 +27,8 @@ interface ThreadActionsValue {
   openTags: (sessionId: string) => void;
   /** Persist a temporary thread. */
   keep: (sessionId: string) => Promise<void>;
+  /** Pick an open issue of the project's repository to start a thread from. */
+  openIssuePicker: (projectId?: string) => void;
 }
 
 const ThreadActionsContext = createContext<ThreadActionsValue>({
@@ -38,6 +41,7 @@ const ThreadActionsContext = createContext<ThreadActionsValue>({
   setTags: async () => undefined,
   openTags: () => undefined,
   keep: async () => undefined,
+  openIssuePicker: () => undefined,
 });
 
 export function useThreadActions(): ThreadActionsValue {
@@ -45,9 +49,14 @@ export function useThreadActions(): ThreadActionsValue {
 }
 
 export function ThreadActionsProvider({ children }: { children: ReactNode }) {
-  const { api, refresh, setNotice, sessions } = useWorkspace();
+  const { api, refresh, setNotice, sessions, projectId, projects } = useWorkspace();
   const writable = api.isDesktop !== false;
   const [tagging, setTagging] = useState<string>();
+  const [picking, setPicking] = useState<string>();
+  const openIssuePicker = useCallback((target?: string) => {
+    const chosen = target ?? projectId ?? projects[0]?.id;
+    if (writable && chosen) setPicking(chosen);
+  }, [writable, projectId, projects]);
   const allTags = useMemo(() => collectTags(sessions).map((item) => item.tag), [sessions]);
 
   const setTags = useCallback(async (sessionId: string, tags: string[]) => {
@@ -98,11 +107,12 @@ export function ThreadActionsProvider({ children }: { children: ReactNode }) {
     return false;
   }, [pause, resume, openTags, keep]);
 
-  const value = useMemo(() => ({ writable, menuState, run, pause, resume, allTags, setTags, openTags, keep }), [writable, menuState, run, pause, resume, allTags, setTags, openTags, keep]);
+  const value = useMemo(() => ({ writable, menuState, run, pause, resume, allTags, setTags, openTags, keep, openIssuePicker }), [writable, menuState, run, pause, resume, allTags, setTags, openTags, keep, openIssuePicker]);
   return (
     <ThreadActionsContext.Provider value={value}>
       {children}
       {tagging && <TagsDialog sessionId={tagging} onClose={() => setTagging(undefined)} />}
+      {picking && <IssuePicker projectId={picking} onClose={() => setPicking(undefined)} />}
     </ThreadActionsContext.Provider>
   );
 }

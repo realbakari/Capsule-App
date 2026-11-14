@@ -298,6 +298,7 @@ const api = {
   renameTag: (from: string, to: string): Promise<number> => ipcRenderer.invoke(IPC_CHANNELS.renameTag, from, to),
   deleteTag: (tag: string): Promise<number> => ipcRenderer.invoke(IPC_CHANNELS.deleteTag, tag),
   keepSession: (id: string): Promise<import("@capsule/shared").Session> => ipcRenderer.invoke(IPC_CHANNELS.keepSession, id),
+  listGithubIssues: (projectId: string): Promise<{ items?: import("@capsule/shared").GithubIssue[]; error?: string }> => ipcRenderer.invoke(IPC_CHANNELS.listGithubIssues, projectId),
   reorderPinnedSessions: (projectId: string, orderedIds: string[]) =>
     ipcRenderer.invoke(IPC_CHANNELS.reorderPinnedSessions, projectId, orderedIds),
   searchFiles: (projectId: string, query?: string, root?: string) =>

@@ -1235,6 +1235,7 @@ function registerIpc(): void {
   handleArgs(IPC_CHANNELS.renameTag, [str, str], (from: string, to: string) => requireEngine().renameTag(from, to));
   handleArgs(IPC_CHANNELS.deleteTag, [str], (tag: string) => requireEngine().deleteTag(tag));
   handleArgs(IPC_CHANNELS.keepSession, [id], (sessionId: string) => requireEngine().keepSession(sessionId));
+  handleArgs(IPC_CHANNELS.listGithubIssues, [id], (projectId: string) => requireEngine().listGithubIssues(projectId));
   handleArgs(IPC_CHANNELS.archiveSession, [id], (sessionId: string) => {
     const session = requireEngine().archiveSession(sessionId);
     backgroundBrowsers.close(sessionId);

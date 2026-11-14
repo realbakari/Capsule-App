@@ -13,6 +13,7 @@ import type {
   GitPullRequestDetail,
   GitPullRequestStackAction,
   GitStatus,
+  GithubIssue,
   PrMergeMethod,
 } from "@capsule/shared";
 import {
@@ -487,16 +488,16 @@ function actorName(value: unknown): string | undefined {
  * GitHub remote at all, which is not a sign-in problem and cannot be fixed by
  * refreshing, sent people to look at their credentials.
  */
-export function listFailureReason(stderr: string): string {
+export function listFailureReason(stderr: string, noun = "pull requests"): string {
   const text = stderr.trim();
   if (isIncompleteResponse(text)) return INCOMPLETE_GITHUB_RESPONSE;
   if (/no git remotes found|not a git repository/i.test(text)) {
-    return "This folder has no GitHub remote, so there are no pull requests to show.";
+    return `This folder has no GitHub remote, so there are no ${noun} to show.`;
   }
   // Checked before the repository case, whose wording would otherwise claim a
   // missing `gh` binary ("executable file not found") was a missing repository.
   if (/executable file not found|ENOENT|command not found/i.test(text)) {
-    return "The `gh` command is not installed, so pull requests cannot be listed.";
+    return `The \`gh\` command is not installed, so ${noun} cannot be listed.`;
   }
   if (/could not resolve( to)? a repository|no such repository|repository not found/i.test(text)) {
     return "GitHub does not have a repository for this folder's remote.";
@@ -521,7 +522,41 @@ export function listFailureReason(stderr: string): string {
   if (/HTTP 5\d\d|bad gateway|service unavailable|internal server error/i.test(text)) {
     return "GitHub is having trouble right now. Try again in a moment.";
   }
-  return text ? text.split("\n").filter(Boolean)[0]! : "Pull requests could not be listed.";
+  return text ? text.split("\n").filter(Boolean)[0]! : `${noun[0]!.toUpperCase()}${noun.slice(1)} could not be listed.`;
+}
+
+export const GH_MISSING_FOR_ISSUES = "The GitHub command-line tool (`gh`) is not installed. Install it and run `gh auth login`, then try again.";
+
+/**
+ * The repository's open issues, newest first, or why they cannot be listed.
+ * One read, no retry and no cache: it runs when the user opens the picker.
+ */
+export async function listIssues(cwd: string): Promise<{ items?: GithubIssue[]; error?: string }> {
+  if (!(await ghAvailable())) return { error: GH_MISSING_FOR_ISSUES };
+  const result = await runAsync("gh", ["issue", "list", "--state", "open", "--limit", "100", "--json", "number,title,body,url,labels,author,updatedAt"], cwd, 20_000);
+  if (!result.ok) return { error: listFailureReason(result.stderr, "issues") };
+  const items = parseIssueList(result.stdout);
+  return items ? { items } : { error: INCOMPLETE_GITHUB_RESPONSE };
+}
+
+export function parseIssueList(raw: string): GithubIssue[] | undefined {
+  let rows: unknown;
+  try { rows = JSON.parse(raw); } catch { return undefined; }
+  if (!Array.isArray(rows)) return undefined;
+  return rows.flatMap((row): GithubIssue[] => {
+    if (!row || typeof row !== "object") return [];
+    const value = row as Record<string, unknown>;
+    if (typeof value.number !== "number" || typeof value.title !== "string" || typeof value.url !== "string") return [];
+    return [{
+      number: value.number,
+      title: value.title,
+      body: typeof value.body === "string" ? value.body : "",
+      url: value.url,
+      labels: parseLabels(value.labels).map((label) => label.name),
+      ...(actorName(value.author) ? { author: actorName(value.author) } : {}),
+      ...(typeof value.updatedAt === "string" ? { updatedAt: value.updatedAt } : {}),
+    }];
+  });
 }
 
 export function diffFailureReason(stderr: string): string {

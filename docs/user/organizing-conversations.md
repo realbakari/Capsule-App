@@ -97,3 +97,25 @@ the sidebar.
 **Keep this conversation** (in the strip, the conversation's menu, or the palette)
 saves it, with its messages, turns and tags, and from then on it is an ordinary
 conversation. Deleting a temporary conversation removes it at once.
+
+## Start a conversation from a GitHub issue
+
+Choose **New conversation from a GitHub issue…** in the command palette, or
+**From a GitHub issue…** from the arrow beside **New conversation**. Capsule lists
+the open issues of the current project's GitHub repository. Search by number,
+title or label, then press Enter.
+
+The new conversation:
+
+- works in its own worktree, on a branch named after the issue, such as
+  `issue-123-short-title` (after your branch prefix). If that branch already
+  exists, the new one gets a short suffix;
+- is titled with the issue number and title;
+- has the issue's link, title and description in the composer, ready to edit
+  and send. The issue's text is marked as coming from GitHub, so the agent treats
+  it as the task's description rather than as your instructions.
+
+The list comes from the GitHub command-line tool (`gh`). If it is not installed,
+not signed in, or the project has no GitHub remote, the picker says which, and
+**Retry** checks again after you fix it. Picking an issue is available on this
+computer only, not on a paired device.

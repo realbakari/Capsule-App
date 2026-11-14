@@ -44,6 +44,8 @@ export {
   setPullRequestListener,
   lastCommitSubject,
   listPullRequests,
+  listIssues,
+  parseIssueList,
   parsePullRequestDetail,
   readPullRequestDetail,
   readCommitDiff,

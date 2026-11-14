@@ -88,6 +88,7 @@ import {
   clearFileIndex,
   clearGhCache,
   enrichGitStatus,
+  listIssues,
   setPullRequestListener,
   FilesystemAdapter,
   initializeRepository,
@@ -212,6 +213,7 @@ import {
   normalizeTag,
   normalizeTags,
   renameTagIn,
+  type GithubIssue,
 } from "@capsule/shared";
 import {
   DEFAULT_SKILLS,
@@ -1852,7 +1854,7 @@ export class CapsuleEngine {
       );
     }
     if (session.workspaceMode === "worktree") {
-      await this.attachSessionWorktree(session, project);
+      await this.attachSessionWorktree(session, project, input.branchName);
     }
     const direct = isHarnessId(agentId) && this.useDirectMode(agentId);
     if (!this.usingMock && !direct) {
@@ -2020,6 +2022,14 @@ export class CapsuleEngine {
     this.temporary.keep(id);
     this.events.emit("state", { command: "sessions-updated" });
     return this.requireSession(id);
+  }
+
+  /** The project repository's open issues, for starting a thread from one. */
+  async listGithubIssues(projectId: string): Promise<{ items?: GithubIssue[]; error?: string }> {
+    const project = this.requireProject(projectId);
+    if (!project.workingDirectory || isInboxProject(project)) return { error: "Choose a project with a GitHub repository to pick an issue." };
+    if (!(await readGitStatus(project.workingDirectory)).isRepo) return { error: "This project's folder is not a Git repository, so it has no GitHub issues." };
+    return listIssues(project.workingDirectory);
   }
 
   /** Save a worktree thread's work to a hidden ref and stop the actions it started. */
@@ -4237,7 +4247,7 @@ export class CapsuleEngine {
     return this.requireSession(result.session.id);
   }
 
-  private async attachSessionWorktree(session: Session, project: Project): Promise<void> {
+  private async attachSessionWorktree(session: Session, project: Project, branchName?: string): Promise<void> {
     if (!project.workingDirectory) throw new Error("Choose a project folder before using a worktree.");
     const slug = session.title
       .toLowerCase()
@@ -4245,9 +4255,13 @@ export class CapsuleEngine {
       .replace(/^-+|-+$/g, "")
       .slice(0, 36) || "conversation";
     const suffix = session.id.replace(/[^a-zA-Z0-9]/g, "").slice(-8).toLowerCase();
-    const branch = applyBranchPrefix(this.settings.branchPrefix ?? "capsule", `${slug}-${suffix}`);
+    const named = branchName?.replace(/[^A-Za-z0-9._/-]+/g, "-").replace(/^[-./]+|[-./]+$/g, "").slice(0, 80);
+    const prefix = this.settings.branchPrefix ?? "capsule";
+    const branch = applyBranchPrefix(prefix, named || `${slug}-${suffix}`);
     const destination = path.join(worktreesDirectory(this.settings.worktreesDirectory, this.options.userDataDir), project.id, session.id);
-    const result = await createWorktree(project.workingDirectory, destination, branch);
+    let result = await createWorktree(project.workingDirectory, destination, branch);
+    // A second thread for the same issue: same name, so it gets the thread's suffix.
+    if (!result.ok && named) result = await createWorktree(project.workingDirectory, destination, applyBranchPrefix(prefix, `${named}-${suffix}`));
     if (!result.ok || !result.path || !result.branch) throw new Error(result.detail);
     session.workingDirectory = result.path;
     session.worktreeBranch = result.branch;

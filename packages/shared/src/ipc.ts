@@ -171,6 +171,7 @@ export const IPC_CHANNELS = {
   renameTag: "capsule:renameTag",
   deleteTag: "capsule:deleteTag",
   keepSession: "capsule:keepSession",
+  listGithubIssues: "capsule:listGithubIssues",
   reorderPinnedSessions: "capsule:reorderPinnedSessions",
   searchFiles: "capsule:searchFiles",
   regenerateTitle: "capsule:regenerateTitle",

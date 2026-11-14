@@ -50,5 +50,6 @@ export * from "./thread-origin.js";
 export * from "./thread-pull-request.js";
 export * from "./thread-pause.js";
 export * from "./thread-tags.js";
+export * from "./github-issue.js";
 export * from "./approval-presets.js";
 export * from "./browser-inspect.js";

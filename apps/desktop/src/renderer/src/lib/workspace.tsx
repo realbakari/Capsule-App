@@ -160,6 +160,10 @@ export interface ConfirmState {
 export interface CreateTaskOptions {
   /** Held in memory only, on the shared checkout, until kept. */
   temporary?: boolean;
+  title?: string;
+  workspaceMode?: WorkspaceMode;
+  /** The worktree branch's name before the branch prefix. */
+  branchName?: string;
 }
 
 export interface WorkspaceValue {
@@ -1275,9 +1279,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       agentId,
       mode,
       permissionProfile: draftApproval ?? settings?.defaultPermission,
-      workspaceMode: options?.temporary ? "local" : git?.isRepo ? (settings?.defaultWorkspaceMode ?? "local") : "local",
-      title: "New conversation",
+      workspaceMode: options?.temporary ? "local" : options?.workspaceMode ?? (git?.isRepo ? (settings?.defaultWorkspaceMode ?? "local") : "local"),
+      title: options?.title ?? "New conversation",
       ...(options?.temporary ? { temporary: true } : {}),
+      ...(options?.branchName ? { branchName: options.branchName } : {}),
     });
     if (!requests.isCurrent(scope)) return;
     // The draft scope moves with the selection, so a prompt written after the

@@ -71,6 +71,8 @@ export function Palette() {
       { id: "new", label: "New conversation", group: "Actions", icon: <PlusIcon size={15} />, shortcut: "⌘N", disabledReason: desktopOnly, onSelect: () => createTask() },
       ...(readOnly ? [] : [{ id: "new-temporary", label: "New temporary conversation", detail: "Not saved, with no checkpoints; gone when Capsule quits", group: "Actions", icon: <MessageSquareIcon size={15} />,
         disabledReason: projects.length === 0 ? "Add a project first." : undefined, onSelect: () => void createTask(undefined, undefined, { temporary: true }) }]),
+      ...(threadActions.writable ? [{ id: "new-from-issue", label: "New conversation from a GitHub issue…", detail: "Its own worktree on a branch named after the issue", group: "Actions", icon: <GitBranchIcon size={15} />,
+        disabledReason: !project ? "Open a project first." : undefined, onSelect: () => { setPalette(false); threadActions.openIssuePicker(project?.id); } }] : []),
       ...(threadActions.writable && session?.temporary ? [{ id: "keep-thread", label: "Keep this conversation", detail: "Save it like any other conversation", group: "Actions", icon: <BookmarkIcon size={15} />,
         onSelect: () => void threadActions.keep(session.id) }] : []),
       { id: "run-on-several", label: "Run on several agents…", detail: "One prompt, two to four agents, each in its own worktree", group: "Actions", icon: <CompareIcon size={15} />,

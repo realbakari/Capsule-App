@@ -1044,6 +1044,8 @@ export interface CreateSessionInput {
   turnMode?: import("./plan-mode.js").TurnMode;
   /** A thread that is never persisted. Always on the shared checkout, with no checkpoints. */
   temporary?: boolean;
+  /** The worktree branch's name, before the branch prefix; e.g. issue-123-short-title. */
+  branchName?: string;
 }
 
 export interface AgentMessage {

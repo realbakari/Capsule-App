@@ -3,11 +3,13 @@ import { copyAnchor, type ActionMenuItem, type MenuAnchor } from "../../lib/acti
 import { useWorkspace } from "../../lib/workspace";
 import { ActionMenu } from "../shell/ActionMenu";
 import { ChevronDownIcon } from "../shell/icons";
+import { useThreadActions } from "./ThreadActions";
 import "./threads.css";
 
 /** The other ways to start a conversation, beside New conversation. */
 export function NewConversationMenu() {
   const { api, createTask } = useWorkspace();
+  const actions = useThreadActions();
   const [anchor, setAnchor] = useState<MenuAnchor>();
   const [keyboard, setKeyboard] = useState(false);
   /* Every entry here creates a thread on the host. */
@@ -15,6 +17,7 @@ export function NewConversationMenu() {
   const items: ActionMenuItem[] = [
     { id: "new", label: "New conversation", icon: "plus", shortcut: "⌘N" },
     { id: "temporary", label: "New temporary conversation", icon: "message", title: "Not saved, gone when Capsule quits" },
+    ...(actions.writable ? [{ id: "issue", label: "From a GitHub issue…", icon: "branch" as const, title: "A worktree branch named after the issue, with the issue as the first prompt" }] : []),
   ];
   return (
     <>
@@ -30,6 +33,7 @@ export function NewConversationMenu() {
             setAnchor(undefined);
             if (id === "new") void createTask();
             if (id === "temporary") void createTask(undefined, undefined, { temporary: true });
+            if (id === "issue") actions.openIssuePicker();
           }} />
       )}
     </>
