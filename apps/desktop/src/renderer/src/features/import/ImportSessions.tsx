@@ -120,7 +120,7 @@ function ImportDialog({ projectId, listing, onImported, onClose }: {
     <div className="palette-backdrop center" onClick={onClose}>
       <div className="dialog import-dialog" ref={dialog} role="dialog" aria-modal="true" aria-labelledby="import-title" tabIndex={-1} onClick={(event) => event.stopPropagation()}>
         <h3 id="import-title">Import sessions</h3>
-        <p className="import-lede">Sessions Claude Code and Codex ran in {project?.name ?? "this project"}’s folder. Importing copies the prompts and final replies into a new thread. The agent’s own files are only read.</p>
+        <p className="import-lede">Sessions Claude Code and Codex ran in {project?.name ?? "this project"}’s folder. Importing copies the prompts and final replies into a new conversation. The agent’s own files are only read.</p>
         {listing && listing.sessions.length > 0 && (
           <div className="import-filters" role="tablist" aria-label="Agent">
             {(["all", "claude", "codex"] as const).map((option) => (

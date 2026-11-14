@@ -505,20 +505,20 @@ when the agent offers that command; the card says when it does not. After
 five idle minutes the card notes that the prompt cache has likely expired, the
 cheapest moment to compact.
 
-## Continuing in a new thread
+## Handing off to a new conversation
 
-**Continue in a new thread…** starts a fresh thread from a summary of this
-one. It is in the context ring's card, the conversation's menu and the
+**Hand off to a new conversation…** starts a fresh conversation from a
+summary of this one. It is in the context ring's card, the conversation's menu and the
 command palette. The dialog offers:
 
 - **Agent.** The same agent by default, or any other, so you can hand the
   work to a different agent with a clean context.
-- **Summary.** Capsule drafts it from the thread's prompts and final replies,
-  newest kept when the thread is long. Edit it down to what the next thread
-  needs.
+- **Summary.** Capsule drafts it from the conversation's prompts and final
+  replies, newest kept when it is long. Edit it down to what the next
+  conversation needs.
 
-The new thread opens in the same folder, titled "(continued)", with a link
-back to the thread it came from. The summary goes with your first message
+The new conversation opens in the same folder, titled "(continued)", with a
+link back to the one it came from. The summary goes with your first message
 there, once; until you send it, you can read it at the top of the thread. The
 original thread is not changed.
 

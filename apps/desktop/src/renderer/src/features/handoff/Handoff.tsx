@@ -9,7 +9,7 @@ import { MenuSelect } from "../shell/MenuSelect";
 import "./handoff.css";
 
 /*
- * Continue in a new thread. One provider owns the dialog so the context ring,
+ * Hand off to a new conversation. One provider owns the dialog so the context ring,
  * the thread menu and the palette open the same thing.
  */
 
@@ -25,7 +25,7 @@ export function useHandoff(): HandoffValue {
   return useContext(HandoffContext);
 }
 
-export const HANDOFF_LABEL = "Continue in a new thread…";
+export const HANDOFF_LABEL = "Hand off to a new conversation…";
 
 export function HandoffProvider({ children }: { children: ReactNode }) {
   const { api } = useWorkspace();
@@ -86,26 +86,26 @@ function HandoffDialog({ sessionId, onClose }: { sessionId: string; onClose: () 
   return (
     <div className="palette-backdrop center" onClick={close}>
       <div className="dialog handoff-dialog" ref={dialog} role="dialog" aria-modal="true" aria-labelledby="handoff-title" tabIndex={-1} onClick={(event) => event.stopPropagation()}>
-        <h3 id="handoff-title">Continue in a new thread</h3>
-        <p className="handoff-lede">The new thread starts with a clean context. The summary goes with your first message there, once. This thread stays as it is.</p>
+        <h3 id="handoff-title">Hand off to a new conversation</h3>
+        <p className="handoff-lede">The new conversation starts with a clean context. The summary goes with your first message there, once. This conversation stays as it is.</p>
         <div className="handoff-field">
           <span className="handoff-label">Agent</span>
-          <MenuSelect value={agent} options={options} onChange={setAgent} ariaLabel="Agent for the new thread" />
+          <MenuSelect value={agent} options={options} onChange={setAgent} ariaLabel="Agent for the new conversation" />
         </div>
         <label className="handoff-field">
           <span className="handoff-label">Summary</span>
           {loadError ? (
             <span role="alert" className="handoff-error">{loadError} <button type="button" className="ghost" onClick={load}>Retry</button></span>
           ) : (
-            <textarea className="handoff-summary" value={summary ?? ""} placeholder={summary === undefined ? "Building a summary from this thread…" : "What the next thread should know"}
+            <textarea className="handoff-summary" value={summary ?? ""} placeholder={summary === undefined ? "Building a summary from this conversation…" : "What the next conversation should know"}
               disabled={summary === undefined || busy} onChange={(event) => setSummary(event.target.value)} spellCheck={false} />
           )}
-          <span className="handoff-hint">Built from this thread’s prompts and final replies, newest kept. Cut it down to what matters.</span>
+          <span className="handoff-hint">Built from this conversation’s prompts and final replies, newest kept. Cut it down to what matters.</span>
         </label>
         {error && <p role="alert" className="handoff-error">{error}</p>}
         <div className="actions">
           <button className="ghost" data-cancel onClick={close} disabled={busy}>Cancel</button>
-          <button className="send" disabled={busy || !summary?.trim()} onClick={() => void start()}>{busy ? "Starting…" : "Start new thread"}</button>
+          <button className="send" disabled={busy || !summary?.trim()} onClick={() => void start()}>{busy ? "Starting…" : "Start conversation"}</button>
         </div>
       </div>
     </div>

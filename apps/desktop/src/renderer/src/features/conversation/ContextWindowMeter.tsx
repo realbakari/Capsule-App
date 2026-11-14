@@ -132,7 +132,7 @@ export function ContextWindowMeter({
           <div className="context-card-actions">
             {onFresh && tone !== "normal" ? <button type="button" className="chip" onClick={() => { setOpen(false); onFresh(); }}>New conversation</button> : null}
             <button type="button" className="chip" disabled={!onCompact} title={onCompact ? "Ask the agent to summarize its context into less" : compactUnavailable} onClick={() => { onCompact?.(); setOpen(false); }}>Compact conversation</button>
-            {onHandoff && <button type="button" className="chip" title="Start a new thread from a summary of this one, on this agent or another" onClick={() => { setOpen(false); onHandoff(); }}>Continue in a new thread…</button>}
+            {onHandoff && <button type="button" className="chip" title="Start a new conversation from a summary of this one, on this agent or another" onClick={() => { setOpen(false); onHandoff(); }}>Hand off to a new conversation…</button>}
             {!onCompact && compactUnavailable && <span className="faint">{compactUnavailable}</span>}
           </div>
 

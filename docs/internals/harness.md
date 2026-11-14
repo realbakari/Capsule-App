@@ -452,7 +452,7 @@ the folder it was recorded in.
 
 ### Handoff per route
 
-**Continue in a new thread…** builds its summary locally with
+**Hand off to a new conversation…** builds its summary locally with
 `handoffSummary` (`threadToMarkdown` over prompts and final replies, newest
 24 KB). Asking the agent was considered and not used: on the Gateway a
 control turn's reply would arrive as a thread reply, an agent that is not live

@@ -190,7 +190,7 @@ function CandidateCard({ comparison, candidate }: { comparison: GroupComparison;
         : candidate.reply ? <p className="compare-reply"><span className="compare-reply-text">{candidate.reply}</span></p>
         : <p className="compare-reply faint">{phase === "needs-you" ? "Waiting for your approval in its thread." : phase === "done" || phase === "stopped" ? "No reply was received." : "Waiting for a reply…"}</p>}
       <footer className="compare-card-actions">
-        <button type="button" className="ghost" onClick={open}><MessageSquareIcon size={13} />Open thread</button>
+        <button type="button" className="ghost" onClick={open}><MessageSquareIcon size={13} />Open conversation</button>
         <button type="button" className="ghost" disabled={candidate.worktree !== "present"} title={candidate.worktree !== "present" ? "Restore this thread to see its diff." : "Review this candidate's branch"} onClick={viewDiff}><DiffIcon size={13} />View diff</button>
         {candidate.run && candidate.reply ? <RatingButtons value={rating} writable={writable} label={`${name}'s result`} onRate={rate} /> : null}
         {writable && candidate.archived ? (

@@ -807,8 +807,8 @@ agents.
 sessionId, harnessId, summary })` (write) creates "<title> (continued)" in the
 same folder with `carryOver.brief` and the handoff origin. `HandoffProvider`
 owns the dialog: an agent `MenuSelect` (this thread's agent first by default)
-and an editable summary textarea. Entry points, all labelled **Continue in a
-new thread…**: the context ring's card, the thread menu (titlebar and sidebar
+and an editable summary textarea. Entry points, all labelled **Hand off to a
+new conversation…**: the context ring's card, the thread menu (titlebar and sidebar
 row), and the palette. A paired viewer gets neither feature: the providers
 report a disabled reason off the desktop, and the menus and palette hide or
 disable the items.
@@ -2274,7 +2274,7 @@ Git project.
   (Direct / Gateway), phase badge with elapsed time (live while working),
   Changes (files, +/− from the Branch diff scope), Checks (verification state),
   Usage (reported tokens and cost, or "Not reported"), the reply excerpt or the
-  failure reason, then **Open thread**, **View diff** (Review on that worktree
+  failure reason, then **Open conversation**, **View diff** (Review on that worktree
   in Branch scope), thumbs, and **Keep this one** (disabled with the reason from
   `keepBlocker`). Data is one read, `compareThreadGroup`, refetched on run
   events (debounced) and after every write. Loading shows skeleton cards; a

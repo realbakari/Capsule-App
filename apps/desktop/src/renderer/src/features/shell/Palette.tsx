@@ -127,7 +127,7 @@ export function Palette() {
       { id: "fork-last-turn", label: "Fork conversation from last turn", group: "Actions", icon: <GitBranchIcon size={15} />,
         disabledReason: desktopOnly ?? (!session ? "Open a conversation first." : !lastTurn ? "This conversation has no finished turn to fork from." : undefined),
         onSelect: () => { if (lastTurn) void branching.fork(lastTurn.id, "same"); } },
-      { id: "handoff", label: HANDOFF_LABEL, detail: "A new thread that starts from a summary of this one, on any agent", group: "Actions", icon: <MessageSquareIcon size={15} />,
+      { id: "handoff", label: HANDOFF_LABEL, detail: "A new conversation that starts from a summary of this one, on any agent", group: "Actions", icon: <MessageSquareIcon size={15} />,
         disabledReason: handoff.disabledReason ?? (!session ? "Open a conversation first." : undefined),
         onSelect: () => { if (session) handoff.openHandoff(session.id); } },
       { id: "import-sessions", label: "Import sessions from Claude Code or Codex…", detail: "Sessions those agents ran in this project's folder", group: "Actions", icon: <HistoryIcon size={15} />,

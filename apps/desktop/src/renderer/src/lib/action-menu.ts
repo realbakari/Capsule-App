@@ -105,7 +105,7 @@ export function buildSessionActionMenuItems(state: {
   applyToLocal?: { disabledReason?: string };
   /** Export writes a file and a link opens a listener: both belong to the desktop. */
   share?: { exportOffered: boolean; shareOffered: boolean };
-  /** Continue in a new thread; absent where it is unavailable. */
+  /** Hand off to a new conversation; absent where it is unavailable. */
   handoff?: boolean;
 }): ActionMenuItem[] {
   return [
@@ -152,7 +152,7 @@ export function buildSessionActionMenuItems(state: {
           ...(state.share.shareOffered ? [{ id: "share-link" as const, label: "Share read-only link…", icon: "link" as const }] : []),
         ]
       : []),
-    ...(state.handoff ? [{ id: "handoff" as const, label: "Continue in a new thread…", icon: "message" as const, separatorBefore: true }] : []),
+    ...(state.handoff ? [{ id: "handoff" as const, label: "Hand off to a new conversation…", icon: "message" as const, separatorBefore: true }] : []),
     { id: "archive", label: "Archive", icon: "archive", separatorBefore: true },
     { id: "delete", label: "Delete", icon: "trash", destructive: true },
   ];

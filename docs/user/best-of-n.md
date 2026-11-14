@@ -42,7 +42,7 @@ Each agent has a card with:
 - the tokens or cost the agent reported, or "Not reported" when it reports none,
 - the start of its final reply, or why it failed.
 
-**Open thread** goes to that agent's conversation. **View diff** opens Review on
+**Open conversation** goes to that agent's conversation. **View diff** opens Review on
 that agent's worktree, showing everything on its branch.
 
 **Same file** shows one file at a time, as each agent changed it, next to each
