@@ -276,6 +276,8 @@ export interface Session {
   groupId?: string;
   /** Imported from an agent's own history, or continued from another thread. Fixed at creation. */
   origin?: import("./thread-origin.js").ThreadOrigin;
+  /** A worktree thread's pull request as last read. Written on its own, never by a turn. */
+  pullRequest?: import("./thread-pull-request.js").ThreadPullRequest;
   createdAt: string;
   updatedAt: string;
 }

@@ -16,6 +16,7 @@ need the shipped-product voice.
 - [Restoring, redoing and forking turns](./user/checkpoints.md)
 - [Checking a turn](./user/verification.md)
 - [Drafts, attachments, and prompt stash](./user/composer.md)
+- [Organizing conversations: pull requests, pausing, tags, temporary threads, issues](./user/organizing-conversations.md)
 - [The board: cards, columns, and chains](./user/board.md)
 - [Running one prompt on several agents](./user/best-of-n.md)
 - [Importing sessions from Claude Code and Codex](./user/importing-sessions.md)

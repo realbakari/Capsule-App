@@ -11,6 +11,7 @@ import {
   type MenuAnchor,
 } from "../../lib/action-menu";
 import { showNativeContextMenu } from "../../lib/bridge";
+import { ThreadPullRequestMark } from "../threads/ThreadMarks";
 import { CHANNEL_PREFS_EVENT, loadChannelPrefs, unreadChannelCount } from "../../lib/channel-prefs";
 import {
   compactRelativeTime,
@@ -542,6 +543,7 @@ export function Sidebar() {
           {grouping !== "project" && <small className="thread-project">{projectNames.get(session.projectId)}</small>}
         </span>
         <span className="thread-meta">
+          <ThreadPullRequestMark session={session} />
           {kind === "working" ? (
             <span className="thread-status working">
               Working

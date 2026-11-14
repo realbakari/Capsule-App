@@ -2344,3 +2344,19 @@ draft.
   mounted page takes on mount or on the event.
 - Both new channels are write-scoped. The old Page width select is gone; device
   sizes replace it.
+
+## Thread lifecycle: pull request marks
+
+- **Data.** `Session.pullRequest` (`ThreadPullRequest` in
+  `@capsule/shared/thread-pull-request`) is the last pull request read for a
+  worktree thread's branch, stored in `sessions.pull_request` (migration 26) and
+  written only through `setSessionPullRequest`, so a turn's `updateSession`
+  never puts back an older reading.
+- **Where readings come from.** `gitStatus(projectId, sessionId)` and the pull
+  request watch's poll record what they already read. A reading that did not land
+  (`pullRequestKnown` false) changes nothing; a landed "no pull request" clears
+  the mark. No new polling. Local-mode threads never get a mark.
+- **Badge.** `pullRequestBadge` derives one state: merged, closed, checks failing,
+  draft, open, in that precedence. `ThreadPullRequestMark`
+  (`features/threads/ThreadMarks.tsx`) renders it in the row's meta, before the
+  time or status, with the state in words as its title.

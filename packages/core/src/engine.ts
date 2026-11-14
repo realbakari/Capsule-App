@@ -205,6 +205,8 @@ import {
   MAX_PROVIDER_USAGE_SOURCES,
   type ProviderUsageSnapshot,
   type ProviderUsageSource,
+  samePullRequest,
+  toThreadPullRequest,
 } from "@capsule/shared";
 import {
   DEFAULT_SKILLS,
@@ -1383,6 +1385,7 @@ export class CapsuleEngine {
         await readGitStatus(cwd),
         cwd,
       );
+      if (sessionId && status.pullRequestKnown) this.recordThreadPullRequest(sessionId, status.pullRequest);
       if (status.pullRequest && pullRequestWatchEnabled(this.settings)) {
         this.schedulePrWatch(projectId, sessionId);
       } else if (status.pullRequestKnown && !status.pullRequest && this.prWatchSessions.get(projectId) === sessionId) {
@@ -3632,13 +3635,27 @@ export class CapsuleEngine {
     try {
       const cwd = watch.cwd;
       release = this.folderActivity.enter(cwd);
-      await this.refreshWatchedPr(projectId, cwd, current);
+      await this.refreshWatchedPr(projectId, cwd, current, watch.ownerSessionId);
     }
     catch (error) { this.log(`Pull request watch failed: ${String(error)}`); }
     finally { watch.busy = false; release?.(); }
   }
 
-  private async refreshWatchedPr(projectId: string, cwd: string, current: () => boolean): Promise<void> {
+  /*
+   * A worktree thread owns its branch, so the pull request read for that
+   * branch is the thread's. Readings Capsule already makes land here; nothing
+   * asks GitHub on the sidebar's behalf.
+   */
+  private recordThreadPullRequest(sessionId: string, pullRequest: GitPullRequest | undefined): void {
+    const session = this.repos.getSession(sessionId);
+    if (!session || session.workspaceMode !== "worktree") return;
+    const next = pullRequest ? toThreadPullRequest(pullRequest, nowIso()) : undefined;
+    if (samePullRequest(session.pullRequest, next)) return;
+    this.repos.setSessionPullRequest(sessionId, next);
+    this.events.emit("state", { command: "sessions-updated" });
+  }
+
+  private async refreshWatchedPr(projectId: string, cwd: string, current: () => boolean, ownerSessionId?: string): Promise<void> {
     /*
      * Read what is known and let the refresh happen behind it. Asking GitHub
      * from here blocked the main process for about a second every forty-five,
@@ -3649,6 +3666,7 @@ export class CapsuleEngine {
     // Nothing has come back yet: that is not the same as "there is no pull
     // request", and stopping on it would end the watch before it began.
     if (!known) return;
+    if (ownerSessionId) this.recordThreadPullRequest(ownerSessionId, pullRequest);
     if (!pullRequest || pullRequest.state === "MERGED" || pullRequest.state === "CLOSED") {
       this.events.emit("state", { command: "git-updated" });
       if (!this.settings.prWatchUntilMerged || !pullRequest || pullRequest.state !== "OPEN") {

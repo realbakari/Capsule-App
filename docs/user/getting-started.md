@@ -81,6 +81,9 @@ and more actions. Pause on the row to see its full title and project. A project
 preview shows its folder and conversation count. Press Escape to dismiss a preview.
 The selected conversation stays visible even when older conversations are collapsed.
 
+Pull request marks on worktree conversations are described in
+[Organizing conversations](organizing-conversations.md).
+
 ## Conversation controls and activity
 
 The wrench button opens **Conversation tools**: file and skill context, saved

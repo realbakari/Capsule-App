@@ -441,4 +441,12 @@ export const MIGRATIONS: Array<{ version: number; sql: string; }> = [
       ALTER TABLE sessions ADD COLUMN origin TEXT;
     `,
   },
+  {
+    version: 26,
+    sql: `
+      -- A worktree thread's pull request as last read, so the sidebar can
+      -- show its state without asking GitHub for every thread.
+      ALTER TABLE sessions ADD COLUMN pull_request TEXT;
+    `,
+  },
 ];

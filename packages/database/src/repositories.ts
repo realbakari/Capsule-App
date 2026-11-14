@@ -82,8 +82,9 @@ function sessionParams(session: Session) {
   };
 }
 
-type SessionRow = Omit<Session, "directSession" | "carryOver" | "pendingStart" | "doneAt" | "forkedFrom" | "groupId" | "origin"> & {
+type SessionRow = Omit<Session, "directSession" | "carryOver" | "pendingStart" | "doneAt" | "forkedFrom" | "groupId" | "origin" | "pullRequest"> & {
   groupId?: string | null;
+  pullRequest?: string | null;
   origin?: string | null;
   directSession?: string | null;
   carryOver?: string | null;
@@ -112,6 +113,7 @@ function normalizeSession(row: SessionRow): Session {
     forkedFrom: parseJson<Session["forkedFrom"]>(row.forkedFrom, undefined),
     groupId: row.groupId || undefined,
     origin: parseJson<Session["origin"]>(row.origin, undefined),
+    pullRequest: parseJson<Session["pullRequest"]>(row.pullRequest, undefined),
     pinned: Boolean(row.pinned),
     pinOrder: typeof row.pinOrder === "number" ? row.pinOrder : undefined,
     openclawSessionKey: row.openclawSessionKey || undefined,
@@ -297,6 +299,11 @@ export class CapsuleRepositories {
       .run(session.pendingStart ? JSON.stringify(session.pendingStart) : null, session.doneAt ?? null, session.updatedAt, session.id);
   }
 
+  /** Written on its own: a turn finishing must not put back a reading it loaded earlier. */
+  setSessionPullRequest(sessionId: string, pullRequest: Session["pullRequest"]): void {
+    this.db.sqlite.prepare("UPDATE sessions SET pull_request = ? WHERE id = ?").run(pullRequest ? JSON.stringify(pullRequest) : null, sessionId);
+  }
+
   /** Written once, when a comparison creates the thread; turn updates never carry it. */
   setSessionGroup(sessionId: string, groupId: string): void {
     this.db.sqlite.prepare("UPDATE sessions SET group_id = ? WHERE id = ?").run(groupId, sessionId);
@@ -460,7 +467,7 @@ export class CapsuleRepositories {
                 permission_profile AS permissionProfile, model_override AS modelOverride,
                 pinned, pin_order AS pinOrder, working_directory AS workingDirectory, workspace_mode AS workspaceMode,
                 worktree_branch AS worktreeBranch, direct_session AS directSession, carry_over AS carryOver,
-                pending_start AS pendingStart, done_at AS doneAt, forked_from AS forkedFrom, turn_mode AS turnMode, group_id AS groupId, origin, created_at AS createdAt, updated_at AS updatedAt`;
+                pending_start AS pendingStart, done_at AS doneAt, forked_from AS forkedFrom, turn_mode AS turnMode, group_id AS groupId, origin, pull_request AS pullRequest, created_at AS createdAt, updated_at AS updatedAt`;
     const sql = projectId
       ? `SELECT ${columns} FROM sessions WHERE project_id = ?
          ORDER BY pinned DESC, COALESCE(pin_order, 2147483647) ASC, updated_at DESC`

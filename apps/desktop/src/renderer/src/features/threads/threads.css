@@ -1,0 +1,12 @@
+/* Pull request state on a worktree thread's sidebar row. */
+.thread-pr {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  color: var(--text-faint);
+}
+.thread-pr.open { color: var(--green); }
+.thread-pr.failing { color: var(--red); }
+.thread-pr.merged { color: var(--blue, #5b9fd4); }
+.thread-pr.draft,
+.thread-pr.closed { color: var(--text-faint); }
