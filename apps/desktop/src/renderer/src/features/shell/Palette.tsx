@@ -3,7 +3,7 @@ import { searchSessionTitles, type SearchResults } from "@capsule/shared";
 import { useWorkspace } from "../../lib/workspace";
 import { formatUserError } from "../../lib/errors";
 import { SHOW_SHORTCUTS_EVENT } from "../../lib/shortcuts-event";
-import { ArrowLeftIcon, ArrowRightIcon, CpuIcon, FolderIcon, GlobeIcon, HistoryIcon, InfoIcon, RefreshIcon, KeyboardIcon, LinkIcon, MessageSquareIcon, PlusIcon, SearchIcon, SettingsIcon, ShieldIcon, SmartphoneIcon, SmilePlusIcon, SparkIcon, TerminalIcon } from "./icons";
+import { ArrowLeftIcon, ArrowRightIcon, CpuIcon, FolderIcon, GlobeIcon, HistoryIcon, InfoIcon, RefreshIcon, KeyboardIcon, LinkIcon, MessageSquareIcon, MessageSquarePlusIcon, PlusIcon, SearchIcon, SettingsIcon, ShieldIcon, SmartphoneIcon, SmilePlusIcon, SparkIcon, TerminalIcon } from "./icons";
 import { SearchDialog, type SearchDialogItem } from "./SearchDialog";
 import { commandDetail } from "../../lib/commands";
 import { customizationCommands } from "../customization/customization-commands";
@@ -13,7 +13,7 @@ export function Palette() {
     api, palette, paletteQuery, setPalette, setPaletteQuery, setView, createTask, canGoBack, canGoForward, goBack, goForward, setThreadFind,
     createProjectFromFolder, pickProjectDirectory, pickFilesToMention, projects,
     sessions, session, setProjectId, setAboutOpen, openInspector, setAgentCommandsOpen,
-    project, terminalOpen, setTerminalOpen, setDraft, commands, config, setSettingsTab, setNotice,
+    project, terminalOpen, setTerminalOpen, setDraft, commands, config, setSettingsTab, setNotice, startWithProfile,
   } = useWorkspace();
   const query = paletteQuery.trim().toLowerCase();
   const [retry, setRetry] = useState(0);
@@ -65,6 +65,11 @@ export function Palette() {
       { id: "update", label: "Check for updates", group: "Workspace", icon: <RefreshIcon size={15} />, onSelect: () => setAboutOpen(true) },
       { id: "about", label: "About Capsule", group: "Workspace", icon: <InfoIcon size={15} />, onSelect: () => setAboutOpen(true) },
       ...customizationCommands({ api, config, onError: setNotice, showProblems: () => { setSettingsTab("diagnostics"); setView("settings"); } }),
+      ...(config?.profiles ?? []).map((profile) => ({
+        id: `profile-${profile.id}`, label: `New conversation with ${profile.name}`, detail: profile.description, group: "Profiles",
+        icon: <MessageSquarePlusIcon size={15} />, disabledReason: api.isDesktop === false && api.remoteMode !== "control" ? "Read only on this device." : undefined,
+        onSelect: () => void startWithProfile(profile.id),
+      })),
       { id: "settings-tools", label: "MCP servers", detail: "Settings", group: "Go to", icon: <SettingsIcon size={15} />, onSelect: () => { setSettingsTab("tools"); setView("settings"); } },
     ].filter((item) => item.label.toLowerCase().includes(query));
     /* A command takes arguments, so choosing one puts it in the message box rather than sending it. */

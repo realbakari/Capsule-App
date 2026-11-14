@@ -52,6 +52,8 @@ export const SETTINGS_SECTION_LABELS: Record<SettingsSectionId, string> = {
 
 export const SETTINGS_SEARCH_ITEMS: SettingsSearchItem[] = [
   { title: "MCP servers", section: "tools", keywords: ["mcp", "tools", "server", "model context protocol", "env"] },
+  { title: "Profiles", section: "agents", keywords: ["profile", "preset", "agent", "model", "effort"] },
+  { title: "Response style", section: "agents", keywords: ["style", "concise", "explanatory", "personal instructions", "tone"] },
   { title: "Worktree location", section: "sourceControl", key: "worktreesDirectory", keywords: ["storage", "folder", "drive", "directory", "worktrees"] },
   { title: "Launch at login", section: "general", key: "launchAtLogin", keywords: ["startup", "boot", "open"] },
   { title: "Send key", section: "general", key: "composerSendKey", keywords: ["enter", "composer", "submit"] },

@@ -126,7 +126,7 @@ export function AgentDefaultsCard({ settings, onPatch }: SectionProps) {
       </SettingRow>
       <SettingRow
         label="Output detail" setting="outputDetail"
-        hint="How much detail the agent should include in replies."
+        hint="How much detail the agent includes in replies. A response style, yours or a profile's, replaces it."
       >
         <select
           className="field-select"

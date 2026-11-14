@@ -148,7 +148,7 @@ export interface ConfigSnapshot {
   /** Agent profiles for this project, without their bodies. */
   profiles: ProfileSummary[];
   /** Response styles, built-ins included, and the one new conversations here get. */
-  styles: { styles: StyleSummary[]; selected: string };
+  styles: { styles: StyleSummary[]; selected: string; personalInstructions?: string };
   /** Configured MCP servers here, each with whether the next direct conversation gets it. */
   mcpServers: McpServerView[];
 }

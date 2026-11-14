@@ -30,6 +30,7 @@ import {
 import { AboutCard } from "./AboutModal";
 import { CommandsCard } from "./CommandsCard";
 import { McpServersSettings } from "../customization/McpServersSettings";
+import { ProfilesCard, ResponseStyleCard } from "../customization/ProfilesCard";
 import { RemoteAccessSettings } from "./RemoteAccessSettings";
 import { AnalyticsSettings } from "./AnalyticsSettings";
 import { SettingRow, Switch } from "./controls";
@@ -338,6 +339,8 @@ export function SettingsView() {
                     </select>
                   </SettingRow>
                 </div>
+                <ProfilesCard />
+                <ResponseStyleCard />
                 <RuntimeModeCard settings={settings} onPatch={patch} />
                 <HarnessProvidersCard />
                 <AgentDefaultsCard settings={settings} onPatch={(next) => void patch(next)} />

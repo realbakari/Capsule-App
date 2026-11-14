@@ -2847,6 +2847,7 @@ export class CapsuleEngine {
       styles: {
         styles: this.config.styles(scoped?.root).styles.map((entry) => ({ id: entry.style.id, name: entry.style.name, ...(entry.style.description ? { description: entry.style.description } : {}), source: entry.source, ...(entry.path ? { path: entry.path } : {}) })),
         selected: this.config.extended(scoped?.root).style ?? styleForOutputDetail((scoped?.settings ?? this.settings).outputDetail),
+        ...(this.config.extended().personalInstructions ? { personalInstructions: this.config.extended().personalInstructions } : {}),
       },
       mcpServers: mcpServerViews(this.config.extended(scoped?.root).mcpServers, this.mcpContext(scoped?.root)),
     };

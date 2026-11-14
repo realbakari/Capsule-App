@@ -94,6 +94,7 @@ describe("the catalog against the panels", () => {
     "RemoteAccessSettings.tsx",
     "CommandsCard.tsx",
     "RuntimeModeCard.tsx",
+    "../customization/ProfilesCard.tsx",
     "../customization/McpServersSettings.tsx",
   ]
     .map((name) => {

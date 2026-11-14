@@ -261,6 +261,8 @@ export interface WorkspaceValue {
   /** Start a conversation, in the given project or the selected one. */
   /** Opens a new conversation, in another project when one is named, optionally with a prompt waiting in its composer. */
   createTask: (projectId?: string, initialPrompt?: string) => Promise<void>;
+  /** Start a new conversation from an agent profile, in the open project or the one named. */
+  startWithProfile: (profileId: string, projectId?: string) => Promise<void>;
   /** Visited conversations, like a browser's history. */
   canGoBack: boolean;
   canGoForward: boolean;
@@ -739,6 +741,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     threadAgentSynced.current = sessionId;
     const threadAgent = current.harnessId ?? current.agentId;
     if (threadAgent && agents.some((item) => item.id === threadAgent)) setAgentId(threadAgent);
+    // A profile chose this thread's mode; the composer sends its own mode with every message.
+    if (current.profileId) setMode(current.mode);
   }, [agents, sessionId, sessions]);
 
   const loadSession = useCallback(
@@ -1241,6 +1245,26 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     setSessionId(created.id);
     setView("chat");
     await refresh();
+  }
+
+  /* A profile picks the agent, mode, permission, workspace and model; the engine applies it. */
+  async function startWithProfile(profileId: string, inProject?: string) {
+    if (api.isDesktop === false && api.remoteMode !== "control") {
+      setNotice("This browser is read-only. Pair with conversation control to create a thread.");
+      return;
+    }
+    const targetProject = inProject ?? projectId ?? projects[0]?.id;
+    if (!targetProject) return;
+    try {
+      const created = await api.createSession({ projectId: targetProject, profileId, title: "New conversation" });
+      if (!requests.isCurrent(scope)) return;
+      setProjectId(targetProject);
+      setSessionId(created.id);
+      setView("chat");
+      await refresh();
+    } catch (error) {
+      setNotice(formatUserError(error));
+    }
   }
 
   /*
@@ -2315,7 +2339,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   /*
    * What a key binding runs: a registry command, a Capsule command (put in
    * the composer as the `/` menu would), a project action by name, or a
-   * profile, which is not available yet.
+   * profile, which starts a new conversation from it.
    */
   const runKeyAction = (action: string) => {
     const { namespace, name } = parseKeymapAction(action);
@@ -2329,7 +2353,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       return;
     }
     if (namespace === "profile") {
-      setNotice(`Profiles are not available yet, so ${action} does nothing.`);
+      if (!config?.profiles.some((profile) => profile.id === name)) {
+        setNotice(`There is no profile named ${name}.`);
+        return;
+      }
+      void startWithProfile(name);
       return;
     }
     if (namespace === "action") {
@@ -2502,6 +2530,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       refresh,
       loadSession,
       createTask,
+      startWithProfile,
       send,
       createProject,
       pickProjectDirectory,

@@ -786,6 +786,7 @@ export function Composer({
               disabled={busy || Boolean(activeRun) || api.isDesktop !== true}
               loading={discovery.loading} error={discovery.error} onRetry={discovery.retry}
               onManage={() => setView("runtimes")} onOpenChange={setModelPickerOpen}
+              profiles={workspace.config?.profiles} onProfile={(id) => void workspace.startWithProfile(id)}
               onAgent={setAgentId} onModel={(id) => harnessLive ? void setHarnessOption("model", id) : workspace.setDraftHarnessConfig({ model: id, options: {} })} />
             {!harnessLive && capabilities.route === "direct" && (controls.effort || controls.permissions || controls.mode) && <div className="composer-agent-controls">
               {([ [controls.effort, "Reasoning effort"], [controls.permissions, "Permissions"], [controls.mode, "Agent mode"] ] as const).map(([option, label]) => option && <MenuSelect key={option.id}
