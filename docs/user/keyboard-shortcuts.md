@@ -12,7 +12,7 @@
 | Search in files | `⇧⌘F` |
 | Toggle the sidebar | `⌘B` |
 | Toggle the side panel | `⌘\` |
-| Find in the current conversation | `⌘F` |
+| Find in the current conversation | `⌘F` (in the browser panel: find on the page) |
 | Back to the previous conversation you visited | `⌘[` |
 | Forward again | `⌘]` |
 | Stash the current prompt | `⌘S` |

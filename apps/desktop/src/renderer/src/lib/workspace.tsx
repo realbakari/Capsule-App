@@ -74,6 +74,7 @@ import { EMPTY_NAVIGATION, canGoBack as navigationCanGoBack, canGoForward as nav
 import { contextUsageFromEvents, type ContextUsage } from "./context-window";
 import { harnessPreflightReason } from "./harness-preflight";
 import { useToasts } from "./toasts";
+import { BROWSER_FIND_EVENT } from "./browser-find";
 import {
   promptDraftKey,
   readPromptStash,
@@ -1044,7 +1045,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
           goForward();
           break;
         case "find-in-thread":
-          setThreadFind((open) => !open);
+          // In the browser pane, ⌘F finds on the page rather than in the thread.
+          if (document.activeElement?.closest(".panel-browser-pane")) window.dispatchEvent(new CustomEvent(BROWSER_FIND_EVENT));
+          else setThreadFind((open) => !open);
           break;
         case "open-review":
           setInspectorTab("changes");

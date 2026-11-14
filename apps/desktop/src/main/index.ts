@@ -624,6 +624,12 @@ function createWindow(): BrowserWindow {
     // filesystem privileges through a preview. These rules cover redirects too.
     secureBrowserSession(contents.session);
     browserGuestIds.add(contents.id);
+    // A focused page receives ⌘F itself; hand it to the browser's own find bar.
+    contents.on("before-input-event", (event, input) => {
+      if (input.type !== "keyDown" || input.key.toLowerCase() !== "f" || !(input.meta || input.control) || input.shift || input.alt) return;
+      event.preventDefault();
+      desktopWindow.send(IPC_EVENTS.state, { command: "browser-find", webContentsId: contents.id });
+    });
     contents.once("destroyed", () => {
       browserGuestIds.delete(contents.id);
       if (browserViewId === contents.id) browserViewId = undefined;

@@ -1,0 +1,11 @@
+.browser-find {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg);
+}
+.browser-find input { flex: 1; min-width: 0; height: var(--control-h-sm); font-size: var(--text-ui); }
+.browser-find-count { min-width: 4.5rem; color: var(--text-muted); font-size: var(--text-xs); text-align: right; font-variant-numeric: tabular-nums; }
+.preview-menu-kbd { margin-left: auto; color: var(--text-muted); font-family: var(--font); font-size: var(--text-xs); }

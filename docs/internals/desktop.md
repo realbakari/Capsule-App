@@ -2186,3 +2186,8 @@ differs from the one for folders.
   Hidden below 48rem.
 - **F6 / ⇧F6** move focus between sidebar, conversation, composer and side
   panel (`lib/regions.ts`), skipping hidden regions.
+- **Find on page** in the Browser uses the webview's own `findInPage`, so no
+  channel is added. A focused page receives ⌘F itself; main catches it with the
+  guest's `before-input-event` and sends `browser-find` to this window only. ⌘F
+  with focus elsewhere in the browser pane finds on the page instead of in the
+  thread.

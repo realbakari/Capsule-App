@@ -1,6 +1,8 @@
 import type { WebviewTag } from "electron";
 import { useWorkspace } from "../../lib/workspace";
 import { useToasts } from "../../lib/toasts";
+import { BROWSER_FIND_EVENT } from "../../lib/browser-find";
+import { BrowserFindBar } from "./BrowserFindBar";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { InspectorHeadSlot } from "./inspector-slot";
@@ -250,6 +252,7 @@ export function EmbeddedBrowser({
   const [pickActive, setPickActive] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [zoomFactor, setZoomFactor] = useState(1.0);
+  const [finding, setFinding] = useState(false);
   const [recents, setRecents] = useState<BrowserRecent[]>(() => {
     try {
       return parseBrowserRecents(localStorage.getItem(BROWSER_RECENTS_KEY));
@@ -268,6 +271,17 @@ export function EmbeddedBrowser({
   const ownerId = session?.id;
   const moreMenuAnchorRef = useRef<HTMLDivElement>(null);
   const toasts = useToasts();
+  /* ⌘F from the page itself (forwarded by main) or from elsewhere in the pane opens find. */
+  useEffect(() => {
+    if (!desktopBrowser) return;
+    const open = () => setFinding(true);
+    const off = api.on?.("state", (payload: unknown) => {
+      const message = payload as { command?: string; webContentsId?: number };
+      if (message.command === "browser-find" && message.webContentsId === mountedView?.getWebContentsId?.()) open();
+    });
+    window.addEventListener(BROWSER_FIND_EVENT, open);
+    return () => { off?.(); window.removeEventListener(BROWSER_FIND_EVENT, open); };
+  }, [api, desktopBrowser, mountedView]);
 
   useEffect(() => {
     if (!desktopBrowser) return;
@@ -634,6 +648,9 @@ export function EmbeddedBrowser({
                 </select>
               </label>
               <div className="preview-menu-divider" />
+              <button type="button" className="preview-menu-item" disabled={!ready} onClick={() => { setFinding(true); setMoreMenuOpen(false); }}>
+                Find on page <kbd className="preview-menu-kbd">⌘F</kbd>
+              </button>
               <button
                 type="button"
                 className="preview-menu-item"
@@ -838,6 +855,7 @@ export function EmbeddedBrowser({
 
       {error ? <div className="browser-error" role="alert"><span>{error}</span>{currentUrl && <button type="button" className="chip" onClick={() => navigate(currentUrl)}>Retry page</button>}</div> : null}
 
+      {finding && currentUrl ? <BrowserFindBar view={mountedView} onClose={() => { setFinding(false); mountedView?.focus(); }} /> : null}
       {currentUrl ? (
         <div className="embedded-browser-frame" data-viewport={viewport}>
           <webview

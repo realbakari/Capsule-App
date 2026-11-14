@@ -452,3 +452,7 @@ Escape closes the menu and returns focus to its button.
 
 After **Capture screenshot** in the browser, the notice offers **Attach to
 message**, which adds the screenshot to the message you are writing.
+
+To find text on the page, press `⌘F` while the browser has focus, or choose
+**Find on page** from its menu. `Enter` goes to the next match, `⇧Enter` to the
+previous one, and `Esc` closes the bar.
