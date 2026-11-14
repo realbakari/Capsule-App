@@ -281,6 +281,8 @@ button.setting-source-chip:hover { border-color: var(--border-strong); color: va
 
 /* Always allow on an approval card: the rule first, then where it applies. */
 .always-allow {
+  /* Below the card's buttons, whichever of them come after the toggle. */
+  order: 1;
   flex-basis: 100%;
   display: grid;
   gap: 0.45rem;
