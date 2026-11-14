@@ -25,6 +25,8 @@
 .browser-device-item small { color: var(--text-muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
 .browser-device-item[aria-checked="true"] { background: color-mix(in srgb, var(--text) 8%, transparent); font-weight: 600; }
 
-@container (max-width: 540px) {
+/* The panel header is the container: a narrow panel keeps its room for the tabs. */
+.inspector-head:has(.browser-head) { container: browser-head / inline-size; }
+@container browser-head (max-width: 540px) {
   .browser-device-size { display: none; }
 }
