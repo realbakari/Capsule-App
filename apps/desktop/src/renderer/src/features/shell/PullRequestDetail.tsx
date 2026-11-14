@@ -1,4 +1,5 @@
 import { useToasts } from "../../lib/toasts";
+import { useViewedFiles } from "../review/useViewedFiles";
 import { displayPrefs } from "../../lib/display-prefs";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -190,6 +191,8 @@ export function GitPullRequestDetail({
   const [commitError, setCommitError] = useState<string>();
   const commitRequest = useRef(0);
   const { show: showNotice } = useToasts();
+  // Marks are keyed by each file's diff, so a new push to a file clears its mark by itself.
+  const viewed = useViewedFiles(`pr:${summary.url}`);
   useEffect(() => () => { commitRequest.current += 1; }, []);
 
   async function selectCommit(oid: string) {
@@ -710,7 +713,7 @@ export function GitPullRequestDetail({
           {commitError ? <div className="notice" role="alert">{commitError} <button className="chip" type="button" onClick={() => void selectCommit(selectedCommit)}>Retry diff</button></div> : null}
 
           {diffFiles.length > 0 ? (
-            <PagedFileDiffs files={diffFiles} split={split} wrap={wrap} onAddComment={selectedCommit ? undefined : handleAddComment} />
+            <PagedFileDiffs files={diffFiles} split={split} wrap={wrap} onAddComment={selectedCommit ? undefined : handleAddComment} viewed={selectedCommit ? undefined : viewed} />
           ) : shownDiff.trim() ? (
             <DiffView text={shownDiff} />
           ) : !commitLoading && !commitError ? (
