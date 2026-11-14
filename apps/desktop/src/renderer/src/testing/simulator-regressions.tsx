@@ -1,5 +1,12 @@
 import { createRoot } from "react-dom/client";
-import { Inspector } from "../features/shell/Inspector";
+import { Inspector as Panel } from "../features/shell/Inspector";
+import { Toasts } from "../features/toasts/Toasts";
+import { ToastProvider } from "../lib/toasts";
+
+/* The panel with the toast stack beside it, as the app renders it. */
+function Inspector() {
+  return <ToastProvider><Panel /><Toasts /></ToastProvider>;
+}
 import type { Simulator, SimulatorAction, SimulatorFrame, SimulatorInventory, SimulatorTouch } from "@capsule/shared";
 
 function assert(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
@@ -139,12 +146,15 @@ export async function runSimulatorRegressions(host: HTMLElement, base: Record<st
     await until(() => document.querySelector(".simulator-app-list"));
     assert(host.textContent?.includes("Demo") && !host.textContent.includes("com.apple.Preferences"), "Installed apps listed system apps or missed the user's");
 
-    // Recording: start, then stop opens the saved file.
+    // Recording: start, then stop offers the saved file on a toast.
     click("Record the screen");
     await until(() => actions.some((entry) => entry.action.type === "record" && entry.action.mode === "start"));
     document.dispatchEvent(new Event("visibilitychange"));
     await until(() => document.querySelector('[aria-label="Stop recording"]'));
     click("Stop recording");
+    await until(() => document.querySelector(".toast-action"));
+    assert(!opened.includes("/tmp/sim.mp4"), "A stopped recording opened a player without being asked");
+    document.querySelector<HTMLButtonElement>(".toast-action")!.click();
     await until(() => opened.includes("/tmp/sim.mp4"));
 
     // An idle bridge is connected automatically; building and failure are said out loud, with Retry.

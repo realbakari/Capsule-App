@@ -144,7 +144,7 @@ export async function runWorkspaceExtensionRegressions(host: HTMLElement, base: 
     const pr = { number: 42, title: "Review fixture", url: "https://example.test/pull/42", state: "OPEN", isDraft: false };
     window.testWorkspace = { ...base, setInspectorTab: () => {}, inspectorTab: "changes", git: { isRepo: true, branch: "fixture", files: [] },
       setDraft: (update: string | ((value: string) => string)) => { draft = typeof update === "function" ? update(draft) : update; },
-      api: { ...(base.api as object), listPullRequests: async () => ({ items: [pr] }), getPullRequest: async () => undefined } };
+      api: { ...(base.api as object), gitDiff: async () => "", listPullRequests: async () => ({ items: [pr] }), getPullRequest: async () => undefined } };
     root.render(<Inspector />);
     await until(() => document.querySelector(".panel-pr-row"));
     document.querySelector<HTMLButtonElement>(".panel-pr-row")!.click();
@@ -167,7 +167,7 @@ export async function runWorkspaceExtensionRegressions(host: HTMLElement, base: 
     window.testWorkspace = { ...window.testWorkspace,
       setConfirm: (value: typeof confirmation) => { confirmation = value; },
       gitMergePullRequestStack: () => new Promise<boolean>((resolve) => { finishMerge = resolve; }),
-      api: { ...(base.api as object), listPullRequests: async () => ({ items: [pr, other] }),
+      api: { ...(base.api as object), gitDiff: async () => "", listPullRequests: async () => ({ items: [pr, other] }),
         getPullRequest: async (_project: string, number: number) => {
           detailReads++;
           return { ...(number === 42 ? pr : other), stackDetail: stack,
