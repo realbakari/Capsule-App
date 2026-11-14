@@ -12,6 +12,47 @@
 .thread-pr.closed { color: var(--text-faint); }
 .thread-status.paused { color: var(--text-muted); }
 
+/* New conversation and, beside it, the other ways to start one. */
+.sidebar-new-row {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  order: -1;
+  width: 100%;
+}
+.sidebar-new-row .sidebar-new { flex: 1; width: auto; order: 0; }
+.sidebar-new-more { flex: none; opacity: 0; color: var(--text-muted); }
+.sidebar-new-row:hover .sidebar-new-more,
+.sidebar-new-more:focus-visible,
+.sidebar-new-more[data-open="true"] { opacity: 1; }
+
+/* Temporary threads: a word in the row, a strip above the composer. */
+.thread-temporary {
+  flex: none;
+  margin-left: 0.3rem;
+  padding: 0 0.3rem;
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: var(--text-3xs);
+  font-weight: 600;
+  line-height: 1.5;
+}
+.temporary-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0 0 0.4rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+.temporary-banner strong { color: var(--text); font-weight: 600; }
+.temporary-banner .chip { margin-left: auto; flex: none; }
+
 /* Tags: chips plus one field, in Conversation details and the Tags dialog. */
 .tag-editor {
   display: flex;

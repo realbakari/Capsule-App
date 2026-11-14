@@ -14,6 +14,7 @@ import { agentSwitchNotice, harnessDisplayName } from "../../lib/harness";
 import { AgentModelPicker } from "./AgentModelPicker";
 import { RunOnControl, RunOnSummary, useRunOn } from "../best-of-n/RunOnPicker";
 import { GatewayBanner } from "../shell/GatewayBanner";
+import { TemporaryThreadBanner } from "../threads/ThreadMarks";
 import { GATEWAY_CONNECTION_REQUIRED } from "../../lib/harness-preflight";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { FileEntry } from "@capsule/shared";
@@ -836,6 +837,7 @@ export function Composer({
             )}
           </div>
         )}
+        <TemporaryThreadBanner />
         {gatewayUnavailable && <GatewayBanner inset />}
         {sendBlockReason && !runOn.active && !(gatewayUnavailable && sendBlockReason === GATEWAY_CONNECTION_REQUIRED) && (
           <div className={`composer-preflight${readOnlyViewer ? " read-only" : ""}`} role="status">

@@ -24,6 +24,8 @@ interface ThreadActionsValue {
   allTags: string[];
   setTags: (sessionId: string, tags: string[]) => Promise<void>;
   openTags: (sessionId: string) => void;
+  /** Persist a temporary thread. */
+  keep: (sessionId: string) => Promise<void>;
 }
 
 const ThreadActionsContext = createContext<ThreadActionsValue>({
@@ -35,6 +37,7 @@ const ThreadActionsContext = createContext<ThreadActionsValue>({
   allTags: [],
   setTags: async () => undefined,
   openTags: () => undefined,
+  keep: async () => undefined,
 });
 
 export function useThreadActions(): ThreadActionsValue {
@@ -53,6 +56,14 @@ export function ThreadActionsProvider({ children }: { children: ReactNode }) {
     await refresh();
   }, [api, refresh, setNotice]);
   const openTags = useCallback((sessionId: string) => { if (writable) setTagging(sessionId); }, [writable]);
+
+  const keep = useCallback(async (sessionId: string) => {
+    try {
+      await api.keepSession(sessionId);
+      setNotice("Kept. This conversation is saved like any other.");
+    } catch (error) { setNotice(formatUserError(error)); }
+    await refresh();
+  }, [api, refresh, setNotice]);
 
   const pause = useCallback(async (sessionId: string) => {
     try {
@@ -74,6 +85,7 @@ export function ThreadActionsProvider({ children }: { children: ReactNode }) {
     if (!writable) return {};
     return {
       tags: true,
+      ...(session.temporary ? { keep: true } : {}),
       ...(session.workspaceMode === "worktree" ? { pause: session.paused ? "resume" as const : "pause" as const } : {}),
     };
   }, [writable]);
@@ -82,10 +94,11 @@ export function ThreadActionsProvider({ children }: { children: ReactNode }) {
     if (action === "pause") { void pause(session.id); return true; }
     if (action === "resume") { void resume(session.id); return true; }
     if (action === "tags") { openTags(session.id); return true; }
+    if (action === "keep") { void keep(session.id); return true; }
     return false;
-  }, [pause, resume, openTags]);
+  }, [pause, resume, openTags, keep]);
 
-  const value = useMemo(() => ({ writable, menuState, run, pause, resume, allTags, setTags, openTags }), [writable, menuState, run, pause, resume, allTags, setTags, openTags]);
+  const value = useMemo(() => ({ writable, menuState, run, pause, resume, allTags, setTags, openTags, keep }), [writable, menuState, run, pause, resume, allTags, setTags, openTags, keep]);
   return (
     <ThreadActionsContext.Provider value={value}>
       {children}

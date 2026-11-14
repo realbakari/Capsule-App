@@ -170,6 +170,7 @@ export const IPC_CHANNELS = {
   setSessionTags: "capsule:setSessionTags",
   renameTag: "capsule:renameTag",
   deleteTag: "capsule:deleteTag",
+  keepSession: "capsule:keepSession",
   reorderPinnedSessions: "capsule:reorderPinnedSessions",
   searchFiles: "capsule:searchFiles",
   regenerateTitle: "capsule:regenerateTitle",

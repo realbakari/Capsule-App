@@ -16,6 +16,7 @@ import { Branching, transcriptContext } from "./branching.js";
 import { HistoryImport } from "./history-import.js";
 import { Handoff } from "./handoff.js";
 import { ThreadPauses } from "./thread-pause.js";
+import { TemporaryThreads } from "./temporary-threads.js";
 import { handoffContext, type HandoffInput, type ImportListing, type ImportSessionInput } from "@capsule/shared";
 import type { CommandResult, DiagnosticsResult } from "@capsule/shared";
 import { COMPOSER_COMMAND_TIMEOUT_MS, DIAGNOSTICS_TIMEOUT_MS, findCheckCommand, runContextCommand } from "./context-commands.js";
@@ -425,6 +426,7 @@ export class CapsuleEngine {
   private readonly historyImport: HistoryImport;
   private readonly handoff: Handoff;
   private readonly pauses: ThreadPauses;
+  private readonly temporary: TemporaryThreads;
 
   private branchingHost(): import("./branching.js").BranchingHost {
     return {
@@ -468,7 +470,8 @@ export class CapsuleEngine {
         }
       },
     });
-    this.repos = new CapsuleRepositories(this.db);
+    this.temporary = new TemporaryThreads(new CapsuleRepositories(this.db));
+    this.repos = this.temporary.repos;
     this.branching = new Branching(this.branchingHost());
     const emitState = (command: "sessions-updated") => this.events.emit("state", { command });
     this.historyImport = new HistoryImport({
@@ -619,6 +622,7 @@ export class CapsuleEngine {
       ...Array.from(this.verificationPending.values(), (check) => check.promise),
     ]);
     this.db.close();
+    this.temporary.close();
     const failures = cleanup.filter((result) => result.status === "rejected");
     if (failures.length) throw new AggregateError(failures.map((result) => result.reason), "Some workspace resources could not close.");
   }
@@ -1827,6 +1831,7 @@ export class CapsuleEngine {
     const requestedWorkspaceMode =
       input.workspaceMode ?? project.defaultWorkspaceMode ?? this.settings.defaultWorkspaceMode;
     const workspaceMode =
+      !input.temporary &&
       !isInboxProject(project) &&
         requestedWorkspaceMode === "worktree" &&
         (await readGitStatus(project.workingDirectory)).isRepo
@@ -1834,6 +1839,7 @@ export class CapsuleEngine {
         : "local";
     const session = createSessionRecord(project, { ...input, workspaceMode }, agentId);
     if (origin) session.origin = origin;
+    if (input.temporary) session.temporary = true;
     session.permissionProfile = input.permissionProfile ?? this.settings.defaultPermission;
     const turnMode = isTurnMode(input.turnMode) ? input.turnMode : this.settings.startInPlanMode ? "plan" : undefined;
     if (turnMode) session.turnMode = turnMode;
@@ -2006,6 +2012,14 @@ export class CapsuleEngine {
     }
     if (changed) this.events.emit("state", { command: "sessions-updated" });
     return changed;
+  }
+
+  /** Move a temporary thread into the database. From then on it is an ordinary thread. */
+  keepSession(id: string): Session {
+    if (!this.temporary.has(id)) return this.requireSession(id);
+    this.temporary.keep(id);
+    this.events.emit("state", { command: "sessions-updated" });
+    return this.requireSession(id);
   }
 
   /** Save a worktree thread's work to a hidden ref and stop the actions it started. */
@@ -3882,6 +3896,8 @@ export class CapsuleEngine {
    */
   private captureTurnCheckpoint(run: Run, session: Session): void {
     const cwd = run.workingDirectory;
+    // A temporary thread leaves nothing behind, and a checkpoint is a ref in the user's repository.
+    if (session.temporary || this.temporary.has(session.id)) return;
     if (!cwd || this.checkpointCapturing.has(run.id) || this.repos.getRun(run.id)?.checkpointRef) return;
     this.checkpointCapturing.add(run.id);
     const ref = `${checkpointRef(session.id, 0)}/${run.id}`;
@@ -4108,6 +4124,8 @@ export class CapsuleEngine {
   }
 
   async forkSession(input: ForkSessionInput): Promise<Session> {
+    // A fork copies saved turns; a temporary thread's turns are not saved yet.
+    if (this.temporary.has(input.sessionId)) throw new Error("Keep this conversation before forking it.");
     return this.branching.fork(input);
   }
 

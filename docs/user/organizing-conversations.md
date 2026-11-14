@@ -76,3 +76,24 @@ Tags are your own labels on conversations, across projects.
   conversation; the conversations stay.
 
 On a paired device that only reads, tags are shown but cannot be changed.
+
+## Temporary conversations
+
+A temporary conversation is for a quick question or a throwaway experiment you do
+not want in your list for good. Start one with **New temporary conversation** in
+the command palette, or from the arrow beside **New conversation** at the top of
+the sidebar.
+
+- It is never saved. Its messages and turns are held in memory and are gone when
+  Capsule quits.
+- It is marked **Temporary** in the sidebar, and a strip above the composer says
+  so.
+- It always works in the project's own checkout, never in a worktree, and it
+  records no checkpoints, so it leaves nothing in your repository. Restoring or
+  forking a turn needs those, so keep the conversation first.
+- The agent runs as usual. Its own session is not kept by Capsule once the
+  conversation is gone.
+
+**Keep this conversation** (in the strip, the conversation's menu, or the palette)
+saves it, with its messages, turns and tags, and from then on it is an ordinary
+conversation. Deleting a temporary conversation removes it at once.

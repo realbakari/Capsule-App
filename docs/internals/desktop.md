@@ -2408,3 +2408,27 @@ draft.
   Conversation details has a `TagEditor`; Settings, General, Tags renames and
   deletes. `setSessionTags`, `renameTag`, `deleteTag` are write channels and the
   editors render read-only chips on a paired device.
+
+## Thread lifecycle: temporary threads
+
+- **Storage.** `TemporaryThreads` (`core/temporary-threads.ts`) owns a second,
+  in-memory `CapsuleDatabase` with the same schema. The engine's `repos` is a
+  proxy over the file's repositories: a routing table sends each call that names
+  a thread, turn, message or per-thread setting (`followups:<id>`) to memory when
+  that thread is temporary, lists merge both stores, and everything else goes to
+  the file. Rows read from memory carry `Session.temporary`; nothing in the file
+  does. The memory store mirrors the thread's workspace and project rows for its
+  foreign keys.
+- **Lifecycle.** `createSession({ temporary: true })` forces local mode (a
+  worktree is a trace on disk) and `captureTurnCheckpoint` skips the thread (a
+  checkpoint is a ref in the user's repository). The agent session is created as
+  for any thread on either route; it is not closed when the app quits, same as an
+  ordinary thread's. Fork is refused until kept. Quit drops the memory store.
+- **Keep.** `keepSession` parks the transcript rows out of memory and unparks them
+  into the file, with the thread, its tags, ratings and queued follow-ups.
+  Restore points are not carried.
+- **Surfaces.** "New temporary conversation" in the palette and in the
+  `NewConversationMenu` chevron beside New conversation; a Temporary word in the
+  row; `TemporaryThreadBanner` above the composer with Keep; Keep in the thread
+  menus and palette. `createSession` stays a control channel; `keepSession` is a
+  write channel and Keep is hidden on a paired device.

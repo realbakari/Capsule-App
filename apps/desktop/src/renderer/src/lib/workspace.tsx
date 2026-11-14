@@ -156,6 +156,12 @@ export interface ConfirmState {
   secondary?: { label: string; onConfirm: () => void };
 }
 
+/** How a new conversation starts, beyond its project and first prompt. */
+export interface CreateTaskOptions {
+  /** Held in memory only, on the shared checkout, until kept. */
+  temporary?: boolean;
+}
+
 export interface WorkspaceValue {
   api: typeof window.capsule;
   view: View;
@@ -244,7 +250,7 @@ export interface WorkspaceValue {
   eventLoad?: { runId: string; state: "loading" | "loaded" | "error"; detail?: string };
   /** Start a conversation, in the given project or the selected one. */
   /** Opens a new conversation, in another project when one is named, optionally with a prompt waiting in its composer. */
-  createTask: (projectId?: string, initialPrompt?: string) => Promise<void>;
+  createTask: (projectId?: string, initialPrompt?: string, options?: CreateTaskOptions) => Promise<void>;
   /** Visited conversations, like a browser's history. */
   canGoBack: boolean;
   canGoForward: boolean;
@@ -1257,7 +1263,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       .catch(() => setFiles([]));
   }, [api, scope, loadGit, projectId, project?.workingDirectory, sessionId, session?.workingDirectory, selectionExists]);
 
-  async function createTask(inProject?: string, initialPrompt?: string) {
+  async function createTask(inProject?: string, initialPrompt?: string, options?: CreateTaskOptions) {
     if (api.isDesktop === false && api.remoteMode !== "control") {
       setNotice("This browser is read-only. Pair with conversation control to create a thread.");
       return;
@@ -1269,8 +1275,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       agentId,
       mode,
       permissionProfile: draftApproval ?? settings?.defaultPermission,
-      workspaceMode: git?.isRepo ? (settings?.defaultWorkspaceMode ?? "local") : "local",
+      workspaceMode: options?.temporary ? "local" : git?.isRepo ? (settings?.defaultWorkspaceMode ?? "local") : "local",
       title: "New conversation",
+      ...(options?.temporary ? { temporary: true } : {}),
     });
     if (!requests.isCurrent(scope)) return;
     // The draft scope moves with the selection, so a prompt written after the

@@ -8,7 +8,7 @@ import { SHOW_SHORTCUTS_EVENT } from "../../lib/shortcuts-event";
 import { CYCLE_FAVORITE_MODEL_EVENT } from "../../lib/turn-mode";
 import { requestNewBoardCard } from "../../lib/board";
 import { requestRunOn } from "../../lib/best-of-n";
-import { PauseIcon, PlayIcon, CompareIcon, CopyIcon, FileIcon, GitBranchIcon, GitMergeIcon, RedoIcon, ArrowLeftIcon, ArrowRightIcon, ColumnsIcon, CpuIcon, ListIcon, ListTodoIcon, StarIcon, DiffIcon, FolderIcon, GlobeIcon, HistoryIcon, InfoIcon, RefreshIcon, KeyboardIcon, LinkIcon, MessageSquareIcon, MousePointerClickIcon, PlusIcon, SearchIcon, SettingsIcon, ShieldIcon, SmartphoneIcon, SmilePlusIcon, SparkIcon, TerminalIcon } from "./icons";
+import { BookmarkIcon, PauseIcon, PlayIcon, CompareIcon, CopyIcon, FileIcon, GitBranchIcon, GitMergeIcon, RedoIcon, ArrowLeftIcon, ArrowRightIcon, ColumnsIcon, CpuIcon, ListIcon, ListTodoIcon, StarIcon, DiffIcon, FolderIcon, GlobeIcon, HistoryIcon, InfoIcon, RefreshIcon, KeyboardIcon, LinkIcon, MessageSquareIcon, MousePointerClickIcon, PlusIcon, SearchIcon, SettingsIcon, ShieldIcon, SmartphoneIcon, SmilePlusIcon, SparkIcon, TerminalIcon } from "./icons";
 import { SearchDialog, type SearchDialogItem } from "./SearchDialog";
 import { useBranching } from "../conversation/branching/use-branching";
 import { useApplyToLocal } from "../apply/ApplyToLocal";
@@ -69,6 +69,10 @@ export function Palette() {
     const readOnly = api.isDesktop === false && api.remoteMode !== "control" ? "Read only on this device." : undefined;
     const actions: SearchDialogItem[] = [
       { id: "new", label: "New conversation", group: "Actions", icon: <PlusIcon size={15} />, shortcut: "⌘N", disabledReason: desktopOnly, onSelect: () => createTask() },
+      ...(readOnly ? [] : [{ id: "new-temporary", label: "New temporary conversation", detail: "Not saved, with no checkpoints; gone when Capsule quits", group: "Actions", icon: <MessageSquareIcon size={15} />,
+        disabledReason: projects.length === 0 ? "Add a project first." : undefined, onSelect: () => void createTask(undefined, undefined, { temporary: true }) }]),
+      ...(threadActions.writable && session?.temporary ? [{ id: "keep-thread", label: "Keep this conversation", detail: "Save it like any other conversation", group: "Actions", icon: <BookmarkIcon size={15} />,
+        onSelect: () => void threadActions.keep(session.id) }] : []),
       { id: "run-on-several", label: "Run on several agents…", detail: "One prompt, two to four agents, each in its own worktree", group: "Actions", icon: <CompareIcon size={15} />,
         disabledReason: desktopOnly ?? (projects.length === 0 ? "Add a project first." : undefined),
         onSelect: () => {

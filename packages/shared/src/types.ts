@@ -282,6 +282,8 @@ export interface Session {
   paused?: import("./thread-pause.js").ThreadPause;
   /** The user's labels, canonical and sorted. Written on its own, never by a turn. */
   tags?: string[];
+  /** Held in memory only: never written to the database, gone on quit unless kept. */
+  temporary?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -1040,6 +1042,8 @@ export interface CreateSessionInput {
   workingDirectory?: string;
   workspaceMode?: WorkspaceMode;
   turnMode?: import("./plan-mode.js").TurnMode;
+  /** A thread that is never persisted. Always on the shared checkout, with no checkpoints. */
+  temporary?: boolean;
 }
 
 export interface AgentMessage {

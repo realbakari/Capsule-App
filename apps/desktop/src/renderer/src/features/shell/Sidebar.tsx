@@ -11,8 +11,9 @@ import {
   type MenuAnchor,
 } from "../../lib/action-menu";
 import { showNativeContextMenu } from "../../lib/bridge";
-import { ThreadPullRequestMark } from "../threads/ThreadMarks";
+import { ThreadPullRequestMark, ThreadTemporaryMark } from "../threads/ThreadMarks";
 import { useThreadActions } from "../threads/ThreadActions";
+import { NewConversationMenu } from "../threads/NewConversationMenu";
 import { CHANNEL_PREFS_EVENT, loadChannelPrefs, unreadChannelCount } from "../../lib/channel-prefs";
 import {
   compactRelativeTime,
@@ -555,6 +556,7 @@ export function Sidebar() {
         </span>
         <span className="thread-title">
           <span className="truncate">{label ?? session.title}</span>
+          <ThreadTemporaryMark session={session} />
           {grouping !== "project" && <small className="thread-project">{projectNames.get(session.projectId)}</small>}
         </span>
         <span className="thread-meta">
@@ -785,6 +787,7 @@ export function Sidebar() {
             </button>
           ) : null}
         </label>
+        <div className="sidebar-new-row">
         <button
           className="icon-btn sidebar-new"
           title="New conversation (⌘N)"
@@ -803,6 +806,8 @@ export function Sidebar() {
           <PlusIcon size={16} />
           <span>New conversation</span>
         </button>
+        <NewConversationMenu />
+        </div>
       </div>
       {/* A scope row rather than a full-width button: the label says what the
           list below is showing, and the action that adds to it sits at its
