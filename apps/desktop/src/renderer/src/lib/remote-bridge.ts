@@ -141,7 +141,9 @@ export function createRemoteBridge(token: string): CapsuleApi {
         return;
       }
       if (frame.type === "event" && frame.event) {
-        for (const listener of listeners.get(frame.event) ?? []) listener(frame.payload);
+        // The host names events by their wire name; the renderer subscribes by key.
+        const name = frame.event.replace(/^capsule:event:/u, "");
+        for (const listener of listeners.get(name) ?? []) listener(frame.payload);
         return;
       }
       if (frame.type === "result" && typeof frame.id === "number") {
