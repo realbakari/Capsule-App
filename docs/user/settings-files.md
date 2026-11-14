@@ -93,6 +93,52 @@ On a paired phone or browser you can see each setting and the file that set
 it, and both follow changes on the computer as they happen, but you cannot
 change files, trust a project or reset anything.
 
+## Permission rules
+
+Permission rules answer an agent's permission requests before they reach
+you, for every agent Capsule drives, whichever way the conversation runs.
+
+```jsonc
+{
+  "permissions": {
+    "allow": ["execute(pnpm test *)", "fetch(domain:github.com)"],
+    "ask": ["execute(git push *)"],
+    "deny": ["edit(**/.env*)", "read(~/.ssh/**)"]
+  }
+}
+```
+
+A rule is a kind, and optionally what it covers in parentheses:
+
+| Rule | Covers |
+| --- | --- |
+| `execute(pnpm test *)` | A command. A trailing ` *` also covers the command on its own. |
+| `edit(src/**)`, `read(~/.ssh/**)` | Paths. Relative paths start at the project folder; `**` crosses folders. Also `delete`, `move` and `search`. |
+| `fetch(domain:github.com)`, `fetch(domain:*.example.com)` | A host, or its subdomains |
+| `mcp(browser:navigate)`, `mcp(browser:*)` | A tool on an MCP server |
+| `edit` | Every request of that kind |
+
+Deny wins over ask, and ask over allow. A deny or allow rule answers the
+request at once: the agent is refused or approved for that one request. An
+ask rule always shows you the request, even when an allow rule matches too.
+Each automatic answer is noted in the turn's **Run log**, such as "Allowed by
+execute(pnpm test *) in ~/.capsule/settings.json".
+
+An allow rule is strict: every path, and every part of a command joined with
+`&&`, `|` or `;`, must match it, and a command that substitutes another
+command or writes to a file never matches one. Deny and ask rules need only
+one match, and on macOS they ignore the case of a path, so `.ENV` is denied
+by `edit(**/.env*)`.
+
+Rules see the request as the agent describes it, and only when the agent
+asks. An agent in a mode that never asks reaches no rule.
+
+On an approval card, **Always allow…** shows the rule it would save and
+offers **In this thread**, **In this project, only me** (your project-local
+file) or **Everywhere** (your user file). It is on the desktop only.
+**Settings → Agents → Permission rules** lists every rule with its file,
+removes rules from your own files, and adds new ones.
+
 ## What a project can set
 
 Some settings are yours alone, and Capsule ignores them in a project file:
@@ -168,7 +214,7 @@ files you are about to fix. Edit them in your own editor, then choose
 ## From the command palette
 
 The palette (⌘K) has the settings files too: **Open user settings**, **Open
-project settings**, **Open project local settings**, **Open keybindings
-file**, **Reload customizations**, **Trust this project** or **Revoke trust
+project settings**, **Open project local settings**, **Open hooks
+settings**, **Open keybindings file**, **Reload customizations**, **Trust this project** or **Revoke trust
 for this project**, **Restart without customizations** or **Restart
 normally**, and **Show customization problems**.

@@ -519,6 +519,32 @@ direct ACP session receive the same plain prompt, and no harness needs a
 native command of its own. A Capsule command wins over an agent's command of
 the same name; anything else starting with `/` is sent as typed.
 
+## Permission rules and hooks on both routes
+
+Rules and hooks act where Capsule already sits, so they need nothing from a
+harness beyond the ACP it speaks. `packages/core/src/request-policy.ts` is
+the one decision path for a permission request; `packages/core/src/hooks.ts`
+runs hooks.
+
+| Seam | Direct route | Gateway route |
+| --- | --- | --- |
+| `PromptSubmit` hooks | In `sendAdmittedMessage`, before anything is recorded | Same; the route is chosen later |
+| Permission rules and `PermissionRequest` hooks | `session/request_permission`, read by `readPermissionRequest` into `details.subject` | A relayed ACP permission request or a host exec approval, read by `readAcpPermissionSubject`; answered through `resolveApproval` the moment it arrives |
+| `ToolCall` hooks | `session/update` tool events that reach `completed` or `failed` | `agent` tool frames with the same statuses |
+| `TurnEnd` hooks | A run reaching `completed`, `failed` or `blocked` | Same |
+
+Per harness: every harness whose agent asks permission over ACP gets rules
+and `PermissionRequest` hooks on either route; an agent running in a mode
+that never asks gets none, because no request reaches Capsule. A Gateway
+plugin approval (`plugin.approval.requested`) carries no tool call, so it
+has no subject and always goes to the person. MCP tools are matched when an
+agent titles them `mcp__server__tool`; an agent that names them otherwise
+reaches rules as `other` with its title.
+
+An automatically answered request leaves an `approval.auto` run event and no
+approval row. An `ask` from a hook replaces the approval's `reason` with the
+hook's reason and file, so the card says why on every device.
+
 ## What Capsule does not do
 
 - Implement a CLI's model/tool loop or a Capsule-owned ACP server

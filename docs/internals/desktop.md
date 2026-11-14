@@ -1851,3 +1851,28 @@ A paired device reads all of it, and the snapshot reloads there on the same
 events, which the remote bridge maps from their channel names to the keys the
 renderer listens on. Opening files, Save to, reset, Restore defaults, reload,
 trust and restart are hidden there, or disabled in the palette.
+
+### Permission rules, hooks and always-allow
+
+The approval card in the conversation and in Approvals replaces **Approve
+session** with **Always allow…** (`features/customization/AlwaysAllow.tsx`).
+It opens a panel below the card's buttons that names the rule it would save
+(`suggestAllowRule` over `details.subject`) and offers **In this thread**
+(`approved_session`; disabled for direct threads), **In this project, only
+me** (the project-local file; disabled until the folder is trusted, or when
+the card is not in the open project) and **Everywhere** (the user file). The
+two file choices call `capsule:config:editPermissionRule` and then approve
+once. A request no rule can say exactly offers only the thread. The whole
+control is absent on a paired device, which approves once or denies.
+
+Settings → Agents ends with **Permission rules**
+(`PermissionRulesCard.tsx`), a collapsed card: deny, ask and allow lists with
+each rule's file, allow rules waiting for trust, **Remove** for rules in the
+user or local file, and an add row (list, rule, save to) that checks the
+rule's syntax as it is typed. Settings → Diagnostics' Customization card
+gains **Hooks** (`HooksList.tsx`) above Recent runs: each hook's event and
+matcher, on or off, command or URL, file, and its last run. The palette has
+**Open hooks settings**. A blocked prompt reaches the composer as the
+send's error, so the notice above the thread reads **Blocked by hook:** and
+the draft is restored. Work-log lines `approval.auto`, `hook.context` and
+`hook.follow-up` show in the turn's Run log.

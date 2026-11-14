@@ -245,6 +245,33 @@ resumes (`FollowUpService.send`), the pull request fixer, and channel routes
 and channel jobs. Steering is the one way around it, so `steerHarness` refuses
 a command and the renderer's existing fallback queues it instead.
 
+## Permission rules and hooks
+
+**One decision path.** `packages/core/src/request-policy.ts` decides every
+permission request, whichever route it came by. `permissionSubject` (shared)
+reads the ACP tool call into rule terms: the kind, the command from
+`rawInput.command` (a string, or an argv whose `sh -c` script is taken
+whole), paths from `locations` and the usual input fields, `rawInput.url`,
+and an MCP tool from a `mcp__server__tool` title. The direct reader stores
+it on `details.subject` before the preview is clipped; the Gateway adapter
+does the same for a relayed tool call or an exec approval's command. Deny
+and allow rules answer at once. An ask rule or no rule goes to
+`PermissionRequest` hooks, then the person. The answer is synchronous unless
+a hook has to run.
+
+**Hooks.** `packages/core/src/hooks.ts` owns `HookRunner` (selection by event
+and matcher, execution, the run record), the verdict functions per event, and
+`FollowUpLoopGuard`. Commands run through `runWithInput` from
+`@capsule/terminal` with the payload on stdin and `CAPSULE_PROJECT_DIR`;
+HTTP hooks POST the same body. The engine calls it at four places:
+`submitPromptHooks` at the top of `sendAdmittedMessage`, `decidePermissionRequest`
+from `bindAcpReplies` and `processRuntimeEvent`, `observeToolCall` from both
+tool paths, and `runTurnEndHooks` from the run listener.
+
+**Rule edits.** `capsule:config:editPermissionRule` adds or removes one rule
+in the user or project-local file through `ConfigService.editPermissionRule`,
+comparing rules by canonical text.
+
 ## Migration
 
 The first launch of a build with settings files exports the SQLite
@@ -448,3 +475,58 @@ Decisions made while building this, and why.
   still read as before.
 - **"Not now" lasts for the run of the app.** It is kept in memory per
   project, so the note returns after a restart rather than never.
+- **A blocked prompt is refused before anything is recorded.** No message,
+  no run. A PromptSubmit hook is often there to stop a secret, and keeping
+  the text in the thread would put it in history, run search and every
+  paired device. The send fails with the reason and the hook's file, the
+  composer restores the draft, and the hook's run is in the doctor's log.
+  There is no run, so there is no run event for it.
+- **A queued follow-up a hook blocks leaves the queue.** Retrying the same
+  text gets the same answer and would run the hook every 30 seconds. The
+  queue's `blocked` reason says it was removed.
+- **Hooks may deny an ask-rule request but not allow it.** An ask rule is a
+  person saying they want to decide. Among hooks, deny beats ask beats allow,
+  so one gate hook asking holds even beside a hook that allows.
+- **A hook's `ask` reason goes on the card.** It replaces the approval's
+  `reason`, which every device already shows, rather than adding a field.
+- **`HookHost.mayAllow` is the seam for less-trusted hook sources.** It
+  receives the hook's source and, when false, reads that hook's allow as ask.
+  Every file may allow today; a plugin source can be held back there.
+- **TurnEnd runs once per run, on completed, failed or blocked, never
+  cancelled.** Stop is a person overruling the turn; a follow-up would undo
+  that. The excerpt falls back to the run's reply message, because the
+  answer can reach a thread as a reply rather than a result.
+- **Three hook follow-ups in a row, then the person.** The guard counts hook
+  follow-ups since the last message that was not one of them. It is kept in
+  memory, so a restart resets it.
+- **ToolCall fires once a tool has finished.** Firing on every
+  `tool_call_update` would start several processes per tool. Each tool call
+  fires once, four observers at a time, without delaying the turn.
+- **Deny and ask path rules ignore case on macOS and Windows; allow rules
+  stay exact.** A case-insensitive file system makes `.ENV` the same file as
+  `.env`; widening allow the same way would approve paths the rule did not
+  name. `PermissionContext.caseInsensitivePaths` carries it.
+- **A command longer than 4,096 characters is never matched.** The direct
+  title was clipped at 512 and previews at 8 KB; a clipped command could
+  match an allow rule the full one would not.
+- **Always allow writes through its own write channel, desktop only.** A
+  paired device approves once. The rule comes from `suggestAllowRule`: a
+  command's first two words and ` *`, one exact path, a host, or an MCP tool.
+  Adding an allow rule to an untrusted project's local file is refused,
+  because it would wait there unused. The team file is not offered; it is
+  edited by hand and committed.
+- **A rule edit rewrites the `permissions` key.** Comments inside that object
+  are lost; comments elsewhere in the file are kept. Editing one array
+  element in place would need a path-aware edit the JSONC helper does not
+  have yet.
+- **`disableAllHooks` from any file wins.** It merged by replace, so a project
+  file setting `false` turned the user's `true` back off. It now only turns
+  hooks off.
+- **A thread without a folder runs only the user's hooks.** Its rules resolve
+  relative paths against home, but no project file is read for hooks.
+- **A command's worktree needs no trust gate.** A command's `workspace:
+  worktree` switch starts the setup actions saved on the project record,
+  which are the person's own; the repository's `capsule.json` setup actions
+  are not run by that switch, which reads the stored project. A test fails if
+  the switch ever starts the repository's scripts; that is the point to add
+  a trust gate.

@@ -20,6 +20,7 @@ need the shipped-product voice.
 - [capsule.json — project config in the repository](./user/project-file.md)
 - [Settings files](./user/settings-files.md)
 - [Commands](./user/commands.md)
+- [Hooks](./user/hooks.md)
 - [Providers and credentials](./user/providers.md)
 - [Reading from another device](./user/reading-from-another-device.md)
 - [Optional usage reports](./user/usage-reports.md)
