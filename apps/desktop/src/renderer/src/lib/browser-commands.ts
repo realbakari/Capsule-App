@@ -1,7 +1,7 @@
 import type { BrowserDeviceId } from "@capsule/shared";
 
 /** A palette request for the Browser page, kept until a mounted page takes it. */
-export type BrowserCommand = { type: "inspect" } | { type: "device"; device: BrowserDeviceId };
+export type BrowserCommand = { type: "inspect" } | { type: "device"; device: BrowserDeviceId } | { type: "allow-agent" };
 
 export const BROWSER_COMMAND_EVENT = "capsule:browser-command";
 let pending: BrowserCommand | undefined;

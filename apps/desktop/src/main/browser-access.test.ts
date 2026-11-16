@@ -60,4 +60,15 @@ describe("browser ownership", () => {
     access.select("second"); ready({} as never);
     await expect(opening).rejects.toThrow("Browser access is off");
   });
+
+  it("tells the window which thread was refused, and not a granted one", () => {
+    const asked: string[] = [];
+    const access = new BrowserAccess({ contents: () => ({}) as never }, undefined, (owner) => asked.push(owner));
+    access.select("thread");
+    expect(() => access.target("thread").contents()).toThrow("Allow agent control");
+    expect(() => access.target("other").contents()).toThrow("Browser access is off");
+    access.allow("thread", true);
+    access.target("thread").contents();
+    expect(asked).toEqual(["thread", "other"]);
+  });
 });

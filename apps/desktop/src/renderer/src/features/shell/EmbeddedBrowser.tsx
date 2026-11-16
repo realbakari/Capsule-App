@@ -209,6 +209,10 @@ export function EmbeddedBrowser({
     finally { setControlBusy(false); }
   };
 
+  /* The conversation's Allow notice: grant only if it is not already on. */
+  const allowAgentRef = useRef(() => {});
+  allowAgentRef.current = () => { if (!agentControl && !controlBusy) void toggleAgentControl(); };
+
   const { show: showNotice } = toasts;
   const showToast = useCallback((message: string, tone: "success" | "error" = "success") => {
     showNotice({ key: "browser", tone, title: message });
@@ -494,6 +498,7 @@ export function EmbeddedBrowser({
       const command = takeBrowserCommand();
       if (!command) return;
       if (command.type === "device") chooseDevice(command.device);
+      else if (command.type === "allow-agent") allowAgentRef.current();
       else if (ready) void pickRef.current();
       else showToast("Open a page in the browser first, then inspect it.");
     };

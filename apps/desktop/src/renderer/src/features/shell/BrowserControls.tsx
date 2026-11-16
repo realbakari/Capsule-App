@@ -31,13 +31,13 @@ export function BrowserControls({ allowed, disabled, detail, active, backgroundA
     return () => { document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", escape); };
   }, [open]);
   return <details ref={ref} className="browser-controls" data-allowed={allowed} open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
-    <summary className="browser-controls-trigger" aria-label={`Visible-page control ${allowed ? "on" : "off"}; access and background pages`} title={`Visible-page control ${allowed ? "on for this thread" : "off"} · background pages`}>
-      <ShieldIcon size={13} /><span>Page control {allowed ? "on" : "off"}</span>
+    <summary className="browser-controls-trigger" aria-label={`Agent control ${allowed ? "on" : "off"}`} title={allowed ? "Agent control on: this thread's agent can use this page" : "Agent control off: allow this thread's agent to use this page"}>
+      <ShieldIcon size={13} /><span>Agent control {allowed ? "on" : "off"}</span>
     </summary>
     <div className="browser-controls-popover">
-      <div className="browser-controls-heading"><strong>Visible-page access</strong><span>{allowed ? "This thread" : "Off"}</span></div>
-      <p>Let this thread’s direct agent use the visible page, including signed-in content. Leaving this panel revokes access.</p>
-      <button type="button" className="chip" aria-pressed={allowed} disabled={disabled} onClick={onToggle}>{allowed ? "Revoke control" : "Allow agent control"}</button>
+      <div className="browser-controls-heading"><strong>Agent control</strong><span>{allowed ? "On for this thread" : "Off"}</span></div>
+      <p>Let this thread’s agent use the page shown here, including signed-in content. Switching threads or closing this panel turns it off.</p>
+      <button type="button" className="chip" aria-pressed={allowed} disabled={disabled} onClick={onToggle}>{allowed ? "Turn off agent control" : "Allow agent control"}</button>
       {disabled && <p role="status">{detail}</p>}
       <details className="browser-controls-capability"><summary>Availability and permissions</summary>
         {!disabled && <p>{detail}</p>}

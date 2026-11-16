@@ -6,7 +6,12 @@ export class BrowserAccess {
   private allowed = false;
   private generation = 0;
 
-  constructor(private readonly browser: BrowserTarget, private readonly background?: (owner: string, harnessId: string) => BrowserTarget | undefined) {}
+  constructor(
+    private readonly browser: BrowserTarget,
+    private readonly background?: (owner: string, harnessId: string) => BrowserTarget | undefined,
+    /** Told when an agent is refused, so the window can offer the grant where the person is looking. */
+    private readonly refused?: (owner: string) => void,
+  ) {}
 
   select(owner: string | undefined): void {
     if (owner !== this.owner) { this.allowed = false; this.generation++; }
@@ -27,7 +32,8 @@ export class BrowserAccess {
       const page = background();
       if (page) { page.check?.(); return; }
       if (owner !== this.owner || !this.allowed) {
-        throw new Error("Browser access is off for this thread. Open its Browser panel and enable Allow agent control. Switching threads or closing the panel ends access.");
+        this.refused?.(owner);
+        throw new Error("Browser access is off for this thread. Capsule has asked the user to allow it: they can press Allow on the notice, or open the Browser panel, press the shield button and choose Allow agent control. Switching threads or closing the panel ends access.");
       }
     };
     return {
