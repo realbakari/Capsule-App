@@ -68,9 +68,9 @@ describe("approval presets", () => {
     expect(approvalOptionDetail("strict", { route: "direct", harnessId: "codex" })).toMatch(/^Every edit and command asks first\. In its own auto mode Codex/);
   });
 
-  it("keeps an enforced row to the summary and the matching mode", () => {
+  it("keeps an enforced row to the summary, without the agent's mode id", () => {
     expect(approvalOptionDetail("approve-all", { route: "direct", harnessId: "claude" }))
-      .toBe("Nothing asks. The agent edits and runs commands on its own. Matches the agent's bypassPermissions mode.");
+      .toBe("Nothing asks. The agent edits and runs commands on its own.");
   });
 });
 

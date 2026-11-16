@@ -83,11 +83,15 @@ export function approvalCarrier(
   return withMode({ carry: "approximated", detail: "The agent's own mode decides what it asks about, so some actions may not reach you." });
 }
 
-/** A preset's menu row: what it means, then a caveat only where this route does not carry it exactly. */
+/**
+ * A preset's menu row: what it means, then a caveat only where this route does
+ * not carry it exactly. The agent's own mode id (acceptEdits and the like) is
+ * plumbing, not something a person chooses by, so an exact match adds nothing.
+ */
 export function approvalOptionDetail(profile: string | undefined, target: { route: ApprovalRoute; harnessId?: string }): string {
   const carrier = approvalCarrier(profile, target);
   const summary = approvalPreset(profile).summary;
-  if (carrier.carry === "enforced") return carrier.agentMode ? `${summary} Matches the agent's ${carrier.agentMode} mode.` : summary;
+  if (carrier.carry === "enforced") return summary;
   return `${summary} ${carrier.carry === "not-carried" ? "Not carried here: " : ""}${carrier.detail}`;
 }
 
