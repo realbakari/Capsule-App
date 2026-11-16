@@ -4,6 +4,11 @@ import { visiblePullRequests, type PullRequestSort } from "../../lib/pull-reques
 import { GitBranchIcon, RefreshIcon, SearchIcon } from "./icons";
 import "../worktree-base/worktree-base.css";
 
+/* The rollup's own words (success, failure, pending) read as log output on a row. */
+const CHECKS_LABEL: Record<Exclude<GitPullRequest["checks"], undefined>, string> = {
+  success: "Checks pass", failure: "Checks failing", pending: "Checks running", none: "",
+};
+
 export function PullRequestList({ items, loading, error, onRefresh, onSelect, onWork }: {
   items?: GitPullRequest[];
   loading: boolean;
@@ -68,7 +73,7 @@ export function PullRequestList({ items, loading, error, onRefresh, onSelect, on
             {item.isDraft ? (
               <span className="panel-pr-checks draft">Draft</span>
             ) : item.checks && item.checks !== "none" ? (
-              <span className={`panel-pr-checks ${item.checks}`}>{item.checks}</span>
+              <span className={`panel-pr-checks ${item.checks}`}>{CHECKS_LABEL[item.checks]}</span>
             ) : null}
           </span>
           ) : null}
