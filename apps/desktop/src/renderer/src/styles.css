@@ -10824,7 +10824,14 @@ fieldset.harness-options:disabled { opacity: .7; }
   display: inline-flex;
   align-items: center;
   gap: 0.375rem;
-  max-width: 20rem;
+  /*
+   * Its own width, not what is left of the window. A fixed box placed at the
+   * trigger's centre otherwise shrinks to the space right of that point, so a
+   * tip for a control near the right edge wrapped to two lines and was
+   * measured, and clamped, at that cramped width.
+   */
+  width: max-content;
+  max-width: min(20rem, calc(100vw - 1rem));
   padding: 0.25rem 0.5rem;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
@@ -10838,6 +10845,8 @@ fieldset.harness-options:disabled { opacity: .7; }
 }
 .app-tooltip[data-placement="above"] { transform: translateY(-100%); animation-name: fadeIn; }
 .app-tooltip kbd {
+  flex-shrink: 0;
+  white-space: nowrap;
   font: inherit;
   font-size: var(--text-2xs);
   color: var(--text-muted);
