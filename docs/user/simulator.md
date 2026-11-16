@@ -143,5 +143,6 @@ device down also stops its bridge.
   the panel says so instead of typing into the wrong place.
 - The panel is desktop-only. A paired viewer cannot open or control a
   simulator.
-- Agents do not receive simulator tools through this panel. They can still
-  drive `simctl` from a terminal like any other command.
+- Only direct agents get the panel's simulator tools, and only for the device
+  attached in their conversation. Gateway agents, and any agent working from a
+  terminal, can still drive `simctl` like any other command.
