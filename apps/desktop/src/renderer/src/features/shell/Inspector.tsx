@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useEffect, useLayoutEffect, useReducer, useRef, useState, useSyncExternalStore } from "react";
+import { REVIEW_COMMAND_EVENT, takeReviewCommand } from "../../lib/review-commands";
 import { usePanelResize } from "../../lib/panel-resize";
 import type {
   FileEntry,
@@ -94,7 +95,7 @@ const READINESS_LABEL: Record<HarnessReadiness, string> = {
   missing_cli: "Not installed",
   needs_login: "Needs sign-in",
   missing_acpx: "Bridge missing",
-  gateway_offline: "Gateway offline",
+  gateway_offline: "Not connected to the Gateway",
 };
 
 const SPAWN_BLOCKED: Partial<Record<HarnessReadiness, string>> = {
@@ -417,6 +418,16 @@ export function Inspector() {
     setPullRequests(undefined);
     setPullRequestsError(undefined);
   }, [projectId, session?.id]);
+
+  /* A pull request chosen from a project's sidebar list opens here once this panel shows that project. */
+  const openPullRequestRef = useRef<(pullRequest: GitPullRequest) => void>(() => {});
+  openPullRequestRef.current = (pullRequest) => openPullRequest(pullRequest);
+  useEffect(() => {
+    const take = () => { const command = takeReviewCommand(projectId); if (command) openPullRequestRef.current(command.pullRequest); };
+    take();
+    window.addEventListener(REVIEW_COMMAND_EVENT, take);
+    return () => window.removeEventListener(REVIEW_COMMAND_EVENT, take);
+  }, [projectId]);
 
   function openPullRequest(pullRequest: GitPullRequest, refresh = false) {
     if (!projectId) return;
@@ -780,8 +791,8 @@ export function Inspector() {
           ) : activeTool === "review" ? (
             <>
               <span>Review</span>
-              <span className="panel-breadcrumb-sep">·</span>
-              <span className="mono" title={git?.branch}>{git?.branch ?? "No branch"}</span>
+              {git?.isRepo ? <span className="panel-breadcrumb-sep">·</span> : null}
+              {git?.isRepo ? <span className="mono" title={git.branch}>{git.branch ?? "Detached HEAD"}</span> : null}
               {diffScope.kind === "turn" && !selectedPullRequest ? (
                 <span className="panel-breadcrumb-count">{diffTurn ? `Turn ${diffTurn.number}` : "Saved turn"}</span>
               ) : git?.changed ? (
@@ -1119,10 +1130,15 @@ export function Inspector() {
               </>
             ) : (
               <>
+            {/*
+              * The full panel stays while git status loads (it can be slow); only a
+              * definite "not a repository" collapses it. Nothing here invents a branch.
+              */}
+            {git && !git.isRepo ? <p className="faint review-git-state">This folder is not a git repository.</p> : <>
             <div className="panel-review-header">
               <div className="kv">
                 <span>Branch</span>
-                <span className="mono">{git?.branch ?? "main"}</span>
+                <span className="mono">{git ? git.branch ?? "Detached HEAD" : "Reading…"}</span>
               </div>
               {!readOnlyPeer && <div className="git-actions">
                 <button className="chip" type="button" onClick={() => void gitPush()}>
@@ -1164,8 +1180,10 @@ export function Inspector() {
             />
 
             <div className="panel-review-files">
-              <h4>Changed files ({git?.files?.length ?? 0})</h4>
-              {(git?.files ?? []).length === 0 ? (
+              <h4>Changed files{git ? ` (${git.files?.length ?? 0})` : ""}</h4>
+              {!git ? (
+                <p className="faint">Reading git status…</p>
+              ) : (git.files ?? []).length === 0 ? (
                 <p className="faint">Working tree clean.</p>
               ) : (
                 git?.files?.map((entry) => (
@@ -1187,6 +1205,7 @@ export function Inspector() {
                 ))
               )}
             </div>
+            </>}
 
             {git?.isRepo && !readOnlyPeer && <ReviewCommitForm key={`${projectId}/${session?.id ?? ""}/${session?.workingDirectory ?? project?.workingDirectory ?? ""}`}
               dirty={Boolean(git.dirty)} onCommit={gitCommit} />}
@@ -1206,7 +1225,7 @@ export function Inspector() {
                     </div>
                   ))}
                 {artifacts.every((item) => item.kind !== "patch" || !item.content) && (
-                  <p className="faint">No diff to show. This folder is not a git repository.</p>
+                  <p className="faint">{git ? "No diff to show." : "Reading git status…"}</p>
                 )}
               </div>
             )}

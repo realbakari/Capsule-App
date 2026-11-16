@@ -240,11 +240,14 @@ crashed or failed page offers **Retry page**. Invalid saved history is ignored.
 
 Direct agents that accept HTTP MCP can inspect, navigate, click, replace text,
 select options, press keys, scroll, capture the viewport and read recent page
-diagnostics. Open this thread's Browser panel, open **Page control off** (the shield
-at narrow widths) in its toolbar,
-and choose **Allow agent control**
-first. This permits access to visible signed-in pages, so enable it only when
-you want the agent to interact with them. **Revoke control**, switching threads,
+diagnostics. They need your permission first. When an agent asks for the
+browser and it is off, Capsule shows a notice in the conversation: choose
+**Allow** to open this thread's Browser panel with agent control on. You can
+also open the Browser panel yourself, press the shield button (**Agent
+control**) in its toolbar and choose **Allow agent control**. A dot on the
+shield means control is on. This permits access to visible signed-in pages,
+so allow it only when you want the agent to interact with them. **Turn off
+agent control**, switching threads,
 closing or hiding Browser, or leaving Chat ends access. Agents cannot silently
 control a different thread's page. Site cookies are shared between Capsule
 browser pages, not separate private profiles per thread.
@@ -267,7 +270,7 @@ that grant is revoked, even if control is enabled again. Key presses work in
 background pages without bringing a window to the front. If another debugger
 owns the page, the key operation asks you to retry instead of taking it over.
 
-In **Browser**, open the **Page control off/on** toolbar menu and expand **Background
+In **Browser**, open the **Agent control** (shield) toolbar menu and expand **Background
 page**, enter an HTTP(S) address in the
 address bar, then choose **Start from address bar**. This starts a separate
 temporary page for this conversation. It does not copy sign-ins from the visible
@@ -407,6 +410,24 @@ local checkout. Both ask for confirmation. A draft in the merge set, a stack
 that changed since it was loaded, or GitHub.com not reporting stacks hides
 those actions. Merging the current branch's pull request from the Review header
 is unchanged.
+
+### A project's pull requests from the sidebar
+
+Each project row has a pull request button. It lists the project's open pull
+requests: the title, whether it is a draft, ready, approved or has changes
+requested, its number, and failing checks. Choose one to open it in that
+project's Review panel. The count on the row appears once the list has been
+read, so Capsule does not ask GitHub about every project when it starts.
+
+### Hand a pull request back to the agent
+
+The detail view's **···** menu adds **Fix failing checks** when a check is
+failing and **Address review comments** when reviewers commented or asked for
+changes. Each puts a draft in the conversation's message box: the failing
+checks by name with their links, or the reviewers' comments quoted, newest
+last and up to eight, leaving out the author's own and approvals. Nothing is
+sent until you send it. Checks are linked rather than quoted, because Capsule
+does not download their logs.
 
 ### Work on a pull request
 

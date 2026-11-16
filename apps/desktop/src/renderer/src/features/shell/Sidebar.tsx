@@ -1,4 +1,5 @@
 import { useUpdates } from "../../lib/updates";
+import { ProjectPullRequests } from "./ProjectPullRequests";
 import { gatewayConnectionLabel } from "../../lib/harness";
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type MouseEvent } from "react";
 import { usePanelResize } from "../../lib/panel-resize";
@@ -40,11 +41,14 @@ import { SETTINGS_TABS } from "../settings/SettingsView";
 import { isModifiedQuery, searchSettings } from "../settings/settings-search";
 import { modifiedKeys, pendingTrust } from "../../lib/config-view";
 import { useWorkspace, type View } from "../../lib/workspace";
+import { useToasts } from "../../lib/toasts";
 import { ActionMenu } from "./ActionMenu";
 import { useImportSessions } from "../import/ImportSessions";
 import { MenuSelect } from "./MenuSelect";
 import { AddProjectPicker, type ProjectSourceId } from "./AddProjectPicker";
 import { CloneRepositoryDialog } from "./CloneRepositoryDialog";
+import { FirstRunHost } from "../onboarding/FirstRun";
+import { SetupChecklist } from "../onboarding/SetupChecklist";
 import { SidebarToggle } from "./SidebarControl";
 import { SidebarThreadPreview } from "./SidebarThreadPreview";
 import { useFolderDrop } from "./useFolderDrop";
@@ -120,6 +124,9 @@ function WorkingDuration({ startedAt }: { startedAt: string }) {
     <span className="thread-duration">{formatWorkingDurationLabel(Date.now() - startedMs)}</span>
   );
 }
+
+/** Update states worth a footer notice, shown in the update colour. */
+const UPDATE_PROGRESS = ["update-available", "downloading", "ready-to-install", "installing"];
 
 export function Sidebar() {
   const {
@@ -214,6 +221,14 @@ export function Sidebar() {
   const [settingsQuery, setSettingsQuery] = useState("");
   const update = useUpdates();
   const { status: updateResult, busy: checkingUpdate, label: updateLabel, run: runUpdateCheck } = update;
+  /* A check you asked for in a development build answers once, then leaves the footer alone. */
+  const { show: showToast } = useToasts();
+  const askedUpdate = useRef(false);
+  useEffect(() => {
+    if (!askedUpdate.current || checkingUpdate || !updateResult) return;
+    askedUpdate.current = false;
+    if (updateResult.development && updateResult.detail) showToast({ key: "update", tone: "info", title: updateResult.detail });
+  }, [checkingUpdate, updateResult, showToast]);
   const [draggedPinnedId, setDraggedPinnedId] = useState<string>();
   const [draggedProjectId, setDraggedProjectId] = useState<string>();
   const [projectDropTarget, setProjectDropTarget] = useState<string>();
@@ -839,14 +854,16 @@ export function Sidebar() {
           </div>
         ) : grouping === "project" && filteredProjects.length === 0 && searching ? (
           <div className="sidebar-empty">{tagFilter.length ? "No conversations match this search." : `No project matches “${needle}”.`}</div>
-        ) : projects.length === 0 ? (
-          <div className="sidebar-onboarding">
-            <p>No projects yet</p>
-            <button type="button" className="chip" onClick={() => setAddProjectOpen(true)}>
-              <PlusIcon size={12} /> Add project
-            </button>
-          </div>
-        ) : null}
+        ) : (
+          <SetupChecklist fallback={projects.length === 0 ? (
+            <div className="sidebar-onboarding">
+              <p>No projects yet</p>
+              <button type="button" className="chip" onClick={() => setAddProjectOpen(true)}>
+                <PlusIcon size={12} /> Add project
+              </button>
+            </div>
+          ) : null} />
+        )}
         {grouping === "status" ? <>
           {statusGroups.map((group) => {
             const expanded = expandedGroups.has(group.id);
@@ -986,6 +1003,7 @@ export function Sidebar() {
                       </span>
                     ) : null}
                   </span>
+                  {item.workingDirectory && api.isDesktop !== false ? <ProjectPullRequests projectId={item.id} projectName={item.name} /> : null}
                   <button
                     type="button"
                     className="thread-more project-new"
@@ -1063,8 +1081,13 @@ export function Sidebar() {
         })}
       </div>
       <div className="sidebar-footer">
-        {update.error || updateResult?.detail || ["update-available", "downloading", "ready-to-install", "installing"].includes(updateResult?.state ?? "") ? (
-          <button type="button" className="update-feedback-bubble has-update" onClick={runUpdateCheck} disabled={checkingUpdate} title={updateLabel}>
+        {/*
+          * Only something to act on earns the footer: an update, its progress,
+          * or an error. Green is for an update. A development build cannot
+          * install, which the check button's tooltip says instead.
+          */}
+        {update.error || (!updateResult?.development && (updateResult?.detail || UPDATE_PROGRESS.includes(updateResult?.state ?? ""))) ? (
+          <button type="button" className={`update-feedback-bubble${UPDATE_PROGRESS.includes(updateResult?.state ?? "") && !update.error ? " has-update" : ""}`} onClick={runUpdateCheck} disabled={checkingUpdate} title={updateLabel}>
             <span>{update.error ?? updateResult?.detail ?? `${updateResult?.latest ? `v${updateResult.latest} · ` : ""}${updateLabel}`}</span>
           </button>
         ) : null}
@@ -1100,10 +1123,10 @@ export function Sidebar() {
           <button
             type="button"
             className={`icon-btn ${checkingUpdate ? "is-spinning" : ""} ${updateResult?.state === "update-available" ? "has-update" : ""}`}
-            title={updateLabel}
+            title={updateResult?.development && updateResult.detail ? updateResult.detail : updateLabel}
             aria-label={updateLabel}
             disabled={checkingUpdate}
-            onClick={() => void runUpdateCheck()}
+            onClick={() => { askedUpdate.current = true; void runUpdateCheck(); }}
           >
             <RefreshIcon size={14} />
             {updateResult?.state === "update-available" ? <span className="update-dot" /> : null}
@@ -1136,6 +1159,7 @@ export function Sidebar() {
       {cloneOpen ? (
         <CloneRepositoryDialog source={cloneOpen} onClose={() => setCloneOpen(undefined)} />
       ) : null}
+      <FirstRunHost />
     </aside>
   );
 }

@@ -1,4 +1,5 @@
 import { useToasts } from "../../lib/toasts";
+import { addressReviewPrompt, fixChecksPrompt } from "../../lib/pull-request-prompts";
 import { useViewedFiles } from "../review/useViewedFiles";
 import { displayPrefs } from "../../lib/display-prefs";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -322,6 +323,9 @@ export function GitPullRequestDetail({
   const handleExplainPR = () => preparePrompt(`Please explain PR #${summary.number} (${safeTitle}) and walk through the diff. Highlight key architectural changes and what to review closely.`);
   const handleFixFindings = () => preparePrompt(`Please inspect PR #${summary.number} and fix any outstanding issues or review comments.`);
   const handleAskQuestion = () => preparePrompt(`Regarding PR #${summary.number} (${safeTitle}): `);
+  /* Hand the pull request's own state back to the agent: what is failing, and what reviewers said. */
+  const checksPrompt = detail ? fixChecksPrompt(summary.number, detail.checkRuns) : undefined;
+  const reviewPrompt = detail ? addressReviewPrompt(summary.number, detail.activity, summary.author) : undefined;
 
   return (
     <section className="pr-detail">
@@ -374,6 +378,16 @@ export function GitPullRequestDetail({
                 >
                   <WrenchIcon size={15} /> Fix findings in this thread
                 </button>
+                {checksPrompt ? (
+                  <button type="button" className="pr-action-item" onClick={() => void preparePrompt(checksPrompt)}>
+                    <WrenchIcon size={15} /> Fix failing checks
+                  </button>
+                ) : null}
+                {reviewPrompt ? (
+                  <button type="button" className="pr-action-item" onClick={() => void preparePrompt(reviewPrompt)}>
+                    <MessageSquareIcon size={15} /> Address review comments
+                  </button>
+                ) : null}
                 {onWork ? (
                   <button
                     type="button"
