@@ -22,12 +22,15 @@ function Attachment({ messageId, attachment, index, onOpen }: { messageId: strin
     observer.observe(control.current);
     return () => { disposed = true; observer.disconnect(); };
   }, [api, messageId, index, attachment.thumbnail, image]);
-  return <button ref={control} type="button" className={`message-attachment${image ? " message-attachment-image" : ""}`}
-    title={attachment.path} aria-label={`Open attachment ${attachment.name}`} onClick={() => onOpen(attachment.path)}>
-    {image && <div className="message-image-preview">{thumbnail && !unavailable
+  /* An image whose file is gone (a temporary screenshot, say) becomes a plain file row, not an empty frame. */
+  const preview = image && !unavailable;
+  return <button ref={control} type="button" className={`message-attachment${preview ? " message-attachment-image" : ""}`}
+    title={unavailable ? `${attachment.path}\nPreview unavailable: the file may have been moved or deleted.` : attachment.path}
+    aria-label={`Open attachment ${attachment.name}`} onClick={() => onOpen(attachment.path)}>
+    {preview && <div className="message-image-preview">{thumbnail
       ? <img src={thumbnail} alt={attachment.name} onError={() => setUnavailable(true)} />
-      : <span>{unavailable ? "Image preview unavailable" : "Loading image…"}</span>}</div>}
-    <span className="message-attachment-caption"><FileIcon size={13} /><span>{attachment.name}</span><small>{Math.max(1, Math.ceil(attachment.size / 1024))} KB</small></span>
+      : <span>Loading image…</span>}</div>}
+    <span className="message-attachment-caption"><FileIcon size={13} /><span>{attachment.name}</span><small>{unavailable ? "Preview unavailable" : `${Math.max(1, Math.ceil(attachment.size / 1024))} KB`}</small></span>
   </button>;
 }
 

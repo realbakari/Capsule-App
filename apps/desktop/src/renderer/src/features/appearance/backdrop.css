@@ -99,3 +99,27 @@
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.012 0.38' numOctaves='4' seed='7'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2.2 -0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23p)'/%3E%3C/svg%3E");
   mask-size: 260px 260px;
 }
+
+/*
+ * Over a picture the page colour is no longer behind the text, and a low veil
+ * leaves faint text (times, action icons, Turn details) on bright patches of
+ * the image. Lift the muted and faint tones toward the text colour and give
+ * the transcript a soft halo in the page colour, which reads on any picture in
+ * either theme without hiding it. Sent messages and code sit on their own
+ * surface, so the halo stops there.
+ */
+:root[data-backdrop="image"] .main:has(> .conversation-backdrop) {
+  --text-muted: color-mix(in srgb, var(--text) 84%, transparent);
+  --text-faint: color-mix(in srgb, var(--text) 70%, transparent);
+}
+:root[data-backdrop="image"] .main:has(> .conversation-backdrop) .conversation {
+  text-shadow:
+    0 0 1px color-mix(in srgb, var(--bg) 85%, transparent),
+    0 0 0.5rem color-mix(in srgb, var(--bg) 75%, transparent);
+}
+:root[data-backdrop="image"] .main:has(> .conversation-backdrop) .conversation svg {
+  filter: drop-shadow(0 0 0.25rem color-mix(in srgb, var(--bg) 80%, transparent));
+}
+:root[data-backdrop="image"] .main:has(> .conversation-backdrop) .conversation :is(.msg.user .body, pre, code) {
+  text-shadow: none;
+}

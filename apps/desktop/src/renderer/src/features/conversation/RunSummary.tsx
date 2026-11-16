@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { TouchedFile } from "../../lib/activity";
-import { ChevronDownIcon, TerminalIcon } from "../shell/icons";
+import { ChevronRightIcon, TerminalIcon } from "../shell/icons";
 import { runActivityLabel, type Run } from "@capsule/shared";
 
 interface RunSummaryProps {
@@ -49,7 +49,7 @@ export function RunSummary({
           {showActivity && <span className="run-summary-state" data-state={run?.status} title={run?.verification?.summary}>{activity}</span>}
         </span>
         <span className={`run-summary-chevron ${expanded ? "open" : ""}`}>
-          <ChevronDownIcon size={13} />
+          <ChevronRightIcon size={13} />
         </span>
       </button>
           {touchedFiles && touchedFiles.length > 0 && (

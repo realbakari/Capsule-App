@@ -11,9 +11,8 @@ function awayFromLatest(root: HTMLElement, following: boolean): boolean {
 }
 
 /** Variable-height rows. Measurements and focus belong to stable turn IDs. */
-export interface TurnLayout { rows: Array<{ id: string; top: number; height: number }>; total: number; listOffset: number }
 
-export function VirtualTurns({ turns, folded, scroller, stick, focus, restoreKey, onRestore, onLayout, children }: {
+export function VirtualTurns({ turns, folded, scroller, stick, focus, restoreKey, onRestore, children }: {
   turns: Turn[];
   folded: ReadonlySet<string>;
   scroller: RefObject<HTMLDivElement | null>;
@@ -27,8 +26,6 @@ export function VirtualTurns({ turns, folded, scroller, stick, focus, restoreKey
   restoreKey?: string;
   /** Told when a remembered position is restored, so the parent stops following. */
   onRestore?: () => void;
-  /** Row positions whenever they change, for the timeline rail. */
-  onLayout?: (layout: TurnLayout) => void;
   children: (turn: Turn) => ReactNode;
 }) {
   const renderStarted = performance.now();
@@ -128,7 +125,6 @@ export function VirtualTurns({ turns, folded, scroller, stick, focus, restoreKey
     // Viewport/focus updates must never pull a user's scroll back to an old anchor.
     if (layout !== previousLayout.current) {
       previousLayout.current = layout;
-      onLayout?.({ rows: rows.map((row) => ({ id: row.turn.id, top: row.top, height: row.height })), total, listOffset: list.offsetTop });
       if (following) root.scrollTop = root.scrollHeight;
       else if (row && anchor) {
         const offset = list.getBoundingClientRect().top - root.getBoundingClientRect().top + root.scrollTop;

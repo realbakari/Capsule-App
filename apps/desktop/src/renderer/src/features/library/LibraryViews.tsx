@@ -103,7 +103,16 @@ export function HistoryView() {
 }
 
 export function ApprovalsView() {
-  const { approvals, api, setNotice } = useWorkspace();
+  const { approvals, api, setNotice, setSessionId, setView } = useWorkspace();
+  /* Deny, then open the request's thread with its message box focused, to say what to do instead. */
+  const denyAndReply = (item: (typeof approvals)[number]) => {
+    void api.resolveApproval(item.id, "denied").then(() => {
+      if (!item.sessionId) return;
+      setSessionId(item.sessionId);
+      setView("chat");
+      requestAnimationFrame(() => requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>(".composer-dock textarea.composer-field")?.focus()));
+    }).catch((error) => setNotice(formatUserError(error)));
+  };
   return (
     <section className="panel">
       <div className="panel-inner">
@@ -116,7 +125,7 @@ export function ApprovalsView() {
       ) : (
         <div className="card" key={item.id}>
           <b>{item.action}</b>
-          <div className="mono">{item.target}</div>
+          <div className="mono conversation-approval-target" title={item.target}>{item.target.replace(/\s+/g, " ")}</div>
           <div className="muted">{item.reason}</div>
           <ApprovalDetails approval={item} />
           {item.status === "pending" && (
@@ -130,6 +139,7 @@ export function ApprovalsView() {
               <button className="ghost" onClick={() => void api.resolveApproval(item.id, "denied").catch((error) => setNotice(formatUserError(error)))}>
                 Deny
               </button>
+              {item.sessionId && <button className="ghost" onClick={() => denyAndReply(item)}>Deny and reply</button>}
             </div>
           )}
         </div>

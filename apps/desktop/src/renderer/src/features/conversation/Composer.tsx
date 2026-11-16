@@ -1,6 +1,7 @@
 import { contextTone } from "../../lib/context-window";
+import { formatUserError } from "../../lib/errors";
 import { agentControls, reportedAgentControls, harnessCapabilities, nextFavoriteModel, planModeSupport, withoutPlanChoice, type PlanRoute } from "@capsule/shared";
-import { APPROVAL_PRESETS, approvalOptionDetail, approvalPreset, isApprovalPresetId, type ApprovalRoute } from "@capsule/shared";
+import { APPROVAL_PRESETS, approvalCarrier, approvalOptionDetail, approvalPreset, isApprovalPresetId, type ApprovalRoute } from "@capsule/shared";
 import { TurnModeChip } from "./TurnModeChip";
 import "./plan-mode.css";
 import { PlanHandoff } from "./PlanHandoff";
@@ -19,7 +20,7 @@ import { RunOnControl, RunOnSummary, useRunOn } from "../best-of-n/RunOnPicker";
 import { GatewayBanner } from "../shell/GatewayBanner";
 import { TemporaryThreadBanner } from "../threads/ThreadMarks";
 import { useThreadActions } from "../threads/ThreadActions";
-import { GATEWAY_CONNECTION_REQUIRED, agentSetupNotice } from "../../lib/harness-preflight";
+import { FOLDER_REQUIRED, GATEWAY_CONNECTION_REQUIRED, agentSetupNotice } from "../../lib/harness-preflight";
 import { AgentSetupNotice } from "./AgentSetupNotice";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { FileEntry } from "@capsule/shared";
@@ -472,7 +473,7 @@ export function Composer({
       if (result.attachments.length) await attachFiles(result.attachments.map((file) => file.path));
       if (result.problems.length) workspace.setNotice(result.problems.join(" "));
     } catch (error) {
-      workspace.setNotice(error instanceof Error ? error.message : String(error));
+      workspace.setNotice(formatUserError(error));
     } finally {
       setExpanding(false);
     }
@@ -495,7 +496,7 @@ export function Composer({
       setPicker(undefined);
       setMenuDismissed(true);
       setPendingSelection({ scope: JSON.stringify([projectId, session?.id, nextDraft]), position });
-    } catch (error) { workspace.setNotice(error instanceof Error ? error.message : String(error)); }
+    } catch (error) { workspace.setNotice(formatUserError(error)); }
     finally { setPicking(false); }
   }
 
@@ -529,6 +530,12 @@ export function Composer({
 
   const approval = approvalPreset(session ? session.permissionProfile ?? projectSettings?.defaultPermission ?? settings?.defaultPermission : draftApproval ?? projectSettings?.defaultPermission ?? settings?.defaultPermission);
   const approvalRoute = capabilities.route === "direct" ? "direct" : capabilities.route === "openclaw" ? "gateway" : undefined;
+  /*
+   * When Capsule's approval setting sets the agent's own permission mode, a
+   * second "Agent permissions" chip beside it could contradict it; show one.
+   */
+  const approvalSetsAgentMode = Boolean(approvalRoute && approvalCarrier(approval.id, { route: approvalRoute, harnessId: agentId }).agentMode);
+  const permissionsControl = approvalSetsAgentMode ? undefined : controls.permissions;
   const approvalOptions = approvalRoute ? approvalMenu(approvalRoute, session?.harnessId ?? capabilityHarness?.id) : [];
   const sendOnEnter = settings?.composerSendKey !== "cmd-enter";
   /* A paired browser without conversation control can read but never send. */
@@ -622,7 +629,7 @@ export function Composer({
           void attachClipboardImage();
           } catch (error) {
             event.preventDefault();
-            workspace.setNotice(error instanceof Error ? error.message : String(error));
+            workspace.setNotice(formatUserError(error));
           }
         }}
         onDrop={(event) => {
@@ -633,7 +640,7 @@ export function Composer({
             .map((file) => api.getPathForFile(file))
             .filter((filePath): filePath is string => Boolean(filePath));
           if (paths.length > 0) void attachFiles(paths);
-          } catch (error) { workspace.setNotice(error instanceof Error ? error.message : String(error)); }
+          } catch (error) { workspace.setNotice(formatUserError(error)); }
         }}
       >
         {picker && <div className="composer-context-picker">
@@ -685,7 +692,7 @@ export function Composer({
           aria-activedescendant={!picker && items[menuIndex] ? `${menuId}-${menuIndex}` : undefined}
           placeholder={readOnlyViewer ? "Read only on this device" : composerPlaceholder({
             running: Boolean(activeRun),
-            steer: settings?.followUpBehavior === "steer" && harnessLive && capabilities.steer.state !== "unavailable",
+            steer: settings?.followUpBehavior === "steer" && harnessLive && capabilities.steer.state !== "unavailable" && api.isDesktop !== false,
             hasMessages: messages.length > 0,
             sendOnEnter,
             agent: harnessLive ? harnessDisplayName(harnesses, session?.harnessId) : undefined,
@@ -746,7 +753,7 @@ export function Composer({
             }
             if (menuOpen && event.key === "Escape") { event.preventDefault(); setMenuDismissed(true); return; }
             /* With nothing to dismiss, Escape stops the turn that is running, the way the Stop button does. */
-            if (!menuOpen && event.key === "Escape" && activeRun && !workspace.stoppingRunIds?.includes(activeRun.id)) { event.preventDefault(); void stopRun(); return; }
+            if (!menuOpen && event.key === "Escape" && activeRun && !readOnlyViewer && !workspace.stoppingRunIds?.includes(activeRun.id)) { event.preventDefault(); void stopRun(); return; }
             if (menuOpen && event.key === "Enter" && !event.metaKey && !event.ctrlKey && !event.shiftKey) { event.preventDefault(); return; }
             /* ⌥↑ in an empty prompt takes the last queued follow-up back to edit. */
             if (event.key === "ArrowUp" && event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey && !menuOpen && !event.currentTarget.value.trim()) {
@@ -881,18 +888,24 @@ export function Composer({
               <button className="ghost" type="button" onClick={() => void threadActions.resume(session.id)}>
                 Resume
               </button>
+            ) : sendBlockReason === FOLDER_REQUIRED ? (
+              /* No folder: the fix is a folder, not a doctor. */
+              <button className="ghost" type="button" onClick={() => void pickProjectDirectory()}>
+                Attach folder
+              </button>
             ) : selectedHarness ? (
               <button className="ghost" type="button" onClick={() => void doctorHarness(selectedHarness.id)}>
                 Run Doctor
               </button>
             ) : null}
-            {readOnlyViewer || session?.paused ? null : <button className="ghost" type="button" onClick={() => setView("runtimes")}>
+            {readOnlyViewer || session?.paused || sendBlockReason === FOLDER_REQUIRED ? null : <button className="ghost" type="button" onClick={() => setView("runtimes")}>
               Open Agents
             </button>}
           </div>
         )}
         <QueuedPrompts />
-        {harnessLive && activeRun && capabilities.steer.state !== "unavailable" && (
+        {/* Steering is not a paired-device channel, so a paired device does not offer it. */}
+        {harnessLive && activeRun && capabilities.steer.state !== "unavailable" && api.isDesktop !== false && (
           <div className="steer-row">
             <input
               type="text"
@@ -920,26 +933,26 @@ export function Composer({
               loading={discovery.loading} error={discovery.error} onRetry={discovery.retry}
               onManage={() => setView("runtimes")} onOpenChange={setModelPickerOpen}
               onAgent={setAgentId} onModel={(id) => harnessLive ? void setHarnessOption("model", id) : workspace.setDraftHarnessConfig({ model: id, options: {} })}
-              favorites={favoriteModels} onToggleFavorite={readOnlyViewer || api.isDesktop === false ? undefined : (id) => void toggleFavoriteModel(agentId, id).catch((error: unknown) => workspace.setNotice(error instanceof Error ? error.message : String(error)))}
+              favorites={favoriteModels} onToggleFavorite={readOnlyViewer || api.isDesktop === false ? undefined : (id) => void toggleFavoriteModel(agentId, id).catch((error: unknown) => workspace.setNotice(formatUserError(error)))}
               modeModels={settings?.modeModels[agentId]}
               onModeModel={api.isDesktop === false ? undefined : (mode, id) => {
                 const current = settings?.modeModels ?? {};
                 const row = { ...current[agentId], [mode]: current[agentId]?.[mode] === id ? undefined : id };
-                void workspace.updateSettings({ modeModels: { ...current, [agentId]: row } }).catch((error: unknown) => workspace.setNotice(error instanceof Error ? error.message : String(error)));
+                void workspace.updateSettings({ modeModels: { ...current, [agentId]: row } }).catch((error: unknown) => workspace.setNotice(formatUserError(error)));
               }}
               profiles={workspace.config?.profiles} onProfile={(id) => void workspace.startWithProfile(id)} />}
             {!readOnlyViewer && !runOn.active && <TurnModeChip mode={turnMode} support={planSupport} onToggle={toggleTurnMode}
               disabledReason={busy ? "Wait for the message to send." : undefined} />}
-            {!runOn.active && !harnessLive && capabilities.route === "direct" && (controls.effort || controls.permissions || modeControl) && <div className="composer-agent-controls">
-              {([ [controls.effort, "Reasoning effort"], [controls.permissions, "Agent permissions"], [modeControl, "Agent mode"] ] as const).map(([option, label]) => option && <MenuSelect key={option.id}
+            {!runOn.active && !harnessLive && capabilities.route === "direct" && (controls.effort || permissionsControl || modeControl) && <div className="composer-agent-controls">
+              {([ [controls.effort, "Reasoning effort"], [permissionsControl, "Agent permissions"], [modeControl, "Agent mode"] ] as const).map(([option, label]) => option && <MenuSelect key={option.id}
                 ariaLabel={label} value={draftConfiguration.options[option.id] ?? option.currentValue ?? ""} placeholder={`${label}: agent default`}
                 options={option.choices.map((choice) => ({ id: choice.value, label: choice.name, detail: choice.description }))}
                 unavailableReason={busy || api.isDesktop !== true ? "Change settings when the desktop is ready." : undefined}
                 onChange={(value) => workspace.setDraftHarnessConfig({ ...draftConfiguration, options: { ...draftConfiguration.options, [option.id]: value } })} />)}
             </div>}
-            {session && harnessLive && capabilities.route === "direct" && (controls.effort || controls.permissions || modeControl) && <div className="composer-agent-controls">
+            {session && harnessLive && capabilities.route === "direct" && (controls.effort || permissionsControl || modeControl) && <div className="composer-agent-controls">
               {controls.effort && <AgentControl key={`${session.id}:effort`} sessionId={session.id} option={controls.effort} label="Reasoning effort" disabled={busy || Boolean(activeRun)} />}
-              {controls.permissions && <AgentControl key={`${session.id}:permissions`} sessionId={session.id} option={controls.permissions} label="Agent permissions" disabled={busy || Boolean(activeRun)} />}
+              {permissionsControl && <AgentControl key={`${session.id}:permissions`} sessionId={session.id} option={permissionsControl} label="Agent permissions" disabled={busy || Boolean(activeRun)} />}
               {modeControl && <AgentControl key={`${session.id}:mode`} sessionId={session.id} option={modeControl} label="Agent mode" disabled={busy || Boolean(activeRun)} />}
             </div>}
             {!readOnlyViewer && !runOn.active && approvalRoute && <MenuSelect
@@ -973,7 +986,7 @@ export function Composer({
               />
             )}
             {activeRun ? (
-              <button className="send-btn stop" disabled={workspace.stoppingRunIds?.includes(activeRun.id)} title={workspace.stoppingRunIds?.includes(activeRun.id) ? "Stopping — waiting for the runtime" : "Stop (Esc)"} aria-label={workspace.stoppingRunIds?.includes(activeRun.id) ? "Stopping" : "Stop"} onClick={() => void stopRun()}>
+              <button className="send-btn stop" disabled={readOnlyViewer || workspace.stoppingRunIds?.includes(activeRun.id)} title={readOnlyViewer ? "This device can only read." : workspace.stoppingRunIds?.includes(activeRun.id) ? "Stopping — waiting for the agent to finish its current step" : "Stop (Esc)"} aria-label={workspace.stoppingRunIds?.includes(activeRun.id) ? "Stopping" : "Stop"} onClick={() => void stopRun()}>
                 <StopIcon size={16} />
               </button>
             ) : (
@@ -983,8 +996,8 @@ export function Composer({
                 disabled={busy || picking || expanding || dictation.active || runOn.starting || (!draft.trim() && attachments.length === 0 && !skillId) || (!bang && !runOn.active && Boolean(sendBlockReason))}
                 title={
                   bang ? `Run ${bang} and attach its output` : runOn.active ? `Send to ${runOn.picks.length} agents, each in its own worktree` : sendBlockReason || (sendOnEnter
-                    ? "Send · Enter · ⌘Enter starts another thread"
-                    : "Send · ⌘Enter · ⌘⇧Enter starts another thread")
+                    ? "Send · Enter · ⌘Enter starts another conversation"
+                    : "Send · ⌘Enter · ⌘⇧Enter starts another conversation")
                 }
                 onClick={() => { if (bang) runBang(bang); else void submit(); }}
               >
@@ -1035,8 +1048,8 @@ export function Composer({
               onChange={(id) => void checkoutBranch(id)}
             />
             {git.dirty ? (
-              <button type="button" title="Open changes" aria-label="Open changes" onClick={() => openInspector("changes")}>
-                *
+              <button type="button" className="composer-dirty" title="Uncommitted changes · open Review" aria-label="Uncommitted changes, open Review" onClick={() => openInspector("changes")}>
+                <span aria-hidden />
               </button>
             ) : null}
           </span>
@@ -1047,15 +1060,15 @@ export function Composer({
         )}
         <StatusLine />
       </div>
-      {busy && (
-        <div className="composer-dock-activity" aria-live="polite">
-          <span className="dot on live" />
-          <span className="shimmer-text">
-            Sending…
-            <span className="shimmer-overlay" aria-hidden>Sending…</span>
-          </span>
-        </div>
-      )}
+      {/* Always mounted so its fade plays both ways; the status line beside it is what screen readers hear. */}
+      <div className="composer-dock-activity" aria-hidden>
+        <span className="dot on live" />
+        <span className="shimmer-text">
+          Sending…
+          <span className="shimmer-overlay" aria-hidden>Sending…</span>
+        </span>
+      </div>
+      <span className="sr-only" role="status">{busy ? "Sending…" : ""}</span>
     </div>
   );
 }

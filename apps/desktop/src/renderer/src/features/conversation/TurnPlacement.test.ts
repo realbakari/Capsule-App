@@ -61,7 +61,7 @@ describe("saved outcome placement", () => {
   it("explains a missing reply without inventing an answer or a failed check", () => {
     workspace.value.messages = (workspace.value.messages as Array<{ id: string }>).filter((message) => message.id !== "a2");
     const html = renderToStaticMarkup(createElement(Conversation));
-    expect(html.indexOf("No reply was received for this turn")).toBeGreaterThan(html.indexOf("Follow up"));
+    expect(html.indexOf("The agent finished without replying")).toBeGreaterThan(html.indexOf("Follow up"));
     expect(html).not.toContain("Check failed");
   });
 

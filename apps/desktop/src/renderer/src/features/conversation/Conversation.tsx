@@ -5,14 +5,13 @@ import { harnessDisplayName } from "../../lib/harness";
 import { useMarkThreadViewed } from "../../lib/thread-triage";
 import { QuestionCard } from "../questions/QuestionCard";
 import { QuoteSelection } from "./QuoteSelection";
-import { TimelineRail } from "./TimelineRail";
 import { formatTokens, type ContextUsage } from "../../lib/context-window";
 import { AlertTriangleIcon, DiffIcon, FileIcon, HistoryIcon, MessageSquarePlusIcon, SparkIcon, TerminalIcon, XIcon } from "../shell/icons";
 import { RunElapsed } from "./RunElapsed";
 import { ThreadFind } from "./ThreadFind";
 import { PromptJump } from "./PromptJump";
 import { shortcutLabel } from "../../lib/keybindings";
-import { detectUsageLimit, formatResetTime } from "@capsule/shared";
+import { detectUsageLimit, formatResetTime, tasksFromRunEvents } from "@capsule/shared";
 import { useWorkspace } from "../../lib/workspace";
 import { useScopedState } from "../../lib/scoped-state";
 import { formatUserError } from "../../lib/errors";
@@ -40,14 +39,16 @@ import { AlwaysAllow } from "../customization/AlwaysAllow";
 import { TurnOutcome } from "./TurnOutcome";
 import { TurnVerification } from "./TurnVerification";
 import { PlanHandoff } from "./PlanHandoff";
+import { useHandoff } from "../handoff/Handoff";
 import { ThreadOrigin } from "../import/ThreadOrigin";
 import { ImportHint } from "../import/ImportSessions";
 import { TurnFilesCard } from "./TurnFilesCard";
 import { MessageBody } from "./MessageBody";
 import { MessageAttachments } from "./MessageAttachments";
-import { VirtualTurns, type TurnLayout } from "./VirtualTurns";
+import { VirtualTurns } from "./VirtualTurns";
 import { CopyButton } from "./CopyButton";
 import { RatingButtons, useRunRatings } from "../best-of-n/RateReply";
+import type { RatingValue } from "@capsule/shared";
 import { turnTranscript } from "../../lib/turn-timeline";
 import { TurnTranscript } from "./TurnTranscript";
 import { useBranching } from "./branching/use-branching";
@@ -71,6 +72,10 @@ const MessageRow = memo(function MessageRow({
   onContinue,
   onRewind,
   onTurnAction,
+  ratingRunId,
+  ratingValue,
+  ratingWritable = false,
+  onRate,
 }: {
   message: ChatMessage;
   isNew: boolean;
@@ -81,6 +86,11 @@ const MessageRow = memo(function MessageRow({
   onRewind?: (message: ChatMessage) => void;
   /** Fork from or restore to this message's turn. Absent where the thread is read-only. */
   onTurnAction?: (message: ChatMessage, action: TurnAction) => void;
+  /** The finished turn this reply ends, so its rating sits on the reply's own time row. */
+  ratingRunId?: string;
+  ratingValue?: RatingValue;
+  ratingWritable?: boolean;
+  onRate?: (runId: string, value: RatingValue | 0) => void;
 }) {
   return (
     <div className={`msg ${message.role}${isNew ? " motion-enter-conversation" : ""}`}>
@@ -96,6 +106,7 @@ const MessageRow = memo(function MessageRow({
       <div className="who">
         {message.kind === "steer" && <span className="tag">Steer</span>}
         <span className="when">{formatTime(message.createdAt)}</span>
+        {ratingRunId && onRate ? <RatingButtons value={ratingValue} writable={ratingWritable} onRate={(value) => onRate(ratingRunId, value)} /> : null}
         <span className="msg-actions">
           <CopyButton text={message.content} />
           {message.role === "user" && message.kind !== "steer" && onRewind && !message.id.startsWith("local-") ? (
@@ -184,7 +195,7 @@ function TurnStatusLine({
   // answer, which is that nothing has come back yet.
   const { pendingApproval } = useWorkspace();
   const asking = Boolean(pendingApproval?.runId === run.id && pendingApproval.details?.questions?.length);
-  const state = stopping ? "Stopping — waiting for the runtime" : asking ? runActivityLabel(run, false, true) : `${runActivityLabel(run)} · ${activity?.trim() || `Waiting for ${agentName}`}`;
+  const state = stopping ? "Stopping — waiting for the agent to finish its current step" : asking ? runActivityLabel(run, false, true) : `${runActivityLabel(run)} · ${activity?.trim() || `Waiting for ${agentName}`}`;
   return (
     <div className="turn-status">
       <span>{stopping ? "Stopping" : run.status === "running" ? "Working" : runActivityLabel(run, false, asking)}</span>
@@ -234,6 +245,7 @@ function StepIcon({ id }: { id: string; }) {
 }
 
 export function Conversation() {
+  const handoff = useHandoff();
   const {
     project,
     session,
@@ -259,6 +271,7 @@ export function Conversation() {
     ready,
     runs: workspaceRuns,
     setNotice,
+    setView,
     openFile,
     createTask,
     createProjectFromFolder,
@@ -287,8 +300,12 @@ export function Conversation() {
     setSessionId,
     reloadThread,
   } = useWorkspace();
+  /* A paired device that can only read: write controls are hidden or explain why. */
+  const readOnlyViewer = api.isDesktop === false && api.remoteMode !== "control";
   const branching = useBranching({ withBranches: true });
   const ratings = useRunRatings(session?.id);
+  const { rate: rateTurn } = ratings;
+  const rateRun = useCallback((runId: string, value: RatingValue | 0) => rateTurn(runId, value), [rateTurn]);
   const [restoreTarget, setRestoreTarget] = useState<RestoreTarget>();
   const [dismissedRedo, setDismissedRedo] = useState<string>();
 
@@ -331,7 +348,6 @@ export function Conversation() {
     return next;
   }, [messages]);
   useMarkThreadViewed(view === "chat");
-  const [turnLayout, setTurnLayout] = useState<TurnLayout>();
   /* Where the person left off, read once per opening: marking the thread read
      must not move the line while they are reading below it. */
   const [visit, setVisit] = useState<{ id?: string; mark?: string }>({});
@@ -358,7 +374,7 @@ export function Conversation() {
     return new Map(turns.flatMap((turn) => {
       const run = (owners.get(turn.id) ?? []).find((item) => item.id === turn.prompt?.runId)
         ?? owners.get(turn.id)?.[0];
-      return run ? [[turn.id, { ...turnTranscript(turn.messages, byRun.get(run.id) ?? [], run), run }] as const] : [];
+      return run ? [[turn.id, { ...turnTranscript(turn.messages, byRun.get(run.id) ?? [], run), run, plan: tasksFromRunEvents(byRun.get(run.id) ?? []) }] as const] : [];
     }));
   }, [turns, runs, activeRun, events, session?.id, project?.id]);
   const activeTurnId = activeRun && [...transcripts].find(([, transcript]) => transcript.run.id === activeRun.id)?.[0];
@@ -427,6 +443,21 @@ export function Conversation() {
     const limit = detectUsageLimit(latest.error);
     return limit.limited ? { runId: latest.id, prompt: latest.prompt, resetsAt: limit.resetsAt } : undefined;
   }, [failure, runs, session]);
+
+  /* Any failed turn can be sent again; a sign-in failure also points to where it is fixed. */
+  const failedRun = useMemo(() => {
+    if (!failure || !session || limitStop) return undefined;
+    const latest = runs.filter((run) => run.sessionId === session.id).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0];
+    if (!latest || (latest.status !== "failed" && latest.status !== "blocked")) return undefined;
+    return { runId: latest.id, prompt: latest.prompt, signIn: /sign(ed)? ?in|log ?in|auth|unauthori[sz]ed|\b401\b/i.test(latest.error ?? failure) };
+  }, [failure, limitStop, runs, session]);
+
+  /* One decision at a time: a second click while the first is in flight would find the request gone. */
+  const [deciding, setDeciding] = useState<string>();
+  const decide = (id: string, decision: "approved_once" | "denied", then?: () => void) => {
+    setDeciding(id);
+    void api.resolveApproval(id, decision).then(() => then?.(), (error) => setNotice(formatUserError(error))).finally(() => setDeciding(undefined));
+  };
 
   const openTurn = useCallback((id: string) => {
     setOpenedTurns((current) => new Set(current).add(id));
@@ -503,16 +534,24 @@ export function Conversation() {
   }, [createTask, setNotice]);
 
   const scroller = useRef<HTMLDivElement>(null);
-  /* Track the message count at mount time so entrance animations only fire for
-     messages that arrive after the initial load, not the whole history. */
-  const initialCountRef = useRef(visibleMessageCount);
+  /*
+   * Messages already shown in this conversation. Only one that arrives after
+   * the conversation has loaded animates in, once: switching conversations,
+   * a virtualized turn scrolling back into view, or a turn settling never
+   * replays it. Reseeded (without animating) while history loads.
+   */
+  const seenMessages = useRef<{ scope?: string; ids: Set<string> }>({ ids: new Set() });
+  if (historyPending || seenMessages.current.scope !== session?.id) {
+    seenMessages.current = { scope: historyPending ? undefined : session?.id, ids: new Set(messageOffsets.keys()) };
+  }
+  useEffect(() => { for (const id of messageOffsets.keys()) seenMessages.current.ids.add(id); });
   // Following belongs to the selected thread. Reading an older turn must not
   // leave the next thread stranded at an unrelated scroll offset.
   const followingScope = useMemo(() => ({ sessionId: session?.id }), [session?.id]);
   const [stick, setStick] = useScopedState(followingScope, true);
   const lastScrollTop = useRef(0);
   const historyNavigation = hasNewerMessages ? <div className="load-older" role="status">
-    <span>Browsing a bounded history window. Newer turns are saved.</span>
+    <span>You’re viewing older messages. Newer ones are saved.</span>
     <button className="chip" onClick={() => { setStick(true); void returnToLatest().catch((error) => setNotice(formatUserError(error))); }}>Return to latest</button>
   </div> : null;
 
@@ -562,7 +601,6 @@ export function Conversation() {
         </div>
       )}
       {api.isDesktop !== false && <QuoteSelection scroller={scroller} />}
-      <TimelineRail scroller={scroller} turns={turns} layout={turnLayout} />
       <TrustNotice />
       {threadFind && <ThreadFind messages={messages} onLocate={locateMessage} onClose={() => setThreadFind(false)} />}
       <div
@@ -658,7 +696,7 @@ export function Conversation() {
                 </div>
               )}
               {historyNavigation}
-              <VirtualTurns key={`${session?.id}:${settings?.timeFormat ?? "system"}:${settings?.toolCallDisplay ?? "compact"}`} turns={turns} folded={folded} scroller={scroller} stick={stick} focus={focusTurn} restoreKey={session?.id} onRestore={() => setStick(false)} onLayout={setTurnLayout}>{(turn) =>
+              <VirtualTurns key={`${session?.id}:${settings?.timeFormat ?? "system"}:${settings?.toolCallDisplay ?? "compact"}`} turns={turns} folded={folded} scroller={scroller} stick={stick} focus={focusTurn} restoreKey={session?.id} onRestore={() => setStick(false)}>{(turn) =>
                 folded.has(turn.id) ? (
                   <Fragment key={turn.id}>
                     <FoldedTurn turn={turn} onOpen={openTurn} />
@@ -670,22 +708,35 @@ export function Conversation() {
                   <TurnTranscript key={transcripts.get(turn.id)?.run.id ?? turn.id}
                     onOpenFile={openFile}
                     rows={transcripts.get(turn.id)?.rows ?? turn.messages.map((message) => ({ kind: "message" as const, id: message.id, message }))}
-                    run={transcripts.get(turn.id)?.run} partial={transcripts.get(turn.id)?.partial}
+                    run={transcripts.get(turn.id)?.run} partial={transcripts.get(turn.id)?.partial} plan={transcripts.get(turn.id)?.plan}
                     stopping={stoppingRunIds?.includes(transcripts.get(turn.id)?.run.id ?? "")}>
-                    {(message) => <>
+                    {(message) => {
+                      const outcome = transcripts.get(turn.id)?.run;
+                      const lastReply = turn.messages.findLast((item) => item.role === "assistant");
+                      const rated = message === lastReply && outcome?.status === "completed" && session?.harnessId ? outcome.id : undefined;
+                      return <>
                         <MessageRow message={message}
-                          isNew={(messageOffsets.get(message.id) ?? 0) >= initialCountRef.current}
-                          onOpenAttachment={openAttachment} onContinue={continueInNewConversation} onRewind={rewindFrom}
-                          onTurnAction={branching.writable ? turnAction : undefined} />
+                          ratingRunId={rated} ratingValue={rated ? ratings.ratings[rated] : undefined} ratingWritable={ratings.writable} onRate={rateRun}
+                          isNew={!seenMessages.current.ids.has(message.id)}
+                          onOpenAttachment={openAttachment} onContinue={continueInNewConversation}
+                          /* Rewinding or forking needs a settled conversation on this computer. */
+                          onRewind={activeRun || api.isDesktop === false ? undefined : rewindFrom}
+                          onTurnAction={branching.writable && !activeRun ? turnAction : undefined} />
                         {turn.id === activeTurnId && message === turn.prompt && activeRun && <TurnStatusLine
                           run={activeRun} agentName={harnessDisplayName(harnesses, session?.harnessId, "the agent")}
                           usage={contextUsage} activity={liveActivity} stopping={stoppingRunIds?.includes(activeRun.id)} />}
-                    </>}
+                    </>;
+                    }}
                   </TurnTranscript>
                     {(turnOutcomes.get(turn.id) ?? []).map((run) => <Fragment key={run.id}>
-                      {run.status === "completed" && !run.hasResult && !run.result?.trim() && !turn.messages.some((message) => message.role === "assistant") && <p className="muted turn-missing-reply" role="status">No reply was received for this turn. Review the work log before retrying.</p>}
+                      {run.status === "completed" && !run.hasResult && !run.result?.trim() && !turn.messages.some((message) => message.role === "assistant") && <p className="muted turn-missing-reply" role="status">The agent finished without replying. Open Turn details to see what it did, or send the message again.{run.prompt && !readOnlyViewer ? <> <button type="button" className="chip" onClick={() => retryPrompt(run.prompt!, run.id)}>Send again</button></> : null}</p>}
+                      {/* A failure after part of a reply raises no banner (the reply is there), so say here that it stopped early. */}
+                      {run.status === "failed" && (run.result?.trim() || turn.messages.some((message) => message.role === "assistant")) && <p className="muted turn-missing-reply" role="status">The agent stopped before finishing{run.error ? `: ${run.error.split("\n")[0]!.slice(0, 160)}` : "."}{run.prompt && !readOnlyViewer ? <> <button type="button" className="chip" onClick={() => retryPrompt(run.prompt!, run.id)}>Retry</button></> : null}</p>}
+                      {/* Interrupted by Capsule quitting is not the same as a Stop you pressed: say so, and offer to send it again. */}
+                      {run.status === "cancelled" && run.error?.startsWith("Interrupted") && <p className="muted turn-missing-reply" role="status">Interrupted when Capsule quit.{run.prompt && !readOnlyViewer ? <> <button type="button" className="chip" onClick={() => retryPrompt(run.prompt!, run.id)}>Send again</button></> : null}</p>}
                       <TurnOutcome run={run} cwd={terminalCwd} onRestore={branching.writable ? () => openRestore(run, "files") : undefined} />
-                      {run.status === "completed" && session?.harnessId && (run.hasResult || run.result?.trim() || turn.messages.some((message) => message.role === "assistant")) ? (
+                      {/* With a reply, the rating sits on its time row; this row is only for a result with no reply message. */}
+                      {run.status === "completed" && session?.harnessId && (run.hasResult || run.result?.trim()) && !turn.messages.some((message) => message.role === "assistant") ? (
                         <div className="turn-rating"><RatingButtons value={ratings.ratings[run.id]} writable={ratings.writable} onRate={(value) => ratings.rate(run.id, value)} /></div>
                       ) : null}
                       {run.id !== summaryRun?.id && <RunSummary run={run} label="Turn details">
@@ -795,13 +846,17 @@ export function Conversation() {
             <div className="thread-error thread-limit" role="status">
               <AlertTriangleIcon size={13} aria-hidden />
               <span className="thread-error-text" title={failure}>
-                Usage limit reached.{limitStop.resetsAt ? ` The provider says it lifts at ${formatResetTime(limitStop.resetsAt)}.` : " The provider did not say when it lifts."}
+                Usage limit reached.{limitStop.resetsAt ? ` It resets at ${formatResetTime(limitStop.resetsAt)}.` : " The agent didn’t say when it resets."}
               </span>
               {limitStop.resetsAt && limitStop.prompt && !pendingResume && (
                 <button type="button" className="chip" onClick={() => { scheduleResume(limitStop.runId, limitStop.prompt!, limitStop.resetsAt!.getTime()); setDismissedFailures((current) => new Set(current).add(failureKey)); }}>Resume at reset</button>
               )}
               {limitStop.prompt && (
                 <button type="button" className="chip" onClick={() => { retryPrompt(limitStop.prompt!, limitStop.runId); setDismissedFailures((current) => new Set(current).add(failureKey)); }}>Retry now</button>
+              )}
+              {/* Another subscription can carry on now instead of waiting for this one to reset. */}
+              {session && !handoff.disabledReason && (
+                <button type="button" className="chip" onClick={() => handoff.openHandoff(session.id, { otherAgent: true })}>Continue with another agent</button>
               )}
               <button type="button" className="icon-btn" aria-label="Dismiss error" onClick={() => setDismissedFailures((current) => new Set(current).add(failureKey))}><XIcon size={12} /></button>
             </div>
@@ -811,6 +866,12 @@ export function Conversation() {
               <span className="thread-error-text" title={failure}>
                 {failure}
               </span>
+              {failedRun?.signIn && !readOnlyViewer && (
+                <button type="button" className="chip" onClick={() => setView("runtimes")}>Open Agents</button>
+              )}
+              {failedRun?.prompt && !readOnlyViewer && (
+                <button type="button" className="chip" onClick={() => { retryPrompt(failedRun.prompt!, failedRun.runId); setDismissedFailures((current) => new Set(current).add(failureKey)); }}>Retry</button>
+              )}
               <button
                 type="button"
                 className="icon-btn"
@@ -830,47 +891,59 @@ export function Conversation() {
               <div>
                 {harnessDisplayName(harnesses, pendingApproval.agentName, pendingApproval.agentName)} wants to <b>{pendingApproval.action}</b>
               </div>
-              <div className="mono">{pendingApproval.target}</div>
+              {/* The target comes from the agent or a web page: one line, so it cannot draw its own fake card. */}
+              <div className="mono conversation-approval-target" title={pendingApproval.target}>{pendingApproval.target.replace(/\s+/g, " ")}</div>
               <div className="muted">{pendingApproval.reason}</div>
               <ApprovalDetails approval={pendingApproval} />
-              <div className="actions">
+              {readOnlyViewer ? <p className="faint">This device can only read. Answer on the computer running Capsule.</p> : <div className="actions">
                 <button
                   className="send"
-                  disabled={pendingApproval.details?.canApproveOnce === false}
+                  disabled={pendingApproval.details?.canApproveOnce === false || deciding === pendingApproval.id}
                   title={pendingApproval.details?.canApproveOnce === false ? APPROVE_ONCE_UNAVAILABLE : undefined}
-                  onClick={() => void api.resolveApproval(pendingApproval.id, "approved_once").catch((error) => setNotice(formatUserError(error)))}
+                  onClick={() => decide(pendingApproval.id, "approved_once")}
                 >
                   Approve once
                 </button>
                 <AlwaysAllow
                   approval={pendingApproval}
                   projectId={session?.projectId}
-                  thread={session?.openclawSessionKey?.startsWith("direct:") ? "Direct agents support approval once here." : true}
+                  thread={session?.openclawSessionKey?.startsWith("direct:") ? "This agent asks again for each request, so it can’t be allowed for the whole conversation." : true}
                 />
-                <button
-                  className="ghost"
-                  onClick={() => void api.resolveApproval(pendingApproval.id, "denied").catch((error) => setNotice(formatUserError(error)))}
-                >
+                <button className="ghost" disabled={deciding === pendingApproval.id} onClick={() => decide(pendingApproval.id, "denied")}>
                   Deny
                 </button>
-              </div>
+                {/* Deny, then the message box, to tell the agent what to do instead (as on the phone). */}
+                <button
+                  className="ghost"
+                  disabled={deciding === pendingApproval.id}
+                  onClick={() => decide(pendingApproval.id, "denied", () => document.querySelector<HTMLTextAreaElement>(".composer-dock textarea.composer-field")?.focus())}
+                >
+                  Deny and reply
+                </button>
+              </div>}
             </div>
           )}
 
         </div>
       </div>
-      {!stick && messages.length > 0 && (
-        <button
-          className="jump-latest"
-          onClick={() => {
-            setStick(true);
-            const node = scroller.current;
-            if (node) node.scrollTop = node.scrollHeight;
-          }}
-        >
-          Latest
-        </button>
-      )}
+      {/* A zero-height anchor: the pill floats above the composer instead of taking room from the transcript. */}
+      <div className="jump-latest-anchor">
+        {!stick && messages.length > 0 && (
+          <button
+            type="button"
+            className="jump-latest"
+            onClick={() => {
+              setStick(true);
+              // In an older stretch of history the end of this page is not the latest; load the latest.
+              if (hasNewerMessages) { void returnToLatest().catch((error) => setNotice(formatUserError(error))); return; }
+              const node = scroller.current;
+              if (node) node.scrollTop = node.scrollHeight;
+            }}
+          >
+            Latest
+          </button>
+        )}
+      </div>
       <ViewErrorBoundary compact label="Composer">
         <Composer awayFromLatest={!stick && visibleMessageCount > 0} />
       </ViewErrorBoundary>

@@ -102,7 +102,7 @@ export function ContextWindowMeter({
             strokeDashoffset={offset}
             strokeLinecap="round"
             transform={`rotate(-90 ${size / 2} ${size / 2})`}
-            style={{ transition: "stroke-dashoffset 0.25s ease, stroke 0.25s ease" }}
+            style={{ transition: "stroke-dashoffset var(--motion-standard) var(--motion-ease), stroke var(--motion-standard) var(--motion-ease)" }}
           />
         </svg>
       </button>
@@ -118,7 +118,7 @@ export function ContextWindowMeter({
           <div className="context-card-track" aria-hidden>
             <div
               className="context-card-fill"
-              style={{ width: `${Math.max(2, clamped * 100)}%`, background: stroke }}
+              style={{ transform: `scaleX(${Math.max(0.02, clamped)})`, background: stroke }}
             />
           </div>
           {idleMinutes !== undefined && idleMinutes >= 5 && (

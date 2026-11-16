@@ -38,8 +38,9 @@ export async function runScreenshotRegressions(host: HTMLElement) {
     root.unmount(); root = createRoot(host);
     window.testWorkspace = { api: { messageImage: async () => { throw new Error("Source removed"); } } };
     root.render(<MessageAttachments message={message} onOpen={() => {}} />);
-    await until(() => host.textContent?.includes("Image preview unavailable"));
+    await until(() => host.textContent?.includes("Preview unavailable"));
     assert(host.textContent?.includes("Screenshot.png"), "Unavailable preview lost the filename");
+    assert(!host.querySelector(".message-image-preview"), "An unavailable image kept its empty preview frame");
     root.unmount(); root = createRoot(host);
 
     const reads: Array<TurnDiffOptions | undefined> = [];

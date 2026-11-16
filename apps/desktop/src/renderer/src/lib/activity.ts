@@ -89,6 +89,10 @@ export function cleanActivityDetail(message: string | undefined): string | undef
   text = text.replace(/```+\s*[a-z0-9]*\s*/giu, " ");
   // The status a frame carries about itself; the row's own glyph says this.
   text = text.replace(/\s*\((pending|completed|running|failed|done)\)\s*/giu, " ");
+  // "Execute `cmd`" under a row that already says "Ran 3 commands": the verb repeats the row.
+  text = text.replace(/^(execute|run|bash|shell)\s+(?=`)/iu, "");
+  // Backticks are the agent's Markdown; cut to one line they are often left unbalanced.
+  text = text.replace(/`+/gu, "");
   text = text.replace(/\s+/gu, " ").trim();
   if (!text || text.length < 2) return undefined;
   // 120 is the width these rows were already cut to; a row is one line.

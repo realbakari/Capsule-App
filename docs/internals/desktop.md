@@ -190,10 +190,43 @@ for sent messages (`--surface-message`) and wells (`--surface-sunken`). Every
 popover and menu shares one surface rule at the top of `styles.css`, which the
 surface regression checks across themes; dialogs end on a footer band.
 
+Overlays enter with an ease-out fade from `--enter-scale` and never animate
+`all`. Dialogs grow from the middle of the window. Menus and popovers grow from
+their trigger: each placement path (`useAnchoredPopover`, `MenuSelect`,
+`HeaderPopover`, `ActionMenu`) writes `originToward(trigger, panel)` as an
+inline `transform-origin`, and a context menu grows from the pointer. Search
+palettes (`.palette`) open from the keyboard many times a day, so they and
+their backdrop appear without animation. Menu rows take `--radius-md` inside
+a panel padded by 0.25rem, so a highlighted row sits concentric in the
+`--popover-radius` panel.
+
+Toasts enter by dropping in 0.5rem and leave by rising 0.25rem over
+`--motion-fast`. The stack holds a removed toast for that fade whatever removed
+it (its timer, a button, Escape, ⌘Z); the leaving copy is `inert` and hidden
+from assistive tech.
+A toast replaced under the same key is an update and does not fade a copy.
+Slow requests share one `slow` notice that lists every request still waiting,
+named by what the person waits on (`requestLabel`: "the agent", "Git", "the
+conversation", "GitHub", …), never by bridge method.
+
+Settings › General's Notifications card opens with **Notify me**, a preset
+select over `notifyRunComplete`, `notifyApprovals`, `notifyLongCommands`,
+`bounceDockOnAttention` and `dockBadge` (`NOTIFICATION_PRESETS` in
+`ConfigurationSettings.tsx`). No preset is stored: the select shows the preset
+the switches match, or a disabled **Custom**.
+
+The sidebar footer's update bubble appears only for something to act on: an
+update, its download and install, or an error; green marks a real update. A
+development build is flagged `development` on the merged update status; its
+note goes in the update button's tooltip and, after a manual check, one toast.
+
 `TooltipLayer`, mounted once in `App`, gives every element with a `title` a
 styled tooltip on hover or keyboard focus. It holds the `title` aside while
 the tip shows so the native one does not appear too, and draws a trailing
-shortcut such as "(⌘J)" as a key.
+shortcut such as "(⌘J)" as a key. The first tip waits and fades in; moving to
+the next control while one is up shows it at once with no entrance
+(`data-instant`). It is placed in a layout effect, so it never paints at the
+wrong position first.
 
 `scripts/check-css-tokens.mjs` runs in `pnpm lint`. Besides colours it fails
 on a font size under 0.9rem or a corner radius of 4px or more written as a raw
@@ -424,6 +457,21 @@ Helpers: `projectFolderList`, `addFolderToProject`, `removeFolderFromProject`, `
   `pullRequestDraft` as its draft. Entry points are the PR list row (hover
   **Work on this**) and the detail **···** menu, both hidden when
   `api.isDesktop === false`. `gh` is not used for the checkout.
+
+A project row in the sidebar carries `ProjectPullRequests`: a button that
+opens a popover of the project's open pull requests (`listPullRequests`, behind
+the main process's TTL cache). Lists are read only when opened and kept for the
+session; the row shows a count once one is known. Choosing a row selects the
+project, opens Review (`changes`) and raises `requestReviewPullRequest`
+(`lib/review-commands.ts`), which the Inspector takes once it shows that
+project. Hidden on a paired viewer (`api.isDesktop === false`).
+
+The same **···** menu offers **Fix failing checks** and **Address review
+comments** when there is something to act on. Both come from
+`lib/pull-request-prompts.ts` (`fixChecksPrompt` over `checkRuns`,
+`addressReviewPrompt` over `activity`, sanitised with `sanitizeUntrusted` and
+capped at eight items) and draft through `onSteerAgent` like the menu's other
+prompts. Checks are linked, not quoted: no log is fetched.
 
 ### Apply to local
 
@@ -686,7 +734,8 @@ window) shows the chooser cards.
   in [harness.md](harness.md#embedded-browser-tools). Permission handlers deny device
   and clipboard access; downloads and dialogs are disabled. Storage still belongs
   to the shared foreground browser partition, not a per-thread browser profile.
-  A **Page control off/on** toolbar disclosure contains permission details and the
+  An **Agent control** toolbar disclosure (the shield; a dot when on) contains
+  permission details and the
   background-page controls in an out-of-flow, bounded popover. Opening it does
   not reduce page height; Escape and outside clicks dismiss it. Background
   polling pauses while its parent disclosure is closed.
@@ -802,11 +851,46 @@ Inspector-only shortcuts (ignored while typing, do not steal global `⌘P`):
 | Side chat | `⌥⌘S` |
 | Close / toggle inspector | `⌘\` |
 
-A panel crash is isolated by `ViewErrorBoundary`. Retry remounts the panel. Fast Refresh that replaces the child component type, or a change to `INSPECTOR_REVISION`, clears a stuck error.
+A panel crash is isolated by `ViewErrorBoundary`. Retry remounts the panel. A
+compact boundary says what stopped working in the person's words (the
+composer is "The message box") and keeps the raw error behind **Details**. Fast Refresh that replaces the child component type, or a change to `INSPECTOR_REVISION`, clears a stuck error.
 
 ---
 
 ## Chat
+
+How the conversation behaves after the November review:
+- **Entrance motion.** `seenMessages` (per conversation, reseeded while
+  history loads) means only a message that arrives after load animates in,
+  once. Switching conversations, virtualized turns returning to view and a
+  turn settling never replay it.
+- **Message actions.** These show on hover, on keyboard focus inside the
+  message, while a copy confirms, and always under `(hover: none)`. On your
+  own message they sit before the time, so the time stays on the bubble's
+  edge. A finished turn's rating sits on its final reply's time row
+  (`ratingRunId` on `MessageRow`, passed as primitives so the memo holds); the
+  separate rating row is only for a result with no reply message.
+- **Composer dock.** One height: the "Sending…" rail stays mounted inside the
+  quiet inset and fades in and out, so a send no longer reflows the
+  transcript. The resting state toggled by scrolling has no padding
+  transition.
+- **Latest.** The pill floats from a zero-height anchor above the composer.
+  In a detached history window it calls `returnToLatest`.
+- **Failed turns.** These offer **Retry** (`retryPrompt`), plus **Open
+  Agents** when the error reads as a sign-in failure. A failure after a
+  partial reply says "The agent stopped before finishing". A turn
+  interrupted by quitting says so, with **Send again**; so does a completed
+  turn with no reply.
+- **Approval card.** It matches the question card's raised surface,
+  disables its buttons while a decision is in flight, and on a read-only
+  paired device shows "This device can only read" instead of buttons.
+  Stop, Esc-to-stop and the steer row are likewise hidden or disabled on
+  paired devices; Edit from here and the turn menu are hidden while a turn
+  runs and on paired devices.
+- **Agent permissions chip.** The composer hides it when Capsule's approval
+  setting sets the agent's own mode (`approvalCarrier(...).agentMode`), so
+  the two cannot disagree.
+- **Uncommitted changes.** These are a small dot button beside the branch.
 
 Each run of consecutive tool calls inside a turn is one collapsible group.
 `summarizeToolRun` in `@capsule/shared` labels it the way a person would say
@@ -825,7 +909,9 @@ error and parses a reset time from relative waits ("in 2 hours and 15 min",
 "retry after 90 seconds"), clock times ("resets at 3pm", rolling to
 tomorrow when past) or an ISO timestamp. The conversation shows a limit banner
 with **Resume at reset** (a `schedule` follow-up op carrying runId, prompt,
-the prompt's attachments and time) and **Retry now** (an `add` op). A pending
+the prompt's attachments and time), **Retry now** (an `add` op) and, in the
+desktop app, **Continue with another agent** (`openHandoff(id, { otherAgent:
+true })`, which preselects the first ready harness other than the thread's). A pending
 resume shows above the error with Cancel. The engine's `FollowUpService` moves
 a due resume into the queue on its 30 s tick. With `autoResumeOnLimit` it
 schedules a limit stop itself, once per run, at least a minute out, and stops
@@ -949,14 +1035,19 @@ is on screen and with the window closed. `getFollowUps` is a read channel and
 channel; every change emits `follow-ups-updated`. A send that fails puts the
 prompt back first with a `blocked` reason and retries every 30 s, so nothing is
 dropped. `QueuedPrompts` above the steer row lists the queue with Steer now
-(route permitting), move, edit-back and remove. A queue an older build left in
+(route permitting), move, edit-back and remove, and the `blocked` reason inline
+("Queued messages are on hold: …"). A read-only paired device sees the rows
+without controls and "This device can only read."; a control pairing can tidy
+the queue but not steer. A queue an older build left in
 `capsule.queue:<sessionId>` moves to the engine the first time its thread
 opens. `↑` in an empty or caret-at-start prompt recalls earlier user prompts
 (newest first, steers and repeats skipped); `↓` walks forward and restores
 the original draft; typing ends the walk. `⌘F` (`find-in-thread`, also in the
 palette) opens `ThreadFind` above the transcript: it counts matching messages,
 Enter / Shift+Enter walk them, and the matching turn is unfolded, scrolled to
-through `VirtualTurns`' `focus` prop and outlined. `⇧⌘J` (`jump-to-prompt`,
+through `VirtualTurns`' `focus` prop and outlined. It searches loaded messages
+only; while `hasOlderMessages` is true it says "Searching loaded messages" and
+offers **Load older** (`loadOlderMessages`). `⇧⌘J` (`jump-to-prompt`,
 also **Jump to a prompt…** in the palette, and a list button pinned to the
 transcript's top-right corner once a thread has two prompts) opens
 `PromptJump`: the thread's loaded prompts from `promptIndex` in
@@ -1049,15 +1140,33 @@ not the PR selected before the request; partial failures also invalidate cache.
 Remote command failures map to safe guidance rather than displaying raw output
 that may contain authentication URLs.
 
-For a selected coding harness, the composer shows its live readiness detail and
+For a selected coding harness, the composer shows a short readiness reason and
 blocks send before spawn when the selected route, folder, or CLI login is known
-to be unavailable. Doctor and Harnesses are linked from that notice. A live ACP
+to be unavailable. `harnessPreflightReason` returns `FOLDER_REQUIRED`,
+`GATEWAY_CONNECTION_REQUIRED`, or `agentReadinessReason(harness)` ("<agent> isn't
+installed.", "isn't signed in.", "can't start."); the preset's diagnostic
+`detail` stays in the Agents view. Doctor and Harnesses are linked from that
+notice. Doctor reports the first failing check's label ("still can't start:
+…") or a success toast. A live ACP
 session bypasses the spawn preflight.
 Direct readiness does not require Gateway/acpx. Harnesses and the composer use
 the same route decision. Engine admission and renderer submission guards refuse
 overlapping turns. Steer is shown only for active Gateway turns, never merely
 while a send is awaiting acknowledgement. Send-and-new-thread advances only on
 acceptance; read/refresh failure after acceptance cannot recreate the sent draft.
+A first message selects the thread it creates as soon as `createSession`
+returns, inside `flushSync`, then finishes the send through `latest`, the
+newest render's scoped setters: scoped state belongs to a selection, so the
+pre-selection setters are dead once the thread is on screen. The live run and
+message listeners keep only frames for the selected thread, so selecting late
+dropped the turn's first frames. A rejected first message goes back into that
+thread's empty composer, or to Stash if the composer is in use. During a turn,
+`send()` holds the submission key and clears the composer before awaiting, so a
+repeated Enter cannot steer or queue twice; it steers only when
+`canSteerTurn` (lib/harness.ts, shared with `QueuedPrompts`) allows, so Direct
+mode and paired devices queue without a notice, and `continueToNew` opens a new
+thread after the message is queued or steered. A Stop the agent does not
+confirm shows a toast whose **Close agent** calls `closeHarness`.
 Direct permissions become persisted approvals with approve-once/deny callbacks;
 session-wide approval is refused. Completion, Stop, Close, and output-budget
 failure cancel pending requests rather than recording a user denial. Cancelled
@@ -1273,6 +1382,12 @@ and local preview reads. Samples contain no paths, prompts, output or arguments;
 export is explicit. Event timing excludes browser paint and agent latency.
 Non-zero Git probes count as failures even when absence is expected. Host and
 renderer timings are separate; this is diagnostic evidence, not freeze prevention.
+
+A settled turn renders `TurnPlan` under its prompt: the run's last plan
+snapshot (`tasksFromRunEvents`), with `PlanMark` drawing each state as its own
+shape (filled check, ring with dots, dashed ring) so state does not rest on
+colour. A running turn does not render it; `ComposerTasks` (which uses the same
+`PlanMark`) is the live view.
 
 Replies render fenced code, headings, bullets, task lists, italics,
 strikethrough, links, inline code and GitHub-style pipe tables. A backtick
@@ -1518,7 +1633,7 @@ command before explicit execution, and supports cancel, rerun, and evidence-only
 recheck only when a receipt exists. **Add check** saves an action on that owning
 project through the existing `updateProject` IPC; it never executes on save.
 The only action is preselected, never automatically run. Cwd, hashes and
-requirement guidance sit inside **Evidence details**. Receipts share the owning
+requirement guidance sit inside **How this is checked** (labels for the stored `tests-pass` and `describe-changes` requirements come from `REQUIREMENT_LABELS` in `TurnVerification.tsx`, so older turns read the same). Receipts share the owning
 turn's activity expansion with its work log.
 A completed turn with neither a saved reply nor result shows a missing-reply
 notice. ACP activity counts deduplicate updates by run plus tool call id, while
@@ -1750,7 +1865,7 @@ result names the section it lives in.
 | Section | Owns |
 |---------|------|
 | General | Launch at login, send key, menu bar extra, keep awake, notifications, session archiving |
-| Appearance | System / Light / Dark; Themes (a list per appearance with swatches, live preview on hover or arrow-key focus, Escape or leaving reverts, click or Enter chooses; paste a share string, import a file, copy a share string, open the themes folder; contrast pairs under 4.5:1 behind a disclosure); Backdrop (None and five scenes with hover preview, opacity, dim, blur, fit for an image, Choose image…, Reset, a one-line desktop-only note for images); per-theme accent / background / foreground (a Customize layer over a non-built-in theme), UI and code fonts, translucent sidebar, contrast, transcript size / width, with live type previews |
+| Appearance | System / Light / Dark; Themes (a list per appearance with swatches, live preview on hover or arrow-key focus, Escape or leaving reverts, click or Enter chooses; paste a share string, import a file, copy a share string, open the themes folder; contrast pairs under 4.5:1 behind a disclosure); Backdrop (None and five scenes with hover preview, opacity, dim, blur, fit for an image, Choose image…, Reset, a one-line desktop-only note for images; over an image, muted and faint text are lifted toward the text colour and transcript text and icons get a soft page-colour halo, except inside sent messages and code); per-theme accent / background / foreground (a Customize layer over a non-built-in theme), UI and code fonts, translucent sidebar, contrast, transcript size / width, with live type previews |
 | Agents | Default agent and conversation workspace, Gateway approval policy, sandbox, web access, output detail, reasoning, harness credentials |
 | Gateway | URL, connect / disconnect, token in Keychain, reading from another device |
 | Projects | Create, delete, attach primary folder, choose or reset project icon |
@@ -1778,8 +1893,11 @@ Below the pairing link, **Phone** has a Pair a phone button. It shows a QR code
 (dark modules on a fixed light tile in both themes) with a live five-minute
 countdown, a Copy link button, and New code. The code pairs the mobile app over
 the pinned TLS listener with `read` + `control`, so it is offered on This network
-too. Paired devices label phone pairings "phone, encrypted". See
-[mobile.md](mobile.md).
+too. Paired devices label phone pairings "phone, encrypted". On This computer
+the phone listener binds 127.0.0.1 and the code carries that host, so the row's
+hint says only a simulator on this Mac can use it. On This network, when HTTP
+control is unavailable, the Browser link permission hint points to Pair a phone as
+the encrypted way to get control. See [mobile.md](mobile.md).
 
 Harnesses uses a two-pane catalog/detail layout. Installed and ready entries
 sort first; selecting one reveals project dedication, Doctor output, start,
@@ -1893,16 +2011,66 @@ backticks reach the UI) or the install detail, and a kind (`sign-in`, `config`,
 plain row. The row sits on the composer's own surface with a small amber mark,
 not a tinted slab.
 
-**Sign in** hands the command to the terminal dock through
-`lib/terminal-requests.ts`: a dock already on screen opens a fresh shell tab for
-it, so it never lands inside a running program, and a dock that opens because of
-the request types it into its first shell. The command is typed, never run.
+**Sign in** opens the sign-in dialog (below). A `missing_cli` notice whose
+agent has a store offer adds **Install** with inline progress. When the dialog
+cannot read any method, its fallback **Type it in the terminal** hands the
+preset's command to the dock through `lib/terminal-requests.ts`, typed, never
+run.
 **Check again** calls `doctorHarness`, which clears the cached binary and login
 lookups, then refreshes the workspace; a still-signed-out answer is shown inline
 rather than as a toast. Both routes: the CLI being signed in is the one on this
 computer for direct mode and for the local acpx bridge alike. A paired device
 gets no actions (Doctor is a write, the terminal is local-only), only the
 command.
+
+### Agent store, sign-in and first run
+
+The contract is `@capsule/shared/agent-setup.ts`; main's halves are
+`main/agent-store.ts` (over `@capsule/harness` store) and
+`main/agent-sign-in.ts`. All seven channels are write channels.
+
+**Store controls** (`features/harness/AgentStoreControls.tsx`) render one
+`StoreRow` union per preset (`agent-store-model.ts`): none, user (a copy on
+PATH: "Installed by you at …", no actions), unavailable (the reason as text),
+offer (**Install** with version and "from the ACP registry" or "from npm"),
+installed (**Update to vX** when newer, **Remove** behind a confirm), busy
+(phase and bytes from `agentInstallProgress`) and failed. One store per window
+(`agent-store.ts`) holds entries and progress, so an install started from the
+composer also shows in Agents and first run. Agents lists featured presets even
+when they are not installed. "How to install" shows only when the store cannot
+install that agent.
+
+**Sign-in dialog** (`SignInDialog.tsx`) is one `Phase` union: loading, choose,
+waiting (an `agent` method running ACP `authenticate`; "Finish signing in in
+your browser"), review (a `terminal` or `cli` method's exact argv and env),
+starting, running, signed-in and failed. **Run** starts
+`agentLoginTerminalStart`, never on mount, so a StrictMode double effect cannot
+start a login twice; `login-stream.ts` buffers output that arrives before the
+xterm attaches. Exit 0 runs `doctorHarness` and shows **Signed in**; non-zero
+offers **Try again**. **I'm signed in** re-checks without waiting for an exit.
+**Sign out** appears when `canSignOut`. On the Gateway route `agent` methods are
+absent and the dialog says why. Method names and descriptions are single-line
+and capped. The login terminal carries `data-keyboard-passthrough`, which
+`useModalFocus` respects, so Tab and Escape reach the program; the dialog's own
+Close still works.
+
+**First run** (`features/onboarding/FirstRun.tsx`) opens when
+`settings.firstRunDone` is false, there are no projects, and the window is the
+desktop app. Steps: agents (featured presets with store controls and Sign in;
+Continue needs one ready agent), folder (the add-project flow or clone), and
+notifications (`NotificationsCard` with its presets). Finishing sets
+`firstRunDone`, creates a conversation in the chosen folder and focuses the
+composer. **Set up later** and Escape set `firstRunDone` and close. Profiles
+that already have projects never see it. **Set up Capsule** in the palette
+reopens it at any time.
+
+**Setup checklist** (`SetupChecklist.tsx`) replaces the sidebar's bare "No
+projects yet": "Finish setup · n/3" for agent ready, folder added and
+notifications chosen, each reopening first run at that step. Its own marks
+(`pending`, notifications chosen) live in `localStorage`
+(`capsule.setupChecklist`), a per-device convenience; dismissing it clears them
+and sets `firstRunDone`. A paired viewer sees text only: install, sign-in and
+first run are write channels.
 
 ### Dialogs opened from a popover
 
@@ -2989,12 +3157,6 @@ differs from the one for folders.
 - **Folder drop**: folders dropped on the sidebar become projects (an existing
   one opens instead); files are refused with a reason. Desktop only, since it
   needs local paths.
-- **Timeline rail**: from four turns, and when the thread is over one and a half
-  screens tall, a 10px rail at the transcript's right edge marks each turn in
-  proportion to its height (from `VirtualTurns` `onLayout`) and outlines the
-  visible part. Hover names the turn, click scrolls to it. Pointer only and
-  `aria-hidden`: Find in conversation is the keyboard and screen-reader path.
-  Hidden below 48rem.
 - **F6 / ⇧F6** move focus between sidebar, conversation, composer and side
   panel (`lib/regions.ts`), skipping hidden regions.
 - **Find on page** in the Browser uses the webview's own `findInPage`, so no
@@ -3058,6 +3220,13 @@ renderer listens on. Opening files, Save to, reset, Restore defaults, reload,
 trust and restart are hidden there, or disabled in the palette.
 
 ### Permission rules, hooks and always-allow
+
+Both approval cards (the conversation and Approvals) offer **Deny and reply**
+after **Deny**: it denies, then focuses `textarea.composer-field`; from
+Approvals it first opens the request's thread, using the `sessionId` that
+`listApprovals` fills in from the run. The agent-supplied target is drawn on
+one line (`.conversation-approval-target`, whitespace collapsed, full text in
+the tooltip), so it cannot lay out a card of its own.
 
 The approval card in the conversation and in Approvals replaces **Approve
 session** with **Always allow…** (`features/customization/AlwaysAllow.tsx`).
