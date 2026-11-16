@@ -1,17 +1,19 @@
 <div align="center">
 
-<img src="assets/logo.png" alt="Capsule Logo" width="120" />
+<img src="assets/logo.png" alt="Capsule" width="96" />
 
 # Capsule
 
-**A local-first desktop workspace for AI coding agents & harnesses.**
+**Run Claude Code, Codex and any ACP coding agent in one desktop app, and see exactly what every turn changed.**
 
-[![GitHub Release](https://img.shields.io/github/v/release/realbakari/Capsule-App?style=flat-square&color=black)](https://github.com/realbakari/Capsule-App/releases/latest)
+[![Latest release](https://img.shields.io/github/v/release/realbakari/Capsule-App?style=flat-square&color=black)](https://github.com/realbakari/Capsule-App/releases/latest)
 [![CI](https://img.shields.io/github/actions/workflow/status/realbakari/Capsule-App/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/realbakari/Capsule-App/actions)
-[![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon%20(arm64)-black?style=flat-square&logo=apple)](https://github.com/realbakari/Capsule-App/releases/latest)
+[![Platforms](https://img.shields.io/badge/macOS%20%7C%20Windows-black?style=flat-square)](https://github.com/realbakari/Capsule-App/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
 
-[Download for macOS or Windows](https://github.com/realbakari/Capsule-App/releases/latest) · [First conversation](docs/user/getting-started.md) · [User guide](docs/README.md) · [Architecture](ARCHITECTURE.md) · [Contributing](CONTRIBUTING.md)
+### [Download for macOS or Windows](https://github.com/realbakari/Capsule-App/releases/latest)
+
+[Website](https://cpcl.dev) · [First conversation](docs/user/getting-started.md) · [User guide](docs/README.md) · [Changelog](https://cpcl.dev/updates) · [Discussions](https://github.com/realbakari/Capsule-App/discussions)
 
 </div>
 
@@ -22,56 +24,35 @@
   <img src="assets/screenshots/conversation-light.png" alt="Capsule showing a finished turn: the prompt, a summary of the files the agent read and edited, and its reply, with conversations grouped by project in the sidebar" />
 </picture>
 
----
+Capsule runs the coding agents already on your computer and gives them one
+window: projects, threads, worktrees, the diff of every turn, approvals, and a
+terminal and browser beside the chat. It works with Claude Code, Codex, Gemini
+CLI, Grok Build, GitHub Copilot, Cursor, OpenCode, Qwen Code, Kiro and any other
+agent that speaks the [Agent Client Protocol](https://agentclientprotocol.com).
 
-## What is Capsule?
+## What you get
 
-Capsule is a desktop workspace for the coding agents you already run. Claude
-Code, Codex, Grok Build, Muse Code and other supported harnesses do the work; Capsule gives them
-a window — projects, conversations, diffs, approvals and a record of what each
-turn changed, on your own machine.
-
-It does not install coding CLIs or hold their provider API keys. Install and
-sign in to a supported CLI, then select it in Capsule. New installations run
-supported local agents directly; no Gateway is required. OpenClaw remains an
-optional route for Gateway-only agents and messaging channels. Existing route
-preferences and conversations stay unchanged.
-
-Muse Code uses its native local session connection. Install and sign in to a
-Muse CLI build with session SDK support, then select it from the agent picker.
-See [setup and limits](docs/user/providers.md#muse-code). Its integration is
-covered by protocol fixtures, not a signed-in provider certification.
-
-### What it does
-
-**Runs the agents you have.** Start, cancel and close a harness session,
-and switch a conversation from one agent to another without losing the thread.
-Steer and live setting changes depend on the runtime route; unsupported changes
-report a limitation instead of claiming success.
-
-**Keeps a record of the work.** Turns retain the activity the agent reports.
-Git-backed turns capture checkpoints for saved diffs and restoration. A completed
-reply is not proof that tests passed: verification receipts require a saved
-local check and matching revision evidence.
-
-**Reviews changes where you are.** Diffs, changed files, and pull requests read
-in the app instead of a browser tab.
+- **Your own subscriptions.** Capsule never resells tokens. It drives the agents
+  you are signed in to, and can install and sign them in for you.
+- **Every turn on the record.** Each turn saves a checkpoint. See exactly what it
+  changed, then keep it or put the files back the way they were.
+- **Review where you work.** Diffs, changed files and open pull requests sit
+  beside the chat. Hand failing checks or review comments back to the agent in
+  one click.
+- **Proof, not "done".** Save the checks that matter for a project. A turn shows
+  them passing only when they ran on that exact revision.
+- **Approve from your phone.** Pair a phone with a QR code to follow threads,
+  send messages and answer approvals while the agents keep running on your
+  computer.
+- **Worktrees and many agents.** Give a thread its own worktree, switch agents
+  mid-thread, or send one prompt to several agents and keep the best result.
+- **Local-first and open.** Your projects and threads stay in a local database.
+  MIT licensed.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/review-dark.png" />
   <img src="assets/screenshots/review-light.png" alt="The Review panel beside a conversation, listing the project's open pull requests with their check status, the three changed files, and the diff of a new file" />
 </picture>
-
-**Keeps your work on your computer.** A local SQLite database, tokens encrypted
-with the operating system's credential protection when available, and optional usage reports off by default. Read
-[PRIVACY.md](PRIVACY.md) for browser, provider, catalog and remote-access data flows.
-
-**Works without a Gateway.** Direct mode spawns an ACP-capable CLI itself, so
-an install with nothing else running still gets a working turn.
-
-**Verifiable downloads.** Public macOS releases require Developer ID signing
-and notarization. The initial Windows preview is unsigned and includes a SHA-256
-checksum; a checksum verifies file integrity, not publisher identity.
 
 ---
 
@@ -97,9 +78,9 @@ builds may require a manual download; see [Updating Capsule](docs/user/updating.
 
 ## Start with one small task
 
-Install and sign in to your coding CLI, attach a disposable project folder,
-choose an available harness and ask for a small change. Review the resulting
-diff, run a saved check, then decide whether to commit. The
+Pick an agent (Capsule can install it and sign you in), add a project folder
+you don't mind changing, and ask for a small change. Review the diff, run a
+saved check, then decide whether to keep it. The
 [first-conversation guide](docs/user/getting-started.md) walks through the flow;
 [providers and credentials](docs/user/providers.md) explains route prerequisites.
 
@@ -118,13 +99,31 @@ and selected route—not simply on an agent appearing in a directory.
   and separately share read-only snapshots with paired viewers.
 - The Agents panel shows reported delegation, not independently controlled
   child processes. Missing activity or token data stays unknown.
-- Paired devices are read-only. Downloads target macOS Apple Silicon and an
-  unsigned Windows 10/11 x64 preview. Native protocol fixtures are tested, not
-  every signed-in provider on Windows.
+- Paired devices start read-only. A **Conversation control** pairing can send
+  messages, stop runs and answer approvals.
+- Downloads target macOS Apple Silicon and an unsigned Windows 10/11 x64
+  preview. Native protocol fixtures are tested, not every signed-in provider on
+  Windows.
+- Agents run directly by default, with no Gateway. OpenClaw remains an optional
+  route for Gateway-only agents and messaging channels.
+- Muse Code uses its own local session connection and needs a Muse CLI build
+  with session SDK support; see [setup and limits](docs/user/providers.md#muse-code).
+  It is covered by protocol fixtures, not a signed-in provider certification.
 
 See [supported behavior and current limits](docs/user/compatibility.md),
 [browser controls](docs/user/projects-and-previews.md) and the contributor-facing
 [ACP compatibility map](docs/internals/acp-compatibility.md) for specifics.
+
+### Privacy and downloads
+
+Projects, threads and run history live in a local SQLite database. Tokens are
+encrypted with the operating system's credential protection when it is
+available, and usage reports are off by default. [PRIVACY.md](PRIVACY.md) covers
+browser, provider, catalog and remote-access data flows.
+
+macOS releases are signed with a Developer ID and notarized. The Windows preview
+is unsigned and ships a SHA-256 checksum, which verifies the file, not the
+publisher.
 
 ## Report a problem
 
