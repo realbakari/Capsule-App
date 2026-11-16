@@ -15,6 +15,13 @@
 
 </div>
 
+<br />
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/conversation-dark.png" />
+  <img src="assets/screenshots/conversation-light.png" alt="Capsule showing a finished turn: the prompt, a summary of the files the agent read and edited, and its reply, with conversations grouped by project in the sidebar" />
+</picture>
+
 ---
 
 ## What is Capsule?
@@ -49,6 +56,11 @@ local check and matching revision evidence.
 
 **Reviews changes where you are.** Diffs, changed files, and pull requests read
 in the app instead of a browser tab.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/review-dark.png" />
+  <img src="assets/screenshots/review-light.png" alt="The Review panel beside a conversation, listing the project's open pull requests with their check status, the three changed files, and the diff of a new file" />
+</picture>
 
 **Keeps your work on your computer.** A local SQLite database, tokens encrypted
 with the operating system's credential protection when available, and optional usage reports off by default. Read
