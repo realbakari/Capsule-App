@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { taskProgress, type RunTask } from "@capsule/shared";
 import { ChevronRightIcon, ListTodoIcon } from "../shell/icons";
+import { PlanMark } from "./TurnPlan";
 
 const STATUS_LABEL: Record<RunTask["status"], string> = {
   pending: "Pending",
@@ -45,9 +46,7 @@ export function ComposerTasks({ tasks, running = false, actions }: { tasks: read
         <ul className="composer-tasks-list" aria-label={`Task list. ${progress.completedSteps} of ${progress.totalSteps} complete.`}>
           {tasks.map((task, index) => (
             <li key={`${task.id}:${index}`} className={`composer-tasks-item is-${task.status}`}>
-              <span className="composer-tasks-mark" aria-hidden>
-                {task.status === "completed" ? "✓" : task.status === "inProgress" ? "●" : "○"}
-              </span>
+              <span className="composer-tasks-mark" aria-hidden><PlanMark status={task.status} size={12} /></span>
               <span className="composer-tasks-copy">{task.content}</span>
               <span className="faint">{task.status === "inProgress" && !running ? "Incomplete" : STATUS_LABEL[task.status]}</span>
               {task.status === "inProgress" && running ? <span className="faint">now</span> : null}

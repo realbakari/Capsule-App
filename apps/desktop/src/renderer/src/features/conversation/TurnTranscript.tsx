@@ -1,21 +1,24 @@
 import { Fragment, useState, type ReactNode } from "react";
-import type { ChatMessage, Run } from "@capsule/shared";
+import type { ChatMessage, Run, RunTask } from "@capsule/shared";
 import type { TranscriptRow } from "../../lib/turn-timeline";
 import { formatDuration } from "../../lib/turns";
 import { ChevronRightIcon } from "../shell/icons";
 import { InlineActivity } from "./InlineActivity";
+import { TurnPlan } from "./TurnPlan";
 
 interface Props {
   rows: TranscriptRow[];
   run?: Run;
   stopping?: boolean;
   partial?: boolean;
+  /** The run's last reported plan; shown once the turn has settled. */
+  plan?: readonly RunTask[];
   onOpenFile?: (path: string, root?: string) => void;
   children: (message: ChatMessage) => ReactNode;
 }
 
 /** Live work stays chronological; settled work folds without hiding the answer. */
-export function TurnTranscript({ rows, run, stopping, partial, onOpenFile, children }: Props) {
+export function TurnTranscript({ rows, run, stopping, partial, plan, onOpenFile, children }: Props) {
   const [expanded, setExpanded] = useState(false);
   const renderRow = (row: TranscriptRow) => <Fragment key={row.id}>{row.kind === "message"
     ? children(row.message)
@@ -26,11 +29,13 @@ export function TurnTranscript({ rows, run, stopping, partial, onOpenFile, child
   const promptEnd = rows[0]?.kind === "message" && rows[0].message.role === "user" ? 1 : 0;
   const hasWork = rows.slice(promptEnd, finalIndex).some((row) => row.kind === "activity");
   const earlier = partial && <p className="faint">Showing recent activity. Open Turn details for the available log.</p>;
-  if (!settled || !hasWork || finalIndex < 0) return <>{earlier}{rows.map(renderRow)}</>;
+  const planCard = settled && plan?.length ? <TurnPlan tasks={plan} /> : null;
+  if (!settled || !hasWork || finalIndex < 0) return <>{earlier}{rows.slice(0, promptEnd).map(renderRow)}{planCard}{rows.slice(promptEnd).map(renderRow)}</>;
   const elapsed = Date.parse(run.completedAt ?? "") - Date.parse(run.createdAt);
   const failures = rows.some((row) => row.kind === "activity" && row.tools.some((tool) => tool.status === "failed"));
   return <>
     {rows.slice(0, promptEnd).map(renderRow)}
+    {planCard}
     <section className="turn-work">
       <button type="button" className="turn-work-toggle" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>
         <span>{Number.isFinite(elapsed) && elapsed >= 0 ? `Worked for ${formatDuration(elapsed)}` : "Work details"}</span>
