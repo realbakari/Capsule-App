@@ -104,6 +104,8 @@ export interface UpdateCheck {
    * download a disk image and drag it over the old one.
    */
   canInstall?: boolean;
+  /** This build cannot install updates itself (a development build); `detail` says so. */
+  development?: boolean;
   /** 0-100 while the update is coming down. */
   percent?: number;
   retry?: "check" | "download" | "install";

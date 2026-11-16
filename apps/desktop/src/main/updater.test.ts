@@ -155,6 +155,8 @@ describe("what the sidebar is told", () => {
     // Manual recovery remains secondary; the main control retries the check.
     expect(merged.canInstall).toBeUndefined();
     expect(merged.download?.name).toBe("Capsule-0.3.0-arm64.dmg");
+    // A build that cannot install says so with a flag, so the window need not match its wording.
+    expect(merged.development).toBe(true);
   });
 
   it("keeps manual recovery metadata without disguising a failed check", () => {

@@ -70,7 +70,7 @@ export class Updater {
 
   check(): Promise<UpdaterStatus> {
     if (!this.options.canInstall) {
-      this.set({ state: "unavailable", detail: "Development build · in-app installation is available in the installed release.", retry: undefined });
+      this.set({ state: "unavailable", detail: "This is a development build. Updates install in the released app.", retry: undefined });
       return Promise.resolve(this.status);
     }
     if (["downloading", "ready", "installing"].includes(this.status.state)) return Promise.resolve(this.status);
@@ -150,6 +150,7 @@ export function mergeUpdateStatus(updater: UpdaterStatus, fallback?: UpdateCheck
     case "idle": return { current: updater.current, state: updater.checked === false ? "unknown" : "up-to-date" };
     default: return updater.retry ? { ...common, state: "unreachable" }
       : { ...(fallback ?? { state: "unreachable", current: updater.current }),
+        ...(updater.state === "unavailable" ? { development: true } : {}),
         detail: [fallback?.detail, updater.detail].filter(Boolean).join(" ") || undefined };
   }
 }

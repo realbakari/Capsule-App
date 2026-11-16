@@ -30,7 +30,9 @@ explicit restart attempt. Once the native installer has staged an update after
 your restart request, it may apply it the next time the app starts.
 Reopening a window restores the current update state.
 
-Development builds and incompatible signatures cannot update in place.
+Development builds and incompatible signatures cannot update in place. In a
+development build the update button's tooltip says so, and pressing it shows
+that once as a notice instead of leaving a note in the sidebar.
 The **Release notes** link in About opens the release page, where a manual
 download remains available for recovery. Checking for an update does not open
 that page automatically. A failed check keeps its error visible even in a
