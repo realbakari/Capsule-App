@@ -8,6 +8,8 @@
 
 /** `Error invoking remote method 'capsule:sendMessage': Error: …` */
 const IPC_WRAPPER = /^Error invoking remote method '[^']*':\s*/u;
+/** `capsule:sendMessage: …`, the channel name main prefixes to some failures. */
+const CHANNEL_PREFIX = /^capsule:\w+:\s*/u;
 const ERROR_PREFIX = /^(?:[A-Za-z]*Error):\s*/u;
 /** `ACP error (ACP_SESSION_INIT_FAILED): …` and `AcpRuntimeError [ACP_X]: …` */
 const ACP_CODE = /^(?:ACP error \(([A-Z_]+)\)|[A-Za-z]*Error \[([A-Z_]+)\]):\s*/u;
@@ -29,7 +31,7 @@ export function formatUserError(input: unknown): string {
   // Peel one wrapper at a time: a message can carry several.
   for (let pass = 0; pass < 4; pass += 1) {
     const before = text;
-    text = text.replace(IPC_WRAPPER, "");
+    text = text.replace(IPC_WRAPPER, "").replace(CHANNEL_PREFIX, "");
     const acp = ACP_CODE.exec(text);
     if (acp) {
       code = acp[1] ?? acp[2] ?? code;

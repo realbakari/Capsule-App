@@ -36,7 +36,7 @@ async function exchange(token: string): Promise<string | undefined> {
   });
   if (!response.ok) throw new Error("This pairing link expired or was already used. Create a new link in Capsule’s web access settings on the host computer.");
   const body = (await response.json()) as { token?: string };
-  if (typeof body.token !== "string" || !body.token) throw new Error("The host did not return a pairing session. Create a new link on the host computer.");
+  if (typeof body.token !== "string" || !body.token) throw new Error("The computer did not finish pairing. Create a new link on the computer running Capsule.");
   return body.token;
 }
 

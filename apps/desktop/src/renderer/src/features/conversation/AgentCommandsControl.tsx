@@ -30,14 +30,14 @@ export function AgentCommandsControl({ hideTrigger = false, onReturnFocus, ancho
     <summary hidden={hideTrigger} aria-label="Agent commands" title="Agent commands" onClick={(event) => { event.preventDefault(); setAgentCommandsOpen(!agentCommandsOpen); }}>Agent commands</summary>
     {agentCommandsOpen && createPortal(<div ref={panel} style={position} className="agent-command-popover" role="dialog" aria-label="Agent commands">
       <header><strong>Agent commands</strong><button type="button" className="ghost" onClick={() => { setAgentCommandsOpen(false); onReturnFocus?.(); }}>Close</button></header>
-      {!commands?.length ? <p className="meta">{!direct ? "Command discovery is available for direct agents that report their commands. This runtime route does not provide a command list." : commands ? "This agent currently advertises no commands." : "The agent has not reported its commands yet."}</p> : <>
+      {!commands?.length ? <p className="meta">{!direct ? "This agent doesn't share a command list with Capsule." : commands ? "This agent offers no commands." : "The agent hasn't listed its commands yet."}</p> : <>
         <select aria-label="Select agent command" value={selected?.name} onChange={(event) => { setEditing({ owner, command: event.target.value, input: "" }); }}>
           {commands.map((command) => <option key={command.name} value={command.name}>/{command.name}</option>)}
         </select>
         <p className="meta">{selected?.description}</p>
         {selected?.inputHint !== undefined && <input aria-label="Command input" placeholder={selected.inputHint || "Command input"} maxLength={4000} value={input} onChange={(event) => setEditing({ owner, command: selected.name, input: event.target.value })} />}
         <p className="meta">Runs as a separate turn. Your draft and attachments stay here.</p>
-        {api.isDesktop === false && <p className="meta">Send commands from the desktop app; this viewer is read-only.</p>}
+        {api.isDesktop === false && <p className="meta">This device can only read.</p>}
         <button type="button" disabled={Boolean(activeRun || busy || preparingAttachments || api.isDesktop === false)} onClick={async () => {
           if (selected && await runAgentCommand(selected.name, selected.inputHint !== undefined ? input : "")) {
             setAgentCommandsOpen(false);

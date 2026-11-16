@@ -81,6 +81,7 @@ export async function runFollowupRegressions(host: HTMLElement, base: Record<str
     // Find: counts matches, walks them with Enter, locates the message, and closes on Escape.
     const located: string[] = [];
     let closed = 0;
+    window.testWorkspace = { ...window.testWorkspace, hasOlderMessages: false };
     root.render(<ThreadFind messages={messages} onLocate={(id) => located.push(id)} onClose={() => { closed += 1; }} />);
     await until(() => host.querySelector('[aria-label="Find in conversation"]'));
     const input = host.querySelector<HTMLInputElement>('input[aria-label="Find in conversation"]')!;
@@ -96,6 +97,27 @@ export async function runFollowupRegressions(host: HTMLElement, base: Record<str
     await until(() => host.textContent?.includes("No matches"));
     input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
     assert(closed === 1, "Escape did not close find");
+    assert(!host.textContent?.includes("Searching loaded messages"), "Find claimed a partial search with every message loaded");
+    root.render(null); await settle();
+
+    // With older pages unloaded, find says it searches only what is loaded and can load more.
+    let olderLoads = 0;
+    const findWorkspace = window.testWorkspace;
+    window.testWorkspace = { ...findWorkspace, hasOlderMessages: true, loadingOlder: false, loadOlderMessages: async () => { olderLoads += 1; } };
+    root.render(<ThreadFind messages={messages} onLocate={() => {}} onClose={() => {}} />);
+    await until(() => host.textContent?.includes("Searching loaded messages"));
+    click("Load older");
+    await until(() => olderLoads === 1);
+    window.testWorkspace = findWorkspace;
+    root.render(null); await settle();
+
+    // A paired device that can only read sees the queue and why it waits, but no controls that would change it.
+    window.testWorkspace = { ...fixture, api: { ...(base.api as object), isDesktop: false, remoteMode: "read" }, followUpsBlocked: "Codex isn't signed in.", draft: "", setDraft: () => {} };
+    root.render(<ComposerFixture base={window.testWorkspace as Record<string, unknown>} />);
+    await until(() => host.textContent?.includes("Queued messages are on hold: Codex isn't signed in."));
+    assert(host.textContent?.includes("This device can only read."), "Read-only queue did not say why its controls are missing");
+    assert(!host.querySelector('.queued-prompt [aria-label="Remove from queue"]') && !host.querySelector('.queued-prompt [aria-label="Move down"]'), "Read-only queue offered write controls");
+    window.testWorkspace = findWorkspace;
     root.render(null); await settle();
 
     // Edit from here: offered on sent prompts only, and the confirm carries the file-restore choice.
@@ -116,13 +138,28 @@ export async function runFollowupRegressions(host: HTMLElement, base: Record<str
     window.testWorkspace = { ...window.testWorkspace, runs: [limitedRun], scheduleResume: (runId: string, prompt: string, at: number) => scheduled.push({ runId, prompt, at }), retryPrompt: (prompt: string) => retried.push(prompt), pendingResume: undefined, cancelResume: () => {} };
     root.render(<Conversation />);
     await until(() => host.textContent?.includes("Usage limit reached."));
-    assert(host.textContent?.includes("lifts at"), "Limit banner did not name the reset time");
+    assert(host.textContent?.includes("resets at"), "Limit banner did not name the reset time");
+    assert(host.textContent?.includes("Continue with another agent"), "Limit banner did not offer another agent");
     click("Resume at reset");
     await until(() => scheduled.length === 1);
     assert(scheduled[0]!.prompt === "second ask" && scheduled[0]!.at > Date.now() + 25 * 60_000, "Resume was not scheduled for the reset time");
     window.testWorkspace = { ...window.testWorkspace, pendingResume: { sessionId: "thread-q", runId: "run-limit", prompt: "second ask", at: scheduled[0]!.at } };
     root.render(<Conversation />);
     await until(() => host.textContent?.includes("Resuming at"));
+
+    // The approval card offers Deny and reply, which denies; an agent-supplied target stays on one line.
+    const resolved: string[] = [];
+    window.testWorkspace = {
+      ...window.testWorkspace, pendingResume: undefined,
+      pendingApproval: { id: "approval-1", runId: "run-limit", agentId: "agent", agentName: "Agent", action: "run a command", target: "pnpm test\nrm -rf /", reason: "Runs the checks", status: "pending", createdAt: "2026-10-12T00:00:07Z" },
+      api: { ...(window.testWorkspace?.api as object), resolveApproval: async (id: string, decision: string) => { resolved.push(`${id}:${decision}`); } },
+    };
+    root.render(<Conversation />);
+    await until(() => host.textContent?.includes("Approval required"));
+    assert(host.querySelector(".conversation-approval-target")?.textContent === "pnpm test rm -rf /", "Approval target kept its line breaks");
+    click("Deny and reply");
+    await until(() => resolved.length === 1);
+    assert(resolved[0] === "approval-1:denied", "Deny and reply did not deny");
     return "Follow-up regressions passed";
   } finally {
     root.unmount();

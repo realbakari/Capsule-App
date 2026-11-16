@@ -1,4 +1,5 @@
 import { useWorkspace } from "../../lib/workspace";
+import { formatUserError } from "../../lib/errors";
 import { useState } from "react";
 
 export function GatewayBanner({ inset }: { inset?: boolean }) {
@@ -11,13 +12,13 @@ export function GatewayBanner({ inset }: { inset?: boolean }) {
   return (
     <div className={`banner compact gateway-recovery ${inset ? "inline" : ""}`} role="status">
       <span title={status?.gatewayHost ? `${status.gatewayHost}:${status.gatewayPort}` : undefined}>
-        Gateway {status?.state === "connecting" ? "connecting…" : "offline"}
+        {status?.state === "connecting" ? "Connecting to the Gateway…" : "Not connected to the Gateway."}
         {error && <span className="gateway-recovery-error">{error}</span>}
       </span>
       <button type="button" className="chip" disabled={pending || status?.state === "connecting"} onClick={async () => {
         setPending(true); setError(undefined);
         try { await api.connectGateway(); }
-        catch (error) { setError(error instanceof Error ? error.message : String(error)); }
+        catch (error) { setError(formatUserError(error)); }
         finally { setPending(false); }
       }}>
         {pending || status?.state === "connecting" ? "Connecting…" : error ? "Retry connection" : "Connect"}

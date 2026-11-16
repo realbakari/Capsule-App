@@ -27,13 +27,23 @@ describe("harness preflight", () => {
   it("does not require a Gateway for direct mode but still checks login and binary", () => {
     const direct = (readiness: HarnessStatus["readiness"]) => ({ ...harness(readiness), runtimeRoute: "direct" as const });
     expect(harnessPreflightReason({ harness: direct("ready"), connected: false, folder: "/x", live: false })).toBeUndefined();
-    expect(harnessPreflightReason({ harness: direct("needs_login"), connected: false, folder: "/x", live: false })).toBe("status: needs_login");
-    expect(harnessPreflightReason({ harness: direct("missing_cli"), connected: false, folder: "/x", live: false })).toBe("status: missing_cli");
+    expect(harnessPreflightReason({ harness: direct("needs_login"), connected: false, folder: "/x", live: false })).toBe("Codex isn't signed in.");
+    expect(harnessPreflightReason({ harness: direct("missing_cli"), connected: false, folder: "/x", live: false })).toBe("Codex isn't installed.");
+    expect(harnessPreflightReason({ harness: direct("missing_acpx"), connected: false, folder: "/x", live: false })).toBeUndefined();
   });
   it("blocks missing Gateway, acpx, and login before send", () => {
     expect(harnessPreflightReason({ harness: harness("gateway_offline"), connected: false, folder: "/x", live: false })).toMatch(/Gateway/);
-    expect(harnessPreflightReason({ harness: harness("missing_acpx"), connected: true, folder: "/x", live: false })).toBe("status: missing_acpx");
-    expect(harnessPreflightReason({ harness: harness("needs_login"), connected: true, folder: "/x", live: false })).toBe("status: needs_login");
+    expect(harnessPreflightReason({ harness: harness("missing_acpx"), connected: true, folder: "/x", live: false })).toBe("Codex can't start.");
+    expect(harnessPreflightReason({ harness: harness("needs_login"), connected: true, folder: "/x", live: false })).toBe("Codex isn't signed in.");
+  });
+
+  it("asks for a folder before anything else, and never shows the diagnostic detail", () => {
+    expect(harnessPreflightReason({ harness: harness("needs_login"), connected: true, live: false })).toBe("Attach a folder so the agent has somewhere to work.");
+    const broken = { ...harness("needs_login"), loginState: "config_invalid" as const };
+    expect(harnessPreflightReason({ harness: broken, connected: true, folder: "/x", live: false })).toBe("Codex's settings could not be read.");
+    for (const readiness of ["missing_cli", "needs_login", "missing_acpx"] as const) {
+      expect(harnessPreflightReason({ harness: harness(readiness), connected: true, folder: "/x", live: false })).not.toContain("status:");
+    }
   });
 
   it("allows ready and already-live harnesses", () => {
@@ -45,7 +55,7 @@ describe("harness preflight", () => {
 describe("agent setup notice", () => {
   const signedOut = { ...harness("needs_login"), runtimeRoute: "direct" as const, loginHint: "Run `codex login`", loginState: "logged_out" as const, detail: "Codex is not signed in. Run `codex login`." };
   it("splits a signed-out agent into a title and the command, without backticks", () => {
-    expect(agentSetupNotice(signedOut, signedOut.detail)).toEqual({ kind: "sign-in", title: "Codex isn't signed in", command: "codex login" });
+    expect(agentSetupNotice(signedOut, "Codex isn't signed in.")).toEqual({ kind: "sign-in", title: "Codex isn't signed in", command: "codex login" });
   });
   it("reads the command out of a longer hint", () => {
     expect(quotedCommand("Run `claude auth login` in a terminal")).toBe("claude auth login");
@@ -53,12 +63,13 @@ describe("agent setup notice", () => {
   });
   it("offers no command when the config is broken, and the install hint when the CLI is missing", () => {
     const broken = { ...signedOut, loginState: "config_invalid" as const };
-    expect(agentSetupNotice(broken, broken.detail)).toEqual({ kind: "config", title: "Codex's settings could not be read", detail: "Fix its config file, then check again." });
+    expect(agentSetupNotice(broken, "Codex's settings could not be read.")).toEqual({ kind: "config", title: "Codex's settings could not be read", detail: "Fix its config file, then check again." });
     const missing = { ...harness("missing_cli"), detail: "Install the Codex CLI so codex is on PATH, then run `codex login`." };
-    expect(agentSetupNotice(missing, missing.detail)).toEqual({ kind: "install", title: "Codex isn't installed", detail: "Install the Codex CLI so codex is on PATH, then run codex login." });
+    expect(agentSetupNotice(missing, "Codex isn't installed.")).toEqual({ kind: "install", title: "Codex isn't installed", detail: "Install the Codex CLI so codex is on PATH, then run codex login." });
   });
   it("leaves other reasons, such as a paused conversation, to the plain notice", () => {
     expect(agentSetupNotice(signedOut, "This conversation is paused. Resume it to continue.")).toBeUndefined();
     expect(agentSetupNotice({ ...harness("ready") }, "status: ready")).toBeUndefined();
+    expect(agentSetupNotice(signedOut, signedOut.detail)).toBeUndefined();
   });
 });

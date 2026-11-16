@@ -10,9 +10,29 @@ const WAITS_ON_PERSON = new Set([
   "startDictation", "finishDictation", "checkForUpdates", "downloadUpdate", "installUpdate", "rendererReady",
 ]);
 
-/** "gitPush" → "git push", for a notice that names what is slow. */
+/*
+ * What the person is waiting on, in their words. A bridge method name such as
+ * "steer harness" names the plumbing; the notice names the thing behind it.
+ * First match wins, so the narrower patterns come first.
+ */
+const WAITING_ON: ReadonlyArray<readonly [RegExp, string]> = [
+  [/^git|Branch|Commit|Hunk|turnDiff|Worktree|sourceControl/, "Git"],
+  [/PullRequest|Github/, "GitHub"],
+  [/Harness|^sendMessage$|^startRun$|^stopRun$|Approval|AgentQuestion|^listAgents$/, "the agent"],
+  [/Session|Message|Run|Artifact|FollowUps|regenerateTitle|Verification/, "the conversation"],
+  [/Gateway|^getStatus$|Subsystem/, "the Gateway"],
+  [/Browser/, "the browser"],
+  [/Simulator/, "the simulator"],
+  [/Channel|Relay/, "the channel"],
+  [/Skill/, "skills"],
+  [/File|Attachment|Directory|searchContents|openPath|Image/, "files"],
+  [/Project/, "the project"],
+  [/Settings|Config/, "settings"],
+];
+
+/** "steerHarness" → "the agent", for a notice that names what is slow. */
 export function requestLabel(name: string): string {
-  return name.replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase();
+  return WAITING_ON.find(([pattern]) => pattern.test(name))?.[1] ?? "Capsule";
 }
 
 export function watchesRequest(name: string): boolean {

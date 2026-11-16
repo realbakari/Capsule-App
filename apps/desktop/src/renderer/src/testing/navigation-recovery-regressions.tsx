@@ -42,7 +42,7 @@ export async function runNavigationRecoveryRegressions(host: HTMLElement) {
     assert(restored.length === 0, "Archive undo stole text editing undo");
     document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true })); await settle();
     assert(restored.join() === "archived", "Keyboard archive undo did not restore the conversation");
-    assert(!host.querySelector(".toast"), "An undone toast stayed on screen");
+    assert(!host.querySelector(".toast:not(.is-leaving)"), "An undone toast stayed on screen");
     root.render(<HistoryView />); await settle();
     const archived = host.querySelector<HTMLDetailsElement>(".archived-conversations")!; archived.open = true;
     archived.querySelector<HTMLButtonElement>("button")!.click(); await settle();

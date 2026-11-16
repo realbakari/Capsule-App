@@ -12,6 +12,15 @@ interface State {
   error?: Error;
 }
 
+/* What a compact surface is called by the person using it, where its label is not that. */
+const COMPACT_COPY: Record<string, string> = {
+  Composer: "The message box stopped working. Retry, or reopen the conversation.",
+};
+
+function compactCopy(label = "This panel"): string {
+  return COMPACT_COPY[label] ?? `${label} stopped working. Retry, or reopen it.`;
+}
+
 function sameElementType(left: ReactNode, right: ReactNode): boolean {
   const a = Array.isArray(left) ? left : [left];
   const b = Array.isArray(right) ? right : [right];
@@ -57,10 +66,14 @@ export class ViewErrorBoundary extends Component<Props, State> {
     if (this.props.compact) {
       return (
         <div className="notice" role="alert">
-          {this.props.label ?? "This panel"} hit an error: {error.message}{" "}
+          {compactCopy(this.props.label)}{" "}
           <button className="chip" type="button" onClick={this.retry}>
             Retry
           </button>
+          <details className="error-details">
+            <summary>Details</summary>
+            <pre className="mono">{error.message}</pre>
+          </details>
         </div>
       );
     }

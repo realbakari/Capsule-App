@@ -9,7 +9,7 @@ import { runReviewHunkRegressions } from "./review-hunk-regressions";
 import { runMarkdownRegressions } from "./markdown-regressions";
 import { EmbeddedBrowser } from "../features/shell/EmbeddedBrowser";
 import { Toasts } from "../features/toasts/Toasts";
-import { ToastProvider } from "../lib/toasts";
+import { ToastProvider, useToasts, type Toast } from "../lib/toasts";
 import { PersistentTerminals } from "../features/terminal/TerminalDock";
 import { FileDiff } from "../features/shell/FileDiff";
 import { PagedFileDiffs } from "../features/shell/PagedFileDiffs";
@@ -35,6 +35,7 @@ import { runBoardRegressions } from "./board-regressions";
 import { runBestOfNRegressions } from "./best-of-n-regressions";
 import { runMuseSettingsRegressions } from "./muse-settings-regressions";
 import { runWebAccessRegressions } from "./web-access-regressions";
+import { runOnboardingRegressions } from "./onboarding-regressions";
 import { runWorktreeStorageRegressions } from "./worktree-storage-regressions";
 import { WorktreeStorage } from "../features/settings/WorktreeStorage";
 import { runNavigationRecoveryRegressions } from "./navigation-recovery-regressions";
@@ -51,6 +52,7 @@ import { runDiscoveryRegressions } from "./discovery-regressions";
 import { AgentControl } from "../features/harness/AgentControl";
 import { Composer } from "../features/conversation/Composer";
 import { ComposerTasks } from "../features/conversation/ComposerTasks";
+import { TurnTranscript } from "../features/conversation/TurnTranscript";
 import { Sidebar } from "../features/shell/Sidebar";
 import { ProviderQuota } from "../features/library/ProviderQuota";
 import { RuntimeModeCard } from "../features/settings/RuntimeModeCard";
@@ -119,7 +121,8 @@ function BrowserFixture({ onOpenExternal }: { onOpenExternal: (url: string) => v
 }
 
 let actualWorkspace: ReturnType<typeof useRealWorkspace>;
-function CaptureWorkspace() { actualWorkspace = useRealWorkspace(); return null; }
+let actualToasts: Toast[] = [];
+function CaptureWorkspace() { actualWorkspace = useRealWorkspace(); actualToasts = useToasts().toasts; return null; }
 
 function ComposerContextFixture({ base }: { base: Record<string, unknown> }) {
   const [draft, setDraft] = useState("Please use $rev");
@@ -599,7 +602,7 @@ window.runRendererRegressions = async () => {
   document.querySelector<HTMLElement>('.browser-controls > summary')!.click();
   await until(() => document.querySelector<HTMLDetailsElement>('.browser-controls')!.open);
   button("Allow agent control").click();
-  await until(() => document.body.textContent?.includes("Revoke control"));
+  await until(() => document.body.textContent?.includes("Turn off agent control"));
   assert(browserGrants[0]?.[0] === "browser-a" && browserGrants[0]?.[1] === true, "Browser access was not granted to its thread");
   assert(guest.getAttribute("webpreferences")?.includes("nodeIntegration=false"), "Guest integration flag was not a boolean string");
   const browserStyles = document.getElementById("composer-test-styles") as HTMLStyleElement;
@@ -693,6 +696,18 @@ window.runRendererRegressions = async () => {
   root.render(<ComposerTasks tasks={plan} running={false} />);
   await until(() => document.querySelector(".composer-tasks-list")?.textContent?.includes("Incomplete"));
   assert(!document.querySelector(".composer-tasks-list")!.textContent?.includes("now"), "A finished turn still claims its task is running now");
+  // A settled turn keeps its plan under the prompt; a running one leaves it to the composer.
+  const turnPlan = [{ id: "a", content: "Read the file", status: "completed" as const }, { id: "b", content: "Change it", status: "pending" as const }];
+  const planRows = [{ kind: "message" as const, id: "p", message: { id: "p", sessionId: "s", role: "user" as const, content: "Do it", createdAt: "2026-11-16T00:00:00Z" } }];
+  const planRun = { id: "r", sessionId: "s", projectId: "p", prompt: "Do it", createdAt: "2026-11-16T00:00:00Z", updatedAt: "2026-11-16T00:00:01Z" };
+  root.render(<TurnTranscript rows={planRows} run={{ ...planRun, status: "running" } as never} plan={turnPlan}>{(message) => <p>{message.content}</p>}</TurnTranscript>);
+  await until(() => document.body.textContent?.includes("Do it"));
+  await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+  assert(!document.querySelector(".turn-plan"), "A running turn showed its plan twice");
+  root.render(<TurnTranscript rows={planRows} run={{ ...planRun, status: "completed", completedAt: "2026-11-16T00:00:02Z" } as never} plan={turnPlan}>{(message) => <p>{message.content}</p>}</TurnTranscript>);
+  await until(() => document.querySelector(".turn-plan"));
+  assert(document.querySelector(".turn-plan-count")?.textContent === "1 of 2 done", "Plan count is wrong");
+  assert(document.querySelectorAll(".turn-plan .plan-mark.is-completed").length === 1 && document.querySelectorAll(".turn-plan .plan-mark.is-pending").length === 1, "Plan marks do not match step states");
   root.unmount(); root = createRoot(host);
   const openedFiles: string[] = [];
   let searchCalls = 0;
@@ -859,7 +874,7 @@ window.runRendererRegressions = async () => {
       return { ...DEFAULT_CAPSULE_SETTINGS, defaultMode: "chat", defaultAgentId: "general" };
     },
     listSessions: async () => [...threads], listHarnessSessions: async () => [], listRuns: async () => [...savedRuns],
-    forkBranches: async () => [], redoPoint: async () => null,
+    forkBranches: async () => [], redoPoint: async () => null, triageSession: async () => undefined,
     listLatestRuns: async () => [...savedRuns],
     listRunPage: async (options?: { before?: unknown }) => ({ runs: [...(options?.before ? olderRuns : savedRuns)], hasMore: false }),
     listRunEventPage: async () => { eventReads += 1; const events = deferEvents ? await new Promise<RunEvent[]>((resolve) => { holdEvents = resolve; }) : [...savedEvents]; return { events, hasMore: false }; },
@@ -887,7 +902,7 @@ window.runRendererRegressions = async () => {
     sendMessage: async (input: { skillId?: string }) => { submittedSkill = input.skillId; sends += 1; if (failSend) throw new Error("Send rejected"); if (delayFailure) return new Promise<void>((_resolve, reject) => { rejectSend = reject; }); await new Promise<void>((resolve) => { finishSend = resolve; }); },
   } as unknown as typeof window.capsule;
   phase("workspace recovery");
-  root.render(<WorkspaceProvider><CaptureWorkspace /></WorkspaceProvider>);
+  root.render(<ToastProvider><WorkspaceProvider><CaptureWorkspace /></WorkspaceProvider></ToastProvider>);
   await until(() => actualWorkspace?.startupError?.includes("settings could not be read"));
   assert(!actualWorkspace.ready, "Failed startup was reported as a ready, empty workspace");
   assert(historyReads === 0, "History loaded an unvalidated startup thread");
@@ -906,18 +921,30 @@ window.runRendererRegressions = async () => {
   await until(() => !actualWorkspace.startupError && !actualWorkspace.notice);
   actualWorkspace.setDraft("first draft"); await until(() => actualWorkspace.draft === "first draft");
   actualWorkspace.setSkillId("chosen-skill"); await until(() => actualWorkspace.skillId === "chosen-skill");
-  await actualWorkspace.sendAndContinue();
-  await until(() => !actualWorkspace.busy);
-  assert(actualWorkspace.draft === "first draft" && threads.length === 1 && !actualWorkspace.sessionId, "Rejected initial send lost its draft or navigated");
+  // A first message opens its conversation before the agent answers, so the message and its turn show at once.
+  failSend = false; delayFailure = true;
+  const firstSend = actualWorkspace.sendAndContinue();
+  await until(() => Boolean(rejectSend));
+  await until(() => actualWorkspace.sessionId === "send-thread-0" && actualWorkspace.messages.some((message) => message.id.startsWith("local-") && message.content === "first draft"));
+  assert(actualWorkspace.busy && actualWorkspace.draft === "", "The opened conversation did not show its first message as sending");
+  const firstRun: Run = { id: "first-run", sessionId: "send-thread-0", projectId: project.id, agentId: "general", status: "running", prompt: "first draft", createdAt: "2025-06-01T00:00:00Z", updatedAt: "2025-06-01T00:00:00Z" };
+  emit("run", firstRun);
+  await until(() => actualWorkspace.activeRun?.id === "first-run");
+  emit("run", { ...firstRun, status: "failed", error: "Send rejected", updatedAt: "2025-06-01T00:00:01Z", completedAt: "2025-06-01T00:00:01Z" });
+  await until(() => !actualWorkspace.activeRun);
+  rejectSend!(new Error("Send rejected")); rejectSend = undefined; delayFailure = false;
+  await firstSend;
+  await until(() => !actualWorkspace.busy && actualWorkspace.draft === "first draft");
+  assert(threads.length === 1 && actualWorkspace.sessionId === "send-thread-0", "Rejected first send left the conversation it opened");
+  assert(!actualWorkspace.messages.some((message) => message.id.startsWith("local-")), "Rejected first send left its message on screen");
   assert(submittedSkill === "chosen-skill" && actualWorkspace.skillId === "chosen-skill", "Skill selection was not sent or lost on rejection");
-  failSend = false;
   const accepted = actualWorkspace.sendAndContinue();
   await until(() => sends === 2 && Boolean(finishSend));
   await actualWorkspace.sendAndContinue();
   assert(sends === 2, "Busy send created a duplicate turn");
   finishSend(); await accepted;
-  await until(() => actualWorkspace.sessionId === "send-thread-2");
-  assert(actualWorkspace.draft === "", "Accepted send-and-new retained the sent draft");
+  await until(() => actualWorkspace.sessionId === "send-thread-1");
+  assert(actualWorkspace.draft === "", `Accepted send-and-new retained the sent draft: ${JSON.stringify(actualWorkspace.draft)} in ${actualWorkspace.sessionId}`);
   assert(!actualWorkspace.skillId, "Sent skill followed the user into a new thread");
   actualWorkspace.setSkillId("skill-for-this-thread");
   await until(() => actualWorkspace.skillId === "skill-for-this-thread");
@@ -1011,6 +1038,40 @@ window.runRendererRegressions = async () => {
   rejectStop(new Error("Runtime did not stop")); await stopping;
   await until(() => !actualWorkspace.stoppingRunIds.length && actualWorkspace.notice?.includes("Runtime did not stop"));
   assert(actualWorkspace.activeRun?.status === "running", "Rejected stop claimed the agent had ended");
+  // An unconfirmed stop offers to close the agent instead of leaving the person with a dead end.
+  const closed: string[] = [];
+  window.capsule.closeHarness = async (id: string) => { closed.push(id); return undefined as never; };
+  const unconfirmed = actualWorkspace.stopRun();
+  await until(() => Boolean(rejectStop) && actualWorkspace.stoppingRunIds.includes("next-run"));
+  rejectStop(new Error("Error invoking remote method 'capsule:stopRun': Error: The agent has not confirmed cancellation. It may still be working; close the agent to stop its process.")); await unconfirmed;
+  await until(() => actualToasts.some((toast) => toast.action?.label === "Close agent"));
+  await actualToasts.find((toast) => toast.action?.label === "Close agent")!.action!.run();
+  assert(closed.join() === running.sessionId, "Close agent did not close this conversation's agent");
+
+  // A message sent during a turn: one Enter queues once, the draft clears at once, and ⌘Enter moves on.
+  const added: string[] = [];
+  let releaseQueue!: () => void;
+  window.capsule.updateFollowUps = async (_id: string, op: { type: string; prompt?: { content: string } }) => {
+    added.push(op.prompt?.content ?? op.type);
+    await new Promise<void>((resolve) => { releaseQueue = resolve; });
+    return { queue: [], resume: undefined } as never;
+  };
+  actualWorkspace.setDraft("queue me once"); await until(() => actualWorkspace.draft === "queue me once");
+  const sameFrame = actualWorkspace;
+  const queued = sameFrame.send();
+  const repeated = sameFrame.send();
+  await until(() => added.length === 1 && actualWorkspace.draft === "");
+  assert(!await repeated, "A second Enter during a turn was accepted");
+  releaseQueue(); assert(await queued, "Queueing during a turn failed");
+  assert(added.join() === "queue me once", `Queued ${added.join()} instead of one message`);
+  const queuedIn = actualWorkspace.sessionId;
+  actualWorkspace.setDraft("queue me and start fresh"); await until(() => actualWorkspace.draft === "queue me and start fresh");
+  const continuing = actualWorkspace.sendAndContinue();
+  await until(() => added.length === 2); releaseQueue(); await continuing;
+  await until(() => Boolean(actualWorkspace.sessionId) && actualWorkspace.sessionId !== queuedIn);
+  assert(actualWorkspace.draft === "" && !actualWorkspace.activeRun, "⌘Enter during a turn did not open a fresh conversation");
+  actualWorkspace.setSessionId(queuedIn);
+  await until(() => actualWorkspace.sessionId === queuedIn);
   emit("state", { command: "open-browser", url: "https://example.test/agent" });
   await until(() => actualWorkspace.inspectorOpen && actualWorkspace.inspectorTab === "browser" && actualWorkspace.browserUrl === "https://example.test/agent");
   emit("state", { command: "open-browser", threadId: "another-thread", url: "https://example.test/wrong-owner" });
@@ -1481,6 +1542,8 @@ window.runRendererRegressions = async () => {
   phase("native settings");
   await runMuseSettingsRegressions(host, contextBase);
   await runWebAccessRegressions(host);
+  phase("agent store, sign-in and first run");
+  await runOnboardingRegressions(host);
   await runWorktreeStorageRegressions(host);
   await runNavigationRecoveryRegressions(host);
   phase("saved previews");

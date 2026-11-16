@@ -16,7 +16,8 @@ import "./handoff.css";
 interface HandoffValue {
   /** Why handing off is unavailable here, or undefined. */
   disabledReason?: string;
-  openHandoff: (sessionId: string) => void;
+  /** `otherAgent` preselects a ready agent other than the thread's own, as when its usage limit is reached. */
+  openHandoff: (sessionId: string, options?: { otherAgent?: boolean }) => void;
 }
 
 const HandoffContext = createContext<HandoffValue>({ openHandoff: () => undefined });
@@ -29,23 +30,29 @@ export const HANDOFF_LABEL = "Hand off to a new conversation…";
 
 export function HandoffProvider({ children }: { children: ReactNode }) {
   const { api } = useWorkspace();
-  const [open, setOpen] = useState<string>();
-  const disabledReason = api.isDesktop === false ? "Starting a thread is available in the desktop app." : undefined;
-  const openHandoff = useCallback((sessionId: string) => { if (!disabledReason) setOpen(sessionId); }, [disabledReason]);
+  const [open, setOpen] = useState<{ sessionId: string; otherAgent: boolean }>();
+  const disabledReason = api.isDesktop === false ? "Starting a conversation is available in the desktop app." : undefined;
+  const openHandoff = useCallback((sessionId: string, options?: { otherAgent?: boolean }) => {
+    if (!disabledReason) setOpen({ sessionId, otherAgent: Boolean(options?.otherAgent) });
+  }, [disabledReason]);
   const value = useMemo(() => ({ disabledReason, openHandoff }), [disabledReason, openHandoff]);
   return (
     <HandoffContext.Provider value={value}>
       {children}
-      {open && <HandoffDialog sessionId={open} onClose={() => setOpen(undefined)} />}
+      {open && <HandoffDialog sessionId={open.sessionId} otherAgent={open.otherAgent} onClose={() => setOpen(undefined)} />}
     </HandoffContext.Provider>
   );
 }
 
-function HandoffDialog({ sessionId, onClose }: { sessionId: string; onClose: () => void }) {
+function HandoffDialog({ sessionId, otherAgent, onClose }: { sessionId: string; otherAgent: boolean; onClose: () => void }) {
   const { api, sessions, harnesses, setProjectId, setView, refresh } = useWorkspace();
   const source = sessions.find((item) => item.id === sessionId);
   const dialog = useRef<HTMLDivElement>(null);
-  const [agent, setAgent] = useState<string>(source?.harnessId ?? harnesses.find((item) => item.readiness === "ready")?.id ?? "claude");
+  const [agent, setAgent] = useState<string>(() => {
+    const ready = harnesses.filter((item) => item.readiness === "ready");
+    if (otherAgent) { const other = ready.find((item) => item.id !== source?.harnessId); if (other) return other.id; }
+    return source?.harnessId ?? ready[0]?.id ?? "claude";
+  });
   const [summary, setSummary] = useState<string>();
   const [loadError, setLoadError] = useState<string>();
   const [busy, setBusy] = useState(false);
@@ -63,7 +70,7 @@ function HandoffDialog({ sessionId, onClose }: { sessionId: string; onClose: () 
     id: harness.id,
     label: harness.name,
     icon: <AgentGlyph id={harness.id} name={harness.name} size={14} />,
-    detail: harness.id === source?.harnessId ? "This thread’s agent" : harnessReadinessLabel(harness.readiness),
+    detail: harness.id === source?.harnessId ? "This conversation’s agent" : harnessReadinessLabel(harness.readiness),
   }));
 
   const start = async () => {

@@ -1,6 +1,6 @@
 import type { ApprovalRequest } from "@capsule/shared";
 
-export const APPROVE_ONCE_UNAVAILABLE = "This agent did not offer approval once. Deny the request or change the agent's settings outside Capsule.";
+export const APPROVE_ONCE_UNAVAILABLE = "This agent doesn't allow one-time approval here. Deny it, or change Agent permissions.";
 
 /** Proposed tool data is displayed as text, never interpreted as commands or HTML. */
 export function ApprovalDetails({ approval }: { approval: ApprovalRequest }) {

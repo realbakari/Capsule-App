@@ -24,6 +24,8 @@ import {
   type Context,
   type ReactNode,
 } from "react";
+import { flushSync } from "react-dom";
+import { canSteerTurn, harnessDisplayName } from "./harness";
 import {
   addFolderToProject,
   folderBasename,
@@ -83,6 +85,7 @@ import { EMPTY_NAVIGATION, canGoBack as navigationCanGoBack, canGoForward as nav
 import { contextUsageFromEvents, type ContextUsage } from "./context-window";
 import { harnessPreflightReason } from "./harness-preflight";
 import { useToasts } from "./toasts";
+import { requestBrowserCommand } from "./browser-commands";
 import { BROWSER_FIND_EVENT } from "./browser-find";
 import { requestLabel, withSlowNotice } from "./slow-requests";
 import {
@@ -447,6 +450,13 @@ export function useWorkspace(): WorkspaceValue {
   return value;
 }
 
+/** The agent host's answer when a cancel went unacknowledged. */
+const UNCONFIRMED_STOP = /has not confirmed cancellation/i;
+
+/** Files one message can carry. */
+const MAX_ATTACHMENTS = 8;
+const tooManyAttachments = (over: number) => `A message can carry up to ${MAX_ATTACHMENTS} files. Remove ${over} to add these.`;
+
 /** Messages fetched per page; older pages load on demand. */
 const MESSAGE_PAGE_SIZE = 60;
 
@@ -591,11 +601,20 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   }, [sessions, projects, statusCache, statusVersion]);
   const [notice, setNotice] = useScopedState<string | undefined>(scope, undefined);
   const toasts = useToasts();
-  const slowToasts = useRef(new Map<string, string>());
+  const { show: showToast } = toasts;
+  /*
+   * Slow requests share one notice, so several at once (git status and the
+   * turn diff together, say) read as one line instead of a stack over the panel.
+   */
+  const slowWaiting = useRef(new Map<string, number>());
   slowNotice.current = (name, waiting) => {
-    const shown = slowToasts.current.get(name);
-    if (!waiting) { if (shown) toasts.dismiss(shown); slowToasts.current.delete(name); return; }
-    slowToasts.current.set(name, toasts.show({ key: `slow:${name}`, tone: "info", title: `Still waiting on ${requestLabel(name)}…`, detail: "This is taking longer than usual. The notice goes away when it finishes.", timeoutMs: 0 }));
+    const label = requestLabel(name);
+    const count = (slowWaiting.current.get(label) ?? 0) + (waiting ? 1 : -1);
+    if (count > 0) slowWaiting.current.set(label, count); else slowWaiting.current.delete(label);
+    const labels = [...slowWaiting.current.keys()];
+    if (labels.length === 0) { toasts.dismissKey("slow"); return; }
+    const list = labels.length === 1 ? labels[0] : `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`;
+    toasts.show({ key: "slow", tone: "info", title: `Still waiting on ${list}…`, detail: "This is taking longer than usual. The notice goes away when it finishes.", timeoutMs: 0 });
   };
   const archiving = useRef(new Set<string>());
   const restoring = useRef(new Set<string>());
@@ -608,7 +627,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   const steeringPending = steering.get(steeringKey).pending;
   const setSteerDraft = (value: string) => {
     if (!steering.edit(steeringKey, value)) {
-      setNotice("Steering draft storage is full. Send or clear another thread's draft before adding more text.");
+      setNotice("Saved drafts are full. Send or clear a draft in another conversation before adding more text.");
       return;
     }
     renderSteering((version) => version + 1);
@@ -751,9 +770,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     session?.harnessId === selectedHarness?.id && session?.openclawSessionKey && ["spawning", "running", "waiting"].includes(session.harnessState ?? ""),
   );
   const sendBlockReason = api.isDesktop === false && api.remoteMode === "share"
-    ? "This is a shared, read-only conversation."
+    ? "This device can only read."
     : api.isDesktop === false && api.remoteMode !== "control"
-    ? "This browser is read-only. Create a conversation-control pairing link from the desktop to send messages."
+    ? "This device can only read. To send from here, pair it with conversation control on the computer running Capsule."
     : session?.paused
     ? "This conversation is paused. Resume it to continue."
     : harnessPreflightReason({
@@ -1103,6 +1122,22 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
         if (command === "new-project") void createProjectFromFolder();
         if (command === "open-folder") void pickProjectDirectory();
         if (command === "open-files") void pickFilesToMention();
+        /*
+         * The agent was refused the browser. The grant lives in the Browser
+         * panel behind a small shield; offer it here, where the person is
+         * reading the agent's reply. Only for the thread on screen, because a
+         * grant belongs to the visible thread.
+         */
+        if (command === "browser-access-requested") {
+          const owner = (payload as { threadId?: string }).threadId;
+          if (!owner || owner !== sessionId) return;
+          showToast({
+            key: `browser-access:${owner}`, tone: "info", timeoutMs: 0,
+            title: "The agent wants to use the browser",
+            detail: "Allowing opens this conversation's Browser panel. Access ends when you switch conversations or close the panel.",
+            action: { label: "Allow", run: () => { setInspectorTab("browser"); setInspectorOpen(true); requestBrowserCommand({ type: "allow-agent" }); } },
+          });
+        }
         if (command === "open-browser") {
           const owner = (payload as { threadId?: string }).threadId;
           if (owner && owner !== sessionId) return;
@@ -1135,7 +1170,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       batch.dispose();
       off.forEach((fn) => fn());
     };
-  }, [api, loadGit, loadSession, projectId, refresh, sessionId, scope, liveRunState, setBrowserUrl, selectionExists]);
+  }, [api, loadGit, loadSession, projectId, refresh, sessionId, scope, liveRunState, setBrowserUrl, selectionExists, showToast]);
 
   useEffect(() => {
     if (sessionId && selectionExists) void loadSession(sessionId).catch(() => { /* History owns its loading and retry UI. */ });
@@ -1169,7 +1204,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       const result = draftRecovery.save(localStorage, currentDraftKey, { prompt: draft, attachments, skillId });
       if (result !== "saved") setNotice(result === "temporary"
         ? "This draft is kept temporarily until the app closes because local storage could not save it. Copy it before quitting."
-        : "Draft recovery storage is full. Copy this draft before switching threads or quitting; these edits could not be saved.");
+        : "Draft recovery storage is full. Copy this draft before switching conversations or quitting; these edits could not be saved.");
     } catch {
       // Draft persistence is a convenience; storage policy must not break chat.
     }
@@ -1289,7 +1324,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
 
   async function createTask(inProject?: string, initialPrompt?: string, options?: CreateTaskOptions) {
     if (api.isDesktop === false && api.remoteMode !== "control") {
-      setNotice("This browser is read-only. Pair with conversation control to create a thread.");
+      setNotice("This device can only read. Pair it with conversation control to start a conversation.");
       return;
     }
     const targetProject = inProject ?? projectId ?? projects[0]?.id;
@@ -1321,7 +1356,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   /* A profile picks the agent, mode, permission, workspace and model; the engine applies it. */
   async function startWithProfile(profileId: string, inProject?: string) {
     if (api.isDesktop === false && api.remoteMode !== "control") {
-      setNotice("This browser is read-only. Pair with conversation control to create a thread.");
+      setNotice("This device can only read. Pair it with conversation control to start a conversation.");
       return;
     }
     const targetProject = inProject ?? projectId ?? projects[0]?.id;
@@ -1405,6 +1440,23 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     void changeFollowUps({ type: "add", prompt: { content: prompt, attachments: runId ? attachmentsForRun(runId) : [] } });
   };
 
+  /*
+   * The newest render's handles on the selected conversation. A first message
+   * selects the conversation it creates part-way through send(), and the rest
+   * of that send writes into the new conversation's state, not the empty
+   * one it started from.
+   */
+  const handles = { setMessages, setNotice, setBusy, setDraft, setAttachments, setSkillId, loadSession, refresh, draftScope };
+  const latest = useRef(handles);
+  latest.current = handles;
+
+  /** Select a conversation the engine just created, before a refresh lists it. */
+  const showConversation = (created: Session) => {
+    setSessions((current) => current.some((item) => item.id === created.id) ? current : [created, ...current]);
+    setProjectId(created.projectId);
+    setSessionId(created.id);
+  };
+
   async function send(continueToNew = false, command?: string) {
     if (attachmentReservations.get(draftScope)) {
       setNotice("Attachments are still being prepared. Wait for them before sending.");
@@ -1423,36 +1475,76 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
         return false;
       }
       if (!sessionId) return false;
+      const threadId = sessionId;
+      const agent = harnesses.find((item) => item.id === session?.harnessId);
       /*
        * Settings › General › Follow-ups: steer sends the text into the running
-       * turn where the route can. Attachments, skills and commands still
-       * queue, and a route that refuses the steer falls back to the queue.
+       * turn when this agent can take it. Attachments, skills, commands, an
+       * agent that cannot steer (direct mode) and a paired device queue
+       * instead, quietly: for them that is the expected path, not a failure.
        */
-      const steerable = settings?.followUpBehavior === "steer" && Boolean(session?.harnessId) && !command && filesToSend.length === 0 && !promptSkill;
-      let steered = false;
-      if (steerable) {
-        try {
-          await api.steerHarness(sessionId, content);
-          steered = true;
-          void loadSession(sessionId).catch(() => { /* The live stream carries it too. */ });
-        } catch (error) {
-          setNotice(`Could not steer this turn, so the message is queued instead. ${formatUserError(error)}`);
-        }
-      }
-      if (!steered) {
-        try {
-          setFollowUps(await api.updateFollowUps(sessionId, { type: "add", prompt: { content, attachments: filesToSend, ...(promptSkill ? { skillId: promptSkill } : {}) } }));
-        } catch (error) {
-          setNotice(formatUserError(error));
-          return false;
-        }
-      }
+      const steerable = settings?.followUpBehavior === "steer" && Boolean(agent)
+        && !command && filesToSend.length === 0 && !promptSkill
+        && canSteerTurn({ harness: agent, session, status: harnessStatuses[threadId], desktop: api.isDesktop !== false });
+      // Clear first and hold the key, so a second Enter cannot send the same text twice.
+      submissions.current.add(submissionKey);
       if (!command) {
         setDraft("");
         setAttachments([]);
         setSkillId(undefined);
       }
-      return true;
+      const clearedRevision = draftRevision.current;
+      try {
+        let steered = false;
+        if (steerable) {
+          try {
+            await api.steerHarness(threadId, content);
+            steered = true;
+            void loadSession(threadId).catch(() => { /* The live stream carries it too. */ });
+          } catch {
+            setNotice(`${agent?.name ?? "This agent"} can't take messages mid-turn, so yours is queued and will send when this turn ends.`);
+          }
+        }
+        if (!steered) {
+          try {
+            const state = await api.updateFollowUps(threadId, { type: "add", prompt: { content, attachments: filesToSend, ...(promptSkill ? { skillId: promptSkill } : {}) } });
+            if (draftScopes.isCurrent(draftScope)) setFollowUps(state);
+          } catch (error) {
+            if (!command && draftScopes.isCurrent(draftScope) && draftRevision.current === clearedRevision) {
+              setDraft(draft);
+              setAttachments(filesToSend);
+              setSkillId(promptSkill);
+            }
+            setNotice(formatUserError(error));
+            return false;
+          }
+        }
+        // ⌘Enter: the message goes to this turn, and the composer moves to a new conversation.
+        const targetProject = session?.projectId ?? projectId;
+        if (continueToNew && targetProject && draftScopes.isCurrent(draftScope)) {
+          try {
+            const next = await api.createSession({
+              projectId: targetProject,
+              agentId,
+              mode,
+              ...(draftApproval ? { permissionProfile: draftApproval } : {}),
+              title: "New conversation",
+            });
+            if (draftScopes.isCurrent(draftScope)) {
+              // Anything typed while the message went out moves with the composer.
+              const typed = draftRevision.current !== clearedRevision ? latestDraft.current.value : { prompt: "", attachments: [] };
+              promotedDrafts.current.set(promptDraftKey(next.projectId, next.id), typed);
+              draftRecovery.save(localStorage, submissionKey, { prompt: "", attachments: [] });
+              showConversation(next);
+            }
+          } catch (error) {
+            setNotice(`Your message was ${steered ? "sent" : "queued"}, but a new conversation could not start: ${formatUserError(error)}`);
+          }
+        }
+        return true;
+      } finally {
+        submissions.current.delete(submissionKey);
+      }
     }
     if (sendBlockReason) {
       setNotice(sendBlockReason);
@@ -1461,7 +1553,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     submissions.current.add(submissionKey);
     setBusy(true);
     setNotice(undefined);
+    // Where the composer is. A first message moves it to the conversation it creates.
+    let shown = { projectId, sessionId, key: submissionKey };
+    let ui = latest.current;
+    let opened = false;
     let preparedThread = false;
+    let accepted = false;
+    const stillHere = () => draftScopes.isCurrent(ui.draftScope);
     const recoverSubmission = (error: unknown, targetProjectId = projectId) => {
       const recovery = recoverFailedPrompt(localStorage, latestStashes.current, {
         prompt: content, attachments: filesToSend, skillId: promptSkill, projectId: targetProjectId,
@@ -1469,7 +1567,17 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       latestStashes.current = recovery.entries;
       setPromptStashes(recovery.entries);
       const location = recovery.persisted ? "saved in Stash" : "kept temporarily in Stash until the app closes; local storage could not save it";
-      setNotice(`The message was not sent and was ${location}. Your new draft is unchanged. ${formatUserError(error)}`);
+      ui.setNotice(`The message was not sent and was ${location}. Your new draft is unchanged. ${formatUserError(error)}`);
+    };
+    // A first message that fails goes back into its new conversation's composer, or to Stash if that composer is in use.
+    const giveBack = (error: unknown) => {
+      const composer = latestDraft.current;
+      if (!command && stillHere() && composer.key === shown.key && !composer.value.prompt.trim() && composer.value.attachments.length === 0) {
+        ui.setDraft(draft);
+        ui.setAttachments(filesToSend);
+        ui.setSkillId(promptSkill);
+        ui.setNotice(formatUserError(error));
+      } else recoverSubmission(error, shown.projectId);
     };
     try {
       if (historyWindow.detached) await returnToLatest();
@@ -1489,21 +1597,39 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
           title: "New conversation",
           turnMode: draftTurnMode,
         });
+        if (!draftScopes.isCurrent(draftScope)) return false;
         currentSessionId = created.id;
+        /*
+         * Open the new conversation now, not once the agent has started. The
+         * message, the agent starting and Stop then show together, and the
+         * turn's live frames, kept only for the conversation on screen, are
+         * not dropped while the agent spawns. Its composer starts empty, or
+         * with whatever was typed while the conversation was being created.
+         */
+        const key = promptDraftKey(created.projectId, created.id);
+        promotedDrafts.current.set(key, draftRevision.current !== submittedRevision ? latestDraft.current.value : { prompt: "", attachments: [] });
+        draftRecovery.save(localStorage, submissionKey, { prompt: "", attachments: [] });
+        flushSync(() => showConversation(created));
+        ui = latest.current;
+        shown = { projectId: created.projectId, sessionId: created.id, key };
+        opened = true;
+        submissions.current.add(key);
+        ui.setBusy(true);
       }
       if (!currentSessionId) return false;
-      if (!draftScopes.isCurrent(draftScope)) return false;
+      if (!stillHere()) return false;
       preparedThread = true;
       if (draftHarnessConfig.model || Object.keys(draftHarnessConfig.options).length) {
         await api.spawnHarness({ projectId: currentProjectId, sessionId: currentSessionId, harnessId: agentId,
           model: draftHarnessConfig.model, permissionProfile: draftApproval ?? projectSettings?.defaultPermission ?? settings?.defaultPermission });
         if (draftHarnessConfig.model) await api.setHarnessOption({ sessionId: currentSessionId, key: "model", value: draftHarnessConfig.model });
         for (const [id, value] of Object.entries(draftHarnessConfig.options)) await api.setHarnessConfig(currentSessionId, id, value);
-        if (!draftScopes.isCurrent(draftScope)) return false;
+        // A conversation this send opened keeps going if the person looks elsewhere.
+        if (!opened && !stillHere()) return false;
         setDraftHarnessConfigs((current) => { const next = { ...current }; delete next[agentId]; return next; });
       }
       const optimisticId = `local-${Date.now()}`;
-      setMessages((current) => [
+      ui.setMessages((current) => [
         ...current.filter((item) => !item.id.startsWith("local-")),
         {
           id: optimisticId,
@@ -1514,14 +1640,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
           createdAt: new Date().toISOString(),
         },
       ]);
-      const unchanged = !command && draftRevision.current === submittedRevision;
+      // An opened conversation's composer was emptied when it was selected.
+      const unchanged = !opened && !command && draftRevision.current === submittedRevision;
       if (unchanged) {
         setDraft("");
         setAttachments([]);
         setSkillId(undefined);
       }
-      let accepted = false;
-      const clearedRevision = unchanged ? draftRevision.current : undefined;
+      let clearedRevision = unchanged ? draftRevision.current : undefined;
       try {
         await api.sendMessage({
           sessionId: currentSessionId,
@@ -1532,9 +1658,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
           attachments: filesToSend,
         });
         accepted = true;
-        if (draftScopes.isCurrent(draftScope) && draftRevision.current === clearedRevision) setSkillId(undefined);
+        if (draftScopes.isCurrent(draftScope) && draftRevision.current === clearedRevision) {
+          setSkillId(undefined);
+          // That was this send's own change, not the person typing a follow-up.
+          clearedRevision = draftRevision.current;
+        }
         let selectionChanged = false;
-        if (draftScopes.isCurrent(draftScope)) {
+        if (stillHere()) {
           const next = continueToNew ? await api.createSession({
             projectId: currentProjectId,
             agentId,
@@ -1542,60 +1672,62 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
             ...(draftApproval ? { permissionProfile: draftApproval } : {}),
             title: "New conversation",
           }) : undefined;
-          if (draftScopes.isCurrent(draftScope)) {
-            selectionChanged = Boolean(next) || projectId !== currentProjectId || sessionId !== currentSessionId;
+          if (stillHere()) {
+            selectionChanged = Boolean(next) || shown.projectId !== currentProjectId || shown.sessionId !== currentSessionId;
             if (selectionChanged) {
               // Promote any follow-up typed during creation or sending with its
               // new thread. Keep an in-memory handoff if storage is unavailable.
               const targetKey = promptDraftKey(currentProjectId, next?.id ?? currentSessionId);
-              const followup = latestDraft.current.key === submissionKey
+              const followup = latestDraft.current.key === shown.key
                 && draftRevision.current !== clearedRevision ? latestDraft.current.value : { prompt: "", attachments: [] };
               promotedDrafts.current.set(targetKey, followup);
               draftRecovery.save(localStorage, targetKey, followup);
-              draftRecovery.save(localStorage, submissionKey, { prompt: "", attachments: [] });
+              draftRecovery.save(localStorage, shown.key, { prompt: "", attachments: [] });
             }
             setProjectId(currentProjectId);
             setSessionId(next?.id ?? currentSessionId);
-            if (!next && currentSessionId === sessionId) await loadSession(currentSessionId);
+            if (!next && currentSessionId === shown.sessionId) await latest.current.loadSession(currentSessionId);
           }
         }
         // The new selection's effect owns its refresh. The old selection's
         // refresh can otherwise auto-select the first thread over the new one.
-        if (!selectionChanged) await refresh();
+        if (!selectionChanged) await latest.current.refresh();
         return true;
       } catch (error) {
         if (!accepted) {
+          ui.setMessages((current) => current.filter((item) => item.id !== optimisticId));
+          if (opened) throw error;
           if (draftScopes.isCurrent(draftScope) && draftRevision.current === clearedRevision) {
             setDraft(content);
             setAttachments(filesToSend);
             setSkillId(skillId);
           } else {
             // Keep the new draft and preserve the failed submission separately.
-            setMessages((current) => current.filter((item) => item.id !== optimisticId));
             recoverSubmission(error, currentProjectId);
             return false;
           }
-          setMessages((current) => current.filter((item) => item.id !== optimisticId));
         } else {
-          if (draftScopes.isCurrent(draftScope)) {
+          if (stillHere()) {
             setProjectId(currentProjectId);
             setSessionId(currentSessionId);
           }
-          setNotice(`Your message was sent, but the view could not refresh: ${formatUserError(error)}`);
+          ui.setNotice(`Your message was sent, but the view could not refresh: ${formatUserError(error)}`);
           return true;
         }
         throw error;
       }
     } catch (error) {
-      if (!preparedThread && draftRevision.current !== submittedRevision) recoverSubmission(error);
-      else setNotice(formatUserError(error));
+      if (opened && !accepted) giveBack(error);
+      else if (!preparedThread && draftRevision.current !== submittedRevision) recoverSubmission(error);
+      else ui.setNotice(formatUserError(error));
       return false;
     } finally {
       submissions.current.delete(submissionKey);
+      submissions.current.delete(shown.key);
       setBusy(false);
+      ui.setBusy(false);
     }
   }
-
 
   function removeQueued(id: string) {
     void changeFollowUps({ type: "remove", id });
@@ -1698,8 +1830,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   async function prepareAttachments(count: number, resolvePaths: () => Promise<string[]>, context?: MessageAttachment["context"]) {
     if (!draftScopes.isCurrent(draftScope) || !count) return false;
     const pending = attachmentReservations.get(draftScope) ?? 0;
-    if (attachmentState.current.value.length + pending + count > 8) {
-      setNotice("You can attach up to 8 files. Remove one first.");
+    const over = attachmentState.current.value.length + pending + count - MAX_ATTACHMENTS;
+    if (over > 0) {
+      setNotice(tooManyAttachments(over));
       return false;
     }
     attachmentReservations.set(draftScope, pending + count);
@@ -1715,7 +1848,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       );
       if (!draftScopes.isCurrent(draftScope)) return false;
       const existing = new Set(attachmentState.current.value.map((item) => item.path));
-      if (new Set([...existing, ...validated.map((item) => item.path)]).size > 8) throw new Error("You can attach up to 8 files. Remove one first.");
+      const over = new Set([...existing, ...validated.map((item) => item.path)]).size - MAX_ATTACHMENTS;
+      if (over > 0) throw new Error(tooManyAttachments(over));
       setAttachments((current) => {
         const byPath = new Map(current.map((item) => [item.path, item]));
         for (const item of validated) byPath.set(item.path, context ? { ...item, context } : item);
@@ -2132,11 +2266,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     try {
       const report = await api.doctorHarness(harnessId);
       setDoctors((current) => ({ ...current, [harnessId]: report }));
-      if (!report.ready) {
-        setNotice(
-          report.gatewayOutput ||
-          report.checks.find((item: { ok: boolean; detail: string; }) => !item.ok)?.detail,
-        );
+      const name = harnessDisplayName(harnesses, harnessId);
+      // The full report, with each check's detail, is in the Agents view.
+      if (report.ready) {
+        setNotice((current) => current?.startsWith(`${name} still can't start`) ? undefined : current);
+        showToast({ key: `doctor:${harnessId}`, tone: "success", title: `${name} is ready.` });
+      } else {
+        const failing = report.checks.find((item: { ok: boolean; label: string }) => !item.ok)?.label;
+        setNotice(`${name} still can't start${failing ? `: ${failing}` : ""}. Open Agents to see the full check.`);
       }
     } catch (error) {
       setNotice(formatUserError(error));
@@ -2241,12 +2378,24 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   async function stopRun() {
     if (!activeRun || stoppingRuns.current.has(activeRun.id)) return;
     const runId = activeRun.id;
+    const threadId = activeRun.sessionId;
     stoppingRuns.current.add(runId);
     setStoppingRunIds([...stoppingRuns.current]);
     try {
       await api.stopRun(runId);
       await refresh();
-    } catch (error) { setNotice(formatUserError(error)); }
+    } catch (error) {
+      const detail = formatUserError(error);
+      // The agent may still be working; closing it ends its process, which a stop could not.
+      if (UNCONFIRMED_STOP.test(detail) && api.isDesktop !== false) {
+        showToast({
+          key: `stop:${runId}`, tone: "error", timeoutMs: 0,
+          title: "The agent hasn't confirmed it stopped.",
+          detail: "It may still be working. Close the agent to end it.",
+          action: { label: "Close agent", run: () => closeHarness(threadId) },
+        });
+      } else setNotice(detail);
+    }
     finally { stoppingRuns.current.delete(runId); setStoppingRunIds([...stoppingRuns.current]); }
   }
 
@@ -2746,7 +2895,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
         if (api.isDesktop === false) { setNotice("Agent commands can only be sent from the desktop app."); return false; }
         const commands = sessionId ? harnessStatuses[sessionId]?.parsed?.availableCommands : undefined;
         if (!session?.openclawSessionKey?.startsWith("direct:acp:") || !commands?.some((command) => command.name === name)) {
-          setNotice("This running agent has not reported that command on this runtime route."); return false;
+          setNotice(`${harnessDisplayName(harnesses, session?.harnessId, "This agent")} doesn't offer /${name} here. Type / to see its commands.`); return false;
         }
         if (input.length > 4000 || /[\r\n\0]/.test(input)) { setNotice("Command input must be one line of at most 4,000 characters."); return false; }
         return send(false, `/${name}${input.trim() ? ` ${input.trim()}` : ""}`);

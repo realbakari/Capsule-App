@@ -2,6 +2,7 @@ import { formatClock } from "../../lib/display-prefs";
 import { useEffect, useRef, useState } from "react";
 import type { RunEventCursor, RunEventPage } from "@capsule/shared";
 import { useWorkspace } from "../../lib/workspace";
+import { formatUserError } from "../../lib/errors";
 import { ReportedUsage } from "./ReportedUsage";
 
 /** Pages replace one another: opening an old run never mounts its entire history. */
@@ -21,7 +22,7 @@ export function RunEventLog({ runId, failed = false }: { runId: string; failed?:
     void api.listRunEventPage(runId, cursors.at(-1)).then((next) => {
       if (generation.current === version) setPage(next);
     }).catch((error) => {
-      if (generation.current === version) setError(String(error));
+      if (generation.current === version) setError(formatUserError(error));
     }).finally(() => { if (generation.current === version) setLoading(false); });
     return () => { generation.current++; };
   }, [api, runId, open, cursors, retry]);
@@ -30,7 +31,7 @@ export function RunEventLog({ runId, failed = false }: { runId: string; failed?:
     {open && <>
       {loading && <p role="status">Loading events…</p>}
       {page && <ReportedUsage events={page.events} />}
-      {error && <p role="alert">{error} <button onClick={() => setRetry((value) => value + 1)}>Retry</button></p>}
+      {error && <p role="alert">Couldn't load this turn's log. {error} <button onClick={() => setRetry((value) => value + 1)}>Retry</button></p>}
       <div className="event-log">{page?.events.filter((event) => settings?.reasoningSummary !== "hidden" || !/think|reason|thought/.test(String(event.data?.streamKind ?? event.type))).map((event) => <div key={event.id}>
         <span className="event-time">{formatClock(event.timestamp)}</span>
         <span className="event-kind">{event.type}</span>

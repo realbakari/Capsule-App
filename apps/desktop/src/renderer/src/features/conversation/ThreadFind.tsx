@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChatMessage } from "@capsule/shared";
+import { useWorkspace } from "../../lib/workspace";
 import { SearchIcon, XIcon } from "../shell/icons";
 
 /** Matches in the conversation, in order, as message ids. */
@@ -9,12 +10,17 @@ export function findInMessages(messages: readonly ChatMessage[], query: string):
   return messages.filter((message) => message.content.toLowerCase().includes(needle)).map((message) => message.id);
 }
 
-/** ⌘F for the conversation: a bar that counts matches and walks them. */
+/**
+ * ⌘F for the conversation: a bar that counts matches and walks them. It
+ * searches the messages on screen, so with older pages unloaded it says so
+ * and offers to load them.
+ */
 export function ThreadFind({ messages, onLocate, onClose }: {
   messages: readonly ChatMessage[];
   onLocate: (messageId: string) => void;
   onClose: () => void;
 }) {
+  const { hasOlderMessages, loadingOlder, loadOlderMessages } = useWorkspace();
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
   const input = useRef<HTMLInputElement>(null);
@@ -50,6 +56,10 @@ export function ThreadFind({ messages, onLocate, onClose }: {
         }}
       />
       <span className="thread-find-count" aria-live="polite">{query.trim() ? (matches.length ? `${Math.min(index, matches.length - 1) + 1} of ${matches.length}` : "No matches") : ""}</span>
+      {hasOlderMessages && <>
+        <span className="thread-find-count">Searching loaded messages</span>
+        <button type="button" className="chip" disabled={loadingOlder} onClick={() => void loadOlderMessages()}>{loadingOlder ? "Loading…" : "Load older"}</button>
+      </>}
       <button type="button" className="chip" disabled={matches.length === 0} onClick={() => step(-1)} aria-label="Previous match">Previous</button>
       <button type="button" className="chip" disabled={matches.length === 0} onClick={() => step(1)} aria-label="Next match">Next</button>
       <button type="button" className="icon-btn" aria-label="Close find" onClick={onClose}><XIcon size={12} /></button>

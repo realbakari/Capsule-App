@@ -16,7 +16,7 @@ const NOT_READY: Partial<Record<HarnessReadiness, string>> = {
   missing_cli: "Not installed",
   needs_login: "Needs sign-in",
   missing_acpx: "Gateway bridge missing",
-  gateway_offline: "Gateway offline",
+  gateway_offline: "Not connected to the Gateway",
 };
 
 export interface RunOnState {

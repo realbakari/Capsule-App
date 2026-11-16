@@ -14,6 +14,9 @@ The prompt and toolbar use consistent spacing as the pane narrows or text size
 increases. Secondary settings move into named menus; text does not shrink to fit.
 Task lists reflect the agent's latest plan, including a cleared plan. After a
 turn ends, tasks it did not finish are labelled **Incomplete**, not **Running**.
+A finished turn keeps the plan it ended with under its prompt: each step marked
+done, in progress or waiting, with how many were done. While a turn runs, the
+task list above the message box is the live view instead.
 
 Capsule keeps an unfinished draft for each conversation on this Mac. Switching
 projects or conversations and returning later restores its prompt and selected
@@ -81,6 +84,10 @@ arrives, not the new-conversation welcome screen. A failed history read offers
 opens at the latest loaded messages; reading an older turn in one conversation
 does not change that behavior in another.
 
+`⌘F` finds text in the conversation's loaded messages. When older messages are
+not loaded yet, the find bar says **Searching loaded messages** and offers
+**Load older**.
+
 Message and code copy buttons confirm **Copied** only after the clipboard accepts
 the text. If copying fails, the button offers a retry. Copy controls appear on
 hover or keyboard focus and remain visible on touch devices.
@@ -138,6 +145,11 @@ diagnostic payloads are shortened and labelled; these logs are not a complete
 copy of tool output. Agent replies remain separate from this diagnostic limit.
 
 ## Model, effort, and permissions
+
+When the shield chip (Approvals) already sets the agent's own permission mode,
+as it does for Claude Code, the composer shows only the shield, so the two
+can't disagree. Agents whose mode it doesn't set keep their own permissions
+choice beside it.
 
 Open the model control to search the selected agent's models or star favorites.
 For local Claude Code and Codex conversations, Capsule uses the installed CLI
@@ -264,6 +276,15 @@ When a conversation starts in Plan, the agent starts with the Plan model.
 A paired browser without conversation control sees the plan, not the chip or
 the buttons.
 
+## When a turn doesn't finish
+
+A failed turn shows its reason with **Retry**. If the agent needs signing in,
+**Open Agents** takes you there. If the agent stopped partway through a reply,
+the reply stays, with a note that it stopped before finishing. A turn cut off
+because Capsule quit, or one that finished without replying, offers **Send
+again**. While you decide on an approval, its buttons wait for your first
+choice to go through.
+
 ## Read activity accurately
 
 Expand the activity row to see its steps, **Run log** and **Verification** in
@@ -337,8 +358,13 @@ queues the message.
 
 **Settings › General › Follow-ups** decides what sending during a running turn
 does: queue it for after the turn (the default), or steer the running turn
-where the agent supports it. Attachments and skills always queue, and a steer
-the agent refuses is queued instead, with a note saying so.
+where the agent supports it. Attachments, skills and commands always queue.
+So does every message to a Direct-mode agent and from a paired device, which
+cannot steer; that is quiet, not an error. If an agent that could steer
+refuses, the message is queued and a note says it will send when the turn
+ends. The composer clears as soon as you send, so pressing Enter twice does
+not queue or steer the same text twice. `⌘Enter` (or `⌘⇧Enter`) during a turn
+queues or steers the message here and opens a new conversation.
 
 **Settings › Appearance** sets the **Time format** (system, 12-hour or 24-hour)
 for message times, and whether **Tool calls** start folded to one line or
@@ -360,13 +386,19 @@ The queue belongs to its conversation, holds up to twenty messages, and
 survives a restart. Queued messages go out when their conversation is free
 even if you have switched to another one or closed the window. While the
 thread cannot send, for example while the Gateway is disconnected or the
-agent needs a login, the next message waits at the front of the queue with
-the reason and is tried again every thirty seconds. Gateway sessions also offer **Steer** during a live turn when
+agent needs a login, the next message waits at the front of the queue and the
+queue says why ("Queued messages are on hold: …"); it is tried again every
+thirty seconds. A paired device that can only read sees the queue without its
+controls. Gateway sessions also offer **Steer** during a live turn when
 supported. Press `↑` in an empty prompt to recall what you asked before.
 Steering drafts stay with their conversation. A pending steer cannot be sent
 twice, and a newer draft is not cleared when the earlier steer finishes.
-Send-and-new-conversation stays put on a rejected send. A refresh failure after
-an accepted send does not restore an already-sent draft.
+The first message in a new conversation opens that conversation straight
+away, so the message, the agent starting and **Stop** appear together. If that
+message is rejected you stay in the new conversation with your text back in
+the composer. Send-and-new-conversation only moves on once the send is
+accepted. A refresh failure after an accepted send does not restore an
+already-sent draft.
 
 Capsule validates the file again at send time and gives the agent its exact
 local path. A missing file is refused instead of being silently omitted. Each
@@ -543,6 +575,8 @@ immediately. Both send the turn's attached files again too. Turn on
 without asking; an automatic resume waits at least a minute, and after three
 limit stops in a row it stops and leaves the next try to you. Capsule must be
 running when the reset arrives. Limits that name no time offer only Retry now.
+**Continue with another agent** opens the hand-off dialog with a different
+ready agent chosen, so a second subscription can carry the work on now.
 
 ## Compacting a long conversation
 

@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
-import type { HarnessStatus } from "@capsule/shared";
+import type { HarnessStatus, SessionRef } from "@capsule/shared";
 
-import { agentPickerDetail, agentSwitchNotice, gatewayConnectionLabel, harnessReadinessLabel } from "./harness";
+import { agentPickerDetail, agentSwitchNotice, canSteerTurn, gatewayConnectionLabel, harnessReadinessLabel } from "./harness";
 
 it("does not describe local agents as offline when the optional Gateway is disconnected", () => {
-  expect(gatewayConnectionLabel("direct", false, "disconnected")).toBe("Local agents · optional Gateway disconnected");
-  expect(gatewayConnectionLabel("auto", false, "disconnected")).toBe("Gateway disconnected");
-  expect(gatewayConnectionLabel("direct", false, "connecting")).toBe("Gateway connecting");
-  expect(gatewayConnectionLabel("direct", true, "connected")).toBe("OpenClaw connected");
+  expect(gatewayConnectionLabel("direct", false, "disconnected")).toBe("Local agents · not connected to the Gateway");
+  expect(gatewayConnectionLabel("auto", false, "disconnected")).toBe("Not connected to the Gateway");
+  expect(gatewayConnectionLabel("direct", false, "connecting")).toBe("Connecting to the Gateway…");
+  expect(gatewayConnectionLabel("direct", true, "connected")).toBe("Connected to the Gateway");
 });
 
 function harness(readiness: HarnessStatus["readiness"]): HarnessStatus {
@@ -34,7 +34,7 @@ describe("agentPickerDetail", () => {
   });
 
   it("marks the agent the thread is already running", () => {
-    expect(agentPickerDetail({ harness: harness("running"), live: true })).toBe("Running this thread");
+    expect(agentPickerDetail({ harness: harness("running"), live: true })).toBe("Running in this conversation");
   });
 
   it("falls back to the agent's own description when it is not a harness", () => {
@@ -53,12 +53,25 @@ describe("harnessReadinessLabel", () => {
 describe("agentSwitchNotice", () => {
   it("says the running session closes before the new agent starts", () => {
     expect(agentSwitchNotice({ fromName: "Claude Code", toName: "Codex", live: true })).toBe(
-      "Sending closes the Claude Code session and starts Codex.",
+      "Sending closes Claude Code in this conversation and starts Codex.",
     );
   });
 
   it("stays quiet when nothing is running or nothing changes", () => {
     expect(agentSwitchNotice({ fromName: "Codex", toName: "Codex", live: true })).toBeUndefined();
     expect(agentSwitchNotice({ fromName: "Claude Code", toName: "Codex", live: false })).toBeUndefined();
+  });
+});
+
+describe("canSteerTurn", () => {
+  const agent = { id: "codex", name: "Codex", runtimeRoute: "openclaw" } as HarnessStatus;
+  const live = (key: string) => ({ id: "thread", harnessId: "codex", harnessState: "running", openclawSessionKey: key }) as SessionRef;
+  it("steers a Gateway turn from the desktop", () => {
+    expect(canSteerTurn({ harness: agent, session: live("agent:codex:acp:1"), desktop: true })).toBe(true);
+  });
+  it("queues instead in direct mode, on a paired device, and before the agent is live", () => {
+    expect(canSteerTurn({ harness: agent, session: live("direct:acp:codex:1"), desktop: true })).toBe(false);
+    expect(canSteerTurn({ harness: agent, session: live("agent:codex:acp:1"), desktop: false })).toBe(false);
+    expect(canSteerTurn({ harness: agent, session: { id: "thread" } as SessionRef, desktop: true })).toBe(false);
   });
 });

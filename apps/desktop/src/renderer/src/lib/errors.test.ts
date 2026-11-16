@@ -26,12 +26,18 @@ describe("formatUserError", () => {
     ).toBe("You've hit your session limit.");
   });
 
+  it("drops the channel a failure crossed, alone or inside the remote-method wrapper", () => {
+    expect(formatUserError("capsule:steerHarness: The agent is not running.")).toBe("The agent is not running.");
+    expect(formatUserError(new Error("Error invoking remote method 'capsule:sendMessage': Error: capsule:sendMessage: Folder not found."))).toBe("Folder not found.");
+    expect(formatUserError("Error invoking remote method 'capsule:gitPush': Error: Rejected by the remote.")).toBe("Rejected by the remote.");
+  });
+
   it("names the code when that is all there is", () => {
     expect(formatUserError("ACP error (ACP_SESSION_INIT_FAILED): ")).toBe("Session init failed.");
   });
 
   it("leaves a message Capsule wrote alone", () => {
-    const message = "Choose a project folder before starting this harness.";
+    const message = "Attach a folder so the agent has somewhere to work.";
     expect(formatUserError(new Error(message))).toBe(message);
   });
 

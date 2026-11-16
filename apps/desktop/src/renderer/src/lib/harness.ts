@@ -1,10 +1,18 @@
-import type { HarnessStatus, RuntimeMode } from "@capsule/shared";
+import { harnessCapabilities, type HarnessLiveStatus, type HarnessStatus, type RuntimeMode, type SessionRef } from "@capsule/shared";
+
+/**
+ * Whether a message can go into the running turn now. Direct mode cannot
+ * steer, and steering is a desktop write a paired device does not hold.
+ */
+export function canSteerTurn(input: { harness?: HarnessStatus; session?: SessionRef; status?: HarnessLiveStatus; desktop: boolean }): boolean {
+  return input.desktop && harnessCapabilities(input).steer.state !== "unavailable";
+}
 
 /** The optional Gateway's state is not the health of a local agent. */
 export function gatewayConnectionLabel(mode: RuntimeMode | undefined, connected: boolean, state?: string): string {
-  if (connected) return "OpenClaw connected";
-  if (state === "connecting") return "Gateway connecting";
-  return mode === "direct" ? "Local agents · optional Gateway disconnected" : "Gateway disconnected";
+  if (connected) return "Connected to the Gateway";
+  if (state === "connecting") return "Connecting to the Gateway…";
+  return mode === "direct" ? "Local agents · not connected to the Gateway" : "Not connected to the Gateway";
 }
 
 /*
@@ -46,7 +54,7 @@ export function agentPickerDetail(input: {
   description?: string;
   live?: boolean;
 }): string | undefined {
-  if (input.live) return "Running this thread";
+  if (input.live) return "Running in this conversation";
   if (!input.harness) return input.description;
   return harnessReadinessLabel(input.harness.readiness);
 }
@@ -70,7 +78,7 @@ export function harnessReadinessLabel(readiness: HarnessStatus["readiness"]): st
     case "missing_acpx":
       return "The Gateway has no acpx plugin";
     case "gateway_offline":
-      return "Gateway offline";
+      return "Not connected to the Gateway";
     default:
       return readiness;
   }
@@ -89,5 +97,5 @@ export function agentSwitchNotice(input: {
   if (!input.live || !input.fromName || !input.toName || input.fromName === input.toName) {
     return undefined;
   }
-  return `Sending closes the ${input.fromName} session and starts ${input.toName}.`;
+  return `Sending closes ${input.fromName} in this conversation and starts ${input.toName}.`;
 }

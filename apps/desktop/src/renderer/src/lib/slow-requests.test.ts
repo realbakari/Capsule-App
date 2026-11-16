@@ -37,7 +37,15 @@ describe("slow request notices", () => {
     expect(api.mode).toBe("read");
   });
 
-  it("names the request in words", () => {
-    expect(requestLabel("gitCreatePullRequest")).toBe("git create pull request");
+  it("names what the person is waiting on, never the bridge method", () => {
+    expect(requestLabel("steerHarness")).toBe("the agent");
+    expect(requestLabel("sendMessage")).toBe("the agent");
+    expect(requestLabel("listRunEventPage")).toBe("the conversation");
+    expect(requestLabel("listMessagePage")).toBe("the conversation");
+    expect(requestLabel("gitStatus")).toBe("Git");
+    expect(requestLabel("turnDiff")).toBe("Git");
+    expect(requestLabel("gitCreatePullRequest")).toBe("Git");
+    expect(requestLabel("listPullRequests")).toBe("GitHub");
+    expect(requestLabel("frobnicate")).toBe("Capsule");
   });
 });
