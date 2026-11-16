@@ -1,3 +1,14 @@
+/**
+ * The point on a floating panel nearest the control that opened it, as a CSS
+ * transform-origin, so a menu grows out of its trigger instead of its middle.
+ */
+export function originToward(anchor: { top: number; bottom: number; left: number; right: number },
+  panel: { left: number; top: number; width: number; height: number }) {
+  const x = Math.min(Math.max((anchor.left + anchor.right) / 2 - panel.left, 0), panel.width);
+  const y = Math.min(Math.max((anchor.top + anchor.bottom) / 2 - panel.top, 0), panel.height);
+  return `${Math.round(x)}px ${Math.round(y)}px`;
+}
+
 export function floatingPlacement(anchor: { top: number; bottom: number; left: number; right: number },
   panel: { width: number; height: number }, viewport: { width: number; height: number },
   options: { align?: "left" | "right"; preferAbove?: boolean; maxHeight?: number } = {}) {

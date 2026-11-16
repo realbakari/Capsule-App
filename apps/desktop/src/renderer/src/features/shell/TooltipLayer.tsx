@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 /**
  * One tooltip for the whole app. Any element with a `title` gets it, on hover
@@ -17,7 +17,7 @@ const WARM_MS = 300;
 const GAP = 6;
 const SHORTCUT = /\s*\(([⌘⌥⌃⇧][^()]*)\)\s*$/;
 
-interface Tip { text: string; shortcut?: string; x: number; y: number; placement: "below" | "above" }
+interface Tip { text: string; shortcut?: string; x: number; y: number; placement: "below" | "above"; instant: boolean }
 
 function split(title: string): { text: string; shortcut?: string } {
   const match = SHORTCUT.exec(title);
@@ -50,6 +50,7 @@ export function TooltipLayer() {
       const title = element.getAttribute("title");
       if (!title?.trim()) return;
       window.clearTimeout(timer.current);
+      const warm = Date.now() - lastHidden.current < WARM_MS;
       const open = () => {
         if (!element.isConnected) return;
         restore();
@@ -58,9 +59,9 @@ export function TooltipLayer() {
         element.removeAttribute("title");
         const rect = element.getBoundingClientRect();
         const below = rect.bottom + GAP + 32 < window.innerHeight;
-        setTip({ ...split(title), x: rect.left + rect.width / 2, y: below ? rect.bottom + GAP : rect.top - GAP, placement: below ? "below" : "above" });
+        setTip({ ...split(title), x: rect.left + rect.width / 2, y: below ? rect.bottom + GAP : rect.top - GAP, placement: below ? "below" : "above", instant: warm });
       };
-      if (immediate || Date.now() - lastHidden.current < WARM_MS) open();
+      if (immediate || warm) open();
       else timer.current = window.setTimeout(open, SHOW_DELAY_MS);
     };
     const target = (event: Event) => (event.target instanceof Element ? event.target.closest<HTMLElement>("[title]") : null);
@@ -103,8 +104,8 @@ export function TooltipLayer() {
     };
   }, []);
 
-  /* Keep the tip inside the window once its width is known. */
-  useEffect(() => {
+  /* Keep the tip inside the window once its width is known, before it paints. */
+  useLayoutEffect(() => {
     const node = tipRef.current;
     if (!node || !tip) return;
     const width = node.offsetWidth;
@@ -119,6 +120,7 @@ export function TooltipLayer() {
       role="tooltip"
       className="app-tooltip"
       data-placement={tip.placement}
+      data-instant={tip.instant ? "" : undefined}
       style={{ left: tip.x, top: tip.y }}
     >
       <span>{tip.text}</span>

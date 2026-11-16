@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
-import { floatingPlacement } from "../../lib/floating-placement";
+import { floatingPlacement, originToward } from "../../lib/floating-placement";
 
 /** Header controls are clipped and inside a drag region. Their popovers aren't. */
 export function HeaderPopover({ anchor, label, className = "", onClose, children }: {
@@ -25,6 +25,7 @@ export function HeaderPopover({ anchor, label, className = "", onClose, children
       node.style.maxHeight = `${position.maxHeight}px`;
       node.style.top = `${position.top}px`;
       node.style.left = `${position.left}px`;
+      node.style.transformOrigin = originToward(rect, { left: position.left, top: position.top, width: node.offsetWidth, height: Math.min(node.scrollHeight, position.maxHeight) });
     };
     place();
     const observer = new ResizeObserver(place);

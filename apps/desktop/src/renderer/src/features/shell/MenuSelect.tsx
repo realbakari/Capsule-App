@@ -2,7 +2,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } f
 import { createPortal } from "react-dom";
 
 import { ChevronDownIcon } from "./icons";
-import { floatingPlacement } from "../../lib/floating-placement";
+import { floatingPlacement, originToward } from "../../lib/floating-placement";
 import { filterMenuOptions } from "../../lib/worktree-base";
 import "./menu-select-search.css";
 
@@ -20,6 +20,9 @@ export interface MenuOption {
   group?: string;
   disabledReason?: string;
 }
+
+/** Tall enough for a menu of two-line rows under a few headings without scrolling. */
+const MAX_HEIGHT = 384;
 
 export function MenuSelect({
   value,
@@ -56,7 +59,7 @@ export function MenuSelect({
   const trigger = useRef<HTMLButtonElement>(null);
   const listId = useId();
   const current = options.find((item) => item.id === value);
-  const [pos, setPos] = useState({ left: 0, top: 0, minWidth: 140, maxWidth: 400, maxHeight: 256 });
+  const [pos, setPos] = useState({ left: 0, top: 0, minWidth: 140, maxWidth: 400, maxHeight: MAX_HEIGHT, transformOrigin: "top left" });
 
   useLayoutEffect(() => {
     if (!open || !root.current) return;
@@ -66,8 +69,11 @@ export function MenuSelect({
       if (!rect.width) { setOpen(false); return; }
       const minWidth = Math.min(Math.max(rect.width, 148), window.innerWidth - 16);
       const width = Math.max(minWidth, pop.current?.getBoundingClientRect().width ?? 0);
-      const next = { ...floatingPlacement(rect, { width, height: pop.current?.scrollHeight ?? 256 },
-        { width: window.innerWidth, height: window.innerHeight }, { preferAbove: true, maxHeight: 256 }), minWidth };
+      const height = pop.current?.scrollHeight ?? MAX_HEIGHT;
+      const placed = floatingPlacement(rect, { width, height },
+        { width: window.innerWidth, height: window.innerHeight }, { preferAbove: true, maxHeight: MAX_HEIGHT });
+      const transformOrigin = originToward(rect, { left: placed.left, top: placed.top, width, height: Math.min(height, placed.maxHeight) });
+      const next = { ...placed, minWidth, transformOrigin };
       setPos((current) => Object.keys(next).every((key) => current[key as keyof typeof next] === next[key as keyof typeof next]) ? current : next);
     };
     place();
@@ -85,8 +91,10 @@ export function MenuSelect({
 
   useEffect(() => {
     if (!open) { setQuery(""); return; }
-    const selected = pop.current?.querySelector<HTMLElement>('[aria-selected="true"]') ?? pop.current?.querySelector<HTMLElement>('[role="option"]');
-    selected?.scrollIntoView({ block: "nearest" });
+    /* A menu with a current value opens on it; an action menu opens at its first heading. */
+    const selected = pop.current?.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (selected) selected.scrollIntoView({ block: "nearest" });
+    else if (pop.current) pop.current.scrollTop = 0;
     if (searchField.current) searchField.current.focus({ preventScroll: true });
     else selected?.focus({ preventScroll: true });
     const onPointer = (event: PointerEvent) => {

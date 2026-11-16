@@ -8,6 +8,7 @@ import {
   selectableMenuItems,
   typeaheadMenuIndex,
 } from "../../lib/action-menu";
+import { originToward } from "../../lib/floating-placement";
 import {
   ArchiveIcon,
   BookmarkIcon,
@@ -111,17 +112,19 @@ export function ActionMenu({
     const node = menuRef.current;
     if (!node) return;
     const box = node.getBoundingClientRect();
-    setPos(
-      placeActionMenu({
-        menuWidth: box.width,
-        menuHeight: box.height,
-        viewportWidth: window.innerWidth,
-        viewportHeight: window.innerHeight,
-        pointerX: point.x,
-        pointerY: point.y,
-        anchor,
-      }),
-    );
+    const placed = placeActionMenu({
+      menuWidth: box.width,
+      menuHeight: box.height,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+      pointerX: point.x,
+      pointerY: point.y,
+      anchor,
+    });
+    setPos(placed);
+    /* Grow from the trigger, or from the pointer for a context menu. */
+    const from = anchor ?? { left: point.x, right: point.x, top: point.y, bottom: point.y };
+    node.style.transformOrigin = originToward(from, { ...placed, width: box.width, height: box.height });
     node.focus({ preventScroll: true });
   }, [anchor, items, point.x, point.y]);
 

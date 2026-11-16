@@ -13,11 +13,35 @@ function isTyping(target: EventTarget | null): boolean {
  * pause while the pointer or focus is inside, so a toast is never pulled out
  * from under someone reaching for its button.
  */
+/** How long a dismissed toast stays to fade out; matches --motion-fast. */
+const EXIT_MS = 140;
+
 export function Toasts() {
   const { toasts, dismiss } = useToasts();
   const [paused, setPaused] = useState(false);
   const latest = useRef(toasts);
   latest.current = toasts;
+  /*
+   * A toast leaves the store from its timer, its buttons, Escape or ⌘Z. Any of
+   * them: hold what went for one short fade instead of cutting it.
+   */
+  const [leaving, setLeaving] = useState<Array<{ toast: Toast; slot: number }>>([]);
+  const shown = useRef(toasts);
+  const exits = useRef(new Set<number>());
+  useEffect(() => {
+    /* A toast replaced under the same key is an update, not a departure. */
+    // Remember each departing toast's slot, so it fades where it was instead of jumping to the top.
+    const gone = shown.current.flatMap((old, slot) => toasts.some((toast) => toast.id === old.id || toast.key === old.key) ? [] : [{ toast: old, slot }]);
+    shown.current = toasts;
+    if (gone.length === 0) return;
+    setLeaving((current) => [...current, ...gone]);
+    const timer = window.setTimeout(() => {
+      exits.current.delete(timer);
+      setLeaving((current) => current.filter((entry) => !gone.includes(entry)));
+    }, EXIT_MS);
+    exits.current.add(timer);
+  }, [toasts]);
+  useEffect(() => () => { for (const timer of exits.current) clearTimeout(timer); }, []);
 
   useEffect(() => {
     const undo = (event: KeyboardEvent) => {
@@ -47,12 +71,21 @@ export function Toasts() {
         dismiss(toasts[toasts.length - 1]!.id);
       }}
     >
-      {toasts.map((toast) => <ToastRow key={toast.id} toast={toast} paused={paused} onDismiss={() => dismiss(toast.id)} />)}
+      {withLeaving(toasts, leaving).map(({ toast, leaving: out }) => out
+        ? <ToastRow key={`leaving-${toast.id}`} toast={toast} leaving paused onDismiss={() => undefined} />
+        : <ToastRow key={toast.id} toast={toast} paused={paused} onDismiss={() => dismiss(toast.id)} />)}
     </section>
   );
 }
 
-function ToastRow({ toast, paused, onDismiss }: { toast: Toast; paused: boolean; onDismiss: () => void }) {
+/** The live stack with each departing toast put back in the slot it left. */
+function withLeaving(live: readonly Toast[], leaving: ReadonlyArray<{ toast: Toast; slot: number }>) {
+  const rows: Array<{ toast: Toast; leaving: boolean }> = live.map((toast) => ({ toast, leaving: false }));
+  for (const entry of [...leaving].sort((a, b) => a.slot - b.slot)) rows.splice(Math.min(entry.slot, rows.length), 0, { toast: entry.toast, leaving: true });
+  return rows;
+}
+
+function ToastRow({ toast, paused, leaving = false, onDismiss }: { toast: Toast; paused: boolean; leaving?: boolean; onDismiss: () => void }) {
   const remaining = useRef(toast.timeoutMs);
   const dismissRef = useRef(onDismiss);
   dismissRef.current = onDismiss;
@@ -67,7 +100,12 @@ function ToastRow({ toast, paused, onDismiss }: { toast: Toast; paused: boolean;
   }, [paused, toast.timeoutMs]);
 
   return (
-    <div className={`toast toast-${toast.tone}`} role={toast.tone === "error" ? "alert" : "status"}>
+    <div
+      className={`toast toast-${toast.tone}${leaving ? " is-leaving" : ""}`}
+      role={leaving ? undefined : toast.tone === "error" ? "alert" : "status"}
+      aria-hidden={leaving || undefined}
+      inert={leaving || undefined}
+    >
       {toast.tone === "error" ? <AlertTriangleIcon size={14} className="toast-icon" /> : toast.tone === "success" ? <CheckIcon size={14} className="toast-icon" /> : null}
       <div className="toast-text">
         <span className="toast-title" title={toast.title}>{toast.title}</span>

@@ -1,3 +1,4 @@
+import { originToward } from "./floating-placement";
 import { useLayoutEffect, useState, type CSSProperties, type RefObject } from "react";
 
 const TOP_CLEARANCE = 60;
@@ -17,10 +18,10 @@ export function useAnchoredPopover(open: boolean, anchor: RefObject<HTMLElement 
       const width = Math.min(384, innerWidth - 24);
       const maxHeight = Math.min(520, up ? above : below);
       const height = Math.min(panel.current.getBoundingClientRect().height, maxHeight);
-      const next: CSSProperties = { position: "fixed", visibility: "visible", width, maxHeight,
-        left: Math.max(12, Math.min(align === "start" ? rect.left : rect.right - width, innerWidth - width - 12)),
-        top: Math.max(TOP_CLEARANCE, Math.min(up ? rect.top - height - 8 : rect.bottom + 8, innerHeight - height - 12)),
-        bottom: "auto", right: "auto" };
+      const left = Math.max(12, Math.min(align === "start" ? rect.left : rect.right - width, innerWidth - width - 12));
+      const top = Math.max(TOP_CLEARANCE, Math.min(up ? rect.top - height - 8 : rect.bottom + 8, innerHeight - height - 12));
+      const next: CSSProperties = { position: "fixed", visibility: "visible", width, maxHeight, left, top,
+        bottom: "auto", right: "auto", transformOrigin: originToward(rect, { left, top, width, height }) };
       setPosition((current) => Object.keys(next).every((key) => current[key as keyof CSSProperties] === next[key as keyof CSSProperties]) ? current : next);
     };
     const scroll = (event: Event) => { if (!panel.current?.contains(event.target as Node)) place(); };
