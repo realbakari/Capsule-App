@@ -14,8 +14,8 @@ import "./styles.css";
  * painted a dark window and swapped to light once settings came back over
  * IPC — the "pop" on every start.
  *
- * Public pages own their light palette. The isolated sample workspace keeps
- * the dark app theme, independently of its surrounding page.
+ * The public pages are dark only, and so is the isolated sample workspace
+ * they embed.
  */
 applyStoredTheme(window.capsule ? undefined : "dark");
 // Windows uses a native caption above the renderer, not inset traffic lights,
@@ -81,7 +81,8 @@ const remoteToken = isDesktop || shareToken ? undefined : await resolveRemoteTok
   return undefined;
 });
 const isShowcase = !isDesktop && !remoteToken && !shareToken && new URLSearchParams(window.location.search).get("showcase") === "1";
-if (!isDesktop && !remoteToken && !shareToken && !isShowcase && !pairingError) applyStoredTheme("light");
+// The website is dark, like the app it shows: its ground, overscroll and first paint included.
+if (!isDesktop && !remoteToken && !shareToken && !isShowcase && !pairingError) applyStoredTheme("dark");
 if (!isDesktop) {
   window.capsule = shareToken ? createRemoteBridge(shareToken, { share: true })
     : remoteToken ? createRemoteBridge(remoteToken) : createDemoBridge();

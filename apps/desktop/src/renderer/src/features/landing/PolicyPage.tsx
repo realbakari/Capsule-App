@@ -23,15 +23,13 @@ export function PolicyPage({ slug }: { slug: string }) {
   return (
     <SiteShell current={`/${slug}`}><div className="policy-page">
       <header className="policy-head">
-        <a className="policy-home" href="/">
-          ← Capsule
-        </a>
-        <nav className="policy-nav">
+        <nav className="policy-nav" aria-label="Policies">
           {POLICY_PAGES.map((item) => (
             <a
               key={item.slug}
               href={`/${item.slug}`}
               className={item.slug === slug ? "current" : undefined}
+              aria-current={item.slug === slug ? "page" : undefined}
             >
               {item.title}
             </a>

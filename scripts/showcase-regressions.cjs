@@ -45,8 +45,10 @@ app.whenReady().then(async () => {
   try {
     await window.loadURL(origin);
     await waitFor("Boolean(document.querySelector('.site-preview'))");
-    assert.match(await evaluate("document.title"), /Your coding agents/);
+    assert.match(await evaluate("document.title"), /desktop workspace for coding agents/);
     assert.match(await evaluate("document.querySelector('meta[name=description]').content"), /review diffs/);
+    // The website is dark down to the document, so overscroll and first paint match the page.
+    assert.equal(await evaluate("document.documentElement.dataset.theme"), "dark");
     assert.match(await evaluate("document.querySelector('meta[property=\"og:image\"]').content"), /^https:\/\//);
     assert.equal(await evaluate("document.querySelectorAll('main h1').length"), 1);
     assert.equal(await evaluate("[...document.querySelectorAll('.site a[href^=\"#\"]')].every(a => document.querySelector(a.getAttribute('href')))"), true);
@@ -62,17 +64,23 @@ app.whenReady().then(async () => {
     await capture("public-desktop");
     assert.equal(await evaluate("Boolean(document.querySelector('.app'))"), false, "Desktop shell leaked into marketing document");
     assert.equal(await evaluate("document.querySelector('.site-preview').contentDocument.querySelector('.showcase-preview').inert"), true);
+    // The sample is a picture of the app: no update error in its footer, no pairing advice in its composer.
+    assert.equal(await evaluate("Boolean(document.querySelector('.site-preview').contentDocument.querySelector('.update-feedback-bubble'))"), false, "Sample workspace shows an update error");
+    assert.equal(await evaluate("[...document.querySelector('.site-preview').contentDocument.querySelectorAll('.composer-preflight')].every(n => n.offsetParent === null)"), true, "Sample workspace shows pairing advice");
+    assert.doesNotMatch(await evaluate("document.querySelector('.site-preview').contentDocument.body.textContent"), /Completion not reported/);
+    // Laid out at its desktop width and scaled to the column, never squeezed.
+    assert.equal(await evaluate("document.querySelector('.site-preview').contentWindow.innerWidth >= 1180"), true, "Sample workspace was laid out narrower than the desktop");
     assert.equal(await evaluate("document.querySelectorAll('footer a[href=\"/privacy\"]').length"), 1);
     // Renderer-only operations must not pretend to succeed in the sample bridge.
     assert.match(await evaluate("window.capsule.sendMessage({}).then(() => 'unexpected success', error => error.message)"), /sample workspace/);
     window.setContentSize(390, 844);
     await waitFor("!document.querySelector('.site-preview')");
-    assert.equal(await evaluate("Boolean(document.querySelector('.site-compact-preview'))"), true);
-    assert.match(await evaluate("document.querySelector('.site-compact-preview').textContent"), /not a live agent session/);
+    assert.equal(await evaluate("Boolean(document.querySelector('.art-hero'))"), true);
+    assert.match(await evaluate("document.querySelector('.art-hero').getAttribute('aria-label')"), /diff/);
     await evaluate("document.querySelector('.site').scrollTo({top:0,behavior:'instant'})");
     await capture("public-mobile");
     assert.equal(await evaluate("document.querySelector('.site').scrollWidth <= innerWidth"), true, "Mobile page overflows horizontally");
-    await evaluate("document.querySelector('.site-compact-preview').scrollIntoView({behavior:'instant'})");
+    await evaluate("document.querySelector('.art-hero').scrollIntoView({behavior:'instant'})");
     await capture("public-mobile-preview");
     await evaluate("document.querySelector('.site-header-download').click()");
     await waitFor("location.hash === '#download' && document.querySelector('#download').getBoundingClientRect().top < innerHeight");
@@ -86,7 +94,7 @@ app.whenReady().then(async () => {
     assert.equal(await evaluate("document.querySelector('.site').scrollWidth <= innerWidth"), true, "Narrow mobile page overflows");
     window.setContentSize(1440, 1000);
     await waitFor("Boolean(document.querySelector('.site-preview'))");
-    assert.equal(await evaluate("Boolean(document.querySelector('.site-compact-preview'))"), false);
+    assert.equal(await evaluate("Boolean(document.querySelector('.art-hero'))"), false);
     for (const slug of ["privacy", "security", "terms"]) {
       await window.loadURL(`${origin}/${slug}`);
       await waitFor("Boolean(document.querySelector('.policy-body h1'))");

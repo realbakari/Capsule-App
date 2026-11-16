@@ -2,6 +2,7 @@ import { renderToString } from "react-dom/server";
 import { PublicPage } from "./PublicPage";
 import { PolicyPage } from "./PolicyPage";
 import { PUBLIC_PAGES } from "./site-content";
+export { SITE } from "./site-content";
 import { POLICY_PAGES } from "./policies.generated";
 
 export function renderPublicPages() {

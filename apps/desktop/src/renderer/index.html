@@ -1,8 +1,8 @@
 <!doctype html>
 <!--
   The desktop shell starts dark and applies the saved appearance before React
-  renders. Public routes own a light palette; generated secondary pages start
-  light in their HTML. The sample workspace retains the app’s dark appearance.
+  renders. The public website (cpcl.dev and its generated pages) is dark only,
+  and so is the sample workspace it embeds.
 -->
 <html lang="en" data-theme="dark">
   <head>
@@ -13,14 +13,17 @@
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" href="./icon.png" />
-    <title>Capsule | Your coding agents. One workspace.</title>
-    <meta name="description" content="A desktop workspace for your coding agents. Follow tasks, review diffs, and work across projects with your existing tools and account." />
+    <title>Capsule · A desktop workspace for coding agents</title>
+    <meta name="description" content="Capsule runs Claude Code, Codex, Gemini CLI and other coding agents on your own projects. One thread per task, a checkpoint per turn, and review diffs beside the conversation. Free and open source." />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Capsule" />
-    <meta property="og:title" content="Capsule | Your coding agents. One workspace." />
-    <meta property="og:description" content="Follow tasks, review diffs, and work across projects with the coding agents you already use." />
-    <meta property="og:image" content="https://capsule-app-desktop.vercel.app/icon.png" />
+    <meta property="og:title" content="Capsule · A desktop workspace for coding agents" />
+    <meta property="og:description" content="Run the coding agents you already use on your own projects, one thread per task, and review diffs beside the conversation." />
+    <link rel="canonical" href="https://cpcl.dev/" />
+    <meta property="og:url" content="https://cpcl.dev/" />
+    <meta property="og:image" content="https://cpcl.dev/icon.png" />
     <meta name="twitter:card" content="summary" />
+    <meta name="theme-color" content="#0d0d0c" />
     <!--
       The ground colour, before any stylesheet or script has run. Without it
       the document paints the browser default for the moments before the app's

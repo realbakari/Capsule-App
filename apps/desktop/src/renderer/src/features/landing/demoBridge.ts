@@ -1,5 +1,6 @@
 import type { CapsuleApi } from "../../../../preload/index";
 import { DEFAULT_CAPSULE_SETTINGS, PRESET_HARNESSES, summarizeRun } from "@capsule/shared";
+import { RELEASE } from "./site-content";
 
 /*
  * A read-only stand-in for the Electron preload bridge, used only on the web
@@ -52,7 +53,7 @@ const MESSAGES = [
     sessionId: SESSION.id,
     role: "assistant" as const,
     content:
-      "Two columns were reserved on every row and shown on almost none — a fixed pin slot and the row menu, which is `opacity: 0` until hover. Together they took about 45px of a 264px sidebar.\n\n```css\n.thread-row {\n  grid-template-columns: 2.15rem auto minmax(0, 1fr) auto;\n}\n```\n\nThe pin column now collapses when empty and the menu is positioned out of flow, so titles get the width back.",
+      "Two columns were reserved on every row and used on almost none: a fixed pin slot, and the row menu, which stays `opacity: 0` until hover. Together they took about 45px of a 264px sidebar.\n\nThe pin column now collapses when it is empty and the menu sits outside the row's grid, so titles get that width back. `pnpm test` passes.",
     createdAt: at(7),
   },
 ];
@@ -70,11 +71,21 @@ const RUN = {
   result: MESSAGES[1]!.content,
 };
 
+/*
+ * Tool steps as an agent reports them: one call per id, finished. Without a
+ * status the transcript would honestly say the completion was not reported,
+ * which is right for a live agent and wrong for a finished sample.
+ */
+const step = (id: string, minutes: number, kind: string, title: string, stream = "tool") => ({
+  id, runId: RUN.id, timestamp: at(minutes), type: stream, message: title,
+  data: { streamKind: stream, toolCallId: id, kind, title, status: "completed" },
+});
 const EVENTS = [
-  { id: "d1", runId: RUN.id, timestamp: at(9), type: "thinking", message: "Measuring the row against the sidebar width", data: { streamKind: "thinking" } },
-  { id: "d2", runId: RUN.id, timestamp: at(8), type: "tool", message: "read_file styles.css", data: { streamKind: "tool" } },
-  { id: "d3", runId: RUN.id, timestamp: at(8), type: "tool", message: "read_file Sidebar.tsx", data: { streamKind: "tool" } },
-  { id: "d4", runId: RUN.id, timestamp: at(7), type: "patch", message: "edit styles.css", data: { streamKind: "patch" } },
+  { id: "d0", runId: RUN.id, timestamp: at(9), type: "thinking", message: "Measuring the row against the sidebar width", data: { streamKind: "thinking" } },
+  step("d1", 9, "read", "Read styles.css"),
+  step("d2", 8, "read", "Read Sidebar.tsx"),
+  step("d3", 8, "edit", "Edit styles.css", "patch"),
+  step("d4", 7, "execute", "pnpm test"),
 ];
 
 const GIT = {
@@ -89,6 +100,17 @@ const GIT = {
   removed: 5,
   files: [{ path: "apps/desktop/src/renderer/src/styles.css", code: "M", added: 12, removed: 5 }],
 };
+
+const DIFF = `diff --git a/apps/desktop/src/renderer/src/styles.css b/apps/desktop/src/renderer/src/styles.css
+--- a/apps/desktop/src/renderer/src/styles.css
++++ b/apps/desktop/src/renderer/src/styles.css
+@@ -184,7 +184,6 @@ .thread-row {
+   display: grid;
+-  grid-template-columns: 2.15rem auto minmax(0, 1fr) auto;
++  grid-template-columns: auto minmax(0, 1fr);
++  column-gap: 0.5rem;
+   align-items: center;
+`;
 
 const STATUS = {
   state: "connected" as const,
@@ -106,6 +128,10 @@ export function createDemoBridge(): CapsuleApi {
   const ok = <T,>(value: T) => Promise.resolve(value);
   const api: Record<string, unknown> = {
     isDesktop: false,
+    /* Not a paired device: no remote banner, and the composer stays read-only. */
+    remoteMode: undefined,
+    /* The sample is the macOS app, the build most people download. */
+    platform: "darwin",
     homeDir: "/Users/you",
     on: () => () => undefined,
     windowBackground: () => ok(undefined),
@@ -139,6 +165,11 @@ export function createDemoBridge(): CapsuleApi {
     }))),
     harnessStatus: () => ok({ session: { id: SESSION.id, projectId: PROJECT.id }, harnessId: "claude",
       openclawSessionKey: SESSION.openclawSessionKey, state: "waiting", parsed: {} }),
+    listThreadGroups: () => ok([]),
+    getFollowUps: () => ok({ queue: [] }),
+    commandsList: () => ok({ commands: [], problems: [], sources: {} }),
+    forkBranches: () => ok([]),
+    runRatings: () => ok({}),
     listSkills: () => ok([]),
     listSkillPacks: () => ok([]),
     listArtifacts: () => ok([]),
@@ -149,8 +180,10 @@ export function createDemoBridge(): CapsuleApi {
     listLocalServers: () => ok([]),
     contextUsage: () => ok(undefined),
     gitStatus: () => ok(GIT),
-    gitDiff: () => ok(""),
+    gitDiff: () => ok(DIFF),
     getSettings: () => ok({ ...DEFAULT_CAPSULE_SETTINGS, appearanceTheme: "dark" }),
+    // There is nothing to update in a sample, and saying so must not surface as an error.
+    updateStatus: () => ok({ state: "unknown", current: RELEASE }),
   };
   return new Proxy(api, {
     get: (target, key) => {

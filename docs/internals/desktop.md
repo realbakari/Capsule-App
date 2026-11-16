@@ -8,29 +8,63 @@ Capsule is a workspace, not a clone of any other agent product. Quality bars els
 
 ## Public landing page
 
-The public route uses a self-contained warm off-white palette, serif display
-headings, a compact navigation bar, and a large sample-workspace frame. Its
-styles live in `features/landing/landing.css`, not the desktop stylesheet.
-Policy routes import the same palette explicitly; desktop appearance settings
-must not change public-page contrast. The sample app remains isolated in an
-iframe, with a labelled task-and-diff illustration below 900px.
+The public site (cpcl.dev) lives in `features/landing/`. It is dark only,
+graphite and off-white like the app, and every colour is a token on `.site` in
+`landing.css`: ground and three surface steps, three hairline strengths, three
+text levels (each at least 4.5:1 on the ground), add/delete/warn, and the
+illustration greys (`--art-*`). The app's own token names (`--text`,
+`--text-muted`, `--border-color`, …) are aliased there because the policy body
+is styled in `styles.css`. `main.tsx` forces the document to the dark theme on
+public routes, so first paint and overscroll match the page. Type is the
+system sans with tight tracking for headings and the mono stack for labels; no
+serif, no web fonts.
 
-The page proceeds from product preview to workflow, supported agents, setup
-questions, and platform-specific downloads. Native disclosures hold setup and
-privacy answers and the source installation command. Downloads stay pinned to
-a published release. No decorative controls imply a running agent or claim
-provider access. Renderer regressions cover 380px, 900px, and 1280px layouts,
-section targets, reversible disclosures, clipboard success/failure, and all
-three policy routes.
+The home page reads top to bottom as: one plain line (“A desktop workspace for
+coding agents”), a concrete sentence naming what Capsule does, **Download for
+macOS** (the pinned `.dmg`) and **Read the guide**, a platform line, then the
+real app. Below that: the supported agents (names only, from `AGENTS` in
+`site-content.ts`), five feature rows (threads and worktrees, review and
+checkpoints, approvals, terminal/browser/files, multi-agent compare), a grid of
+smaller features, “How it runs” (ACP, no account, local records, the optional
+Gateway), downloads with build-from-source, and the setup questions. Copy is
+plain and specific: each row says what the feature does with product detail
+and links to its user guide. No slogans, no other products named except the
+supported agents.
 
-The public site also has `/features`, `/about`, `/updates`, `/roadmap`,
-`/pricing`, `/resources`, `/faq`, and `/support` routes. A shared shell owns the
-desktop navigation, native mobile menu, and grouped footer on every page,
-including policies. The feature tour uses keyboard-accessible tabs and labelled
-illustrations, never live-looking controls that pretend to execute work.
-Resources filter by category and search, with an explicit empty-state reset.
-Development links to issues and compatibility limits; it does not invent
-delivery dates. Costs distinguish the MIT workspace from agent usage.
+Each feature row and the features-page tour use a product illustration from
+`Illustrations.tsx`: a crop of the app drawn in site tokens with the app's own
+icons, real words only on the subject (a branch, a hunk's Keep/Reject, the
+command being approved) and placeholder bars elsewhere. The window fills its
+column and fades out at its foot over filler; it does not run off the side,
+because the subject usually sits at the right edge. Each illustration is one
+`role="img"` with a label and nothing focusable inside. Motion is limited to a
+running ring and a shimmer on “Working”.
+
+Motion elsewhere: the hero text and the app frame enter once on load (rise,
+fade, unblur, staggered); disclosures expand in place with
+`::details-content` and `interpolate-size`; the tour's highlight slides
+between tabs (measured, placed without motion the first time); the copy button
+cross-fades to a check; buttons scale to 0.96 on press; link arrows nudge on
+hover. All of it stops under `prefers-reduced-motion`.
+
+Site disclosures carry a class (`site-summary`) because `styles.css` draws a
+chevron on any bare `<summary>`.
+
+The public site also has `/features`, `/about`, `/updates` (Changelog),
+`/roadmap`, `/pricing`, `/resources` (Guides), `/faq` (Questions), and
+`/support`. Titles are plain names. A shared shell owns the header (Features,
+Guides, Changelog, Pricing, Source, Download), a menu button below 860px, and
+the footer on every page, including policies. The tour uses keyboard-accessible
+tabs; below 640px the five tabs share the row. Guides filter by category and
+search, with an empty state that resets. The roadmap lists Available, Preview,
+In development and Ongoing without dates. Pricing separates the free MIT
+workspace from agent usage.
+
+The site is served at `https://cpcl.dev` (`SITE` in `landing/site-content.ts`;
+`index.html` carries the same origin for the home page). `build-public-pages.mjs`
+gives each page its canonical URL, `og:url` and `og:image` on that origin, and
+writes `sitemap.xml` and `robots.txt`. Pages keep the shell's dark
+`data-theme`, so nothing flashes light before the stylesheet loads.
 
 The production build renders all eleven secondary routes to HTML using the
 same React components, with route-specific titles and descriptions and absolute
@@ -2169,26 +2203,44 @@ and handles are displayed as bounded published text, not verified capabilities.
 
 ### Public showcase
 
-The marketing page embeds a lazy, same-origin `?showcase=1` iframe instead of
-mounting the desktop shell into its own document. The sample subtree is inert;
-the surrounding copy explicitly labels it read-only. Desktop shortcuts,
-full-height layout and overlays stay in the preview document. A sample bridge
-returns shaped read results and rejects unsupported operations. It does not
-connect to a Gateway or agent. Below 900px a labelled task-and-diff illustration
-replaces the iframe, so mobile visitors still see a readable example.
+The home page embeds a same-origin `?showcase=1` iframe instead of mounting
+the desktop shell into its own document. The sample subtree is inert and the
+caption says nothing runs in it. The iframe is laid out at 1180×720 and scaled
+down to the column (never below its desktop width), so at 1024 the same
+composition shows smaller instead of hitting the app's narrow breakpoint; it
+fades in once loaded. Below 900px the iframe gives way to `HeroStill`, a
+labelled picture of one finished turn: the prompt, its tool steps, and the
+one-file diff with **Review**.
 
-The public page leads with the task-to-review workflow, then supported agents,
-direct-first setup, data handling, and platform downloads. Download URLs are
-pinned to an explicitly published version in `LandingPage.tsx`, independent of
-the workspace package version. Update that version only after verifying the
-release assets. Unreleased channel routing is not advertised. Provider data
-handling is distinguished from local workspace storage. Static HTML includes
-search and social metadata plus a no-script download link.
+`demoBridge.ts` returns shaped read results and rejects unsupported writes. It
+does not connect to a Gateway or agent. It answers every read the app makes on
+load, so nothing in the picture is an error: `updateStatus` (an error there
+showed as a bubble in the sidebar footer), thread groups, follow-ups,
+commands, fork branches and ratings. Tool steps carry a call id and a
+`completed` status, so the turn reads “Ran 1 command · Completed” rather than
+“Completion not reported”, and `gitDiff` returns the sample's real diff.
+`remoteMode` is unset, which keeps the composer read-only without the paired
+device banner; `landing.css` hides the composer's pairing advice inside
+`.showcase-preview` only, since it addresses a paired device, not a reader of
+the website.
+
+Download URLs are pinned to an explicitly published version (`RELEASE` in
+`site-content.ts`), independent of the workspace package version. Update that
+version only after verifying the release assets. Unreleased channel routing is
+not advertised. Provider data handling is distinguished from local workspace
+storage. Static HTML includes search and social metadata plus a no-script
+download link.
 
 `scripts/showcase-regressions.test.mjs` exercises the real public entry point
-in an isolated Electron profile with external traffic blocked: desktop sample,
-mobile overflow, unsupported writes and policy routes. It is a DOM check,
-not a deployment or a live-harness verification.
+in an isolated Electron profile with external traffic blocked: the dark
+document, the sample at desktop width with no update error, pairing advice or
+unreported completions, the phone illustration, mobile overflow, unsupported
+writes and policy routes. It is a DOM check, not a deployment or a
+live-harness verification. The renderer's landing regressions check overflow,
+section targets, disclosures, the clipboard paths, the tour's keyboard
+handling, guide filtering, that illustrations are labelled images with nothing
+focusable, and that no site disclosure is a bare `<summary>`.
+
 # Browser access and usage reports
 
 Settings → Gateway → Browser access serves the existing renderer. Read-only is
