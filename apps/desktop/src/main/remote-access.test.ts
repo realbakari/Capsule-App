@@ -43,3 +43,16 @@ it("keeps a command-line listener when an unrelated setting is saved", async () 
   expect(lifecycle.reach).toBe("off");
   expect(stop).toHaveBeenCalledTimes(2);
 });
+
+it("retries a followed reach whose listener failed to start", async () => {
+  const stop = vi.fn(async () => {});
+  const start = vi.fn().mockRejectedValueOnce(new Error("port in use")).mockResolvedValue({ stop });
+  const lifecycle = new RemoteAccessLifecycle(start, vi.fn());
+  await lifecycle.follow("network");
+  expect(lifecycle.handle).toBeUndefined();
+  expect(lifecycle.error).toBe("port in use");
+  await lifecycle.follow("network");
+  expect(start).toHaveBeenCalledTimes(2);
+  expect(lifecycle.reach).toBe("network");
+  expect(lifecycle.handle).toBeDefined();
+});

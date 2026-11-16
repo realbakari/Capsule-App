@@ -34,7 +34,7 @@ export async function runWebAccessRegressions(host: HTMLElement) {
     window.testWorkspace = { api, sessions: [{ id: "s1", projectId: "p1", title: "Fix the login form" }], setProjectId: () => {}, setView: () => {} };
     const patch = async (value: Partial<CapsuleSettings>) => { patches.push(value); };
     root.render(<RemoteAccessSettings settings={DEFAULT_CAPSULE_SETTINGS} patch={patch} />); await settle();
-    const permissions = await until(() => host.querySelector<HTMLSelectElement>('[aria-label="Device permission"]'), "Browser access card never showed the device permission");
+    const permissions = await until(() => host.querySelector<HTMLSelectElement>('[aria-label="Browser link permission"]'), "Browser access card never showed the device permission");
     assert(permissions.value === "read", "Pairing must start read-only");
     permissions.value = "control"; permissions.dispatchEvent(new Event("change", { bubbles: true })); await settle();
     Array.from(host.querySelectorAll("button")).find((button) => button.textContent?.includes("Create link"))!.click(); await settle();
@@ -44,9 +44,10 @@ export async function runWebAccessRegressions(host: HTMLElement) {
     assert(shareSettings?.textContent?.includes("never expires"), "Share links were not listed");
     Array.from(shareSettings!.querySelectorAll("button")).find((button) => button.textContent === "Revoke")!.click(); await settle(); await settle();
     assert(revoked.join() === "share_1" && host.querySelector(".share-settings")?.textContent?.includes("None. Share a conversation"), "Revoking a share link did not take it off the list");
-    root.render(null); await settle();
+    // Switching to This network while Conversation control is chosen falls back to read, without a remount.
     status = { ...status, reach: "network", controlAvailable: false };
-    root.render(<RemoteAccessSettings settings={{ ...DEFAULT_CAPSULE_SETTINGS, remoteAccess: "network" }} patch={patch} />); await settle();
+    root.render(<RemoteAccessSettings settings={{ ...DEFAULT_CAPSULE_SETTINGS, remoteAccess: "network" }} patch={patch} />); await settle(); await settle();
+    assert(host.querySelector<HTMLSelectElement>('[aria-label="Browser link permission"]')?.value === "read", "An unavailable Conversation control stayed selected");
     assert(host.querySelector<HTMLOptionElement>('option[value="control"]')?.disabled && host.textContent?.includes("HTTP is read-only"), "Plaintext network offered control");
     root.render(<AnalyticsSettings settings={DEFAULT_CAPSULE_SETTINGS} patch={patch} />); await settle();
     const consent = host.querySelector<HTMLInputElement>('[aria-label="Share usage reports"]')!;

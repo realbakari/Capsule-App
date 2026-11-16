@@ -37,6 +37,9 @@ export function RemoteAccessSettings({
   }, [api]);
 
   useEffect(load, [load, settings.remoteAccess]);
+  /* Control chosen on This computer is not on offer once the reach is This network: fall back to read. */
+  const controlAvailable = Boolean(status?.controlAvailable);
+  useEffect(() => { if (!controlAvailable) setAccess("read"); }, [controlAvailable]);
   useEffect(() => {
     const off = api.on("state", (event) => {
       if (event && typeof event === "object" && "command" in event && event.command === "remote-updated") load();
@@ -86,10 +89,14 @@ export function RemoteAccessSettings({
             <span className="mono">{status.url}</span>
           </SettingRow>
           <SettingRow
-            label="Device permission"
-            hint={status.controlAvailable ? "Conversation control can cause agents to edit files and run commands under the thread’s permissions. Only pair a device you trust." : "Network HTTP is read-only. For control from another device, use This computer behind a trusted HTTPS proxy."}
+            label="Browser link permission"
+            hint={status.controlAvailable
+              ? "Conversation control can cause agents to edit files and run commands under the thread’s permissions. Only pair a device you trust."
+              : status.phoneAvailable && status.reach === "network"
+                ? "For the pairing link below. A browser on this network is read-only, because plain HTTP can be read by anyone on it. A phone paired with Pair a phone always gets conversation control: the mobile app connects encrypted."
+                : "Network HTTP is read-only. For control from another device, use This computer behind a trusted HTTPS proxy."}
           >
-            <select className="field-select" aria-label="Device permission" value={access}
+            <select className="field-select" aria-label="Browser link permission" value={access}
               onChange={(event) => setAccess(event.target.value === "control" ? "control" : "read")}>
               <option value="read">Read only</option>
               <option value="control" disabled={!status.controlAvailable}>Conversation control</option>
@@ -120,7 +127,7 @@ export function RemoteAccessSettings({
               </button>
             </div>
           </SettingRow>
-          {status.phoneAvailable && <PhonePairing create={() => api.remotePair("phone") as Promise<string>} />}
+          {status.phoneAvailable && <PhonePairing local={status.reach !== "network"} create={() => api.remotePair("phone") as Promise<string>} />}
           {status.pairingUrl && (
             <p className="faint mono remote-pairing-url">
               {status.pairingUrl}
@@ -168,7 +175,7 @@ export function RemoteAccessSettings({
  * trusts nothing else. Because the channel is encrypted end to end, a phone
  * gets conversation control even on This network.
  */
-function PhonePairing({ create }: { create: () => Promise<string> }) {
+function PhonePairing({ local, create }: { local: boolean; create: () => Promise<string> }) {
   const [code, setCode] = useState<{ url: string; expiresAt: number }>();
   const [error, setError] = useState<string>();
   const [now, setNow] = useState(Date.now());
@@ -185,7 +192,10 @@ function PhonePairing({ create }: { create: () => Promise<string> }) {
   return (
     <SettingRow
       label="Phone"
-      hint="Scan with the Capsule mobile app, or the camera, to pair a phone or tablet. The connection is encrypted and can send messages, stop runs, and answer approvals once. Single use, valid for five minutes."
+      hint={local
+        /* The phone listener answers only 127.0.0.1 here, which a real phone cannot reach. */
+        ? "On This computer, only a simulator on this Mac can use the code. To pair a real phone or tablet, choose This network above."
+        : "Scan with the Capsule mobile app, or the camera, to pair a phone or tablet. The connection is encrypted and can send messages, stop runs, and answer approvals once. Single use, valid for five minutes."}
     >
       <div className="remote-phone-pairing">
         <div className="actions" style={{ marginTop: 0 }}>
@@ -206,7 +216,7 @@ function PhonePairing({ create }: { create: () => Promise<string> }) {
         {code && !expired && (
           <>
             <QrCode value={code.url} label="Phone pairing code" />
-            <p className="faint">
+            <p className="faint remote-phone-expiry">
               Expires in {Math.floor(remaining / 60)}:{String(remaining % 60).padStart(2, "0")}.{" "}
               <button className="chip" type="button" onClick={() => void navigator.clipboard.writeText(code.url)}>Copy link</button>
             </p>

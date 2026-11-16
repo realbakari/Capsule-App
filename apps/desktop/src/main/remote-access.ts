@@ -16,7 +16,9 @@ export class RemoteAccessLifecycle<T extends { stop(): Promise<void> }> {
    * (`--remote`) survives saving an unrelated setting such as the theme.
    */
   follow(setting: RemoteAccess): Promise<void> {
-    if (setting === this.followed) return this.pending;
+    // The same setting again is a no-op, unless it wants a listener and has
+    // none (a start that failed, say on a port in use): then it retries.
+    if (setting === this.followed && (setting === "off" || this.handle)) return this.pending;
     this.followed = setting;
     return this.set(setting);
   }

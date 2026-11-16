@@ -105,7 +105,11 @@ elapsed time since pairing, then has to pair again, even if it stayed connected.
 The Capsule mobile app pairs with a **phone code** instead of a link. Under
 **Phone**, choose **Pair a phone** and scan the code with the app. The
 connection is encrypted and tied to this computer, so a phone can send
-messages, stop runs and answer approvals even on **This network**. See
+messages, stop runs and answer approvals even on **This network**. This is
+the way to control conversations from a phone: a phone's browser on This
+network stays read-only, and the permission hint says so. On **This
+computer** the code only reaches a simulator on the same Mac, and the Phone
+row says to choose This network for a real device. See
 [Capsule on iPhone and iPad](mobile-app.md).
 
 ## Taking access away
