@@ -12,6 +12,7 @@ export default tseslint.config(
       "apps/desktop/src/renderer/**",
       "scripts/**",
       "apps/desktop/scripts/**",
+      "apps/ios/scripts/**",
       "docs/examples/**",
     ],
   },
