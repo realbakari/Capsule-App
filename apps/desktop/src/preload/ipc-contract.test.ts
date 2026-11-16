@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -14,10 +14,12 @@ const preload = readFileSync(
   path.join(path.dirname(fileURLToPath(import.meta.url)), "index.ts"),
   "utf8",
 );
-const main = readFileSync(
-  path.join(path.dirname(fileURLToPath(import.meta.url)), "../main/index.ts"),
-  "utf8",
-);
+/* Handlers live in main/index.ts and in the modules it registers, such as the agent store's. */
+const mainDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "../main");
+const main = readdirSync(mainDir)
+  .filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts"))
+  .map((name) => readFileSync(path.join(mainDir, name), "utf8"))
+  .join("\n");
 
 /** Channels the renderer is deliberately not given. */
 const RENDERER_EXEMPT = new Set<string>([

@@ -294,3 +294,66 @@ it("offers MCP servers to a native session too, and releases them when it closes
     expect(dispose).toHaveBeenCalledOnce();
   } finally { await host.closeAll(); }
 });
+
+describe("signing an agent in through the host", () => {
+  const report = {
+    logout: true,
+    methods: [
+      { type: "agent" as const, id: "oauth", name: "Browser" },
+      { type: "terminal" as const, id: "tui", name: "Terminal", args: ["--login"], env: { LOGIN_MODE: "tui" } },
+    ],
+  };
+  function fakeHandshake() {
+    const handshake = vi.spyOn(DirectAcpSession.prototype, "handshake").mockImplementation(async function (this: DirectAcpSession) {
+      (this as unknown as { authReport: typeof report }).authReport = report;
+      return report;
+    });
+    const close = vi.spyOn(DirectAcpSession.prototype, "close").mockResolvedValue();
+    return { handshake, close };
+  }
+
+  it("relaunches the resolved agent program with the method's args for terminal sign-in", async () => {
+    const { close } = fakeHandshake();
+    const host = new DirectAcpHost(undefined, (command) => `/opt/agents/${command}`);
+    const gemini = PRESET_HARNESSES.find((item) => item.id === "gemini")!;
+    const launch = gemini.directCommand ?? gemini.acpxCommand!;
+    expect(await host.signInOptions("gemini")).toEqual({
+      canSignOut: true,
+      methods: [
+        { kind: "agent", id: "oauth", name: "Browser" },
+        { kind: "terminal", id: "tui", name: "Terminal", argv: [`/opt/agents/${launch.command}`, ...(launch.args ?? []), "--login"], env: { LOGIN_MODE: "tui" } },
+      ],
+    });
+    expect(close).toHaveBeenCalled();
+    vi.restoreAllMocks();
+  });
+
+  it("never offers terminal sign-in through a Windows script shim", async () => {
+    fakeHandshake();
+    const host = new DirectAcpHost(undefined, (command) => `C:\\agents\\${command}.cmd`);
+    expect((await host.signInOptions("gemini")).methods.map((method) => method.kind)).toEqual(["agent"]);
+    vi.restoreAllMocks();
+  });
+
+  it("gives a native preset no ACP handshake, and refuses authenticate for it", async () => {
+    const { handshake } = fakeHandshake();
+    const host = new DirectAcpHost();
+    expect(await host.signInOptions("claude")).toEqual({ methods: [], canSignOut: false });
+    await expect(host.authenticate("claude", "oauth")).rejects.toThrow("its own login command");
+    expect(handshake).not.toHaveBeenCalled();
+    vi.restoreAllMocks();
+  });
+
+  it("authenticates and signs out on a fresh process each time, closing it after", async () => {
+    const { close } = fakeHandshake();
+    const authenticate = vi.spyOn(DirectAcpSession.prototype, "authenticate").mockResolvedValue();
+    const logout = vi.spyOn(DirectAcpSession.prototype, "logout").mockResolvedValue();
+    const host = new DirectAcpHost();
+    await host.authenticate("gemini", "oauth");
+    await host.logout("gemini");
+    expect(authenticate).toHaveBeenCalledWith("oauth");
+    expect(logout).toHaveBeenCalledTimes(1);
+    expect(close).toHaveBeenCalledTimes(2);
+    vi.restoreAllMocks();
+  });
+});

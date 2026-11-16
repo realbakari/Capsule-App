@@ -399,17 +399,25 @@ export function preferredShell(env: NodeJS.ProcessEnv = process.env): string {
 }
 
 export function startPty(
-  input: { cwd: string; cols?: number; rows?: number; shell?: string; },
+  input: {
+    cwd: string; cols?: number; rows?: number; shell?: string;
+    /** Run this program instead of an interactive shell. Never parsed as shell syntax. */
+    argv?: string[];
+    /** Added to the inherited environment. */
+    env?: Record<string, string>;
+  },
   handlers: { onData: (data: string) => void; onExit: (code: number, signal?: number) => void; },
 ): PtySession {
   if (!input.cwd || !existsSync(input.cwd)) throw new Error("Working directory is missing");
+  if (input.argv && !input.argv[0]) throw new Error("Command is empty");
   const shell = input.shell ?? preferredShell();
-  const child = spawnPty(shell, interactiveShellArgs(shell), {
+  const [file, args] = input.argv ? [input.argv[0]!, input.argv.slice(1)] : [shell, interactiveShellArgs(shell)];
+  const child = spawnPty(file, args, {
     name: "xterm-256color",
     cols: Math.max(2, input.cols ?? 80),
     rows: Math.max(1, input.rows ?? 24),
     cwd: input.cwd,
-    env: { ...process.env, TERM: "xterm-256color" } as Record<string, string>,
+    env: { ...process.env, ...input.env, TERM: "xterm-256color" } as Record<string, string>,
   });
   child.onData(handlers.onData);
   child.onExit(({ exitCode, signal }) => handlers.onExit(exitCode, signal));

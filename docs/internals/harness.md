@@ -489,7 +489,11 @@ Each native process receives a separate revocable token. The host disposes it
 on handshake failure, process exit and explicit close. A token resolves only
 the matching Capsule thread's Browser panel. The user must enable **Allow agent
 control** there; switching threads, hiding the inspector, leaving Chat or
-closing the panel revokes access. Browser cookies are still shared within the
+closing the panel revokes access. A refused call also calls `BrowserAccess`'s
+`refused` hook; main forwards it as `browser-access-requested` (at most once per
+thread per 30 seconds), and the renderer shows an **Allow** toast for the thread
+on screen that opens its Browser panel and sends the `allow-agent` browser
+command. The refusal text tells the agent that notice exists. Browser cookies are still shared within the
 isolated foreground browser partition: thread targeting is not a private-profile feature.
 
 An explicit desktop `controlBackgroundBrowser` call can start one temporary hidden
@@ -675,14 +679,56 @@ and starts with the matching mode model. The IPC channel `setSessionTurnMode` is
 a control channel like `sendMessage`: a paired viewer with conversation control
 may switch, a read-only viewer may not.
 
+## Installing and signing in agents
+
+**Store.** `AGENT_PACKAGE_SOURCES` (`@capsule/shared/agent-setup.ts`) is the
+one table of presets the store can install: an ACP registry id, or the vendor
+npm package for Claude Code and Codex. `planAgentStore`
+(`packages/harness/src/store/plan.ts`) turns the registry JSON, the preset's
+launch command (`nativeCommand ?? directCommand ?? acpxCommand`) and this
+computer's platform into an offer or a reason. A registry `binary` entry is
+used only when its `cmd` basename is that command; otherwise the entry's `npx`
+form, otherwise nothing. `uvx` entries are reported as unsupported.
+
+Installs stage under `<userData>/agents/.staging/`, verify the registry
+sha256 when given, extract with the system `tar`/`unzip`, or run
+`npm install --prefix` with an argv array, then link: a shim named after the
+launch command goes into `<userData>/agents/bin`, the manifest is written, and
+older version folders are removed. `whichBinary` searches that bin folder right
+after PATH (`setManagedBinDir`), so readiness, Doctor, launch and resume are
+unchanged and a user's own copy wins. Gemini and Gemini Flash share one install
+because both launch `gemini`. Registry `env` reaches the shim through
+`safeAgentEnv`, which drops PATH, loader, proxy and certificate variables; npm
+shims append npm's `node` folder to PATH for launchers that need `node`. The
+registry is cached for an hour in memory and on disk for offline listing.
+
+**Sign-in.** Direct ACP sessions advertise `clientCapabilities.auth.terminal`
+and read `authMethods` and `agentCapabilities.auth.logout` from `initialize`.
+`DirectAcpHost.signInOptions` runs an initialize-only handshake in the home
+folder (it shares the four-process discovery limit); `authenticate` and
+`logout` run one request each in a short-lived process, with a five-minute
+limit for browser sign-in. Native presets (Claude Code, Codex, Muse) get no
+handshake; their CLI login comes from the preset's `loginHint`
+(`cliLoginArgv`). A terminal method runs the launch executable with its launch
+args and the method's args; main resolves that argv from the options it last
+showed, and the renderer only names a harness and a method id. Login terminals
+are PTYs running the argv directly (`startPty` with `argv`), share the dock's
+terminal limit and events, hold no folder lease, and clear the login cache when
+they exit 0. On the Gateway route `agent` methods are withheld with a reason;
+CLI and terminal sign-in still sign in the CLI on this computer.
+
+`session/new`, load or resume answering -32000 raises `AgentAuthRequiredError`;
+the engine records it with `noteAuthRequired`, which makes readiness
+`needs_login` for agents with no login probe until a session starts again.
+
 ## Do you need to install Claude Code in Capsule?
 
-No. Capsule **picks them up**:
+No, if it is already installed. Capsule **picks it up**:
 
 1. From `PATH` and common install locations on this Mac (`/opt/homebrew/bin`, `~/.local/bin`, a login shell, …).
 2. From the OpenClaw Gateway host when acpx is enabled — even if the desktop process cannot see the binary. acpx may fetch adapters on first use.
 
-If the UI says a CLI is already detected, the remaining step is **start/connect the Gateway**, not another install.
+If the UI says a CLI is already detected, the remaining step is **start/connect the Gateway**, not another install. If it is missing, **Install** in Agents (or first run) installs it into Capsule's folder, as described above.
 
 ## Capsule commands on both routes
 
@@ -837,7 +883,11 @@ refusal, token-limit stops, transport failures and admitting the next turn.
 
 Native stdout is decoded incrementally as UTF-8. An unterminated JSON-RPC frame
 is limited to 4 MiB; an invalid or oversized frame rejects pending calls and
-closes only the child owned by that session. Tool-title correlation retains at
+closes only the child owned by that session. Errors a person reads name the
+agent (`DirectAcpOptions.name`, the preset's name), not its command: a bad
+frame reads "<agent> sent a reply Capsule couldn't read" and an unanswered
+request "<agent> stopped responding". The command, method and parser detail
+stay in the error's `cause`. Tool-title correlation retains at
 most 1,000 IDs. These are transport bounds, not a replacement agent loop.
 
 Core shares a `TextBudget` across reply buffers: 1 MiB per entry, 8 MiB total,

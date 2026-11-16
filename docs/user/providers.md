@@ -11,7 +11,8 @@ Direct-agent approvals include the reported target and an expandable proposed
 operation. Command and diff excerpts are bounded and marked when shortened;
 missing targets are not guessed from the working folder. **Approve once** is
 unavailable if the agent only offers permanent permission. **Deny** remains
-available. The same details and restriction appear in the conversation and the
+available, and **Deny and reply** denies and then puts you in that
+conversation's message box, so you can tell the agent what to do instead. The same details and restriction appear in the conversation and the
 Approvals view. Capsule does not silently grant permanent or session permission.
 Stopping or closing an agent cancels its unanswered approvals; it does not tell
 the agent you chose **Deny**. Unanswered approvals also clear when the turn ends
@@ -56,8 +57,8 @@ remain optional. Saved route preferences and existing conversations are not
 migrated: change the default under **Settings → Agents → Runtime** for new
 conversations. In Direct mode startup does not attempt a Gateway connection;
 use **Settings → Gateway** to connect explicitly when needed.
-Capsule does not install CLIs, does not sign
-you in, and never resells tokens.
+Capsule never resells tokens. It installs or signs in an agent only when you
+ask it to; see [Installing and signing in](#installing-and-signing-in).
 
 | Provider | Executable |
 |----------|-----------|
@@ -71,7 +72,36 @@ you in, and never resells tokens.
 | Gemini CLI | `gemini` |
 | GitHub Copilot | `copilot` |
 
-Sign in with each tool's own flow — `claude`, `codex login`, `grok login`, and so on.
+Sign in with each tool's own flow, or from Capsule as described below.
+
+## Installing and signing in
+
+**Agents** lists each agent with what it needs. When one is missing,
+**Install** shows the version and where it comes from: the Agent Client
+Protocol registry, or the agent's own npm package for Claude Code and Codex.
+Nothing is installed until you press it. Capsule keeps these copies in its own
+folder and never changes a copy you installed yourself: an agent you already
+have is shown as **Installed by you**, and that copy is the one Capsule runs.
+For a copy Capsule installed, **Update** appears when a newer version is
+published, and **Remove** deletes it. Downloads are checked against the
+registry's checksum when it gives one, and an install that fails leaves the
+previous copy in place. Agents published as npm packages need Node.js on this
+computer; the row says so when it is missing.
+
+When an agent is not signed in, the message box says so and offers **Sign in**.
+The sign-in window lists the ways that agent supports:
+
+- **In the agent.** The agent signs itself in, often by opening your browser.
+  Finish there; the window waits. This needs the agent to run in Direct mode.
+- **In a terminal.** The window shows the exact command first. **Run** starts
+  it in a small terminal inside the window, where you answer its prompts. When
+  it finishes successfully, Capsule checks the agent again. **I'm signed in**
+  checks again yourself, for a login that does not exit on its own.
+
+**Sign out** appears for agents that support signing out from Capsule. An agent
+that reports it needs a sign-in when a conversation starts is marked
+**Needs sign-in** until you sign in, so the next message does not fail the same
+way.
 
 ### Local Codex
 

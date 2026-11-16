@@ -154,6 +154,15 @@ export const IPC_CHANNELS = {
   listHarnesses: "capsule:listHarnesses",
   discoverHarness: "capsule:discoverHarness",
   doctorHarness: "capsule:doctorHarness",
+  /* The agent store: list, install, update and remove Capsule-managed agent copies. */
+  agentStoreList: "capsule:agentStoreList",
+  agentStoreInstall: "capsule:agentStoreInstall",
+  agentStoreUninstall: "capsule:agentStoreUninstall",
+  /* Signing an agent in: its methods, ACP authenticate/logout, and a login terminal main starts by id. */
+  agentSignInOptions: "capsule:agentSignInOptions",
+  agentAuthenticate: "capsule:agentAuthenticate",
+  agentSignOut: "capsule:agentSignOut",
+  agentLoginTerminalStart: "capsule:agentLoginTerminalStart",
   dedicateHarness: "capsule:dedicateHarness",
   undedicateHarness: "capsule:undedicateHarness",
   spawnHarness: "capsule:spawnHarness",
@@ -317,5 +326,6 @@ export const IPC_EVENTS = {
   fullscreen: "capsule:event:fullscreen",
   terminalData: "capsule:event:terminalData",
   terminalExit: "capsule:event:terminalExit",
+  agentInstallProgress: "capsule:event:agentInstallProgress",
   dictation: "capsule:event:dictation",
 } as const;

@@ -5,7 +5,7 @@ import { StringDecoder } from "node:string_decoder";
 
 import type { AcpModelCatalog, DelegationDetails, ApprovalToolDetails, AgentCapabilityReport, ReportedContextUsage, ReportedTurnUsage, AgentPromptBlock, AgentCommand, RunTask } from "@capsule/shared";
 import { TextBudget, readAgentCapabilities, readReportedTurnUsage, type ToolActivityDetails } from "@capsule/shared";
-import { readCliError } from "./errors.js";
+import { AcpRpcError, authRequiredOr, readCliError } from "./errors.js";
 import {
   ACP_PROTOCOL_VERSION,
   chooseOption,
@@ -17,7 +17,9 @@ import {
   type JsonRpcMessage,
   readModelCatalog,
   readModeOption,
+  readAuthReport,
   LEGACY_MODE_CONFIG_ID,
+  type AcpAuthReport,
 } from "./protocol.js";
 
 /*
@@ -63,6 +65,8 @@ export interface DirectAcpEvents {
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000;
+/** `authenticate` may open a browser and wait for the person to finish there. */
+const AUTHENTICATE_TIMEOUT_MS = 5 * 60_000;
 export const MAX_ACP_FRAME_BYTES = 4 * 1024 * 1024;
 // Protocol normalization caps each key/title pair at 768 code units. Combined
 // with this count limit, cached string payloads stay below 768 KiB of UTF-8.
@@ -70,6 +74,8 @@ export const MAX_CACHED_TOOL_TITLES = 256;
 
 export interface DirectAcpOptions {
   command: string;
+  /** What the person calls this agent, for errors they read. */
+  name?: string;
   args: string[];
   cwd?: string;
   env?: NodeJS.ProcessEnv;
@@ -128,6 +134,7 @@ export class DirectAcpSession {
   private modeRevision = 0;
   private initialization: unknown;
   private capabilityReport?: AgentCapabilityReport;
+  private authReport?: AcpAuthReport;
   private contextReport?: ReportedContextUsage;
   private commandReport?: AgentCommand[];
   private pendingCommands?: { sessionId: string; commands: AgentCommand[] };
@@ -149,6 +156,8 @@ export class DirectAcpSession {
   get reportedCapabilities(): AgentCapabilityReport | undefined { return this.capabilityReport; }
   get reportedContext(): ReportedContextUsage | undefined { return this.contextReport; }
   get reportedCommands() { return this.commandReport; }
+  /** Sign-in methods and logout support from `initialize`. */
+  get reportedAuth(): AcpAuthReport | undefined { return this.authReport; }
 
   constructor(private readonly options: DirectAcpOptions) {}
 
@@ -179,14 +188,28 @@ export class DirectAcpSession {
   }
 
   /**
-   * Start the agent and open a conversation in `cwd`.
-   *
-   * Returns the agent's session id. Anything that goes wrong here — the binary
-   * missing, a handshake it will not complete, an account it will not serve —
-   * throws before a turn is ever sent, so the failure names itself instead of
-   * arriving mid-answer.
+   * Start the agent and initialize it, without opening a conversation: what
+   * signing in needs. Returns the methods it offered.
    */
-  async start(resumeSessionId?: string): Promise<string> {
+  async handshake(): Promise<AcpAuthReport> {
+    await this.initialize();
+    return this.authReport!;
+  }
+
+  /** ACP `authenticate` with one of the agent's own methods. Terminal methods are run by the user, never sent here. */
+  async authenticate(methodId: string): Promise<void> {
+    const method = this.authReport?.methods.find((item) => item.id === methodId);
+    if (!method) throw new Error(`${this.options.name ?? "The agent"} does not offer that sign-in method.`);
+    if (method.type !== "agent") throw new Error("This sign-in method runs in a terminal, not through the agent.");
+    await this.request("authenticate", { methodId }, { timeoutMs: AUTHENTICATE_TIMEOUT_MS });
+  }
+
+  async logout(): Promise<void> {
+    if (!this.authReport?.logout) throw new Error(`${this.options.name ?? "The agent"} does not support signing out from Capsule.`);
+    await this.request("logout", {});
+  }
+
+  private async initialize(): Promise<unknown> {
     if (this.child) throw new Error("This session is already running.");
     const child = spawn(this.options.command, this.options.args, {
       cwd: this.options.cwd,
@@ -225,7 +248,7 @@ export class DirectAcpSession {
 
     this.initialization = await this.request("initialize", {
       protocolVersion: ACP_PROTOCOL_VERSION,
-      clientCapabilities: { fs: { readTextFile: false, writeTextFile: false } },
+      clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, auth: { terminal: true } },
     });
     const version = (this.initialization as { protocolVersion?: unknown } | null)?.protocolVersion;
     if (typeof version !== "number" || !Number.isSafeInteger(version) || version < 1) {
@@ -234,11 +257,26 @@ export class DirectAcpSession {
     if (version !== ACP_PROTOCOL_VERSION) {
       throw new Error(`The agent selected ACP protocol version ${version}, but Capsule supports version ${ACP_PROTOCOL_VERSION}. Use a compatible agent version or update Capsule.`);
     }
-    const capabilities = readAgentCapabilities(this.initialization);
+    this.authReport = readAuthReport(this.initialization);
+    return this.initialization;
+  }
+
+  /**
+   * Start the agent and open a conversation in `cwd`.
+   *
+   * Returns the agent's session id. Anything that goes wrong here — the binary
+   * missing, a handshake it will not complete, an account it will not serve —
+   * throws before a turn is ever sent, so the failure names itself instead of
+   * arriving mid-answer.
+   */
+  async start(resumeSessionId?: string): Promise<string> {
+    const capabilities = readAgentCapabilities(await this.initialize());
     const setup = {
       cwd: this.options.cwd ?? process.cwd(),
       mcpServers: sessionMcpServers(this.options.mcpServers ?? [], capabilities.httpMcp),
     };
+    // -32000 here means the account, not the protocol: say so in words the person can act on.
+    const authRequired = (error: unknown) => { throw authRequiredOr(error, this.options.name ?? "The agent"); };
     let created: unknown;
     if (resumeSessionId) {
       if (resumeSessionId.length > 4096) throw new Error("Saved ACP session identity is invalid.");
@@ -248,9 +286,9 @@ export class DirectAcpSession {
       this.restoring = true;
       // Capsule already owns its transcript. Loading must not replay old tools,
       // approvals or messages as activity belonging to the new turn.
-      try { created = await this.request(method, { ...setup, sessionId: resumeSessionId }); }
+      try { created = await this.request(method, { ...setup, sessionId: resumeSessionId }).catch(authRequired); }
       finally { this.restoring = false; }
-    } else created = await this.request("session/new", setup);
+    } else created = await this.request("session/new", setup).catch(authRequired);
     const sessionId = resumeSessionId ?? (created as { sessionId?: unknown })?.sessionId;
     if (typeof sessionId !== "string" || !sessionId || sessionId.length > 4096) {
       throw new Error("The agent started but did not open a session.");
@@ -450,7 +488,7 @@ export class DirectAcpSession {
       }
     } catch (error) {
       this.lineBuffer.clear();
-      this.fail(new Error(`Invalid or oversized ACP frame: ${String(error)}`));
+      this.fail(new Error(`${this.options.name ?? "The agent"} sent a reply Capsule couldn't read.`, { cause: `Invalid or oversized frame: ${String(error)}` }));
       // Only close the child this session spawned. A protocol failure must not
       // leave an unbounded producer running after its pending turn has failed.
       void this.close().catch(() => undefined);
@@ -463,7 +501,7 @@ export class DirectAcpSession {
       if (!entry) return;
       this.pending.delete(message.id as number);
       if (entry.timer) clearTimeout(entry.timer);
-      if (message.error) entry.reject(new Error(message.error.message));
+      if (message.error) entry.reject(new AcpRpcError(message.error.message, typeof message.error.code === "number" ? message.error.code : 0));
       else entry.resolve(message.result);
       return;
     }
@@ -640,7 +678,7 @@ export class DirectAcpSession {
         timeoutMs > 0
           ? setTimeout(() => {
               this.pending.delete(id);
-              reject(new Error(`${this.options.command} did not answer ${method} in time.`));
+              reject(new Error(`${this.options.name ?? "The agent"} stopped responding. Stop the turn and try again.`, { cause: `${this.options.command} did not answer ${method} within ${timeoutMs} ms` }));
             }, timeoutMs)
           : undefined;
       this.pending.set(id, { resolve, reject, timer });

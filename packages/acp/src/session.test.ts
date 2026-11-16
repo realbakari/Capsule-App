@@ -4,6 +4,7 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { DirectAcpSession, MAX_CACHED_TOOL_TITLES } from "./session.js";
+import { AgentAuthRequiredError } from "./errors.js";
 import { DirectAcpHost } from "./host.js";
 
 /*
@@ -264,7 +265,7 @@ describe("talking to an agent directly", () => {
   it("surfaces a rejected resume without replacing the saved session", async () => {
     const agent = fakeAgent(`function handle(message) {
       if (message.method === "initialize") send({ id: message.id, result: { protocolVersion: 1, agentCapabilities: { sessionCapabilities: { resume: {} } } } });
-      if (message.method === "session/resume") send({ id: message.id, error: { code: -32000, message: "Saved session expired" } });
+      if (message.method === "session/resume") send({ id: message.id, error: { code: -32002, message: "Saved session expired" } });
       if (message.method === "session/new") throw new Error("Unexpected replacement");
     }`);
     const session = new DirectAcpSession({ command: "node", args: [agent] });
@@ -492,11 +493,20 @@ describe("talking to an agent directly", () => {
       expect(current).toBe("");
     } finally { await session.close(); rmSync(path.dirname(agent), { recursive: true, force: true }); }
   });
+  it("names the agent, not its command, when it stops responding", async () => {
+    const agent = fakeAgent(`function handle() {}`);
+    const session = new DirectAcpSession({ command: "node", name: "Fixture Agent", args: [agent], timeoutMs: 50 });
+    try {
+      await expect(session.start()).rejects.toThrow("Fixture Agent stopped responding. Stop the turn and try again.");
+    } finally { await session.close(); rmSync(path.dirname(agent), { recursive: true, force: true }); }
+  });
   it("rejects an oversized unterminated frame without waiting for a newline", async () => {
     const agent = fakeAgent(`function handle() { process.stdout.write("x".repeat(4 * 1024 * 1024 + 1)); }`);
-    const session = new DirectAcpSession({ command: "node", args: [agent] });
+    const session = new DirectAcpSession({ command: "node", name: "Fixture Agent", args: [agent] });
     try {
-      await expect(session.start()).rejects.toThrow(/oversized|invalid/i);
+      const failure = await session.start().then(() => undefined, (error: Error) => error);
+      expect(failure?.message).toBe("Fixture Agent sent a reply Capsule couldn't read.");
+      expect(String(failure?.cause)).toMatch(/oversized/i);
     } finally { await session.close(); rmSync(path.dirname(agent), { recursive: true, force: true }); }
   });
 
@@ -694,5 +704,76 @@ describe("talking to an agent directly", () => {
     const session = new DirectAcpSession({ command: "node", args: [fakeAgent(readsFiles)] });
     expect(await session.start()).toBe("refused");
     await session.close();
+  });
+});
+
+describe("signing an agent in", () => {
+  const SIGN_IN = `
+    function handle(message) {
+      if (message.method === "initialize") send({ id: message.id, result: { protocolVersion: 1,
+        agentCapabilities: { auth: { logout: {} } },
+        authMethods: [
+          { id: "oauth", name: "Sign in with a browser" },
+          { id: "tui", name: "Sign in in a terminal", type: "terminal", args: ["--login"], env: { LOGIN_MODE: "tui", PATH: "/evil" } },
+        ] } });
+      if (message.method === "session/new" || message.method === "session/load") send({ id: message.id, error: { code: -32000, message: "Authentication required" } });
+      if (message.method === "authenticate" || message.method === "logout") send({ id: message.id, result: {} });
+    }
+  `;
+  type Requests = { request(method: string, params: unknown, options?: unknown): Promise<unknown> };
+
+  it("advertises terminal auth and reads the agent's methods without opening a session", async () => {
+    const session = new DirectAcpSession({ command: "node", name: "Fake Agent", args: [fakeAgent(SIGN_IN)] });
+    const requests = vi.spyOn(session as unknown as Requests, "request");
+    try {
+      expect(await session.handshake()).toEqual({
+        logout: true,
+        methods: [
+          { type: "agent", id: "oauth", name: "Sign in with a browser" },
+          { type: "terminal", id: "tui", name: "Sign in in a terminal", args: ["--login"], env: { LOGIN_MODE: "tui" } },
+        ],
+      });
+      expect(requests.mock.calls.map(([method]) => method)).toEqual(["initialize"]);
+      expect(requests.mock.calls[0]?.[1]).toMatchObject({ clientCapabilities: { auth: { terminal: true } } });
+      expect(session.sessionId).toBeUndefined();
+    } finally { await session.close(); }
+  });
+
+  it("sends authenticate and logout in the protocol's shapes, and never authenticates a terminal method", async () => {
+    const session = new DirectAcpSession({ command: "node", name: "Fake Agent", args: [fakeAgent(SIGN_IN)] });
+    const requests = vi.spyOn(session as unknown as Requests, "request");
+    try {
+      await session.handshake();
+      await expect(session.authenticate("tui")).rejects.toThrow("runs in a terminal");
+      await expect(session.authenticate("unknown")).rejects.toThrow("does not offer that sign-in method");
+      await session.authenticate("oauth");
+      await session.logout();
+      expect(requests.mock.calls.slice(1)).toEqual([
+        ["authenticate", { methodId: "oauth" }, { timeoutMs: 300_000 }],
+        ["logout", {}],
+      ]);
+    } finally { await session.close(); }
+  });
+
+  it("refuses to sign out of an agent that did not advertise logout", async () => {
+    const session = new DirectAcpSession({ command: "node", args: [fakeAgent(`
+      function handle(message) { if (message.method === "initialize") send({ id: message.id, result: { protocolVersion: 1 } }); }
+    `)] });
+    try {
+      await session.handshake();
+      await expect(session.logout()).rejects.toThrow("does not support signing out");
+    } finally { await session.close(); }
+  });
+
+  it("turns -32000 from session/new and session/load into a sign-in error that names the agent", async () => {
+    for (const resume of [undefined, "saved"]) {
+      const file = fakeAgent(SIGN_IN.replace("agentCapabilities: { auth: { logout: {} } }", "agentCapabilities: { loadSession: true }"));
+      const session = new DirectAcpSession({ command: "node", name: "Fake Agent", args: [file] });
+      try {
+        const started = session.start(resume);
+        await expect(started).rejects.toBeInstanceOf(AgentAuthRequiredError);
+        await expect(started).rejects.toThrow(/^Fake Agent is not signed in\./);
+      } finally { await session.close(); }
+    }
   });
 });

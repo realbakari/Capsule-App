@@ -1,0 +1,155 @@
+/* Store controls: one quiet row of words and at most two buttons. */
+.agent-store {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.55rem;
+  min-width: 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.agent-store :is(.chip, .ghost, .send) {
+  height: 1.65rem;
+  padding: 0 0.6rem;
+  font-size: var(--text-xs);
+}
+.agent-store .ghost { border-color: transparent; }
+.agent-store-caption,
+.agent-store-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-store-label { color: var(--text); }
+.agent-store-bytes { color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.agent-store-error {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--red);
+}
+.agent-store-note {
+  margin: 0;
+  min-width: 0;
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  overflow-wrap: anywhere;
+}
+.agent-store-note code {
+  font-family: var(--mono);
+  font-size: 0.95em;
+  color: var(--text-muted);
+}
+.agent-store-busy { flex-wrap: nowrap; }
+.agent-store-meter {
+  position: relative;
+  flex: 0 0 4.5rem;
+  height: 0.2rem;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--bg-active);
+}
+.agent-store-meter > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  border-radius: inherit;
+  background: var(--text-muted);
+  transition: width 200ms ease;
+}
+.agent-store-meter[data-indeterminate] > span {
+  width: 35%;
+  animation: agent-store-sweep 1.2s ease-in-out infinite;
+}
+@keyframes agent-store-sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(290%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-store-meter[data-indeterminate] > span { animation: none; width: 100%; opacity: 0.45; }
+}
+
+/* Sign-in dialog. */
+.sign-in-dialog {
+  display: grid;
+  gap: 1rem;
+  width: min(36rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 4rem);
+  overflow: auto;
+}
+.sign-in-dialog .dialog-header { margin-bottom: 0; }
+.sign-in-methods {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sign-in-method {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+.sign-in-method-copy {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 0.1rem;
+}
+.sign-in-method-copy > b,
+.sign-in-method-copy > small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sign-in-method-copy > b { font-size: var(--text-ui); font-weight: var(--weight-medium); color: var(--text); }
+.sign-in-method-copy > small { font-size: var(--text-xs); color: var(--text-faint); }
+.sign-in-method :is(.chip, .send) { flex-shrink: 0; }
+.sign-in-command {
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.sign-in-command .sign-in-env { color: var(--text-muted); }
+.sign-in-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  font-size: var(--text-ui);
+  color: var(--text-muted);
+}
+.sign-in-status[data-tone="success"] { color: var(--text); }
+.sign-in-status[data-tone="success"] svg { color: var(--green); }
+.sign-in-status[data-tone="error"] { color: var(--red); }
+.sign-in-status svg.spinning { animation: agent-store-spin 0.9s linear infinite; }
+@keyframes agent-store-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .sign-in-status svg.spinning { animation: none; } }
+.sign-in-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+.sign-in-footer > .sign-in-footer-start { margin-right: auto; }
+.login-terminal {
+  height: 15rem;
+  padding: 0.5rem 0.25rem 0.5rem 0.6rem;
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+  overflow: hidden;
+}
+.login-terminal .xterm { height: 100%; }

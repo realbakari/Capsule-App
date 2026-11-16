@@ -345,6 +345,13 @@ const api = {
   listHarnesses: () => ipcRenderer.invoke(IPC_CHANNELS.listHarnesses),
   discoverHarness: (projectId: string, harnessId: string, model?: string, sessionId?: string): Promise<import("@capsule/shared").HarnessDiscovery> => ipcRenderer.invoke(IPC_CHANNELS.discoverHarness, projectId, harnessId, model, sessionId),
   doctorHarness: (harnessId: string) => ipcRenderer.invoke(IPC_CHANNELS.doctorHarness, harnessId),
+  agentStoreList: (refresh?: boolean): Promise<import("@capsule/shared").AgentStoreEntry[]> => ipcRenderer.invoke(IPC_CHANNELS.agentStoreList, refresh),
+  agentStoreInstall: (harnessId: string): Promise<import("@capsule/shared").AgentStoreEntry> => ipcRenderer.invoke(IPC_CHANNELS.agentStoreInstall, harnessId),
+  agentStoreUninstall: (harnessId: string): Promise<import("@capsule/shared").AgentStoreEntry> => ipcRenderer.invoke(IPC_CHANNELS.agentStoreUninstall, harnessId),
+  agentSignInOptions: (harnessId: string): Promise<import("@capsule/shared").AgentSignInOptions> => ipcRenderer.invoke(IPC_CHANNELS.agentSignInOptions, harnessId),
+  agentAuthenticate: (harnessId: string, methodId: string): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.agentAuthenticate, harnessId, methodId),
+  agentSignOut: (harnessId: string): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.agentSignOut, harnessId),
+  agentLoginTerminalStart: (harnessId: string, methodId: string, size?: { cols?: number; rows?: number }): Promise<import("@capsule/shared").AgentLoginTerminal> => ipcRenderer.invoke(IPC_CHANNELS.agentLoginTerminalStart, harnessId, methodId, size),
   dedicateHarness: (projectId: string, harnessId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.dedicateHarness, projectId, harnessId),
   undedicateHarness: (projectId: string) =>

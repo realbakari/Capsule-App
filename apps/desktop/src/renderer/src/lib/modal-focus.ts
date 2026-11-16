@@ -17,6 +17,8 @@ export function useModalFocus(ref: RefObject<HTMLElement | null>, open: boolean,
     const first = (initial && node?.querySelector<HTMLElement>(initial)) || node?.querySelector<HTMLElement>(FOCUSABLE);
     (first ?? node)?.focus();
     const onKey = (event: KeyboardEvent) => {
+      /* A terminal inside the modal needs Tab and Escape for the program it runs. */
+      if (event.target instanceof Element && event.target.closest("[data-keyboard-passthrough]")) return;
       if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close.current(); return; }
       if (event.key !== "Tab" || !ref.current) return;
       const controls = Array.from(ref.current.querySelectorAll<HTMLElement>(FOCUSABLE));

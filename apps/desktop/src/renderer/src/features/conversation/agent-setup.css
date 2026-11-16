@@ -60,3 +60,6 @@
   .agent-setup-actions { margin-left: 1rem; }
 }
 .composer.composer--resting .agent-setup { display: none; }
+/* An install in the notice shares the notice's own row and type size. */
+.agent-setup-actions .agent-store { flex-wrap: nowrap; }
+.agent-setup-actions .agent-store-caption { max-width: 9rem; color: var(--text-faint); }

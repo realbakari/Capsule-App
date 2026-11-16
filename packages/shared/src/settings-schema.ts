@@ -102,6 +102,7 @@ export const SETTINGS_SCHEMA: Record<FileSettingKey, SettingSpec> = {
   diffLayout: oneOf(["split", "unified"], "Diff layout.", "both"),
   diffFileState: oneOf(["expanded", "collapsed"], "Whether files in a diff start open.", "both"),
   diffIgnoreWhitespace: bool("Review starts with whitespace-only changes hidden.", "both"),
+  firstRunDone: bool("The first-run setup was finished or put off."),
   notifyLongCommands: bool("Notify when a command an agent ran without asking runs long."),
   longCommandSeconds: { scope: "user", apply: "live", description: "Seconds before a command counts as running long.", schema: { type: "number", enum: [...LONG_COMMAND_SECONDS] } },
   dockBadge: bool("Count conversations waiting on you on the Dock icon."),

@@ -1,5 +1,5 @@
 import { permissionSubject, readAgentCommands, readDelegationDetails, readPlanEntries, readReportedContextUsage, sanitizeUntrusted, type AgentCommand, type AcpModelCatalog, type DelegationDetails, type ApprovalToolDetails, type ReportedContextUsage, type RunTask } from "@capsule/shared";
-import { readAgentCapabilities, readToolActivityDetails, type ToolActivityDetails, type AcpConfigOption } from "@capsule/shared";
+import { readAgentCapabilities, readToolActivityDetails, safeAgentEnv, type ToolActivityDetails, type AcpConfigOption } from "@capsule/shared";
 
 export const LEGACY_MODE_CONFIG_ID = "capsule:session-mode";
 
@@ -365,4 +365,70 @@ export function readModelCatalog(value: unknown): AcpModelCatalog | undefined {
     ...(typeof record.currentModelId === "string" ? { currentModelId: record.currentModelId } : {}),
     availableModels,
   };
+}
+
+/** One way an agent says it can be signed in, from its `initialize` answer. */
+export type AcpAuthMethod =
+  /** The agent signs itself in when asked with `authenticate`. */
+  | { type: "agent"; id: string; name: string; description?: string }
+  /** The same program, run interactively with these args and env; never sent to `authenticate`. */
+  | { type: "terminal"; id: string; name: string; description?: string; args: string[]; env: Record<string, string> };
+
+export interface AcpAuthReport {
+  methods: AcpAuthMethod[];
+  /** The agent advertised `agentCapabilities.auth.logout`. */
+  logout: boolean;
+}
+
+const MAX_AUTH_METHODS = 16;
+const MAX_AUTH_ARGS = 32;
+const MAX_AUTH_ENV = 32;
+
+function plainString(value: unknown, limit: number): value is string {
+  return typeof value === "string" && value.length <= limit && !value.includes("\0");
+}
+
+function readAuthMethod(value: unknown): AcpAuthMethod | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const row = value as { id?: unknown; name?: unknown; description?: unknown; type?: unknown; args?: unknown; env?: unknown };
+  // The id goes back to the agent verbatim, so an oversized one is dropped, never cut.
+  if (!plainString(row.id, 256) || !row.id) return undefined;
+  const name = typeof row.name === "string" && row.name.trim()
+    ? sanitizeUntrusted(row.name, { maxChars: 120, singleLine: true })
+    : row.id;
+  const description = typeof row.description === "string" && row.description.trim()
+    ? sanitizeUntrusted(row.description, { maxChars: 400, singleLine: true })
+    : undefined;
+  const label = { id: row.id, name, ...(description ? { description } : {}) };
+  if (row.type === undefined || row.type === "agent") return { type: "agent", ...label };
+  if (row.type !== "terminal") return undefined;
+  const args = row.args ?? [];
+  if (!Array.isArray(args) || args.length > MAX_AUTH_ARGS || !args.every((arg) => plainString(arg, 1024))) return undefined;
+  const env = row.env ?? {};
+  if (!env || typeof env !== "object" || Array.isArray(env)) return undefined;
+  const entries = Object.entries(env as Record<string, unknown>);
+  if (entries.length > MAX_AUTH_ENV || !entries.every(([, item]) => plainString(item, 4096))) return undefined;
+  return { type: "terminal", ...label, args: [...(args as string[])], env: safeAgentEnv(Object.fromEntries(entries) as Record<string, string>) };
+}
+
+/**
+ * The sign-in methods and logout support an agent reported in `initialize`.
+ *
+ * Methods of a type Capsule does not run are left out rather than shown as
+ * something it cannot do. A terminal method's env loses the keys an agent may
+ * not set on its own (PATH, loader and proxy variables).
+ */
+export function readAuthReport(initialize: unknown): AcpAuthReport {
+  const record = initialize && typeof initialize === "object" ? initialize as { authMethods?: unknown; agentCapabilities?: unknown } : {};
+  const methods: AcpAuthMethod[] = [];
+  const seen = new Set<string>();
+  for (const value of Array.isArray(record.authMethods) ? record.authMethods.slice(0, MAX_AUTH_METHODS) : []) {
+    const method = readAuthMethod(value);
+    if (!method || seen.has(method.id)) continue;
+    seen.add(method.id);
+    methods.push(method);
+  }
+  const auth = (record.agentCapabilities as { auth?: unknown } | undefined)?.auth;
+  const logout = Boolean(auth && typeof auth === "object" && (auth as { logout?: unknown }).logout);
+  return { methods, logout };
 }

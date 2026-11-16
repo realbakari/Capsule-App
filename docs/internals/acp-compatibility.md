@@ -41,9 +41,12 @@ on agents by the protocol. See [retained output](harness.md#completion-and-retai
 
 ## Not carried, or only partially carried
 
-- **Protocol-driven authentication and registry installation.** Users install
-  and sign in through their CLI. Capsule does not implement `authenticate`,
-  `logout`, terminal authentication, or automatic registry installation.
+- **Registry installation is explicit and preset-bound.** The agent store
+  installs a registry entry (or a vendor npm package) only for presets whose
+  launch command it provides, only on a click, into Capsule's own folder. It
+  does not add new agents from the registry, run `uvx` entries, or update on its
+  own. `authenticate`, `logout` and terminal authentication are implemented on
+  the direct route; see [signing in](harness.md#installing-and-signing-in-agents).
 - **Additional direct session lifecycle.** Native resume/load is implemented;
   agent-side list and delete remain unavailable. Capsule's Close ends its owned process; it is not a
   protocol `session/close` request.
@@ -58,8 +61,10 @@ on agents by the protocol. See [retained output](harness.md#completion-and-retai
 - **Additional rich content and live plans.** Native images and embedded resources
   are sent when supported. Dedicated native audio prompts are not implemented.
   Tool activity retains title/status and selected bounded metadata, not every
-  rich result. Plans, dynamic command advertisements and session-info updates
-  do not yet drive dedicated UI. Message IDs separate streamed replies; they do
+  rich result. Plans are recorded as `plan` run events (their entries kept) and
+  shown in the turn's activity, not as a dedicated checklist; advertised
+  commands fill the composer's **Agent commands** menu. Session-info updates do
+  not drive UI yet. Message IDs separate streamed replies; they do
   not implement history replay, edits or protocol-ID-based deduplication.
 - **Browser automation.** The optional MCP tools cover status, navigation,
   bounded snapshots, reference-based click/type/select/key actions, scrolling,

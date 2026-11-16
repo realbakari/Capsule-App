@@ -24,7 +24,11 @@ and execution. New local Codex sessions
 use `@capsule/codex`, a thin native app-server client injected into the direct
 host. This intentionally extends the ACP-only transport contract without adding
 an agent loop. Existing Claude and Codex ACP sessions retain their adapter and identity;
-Gateway mappings remain unchanged. No packages are installed automatically.
+Gateway mappings remain unchanged. No packages are installed automatically:
+the agent store installs a preset's CLI only when the user presses Install,
+into a folder Capsule owns, and a copy the user installed themselves always
+takes precedence. This extends the former "the user installs every CLI"
+contract without changing how agents are launched.
 
 Model discovery is a prompt-free probe owned by the direct host, separate from
 workspace conversations. Native Codex and Claude can list models without opening a thread;

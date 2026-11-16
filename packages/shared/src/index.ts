@@ -9,6 +9,7 @@ export * from "./untrusted.js";
 export * from "./folders.js";
 export * from "./open-in.js";
 export * from "./harness.js";
+export * from "./agent-setup.js";
 export * from "./preview.js";
 export * from "./version.js";
 export * from "./ids.js";

@@ -96,3 +96,33 @@ export function explainDirectFailure(message: string, name: string): string {
   // advice alone is the clearer of the two.
   return text.toLowerCase() === advice.toLowerCase() ? advice : `${text} — ${advice}`;
 }
+
+/** The JSON-RPC error code ACP agents answer with when they need the user signed in. */
+export const ACP_AUTH_REQUIRED = -32000;
+
+/** An agent answered a request with a JSON-RPC error; the code survives for callers that act on it. */
+export class AcpRpcError extends Error {
+  constructor(message: string, readonly code: number) {
+    super(message);
+    this.name = "AcpRpcError";
+  }
+}
+
+/*
+ * The agent will not open a session until someone signs in. Typed so the
+ * workspace can remember it and offer Sign in, instead of every later turn
+ * failing on the same sentence.
+ */
+export class AgentAuthRequiredError extends Error {
+  constructor(agent: string, options?: { cause?: unknown }) {
+    super(`${agent} is not signed in. Sign in to it from Capsule's agent setup, or with its own login command in a terminal, then try again.`, options);
+    this.name = "AgentAuthRequiredError";
+  }
+}
+
+/** `error` as the auth-required error when it is the agent's -32000, otherwise unchanged. */
+export function authRequiredOr(error: unknown, agent: string): unknown {
+  return error instanceof AcpRpcError && error.code === ACP_AUTH_REQUIRED
+    ? new AgentAuthRequiredError(agent, { cause: error.message })
+    : error;
+}

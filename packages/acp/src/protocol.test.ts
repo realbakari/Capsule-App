@@ -4,6 +4,7 @@ import {
   chooseOption,
   encodeMessage,
   parseMessage,
+  readAuthReport,
   readPermissionRequest,
   readSessionUpdate,
   readStopReason,
@@ -319,4 +320,47 @@ describe("turnOutcome", () => {
 it("retains bounded tool details on initial and completion-only reports", () => {
   expect(readSessionUpdate({ update: { sessionUpdate: "tool_call", toolCallId: "details", title: "Run command", rawInput: { command: "git status" } } })?.tool?.details).toEqual({ input: "git status" });
   expect(readSessionUpdate({ update: { sessionUpdate: "tool_call_update", toolCallId: "details", status: "completed", content: [{ type: "content", content: { type: "text", text: "clean" } }] } })?.tool?.details).toEqual({ output: "clean" });
+});
+
+describe("readAuthReport", () => {
+  it("reads agent and terminal sign-in methods and the logout capability", () => {
+    const report = readAuthReport({
+      protocolVersion: 1,
+      agentCapabilities: { auth: { logout: {} } },
+      authMethods: [
+        { id: "oauth", name: "Sign in with a browser", description: "Opens\nyour browser" },
+        { id: "api-key", name: "Use a key", type: "agent" },
+        { id: "tui", name: "Sign in in a terminal", type: "terminal", args: ["--login"], env: { AGENT_LOGIN: "1", PATH: "/evil", DYLD_INSERT_LIBRARIES: "x", NODE_OPTIONS: "--require x" } },
+      ],
+    });
+    expect(report).toEqual({
+      logout: true,
+      methods: [
+        { type: "agent", id: "oauth", name: "Sign in with a browser", description: "Opens your browser" },
+        { type: "agent", id: "api-key", name: "Use a key" },
+        { type: "terminal", id: "tui", name: "Sign in in a terminal", args: ["--login"], env: { AGENT_LOGIN: "1" } },
+      ],
+    });
+  });
+
+  it("says no logout and no methods when the agent reports none", () => {
+    expect(readAuthReport({ protocolVersion: 1, agentCapabilities: {} })).toEqual({ methods: [], logout: false });
+    expect(readAuthReport(undefined)).toEqual({ methods: [], logout: false });
+  });
+
+  it("drops methods it cannot run exactly as advertised", () => {
+    const { methods } = readAuthReport({ authMethods: [
+      { id: "x".repeat(257), name: "Too long an id" },
+      { id: "env", name: "Unknown type", type: "env_var" },
+      { id: "bad-args", type: "terminal", args: "--login" },
+      { id: "nul", type: "terminal", args: ["a\0b"] },
+      { id: "dup", name: "First" },
+      { id: "dup", name: "Second" },
+      { id: "plain" },
+    ] });
+    expect(methods).toEqual([
+      { type: "agent", id: "dup", name: "First" },
+      { type: "agent", id: "plain", name: "plain" },
+    ]);
+  });
 });

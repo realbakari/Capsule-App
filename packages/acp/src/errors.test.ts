@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { explainDirectFailure, readCliError } from "./errors.js";
+import { AcpRpcError, AgentAuthRequiredError, authRequiredOr, explainDirectFailure, readCliError } from "./errors.js";
 
 describe("reading what a CLI said as it died", () => {
   it("takes the error, not the last thing printed", () => {
@@ -60,5 +60,20 @@ describe("saying what to do about it", () => {
 
   it("still says something when the CLI said nothing at all", () => {
     expect(explainDirectFailure("", "Grok Build")).toMatch(/Grok Build/);
+  });
+});
+
+describe("an agent that needs signing in", () => {
+  it("turns the agent's -32000 into a sign-in error that names the agent", () => {
+    const error = authRequiredOr(new AcpRpcError("Authentication required", -32000), "Gemini CLI");
+    expect(error).toBeInstanceOf(AgentAuthRequiredError);
+    expect((error as Error).message).toMatch(/^Gemini CLI is not signed in\. Sign in/);
+  });
+
+  it("leaves every other failure as it was", () => {
+    const other = new AcpRpcError("Internal error", -32603);
+    expect(authRequiredOr(other, "Gemini CLI")).toBe(other);
+    const plain = new Error("Authentication required");
+    expect(authRequiredOr(plain, "Gemini CLI")).toBe(plain);
   });
 });

@@ -36,8 +36,12 @@ shows this conversation's details: where it runs, how full its context is,
 what changed, and what is running. **More** (⋯) holds **Agents**, **Side
 chat**, and **Keep computer awake**.
 
-1. Install and sign in to a supported coding CLI using that tool's own setup.
-   Capsule does not supply a subscription or install the CLI.
+1. Pick an agent. On a new installation, Capsule opens a short setup: choose
+   the agents you use, install any that are missing, sign in, pick a folder
+   and choose how much you want to be notified. **Set up later** skips it;
+   **Set up Capsule** in the command palette opens it again. Capsule installs
+   an agent only when you press **Install**, and it does not supply a
+   subscription. See [Installing and signing in](providers.md#installing-and-signing-in).
 2. Add a project folder with the sidebar's folder-plus control. Start with a
    disposable repository when trying a new agent or permission mode.
 3. Choose the agent in the composer. Open **Agents** and **Check this agent**
@@ -51,13 +55,16 @@ chat**, and **Keep computer awake**.
    description before sending a small, specific task.
 5. Watch the reply and work log. If a direct agent asks for approval, inspect
    the request and approve once or deny. **Stop** asks the active agent to stop;
-   an unconfirmed stop is reported, not shown as completed work.
+   an unconfirmed stop is reported, not shown as completed work, with
+   **Close agent** to end the agent's process.
 6. Review the changed-files card and the Review panel. Save a test/build command
    through **Add project action** in Conversation details (the list icon in the titlebar), then select it in the turn's Verification section to
    record a local check. A reply or green tool indicator alone is not proof.
 
-A failed send keeps your draft. Sending and starting another conversation only
-advances after the send is accepted. Review the diff and relevant checks before
+A failed send keeps your draft. The first message in a new conversation opens
+it at once; if the send fails, the draft returns to that conversation's
+composer. Sending and starting another conversation only advances after the
+send is accepted. Review the diff and relevant checks before
 committing or pushing.
 
 New conversations take a short, readable title from the first prompt's first

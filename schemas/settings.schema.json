@@ -396,6 +396,10 @@
       "type": "boolean",
       "description": "Review starts with whitespace-only changes hidden."
     },
+    "firstRunDone": {
+      "type": "boolean",
+      "description": "The first-run setup was finished or put off. User settings only."
+    },
     "notifyLongCommands": {
       "type": "boolean",
       "description": "Notify when a command an agent ran without asking runs long. User settings only."

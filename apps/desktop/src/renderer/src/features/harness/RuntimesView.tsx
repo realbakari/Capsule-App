@@ -2,6 +2,9 @@ import { harnessReadinessLabel, isFeaturedHarness } from "../../lib/harness";
 import { harnessCapabilities } from "@capsule/shared";
 import { CapabilityDetails } from "./CapabilityDetails";
 import { HarnessCatalogRow } from "./HarnessCatalogRow";
+import { AgentStoreControls, useCanInstall } from "./AgentStoreControls";
+import { useAgentStore } from "./agent-store";
+import { SignInDialog } from "./SignInDialog";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   APPROVAL_PRESETS,
@@ -69,20 +72,24 @@ export function RuntimesView() {
   const [showAll, setShowAll] = useState(false);
   const [selectedHarnessId, setSelectedHarnessId] = useState<string>();
   const [configuredSessionId, setConfiguredSessionId] = useState<string>();
+  const [signInId, setSignInId] = useState<string>();
   const requestedStatuses = useRef(new Set<string>());
   const harnesses = harnessList ?? [];
+  const store = useAgentStore();
 
   /*
    * One list, not a featured card deck and a second list behind a link. The
    * order does the sorting the two lists used to: what you can use now, then
-   * what you would have to install.
+   * what you would have to install. Featured agents stay listed even when they
+   * are not installed, so a new computer opens on agents it can install.
    */
   const [available, uninstalled] = useMemo(() => {
     const sorted = [...harnesses].sort((a, b) => {
       if (isFeaturedHarness(a) !== isFeaturedHarness(b)) return isFeaturedHarness(a) ? -1 : 1;
       return a.name.localeCompare(b.name);
     });
-    return [sorted.filter(isInstalled), sorted.filter((item) => !isInstalled(item))];
+    const shown = (item: HarnessStatus) => isInstalled(item) || isFeaturedHarness(item);
+    return [sorted.filter(shown), sorted.filter((item) => !shown(item))];
   }, [harnesses]);
   const listed = showAll ? [...available, ...uninstalled] : available;
   const selectedHarness =
@@ -152,13 +159,14 @@ export function RuntimesView() {
               <span>Available</span>
               <small>{available.length}</small>
             </div>
-            {listed.map((harness) => (
-              <HarnessCatalogRow key={harness.id} id={harness.id} name={harness.name}
-                detail={isInstalled(harness) ? harnessReadinessLabel(harness.readiness) : "Not installed"}
+            {listed.map((harness) => {
+              const storeRow = store.row(harness.id);
+              return <HarnessCatalogRow key={harness.id} id={harness.id} name={harness.name}
+                detail={storeRow.kind === "busy" ? `${storeRow.label}…` : isInstalled(harness) ? harnessReadinessLabel(harness.readiness) : "Not installed"}
                 selected={selectedHarness?.id === harness.id}
                 sessionOpen={harnessSessions.some((item) => item.harnessId === harness.id)}
-                onSelect={() => setSelectedHarnessId(harness.id)} />
-            ))}
+                onSelect={() => setSelectedHarnessId(harness.id)} />;
+            })}
             {uninstalled.length > 0 && (
               <button className="harness-show-all" type="button" onClick={() => setShowAll((value) => !value)}>
                 {showAll ? "Show installed only" : `Show ${uninstalled.length} more`}
@@ -183,6 +191,7 @@ export function RuntimesView() {
                 value ? void dedicateHarness(selectedHarness.id) : void undedicateHarness()
               }
               onConnect={() => void api.connectGateway()}
+              onSignIn={api.isDesktop === false ? undefined : () => setSignInId(selectedHarness.id)}
               onSpawn={() => void spawnHarness(selectedHarness.id, undefined, { mode: spawnMode })}
               onOpen={(id) => {
                 setSessionId(id);
@@ -202,6 +211,10 @@ export function RuntimesView() {
             <div className="harness-detail harness-empty">No agents were reported by the Gateway.</div>
           )}
         </div>
+
+        {signInId && harnesses.some((item) => item.id === signInId) ? (
+          <SignInDialog harness={harnesses.find((item) => item.id === signInId)!} onClose={() => setSignInId(undefined)} />
+        ) : null}
 
         <details className="card">
           <summary>How Capsule starts an agent</summary>
@@ -232,6 +245,7 @@ function HarnessDetail({
   onDoctor,
   onDedicatedChange,
   onConnect,
+  onSignIn,
   onSpawn,
   onOpen,
   onStatus,
@@ -250,6 +264,8 @@ function HarnessDetail({
   onDoctor: () => void;
   onDedicatedChange: (value: boolean) => void;
   onConnect: () => void;
+  /** Absent on a paired device: signing in runs programs on the host. */
+  onSignIn?: () => void;
   onSpawn: () => void;
   onOpen: (id: string) => void;
   onStatus: (id: string) => void;
@@ -258,6 +274,8 @@ function HarnessDetail({
   onOption: (key: "permissions" | "model" | "timeout" | "mode", value: string) => void;
 }) {
   const installed = isInstalled(harness);
+  const installable = useCanInstall(harness.id);
+  const signedOut = harness.readiness === "needs_login" && harness.loginState !== "config_invalid";
   const activeSession = live.find((item) => item.id === activeSessionId);
   const capabilities = harnessCapabilities({ harness, session: activeSession, status });
   const advertisedModels = status?.parsed?.models?.availableModels ?? [];
@@ -285,6 +303,7 @@ function HarnessDetail({
           {harnessReadinessLabel(harness.readiness)}
         </span>
       </div>
+      <AgentStoreControls harnessId={harness.id} name={harness.name} />
 
       {/* The old control was one button whose label flipped to "Dedicated",
           so it never said whether that was the state or what a click would do. */}
@@ -326,6 +345,11 @@ function HarnessDetail({
             Connect Gateway
           </button>
         )}
+        {installed && onSignIn ? (
+          <button className={signedOut ? "send" : "chip"} onClick={onSignIn}>
+            {signedOut ? "Sign in" : "Manage sign-in"}
+          </button>
+        ) : null}
         {installed ? (
           <button
             className="send"
@@ -336,7 +360,7 @@ function HarnessDetail({
           >
             Start a session
           </button>
-        ) : (
+        ) : installable ? null : (
           <a className="chip" href={harness.installUrl} target="_blank" rel="noreferrer">
             How to install
           </a>

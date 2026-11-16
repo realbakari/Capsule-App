@@ -1,0 +1,270 @@
+/*
+ * First run: one centred card over a dimmed window, three short steps. Dialogs
+ * a step opens (sign-in, clone) sit above it on the palette layer.
+ */
+.first-run-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-dialog);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+.first-run {
+  display: flex;
+  flex-direction: column;
+  width: min(34rem, 100%);
+  max-height: calc(100vh - 2rem);
+  padding: 1.5rem 1.5rem 1.1rem;
+  overflow: auto;
+  outline: none;
+  background: var(--bg-elevated);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--dialog-radius);
+  box-shadow: var(--shadow);
+}
+.first-run-progress {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.3rem;
+  margin-bottom: 1.25rem;
+}
+.first-run-progress > span {
+  height: 0.2rem;
+  border-radius: var(--radius-full);
+  background: var(--bg-active);
+  transition: background 200ms ease;
+}
+.first-run-progress > span:is([data-state="done"], [data-state="current"]) { background: var(--text-muted); }
+.first-run-eyebrow {
+  margin: 0 0 0.3rem;
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+.first-run h2 {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  letter-spacing: -0.02em;
+}
+.first-run-detail {
+  margin: 0.35rem 0 0;
+  font-size: var(--text-ui);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.first-run-body {
+  display: grid;
+  gap: 0.6rem;
+  margin: 1.25rem 0 1.25rem;
+  min-width: 0;
+}
+.first-run-body > .card { margin-bottom: 0; }
+.first-run-agents {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.first-run-agent,
+.first-run-folder {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 3.25rem;
+  padding: 0.6rem 0.75rem;
+}
+.first-run-agent + .first-run-agent { border-top: 1px solid var(--border-color); }
+/* An agent with no mark falls back to initials; give them the icons' 22px box so every name starts on one line. */
+.first-run-agent > .agent-glyph { width: 1.375rem; height: 1.375rem; margin-top: 0; }
+.first-run-folder {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  color: var(--text-muted);
+}
+.first-run-agent-copy {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 0.1rem;
+}
+.first-run-agent-copy > :is(b, small) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.first-run-agent-copy > b { font-size: var(--text-ui); font-weight: var(--weight-medium); color: var(--text); }
+.first-run-agent-copy > small { font-size: var(--text-xs); color: var(--text-faint); }
+.first-run-agent-action {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.45rem;
+  flex-shrink: 0;
+  max-width: 55%;
+  min-width: 0;
+}
+.first-run-agent-action :is(.chip, .ghost, .send) {
+  height: 1.75rem;
+  padding: 0 0.65rem;
+  font-size: var(--text-xs);
+}
+.first-run-agent-action .agent-store { flex-wrap: nowrap; justify-content: flex-end; }
+.first-run-agent-action .agent-store-caption { color: var(--text-faint); }
+.first-run-agent-note {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+.first-run-ready {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.first-run-ready svg { color: var(--green); }
+.first-run-recheck {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  height: 1.75rem;
+  padding: 0 0.5rem;
+  border-color: transparent;
+  font-size: var(--text-xs);
+}
+.first-run-recheck svg.spinning { animation: first-run-spin 0.9s linear infinite; }
+@keyframes first-run-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .first-run-recheck svg.spinning { animation: none; }
+  .first-run-progress > span { transition: none; }
+}
+.first-run-choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 0.6rem;
+}
+.first-run-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  padding: 0.85rem 0.9rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--text) 3%, transparent);
+  color: var(--text-muted);
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.first-run-choice:hover {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  border-color: var(--border-strong);
+}
+.first-run-choice > span { display: grid; gap: 0.15rem; min-width: 0; }
+.first-run-choice b { font-size: var(--text-ui); font-weight: var(--weight-medium); color: var(--text); }
+.first-run-choice small { font-size: var(--text-xs); color: var(--text-faint); }
+.first-run-hint {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+.first-run-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-color);
+}
+.first-run-footer > .first-run-later { margin-right: auto; border-color: transparent; color: var(--text-muted); }
+
+/* The sidebar's setup checklist: a compact card where the empty state was. */
+.setup-checklist {
+  margin: 0.5rem var(--sidebar-content-inset, 0.75rem) 0.75rem;
+  padding: 0.55rem 0.4rem 0.45rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--text) 3%, transparent);
+}
+.setup-checklist-head {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0 0.1rem 0 0.35rem;
+}
+.setup-checklist-title {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font-size: var(--text-ui);
+  font-weight: var(--weight-medium);
+  text-align: left;
+  cursor: pointer;
+}
+.setup-checklist-title > span { color: var(--text-faint); font-weight: var(--weight-regular); font-variant-numeric: tabular-nums; }
+.setup-checklist-dismiss {
+  display: inline-grid;
+  place-items: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+.setup-checklist-dismiss:hover { background: var(--bg-active); color: var(--text); }
+.setup-checklist ul {
+  display: grid;
+  margin: 0.3rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.setup-checklist li > button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.25rem 0.35rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  text-align: left;
+  cursor: pointer;
+}
+.setup-checklist li > button:hover { background: var(--bg-active); color: var(--text); }
+.setup-checklist li > button[data-done] { color: var(--text-faint); }
+.setup-checklist-mark {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 0.8rem;
+  height: 0.8rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-full);
+}
+[data-done] > .setup-checklist-mark {
+  border-color: transparent;
+  background: var(--text-muted);
+  color: var(--bg);
+}

@@ -28,6 +28,7 @@ import { useImportSessions } from "../import/ImportSessions";
 import { detectInstructionFiles } from "../project/ProjectInstructions";
 import { commandDetail } from "../../lib/commands";
 import { customizationCommands } from "../customization/customization-commands";
+import { requestFirstRun } from "../onboarding/setup-progress";
 import "./palette.css";
 
 /*
@@ -308,6 +309,7 @@ function PaletteDialog() {
       { id: "new-in", label: "New conversation in…", group: "Actions", icon: icon(MessageSquarePlusIcon), keywords: "project", keepOpen: true,
         disabledReason: desktopOnly ?? (projects.length ? undefined : "Add a project first."), run: () => openPage("new-in") },
       { id: "new-project", label: "New project from folder", group: "Actions", icon: icon(FolderIcon), disabledReason: desktopOnly, run: createProjectFromFolder },
+      { id: "set-up-capsule", label: "Set up Capsule", detail: "Install an agent, sign in, choose a folder and notifications", group: "Actions", icon: icon(SparkIcon), keywords: "onboarding first run welcome install sign in", disabledReason: desktopOnly, run: () => requestFirstRun() },
       { id: "open-folder", label: "Open folder", group: "Actions", icon: icon(FolderIcon), command: "open-folder", disabledReason: desktopOnly, run: () => pickProjectDirectory() },
       { id: "open-files", label: "Open files", group: "Actions", icon: icon(FolderIcon), command: "open-files", disabledReason: desktopOnly, run: pickFilesToMention },
       { id: "go-to-file", label: "Go to file…", group: "Go to", icon: icon(FileIcon), command: "search-files", keywords: "open search find",

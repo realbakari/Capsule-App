@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { homedir } from "node:os";
 import path from "node:path";
 
 import {
@@ -11,6 +12,7 @@ import {
   type AgentPromptBlock,
   type ProviderSubscriptionUsage,
   type HarnessDiscovery,
+  type AgentSignInMethod,
 } from "@capsule/shared";
 
 import { explainDirectFailure, readCliError } from "./errors.js";
@@ -133,7 +135,7 @@ export class DirectAcpHost {
     const command = native ?? preset?.directCommand ?? preset?.acpxCommand;
     if (!command) throw new Error("This harness does not support local model discovery.");
     if (native && !this.nativeSession) throw new Error("The native session transport is unavailable.");
-    const options = { command: this.executable(command.command), args: [...(command.args ?? [])], cwd, timeoutMs: 15_000 };
+    const options = { command: this.executable(command.command), ...(preset ? { name: preset.name } : {}), args: [...(command.args ?? [])], cwd, timeoutMs: 15_000 };
     const session: DirectAgentSession = native && this.nativeSession
       ? this.nativeSession({ ...options, protocol: native.protocol, model })
       : new DirectAcpSession(options);
@@ -149,6 +151,58 @@ export class DirectAcpHost {
         }
       }
       return structuredClone({ models: session.models, reported: session.reportedCapabilities });
+    } finally { await session.close(); this.discoveries.delete(session); }
+  }
+
+  /*
+   * Signing in. Each call is its own short-lived process in the home folder:
+   * initialize, the one request, close. No conversation is opened. Native
+   * presets sign in through their own CLI, so they get no ACP handshake.
+   */
+  async signInOptions(harnessId: HarnessId): Promise<{ methods: AgentSignInMethod[]; canSignOut: boolean }> {
+    const launch = this.signInLaunch(harnessId);
+    if (!launch) return { methods: [], canSignOut: false };
+    const auth = await this.withSignInSession(launch, (session) => session.reportedAuth!);
+    // ACP: terminal auth relaunches the same program, which a Windows script shim cannot do safely.
+    const script = /\.(cmd|bat)$/i.test(launch.command);
+    const methods = auth.methods.flatMap((method): AgentSignInMethod[] => {
+      const label = { id: method.id, name: method.name, ...(method.description ? { description: method.description } : {}) };
+      if (method.type === "agent") return [{ kind: "agent", ...label }];
+      if (script) return [];
+      return [{ kind: "terminal", ...label, argv: [launch.command, ...launch.args, ...method.args], ...(Object.keys(method.env).length ? { env: method.env } : {}) }];
+    });
+    return { methods, canSignOut: auth.logout };
+  }
+
+  async authenticate(harnessId: HarnessId, methodId: string): Promise<void> {
+    await this.withSignInSession(this.requireSignInLaunch(harnessId), (session) => session.authenticate(methodId));
+  }
+
+  async logout(harnessId: HarnessId): Promise<void> {
+    await this.withSignInSession(this.requireSignInLaunch(harnessId), (session) => session.logout());
+  }
+
+  private signInLaunch(harnessId: HarnessId): { command: string; args: string[]; name: string } | undefined {
+    const preset = PRESET_HARNESSES.find((item) => item.id === harnessId);
+    const command = preset && !preset.nativeCommand ? preset.directCommand ?? preset.acpxCommand : undefined;
+    return command && preset ? { command: this.executable(command.command), args: [...(command.args ?? [])], name: preset.name } : undefined;
+  }
+
+  private requireSignInLaunch(harnessId: HarnessId) {
+    const launch = this.signInLaunch(harnessId);
+    if (!launch) throw new Error(`${PRESET_HARNESSES.find((item) => item.id === harnessId)?.name ?? harnessId} signs in with its own login command, not through Capsule.`);
+    return launch;
+  }
+
+  private async withSignInSession<T>(launch: { command: string; args: string[]; name: string }, use: (session: DirectAcpSession) => T | Promise<T>): Promise<T> {
+    if (this.closing) throw new Error("The agent host is shutting down.");
+    if (this.discoveries.size >= 4) throw new Error("Another agent check is running. Try again shortly.");
+    const session = new DirectAcpSession({ ...launch, cwd: homedir(), timeoutMs: 15_000 });
+    // Tracked with discoveries so quitting Capsule stops a sign-in still waiting on a browser.
+    this.discoveries.add(session);
+    try {
+      await session.handshake();
+      return await use(session);
     } finally { await session.close(); this.discoveries.delete(session); }
   }
 
@@ -233,6 +287,7 @@ export class DirectAcpHost {
     const offer = typeof this.mcpServers === "function" ? this.mcpServers(input) : { servers: this.mcpServers, dispose: () => {} };
     const options = {
       command: this.executable(command.command),
+      ...(preset ? { name: preset.name } : {}),
       args,
       cwd,
       ...(offer.servers.length > 0 ? { mcpServers: offer.servers } : {}),

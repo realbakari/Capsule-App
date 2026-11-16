@@ -35,4 +35,20 @@ describe("platform shells", () => {
       });
     } finally { session?.kill(); rmSync(dir, { recursive: true, force: true }); }
   });
+  it.skipIf(process.platform === "win32")("runs argv directly, with no shell between, and adds the given env", { timeout: 10_000 }, async () => {
+    const run = (argv: string[], env?: Record<string, string>) => new Promise<{ code: number; output: string }>((resolve, reject) => {
+      let output = "";
+      const timer = setTimeout(() => reject(new Error(`PTY did not finish: ${output}`)), 7000);
+      startPty({ cwd: tmpdir(), argv, env }, {
+        onData: (text) => { output += text; },
+        onExit: (code) => { clearTimeout(timer); resolve({ code, output }); },
+      });
+    });
+    const literal = await run(["/bin/echo", "$HOME;", "`id`"]);
+    expect(literal).toMatchObject({ code: 0 });
+    expect(literal.output).toContain("$HOME; `id`");
+    const env = await run(["/usr/bin/printenv", "CAPSULE_PTY_PROBE"], { CAPSULE_PTY_PROBE: "signed-in" });
+    expect(env.output).toContain("signed-in");
+    expect((await run(["/usr/bin/false"])).code).not.toBe(0);
+  });
 });

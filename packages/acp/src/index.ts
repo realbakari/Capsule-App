@@ -3,11 +3,14 @@ export {
   chooseOption,
   encodeMessage,
   parseMessage,
+  readAuthReport,
   readPermissionRequest,
   readSessionUpdate,
   readStopReason,
   splitLines,
   turnOutcome,
+  type AcpAuthMethod,
+  type AcpAuthReport,
   type JsonRpcMessage,
   type PermissionOption,
   type PermissionRequest,
@@ -15,7 +18,7 @@ export {
   type TurnOutcome,
 } from "./protocol.js";
 export { DirectAcpSession, type DirectAcpOptions, type DirectAcpEvents, type AcpMcpServer, type AcpHttpMcpServer, type AcpStdioMcpServer, sessionMcpServers } from "./session.js";
-export { readCliError, explainDirectFailure } from "./errors.js";
+export { readCliError, explainDirectFailure, AcpRpcError, AgentAuthRequiredError, ACP_AUTH_REQUIRED, authRequiredOr } from "./errors.js";
 export {
   DirectAcpHost,
   directCapableHarnesses,

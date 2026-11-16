@@ -155,6 +155,7 @@ export const DEFAULT_CAPSULE_SETTINGS: CapsuleSettings = {
   modeModels: {},
   favoriteModels: [],
   diffIgnoreWhitespace: false,
+  firstRunDone: false,
 };
 
 /**
@@ -189,6 +190,7 @@ export const SETTINGS_SECTION_KEYS: Record<string, ReadonlyArray<keyof CapsuleSe
     "autoResumeOnLimit",
     "continueAfterRestart",
     "archiveInactiveAfter",
+    "firstRunDone",
   ],
   appearance: [
     "timeFormat",
@@ -362,6 +364,8 @@ export interface CapsuleSettings {
   agentTaskAutoStart?: string[];
   /** Review starts with whitespace-only changes hidden; each thread can override it. */
   diffIgnoreWhitespace: boolean;
+  /** The first-run setup was finished or put off; existing profiles with projects never see it either way. */
+  firstRunDone: boolean;
 }
 
 export const AGENT_MODES: AgentMode[] = [
@@ -637,5 +641,6 @@ export function normalizeCapsuleSettings(input: Partial<CapsuleSettings> = {}): 
       agentTaskAutoStart: [...new Set(input.agentTaskAutoStart.filter((id): id is string => typeof id === "string" && id.length > 0 && id.length <= 256))].slice(0, 500),
     } : {}),
     diffIgnoreWhitespace: flag(input.diffIgnoreWhitespace, DEFAULT_CAPSULE_SETTINGS.diffIgnoreWhitespace),
+    firstRunDone: flag(input.firstRunDone, DEFAULT_CAPSULE_SETTINGS.firstRunDone),
   };
 }
