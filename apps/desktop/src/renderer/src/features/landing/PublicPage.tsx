@@ -63,18 +63,18 @@ function About() {
 function Updates() {
   return <div className="site-changelog">
     <article className="site-release">
-      <aside><span className="site-release-version">{RELEASE}</span><time dateTime={RELEASE_DATE}>November 14, 2026</time></aside>
+      <aside><span className="site-release-version">{RELEASE}</span><time dateTime={RELEASE_DATE}>November 17, 2026</time></aside>
       <div>
-        <h2>Settings files, commands and hooks for every agent, a task board, and multi-agent runs</h2>
+        <h2>Pair your phone, set up agents inside Capsule, and review pull requests from the sidebar</h2>
         <ul>
-          <li>Preferences live in settings files, per user and per project, with live reload and a published schema.</li>
-          <li>Custom commands, hooks, permission rules, agent profiles and key bindings, written once for every agent.</li>
-          <li>Theme files with conversation backdrops, a status line, tool servers, automations and plugins.</li>
-          <li>A task board, hunk-by-hunk review, and one prompt run on several agents to keep the best result.</li>
-          <li>Plan mode, fork and restore, applying a worktree to your checkout, and exporting or sharing a thread.</li>
-          <li>Unread markers, settle and snooze, notifications that open their thread, and recovery after a restart.</li>
+          <li>Pair a phone or tablet by scanning a QR code. The connection is encrypted, and you choose whether a device can only read or can also control conversations.</li>
+          <li>Install a coding agent, sign in and finish its setup without leaving Capsule.</li>
+          <li>Each project lists its open pull requests. Open one in Review, then hand its failing checks or review comments back to the agent.</li>
+          <li>A finished turn keeps its plan as a checklist under the prompt.</li>
+          <li>Stuck turns and approvals settle on their own, errors say what happened and what to do, and a follow-up is sent once.</li>
+          <li>The agent can ask for browser control where it was refused, notifications are one setting, and menus open from the button you pressed.</li>
         </ul>
-        <p className="site-fine">Existing projects, threads and settings carry over, and preferences move into settings files automatically. The macOS app is signed and notarized; the Windows build is an unsigned preview.</p>
+        <p className="site-fine">Existing projects, threads and settings carry over. The macOS app is signed and notarized; the Windows build is an unsigned preview.</p>
         <div className="site-release-links"><a className="site-text-link" href={RELEASE_URL}>Full release notes and checksums<Arrow external /></a><a className="site-text-link" href={`${DOCS}/updating.md`}>Updating Capsule<Arrow external /></a></div>
       </div>
     </article>
