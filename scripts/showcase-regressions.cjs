@@ -58,7 +58,27 @@ app.whenReady().then(async () => {
     assert.match(downloads[1], /\/releases\/download\/v0\.13\.0\/Capsule-0\.13\.0-x64-setup\.exe$/);
     await evaluate("document.querySelector('.site-preview').scrollIntoView()");
     // A lazy iframe can have a document without a body while navigation starts.
-    await waitFor("document.querySelector('.site-preview')?.contentDocument?.body?.textContent?.includes('Two columns were reserved')");
+    await waitFor("Boolean(document.querySelector('.site-preview')?.contentWindow?.capsule?.listProjects)");
+    // The sample opens on its first project's first thread, reply and all.
+    const sample = await evaluate(`(async () => {
+      const bridge = document.querySelector('.site-preview').contentWindow.capsule;
+      const projects = await bridge.listProjects();
+      const [thread] = await bridge.listSessions(projects[0].id);
+      const reply = (await bridge.listMessages(thread.id)).find((message) => message.role === 'assistant');
+      const git = await bridge.gitStatus(projects[0].id, thread.id);
+      const patches = await Promise.all(git.files.map((file) => bridge.gitScopedDiff(projects[0].id, 'uncommitted', file.path, thread.id)));
+      return {
+        projects: projects.map((project) => ({ name: project.name, directory: project.workingDirectory })),
+        replyStart: reply.content.split('\`')[0].slice(0, 60),
+        changed: git.files.length,
+        filesWithoutPatch: git.files.filter((file, index) => !patches[index].patch.includes('+++ b/' + file.path)).map((file) => file.path),
+      };
+    })()`);
+    assert.equal(sample.projects.every((project) => project.directory.startsWith("/Users/you/code/") && project.name !== "capsule"), true, `Sample projects are not all made up: ${JSON.stringify(sample.projects)}`);
+    assert.ok(sample.changed > 0, "The opened sample thread has no changes to review");
+    assert.deepEqual(sample.filesWithoutPatch, [], "A changed file in the sample has no diff of its own");
+    await waitFor(`document.querySelector('.site-preview')?.contentDocument?.body?.textContent?.includes(${JSON.stringify(sample.replyStart)})`);
+    assert.ok(await evaluate("new Set([...document.querySelector('.site-preview').contentDocument.querySelectorAll('.thread-agent')].map((node) => node.title)).size") >= 2, "The sample sidebar shows only one agent");
     await capture("public-desktop-preview");
     await evaluate("document.querySelector('.site').scrollTo({top:0,behavior:'instant'})");
     await capture("public-desktop");
