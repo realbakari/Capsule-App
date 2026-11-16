@@ -5,8 +5,8 @@ body:
   - type: markdown
     attributes:
       value: |
-        Capsule drives coding CLIs that are already installed on your Mac, so
-        the answer is often in which harness, which route, and which version.
+        Capsule drives coding agents installed on your computer, so the answer
+        is often in which agent, which route, and which version.
         Settings → Diagnostics has all three in one place.
   - type: textarea
     id: what-happened
