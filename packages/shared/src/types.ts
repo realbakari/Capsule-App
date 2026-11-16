@@ -885,6 +885,8 @@ export interface ApprovalRequest {
   details?: import("./agent-reports.js").ApprovalToolDetails;
   id: string;
   runId: string;
+  /** The thread the run belongs to, filled in when approvals are listed, so a view can open it. */
+  sessionId?: string;
   agentId: string;
   agentName: string;
   action: string;

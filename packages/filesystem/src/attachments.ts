@@ -24,7 +24,7 @@ export function validateMessageAttachments(
   input: ReadonlyArray<Pick<MessageAttachment, "name" | "path">>,
 ): MessageAttachment[] {
   if (input.length > MAX_MESSAGE_ATTACHMENTS) {
-    throw new Error(`Attach at most ${MAX_MESSAGE_ATTACHMENTS} files to one message.`);
+    throw new Error(`A message can carry up to ${MAX_MESSAGE_ATTACHMENTS} files.`);
   }
   return input.map((attachment) => {
     const filePath = path.resolve(attachment.path);
@@ -32,7 +32,7 @@ export function validateMessageAttachments(
     try {
       stat = fs.statSync(filePath);
     } catch {
-      throw new Error(`Attachment not found: ${attachment.name || path.basename(filePath)}`);
+      throw new Error(`${attachment.name || path.basename(filePath)} was moved or deleted. Attach it again.`);
     }
     if (!stat.isFile()) throw new Error(`Attachment is not a file: ${attachment.name || filePath}`);
     if (stat.size > MAX_MESSAGE_ATTACHMENT_BYTES) {

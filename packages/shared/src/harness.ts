@@ -289,7 +289,7 @@ export const PRESET_HARNESSES: HarnessPreset[] = [
       underlyingCli: "claude",
       nativeCommand: { protocol: "claude", command: "claude", args: [] },
       directCommand: { command: "claude-agent-acp" },
-      directInstallHint: "Install Claude Code so claude is on PATH, then complete its sign-in. Existing ACP conversations retain their original claude-agent-acp adapter.",
+      directInstallHint: "Install Claude Code, then sign in. Capsule finds it automatically.",
       configFilePath: "~/.claude/settings.json",
       providerLocked: true,
       featured: true,
@@ -306,7 +306,7 @@ export const PRESET_HARNESSES: HarnessPreset[] = [
     { underlyingCli: "codex", configFilePath: "~/.codex/config.toml", featured: true,
       nativeCommand: { protocol: "codex", command: "codex", args: ["app-server", "--listen", "stdio://"] },
       directCommand: { command: "codex-acp" },
-      directInstallHint: "Install the Codex CLI so codex is on PATH, then run codex login. Existing ACP conversations still need their original codex-acp adapter.",
+      directInstallHint: "Install Codex, then sign in. Capsule finds it automatically.",
     },
   ),
   preset(
@@ -340,7 +340,7 @@ export const PRESET_HARNESSES: HarnessPreset[] = [
     "https://docs.github.com/en/copilot/concepts/agents/copilot-cli/about-copilot-cli",
     undefined,
     { directCommand: { command: "copilot", args: ["--acp", "--stdio"] },
-      directInstallHint: "Install a Copilot CLI version with ACP support and sign in using its own CLI. No separate adapter is needed." },
+      directInstallHint: "Install the latest GitHub Copilot, then sign in. Capsule finds it automatically." },
   ),
   preset(
     "cursor",
@@ -351,7 +351,7 @@ export const PRESET_HARNESSES: HarnessPreset[] = [
     "https://cursor.com/docs/cli/acp",
     undefined,
     { directCommand: { command: "cursor-agent", args: ["acp"] },
-      directInstallHint: "Install and sign in to Cursor CLI, and expose its cursor-agent command on PATH. The desktop editor alone is not the coding CLI." },
+      directInstallHint: "Install the Cursor command-line agent, then sign in. Capsule finds it automatically. The desktop editor alone is not enough." },
   ),
   preset(
     "droid",

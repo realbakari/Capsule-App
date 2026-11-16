@@ -220,7 +220,7 @@ it.each(["stop", "output-limit", "completion"])("cancels pending permission outc
   }, () => {});
   expect(f.permissionResponses.mock.calls).toEqual([[99, { outcome: { outcome: "cancelled" } }]]);
   expect(f.engine.listApprovals("cancelled").map((item) => item.id)).toEqual([approval.id]);
-  await expect(f.engine.resolveApproval(approval.id, "approved_once")).rejects.toThrow("not found");
+  await expect(f.engine.resolveApproval(approval.id, "approved_once")).rejects.toThrow("no longer waiting");
   expect(f.permissionResponses).toHaveBeenCalledOnce();
   if (ending !== "completion") expect(cancel).toHaveBeenCalledOnce();
   if (ending === "output-limit") expect(f.engine.getRun(f.run.id)).toMatchObject({ status: "failed", error: expect.stringContaining("Cancellation was requested") });

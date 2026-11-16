@@ -437,7 +437,7 @@ describe("CapsuleEngine first user flow", () => {
     );
     expect(() =>
       engine.validateAttachments([{ name: "missing.txt", path: path.join(dir, "missing.txt") }]),
-    ).toThrow(/not found/i);
+    ).toThrow("missing.txt was moved or deleted. Attach it again.");
     await engine.stop();
   });
 

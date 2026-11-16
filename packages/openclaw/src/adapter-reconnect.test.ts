@@ -77,13 +77,27 @@ describe("OpenClawAdapter across a Gateway reconnect", () => {
     await adapter.disconnect();
   });
 
+  it("announces a dropped socket and its return, so the window can show it", async () => {
+    const adapter = new OpenClawAdapter({ gatewayUrl: "ws://127.0.0.1:18789", token: "test" });
+    const states: string[] = [];
+    adapter.onConnectionChange((state) => states.push(state));
+    const client = await connect(adapter);
+    client.options.onClose?.(1006, "network changed");
+    client.options.onHelloOk?.(hello);
+    expect(states).toEqual(["connected", "disconnected", "connected"]);
+    await adapter.disconnect();
+  });
+
   it("ignores a late close and late events from a client it has replaced", async () => {
     const adapter = new OpenClawAdapter({ gatewayUrl: "ws://127.0.0.1:18789", token: "test" });
     const first = await connect(adapter);
     await connect(adapter);
 
+    const states: string[] = [];
+    adapter.onConnectionChange((state) => states.push(state));
     first.options.onClose?.(1006, "stopped");
     expect((await adapter.getStatus()).state).toBe("connected");
+    expect(states).toEqual([]);
 
     const replies: unknown[] = [];
     adapter.onAcpReply((reply) => replies.push(reply));

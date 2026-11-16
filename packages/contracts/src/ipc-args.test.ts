@@ -13,6 +13,12 @@ import {
   str,
 } from "./ipc-args.js";
 
+/** What the log reads; the message a person sees never names the channel. */
+function detailOf(call: () => unknown): string {
+  try { call(); } catch (error) { if (error instanceof IpcArgumentError) return error.detail; throw error; }
+  throw new Error("expected an argument error");
+}
+
 describe("str", () => {
   it("accepts a string", () => {
     expect(str("hello", "c", 0)).toBe("hello");
@@ -26,8 +32,13 @@ describe("str", () => {
     expect(() => str({}, "c", 0)).toThrow();
   });
 
+  it("keeps the channel out of what a person reads", () => {
+    expect(() => str(undefined, "capsule:getProject", 1)).toThrow(/^Capsule couldn't complete that request\./);
+    expect(() => str(undefined, "capsule:getProject", 1)).not.toThrow(/capsule:/);
+  });
+
   it("names the channel and the argument position", () => {
-    expect(() => str(undefined, "capsule:getProject", 1)).toThrow(
+    expect(detailOf(() => str(undefined, "capsule:getProject", 1))).toMatch(
       /capsule:getProject: argument 2 must be a string, received undefined/,
     );
   });
@@ -35,8 +46,8 @@ describe("str", () => {
 
 describe("id", () => {
   it("rejects an empty or blank string", () => {
-    expect(() => id("", "c", 0)).toThrow(/must not be empty/);
-    expect(() => id("   ", "c", 0)).toThrow(/must not be empty/);
+    expect(detailOf(() => id("", "c", 0))).toMatch(/must not be empty/);
+    expect(detailOf(() => id("   ", "c", 0))).toMatch(/must not be empty/);
   });
 
   it("keeps a real id untouched", () => {
@@ -61,7 +72,7 @@ describe("optional parsers", () => {
 
 describe("num", () => {
   it("rejects NaN and Infinity, which Number() produces from garbage", () => {
-    expect(() => num(Number.NaN, "c", 0)).toThrow(/finite number/);
+    expect(detailOf(() => num(Number.NaN, "c", 0))).toMatch(/finite number/);
     expect(() => num(Number.POSITIVE_INFINITY, "c", 0)).toThrow();
     expect(() => num("12", "c", 0)).toThrow();
   });
@@ -87,9 +98,9 @@ describe("payload", () => {
 
   it("rejects the shapes that would throw deep inside the engine", () => {
     const parse = payload();
-    expect(() => parse(null, "c", 0)).toThrow(/must be an object, received null/);
+    expect(detailOf(() => parse(null, "c", 0))).toMatch(/must be an object, received null/);
     expect(() => parse("{}", "c", 0)).toThrow();
-    expect(() => parse([1, 2], "c", 0)).toThrow(/received an array/);
+    expect(detailOf(() => parse([1, 2], "c", 0))).toMatch(/received an array/);
   });
 });
 
@@ -97,7 +108,7 @@ describe("oneOf", () => {
   it("accepts a listed value and rejects anything else", () => {
     const parse = oneOf("general", "appearance");
     expect(parse("general", "c", 0)).toBe("general");
-    expect(() => parse("nope", "c", 0)).toThrow(/must be one of general, appearance/);
+    expect(detailOf(() => parse("nope", "c", 0))).toMatch(/must be one of general, appearance/);
   });
 });
 
@@ -115,7 +126,7 @@ describe("parseArgs", () => {
   });
 
   it("reports the first bad argument with its position", () => {
-    expect(() => parseArgs("capsule:writeFile", [id, id], ["ok", ""])).toThrow(
+    expect(detailOf(() => parseArgs("capsule:writeFile", [id, id], ["ok", ""]))).toMatch(
       /capsule:writeFile: argument 2 must not be empty/,
     );
   });

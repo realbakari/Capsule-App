@@ -8,20 +8,26 @@
  * page number. The renderer bug surfaced somewhere else entirely, as empty
  * results or a mysteriously missing record.
  *
- * These parsers reject instead, naming the channel and the argument, so a bad
+ * These parsers reject instead, naming the channel and the argument in the log, so a bad
  * call fails at the boundary it crossed. Deliberately dependency-free: the
  * whole surface is scalars, optional scalars, and pass-through objects that the
  * engine's own types already describe.
  */
 
+/**
+ * The message is what a person reads; `detail` names the channel and the
+ * argument for the log, since a channel name means nothing to them.
+ */
 export class IpcArgumentError extends Error {
+  readonly detail: string;
   constructor(
     readonly channel: string,
     readonly index: number,
-    detail: string,
+    problem: string,
   ) {
-    super(`${channel}: argument ${index + 1} ${detail}`);
+    super("Capsule couldn't complete that request. Try again, and restart Capsule if it keeps happening.");
     this.name = "IpcArgumentError";
+    this.detail = `${channel}: argument ${index + 1} ${problem}`;
   }
 }
 

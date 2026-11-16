@@ -126,6 +126,13 @@ control channel; a control channel without rules there is refused.
   any paired device. It also accepts `approved_session` from a phone
   (pinned TLS) transport, so the server passes the caller's transport into
   `invoke`.
+- **Questions and Plan/Act.** `answerAgentQuestion` takes an approval id and
+  an object of question id to a list of strings (at most 8 questions, 13
+  answers each, 4,000 characters per answer); anything else the device sent
+  is dropped, and the engine still checks the answers against the questions
+  the agent asked. `setSessionTurnMode` takes a thread id and `plan` or `act`
+  only. Every control channel has an argument rebuilder in
+  `apps/desktop/src/main/remote-control.ts`; one without is refused.
 
 ## Notifications while the app is closed (designed, not built)
 

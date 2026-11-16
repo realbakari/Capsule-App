@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
-import type { Run, Session } from "@capsule/shared";
+import type { ApprovalRequest, Run, RunEvent, RuntimeStatus, Session } from "@capsule/shared";
 import { CapsuleEngine } from "./engine.js";
 
 const cleanup: Array<() => Promise<void>> = [];
@@ -35,9 +35,9 @@ const threads: Array<[string, Partial<Session>]> = [
 
 it.each(threads)("settles a send that never reached the Gateway on %s", async (_name, thread) => {
   const { engine, session } = await gatewayDown(thread);
-  await expect(engine.sendMessage({ sessionId: session.id, content: "Hello", mode: "chat" })).rejects.toThrow(/not connected/);
+  await expect(engine.sendMessage({ sessionId: session.id, content: "Hello", mode: "chat" })).rejects.toThrow(/not connected/i);
   const [run] = engine.listRuns(session.id);
-  expect(run).toMatchObject({ status: "failed", error: expect.stringMatching(/not connected/), completedAt: expect.any(String) });
+  expect(run).toMatchObject({ status: "failed", error: expect.stringMatching(/not connected/i), completedAt: expect.any(String) });
 });
 
 it("stops a turn that never reached the Gateway without asking the Gateway", async () => {
@@ -69,4 +69,82 @@ it("keeps a turn stopped while the Gateway was still accepting it, and aborts it
   await sending;
   expect(engine.getRun(run!.id)?.status).toBe("cancelled");
   expect(cancel).toHaveBeenCalledWith("gateway-run");
+});
+
+/** A Gateway turn whose runtime events the test delivers by hand. */
+async function gatewayTurn() {
+  const { engine, session } = await gatewayDown();
+  const gateway = (engine as unknown as { openclaw: {
+    ensureOperatorSession(): Promise<string>; sendMessage(): Promise<Run>; subscribeToRun(id: string, handler: (event: RunEvent) => void): () => void;
+    cancelRun(id: string): Promise<void>; resolveApproval(id: string, decision: string): Promise<void>; getStatus(): Promise<RuntimeStatus>;
+  } }).openclaw;
+  vi.spyOn(gateway, "ensureOperatorSession").mockResolvedValue("agent:main:fixture");
+  const now = new Date().toISOString();
+  vi.spyOn(gateway, "sendMessage").mockResolvedValue({ id: "gateway-run", openclawRunId: "oc-1", sessionId: "agent:main:fixture", projectId: "unknown", agentId: "main", prompt: "Hello", status: "running", createdAt: now, updatedAt: now });
+  let feed!: (event: RunEvent) => void;
+  vi.spyOn(gateway, "subscribeToRun").mockImplementation((_id, handler) => { feed = handler; return () => undefined; });
+  const approvals: ApprovalRequest[] = [];
+  engine.events.on("approval", (approval: ApprovalRequest) => approvals.push({ ...approval }));
+  const { run } = await engine.sendMessage({ sessionId: session.id, content: "Hello", mode: "chat" });
+  const event = (type: string, data?: Record<string, unknown>): RunEvent => ({ id: `evt-${type}-${Math.random()}`, runId: "gateway-run", timestamp: new Date().toISOString(), type, message: type, ...(data ? { data } : {}) });
+  const ask = async () => {
+    feed(event("approval.requested", { approval: { id: "gw-approval", runId: "oc-1", agentId: "main", agentName: "main", action: "Run tests", target: "pnpm test", reason: "", status: "pending", createdAt: new Date().toISOString() } }));
+    await vi.waitFor(() => expect(engine.getRun(run.id)?.status).toBe("approval_required"));
+  };
+  return { engine, session, gateway, run, feed, event, ask, approvals };
+}
+
+it("settles a Gateway approval when its turn finishes, so the card goes away", async () => {
+  const { engine, run, feed, event, ask, approvals } = await gatewayTurn();
+  await ask();
+  expect(engine.listApprovals("pending").map((item) => [item.id, item.runId])).toEqual([["gw-approval", run.id]]);
+  feed(event("lifecycle", { status: "completed" }));
+  await vi.waitFor(() => expect(engine.getRun(run.id)?.status).toBe("completed"));
+  expect(engine.listApprovals("pending")).toEqual([]);
+  expect(approvals.at(-1)).toMatchObject({ id: "gw-approval", status: "cancelled" });
+});
+
+it("stops a Gateway turn locally when the Gateway is unreachable, and admits the next message", async () => {
+  const { engine, session, run, ask, approvals } = await gatewayTurn();
+  await ask();
+  // The real adapter, never connected: cancelRun throws and getStatus says disconnected.
+  await expect(engine.stopRun(run.id)).resolves.toMatchObject({ status: "cancelled", completedAt: expect.any(String) });
+  expect(engine.listApprovals("pending")).toEqual([]);
+  expect(approvals.at(-1)).toMatchObject({ id: "gw-approval", status: "cancelled" });
+  expect(engine.listRunEvents(run.id).find((item) => item.type === "cancelled")?.message).toMatch(/couldn't be reached/);
+  await expect(engine.sendMessage({ sessionId: session.id, content: "Again", mode: "chat" })).resolves.toMatchObject({ run: { status: "running" } });
+});
+
+it("keeps a Gateway turn running when a connected Gateway refuses to stop it", async () => {
+  const { engine, gateway, run } = await gatewayTurn();
+  vi.spyOn(gateway, "cancelRun").mockRejectedValue(new Error("abort refused"));
+  vi.spyOn(gateway, "getStatus").mockResolvedValue({ state: "connected" } as RuntimeStatus);
+  await expect(engine.stopRun(run.id)).rejects.toThrow("abort refused");
+  expect(engine.getRun(run.id)?.completedAt ?? undefined).toBeUndefined();
+});
+
+it("puts a Gateway approval back when the Gateway does not take the decision", async () => {
+  const { engine, gateway, ask, approvals } = await gatewayTurn();
+  await ask();
+  const resolve = vi.spyOn(gateway, "resolveApproval").mockRejectedValueOnce(new Error("socket closed"));
+  await expect(engine.resolveApproval("gw-approval", "approved_once")).rejects.toThrow("The Gateway didn't take that answer. Try again, or stop the turn.");
+  expect(engine.listApprovals("pending").map((item) => item.id)).toEqual(["gw-approval"]);
+  expect(approvals.at(-1)).toMatchObject({ id: "gw-approval", status: "pending" });
+  resolve.mockResolvedValueOnce();
+  await engine.resolveApproval("gw-approval", "approved_once");
+  expect(engine.listApprovals("pending")).toEqual([]);
+  expect(approvals.at(-1)).toMatchObject({ id: "gw-approval", status: "approved_once" });
+  await expect(engine.resolveApproval("gw-approval", "denied")).rejects.toThrow("no longer waiting");
+});
+
+it("tells the window when the Gateway socket drops", async () => {
+  const { engine } = await gatewayDown();
+  const internal = engine as unknown as { bindAcpReplies(): void; openclaw: { onConnectionChange(handler: (state: string) => void): () => void } };
+  let announce!: (state: string) => void;
+  vi.spyOn(internal.openclaw, "onConnectionChange").mockImplementation((handler) => { announce = handler; return () => undefined; });
+  internal.bindAcpReplies();
+  const seen: RuntimeStatus[] = [];
+  engine.events.on("connection", (status: RuntimeStatus) => seen.push(status));
+  announce("disconnected");
+  await vi.waitFor(() => expect(seen).toMatchObject([{ state: "disconnected" }]));
 });

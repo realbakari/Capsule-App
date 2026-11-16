@@ -8,7 +8,7 @@ const TOTAL_BYTES = 3 * 1024 * 1024 - 16384;
 /** Materialize only explicitly attached files, without persisting binary prompt data. */
 export async function prepareDirectPrompt(text: string, attachments: readonly MessageAttachment[], capabilities?: AgentCapabilityReport): Promise<AgentPromptBlock[]> {
   const blocks: AgentPromptBlock[] = [{ type: "text", text }];
-  if (attachments.length > 8) throw new Error("Attach at most 8 files.");
+  if (attachments.length > 8) throw new Error("A message can carry up to 8 files.");
   let retained = Buffer.byteLength(text);
   for (const attachment of attachments) {
     const mimeType = attachment.mimeType ?? "application/octet-stream";

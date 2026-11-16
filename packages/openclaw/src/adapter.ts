@@ -20,6 +20,7 @@ import {
   isAcpSessionKey,
   nowIso,
   parseAcpStatus,
+  harnessDisplayName,
   type Agent,
   type AgentMessage,
   type AgentRuntime,
@@ -237,6 +238,7 @@ export class OpenClawAdapter implements AgentRuntime {
           this.hello = hello;
           this.connectionState = "connected";
           this.lastError = undefined;
+          this.emitter.emit("connection", this.connectionState);
           if (!settled) {
             settled = true;
             resolve();
@@ -254,6 +256,7 @@ export class OpenClawAdapter implements AgentRuntime {
             return;
           }
           this.connectionState = "disconnected";
+          this.emitter.emit("connection", this.connectionState);
         },
       });
       this.client = client;
@@ -514,10 +517,10 @@ export class OpenClawAdapter implements AgentRuntime {
     const spawned = await this.spawnAcpOnParent(parentKey, { ...input, cwd });
     const acpKey = extractAcpSessionKey(spawned.text);
     if (!acpKey) {
-      throw new Error(
-        spawned.text?.trim() ||
-          `OpenClaw did not start ${input.harnessId} through acpx. Capsule will not send this to the default Gateway agent.`,
-      );
+      // Without the agent's own session the message would go to the Gateway's default agent.
+      throw new Error(`${harnessDisplayName(input.harnessId, "The agent")} didn't start, so your message wasn't sent. Run Doctor in Agents, then send again.`, {
+        cause: spawned.text?.trim() || `No agent session key in the reply to ${spawned.command}`,
+      });
     }
     await this.subscribeSession(acpKey);
     // Always send a mode: leaving it unset is what left acpx on the setting
@@ -601,7 +604,7 @@ export class OpenClawAdapter implements AgentRuntime {
         compactParams(params),
       );
       const key = created.key ?? created.sessionKey ?? created.id;
-      if (!key) throw new Error("sessions.create did not return a session key");
+      if (!key) throw new Error("The Gateway couldn't start a conversation. Try again, or run Doctor in Agents.", { cause: "sessions.create returned no session key" });
       return key;
     };
     const agentId = pickGatewayAgentId(input.agentId, this.agentMap);
@@ -688,7 +691,9 @@ export class OpenClawAdapter implements AgentRuntime {
     } catch (cancelError) {
       const abortDetail = abortError instanceof Error ? ` Gateway abort also failed: ${abortError.message}` : "";
       const detail = cancelError instanceof Error ? cancelError.message : String(cancelError);
-      throw new Error(`ACP cancellation was not confirmed: ${detail}.${abortDetail}`);
+      throw new Error(`${harnessDisplayName(/^agent:([^:]+):acp:/.exec(sessionKey)?.[1], "The agent")} didn't confirm it stopped and may still be working. Close it from Agents to end it.`, {
+        cause: `Cancel was not confirmed: ${detail}.${abortDetail}`,
+      });
     }
   }
 
@@ -947,8 +952,14 @@ export class OpenClawAdapter implements AgentRuntime {
   }
 
   private async request<T>(method: string, params?: unknown): Promise<T> {
-    if (!this.client) throw new Error("OpenClaw Gateway is not connected");
+    if (!this.client) throw new Error("Not connected to the Gateway.");
     return this.client.request<T>(method, params);
+  }
+
+  /** The socket closed or said hello again; read getStatus for the detail. */
+  onConnectionChange(handler: (state: ConnectionState) => void): Unsubscribe {
+    this.emitter.on("connection", handler);
+    return () => this.emitter.off("connection", handler);
   }
 
   onAcpReply(

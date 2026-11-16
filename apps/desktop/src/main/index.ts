@@ -101,10 +101,13 @@ import {
   type GitRefName,
   parseGitRefName,
   parseStartPullRequestInput,
+  type AgentLoginTerminal,
 } from "@capsule/shared";
 import { readAgentProcesses } from "@capsule/filesystem";
 import { loadOrCreateTlsIdentity, phonePortFile, phoneSessionFile, startRemoteServer, type RemoteServerHandle } from "@capsule/remote";
 import { startPty, TerminalOutputFlow, type PtySession } from "@capsule/terminal";
+import { registerAgentStore } from "./agent-store";
+import { registerAgentSignIn } from "./agent-sign-in";
 import { popupContextMenu } from "./popup-menu";
 import { remoteReachFromArgs } from "./remote-args";
 import { pluginName, pluginToken, pluginsConfigureInput, pluginsEnabledInput, pluginsInspectInput, pluginsInstallInput, appRestartInput, automationCreateInput, automationEnabledInput, automationKeyInput, statusLineRequest, commandExpandInput, configFileTarget, keybindingEdit, mcpEnabledInput, mcpTestInput, permissionRuleEdit, profileCreateInput, setConfigValueInput, themeImportInput } from "./config-args";
@@ -354,7 +357,14 @@ export const browserTarget: BrowserTarget = {
 };
 
 const backgroundBrowsers = new BackgroundBrowsers();
-const browserAccess = new BrowserAccess(browserTarget, (owner, harnessId) => backgroundBrowsers.target(owner, harnessId));
+/* One ask per thread per half minute: an agent retrying a refused tool should not stack notices. */
+const browserAsks = new Map<string, number>();
+const browserAccess = new BrowserAccess(browserTarget, (owner, harnessId) => backgroundBrowsers.target(owner, harnessId), (owner) => {
+  const now = Date.now();
+  if (now - (browserAsks.get(owner) ?? 0) < 30_000) return;
+  browserAsks.set(owner, now);
+  send(IPC_EVENTS.state, { command: "browser-access-requested", threadId: owner });
+});
 
 function userDataDir(): string {
   const dir = path.join(app.getPath("userData"), "state");
@@ -891,6 +901,70 @@ function startResourceSampling(): void {
   sampleTimer = setInterval(sample, SAMPLE_INTERVAL_MS);
   // Sampling must never be the reason the app stays awake.
   sampleTimer.unref?.();
+}
+
+/*
+ * A sign-in terminal: runs `argv` itself in a PTY, not a shell, so nothing the
+ * agent advertised is ever parsed as shell syntax. Shares the terminal maps,
+ * limits and events with the dock's shells.
+ */
+function startAgentLoginTerminal(argv: string[], env: Record<string, string>, size: { cols?: number; rows?: number } | undefined, onExit: (code: number) => void): AgentLoginTerminal {
+  if (!engine) throw new Error("Capsule engine is not ready");
+  engine.assertLocalCommandsAllowed();
+  // Not tied to a project folder, so pausing a conversation never stops a sign-in.
+  const { id } = openTerminal({ cwd: os.homedir(), cols: size?.cols, rows: size?.rows, argv, env, onExit });
+  return { id, argv };
+}
+
+/** One PTY behind the terminal events: the dock's shells and sign-in terminals share the limit and the flow. */
+function openTerminal(spec: {
+  cwd: string; cols?: number; rows?: number; argv?: string[]; env?: Record<string, string>;
+  /** Holds the folder busy until the terminal exits; such terminals stop when that folder's conversation pauses. */
+  lease?: () => () => void;
+  onExit?: (code: number) => void;
+}): { id: string; pid: number } {
+  if (terminalOutputs.size >= 16) throw new Error("Close a terminal before opening another (16 terminal limit).");
+  const id = `term_${Math.random().toString(36).slice(2, 10)}`;
+  const release = spec.lease?.() ?? (() => {});
+  let exitCode = 0;
+  const output = new TerminalOutputFlow({
+    data: (data, sequence) => send(IPC_EVENTS.terminalData, { id, data, sequence }),
+    pause: () => terminals.get(id)?.pause(),
+    resume: () => terminals.get(id)?.resume(),
+    drained: () => {
+      terminalOutputs.delete(id);
+      send(IPC_EVENTS.terminalExit, { id, code: exitCode });
+    },
+    overflow: () => {
+      stopTerminal(id);
+      send(IPC_EVENTS.terminalExit, { id, code: -1, error: "Terminal stopped because output exceeded the recovery buffer. Earlier output may be incomplete." });
+    },
+  });
+  terminalOutputs.set(id, output);
+  try {
+    const session = startPty(
+      { cwd: spec.cwd, cols: spec.cols, rows: spec.rows, argv: spec.argv, env: spec.env },
+      {
+        onData: (data) => output.push(data),
+        onExit: (code) => {
+          release();
+          terminals.delete(id);
+          terminalFolders.delete(id);
+          exitCode = code;
+          output.end();
+          spec.onExit?.(code);
+        },
+      },
+    );
+    terminals.set(id, session);
+    if (spec.lease) terminalFolders.set(id, spec.cwd);
+    return { id, pid: session.pid };
+  } catch (error) {
+    output.dispose();
+    terminalOutputs.delete(id);
+    release();
+    throw error;
+  }
 }
 
 function stopTerminal(id: string): void {
@@ -1501,49 +1575,10 @@ function registerIpc(): void {
   );
   handle(IPC_CHANNELS.terminalStart, (input) => {
     requireEngine().assertLocalCommandsAllowed();
-    if (terminalOutputs.size >= 16) throw new Error("Close a terminal before opening another (16 terminal limit).");
     const request = input as { cwd?: string; cols?: number; rows?: number; };
     const cwd = String(request.cwd ?? "");
-    const id = `term_${Math.random().toString(36).slice(2, 10)}`;
-    const release = requireEngine().beginLocalCommand(cwd);
-    let exitCode = 0;
-    const output = new TerminalOutputFlow({
-      data: (data, sequence) => send(IPC_EVENTS.terminalData, { id, data, sequence }),
-      pause: () => terminals.get(id)?.pause(),
-      resume: () => terminals.get(id)?.resume(),
-      drained: () => {
-        terminalOutputs.delete(id);
-        send(IPC_EVENTS.terminalExit, { id, code: exitCode });
-      },
-      overflow: () => {
-        stopTerminal(id);
-        send(IPC_EVENTS.terminalExit, { id, code: -1, error: "Terminal stopped because output exceeded the recovery buffer. Earlier output may be incomplete." });
-      },
-    });
-    terminalOutputs.set(id, output);
-    try {
-      const session = startPty(
-        { cwd, cols: request.cols, rows: request.rows },
-        {
-          onData: (data) => output.push(data),
-          onExit: (code) => {
-            release();
-            terminals.delete(id);
-            terminalFolders.delete(id);
-            exitCode = code;
-            output.end();
-          },
-        },
-      );
-      terminals.set(id, session);
-      terminalFolders.set(id, cwd);
-      return { id, pid: session.pid, cwd };
-    } catch (error) {
-      output.dispose();
-      terminalOutputs.delete(id);
-      release();
-      throw error;
-    }
+    const { id, pid } = openTerminal({ cwd, cols: request.cols, rows: request.rows, lease: () => requireEngine().beginLocalCommand(cwd) });
+    return { id, pid, cwd };
   });
   handle(IPC_CHANNELS.terminalInput, (id, data) => {
     requireEngine().assertLocalCommandsAllowed();
@@ -1998,7 +2033,7 @@ function registerIpc(): void {
   });
   handle(IPC_CHANNELS.saveImageAttachment, async (png) => {
     const bytes = readPngBytes(png);
-    if (!bytes) throw new Error("capsule:saveImageAttachment: expected a PNG image under 25 MB.");
+    if (!bytes) throw new Error("That image couldn't be attached. Paste a PNG under 25 MB.");
     const { saveImageAttachment } = await import("./image-attachments.js");
     return saveImageAttachment(path.join(app.getPath("userData"), "attachments"), bytes);
   });
@@ -2021,6 +2056,12 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.doctorHarness, (harnessId) =>
     requireEngine().doctorHarness(harnessId as HarnessId),
   );
+  registerAgentStore({
+    handle,
+    emitProgress: (progress) => send(IPC_EVENTS.agentInstallProgress, progress),
+    agentsDir: path.join(app.getPath("userData"), "agents"),
+  });
+  registerAgentSignIn({ handle, engine: requireEngine, startLoginTerminal: startAgentLoginTerminal });
   handle(IPC_CHANNELS.dedicateHarness, (projectId, harnessId) =>
     requireEngine().dedicateHarness(String(projectId), harnessId as HarnessId),
   );
@@ -2312,7 +2353,7 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.restoreToTurn, (request) => {
     const channel = IPC_CHANNELS.restoreToTurn;
     const value = request && typeof request === "object" ? request as { runId?: unknown; scope?: unknown } : {};
-    if (value.scope !== "files" && value.scope !== "conversation" && value.scope !== "both") throw new Error(`${channel}: choose files, conversation or both.`);
+    if (value.scope !== "files" && value.scope !== "conversation" && value.scope !== "both") throw new Error("Choose files, conversation or both.");
     return requireEngine().restoreToTurn({ runId: id(value.runId, channel, 0), scope: value.scope });
   });
   handleArgs(IPC_CHANNELS.redoRestore, [id], (sessionId: string) => requireEngine().redoRestore(sessionId));
@@ -2325,7 +2366,7 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.forkSession, (input) => {
     const channel = IPC_CHANNELS.forkSession;
     const value = input && typeof input === "object" ? input as { sessionId?: unknown; runId?: unknown; workspace?: unknown } : {};
-    if (value.workspace !== "same" && value.workspace !== "worktree") throw new Error(`${channel}: choose the same folder or a new worktree.`);
+    if (value.workspace !== "same" && value.workspace !== "worktree") throw new Error("Choose the same folder or a new worktree.");
     return requireEngine().forkSession({ sessionId: id(value.sessionId, channel, 0), runId: id(value.runId, channel, 0), workspace: value.workspace });
   });
   handleArgs(IPC_CHANNELS.forkBranches, [id], (sessionId: string) => requireEngine().forkBranches(sessionId));
@@ -2333,7 +2374,7 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.importSession, (input) => {
     const channel = IPC_CHANNELS.importSession;
     const value = input && typeof input === "object" ? input as { projectId?: unknown; agent?: unknown; nativeSessionId?: unknown } : {};
-    if (!isImportAgentId(value.agent)) throw new Error(`${channel}: choose an agent Capsule can import from.`);
+    if (!isImportAgentId(value.agent)) throw new Error("Choose an agent Capsule can import from.");
     return requireEngine().importSession({ projectId: id(value.projectId, channel, 0), agent: value.agent, nativeSessionId: str(value.nativeSessionId, channel, 0) });
   });
   handleArgs(IPC_CHANNELS.handoffDraft, [id], (sessionId: string) => requireEngine().handoffDraft(sessionId));
@@ -2341,7 +2382,7 @@ function registerIpc(): void {
     const channel = IPC_CHANNELS.handoffSession;
     const value = input && typeof input === "object" ? input as { sessionId?: unknown; harnessId?: unknown; summary?: unknown } : {};
     const harnessId = str(value.harnessId, channel, 0);
-    if (!isHarnessId(harnessId)) throw new Error(`${channel}: choose an agent to continue with.`);
+    if (!isHarnessId(harnessId)) throw new Error("Choose an agent to continue with.");
     return requireEngine().handoffSession({ sessionId: id(value.sessionId, channel, 0), harnessId, summary: str(value.summary, channel, 0) });
   });
   handleArgs(IPC_CHANNELS.worktreeApplyStatus, [id], (sessionId: string) => requireEngine().worktreeApplyStatus(sessionId));
@@ -2358,23 +2399,23 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.updateFollowUps, (sessionId, op) => {
     const channel = IPC_CHANNELS.updateFollowUps;
     const parsed = readFollowUpOp(op);
-    if (!parsed) throw new Error(`${channel}: that change to the follow-ups is not valid.`);
+    if (!parsed) throw new Error("That change to the queued messages couldn't be made. Try again.");
     return requireEngine().updateFollowUps(id(sessionId, channel, 0), parsed);
   });
   handle(IPC_CHANNELS.createBoardCard, (input) => {
     const parsed = readCreateBoardCard(input);
-    if (!parsed) throw new Error(`${IPC_CHANNELS.createBoardCard}: that card is not valid.`);
+    if (!parsed) throw new Error("That card couldn't be added. Try again.");
     return requireEngine().createBoardCard(parsed);
   });
   handle(IPC_CHANNELS.updateBoardCard, (sessionId, op) => {
     const channel = IPC_CHANNELS.updateBoardCard;
     const parsed = readBoardCardOp(op);
-    if (!parsed) throw new Error(`${channel}: that change to the card is not valid.`);
+    if (!parsed) throw new Error("That change to the card couldn't be made. Try again.");
     return requireEngine().updateBoardCard(id(sessionId, channel, 0), parsed);
   });
   handle(IPC_CHANNELS.startBestOfN, (input) => {
     const parsed = readStartBestOfN(input);
-    if (!parsed) throw new Error(`${IPC_CHANNELS.startBestOfN}: pick two to four agents and write a prompt.`);
+    if (!parsed) throw new Error("Pick two to four agents and write a prompt.");
     return requireEngine().startBestOfN(parsed);
   });
   handle(IPC_CHANNELS.listThreadGroups, () => requireEngine().listThreadGroups());
@@ -2384,7 +2425,7 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.rateRun, (runId, value) => {
     const channel = IPC_CHANNELS.rateRun;
     const rating = readRatingValue(value);
-    if (rating === undefined) throw new Error(`${channel}: a rating is 1, -1 or 0.`);
+    if (rating === undefined) throw new Error("A rating is thumbs up, thumbs down or none.");
     return requireEngine().rateRun(id(runId, channel, 0), rating);
   });
   handleArgs(IPC_CHANNELS.runRatings, [id], (sessionId: string) => requireEngine().runRatings(sessionId));
@@ -2398,9 +2439,9 @@ function registerIpc(): void {
   handleArgs(IPC_CHANNELS.listWorktreeBases, [id], (projectId: string) =>
     requireEngine().listWorktreeBases(projectId),
   );
-  const gitRef: ArgParser<GitRefName> = (value, channel, index) => {
+  const gitRef: ArgParser<GitRefName> = (value) => {
     const ref = parseGitRefName(value);
-    if (!ref) throw new Error(`${channel} argument ${index + 1} must be a branch name.`);
+    if (!ref) throw new Error("That isn't a valid branch name. Pick another branch.");
     return ref;
   };
   handleArgs(IPC_CHANNELS.setSessionWorktreeBase, [id, gitRef], (sessionId: string, ref: GitRefName) =>

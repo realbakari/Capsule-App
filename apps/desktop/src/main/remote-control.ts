@@ -1,5 +1,5 @@
 import { id, optStr, str } from "@capsule/contracts";
-import { CONTROL_CHANNELS, readFollowUpOp, type MessageAttachment } from "@capsule/shared";
+import { CONTROL_CHANNELS, isTurnMode, readFollowUpOp, type AgentQuestionAnswers, type MessageAttachment } from "@capsule/shared";
 
 const NO_ATTACHMENTS = "Attach local files from the desktop app.";
 
@@ -43,6 +43,11 @@ export function remoteControlArgs(channel: string, args: unknown[], caller: Remo
     if (typeof decision !== "string" || !allowed.includes(decision)) throw new Error("Browser approvals are once-only or deny.");
     return [id(args[0], channel, 0), decision];
   }
+  if (channel === "answerAgentQuestion") return [id(args[0], channel, 0), questionAnswers(args[1])];
+  if (channel === "setSessionTurnMode") {
+    if (!isTurnMode(args[1])) throw new Error("Choose Plan or Act.");
+    return [id(args[0], channel, 0), args[1]];
+  }
   if (channel === "updateFollowUps") return followUpArgs(args, uploads);
   if (channel === "uploadAttachment") {
     if (transport !== "phone") throw new Error(NO_ATTACHMENTS);
@@ -67,7 +72,7 @@ export function remoteControlArgs(channel: string, args: unknown[], caller: Remo
   if (channel !== "createSession" && channel !== "sendMessage") {
     // A control channel with no rebuilder here is refused, not passed through:
     // adding one to the scope table must come with its argument rules.
-    if ((CONTROL_CHANNELS as readonly string[]).includes(channel)) throw new Error(`${channel} is not available from a paired device.`);
+    if ((CONTROL_CHANNELS as readonly string[]).includes(channel)) throw new Error("That isn't available from a paired device. Use Capsule on the computer.");
     return args;
   }
   const input = args[0];
@@ -86,6 +91,23 @@ export function remoteControlArgs(channel: string, args: unknown[], caller: Remo
   const attachments = uploadedAttachments(field("attachments"), sessionId, uploads);
   return [{ ...common, sessionId, content: str(field("content"), channel, 0),
     skillId: optStr(field("skillId"), channel, 0), ...(attachments.length ? { attachments } : {}) }];
+}
+
+/*
+ * Answers keyed by question id, each a short list of strings. The engine checks
+ * them against the questions the agent actually asked; this only keeps the
+ * shape and size bounded and drops anything else the device sent.
+ */
+function questionAnswers(value: unknown): AgentQuestionAnswers {
+  const invalid = () => new Error("Those answers couldn't be sent. Answer each question and try again.");
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw invalid();
+  const entries = Object.entries(value);
+  if (entries.length > 8) throw invalid();
+  return Object.fromEntries(entries.map(([key, given]) => {
+    if (key.length > 200 || !Array.isArray(given) || given.length > 13) throw invalid();
+    if (!given.every((item) => typeof item === "string" && item.length <= 4_000)) throw invalid();
+    return [key, [...given] as string[]];
+  }));
 }
 
 /*

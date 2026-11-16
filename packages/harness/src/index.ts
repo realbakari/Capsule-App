@@ -85,9 +85,48 @@ function whichViaLoginShell(binary: string): string | undefined {
     .find(Boolean);
 }
 
+/*
+ * Where the agent store puts its shims. Searched right after PATH, so a copy
+ * the user installed themselves always wins and a store install needs no
+ * change to how an agent is launched.
+ */
+let managedBinDir: string | undefined;
+
+export function setManagedBinDir(dir: string | undefined): void {
+  managedBinDir = dir;
+  binaryPathCache.clear();
+}
+
+/** Forget cached lookups and redraw harness readiness, after the store adds or removes a copy. */
+export function notifyHarnessesChanged(): void {
+  binaryPathCache.clear();
+  onLoginStateSettled?.();
+}
+
+function managedCandidate(binary: string): string | undefined {
+  if (!managedBinDir) return undefined;
+  const names = process.platform === "win32" ? [`${binary}.cmd`, binary] : [binary];
+  for (const name of names) {
+    const candidate = path.join(managedBinDir, name);
+    if (existsSync(candidate)) return candidate;
+  }
+  return undefined;
+}
+
+/** The user's own copy of a binary, ignoring the store's shims. */
+export function userBinaryPath(binaries: string[]): string | undefined {
+  for (const binary of binaries) {
+    const found = whichOnPath(binary) ?? extraBinDirs().map((dir) => path.join(dir, binary)).find((candidate) => existsSync(candidate));
+    if (found && !(managedBinDir && found.startsWith(managedBinDir + path.sep))) return found;
+  }
+  return undefined;
+}
+
 function locateBinary(binary: string): string | undefined {
   const fromPath = whichOnPath(binary);
   if (fromPath) return fromPath;
+  const managed = managedCandidate(binary);
+  if (managed) return managed;
   for (const dir of extraBinDirs()) {
     const candidate = path.join(dir, binary);
     if (existsSync(candidate)) return candidate;
@@ -197,6 +236,21 @@ const loginStateCache = new Map<string, { state: HarnessLoginState; at: number }
 
 export function clearLoginCache(): void {
   loginStateCache.clear();
+  authRequired.clear();
+}
+
+/*
+ * Agents with no login probe say they are signed out only when a session
+ * starts: ACP `session/new` answers -32000. Remember that answer so the
+ * composer can offer Sign in instead of failing the next turn the same way.
+ */
+const authRequired = new Set<string>();
+
+export function noteAuthRequired(harnessId: string, required: boolean): void {
+  const changed = required ? !authRequired.has(harnessId) : authRequired.has(harnessId);
+  if (required) authRequired.add(harnessId);
+  else authRequired.delete(harnessId);
+  if (changed) onLoginStateSettled?.();
 }
 
 /**
@@ -357,7 +411,7 @@ export function describeReadiness(input: {
   return {
     readiness: "missing_acpx",
     detail:
-      "Enable ACP on the Gateway: openclaw plugins install @openclaw/acpx. If it is already installed, run openclaw gateway restart.",
+      "The Gateway isn't set up to run coding agents yet. Open Agents to finish setup.",
   };
 }
 
@@ -377,7 +431,7 @@ export function probeHarnesses(input: {
     const liveSessionIds = input.liveByHarness?.[preset.id] ?? [];
     // A live session already proves auth, so do not pay for a probe.
     const loginState =
-      liveSessionIds.length > 0 ? undefined : probeLoginState(preset, loginBinaryPath);
+      liveSessionIds.length > 0 ? undefined : authRequired.has(preset.id) ? "logged_out" : probeLoginState(preset, loginBinaryPath);
     const { readiness, detail } = describeReadiness({
       preset,
       binaryPath,
@@ -488,11 +542,12 @@ export function localDoctorChecks(input: {
           },
           {
             id: "acpx",
-            label: "ACP (acpx)",
+            label: "Coding agents on the Gateway",
             ok: input.acpxEnabled,
+            // Doctor is where setup finishes, so the commands stay here and only here.
             detail: input.acpxEnabled
-              ? "acpx is enabled. ACP runs on the Gateway host, not inside the OpenClaw sandbox."
-              : "openclaw plugins install @openclaw/acpx && openclaw config set plugins.entries.acpx.enabled true. If plugins.allow is set, it must include acpx.",
+              ? "Ready. Coding agents run on the Gateway host."
+              : "The Gateway isn't set up to run coding agents yet. On the Gateway host, run openclaw plugins install @openclaw/acpx && openclaw config set plugins.entries.acpx.enabled true, then restart the Gateway. If plugins.allow is set, it must include acpx.",
           },
         ]),
     ...(!input.direct && input.acpxEnabled
@@ -586,3 +641,4 @@ export {
   parseShellEnvironment,
   readLoginShellEnvironment,
 } from "./shell-env.js";
+export * from "./store/index.js";

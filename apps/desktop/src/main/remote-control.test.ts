@@ -1,4 +1,5 @@
 import { expect, it } from "vitest";
+import { CONTROL_CHANNELS } from "@capsule/shared";
 import { RemoteUploads, remoteControlArgs } from "./remote-control";
 
 it("creates supervised local threads, never trusting a requested cwd or elevated permissions", () => {
@@ -63,4 +64,25 @@ it("accepts phone uploads within limits, and attaches only files it stored for t
   expect(() => remoteControlArgs("sendMessage", [{ sessionId: "s", content: "x", attachments: [{ path: "/Users/me/.ssh/id_rsa" }] }], caller)).toThrow("desktop");
   expect(remoteControlArgs("updateFollowUps", ["s", { type: "add", prompt: { content: "", attachments: [{ name: "x", path: "/cap/attachments/remote/s/1-shot.png", size: 1 }] } }], caller))
     .toEqual(["s", { type: "add", prompt: { content: "", attachments: [{ name: "shot.png", path: "/cap/attachments/remote/s/1-shot.png", size: 10, mimeType: "image/png" }] } }]);
+});
+it("lets a paired device answer a question with plain answers only", () => {
+  expect(remoteControlArgs("answerAgentQuestion", ["a", { q0: ["Yes"], q1: ["one", "two"] }, "extra"]))
+    .toEqual(["a", { q0: ["Yes"], q1: ["one", "two"] }]);
+  expect(() => remoteControlArgs("answerAgentQuestion", ["a", { q0: "Yes" }])).toThrow("Answer each question");
+  expect(() => remoteControlArgs("answerAgentQuestion", ["a", { q0: [{ path: "/etc" }] }])).toThrow();
+  expect(() => remoteControlArgs("answerAgentQuestion", ["a", ["Yes"]])).toThrow();
+  expect(() => remoteControlArgs("answerAgentQuestion", ["a", { q0: ["x".repeat(4_001)] }])).toThrow();
+  expect(() => remoteControlArgs("answerAgentQuestion", ["", { q0: ["Yes"] }])).toThrow();
+});
+it("lets a paired device switch between Plan and Act, and nothing else", () => {
+  expect(remoteControlArgs("setSessionTurnMode", ["s", "plan", "extra"])).toEqual(["s", "plan"]);
+  expect(remoteControlArgs("setSessionTurnMode", ["s", "act"])).toEqual(["s", "act"]);
+  expect(() => remoteControlArgs("setSessionTurnMode", ["s", "approve-all"])).toThrow("Plan or Act");
+});
+it("has argument rules for every channel a paired device may control", () => {
+  for (const channel of CONTROL_CHANNELS) {
+    let message = "";
+    try { remoteControlArgs(channel, [], "phone"); } catch (error) { message = (error as Error).message; }
+    expect(message, channel).not.toMatch(/available from a paired device/);
+  }
 });

@@ -47,6 +47,10 @@ A subscription lasts only as long as its socket, and the client reconnects on
 its own, so the adapter subscribes again to every session it has watched on
 each hello. Callbacks from a client the adapter has replaced are ignored. A
 reply that completes entirely while the socket is down is not replayed.
+The adapter announces each close and each hello through `onConnectionChange`,
+and the engine forwards the fresh status as its `connection` event, so the
+window's Gateway banner follows a dropped socket and its return without a
+manual reconnect.
 `session.message` carries a persisted whole message, not a text delta or a
 turn-end event. Only assistant rows supply prose. User and tool rows are ignored.
 The message timestamp associates a delayed snapshot with its originating run;
@@ -80,7 +84,19 @@ ends that run as failed with the error. Stop on a Gateway run that has no
 Gateway run id cancels it locally, because the Gateway has nothing to abort; a
 stranded run never blocks Apply, restores or saved checks on the folder. If
 `sessions.send` returns after that Stop, the turn stays cancelled and the new
-Gateway run is aborted.
+Gateway run is aborted. When Stop cannot reach the Gateway at all (the abort
+fails and the adapter no longer reports `connected`), the run is still
+cancelled locally, and its `cancelled` event says the Gateway was not told,
+so the next send and the queued follow-ups are admitted. A connected Gateway
+that refuses the abort leaves the run running and Stop reports the error.
+
+Gateway approvals have no local callback; the persisted record is the whole
+state. Turn end, Stop and the output limit settle every pending approval on
+the run, whichever route asked it, as `cancelled` and emit `approval`, so the
+card closes. A decision is saved before `resolveApproval` is sent; if the
+Gateway does not take it, the record goes back to `pending` (or to
+`cancelled` when the run ended meanwhile), `approval` is emitted again, and
+the person sees "The Gateway didn't take that answer".
 
 ## What Capsule must not do
 

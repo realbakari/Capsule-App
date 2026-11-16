@@ -22,8 +22,13 @@ describe("message attachments", () => {
 
   it("rejects missing files", () => {
     expect(() => validateMessageAttachments([{ name: "missing.txt", path: "/missing/file" }])).toThrow(
-      "Attachment not found",
+      "missing.txt was moved or deleted. Attach it again.",
     );
+  });
+
+  it("names the limit when a message carries too many files", () => {
+    const many = Array.from({ length: 9 }, (_, index) => ({ name: `f${index}`, path: `/x/${index}` }));
+    expect(() => validateMessageAttachments(many)).toThrow("A message can carry up to 8 files.");
   });
 });
 

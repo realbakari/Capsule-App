@@ -45,6 +45,7 @@ import path from "node:path";
 import { prepareDirectPrompt } from "./direct-prompt.js";
 import { carryTurnMode } from "./turn-mode.js";
 import { isTurnMode, modeModelFor, planPrompt, type TurnMode } from "@capsule/shared";
+import { cliLoginArgv, type AgentSignInMethod, type AgentSignInOptions } from "@capsule/shared";
 import { findCommandCall, prepareCommand, readInvocation, runCommandShell, summarizeCommand, type CommandCall, type CommandShellContext } from "./commands.js";
 import { FollowUpLoopGuard, followUpsFrom, HookRunner, hookSource, PromptBlockedError, promptVerdict, type HookPayload } from "./hooks.js";
 import { decideRequest, type PermissionAnswer } from "./request-policy.js";
@@ -71,6 +72,7 @@ import { DirectMuseSession } from "@capsule/muse";
 import { DirectCodexSession } from "@capsule/codex";
 import { DirectClaudeSession } from "@capsule/claude";
 import {
+  AgentAuthRequiredError,
   DirectAcpHost,
   type DirectMcpOffer,
   isDirectSessionKey,
@@ -87,6 +89,7 @@ import {
   harnessAgentRecord,
   isLiveHarnessState,
   localDoctorChecks,
+  noteAuthRequired,
   PRESET_HARNESSES,
   probeLoginStateNow,
   setLoginStateListener,
@@ -809,7 +812,7 @@ export class CapsuleEngine {
     // Resolve approval records while the database is still open. Closing the
     // transport later cannot safely update those persisted requests.
     const approvalRuns = new Set(Array.from(this.directApprovals.values(), (pending) => pending.runId));
-    for (const runId of approvalRuns) this.settleDirectApprovals(runId);
+    for (const runId of approvalRuns) this.settleRunApprovals(runId);
     for (const check of this.verificationPending.values()) check.controller.abort();
     setLoginStateListener(undefined);
     setPullRequestListener(undefined);
@@ -999,6 +1002,66 @@ export class CapsuleEngine {
     return result;
   }
 
+  /*
+   * Ways to sign an agent in. The agent's own methods come from a bounded ACP
+   * handshake on this computer; the CLI login command comes from the preset.
+   * Both sign in the CLI on this computer, which is the one the Gateway's
+   * acpx runs too, but `authenticate` itself is a direct-route request.
+   */
+  async agentSignInOptions(harnessId: HarnessId): Promise<AgentSignInOptions> {
+    const preset = presetFor(harnessId);
+    if (!preset) throw new Error(`Unknown harness: ${harnessId}`);
+    const login = cliLoginArgv(preset.loginHint);
+    const loginPath = login ? whichBinary([login[0]!]) : undefined;
+    const cli: AgentSignInMethod[] = login && loginPath
+      ? [{ kind: "cli", id: "cli-login", name: `Run ${login.join(" ")}`, argv: [loginPath, ...login.slice(1)] }]
+      : [];
+    const launch = preset.nativeCommand ? undefined : preset.directCommand ?? preset.acpxCommand;
+    if (!launch) return { harnessId, methods: cli, canSignOut: false };
+    if (!whichBinary([launch.command])) {
+      return { harnessId, methods: cli, canSignOut: false, error: `${preset.name} is not installed on this computer yet.` };
+    }
+    try {
+      const reported = await this.direct.signInOptions(harnessId);
+      if (this.useDirectMode(harnessId)) return { harnessId, methods: [...reported.methods, ...cli], canSignOut: reported.canSignOut };
+      return {
+        harnessId,
+        methods: [...reported.methods.filter((method) => method.kind !== "agent"), ...cli],
+        canSignOut: false,
+        error: `${preset.name} runs through the Gateway, so Capsule cannot ask it to sign in directly. A terminal sign-in signs in the CLI on this computer.`,
+      };
+    } catch (error) {
+      return { harnessId, methods: cli, canSignOut: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
+  /** ACP `authenticate` with one of the agent's own methods. The agent may open a browser and take minutes. */
+  async agentAuthenticate(harnessId: HarnessId, methodId: string): Promise<void> {
+    this.assertDirectSignIn(harnessId);
+    await this.direct.authenticate(harnessId, methodId);
+    this.agentSignInChanged();
+  }
+
+  async agentSignOut(harnessId: HarnessId): Promise<void> {
+    this.assertDirectSignIn(harnessId);
+    await this.direct.logout(harnessId);
+    this.agentSignInChanged();
+  }
+
+  /** Sign-in state changed outside a session (a login terminal finished): re-probe readiness. */
+  agentSignInChanged(): void {
+    clearLoginCache();
+    this.events.emit("state", { command: "harness-updated" });
+  }
+
+  private assertDirectSignIn(harnessId: HarnessId): void {
+    const preset = presetFor(harnessId);
+    if (!preset) throw new Error(`Unknown harness: ${harnessId}`);
+    if (!this.useDirectMode(harnessId)) {
+      throw new Error(`${preset.name} runs through the Gateway, so Capsule cannot ask it to sign in or out directly. Use a terminal sign-in, which signs in the CLI on this computer.`);
+    }
+  }
+
   private async readHarnesses(): Promise<HarnessStatus[]> {
     const dedicatedByHarness: Record<string, string[]> = Object.fromEntries(
       PRESET_HARNESSES.map((preset) => [preset.id, [] as string[]]),
@@ -1157,9 +1220,9 @@ export class CapsuleEngine {
         ? `This conversation uses ${command.command}. Restore that adapter to continue its saved session, or start a new conversation to use the installed CLI directly.`
         : preset.directInstallHint ?? `Install ${command.command} on this computer before starting this agent.`;
     }
-    if (!direct && !this.openclaw.connected) return "OpenClaw Gateway is not connected.";
+    if (!direct && !this.openclaw.connected) return "Not connected to the Gateway.";
     const loginState = probeLoginStateNow(preset, whichBinary(preset.binaries));
-    if (loginState === "logged_out") return `${preset.name} is installed but not signed in. ${preset.loginHint ?? "Sign in to its CLI"} ${direct ? "on this computer" : "on the Gateway host"}, then run Doctor.`;
+    if (loginState === "logged_out") return `${preset.name} isn't signed in. ${preset.loginHint?.replaceAll("`", "") ?? `Sign in to ${preset.name}`} ${direct ? "on this computer" : "on the Gateway host"}, then run Doctor in Agents.`;
     if (loginState === "config_invalid") return `${preset.name}'s CLI config could not be read. Fix it, then run Doctor.`;
     return undefined;
   }
@@ -1297,6 +1360,7 @@ export class CapsuleEngine {
       session.harnessState = "running";
       if (input.sessionId) this.repos.updateSession(session);
       else this.repos.insertSession(session);
+      if (direct) noteAuthRequired(harnessId, false);
       this.log(`Spawned ${direct ? "direct" : "Gateway ACP"} session for ${harnessId} (${spawned.sessionKey})`);
       this.events.emit("state", { command: "harness-updated" });
       if (direct) this.events.emit("state", { command: "provider-usage" });
@@ -1310,6 +1374,7 @@ export class CapsuleEngine {
       session.harnessState = "error";
       if (input.sessionId) this.repos.updateSession(session);
       else this.repos.insertSession(session);
+      if (error instanceof AgentAuthRequiredError) noteAuthRequired(harnessId, true);
       throw error;
     }
   }
@@ -1387,7 +1452,7 @@ export class CapsuleEngine {
       run.id !== admittingRunId && ["queued", "running", "waiting", "approval_required"].includes(run.status),
     );
     // Direct close can stop its owned child even when the agent ignores cancel.
-    if (active && isDirectSessionKey(session.openclawSessionKey)) this.settleDirectApprovals(active.id);
+    if (active && isDirectSessionKey(session.openclawSessionKey)) this.settleRunApprovals(active.id);
     if (active && !isDirectSessionKey(session.openclawSessionKey)) await this.stopRun(active.id);
     if (!this.usingMock && session.openclawSessionKey) {
       try {
@@ -1406,7 +1471,7 @@ export class CapsuleEngine {
         latest.status = "cancelled";
         latest.updatedAt = latest.completedAt = nowIso();
         this.repos.updateRun(latest);
-        this.settleDirectApprovals(latest.id);
+        this.settleRunApprovals(latest.id);
         this.events.emit("run", latest);
       }
     }
@@ -2518,7 +2583,7 @@ export class CapsuleEngine {
   async sendMessage(input: AgentMessage): Promise<{ session: Session; run: Run; userMessage: ChatMessage; }> {
     this.assertWorkAllowed();
     if (this.admittingSessions.has(input.sessionId) || this.repos.findReplyRun(input.sessionId)) {
-      throw new Error("This thread already has an active turn. Stop it or wait before sending another message.");
+      throw new Error("This conversation already has a turn running. Stop it or wait before sending another message.");
     }
     const thread = this.requireSession(input.sessionId);
     if (thread.paused) throw new Error("This conversation is paused. Resume it to continue.");
@@ -2693,9 +2758,9 @@ export class CapsuleEngine {
         run.workingDirectory = this.cwdFor(session, project);
         this.repos.updateRun(run);
         if (!this.usingMock && !isAcpSessionKey(session.openclawSessionKey)) {
-          throw new Error(
-            `${harnessId} did not start through acpx. Capsule will not send this to OpenClaw's default agent (that path needs that agent's provider auth, not ${harnessId}).`,
-          );
+          // Sending anyway would reach the Gateway's default agent instead of this one.
+          this.log(`${harnessId} has no agent session key; refusing to send to the Gateway's default agent.`);
+          throw new Error(`${presetFor(harnessId)?.name ?? "The agent"} didn't start, so your message wasn't sent. Run Doctor in Agents, then send again.`);
         }
       } catch (error) {
         const currentRun = this.requireRun(run.id);
@@ -2948,20 +3013,29 @@ export class CapsuleEngine {
       this.stopPrWatch(session.projectId);
     }
     if (run.completedAt) return run;
+    let unreachable = false;
     if (this.startingHarnessRuns.has(run.id)) {
       // The prompt has not been dispatched. Cancel it locally; there may not
       // yet be a native/Gateway session to send cancellation to. Startup can
       // finish preparing an idle session, but the admission guard will not send.
-      this.settleDirectApprovals(run.id);
+      this.settleRunApprovals(run.id);
     } else if (isDirectSessionKey(session.openclawSessionKey)) {
       // The decision is cancelled now, even if the agent takes time to confirm
       // that its work stopped. A timeout must not leave a clickable stale Allow.
-      this.settleDirectApprovals(run.id);
+      this.settleRunApprovals(run.id);
       await this.direct.cancelAcp(session.openclawSessionKey!);
       const latest = this.requireRun(runId);
       if (latest.completedAt) return latest;
     } else if (run.openclawRunId || this.usingMock) {
-      await this.runtime.cancelRun(run.openclawRunId ?? run.id);
+      try {
+        await this.runtime.cancelRun(run.openclawRunId ?? run.id);
+      } catch (error) {
+        // A Gateway that cannot be reached cannot be told, and waiting for it
+        // would hold the conversation's next send and its queue forever.
+        if (this.usingMock || (await this.runtime.getStatus().catch(() => undefined))?.state === "connected") throw error;
+        this.log(`Stopped run ${run.id} locally; the Gateway was unreachable: ${error instanceof Error ? error.message : String(error)}`);
+        unreachable = true;
+      }
     }
     // Otherwise the Gateway never accepted this turn: there is nothing to abort there.
     run.result = this.resultWriter.finish(runId) ?? run.result;
@@ -2973,8 +3047,8 @@ export class CapsuleEngine {
     run.updatedAt = nowIso();
     run.completedAt = nowIso();
     this.repos.updateRun(run);
-    this.appendEvent(run.id, "cancelled", "Run cancelled");
-    this.settleDirectApprovals(run.id);
+    this.appendEvent(run.id, "cancelled", unreachable ? "Stopped in Capsule. The Gateway couldn't be reached, so it wasn't told to stop." : "Run cancelled", unreachable ? { gatewayUnreachable: true } : undefined);
+    this.settleRunApprovals(run.id);
     this.events.emit("run", run);
     return run;
   }
@@ -3067,7 +3141,10 @@ export class CapsuleEngine {
   }
 
   listApprovals(status?: ApprovalRequest["status"]) {
-    return this.repos.listApprovals(status);
+    return this.repos.listApprovals(status).map((item) => {
+      const sessionId = this.repos.getRun(item.runId)?.sessionId;
+      return sessionId ? { ...item, sessionId } : item;
+    });
   }
 
   /**
@@ -3091,9 +3168,9 @@ export class CapsuleEngine {
   ): Promise<void> {
     const approvals = this.repos.listApprovals("pending");
     const approval = approvals.find((item) => item.id === approvalId);
-    if (!approval) throw new Error("Approval not found");
+    if (!approval) throw new Error("That request is no longer waiting. The agent may have moved on.");
     const direct = this.directApprovals.get(approvalId);
-    if (direct && decision === "approved_session") throw new Error("Direct agents support approval once here, not approval for the entire session.");
+    if (direct && decision === "approved_session") throw new Error("This agent can only be allowed once here, not for the whole conversation.");
     if (decision === "approved_once" && (direct?.canApproveOnce === false || approval.details?.canApproveOnce === false)) {
       throw new Error("This agent did not offer approval once. Deny this request or change the agent's settings outside Capsule.");
     }
@@ -3112,7 +3189,23 @@ export class CapsuleEngine {
         this.events.emit("run", run);
       }
     } else {
-      await this.runtime.resolveApproval?.(approvalId, decision);
+      try {
+        await this.runtime.resolveApproval?.(approvalId, decision);
+      } catch (error) {
+        this.log(`Approval ${approvalId} did not reach the Gateway: ${error instanceof Error ? error.message : String(error)}`);
+        // Back to waiting, so the card returns and can be answered again. A
+        // run that ended meanwhile has no one left to ask, so it closes instead.
+        if (this.repos.getRun(approval.runId)?.completedAt) {
+          approval.status = "cancelled";
+          approval.resolvedAt = nowIso();
+        } else {
+          approval.status = "pending";
+          delete approval.resolvedAt;
+        }
+        this.repos.updateApproval(approval);
+        this.events.emit("approval", approval);
+        throw new Error("The Gateway didn't take that answer. Try again, or stop the turn.");
+      }
     }
     this.events.emit("approval", approval);
   }
@@ -3131,7 +3224,7 @@ export class CapsuleEngine {
     const valid = validateQuestionAnswers(questions, answers);
     if (!direct) {
       // Only the mock runtime asks questions off the direct route; the Gateway does not carry them.
-      if (!this.runtime.answerQuestion) throw new Error("Questions are not carried on this route. Answer in the agent's own interface.");
+      if (!this.runtime.answerQuestion) throw new Error("Capsule can't send answers to this agent. Choose Don't answer, then reply in a message.");
       approval.status = "approved_once";
       approval.resolvedAt = nowIso();
       this.repos.updateApproval(approval);
@@ -3809,7 +3902,13 @@ export class CapsuleEngine {
   private bindAcpReplies(): void {
     this.acpUnsub?.();
     if (this.usingMock) return;
-    this.acpUnsub = this.openclaw.onAcpReply((payload) => this.handleAcpReply(payload));
+    const gatewayReplies = this.openclaw.onAcpReply((payload) => this.handleAcpReply(payload));
+    // The socket drops and comes back on its own; the window's Gateway banner hears both.
+    const connection = this.openclaw.onConnectionChange(() => {
+      if (this.stopped) return;
+      void this.openclaw.getStatus().then((status) => this.events.emit("connection", status), () => undefined);
+    });
+    this.acpUnsub = () => { gatewayReplies(); connection(); };
     // Both routes deliver the same reply shape, and a thread keeps whichever
     // one started it, so both stay bound regardless of the current setting.
     this.directUnsub?.();
@@ -3925,7 +4024,7 @@ export class CapsuleEngine {
       id: createId("approval"), runId: run.id, agentId: run.agentId,
       agentName: session?.harnessId ?? run.agentId, action: request.title,
       target: asked?.length ? asked[0]!.question : request.details?.locations.join("\n") || "Target not reported by the agent",
-      reason: note ?? (asked?.length ? "The direct agent is waiting for your answer." : "The direct agent is waiting for your approval."),
+      reason: note ?? (asked?.length ? "The agent is waiting for your answer." : "The agent is waiting for your approval."),
       details: request.details,
       status: "pending", createdAt: nowIso(),
     };
@@ -4065,19 +4164,20 @@ export class CapsuleEngine {
     return true;
   }
 
-  private settleDirectApprovals(runId: string): void {
+  /** Cancels every request still waiting on this run, whichever route asked it. */
+  private settleRunApprovals(runId: string): void {
     this.longCommands.finishRun(runId);
     for (const [id, pending] of this.directApprovals) {
       if (pending.runId !== runId) continue;
       pending.cancel();
       this.directApprovals.delete(id);
-      const approval = this.repos.listApprovals("pending").find((item) => item.id === id);
-      if (approval) {
-        approval.status = "cancelled";
-        approval.resolvedAt = nowIso();
-        this.repos.updateApproval(approval);
-        this.events.emit("approval", approval);
-      }
+    }
+    for (const approval of this.repos.listApprovals("pending")) {
+      if (approval.runId !== runId) continue;
+      approval.status = "cancelled";
+      approval.resolvedAt = nowIso();
+      this.repos.updateApproval(approval);
+      this.events.emit("approval", approval);
     }
   }
 
@@ -4245,7 +4345,7 @@ export class CapsuleEngine {
     run.updatedAt = nowIso();
     run.completedAt = nowIso();
     this.repos.updateRun(run);
-    this.settleDirectApprovals(run.id);
+    this.settleRunApprovals(run.id);
     this.appendEvent(run.id, "lifecycle", OUTPUT_LIMIT_ERROR, { status: "failed", error: OUTPUT_LIMIT_ERROR });
     this.events.emit("run", run);
     const cancel = isDirectSessionKey(session.openclawSessionKey)
@@ -4328,11 +4428,12 @@ export class CapsuleEngine {
         }
         if (this.repos.getRun(run.id)?.completedAt) return;
       }
-      this.repos.insertApproval({ ...approval, runId: run.id });
+      const stored = { ...approval, runId: run.id };
+      this.repos.insertApproval(stored);
       run.status = "approval_required";
       run.updatedAt = nowIso();
       this.repos.updateRun(run);
-      this.events.emit("approval", approval);
+      this.events.emit("approval", stored);
       this.events.emit("run", run);
       return;
     }
@@ -4350,7 +4451,7 @@ export class CapsuleEngine {
     const status = event.data?.status;
     if (event.type === "lifecycle" && (status === "completed" || status === "failed" || status === "cancelled")) {
       run.result = this.resultWriter.finish(run.id) ?? run.result;
-      this.settleDirectApprovals(run.id);
+      this.settleRunApprovals(run.id);
       stop();
       run.status = status;
       run.updatedAt = nowIso();

@@ -138,7 +138,7 @@ it("settles an approval withdrawn by its direct agent without deciding it again"
   finish();
   await vi.waitFor(() => expect(engine.listApprovals("pending")).toHaveLength(0));
   expect(engine.getRun(run.id)?.status).toBe("running");
-  await expect(engine.resolveApproval(approval.id, "approved_once")).rejects.toThrow("not found");
+  await expect(engine.resolveApproval(approval.id, "approved_once")).rejects.toThrow("no longer waiting");
   expect(allow).not.toHaveBeenCalled(); expect(deny).not.toHaveBeenCalled();
 });
 
@@ -151,10 +151,10 @@ it("persists direct permission requests, resolves once, and cancels pending requ
   activity({ type: "permission", sessionKey: session.openclawSessionKey!, request: { title: "Write fixture", allow, deny, cancel: cancelPermission } });
   expect(engine.getRun(run.id)?.status).toBe("approval_required");
   const approval = engine.listApprovals("pending")[0]!;
-  await expect(engine.resolveApproval(approval.id, "approved_session")).rejects.toThrow("approval once");
+  await expect(engine.resolveApproval(approval.id, "approved_session")).rejects.toThrow("only be allowed once");
   expect(engine.listApprovals("pending")).toHaveLength(1);
   await engine.resolveApproval(approval.id, "approved_once");
-  await expect(engine.resolveApproval(approval.id, "approved_once")).rejects.toThrow("not found");
+  await expect(engine.resolveApproval(approval.id, "approved_once")).rejects.toThrow("no longer waiting");
   expect(allow).toHaveBeenCalledOnce(); expect(deny).not.toHaveBeenCalled();
   expect(engine.getRun(run.id)?.status).toBe("running");
   activity({ type: "tool", sessionKey: session.openclawSessionKey!, tool: { title: "Write fixture", status: "completed" } });
@@ -182,7 +182,7 @@ it("does not persist unsupported direct changes or accept overlapping turns", as
   expect(engine.listSessions(project.id).find((item) => item.id === session.id)?.modelOverride).toBeUndefined();
   await expect(engine.setHarnessOption({ sessionId: session.id, key: "cwd", value: "/another-folder" })).rejects.toThrow("working-directory");
   expect(engine.getProject(project.id)?.workingDirectory).toBe(run.workingDirectory);
-  await expect(engine.sendMessage({ sessionId: session.id, content: "overlap", mode: "chat" })).rejects.toThrow("active turn");
+  await expect(engine.sendMessage({ sessionId: session.id, content: "overlap", mode: "chat" })).rejects.toThrow("already has a turn running");
   expect(engine.listRuns(session.id)).toHaveLength(1);
 });
 
@@ -201,7 +201,7 @@ it.each(["stop", "close"])("clears approval decisions before %s confirmation, in
   expect(engine.listApprovals("pending")).toEqual([]);
   expect(engine.listApprovals("cancelled").map((item) => item.id)).toEqual([approval.id]);
   expect(cancel).toHaveBeenCalledOnce();
-  await expect(engine.resolveApproval(approval.id, "approved_once")).rejects.toThrow("not found");
+  await expect(engine.resolveApproval(approval.id, "approved_once")).rejects.toThrow("no longer waiting");
   expect(allow).not.toHaveBeenCalled();
   expect(deny).not.toHaveBeenCalled();
   reject(new Error("Not confirmed"));
