@@ -23,11 +23,11 @@ export function verifyContract(input: {
     if (input.forceFail) return { ...base, status: "failed", passed: false, detail: "Forced verification failure" };
     if (requirement.kind === "output_contains" && requirement.value) {
       const passed = input.output.toLowerCase().includes(requirement.value.toLowerCase());
-      return { ...base, status: "unverified", passed, advisory: true, detail: "Prose hint only; not verification evidence." };
+      return { ...base, status: "unverified", passed, advisory: true, detail: "Read the reply for this; Capsule does not check it." };
     }
     if (requirement.kind === "tests_pass") {
       if (!evidence || !belongs || (requirement.value && ![evidence.actionId, evidence.command].includes(requirement.value))) {
-        return { ...base, status: "unverified", passed: false, detail: "No matching saved check has run for this turn and revision." };
+        return { ...base, status: "unverified", passed: false, detail: "No saved check has run on this turn's files yet." };
       }
       if (!stable) return { ...base, status: "stale", passed: false, detail: "The workspace changed during the check, or its final revision could not be recorded." };
       if (evidence.exitCode === undefined) return { ...base, status: "unverified", passed: false, detail: "The check did not produce an exit code." };

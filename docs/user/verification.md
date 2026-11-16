@@ -29,7 +29,7 @@ start or cancel them.
 | Check failed | A recorded command or objective requirement failed. The reply remains completed. |
 | Out of date | The files or Git revision changed, or the final workspace snapshot could not be recorded. The result cannot verify this turn. |
 
-**Check output** and **Evidence details** contain the exact command, exit code, timestamps, workspace
+**Check output** and **How this is checked** contain the exact command, exit code, timestamps, workspace
 revision, and the last 20,000 characters of output. It stays with its turn after
 restart. A passing receipt describes that saved revision, not subsequent edits.
 Once a receipt exists, use **Recheck evidence** to compare it with the current workspace without

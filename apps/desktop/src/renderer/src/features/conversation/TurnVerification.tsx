@@ -10,6 +10,16 @@ const stateLabels: Record<VerificationState, string> = {
 };
 
 /** The receipt belongs to this turn, not the currently selected repository. */
+/* Turns saved before this wording keep their old contract text; show them in the same plain words. */
+const REQUIREMENT_LABELS: Record<string, string> = {
+  "tests-pass": "A saved check passes on this turn's files.",
+  "describe-changes": "The reply says what changed and how to check it.",
+};
+const DETAIL_LABELS: Record<string, string> = {
+  "Prose hint only; not verification evidence.": "Read the reply for this; Capsule does not check it.",
+  "No matching saved check has run for this turn and revision.": "No saved check has run on this turn's files yet.",
+};
+
 export function TurnVerification({ run }: { run: Run; }) {
   const { api, projects, settings, refresh } = useWorkspace();
   const [result, setResult] = useState<VerificationResult>();
@@ -51,14 +61,14 @@ export function TurnVerification({ run }: { run: Run; }) {
     <details className="turn-verification" data-verification-run={run.id}>
       <summary><ShieldIcon size={14} /><span>Verification</span><span className={`verification-state ${latest?.status ?? "unverified"}`}>{running ? "Checking…" : stateLabels[latest?.status ?? "unverified"]}</span><ChevronRightIcon className="verification-chevron" size={13} /></summary>
       <div className="verification-body">
-        <p className="muted">{running ? "Running the saved check in this turn’s folder…" : evidence ? latest?.summary : "No saved check has run for this turn. Tool activity alone does not verify the result."}</p>
+        <p className="muted">{running ? "Running the saved check in this turn’s folder…" : evidence ? latest?.summary : "Nothing has checked this turn yet. The agent finishing is not proof it works: run a test or build to check."}</p>
         {!run.revision && <p className="muted">No saved revision is available for this turn.</p>}
         {actions.length > 0 && <>
           <label className="verification-action field">Saved project check<select aria-label="Verification action" value={selectedId} disabled={running || blocked || saving} onChange={(e) => setActionId(e.target.value)}><option value="">Choose a check…</option>{actions.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
           {action && <code className="verification-command">{action.command}</code>}
           <p className="faint">Runs on this computer. Only run a command you trust; it can modify files. Checks stop after two minutes.</p>
         </>}
-        {actions.length === 0 && <p className="muted">{project ? "Add a test or build action to this project, then run it here." : "This turn’s project is no longer available. Existing evidence is still shown below."}</p>}
+        {actions.length === 0 && <p className="muted">{project ? "Add the command that tests or builds this project, then run it here." : "This turn’s project is no longer available. Existing evidence is still shown below."}</p>}
         {adding && <form className="verification-add" onSubmit={(event) => { event.preventDefault(); void saveCheck(); }}>
           <label className="field">Check name<input value={name} maxLength={60} disabled={saving} onChange={(e) => setName(e.target.value)} required /></label>
           <label className="field">Command<input value={command} placeholder="node --test" maxLength={2000} disabled={saving} onChange={(e) => setCommand(e.target.value)} required /></label>
@@ -72,12 +82,12 @@ export function TurnVerification({ run }: { run: Run; }) {
           {evidence && <button type="button" className="ghost" disabled={running || !run.revision} onClick={() => void check()}>Recheck evidence</button>}
         </div>
         {evidence && <details className="verification-details"><summary>Check output · {new Date(evidence.completedAt).toLocaleString()}</summary><p><code>{evidence.command}</code> · Exit {evidence.exitCode ?? "not recorded"}</p><pre>{evidence.output || "No output."}</pre><p className="faint">Output shows the last 20,000 characters.</p></details>}
-        <details className="verification-details"><summary>Evidence details</summary>
-          <p className="muted">Checks run on this computer in this turn’s folder. They do not certify remote agent files or prove every requirement is correct.</p>
+        <details className="verification-details"><summary>How this is checked</summary>
+          <p className="muted">Checks run on this computer, in this turn’s folder, so they do not cover files on a remote agent’s machine. A pass means the command succeeded on these files; it does not prove every requirement is met.</p>
           {run.workingDirectory && <code className="verification-path">{run.workingDirectory}</code>}
-          {run.revision && <p className="faint">Saved tree <code>{run.revision.tree.slice(0, 12)}</code> · HEAD <code>{run.revision.head?.slice(0, 12) ?? "unborn"}</code></p>}
-          {evidence && <p className="faint">Final tree: <code>{evidence.after?.tree.slice(0, 12) ?? "unavailable"}</code></p>}
-          {latest?.checks.map((item) => <div className="verification-check" key={item.requirementId}><span>{item.description}</span><span className="faint">{item.advisory ? "Human review" : stateLabels[item.status]}</span><small>{item.detail}</small></div>)}
+          {run.revision && <p className="faint">Files as of snapshot <code>{run.revision.tree.slice(0, 12)}</code> · commit <code>{run.revision.head?.slice(0, 12) ?? "none yet"}</code></p>}
+          {evidence && <p className="faint">Snapshot after the check: <code>{evidence.after?.tree.slice(0, 12) ?? "unavailable"}</code></p>}
+          {latest?.checks.map((item) => <div className="verification-check" key={item.requirementId}><span>{REQUIREMENT_LABELS[item.requirementId] ?? item.description}</span><span className="faint">{item.advisory ? "Up to you" : stateLabels[item.status]}</span><small>{(item.detail && DETAIL_LABELS[item.detail]) ?? item.detail}</small></div>)}
         </details>
         {error && <p className="verification-error" role="alert">{error}</p>}
       </div>

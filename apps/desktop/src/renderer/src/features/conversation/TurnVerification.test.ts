@@ -16,7 +16,7 @@ it("starts collapsed, does not claim success, and explains missing evidence", ()
 it("uses actions from the owning project and explains the local-only boundary", () => {
   context.value.projects = [{ id: "other", actions: [{ id: "wrong", name: "Wrong project", command: "wrong" }] }];
   const html = renderToStaticMarkup(createElement(TurnVerification, { run }));
-  expect(html).not.toContain("Wrong project"); expect(html).toContain("project is no longer available"); expect(html).toContain("do not certify remote agent files");
+  expect(html).not.toContain("Wrong project"); expect(html).toContain("project is no longer available"); expect(html).toContain("do not cover files on a remote agent");
   expect(html).not.toContain("Add check");
 });
 
@@ -26,8 +26,8 @@ it("offers to save a check without unusable run or recheck buttons when no actio
   expect(html).toContain("Add check");
   expect(html).not.toContain("Run selected check");
   expect(html).not.toContain("Recheck evidence");
-  expect(html).toContain("Tool activity alone does not verify the result");
-  expect(html).toContain('class="verification-details"><summary>Evidence details');
+  expect(html).toContain("The agent finishing is not proof it works");
+  expect(html).toContain('class="verification-details"><summary>How this is checked');
 });
 
 it("selects a sole saved action without executing it and uses styled controls", () => {
