@@ -164,10 +164,46 @@ export function AgentDefaultsCard({ settings, onPatch }: SectionProps) {
   );
 }
 
+/*
+ * Presets over the switches below; nothing new is stored. The preset shown is
+ * whichever one the switches match, so changing a switch by hand reads as
+ * Custom rather than a preset that no longer describes what happens.
+ */
+const NOTIFICATION_PRESETS = {
+  everything: { label: "Everything", values: { notifyRunComplete: true, notifyApprovals: true, notifyLongCommands: true, bounceDockOnAttention: true, dockBadge: true } },
+  needed: { label: "When I'm needed", values: { notifyRunComplete: false, notifyApprovals: true, notifyLongCommands: false, bounceDockOnAttention: true, dockBadge: true } },
+  app: { label: "Only in the app", values: { notifyRunComplete: false, notifyApprovals: false, notifyLongCommands: false, bounceDockOnAttention: false, dockBadge: false } },
+} as const;
+type NotificationPreset = keyof typeof NOTIFICATION_PRESETS;
+
+function notificationPreset(settings: SectionProps["settings"]): NotificationPreset | "custom" {
+  const match = (Object.keys(NOTIFICATION_PRESETS) as NotificationPreset[]).find((id) =>
+    Object.entries(NOTIFICATION_PRESETS[id].values).every(([key, value]) => settings[key as keyof typeof settings] === value));
+  return match ?? "custom";
+}
+
 export function NotificationsCard({ settings, onPatch }: SectionProps) {
+  const preset = notificationPreset(settings);
   return (
     <div className="card">
       <h3>Notifications</h3>
+      <SettingRow
+        label="Notify me"
+        hint="Everything: finished turns, approvals and long commands. When I'm needed: only when an agent waits on you. Only in the app: nothing outside Capsule's window. Sets the switches below."
+      >
+        <select
+          className="field-select"
+          aria-label="Notification preset"
+          value={preset}
+          onChange={(event) => {
+            const id = event.target.value as NotificationPreset;
+            if (id in NOTIFICATION_PRESETS) void onPatch({ ...NOTIFICATION_PRESETS[id].values });
+          }}
+        >
+          {(Object.keys(NOTIFICATION_PRESETS) as NotificationPreset[]).map((id) => <option key={id} value={id}>{NOTIFICATION_PRESETS[id].label}</option>)}
+          {preset === "custom" && <option value="custom" disabled>Custom</option>}
+        </select>
+      </SettingRow>
       <SettingRow
         label="Response completions" setting="notifyRunComplete"
         hint="Notify with the conversation's name when a turn finishes or a snooze ends while Capsule is in the background. Clicking the notification opens it. In front of you, another conversation finishing shows in the app instead."

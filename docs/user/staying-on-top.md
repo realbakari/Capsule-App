@@ -43,8 +43,12 @@ news about other conversations appears in the corner with **Open**.
 The Dock icon counts conversations waiting on you: a decision, a failure, or a
 finished turn you have not read. It goes down as you read.
 
-Settings › General has switches for each kind of notification, the Dock badge
-and the notification sound.
+Settings › General starts with **Notify me**, which sets the switches below it
+in one go: **Everything** (finished turns, approvals and long commands),
+**When I'm needed** (only when an agent waits on you), or **Only in the app**
+(nothing outside Capsule's window, and no Dock badge or bounce). Change a
+switch yourself and it reads **Custom**. The switches cover each kind of
+notification, the Dock badge and the notification sound.
 
 ## When an agent asks you something
 
@@ -70,9 +74,8 @@ working on them.
 ## Finding your place
 
 Capsule remembers how far you had scrolled in each conversation and takes you
-back there. Long conversations show a thin timeline at their right edge: point
-at a mark to see which turn it is, click to jump to it. `F6` moves between the
-sidebar, the conversation, the message box and the side panel.
+back there. `F6` moves between the sidebar, the conversation, the message box
+and the side panel.
 
 When Capsule is watching a pull request for a conversation and the pull request
 merges, that conversation is settled for you. Turn this off in Settings › Source

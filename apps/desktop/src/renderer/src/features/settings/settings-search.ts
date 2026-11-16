@@ -76,6 +76,7 @@ export const SETTINGS_SEARCH_ITEMS: SettingsSearchItem[] = [
   { title: "Local performance", section: "diagnostics", keywords: ["freeze", "timings", "slow", "git", "preview"] },
   { title: "Download updates automatically", section: "general", key: "autoDownloadUpdates", keywords: ["update", "release", "background"] },
   { title: "Keep computer awake", section: "general", key: "keepAwakeWhileRunning", keywords: ["sleep", "power", "running"] },
+  { title: "Notify me", section: "general", keywords: ["notification", "preset", "everything", "needed", "only in the app", "quiet", "alert"] },
   { title: "Response completions", section: "general", key: "notifyRunComplete", keywords: ["notification", "alert", "run complete"] },
   { title: "Long-running commands", section: "general", key: "notifyLongCommands", keywords: ["notification", "alert", "command", "timeout", "approval"] },
   { title: "Settle merged conversations", section: "sourceControl", key: "autoSettleMerged", keywords: ["pull request", "merged", "settle", "done"] },
