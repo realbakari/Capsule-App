@@ -17,7 +17,6 @@ import type {
   RunEvent,
   Session,
   Skill,
-  SkillPack,
   Workspace,
 } from "@capsule/shared";
 import { isHarnessId, isTurnMode, readPendingStart, TextBudget, REPLY_BYTE_LIMIT } from "@capsule/shared";
@@ -791,55 +790,6 @@ export class CapsuleRepositories {
 
   deleteSkill(id: string): void {
     this.db.sqlite.prepare(`DELETE FROM skills WHERE id = ?`).run(id);
-  }
-
-  upsertSkillPack(pack: SkillPack): void {
-    this.db.sqlite
-      .prepare(
-        `INSERT INTO skill_packs (
-          id, name, description, author, url, install_command, tags, skill_count, created_at
-        ) VALUES (
-          @id, @name, @description, @author, @url, @installCommand, @tags, @skillCount, @createdAt
-        ) ON CONFLICT(id) DO UPDATE SET
-          name = excluded.name,
-          description = excluded.description,
-          author = excluded.author,
-          url = excluded.url,
-          install_command = excluded.install_command,
-          tags = excluded.tags,
-          skill_count = excluded.skill_count`,
-      )
-      .run({
-        ...pack,
-        author: pack.author ?? null,
-        url: pack.url ?? null,
-        installCommand: pack.installCommand ?? null,
-        tags: JSON.stringify(pack.tags ?? []),
-        skillCount: pack.skillCount ?? 0,
-        createdAt: pack.createdAt ?? new Date().toISOString(),
-      });
-  }
-
-  listSkillPacks(): SkillPack[] {
-    const rows = this.db.sqlite
-      .prepare(
-        `SELECT id, name, description, author, url, install_command AS installCommand, tags,
-                skill_count AS skillCount, created_at AS createdAt
-         FROM skill_packs ORDER BY name`,
-      )
-      .all() as Array<Omit<SkillPack, "tags"> & { tags: string; }>;
-    return rows.map((row) => ({
-      ...row,
-      tags: parseJson<string[]>(row.tags, []),
-    }));
-  }
-
-  getSkillPack(id: string): SkillPack | undefined {
-    return this.listSkillPacks().find((pack) => pack.id === id);
-  }
-
-  deleteSkillPack(id: string): void {
-    this.db.sqlite.prepare(`DELETE FROM skill_packs WHERE id = ?`).run(id);
   }
 
   insertRun(run: Run): void {

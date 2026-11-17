@@ -68,6 +68,18 @@ export interface ImportListing {
   sources: ImportSource[];
 }
 
+/** A folder the agents' own histories show steady recent work in, offered as a project on first run. */
+export interface SuggestedProject {
+  /** The repository root when the sessions ran inside one, otherwise their folder. */
+  path: string;
+  name: string;
+  /** Sessions in the window, across agents. */
+  sessions: number;
+  agents: ImportAgentId[];
+  /** ISO time of the newest one. */
+  lastActivity: string;
+}
+
 export interface ImportSessionInput {
   projectId: string;
   agent: ImportAgentId;

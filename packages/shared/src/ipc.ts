@@ -76,7 +76,7 @@ export const IPC_CHANNELS = {
   terminalAcknowledge: "capsule:terminalAcknowledge",
   terminalResize: "capsule:terminalResize",
   terminalStop: "capsule:terminalStop",
-  runProjectAction: "capsule:runProjectAction",
+  terminalIdle: "capsule:terminalIdle",
   stopProjectAction: "capsule:stopProjectAction",
   listProjectActionRuns: "capsule:listProjectActionRuns",
   getStatus: "capsule:getStatus",
@@ -135,10 +135,14 @@ export const IPC_CHANNELS = {
   gitStage: "capsule:gitStage",
   gitDiscard: "capsule:gitDiscard",
   gitScopedDiff: "capsule:gitScopedDiff",
+  gitReviewTargets: "capsule:gitReviewTargets",
   gitCheckHunks: "capsule:gitCheckHunks",
   gitApplyHunk: "capsule:gitApplyHunk",
   gitCreateBranch: "capsule:gitCreateBranch",
   gitPush: "capsule:gitPush",
+  /* Pull reaches the network and moves the branch; fetch only refreshes remote-tracking refs. Both write. */
+  gitPull: "capsule:gitPull",
+  gitFetch: "capsule:gitFetch",
   gitCreatePullRequest: "capsule:gitCreatePullRequest",
   gitMergePullRequest: "capsule:gitMergePullRequest",
   gitMergePullRequestStack: "capsule:gitMergePullRequestStack",
@@ -161,6 +165,8 @@ export const IPC_CHANNELS = {
   agentStoreList: "capsule:agentStoreList",
   agentStoreInstall: "capsule:agentStoreInstall",
   agentStoreUninstall: "capsule:agentStoreUninstall",
+  /* Runs the owning package manager on a copy the user installed. A write: never from a paired device. */
+  agentStoreUpdateUserCopy: "capsule:agentStoreUpdateUserCopy",
   /* Signing an agent in: its methods, ACP authenticate/logout, and a login terminal main starts by id. */
   agentSignInOptions: "capsule:agentSignInOptions",
   agentAuthenticate: "capsule:agentAuthenticate",
@@ -189,9 +195,7 @@ export const IPC_CHANNELS = {
   regenerateTitle: "capsule:regenerateTitle",
   setPermissionProfile: "capsule:setPermissionProfile",
   showContextMenu: "capsule:showContextMenu",
-  listSkillPacks: "capsule:listSkillPacks",
   installSkill: "capsule:installSkill",
-  installSkillPack: "capsule:installSkillPack",
   uninstallSkill: "capsule:uninstallSkill",
   searchSkillCatalog: "capsule:searchSkillCatalog",
   resetSettingsSection: "capsule:resetSettingsSection",
@@ -219,6 +223,8 @@ export const IPC_CHANNELS = {
   forkBranches: "capsule:forkBranches",
   /* Import a session from an agent's own history, and continue a thread in a new one. */
   listImportableSessions: "capsule:listImportableSessions",
+  /* First run: folders with recent sessions in the agents' own histories. Local only; a write scope because it names host folders. */
+  suggestProjects: "capsule:suggestProjects",
   importSession: "capsule:importSession",
   handoffDraft: "capsule:handoffDraft",
   handoffSession: "capsule:handoffSession",
@@ -262,6 +268,8 @@ export const IPC_CHANNELS = {
   listOpenInApps: "capsule:listOpenInApps",
   addOpenInApp: "capsule:addOpenInApp",
   openInApp: "capsule:openInApp",
+  /* Show a folder or file selected in the system file manager. */
+  revealInFolder: "capsule:revealInFolder",
   /* Composer dictation through the on-device macOS speech helper. Desktop window only. */
   startDictation: "capsule:startDictation",
   finishDictation: "capsule:finishDictation",

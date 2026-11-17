@@ -129,19 +129,6 @@ export interface Skill {
   managedExternally?: boolean;
 }
 
-export interface SkillPack {
-  id: string;
-  name: string;
-  description: string;
-  author?: string;
-  url?: string;
-  installCommand?: string;
-  tags?: string[];
-  skillCount: number;
-  skills?: Skill[];
-  createdAt?: string;
-}
-
 /** One skill in the live catalog, as read from its source repository. */
 export interface SkillCatalogEntry {
   id: string;
@@ -182,15 +169,6 @@ export interface SkillsShSearchResult {
   installUrl?: string | null;
   url: string;
   description?: string;
-}
-
-export interface SkillsShSkillDetail {
-  id: string;
-  source: string;
-  slug: string;
-  installs?: number;
-  hash?: string | null;
-  files?: Array<{ path: string; contents: string; }> | null;
 }
 
 export interface Workspace {
@@ -780,6 +758,15 @@ export interface GitPullRequestDetail extends GitPullRequest {
   diffUnavailable?: string;
 }
 
+/**
+ * What a commit takes: the index exactly as staged, or every change to these
+ * paths (untracked included) while anything else staged stays out.
+ */
+export type GitCommitScope = { staged: true } | { paths: string[] };
+
+/** How a pull joins the branch to its upstream: fast-forward only, or replay local commits on top. */
+export type GitPullMode = "ff-only" | "rebase";
+
 export interface GitStatus {
   available: boolean;
   isRepo: boolean;
@@ -790,8 +777,21 @@ export interface GitStatus {
   files: GitChange[];
   branches: string[];
   ghAvailable?: boolean;
+  /** Commits on HEAD that `upstream` lacks, and the reverse. Absent with no upstream. */
   ahead?: number;
   behind?: number;
+  /** The same-named remote branch HEAD tracks, as `remote/branch`. Absent: never published. */
+  upstream?: string;
+  /** Where a push goes: the branch's push remote, remote.pushDefault, its remote, the only remote, or origin. */
+  pushRemote?: string;
+  /** The push remote's HEAD branch, else a local main or master. */
+  defaultBranch?: string;
+  /** Remote-tracking branches with no local branch of that name, as `remote/branch`. */
+  remoteBranches?: string[];
+  /** Local branches checked out in another worktree, with that worktree's folder. */
+  checkedOutElsewhere?: Record<string, string>;
+  /** Client hooks a commit or push runs, so a slow one can say why. */
+  hooks?: string[];
   /** Totals across `files`, for a one-line "+12 −3" summary. */
   added?: number;
   removed?: number;
@@ -996,6 +996,10 @@ export interface TurnDiffOptions {
 export interface GitDiffOptions {
   /** Compare lines with all whitespace ignored (git diff -w). */
   ignoreWhitespace?: boolean;
+  /** Branch: the ref to measure from, local or remote. Absent: the default branch. */
+  base?: string;
+  /** Commit: the full commit ID to show. */
+  commit?: string;
 }
 
 export interface TurnDiffResult {
@@ -1178,6 +1182,8 @@ export interface ResourceHistoryPoint {
 /** What the Settings screen shows about devices reading this Capsule. */
 export interface RemoteAccessStatus {
   reach: "off" | "loopback" | "network";
+  /** Set when Capsule was started with remote access on; the setting cannot change it until Capsule quits. */
+  heldByLaunch?: boolean;
   url?: string;
   /** Undefined until someone asks for a link; it is only shown once. */
   pairingUrl?: string;
