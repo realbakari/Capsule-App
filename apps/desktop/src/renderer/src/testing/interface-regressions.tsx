@@ -4,6 +4,8 @@ import { SearchDialog, type SearchDialogItem } from "../features/shell/SearchDia
 import { Palette } from "../features/shell/Palette";
 import { FilePicker } from "../features/shell/FilePicker";
 import { Sidebar } from "../features/shell/Sidebar";
+import { ToastProvider, useToasts, type Toast } from "../lib/toasts";
+import type { UpdateCheck } from "@capsule/shared";
 import { CopyButton } from "../features/conversation/CopyButton";
 
 function assert(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
@@ -112,8 +114,12 @@ export async function runInterfaceRegressions(host: HTMLElement, base: Record<st
     } };
     root.render(<PaletteFixture base={{ ...base, api: searchApi, projects: [], sessions: [] }} />);
     await until(() => document.querySelector('[aria-label="Search workspace"]'));
-    const creation = Array.from(document.querySelectorAll('[role="option"]')).find((option) => option.textContent?.startsWith("New conversation"));
-    assert(creation?.getAttribute("aria-disabled") === "true", "Viewer offers desktop-only creation without explaining availability");
+    const options = () => Array.from(document.querySelectorAll<HTMLElement>('[role="option"]'));
+    assert(!options().some((option) => option.getAttribute("aria-disabled") === "true"), "The empty palette lists rows that cannot run here");
+    fill('[role="combobox"]', "new conv");
+    await until(() => options().some((option) => option.textContent?.startsWith("New conversation")));
+    const creation = options().find((option) => option.textContent?.startsWith("New conversation"));
+    assert(creation?.getAttribute("aria-disabled") === "true" && creation.textContent?.includes("Read only on this device."), "Viewer offers creation without explaining availability");
     fill('[role="combobox"]', "older");
     await until(() => resolveOld);
     fill('[role="combobox"]', "newer");
@@ -195,6 +201,80 @@ export async function runInterfaceRegressions(host: HTMLElement, base: Record<st
     renderSidebar();
     await until(() => document.querySelector('[aria-label="Search settings"]'));
     assert(document.querySelector("aside")?.inert, "Settings sidebar omitted collapsed keyboard isolation");
+
+    // The footer's one update control: its glyph and tooltip carry the state,
+    // the footer holds no update text, and only a user action raises a toast.
+    let update: UpdateCheck = { state: "update-available", current: "0.13.0", latest: "0.14.0", canInstall: true };
+    let updateEvent: (payload: unknown) => void = () => {};
+    let checks = 0, downloads = 0, confirmTitle = "";
+    let toasts: Toast[] = [];
+    const ToastCapture = () => { toasts = useToasts().toasts; return null; };
+    const sidebarWorkspace = window.testWorkspace as Record<string, unknown>;
+    const renderUpdates = (isDesktop = true) => {
+      window.testWorkspace = { ...sidebarWorkspace, view: "chat", sidebarCollapsed: false,
+        setConfirm: (value: { title: string }) => { confirmTitle = value.title; },
+        api: { ...sidebarWorkspace.api as object, isDesktop,
+          on: (_name: string, handler: typeof updateEvent) => { updateEvent = handler; return () => {}; },
+          updateStatus: async () => update,
+          checkForUpdates: async () => { checks++; return update; },
+          downloadUpdate: async () => { downloads++; update = { ...update, state: "ready-to-install" }; return update; },
+        } };
+      root.render(<ToastProvider><Sidebar /><ToastCapture /></ToastProvider>);
+    };
+    const updateButton = () => document.querySelector<HTMLButtonElement>(".update-button");
+    renderUpdates();
+    await until(() => updateButton()?.dataset.updateState === "available");
+    assert(updateButton()!.title === "Update 0.14.0 ready to download", "Available update tooltip did not name the version");
+    assert(!document.querySelector(".sidebar-footer")!.textContent?.includes("0.14.0"), "Sidebar footer still prints update text");
+    updateButton()!.click();
+    await until(() => updateButton()?.dataset.updateState === "ready");
+    assert(downloads === 1, "Available update did not download from the sidebar");
+    await until(() => toasts.some((toast) => toast.title === "Capsule 0.14.0 downloaded" && toast.action?.label === "Release notes"));
+    updateButton()!.click();
+    assert(confirmTitle === "Install Capsule 0.14.0 and restart?", "Restart did not ask first, naming the version");
+
+    update = { state: "unreachable", current: "0.13.0", development: true, detail: "This is a development build." };
+    updateEvent({ command: "update-status" });
+    await until(() => updateButton()?.getAttribute("aria-disabled") === "true");
+    assert(updateButton()!.title === "Updates unavailable: This is a development build.", "Development build did not explain the disabled control");
+    updateButton()!.click();
+    await settle();
+    assert(checks === 0, "Disabled update control still started a check");
+
+    update = { state: "up-to-date", current: "0.13.0" };
+    updateEvent({ command: "update-status" });
+    await until(() => updateButton()?.dataset.updateState === "idle" && !updateButton()!.hasAttribute("aria-disabled"));
+    updateButton()!.click();
+    await until(() => toasts.some((toast) => toast.title === "You’re up to date"));
+    assert(Number(checks) === 1, "Check for updates did not run");
+
+    renderUpdates(false);
+    await until(() => document.querySelector(".sidebar-footer") && !updateButton()).catch(() => undefined);
+    assert(!updateButton(), "A paired device can drive the host's update");
+
+    // The palette: one header per group, recent threads first with their age,
+    // a named target for New conversation, ">" for commands only, and an
+    // update row that runs the same check as the sidebar control.
+    const paletteApi = { ...sidebarWorkspace.api as object, isDesktop: true, on: () => () => {}, updateStatus: async () => update,
+      checkForUpdates: async () => { checks++; return update; }, search: async () => ({ sessions: [], messages: [] }) };
+    root.render(<ToastProvider><PaletteFixture base={{ ...base, api: paletteApi, setPalette: () => {}, session: undefined, sessionId: undefined,
+      project: { id: "project", name: "Example workspace" }, projects: [{ id: "project", name: "Example workspace" }],
+      sessions: [{ id: "thread", projectId: "project", title: "Review accessibility", state: "active", updatedAt: "2026-01-01T00:00:00Z" }] }} /><ToastCapture /></ToastProvider>);
+    await until(() => document.querySelector('[aria-label="Search workspace"]'));
+    const headers = Array.from(document.querySelectorAll(".search-dialog-section"), (node) => node.textContent);
+    assert(headers[0] === "Recent conversations" && new Set(headers).size === headers.length, `Palette groups repeat or recent conversations do not lead: ${headers.join(", ")}`);
+    assert(document.querySelector('[role="option"] .search-dialog-meta')?.textContent, "Recent conversation rows do not say how long ago they moved");
+    assert(Array.from(document.querySelectorAll('[role="option"]')).some((option) => option.textContent?.startsWith("New conversation in Example workspace")), "New conversation does not name its project");
+    fill('[role="combobox"]', ">review");
+    await until(() => document.body.textContent?.includes("Review uncommitted changes"));
+    assert(!document.body.textContent?.includes("Review accessibility"), "A leading > still lists conversations");
+    fill('[role="combobox"]', "update");
+    const updateRow = () => Array.from(document.querySelectorAll<HTMLElement>('[role="option"]')).find((option) => option.textContent?.startsWith("Check for updates"));
+    await until(updateRow);
+    toasts = [];
+    updateRow()!.click();
+    await until(() => toasts.some((toast) => toast.title === "You’re up to date"));
+    assert(Number(checks) === 2, "The palette's Check for updates did not start a check");
   } finally {
     root.unmount();
     if (clipboard) Object.defineProperty(navigator.clipboard, "writeText", clipboard);

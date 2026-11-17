@@ -84,8 +84,8 @@ app.whenReady().then(async () => {
     await capture("public-desktop");
     assert.equal(await evaluate("Boolean(document.querySelector('.app'))"), false, "Desktop shell leaked into marketing document");
     assert.equal(await evaluate("document.querySelector('.site-preview').contentDocument.querySelector('.showcase-preview').inert"), true);
-    // The sample is a picture of the app: no update error in its footer, no pairing advice in its composer.
-    assert.equal(await evaluate("Boolean(document.querySelector('.site-preview').contentDocument.querySelector('.update-feedback-bubble'))"), false, "Sample workspace shows an update error");
+    // The sample is a picture of the app: no update control in its footer, no pairing advice in its composer.
+    assert.equal(await evaluate("Boolean(document.querySelector('.site-preview').contentDocument.querySelector('.update-button'))"), false, "Sample workspace shows an update control");
     assert.equal(await evaluate("[...document.querySelector('.site-preview').contentDocument.querySelectorAll('.composer-preflight')].every(n => n.offsetParent === null)"), true, "Sample workspace shows pairing advice");
     assert.doesNotMatch(await evaluate("document.querySelector('.site-preview').contentDocument.body.textContent"), /Completion not reported/);
     // Laid out at its desktop width and scaled to the column, never squeezed.

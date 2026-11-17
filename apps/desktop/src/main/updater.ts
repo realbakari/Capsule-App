@@ -35,12 +35,16 @@ export interface UpdaterOptions {
   stageInstall?: (signal: AbortSignal) => Promise<void>;
 }
 
+const DEVELOPMENT_BUILD = "This is a development build. Updates install in the released app.";
+
 export class Updater {
   private status: UpdaterStatus;
   private checking?: Promise<UpdaterStatus>;
   private installation?: { controller: AbortController; release?: () => void };
   constructor(private readonly options: UpdaterOptions) {
-    this.status = { state: "idle", current: options.currentVersion, checked: false };
+    // A build that cannot replace itself says so from the first read, before anyone presses check.
+    this.status = options.canInstall ? { state: "idle", current: options.currentVersion, checked: false }
+      : { state: "unavailable", current: options.currentVersion, detail: DEVELOPMENT_BUILD };
     const updater = options.updater;
     updater.autoDownload = false;
     updater.autoInstallOnAppQuit = false;
@@ -70,7 +74,7 @@ export class Updater {
 
   check(): Promise<UpdaterStatus> {
     if (!this.options.canInstall) {
-      this.set({ state: "unavailable", detail: "This is a development build. Updates install in the released app.", retry: undefined });
+      this.set({ state: "unavailable", detail: DEVELOPMENT_BUILD, retry: undefined });
       return Promise.resolve(this.status);
     }
     if (["downloading", "ready", "installing"].includes(this.status.state)) return Promise.resolve(this.status);

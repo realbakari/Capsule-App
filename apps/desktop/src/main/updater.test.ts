@@ -113,6 +113,7 @@ describe("updating in place", () => {
       canInstall: false,
       onStatus: () => {},
     });
+    expect(mergeUpdateStatus(updater.current())).toMatchObject({ development: true, detail: expect.stringContaining("development build") });
     expect((await updater.check()).state).toBe("unavailable");
     expect(api.checkForUpdates).not.toHaveBeenCalled();
   });

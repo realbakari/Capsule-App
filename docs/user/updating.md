@@ -14,39 +14,67 @@ runs. By default, it downloads them in the background. Turn off **Download
 updates automatically** in Settings → General if you prefer to download on
 demand.
 
-The sidebar and Settings → About show the same download progress and
-**Restart & install** action. Save open files first. Capsule refuses the restart
-while turns, checks, commands, saved actions, Git operations or terminal sessions
-are active; finish or stop them, then try again. After you confirm the restart,
-new work and file saves pause while the system prepares the replacement.
-Status and conversation history remain readable. Background downloads alone
-never trigger a restart or install on quit.
+## The update button
 
-A failed download offers **Retry download**, keeping the update in the app.
-A failed or blocked restart keeps the downloaded update ready to try again.
+The round button at the right end of the sidebar's bottom row is the update
+control. Its icon shows where an update stands, and its tooltip names the
+version and what pressing it does:
+
+- A circular arrow checks for updates. It spins while a check runs. When you
+  press it and nothing newer exists, a notice says you are up to date.
+- A download arrow with a dot means a version is ready to download. Press it to
+  download inside Capsule.
+- A ring fills around the arrow while the update downloads.
+- A circular arrow with a check mark means the update is downloaded. When a
+  download finishes, a notice says so and links to the release notes at
+  cpcl.dev/updates.
+
+Press the button once the update is downloaded to restart and install. Capsule
+asks first, naming the version. Save open files first. Capsule refuses the
+restart while turns, checks, commands, saved actions, Git operations or terminal
+sessions are active; finish or stop them, then try again. After you confirm the
+restart, new work and file saves pause while the system prepares the
+replacement. Status and conversation history remain readable. Background
+downloads alone never trigger a restart or install on quit.
+
+Settings → About shows the same progress and the same **Restart & install**
+action. The command palette's update row does what the sidebar button would do
+next: **Check for updates**, **Download update** or **Restart & install**, and
+reports the result the same way. **About Capsule** in the palette shows the
+version you are running.
+
+A failed download or restart keeps the update in the app; the tooltip says
+what to retry, and pressing the button tries again. A check, download or
+restart you started that fails shows a notice with the reason. A check
+Capsule ran on its own in the background stays quiet when it fails and tries
+again later.
 If preparation fails or times out, you can resume work. A late completion from
 that attempt cannot unexpectedly close the app; installing requires another
 explicit restart attempt. Once the native installer has staged an update after
 your restart request, it may apply it the next time the app starts.
 Reopening a window restores the current update state.
 
+The update button is only on the computer running Capsule. A paired device
+reading your workspace does not show it, because updating replaces the app on
+that computer.
+
 Development builds and incompatible signatures cannot update in place. In a
-development build the update button's tooltip says so, and pressing it shows
-that once as a notice instead of leaving a note in the sidebar.
+development build the update button is dimmed and its tooltip says why.
 The **Release notes** link in About opens the release page, where a manual
 download remains available for recovery. Checking for an update does not open
-that page automatically. A failed check keeps its error visible even in a
-development build. Do not disable system security checks to work around an
-unexplained signature warning.
+that page automatically. Do not disable system security checks to work around
+an unexplained signature warning.
 
 ## Update states
 
-| What you see | What it means |
-|---|---|
-| Checking for updates | A check is still in progress. |
-| You’re up to date | The compatible feed reports no newer update. |
-| Download update | A compatible version can be downloaded inside Capsule. |
-| Downloading update | The download is in progress; the percentage is shown. |
-| Restart & install | The downloaded update is ready; restarting requires confirmation. |
-| Retry download or retry restart | The previous attempt failed; its explanation remains visible. |
-| Retry update check | The check failed; retry without leaving the app. |
+| Update button tooltip | Settings → About button | What it means |
+|---|---|---|
+| Check for updates | Check for updates | Nothing is pending. Press to check now. |
+| Checking for updates… | Checking for updates… | A check is still in progress. |
+| Update X ready to download | Download update | A compatible version can be downloaded inside Capsule. |
+| Downloading update (N%) | Downloading update · N% | The download is in progress. |
+| Update X downloaded. Click to restart and install. | Restart & install | The update is ready; restarting asks first. |
+| Download failed for X. Click to retry. | Retry download | The download failed; the update is still offered. |
+| Restart failed for X. Click to retry. | Retry restart & install | The restart was refused or failed; the download is kept. |
+| Check for updates | Retry update check | The last check failed; About shows why. |
+| Updates unavailable | Check for updates (dimmed) | This build cannot update itself. |

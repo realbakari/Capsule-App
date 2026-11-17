@@ -34,6 +34,11 @@ a later retry. The library still owns the feed, hashes and signature checks.
 
 The renderer's shared hook subscribes before reading current status, rejects
 out-of-order reads and uses the same actions in Sidebar and both About surfaces.
+It reports each action the user started to an optional `onSettled` callback
+with the canonical status read afterwards; the sidebar turns that into a toast,
+so background checks never raise one. A build that cannot install is
+`development` from the first status read, because `Updater` starts in the
+unavailable state rather than waiting for a check.
 No update control automatically navigates to a release page. The page remains
 an explicitly labelled secondary link for release notes and manual recovery.
 Status remains readable remotely; checking, downloading, installing and settings
