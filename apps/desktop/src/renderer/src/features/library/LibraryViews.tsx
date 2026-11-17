@@ -1,12 +1,7 @@
+import type { ApprovalRequest, Session } from "@capsule/shared";
 import { useWorkspace } from "../../lib/workspace";
-import { formatUserError } from "../../lib/errors";
 import { SkillsDirectory } from "./SkillsDirectory";
-import { TurnVerification } from "../conversation/TurnVerification";
-import { ApprovalDetails, APPROVE_ONCE_UNAVAILABLE } from "../harness/ApprovalDetails";
-import { AlwaysAllow } from "../customization/AlwaysAllow";
-import { useEffect, useRef, useState } from "react";
-import type { RunHistoryPage, RunHistoryCursor } from "@capsule/shared";
-import { QuestionCard } from "../questions/QuestionCard";
+import { ApprovalCards } from "../conversation/ApprovalCards";
 
 export function SkillsView() {
   return (
@@ -18,132 +13,44 @@ export function SkillsView() {
   );
 }
 
-export function HistoryView() {
-  const { api, sessions, projectId, setSessionId, setView, restoreSession, notice } = useWorkspace();
-  const archived = sessions.filter((session) => session.state === "archived" && (!projectId || session.projectId === projectId));
-  const [page, setPage] = useState<RunHistoryPage>({ runs: [], hasMore: false });
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string>();
-  const [older, setOlder] = useState(false);
-  const request = useRef(0);
-
-  async function load(before?: RunHistoryCursor) {
-    const generation = ++request.current;
-    setBusy(true);
-    setError(undefined);
-    try {
-      const next = await api.listRunPage({ projectId, before });
-      if (generation !== request.current) return;
-      setPage(next);
-      setOlder(Boolean(before));
-    } catch (cause) {
-      if (generation === request.current) setError(formatUserError(cause));
-    } finally {
-      if (generation === request.current) setBusy(false);
-    }
-  }
-  useEffect(() => {
-    setPage({ runs: [], hasMore: false });
-    void load();
-    return () => { request.current++; };
-  }, [api, projectId]);
-  const items = page.runs;
-  return (
-    <section className="panel">
-      <div className="panel-inner">
-      {archived.length > 0 && <details className="archived-conversations">
-        <summary>Archived conversations · {archived.length}</summary>
-        {!api.isDesktop && <p className="muted">Restore conversations on your Capsule host.</p>}
-        {archived.map((session) => <div className="row" key={session.id}>
-          <span>{session.title}</span>
-          <button className="ghost" disabled={!api.isDesktop} onClick={() => void restoreSession(session.id)}>Restore</button>
-        </div>)}
-        {notice && <p role="status">{notice}</p>}
-      </details>}
-      <div className="panel-header">
-        <p>Runs in the current project.</p>
-      </div>
-      {error && <p role="alert">{error}</p>}
-      {busy && <p className="muted" role="status">Loading runs…</p>}
-      {!busy && !error && items.length === 0 && <p className="muted">No runs yet. Send a message to start one.</p>}
-      {items.map((item) => {
-        const session = sessions.find((entry) => entry.id === item.sessionId);
-        return (
-            <article key={item.id}>
-          <button
-            className="card"
-            key={item.id}
-            onClick={() => {
-              setSessionId(item.sessionId);
-              setView("chat");
-            }}
-          >
-            <div className="row">
-              <div>
-                <b>{(item.prompt ?? "Run").slice(0, 80)}</b>
-                <div className="muted">
-                  {item.status}
-                  {session?.title ? ` · ${session.title}` : ""}
-                </div>
-              </div>
-              <span className="faint">{item.createdAt?.slice(11, 19) ?? ""}</span>
-            </div>
-          </button>
-              <TurnVerification run={item} />
-            </article>
-        );
-      })}
-      <div className="actions">
-        {older && <button className="ghost" disabled={busy} onClick={() => void load()}>Newest runs</button>}
-        {page.hasMore && <button className="ghost" disabled={busy} onClick={() => void load(page.before)}>Older runs</button>}
-      </div>
-      </div>
-    </section>
-  );
-}
-
+/**
+ * Every request waiting on the user, grouped by the conversation that asked,
+ * with the same cards the conversation shows so the two answer alike.
+ */
 export function ApprovalsView() {
-  const { approvals, api, setNotice, setSessionId, setView } = useWorkspace();
-  /* Deny, then open the request's thread with its message box focused, to say what to do instead. */
-  const denyAndReply = (item: (typeof approvals)[number]) => {
-    void api.resolveApproval(item.id, "denied").then(() => {
-      if (!item.sessionId) return;
-      setSessionId(item.sessionId);
-      setView("chat");
-      requestAnimationFrame(() => requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>(".composer-dock textarea.composer-field")?.focus()));
-    }).catch((error) => setNotice(formatUserError(error)));
+  const { api, approvals, sessions, projects, setProjectId, setView } = useWorkspace();
+  const readOnly = api.isDesktop === false && api.remoteMode !== "control";
+  const byThread = new Map<string, ApprovalRequest[]>();
+  for (const item of approvals) {
+    if (item.status !== "pending") continue;
+    const key = item.sessionId ?? "";
+    byThread.set(key, [...(byThread.get(key) ?? []), item]);
+  }
+  const open = (session: Session, focus = false) => {
+    setProjectId(session.projectId, session.id);
+    setView("chat");
+    if (focus) requestAnimationFrame(() => requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>(".composer-dock textarea.composer-field")?.focus()));
   };
   return (
     <section className="panel">
-      <div className="panel-inner">
-      <div className="panel-header">
-        <p>Host execution and policy gates waiting on you.</p>
-      </div>
-      {approvals.length === 0 && <p className="muted">Nothing is waiting on you. When an agent asks to run a command or edit outside its permissions, the request appears here and in its conversation.</p>}
-      {approvals.map((item) => item.status === "pending" && item.details?.questions?.length ? (
-        <QuestionCard key={item.id} approval={item} compact />
-      ) : (
-        <div className="card" key={item.id}>
-          <b>{item.action}</b>
-          <div className="mono conversation-approval-target" title={item.target}>{item.target.replace(/\s+/g, " ")}</div>
-          <div className="muted">{item.reason}</div>
-          <ApprovalDetails approval={item} />
-          {item.status === "pending" && (
-            <div className="actions">
-              <button className="send" disabled={item.details?.canApproveOnce === false}
-                title={item.details?.canApproveOnce === false ? APPROVE_ONCE_UNAVAILABLE : undefined}
-                onClick={() => void api.resolveApproval(item.id, "approved_once").catch((error) => setNotice(formatUserError(error)))}>
-                Approve once
-              </button>
-              <AlwaysAllow approval={item} thread={false} />
-              <button className="ghost" onClick={() => void api.resolveApproval(item.id, "denied").catch((error) => setNotice(formatUserError(error)))}>
-                Deny
-              </button>
-              {item.sessionId && <button className="ghost" onClick={() => denyAndReply(item)}>Deny and reply</button>}
-            </div>
-          )}
-        </div>
-      ))}
+      <div className="panel-inner approvals-page">
+        {byThread.size === 0 && <p className="muted">Nothing is waiting on you. When an agent asks to run a command or edit outside its permissions, the request appears here and in its conversation.</p>}
+        {[...byThread].map(([sessionId, requests]) => {
+          const session = sessions.find((item) => item.id === sessionId);
+          const project = projects.find((item) => item.id === session?.projectId);
+          return (
+            <section key={sessionId || "none"} className="approvals-thread" aria-label={session ? `Waiting in ${session.title}` : "Waiting"}>
+              <header className="approvals-thread-head">
+                <span className="approvals-thread-name">
+                  <strong>{session?.title ?? "A conversation that is no longer listed"}</strong>
+                  {project && <span className="faint">{project.name}</span>}
+                </span>
+                {session && <button type="button" className="ghost" onClick={() => open(session)}>Open conversation</button>}
+              </header>
+              <ApprovalCards requests={requests} session={session} readOnly={readOnly} onReply={session ? () => open(session, true) : () => undefined} />
+            </section>
+          );
+        })}
       </div>
     </section>
   );

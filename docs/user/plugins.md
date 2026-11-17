@@ -11,7 +11,7 @@ installed it.
 
 ## Installing one
 
-Settings → Plugins, or the Plugins tab in the skills library, installs from:
+Settings → Plugins installs from:
 
 - **a folder** on this computer, which Capsule copies;
 - **a zip**, which Capsule opens into a folder of its own;
