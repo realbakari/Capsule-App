@@ -81,8 +81,8 @@ On a paired device that only reads, tags are shown but cannot be changed.
 
 A temporary conversation is for a quick question or a throwaway experiment you do
 not want in your list for good. Start one with **New temporary conversation** in
-the command palette, or from the arrow beside **New conversation** at the top of
-the sidebar.
+the command palette, or right-click **New conversation** (the pen at the end of
+the sidebar's search row).
 
 - It is never saved. Its messages and turns are held in memory and are gone when
   Capsule quits.
@@ -101,7 +101,7 @@ conversation. Deleting a temporary conversation removes it at once.
 ## Start a conversation from a GitHub issue
 
 Choose **New conversation from a GitHub issue…** in the command palette, or
-**From a GitHub issue…** from the arrow beside **New conversation**. Capsule lists
+**From a GitHub issue…** by right-clicking **New conversation**. Capsule lists
 the open issues of the current project's GitHub repository. Search by number,
 title or label, then press Enter.
 

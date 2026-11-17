@@ -321,7 +321,8 @@ attachment validation still receives the original native path.
   the cache, as does deleting a project. Warm workspace reads do not reopen icons.
 - Rows show the **project or thread name only**. Do not put folder paths under rows or in the titlebar.
 - Collapsed project status prioritizes waiting approvals, then working turns,
-  then failures, independently of thread order.
+  then failures, independently of thread order. A collapsed project also shows
+  how many conversations it hides (`.project-hidden-count`).
 - The sidebar titlebar carries a compact Capsule wordmark, the hide control,
   and Back / Forward over visited conversations (`⌘[` / `⌘]`, also in the
   palette). Selection changes are recorded by effect in `navigation-history`,
@@ -333,7 +334,16 @@ attachment validation still receives the original native path.
   branch name in its tooltip.
   Search and project rows are flat by default;
   the active thread has a muted background. Settled, unpinned threads have no glyph.
-- Hover or focus reveals pin, archive, and overflow actions without navigating.
+- Hover or focus replaces the row's status column with at most one triage
+  action and the overflow menu, without navigating: Settle on a ready or
+  failed row, Return to active on a settled one, Wake now on a snoozed one, and
+  none while a turn works or waits on a decision. A read-only viewer gets only
+  the menu. The title gives up 1.5rem per action. Pin and archive live in the
+  menu; a pinned row's pin glyph is an Unpin button that shows the pin-off
+  glyph on hover. The agent mark sits before the age, and ages are
+  right-aligned in a fixed 1.75rem column so they end in one line. Snoozed and
+  Settled shelf headers put their count and a chevron that turns when folded
+  at the row's end, in the age column.
   Delayed, portaled previews show full thread titles, project names, and recency;
   project previews show conversation counts and the working folder. Escape,
   scrolling, resizing, collapse, and menus dismiss previews.

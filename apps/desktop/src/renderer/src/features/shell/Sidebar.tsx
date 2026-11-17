@@ -1,4 +1,4 @@
-import { useUpdates } from "../../lib/updates";
+import { UpdateButton } from "./UpdateButton";
 import { ProjectPullRequests } from "./ProjectPullRequests";
 import { gatewayConnectionLabel } from "../../lib/harness";
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type MouseEvent } from "react";
@@ -14,7 +14,7 @@ import {
 } from "../../lib/action-menu";
 import { showNativeContextMenu } from "../../lib/bridge";
 import { ThreadPullRequestMark, ThreadTemporaryMark } from "../threads/ThreadMarks";
-import { NewConversationMenu } from "../threads/NewConversationMenu";
+import { NewConversationButton } from "../threads/NewConversationMenu";
 import { CHANNEL_PREFS_EVENT, loadChannelPrefs, unreadChannelCount } from "../../lib/channel-prefs";
 import {
   compactRelativeTime,
@@ -39,9 +39,9 @@ import {
 } from "../../lib/sidebar";
 import { SETTINGS_TABS } from "../settings/SettingsView";
 import { isModifiedQuery, searchSettings } from "../settings/settings-search";
+import { revealSetting } from "../settings/reveal";
 import { modifiedKeys, pendingTrust } from "../../lib/config-view";
 import { useWorkspace, type View } from "../../lib/workspace";
-import { useToasts } from "../../lib/toasts";
 import { ActionMenu } from "./ActionMenu";
 import { useImportSessions } from "../import/ImportSessions";
 import { MenuSelect } from "./MenuSelect";
@@ -56,8 +56,13 @@ import { formatUserError } from "../../lib/errors";
 import { AgentGlyph } from "./AgentGlyph";
 import { AutomationChip } from "../automations/AutomationChip";
 import {
-  ArchiveIcon,
+  BellIcon,
+  CheckIcon,
   CpuIcon,
+  ListIcon,
+  PinOffIcon,
+  SquarePenIcon,
+  UndoIcon,
   FolderIcon,
   ArrowLeftIcon,
   ArrowRightIcon,
@@ -71,7 +76,6 @@ import {
   PinIcon,
   PlusIcon,
   ChartIcon,
-  RefreshIcon,
   SearchIcon,
   SettingsIcon,
   ShieldIcon,
@@ -125,9 +129,6 @@ function WorkingDuration({ startedAt }: { startedAt: string }) {
   );
 }
 
-/** Update states worth a footer notice, shown in the update colour. */
-const UPDATE_PROGRESS = ["update-available", "downloading", "ready-to-install", "installing"];
-
 export function Sidebar() {
   const {
     projects,
@@ -157,7 +158,6 @@ export function Sidebar() {
     deleteProject,
     renameSession,
     deleteSession,
-    archiveSession,
     sidebarWidth,
     sidebarCollapsed,
     setSidebarWidth,
@@ -219,16 +219,6 @@ export function Sidebar() {
   const [editing, setEditing] = useState<{ kind: "project" | "session"; id: string; value: string; location?: "recent" | "project" }>();
   const [query, setQuery] = useState("");
   const [settingsQuery, setSettingsQuery] = useState("");
-  const update = useUpdates();
-  const { status: updateResult, busy: checkingUpdate, label: updateLabel, run: runUpdateCheck } = update;
-  /* A check you asked for in a development build answers once, then leaves the footer alone. */
-  const { show: showToast } = useToasts();
-  const askedUpdate = useRef(false);
-  useEffect(() => {
-    if (!askedUpdate.current || checkingUpdate || !updateResult) return;
-    askedUpdate.current = false;
-    if (updateResult.development && updateResult.detail) showToast({ key: "update", tone: "info", title: updateResult.detail });
-  }, [checkingUpdate, updateResult, showToast]);
   const [draggedPinnedId, setDraggedPinnedId] = useState<string>();
   const [draggedProjectId, setDraggedProjectId] = useState<string>();
   const [projectDropTarget, setProjectDropTarget] = useState<string>();
@@ -281,6 +271,7 @@ export function Sidebar() {
     .filter((thread) => projectNames.has(thread.projectId) && threadShelf(thread) !== "snoozed" && (!needle || thread.title.toLowerCase().includes(needle)))
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)) : [], [grouping, threadsByProject, projectNames, needle]);
 
+  const THREAD_KIND_SPOKEN: Record<SidebarThreadKind, string> = { working: "working", approval: "needs your approval", failed: "failed", ready: "" };
   const kindOf = (session: Session): SidebarThreadKind => {
     const run = latestRuns.get(session.id);
     return resolveSidebarThreadKind({
@@ -489,6 +480,14 @@ export function Sidebar() {
       kind === "working" && run && ["running", "queued", "waiting"].includes(run.status)
         ? run.createdAt
         : undefined;
+    /* One triage move per row, the one its shelf makes next. Work in flight or
+       waiting on a decision is never shelved, so it offers none. */
+    const triageAction = readOnlyPeer || !triage.writable ? undefined
+      : shelf === "snoozed" ? { id: "wake", label: "Wake now", Icon: BellIcon }
+      : shelf === "settled" ? { id: "unsettle", label: "Return to active", Icon: UndoIcon }
+      : kind === "ready" || kind === "failed" ? { id: "settle", label: "Settle conversation", Icon: CheckIcon }
+      : undefined;
+    const agentName = session.harnessId ? (harnesses ?? []).find((item) => item.id === session.harnessId)?.name ?? session.harnessId : undefined;
     return (
       <SidebarThreadPreview key={session.id} id={previewId} title={session.title}
         project={projectNames.get(session.projectId)} updatedAt={session.updatedAt} disabled={sidebarCollapsed || Boolean(menu) || Boolean(editing)}>
@@ -499,10 +498,12 @@ export function Sidebar() {
         data-menu-open={menu?.kind === "session" && menu.id === session.id ? "true" : undefined}
         /* The row is a button made of divs, so it has no name of its own —
            every conversation in the sidebar read as an unnamed control. */
-        aria-label={unread ? `${session.title}, unread` : shelf === "snoozed" && session.snoozedUntil ? `${session.title}, snoozed until ${formatWakeTime(session.snoozedUntil, new Date(), settings?.timeFormat)}` : session.title}
+        /* The name carries what the dot and the status word show: a screen reader hears "needs your approval", not just "unread". */
+        aria-label={[session.title, THREAD_KIND_SPOKEN[kind], unread ? "unread" : "", shelf === "snoozed" && session.snoozedUntil ? `snoozed until ${formatWakeTime(session.snoozedUntil, new Date(), settings?.timeFormat)}` : ""].filter(Boolean).join(", ")}
         aria-current={active ? "page" : undefined}
         aria-describedby={previewId}
         className={`thread-row ${location === "recent" ? "sidebar-recent-row" : ""} ${active ? "active" : ""} ${recede ? "recede" : ""} ${unread ? "unread" : ""}`}
+        data-actions={triageAction ? 2 : 1}
         draggable={location === "project" && grouping === "project" && Boolean(session.pinned)}
         onDragStart={(event) => {
           if (grouping !== "project" || !session.pinned) return;
@@ -550,7 +551,12 @@ export function Sidebar() {
       >
         <span className="row-slot" aria-hidden>{unread ? <span className="thread-unread-dot" title="Unread" /> : null}</span>
         <span className="row-slot">
-          {session.pinned ? <PinIcon size={11} /> : session.workspaceMode === "worktree" ? (
+          {session.pinned ? readOnlyPeer ? <PinIcon size={11} /> : (
+            <button type="button" className="thread-pin" aria-label="Unpin conversation" title="Unpin conversation"
+              onClick={(event) => { event.stopPropagation(); void pinSession(session.id, false); }}>
+              <PinIcon size={11} /><PinOffIcon size={11} />
+            </button>
+          ) : session.workspaceMode === "worktree" ? (
             <span className="thread-worktree" title={session.worktreeBranch ? `Own worktree on ${session.worktreeBranch}` : "Own worktree"} aria-label="Runs in its own worktree"><GitBranchIcon size={11} /></span>
           ) : null}
         </span>
@@ -561,6 +567,12 @@ export function Sidebar() {
         </span>
         <span className="thread-meta">
           <ThreadPullRequestMark session={session} />
+          {/* Which coding agent this conversation runs, as its mark, ahead of the age so ages line up. */}
+          {session.harnessId && agentName ? (
+            <span className="thread-agent" title={agentName}>
+              <AgentGlyph id={session.harnessId} name={agentName} size={11} />
+            </span>
+          ) : null}
           {session.paused ? (
             <span className="thread-status paused" title="Paused: its work is saved and its processes are stopped"><PauseIcon size={10} />Paused</span>
           ) : kind === "working" ? (
@@ -578,21 +590,10 @@ export function Sidebar() {
           ) : (
             <span className="thread-time">{compactRelativeTime(session.updatedAt)}</span>
           )}
-          {/* Which coding agent this conversation runs, at a glance, as its mark rather than its name. */}
-          {session.harnessId ? (
-            <span className="thread-agent" title={(harnesses ?? []).find((item) => item.id === session.harnessId)?.name ?? session.harnessId}>
-              <AgentGlyph id={session.harnessId} name={(harnesses ?? []).find((item) => item.id === session.harnessId)?.name ?? session.harnessId} size={11} />
-            </span>
-          ) : null}
         </span>
         <span className="thread-quick-actions">
-        {!readOnlyPeer && <>
-        <button type="button" className="thread-quick-action" aria-label={session.pinned ? "Unpin conversation" : "Pin conversation"}
-          title={session.pinned ? "Unpin conversation" : "Pin conversation"}
-          onClick={(event) => { event.stopPropagation(); void pinSession(session.id, !session.pinned); }}><PinIcon size={13} /></button>
-        <button type="button" className="thread-quick-action" aria-label="Archive conversation" title="Archive conversation"
-          onClick={(event) => { event.stopPropagation(); void archiveSession(session.id); }}><ArchiveIcon size={13} /></button>
-        </>}
+        {triageAction && <button type="button" className="thread-quick-action" aria-label={triageAction.label} title={triageAction.label}
+          onClick={(event) => { event.stopPropagation(); sessionActions.run(session, triageAction.id); }}><triageAction.Icon size={13} /></button>}
         <button
           type="button"
           className="thread-more"
@@ -716,6 +717,7 @@ export function Sidebar() {
                     type="button"
                     className="settings-result"
                     onClick={() => {
+                      revealSetting(result.title);
                       setSettingsTab(result.section);
                       setSettingsQuery("");
                     }}
@@ -796,34 +798,9 @@ export function Sidebar() {
             </button>
           ) : null}
         </label>
-        <div className="sidebar-new-row">
-        <button
-          className="icon-btn sidebar-new"
-          title="New conversation (⌘N)"
-          aria-label="New conversation (⌘N)"
-          onClick={() => {
-            if (projectId) {
-              setCollapsed((current) => {
-                const next = new Set(current);
-                next.delete(projectId);
-                return next;
-              });
-            }
-          void createTask();
-          }}
-        >
-          <PlusIcon size={16} />
-          <span>New conversation</span>
-        </button>
-        <NewConversationMenu />
-        </div>
-      </div>
-      {/* A scope row rather than a full-width button: the label says what the
-          list below is showing, and the action that adds to it sits at its
-          end, where the tree's own controls already are. With nothing to scope
-          it says nothing — the prompt below is the whole story then. */}
-      <div className={`sidebar-scope${projects.length === 0 ? " empty" : ""}`}>
-        {ready && projects.length > 0 && <MenuSelect ariaLabel="Group conversations" value={view === "board" ? "board" : grouping}
+        {/* One row: the list's way in, how it is grouped, and the two things that add to it. */}
+        {ready && projects.length > 0 && <MenuSelect ariaLabel="Group conversations" iconOnly icon={<ListIcon size={15} />}
+          value={view === "board" ? "board" : grouping}
           options={[{ id: "project", label: "By project" }, { id: "status", label: "By status" }, { id: "recent", label: "Recent" }, { id: "tag", label: "By tag", detail: "Your tags, across projects" },
             { id: "board", label: "Board", detail: "Cards in status columns, in the main area" }]}
           onChange={(value) => {
@@ -831,17 +808,13 @@ export function Sidebar() {
             changeGrouping(value);
             if (view === "board") setView("chat");
           }} />}
-        <div className="sidebar-scope-actions">
-          {!readOnlyPeer && <button
-            type="button"
-            className="icon-btn"
-            title="Add project"
-            aria-label="Add project"
-            onClick={() => setAddProjectOpen(true)}
-          >
-            <FolderPlusIcon size={13} />
-          </button>}
-        </div>
+        {!readOnlyPeer && <button type="button" className="icon-btn" title="Add project" aria-label="Add project" onClick={() => setAddProjectOpen(true)}>
+          <FolderPlusIcon size={15} />
+        </button>}
+        <NewConversationButton onNew={() => {
+          if (projectId) setCollapsed((current) => { const next = new Set(current); next.delete(projectId); return next; });
+          void createTask();
+        }} />
       </div>
       <div className="sidebar-scroll">
         {/* Loading, empty and "your search found nothing" are three different
@@ -996,19 +969,24 @@ export function Sidebar() {
                     )}
                   </span>
                   <span className="truncate">{item.name}</span>
+                  {/* Folded, the row still says what it hides: a turn that needs you, and how many conversations. */}
                   <span className="thread-meta">
                     {!isOpen && liveKind ? (
                       <span className={`thread-status ${liveKind === "working" ? "working" : liveKind === "approval" ? "approval" : "failed"}`}>
                         {liveKind === "working" ? "Working" : liveKind === "approval" ? "Approval" : "Failed"}
                       </span>
                     ) : null}
+                    {!isOpen && threads.length > 0 ? (
+                      <span className="project-hidden-count" title={`${threads.length} ${threads.length === 1 ? "conversation" : "conversations"}`}>{threads.length}</span>
+                    ) : null}
                   </span>
+                  <span className="project-actions">
                   {item.workingDirectory && api.isDesktop !== false ? <ProjectPullRequests projectId={item.id} projectName={item.name} /> : null}
-                  <button
+                  {!readOnlyPeer && <button
                     type="button"
                     className="thread-more project-new"
                     aria-label={`New conversation in ${item.name}`}
-                    title="New conversation here"
+                    title={`New conversation in ${item.name}`}
                     onPointerDown={(event) => event.stopPropagation()}
                     onClick={(event) => {
                       event.stopPropagation();
@@ -1016,8 +994,8 @@ export function Sidebar() {
                       void createTask(item.id);
                     }}
                   >
-                    <PlusIcon size={13} />
-                  </button>
+                    <SquarePenIcon size={13} />
+                  </button>}
                   <button
                     type="button"
                     className="thread-more"
@@ -1032,6 +1010,7 @@ export function Sidebar() {
                   >
                     <MoreHorizontalIcon size={13} />
                   </button>
+                  </span>
                 </div>
                 </SidebarThreadPreview>
               )}
@@ -1066,8 +1045,8 @@ export function Sidebar() {
                         const shown = open ? shelved : shelved.filter((thread) => thread.id === sessionId);
                         return <Fragment key={shelfId}>
                           <button type="button" className="sidebar-shelf-toggle" aria-expanded={open} onClick={() => toggleShelf(key)}>
-                            {open ? <ChevronDownIcon size={11} /> : <ChevronRightIcon size={11} />}
                             {label}<span className="shelf-count">{shelved.length}</span>
+                            <ChevronDownIcon size={11} />
                           </button>
                           {shown.map((thread) => renderThread(thread))}
                         </Fragment>;
@@ -1081,16 +1060,6 @@ export function Sidebar() {
         })}
       </div>
       <div className="sidebar-footer">
-        {/*
-          * Only something to act on earns the footer: an update, its progress,
-          * or an error. Green is for an update. A development build cannot
-          * install, which the check button's tooltip says instead.
-          */}
-        {update.error || (!updateResult?.development && (updateResult?.detail || UPDATE_PROGRESS.includes(updateResult?.state ?? ""))) ? (
-          <button type="button" className={`update-feedback-bubble${UPDATE_PROGRESS.includes(updateResult?.state ?? "") && !update.error ? " has-update" : ""}`} onClick={runUpdateCheck} disabled={checkingUpdate} title={updateLabel}>
-            <span>{update.error ?? updateResult?.detail ?? `${updateResult?.latest ? `v${updateResult.latest} · ` : ""}${updateLabel}`}</span>
-          </button>
-        ) : null}
         <div className="sidebar-utils">
           <button
             type="button"
@@ -1120,17 +1089,8 @@ export function Sidebar() {
             );
           })}
           <span className="grow" />
-          <button
-            type="button"
-            className={`icon-btn ${checkingUpdate ? "is-spinning" : ""} ${updateResult?.state === "update-available" ? "has-update" : ""}`}
-            title={updateResult?.development && updateResult.detail ? updateResult.detail : updateLabel}
-            aria-label={updateLabel}
-            disabled={checkingUpdate}
-            onClick={() => { askedUpdate.current = true; void runUpdateCheck(); }}
-          >
-            <RefreshIcon size={14} />
-            {updateResult?.state === "update-available" ? <span className="update-dot" /> : null}
-          </button>
+          {/* Updating replaces the app on the host; a paired device never drives that. */}
+          {api.isDesktop !== false ? <UpdateButton /> : null}
           <span
             className={`dot ${connected ? "on" : status?.state === "connecting" ? "warn live" : settings?.runtimeMode === "direct" ? "" : "off"}`}
             title={gatewayConnectionLabel(settings?.runtimeMode, connected, status?.state)}

@@ -12,20 +12,6 @@
 .thread-pr.closed { color: var(--text-faint); }
 .thread-status.paused { color: var(--text-muted); }
 
-/* New conversation and, beside it, the other ways to start one. */
-.sidebar-new-row {
-  display: flex;
-  align-items: center;
-  gap: 0.15rem;
-  order: -1;
-  width: 100%;
-}
-.sidebar-new-row .sidebar-new { flex: 1; width: auto; order: 0; }
-.sidebar-new-more { flex: none; opacity: 0; color: var(--text-muted); }
-.sidebar-new-row:hover .sidebar-new-more,
-.sidebar-new-more:focus-visible,
-.sidebar-new-more[data-open="true"] { opacity: 1; }
-
 /* Temporary threads: a word in the row, a strip above the composer. */
 .thread-title-line { display: flex; align-items: center; gap: 0.3rem; min-width: 0; }
 .thread-temporary {

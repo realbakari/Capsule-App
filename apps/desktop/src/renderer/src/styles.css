@@ -284,17 +284,8 @@
 .sidebar-toolbar {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
-  padding: 0.5rem var(--sidebar-content-inset) 0.2rem;
-}
-.sidebar-new {
-  color: var(--text);
-  width: 100%;
-  order: -1;
-  justify-content: flex-start;
-  gap: 0.6rem;
-  padding: 0 0.4rem;
-  font-size: var(--text-ui);
+  gap: 0.125rem;
+  padding: 0.5rem var(--sidebar-content-inset) 0.35rem;
 }
 .sidebar-text-btn {
   border: 0;
@@ -691,9 +682,54 @@
   color: var(--text-faint);
 }
 .thread-quick-action:hover { color: var(--text); background: var(--bg-active); }
-.thread-row:is(:hover, :focus-within, [data-menu-open]) .thread-title { margin-right: 4.5rem; }
+.thread-row:is(:hover, :focus-within, [data-menu-open]) .thread-title { margin-right: 1.5rem; }
+.thread-row[data-actions="2"]:is(:hover, :focus-within, [data-menu-open]) .thread-title { margin-right: 3rem; }
 .thread-row:is(:hover, :focus-within, [data-menu-open]) .thread-meta { width: 0; }
-.project-row:is(:hover, :focus-within, [data-menu-open]) > .truncate { margin-right: 1.5rem; }
+/* A pinned row's pin unpins it; it says so on hover. */
+.thread-pin {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: inherit;
+}
+.thread-pin svg:last-child,
+.thread-pin:is(:hover, :focus-visible) svg:first-child { display: none; }
+.thread-pin:is(:hover, :focus-visible) svg:last-child { display: block; color: var(--text); }
+/* A project's actions sit in one group at the row's end. Folded away, only a
+   pull request count holds space; hover or focus opens the rest. */
+.project-actions {
+  position: absolute;
+  right: 0.2rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+}
+.project-actions > .thread-more {
+  position: static;
+  transform: none;
+}
+.project-actions > .thread-more:not(.has-count) { width: 0; overflow: hidden; }
+.project-row:is(:hover, :focus-within, [data-menu-open]) .project-actions > .thread-more { width: 1.5rem; }
+.project-row:is(:hover, :focus-within, [data-menu-open]) .project-actions > .project-pulls.has-count { width: auto; }
+.project-row:is(:hover, :focus-within, [data-menu-open]) > .truncate { margin-right: 3rem; }
+.project-row:has(.project-pulls):is(:hover, :focus-within, [data-menu-open]) > .truncate { margin-right: 4.5rem; }
+.project-row:is(:hover, :focus-within, [data-menu-open]) > .thread-meta { width: 0; }
+.project-row:has(.project-pulls.has-count) > .thread-meta { margin-right: 2.25rem; }
+.project-hidden-count {
+  min-width: 1.75rem;
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-regular);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
 .sidebar-thread-preview {
   position: fixed;
   z-index: var(--z-menu);
@@ -1350,7 +1386,6 @@
 .app-update-control progress { width: 100%; max-width: 18rem; }
 .app-update-release-link { color: var(--text-muted); font-size: var(--text-ui); text-underline-offset: .2em; }
 .about-modal-actions > button { min-height: 2.4rem; margin: 0; }
-.sidebar-footer button.update-feedback-bubble { width: 100%; text-align: left; font-size: var(--text-xs); line-height: 1.4; overflow-wrap: anywhere; }
 .msg-code {
   margin: 0.55rem 0;
   padding: 0.7rem 0.8rem;
@@ -8113,44 +8148,6 @@ button.shortcut-keys.capturing {
   white-space: normal;
 }
 
-/* Scope row above the project tree. */
-.sidebar-scope {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.1rem var(--sidebar-content-inset) 0.35rem;
-}
-/* The actions sit together at the end of the row they belong to. Dimmed
-   rather than hidden until hover: with no projects yet, these two are the
-   only way forward, and a control nobody can see is not a quiet one. */
-.sidebar-scope-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.05rem;
-  margin-left: auto;
-  opacity: 0.55;
-  transition: opacity var(--motion-instant, 120ms) var(--motion-ease, ease);
-}
-.sidebar-scope:hover .sidebar-scope-actions,
-.sidebar-scope:focus-within .sidebar-scope-actions {
-  opacity: 1;
-}
-.sidebar-scope-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  min-width: 0;
-  font-size: var(--text-ui);
-  color: var(--subtext-1);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.sidebar-scope-label svg {
-  flex-shrink: 0;
-  color: var(--text-faint);
-}
-
 /* Usage dashboard. */
 .provider-quotas { container-type: inline-size; }
 .provider-quotas-heading { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
@@ -10833,7 +10830,6 @@ fieldset.harness-options:disabled { opacity: .7; }
 /* Sidebar: history buttons beside the wordmark, a per-project new-conversation control, worktree glyph. */
 .sidebar-history { margin-left: auto; display: flex; gap: 0.1rem; }
 .sidebar-history .icon-btn:disabled { opacity: 0.35; }
-.project-row .project-new { margin-right: 0.1rem; }
 .thread-worktree { display: inline-flex; color: var(--text-faint); }
 
 /* Transcript detail: live clock on a tool group, shell prompt, titlebar diff counts. */

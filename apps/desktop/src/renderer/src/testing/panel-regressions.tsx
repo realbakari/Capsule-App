@@ -44,7 +44,7 @@ export async function runPanelRegressions(host: HTMLElement, base: Record<string
     };
     window.testWorkspace = terminalBase;
     root.render(<Titlebar />); await settle();
-    const terminalToggle = () => host.querySelector<HTMLButtonElement>('[aria-label="Toggle terminal (⌘J)"]')!;
+    const terminalToggle = () => host.querySelector<HTMLButtonElement>('[aria-label="Toggle terminal"]')!;
     assert(!terminalToggle().disabled && terminalToggle().getAttribute("aria-pressed") === "false", "Thread folder did not enable the header terminal");
     terminalToggle().click();
     assert(terminalToggles.join() === "true", "Header terminal did not open the bottom dock");
@@ -58,7 +58,7 @@ export async function runPanelRegressions(host: HTMLElement, base: Record<string
     assert(terminalToggle().disabled, "Terminal opened without a folder");
     window.testWorkspace = { ...terminalBase, api: { ...terminalBase.api, isDesktop: false } };
     root.render(<Titlebar />); await settle();
-    assert(terminalToggle().disabled, "Read-only viewer offered an interactive shell");
+    assert(!host.querySelector('[aria-label="Toggle terminal"]'), "Read-only viewer offered an interactive shell");
     window.testWorkspace = terminalBase;
     root.render(<Palette />); await settle();
     const terminalAction = Array.from(document.querySelectorAll<HTMLElement>('[role="option"]')).find((node) => node.textContent?.includes("Show terminal"));
@@ -110,6 +110,17 @@ export async function runPanelRegressions(host: HTMLElement, base: Record<string
     if (toggle.getAttribute("aria-expanded") === "true") toggle.click();
     await settle();
     assert(project.querySelector('.thread-status')?.textContent === "Approval", "Collapsed project hid a waiting approval behind working status");
+    assert(project.querySelector('.project-hidden-count')?.textContent === "2", "Collapsed project did not say how many conversations it hides");
+    const toolbar = document.querySelector<HTMLElement>('.sidebar-toolbar')!;
+    assert(["Search conversations", "Group conversations", "Add project", "New conversation (⌘N)"].every((label) => toolbar.querySelector(`[aria-label="${label}"]`)),
+      "Search, grouping, add project and new conversation are not one row");
+    const projectActions = Array.from(project.querySelectorAll<HTMLElement>('.project-actions > button'));
+    const actionBoxes = projectActions.map((button) => button.getBoundingClientRect());
+    project.focus({ preventScroll: true }); await settle();
+    const shown = projectActions.map((button) => button.getBoundingClientRect());
+    assert(actionBoxes.every((box) => box.width === 0) && shown.every((box, index) => index === 0 || box.left >= shown[index - 1]!.right - 0.5),
+      "Project row actions overlap or hold space while folded away");
+    project.blur();
 
     const navigated: string[] = [];
     const groupedBase = { ...sidebarBase, projects: [...sidebarBase.projects, { id: "other", name: "Second workspace" }],
@@ -130,7 +141,8 @@ export async function runPanelRegressions(host: HTMLElement, base: Record<string
     assert(attention.textContent?.includes("Review access") && attention.textContent?.includes("Second workspace"), "Status grouping omitted the other project's approval or context");
     const badge = attention.querySelector<HTMLElement>(".thread-status.approval")!;
     assert(parseFloat(getComputedStyle(badge).paddingTop) === 0 && badge.getBoundingClientRect().height < 24, "Sidebar approval inherited the conversation card's padding");
-    const otherRow = attention.querySelector<HTMLElement>('[aria-label="Review access"]')!;
+    const otherRow = attention.querySelector<HTMLElement>('[aria-label^="Review access"]')!;
+    assert(otherRow.getAttribute("aria-label")?.includes("needs your approval"), "A screen reader did not hear that the conversation needs approval");
     assert(otherRow.draggable === false, "Derived groups allowed pinned drag reorder");
     otherRow.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
     assert(navigated[0] === "other/other-approval", "Status navigation opened the wrong project");
@@ -147,9 +159,10 @@ export async function runPanelRegressions(host: HTMLElement, base: Record<string
     const quickActions: string[] = [];
     root.render(<SidebarFixture base={{ ...groupedBase,
       pinSession: (id: string, pinned: boolean) => quickActions.push(`pin:${id}:${pinned}`),
-      archiveSession: (id: string) => quickActions.push(`archive:${id}`),
+      projectRuns: groupedBase.projectRuns.map((run) => run.id === "a" ? { ...run, status: "completed", hasResult: true } : run),
+      api: { ...groupedBase.api, triageSession: async (id: string, action: { kind: string }) => { quickActions.push(`${action.kind}:${id}`); return { id }; } },
     }} />); await settle();
-    const previewRow = document.querySelector<HTMLElement>('[data-thread-item][aria-label="Review access"]')!;
+    const previewRow = document.querySelector<HTMLElement>('[data-thread-item][aria-label^="Review access"]')!;
     previewRow.focus({ preventScroll: true });
     await new Promise((resolve) => setTimeout(resolve, 500)); await settle();
     const preview = document.querySelector<HTMLElement>('[role="tooltip"]');
@@ -159,20 +172,21 @@ export async function runPanelRegressions(host: HTMLElement, base: Record<string
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })); await settle();
     assert(!document.querySelector('[role="tooltip"]'), "Escape left the sidebar preview open");
     const navigationCount = navigated.length;
+    assert(!previewRow.querySelector('[aria-label="Settle conversation"]'), "A conversation waiting on a decision offered Settle");
     previewRow.querySelector<HTMLButtonElement>('[aria-label="Unpin conversation"]')!.click();
-    previewRow.querySelector<HTMLButtonElement>('[aria-label="Archive conversation"]')!.click();
-    assert(quickActions.join() === "pin:other-approval:false,archive:other-approval" && navigated.length === navigationCount, "Quick actions navigated or changed the wrong thread");
-    // Recent is a grouping of the same list, never a second copy under the projects.
+    const answered = document.querySelector<HTMLElement>('[data-thread-item][aria-label^="Waiting decision"]')!;
+    assert(!answered.querySelector('[aria-label="Archive conversation"], [aria-label="Pin conversation"]'), "Rows still carry pin and archive beside the menu");
+    answered.querySelector<HTMLButtonElement>('[aria-label="Settle conversation"]')!.click();
+    assert(quickActions.join() === "pin:other-approval:false,settle:approval" && navigated.length === navigationCount, "Quick actions navigated or changed the wrong thread");    // Recent is a grouping of the same list, never a second copy under the projects.
     assert(!document.querySelector('.sidebar-recents'), "Project grouping repeated its threads in a Recents list");
     await chooseGrouping("Recent");
     assert(!document.querySelector('.project-row') && document.querySelector('.sidebar-recents'), "Recent grouping kept the project tree");
     const recent = document.querySelector<HTMLElement>('.sidebar-recent-row')!;
     assert(recent.textContent?.includes("Review access"), "Recents did not start with the latest conversation");
     const selectedRecent = document.querySelector<HTMLElement>('.sidebar-recents [aria-current="page"]');
-    assert(selectedRecent?.getAttribute("aria-label") === "Working turn", "Recents lost its selected conversation");
-    recent.querySelector<HTMLButtonElement>('[aria-label="Unpin conversation"]')!.click();
-    recent.querySelector<HTMLButtonElement>('[aria-label="Archive conversation"]')!.click();
-    assert(quickActions.slice(-2).join() === "pin:other-approval:false,archive:other-approval" && navigated.length === navigationCount, "Recent quick actions navigated or targeted another conversation");
+    assert(selectedRecent?.getAttribute("aria-label")?.startsWith("Working turn"), "Recents lost its selected conversation");
+    document.querySelector<HTMLElement>('.sidebar-recents [aria-label^="Waiting decision"]')!.querySelector<HTMLButtonElement>('[aria-label="Settle conversation"]')!.click();
+    assert(quickActions.at(-1) === "settle:approval" && navigated.length === navigationCount, "Recent quick actions navigated or targeted another conversation");
     recent.click();
     assert(navigated.at(-1) === "other/other-approval", "Recents opened the wrong project or thread");
     recent.focus({ preventScroll: true });
@@ -242,6 +256,22 @@ export async function runPanelRegressions(host: HTMLElement, base: Record<string
     Array.from(document.querySelectorAll("button")).find((button) => button.textContent === "Refresh")!.click(); await settle();
     assert(!document.body.textContent?.includes("Some transcripts could not be read") && document.body.textContent?.includes("No usage in this window"), "Usage coverage did not recover on Refresh");
 
+    const savedRange = localStorage.getItem("capsule.usageWindowDays");
+    const today = new Date(); const day = (back: number) => { const at = new Date(today); at.setDate(at.getDate() - back);
+      return `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`; };
+    const totals = { input: 400, cachedInput: 9_000, cacheWrite: 0, output: 600, reasoning: 0 };
+    window.testWorkspace = { api: { usageSummary: async () => ({ totals, requests: 3, sessions: 1,
+      byDay: [{ key: day(4), totals, requests: 2 }, { key: day(0), totals: { ...totals, cachedInput: 0 }, requests: 1 }],
+      byProvider: [{ key: "codex", totals, requests: 3 }], byModel: [{ key: "gpt-5", totals, requests: 3 }], unavailableSources: [] }) } };
+    localStorage.setItem("capsule.usageWindowDays", "7");
+    root.render(null); await settle(); root.render(<UsageView />); await settle();
+    assert(document.querySelectorAll(".usage-col").length === 7, "Idle days were dropped from the daily chart");
+    assert(document.querySelectorAll(".usage-col-fill").length === 2, "An idle day drew a bar");
+    assert(document.querySelector(".usage-tiles")?.textContent?.includes("Not reported"), "Usage implied a cost it does not have");
+    Array.from(document.querySelectorAll("button")).find((button) => button.textContent === "Today")!.click(); await settle();
+    assert(!document.querySelector(".usage-chart") && document.querySelector(".settings-breadcrumb")?.textContent?.includes("today"), "The one-day range was not labelled as today");
+    if (savedRange === null) localStorage.removeItem("capsule.usageWindowDays"); else localStorage.setItem("capsule.usageWindowDays", savedRange);
+
     root.render(null); await settle();
     let snapshot: ProviderUsageSnapshot = { reports: [], truncated: false };
     let failure = false;
@@ -276,7 +306,7 @@ export async function runPanelRegressions(host: HTMLElement, base: Record<string
     assert(document.querySelector('[role="alert"]')?.textContent?.includes("Snapshot unavailable"), "Quota failure was hidden");
     assert(document.body.textContent?.includes("Last reported · may be out of date"), "Failed refresh discarded the last observation or left it looking fresh");
     failure = false;
-    Array.from(document.querySelectorAll("button")).find((button) => button.textContent === "Refresh report")!.click();
+    root.render(<ProviderQuota refreshNonce={1} />);
     await settle(); await settle();
     assert(!document.querySelector('[role="alert"]'), "Quota retry could not recover");
 

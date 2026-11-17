@@ -357,6 +357,15 @@ export function PencilIcon(props: IconProps) {
   );
 }
 
+export function SquarePenIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+      <path d="M18.4 2.6a2.1 2.1 0 0 1 3 3L12.4 14.6a2 2 0 0 1-.9.5l-2.9.8.8-2.9a2 2 0 0 1 .5-.9Z" />
+    </Svg>
+  );
+}
+
 export function ArchiveIcon(props: IconProps) {
   return (
     <Svg {...props}>
