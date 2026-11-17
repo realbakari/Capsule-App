@@ -15,6 +15,13 @@ describe("normalizedBrowserUrl", () => {
     expect(normalizedBrowserUrl("https://person:secret@example.com")).toBe("");
   });
 
+  it("turns a bare word into a web search, but keeps hosts with a dot or a port", () => {
+    expect(normalizedBrowserUrl("vitest")).toBe("https://www.google.com/search?q=vitest");
+    expect(normalizedBrowserUrl("devbox:3000/app")).toBe("https://devbox:3000/app");
+    expect(normalizedBrowserUrl("localhost")).toBe("http://localhost/");
+    expect(normalizedBrowserUrl("example.com")).toBe("https://example.com/");
+  });
+
   it("turns multi-word input into a web search", () => {
     expect(normalizedBrowserUrl("react server components")).toBe(
       "https://www.google.com/search?q=react%20server%20components",

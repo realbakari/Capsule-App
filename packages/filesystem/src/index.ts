@@ -136,6 +136,13 @@ export class FilesystemAdapter {
     }));
   }
 
+  /** A listing for the Files tree: the same entries, with the ones the project ignores marked. */
+  async listForTree(relative = "."): Promise<FileEntry[]> {
+    const entries = this.list(relative);
+    const ignored = await ignoredPaths(this.resolve("."), entries.map((entry) => entry.path));
+    return ignored.size === 0 ? entries : entries.map((entry) => (ignored.has(entry.path) ? { ...entry, ignored: true } : entry));
+  }
+
   /*
    * Answers from the project's remembered file list, ranked.
    *
@@ -173,6 +180,7 @@ export class FilesystemAdapter {
   }
 }
 import { projectFiles, rankFiles } from "./file-index.js";
+import { ignoredPaths } from "./ignored.js";
 import { writeFileAtomic } from "./atomic-write.js";
 
 export {

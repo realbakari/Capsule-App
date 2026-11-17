@@ -86,7 +86,7 @@ import { contextUsageFromEvents, type ContextUsage } from "./context-window";
 import { harnessPreflightReason } from "./harness-preflight";
 import { useToasts } from "./toasts";
 import { requestBrowserCommand } from "./browser-commands";
-import { BROWSER_FIND_EVENT } from "./browser-find";
+import { BROWSER_FIND_EVENT, FILES_FIND_EVENT } from "./browser-find";
 import { requestLabel, withSlowNotice } from "./slow-requests";
 import {
   promptDraftKey,
@@ -2680,6 +2680,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       case "find-in-thread":
         // In the browser pane, ⌘F finds on the page rather than in the thread.
         if (document.activeElement?.closest(".panel-browser-pane")) window.dispatchEvent(new CustomEvent(BROWSER_FIND_EVENT));
+        else if (document.activeElement?.closest(".panel-file-tree-pane")) window.dispatchEvent(new CustomEvent(FILES_FIND_EVENT));
         else setThreadFind((open) => !open);
         break;
       case "jump-to-prompt":

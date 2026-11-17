@@ -3299,7 +3299,7 @@ export class CapsuleEngine {
     const project = this.requireProject(projectId);
     const decision = decidePolicy(this.repos.listPolicies(), "filesystem", "read");
     if (decision.decision === "block") throw new Error("Filesystem read is blocked by policy");
-    return new FilesystemAdapter(this.resolveProjectFolder(project, root)).list(relative);
+    return new FilesystemAdapter(this.resolveProjectFolder(project, root)).listForTree(relative);
   }
 
   async previewFile(projectId: string, relative: string, root?: string): Promise<FilePreview> {

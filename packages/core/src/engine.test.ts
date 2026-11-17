@@ -357,13 +357,13 @@ describe("CapsuleEngine first user flow", () => {
     writeFileSync(path.join(extra, "notes.md"), "extra folder notes\n");
     engine.updateProject(project.id, { extraFolders: [extra] });
     expect(engine.getProject(project.id)?.extraFolders).toEqual([extra]);
-    expect(engine.listFiles(project.id, ".", extra).some((entry) => entry.name === "notes.md")).toBe(
+    expect((await engine.listFiles(project.id, ".", extra)).some((entry) => entry.name === "notes.md")).toBe(
       true,
     );
     expect(
       (await engine.searchFiles(project.id, "notes", extra)).some((entry) => entry.name === "notes.md"),
     ).toBe(true);
-    expect(() => engine.listFiles(project.id, ".", "/not-attached")).toThrow(/not attached/i);
+    await expect(engine.listFiles(project.id, ".", "/not-attached")).rejects.toThrow(/not attached/i);
     await engine.deleteProject(project.id);
     expect(engine.getProject(project.id)).toBeUndefined();
     expect(engine.listSessions().some((item) => item.id === session.id)).toBe(false);

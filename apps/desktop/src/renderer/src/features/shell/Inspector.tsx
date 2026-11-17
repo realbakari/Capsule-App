@@ -20,6 +20,7 @@ import { formatUserError } from "../../lib/errors";
 import { clampPanelWidth, fitPanelWidth, restorePanelWidth } from "../../lib/panel-size";
 import { formatProjectRoot, toWorkspaceRelative } from "../../lib/paths";
 import { useWorkspace } from "../../lib/workspace";
+import { shortcutLabel, withShortcut } from "../../lib/keybindings";
 import { DiffView } from "./DiffView";
 import { ReviewDiff } from "../review/ReviewDiff";
 import { EmbeddedBrowser } from "./EmbeddedBrowser";
@@ -41,6 +42,7 @@ import { RequestScope } from "../../lib/request-scope";
 import { useScopedState } from "../../lib/scoped-state";
 import { ReviewScopeBar, useReviewTurns } from "../review/ReviewScopeBar";
 import {
+  changeStatus,
   chooseReview,
   ignoreWhitespaceFor,
   rememberIgnoreWhitespace,
@@ -74,6 +76,8 @@ const PANEL_MIN_WIDTH = 340;
 const PANEL_MAX_WIDTH = 1080;
 const CONVERSATION_MIN_WIDTH = 480;
 const FILES_SPLIT_MIN_WIDTH = 480;
+/** How many folders "Expand all folders" opens before it stops, so a large tree stays responsive. */
+const EXPAND_ALL_LIMIT = 200;
 
 /** The width the panel and the conversation share. */
 /** Surfaces that put their own controls in the panel header instead of a title. */
@@ -152,6 +156,7 @@ export function Inspector() {
     clearRequestedFile,
     events,
     updateSettings,
+    keyBindings,
   } = useWorkspace();
 
   const [panelWidth, setPanelWidth] = useState<number>(() => {
@@ -213,6 +218,9 @@ export function Inspector() {
 
   const [fileRoot, setFileRoot] = useState<string>();
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  // "Expand all folders" keeps opening folders as their listings arrive, until a folder is closed.
+  const [expandingAll, setExpandingAll] = useState(false);
+  const [refreshingFiles, setRefreshingFiles] = useState(false);
   const [fileSearch, setFileSearch] = useState("");
   const [fileSearchResult, setFileSearchResult] = useState<{ key: string; hits: FileEntry[]; loading: boolean; error?: string }>();
   const [fileSearchRetry, setFileSearchRetry] = useState(0);
@@ -350,6 +358,7 @@ export function Inspector() {
 
   useEffect(() => {
     setExpanded(new Set());
+    setExpandingAll(false);
   }, [projectId, project?.workingDirectory, session?.workingDirectory]);
 
   useEffect(() => {
@@ -504,6 +513,7 @@ export function Inspector() {
     setPreview("");
     setSaveState("idle");
     setExpanded(new Set());
+    setExpandingAll(false);
   }, [scope]);
 
   useEffect(() => {
@@ -643,10 +653,12 @@ export function Inspector() {
   const openRoot = useCallback((root: string) => {
     setFileRoot(root);
     setExpanded(new Set());
+    setExpandingAll(false);
   }, []);
 
   const toggleFolder = useCallback((path: string) => {
     const closing = expanded.has(path);
+    if (closing) setExpandingAll(false);
     setExpanded((current) => {
       const next = new Set(current);
       if (closing) next.delete(path);
@@ -655,6 +667,27 @@ export function Inspector() {
     });
     if (!closing) void directoryCache.load(path, true);
   }, [expanded, directoryCache]);
+
+  useEffect(() => {
+    if (!expandingAll) return;
+    const next = new Set(expanded);
+    for (const [folder, state] of Object.entries(directoryStates)) {
+      if (folder !== "" && !expanded.has(folder)) continue;
+      for (const entry of state.entries ?? []) {
+        // An ignored folder such as node_modules can hold tens of thousands; it still opens by hand.
+        if (entry.type !== "directory" || entry.ignored || next.has(entry.path) || next.size >= EXPAND_ALL_LIMIT) continue;
+        next.add(entry.path);
+        void directoryCache.load(entry.path);
+      }
+    }
+    if (next.size !== expanded.size) setExpanded(next);
+  }, [expandingAll, expanded, directoryStates, directoryCache]);
+
+  const refreshFiles = useCallback(() => {
+    setRefreshingFiles(true);
+    if (fileSearch.trim()) retryFileSearch();
+    void directoryCache.refresh(["", ...expanded]).finally(() => setRefreshingFiles(false));
+  }, [directoryCache, expanded, fileSearch, retryFileSearch]);
 
   const previewFile = useCallback(async (relative: string) => {
     if (!projectId || !activeRoot) return;
@@ -734,6 +767,8 @@ export function Inspector() {
   const toggleFolderByHand = useCallback((path: string) => { pauseFollow(); toggleFolder(path); }, [pauseFollow, toggleFolder]);
   const openRootByHand = useCallback((root: string) => { pauseFollow(); openRoot(root); }, [pauseFollow, openRoot]);
   const searchByHand = useCallback((value: string) => { pauseFollow(); setFileSearch(value); }, [pauseFollow]);
+  const expandAllByHand = useCallback(() => { pauseFollow(); setExpandingAll(true); }, [pauseFollow]);
+  const collapseAllByHand = useCallback(() => { pauseFollow(); setExpandingAll(false); setExpanded(new Set()); }, [pauseFollow]);
 
   function showFileDiff(relative: string) {
     if (!projectId) return;
@@ -856,7 +891,7 @@ export function Inspector() {
           <button
             type="button"
             className="icon-btn"
-            title="Close panel (⌘\)"
+            title={withShortcut("Close panel", "toggle-inspector", keyBindings)}
             aria-label="Close panel"
             onClick={toggleInspector}
           >
@@ -894,7 +929,7 @@ export function Inspector() {
                         <Icon size={16} />
                       </span>
                       <span className="panel-launcher-label">{surface.label}</span>
-                      <kbd className="panel-launcher-kbd" title={surface.shortcut ? `Also ${surface.shortcut} from anywhere` : undefined}>{surface.key.toUpperCase()}</kbd>
+                      <kbd className="panel-launcher-kbd" title={(surface.command ? shortcutLabel(surface.command, keyBindings) : surface.shortcut) ? `Also ${surface.command ? shortcutLabel(surface.command, keyBindings) : surface.shortcut} from anywhere` : undefined}>{surface.key.toUpperCase()}</kbd>
                     </span>
                     <span className="panel-launcher-detail">{blocked ?? surface.detail}</span>
                   </button>
@@ -1017,6 +1052,10 @@ export function Inspector() {
                   activeRoot={activeRoot}
                   previewPath={previewDoc?.path}
                   gitFiles={git?.files}
+                  refreshing={refreshingFiles}
+                  onRefresh={refreshFiles}
+                  onExpandAll={expandAllByHand}
+                  onCollapseAll={collapseAllByHand}
                   onFileSearchChange={searchByHand}
                   onClearSearch={clearFileSearch}
                   onOpenRoot={openRootByHand}
@@ -1135,12 +1174,9 @@ export function Inspector() {
               * definite "not a repository" collapses it. Nothing here invents a branch.
               */}
             {git && !git.isRepo ? <p className="faint review-git-state">This folder is not a git repository.</p> : <>
-            <div className="panel-review-header">
-              <div className="kv">
-                <span>Branch</span>
-                <span className="mono">{git ? git.branch ?? "Detached HEAD" : "Reading…"}</span>
-              </div>
-              {!readOnlyPeer && <div className="git-actions">
+            {/* The branch is already in the panel header; this row is only what can be done with it. */}
+            {!readOnlyPeer && <div className="panel-review-header">
+              <div className="git-actions">
                 <button className="chip" type="button" onClick={() => void gitPush()}>
                   <CloudUploadIcon size={13} />Push
                 </button>
@@ -1163,8 +1199,8 @@ export function Inspector() {
                     <GitPullRequestIcon size={13} />{settings?.prDraft ? "Draft PR" : "Pull request"}
                   </button>
                 )}
-              </div>}
-            </div>
+              </div>
+            </div>}
 
             <PullRequestList
               key={`${projectId}/${session?.id ?? ""}`}
@@ -1191,7 +1227,10 @@ export function Inspector() {
                     <button className="list-item" onClick={() => showFileDiff(entry.path)}>
                       <DiffIcon size={12} />
                       <span className="truncate">{entry.path}</span>
-                      <span className="meta">{entry.code}</span>
+                      {entry.added !== undefined || entry.removed !== undefined ? (
+                        <span className="change-row-stat"><span className="review-diff-add">+{entry.added ?? 0}</span> <span className="review-diff-del">−{entry.removed ?? 0}</span></span>
+                      ) : null}
+                      <span className="meta" title={changeStatus(entry.code).title}>{changeStatus(entry.code).letter}</span>
                     </button>
                     {!readOnlyPeer && <span className="change-row-actions">
                       <button type="button" className="icon-btn" title={`Stage ${entry.path}`} aria-label={`Stage ${entry.path}`} onClick={() => void gitStage(entry.path)}>

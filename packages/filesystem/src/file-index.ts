@@ -27,7 +27,7 @@ const SCAN_TIMEOUT_MS = 10_000;
 export const FILE_INDEX_TTL_MS = 30_000;
 
 /** Directories worth skipping when a project is not a repository. */
-const SKIP = new Set([
+export const UNINDEXED_DIRECTORIES: ReadonlySet<string> = new Set([
   "node_modules",
   ".git",
   "dist",
@@ -95,7 +95,7 @@ async function walkFiles(root: string, limit = 20_000): Promise<string[]> {
     }
     for (const entry of entries) {
       if (out.length >= limit) return;
-      if (SKIP.has(entry.name) || entry.name === ".DS_Store") continue;
+      if (UNINDEXED_DIRECTORIES.has(entry.name) || entry.name === ".DS_Store") continue;
       if (entry.name.startsWith(".") && entry.name !== ".env" && entry.name !== ".gitignore") {
         continue;
       }

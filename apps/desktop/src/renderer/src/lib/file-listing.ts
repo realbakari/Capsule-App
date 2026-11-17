@@ -12,6 +12,6 @@ export function sameListing(previous: readonly FileEntry[], next: readonly FileE
   if (previous.length !== next.length) return false;
   return previous.every((entry, index) => {
     const other = next[index];
-    return other !== undefined && entry.path === other.path && entry.type === other.type;
+    return other !== undefined && entry.path === other.path && entry.type === other.type && entry.ignored === other.ignored;
   });
 }

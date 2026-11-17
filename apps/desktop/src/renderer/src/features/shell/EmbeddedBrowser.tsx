@@ -14,7 +14,7 @@ import { BackgroundBrowser } from "./BackgroundBrowser";
 import { BrowserControls } from "./BrowserControls";
 import "./browser-inspect.css";
 import { showNativeContextMenu } from "../../lib/bridge";
-import { NO_SELECTION, registerSelectionReader, selectionContext, touchSelectionSurface } from "../../lib/selection-share";
+import { registerSelectionReader, selectionContext, touchSelectionSurface } from "../../lib/selection-share";
 // Electron's custom element reads a string attribute. React drops boolean
 // `true` on this non-standard attribute despite WebViewHTMLAttributes' type.
 const guestAttributes: Record<string, string> = { allowpopups: "true" };
@@ -79,8 +79,10 @@ export function normalizedBrowserUrl(raw: string): string {
   const trimmed = raw.trim();
   if (!trimmed || trimmed.length > 2048) return "";
   if (/^[a-z][a-z0-9+.-]*:(?!\d)/i.test(trimmed) && !/^https?:/i.test(trimmed)) return "";
-  if (!/^https?:/i.test(trimmed) && /\s/.test(trimmed)) return `https://www.google.com/search?q=${encodeURIComponent(trimmed)}`;
   const local = /^(localhost|127(?:\.\d{1,3}){3}|\[::1\]|0\.0\.0\.0)(?=[:/]|$)/i.test(trimmed);
+  // Words, or one word with no dot or port, are a search; "example.com" and "devbox:3000" are addresses.
+  const host = trimmed.split(/[/?#]/, 1)[0] ?? "";
+  if (!/^https?:/i.test(trimmed) && (/\s/.test(trimmed) || (!local && !/[.:]/.test(host)))) return `https://www.google.com/search?q=${encodeURIComponent(trimmed)}`;
   const candidate = /^https?:\/\//i.test(trimmed) ? trimmed : `${local ? "http" : "https"}://${trimmed}`;
   try {
     const parsed = new URL(candidate);
@@ -145,6 +147,7 @@ export function EmbeddedBrowser({
   const [error, setError] = useState<string>();
   const [pickActive, setPickActive] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [devToolsOpen, setDevToolsOpen] = useState(false);
   const [zoomFactor, setZoomFactor] = useState(1.0);
   const [finding, setFinding] = useState(false);
   const [recents, setRecents] = useState<BrowserRecent[]>(() => {
@@ -380,17 +383,6 @@ export function EmbeddedBrowser({
     return () => { unregister(); view.removeEventListener("focus", touched); view.removeEventListener("context-menu", menu); };
   }, [api.isDesktop, mountedView, readPageSelection]);
 
-  const sendPageSelection = async () => {
-    setMoreMenuOpen(false);
-    try {
-      const selection = await readPageSelection();
-      if (!selection) { showToast(NO_SELECTION); return; }
-      if (await attachContext(selectionContext(selection))) showToast("Selection attached to the conversation");
-    } catch (failure) {
-      showToast(`Could not read the selection: ${failure instanceof Error ? failure.message : String(failure)}`);
-    }
-  };
-
   const showTab = (tab: BrowserTab) => {
     setActiveTab(tab.id);
     setPageTitle(tab.title || undefined);
@@ -623,7 +615,7 @@ export function EmbeddedBrowser({
             onClick={() => setDeviceMenuOpen((open) => !open)}
           >
             <SmartphoneIcon size={14} />
-            <span className="browser-device-size">{device.width ? `${device.width}×${device.height}` : frameSize ? `${Math.round(frameSize.width)}×${Math.round(frameSize.height)}` : device.label}</span>
+            {device.width ? <span className="browser-device-size">{device.width}×{device.height}</span> : null}
           </button>
           {deviceMenuOpen && (
             <div className="preview-more-menu browser-device-menu" role="menu" aria-label="Device size">
@@ -656,7 +648,10 @@ export function EmbeddedBrowser({
             type="button"
             aria-label="More options"
             title="More options"
-            onClick={() => setMoreMenuOpen((prev) => !prev)}
+            onClick={() => {
+              setDevToolsOpen(ready && webviewRef.current?.isDevToolsOpened() === true);
+              setMoreMenuOpen((prev) => !prev);
+            }}
           >
             <MoreVerticalIcon size={14} />
           </button>
@@ -690,12 +685,9 @@ export function EmbeddedBrowser({
                   setMoreMenuOpen(false);
                 }}
               >
-                Open DevTools
+                {devToolsOpen ? "Close DevTools" : "Open DevTools"}
               </button>
 
-              {api.isDesktop === true && <button type="button" className="preview-menu-item" disabled={!ready} onClick={() => void sendPageSelection()}>
-                Send selection to thread
-              </button>}
               <div className="preview-menu-divider" />
 
               <div className="preview-zoom-row">
@@ -710,7 +702,16 @@ export function EmbeddedBrowser({
                   >
                     <MinusIcon size={11} />
                   </button>
-                  <span className="preview-zoom-value">{Math.round(zoomFactor * 100)}%</span>
+                  <button
+                    type="button"
+                    className="preview-zoom-value"
+                    title="Reset zoom"
+                    aria-label={`Zoom ${Math.round(zoomFactor * 100)}%, reset`}
+                    onClick={handleResetZoom}
+                    disabled={zoomFactor === 1.0}
+                  >
+                    {Math.round(zoomFactor * 100)}%
+                  </button>
                   <button
                     type="button"
                     className="preview-zoom-btn"
@@ -719,15 +720,6 @@ export function EmbeddedBrowser({
                     disabled={zoomFactor >= 3.0}
                   >
                     <PlusIcon size={11} />
-                  </button>
-                  <button
-                    type="button"
-                    className="preview-zoom-btn"
-                    title="Reset zoom"
-                    onClick={handleResetZoom}
-                    disabled={zoomFactor === 1.0}
-                  >
-                    <RefreshIcon size={10} />
                   </button>
                 </div>
               </div>
@@ -738,43 +730,9 @@ export function EmbeddedBrowser({
                 type="button"
                 className="preview-menu-item"
                 disabled={!ready}
-                onClick={() => {
-                  onOpenExternal(currentUrl);
-                  setMoreMenuOpen(false);
-                }}
-              >
-                Open in system browser
-              </button>
-              <button
-                type="button"
-                className="preview-menu-item"
-                onClick={() => {
-                  setCurrentUrl("");
-                  setGuestUrl("");
-                  setPickActive(false);
-                  setLoading(false);
-                  setError(undefined);
-                  publishAddress("");
-                  setCanGoBack(false);
-                  setCanGoForward(false);
-                  setMoreMenuOpen(false);
-                }}
-              >
-                <span className="preview-menu-item-row">
-                  <span>Local servers home</span>
-                  <GlobeIcon size={12} />
-                </span>
-              </button>
-
-              <div className="preview-menu-divider" />
-
-              <button
-                type="button"
-                className="preview-menu-item"
-                disabled={!ready}
                 onClick={() => void handleClearCache()}
               >
-                Clear browser HTTP cache
+                Clear cache
               </button>
               <button
                 type="button"
@@ -782,7 +740,7 @@ export function EmbeddedBrowser({
                 disabled={!ready}
                 onClick={() => void handleClearCookies()}
               >
-                Clear browser cookies &amp; storage
+                Clear cookies and site data
               </button>
             </div>
           )}
@@ -844,6 +802,7 @@ export function EmbeddedBrowser({
             className="preview-address-input"
             value={address}
             onChange={(event) => publishAddress(event.target.value)}
+            onFocus={(event) => event.currentTarget.select()}
             onKeyDown={(event) => {
               if (event.key === "Escape") {
                 publishAddress(currentUrl);

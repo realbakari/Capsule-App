@@ -3050,7 +3050,17 @@ select:focus,
 .panel-tree-item.active {
   background: var(--bg-active);
   color: var(--text);
-  font-weight: 550;
+}
+.panel-tree-item:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset-inset);
+}
+/* Ignored by the project (build output, dependencies): listed, but quiet. */
+.panel-tree-item.ignored {
+  color: var(--text-faint);
+}
+.panel-tree-item.ignored .panel-tree-icon {
+  opacity: 0.5;
 }
 .panel-tree-chevron {
   display: inline-flex;
@@ -7770,18 +7780,6 @@ body:has(> #root .palette-backdrop > [role="alertdialog"]) > :is(.header-popover
 }
 .width-preview-column span:last-child {
   width: 62%;
-}
-
-/* File-type mark in the tree. A short label reads at this size where a
-   detailed glyph does not; the colour carries the family. */
-.panel-file-mark {
-  font-family: var(--mono);
-  font-size: var(--text-3xs);
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 1;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
 }
 
 .palette-list {

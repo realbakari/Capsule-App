@@ -369,6 +369,8 @@ export interface FileEntry {
   name: string;
   path: string;
   type: "file" | "directory";
+  /** The project's ignore rules match it. Set only on Files tree listings. */
+  ignored?: true;
 }
 
 export interface ProjectAction {

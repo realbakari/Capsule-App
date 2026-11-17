@@ -81,8 +81,8 @@ message, run, or live harness exists, the workspace stays fixed. Deleting a
 clean worktree conversation removes its worktree. If the worktree has
 uncommitted changes, Capsule keeps it on disk rather than deleting the work.
 
-Choose the default for new conversations in **Settings → Agents → Conversation
-workspace**.
+Choose the default for new conversations in **Settings → Agents → New
+conversations → Workspace**.
 
 ### Apply a worktree to your checkout
 
@@ -191,8 +191,8 @@ to see its latest output, or stop it from there.
 The Browser panel has tabs. **+** in its header opens a new tab on the local
 servers page; each tab keeps its own address and title, and **×** closes it.
 Switching tabs loads that tab's page again, so scroll position and typed form
-input are not kept across a switch. Page width (fit, phone, tablet) is in the
-⋮ menu with zoom.
+input are not kept across a switch. A new tab is also the way back to the local
+servers page.
 
 
 For a native iOS app, open **Simulator** instead; see [iOS Simulator](simulator.md).
@@ -200,10 +200,14 @@ For a native iOS app, open **Simulator** instead; see [iOS Simulator](simulator.
 Open **Browser** in the inspector to see local HTTP apps that are responding on
 this Mac. The list refreshes while the panel is open and excludes listening
 services that do not answer like web pages. Select a server to open it in the
-in-app browser, or type another HTTP or HTTPS address above the list. The
-toolbar supports back, forward, reload, inspect mode, device sizes,
-screenshot capture to clipboard, opening in the system browser, zoom controls,
-DevTools, and cache/cookie clearing. The Browser home keeps recently used pages
+in-app browser, or type another HTTP or HTTPS address above the list. Clicking
+the address selects all of it. An address needs a dot or a port
+(`example.com`, `devbox:3000`) or a local name (`localhost`); a single word or
+several words search the web instead. The arrow at the end of the address opens
+the page in your system browser. The header holds inspect mode, the device
+size and screenshot capture to the clipboard; the ⋮ menu holds find on page,
+hard reload, DevTools, zoom (the percentage resets it to 100%), and clearing the
+cache or cookies. The Browser home keeps recently used pages
 above the live-server list. Screenshot capture copies an actual image that can
 be pasted into an image-aware app. If capture fails, it shows an error and leaves
 the clipboard unchanged; it never substitutes image data as text.
@@ -216,7 +220,7 @@ computed styles and the page address, plus a cropped screenshot of the element a
 an image. An element scrolled out of view is attached without a screenshot.
 Press Esc or the button again to stop without picking.
 
-The **device size** button shows the page's current size. Choose **Responsive**
+The **device size** button shows the size when a fixed device is chosen. Choose **Responsive**
 to fill the panel, or **iPhone** (393 × 852 at 3x), **iPad** (820 × 1180 at 2x)
 or **Desktop** (1440 × 900 at 1x). A fixed size keeps its width and scrolls inside
 the panel when the panel is smaller, and the page sees that device's pixel ratio
@@ -295,12 +299,31 @@ interactive stream or a browser running on a remote host. Remote access uses
 your existing pairing and network settings.
 
 The system-browser action opens the currently committed page, including after
-redirects and in-page navigation. **Clear HTTP cache** clears browser cache;
-**Clear cookies and storage** clears the isolated browser's cookies and saved
+redirects and in-page navigation. **Clear cache** clears the browser's cache;
+**Clear cookies and site data** clears the isolated browser's cookies and saved
 site data across its pages and can sign you out. Neither clears Capsule drafts
 or preferences. Errors remain visible if clearing fails.
 
 ## Files and terminal ownership
+
+The file tree's header has **Refresh files**, a **Search files** field and a
+button that expands every folder or, once any folder is open, collapses them
+all. Expanding everything skips folders the project ignores (such as
+`node_modules`) and stops after a few hundred folders; those still open by
+hand. Search shows its matches inside the folders they live in, with those
+folders open; Escape clears it, and `⌘F` with focus in the tree jumps to the
+field.
+
+Folders show a chevron; files show a mark for their kind, such as TypeScript,
+JSON, Markdown, `package.json`, pnpm files, git files, Vite config and agent
+instruction files (`AGENTS.md`, `CLAUDE.md`). Anything the project's ignore
+rules match, such as dependencies, build output or `.env`, is listed dimmed
+rather than hidden. Outside a git repository, the usual dependency and build
+folders are dimmed. Only `.git` and `.DS_Store` are left out.
+
+Arrow keys move through the tree: up and down move between rows, right opens a
+folder or steps into it, left closes it or steps back to its parent, and Home
+and End jump to the first and last row. Enter opens a file or toggles a folder.
 
 In a narrow Files panel, the file list fills the panel. Select a file to see its
 preview; **Toggle workspace tree** returns to the list. Wider panels show both
@@ -315,14 +338,14 @@ If a branch disappears after you opened the branch picker, checkout fails withou
 restoring a same-named file over your local edits.
 
 Files opened from chat or content-search results use that conversation's folder,
-even if the Files panel was showing an extra folder. File-filter results disappear
+even if the Files panel was showing an extra folder. File search results disappear
 while a different query or folder loads. Failed searches show **Retry**, not an
 empty result.
 
 To watch the agent work, turn on **Follow agent** with the pointer button in
 the Files header (also in Settings › Appearance and the command palette). While
 a turn runs, Files opens the file the agent is reading or editing and expands
-the folders above it. As soon as you open a file, a folder or a filter
+the folders above it. As soon as you open a file, a folder or a search
 yourself, following pauses for the rest of that turn; **Follow again** resumes
 it, and the next turn follows on its own. A file you are editing is never
 replaced. Follow agent is off until you turn it on, and Capsule remembers your

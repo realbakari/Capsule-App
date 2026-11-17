@@ -268,6 +268,35 @@ export function BookmarkIcon(props: IconProps) {
   );
 }
 
+/** Auto approvals: the shield with a check. */
+export function ShieldCheckIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M12 3 5 6v6c0 4.5 3 7.5 7 9 4-1.5 7-4.5 7-9V6l-7-3z" />
+      <path d="m9 12 2 2 4-4" />
+    </Svg>
+  );
+}
+
+/** Full access: a struck-through shield reads apart from a lock at small sizes. */
+export function ShieldOffIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M5 6v6c0 4.5 3 7.5 7 9 1.9-.7 3.6-1.8 4.8-3.2" />
+      <path d="M8.6 4.5 12 3l7 3v6c0 .9-.1 1.7-.4 2.5" />
+      <path d="m3 3 18 18" />
+    </Svg>
+  );
+}
+
+export function ChevronUpIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="m18 15-6-6-6 6" />
+    </Svg>
+  );
+}
+
 export function ChevronDownIcon(props: IconProps) {
   return (
     <Svg {...props}>
@@ -282,6 +311,14 @@ export function ChevronRightIcon(props: IconProps) {
       <path d="m9 6 6 6-6 6" />
     </Svg>
   );
+}
+
+export function ChevronsUpDownIcon(props: IconProps) {
+  return <Svg {...props}><path d="m7 15 5 5 5-5M7 9l5-5 5 5" /></Svg>;
+}
+
+export function ChevronsDownUpIcon(props: IconProps) {
+  return <Svg {...props}><path d="m7 20 5-5 5 5M7 4l5 5 5-5" /></Svg>;
 }
 
 export function FolderIcon(props: IconProps) {
@@ -828,6 +865,15 @@ export function DotIcon(props: IconProps) {
   return (
     <Svg {...props}>
       <circle cx="12" cy="12" r="4" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+export function DownloadIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M12 4v11M7 10l5 5 5-5" />
+      <path d="M5 19h14" />
     </Svg>
   );
 }

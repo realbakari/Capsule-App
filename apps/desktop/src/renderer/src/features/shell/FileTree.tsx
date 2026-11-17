@@ -1,41 +1,24 @@
 import type { FileEntry, GitChange } from "@capsule/shared";
-import { memo, useMemo } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { folderBasename } from "@capsule/shared";
-import { fileKind } from "../../lib/file-kind";
 import type { DirectoryListing } from "../../lib/directory-listings";
+import { FILES_FIND_EVENT } from "../../lib/browser-find";
+import { FileTypeIcon } from "./FileTypeIcon";
 import {
   ChevronDownIcon,
   ChevronRightIcon,
-  FolderIcon,
-  SearchIcon,
+  ChevronsDownUpIcon,
+  ChevronsUpDownIcon,
+  RefreshIcon,
   XIcon,
 } from "./icons";
 
-const HIDDEN_TREE_NAMES = new Set([
-  "node_modules",
-  ".git",
-  "dist",
-  "out",
-  ".next",
-  "coverage",
-  "build",
-  "Pods",
-]);
-
-
-/** File-type mark for a tree row. See lib/file-kind for why it is a label. */
-function FileMark({ name }: { name: string }) {
-  const kind = fileKind(name.split("/").pop() ?? name);
-  return (
-    <span className="panel-tree-icon panel-file-mark" style={{ color: `var(${kind.tone})` }} aria-hidden>
-      {kind.label}
-    </span>
-  );
-}
+/* Never useful to browse. Everything else the project ignores is listed, dimmed. */
+const HIDDEN_TREE_NAMES = new Set([".git", ".DS_Store"]);
 
 export function sortTreeEntries(entries: FileEntry[]): FileEntry[] {
   return [...entries]
-    .filter((entry) => entry.name !== ".DS_Store" && !HIDDEN_TREE_NAMES.has(entry.name))
+    .filter((entry) => !HIDDEN_TREE_NAMES.has(entry.name))
     .sort((left, right) => {
       if (left.type !== right.type) return left.type === "directory" ? -1 : 1;
       return left.name.localeCompare(right.name);
@@ -62,6 +45,62 @@ export function indexGitMarks(files: readonly GitChange[] = []) {
   return { file, directory };
 }
 
+/** Search hits laid out as the tree they live in, every folder on the way open. */
+export function searchTree(hits: readonly FileEntry[]) {
+  const children: Record<string, FileEntry[]> = {};
+  const folders = new Set<string>();
+  const add = (parent: string, entry: FileEntry) => { (children[parent] ??= []).push(entry); };
+  for (const hit of hits) {
+    const parts = hit.path.split("/");
+    for (let end = 1; end < parts.length; end += 1) {
+      const folder = parts.slice(0, end).join("/");
+      if (folders.has(folder)) continue;
+      folders.add(folder);
+      add(parts.slice(0, end - 1).join("/"), { name: parts[end - 1]!, path: folder, type: "directory" });
+    }
+    add(parts.slice(0, -1).join("/"), { name: parts.at(-1)!, path: hit.path, type: "file" });
+  }
+  for (const key of Object.keys(children)) children[key] = sortTreeEntries(children[key]!);
+  return { roots: children[""] ?? [], children, folders };
+}
+
+const ROW = "[data-tree-row]";
+
+/*
+ * Arrow keys walk the rows as they are drawn: up and down move, right opens a
+ * folder or steps into it, left closes it or steps out to its parent.
+ */
+function walkTree(event: KeyboardEvent<HTMLDivElement>, onToggleFolder: (path: string) => void) {
+  const row = (event.target as HTMLElement).closest<HTMLElement>(ROW);
+  if (!row || event.metaKey || event.ctrlKey || event.altKey) return;
+  const rows = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(ROW));
+  const index = rows.indexOf(row);
+  const path = row.dataset.path ?? "";
+  const folder = row.dataset.kind === "directory";
+  const open = row.getAttribute("aria-expanded") === "true";
+  let target: HTMLElement | undefined;
+  switch (event.key) {
+    case "ArrowDown": target = rows[index + 1]; break;
+    case "ArrowUp": target = rows[index - 1]; break;
+    case "Home": target = rows[0]; break;
+    case "End": target = rows.at(-1); break;
+    case "ArrowRight":
+      if (!folder) return;
+      if (!open) onToggleFolder(path);
+      else target = rows[index + 1]?.dataset.path?.startsWith(`${path}/`) ? rows[index + 1] : undefined;
+      break;
+    case "ArrowLeft": {
+      if (folder && open) { onToggleFolder(path); break; }
+      const parent = path.slice(0, path.lastIndexOf("/"));
+      target = parent ? rows.find((candidate) => candidate.dataset.path === parent) : undefined;
+      break;
+    }
+    default: return;
+  }
+  event.preventDefault();
+  target?.focus();
+}
+
 function TreeEntries({
   entries,
   depth,
@@ -76,7 +115,7 @@ function TreeEntries({
 }: {
   entries: FileEntry[];
   depth: number;
-  expanded: Set<string>;
+  expanded: ReadonlySet<string>;
   childrenByDir: Record<string, FileEntry[]>;
   previewPath?: string;
   gitMarks: ReturnType<typeof indexGitMarks>;
@@ -85,44 +124,41 @@ function TreeEntries({
   directoryStates?: Record<string, DirectoryListing>;
   onRefreshDirectory?: (path: string) => void;
 }) {
+  const indent = { paddingLeft: `${0.375 + depth * 0.875}rem` };
   return (
     <>
       {entries.map((entry) => {
         const open = expanded.has(entry.path);
         const gitMark = gitMarks[entry.type === "directory" ? "directory" : "file"].get(entry.path);
-        const selected = previewPath === entry.path;
+        const badge = gitMark ? <span className="panel-git-badge" title="Changed in the working tree">{gitMark}</span> : null;
+        const ignored = entry.ignored ? " ignored" : "";
         if (entry.type === "directory") {
           const kids = childrenByDir[entry.path];
           return (
             <div key={entry.path} className="panel-tree-group">
               <button
                 type="button"
-                className="panel-tree-item"
-                style={{ paddingLeft: `${0.4 + depth * 0.72}rem` }}
-                title={entry.path}
+                className={`panel-tree-item${ignored}`}
+                style={indent}
+                title={entry.ignored ? `${entry.path} (ignored)` : entry.path}
                 aria-expanded={open}
+                data-tree-row
+                data-kind="directory"
+                data-path={entry.path}
                 onClick={() => onToggleFolder(entry.path)}
               >
-                <span className={`panel-tree-chevron${open ? " open" : ""}`}>
-                  {open ? <ChevronDownIcon size={11} /> : <ChevronRightIcon size={11} />}
-                </span>
-                <span className="panel-tree-icon">
-                  <FolderIcon size={13} />
+                <span className="panel-tree-chevron" aria-hidden>
+                  {open ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} />}
                 </span>
                 <span className="panel-tree-name truncate">{entry.name}</span>
-                {gitMark ? (
-                  <span className="panel-git-badge" title="Changed in the working tree">
-                    {gitMark}
-                  </span>
-                ) : null}
+                {badge}
               </button>
               {open ? (
                 directoryStates?.[entry.path]?.error ? (
-                  <div role="status" className="panel-tree-empty">
+                  <div role="status" className="panel-tree-empty" style={{ paddingLeft: `${1.375 + depth * 0.875}rem` }}>
                     Could not read folder. <button className="ghost" onClick={() => onRefreshDirectory?.(entry.path)}>Retry</button>
                   </div>
-                ) :
-                kids && kids.length > 0 ? (
+                ) : kids && kids.length > 0 ? (
                   <TreeEntries
                     entries={kids}
                     depth={depth + 1}
@@ -136,10 +172,7 @@ function TreeEntries({
                     onRefreshDirectory={onRefreshDirectory}
                   />
                 ) : (
-                  <div
-                    className="panel-tree-empty faint"
-                    style={{ paddingLeft: `${1.2 + depth * 0.72}rem` }}
-                  >
+                  <div className="panel-tree-empty faint" style={{ paddingLeft: `${1.375 + depth * 0.875}rem` }}>
                     {kids ? "Empty" : "Loading…"}
                   </div>
                 )
@@ -151,19 +184,19 @@ function TreeEntries({
           <button
             key={entry.path}
             type="button"
-            className={`panel-tree-item${selected ? " active" : ""}`}
-            style={{ paddingLeft: `${0.4 + depth * 0.72}rem` }}
-            title={entry.path}
+            className={`panel-tree-item${previewPath === entry.path ? " active" : ""}${ignored}`}
+            style={indent}
+            title={entry.ignored ? `${entry.path} (ignored)` : entry.path}
+            aria-current={previewPath === entry.path ? "true" : undefined}
+            data-tree-row
+            data-kind="file"
+            data-path={entry.path}
             onClick={() => onPreviewFile(entry.path)}
           >
             <span className="panel-tree-chevron" aria-hidden />
-            <FileMark name={entry.name} />
+            <FileTypeIcon name={entry.name} />
             <span className="panel-tree-name truncate">{entry.name}</span>
-            {gitMark ? (
-              <span className="panel-git-badge" title="Changed in the working tree">
-                {gitMark}
-              </span>
-            ) : null}
+            {badge}
           </button>
         );
       })}
@@ -184,6 +217,10 @@ export const FileTreePane = memo(function FileTreePane({
   activeRoot,
   previewPath,
   gitFiles,
+  refreshing,
+  onRefresh,
+  onExpandAll,
+  onCollapseAll,
   onFileSearchChange,
   onClearSearch,
   onOpenRoot,
@@ -204,6 +241,10 @@ export const FileTreePane = memo(function FileTreePane({
   activeRoot?: string;
   previewPath?: string;
   gitFiles?: GitChange[];
+  refreshing?: boolean;
+  onRefresh: () => void;
+  onExpandAll: () => void;
+  onCollapseAll: () => void;
   onFileSearchChange: (value: string) => void;
   onClearSearch: () => void;
   onOpenRoot: (root: string) => void;
@@ -214,28 +255,77 @@ export const FileTreePane = memo(function FileTreePane({
 }) {
   const rootEntries = useMemo(() => sortTreeEntries(listing), [listing]);
   const gitMarks = useMemo(() => indexGitMarks(gitFiles), [gitFiles]);
+  const found = useMemo(() => (searchHits ? searchTree(searchHits) : undefined), [searchHits]);
+  // Folders closed by hand while a search shows; a new query opens them all again.
+  const [searchClosed, setSearchClosed] = useState<{ query: string; paths: Set<string> }>();
+  const closedNow = searchClosed?.query === fileSearch ? searchClosed.paths : undefined;
+  const searchOpen = useMemo(
+    () => new Set([...(found?.folders ?? [])].filter((path) => !closedNow?.has(path))),
+    [found, closedNow],
+  );
+  const toggleSearchFolder = (path: string) => {
+    const paths = new Set(closedNow);
+    if (paths.has(path)) paths.delete(path);
+    else paths.add(path);
+    setSearchClosed({ query: fileSearch, paths });
+  };
+
+  const searchInput = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const focusSearch = () => { searchInput.current?.focus(); searchInput.current?.select(); };
+    window.addEventListener(FILES_FIND_EVENT, focusSearch);
+    return () => window.removeEventListener(FILES_FIND_EVENT, focusSearch);
+  }, []);
+
+  const anyOpen = expanded.size > 0;
+  const hasFolders = rootEntries.some((entry) => entry.type === "directory");
+  const rootState = directoryStates?.[""];
+
   return (
     <div className="panel-file-tree-pane">
-      <div className="panel-tree-search-wrap">
-        <span className="panel-tree-search-icon" aria-hidden>
-          <SearchIcon size={14} />
-        </span>
-        <input
-          type="text"
-          className="panel-tree-search"
-          aria-label="Filter workspace files"
-          placeholder="Filter files..."
-          value={fileSearch}
-          onChange={(event) => onFileSearchChange(event.target.value)}
-        />
-        {fileSearch ? (
+      <div className="panel-tree-head">
+        <button
+          type="button"
+          className="icon-btn panel-tree-head-btn"
+          aria-label="Refresh files"
+          title={refreshing ? "Refreshing…" : "Refresh files"}
+          aria-busy={refreshing || undefined}
+          onClick={onRefresh}
+        >
+          <RefreshIcon size={13} className={refreshing ? "panel-tree-refreshing" : undefined} />
+        </button>
+        <div className="panel-tree-search-wrap">
+          <input
+            ref={searchInput}
+            type="search"
+            className="panel-tree-search"
+            aria-label="Search files"
+            placeholder="Search files"
+            spellCheck={false}
+            value={fileSearch}
+            onChange={(event) => onFileSearchChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Escape") return;
+              event.preventDefault();
+              onClearSearch();
+              event.currentTarget.blur();
+            }}
+          />
+          {fileSearch ? (
+            <button type="button" className="panel-tree-search-clear" onClick={onClearSearch} aria-label="Clear search" title="Clear search">
+              <XIcon size={11} />
+            </button>
+          ) : null}
+        </div>
+        {hasFolders && !searchHits ? (
           <button
             type="button"
-            className="panel-tree-search-clear"
-            onClick={onClearSearch}
-            title="Clear filter"
+            className="icon-btn panel-tree-head-btn"
+            aria-label={anyOpen ? "Collapse all folders" : "Expand all folders"}
+            title={anyOpen ? "Collapse all folders" : "Expand all folders"}
+            onClick={anyOpen ? onCollapseAll : onExpandAll}
           >
-            <XIcon size={11} />
+            {anyOpen ? <ChevronsDownUpIcon size={13} /> : <ChevronsUpDownIcon size={13} />}
           </button>
         ) : null}
       </div>
@@ -255,50 +345,47 @@ export const FileTreePane = memo(function FileTreePane({
         </div>
       ) : null}
 
-      <div className="panel-tree-list">
-        {directoryStates?.[""]?.error && <div role="status" className="panel-tree-empty">
+      <div className="panel-tree-list" aria-label="Files" onKeyDown={(event) => walkTree(event, found ? toggleSearchFolder : onToggleFolder)}>
+        {rootState?.error && <div role="status" className="panel-tree-empty">
           Could not refresh files. <button className="ghost" onClick={() => onRefreshDirectory?.("")}>Retry</button>
         </div>}
         {searchLoading ? <div className="panel-tree-empty faint" role="status">Searching…</div>
           : searchError ? <div className="panel-tree-empty" role="alert">Could not search files. {searchError} <button className="ghost" onClick={onRetrySearch}>Retry</button></div>
-          : searchHits ? (
-          searchHits.length === 0 ? (
-            <div className="panel-tree-empty faint">No matching files</div>
+          : found ? (
+            found.roots.length === 0 ? (
+              <div className="panel-tree-empty faint" role="status">No matching files</div>
+            ) : (
+              <TreeEntries
+                entries={found.roots}
+                depth={0}
+                expanded={searchOpen}
+                childrenByDir={found.children}
+                previewPath={previewPath}
+                gitMarks={gitMarks}
+                onToggleFolder={toggleSearchFolder}
+                onPreviewFile={onPreviewFile}
+              />
+            )
+          ) : rootEntries.length === 0 ? (
+            rootState?.error ? null : (
+              <div className="panel-tree-empty faint" role="status">
+                {rootState?.loading || !rootState ? "Loading files…" : "Folder is empty"}
+              </div>
+            )
           ) : (
-            searchHits.map((entry) => (
-              <button
-                key={entry.path}
-                type="button"
-                className={`panel-tree-item${previewPath === entry.path ? " active" : ""}`}
-                title={entry.path}
-                onClick={() => onPreviewFile(entry.path)}
-              >
-                <span className="panel-tree-chevron" aria-hidden />
-                <FileMark name={entry.path} />
-                <span className="panel-tree-name truncate">{entry.path}</span>
-              </button>
-            ))
-          )
-        ) : rootEntries.length === 0 ? (
-          directoryStates?.[""]?.error ? null : (
-            <div className="panel-tree-empty faint" role="status">
-              {directoryStates?.[""]?.loading || !directoryStates?.[""] ? "Loading files…" : "Folder is empty"}
-            </div>
-          )
-        ) : (
-          <TreeEntries
-            entries={rootEntries}
-            depth={0}
-            expanded={expanded}
-            childrenByDir={childrenByDir}
-            previewPath={previewPath}
-            gitMarks={gitMarks}
-            onToggleFolder={onToggleFolder}
-            onPreviewFile={onPreviewFile}
-            directoryStates={directoryStates}
-            onRefreshDirectory={onRefreshDirectory}
-          />
-        )}
+            <TreeEntries
+              entries={rootEntries}
+              depth={0}
+              expanded={expanded}
+              childrenByDir={childrenByDir}
+              previewPath={previewPath}
+              gitMarks={gitMarks}
+              onToggleFolder={onToggleFolder}
+              onPreviewFile={onPreviewFile}
+              directoryStates={directoryStates}
+              onRefreshDirectory={onRefreshDirectory}
+            />
+          )}
       </div>
     </div>
   );

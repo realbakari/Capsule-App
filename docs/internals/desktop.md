@@ -581,7 +581,31 @@ window) shows the chooser cards.
   Leaving Files, closing its tab or unmounting the inspector invalidates pending
   preview requests so their completion cannot reopen the panel.
 - Click a file to preview it. Images render as `data:` URLs (`img-src 'self' data:`). Text is highlighted and can be edited with conflict-aware save. Binary files show a notice. Mention / Open / Edit live on the preview bar.
-- Hidden tree names: `node_modules`, `.git`, `dist`, `out`, `.next`, `coverage`, `build`, `Pods`, `.DS_Store`.
+- Hidden tree names: only `.git` and `.DS_Store` (`sortTreeEntries`). Ignored
+  entries are listed and dimmed instead. `listFiles` goes through
+  `FilesystemAdapter.listForTree`, which asks `git check-ignore --stdin -z`
+  (`packages/filesystem/src/ignored.ts`) about the listed paths and sets
+  `FileEntry.ignored`. Answers are cached per folder and name set for
+  `FILE_INDEX_TTL_MS`, because the tree polls visible folders every 5 seconds.
+  Outside a repository the fallback is `UNINDEXED_DIRECTORIES`, the set the
+  file index already skips. `sameListing` compares `ignored` too.
+- **Tree header and rows** (`FileTree.tsx`). One header row: **Refresh files**
+  (reloads the root and every expanded folder, and reruns an active search), a
+  **Search files** field, and an expand/collapse-all toggle. Expand all sets
+  `expandingAll` in the Inspector; an effect opens each listed non-ignored
+  folder as its listing arrives, capped at `EXPAND_ALL_LIMIT` (200) because every
+  open folder is polled. Closing any folder, collapse all, or a scope change
+  ends it. Search hits from `searchFiles` are laid out with `searchTree` as a
+  tree with every ancestor open; folders closed during a search reopen on the
+  next query. `⌘F` with focus in `.panel-file-tree-pane` sends
+  `FILES_FIND_EVENT` (from the workspace's `find-in-thread` action) to focus
+  the field. Rows are 24px (`1.5rem`) with `--radius-md`. Folders carry a
+  chevron only. Files carry `FileTypeIcon`, inline SVG chosen by
+  `fileKind(name).icon` (`lib/file-kind.ts`) and coloured with theme tokens
+  (`--syntax-*`, `--yellow`, `--green`, `--red`, `--text-*`), so both themes
+  follow. The same table keeps the two-character `label` used by inline file
+  chips. Arrow keys walk rows in DOM order (`walkTree`). Rows stay ordinary
+  tab stops; there is no roving `tabindex` or `role="tree"`.
 - **Review** opens with a scope bar: a select of **Uncommitted / Staged /
   Unstaged / Branch changes** or **Turn N · prompt excerpt** (turns of this
   thread with a `checkpointRef`, numbered among all the thread's runs, newest
