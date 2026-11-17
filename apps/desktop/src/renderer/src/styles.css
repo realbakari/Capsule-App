@@ -2028,9 +2028,9 @@ textarea.composer-field--resting {
 
 .composer-context {
   position: relative;
-  width: calc(100% - 2rem);
-  max-width: calc(var(--chat-max) - 2rem);
-  margin: -.6rem auto 0;
+  width: calc(100% - 1.75rem);
+  max-width: calc(var(--chat-max) - 1.75rem);
+  margin: 0 auto;
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -2864,12 +2864,12 @@ select:focus,
 .panel-tree-search-icon {
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
-  color: var(--text-faint);
-  pointer-events: none;
+  flex: 1;
+  min-width: 0;
+  height: 1.75rem;
+  padding: 0 0.25rem 0 0.5rem;
+  border-radius: var(--control-radius);
+  transition: background var(--motion-instant) var(--motion-ease);
 }
 .panel-tree-search-icon svg {
   display: block;
@@ -2918,8 +2918,9 @@ select:focus,
   align-items: center;
   gap: 0.35rem;
   width: 100%;
-  padding: 0.25rem 0.45rem;
-  border-radius: var(--control-radius);
+  height: 1.5rem;
+  padding: 0 0.5rem;
+  border-radius: var(--radius-md);
   font-size: var(--text-xs);
   color: var(--subtext-0);
   border: 0;
@@ -5084,9 +5085,10 @@ div.changed-files-head { cursor: default; }
    people most often lift out, so it should not require selecting by hand. */
 .msg-code-wrap {
   margin: 0.8em 0;
-  border: 1px solid var(--code-border);
+  border: 1px solid var(--reply-code-border);
   border-radius: var(--radius-md);
   overflow: hidden;
+  background: var(--reply-code-bg);
 }
 .msg-code-bar {
   display: flex;
@@ -9148,46 +9150,6 @@ details.card > summary {
   color: var(--text);
 }
 
-/* Runtime route picker: one row per option, the whole row is the target. */
-.runtime-modes {
-  display: grid;
-  gap: 0.4rem;
-  margin-top: 0.6rem;
-}
-.runtime-mode {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.55rem;
-  padding: 0.6rem 0.7rem;
-  border: 1px solid var(--border-color);
-  border-radius: var(--control-radius);
-  cursor: pointer;
-}
-.runtime-mode:hover {
-  background: var(--bg-hover);
-}
-.runtime-mode.selected {
-  border-color: color-mix(in srgb, var(--accent) 55%, var(--border-color));
-  background: color-mix(in srgb, var(--accent) 7%, transparent);
-}
-.runtime-mode input {
-  margin-top: 0.15rem;
-}
-.runtime-mode-body {
-  display: grid;
-  gap: 0.15rem;
-  font-size: var(--text-ui);
-}
-.runtime-mode-body .muted {
-  font-size: var(--text-xs);
-  line-height: 1.45;
-}
-.runtime-mode-note {
-  margin-top: 0.6rem;
-  font-size: var(--text-xs);
-  line-height: 1.5;
-}
-
 /* A turn in flight, said in one line: how long, how much, what it is doing. */
 .turn-status {
   display: flex;
@@ -9273,8 +9235,8 @@ details.card > summary {
 .activity-file svg { flex: none; margin-top: 0.15rem; }
 .activity-file:hover { color: var(--text); text-decoration: underline; }
 .run-summary-card.expanded { border-color: var(--border-color); }
-.turn-work { margin: 1rem 0; }
-.turn-work-toggle { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; padding: 0.5rem 0; border: 0; background: none; color: var(--text-muted); font-size: var(--text-ui); cursor: pointer; }
+.turn-work { margin: 0.75rem 0 0.5rem; }
+.turn-work-toggle { display: flex; align-items: center; gap: 0.375rem; width: 100%; padding: 0.375rem 0; border: 0; background: none; color: var(--text-muted); font-size: var(--text-ui); cursor: pointer; text-align: left; }
 .turn-work-toggle:hover { color: var(--text); }
 .turn-work-toggle .open { transform: rotate(90deg); }
 .turn-work-failure { color: var(--red); font-size: var(--text-xs); }

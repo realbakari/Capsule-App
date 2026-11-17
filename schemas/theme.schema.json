@@ -60,12 +60,12 @@
         "overlay-1": {
           "type": "string",
           "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
-          "description": "Light #7d7d78, dark #7d7d7d."
+          "description": "Light #7d7d78, dark #8f8f8f."
         },
         "subtext-0": {
           "type": "string",
           "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
-          "description": "Light #5c5c58, dark #949494."
+          "description": "Light #5c5c58, dark #a3a3a3."
         },
         "subtext-1": {
           "type": "string",
@@ -126,6 +126,11 @@
           "type": "string",
           "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
           "description": "Light #d5d9dd, dark #34383d."
+        },
+        "reply-code-bg": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #f5f6f7, dark rgb(255 255 255 / 4%)."
         },
         "code-muted": {
           "type": "string",
@@ -211,6 +216,86 @@
           "type": "string",
           "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
           "description": "Light #9b3d3d, dark #dda0a0."
+        },
+        "terminal-black": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #161614, dark #3a3a38."
+        },
+        "terminal-red": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #9b3d3d, dark #dda0a0."
+        },
+        "terminal-green": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #40632d, dark #a8c990."
+        },
+        "terminal-yellow": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #73550d, dark #dbc18a."
+        },
+        "terminal-blue": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #305d8a, dark #91b8e5."
+        },
+        "terminal-magenta": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #7a4a84, dark #c9a8d8."
+        },
+        "terminal-cyan": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #28646a, dark #91c2c6."
+        },
+        "terminal-white": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #5c5c58, dark #c8c8c4."
+        },
+        "terminal-bright-black": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #6a6a66, dark #7a7a76."
+        },
+        "terminal-bright-red": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #b04a4a, dark #ecb6b6."
+        },
+        "terminal-bright-green": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #4d7838, dark #bedcab."
+        },
+        "terminal-bright-yellow": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #8a6a14, dark #ead5a6."
+        },
+        "terminal-bright-blue": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #3f73a6, dark #aecbee."
+        },
+        "terminal-bright-magenta": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #8f589a, dark #dbc0e6."
+        },
+        "terminal-bright-cyan": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #307a80, dark #aed5d8."
+        },
+        "terminal-bright-white": {
+          "type": "string",
+          "pattern": "^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(rgba?|hsla?|oklch)\\([0-9.,%\\s/+-]*(deg|turn|rad)?[0-9.,%\\s/+-]*\\))$",
+          "description": "Light #3a3a36, dark #f2f2f2."
         },
         "border-strong": {
           "type": "string",

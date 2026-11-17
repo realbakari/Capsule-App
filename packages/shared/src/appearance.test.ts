@@ -50,6 +50,7 @@ describe("appearance palettes", () => {
     expect(vars["--bg"]).toBe("#181818");
     expect(vars["--text"]).toBe("#FFFFFF");
     expect(vars["--sidebar-filter"]).toContain("blur");
+    expect(vars["--bg-active"]).not.toBe(vars["--bg-hover"]);
   });
 });
 

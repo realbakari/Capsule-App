@@ -38,8 +38,8 @@
   --surface-0: #111111;
   --surface-1: #191919;
   --overlay-0: #5f5f5f;
-  --overlay-1: #7d7d7d;
-  --subtext-0: #949494;
+  --overlay-1: #8f8f8f;
+  --subtext-0: #a3a3a3;
   --subtext-1: #bdbdbd;
   --text: #f2f2f2;
   --accent: #f3f3ee;
@@ -55,6 +55,9 @@
   --code-text: light-dark(#24292f, #e4e6e8);
   --code-header: light-dark(#eef0f2, #202326);
   --code-border: light-dark(#d5d9dd, #34383d);
+  /* Code inside a reply: a faint fill, framed only in light. */
+  --reply-code-bg: light-dark(#f5f6f7, rgb(255 255 255 / 4%));
+  --reply-code-border: light-dark(#e3e6e9, transparent);
   --code-muted: light-dark(#59636e, #a0a6ad);
   /* Opaque diff surfaces keep syntax contrast stable over custom palettes
      and prevent scrolled code showing through pinned line numbers. */
@@ -117,11 +120,11 @@
   --text-base: var(--type-rem);
   --text-lg: calc(var(--type-rem) * 1.125);
   --text-xl: calc(var(--type-rem) * 1.25);
-  --text-message: var(--transcript-size, calc(var(--type-rem) * 0.9375));
+  --text-message: var(--transcript-size, calc(var(--type-rem) * 0.875));
   /* The steps between: badges, captions, and the default size of UI text. */
   --text-3xs: calc(var(--type-rem) * 0.625);
   --text-2xs: calc(var(--type-rem) * 0.6875);
-  --text-ui: calc(var(--type-rem) * 0.8125);
+  --text-ui: calc(var(--type-rem) * 0.875);
   --weight-regular: 400;
   --weight-medium: 500;
   --weight-semibold: 600;
@@ -179,9 +182,9 @@
   --bg-hover: rgb(255 255 255 / 6%);
   --bg-active: rgb(255 255 255 / 9%);
   --border-color: rgb(255 255 255 / 8%);
-  --shadow-raised: 0 4px 16px -2px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.2);
+  --shadow-raised: 0 18px 44px -18px rgb(0 0 0 / 0.8), 0 1px 3px rgb(0 0 0 / 0.2);
   --shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.55), 0 4px 12px -2px rgba(0, 0, 0, 0.35);
-  --popover-radius: var(--radius-lg);
+  --popover-radius: var(--radius-md);
   --dialog-radius: var(--radius-xl);
   --glass: color-mix(in srgb, var(--surface-0) var(--glass-opacity), transparent);
 
@@ -300,7 +303,7 @@ body {
   font-synthesis-weight: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-  letter-spacing: -0.011em;
+  letter-spacing: normal;
 }
 button, input, textarea, select { font: inherit; color: inherit; }
 button:not(:disabled),

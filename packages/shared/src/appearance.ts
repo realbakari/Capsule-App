@@ -25,7 +25,7 @@ export const DEFAULT_LIGHT_PALETTE: AppearancePalette = {
 export const DEFAULT_DARK_PALETTE: AppearancePalette = {
   accent: "#F3F3EE",
   background: "#181818",
-  foreground: "#FFFFFF",
+  foreground: "#F5F5F5",
   contrast: 45,
   translucentSidebar: true,
   uiFont: "system",
@@ -144,12 +144,22 @@ export function appearanceCssVars(palette: Partial<AppearancePalette> | undefine
   const toward = dark ? "#000000" : "#D8D8D4";
   const lift = dark ? "#FFFFFF" : "#000000";
   const sidebarMix = 0.12 + contrast * 0.28;
-  const elevatedMix = dark ? 0.05 + contrast * 0.08 : 0.02 + contrast * 0.04;
+  /*
+   * Raised surfaces sit a few percent off the canvas, not a full step: a card
+   * reads by its hairline, and a heavy lift made every popover look like a
+   * slab. Hover and pressed are separate values so a selected row is not
+   * mistaken for the one under the pointer.
+   */
+  const elevatedMix = dark ? 0.02 + contrast * 0.03 : 0.02 + contrast * 0.04;
   const hoverAlpha = (dark ? 0.04 : 0.03) + contrast * (dark ? 0.08 : 0.06);
-  const borderAlpha = 0.06 + contrast * 0.1;
+  const activeAlpha = hoverAlpha + 0.03;
+  const borderAlpha = 0.04 + contrast * 0.09;
   const hover = dark
     ? `rgb(255 255 255 / ${hoverAlpha.toFixed(3)})`
     : `rgb(0 0 0 / ${hoverAlpha.toFixed(3)})`;
+  const active = dark
+    ? `rgb(255 255 255 / ${activeAlpha.toFixed(3)})`
+    : `rgb(0 0 0 / ${activeAlpha.toFixed(3)})`;
   const border = dark
     ? `rgb(255 255 255 / ${borderAlpha.toFixed(3)})`
     : `rgb(0 0 0 / ${borderAlpha.toFixed(3)})`;
@@ -169,7 +179,7 @@ export function appearanceCssVars(palette: Partial<AppearancePalette> | undefine
     "--bg-elevated": elevated,
     "--surface-0": elevated,
     "--bg-hover": hover,
-    "--bg-active": hover,
+    "--bg-active": active,
     "--border-color": border,
     "--glass-opacity": glassOpacity,
     "--sidebar-filter": safePalette.translucentSidebar ? "blur(18px) saturate(1.08)" : "none",

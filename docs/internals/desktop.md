@@ -181,7 +181,8 @@ screen, an embedded page, text over an image). The shadcn-style tokens such as
 `hsl(var(--x))`; use `--border-color` and `--text-muted` as colours.
 
 Scales live in the same file: type (`--text-3xs` .625rem up to `--text-xl`,
-with `--text-ui` .8125rem as the default for UI text), corners (`--radius-xs`
+with `--text-ui` .875rem as the default for UI text and `--text-message`
+.875rem at line-height 1.625 for replies), corners (`--radius-xs`
 to `--radius-2xl` and `--radius-full`), control heights (`--control-h-xs` to
 `--control-h-lg`), stacking layers (`--z-sticky` up to `--z-toast`), overlay
 motion (`--motion-overlay`, `--enter-scale`, `--press-scale`), one focus ring

@@ -76,13 +76,13 @@ export const TOKEN_PRESENT_MASK = "••••";
 
 export const TRANSCRIPT_SIZE_CSS: Record<TranscriptSize, string> = {
   s: "0.8125rem",
-  m: "0.9375rem",
-  l: "1.0625rem",
+  m: "0.875rem",
+  l: "1rem",
 };
 
 export const TRANSCRIPT_WIDTH_CSS: Record<TranscriptWidth, string> = {
   narrow: "40rem",
-  standard: "48rem",
+  standard: "46rem",
   wide: "60rem",
 };
 
