@@ -338,9 +338,18 @@ function openPetWindow(): void {
     petVoice.cancel("companion");
     petWindow = undefined;
   });
-  petWindow.on("hide", () => petVoice.cancel("companion"));
-  petWindow.webContents.on("render-process-gone", () => petVoice.cancel("companion"));
-  petWindow.webContents.on("did-start-navigation", () => petVoice.cancel("companion"));
+  // Remembered by its bottom edge, so a window closed with the tray open comes back where the capsule stood.
+  const remember = () => {
+    if (!petWindow || petWindow.isDestroyed()) return;
+    const bounds = petWindow.getBounds();
+    petPlace = { x: bounds.x, y: bounds.y + bounds.height - 208 };
+  };
+  petWindow.on("close", remember);
+  petWindow.on("hide", () => { remember(); petVoice.cancel("companion"); });
+  /* A renderer that is gone cannot turn click-through off again, so a fresh one starts clickable. */
+  const clickable = () => { if (petWindow && !petWindow.isDestroyed()) petWindow.setIgnoreMouseEvents(false); };
+  petWindow.webContents.on("render-process-gone", () => { clickable(); petVoice.cancel("companion"); });
+  petWindow.webContents.on("did-start-navigation", () => { clickable(); petVoice.cancel("companion"); });
 
   const rendererURL = process.env.ELECTRON_RENDERER_URL;
   if (rendererURL) void petWindow.loadURL(`${rendererURL}#pet`);
@@ -1952,6 +1961,15 @@ function registerIpc(): void {
   voiceHandler(IPC_CHANNELS.speakPetStatus, () => {
     const engine = requireEngine();
     return petVoice.speak(summariseAttention({ sessions: engine.listSessions(), runs: engine.listLatestRunStates() }));
+  });
+  /*
+   * Local to the companion's own frame, like voice, and absent from the remote
+   * handler map: a paired viewer has no window to click through.
+   */
+  ipcMain.handle(IPC_CHANNELS.setPetPassthrough, (event, passthrough) => {
+    if (typeof passthrough !== "boolean") throw new Error("Invalid companion passthrough.");
+    if (!petWindow || petWindow.isDestroyed() || event.sender !== petWindow.webContents || event.senderFrame !== petWindow.webContents.mainFrame) return;
+    petWindow.setIgnoreMouseEvents(passthrough, { forward: true });
   });
   handle(IPC_CHANNELS.setPetExpanded, (expanded) => {
     if (typeof expanded !== "boolean") throw new Error("Invalid companion layout.");

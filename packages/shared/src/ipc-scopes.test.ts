@@ -110,6 +110,7 @@ describe("ipc scopes", () => {
       "cancelPetVoice",
       "speakPetStatus",
       "setPetExpanded",
+      "setPetPassthrough",
       "openInApp",
       "addOpenInApp",
       "startDictation",

@@ -191,6 +191,7 @@ window.runPetRegressions = async (motion) => {
     finishPetCommand: async () => {}, cancelPetVoice: async () => { cancelledVoice++; },
     speakPetStatus: async () => { spokenStatuses++; },
     setPetExpanded: async (value: boolean) => { expandedPet.push(value); },
+    setPetPassthrough: async (value: boolean) => { passthrough.push(value); },
     focusSession: async (id: string) => { petFocus = id; }, togglePet: async () => false,
   } as unknown as typeof window.capsule;
   try {
@@ -201,10 +202,9 @@ window.runPetRegressions = async (motion) => {
     petReadFails = false; button("Retry status").click();
     await until(() => document.body.textContent?.includes("Example task"));
     for (const [selector, name] of [
-      [".capsule-motion", "capsuleFloat"], [".capsule-core", "capsuleSpin"],
-      [".capsule-eyes", "capsuleBlink"], [".capsule-shadow", "capsuleShadow"],
-      [".capsule-breathe", "capsuleBreathe"], [".capsule-head", "capsuleHead"],
-      [".capsule-arm--left", "capsuleLeftArm"], [".capsule-arm--right", "capsuleRightArm"],
+      [".capsule-motion", "petFloat"], [".capsule-shadow", "petFloatShadow"],
+      [".capsule-breathe", "petBreathe"], [".capsule-eyes", "petBlink"],
+      [".capsule-arm-idle", "petTap"], [".capsule-scan", "petScan"], [".capsule-glyph--spin", "petSpin"],
     ] as const) {
       animation(selector, reduced ? "none" : name);
     }
@@ -213,23 +213,11 @@ window.runPetRegressions = async (motion) => {
     // Working has its own silhouette: arms in, a light band and a spinner.
     await until(() => armAngle("left") > 30);
     if (!reduced) {
-      const moving = document.querySelector(".capsule-motion")!;
-      const track = moving.getAnimations()[0]!;
-      track.pause(); track.currentTime = 0;
-      const initial = getComputedStyle(moving).transform;
-      track.currentTime = 6000;
-      assert(getComputedStyle(moving).transform === initial, "Idle motion no longer has a resting interval");
-      track.currentTime = 9120;
-      assert(getComputedStyle(moving).transform !== initial, "Capsule animation does not change the rendered transform");
-      track.play();
-      for (const [selector, time] of [[".capsule-breathe", 4000], [".capsule-head", 12480], [".capsule-arm--left", 11200], [".capsule-arm--right", 11620]] as const) {
-        const part = document.querySelector(selector)!;
-        const motion = part.getAnimations()[0]!;
-        motion.pause(); motion.currentTime = 0;
-        const before = getComputedStyle(part).transform;
-        motion.currentTime = time;
-        assert(getComputedStyle(part).transform !== before, `${selector} has no rendered articulation`);
-        motion.play();
+      for (const [selector, a, b] of [[".capsule-motion", 0, 3650], [".capsule-breathe", 0, 1400], [".capsule-arm-idle", 0, 430]] as const) {
+        const first = transformAt(selector, a);
+        const second = transformAt(selector, b);
+        assert(first.value !== second.value, `${selector} has no rendered motion`);
+        second.resume();
       }
     }
     const originalMascot = document.querySelector(".pet-capsule");

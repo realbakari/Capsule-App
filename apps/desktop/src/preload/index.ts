@@ -340,6 +340,7 @@ const api = {
   openDictationSettings: (pane: import("@capsule/shared").DictationSettingsPane): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.openDictationSettings, pane),
   getPetState: (): Promise<{ visible: boolean; summary: import("@capsule/shared").AttentionSummary }> => ipcRenderer.invoke(IPC_CHANNELS.getPetState),
   setPetExpanded: (expanded: boolean) => ipcRenderer.invoke(IPC_CHANNELS.setPetExpanded, expanded),
+  setPetPassthrough: (passthrough: boolean): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.setPetPassthrough, passthrough),
   focusSession: (sessionId: string) => ipcRenderer.invoke(IPC_CHANNELS.focusSession, sessionId),
   validateAttachments: (attachments: Array<{ name: string; path: string; }>) =>
     ipcRenderer.invoke(IPC_CHANNELS.validateAttachments, attachments),

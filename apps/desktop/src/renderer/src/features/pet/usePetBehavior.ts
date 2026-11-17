@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { CompanionState } from "./CapsuleMascot";
-import { IDLE_BEATS, REST_AFTER, shouldCelebrate, type PetReaction } from "./behavior";
+import { IDLE_BEATS, REST_AFTER, shouldCelebrate, type CompanionState, type PetReaction } from "./behavior";
 
 export function usePetBehavior({ state, available, autonomous, motionPaused, hidden, open, react }: {
   state: CompanionState; available: boolean; autonomous: boolean; motionPaused: boolean;

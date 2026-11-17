@@ -121,6 +121,8 @@ export const IPC_CHANNELS = {
   cancelPetVoice: "capsule:cancelPetVoice",
   speakPetStatus: "capsule:speakPetStatus",
   setPetExpanded: "capsule:setPetExpanded",
+  /* Clicks on the companion window's empty space reach the windows behind it. */
+  setPetPassthrough: "capsule:setPetPassthrough",
   focusSession: "capsule:focusSession",
   gitStatus: "capsule:gitStatus",
   listPullRequests: "capsule:listPullRequests",

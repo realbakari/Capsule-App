@@ -1555,25 +1555,56 @@ Touched-file chips are separate keyboard-operable buttons below the disclosure
 header, wrapping inside the card rather than overflowing the activity row.
 
 The desktop companion is a separate transparent, initially inactive window,
-available from General settings, the palette and the app menu. Its two-piece
-off-white/graphite capsule SVG uses gradient shading and independent CSS tracks
-for breathing, head tilt, floating, looking around, blinking, arm articulation,
-shadow and working-state core rotation, plus coordinated greet/roll/bounce
-reactions. Idle tracks have long resting intervals and restrained movement.
-Gesture transforms wrap the idle body; a separate shadow wrapper follows the
-same greeting, roll or bounce timing. Repeating a gesture resets only its CSS
-animation tracks, without remounting the SVG or restarting blinking and breathing.
-Each attention state has its own eye, brow or mouth shape. Ready uses smiling
-eyes; its check glyph indicates a finished turn, not verified output.
-The glyph, caption and colour carry state without relying on motion.
-A dedicated SVG drag handle leaves the mascot keyboard/click accessible.
-The window expands upward for the tray, clamped to its display's work area.
-Pointer gaze follows both axes without a JS frame loop. Greet changes expression
-and waves one arm. Size/pause preferences are renderer-local; reduced motion and
-hidden-window visibility disable animation.
-The drag handle and Greet button reveal on hover, focus within the companion,
-or an open tray. Non-hover devices keep these controls visible. Captions follow
-the same rule, except attention, error and greeting captions remain visible.
+available from General settings, the palette and the app menu. Main remembers
+where it was (by its bottom edge, so a window hidden with the tray open returns
+where the capsule stood) for the rest of the session, clamped to the display
+it lands on.
+
+Click-through: the window is a 320×208 rectangle around a much smaller capsule.
+The renderer hit-tests each pointer move against the capsule, the hover bar,
+the caption and the tray, and asks main to `setIgnoreMouseEvents(true,
+{ forward: true })` everywhere else; forwarded moves keep hover, gaze and the
+hit test working while clicks pass to the window behind. An open tray always
+takes the pointer. `setPetPassthrough` is local to the companion's main frame,
+like voice, and absent from the remote handler map; a renderer crash or
+navigation turns click-through off so a fresh renderer starts clickable.
+
+The mascot is one SVG rig. Groups nest from slow to fast so motion composes
+instead of replacing: `capsule-place` (state pose, pointer lean, hover perk;
+transitions on a sampled-spring `linear()` easing) > `capsule-shift` (a WAAPI
+squash-and-rise on each state change) > `capsule-reaction` (gesture keyframes)
+> `capsule-motion` (float, or the Needs you hop) > `capsule-breathe` > per arm
+pose > arm play (gesture) > arm idle. Idle periods are unrelated (4.6s breath,
+7.3s float, 11.3s blink with one double blink) so no loop is visible; every
+keyframe set ends where it began. Face parts are paths with a fixed command
+structure, so moods morph through CSS `d` transitions; the mood table lives
+in `CapsuleMascot.tsx`, and `moodFor` in `behavior.ts` picks it from the state
+plus greeting, rest or yawn.
+
+Each state has a silhouette that reads with motion off: Working pulls the arms
+in, taps them and scans a blue band; Ready opens the arms and draws its check;
+Needs you raises the right arm and hops every 4.8s; Stopped slumps with a slow
+sigh and no float. Band, core glyph and caption carry the same state. The
+mascot keeps its own palette in both themes (it sits on the desktop); the
+caption, hover bar and tray use the app's popover surface tokens.
+
+Gestures (`petPlay*` keyframes, durations in `REACTION_DURATION`) start and end
+at rest on their own layers, with anticipation, action and follow-through.
+Replaying one rewinds only `petPlay*` tracks, so blinking and breathing keep
+their phase and the SVG is never remounted. Gaze: a document-level pointer
+handler (rAF-throttled) writes `--look-x`, `--look-y` and `--lean` through
+`gaze()`, which saturates softly at the eye's edge; eyes ease in 150ms, the
+face in 300ms and the body lean in 620ms, so the eyes lead. Without a recent
+pointer, `nextGlance()` picks uneven waits (2.6–8s) and holds.
+
+The caption names the most urgent thread for Needs you, Stopped and Ready and
+opens it on click (`captionFor`); Working and idle captions appear on hover,
+focus or with the tray open. The tray lists five threads, then Play (Roll,
+Bounce, Dance), companion controls, the idle-gesture switch and Voice.
+Pause motion and reduced motion remove animations and transitions from the
+rig; reduced motion also stills the tray and caption. A hidden window only
+pauses animation play state and stops the glance and gaze work.
+
 Hidden-renderer regressions explicitly emulate both reduced motion and no
 preference in Chromium's CSS engine, independent of the host's accessibility
 settings. They check rendered transforms, that a gesture leaves breathing
@@ -1750,6 +1781,43 @@ follow their best row, so the top row is always the best answer. Keywords match
 only by word prefix and rank below any label match; they are not highlighted.
 Group caps (5 recent threads with no query, 30 with one, 20 projects) apply after
 ranking. Message hits from `api.search` are appended unranked.
+
+With no query `rankPalette` lists what can run now: `searchOnly` and disabled
+entries are left out, and each group is emitted once, in first-appearance order.
+`Palette.tsx` sorts entries by `GROUP_ORDER` first, so a builder may return its
+rows in any group order without the list repeating a header. Typing brings
+disabled rows back with their `disabledReason` as the detail line. The
+`content` option names the groups of things to open (recent conversations,
+conversations, projects); on an equal score they rank below commands, so `new`
+picks **New conversation** over a thread titled "New…". A leading `>` drops
+those groups and skips message search.
+
+Search-only in the root list: projects, browser sizes, Review scopes, approval
+presets, the Customization group, the four Settings shortcuts, agent commands
+(`Run command: /x`) and the desktop companion pair. The recent-conversation
+group is named "Recent conversations" with no query and "Conversations" with
+one; each row carries `meta`, `compactRelativeTime(updatedAt)` from
+`lib/sidebar.ts`.
+
+The update row exists only on the desktop. `Palette` renders
+`DesktopPaletteDialog`, which owns a `useUpdates` subscription and passes it to
+`PaletteDialog`; a paired viewer never subscribes and has no row, matching the
+sidebar's update button. The row's label is `useUpdates().label` and selecting it
+calls `run()`: check, download, or the restart confirmation, with the outcome
+toasted through `updateOutcomeToast`. About Capsule stays its own row and shows
+the running version.
+
+Rows that mirror a key read their chord through `command`: Stop the running
+turn (`stop-turn`), Previous turn and Next turn (`previous-turn`, `next-turn`,
+dispatched as `KEY_COMMAND_EVENT` for the turn rail once the conversation view
+is on screen) and Focus the composer (`focus-composer`). Review and Browser
+toggle like `open-review` and `open-browser`: on their own surface the row reads
+"Hide Review" or "Hide browser" and closes the panel.
+
+`SearchDialog` rows also take `meta` (right-aligned, tabular numerals) and draw a
+chevron on `keepOpen` rows. With `onBack`, a Back button replaces the search
+glyph. `status` shows in the list area only while there are no rows; with rows
+on screen it sits at the end of the footer, so the list does not shift.
 
 The shortcut beside a row is `shortcutLabel(command, keymapFrom(settings))`,
 the same registry the key handler and the shortcuts sheet read, so a rebound key
@@ -2183,12 +2251,12 @@ scrolls to the middle and pulses twice (a steady ring under reduced motion).
 
 | Section | Owns |
 |---------|------|
-| General | Launch at login, send key, menu bar extra, keep awake, notifications, session archiving |
-| Appearance | System / Light / Dark; Themes (a list per appearance with swatches, live preview on hover or arrow-key focus, Escape or leaving reverts, click or Enter chooses; paste a share string, import a file, copy a share string, open the themes folder; contrast pairs under 4.5:1 behind a disclosure); Backdrop (None and five scenes with hover preview, opacity, dim, blur, fit for an image, Choose image…, Reset, a one-line desktop-only note for images; over an image, muted and faint text are lifted toward the text colour and transcript text and icons get a soft page-colour halo, except inside sent messages and code); per-theme accent / background / foreground (a Customize layer over a non-built-in theme), UI and code fonts, translucent sidebar, contrast, transcript size / width, with live type previews |
-| Agents | Default agent and conversation workspace, Gateway approval policy, sandbox, web access, output detail, reasoning, harness credentials |
-| Gateway | URL, connect / disconnect, token in Keychain, reading from another device |
-| Projects | Create, delete, attach primary folder, choose or reset project icon |
-| Source control | Branch prefix, force-with-lease, draft PRs, merge method, review delivery, watch-and-fix, auto-merge, commit / PR instructions |
+| General | Notifications (Notify me, sound; per-kind switches, Dock bounce and badge under Advanced); Chat (send key, follow-ups); Conversations (resume after usage limits, continue after a restart, archive inactive, mark blocked or done); Confirmations; System (launch at login, menu bar, keep awake, download updates; companion and simulator access under Advanced); saved prompts; tags; usage reports |
+| Appearance | System / Light / Dark; Themes (a list per appearance with swatches, live preview on hover or arrow-key focus, Escape or leaving reverts, click or Enter chooses; paste a share string, import a file, copy a share string, open the themes folder; contrast pairs under 4.5:1 behind a disclosure); Backdrop (None and five scenes with hover preview; opacity, dim and blur as one slider per row, then fit for an image; Choose image…, Reset, a one-line desktop-only note for images; over an image, muted and faint text are lifted toward the text colour and transcript text and icons get a soft page-colour halo, except inside sent messages and code; over any backdrop, code blocks and inline code sit on the page colour with a hairline); per-theme accent / background / foreground (a Customize layer over a non-built-in theme), UI and code fonts, translucent sidebar, contrast, transcript size / width, with live type previews |
+| Agents | New conversations (default agent, workspace, permissions, web search; sandbox and where agents run under Advanced); Replies (thinking; output detail under Advanced); Plan mode; profiles; response style; permission rules; installed agents |
+| Gateway | URL, token in Keychain, status with connect / disconnect; connection details, Gateway agents and API-key guidance under Advanced; reading from another device |
+| Projects | Inbox folder; create, delete, attach primary folder, choose or reset project icon |
+| Source control | Tooling; worktree location; Diffs (layout, files, whitespace); Pull requests (draft, merge method, watch and fix, where check fixes go, auto-merge, settle merged; watching until merged and PR instructions under Advanced); Commits and branches (branch prefix, force-with-lease; commit instructions under Advanced) |
 | Skills | skills.sh token for the catalog |
 | Shortcuts | keybindings.json — see below |
 | Diagnostics | Customization doctor, process monitor, subsystem versions, export |
