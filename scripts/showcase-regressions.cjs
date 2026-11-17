@@ -54,8 +54,8 @@ app.whenReady().then(async () => {
     assert.equal(await evaluate("[...document.querySelectorAll('.site a[href^=\"#\"]')].every(a => document.querySelector(a.getAttribute('href')))"), true);
     const downloads = await evaluate("[...document.querySelectorAll('.site-download-grid a[class]')].map(a => a.href)");
     assert.equal(downloads.length, 2);
-    assert.match(downloads[0], /\/releases\/download\/v0\.14\.0\/Capsule-0\.14\.0-arm64\.dmg$/);
-    assert.match(downloads[1], /\/releases\/download\/v0\.14\.0\/Capsule-0\.14\.0-x64-setup\.exe$/);
+    assert.match(downloads[0], /\/releases\/download\/v0\.15\.0\/Capsule-0\.15\.0-arm64\.dmg$/);
+    assert.match(downloads[1], /\/releases\/download\/v0\.15\.0\/Capsule-0\.15\.0-x64-setup\.exe$/);
     await evaluate("document.querySelector('.site-preview').scrollIntoView()");
     // A lazy iframe can have a document without a body while navigation starts.
     await waitFor("Boolean(document.querySelector('.site-preview')?.contentWindow?.capsule?.listProjects)");

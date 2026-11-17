@@ -65,14 +65,14 @@ function Updates() {
     <article className="site-release">
       <aside><span className="site-release-version">{RELEASE}</span><time dateTime={RELEASE_DATE}>November 17, 2026</time></aside>
       <div>
-        <h2>A calmer conversation, one model picker, and panels that only show what you can use</h2>
+        <h2>A menu bar that shows what needs you, Git from Review, and a skill library</h2>
         <ul>
-          <li>A finished turn folds its work under one "Worked for" row, so the answer stands on its own. Long prompts fold, and a turn rail beside long threads jumps to any prompt.</li>
-          <li>The composer has one model pill with a reasoning column and permissions, and Send queues a follow-up while a turn runs.</li>
-          <li>Find highlights every match, links can open in your browser, and a turn that ignores Stop offers Force stop.</li>
-          <li>Files shows real file icons, the terminal has readable colours and numbered tabs, and Review switches between unified, split and wrapped diffs.</li>
-          <li>Settings, the sidebar, the command palette and keyboard shortcuts were reworked, and shortcuts now work on every keyboard layout.</li>
-          <li>Notifications follow one rule, updates live in one sidebar button, first run is one page, the companion moves like a character, and Usage leads with your limits.</li>
+          <li>The menu bar menu leads with what is waiting, lists those threads with their project, and offers your recent threads.</li>
+          <li>Commit, sync and open a pull request from Review, leave notes on a line, and read sync errors in plain words.</li>
+          <li>The skill library lists the skills you have installed, and the composer attaches one to a message.</li>
+          <li>The composer is lighter: Plan and permissions appear only when they differ from the default, and a branch strip opens Review.</li>
+          <li>Agents say Ready when they are, agent updates collapse into one icon, and each agent keeps its own launch settings.</li>
+          <li>A thread whose saved agent session is gone starts a fresh one instead of failing every turn, and notifications wait while the window is hidden.</li>
         </ul>
         <p className="site-fine">Existing projects, threads and settings carry over. The macOS app is signed and notarized; the Windows build is an unsigned preview.</p>
         <div className="site-release-links"><a className="site-text-link" href={RELEASE_URL}>Full release notes and checksums<Arrow external /></a><a className="site-text-link" href={`${DOCS}/updating.md`}>Updating Capsule<Arrow external /></a></div>
