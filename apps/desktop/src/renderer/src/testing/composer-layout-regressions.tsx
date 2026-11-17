@@ -88,12 +88,14 @@ export async function runComposerLayoutRegressions(host: HTMLElement, base: Reco
             }
             assert(document.documentElement.scrollWidth <= innerWidth + 1, `${label}: document overflows horizontally`);
             assert(!host.querySelector('[aria-label="Conversation tools"]'), `${label}: the footer still carries a catch-all tools menu`);
-            assert(!host.querySelector(".turn-mode-chip"), `${label}: Act mode is drawn as a chip`);
+            assert(!host.querySelector(".turn-mode-chip.is-plan"), `${label}: Act mode is drawn as the active Plan chip`);
+            assert(!host.querySelector(".composer-plan-toggle"), `${label}: an off Plan switch is drawn in the dock`);
             assert(!host.querySelector(".steer-row"), `${label}: a second steer field is back`);
             assert(!host.querySelector(".composer-dirty"), `${label}: an unexplained changes dot is back`);
             const contextRow = getComputedStyle(host.querySelector(".composer-context")!);
             assert(contextRow.borderTopWidth === "0px" && contextRow.borderBottomWidth === "0px" && contextRow.backgroundColor === "rgba(0, 0, 0, 0)", `${label}: workspace row is drawn as a tray`);
-            assert(Boolean(host.querySelector(".context-meter-ring")) === (scenario === "full"), `${label}: the context ring shows at normal usage or hides when nearly full`);
+            const ring = host.querySelector<HTMLElement>(".context-meter-ring");
+            assert(scenario === "resting" || (ring && ring.getBoundingClientRect().width > 0), `${label}: the context ring is missing while the agent reports usage`);
             if (!["running", "queue", "stopping", "resting", "dictating"].includes(scenario)) {
               assert(field.placeholder === "Ask anything. @ files, $ skills, / commands", `${label}: idle placeholder is "${field.placeholder}"`);
             }

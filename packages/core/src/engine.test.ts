@@ -1077,12 +1077,13 @@ describe("what a turn changed", () => {
     expect(changed).toEqual(["second.txt"]);
     expect(snapshot.available).toBe(true);
 
-    // A first checkpoint has no before-state. It must not use the live tree
-    // and start claiming edits made long after the original reply.
-    expect(await engine.turnDiff(first.id)).toEqual({ patch: "", files: [], available: false });
+    // A first turn diffs against the folder as it started, never the live
+    // tree, so edits made long after the reply are not claimed for it.
+    const opening = await engine.turnDiff(first.id);
+    expect(opening).toMatchObject({ available: true, files: [] });
     writeFileSync(path.join(repo, "first.txt"), "changed later by the user\n");
     writeFileSync(path.join(repo, "second.txt"), "also changed later\n");
-    expect(await engine.turnDiff(first.id)).toEqual({ patch: "", files: [], available: false });
+    expect(await engine.turnDiff(first.id)).toEqual(opening);
     expect(await engine.turnDiff(second.id)).toEqual(snapshot);
 
     // Missing recorded refs must reach the Retry UI, never a live-tree fallback.
@@ -1134,7 +1135,7 @@ describe("edit from here", () => {
     const prompt = engine.listMessages(session.id).find((message) => message.role === "user")!;
     const result = await engine.rewindSession(session.id, prompt.id, { restoreFiles: true });
     expect(result.ok).toBe(false);
-    expect(result.detail).toMatch(/checkpoint/);
+    expect(result.detail).toMatch(/saved snapshot/);
     expect(engine.listMessages(session.id).some((message) => message.id === prompt.id)).toBe(true);
   });
 

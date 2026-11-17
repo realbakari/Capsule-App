@@ -99,3 +99,52 @@ it("leaves a turn that already ended as it was", async () => {
   expect(close).not.toHaveBeenCalled();
   expect(cancelledEvents(engine, run.id)).toEqual(["Run cancelled"]);
 });
+
+it("ends a running direct turn's agent before deleting its thread, and drops the agent's late frames", async () => {
+  const { engine, internal, session, run } = await fixture("direct");
+  const close = vi.spyOn(internal.direct, "closeAcp").mockResolvedValue();
+  await engine.deleteSession(session.id);
+  expect(close).toHaveBeenCalledWith("direct:acp:grok:fixture");
+  expect(internal.repos.getSession(session.id)).toBeUndefined();
+  const late = (engine as unknown as { handleRuntimeEvent(session: Session, run: Run, event: unknown, stop: () => void): Promise<void> }).handleRuntimeEvent;
+  const stop = vi.fn();
+  await expect(late.call(engine, session, run, { id: "late", runId: run.id, timestamp: new Date().toISOString(), type: "tool", message: "Edit" }, stop)).resolves.toBeUndefined();
+  expect(stop).toHaveBeenCalled();
+});
+
+it("aborts and closes a running Gateway turn before deleting its thread", async () => {
+  const { engine, internal, session } = await fixture("gateway");
+  const abort = vi.spyOn(internal.runtime, "cancelRun").mockResolvedValue();
+  const close = vi.spyOn(internal.openclaw, "closeAcp").mockResolvedValue();
+  await engine.deleteSession(session.id);
+  expect(abort).toHaveBeenCalledWith("gw-run");
+  expect(close).toHaveBeenCalledWith("agent:grok:acp:fixture");
+  expect(internal.repos.getSession(session.id)).toBeUndefined();
+});
+
+it("saves a snapshot of the folder when a turn is stopped", async () => {
+  const { engine, internal, run } = await fixture("direct");
+  const { execFileSync } = await import("node:child_process");
+  const { writeFileSync } = await import("node:fs");
+  const cwd = run.workingDirectory!;
+  execFileSync("git", ["init", "-q"], { cwd });
+  writeFileSync(path.join(cwd, "work.txt"), "half done\n");
+  vi.spyOn(internal.direct, "cancelAcp").mockResolvedValue();
+  await engine.stopRun(run.id);
+  await vi.waitFor(() => expect(engine.getRun(run.id)?.checkpointRef).toMatch(/^refs\/capsule\/checkpoints\//), { timeout: 10_000 });
+});
+
+it("refuses to restore files past a turn that has no saved snapshot", async () => {
+  const { engine, internal, session } = await fixture("none");
+  const repos = internal.repos as unknown as { insertRun(run: Run): void; insertMessage(message: unknown): void };
+  const at = (seconds: number) => new Date(Date.UTC(2026, 0, 1, 0, 0, seconds)).toISOString();
+  const turns: Array<[string, Partial<Run>]> = [["saved", { status: "completed", checkpointRef: "refs/capsule/checkpoints/x/turn/0/saved" }], ["stopped", { status: "cancelled" }], ["edited", { status: "completed" }]];
+  turns.forEach(([id, fields], index) => {
+    repos.insertRun({ id, projectId: session.projectId, sessionId: session.id, agentId: "grok", prompt: id, createdAt: at(index * 10), updatedAt: at(index * 10), completedAt: at(index * 10 + 5), ...fields } as Run);
+    repos.insertMessage({ id: `msg-${id}`, sessionId: session.id, runId: id, role: "user", content: id, createdAt: at(index * 10 + 1) });
+  });
+  engine.repos.updateRun({ ...engine.getRun("force-run")!, status: "cancelled", completedAt: at(1) });
+  const result = await engine.rewindSession(session.id, "msg-edited", { restoreFiles: true });
+  expect(result).toMatchObject({ ok: false, detail: expect.stringMatching(/turn before this one has no saved snapshot/) });
+  expect(engine.listMessages(session.id).map((message) => message.id)).toContain("msg-edited");
+});

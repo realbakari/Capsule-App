@@ -24,6 +24,8 @@ async function setup(worktree = false) {
   git("init"); git("config", "user.email", "capsule@example.test"); git("config", "user.name", "Capsule Test");
   writeFileSync(path.join(directory, "README.md"), "initial\n");
   git("add", "README.md"); git("commit", "-m", "initial");
+  // A pull request opens from a feature branch; the default branch refuses one.
+  git("checkout", "-b", "feature");
   const engine = new CapsuleEngine({ databasePath: ":memory:", userDataDir: directory, autoConnect: false });
   await engine.start();
   await engine.updateSettings({ prWatchAndFix: true, prAutoMerge: false, prReviewDelivery: "current" });

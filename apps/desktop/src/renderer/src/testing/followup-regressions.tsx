@@ -68,6 +68,8 @@ async function runTurnMinimapRegressions(root: Root, host: HTMLElement, workspac
     window.testWorkspace = workspace;
     root.render(<Conversation />);
     await until(() => host.querySelectorAll("[data-message-id]").length === 3);
+    // Rows mount at an estimated height and shrink once measured; judge the settled layout.
+    await until(() => scroller().scrollHeight <= scroller().clientHeight + 1 && !nav());
     await settle(); await settle();
     assert(!nav(), "Minimap shown on a thread that does not scroll");
 
@@ -130,6 +132,107 @@ async function runTurnMinimapRegressions(root: Root, host: HTMLElement, workspac
   }
 }
 
+/** Twelve long turns: enough to scroll and to virtualize the middle. */
+function longThread(): ChatMessage[] {
+  return Array.from({ length: 12 }, (_, index) => [
+    { id: `t${index + 1}`, sessionId: "thread-q", role: "user" as const, content: `Prompt number ${index + 1} about the build`, createdAt: `2026-10-12T01:${String(index).padStart(2, "0")}:00Z` },
+    { id: `t${index + 1}-reply`, sessionId: "thread-q", role: "assistant" as const, content: `Reply ${index + 1}. ${"The change is in and the checks pass. ".repeat(40)}`, createdAt: `2026-10-12T01:${String(index).padStart(2, "0")}:30Z` },
+  ]).flat();
+}
+
+/*
+ * Following and reading: a disclosure keeps its place, a sent prompt rises to
+ * the top without leaving a gap once answered, page keys in the composer page
+ * the transcript, the pill leaves focus alone, both ends stay mounted, and the
+ * live region speaks a finished turn.
+ */
+async function runTranscriptScrollRegressions(root: Root, host: HTMLElement, workspace: Record<string, unknown>) {
+  const styles = document.getElementById("composer-test-styles") as HTMLStyleElement;
+  const savedMedia = styles.media;
+  styles.media = "all";
+  host.style.cssText = "display:flex;flex-direction:column;width:1000px;height:600px";
+  const scroller = () => host.querySelector<HTMLElement>(".conversation")!;
+  const fromTop = (node: Element) => node.getBoundingClientRect().top - scroller().getBoundingClientRect().top;
+  const fromEnd = () => scroller().scrollHeight - scroller().scrollTop - scroller().clientHeight;
+  const row = (id: string) => host.querySelector(`[data-virtual-turn="${id}"]`);
+  const at = (minute: number, second = 0) => `2026-10-12T02:${String(minute).padStart(2, "0")}:${String(second).padStart(2, "0")}Z`;
+  try {
+    // The "Worked for" fold sits above a short answer, so opening it at the live end used to pin the end and push it away.
+    const worked: ChatMessage[] = [
+      ...longThread(),
+      { id: "w1", sessionId: "thread-q", role: "user", content: "Tidy the build", runId: "run-w", createdAt: at(0) },
+      { id: "w1-note", sessionId: "thread-q", role: "assistant", content: `Progress. ${"Reading the build scripts and their callers. ".repeat(60)}`, runId: "run-w", createdAt: at(0, 10) },
+      { id: "w1-reply", sessionId: "thread-q", role: "assistant", content: "Done.", runId: "run-w", createdAt: at(0, 20) },
+    ];
+    const run = { id: "run-w", sessionId: "thread-q", projectId: "context-project", status: "completed", prompt: "Tidy the build", createdAt: at(0), updatedAt: at(0, 20), completedAt: at(0, 20) };
+    window.testWorkspace = { ...workspace, messages: worked, runs: [run] };
+    root.render(<Conversation />);
+    const toggle = () => host.querySelector<HTMLButtonElement>('[data-virtual-turn="w1"] .turn-work-toggle');
+    await until(() => toggle() && fromEnd() < 2);
+    await settle();
+    assert(row("t1") && row("w1"), "The first or last turn was not mounted while reading the latest");
+    const before = fromTop(toggle()!);
+    assert(before > 0 && before < scroller().clientHeight, `The fold was not on screen to open: ${before}`);
+    toggle()!.click();
+    await until(() => host.textContent?.includes("Reading the build scripts"));
+    await settle(); await settle();
+    assert(Math.abs(fromTop(toggle()!) - before) <= 2, `Opening the fold moved it from ${before} to ${fromTop(toggle()!)}`);
+    assert(host.querySelector(".jump-latest"), "Opening a fold kept following the end");
+
+    // PageUp in the composer pages the transcript and leaves the caret in the draft.
+    const field = host.querySelector<HTMLTextAreaElement>(".composer-field")!;
+    field.focus();
+    const page = (key: string) => field.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+    const top = scroller().scrollTop;
+    assert(!page("PageUp"), "PageUp in the composer was not taken for the transcript");
+    await until(() => scroller().scrollTop < top - 200);
+    assert(document.activeElement === field, "Paging the transcript took focus from the composer");
+    assert(field.dispatchEvent(new KeyboardEvent("keydown", { key: "PageUp", shiftKey: true, bubbles: true, cancelable: true })), "Shift+PageUp was taken from the composer");
+
+    // The pill returns to the end without taking focus from the draft.
+    const pill = () => host.querySelector<HTMLButtonElement>(".jump-latest");
+    await until(() => pill());
+    assert(!pill()!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true })), "Pressing the pill would move focus off the composer");
+    pill()!.click();
+    await until(() => !pill() && fromEnd() < 2);
+    assert(document.activeElement === field, "The pill took focus from the composer");
+    // Scrolled to the top, the last turn is still there for heading navigation.
+    scroller().scrollTop = 0;
+    await until(() => pill());
+    await settle(); await settle();
+    assert(row("t1") && row("w1"), "Scrolling to the top unmounted the last turn");
+    pill()!.click();
+    await until(() => fromEnd() < 2 && !pill());
+
+    // A prompt sent while following rises to near the top, with its reply to come below it.
+    const space = () => host.querySelector<HTMLElement>(".thread-end-space")!;
+    const sent: ChatMessage[] = [...worked, { id: "s1", sessionId: "thread-q", role: "user", content: "Now the docs", createdAt: at(1) }];
+    window.testWorkspace = { ...workspace, messages: sent, runs: [run] };
+    root.render(<Conversation />);
+    await until(() => row("s1") && Math.abs(fromTop(row("s1")!) - 48) <= 2 && fromEnd() < 2);
+    assert(space().offsetHeight > 100, `No room was made under the sent prompt: ${space().offsetHeight}`);
+    // Once answered, the room goes and the thread ends at its reply.
+    window.testWorkspace = { ...workspace, messages: [...sent, { id: "s1-reply", sessionId: "thread-q", role: "assistant", content: "Docs updated.", createdAt: at(1, 30) }], runs: [run] };
+    root.render(<Conversation />);
+    await until(() => host.querySelector('[data-message-id="s1-reply"]') && space().offsetHeight === 0 && fromEnd() < 2);
+
+    // The live region speaks a watched turn's end once, and nothing on first look.
+    const region = () => host.querySelector<HTMLElement>("[data-thread-announcer]")!;
+    const live = { ...run, id: "run-d", status: "running", createdAt: at(1, 40), completedAt: undefined };
+    window.testWorkspace = { ...workspace, messages: sent, runs: [run, live], activeRun: live };
+    root.render(<Conversation />);
+    await settle();
+    assert(region().getAttribute("aria-live") === "polite" && !region().textContent, "The live region spoke without a change");
+    window.testWorkspace = { ...workspace, messages: sent, runs: [run, { ...live, status: "completed", completedAt: at(2) }], activeRun: undefined };
+    root.render(<Conversation />);
+    await until(() => region().textContent === "Reply finished.");
+  } finally {
+    root.render(null); await settle();
+    host.style.cssText = "";
+    styles.media = savedMedia;
+  }
+}
+
 export async function runFollowupRegressions(host: HTMLElement, base: Record<string, unknown>) {
   const previous = window.testWorkspace;
   // The composer reads the preload bridge for the home directory; give it one, as the layout regression does.
@@ -158,7 +261,7 @@ export async function runFollowupRegressions(host: HTMLElement, base: Record<str
     assert(rows.length === 2, "Expected two queued rows");
     assert(rows[0]!.querySelector<HTMLButtonElement>('[aria-label="Move up"]')?.disabled, "First row could move up");
     rows[0]!.querySelector<HTMLButtonElement>('[aria-label="Move down"]')!.click();
-    rows[1]!.querySelector<HTMLButtonElement>('[aria-label="Edit in the composer"]')!.click();
+    rows[1]!.querySelector<HTMLButtonElement>('[aria-label="Edit queued message"]')!.click();
     rows[1]!.querySelector<HTMLButtonElement>('[aria-label="Remove from queue"]')!.click();
     assert(calls.join() === "move:q1:down,edit:q2,remove:q2", `Queue controls dispatched ${calls.join()}`);
 
@@ -255,22 +358,28 @@ export async function runFollowupRegressions(host: HTMLElement, base: Record<str
     root.render(<Conversation />);
     await until(() => host.textContent?.includes("Resuming at"));
 
-    // The approval card offers Deny and reply, which denies; an agent-supplied target stays on one line.
+    // Every waiting approval gets its own card and answers on its own. Deny and reply denies; an agent-supplied target stays on one line.
     const resolved: string[] = [];
+    const firstApproval = { id: "approval-1", runId: "run-limit", agentId: "agent", agentName: "Agent", action: "run a command", target: "pnpm test\nrm -rf /", reason: "Runs the checks", status: "pending", createdAt: "2026-10-12T00:00:07Z" };
+    const secondApproval = { ...firstApproval, id: "approval-2", action: "edit files", target: "src/app.ts", reason: "", createdAt: "2026-10-12T00:00:08Z" };
     window.testWorkspace = {
       ...window.testWorkspace, pendingResume: undefined,
-      pendingApproval: { id: "approval-1", runId: "run-limit", agentId: "agent", agentName: "Agent", action: "run a command", target: "pnpm test\nrm -rf /", reason: "Runs the checks", status: "pending", createdAt: "2026-10-12T00:00:07Z" },
+      pendingApproval: firstApproval, pendingApprovals: [firstApproval, secondApproval],
       api: { ...(window.testWorkspace?.api as object), resolveApproval: async (id: string, decision: string) => { resolved.push(`${id}:${decision}`); } },
     };
     root.render(<Conversation />);
-    await until(() => host.querySelector('[aria-label="Approval required"]'));
-    assert(host.querySelector(".conversation-approval-target")?.textContent === "pnpm test rm -rf /", "Approval target kept its line breaks");
-    click("Deny and reply");
-    await until(() => resolved.length === 1);
-    assert(resolved[0] === "approval-1:denied", "Deny and reply did not deny");
+    await until(() => host.querySelectorAll('[aria-label="Approval required"]').length === 2);
+    const cards = Array.from(host.querySelectorAll<HTMLElement>('[aria-label="Approval required"]'));
+    assert(cards[0]!.querySelector(".conversation-approval-target")?.textContent === "pnpm test rm -rf /", "Approval target kept its line breaks");
+    assert(cards[1]!.textContent?.includes("edit files"), "The second approval did not get its own card");
+    Array.from(cards[0]!.querySelectorAll("button")).find((button) => button.textContent?.trim() === "Deny and reply")!.click();
+    Array.from(cards[1]!.querySelectorAll("button")).find((button) => button.textContent?.trim() === "Approve once")!.click();
+    await until(() => resolved.length === 2);
+    assert(resolved.join() === "approval-1:denied,approval-2:approved_once", `Approvals resolved as ${resolved.join()}`);
     root.render(null); await settle();
 
     await runTurnMinimapRegressions(root, host, { ...fixture, activeRun: undefined, runs: [], events: [], steps: [], threadFind: false, setThreadFind: () => {}, promptJump: false, setPromptJump: () => {}, loadSession: async () => {} });
+    await runTranscriptScrollRegressions(root, host, { ...fixture, project: { id: "context-project", name: "Context" }, activeRun: undefined, runs: [], events: [], steps: [], pendingApprovals: [], threadFind: false, setThreadFind: () => {}, promptJump: false, setPromptJump: () => {}, loadSession: async () => {} });
     return "Follow-up regressions passed";
   } finally {
     root.unmount();

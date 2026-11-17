@@ -8,6 +8,29 @@ messages restores the full composer. A multiline draft, attachments, an
 open picker, a selected skill, or a file drop keeps it expanded. Focusing the field while
 reading history does not grow it back.
 
+## Reading while the agent works
+
+When you send a message at the end of a conversation, your message moves up
+near the top of the view and the reply fills in below it, so the start of the
+answer stays in place as it streams. Once the reply is long enough to fill the
+view, the conversation keeps showing its newest lines. When the turn ends, the
+spare room below a short reply goes away, so the conversation ends at the
+reply.
+
+Opening or closing something in the conversation, such as **Worked for**, a
+tool's details, **Show full message**, or **Turn details**, keeps what you
+clicked where it was and stops following new messages, so the details you
+opened are not pushed out of view. **Scroll to end**, or scrolling back down
+to the newest messages, follows them again.
+
+`Page Up` and `Page Down` in the message box page through the conversation,
+unless your draft is long enough to scroll itself that way. Neither the page
+keys nor **Scroll to end** take the caret out of your draft.
+
+With a screen reader, Capsule announces when a reply finishes, when a turn
+fails or stops, and when the agent asks for approval or asks a question. It
+does not read the reply as it streams.
+
 Attachment and send controls stay beside the agent controls in the expanded
 composer. The compact prompt keeps the workspace row entirely below it.
 The prompt and toolbar use consistent spacing as the pane narrows or text size
@@ -108,8 +131,15 @@ hover or keyboard focus and remain visible on touch devices.
 Replies support nested lists, read-only task lists, tables, quotes, and code
 examples inside quotes. Wide tables scroll inside the message. Code uses
 language-aware colors in dark and light themes, follows the conversation text
-size, and wraps long lines. Unknown languages and very large code blocks remain
-readable as plain text. Copying a code block copies its source, not its colors.
+size, and wraps long lines; **Wrap** on a block's bar turns wrapping off for
+that block so long lines keep their shape and scroll sideways. Unknown languages
+and very large code blocks remain readable as plain text. Copying a code block
+copies its source, not its colors, and without the final line break, so a
+pasted command waits for Return. A finished one-line shell block (`sh`, `bash`,
+`zsh`, `console` and similar) also has **Type in terminal**: it opens a new
+terminal with the command typed and not run, for you to read and press Return.
+Blocks with more than one line or with control characters never offer it, and a
+paired device never does.
 Completed code blocks and open review disclosures stay in place as more text
 arrives. Unusually deep Markdown nesting is shown as readable source instead of
 preventing the conversation from opening.
@@ -157,8 +187,8 @@ returns to the latest page. Very large messages show a labelled excerpt; the ful
 message remains in the local database. Only nearby turns are mounted on screen.
 
 Long runs keep a recent activity window so the conversation stays responsive.
-**Recent activity** means the visible counts do not cover the whole run. Open
-that turn’s **Run log** (or **What the agent reported** after failure) and use
+**Recent activity** means the visible counts do not cover the whole run. When a
+turn fails, open **What the agent reported** in its **Turn details** and use
 **Older events** and **Newer events** to inspect recorded history. Oversized
 diagnostic payloads are shortened and labelled; these logs are not a complete
 copy of tool output. Agent replies remain separate from this diagnostic limit.
@@ -270,15 +300,16 @@ change it.
 Some agents also report their own permission or mode setting, such as Codex's
 sandbox. Those appear in the Permissions panel as **Agent permissions** and
 **Agent mode**, with the agent's own names. Capsule does not translate them.
-To inspect the session's raw status, open **Agents**, select the
-session with **Refresh**, and expand **Session diagnostics**. Diagnostics stay
+To inspect the session's raw status, open **Agents**, expand **Advanced**
+under the agent, press **Refresh status**, and expand **Session diagnostics**. Diagnostics stay
 with that session and are collapsed by default.
 
 Switching to a different harness starts it with its own default model. A model
 override from the previous harness is not carried across.
 
-Open **Agents** and expand **Capabilities** to inspect the selected harness and
-runtime route's model, permission, steering and browser support. Browser
+Open **Agents**, expand **Advanced**, then **What Capsule can change on this
+session** to inspect the selected harness and runtime route's model,
+permission, steering and browser support. Browser
 describes its agent-tool limitations.
 Manual browsing is separate from an agent's ability to control that browser.
 
@@ -292,10 +323,14 @@ right. For Git folders, **Current checkout**
 or **Worktree** also offers **Change folder**. An empty worktree conversation
 also shows **from**, the branch its worktree starts from; choose another or
 search for one before the first message. Once the conversation has started,
-the row goes away; **Conversation details** in the title bar shows its folder,
-branch and changes. Click the branch there to switch to another local branch
-(type to filter a long list). A device paired to read only sees the branch
-name without the menu. In compact panes the workspace and branch labels become
+the row shows the branch and how many files have changed there; click it to
+open Review. **Conversation details** in the title bar shows its folder,
+branch and changes. Click the branch there to switch to another branch: type
+to filter the list, pick a remote branch to check it out as a local branch
+that tracks it, or choose **Create branch** to start a new one from what you
+typed. A branch already checked out in another worktree says so; when one of
+your conversations works there, choosing it opens that conversation. A paired
+device sees the branch name without the menu. In compact panes the workspace and branch labels become
 icons; their names remain in tooltips and menus. Menus support keyboard
 navigation and Escape; closing one returns focus to its trigger.
 
@@ -341,13 +376,16 @@ A failed turn shows its reason with **Retry**. If the agent needs signing in,
 **Open Agents** takes you there. If the agent stopped partway through a reply,
 the reply stays, with a note that it stopped before finishing. A turn cut off
 because Capsule quit, or one that finished without replying, offers **Send
-again**. While you decide on an approval, its buttons wait for your first
+again**. When the agent is waiting on more than one approval or question,
+each gets its own card, oldest first, and **Scroll to end** says how many
+are waiting. While you decide on an approval, its buttons wait for your first
 choice to go through.
 
 ## Read activity accurately
 
-Expand the activity row to see its steps, **Run log** and **Verification** in
-one place. Collapsing it preserves your check inputs and current log page.
+Expand the activity row to see its steps and, when the project has a saved
+check or the turn has a result, **Verification**. Collapsing it preserves your
+check inputs.
 
 Between progress messages, expand a tool group, then a step, to inspect its
 reported command, text output and files. **Copy command preview** and **Copy output
@@ -369,8 +407,9 @@ its session closed there. Your next message starts the agent again. Where the
 Gateway runs the agent without a session Capsule can close, the button reads
 **Stop waiting**: Capsule stops waiting for the turn but cannot end the agent. **Completed** does
 not mean verified: **Verified** requires a passing recorded check for that run.
-Failed, cancelled, blocked and stale-check states remain distinct. Expand the
-run log for diagnostics rather than reading raw status messages as agent replies.
+Failed, cancelled, blocked and stale-check states remain distinct. For a failed
+or blocked turn, expand **What the agent reported** in its **Turn details** for
+diagnostics rather than reading raw status messages as agent replies.
 
 When the selected route needs an offline Gateway, one connection row appears
 inside the composer. Use **Connect**, or **Retry connection** after an error;
@@ -389,13 +428,16 @@ unsupported pastes stay inline. If saving or validating the attachment fails,
 the pasted text goes to **Stash** and the existing draft stays untouched.
 
 Type `@` to search the current
-conversation’s folder. Results show the file name and parent path. Enter or Tab
+conversation’s folder. It opens at the start of a word, and also right after an
+opening bracket or quote, so `(@src` works; an address like `me@host` does not
+open it. Results show the file name and parent path. Enter or Tab
 attaches the selected file without sending your draft; Escape closes the picker.
 File paths with spaces are preserved. Search failures and empty results are
 labelled, and an older search cannot replace a newer result. Files selected here
 use the same validation and removable chips as the paperclip.
 
-Choose the paperclip or drop files onto the composer. Selected files appear as
+Choose the paperclip or drop files onto the composer. Text dragged onto the
+composer is inserted where you drop it, not attached. Selected files appear as
 removable chips before you send and as openable attachments in the timeline.
 An attachment-only message is allowed.
 
@@ -412,22 +454,35 @@ Pasting files uses the same attachment validation as dropping them. Pasted
 clipboard images are saved locally first. Attachments are desktop-only; a
 paired read-only viewer cannot attach files or send messages.
 
-The context ring appears beside Send only once the conversation's context is
-filling up, amber and then red. Its card says so and offers **New
+Beside attach, the dock shows **Plan** only while plan mode is on, and the
+permissions chip only while this conversation's mode differs from the default.
+To get a plan, you can also just ask the agent for one. The context ring beside Send appears once the agent reports usage. It stays
+neutral, then turns amber and red as the context fills. Its card says so and offers **New
 conversation** beside **Compact conversation**: compact to keep going on the
-same task, start fresh for something unrelated. When the context is nearly full
-and the agent can compact, a **Compact** toggle sits beside Send and Send reads
-**Compact and send**: the conversation is compacted first, then your message
-goes out. Press the toggle to **Keep** the whole conversation for that send.
-`/compact` compacts at any time.
+same task, start fresh for something unrelated. `/compact` compacts at any time.
 
 The empty composer reads "Ask anything. @ files, $ skills, / commands". While a
 turn is running it says what sending does instead: "Queue a follow-up" or, when
 the next message will steer the turn, "Steer this turn".
 
-While a turn is running, Send stays Send as long as there is something in the
-prompt, and queues or steers that message. With an empty prompt it becomes
-**Stop**.
+While a turn is running, Send stays as long as there is something in the
+prompt, and queues or steers that message: its arrow becomes a clock when the
+message will wait in the queue. With an empty prompt it becomes **Stop**.
+
+`⌘Enter` sends, the same as `Enter`; with **Send with ⌘Enter** chosen it is the
+only key that does. `⌘⇧Enter` sends and then opens a new conversation; during a
+turn it queues or steers the message here first. `⌥Enter` during a turn sends
+the message the other way: into the turn when `Enter` would queue it, or into
+the queue when `Enter` would steer. `⌥⌘Enter` sends the first queued message
+now. Both can be changed in **Settings › Shortcuts**.
+
+Enter sends whenever an open `/`, `@` or `$` menu has nothing to pick, so a
+`/` that matches nothing is sent as written. A word that is a path, such as a
+pasted `/Users/me/app.log`, does not open the `/` menu, and an amount such as
+`$5` does not open the skill menu.
+
+On a phone or tablet, Return starts a new line and the send button sends; the
+keyboard's Return key is labelled accordingly.
 
 **Settings › General › Follow-ups** decides what sending during a running turn
 does: queue it for after the turn (the default), or steer the running turn
@@ -436,8 +491,11 @@ So does every message to a Direct-mode agent and from a paired device, which
 cannot steer; that is quiet, not an error. If an agent that could steer
 refuses, the message is queued and a note says it will send when the turn
 ends. The composer clears as soon as you send, so pressing Enter twice does
-not queue or steer the same text twice. `⌘Enter` (or `⌘⇧Enter`) during a turn
-queues or steers the message here and opens a new conversation.
+not queue or steer the same text twice.
+
+Send waits while an `@` source or a `!` command is still being attached, and
+its tooltip names what it is waiting for, so the message never goes without
+the context you asked for.
 
 **Settings › Appearance** sets the **Time format** (system, 12-hour or 24-hour)
 for message times, and whether **Tool calls** start folded to one line or
@@ -448,13 +506,30 @@ unless you turn that off; archiving can ask first too (off by default, since
 Archive offers Undo). Deleting a project always asks.
 
 Press **Esc** in the composer to stop the turn that is running, the same as the
-Stop button. Esc closes an open menu first.
+Stop button. Esc closes whatever is open first: the stash, a menu, or a queued
+message you are editing. An Esc right after one that closed something does not
+stop the turn, and neither does holding Esc down, so dismissing twice in a row
+never cancels work by accident. `⌘.` stops the turn from anywhere.
 
 One turn runs in a thread at a time, but you do not have to wait to send the
 next message. A prompt sent while a turn is running joins a queue above the
 composer and goes out, in order, as soon as the thread is free. Each queued
-follow-up can be edited back into the composer, moved up or down, removed,
-or, on routes that can steer, sent into the running turn with **Steer**.
+follow-up can be edited, moved up or down, removed, or, on routes that can
+steer, sent into the running turn with **Steer** (a message with files or a
+skill waits for its turn instead). Editing opens the message in the composer
+in its place in line: the composer says **Editing queued message**, the send
+button becomes **Update queued message**, and **Cancel** or Esc puts back
+whatever you were writing before. If the message goes out before you save,
+your edit stays in the composer as a new message and the earlier draft is kept
+in Stash.
+
+When a turn is stopped, fails or hits a usage limit, the queue waits instead of
+sending the next message on its own, and says why ("Paused after the turn was
+stopped." or "…failed."). Sending a message yourself lets the queue continue
+after that turn; **Resume queue** lets it go now, and **Send now** on a row
+sends that message first. Automations and channel messages never let a paused
+queue go. A scheduled resume after a usage limit still goes at its time, ahead
+of the waiting messages, which stay paused.
 The queue belongs to its conversation, holds up to twenty messages, and
 survives a restart. Queued messages go out when their conversation is free
 even if you have switched to another one or closed the window. While the
@@ -462,7 +537,15 @@ thread cannot send, for example while the Gateway is disconnected or the
 agent needs a login, the next message waits at the front of the queue and the
 queue says why ("On hold: …"); it is tried again every thirty seconds. A
 paired device that can only read sees the queue without its controls. Press
-`↑` in an empty prompt to recall what you asked before.
+`↑` in an empty prompt to recall what you asked before, and `↓` to come back.
+In a recalled prompt of several lines, the arrows move through its lines and
+step to the next prompt only from the first line (`↑`) or the last (`↓`).
+Recalling, picking from a menu, filling a saved prompt and restoring a stash
+are ordinary edits, so `⌘Z` takes each one back.
+
+The agent, model, effort and approval mode you pick for a conversation that has
+not started yet are kept with its draft, so switching away or restarting
+Capsule does not reset them.
 The first message in a new conversation opens that conversation straight
 away, so the message, the agent starting and **Stop** appear together. If that
 message is rejected you stay in the new conversation with your text back in
@@ -580,10 +663,16 @@ and they refine as you keep talking. The prompt is read-only while you dictate.
 - Dictation stops on its own after two minutes. The last 15 seconds count down
   beside the recording dot, and what you said so far is kept.
 
+**Settings → General → Voice** says whether speech recognition is available on
+this Mac and opens the Microphone, Speech Recognition and Keyboard pages of
+System Settings.
+
 The first time, macOS asks to allow the microphone and speech recognition. If
 either is turned off, or speech recognition is not available for your language
-on this Mac, the composer says so and offers a button that opens the right page
-of System Settings. Dictation uses your system language when the Mac can
+on this Mac, the composer says so and offers **Open Settings**, which opens the
+right page of System Settings. A build of Capsule that macOS will not give
+speech recognition to (a development copy, not the installed app) says to
+dictate from the installed app instead. Dictation uses your system language when the Mac can
 recognize it on device, and US English otherwise.
 
 Switching to another conversation stops dictation. The companion and the
@@ -618,19 +707,27 @@ does not mark every child complete. Task status is not verification.
 
 The panel uses a bounded recent event window and labels partial history. It
 does not start agents or control child sessions. **Manage agents** opens the
-harness manager; **Side chat** remains a separate surface.
+Agents view.
 
 ## Agent commands
 
-Open **Agent commands** from the command palette.
-Direct agents can advertise commands and optional input hints. Choose one and
-press **Run command** to send a separate turn; your prompt, attachments and skill
-selection remain in the composer. Commands wait for any active turn to finish.
-Rejected commands show an error and are recoverable in **Stash**.
+Type `/` to see the commands the conversation's agent offers, under the
+agent's name after Capsule's own. A command that needs no input runs as a
+separate turn when you pick it, and your prompt, attachments and skill stay in
+the composer. A command that takes input goes into the prompt for you to
+finish and send. A command named like one of Capsule's (`/compact`, `/init`)
+stays Capsule's in the menu. **Agent commands** in the command palette lists
+the same commands. Commands wait for any active turn to finish. Rejected
+commands show an error and are recoverable in **Stash**.
 
-The list belongs to the current agent session. An empty or unreported list is
-labelled explicitly. Gateway command discovery is not available through this
-control, and paired viewers cannot send commands.
+Only agents Capsule runs directly report their commands. An agent reached
+through the Gateway shares no command list, so its commands do not appear and
+Capsule says so if you try one from the palette. Paired viewers can put a
+command in the prompt but cannot run one directly.
+
+The `/` and `$` menus put the closest match first: an exact name, then names
+that start with what you typed, then a word inside a name, then letters inside
+a name, then a match in the description.
 
 ## Usage limits
 
@@ -657,7 +754,10 @@ cheapest moment to compact.
 
 A compaction shows in the conversation as one divider, **Compacting context**
 while it runs and **Context compacted** once done, rather than as a message and
-a reply. An agent that compacts on its own without being asked is not shown.
+a reply. When an agent compacts on its own in the middle of a turn, the turn
+shows **Context compacted automatically** where it happened. Claude Code reports
+this on this computer, and Gateway agents report it when the Gateway sends a
+compaction update; agents that do not report it are not shown.
 
 ## Handing off to a new conversation
 

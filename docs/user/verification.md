@@ -1,15 +1,17 @@
 # Checking a turn
 
 A completed reply means the agent finished responding, not that tests passed.
-Expand a completed turn's activity row, then **Verification**, or open the turn
-in run history, to see its recorded checks. The activity row keeps the result
-visible while collapsed, including when a turn has not been verified.
+Expand a completed turn's activity row, then **Verification**, to see its
+recorded checks. **Verification** shows once the project has a saved check or
+the turn has a result; a project with neither shows nothing. The activity row
+keeps the result visible while collapsed, including when a turn has not been
+verified.
 
 To run a check:
 
-1. Open the turn’s **Verification** details. Use **Add check** to save a test or
-   build command, or choose an action already saved under **Actions** in the
-   project header. Saving a check does not execute it.
+1. Save a test or build command under **Actions** in the project header. Once
+   one exists, a turn's **Verification** details offer **Add check** for more.
+   Saving a check does not execute it.
 2. Choose the saved check. If the project has only one action, it is selected
    for you but never run automatically.
 3. Review the displayed command, then select **Run selected check**.
@@ -29,8 +31,8 @@ start or cancel them.
 | Check failed | A recorded command or objective requirement failed. The reply remains completed. |
 | Out of date | The files or Git revision changed, or the final workspace snapshot could not be recorded. The result cannot verify this turn. |
 
-**Check output** and **How this is checked** contain the exact command, exit code, timestamps, workspace
-revision, and the last 20,000 characters of output. It stays with its turn after
+**Check output** contains the exact command, exit code, time, and the last
+20,000 characters of output. **How this is checked** says where the check ran. It stays with its turn after
 restart. A passing receipt describes that saved revision, not subsequent edits.
 Once a receipt exists, use **Recheck evidence** to compare it with the current workspace without
 executing a command again. A stale result does not change or restore files.
@@ -46,9 +48,8 @@ and changes made and then reverted while a check runs are not covered by the
 snapshot comparison. Choose checks appropriate to the work and review their
 output before relying on them.
 
-Activity, the run log and verification share one expandable card; older cards
-stay with their original turn. Collapsing it preserves check inputs and open
-diagnostic details. Tool counts describe distinct calls where the agent supplies
+Activity and verification share one expandable card; older cards stay with
+their original turn. Collapsing it preserves check inputs. Tool counts describe distinct calls where the agent supplies
 call identifiers, not every status update. A finished work log is not proof
 that checks passed. If no reply was received, the turn says so rather than
 presenting tool activity as an answer.

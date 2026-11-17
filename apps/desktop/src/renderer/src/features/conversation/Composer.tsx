@@ -33,6 +33,8 @@ import { WorktreeBasePicker } from "../worktree-base/WorktreeBasePicker";
 import { MenuSelect } from "../shell/MenuSelect";
 import {
   ArrowUpIcon,
+  CheckIcon,
+  ClockIcon,
   FileIcon,
   FolderIcon,
   GitBranchIcon,
@@ -50,11 +52,14 @@ import { composerPlaceholder, shouldRestComposer } from "../../lib/composer-rest
 import { composerPrimaryAction, PRIMARY_ACTION_LABELS } from "../../lib/composer-primary-action";
 import { openComposerControl } from "../../lib/composer-controls";
 import { COMMAND_SOURCE_LABELS, commandDetail, commandInDraft } from "../../lib/commands";
-import { INSERT_COMMAND_EVENT } from "../../lib/keybindings";
+import { INSERT_COMMAND_EVENT, KEY_COMMAND_EVENT, shortcutLabel } from "../../lib/keybindings";
+import { rankGrouped } from "../../lib/composer-rank";
+import { isNarrow } from "../../lib/narrow";
 import { tasksFromRunEvents } from "@capsule/shared";
 import { initPrompt, mentionSources, parseBangCommand, templateCommand, templateVariables, type PromptTemplate } from "@capsule/shared";
 import { CONTEXT_ICONS, ContextChip, ContextPicker, PendingChip, TemplateForm, useContextResolver, type ContextPickerKind } from "./ComposerContext";
 import { detectInstructionFiles } from "../project/ProjectInstructions";
+import { carriesFileRow, fileRowMention, readFileRowDrag } from "../shell/file-row-actions";
 
 /*
  * What the / menu offers: things that shape this conversation. Going
@@ -66,7 +71,6 @@ function slashCommands(input: {
      only thing that ever said so was a legend under the composer. */
   skills: Array<{ id: string; name: string }>;
   setSkillId: (id: string) => void;
-  query: string;
   createTask: () => void;
   chooseModel: () => void;
   /** Absent for a device that can only read. */
@@ -99,8 +103,11 @@ function slashCommands(input: {
       detail: `Use the ${skill.name} skill`,
       run: () => input.setSkillId(skill.id),
     })),
-  ].filter((item) => item.label.toLowerCase().includes(input.query.toLowerCase()));
+  ];
 }
+
+/** How soon after an Escape that closed something another Escape is still read as dismissing. */
+const ESCAPE_SETTLE_MS = 600;
 
 export function Composer({
   awayFromLatest = false,
@@ -267,6 +274,13 @@ export function Composer({
       : draftConfiguration.model ?? models?.currentModelId ?? "";
 
   const [stashOpen, setStashOpen] = useState(false);
+  /* When something last used an Escape to close itself, by the event clock. */
+  const lastDismissal = useRef(Number.NEGATIVE_INFINITY);
+  useEffect(() => {
+    const note = (event: KeyboardEvent) => { if (event.key === "Escape" && event.defaultPrevented) lastDismissal.current = event.timeStamp; };
+    window.addEventListener("keydown", note);
+    return () => window.removeEventListener("keydown", note);
+  }, []);
   /* A paired browser without conversation control can read but never send. */
   const readOnlyViewer = api.isDesktop === false && api.remoteMode !== "control";
   const toggleTurnMode = () => void setTurnMode(turnMode === "plan" ? "act" : "plan");
@@ -348,11 +362,14 @@ export function Composer({
   }, [project?.projectFile, settings?.composerPrompts]);
 
   const commands = workspace.commands?.list?.commands;
-  /* Capsule's own commands lead the menu; the rest sit under one heading once there are any. */
+  /* Only an agent Capsule runs directly reports its commands; the Gateway route shares no list. */
+  const agentCommands = session?.openclawSessionKey?.startsWith("direct:acp:") && !readOnlyViewer ? harnessStatus?.parsed?.availableCommands : undefined;
+  const agentLabel = harnessDisplayName(harnesses, session?.harnessId, "Agent");
+  /* Project commands lead the menu, then Capsule's, then the agent's own; each sits under a heading once there is more than one. */
   const slashItems = useMemo<SuggestItem[]>(
     () => {
-      const query = trigger?.kind === "slash" ? trigger.query.toLowerCase() : "___";
-      const own: SuggestItem[] = (commands ?? []).filter((command) => command.name.includes(query)).map((command) => ({
+      if (trigger?.kind !== "slash") return [];
+      const own: SuggestItem[] = (commands ?? []).map((command) => ({
         id: `command-${command.name}`,
         label: `/${command.name}`,
         detail: commandDetail(command),
@@ -364,7 +381,6 @@ export function Composer({
       const builtIn = slashCommands({
         skills: skills.filter((skill) => skill.status === "installed"),
         setSkillId,
-        query: trigger?.kind === "slash" ? trigger.query : "___",
         createTask,
         chooseModel: () => { const reason = openComposerControl("model"); if (reason) workspace.setNotice(reason); },
         plan: readOnlyViewer ? undefined : { on: turnMode === "plan", toggle: toggleTurnMode },
@@ -374,10 +390,26 @@ export function Composer({
         templates,
         useTemplate: setTemplate,
       });
-      return own.length ? [...own, ...builtIn.map((item) => ({ ...item, group: "Capsule" }))] : builtIn;
+      // A name Capsule already answers to stays Capsule's; the agent's version is under Agent commands.
+      const taken = new Set([...own, ...builtIn].map((item) => item.label));
+      const fromAgent: SuggestItem[] = (agentCommands ?? []).filter((command) => !taken.has(`/${command.name}`)).map((command) => ({
+        id: `agent-${command.name}`,
+        label: `/${command.name}`,
+        detail: command.description || (command.inputHint ? `Takes ${command.inputHint}` : `${agentLabel} command`),
+        badge: agentLabel,
+        group: agentLabel,
+        kind: "command" as const,
+        // A command that takes input goes into the message to finish; one that does not runs as its own turn.
+        ...(command.inputHint === undefined && api.isDesktop === true
+          ? { run: async () => { await runAgentCommand(command.name); } }
+          : { insert: `/${command.name} ` }),
+      }));
+      const grouped = own.length || fromAgent.length;
+      const all = [...own, ...builtIn.map((item) => grouped ? { ...item, group: "Capsule" } : item), ...fromAgent];
+      return rankGrouped(all, trigger.query, (item) => item.label, (item) => item.detail);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [templates, folderPath, projectId, commands, createTask, skills, setSkillId, trigger, readOnlyViewer, turnMode, compactCommand, runAgentCommand],
+    [templates, folderPath, projectId, commands, createTask, skills, setSkillId, trigger, readOnlyViewer, turnMode, compactCommand, runAgentCommand, agentCommands, agentLabel, api.isDesktop],
   );
 
   const skillItems = useMemo<SuggestItem[]>(
@@ -443,14 +475,12 @@ export function Composer({
    * editing. Expanding can run shell on the desktop, so a paired device sends
    * it instead, and the desktop expands it as it would any command.
    */
-  async function submit(continueToNew = false, afterCompact = false) {
+  async function submit(continueToNew = false) {
+    if (workspace.queuedEdit) { await workspace.saveQueuedEdit(); return; }
+    // An @ source or ! command still running would be left behind by this send.
+    if (contextWait) { workspace.setNotice(contextWait); return; }
     /* With two or more agents picked under Run on…, sending starts the comparison instead. */
     if (runOn.active) return runOn.start();
-    if (!afterCompact) {
-      /* Sending by hand takes over from a compact that was going to send for you. */
-      if (compactThenSend) setCompactThenSend(undefined);
-      else if (primary.kind === "compact-send" && !continueToNew) return compactAndSend();
-    }
     const review = api.isDesktop === true && projectId ? commandInDraft(draft, commands) : undefined;
     if (review?.send !== "review") return continueToNew ? sendAndContinue() : send();
     if (expanding) return;
@@ -473,6 +503,27 @@ export function Composer({
     if (el) setCaret(el.selectionStart);
   }
 
+  /*
+   * Change the message the way typing would, so ⌘Z takes the change back.
+   * Setting a controlled value directly empties the field's undo history.
+   * Where the browser refuses the edit, the draft is set as before.
+   */
+  function editDraft(start: number, end: number, text: string): string {
+    const next = draft.slice(0, start) + text + draft.slice(end);
+    const field = textareaRef.current;
+    if (field && !field.readOnly && field.value === draft) {
+      // The edit needs the field focused; a picker's own search box that just opened keeps the focus it took.
+      const typingElsewhere = document.activeElement !== field && document.activeElement?.matches("input, textarea, select") ? document.activeElement as HTMLElement : undefined;
+      field.focus();
+      field.setSelectionRange(start, end);
+      const done = text ? document.execCommand("insertText", false, text) : start === end || document.execCommand("delete");
+      typingElsewhere?.focus();
+      if (done && field.value === next) return next;
+    }
+    setDraft(next);
+    return next;
+  }
+
   async function applyItem(item: SuggestItem) {
     if (picking) return;
     setPicking(true);
@@ -480,8 +531,7 @@ export function Composer({
       await item.run?.();
       if (selectionScopeRef.current !== selectionScope) return;
       const position = !picker && trigger ? trigger.start + (item.insert?.length ?? 0) : caret;
-      const nextDraft = !picker && trigger ? draft.slice(0, trigger.start) + (item.insert ?? "") + draft.slice(caret) : draft;
-      if (nextDraft !== draft) setDraft(nextDraft);
+      const nextDraft = !picker && trigger ? editDraft(trigger.start, caret, item.insert ?? "") : draft;
       setPicker(undefined);
       setMenuDismissed(true);
       setPendingSelection({ scope: JSON.stringify([projectId, session?.id, nextDraft]), position });
@@ -512,8 +562,8 @@ export function Composer({
 
   function fillFromTemplate(text: string) {
     setTemplate(undefined);
-    const nextDraft = draft.trim() ? `${draft.trimEnd()}\n${text}` : text;
-    setDraft(nextDraft);
+    const kept = draft.trimEnd().length;
+    const nextDraft = editDraft(kept, draft.length, kept ? `\n${text}` : text);
     setPendingSelection({ scope: JSON.stringify([projectId, session?.id, nextDraft]), position: nextDraft.length });
   }
 
@@ -581,7 +631,7 @@ export function Composer({
   const hasPermissions = Boolean(approvalChoice || agentPermissionSettings);
   const permissionsMenu = (className: string, chevron = false) => <PermissionsMenu className={className} chevron={chevron} approval={approvalChoice} agentSettings={agentPermissionSettings} />;
   /* On a new conversation the row under the composer names the mode; once it has started, a chip does while it differs from the default. */
-  const permissionsChip = !readOnlyViewer && !runOn.active && !newThread && Boolean(approvalChoice) && approval.id !== defaultApproval.id;
+  const permissionsChip = !readOnlyViewer && !runOn.active && hasPermissions && Boolean(approvalChoice) && approval.id !== defaultApproval.id;
   const settingLabels = [
     ...(effortOption ? ["Reasoning effort"] : []),
     ...(!readOnlyViewer && hasPermissions ? ["Permissions"] : []),
@@ -596,28 +646,58 @@ export function Composer({
   /* Send stays Send while a turn runs; an empty draft is what turns it into Stop. */
   const hasContent = Boolean(draft.trim()) || attachments.length > 0 || Boolean(skillId);
   const running = Boolean(activeRun);
-  const steerTurn = settings?.followUpBehavior === "steer" && attachments.length === 0 && !skillId
+  /* Whether this draft could go into the running turn at all; the setting picks between that and the queue. */
+  const canSteerDraft = attachments.length === 0 && !skillId
     && canSteerTurn({ harness: harnesses.find((item) => item.id === session?.harnessId), session, status: harnessStatus, desktop: api.isDesktop !== false });
+  const steerTurn = settings?.followUpBehavior === "steer" && canSteerDraft;
+  const resolvingContext = resolver.pending.filter((item) => !item.error);
+  const contextWait = resolvingContext.length
+    ? `Wait for ${resolvingContext.map((item) => item.kind === "command" ? `!${item.label}` : `@${item.kind}`).join(", ")} to finish attaching before sending.`
+    : undefined;
+  /* A phone or tablet keyboard's Return makes a new line; the send button sends. */
+  const touchKeyboard = (typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches) || (api.isDesktop === false && isNarrow());
+  const returnSends = sendOnEnter && !touchKeyboard;
+  const queuedEdit = workspace.queuedEdit;
   const contextLevel = contextUsage ? contextTone(contextUsage.fraction) : "normal";
-  const [keepFullHistory, setKeepFullHistory] = useState(false);
-  /* Compact, wait for that turn to end, then send what is in the composer. */
-  const [compactThenSend, setCompactThenSend] = useState<{ sessionId: string; started: boolean }>();
-  const offerCompact = contextLevel === "critical" && Boolean(compactCommand) && !readOnlyViewer && !running && hasContent && !bang && !runOn.active && !compactThenSend;
   const primary = composerPrimaryAction({ running, stopping: Boolean(activeRun && workspace.stoppingRunIds?.includes(activeRun.id)),
-    hasContent, bang: Boolean(bang), steer: steerTurn, compactFirst: offerCompact && !keepFullHistory });
-  useEffect(() => { setKeepFullHistory(false); setCompactThenSend(undefined); }, [session?.id]);
+    hasContent, bang: Boolean(bang), steer: steerTurn });
+  const otherKeys = shortcutLabel("composer-other-action", workspace.keyBindings);
+  /* The follow-up the primary button would not send: queue instead of steer, or steer instead of queue. */
+  const keyActions = useRef<Record<string, () => void>>({});
+  keyActions.current = {
+    "composer-other-action": () => {
+      if (queuedEdit) { void submit(); return; }
+      if (!running || primary.kind === "run-command" || !hasContent) { void submit(); return; }
+      if (readOnlyViewer) { workspace.setNotice("This device can only read."); return; }
+      if (contextWait) { workspace.setNotice(contextWait); return; }
+      if (primary.kind === "steer") { void workspace.sendFollowUp("queue"); return; }
+      if (!canSteerDraft) {
+        workspace.setNotice(attachments.length || skillId ? "Files and skills can't go into a running turn, so this one waits in the queue." : `${harnessDisplayName(harnesses, session?.harnessId, "This agent")} can't take messages mid-turn here.`);
+        return;
+      }
+      void workspace.sendFollowUp("steer");
+    },
+    "steer-first-queued": () => {
+      const first = workspace.queue[0];
+      if (!first) { workspace.setNotice("Nothing is queued."); return; }
+      if (readOnlyViewer) { workspace.setNotice("This device can only read."); return; }
+      if (!running) { workspace.releaseQueued(first.id); return; }
+      if (first.attachments.length || first.skillId) { workspace.setNotice("Files and skills can't go into a running turn, so the first queued message waits for this turn to end."); return; }
+      if (!canSteerTurn({ harness: harnesses.find((item) => item.id === session?.harnessId), session, status: harnessStatus, desktop: api.isDesktop !== false })) {
+        workspace.setNotice(`${harnessDisplayName(harnesses, session?.harnessId, "This agent")} can't take messages mid-turn here.`);
+        return;
+      }
+      void workspace.steerQueued(first.id);
+    },
+  };
   useEffect(() => {
-    if (!compactThenSend) return;
-    if (compactThenSend.sessionId !== session?.id) { setCompactThenSend(undefined); return; }
-    if (activeRun && !compactThenSend.started) setCompactThenSend({ ...compactThenSend, started: true });
-    else if (!activeRun && compactThenSend.started) { setCompactThenSend(undefined); void submit(false, true); }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeRun, compactThenSend, session?.id]);
-  async function compactAndSend() {
-    if (!compactCommand || !session) return;
-    setCompactThenSend({ sessionId: session.id, started: false });
-    if (!await runAgentCommand(compactCommand)) setCompactThenSend(undefined);
-  }
+    const onKey = (event: Event) => {
+      const id = (event as CustomEvent<{ id?: string }>).detail?.id;
+      if (id === "composer-other-action" || id === "steer-first-queued") keyActions.current[id]?.();
+    };
+    window.addEventListener(KEY_COMMAND_EVENT, onKey);
+    return () => window.removeEventListener(KEY_COMMAND_EVENT, onKey);
+  }, []);
 
   return (
     <div ref={composerRef} data-keymap-context="composer" className={`composer composer-dock composer-overlay-corner-masks${busy ? " composer-dock--with-activity" : ""}${resting ? " composer--resting" : ""}`}>
@@ -626,6 +706,14 @@ export function Composer({
         className={`composer-glass${dropping ? " dropping" : ""}${resting ? " composer-glass--resting" : ""}`}
         aria-expanded={!resting}
         onDragOver={(event) => {
+          if (carriesFileRow(event.dataTransfer.types)) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "copy";
+            setDropping(true);
+            return;
+          }
+          // Only files attach. Dragged text is left to the field, which inserts it where it lands.
+          if (!Array.from(event.dataTransfer.types).includes("Files")) return;
           event.preventDefault();
           setDropping(true);
         }}
@@ -686,8 +774,18 @@ export function Composer({
           }
         }}
         onDrop={(event) => {
-          event.preventDefault();
+          // A row dragged from the Files tree is a mention, the same as its menu's Mention in composer.
+          const row = readFileRowDrag(event.dataTransfer);
+          if (row) {
+            event.preventDefault();
+            setDropping(false);
+            workspace.mentionFile(fileRowMention(row, session?.workingDirectory ?? project?.workingDirectory));
+            textareaRef.current?.focus();
+            return;
+          }
           setDropping(false);
+          if (!Array.from(event.dataTransfer.types).includes("Files")) return;
+          event.preventDefault();
           try {
           const paths = Array.from(event.dataTransfer.files)
             .map((file) => api.getPathForFile(file))
@@ -716,7 +814,6 @@ export function Composer({
         {contextPicker && !picker && <ContextPicker kind={contextPicker} resolver={resolver} onClose={() => { setContextPicker(undefined); textareaRef.current?.focus(); }} />}
         {template && !picker && !contextPicker && <TemplateForm key={template.name} template={template} onCancel={() => { setTemplate(undefined); textareaRef.current?.focus(); }} onFill={fillFromTemplate} />}
         {expanding && <div className="meta" role="status">Expanding {commandInDraft(draft, commands) ? `/${commandInDraft(draft, commands)!.name}` : "the command"} for review…</div>}
-        {compactThenSend && <div className="meta" role="status">Compacting the conversation, then sending…</div>}
         {workspace.preparingAttachments > 0 && <div className="meta" role="status">Preparing {workspace.preparingAttachments} attachment{workspace.preparingAttachments === 1 ? "" : "s"}…</div>}
         {!picker && <ComposerMenu
           id={menuId}
@@ -742,6 +839,10 @@ export function Composer({
           rows={1}
           value={draft}
           aria-label="Message"
+          aria-autocomplete="list"
+          aria-haspopup="listbox"
+          aria-expanded={!picker && menuOpen}
+          enterKeyHint={returnSends ? "send" : "enter"}
           aria-controls={!picker && menuOpen ? menuId : undefined}
           aria-activedescendant={!picker && items[menuIndex] ? `${menuId}-${menuIndex}` : undefined}
           placeholder={readOnlyViewer ? "Read only on this device" : composerPlaceholder({ running, steer: steerTurn })}
@@ -753,7 +854,8 @@ export function Composer({
           onKeyUp={syncCaret}
           onSelect={syncCaret}
           onKeyDown={(event) => {
-            if (composing(event)) return;
+            // A key the shortcut map already acted on is not also typing here.
+            if (composing(event) || event.nativeEvent.defaultPrevented) return;
             if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "v") inlinePasteUntil.current = Date.now() + 2000;
             if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
               event.preventDefault();
@@ -765,6 +867,7 @@ export function Composer({
               }
               return;
             }
+            if (event.key === "Escape" && stashOpen) { event.preventDefault(); setStashOpen(false); return; }
             if (items.length > 0) {
               if (event.key === "ArrowDown") {
                 event.preventDefault();
@@ -788,21 +891,26 @@ export function Composer({
                   return;
                 }
               }
-              if (event.key === "Escape") {
-                event.preventDefault();
-                setMenuDismissed(true);
-                return;
-              }
             }
             if (event.key === "Tab" && event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey && !readOnlyViewer) {
               event.preventDefault();
               toggleTurnMode();
               return;
             }
-            if (menuOpen && event.key === "Escape") { event.preventDefault(); setMenuDismissed(true); return; }
-            /* With nothing to dismiss, Escape stops the turn that is running, the way the Stop button does. */
-            if (!menuOpen && event.key === "Escape" && activeRun && !readOnlyViewer && !workspace.stoppingRunIds?.includes(activeRun.id)) { event.preventDefault(); void stopRun(); return; }
-            if (menuOpen && event.key === "Enter" && !event.metaKey && !event.ctrlKey && !event.shiftKey) { event.preventDefault(); return; }
+            if (event.key === "Escape") {
+              if (menuOpen) { event.preventDefault(); setMenuDismissed(true); return; }
+              if (queuedEdit) { event.preventDefault(); workspace.cancelQueuedEdit(); return; }
+              /*
+               * With nothing to dismiss, Escape stops the running turn, the way
+               * the Stop button does. Not a held key, and not straight after an
+               * Escape that closed something: that is someone still dismissing.
+               */
+              if (activeRun && !readOnlyViewer && !workspace.stoppingRunIds?.includes(activeRun.id) && !event.repeat && event.timeStamp - lastDismissal.current > ESCAPE_SETTLE_MS) {
+                event.preventDefault();
+                void stopRun();
+              }
+              return;
+            }
             /* ⌥↑ in an empty prompt takes the last queued follow-up back to edit. */
             if (event.key === "ArrowUp" && event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey && !menuOpen && !event.currentTarget.value.trim()) {
               const last = workspace.queue.at(-1);
@@ -811,40 +919,46 @@ export function Composer({
             /*
              * ArrowUp in an empty prompt, or at its start, walks back through
              * what this thread was asked before; ArrowDown walks forward and
-             * finally restores whatever was being typed.
+             * finally restores whatever was being typed. Inside a recalled
+             * prompt of several lines, the arrows move the caret until it
+             * reaches the first line (up) or the last (down).
              */
             if ((event.key === "ArrowUp" || event.key === "ArrowDown") && !menuOpen && items.length === 0 && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) {
               const field = event.currentTarget;
               const history = recallablePrompts(messages);
               const atStart = draft === "" || (field.selectionStart === 0 && field.selectionEnd === 0);
-              if (event.key === "ArrowUp" && history.length > 0 && (atStart || recall)) {
+              const onFirstLine = !field.value.slice(0, field.selectionStart).includes("\n");
+              const onLastLine = !field.value.slice(field.selectionEnd).includes("\n");
+              if (event.key === "ArrowUp" && history.length > 0 && (atStart || (recall && onFirstLine))) {
                 event.preventDefault();
                 const index = recall ? Math.min(recall.index + 1, history.length - 1) : 0;
                 if (recall && index === recall.index) return;
                 setRecall({ index, original: recall?.original ?? draft });
-                setDraft(history[index]!);
+                editDraft(0, draft.length, history[index]!);
                 return;
               }
-              if (event.key === "ArrowDown" && recall) {
+              if (event.key === "ArrowDown" && recall && onLastLine) {
                 event.preventDefault();
-                if (recall.index === 0) { setDraft(recall.original); setRecall(undefined); }
-                else { setRecall({ ...recall, index: recall.index - 1 }); setDraft(history[recall.index - 1]!); }
+                if (recall.index === 0) { editDraft(0, draft.length, recall.original); setRecall(undefined); }
+                else { setRecall({ ...recall, index: recall.index - 1 }); editDraft(0, draft.length, history[recall.index - 1]!); }
                 return;
               }
             }
             /* `!command` runs here instead of reaching the agent. */
-            if (bang && event.key === "Enter" && !event.shiftKey && (sendOnEnter || event.metaKey || event.ctrlKey)) {
+            if (bang && event.key === "Enter" && !event.shiftKey && (returnSends || event.metaKey || event.ctrlKey)) {
               event.preventDefault();
               runBang(bang);
               return;
             }
+            /* ⌘Enter always sends; adding Shift also starts another conversation. */
             if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
               event.preventDefault();
-              void submit(event.shiftKey || sendOnEnter);
+              void submit(event.shiftKey);
               return;
             }
+            /* Enter with nothing to pick from an open menu sends, as it does with the menu closed. */
             if (event.key === "Enter" && !event.shiftKey) {
-              if (!sendOnEnter) return;
+              if (!returnSends) return;
               event.preventDefault();
               void submit();
             }
@@ -890,7 +1004,12 @@ export function Composer({
           </div>
         )}
         {stashOpen && (
-          <div className="composer-stash" role="dialog" aria-label="Stashed prompts">
+          <div className="composer-stash" role="dialog" aria-label="Stashed prompts" onKeyDown={(event) => {
+            if (event.key !== "Escape") return;
+            event.preventDefault();
+            setStashOpen(false);
+            textareaRef.current?.focus();
+          }}>
             <div className="composer-stash-head">
               <span>Stashed prompts</span>
               <small>{promptStashes.length}</small>
@@ -904,6 +1023,8 @@ export function Composer({
                     type="button"
                     className="composer-stash-restore"
                     onClick={() => {
+                      // Put the text in as an edit first, so ⌘Z gives back what was there.
+                      editDraft(0, draft.length, entry.prompt);
                       restorePromptStash(entry.id);
                       setStashOpen(false);
                     }}
@@ -943,7 +1064,7 @@ export function Composer({
               </button>
             ) : selectedHarness ? (
               <button className="ghost" type="button" onClick={() => void doctorHarness(selectedHarness.id)}>
-                Run Doctor
+                Check agent
               </button>
             ) : null}
             {readOnlyViewer || session?.paused || sendBlockReason === FOLDER_REQUIRED ? null : <button className="ghost" type="button" onClick={() => setView("runtimes")}>
@@ -951,15 +1072,23 @@ export function Composer({
             </button>}
           </div>
         )}
+        {queuedEdit && <div className="composer-queued-edit" role="status">
+          <span>Editing queued message</span>
+          <button type="button" className="ghost" onClick={() => { workspace.cancelQueuedEdit(); textareaRef.current?.focus(); }}>Cancel</button>
+        </div>}
         <QueuedPrompts />
         <div className="composer-row">
-          <button className="icon-btn composer-attach" title="Attach files" aria-label="Attach files" onClick={() => void pickAttachments()}>
-            <PaperclipIcon size={14} />
-          </button>
-          <div className="composer-controls" ref={controlsRef}>
+          {/* Attach on the left, with a turn setting beside it only while it differs from the usual. */}
+          <div className="composer-tools">
+            <button className="icon-btn composer-attach" title="Attach files" aria-label="Attach files" onClick={() => void pickAttachments()}>
+              <PaperclipIcon size={14} />
+            </button>
+            {/* Plan shows only while it is on (from /plan or ⇧Tab); asking the agent for a plan needs no switch. */}
             {!readOnlyViewer && !runOn.active && turnMode === "plan" && <TurnModeChip support={planSupport} onTurnOff={toggleTurnMode}
               disabledReason={busy ? "Wait for the message to send." : undefined} />}
             {permissionsChip && permissionsMenu("composer-permissions-chip")}
+          </div>
+          <div className="composer-controls" ref={controlsRef}>
             {/* Under Run on…, the candidates are the agents; the single-agent controls would describe a turn that is not sent. */}
             {runOn.active ? <RunOnSummary runOn={runOn} /> : <AgentModelPicker agents={agents} harnesses={harnesses} agentId={agentId} liveHarnessId={liveHarnessId}
               models={models} currentModel={currentModel} availability={!harnessLive && models?.availableModels.length ? { state: "available", detail: "Reported by the installed agent." } : capabilities.model}
@@ -981,8 +1110,8 @@ export function Composer({
           {session?.harnessId && <AgentCommandsControl key={session.id} hideTrigger anchor={controlsRef} onReturnFocus={focusPicker} />}
           <div className="composer-prompt-actions">
             <DictationButton state={dictation.state} unavailable={dictationUnavailableReason(api)} onToggle={dictation.toggle} />
-            {/* The ring is a warning, not a fixture: it appears once the context is filling up. */}
-            {contextUsage && contextLevel !== "normal" && (
+            {/* Quiet until it fills up: the ring is neutral below the warning level and colours from there. */}
+            {contextUsage && (
               <ContextWindowMeter
                 used={contextUsage.used}
                 limit={contextUsage.limit}
@@ -996,14 +1125,13 @@ export function Composer({
                 idleMinutes={idleMinutes}
               />
             )}
-            {offerCompact && (
-              <button type="button" className="composer-compact-toggle" aria-pressed={!keepFullHistory}
-                title={keepFullHistory ? "Next send keeps the whole conversation. Press to compact first." : "Next send compacts the conversation first. Press to keep all of it."}
-                onClick={() => setKeepFullHistory((value) => !value)}>
-                {keepFullHistory ? "Keep" : "Compact"}
+            {queuedEdit ? (
+              <button className="send-btn" aria-label="Update queued message" title="Update queued message · Esc cancels the edit"
+                disabled={busy || picking || dictation.active || !hasContent || readOnlyViewer || Boolean(contextWait)}
+                onClick={() => void submit()}>
+                <CheckIcon size={14} />
               </button>
-            )}
-            {primary.kind === "stop" ? (
+            ) : primary.kind === "stop" ? (
               <button className="send-btn stop" disabled={readOnlyViewer || primary.stopping} title={readOnlyViewer ? "This device can only read." : primary.stopping ? "Stopping. Waiting for the agent to finish its current step." : "Stop (Esc)"} aria-label={primary.stopping ? "Stopping" : "Stop"} onClick={() => void stopRun()}>
                 <StopIcon size={16} />
               </button>
@@ -1011,19 +1139,20 @@ export function Composer({
               <button
                 className="send-btn"
                 aria-label={runOn.active && primary.kind === "send" ? `Run on ${runOn.picks.length} agents` : PRIMARY_ACTION_LABELS[primary.kind]}
-                disabled={busy || picking || expanding || dictation.active || runOn.starting || Boolean(compactThenSend) || !hasContent
+                disabled={busy || picking || expanding || dictation.active || runOn.starting || !hasContent
+                  || (primary.kind !== "run-command" && Boolean(contextWait))
                   || (primary.kind === "queue" || primary.kind === "steer" ? readOnlyViewer : primary.kind !== "run-command" && !runOn.active && Boolean(sendBlockReason))}
                 title={
                   primary.kind === "run-command" ? `Run ${bang} and attach its output`
-                    : primary.kind === "queue" ? "Queue for when this turn ends. Esc stops the turn."
-                    : primary.kind === "steer" ? "Send into the running turn. Esc stops it."
+                    : contextWait ? contextWait
+                    : primary.kind === "queue" ? `Queue for when this turn ends${canSteerDraft && otherKeys ? ` · ${otherKeys} sends it into the turn now` : ""} · Esc stops the turn`
+                    : primary.kind === "steer" ? `Send into the running turn${otherKeys ? ` · ${otherKeys} queues it instead` : ""} · Esc stops the turn`
                     : runOn.active ? `Send to ${runOn.picks.length} agents, each in its own worktree`
-                    : sendBlockReason || (primary.kind === "compact-send" ? "Compact the conversation, then send"
-                    : sendOnEnter ? "Send · Enter · ⌘Enter starts another conversation" : "Send · ⌘Enter · ⌘⇧Enter starts another conversation")
+                    : sendBlockReason || (returnSends ? "Send · Enter · ⌘⇧Enter sends and starts another conversation" : "Send · ⌘Enter · ⌘⇧Enter sends and starts another conversation")
                 }
                 onClick={() => { if (bang) runBang(bang); else void submit(); }}
               >
-                {primary.kind === "run-command" ? <TerminalIcon size={14} /> : <ArrowUpIcon size={14} />}
+                {primary.kind === "run-command" ? <TerminalIcon size={14} /> : primary.kind === "queue" ? <ClockIcon size={14} /> : <ArrowUpIcon size={14} />}
               </button>
             )}
           </div>
@@ -1073,7 +1202,7 @@ export function Composer({
               <MenuSelect
                 ariaLabel="Branch"
                 value={git.branch ?? git.branches[0] ?? ""}
-                options={git.branches.map((item) => ({ id: item, label: item }))}
+                options={[...git.branches, ...(git.remoteBranches ?? [])].map((item) => ({ id: item, label: item }))}
                 onChange={(id) => void checkoutBranch(id)}
               />
             </span>
@@ -1081,6 +1210,18 @@ export function Composer({
           {hasPermissions && !runOn.active && permissionsMenu("composer-context-permissions")}
         </span>
         </>}
+        {/* A started conversation keeps its branch in view; the count of changes opens Review. */}
+        {!newThread && git?.isRepo && git.branch && (
+          <span className="composer-context-end">
+            {session?.workspaceMode === "worktree" && <span className="workspace-mode-label">Worktree</span>}
+            <button type="button" className="composer-branch-status" title={git.dirty ? `${git.changed} changed ${git.changed === 1 ? "file" : "files"} on ${git.branch} · Open Review` : `${git.branch} · Open Review`}
+              onClick={() => { workspace.setInspectorTab("changes"); workspace.setInspectorOpen(true); }}>
+              <GitBranchIcon size={12} />
+              <span className="composer-branch-name">{git.branch}</span>
+              {git.dirty && git.changed > 0 ? <span className="composer-branch-changes">{git.changed} changed</span> : null}
+            </button>
+          </span>
+        )}
         <StatusLine />
       </div>
       {/* Always mounted so its fade plays both ways; the status line beside it is what screen readers hear. */}

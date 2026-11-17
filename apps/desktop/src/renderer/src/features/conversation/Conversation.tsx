@@ -1,9 +1,8 @@
-import { formatClock } from "../../lib/display-prefs";
+import { formatFullStamp, formatStamp } from "../../lib/display-prefs";
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChatMessage, Run } from "@capsule/shared";
 import { harnessDisplayName } from "../../lib/harness";
 import { useMarkThreadViewed } from "../../lib/thread-triage";
-import { QuestionCard } from "../questions/QuestionCard";
 import { QuoteSelection } from "./QuoteSelection";
 import { formatTokens, type ContextUsage } from "../../lib/context-window";
 import { AlertTriangleIcon, ChevronDownIcon, DiffIcon, FileIcon, HistoryIcon, MessageSquarePlusIcon, SparkIcon, TerminalIcon, XIcon } from "../shell/icons";
@@ -34,9 +33,10 @@ import { runActivityLabel } from "@capsule/shared";
 import { summariseWork, extractTouchedFiles } from "../../lib/activity";
 import { outcomesByTurn } from "../../lib/turn-outcomes";
 import { threadFeedback } from "../../lib/thread-error";
-import { shouldFollowLatest } from "../../lib/composer-rest";
-import { ApprovalDetails, APPROVE_ONCE_UNAVAILABLE } from "../harness/ApprovalDetails";
-import { AlwaysAllow } from "../customization/AlwaysAllow";
+import { composerPageDirection, glideScroll, PAGE_OVERLAP_PX, shouldFollowLatest } from "../../lib/composer-rest";
+import { ApprovalCards } from "./ApprovalCards";
+import { ShelfNote } from "../triage/ShelfNote";
+import { ThreadAnnouncer } from "./ThreadAnnouncer";
 import { TurnOutcome } from "./TurnOutcome";
 import { TurnVerification } from "./TurnVerification";
 import { LongPrompt } from "./LongPrompt";
@@ -44,7 +44,6 @@ import { CompactionDivider, isCompactionTurn } from "./CompactionDivider";
 import { PlanHandoff } from "./PlanHandoff";
 import { useHandoff } from "../handoff/Handoff";
 import { ThreadOrigin } from "../import/ThreadOrigin";
-import { ImportHint } from "../import/ImportSessions";
 import { EmptyThreadFolder } from "./EmptyThreadFolder";
 import { TurnFilesCard } from "./TurnFilesCard";
 import { MessageBody } from "./MessageBody";
@@ -111,7 +110,7 @@ const MessageRow = memo(function MessageRow({
           the content leads and the chrome reads as a caption. */}
       <div className="who">
         {message.kind === "steer" && <span className="tag">Steer</span>}
-        <span className="when">{formatTime(message.createdAt)}</span>
+        <time className="when" dateTime={message.createdAt} title={formatFullStamp(message.createdAt)}>{formatStamp(message.createdAt)}</time>
         <span className="msg-actions">
           {ratingRunId && onRate ? <RatingButtons value={ratingValue} writable={ratingWritable} onRate={(value) => onRate(ratingRunId, value)} /> : null}
           <CopyButton text={message.content} />
@@ -160,10 +159,6 @@ const FoldedTurn = memo(function FoldedTurn({
     </button>
   );
 });
-
-function formatTime(iso: string): string {
-  return formatClock(iso);
-}
 
 /** Newest turns that never fold. */
 const KEEP_EXPANDED_TURNS = 3;
@@ -298,6 +293,7 @@ export function Conversation() {
     steps,
     events: workspaceEvents,
     pendingApproval,
+    pendingApprovals = [],
     api,
     notice,
     ready,
@@ -313,6 +309,7 @@ export function Conversation() {
     attachFiles,
     threadFind,
     setThreadFind,
+    threadFindQuery,
     promptJump,
     setPromptJump,
     pendingResume,
@@ -328,6 +325,7 @@ export function Conversation() {
     stoppingRunIds,
     setSessionId,
     reloadThread,
+    projectSettings,
   } = useWorkspace();
   /* A paired device that can only read: write controls are hidden or explain why. */
   const readOnlyViewer = api.isDesktop === false && api.remoteMode !== "control";
@@ -393,6 +391,8 @@ export function Conversation() {
   const [errorExpanded, setErrorExpanded] = useState(false);
   const turnOutcomes = useMemo(() => outcomesByTurn(turns, runs, session?.id, project?.id), [turns, runs, session?.id, project?.id]);
   const summaryRun = [activeRun, ...(hasNewerMessages ? [] : runs)].find((run) => run && run.sessionId === session?.id && run.projectId === project?.id);
+  /* Settings › reasoning: hidden keeps thoughts out of the work log too. */
+  const reasoning = projectSettings?.reasoningSummary;
   const transcripts = useMemo(() => {
     const currentRuns = activeRun ? [activeRun, ...runs.filter((run) => run.id !== activeRun.id)] : runs;
     const owners = outcomesByTurn(turns, currentRuns, session?.id, project?.id, { includeInFlight: true });
@@ -404,9 +404,9 @@ export function Conversation() {
     return new Map(turns.flatMap((turn) => {
       const run = (owners.get(turn.id) ?? []).find((item) => item.id === turn.prompt?.runId)
         ?? owners.get(turn.id)?.[0];
-      return run ? [[turn.id, { ...turnTranscript(turn.messages, byRun.get(run.id) ?? [], run), run, plan: tasksFromRunEvents(byRun.get(run.id) ?? []) }] as const] : [];
+      return run ? [[turn.id, { ...turnTranscript(turn.messages, byRun.get(run.id) ?? [], run, { reasoning }), run, plan: tasksFromRunEvents(byRun.get(run.id) ?? []) }] as const] : [];
     }));
-  }, [turns, runs, activeRun, events, session?.id, project?.id]);
+  }, [turns, runs, activeRun, events, session?.id, project?.id, reasoning]);
   const activeTurnId = activeRun && [...transcripts].find(([, transcript]) => transcript.run.id === activeRun.id)?.[0];
 
   /*
@@ -481,13 +481,6 @@ export function Conversation() {
     if (!latest || (latest.status !== "failed" && latest.status !== "blocked")) return undefined;
     return { runId: latest.id, prompt: latest.prompt, signIn: /sign(ed)? ?in|log ?in|auth|unauthori[sz]ed|\b401\b/i.test(latest.error ?? failure) };
   }, [failure, limitStop, runs, session]);
-
-  /* One decision at a time: a second click while the first is in flight would find the request gone. */
-  const [deciding, setDeciding] = useState<string>();
-  const decide = (id: string, decision: "approved_once" | "denied", then?: () => void) => {
-    setDeciding(id);
-    void api.resolveApproval(id, decision).then(() => then?.(), (error) => setNotice(formatUserError(error))).finally(() => setDeciding(undefined));
-  };
 
   const openTurn = useCallback((id: string) => {
     setOpenedTurns((current) => new Set(current).add(id));
@@ -575,6 +568,30 @@ export function Conversation() {
   }, [createTask, setNotice]);
 
   const scroller = useRef<HTMLDivElement>(null);
+  const endSpace = useRef<HTMLDivElement>(null);
+  // Oldest first, so the stack reads in the order the agent asked.
+  const threadRequests = useMemo(() => pendingApprovals.filter((request) => runs.some((run) => run.id === request.runId))
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt)), [pendingApprovals, runs]);
+  const latestRun = useMemo(() => runs.reduce<Run | undefined>((latest, run) => !latest || run.createdAt > latest.createdAt ? run : latest, undefined), [runs]);
+  const announced = useMemo(() => ({
+    threadId: session?.id,
+    run: latestRun && { id: latestRun.id, status: latestRun.status },
+    requests: threadRequests.map((request) => ({ id: request.id, question: Boolean(request.details?.questions?.length), agent: harnessDisplayName(harnesses, request.agentName, request.agentName), action: request.action })),
+  }), [session?.id, latestRun, threadRequests, harnesses]);
+  /* PageUp and PageDown in the composer page the transcript, so reading back never means leaving the draft. */
+  const stopGlide = useRef(() => {});
+  const pageFromComposer = (event: React.KeyboardEvent) => {
+    const field = event.target;
+    const node = scroller.current;
+    // An open menu in the composer may already use the key.
+    if (event.defaultPrevented || !node || !(field instanceof HTMLTextAreaElement) || !field.classList.contains("composer-field")) return;
+    const direction = composerPageDirection({ key: event.key, modified: event.altKey || event.ctrlKey || event.metaKey || event.shiftKey, composing: event.nativeEvent.isComposing, field });
+    if (!direction) return;
+    event.preventDefault();
+    if (direction < 0 && node.scrollTop > 0) setStick(false);
+    stopGlide.current();
+    stopGlide.current = glideScroll(node, direction * Math.max(0, node.clientHeight - PAGE_OVERLAP_PX), window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  };
   /*
    * Messages already shown in this conversation. Only one that arrives after
    * the conversation has loaded animates in, once: switching conversations,
@@ -605,6 +622,11 @@ export function Conversation() {
    * notice, a taller draft). Re-pin to the latest message then too, or the
    * end of the thread slides under the composer while following it.
    */
+  /*
+   * The follow decision as of the latest scroll. A scroll changes it before
+   * React renders the new `stick`; a resize landing in between must not pin a
+   * reader who just scrolled away back to the end.
+   */
   const following = useRef(stick);
   following.current = stick;
   useEffect(() => {
@@ -621,8 +643,9 @@ export function Conversation() {
   }, [session?.id]);
 
   return (
-    <section className={`main page-content${!historyPending && !historyError && visibleMessageCount === 0 ? " conversation-empty" : ""}`}>
+    <section className={`main page-content${!historyPending && !historyError && visibleMessageCount === 0 ? " conversation-empty" : ""}`} onKeyDown={pageFromComposer}>
       <ConversationBackdrop />
+      <ThreadAnnouncer activity={announced} />
       {shownNotice && (
         <div className="notice notice-dismissable" role="status">
           <span>{shownNotice}</span>
@@ -639,7 +662,7 @@ export function Conversation() {
       )}
       {api.isDesktop !== false && <QuoteSelection scroller={scroller} />}
       <TrustNotice />
-      {threadFind && <ThreadFind turns={turns} scroller={scroller} onReveal={revealMatch} onClose={() => setThreadFind(false)} />}
+      {threadFind && <ThreadFind key={threadFindQuery} initialQuery={threadFindQuery} turns={turns} scroller={scroller} onReveal={revealMatch} onClose={() => setThreadFind(false)} />}
       <div
         className="conversation"
         ref={scroller}
@@ -649,10 +672,8 @@ export function Conversation() {
           const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight;
           const scrollDelta = node.scrollTop - lastScrollTop.current;
           lastScrollTop.current = node.scrollTop;
-          setStick((current) => {
-            const next = shouldFollowLatest({ following: current, distanceFromBottom, scrollDelta });
-            return next === current ? current : next;
-          });
+          following.current = shouldFollowLatest({ following: following.current, distanceFromBottom, scrollDelta });
+          setStick(following.current);
         }}
       >
         {session && visibleMessageCount > 0 && <PromptJump messages={messages} open={promptJump} onOpenChange={setPromptJump} onLocate={jumpToPrompt}
@@ -693,7 +714,6 @@ export function Conversation() {
                 )}
               </h1>
               {!project?.workingDirectory && <EmptyThreadFolder />}
-              {project?.workingDirectory && !session?.origin && <ImportHint projectId={project.id} />}
             </div>
           ) : (
             <>
@@ -711,7 +731,7 @@ export function Conversation() {
                 </div>
               )}
               {historyNavigation}
-              <VirtualTurns key={`${session?.id}:${settings?.timeFormat ?? "system"}:${settings?.toolCallDisplay ?? "compact"}`} turns={turns} folded={folded} scroller={scroller} stick={stick} focus={focusTurn} restoreKey={session?.id} onRestore={() => setStick(false)}>{(turn) =>
+              <VirtualTurns key={`${session?.id}:${settings?.timeFormat ?? "system"}:${settings?.toolCallDisplay ?? "compact"}`} turns={turns} folded={folded} scroller={scroller} stick={stick} following={following} running={Boolean(activeRun)} endSpace={endSpace} focus={focusTurn} restoreKey={session?.id} onRestore={() => setStick(false)} onDisclosure={() => setStick(false)}>{(turn) =>
                 folded.has(turn.id) ? (
                   <Fragment key={turn.id}>
                     <FoldedTurn turn={turn} onOpen={openTurn} />
@@ -732,7 +752,7 @@ export function Conversation() {
                     stopping={stoppingRunIds?.includes(transcripts.get(turn.id)?.run.id ?? "")}
                     details={(() => {
                       const run = transcripts.get(turn.id)?.run;
-                      return run && (run.status === "completed" || run.status === "cancelled") && <><RunEventLog runId={run.id} /><TurnVerification run={run} /></>;
+                      return run && (run.status === "completed" || run.status === "cancelled") && <TurnVerification run={run} />;
                     })()}>
                     {(message) => {
                       const outcome = transcripts.get(turn.id)?.run;
@@ -767,7 +787,7 @@ export function Conversation() {
                           stays its own row only where the turn went wrong or left no
                           answer, which is when someone needs it. */}
                       {(run.status === "failed" || run.status === "blocked" || !turn.messages.some((message) => message.role === "assistant")) && run.id !== (activeRun ? summaryRun?.id : undefined) && <RunSummary run={run} label="Turn details">
-                        <RunEventLog runId={run.id} failed={run.status === "failed" || run.status === "blocked"} />
+                        {(run.status === "failed" || run.status === "blocked") && <RunEventLog runId={run.id} />}
                         <TurnVerification run={run} />
                       </RunSummary>}
                     </Fragment>)}
@@ -845,10 +865,9 @@ export function Conversation() {
                   ))}
                 </div>
                 {/* Full history and checks share one expansion, not three cards. */}
-                {events.some((event) => event.data?.earlierEvents) && <p className="faint">Showing recent activity only. Earlier events are available in the run log.</p>}
-                {events.some((event) => event.data?.payloadTruncated) && <p className="faint">Some oversized diagnostic content was shortened.</p>}
+                {events.some((event) => event.data?.earlierEvents) && <p className="faint">Showing recent activity only.</p>}
                 {summaryRun && <>
-                  <RunEventLog runId={summaryRun.id} failed={summaryRun.status === "failed" || summaryRun.status === "blocked"} />
+                  {(summaryRun.status === "failed" || summaryRun.status === "blocked") && <RunEventLog runId={summaryRun.id} />}
                   <TurnVerification run={summaryRun} />
                 </>}
               </RunSummary>
@@ -915,44 +934,9 @@ export function Conversation() {
               </button>
             </div>
           ) : null}
-          {pendingApproval?.details?.questions?.length ? <QuestionCard approval={pendingApproval} /> : pendingApproval && (
-            <div className="conversation-approval" role="group" aria-label="Approval required">
-              <div className="conversation-approval-ask">
-                {harnessDisplayName(harnesses, pendingApproval.agentName, pendingApproval.agentName)} wants to <b>{pendingApproval.action}</b>
-              </div>
-              {/* The target comes from the agent or a web page: one line, so it cannot draw its own fake card. */}
-              <div className="mono conversation-approval-target" title={pendingApproval.target}>{pendingApproval.target.replace(/\s+/g, " ")}</div>
-              {pendingApproval.reason?.trim() && pendingApproval.reason.trim().toLowerCase() !== pendingApproval.action.trim().toLowerCase()
-                ? <div className="muted">{pendingApproval.reason}</div> : null}
-              <ApprovalDetails approval={pendingApproval} />
-              {readOnlyViewer ? <p className="faint">This device can only read. Answer on the computer running Capsule.</p> : <div className="actions">
-                <button
-                  className="send"
-                  disabled={pendingApproval.details?.canApproveOnce === false || deciding === pendingApproval.id}
-                  title={pendingApproval.details?.canApproveOnce === false ? APPROVE_ONCE_UNAVAILABLE : undefined}
-                  onClick={() => decide(pendingApproval.id, "approved_once")}
-                >
-                  Approve once
-                </button>
-                <AlwaysAllow
-                  approval={pendingApproval}
-                  projectId={session?.projectId}
-                  thread={session?.openclawSessionKey?.startsWith("direct:") ? "This agent asks again for each request, so it can’t be allowed for the whole conversation." : true}
-                />
-                <button className="ghost" disabled={deciding === pendingApproval.id} onClick={() => decide(pendingApproval.id, "denied")}>
-                  Deny
-                </button>
-                {/* Deny, then the message box, to tell the agent what to do instead (as on the phone). */}
-                <button
-                  className="ghost"
-                  disabled={deciding === pendingApproval.id}
-                  onClick={() => decide(pendingApproval.id, "denied", () => document.querySelector<HTMLTextAreaElement>(".composer-dock textarea.composer-field")?.focus())}
-                >
-                  Deny and reply
-                </button>
-              </div>}
-            </div>
-          )}
+          <ApprovalCards requests={threadRequests} session={session} readOnly={readOnlyViewer} />
+          {session && <ShelfNote session={session} />}
+          <div ref={endSpace} className="thread-end-space" aria-hidden />
 
         </div>
       </div>
@@ -963,15 +947,19 @@ export function Conversation() {
           <button
             type="button"
             className="jump-latest"
+            // A pointer press leaves focus where it was, so the draft keeps its caret; Tab still reaches it.
+            onPointerDown={(event) => event.preventDefault()}
             onClick={() => {
               setStick(true);
               // In an older stretch of history the end of this page is not the latest; load the latest.
               if (hasNewerMessages) { void returnToLatest().catch((error) => setNotice(formatUserError(error))); return; }
+              // A page still gliding up would carry the view away from the end again.
+              stopGlide.current();
               const node = scroller.current;
               if (node) node.scrollTop = node.scrollHeight;
             }}
           >
-            <span>{pendingApproval?.details?.questions?.length ? "Question waiting" : pendingApproval ? "Approval waiting" : "Scroll to end"}</span>
+            <span>{threadRequests.length > 1 ? `${threadRequests.length} requests waiting` : threadRequests[0]?.details?.questions?.length ? "Question waiting" : threadRequests.length ? "Approval waiting" : "Scroll to end"}</span>
             <ChevronDownIcon size={14} aria-hidden />
           </button>
         )}

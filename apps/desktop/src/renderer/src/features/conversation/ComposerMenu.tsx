@@ -75,14 +75,19 @@ export function detectTrigger(
   const before = value.slice(0, caret);
   const slash = /(^|\n)\/([^\s]*)$/.exec(before);
   if (slash?.[1] !== undefined && slash[2] !== undefined && slash.index !== undefined) {
-    return { kind: "slash", query: slash[2], start: slash.index + slash[1].length };
+    const start = slash.index + slash[1].length;
+    // A pasted path such as /Users/me/app.log is not a command, wherever the caret sits in it.
+    const word = value.slice(start + 1).match(/^[^\s]*/)?.[0] ?? "";
+    return /[/\\]/.test(word) ? undefined : { kind: "slash", query: slash[2], start };
   }
-  const at = /(^|[\s])@([^\s]*)$/.exec(before);
+  // A mention also opens inside brackets and quotes: "(@src/app.ts)".
+  const at = /(^|[\s\p{Ps}"'`])@([^\s]*)$/u.exec(before);
   if (at?.[1] !== undefined && at[2] !== undefined && at.index !== undefined) {
     return { kind: "file", query: at[2], start: at.index + at[1].length };
   }
   const skill = /(^|[\s])\$([^\s]*)$/.exec(before);
-  if (skill?.[1] !== undefined && skill[2] !== undefined && skill.index !== undefined) {
+  // $5, $10k, $1,200.50 and $.50 are money, not skills.
+  if (skill?.[1] !== undefined && skill[2] !== undefined && skill.index !== undefined && !/^\.?\d[\d,._]*(?:[kmbt]|e\d+)?[.,;:!?)]*$/i.test(skill[2])) {
     return { kind: "skill", query: skill[2], start: skill.index + skill[1].length };
   }
 }

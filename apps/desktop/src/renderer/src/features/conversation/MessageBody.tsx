@@ -5,6 +5,7 @@ import { ActionMenu } from "../shell/ActionMenu";
 import { MarkdownBody } from "./MarkdownBody";
 import type { LoadImage } from "./MarkdownImage";
 import { linkMenuItems, openInSystemBrowser, runLinkAction } from "./link-actions";
+import { requestTerminalCommand } from "../../lib/terminal-requests";
 import type { ActionMenuItem } from "../../lib/action-menu";
 
 export { MarkdownBody } from "./MarkdownBody";
@@ -18,7 +19,7 @@ export { MarkdownBody } from "./MarkdownBody";
  * link opens in a new tab of that device's browser.
  */
 export function MessageBody({ content, githubBaseUrl, threadImages = false }: { content: string; githubBaseUrl?: string; threadImages?: boolean }) {
-  const { api, projectId, project, session, openFile, setBrowserUrl, setInspectorOpen, setInspectorTab, setNotice } = useWorkspace();
+  const { api, projectId, project, session, openFile, setBrowserUrl, setInspectorOpen, setInspectorTab, setNotice, setTerminalOpen } = useWorkspace();
   const root = session?.workingDirectory ?? project?.workingDirectory;
   const loadImage = useMemo<LoadImage | undefined>(() => threadImages && projectId && root ? async (path) => {
     const preview = await api.previewFile(projectId, path, root);
@@ -35,6 +36,8 @@ export function MessageBody({ content, githubBaseUrl, threadImages = false }: { 
   const run = useCallback((action: string, href: string) => {
     void runLinkAction(action, href, openLink).catch(() => setNotice("Couldn’t copy the link."));
   }, [openLink, setNotice]);
+  /* Terminal input is a write channel no paired device holds, so the control is drawn only on the computer. */
+  const typeCommand = useCallback((command: string) => { requestTerminalCommand({ kind: "type", command }); setTerminalOpen(true); }, [setTerminalOpen]);
   const [menu, setMenu] = useState<{ href: string; point: { x: number; y: number }; items: ActionMenuItem[] }>();
   const onLinkMenu = useCallback((href: string, point: { x: number; y: number }) => {
     const items = linkMenuItems(api.isDesktop !== false);
@@ -51,6 +54,7 @@ export function MessageBody({ content, githubBaseUrl, threadImages = false }: { 
       loadImage={loadImage}
       onOpenLink={openLink}
       onLinkMenu={onLinkMenu}
+      onTypeCommand={api?.isDesktop === true ? typeCommand : undefined}
     />
     {menu && <ActionMenu items={menu.items} point={menu.point} onClose={() => setMenu(undefined)}
       onSelect={(action) => { setMenu(undefined); run(action, menu.href); }} />}

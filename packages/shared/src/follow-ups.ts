@@ -15,6 +15,8 @@ export interface QueuedPrompt {
   attachments: MessageAttachment[];
   skillId?: string;
   createdAt: string;
+  /** Set by the engine on a scheduled resume: the stopped run it continues. It goes even while the queue is held. */
+  resumeOf?: string;
 }
 
 export interface ScheduledResume {
@@ -32,6 +34,12 @@ export interface FollowUps {
   resume?: ScheduledResume;
   /** Why the next queued prompt could not be sent; it stays first in line and is retried. */
   blocked?: string;
+  /**
+   * Why the queue waits for the person: the last turn was stopped or did not
+   * finish, so sending the next prompt on its own could build on a broken
+   * turn. Only the person's own send or a release lets it go.
+   */
+  held?: string;
 }
 
 export type FollowUpPrompt = Pick<QueuedPrompt, "content" | "attachments" | "skillId">;
@@ -41,7 +49,11 @@ export type FollowUpOp =
   | { type: "remove"; id: string }
   | { type: "move"; id: string; direction: "up" | "down" }
   | { type: "schedule"; resume: ScheduledResume }
-  | { type: "cancel-resume" };
+  | { type: "cancel-resume" }
+  /** Rewrite a queued prompt where it stands in line. */
+  | { type: "replace"; id: string; prompt: FollowUpPrompt }
+  /** Let a held queue go. With an id, that prompt moves to the front and goes first. */
+  | { type: "release"; id?: string };
 
 export const FOLLOW_UP_LIMIT = 20;
 export const EMPTY_FOLLOW_UPS: FollowUps = { queue: [] };
@@ -76,7 +88,7 @@ export function applyFollowUpOp(state: FollowUps, op: FollowUpOp, now = new Date
     case "remove": {
       const queue = removeQueued(state.queue, op.id);
       // Removing the prompt that was stuck clears the reason it was stuck.
-      return { ...state, queue, ...(state.queue[0]?.id === op.id ? { blocked: undefined } : {}) };
+      return { ...state, queue, ...(state.queue[0]?.id === op.id ? { blocked: undefined } : {}), ...(queue.length === 0 ? { held: undefined } : {}) };
     }
     case "move":
       return { ...state, queue: moveQueued(state.queue, op.id, op.direction) };
@@ -85,6 +97,15 @@ export function applyFollowUpOp(state: FollowUps, op: FollowUpOp, now = new Date
     case "cancel-resume":
       // Dismissing the plan also dismisses why it stopped.
       return { ...state, resume: undefined, blocked: undefined };
+    case "replace": {
+      if (!state.queue.some((item) => item.id === op.id)) throw new Error("That queued message has already been sent.");
+      return { ...state, queue: state.queue.map((item) => item.id === op.id ? { ...item, ...op.prompt, skillId: op.prompt.skillId } : item) };
+    }
+    case "release": {
+      const chosen = op.id === undefined ? undefined : state.queue.find((item) => item.id === op.id);
+      if (op.id !== undefined && !chosen) throw new Error("That queued message has already been sent.");
+      return { ...state, queue: chosen ? [chosen, ...state.queue.filter((item) => item !== chosen)] : state.queue, held: undefined };
+    }
   }
 }
 
@@ -103,19 +124,24 @@ function text(value: unknown, max: number): string | undefined {
   return typeof value === "string" && value.length <= max ? value : undefined;
 }
 
+function readPrompt(value: unknown): FollowUpPrompt | undefined {
+  const prompt = value as Record<string, unknown> | null;
+  const content = text(prompt?.content, 2_000_000);
+  const files = attachments(prompt?.attachments ?? []);
+  const skillId = prompt?.skillId === undefined ? undefined : text(prompt.skillId, 512);
+  if (content === undefined || !files || (prompt?.skillId !== undefined && skillId === undefined)) return undefined;
+  if (!content.trim() && files.length === 0) return undefined;
+  return { content, attachments: files, ...(skillId ? { skillId } : {}) };
+}
+
 /** Validate an op that arrived over IPC. Returns undefined for anything malformed. */
 export function readFollowUpOp(value: unknown): FollowUpOp | undefined {
   const op = value as Record<string, unknown> | null;
   if (!op || typeof op !== "object") return undefined;
   switch (op.type) {
     case "add": {
-      const prompt = op.prompt as Record<string, unknown> | null;
-      const content = text(prompt?.content, 2_000_000);
-      const files = attachments(prompt?.attachments ?? []);
-      const skillId = prompt?.skillId === undefined ? undefined : text(prompt.skillId, 512);
-      if (content === undefined || !files || (prompt?.skillId !== undefined && skillId === undefined)) return undefined;
-      if (!content.trim() && files.length === 0) return undefined;
-      return { type: "add", prompt: { content, attachments: files, ...(skillId ? { skillId } : {}) } };
+      const prompt = readPrompt(op.prompt);
+      return prompt ? { type: "add", prompt } : undefined;
     }
     case "remove": {
       const id = text(op.id, 256);
@@ -136,6 +162,16 @@ export function readFollowUpOp(value: unknown): FollowUpOp | undefined {
     }
     case "cancel-resume":
       return { type: "cancel-resume" };
+    case "replace": {
+      const id = text(op.id, 256);
+      const prompt = readPrompt(op.prompt);
+      return id && prompt ? { type: "replace", id, prompt } : undefined;
+    }
+    case "release": {
+      if (op.id === undefined) return { type: "release" };
+      const id = text(op.id, 256);
+      return id ? { type: "release", id } : undefined;
+    }
     default:
       return undefined;
   }
@@ -150,7 +186,7 @@ export function readFollowUps(raw: string | undefined): FollowUps {
       ? parsed.queue.filter((item): item is QueuedPrompt => Boolean(item && typeof item.id === "string" && typeof item.content === "string" && Array.isArray(item.attachments) && typeof item.createdAt === "string")).slice(0, FOLLOW_UP_LIMIT)
       : [];
     const resume = parsed?.resume && typeof parsed.resume.runId === "string" && typeof parsed.resume.prompt === "string" && typeof parsed.resume.at === "number" ? parsed.resume : undefined;
-    return { queue, ...(resume ? { resume } : {}), ...(typeof parsed?.blocked === "string" ? { blocked: parsed.blocked } : {}) };
+    return { queue, ...(resume ? { resume } : {}), ...(typeof parsed?.blocked === "string" ? { blocked: parsed.blocked } : {}), ...(typeof parsed?.held === "string" ? { held: parsed.held } : {}) };
   } catch {
     return { queue: [] };
   }

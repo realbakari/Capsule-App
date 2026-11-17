@@ -48,8 +48,8 @@ export function TurnOutcome({ run, cwd, onRestore }: { run: Run; cwd?: string; o
   if (!outcome?.files.length && !outcome?.partial) return null;
   return (
     <div className="turn-outcome" data-run-id={run.id}>
-      {outcome?.partial && <p className="faint">Recent file activity only; no complete saved diff is available. Earlier activity is in this turn’s Run log.</p>}
-      {outcome?.filesTruncated && <p className="faint">Large change set. This list and its totals are limited; inspect the saved checkpoints in Git for all files.</p>}
+      {outcome?.partial && <p className="faint">Recent file activity only; no complete saved diff is available.{run.status === "failed" || run.status === "blocked" ? " Turn details below have the earlier activity." : ""}</p>}
+      {outcome?.filesTruncated && <p className="faint">Large change set. This list and its totals are limited.</p>}
       {outcome && outcome.files.length > 0 && <ChangedFilesCard
         key={key}
         files={outcome.files}

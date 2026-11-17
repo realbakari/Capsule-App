@@ -16,10 +16,11 @@ interface DictationApi {
   on: (event: "dictation", handler: (payload: unknown) => void) => () => void;
 }
 
-const SETTINGS_LABEL: Record<DictationSettingsPane, string> = {
-  microphone: "Open Microphone settings",
-  speech: "Open Speech Recognition settings",
-  dictation: "Open Keyboard settings",
+/* The button stays short so the message keeps its line; the pane it opens is in the tooltip. */
+const SETTINGS_PANE: Record<DictationSettingsPane, string> = {
+  microphone: "Microphone",
+  speech: "Speech Recognition",
+  dictation: "Keyboard",
 };
 
 function parseEvent(payload: unknown): DictationEvent | undefined {
@@ -173,7 +174,8 @@ export function DictationStatus({ state, api, onCancel, onFinish, onDismiss }: {
     const settings = state.settings;
     return <div className="dictation-status is-error" role="alert">
       <span className="dictation-message">{state.message}</span>
-      {settings && api.openDictationSettings && <button type="button" className="ghost" onClick={() => void api.openDictationSettings?.(settings).catch(() => {})}>{SETTINGS_LABEL[settings]}</button>}
+      {settings && api.openDictationSettings && <button type="button" className="ghost" title={`Open ${SETTINGS_PANE[settings]} settings`}
+        aria-label={`Open ${SETTINGS_PANE[settings]} settings`} onClick={() => void api.openDictationSettings?.(settings).catch(() => {})}>Open Settings</button>}
       <button type="button" className="icon-btn dictation-dismiss" aria-label="Dismiss dictation message" onClick={onDismiss}><XIcon size={12} /></button>
     </div>;
   }

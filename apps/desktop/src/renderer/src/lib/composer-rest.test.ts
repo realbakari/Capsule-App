@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { composerPlaceholder, shouldFollowLatest, shouldRestComposer } from "./composer-rest";
+import { composerPageDirection, composerPlaceholder, shouldFollowLatest, shouldRestComposer } from "./composer-rest";
 
 describe("composer rest", () => {
   it("rests only while reading history, not at the live edge", () => {
@@ -42,5 +42,30 @@ describe("composer placeholder", () => {
   it("says what a message does to a running turn, without key glyphs", () => {
     expect(composerPlaceholder({ running: true })).toBe("Queue a follow-up");
     expect(composerPlaceholder({ running: true, steer: true })).toBe("Steer this turn");
+  });
+});
+
+describe("composer page keys", () => {
+  const short = { scrollTop: 0, scrollHeight: 40, clientHeight: 40 };
+  const page = (key: string, field = short, extra: { modified?: boolean; composing?: boolean } = {}) =>
+    composerPageDirection({ key, field, modified: extra.modified ?? false, composing: extra.composing ?? false });
+
+  it("pages the transcript from a draft that cannot scroll", () => {
+    expect(page("PageUp")).toBe(-1);
+    expect(page("PageDown")).toBe(1);
+    expect(page("ArrowUp")).toBe(0);
+  });
+
+  it("leaves the key to a tall draft that can still scroll that way", () => {
+    const middle = { scrollTop: 100, scrollHeight: 400, clientHeight: 120 };
+    expect(page("PageUp", middle)).toBe(0);
+    expect(page("PageDown", middle)).toBe(0);
+    expect(page("PageUp", { ...middle, scrollTop: 0 })).toBe(-1);
+    expect(page("PageDown", { ...middle, scrollTop: 280 })).toBe(1);
+  });
+
+  it("keeps modified keys and IME composition in the field", () => {
+    expect(page("PageUp", short, { modified: true })).toBe(0);
+    expect(page("PageDown", short, { composing: true })).toBe(0);
   });
 });

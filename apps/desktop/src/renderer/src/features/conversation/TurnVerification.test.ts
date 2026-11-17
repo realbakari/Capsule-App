@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, expect, it, vi } from "vitest";
-import type { Run } from "@capsule/shared";
+import type { Run, VerificationEvidence } from "@capsule/shared";
 import { TurnVerification } from "./TurnVerification";
 
 const context = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
@@ -13,21 +13,34 @@ it("starts collapsed, does not claim success, and explains missing evidence", ()
   expect(html).toContain("Not verified"); expect(html).toContain("No saved revision"); expect(html).not.toContain("<details open");
   expect(html).toMatch(/disabled=""[^>]*>Run selected check/);
 });
+const evidence: VerificationEvidence = {
+  runId: "r", actionId: "test", command: "test-command", exitCode: 0, output: "ok", startedAt: run.createdAt, completedAt: run.createdAt,
+  revision: { cwd: "/repo", tree: "aaaaaaaaaaaaaaaa", head: null }, after: { cwd: "/repo", tree: "bbbbbbbbbbbbbbbb", head: null },
+};
+const checked: Run = { ...run, revision: { cwd: "/repo", tree: "cccccccccccccccc", head: "dddddddddddddddd" }, verification: {
+  id: "v", runId: run.id, passed: true, status: "passed", summary: "test-command passed", createdAt: run.createdAt, evidence,
+  checks: [{ requirementId: "describe-changes", description: "Describe changes", passed: false, status: "unverified", advisory: true, detail: "Prose hint only; not verification evidence." }],
+} };
+
 it("uses actions from the owning project and explains the local-only boundary", () => {
   context.value.projects = [{ id: "other", actions: [{ id: "wrong", name: "Wrong project", command: "wrong" }] }];
-  const html = renderToStaticMarkup(createElement(TurnVerification, { run }));
+  const html = renderToStaticMarkup(createElement(TurnVerification, { run: checked }));
   expect(html).not.toContain("Wrong project"); expect(html).toContain("project is no longer available"); expect(html).toContain("do not cover files on a remote agent");
   expect(html).not.toContain("Add check");
 });
 
-it("offers to save a check without unusable run or recheck buttons when no actions exist", () => {
+it("draws nothing for a project with no saved check and a turn with no evidence", () => {
   context.value.projects = [{ id: "p", actions: [] }];
-  const html = renderToStaticMarkup(createElement(TurnVerification, { run }));
-  expect(html).toContain("Add check");
+  expect(renderToStaticMarkup(createElement(TurnVerification, { run }))).toBe("");
+});
+
+it("keeps evidence without a saved check, with no snapshot hashes or requirement rows", () => {
+  context.value.projects = [{ id: "p", actions: [] }];
+  const html = renderToStaticMarkup(createElement(TurnVerification, { run: checked }));
+  expect(html).toContain("Checks passed"); expect(html).toContain("Recheck evidence"); expect(html).toContain("Add check");
   expect(html).not.toContain("Run selected check");
-  expect(html).not.toContain("Recheck evidence");
-  expect(html).toContain("The agent finishing is not proof it works");
-  expect(html).toContain('class="verification-details"><summary>How this is checked');
+  for (const hash of ["aaaaaaaaaaaa", "bbbbbbbbbbbb", "cccccccccccc", "dddddddddddd"]) expect(html).not.toContain(hash);
+  expect(html).not.toContain("Up to you"); expect(html).not.toContain("Capsule does not check it");
 });
 
 it("selects a sole saved action without executing it and uses styled controls", () => {

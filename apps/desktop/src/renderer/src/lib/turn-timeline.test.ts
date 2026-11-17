@@ -78,3 +78,54 @@ describe("turn transcript", () => {
     expect(result.rows[0]?.kind === "activity" && result.rows[0].tools.length).toBe(100);
   });
 });
+
+describe("work log notes", () => {
+  const settled = { ...run, status: "completed" } as Run;
+  const note = (id: string, second: number, type: string, data: Record<string, unknown> = {}, text = ""): RunEvent => ({
+    id: `${id}:${second}`, runId: run.id, type, message: text, timestamp: time(second), data,
+  });
+
+  it("keeps a settled turn's reasoning as one row per stretch, between the work it explains", () => {
+    const events = [note("t", 1, "thinking", { streamKind: "thinking" }, "Read the "), note("t", 2, "thinking", { streamKind: "thinking" }, "parser first."), event("a", 3), note("t", 4, "thinking", { streamKind: "thinking", segment: true }, "Now edit it.")];
+    expect(turnTranscript([], events, settled).rows).toMatchObject([
+      { kind: "note", note: { kind: "reasoning", text: "Read the parser first." } },
+      { kind: "activity", tools: [{ id: "a" }] },
+      { kind: "note", note: { kind: "reasoning", text: "Now edit it.\n\n" } },
+    ]);
+  });
+
+  it("leaves reasoning to the live card while the turn runs, and out entirely when hidden", () => {
+    const events = [note("t", 1, "thinking", { streamKind: "thinking" }, "Hmm"), event("a", 2)];
+    expect(turnTranscript([], events, run).rows.map((row) => row.kind)).toEqual(["activity"]);
+    expect(turnTranscript([], events, settled, { reasoning: "hidden" }).rows.map((row) => row.kind)).toEqual(["activity"]);
+  });
+
+  it("records a person's decisions, but not a runtime's own approval frame", () => {
+    const events = [
+      note("r", 1, "approval.resolved", { status: "running" }, "Approval granted"),
+      note("d", 2, "approval.resolved", { decision: "approved_once", action: "Run command", target: "git push" }),
+      note("n", 3, "approval.resolved", { decision: "denied", action: "Edit file", target: "src/a.ts" }),
+      note("q", 4, "approval.resolved", { decision: "denied", action: "Question", question: true }),
+      note("a", 5, "question.answered", { questions: [{ question: "Which branch?", answer: "main" }] }),
+    ];
+    expect(turnTranscript([], events, run).rows.map((row) => row.kind === "note" && row.note.kind === "decision" ? [row.note.outcome, row.note.subject, row.note.detail] : row.kind)).toEqual([
+      ["allowed", "Run command", "git push"],
+      ["denied", "Edit file", "src/a.ts"],
+      ["unanswered", "Question", undefined],
+      ["answered", "main", "Which branch?: main"],
+    ]);
+  });
+
+  it("shows a compaction once, running until it reports its end", () => {
+    const start = note("c", 1, "compaction", { streamKind: "compaction", phase: "start" });
+    const end = note("c", 2, "compaction", { streamKind: "compaction", phase: "end" });
+    expect(turnTranscript([], [start], run).rows).toMatchObject([{ kind: "note", note: { kind: "compaction", active: true, automatic: true } }]);
+    expect(turnTranscript([], [start, end], run).rows).toMatchObject([{ kind: "note", note: { kind: "compaction", active: false } }]);
+  });
+
+  it("replaces a tool's output whole, so an old tail never follows a new head", () => {
+    const first = { ...event("a", 1), data: { toolCallId: "a", details: { output: "head", outputTail: "old end", omittedLines: 9 } } };
+    const second = { ...event("a", 2, "completed"), data: { toolCallId: "a", status: "completed", rawOutput: "short" } };
+    expect(turnTranscript([], [first, second], run).rows).toMatchObject([{ tools: [{ details: { output: "short", outputTail: undefined, omittedLines: undefined } }] }]);
+  });
+});

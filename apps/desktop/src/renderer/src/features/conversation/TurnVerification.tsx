@@ -9,17 +9,11 @@ const stateLabels: Record<VerificationState, string> = {
   passed: "Checks passed", failed: "Check failed", unverified: "Not verified", stale: "Out of date",
 };
 
-/** The receipt belongs to this turn, not the currently selected repository. */
-/* Turns saved before this wording keep their old contract text; show them in the same plain words. */
-const REQUIREMENT_LABELS: Record<string, string> = {
-  "tests-pass": "A saved check passes on this turn's files.",
-  "describe-changes": "The reply says what changed and how to check it.",
-};
-const DETAIL_LABELS: Record<string, string> = {
-  "Prose hint only; not verification evidence.": "Read the reply for this; Capsule does not check it.",
-  "No matching saved check has run for this turn and revision.": "No saved check has run on this turn's files yet.",
-};
-
+/**
+ * The receipt belongs to this turn, not the currently selected repository.
+ * Drawn only where there is something to run or something already found: a
+ * project with no saved check and a turn with no evidence has nothing to say.
+ */
 export function TurnVerification({ run }: { run: Run; }) {
   const { api, projects, settings, refresh } = useWorkspace();
   const [result, setResult] = useState<VerificationResult>();
@@ -39,6 +33,7 @@ export function TurnVerification({ run }: { run: Run; }) {
   const latest = result && (!run.verification || result.createdAt >= run.verification.createdAt) ? result : run.verification;
   const evidence = latest?.evidence;
   const running = busy || latest?.inProgress === true;
+  if (actions.length === 0 && !evidence && !running) return null;
   const blocked = !run.revision || settings?.sandbox === "strict";
   async function check(id?: string) {
     setBusy(true); setError(undefined);
@@ -85,9 +80,6 @@ export function TurnVerification({ run }: { run: Run; }) {
         <details className="verification-details"><summary>How this is checked</summary>
           <p className="muted">Checks run on this computer, in this turn’s folder, so they do not cover files on a remote agent’s machine. A pass means the command succeeded on these files; it does not prove every requirement is met.</p>
           {run.workingDirectory && <code className="verification-path">{run.workingDirectory}</code>}
-          {run.revision && <p className="faint">Files as of snapshot <code>{run.revision.tree.slice(0, 12)}</code> · commit <code>{run.revision.head?.slice(0, 12) ?? "none yet"}</code></p>}
-          {evidence && <p className="faint">Snapshot after the check: <code>{evidence.after?.tree.slice(0, 12) ?? "unavailable"}</code></p>}
-          {latest?.checks.map((item) => <div className="verification-check" key={item.requirementId}><span>{REQUIREMENT_LABELS[item.requirementId] ?? item.description}</span><span className="faint">{item.advisory ? "Up to you" : stateLabels[item.status]}</span><small>{(item.detail && DETAIL_LABELS[item.detail]) ?? item.detail}</small></div>)}
         </details>
         {error && <p className="verification-error" role="alert">{error}</p>}
       </div>

@@ -20,6 +20,8 @@ interface MarkdownActions {
   renderText?: (text: string) => ReactNode;
   /** Reads a project image; without it a local image stays a file link. */
   loadImage?: LoadImage;
+  /** Types a one-line shell fence into a new terminal; absent where there is no terminal. */
+  onTypeCommand?: (command: string) => void;
   inLink?: boolean;
 }
 
@@ -76,7 +78,7 @@ function parsedContent(text: string, actions: MarkdownActions, inline = false, a
 /** Convert presentation HTML only. Markdown links and code never pass through it. */
 function presentationHtml(raw: string, actions: MarkdownActions, inline: boolean): ReactNode {
   return splitFences(raw).map((segment, index) => {
-    if (segment.kind === "code") return <FencedCode key={index} code={segment.text} language={segment.language} closed={segment.closed !== false} />;
+    if (segment.kind === "code") return <FencedCode key={index} code={segment.text} language={segment.language} closed={segment.closed !== false} onTypeCommand={actions.onTypeCommand} />;
     const text = normalizeGitHubMarkdown(segment.text, actions.githubBaseUrl ?? "");
     return text ? <Fragment key={index}>{parsedContent(text, actions, inline, false)}</Fragment> : null;
   });
@@ -153,7 +155,7 @@ function renderNode(node: MarkdownNode, actions: MarkdownActions): ReactNode {
     case "softbreak": return "\n";
     case "hardbreak": return <br />;
     case "code_inline": return <InlineCode value={token.content} onOpen={actions.onOpenFile} />;
-    case "fence": return <FencedCode code={token.content} language={token.info.trim().split(/\s+/)[0]} closed={fenceClosed(token.meta)} />;
+    case "fence": return <FencedCode code={token.content} language={token.info.trim().split(/\s+/)[0]} closed={fenceClosed(token.meta)} onTypeCommand={actions.onTypeCommand} />;
     case "code_block": return <FencedCode code={token.content} closed />;
     case "math_inline": return <MathTex tex={token.content} display={token.markup === "$$"} />;
     case "math_block": return <MathTex tex={token.content} display />;
@@ -230,7 +232,7 @@ function markdownSections(content: string, actions: MarkdownActions, depth = 0):
 
 /** Safe React nodes shared by chat, review, skills and read-only paired views. */
 export function MarkdownBody({ content, ...actions }: Omit<MarkdownActions, "inLink"> & { content: string }) {
-  const { githubBaseUrl, onOpenFile, onOpenLink, onLinkMenu, renderText, loadImage } = actions;
-  const body = useMemo(() => markdownSections(content, { githubBaseUrl, onOpenFile, onOpenLink, onLinkMenu, renderText, loadImage }), [content, githubBaseUrl, onOpenFile, onOpenLink, onLinkMenu, renderText, loadImage]);
+  const { githubBaseUrl, onOpenFile, onOpenLink, onLinkMenu, renderText, loadImage, onTypeCommand } = actions;
+  const body = useMemo(() => markdownSections(content, { githubBaseUrl, onOpenFile, onOpenLink, onLinkMenu, renderText, loadImage, onTypeCommand }), [content, githubBaseUrl, onOpenFile, onOpenLink, onLinkMenu, renderText, loadImage, onTypeCommand]);
   return <div className="body">{body}</div>;
 }

@@ -2,6 +2,7 @@ import type { ChatMessage } from "@capsule/shared";
 import { parseMarkdown } from "../../lib/markdown";
 import { normalizeGitHubMarkdown } from "../../lib/github-markdown";
 import { splitFences } from "../../lib/fences";
+import { fenceText } from "../../lib/shell-command";
 import { fenceClosed } from "../../lib/markdown-math";
 import { markdownImageSource } from "../../lib/markdown-media";
 import type { Turn } from "../../lib/turns";
@@ -46,7 +47,8 @@ class Segments {
 function writeFence(out: Segments, code: string, language: string | undefined, closed: boolean) {
   out.flush();
   // A closed math fence is typeset; any other fence shows its source, a diagram until it is drawn.
-  if (!(language?.toLowerCase() === "math" && closed && code.trim())) out.addPre(code);
+  // A code block shows its text without the newline that closes the fence, as CodeBlock draws it.
+  if (!(language?.toLowerCase() === "math" && closed && code.trim())) out.addPre(language?.toLowerCase() === "mermaid" ? code : fenceText(code));
   out.flush();
 }
 

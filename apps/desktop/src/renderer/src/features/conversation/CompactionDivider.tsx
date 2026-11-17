@@ -1,4 +1,5 @@
 import type { ChatMessage, Run } from "@capsule/shared";
+import type { WorkNote } from "../../lib/turn-timeline";
 
 const COMPACT_PROMPT = /^\/(?:compact|context-compact)(?:\s|$)/i;
 
@@ -19,10 +20,11 @@ function label(run: Run | undefined): string {
  * history so the thread can go on. It reads as one divider in the transcript
  * instead of a "/compact" bubble and an answer nobody needs to read.
  */
-export function CompactionDivider({ run }: { run?: Run }) {
-  const text = label(run);
+export function CompactionDivider({ run, note }: { run?: Run; note?: Extract<WorkNote, { kind: "compaction" }> }) {
+  // A compaction the agent did inside a turn names itself; a /compact turn is named by how that turn went.
+  const text = note ? note.active ? "Compacting context" : note.automatic ? "Context compacted automatically" : "Context compacted" : label(run);
   const active = text === "Compacting context";
-  const failed = run?.status === "failed" || run?.status === "blocked";
+  const failed = !note && (run?.status === "failed" || run?.status === "blocked");
   return (
     <div className={`compaction-divider${failed ? " failed" : ""}`} role="status">
       <span className="compaction-divider-rule" aria-hidden />

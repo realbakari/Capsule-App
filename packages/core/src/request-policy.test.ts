@@ -204,3 +204,18 @@ it("shows a hook's reason for asking on the approval card, with the hook's file"
   expect(f.engine.listApprovals("pending")[0]?.reason)
     .toBe(`Writes to the router need a look. (a PermissionRequest hook in ${path.join(f.configDir, "settings.json")})`);
 });
+
+it("keeps a person's answer and approval in the turn's record off the direct route", async () => {
+  const f = await fixture();
+  const asked = await f.engine.sendMessage({ sessionId: (await f.thread()).id, content: "[question] pick a database", mode: "chat", agentId: "general" });
+  await vi.waitFor(() => expect(f.engine.listApprovals("pending")).toHaveLength(1), { timeout: 8000 });
+  await f.engine.answerAgentQuestion(f.engine.listApprovals("pending")[0]!.id, { db: ["SQLite"], checks: ["Lint"] });
+  expect(f.engine.listRunEvents(asked.run.id).find((event) => event.type === "question.answered")?.data?.questions)
+    .toEqual([{ question: "Which database should the app use?", answer: "SQLite" }, { question: "Which checks should run before each commit?", answer: "Lint" }]);
+
+  const approve = await f.engine.sendMessage({ sessionId: (await f.thread()).id, content: "[approval] change the router", mode: "chat", agentId: "general" });
+  await vi.waitFor(() => expect(f.engine.listApprovals("pending")).toHaveLength(1), { timeout: 8000 });
+  await f.engine.resolveApproval(f.engine.listApprovals("pending")[0]!.id, "denied");
+  expect(f.engine.listRunEvents(approve.run.id).filter((event) => event.type === "approval.resolved" && event.data?.decision)
+    .map((event) => [event.message, event.data?.target])).toEqual([["Denied: Write", "~/Projects/app/src/router.ts"]]);
+});

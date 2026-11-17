@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { Run } from "@capsule/shared";
 import { InlineActivity } from "./InlineActivity";
+import { setDisplayPrefs } from "../../lib/display-prefs";
 import type { ToolObservation } from "../../lib/turn-timeline";
 
 const run = { id: "run", status: "completed" } as Run;
@@ -62,5 +63,17 @@ describe("inline activity icons", () => {
     expect(html).toContain('data-state="Stopped"');
     expect(html).toContain('data-kind="switch_mode"');
     expect(html).not.toContain("inline-activity-current");
+  });
+
+  it("names a non-zero exit on a command row, and stays quiet about a zero", () => {
+    setDisplayPrefs({ toolCallDisplay: "expanded" });
+    try {
+      const html = renderToStaticMarkup(createElement(InlineActivity, {
+        tools: [{ ...tool("execute", "pnpm build"), status: "failed", details: { exitCode: 2 } }, { ...tool("execute", "pnpm lint"), details: { exitCode: 0 } }],
+        run,
+      }));
+      expect(html.match(/activity-step-exit/g)).toHaveLength(1);
+      expect(html).toContain("exit 2");
+    } finally { setDisplayPrefs({ toolCallDisplay: "compact" }); }
   });
 });

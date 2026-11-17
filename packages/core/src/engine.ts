@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { isDeepStrictEqual } from "node:util";
 import { checkRun } from "./run-verification.js";
 import { FolderActivity, foldersOverlap } from "./folder-activity.js";
@@ -14,12 +14,13 @@ import { BestOfNService } from "./best-of-n.js";
 import type { GroupComparison, LeaderboardRow, RatingValue, StartBestOfNInput, StartBestOfNResult, ThreadGroup } from "@capsule/shared";
 import type { BoardCardOp, CreateBoardCardInput, ThreadOrigin } from "@capsule/shared";
 import { AgentTasks, type AgentTaskResult } from "./agent-tasks.js";
-import { Branching, transcriptContext } from "./branching.js";
+import { Branching, carryOverFor, transcriptContext } from "./branching.js";
 import { HistoryImport } from "./history-import.js";
+import { recentSessionSightings, repositoryRoot, suggestProjects, SUGGESTION_WINDOW_DAYS } from "./project-suggestions.js";
 import { Handoff } from "./handoff.js";
 import { ThreadPauses } from "./thread-pause.js";
 import { TemporaryThreads } from "./temporary-threads.js";
-import { handoffContext, type HandoffInput, type ImportListing, type ImportSessionInput } from "@capsule/shared";
+import { handoffContext, type HandoffInput, type ImportListing, type ImportSessionInput, type SuggestedProject } from "@capsule/shared";
 import type { CommandResult, DiagnosticsResult } from "@capsule/shared";
 import { COMPOSER_COMMAND_TIMEOUT_MS, DIAGNOSTICS_TIMEOUT_MS, findCheckCommand, runContextCommand } from "./context-commands.js";
 import { ThreadTriage } from "./thread-triage.js";
@@ -54,7 +55,7 @@ import { probeMcpServer } from "./mcp-probe.js";
 import { AutomationScheduler, type AutomationEntry } from "./automations.js";
 import { StatusLineRunner } from "./status-line.js";
 import { PluginManager, type PluginSource } from "./plugins.js";
-import { AUTOMATION_TEMPLATES, automationKey, automationMessage, parseStatusLineFacts, statusLineKey, statusLineStdin, type AutomationCreateInput, type AutomationView, type StatusLineRender } from "@capsule/shared";
+import { automationFromDraft, automationKey, automationMessage, parseStatusLineFacts, statusLineKey, statusLineStdin, type AutomationCreateInput, type AutomationView, type StatusLineRender } from "@capsule/shared";
 import type { AcpMcpServer, DirectSpawnInput } from "@capsule/acp";
 import type { ProfileEntry } from "@capsule/config";
 import {
@@ -87,7 +88,11 @@ import {
   clearBinaryCache,
   clearLoginCache,
   harnessAgentRecord,
+  harnessBinaries,
   isLiveHarnessState,
+  launchExecutable,
+  launchExtras,
+  setAgentOverrides,
   localDoctorChecks,
   noteAuthRequired,
   PRESET_HARNESSES,
@@ -100,7 +105,7 @@ import {
 
 import { createBuzzAdapter, SharedRelayClient } from "@capsule/buzz";
 import { buildContract } from "@capsule/contracts";
-import { readUsageSummaryAsync, sinceDaysAgo, type UsageSummary } from "./usage/index.js";
+import { defaultUsageRoots, projectOfFolders, readUsageSummaryAsync, sinceDaysAgo, type UsageSummary } from "./usage/index.js";
 import { CapsuleDatabase, CapsuleRepositories } from "@capsule/database";
 import {
   attachmentPromptBlock,
@@ -111,7 +116,8 @@ import {
   checkpointRef,
   deleteCheckpoints,
   cloneRepository as cloneGitRepository,
-  commitAll,
+  commitChanges,
+  commitsSince,
   createWorktree,
   listWorktreeBases as listGitWorktreeBases,
   rebaseFreshWorktree,
@@ -124,10 +130,12 @@ import {
   previewCheckpoint,
   readBoundedFile,
   hasCheckpoint,
+  threadSnapshotRef,
   discardFile,
   applyHunk,
   checkHunks,
   readScopedDiff,
+  readReviewTargets,
   clearFileIndex,
   clearGhCache,
   enrichGitStatus,
@@ -144,6 +152,9 @@ import {
   mergePullRequestStack as mergeGithubPullRequestStack,
   rebasePullRequestStack as rebaseGithubPullRequestStack,
   pushCurrentBranch,
+  pullCurrentBranch,
+  pullRequestBody,
+  fetchRemote,
   readGitDiff,
   readGitStatus,
   readProjectFile,
@@ -247,9 +258,9 @@ import {
   type Session,
   type ThreadTriageAction,
   validateQuestionAnswers,
+  type AgentQuestion,
   type AgentQuestionAnswers,
   type Skill,
-  type SkillPack,
   type SkillCatalogEntry,
   type SkillCatalogPage,
   type SubsystemStatus,
@@ -278,15 +289,12 @@ import {
   type SetConfigValueInput,
 } from "@capsule/shared";
 import {
-  DEFAULT_SKILLS,
-  DEFAULT_SKILL_PACKS,
   SkillCatalogClient,
   SkillsShClient,
   discoverGlobalSkills,
   projectSkillRoots,
   listGlobalSkillFiles,
   resolveGlobalSkillFile,
-  skillIdForMode,
 } from "@capsule/skills";
 import {
   openNativeTerminal,
@@ -388,7 +396,8 @@ export class CapsuleEngine {
         case "msp": return new DirectMuseSession(options);
       }
     },
-    (command) => whichBinary([command]) ?? command,
+    (command, harnessId) => launchExecutable(command, harnessId, whichBinary),
+    launchExtras,
   );
 
   /**
@@ -472,6 +481,8 @@ export class CapsuleEngine {
   /** Commands an agent ran without a person approving them, for the long-command alert. */
   private longCommands = new LongCommandWatch();
   private userApprovedTools = new Set<string>();
+  /** Why a thread's saved agent session could not be resumed, for its next turn to say so. */
+  private readonly resumeFallbacks = new Map<string, string>();
   private directApprovals = new Map<string, { runId: string; canApproveOnce?: boolean; allow: () => void; deny: () => void; cancel: () => void; answer?: (answers: AgentQuestionAnswers) => void }>();
   private admittingSessions = new Set<string>();
   /** Gateway sessions Capsule put in the agent's plan mode; an Act turn switches them back. */
@@ -596,6 +607,8 @@ export class CapsuleEngine {
   private readonly usingMock: boolean;
   private readonly replyBuffers = new TextBudget();
   private readonly ignoredReplySessions = new Set<string>();
+  /** A direct agent's reasoning since its last prose or tool, kept as one work-log event per stretch. */
+  private readonly directThoughts = new Map<string, string>();
   private readonly resultWriter = new ResultWriter(this.replyBuffers, (id, result) => {
     const run = this.repos.getRun(id);
     if (!run || run.completedAt) return;
@@ -1019,13 +1032,13 @@ export class CapsuleEngine {
     const preset = presetFor(harnessId);
     if (!preset) throw new Error(`Unknown harness: ${harnessId}`);
     const login = cliLoginArgv(preset.loginHint);
-    const loginPath = login ? whichBinary([login[0]!]) : undefined;
+    const loginPath = login ? (preset.binaries.includes(login[0]!) ? harnessBinaries(preset, false, whichBinary).login : whichBinary([login[0]!])) : undefined;
     const cli: AgentSignInMethod[] = login && loginPath
       ? [{ kind: "cli", id: "cli-login", name: `Run ${login.join(" ")}`, argv: [loginPath, ...login.slice(1)] }]
       : [];
     const launch = preset.nativeCommand ? undefined : preset.directCommand ?? preset.acpxCommand;
     if (!launch) return { harnessId, methods: cli, canSignOut: false };
-    if (!whichBinary([launch.command])) {
+    if (!harnessBinaries(preset, true, whichBinary).launch) {
       return { harnessId, methods: cli, canSignOut: false, error: `${preset.name} is not installed on this computer yet.` };
     }
     try {
@@ -1109,9 +1122,7 @@ export class CapsuleEngine {
     this.forgetAcpxState();
     const direct = this.useDirectMode(harnessId);
     const acpxEnabled = direct ? false : await this.acpxEnabled();
-    const loginBinaryPath = whichBinary(preset.binaries);
-    const command = preset.nativeCommand ?? preset.directCommand ?? preset.acpxCommand;
-    const binaryPath = direct && command ? whichBinary([command.command]) : loginBinaryPath;
+    const { login: loginBinaryPath, launch: binaryPath } = harnessBinaries(preset, direct, whichBinary);
     let acpxPermissionModeValue: string | undefined;
     let acpxPolicyKnown = false;
     let acpxAgentConfigured: boolean | undefined = preset.acpxCommand ? false : undefined;
@@ -1222,13 +1233,15 @@ export class CapsuleEngine {
     if (!preset) return undefined;
     const legacy = preset.nativeCommand && preset.directCommand && (prior?.openclawSessionKey?.startsWith("direct:acp:") || prior?.directSession?.launchSignature === JSON.stringify(preset.directCommand));
     const command = legacy ? preset.directCommand : preset.nativeCommand ?? preset.directCommand;
-    if (direct && command && !whichBinary([command.command])) {
+    const overrideMissing = direct && !legacy ? harnessBinaries(preset, true, whichBinary).overrideMissing : undefined;
+    if (overrideMissing) return `Nothing runs at ${overrideMissing}, the binary path set for ${preset.name}. Change it in Agents.`;
+    if (direct && command && !(legacy ? whichBinary([command.command]) : harnessBinaries(preset, true, whichBinary).launch)) {
       return legacy
         ? `This conversation uses ${command.command}. Restore that adapter to continue its saved session, or start a new conversation to use the installed CLI directly.`
         : preset.directInstallHint ?? `Install ${command.command} on this computer before starting this agent.`;
     }
     if (!direct && !this.openclaw.connected) return "Not connected to the Gateway.";
-    const loginState = probeLoginStateNow(preset, whichBinary(preset.binaries));
+    const loginState = probeLoginStateNow(preset, harnessBinaries(preset, direct, whichBinary).login);
     if (loginState === "logged_out") return `${preset.name} isn't signed in. ${preset.loginHint?.replaceAll("`", "") ?? `Sign in to ${preset.name}`} ${direct ? "on this computer" : "on the Gateway host"}, then run Doctor in Agents.`;
     if (loginState === "config_invalid") return `${preset.name}'s CLI config could not be read. Fix it, then run Doctor.`;
     return undefined;
@@ -1336,16 +1349,30 @@ export class CapsuleEngine {
     }
 
     try {
+      const resume = session.directSession?.harnessId === harnessId ? session.directSession : undefined;
+      const spawnDirect = (from?: NonNullable<Session["directSession"]>) => this.direct.spawnAcpSession({
+        threadId: session.id,
+        harnessId,
+        cwd,
+        title,
+        prompt: input.prompt,
+        sessionKey: from || !resume ? session.openclawSessionKey : undefined,
+        model: input.model,
+        resume: from,
+      });
+      /*
+       * A saved session the agent can no longer open (deleted, moved, from
+       * another install) used to fail every later turn, so the thread could
+       * never continue. A fresh session takes over, and Capsule's own
+       * transcript goes with the next prompt so the agent is not starting blind.
+       */
+      let resumeFailure: string | undefined;
       const spawned = direct
-        ? await this.direct.spawnAcpSession({
-          threadId: session.id,
-          harnessId,
-          cwd,
-          title,
-          prompt: input.prompt,
-          sessionKey: session.openclawSessionKey,
-          model: input.model,
-          resume: session.directSession?.harnessId === harnessId ? session.directSession : undefined,
+        ? await spawnDirect(resume).catch((error: unknown) => {
+          if (!resume || error instanceof AgentAuthRequiredError || this.stopped) throw error;
+          resumeFailure = error instanceof Error ? error.message : String(error);
+          this.log(`Could not resume ${harnessId} session ${resume.sessionId}; starting a fresh one: ${resumeFailure}`);
+          return spawnDirect();
         })
         : await this.openclaw.spawnAcpSession({
           harnessId,
@@ -1357,13 +1384,22 @@ export class CapsuleEngine {
           permissionProfile,
           model: input.model,
         });
+      if (input.sessionId && !this.repos.getSession(input.sessionId)) {
+        await (direct ? this.direct : this.openclaw).closeAcp(spawned.sessionKey).catch(() => undefined);
+        throw new Error("This conversation was deleted while its agent was starting.");
+      }
       session.openclawSessionKey = spawned.sessionKey;
       if (direct && "directSession" in spawned && spawned.directSession) session.directSession = spawned.directSession as Session["directSession"];
       else if (!direct) session.directSession = undefined;
-      if (direct && session.carryOver?.configuration && session.directSession) {
-        session.directSession = { ...session.directSession, configuration: await this.direct.reapplyConfiguration(spawned.sessionKey, session.carryOver.configuration) };
+      const configuration = session.carryOver?.configuration ?? (resumeFailure ? resume?.configuration : undefined);
+      if (direct && configuration && session.directSession) {
+        session.directSession = { ...session.directSession, configuration: await this.direct.reapplyConfiguration(spawned.sessionKey, configuration) };
       }
-      session.carryOver = undefined;
+      // What the next prompt carries stays until a turn carries it; the route and settings are spent.
+      const replayTranscript = Boolean(session.carryOver?.replayTranscript || resumeFailure);
+      const brief = session.carryOver?.brief;
+      session.carryOver = replayTranscript || brief ? { ...(replayTranscript ? { replayTranscript } : {}), ...(brief ? { brief } : {}) } : undefined;
+      if (resumeFailure) this.resumeFallbacks.set(session.id, resumeFailure);
       session.harnessState = "running";
       if (input.sessionId) this.repos.updateSession(session);
       else this.repos.insertSession(session);
@@ -1781,12 +1817,12 @@ export class CapsuleEngine {
     });
   }
 
-  async gitCommit(projectId: string, message: string, sessionId?: string): Promise<GitStatus> {
+  async gitCommit(projectId: string, message: string, sessionId?: string, scope: import("@capsule/shared").GitCommitScope = { staged: true }): Promise<GitStatus> {
     const project = this.requireProject(projectId);
     const cwd = this.workingDirectoryFor(project, sessionId);
     return inRepository(cwd, async () => {
       if (!cwd) throw new Error("Project has no working directory");
-      const result = await commitAll(cwd, message);
+      const result = await commitChanges(cwd, message, scope);
       if (!result.ok) throw new Error(result.detail);
       return await this.gitStatus(projectId, sessionId);
 
@@ -1824,6 +1860,12 @@ export class CapsuleEngine {
     return readScopedDiff(cwd, scope, relative, options);
   }
 
+  async gitReviewTargets(projectId: string, sessionId?: string, base?: string): Promise<import("@capsule/shared").ReviewTargets> {
+    const cwd = this.workingDirectoryFor(this.requireProject(projectId), sessionId);
+    if (!cwd || !(await readGitStatus(cwd)).isRepo) return { bases: { local: [], remote: [] }, commits: [] };
+    return readReviewTargets(cwd, base);
+  }
+
   async gitCheckHunks(projectId: string, applies: readonly import("@capsule/shared").HunkApply[], sessionId?: string): Promise<boolean[]> {
     const cwd = this.workingDirectoryFor(this.requireProject(projectId), sessionId);
     if (!cwd) return applies.map(() => false);
@@ -1855,17 +1897,50 @@ export class CapsuleEngine {
     });
   }
 
-  async gitPush(projectId: string, sessionId?: string): Promise<GitStatus> {
+  /**
+   * Pushes the current branch, publishing it when it has no upstream. The
+   * default branch takes a confirmation the caller passes as `toDefaultBranch`.
+   */
+  async gitPush(projectId: string, sessionId?: string, options: { toDefaultBranch?: boolean; } = {}): Promise<GitStatus> {
     const project = this.requireProject(projectId);
     const cwd = this.workingDirectoryFor(project, sessionId);
     return inRepository(cwd, async () => {
       if (!cwd) throw new Error("Project has no working directory");
-      const result = await pushCurrentBranch(cwd, this.settings.gitForceWithLease);
+      const status = await readGitStatus(cwd);
+      if (!options.toDefaultBranch && status.branch && status.branch === status.defaultBranch) {
+        throw new Error(`${status.branch} is the default branch. Confirm the push to it, or move the commits to a new branch.`);
+      }
+      const result = await pushCurrentBranch(cwd, { forceWithLease: this.settings.gitForceWithLease });
       if (!result.ok) throw new Error(result.detail);
       this.log(result.detail);
       return await this.gitStatus(projectId, sessionId);
 
     });
+  }
+
+  async gitPull(projectId: string, sessionId?: string, mode: import("@capsule/shared").GitPullMode = "ff-only"): Promise<GitStatus> {
+    const project = this.requireProject(projectId);
+    const cwd = this.workingDirectoryFor(project, sessionId);
+    return inRepository(cwd, async () => {
+      if (!cwd) throw new Error("Project has no working directory");
+      const result = await pullCurrentBranch(cwd, mode);
+      if (!result.ok) throw new Error(result.detail);
+      this.log(result.detail);
+      clearFileIndex(cwd);
+      this.events.emit("state", { command: "files-updated" });
+      return await this.gitStatus(projectId, sessionId);
+
+    });
+  }
+
+  /**
+   * A throttled background fetch, so ahead and behind are fresh. True when
+   * one ran and landed; never fails, since a fetch that cannot run leaves the
+   * last refs. The caller re-reads status, ordered with its other reads.
+   */
+  async gitFetch(projectId: string, sessionId?: string): Promise<boolean> {
+    const cwd = this.workingDirectoryFor(this.requireProject(projectId), sessionId);
+    return Boolean(cwd && (await readGitStatus(cwd)).isRepo && await fetchRemote(cwd));
   }
 
   async gitCreatePullRequest(
@@ -1876,15 +1951,22 @@ export class CapsuleEngine {
     const cwd = this.workingDirectoryFor(project, input?.sessionId);
     return inRepository(cwd, async () => {
       if (!cwd) throw new Error("Project has no working directory");
-      const pushed = await pushCurrentBranch(cwd, this.settings.gitForceWithLease);
+      const status = await readGitStatus(cwd);
+      // A pull request from the default branch into itself cannot exist; pushing first would only land the commits there.
+      if (status.branch && status.branch === status.defaultBranch) {
+        throw new Error(`${status.branch} is the default branch. Move these commits to a new branch, then open the pull request from it.`);
+      }
+      const pushed = await pushCurrentBranch(cwd, { forceWithLease: this.settings.gitForceWithLease });
       if (!pushed.ok) throw new Error(pushed.detail);
-      const branch = (await readGitStatus(cwd)).branch ?? "HEAD";
+      const branch = status.branch ?? "HEAD";
+      const [subject, ...rest] = (input?.title ?? "").trim().split(/\r?\n/);
       const title =
-        input?.title?.trim() ||
+        subject?.trim() ||
         (await lastCommitSubject(cwd)) ||
         branch.replace(/^.*\//, "").replace(/[-_]/g, " ");
-      const body =
-        [input?.body?.trim(), this.settings.prInstructions].filter(Boolean).join("\n\n") || title;
+      const base = status.pushRemote && status.defaultBranch ? `refs/remotes/${status.pushRemote}/${status.defaultBranch}` : undefined;
+      const commits = base ? await commitsSince(cwd, base) : [];
+      const body = pullRequestBody(commits, [rest.join("\n"), input?.body, this.settings.prInstructions]) || title;
       const opened = await openPullRequest(cwd, {
         title,
         body,
@@ -1987,8 +2069,7 @@ export class CapsuleEngine {
    * Capsule attaches the selected document by id, not a CLI-resolved command.
    */
   async listSkills(projectId?: string, sessionId?: string): Promise<Skill[]> {
-    const stored = this.repos.listSkills();
-    const capsuleSkills = stored.length > 0 ? stored : DEFAULT_SKILLS;
+    const capsuleSkills = this.repos.listSkills();
     const session = sessionId ? this.requireSession(sessionId) : undefined;
     const project = projectId || session ? this.requireProject(projectId ?? session!.projectId) : undefined;
     if (session && project?.id !== session.projectId) throw new Error("The skill's thread must belong to the selected project.");
@@ -2022,11 +2103,6 @@ export class CapsuleEngine {
     return previewFromBytes("SKILL.md", Buffer.from(skill.content, "utf8"));
   }
 
-  listSkillPacks(): SkillPack[] {
-    const stored = this.repos.listSkillPacks();
-    return stored.length > 0 ? stored : DEFAULT_SKILL_PACKS;
-  }
-
   installSkill(skill: Skill): Skill {
     if (!skill.content?.trim()) throw new Error("Cannot install a skill without its SKILL.md instructions.");
     const normalized: Skill = {
@@ -2039,19 +2115,6 @@ export class CapsuleEngine {
     this.repos.upsertSkill(normalized);
     this.events.emit("state", { command: "skills-updated" });
     return normalized;
-  }
-
-  installSkillPack(packId: string): SkillPack {
-    const defaultPack = DEFAULT_SKILL_PACKS.find((p) => p.id === packId);
-    if (!defaultPack) {
-      throw new Error(`Unknown skill pack: ${packId}`);
-    }
-    this.repos.upsertSkillPack(defaultPack);
-    for (const skill of DEFAULT_SKILLS.filter((s) => s.packId === packId)) {
-      this.repos.upsertSkill({ ...skill, status: "installed" });
-    }
-    this.events.emit("state", { command: "skills-updated" });
-    return defaultPack;
   }
 
   uninstallSkill(skillId: string): void {
@@ -2248,6 +2311,10 @@ export class CapsuleEngine {
     for (const run of this.listProjectActionRuns(project.id, id)) {
       if (run.status === "running") this.stopProjectAction(project.id, run.actionId, id);
     }
+    await this.endThreadAgent(session);
+    // The stopped turn's snapshot is still being written; let it land so it is dropped with the rest.
+    const cwd = this.cwdFor(session, project);
+    if (cwd) await this.checkpointPending.get(cwd);
     await this.dropSessionCheckpoints(session, project);
     if (session.workspaceMode === "worktree" && project.workingDirectory && existsSync(project.workingDirectory)) {
       await deleteApplyRecords(project.workingDirectory, id).catch(() => 0);
@@ -2256,6 +2323,28 @@ export class CapsuleEngine {
     this.followUps.forget(id);
     this.repos.deleteSession(id);
     this.board.forget(id);
+  }
+
+  /*
+   * A deleted thread's agent goes first. Left running, it kept working in a
+   * folder about to lose its worktree, and its late frames wrote against rows
+   * that no longer existed. The turn is force stopped, which also closes the
+   * agent's session; an idle live session is closed. Failures are logged, not
+   * thrown: the person asked for the thread to go.
+   */
+  private async endThreadAgent(session: Session): Promise<void> {
+    const key = session.openclawSessionKey;
+    const active = this.repos.findReplyRun(session.id);
+    try {
+      if (active) {
+        if (active.openclawRunId && !isDirectSessionKey(key)) await this.runtime.cancelRun(active.openclawRunId).catch(() => undefined);
+        await this.forceStopRun(active.id);
+      } else if (key && !this.usingMock && isLiveHarnessState(session.harnessState)) {
+        await this.acpHost(key).closeAcp(key);
+      }
+    } catch (error) {
+      this.log(`Could not end the agent of deleted thread ${session.id}: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   async setSessionWorkspaceMode(id: string, mode: WorkspaceMode): Promise<Session> {
@@ -2587,7 +2676,8 @@ export class CapsuleEngine {
     return this.bestOfN.leaderboard();
   }
 
-  async sendMessage(input: AgentMessage): Promise<{ session: Session; run: Run; userMessage: ChatMessage; }> {
+  /** `person` marks a message someone sent from a window; automations, channels and the queue send as `automatic`. */
+  async sendMessage(input: AgentMessage, origin: "person" | "automatic" = "automatic"): Promise<{ session: Session; run: Run; userMessage: ChatMessage; }> {
     this.assertWorkAllowed();
     if (this.admittingSessions.has(input.sessionId) || this.repos.findReplyRun(input.sessionId)) {
       throw new Error("This conversation already has a turn running. Stop it or wait before sending another message.");
@@ -2596,8 +2686,12 @@ export class CapsuleEngine {
     if (thread.paused) throw new Error("This conversation is paused. Resume it to continue.");
     const release = this.folderActivity.enter(this.cwdFor(thread, this.requireProject(thread.projectId)));
     this.admittingSessions.add(input.sessionId);
+    const lifted = origin === "person" ? this.followUps.releaseForPerson(input.sessionId) : undefined;
     try {
       return await this.sendAdmittedMessage(input);
+    } catch (error) {
+      if (lifted) this.followUps.hold(input.sessionId, lifted);
+      throw error;
     } finally {
       this.admittingSessions.delete(input.sessionId);
       release();
@@ -2661,7 +2755,7 @@ export class CapsuleEngine {
     const mode = (firstTurn ? call?.entry.command.mode ?? profileMode(commandProfile) : undefined) ?? input.mode ?? session.mode;
     const harnessId = this.resolveHarnessId(session, project, commandProfile ? session.agentId : input.agentId, mode);
     const agentId = harnessId ?? input.agentId ?? session.agentId ?? agentIdForMode(mode);
-    const skillId = input.skillId ?? skillIdForMode(mode);
+    const skillId = input.skillId;
     const activeSkill = skillId ? await this.requireSkill(skillId, project.id, session.id) : undefined;
     if (activeSkill && activeSkill.status !== "installed") throw new Error("The selected skill is not installed or has been disabled. Choose an installed skill.");
     if (activeSkill && !activeSkill.content?.trim()) throw new Error("The selected skill has no readable SKILL.md instructions. Rescan or choose another skill.");
@@ -2679,8 +2773,6 @@ export class CapsuleEngine {
     }
     // A new turn is what ends Redo for the restores before it.
     await this.branching.discard(session.id);
-    // Read before this turn's own prompt is written: the history is what came before it.
-    const replay = session.carryOver?.replayTranscript ? this.repos.listMessages(session.id) : undefined;
     const brief = session.carryOver?.brief;
 
     const run = createRunRecord({
@@ -2695,6 +2787,8 @@ export class CapsuleEngine {
     run.status = "running";
     run.workingDirectory = startingCwd;
     this.repos.insertRun(run);
+    // Taken while the agent starts, and awaited before the prompt goes out.
+    const baseline = this.captureTurnBaseline(run, session);
     const userMessage: ChatMessage = {
       id: createId("msg"),
       sessionId: session.id,
@@ -2783,6 +2877,8 @@ export class CapsuleEngine {
         });
       }
     }
+    await baseline;
+    if (run.workingDirectory !== startingCwd) await this.captureTurnBaseline(run, session);
 
     if (hookContext.length) {
       runtimePrompt = `${runtimePrompt}\n\n${hookContext.join("\n\n")}`;
@@ -2838,16 +2934,27 @@ export class CapsuleEngine {
       this.repos.updateSession(session);
     }
 
+    // Read once the agent is ready: a session that could not resume asks for the transcript too.
+    const replay = this.requireSession(session.id).carryOver?.replayTranscript
+      ? this.repos.listMessages(session.id).filter((message) => message.runId !== run.id) : undefined;
+    const resumeFailure = this.resumeFallbacks.get(session.id);
+    if (resumeFailure) {
+      this.resumeFallbacks.delete(session.id);
+      this.appendEvent(run.id, "lifecycle", `The saved agent session couldn't be resumed (${resumeFailure.replace(/\.$/, "")}). Started a new agent session${replay?.length ? "; the earlier conversation was passed along" : ""}.`, {
+        step: "harness", streamKind: "lifecycle", resumeFailed: true,
+      });
+    }
     let carriedHistory = "";
-    if (replay?.length) {
+    if (replay) {
       /*
-       * A fork or a conversation restore started this thread a fresh agent
-       * session. The kept turns go with this prompt, once, so the agent is
-       * not starting blind. The mock runtime reads scenario tokens out of a
-       * prompt, so it is told about the history rather than handed it.
+       * A fork, a conversation restore or a session that could not resume
+       * started this thread a fresh agent session. The kept turns go with this
+       * prompt, once, so the agent is not starting blind. The mock runtime
+       * reads scenario tokens out of a prompt, so it is told about the
+       * history rather than handed it.
        */
-      if (!this.usingMock) carriedHistory = transcriptContext(replay);
-      this.appendEvent(run.id, "lifecycle", `Carried the earlier conversation to the fresh agent session (${replay.length} message${replay.length === 1 ? "" : "s"}).`, { step: "harness", streamKind: "lifecycle" });
+      if (!this.usingMock && replay.length) carriedHistory = transcriptContext(replay);
+      if (replay.length) this.appendEvent(run.id, "lifecycle", `Carried the earlier conversation to the fresh agent session (${replay.length} message${replay.length === 1 ? "" : "s"}).`, { step: "harness", streamKind: "lifecycle" });
       const current = this.requireSession(session.id);
       if (current.carryOver?.replayTranscript) {
         const { replayTranscript: _carried, ...rest } = current.carryOver;
@@ -2895,7 +3002,8 @@ export class CapsuleEngine {
 
     let skillInstruction = "";
     if (activeSkill?.content) {
-      skillInstruction = `\n\n[Active Skill: ${activeSkill.name}]\n${activeSkill.content}`;
+      const folder = activeSkill.location ? `\nSkill folder: ${path.dirname(activeSkill.location)}` : "";
+      skillInstruction = `\n\n[Active Skill: ${activeSkill.name}]${folder}\n${activeSkill.content}`;
     }
 
     const runtimeMessage: AgentMessage = {
@@ -2953,6 +3061,7 @@ export class CapsuleEngine {
         })
         .catch((error: unknown) => {
           const detail = error instanceof Error ? error.message : String(error);
+          if (error instanceof AgentAuthRequiredError && harnessId) noteAuthRequired(harnessId, true);
           return this.handleRuntimeEvent(
             session,
             run,
@@ -3007,6 +3116,8 @@ export class CapsuleEngine {
     run.updatedAt = nowIso();
     run.completedAt = nowIso();
     this.repos.updateRun(run);
+    const session = this.repos.getSession(run.sessionId);
+    if (session) this.captureTurnCheckpoint(run, session);
     this.appendEvent(run.id, "lifecycle", detail, { status: "failed", error: detail });
     this.events.emit("run", run);
     return new Error(detail);
@@ -3093,6 +3204,7 @@ export class CapsuleEngine {
     run.updatedAt = nowIso();
     run.completedAt = nowIso();
     this.repos.updateRun(run);
+    this.captureTurnCheckpoint(run, session);
     this.appendEvent(run.id, "cancelled", message, data);
     this.settleRunApprovals(run.id);
     this.events.emit("run", run);
@@ -3228,6 +3340,7 @@ export class CapsuleEngine {
       const toolCallId = approval.details?.toolCallId;
       if (toolCallId && decision !== "denied") this.rememberUserApproval(toolCallId);
       if (decision === "denied") direct.deny(); else direct.allow();
+      this.recordApprovalDecision(approval);
       const run = this.requireRun(direct.runId);
       if (!run.completedAt && !this.repos.listApprovals("pending").some((item) => item.runId === run.id)) {
         run.status = "running";
@@ -3252,6 +3365,14 @@ export class CapsuleEngine {
         this.events.emit("approval", approval);
         throw new Error("The Gateway didn't take that answer. Try again, or stop the turn.");
       }
+      this.recordApprovalDecision(approval);
+      const run = this.repos.getRun(approval.runId);
+      if (run && !run.completedAt && run.status === "approval_required" && !this.repos.listApprovals("pending").some((item) => item.runId === run.id)) {
+        run.status = "running";
+        run.updatedAt = nowIso();
+        this.repos.updateRun(run);
+        this.events.emit("run", run);
+      }
     }
     this.events.emit("approval", approval);
   }
@@ -3275,7 +3396,9 @@ export class CapsuleEngine {
       approval.resolvedAt = nowIso();
       this.repos.updateApproval(approval);
       this.events.emit("approval", approval);
-      return this.runtime.answerQuestion(approvalId, valid);
+      await this.runtime.answerQuestion(approvalId, valid);
+      this.recordAnswers(approval.runId, questions, valid);
+      return;
     }
     if (!direct.answer) throw new Error("This request is not a question.");
     approval.status = "approved_once";
@@ -3284,15 +3407,20 @@ export class CapsuleEngine {
     this.directApprovals.delete(approvalId);
     direct.answer(valid);
     const run = this.requireRun(direct.runId);
-    this.appendEvent(run.id, "question.answered", `Answered ${questions.length === 1 ? "a question" : `${questions.length} questions`}`, {
-      questions: questions.map((question) => ({ question: question.question, answer: question.secret ? "(hidden)" : valid[question.id]!.join(", ") })),
-    });
+    this.recordAnswers(run.id, questions, valid);
     if (!run.completedAt && !this.repos.listApprovals("pending").some((item) => item.runId === run.id)) {
       run.status = "running";
       this.repos.updateRun(run);
       this.events.emit("run", run);
     }
     this.events.emit("approval", approval);
+  }
+
+  /** Answers stay in the turn's record, except a secret's, which is never written down. */
+  private recordAnswers(runId: string, questions: readonly AgentQuestion[], valid: AgentQuestionAnswers): void {
+    this.appendEvent(runId, "question.answered", `Answered ${questions.length === 1 ? "a question" : `${questions.length} questions`}`, {
+      questions: questions.map((question) => ({ question: question.question, answer: question.secret ? "(hidden)" : valid[question.id]?.join(", ") ?? "" })),
+    });
   }
 
   async listFiles(projectId: string, relative = ".", root?: string): Promise<FileEntry[]> {
@@ -3616,7 +3744,9 @@ export class CapsuleEngine {
     // Publish only after every persistent write succeeded. Observers and
     // clients never see settings from a rejected save. The file, not the
     // patch, is what was saved: it may hold an edit not yet reloaded.
+    const previousOverrides = this.settings.agentOverrides;
     this.settings = this.withSecrets(this.config.settings(), next);
+    this.applyAgentOverrides(previousOverrides);
     this.skillsShClient.setToken(next.skillsShToken);
     if (!pullRequestWatchEnabled(next)) { this.stopAllPrWatch(); this.pausedPrWatches.clear(); }
     this.notifyArchivedSessions(archived);
@@ -3798,12 +3928,13 @@ export class CapsuleEngine {
     return this.getConfigSnapshot(input.projectId);
   }
 
-  /** Add a template's automation, paused, and return the file it went to so it can be opened. */
+  /** Add an automation written in Settings, on, and return the file it went to. */
   createAutomation(input: AutomationCreateInput): string {
-    const template = AUTOMATION_TEMPLATES.find((item) => item.id === input.template);
-    if (!template) throw new Error(`There is no automation template named ${input.template}.`);
+    const draft = input.scope === "user" ? { ...input.draft, workspace: undefined } : input.draft;
+    const read = automationFromDraft(draft);
+    if (!read.ok) throw new Error(read.message);
     const root = input.scope === "local" ? this.configRoot(input.projectId) : undefined;
-    this.config.addAutomation({ automation: template.automation, scope: input.scope, root });
+    this.config.addAutomation({ automation: read.automation, scope: input.scope, root });
     this.applyConfigChange();
     return this.configFilePath({ kind: "settings", scope: input.scope, ...(input.projectId ? { projectId: input.projectId } : {}) });
   }
@@ -3950,9 +4081,10 @@ export class CapsuleEngine {
     if (this.usingMock) return;
     const gatewayReplies = this.openclaw.onAcpReply((payload) => this.handleAcpReply(payload));
     // The socket drops and comes back on its own; the window's Gateway banner hears both.
-    const connection = this.openclaw.onConnectionChange(() => {
+    const connection = this.openclaw.onConnectionChange((state) => {
       if (this.stopped) return;
       void this.openclaw.getStatus().then((status) => this.events.emit("connection", status), () => undefined);
+      if (state === "connected") void this.reconcileGatewayRuns().catch((error: unknown) => this.log(`Could not reconcile Gateway turns: ${String(error)}`));
     });
     this.acpUnsub = () => { gatewayReplies(); connection(); };
     // Both routes deliver the same reply shape, and a thread keeps whichever
@@ -3972,6 +4104,7 @@ export class CapsuleEngine {
         if (session) this.events.emit("state", { command: "harness-configuration", sessionId: session.id });
         return;
       }
+      if (payload.type === "wake") { this.recordWake(session, payload.wake); return; }
       const run = session && this.repos.findReplyRun(session.id);
       if (!run) { if (payload.type === "permission") payload.request.cancel(); return; }
       if (payload.type === "usage") {
@@ -3979,7 +4112,13 @@ export class CapsuleEngine {
         if (payload.usage.turn) this.appendEvent(run.id, "usage.turn", "Agent-reported turn usage", { usage: payload.usage.turn });
         return;
       }
+      if (payload.type === "compaction") {
+        this.flushThought(payload.sessionKey);
+        this.appendEvent(run.id, "compaction", "Context compacted", { streamKind: "compaction", ...payload.compaction });
+        return;
+      }
       if (payload.type === "tool") {
+        this.flushThought(payload.sessionKey);
         this.appendEvent(run.id, "tool", payload.tool.title, { ...payload.tool });
         this.watchCommand(run.id, session!, payload.tool);
         this.observeToolCall(session!, run, payload.tool);
@@ -4014,6 +4153,79 @@ export class CapsuleEngine {
       else apply(decision, false);
     });
     this.directUnsub = () => { replies(); activity(); };
+  }
+
+  /*
+   * A Gateway turn that ends while the socket is down never sends its end
+   * frame again: subscribing after the reconnect brings later replies, not the
+   * lifecycle that was missed. So each hello checks every open Gateway turn
+   * against the Gateway's own record. One that is no longer running there is
+   * settled; one the Gateway cannot account for is stopped rather than left
+   * running forever.
+   */
+  private async reconcileGatewayRuns(): Promise<void> {
+    if (this.usingMock) return;
+    const turns = this.repos.listRuns().flatMap((run) => {
+      if (!run.openclawRunId || !["running", "waiting", "approval_required"].includes(run.status)) return [];
+      const session = this.repos.getSession(run.sessionId);
+      const key = session?.openclawSessionKey;
+      return session && key && !isDirectSessionKey(key) ? [{ run, session, key }] : [];
+    });
+    if (turns.length === 0) return;
+    const activity = await this.openclaw.sessionActivity();
+    for (const { run, session, key } of turns) {
+      const active = activity?.get(key);
+      if (active === true) continue;
+      const current = this.repos.getRun(run.id);
+      if (!current || current.completedAt) continue;
+      const ended = activity !== undefined && (active === false || !activity.has(key));
+      let reply = current.result?.trim();
+      if (!reply) {
+        try { reply = this.repos.readReplyText(session.id, run.id, run.createdAt).trim(); } catch { reply = undefined; }
+      }
+      if (!ended) void this.openclaw.cancelRun(run.openclawRunId!).catch(() => undefined);
+      const detail = !ended
+        ? "Capsule lost the Gateway connection during this turn and couldn't confirm how it ended, so it was stopped."
+        : reply ? "This turn finished while Capsule was disconnected from the Gateway."
+          : "This turn ended while Capsule was disconnected from the Gateway, and its result didn't arrive.";
+      await this.handleRuntimeEvent(session, current, {
+        id: createId("evt"), runId: run.id, timestamp: nowIso(), type: "lifecycle", message: detail,
+        data: ended && reply ? { status: "completed" } : { status: "cancelled", error: detail },
+      }, () => undefined);
+    }
+  }
+
+  /*
+   * A turn the agent started itself: its report on background work that
+   * outlived the user's turn. It is a run of its own, so the report reaches
+   * the thread, its approvals can be answered, Stop reaches it, and the thread
+   * shows as working until it ends. An open turn already collects whatever
+   * the agent says, so a wake during one adds nothing.
+   */
+  private recordWake(session: Session | undefined, wake: Extract<DirectActivity, { type: "wake" }>["wake"]): void {
+    if (!session || this.admittingSessions.has(session.id) || this.repos.findReplyRun(session.id)) {
+      wake.finished.catch(() => undefined);
+      return;
+    }
+    const project = this.repos.getProject(session.projectId);
+    const run = createRunRecord({ sessionId: session.id, projectId: session.projectId, agentId: session.harnessId ?? session.agentId ?? "agent", prompt: "" });
+    run.status = "running";
+    run.turnMode = session.turnMode ?? "act";
+    run.workingDirectory = project ? this.cwdFor(session, project) : undefined;
+    this.repos.insertRun(run);
+    this.events.emit("run", run);
+    const name = presetFor(session.harnessId ?? "")?.name ?? "The agent";
+    this.appendEvent(run.id, "lifecycle", wake.detail ? `${name} continued on its own to report: ${wake.detail}` : `${name} continued on its own.`, {
+      step: "harness", streamKind: "lifecycle", wake: true,
+    });
+    const settle = (status: string, error?: string) => this.handleRuntimeEvent(session, run, {
+      id: createId("evt"), runId: run.id, timestamp: nowIso(), type: "lifecycle", message: error ?? "",
+      data: { status, ...(error ? { error } : {}) },
+    }, () => undefined);
+    void wake.finished.then(
+      (result) => { const outcome = turnOutcome(result?.stopReason); return settle(outcome.status, outcome.error); },
+      (error: unknown) => settle("failed", error instanceof Error ? error.message : String(error)),
+    ).catch((error: unknown) => this.log(`Could not record the agent's own turn: ${String(error)}`));
   }
 
   private rememberUserApproval(toolCallId: string): void {
@@ -4237,6 +4449,11 @@ export class CapsuleEngine {
   }): void {
     if (this.stopped || !payload.sessionKey) return;
     if (this.ignoredReplySessions.has(payload.sessionKey)) return;
+    // On the direct route "control" marks a thought. It is not the reply, but it is the turn's record.
+    if (isDirectSessionKey(payload.sessionKey)) {
+      if (payload.control) { if (payload.text) this.bufferThought(payload.sessionKey, payload.text); return; }
+      this.flushThought(payload.sessionKey);
+    }
     if (payload.control) return;
     // Behind the control marking: a status dump is recognisable on its own, so
     // a frame that slips past the marking still cannot become a message.
@@ -4370,10 +4587,6 @@ export class CapsuleEngine {
         runtime: this.usingMock ? "mock" : "openclaw",
       });
     }
-    const skills = await this.runtime.listSkills().catch(() => DEFAULT_SKILLS);
-    for (const skill of skills.length > 0 ? skills : DEFAULT_SKILLS) {
-      this.repos.upsertSkill(skill);
-    }
     if (this.repos.listPolicies().length === 0) {
       for (const rule of DEFAULT_POLICIES) this.repos.insertPolicy(rule);
     }
@@ -4391,6 +4604,7 @@ export class CapsuleEngine {
     run.updatedAt = nowIso();
     run.completedAt = nowIso();
     this.repos.updateRun(run);
+    this.captureTurnCheckpoint(run, session);
     this.settleRunApprovals(run.id);
     this.appendEvent(run.id, "lifecycle", OUTPUT_LIMIT_ERROR, { status: "failed", error: OUTPUT_LIMIT_ERROR });
     this.events.emit("run", run);
@@ -4427,6 +4641,11 @@ export class CapsuleEngine {
       return;
     }
     const storedRun = event.type === "assistant" ? this.repos.getRunProgress(run.id) : this.repos.getRun(run.id);
+    // The thread was deleted under a live turn: nothing is left to record against.
+    if (!storedRun) {
+      stop();
+      return;
+    }
     // Late runtime frames must not erase receipts saved by a separate action.
     if (storedRun) {
       run.result = storedRun.result ?? run.result;
@@ -4610,6 +4829,34 @@ export class CapsuleEngine {
     }
   }
 
+  private bufferThought(sessionKey: string, text: string): void {
+    const held = this.directThoughts.get(sessionKey) ?? "";
+    // The saved event keeps 8 KB of a message; holding more would only be cut.
+    if (held.length < 8192) this.directThoughts.set(sessionKey, held + text);
+  }
+
+  private flushThought(sessionKey: string): void {
+    const text = this.directThoughts.get(sessionKey)?.trim();
+    this.directThoughts.delete(sessionKey);
+    if (!text) return;
+    const session = this.repos.listSessions().find((item) => item.openclawSessionKey === sessionKey);
+    const run = session && this.repos.findReplyRun(session.id);
+    // A whole stretch, not a streamed piece: the log puts a paragraph break after it.
+    if (run && !run.completedAt) this.appendEvent(run.id, "thinking", text, { streamKind: "thinking", segment: true });
+  }
+
+  /** What a person decided on an approval card, kept in the turn's record beside the work it allowed. */
+  private recordApprovalDecision(approval: ApprovalRequest): void {
+    const target = approval.target.replace(/\s+/gu, " ").trim().slice(0, 200);
+    const asked = Boolean(approval.details?.questions?.length);
+    const message = asked ? "Question not answered"
+      : approval.status === "denied" ? `Denied: ${approval.action}`
+        : approval.status === "approved_session" ? `Allowed for this conversation: ${approval.action}` : `Allowed: ${approval.action}`;
+    this.appendEvent(approval.runId, "approval.resolved", message, {
+      approvalId: approval.id, decision: approval.status, action: approval.action, ...(asked ? { question: true } : { target }),
+    });
+  }
+
   private appendEvent(
     runId: string,
     type: string,
@@ -4671,6 +4918,8 @@ export class CapsuleEngine {
       run.updatedAt = nowIso();
       run.completedAt = nowIso();
       this.repos.updateRun(run);
+      // The folder as the quit left it is the nearest record of what the turn did.
+      if (owner) this.captureTurnCheckpoint(run, owner);
     }
     // Neither route can deliver a decision to a request from the previous
     // process. Clear orphaned approvals as well as those on interrupted runs.
@@ -4687,6 +4936,10 @@ export class CapsuleEngine {
     for (const session of this.repos.listSessions()) {
       if (!isLiveHarnessState(session.harnessState)) continue;
       session.harnessState = "closed";
+      // A direct thread resumes its saved native session; a Gateway one starts fresh, so it is handed the transcript.
+      if (session.openclawSessionKey && !isDirectSessionKey(session.openclawSessionKey) && !session.directSession) {
+        session.carryOver = { ...carryOverFor(session, true), route: "gateway", replayTranscript: true };
+      }
       session.openclawSessionKey = undefined;
       session.updatedAt = nowIso();
       this.repos.updateSession(session);
@@ -4713,6 +4966,18 @@ export class CapsuleEngine {
     }
   }
 
+  /*
+   * Capsule stores only skills installed from the catalog, and every one of
+   * those has an owner/repo/name id and its SKILL.md. Earlier versions also
+   * stored bundled sample skills under bare ids and copied the Gateway's
+   * plugin list in without instructions; neither can be attached, so both go.
+   */
+  private pruneStoredSkills(): void {
+    for (const skill of this.repos.listSkills()) {
+      if (!skill.id.includes("/") || !skill.content?.trim()) this.repos.deleteSkill(skill.id);
+    }
+  }
+
   private bootstrapWorkspace(): void {
     const existing = this.repos.listWorkspaces()[0];
     if (existing) {
@@ -4723,10 +4988,7 @@ export class CapsuleEngine {
           description: "Tasks started outside a project.",
         });
       }
-      if (this.repos.listSkillPacks().length === 0) {
-        for (const pack of DEFAULT_SKILL_PACKS) this.repos.upsertSkillPack(pack);
-        for (const skill of DEFAULT_SKILLS) this.repos.upsertSkill(skill);
-      }
+      this.pruneStoredSkills();
       return;
     }
     const timestamp = nowIso();
@@ -4742,8 +5004,6 @@ export class CapsuleEngine {
       description: "Tasks started outside a project.",
     });
     for (const agent of DEFAULT_AGENTS) this.repos.upsertAgent(agent);
-    for (const pack of DEFAULT_SKILL_PACKS) this.repos.upsertSkillPack(pack);
-    for (const skill of DEFAULT_SKILLS) this.repos.upsertSkill(skill);
     for (const rule of DEFAULT_POLICIES) this.repos.insertPolicy(rule);
   }
 
@@ -4771,6 +5031,20 @@ export class CapsuleEngine {
     this.config.load();
     this.config.onChange(() => this.applyConfigChange());
     this.settings = this.withSecrets(this.config.settings());
+    setAgentOverrides(this.settings.agentOverrides);
+  }
+
+  /*
+   * Launch overrides live in the harness module, where binary lookup, the
+   * sign-in probe and direct spawn all read them. A change can move an agent
+   * to another binary or account, so its readiness is asked again.
+   */
+  private applyAgentOverrides(previous: CapsuleSettings["agentOverrides"]): void {
+    if (isDeepStrictEqual(previous, this.settings.agentOverrides)) return;
+    setAgentOverrides(this.settings.agentOverrides);
+    clearLoginCache();
+    this.modelDiscovery.clear();
+    this.events.emit("state", { command: "harness-updated" });
   }
 
   private withSecrets(settings: CapsuleSettings, from = this.settings): CapsuleSettings {
@@ -4800,6 +5074,7 @@ export class CapsuleEngine {
       this.log(`Settings from ${this.config.paths.userSettings} were read but not applied: ${String(error)}`);
     }
     this.settings = next;
+    this.applyAgentOverrides(previous.agentOverrides);
     if (!pullRequestWatchEnabled(next)) { this.stopAllPrWatch(); this.pausedPrWatches.clear(); }
     if (!isDeepStrictEqual(previous, next)) this.events.emit("state", { command: "settings-updated" });
     this.events.emit("state", { command: "config-updated" });
@@ -5089,12 +5364,28 @@ export class CapsuleEngine {
     });
   }
 
+  /*
+   * A turn's diff runs from the checkpoint before it, and every ending now
+   * records one. The first turn in a folder has nothing before it, so it
+   * snapshots the folder as it starts, before the agent can touch it.
+   */
+  private async captureTurnBaseline(run: Run, session: Session): Promise<void> {
+    const cwd = run.workingDirectory;
+    if (!cwd || this.stopped || session.temporary || this.temporary.has(session.id) || this.repos.previousCheckpoint(run.id)) return;
+    await captureCheckpoint(cwd, threadSnapshotRef(session.id, "base", run.id)).catch(() => undefined);
+  }
+
   /**
    * Token accounting for the last `days` days, read from the CLIs' own
    * transcripts. Nothing is recorded for this; see usage/transcripts.
    */
   async usageSummary(days: number): Promise<UsageSummary> {
-    return await readUsageSummaryAsync(sinceDaysAgo(days));
+    const folders = [
+      ...this.repos.listProjects().flatMap((project) => [project.workingDirectory, ...(project.extraFolders ?? [])]
+        .map((folder) => ({ folder: folder ?? "", projectId: project.id }))),
+      ...this.repos.listSessions().map((session) => ({ folder: session.workingDirectory ?? "", projectId: session.projectId })),
+    ];
+    return await readUsageSummaryAsync(sinceDaysAgo(days), defaultUsageRoots(), projectOfFolders(folders));
   }
 
   /** Read cached native observations only; no provider requests or process starts. */
@@ -5122,7 +5413,8 @@ export class CapsuleEngine {
     const project = session ? this.repos.getProject(session.projectId) : undefined;
     const cwd = run.workingDirectory ?? session?.workingDirectory ?? project?.workingDirectory;
     if (!cwd) return { patch: "", files: [], available: false };
-    const previous = this.repos.previousCheckpoint(run.id);
+    const baseline = threadSnapshotRef(run.sessionId, "base", run.id);
+    const previous = this.repos.previousCheckpoint(run.id) ?? (await hasCheckpoint(cwd, baseline) ? baseline : undefined);
     // With no base, the low-level helper compares to the current worktree.
     // That is "since this turn", not "by this turn", and changes as the user
     // works. Older first checkpoints have no recorded before-state: be honest
@@ -5304,6 +5596,24 @@ export class CapsuleEngine {
 
   importSession(input: ImportSessionInput): Promise<Session> {
     return this.historyImport.import(input);
+  }
+
+  /*
+   * First run: folders the agents' own histories show steady recent work in,
+   * minus what is already a project and what Capsule itself made (its data
+   * folder and worktrees), so its own runs never suggest themselves.
+   */
+  async suggestProjects(): Promise<SuggestedProject[]> {
+    const since = Date.now() - SUGGESTION_WINDOW_DAYS * 86_400_000;
+    const sightings = await recentSessionSightings(process.env, since);
+    const home = homedir();
+    return suggestProjects(sightings, {
+      known: this.repos.listProjects().flatMap((project) => project.workingDirectory ? [project.workingDirectory] : []),
+      excluded: [tmpdir(), "/tmp", "/private/tmp", "/private/var/folders", "/var/folders", this.options.userDataDir, ...(this.settings.worktreesDirectory ? [this.settings.worktreesDirectory] : [])],
+      home,
+      rootOf: (cwd) => repositoryRoot(cwd, home),
+      exists: (folder) => existsSync(folder),
+    });
   }
 
   handoffDraft(sessionId: string): { summary: string } {

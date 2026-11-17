@@ -31,10 +31,14 @@ it.each(["direct:acp:grok:interrupted", "agent:claude:acp:interrupted"])("recove
     const recovered = engine.listSessions().find((item) => item.id === session.id)!;
     expect(recovered.harnessState).toBe("closed");
     expect(recovered.openclawSessionKey).toBeFalsy();
+    // The Gateway session is gone for good, so the next one is handed the transcript; a direct thread resumes instead.
+    expect(recovered.carryOver?.replayTranscript ?? false).toBe(!key.startsWith("direct:"));
+    if (!key.startsWith("direct:")) expect(recovered.carryOver?.route).toBe("gateway");
     await expect(engine.resolveApproval("pending", "approved_once")).rejects.toThrow("no longer waiting");
     await expect(engine.prepareForUpdate()).resolves.toBeUndefined();
     const next = await engine.sendMessage({ sessionId: session.id, content: "Continue", mode: "chat" });
     await vi.waitFor(() => expect(engine.getRun(next.run.id)?.status).toBe("completed"), { timeout: 5000 });
+    expect(engine.listSessions().find((item) => item.id === session.id)?.carryOver?.replayTranscript).toBeUndefined();
   } finally {
     await engine.stop();
     rmSync(directory, { recursive: true, force: true });

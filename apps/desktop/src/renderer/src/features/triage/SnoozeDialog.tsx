@@ -50,8 +50,10 @@ export function SnoozeDialog() {
     close();
   };
   const submitCustom = () => {
+    const at = new Date(custom);
+    if (Number.isNaN(at.getTime())) { setError("Pick a date and a time."); return; }
     try {
-      choose(parseSnoozeUntil(new Date(custom).toISOString()));
+      choose(parseSnoozeUntil(at.toISOString()));
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : String(failure));
     }

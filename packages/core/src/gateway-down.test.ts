@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ApprovalRequest, Run, RunEvent, RuntimeStatus, Session } from "@capsule/shared";
 import { CapsuleEngine } from "./engine.js";
 
@@ -137,6 +137,16 @@ it("puts a Gateway approval back when the Gateway does not take the decision", a
   await expect(engine.resolveApproval("gw-approval", "denied")).rejects.toThrow("no longer waiting");
 });
 
+it("puts a Gateway turn back to running once its last approval is answered", async () => {
+  const { engine, gateway, run, ask } = await gatewayTurn();
+  await ask();
+  vi.spyOn(gateway, "resolveApproval").mockResolvedValue();
+  await engine.resolveApproval("gw-approval", "approved_once");
+  expect(engine.getRun(run.id)?.status).toBe("running");
+  // The decision stays in the turn's record, as it does on the direct route.
+  expect(engine.listRunEvents(run.id).filter((item) => item.type === "approval.resolved").map((item) => item.data?.decision)).toEqual(["approved_once"]);
+});
+
 it("tells the window when the Gateway socket drops", async () => {
   const { engine } = await gatewayDown();
   const internal = engine as unknown as { bindAcpReplies(): void; openclaw: { onConnectionChange(handler: (state: string) => void): () => void } };
@@ -147,4 +157,48 @@ it("tells the window when the Gateway socket drops", async () => {
   engine.events.on("connection", (status: RuntimeStatus) => seen.push(status));
   announce("disconnected");
   await vi.waitFor(() => expect(seen).toMatchObject([{ state: "disconnected" }]));
+});
+
+describe("a Gateway turn whose end frame was missed while the socket was down", () => {
+  async function reconnect(activity: Map<string, boolean | undefined> | undefined, reply?: string) {
+    const turn = await gatewayTurn();
+    const internal = turn.engine as unknown as {
+      bindAcpReplies(): void; handleAcpReply(payload: { sessionKey: string; text: string; done: boolean }): void;
+      openclaw: { onConnectionChange(handler: (state: string) => void): () => void; sessionActivity(): Promise<Map<string, boolean | undefined> | undefined> };
+    };
+    let announce!: (state: string) => void;
+    vi.spyOn(internal.openclaw, "onConnectionChange").mockImplementation((handler) => { announce = handler; return () => undefined; });
+    vi.spyOn(internal.openclaw, "sessionActivity").mockResolvedValue(activity);
+    const cancel = vi.spyOn(turn.gateway, "cancelRun").mockResolvedValue();
+    internal.bindAcpReplies();
+    if (reply) internal.handleAcpReply({ sessionKey: "agent:main:fixture", text: reply, done: true });
+    announce("connected");
+    return { ...turn, cancel };
+  }
+
+  it("settles a turn the Gateway no longer runs as finished when its reply arrived", async () => {
+    const { engine, run, cancel } = await reconnect(new Map([["agent:main:fixture", false]]), "All done.");
+    await vi.waitFor(() => expect(engine.getRun(run.id)?.status).toBe("completed"));
+    expect(engine.getRun(run.id)?.result).toBe("All done.");
+    expect(cancel).not.toHaveBeenCalled();
+  });
+
+  it("settles a turn the Gateway no longer lists as stopped, saying its result didn't arrive", async () => {
+    const { engine, run } = await reconnect(new Map());
+    await vi.waitFor(() => expect(engine.getRun(run.id)?.status).toBe("cancelled"));
+    expect(engine.getRun(run.id)?.error).toMatch(/disconnected from the Gateway/);
+  });
+
+  it("leaves a turn running when the Gateway says it still is", async () => {
+    const { engine, run } = await reconnect(new Map([["agent:main:fixture", true]]));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(engine.getRun(run.id)?.status).toBe("running");
+  });
+
+  it("stops a turn the Gateway cannot account for instead of leaving it running", async () => {
+    const { engine, run, cancel } = await reconnect(undefined);
+    await vi.waitFor(() => expect(engine.getRun(run.id)?.status).toBe("cancelled"));
+    expect(engine.getRun(run.id)?.error).toMatch(/couldn't confirm how it ended/);
+    expect(cancel).toHaveBeenCalledWith("oc-1");
+  });
 });

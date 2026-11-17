@@ -98,6 +98,87 @@ describe("follow-ups kept by the engine", () => {
     expect(service.get("s1").blocked).toMatch(/Auto-resume stopped/);
   });
 
+  it("holds the queue after a turn that was stopped or failed, until the person lets it go", async () => {
+    for (const [run, reason] of [
+      [{ ...failedRun("r1", "x"), status: "cancelled" } as Run, "Paused after the turn was stopped."],
+      [failedRun("r2", "The agent crashed."), "Paused after the turn failed."],
+      [failedRun("r3", "Usage limit reached. Try again in 30 minutes."), "Paused after the turn hit a usage limit."],
+    ] as const) {
+      const { service, sent } = harness();
+      service.apply("s1", { type: "add", prompt: { content: "then add tests", attachments: [] } });
+      service.runEnded(run);
+      expect(service.get("s1").held).toBe(reason);
+      await service.drain("s1");
+      expect(sent).toEqual([]);
+      service.apply("s1", { type: "release" });
+      expect(service.get("s1").held).toBeUndefined();
+      await service.drain("s1");
+      expect(sent.map((item) => item.prompt.content)).toEqual(["then add tests"]);
+      service.stop();
+    }
+  });
+
+  it("does not hold an empty queue, and a completed turn leaves a held queue held", () => {
+    const { service } = harness();
+    service.runEnded(failedRun("r1", "boom"));
+    expect(service.get("s1").held).toBeUndefined();
+    service.apply("s1", { type: "add", prompt: { content: "next", attachments: [] } });
+    service.runEnded(failedRun("r2", "boom"));
+    service.runEnded({ ...failedRun("r3", ""), status: "completed" } as Run);
+    expect(service.get("s1").held).toBe("Paused after the turn failed.");
+    service.stop();
+  });
+
+  it("lets the person's own send release the hold, and puts it back when that send never starts", () => {
+    const { service } = harness();
+    service.apply("s1", { type: "add", prompt: { content: "next", attachments: [] } });
+    service.runEnded(failedRun("r1", "boom"));
+    const lifted = service.releaseForPerson("s1");
+    expect(lifted).toBe("Paused after the turn failed.");
+    expect(service.get("s1").held).toBeUndefined();
+    service.hold("s1", lifted!);
+    expect(service.get("s1").held).toBe("Paused after the turn failed.");
+    service.stop();
+  });
+
+  it("sends a chosen prompt first when released with it", async () => {
+    const { service, sent } = harness();
+    service.apply("s1", { type: "add", prompt: { content: "one", attachments: [] } });
+    const two = service.apply("s1", { type: "add", prompt: { content: "two", attachments: [] } }).queue[1]!;
+    service.runEnded(failedRun("r1", "boom"));
+    service.apply("s1", { type: "release", id: two.id });
+    await service.drain("s1");
+    expect(sent.map((item) => item.prompt.content)).toEqual(["two"]);
+    expect(service.get("s1").queue.map((item) => item.content)).toEqual(["one"]);
+    service.stop();
+  });
+
+  it("sends a due resume ahead of a held queue, and keeps the rest held", async () => {
+    const { service, sent, advance, tick } = harness();
+    service.apply("s1", { type: "add", prompt: { content: "then add tests", attachments: [] } });
+    service.runEnded(failedRun("r1", "Usage limit reached. Try again in 5 minutes."));
+    service.apply("s1", { type: "schedule", resume: { runId: "r1", prompt: "Finish the report", attachments: [], at: Date.parse("2026-11-13T10:05:00Z") } });
+    advance(6 * 60_000);
+    tick();
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(sent.map((item) => item.prompt.content)).toEqual(["Finish the report"]);
+    await service.drain("s1");
+    expect(sent).toHaveLength(1);
+    expect(service.get("s1").held).toBe("Paused after the turn hit a usage limit.");
+    service.stop();
+  });
+
+  it("rewrites a queued prompt where it stands, and says so when it has already gone", () => {
+    const { service } = harness();
+    service.apply("s1", { type: "add", prompt: { content: "one", attachments: [] } });
+    const two = service.apply("s1", { type: "add", prompt: { content: "two", attachments: [] } }).queue[1]!;
+    service.apply("s1", { type: "add", prompt: { content: "three", attachments: [] } });
+    const next = service.apply("s1", { type: "replace", id: two.id, prompt: { content: "two, edited", attachments: [] } });
+    expect(next.queue.map((item) => [item.id === two.id, item.content])).toEqual([[false, "one"], [true, "two, edited"], [false, "three"]]);
+    expect(() => service.apply("s1", { type: "replace", id: "gone", prompt: { content: "x", attachments: [] } })).toThrow(/already been sent/);
+    service.stop();
+  });
+
   it("forgets the follow-ups of a conversation that no longer exists", async () => {
     const { service, store } = harness();
     store.set("followups:gone", JSON.stringify({ queue: [{ id: "q", content: "x", attachments: [], createdAt: "2026-11-13T10:00:00Z" }] }));

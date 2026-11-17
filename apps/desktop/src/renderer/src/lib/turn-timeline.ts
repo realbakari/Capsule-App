@@ -1,4 +1,4 @@
-import type { ChatMessage, Run, RunEvent } from "@capsule/shared";
+import type { ChatMessage, ReasoningSummary, Run, RunEvent } from "@capsule/shared";
 import { readToolActivityDetails, type ToolActivityDetails, type ToolKind } from "@capsule/shared";
 import { cleanActivityDetail } from "./activity";
 
@@ -14,21 +14,72 @@ export interface ToolObservation {
   details?: ToolActivityDetails;
 }
 
+/**
+ * What else the work log keeps beside tool calls: the agent's reasoning, a
+ * person's answer to an approval or question, and a context compaction. Each
+ * is one quiet row; none of them is the agent's reply.
+ */
+export type WorkNote =
+  | { kind: "reasoning"; id: string; timestamp: string; text: string }
+  | { kind: "decision"; id: string; timestamp: string; outcome: "allowed" | "allowed-session" | "denied" | "unanswered" | "answered"; subject: string; detail?: string }
+  | { kind: "compaction"; id: string; timestamp: string; active: boolean; automatic: boolean };
+
 export type TranscriptRow =
   | { kind: "message"; id: string; message: ChatMessage }
-  | { kind: "activity"; id: string; tools: ToolObservation[] };
+  | { kind: "activity"; id: string; tools: ToolObservation[] }
+  | { kind: "note"; id: string; note: WorkNote };
+
+const SETTLED_STATUSES: ReadonlyArray<Run["status"]> = ["completed", "failed", "cancelled", "blocked"];
+
+function text(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+/** A note from one event, or nothing when the event is not one a person needs in the log. */
+function workNote(event: RunEvent, data: Record<string, unknown>, stream: string, settled: boolean, reasoning: ReasoningSummary): WorkNote | undefined {
+  const base = { id: event.id, timestamp: event.timestamp };
+  if (stream === "thinking" || /^(think|thought|reason)/u.test(event.type)) {
+    // The live steps card shows reasoning while the turn runs; the log keeps it after.
+    const body = event.message || text(data.text);
+    return settled && reasoning !== "hidden" && body ? { ...base, kind: "reasoning", text: data.segment === true ? `${body.trim()}\n\n` : body } : undefined;
+  }
+  if (stream === "compaction" || event.type === "compaction") {
+    return { ...base, kind: "compaction", active: !settled && data.phase === "start", automatic: data.trigger !== "manual" };
+  }
+  // Only the engine's record carries a decision; a runtime's own "approval.resolved" frame is not one.
+  if (event.type === "approval.resolved" && typeof data.decision === "string") {
+    const outcome = data.question === true ? "unanswered" : data.decision === "denied" ? "denied"
+      : data.decision === "approved_session" ? "allowed-session" : "allowed";
+    return { ...base, kind: "decision", outcome, subject: text(data.action) ?? "Request", ...(text(data.target) ? { detail: text(data.target) } : {}) };
+  }
+  if (event.type === "question.answered" && Array.isArray(data.questions)) {
+    const answers = data.questions.flatMap((row) => row && typeof row === "object" && typeof (row as { answer?: unknown }).answer === "string"
+      ? [{ question: String((row as { question?: unknown }).question ?? ""), answer: (row as { answer: string }).answer }] : []);
+    if (!answers.length) return undefined;
+    return { ...base, kind: "decision", outcome: "answered",
+      subject: answers.length === 1 ? answers[0]!.answer : `${answers.length} questions`,
+      detail: answers.map((row) => `${row.question}: ${row.answer}`).join("\n") };
+  }
+  return undefined;
+}
 
 const MAX_VISIBLE_TOOLS = 100;
 
 /** One invocation stays at its first observation, even when completion arrives later. */
-export function turnTranscript(messages: ChatMessage[], events: RunEvent[], run: Run) {
+export function turnTranscript(messages: ChatMessage[], events: RunEvent[], run: Run, options?: { reasoning?: ReasoningSummary }) {
   const calls = new Map<string, ToolObservation>();
+  const notes: WorkNote[] = [];
+  const settled = SETTLED_STATUSES.includes(run.status) || Boolean(run.completedAt);
   for (const event of events) {
     if (event.runId !== run.id) continue;
     const nested = event.data?.data;
-    const data = { ...(nested && typeof nested === "object" ? nested : {}), ...event.data };
+    const data: Record<string, unknown> = { ...(nested && typeof nested === "object" ? nested : {}), ...event.data };
     const stream = String(data.streamKind ?? event.type);
-    if (!/^(tool|command|patch)(?:[._-]|$)/u.test(stream)) continue;
+    if (!/^(tool|command|patch)(?:[._-]|$)/u.test(stream)) {
+      const note = workNote(event, data, stream, settled, options?.reasoning ?? "visible");
+      if (note) notes.push(note);
+      continue;
+    }
     const callId = typeof data.toolCallId === "string" && data.toolCallId ? data.toolCallId : undefined;
     // A completion without an invocation ID cannot safely be counted as a new call.
     if (!callId && /\.(completed|failed|done)$/u.test(event.type)) continue;
@@ -44,11 +95,14 @@ export function turnTranscript(messages: ChatMessage[], events: RunEvent[], run:
     const command = data.kind === "execute" || stream === "command" || previous?.command === true
       || /^(execute|run|ran|exec|bash|shell|sh|git|gh|ls|rg|grep)\b/iu.test(title);
     const inferred = toolKindFrom(data.kind, title, command);
+    const next = readToolActivityDetails(data);
+    // New output replaces the old whole: a tail from an earlier snapshot must not hang off a later head.
+    const kept = next.output === undefined ? previous?.details : { ...previous?.details, outputTail: undefined, omittedLines: undefined };
     calls.set(id, {
       id, timestamp: previous?.timestamp ?? event.timestamp, title, command,
       kind: inferred !== "other" ? inferred : previous?.kind ?? inferred,
       status: reported,
-      details: { ...previous?.details, ...readToolActivityDetails(data) },
+      details: { ...kept, ...next },
     });
   }
   const partial = calls.size > MAX_VISIBLE_TOOLS || events.some((event) => event.runId === run.id && event.data?.earlierEvents);
@@ -56,6 +110,7 @@ export function turnTranscript(messages: ChatMessage[], events: RunEvent[], run:
   const entries = [
     ...messages.map((message, order) => ({ kind: "message" as const, message, time: Date.parse(message.createdAt), order })),
     ...tools.map((tool, order) => ({ kind: "tool" as const, tool, time: Date.parse(tool.timestamp), order: messages.length + order })),
+    ...notes.map((note, order) => ({ kind: "note" as const, note, time: Date.parse(note.timestamp), order: messages.length + tools.length + order })),
   ];
   // Legacy rows without timestamps stay in input order at the end. Mixing a
   // pairwise fallback with chronological order would make the sort unstable.
@@ -64,7 +119,13 @@ export function turnTranscript(messages: ChatMessage[], events: RunEvent[], run:
   const rows: TranscriptRow[] = [];
   for (const entry of entries) {
     if (entry.kind === "message") rows.push({ kind: "message", id: entry.message.id, message: entry.message });
-    else {
+    else if (entry.kind === "note") {
+      // Reasoning streams in pieces and a compaction can report its start and end: each stretch is one row.
+      const last = rows.at(-1);
+      if (last?.kind === "note" && last.note.kind === "reasoning" && entry.note.kind === "reasoning") last.note = { ...last.note, text: last.note.text + entry.note.text };
+      else if (last?.kind === "note" && last.note.kind === "compaction" && entry.note.kind === "compaction") last.note = { ...entry.note, id: last.note.id };
+      else rows.push({ kind: "note", id: `note:${entry.note.id}`, note: entry.note });
+    } else {
       const last = rows.at(-1);
       if (last?.kind === "activity") last.tools.push(entry.tool);
       else rows.push({ kind: "activity", id: `activity:${entry.tool.id}`, tools: [entry.tool] });

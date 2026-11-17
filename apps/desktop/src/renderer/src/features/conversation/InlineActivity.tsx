@@ -97,10 +97,15 @@ function ToolStep({ tool, state, initiallyOpen = false, onOpenFile }: { tool: To
   const [open, setOpen] = useState(initiallyOpen);
   const details = tool.details;
   const hasDetails = hasToolDetails(tool);
+  // A non-zero exit is news even on a row that otherwise reads as finished.
+  const exit = details?.exitCode !== undefined && details.exitCode !== 0 ? details.exitCode : undefined;
   const heading = <>
     <ToolKindIcon kind={tool.kind} size={14} />
     <span className="activity-step-title" title={tool.title}>{tool.title}</span>
-    <StateLabel state={state} />
+    <span className="activity-step-meta">
+      {exit !== undefined && <span className="activity-step-exit" title={`The command exited with status ${exit}`}>exit {exit}</span>}
+      <StateLabel state={state} />
+    </span>
   </>;
   return <div className="activity-step" data-state={state}>
     {hasDetails ? <button type="button" className="activity-step-toggle" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
@@ -109,20 +114,27 @@ function ToolStep({ tool, state, initiallyOpen = false, onOpenFile }: { tool: To
     </button> : <div className="activity-step-toggle activity-step-static">{heading}</div>}
     {open && hasDetails && <div className="activity-step-body">
       {details?.input && <ToolText label={tool.command ? "Command" : "Input"} text={details.input} language={tool.command ? "shell" : undefined} />}
-      {details?.output && <ToolText label="Output" text={details.output} />}
+      {details?.output && <ToolText label="Output" text={details.output} tail={details.outputTail} omitted={details.omittedLines} />}
       {details?.locations?.length ? <div className="activity-step-files" aria-label="Reported files">{details.locations.map((path, index) =>
         onOpenFile ? <button type="button" className="activity-file" key={`${index}:${path}`} title={path} onClick={() => onOpenFile(path)}><FileIcon size={13} />{path}</button>
           : <span key={`${index}:${path}`}>{path}</span>)}</div> : null}
-      {details?.truncated && <p className="muted">Preview shortened. Only the displayed text is copied.</p>}
+      {details?.outputTail !== undefined && details.omittedLines ? <p className="muted">Showing the first {lineCount(details.output)} and last {lineCount(details.outputTail)} lines of the output. Only these are kept and copied.</p>
+        : details?.truncated && <p className="muted">Preview shortened. Only the displayed text is copied.</p>}
     </div>}
   </div>;
 }
 
-function ToolText({ label, text, language }: { label: string; text: string; language?: string }) {
+function lineCount(text: string | undefined): number {
+  return text ? text.replace(/\n$/u, "").split("\n").length : 0;
+}
+
+function ToolText({ label, text, language, tail, omitted }: { label: string; text: string; language?: string; tail?: string; omitted?: number }) {
+  const gap = tail !== undefined && omitted ? `… ${omitted.toLocaleString()} ${omitted === 1 ? "line" : "lines"} not kept …` : undefined;
   return <div className="activity-tool-text">
-    <div className="activity-tool-text-heading"><span>{label}</span><CopyButton text={text} label={`Copy ${label.toLowerCase()} preview`} /></div>
+    <div className="activity-tool-text-heading"><span>{label}</span><CopyButton text={gap ? `${text}\n${gap}\n${tail}` : text} label={`Copy ${label.toLowerCase()} preview`} /></div>
     <pre tabIndex={0} aria-label={`${label} preview`} data-shell={language === "shell" ? "true" : undefined}>
       {language === "shell" ? <span className="shell-prompt" aria-hidden>$ </span> : null}{highlight(text, language)}
+      {gap ? <><span className="activity-tool-gap">{`\n${gap}\n`}</span>{highlight(tail!, language)}</> : null}
     </pre>
   </div>;
 }

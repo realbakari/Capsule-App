@@ -112,7 +112,7 @@ export async function runMarkdownRegressions(host: HTMLElement) {
     disclosure.open = true;
     document.querySelector<HTMLButtonElement>('[aria-label="Copy code"]')!.click();
     await until(() => document.querySelector(".copy-action-feedback")?.textContent === "Copied");
-    assert(copied === "const first = 1;\n", "Copy did not preserve the source");
+    assert(copied === "const first = 1;", "Copy kept the fence's closing newline, which runs a pasted command at once");
     for (const tail of ["Starting more", "Starting more\n\n```css\n#app {", "Starting more\n\n```css\n#app {}\n```\n\n[Docs](https://example.test/a(b))"]) {
       renderReply(tail);
       const expected = tail.includes("#app {}") ? "#app {}" : tail.includes("#app") ? "#app {" : "Starting more";
@@ -130,6 +130,39 @@ export async function runMarkdownRegressions(host: HTMLElement) {
     host.querySelector<HTMLButtonElement>(".md-file-link")!.click();
     assert(openedFile === 'C:\\Work\\.config\\app.ts', "Named file link changed its Windows destination");
     assert(host.querySelector(".md-file-link strong")?.textContent === "Implementation", "File link lost its descriptive label");
+
+    const openedLines: string[] = [];
+    root.render(<MarkdownBody content={"See `src/app.ts:42` and [the parser](src/parse.ts#L7)."} onOpenFile={(path) => { openedLines.push(path); }} />);
+    await until(() => host.querySelector(".file-mention") && host.querySelector(".md-file-link"));
+    host.querySelector<HTMLElement>(".file-mention")!.click();
+    host.querySelector<HTMLButtonElement>(".md-file-link")!.click();
+    assert(openedLines.join() === "src/app.ts:42,src/parse.ts:7", `A file reference dropped its line: ${openedLines.join()}`);
+
+    const typed: string[] = [];
+    const commandReply = "```sh\npnpm test\n```\n\n```sh\ncd app\npnpm test\n```\n\n```ts\nconst long = 'a';\n```";
+    root.render(<div style={{ width: 320 }}><MarkdownBody content={commandReply} onTypeCommand={(command) => typed.push(command)} /></div>);
+    await until(() => host.querySelectorAll(".msg-code").length === 3);
+    const offers = Array.from(host.querySelectorAll<HTMLButtonElement>(".msg-code-bar button")).filter((button) => button.textContent === "Type in terminal");
+    assert(offers.length === 1, `Only the closed one-line shell block offers the terminal, found ${offers.length}`);
+    offers[0]!.click();
+    assert(typed.join() === "pnpm test", `The terminal got the wrong text: ${typed.join()}`);
+    root.render(<div style={{ width: 320 }}><MarkdownBody content={"```sh\npnpm te"} onTypeCommand={(command) => typed.push(command)} /></div>);
+    await until(() => host.querySelector(".msg-code")?.textContent === "pnpm te");
+    assert(!Array.from(host.querySelectorAll(".msg-code-bar button")).some((button) => button.textContent === "Type in terminal"), "A streaming shell block offered the terminal");
+    root.render(<div style={{ width: 320 }}><MarkdownBody content={"```sh\npnpm test\n```"} /></div>);
+    await until(() => host.querySelector(".msg-code")?.textContent === "pnpm test");
+    assert(!Array.from(host.querySelectorAll(".msg-code-bar button")).some((button) => button.textContent === "Type in terminal"), "A block with no terminal offered one");
+
+    const wide = `\`\`\`text\n${"x".repeat(400)}\n\`\`\``;
+    root.render(<div style={{ width: 320 }}><MarkdownBody content={wide} /></div>);
+    await until(() => host.querySelector(".msg-code"));
+    const block = host.querySelector<HTMLElement>(".msg-code")!;
+    const wrapToggle = Array.from(host.querySelectorAll<HTMLButtonElement>(".msg-code-bar button")).find((button) => button.textContent === "Wrap")!;
+    assert(wrapToggle.getAttribute("aria-pressed") === "true" && block.scrollWidth <= block.clientWidth + 1, "Code no longer wraps by default");
+    wrapToggle.click();
+    await until(() => block.dataset.wrap === "false");
+    assert(getComputedStyle(block).whiteSpace === "pre" && block.scrollWidth > block.clientWidth, "Turning wrap off did not keep the long line whole");
+    assert(host.firstElementChild!.scrollWidth <= 321, "An unwrapped block widened the reply instead of scrolling");
   } finally {
     root.unmount();
     if (clipboard) Object.defineProperty(navigator, "clipboard", clipboard);

@@ -3,10 +3,9 @@ import { useEffect, useRef, useState } from "react";
 import type { RunEventCursor, RunEventPage } from "@capsule/shared";
 import { useWorkspace } from "../../lib/workspace";
 import { formatUserError } from "../../lib/errors";
-import { ReportedUsage } from "./ReportedUsage";
 
-/** Pages replace one another: opening an old run never mounts its entire history. */
-export function RunEventLog({ runId, failed = false }: { runId: string; failed?: boolean }) {
+/** A failed or blocked turn's recorded events. Pages replace one another: opening an old run never mounts its entire history. */
+export function RunEventLog({ runId }: { runId: string }) {
   const { api, settings } = useWorkspace();
   const [open, setOpen] = useState(false);
   const [page, setPage] = useState<RunEventPage>();
@@ -27,10 +26,9 @@ export function RunEventLog({ runId, failed = false }: { runId: string; failed?:
     return () => { generation.current++; };
   }, [api, runId, open, cursors, retry]);
   return <details className="advanced run-event-log" onToggle={(event) => setOpen(event.currentTarget.open)}>
-    <summary title="Recorded events, one page at a time. Oversized diagnostic payloads are marked as truncated.">{failed ? "What the agent reported" : "Run log"}</summary>
+    <summary>What the agent reported</summary>
     {open && <>
       {loading && <p role="status">Loading events…</p>}
-      {page && <ReportedUsage events={page.events} />}
       {error && <p role="alert">Couldn't load this turn's log. {error} <button onClick={() => setRetry((value) => value + 1)}>Retry</button></p>}
       <div className="event-log">{page?.events.filter((event) => settings?.reasoningSummary !== "hidden" || !/think|reason|thought/.test(String(event.data?.streamKind ?? event.type))).map((event) => <div key={event.id}>
         <span className="event-time">{formatClock(event.timestamp)}</span>

@@ -89,3 +89,16 @@
   background: color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
+
+/* Under the last turn of a settled or snoozed thread. */
+.shelf-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  max-width: var(--chat-max);
+  margin: 1rem auto 0;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { approvalNotice, noticeChannels, runNotice, threadShelf, toastText, type Notice, type Run } from "@capsule/shared";
 import { settledRuns } from "../../lib/background-activity";
 import { useToasts } from "../../lib/toasts";
@@ -19,6 +19,11 @@ const TONE: Record<Notice["kind"], "info" | "success" | "error"> = {
  * toast's live region is also what a screen reader announces. With the window
  * in the background, the desktop notification carries it instead; the shared
  * notice policy decides which.
+ *
+ * When the policy draws no toast (in-app notifications off, a settled thread,
+ * the window in the background) a screen reader still hears another thread's
+ * news through a polite live region. A snoozed thread stays quiet, and the
+ * thread on screen announces its own.
  */
 export function BackgroundActivity() {
   const { api, approvals, projectRuns, sessions, sessionId, view, setProjectId, setView, settings } = useWorkspace();
@@ -28,13 +33,21 @@ export function BackgroundActivity() {
   const since = useRef(new Date().toISOString());
   const mountedAt = useRef(since.current);
   const onScreen = view === "chat" ? sessionId : undefined;
+  const [announcement, setAnnouncement] = useState({ id: 0, text: "" });
 
   const tell = useCallback((threadId: string | undefined, notice: Pick<Notice, "kind" | "detail">) => {
     const session = sessions.find((entry) => entry.id === threadId);
     if (!session || session.state !== "active" || !settings) return;
     const focus = !document.hasFocus() ? "background" : session.id === onScreen ? "thread" : "app";
-    if (!noticeChannels(notice.kind, focus, settings, threadShelf(session) !== "active").toast) return;
+    const shelf = threadShelf(session);
     const text = toastText({ ...notice, threadTitle: session.title });
+    if (!noticeChannels(notice.kind, focus, settings, shelf !== "active").toast) {
+      if (session.id !== onScreen && shelf !== "snoozed") {
+        // A new node each time, so the same words twice are still read twice.
+        setAnnouncement((previous) => ({ id: previous.id + 1, text: text.detail ? `${text.title}. ${text.detail}` : text.title }));
+      }
+      return;
+    }
     toasts.show({
       key: `activity:${session.id}`,
       tone: TONE[notice.kind],
@@ -86,5 +99,9 @@ export function BackgroundActivity() {
     if (onScreen) toasts.dismissKey(`activity:${onScreen}`);
   }, [onScreen, toasts]);
 
-  return null;
+  return (
+    <div className="sr-only" role="status" aria-live="polite" data-background-announcer="">
+      {announcement.text && <span key={announcement.id}>{announcement.text}</span>}
+    </div>
+  );
 }

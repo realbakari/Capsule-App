@@ -180,10 +180,26 @@ it("ends the progress message before an approval without completing the turn", a
   expect(f.engine.getRun(f.run.id)?.status).toBe("approval_required");
   const approval = f.engine.listApprovals("pending")[0]!;
   await f.engine.resolveApproval(approval.id, "approved_once");
+  expect(f.engine.listRunEvents(f.run.id).filter((event) => event.type === "approval.resolved").map((event) => [event.message, event.data?.decision]))
+    .toEqual([["Allowed: Write file", "approved_once"]]);
   f.text("The file is updated.");
   f.resolve({ stopReason: "end_turn" });
   await f.sending;
   expect(f.messages()).toEqual(["The file needs permission.", "The file is updated."]);
+});
+
+it("keeps a stretch of reasoning as one event, ended by the next tool, and never as a message", async () => {
+  const f = await fixture();
+  f.update("agent_thought_chunk", { content: { type: "text", text: "Check the " } });
+  f.update("agent_thought_chunk", { content: { type: "text", text: "parser first." } });
+  f.update("tool_call", { toolCallId: "read", title: "Read parser" });
+  f.update("agent_thought_chunk", { content: { type: "text", text: "Now the tests." } });
+  f.text("Done.");
+  f.resolve({ stopReason: "end_turn" });
+  await f.sending;
+  const kinds = f.engine.listRunEvents(f.run.id).filter((event) => event.type === "thinking" || event.type === "tool").map((event) => [event.type, event.type === "thinking" ? event.message : event.data?.toolCallId]);
+  expect(kinds).toEqual([["thinking", "Check the parser first."], ["tool", "read"], ["thinking", "Now the tests."]]);
+  expect(f.messages()).toEqual(["Done."]);
 });
 
 it("answers a request the approval preset covers without asking, and asks for the rest", async () => {

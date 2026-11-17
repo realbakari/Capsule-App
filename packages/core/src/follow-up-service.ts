@@ -40,6 +40,12 @@ export interface FollowUpHost {
 }
 
 const PREFIX = "followups:";
+
+function heldReason(run: Run): string {
+  if (run.status === "cancelled") return "Paused after the turn was stopped.";
+  if (run.status === "blocked") return "Paused after the turn was blocked.";
+  return detectUsageLimit(run.error).limited ? "Paused after the turn hit a usage limit." : "Paused after the turn failed.";
+}
 /** Automatic resumes allowed in a row before a conversation waits for the person. */
 export const AUTO_RESUME_LIMIT = 3;
 export const AUTO_RESUME_MIN_WAIT_MS = 60_000;
@@ -67,7 +73,25 @@ export class FollowUpService {
     const next = applyFollowUpOp(this.get(sessionId), op, new Date(this.now));
     this.save(sessionId, next);
     if (op.type === "add" || op.type === "remove") this.schedule(sessionId, this.options.settleMs ?? 1_500);
+    if (op.type === "release") this.schedule(sessionId, 0);
     return next;
+  }
+
+  /**
+   * The person is sending a message here themselves, which is what a held
+   * queue waits for: it goes once that turn ends well. Returns the hold it
+   * lifted, so a send that fails before it starts can put it back.
+   */
+  releaseForPerson(sessionId: string): string | undefined {
+    const state = this.get(sessionId);
+    if (!state.held) return undefined;
+    this.save(sessionId, { ...state, held: undefined });
+    return state.held;
+  }
+
+  hold(sessionId: string, reason: string): void {
+    const state = this.get(sessionId);
+    if (state.queue.length > 0 && !state.held) this.save(sessionId, { ...state, held: reason });
   }
 
   /** Resume sending everything left from the last run of the app. */
@@ -92,19 +116,26 @@ export class FollowUpService {
     this.host.remove(PREFIX + sessionId);
   }
 
-  /** A turn in this conversation ended: the next follow-up may go, and a limit stop may schedule itself. */
+  /**
+   * A turn in this conversation ended: the next follow-up may go, and a limit
+   * stop may schedule itself. A turn that was stopped or did not finish holds
+   * the queue instead, since the next prompt was written for a turn that went
+   * through.
+   */
   runEnded(run: Run): void {
     if (run.status === "failed") this.considerAutoResume(run);
+    const state = this.get(run.sessionId);
     if (run.status === "completed") {
-      const state = this.get(run.sessionId);
       // A turn that went through answers whatever had stopped it.
       if (state.blocked && state.queue.length === 0) this.save(run.sessionId, { ...state, blocked: undefined });
+    } else if (state.queue.length > 0) {
+      this.save(run.sessionId, { ...state, held: heldReason(run) });
     }
     this.schedule(run.sessionId, this.options.settleMs ?? 1_500);
   }
 
   private save(sessionId: string, state: FollowUps): void {
-    if (state.queue.length === 0 && !state.resume && !state.blocked) this.host.remove(PREFIX + sessionId);
+    if (state.queue.length === 0 && !state.resume && !state.blocked && !state.held) this.host.remove(PREFIX + sessionId);
     else this.host.write(PREFIX + sessionId, JSON.stringify(state));
     this.host.emit(sessionId, state);
   }
@@ -128,10 +159,13 @@ export class FollowUpService {
       if (state.resume && state.resume.at <= this.now) {
         const { resume } = state;
         try {
-          this.save(sessionId, applyFollowUpOp(applyFollowUpOp(state, { type: "cancel-resume" }), {
+          const added = applyFollowUpOp(applyFollowUpOp(state, { type: "cancel-resume" }), {
             type: "add",
             prompt: { content: resume.prompt, attachments: resume.attachments ?? [] },
-          }, new Date(this.now)));
+          }, new Date(this.now));
+          // The stopped turn goes again before anything queued behind it, held queue or not.
+          const resumed = { ...added.queue.at(-1)!, resumeOf: resume.runId };
+          this.save(sessionId, { ...added, queue: [resumed, ...added.queue.slice(0, -1)] });
         } catch (error) {
           this.save(sessionId, { ...state, resume: undefined, blocked: error instanceof Error ? error.message : String(error) });
         }
@@ -151,7 +185,7 @@ export class FollowUpService {
     if (this.host.isBusy(sessionId)) return;
     const state = this.get(sessionId);
     const [next, ...rest] = state.queue;
-    if (!next) return;
+    if (!next || (state.held && !next.resumeOf)) return;
     // Ask first: a send that cannot start still records the prompt and a failed turn.
     const blocked = this.host.blocker(sessionId);
     if (blocked) {

@@ -40,6 +40,8 @@ export function readFileRef(value: string): FileRef | undefined {
 export function InlineCode({ value, onOpen }: { value: string; onOpen?: (path: string) => void }) {
   const ref = readFileRef(value);
   if (!ref) return <code>{value}</code>;
+  // The line travels with the path, so the preview opens where the reply pointed.
+  const target = ref.line ? `${ref.path}:${ref.line}` : ref.path;
   const kind = fileKind(ref.name);
   const extension = ref.name.includes(".") ? ref.name.slice(ref.name.lastIndexOf(".") + 1, ref.name.lastIndexOf(".") + 3).toUpperCase() : "";
   const badge = kind.label === "•" && extension ? extension : kind.label;
@@ -48,9 +50,9 @@ export function InlineCode({ value, onOpen }: { value: string; onOpen?: (path: s
       className={`file-chip${onOpen ? " file-mention" : ""}`}
       role={onOpen ? "button" : undefined}
       tabIndex={onOpen ? 0 : undefined}
-      onClick={onOpen ? () => onOpen(ref.path) : undefined}
+      onClick={onOpen ? () => onOpen(target) : undefined}
       onKeyDown={onOpen ? (event) => {
-        if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpen(ref.path); }
+        if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpen(target); }
       } : undefined}
       title={value}
     >

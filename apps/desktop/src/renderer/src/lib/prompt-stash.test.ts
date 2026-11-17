@@ -30,6 +30,18 @@ describe("prompt stash", () => {
     writePromptDraft(storage, key, { ...value, skillId: undefined });
     expect(storage.getItem(key)).toBeNull();
   });
+  it("keeps a new conversation's model, effort and approval with its draft, and drops what does not parse", () => {
+    const storage = memoryStorage();
+    const key = promptDraftKey("p", "new-thread");
+    const settings = { harness: { codex: { model: "gpt-x", options: { effort: "high" } } }, approval: "strict" as const };
+    writePromptDraft(storage, key, { prompt: "", attachments: [], settings });
+    expect(readPromptDraft(storage, key)).toEqual({ prompt: "", attachments: [], settings });
+    storage.setItem(key, JSON.stringify({ prompt: "x", attachments: [], settings: { harness: { bad: { options: { effort: 3 } } }, approval: "everything" } }));
+    expect(readPromptDraft(storage, key)).toEqual({ prompt: "x", attachments: [] });
+    writePromptDraft(storage, key, { prompt: "", attachments: [], settings: { harness: {} } });
+    expect(storage.getItem(key)).toBeNull();
+  });
+
   it("persists drafts by project and conversation", () => {
     const storage = memoryStorage();
     const key = promptDraftKey("project", "session");

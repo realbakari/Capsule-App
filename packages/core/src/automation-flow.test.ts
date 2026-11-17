@@ -48,17 +48,21 @@ it("runs an automation into a new unread Inbox thread, sending its command throu
   expect(unread()).toBe(false);
 });
 
-it("pauses by writing enabled to the file that defines it, and adds a template paused", async () => {
+it("pauses by writing enabled to the file that defines it, and adds one written in Settings, on", async () => {
   const f = await fixture({ automations: [{ id: "beat", name: "Beat", schedule: "RRULE:FREQ=MINUTELY;INTERVAL=5", prompt: "Tick" }] });
   f.engine.setAutomationEnabled({ key: "user:beat", enabled: false });
   const file = path.join(f.configDir, "settings.json");
   expect(JSON.parse(readFileSync(file, "utf8")).automations[0]).toMatchObject({ id: "beat", enabled: false });
   expect(f.engine.getConfigSnapshot().automations[0]).toMatchObject({ enabled: false });
-  expect(f.engine.createAutomation({ template: "triage", scope: "user" })).toBe(file);
+  const draft = { name: "Triage issues", schedule: "RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=9;BYMINUTE=0", prompt: "Triage them.", workspace: "worktree" as const };
+  expect(f.engine.createAutomation({ draft, scope: "user" })).toBe(file);
   const written = JSON.parse(readFileSync(file, "utf8")).automations;
-  expect(written.map((entry: { id: string; enabled?: boolean }) => [entry.id, entry.enabled])).toEqual([["beat", false], ["triage-issues", false]]);
-  f.engine.createAutomation({ template: "triage", scope: "user" });
+  expect(written.map((entry: { id: string; enabled?: boolean; workspace?: string }) => [entry.id, entry.enabled, entry.workspace])).toEqual([["beat", false, undefined], ["triage-issues", true, undefined]]);
+  expect(f.engine.getConfigSnapshot().automations.find((view) => view.key === "user:triage-issues")).toMatchObject({ enabled: true, scheduleText: "Weekdays at 9:00" });
+  f.engine.createAutomation({ draft, scope: "user" });
   expect(JSON.parse(readFileSync(file, "utf8")).automations.at(-1).id).toBe("triage-issues-2");
+  expect(() => f.engine.createAutomation({ draft: { ...draft, schedule: "RRULE:FREQ=MINUTELY;INTERVAL=1" }, scope: "user" })).toThrow();
+  expect(JSON.parse(readFileSync(file, "utf8")).automations).toHaveLength(3);
 });
 
 it("runs the person's status line command with the thread on stdin and publishes what it printed", async () => {

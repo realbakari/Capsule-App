@@ -116,7 +116,9 @@ function useFindHighlights(scroller: RefObject<HTMLDivElement | null>, matches: 
  * a turn's folded work or a long prompt to do it. It searches the messages
  * loaded so far, and says so while older pages are not loaded.
  */
-export function ThreadFind({ turns, scroller, onReveal, onClose }: {
+export function ThreadFind({ initialQuery = "", turns, scroller, onReveal, onClose }: {
+  /** The words a search hit matched, so the thread opens on them. */
+  initialQuery?: string;
   turns: readonly Turn[];
   scroller: RefObject<HTMLDivElement | null>;
   /** Make the selected match's message mounted and visible: unfold its turn and work. */
@@ -124,7 +126,7 @@ export function ThreadFind({ turns, scroller, onReveal, onClose }: {
   onClose: () => void;
 }) {
   const { hasOlderMessages, loadingOlder, loadOlderMessages } = useWorkspace();
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [index, setIndex] = useState(0);
   const [step, setStep] = useState(0);
   const input = useRef<HTMLInputElement>(null);

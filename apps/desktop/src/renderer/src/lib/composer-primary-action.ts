@@ -5,7 +5,6 @@
  */
 export type ComposerPrimaryAction =
   | { kind: "send" }
-  | { kind: "compact-send" }
   | { kind: "run-command" }
   | { kind: "queue" }
   | { kind: "steer" }
@@ -19,20 +18,17 @@ export function composerPrimaryAction(input: {
   bang: boolean;
   /** A follow-up goes into the running turn rather than the queue. */
   steer: boolean;
-  /** Context is nearly full and the person chose to compact before this send. */
-  compactFirst: boolean;
 }): ComposerPrimaryAction {
   if (input.bang) return { kind: "run-command" };
   if (input.running) {
     if (!input.hasContent) return { kind: "stop", stopping: input.stopping };
     return { kind: input.steer ? "steer" : "queue" };
   }
-  return { kind: input.compactFirst ? "compact-send" : "send" };
+  return { kind: "send" };
 }
 
 export const PRIMARY_ACTION_LABELS: Record<ComposerPrimaryAction["kind"], string> = {
   send: "Send message",
-  "compact-send": "Compact and send",
   "run-command": "Run command",
   queue: "Queue follow-up",
   steer: "Steer this turn",

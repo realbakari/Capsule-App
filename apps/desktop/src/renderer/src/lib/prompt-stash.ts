@@ -1,13 +1,21 @@
-import type { MessageAttachment } from "@capsule/shared";
+import { HARNESS_PERMISSION_PROFILES, type HarnessPermissionProfile, type MessageAttachment } from "@capsule/shared";
 
 export const PROMPT_STASH_KEY = "capsule.promptStash.v1";
 export const PROMPT_DRAFT_PREFIX = "capsule.promptDraft.v1";
 export const MAX_PROMPT_STASH_ENTRIES = 20;
 
+/** What a conversation that has not started will run with, chosen before its first message. */
+export interface DraftSettings {
+  /** Model and agent options per agent, as the composer's pickers set them. */
+  harness?: Record<string, { model?: string; options: Record<string, string> }>;
+  approval?: HarnessPermissionProfile;
+}
+
 export interface PromptDraft {
   prompt: string;
   attachments: MessageAttachment[];
   skillId?: string;
+  settings?: DraftSettings;
 }
 
 export interface PromptStashEntry extends PromptDraft {
@@ -35,11 +43,38 @@ function attachment(value: unknown): value is MessageAttachment {
   );
 }
 
+const strings = (value: unknown): value is Record<string, string> =>
+  Boolean(value) && typeof value === "object" && !Array.isArray(value) && Object.values(value as object).every((item) => typeof item === "string");
+
+function settings(value: unknown): DraftSettings | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const row = value as Record<string, unknown>;
+  const harness = row.harness && typeof row.harness === "object" && !Array.isArray(row.harness)
+    ? Object.fromEntries(Object.entries(row.harness as Record<string, unknown>).flatMap(([agent, config]) => {
+      const entry = config as { model?: unknown; options?: unknown } | null;
+      if (!entry || typeof entry !== "object" || !strings(entry.options ?? {}) || (entry.model !== undefined && typeof entry.model !== "string")) return [];
+      return [[agent, { ...(typeof entry.model === "string" ? { model: entry.model } : {}), options: (entry.options ?? {}) as Record<string, string> }]];
+    }))
+    : undefined;
+  const approval = HARNESS_PERMISSION_PROFILES.find((profile) => profile === row.approval);
+  if (!harness && !approval) return undefined;
+  return { ...(harness && Object.keys(harness).length ? { harness } : {}), ...(approval ? { approval } : {}) };
+}
+
+function emptySettings(value: DraftSettings | undefined): boolean {
+  return !value?.approval && !Object.keys(value?.harness ?? {}).length;
+}
+
 function draft(value: unknown): PromptDraft | undefined {
   if (!value || typeof value !== "object") return undefined;
   const row = value as Partial<PromptDraft>;
   if (typeof row.prompt !== "string" || !Array.isArray(row.attachments)) return undefined;
-  return { prompt: row.prompt, attachments: row.attachments.filter(attachment).slice(0, 8), ...(typeof row.skillId === "string" ? { skillId: row.skillId } : {}) };
+  const chosen = settings(row.settings);
+  return {
+    prompt: row.prompt, attachments: row.attachments.filter(attachment).slice(0, 8),
+    ...(typeof row.skillId === "string" ? { skillId: row.skillId } : {}),
+    ...(chosen && !emptySettings(chosen) ? { settings: chosen } : {}),
+  };
 }
 
 export function promptDraftKey(projectId?: string, sessionId?: string): string {
@@ -56,7 +91,7 @@ export function readPromptDraft(storage: PromptStorage, key: string): PromptDraf
 
 export function writePromptDraft(storage: PromptStorage, key: string, value: PromptDraft): boolean {
   try {
-    if (!value.prompt && value.attachments.length === 0 && !value.skillId) storage.removeItem(key);
+    if (!value.prompt && value.attachments.length === 0 && !value.skillId && emptySettings(value.settings)) storage.removeItem(key);
     else storage.setItem(key, JSON.stringify(value));
     return true;
   } catch {

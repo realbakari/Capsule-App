@@ -76,6 +76,15 @@ export async function runNoticeRegressions(host: HTMLElement) {
     await render({ sessionId: "open", settings: { ...DEFAULT_CAPSULE_SETTINGS, inAppNotifications: false }, projectRuns: [{ id: "r5", sessionId: "other", status: "completed", completedAt: later() }] as Run[] });
     await new Promise((resolve) => setTimeout(resolve, 50));
     assert(toastTexts(container).length === 0, "A toast showed with in-app notifications off");
+    const announced = () => container.querySelector("[data-background-announcer]")?.textContent ?? "";
+    assert(announced().includes("“Login fix” finished"), "With in-app notifications off, a screen reader heard nothing about another thread");
+    const snoozed = sessions.map((entry) => entry.id === "other" ? { ...entry, title: "Snoozed fix", snoozedUntil: new Date(Date.now() + 3_600_000).toISOString() } : entry);
+    await render({ sessions: snoozed, projectRuns: [{ id: "r7", sessionId: "other", status: "completed", completedAt: later() }] as Run[] });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert(!announced().includes("Snoozed fix"), "A snoozed thread was announced");
+    await render({ sessions, projectRuns: [{ id: "r8", sessionId: "open", status: "completed", completedAt: later() }] as Run[] });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert(!announced().includes("Open thread"), "The background announcer spoke for the thread on screen");
 
     // "Only in the app" turns every desktop notification off; toasts stay.
     await render({ settings: { ...DEFAULT_CAPSULE_SETTINGS, notifyRunComplete: false, notifyApprovals: false, notifyLongCommands: false }, projectRuns: [{ id: "r6", sessionId: "other", status: "completed", completedAt: later() }] as Run[] });
