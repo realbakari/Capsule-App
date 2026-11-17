@@ -90,11 +90,20 @@ Settings → Appearance → **Backdrop**:
 - **Opacity**, **Dim** and **Blur** change how strongly it shows. Dim lays the
   page colour over it.
 - **Reset** goes back to whatever the chosen theme draws.
-  **Clear backdrop** in the command palette turns it off.
+
+The command palette has the same choices: **Backdrop: Grain** and the other
+scenes draw one, and **Clear backdrop** turns it off. Turning a backdrop off
+keeps its Opacity, Dim and Blur, so picking a scene again brings it back as it
+was.
 
 Capsule keeps text readable over a backdrop. When the backdrop would leave the
 text under 4.5:1, it veils it with the page colour until the text reads, and
-never less than your own Dim.
+never less than your own Dim. Code blocks and inline code sit on the page
+colour with a thin edge, so they stay clear on a busy picture.
+
+When your system asks for less transparency (**Reduce transparency** in a
+Mac's Accessibility settings), the composer, the sidebar and other see-through
+surfaces become solid.
 
 A theme can declare a backdrop, and your settings override it field by field:
 

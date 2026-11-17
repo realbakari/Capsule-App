@@ -7128,8 +7128,8 @@ div.changed-files-head { cursor: default; }
  * the confirm dialog lives in the app root, before every popover, and opens
  * no menus of its own.
  */
-body > :is(.header-popover, .action-menu, .menu-select-pop, .agent-model-picker, .composer-tools-popover, .agent-command-popover, .pr-action-menu):has(~ .palette-backdrop),
-body:has(> #root .palette-backdrop > [role="alertdialog"]) > :is(.header-popover, .action-menu, .menu-select-pop, .agent-model-picker, .composer-tools-popover, .agent-command-popover, .pr-action-menu) {
+body > :is(.header-popover, .action-menu, .menu-select-pop, .agent-model-picker, .agent-command-popover, .pr-action-menu):has(~ .palette-backdrop),
+body:has(> #root .palette-backdrop > [role="alertdialog"]) > :is(.header-popover, .action-menu, .menu-select-pop, .agent-model-picker, .agent-command-popover, .pr-action-menu) {
   visibility: hidden;
 }
 

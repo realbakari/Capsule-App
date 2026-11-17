@@ -3726,8 +3726,23 @@ The backdrop draws on `.conversation-backdrop`, the first child of the
 conversation column, behind the transcript and composer only. Scenes are
 defined in `features/appearance/backdrop.css` from tokens; none animates. Over
 a backdrop the composer's fade and corner masks in the page colour are hidden,
-since they would draw bands of it. A paired browser follows the host's theme
-and scenes, and draws no image.
+since they would draw bands of it. Over any backdrop, `.main` redefines
+`--reply-code-bg`, `--reply-code-border` and `--inline-code-bg`, and `.body code`
+takes the same base: page colour at 88% (`--backdrop-surface`) with the usual
+tint and a hairline, because the dark theme's 4% fill let a scene or picture
+show straight through code that has no text halo. `backdrop-regressions.tsx`
+checks that fill and edge in both themes. A paired browser follows the host's
+theme and scenes, and draws no image.
+
+Scenes are written through `backdropWithScene` from `@capsule/shared`, shared
+by the Backdrop card, the palette's **Backdrop: <scene>** entries and **Clear
+backdrop** (`scene: "none"`). It drops `scene` and `image` from every settings
+layer, including `light` and `dark`, so the pick is what draws, and keeps fit,
+opacity, blur and dim, so off and on again restores the tuning.
+
+`prefers-reduced-transparency: reduce` (tokens.css) forces `--glass-opacity`
+to 100%, `--glass` to `--surface-0` and the sidebar to its solid fill, with
+`!important` because the theme sets those on the root inline.
 
 ## Profiles, response styles and MCP servers
 

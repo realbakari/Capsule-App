@@ -1,4 +1,4 @@
-import type { ConfigSnapshot, ThemeSelection } from "@capsule/shared";
+import { BACKDROP_SCENES, backdropWithScene, SCENE_LABELS, type ConfigSnapshot, type ThemeSelection } from "@capsule/shared";
 import { settingsFileTarget } from "../../lib/config-view";
 import { formatUserError } from "../../lib/errors";
 import type { SearchDialogItem } from "../shell/SearchDialog";
@@ -7,7 +7,7 @@ import { ChartIcon, FileIcon, FolderIcon, GridIcon, HistoryIcon, KeyboardIcon, R
 
 /** `theme` with the backdrop turned off, whatever the chosen theme draws. Shared with the clear-backdrop key action. */
 export function clearedBackdrop(selection: ThemeSelection | undefined): ThemeSelection {
-  return { ...selection, backdrop: { scene: "none" } };
+  return { ...selection, backdrop: backdropWithScene(selection?.backdrop, "none") };
 }
 
 /**
@@ -47,6 +47,10 @@ export function customizationCommands(input: {
     { id: "backdrop-clear", label: "Clear backdrop", group, icon: <GridIcon size={15} />,
       disabledReason: desktopOnly ?? (config?.themes.backdrop.light || config?.themes.backdrop.dark ? undefined : "No backdrop is drawn."),
       onSelect: run(() => api.configSetValue({ key: "theme", value: clearedBackdrop(config?.themes.selection), scope: "user" })) },
+    ...BACKDROP_SCENES.map((scene) => ({
+      id: `backdrop-scene-${scene}`, label: `Backdrop: ${SCENE_LABELS[scene]}`, group, icon: <GridIcon size={15} />, disabledReason: desktopOnly,
+      onSelect: run(() => api.configSetValue({ key: "theme", value: { ...config?.themes.selection, backdrop: backdropWithScene(config?.themes.selection.backdrop, scene) }, scope: "user" })),
+    })),
     { id: "config-reload", label: "Reload customizations", group, icon: <RefreshIcon size={15} />,
       disabledReason: desktopOnly ?? (config?.safeMode ? "Safe mode reads no settings file." : undefined),
       onSelect: run(() => api.configReload(project?.projectId)) },

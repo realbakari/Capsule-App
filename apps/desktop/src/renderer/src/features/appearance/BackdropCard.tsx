@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BACKDROP_SCENES, SCENE_LABELS, type BackdropFit, type BackdropScene, type ThemeBackdrop } from "@capsule/shared";
+import { BACKDROP_SCENES, backdropWithScene, SCENE_LABELS, type BackdropFit, type BackdropScene, type ThemeBackdrop } from "@capsule/shared";
 import { previewBackdropScene } from "../../lib/appearance";
 import { formatUserError } from "../../lib/errors";
 import { useWorkspace } from "../../lib/workspace";
@@ -44,7 +44,7 @@ export function BackdropCard() {
   };
   const pick = (tile: Tile) => {
     previewBackdropScene(undefined);
-    write(({ image: _image, ...rest }) => ({ ...rest, scene: tile }));
+    write((backdrop) => backdropWithScene(backdrop, tile));
   };
   const commit = () => {
     if (!draft) return;

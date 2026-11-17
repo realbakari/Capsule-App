@@ -7,6 +7,7 @@ import { Inspector } from "../features/shell/Inspector";
 import { runFilesRegressions } from "./files-regressions";
 import { runReviewHunkRegressions } from "./review-hunk-regressions";
 import { runMarkdownRegressions } from "./markdown-regressions";
+import { runBackdropRegressions } from "./backdrop-regressions";
 import { EmbeddedBrowser } from "../features/shell/EmbeddedBrowser";
 import { Toasts } from "../features/toasts/Toasts";
 import { ToastProvider, useToasts, type Toast } from "../lib/toasts";
@@ -1637,6 +1638,8 @@ window.runRendererRegressions = async () => {
   await runReviewHunkRegressions(host, contextBase);
   phase("Markdown rendering and themes");
   await runMarkdownRegressions(host);
+  phase("backdrop surfaces");
+  await runBackdropRegressions(host);
   phase("complete");
   layoutStyles.media = "not all";
   return "Renderer regressions passed: recovery, editor ownership and memoization, browser navigation and discovery, bounded diff pages and review notes, terminal persistence, send admission, 1,000 stream frames without snapshot reloads, reconnect/history reconciliation.";

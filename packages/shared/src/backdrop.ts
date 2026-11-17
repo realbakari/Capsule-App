@@ -159,6 +159,21 @@ export function backdropHasImage(backdrop: ThemeBackdrop | undefined): boolean {
   return Boolean(backdrop?.image || backdrop?.light?.image || backdrop?.dark?.image);
 }
 
+/**
+ * Settings' backdrop drawing `scene` for both appearances, or nothing with
+ * `none`. Opacity, dim, blur and fit stay, so turning a backdrop off and on
+ * again keeps how it was tuned.
+ */
+export function backdropWithScene(backdrop: ThemeBackdrop | undefined, scene: BackdropScene | "none"): ThemeBackdrop {
+  const tuning = ({ scene: _scene, image: _image, light: _light, dark: _dark, ...rest }: ThemeBackdrop): BackdropLayer => rest;
+  const next: ThemeBackdrop = { ...tuning(backdrop ?? {}), scene };
+  for (const appearance of ["light", "dark"] as const) {
+    const layer = backdrop?.[appearance] && tuning(backdrop[appearance]);
+    if (layer && Object.keys(layer).length) next[appearance] = layer;
+  }
+  return next;
+}
+
 /** A share string never carries a path from someone's disk. */
 export function stripBackdropImages(backdrop: ThemeBackdrop | undefined): ThemeBackdrop | undefined {
   if (!backdrop) return undefined;

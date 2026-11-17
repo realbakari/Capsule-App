@@ -373,6 +373,15 @@ details[open] > summary:not([class]):not([aria-label])::before { transform: tran
     scroll-behavior: auto !important;
   }
 }
+/* Reduce transparency: glass goes solid. Important, since the theme sets these inline on the root. */
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --glass-opacity: 100% !important;
+    --glass: var(--surface-0) !important;
+    --sidebar-filter: none !important;
+    --sidebar-fill: var(--bg-sidebar) !important;
+  }
+}
 ::selection { background: rgb(255 255 255 / 0.16); }
 
 /* Scrollbars: auto-fading thumbs — transparent at rest, visible on interaction. */

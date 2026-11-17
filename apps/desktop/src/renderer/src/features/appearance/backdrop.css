@@ -51,6 +51,22 @@
   display: none;
 }
 
+/*
+ * Code in a reply sits on a faint fill that a backdrop shows straight through,
+ * and its text has no halo, so on a busy picture a code block lost its edge
+ * and its comments. Over any backdrop, code and inline code sit on the page
+ * colour instead, with a hairline: a surface of their own on every scene.
+ */
+:root[data-backdrop] .main:has(> .conversation-backdrop) {
+  --backdrop-surface: color-mix(in srgb, var(--bg) 88%, transparent);
+  --reply-code-bg: color-mix(in srgb, var(--text) 4%, var(--backdrop-surface));
+  --reply-code-border: var(--border-color);
+  --inline-code-bg: color-mix(in srgb, var(--text) 6%, var(--backdrop-surface));
+}
+:root[data-backdrop] .main:has(> .conversation-backdrop) .body code {
+  background: color-mix(in srgb, var(--text) 10%, var(--backdrop-surface));
+}
+
 :root[data-backdrop="image"] .conversation-backdrop::before {
   background-image: var(--backdrop-image);
   background-size: var(--backdrop-size, cover);

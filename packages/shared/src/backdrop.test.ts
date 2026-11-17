@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { contrastRatio, mixHex } from "./appearance.js";
-import { backdropScrim, mergeBackdrop, parseBackdrop, sceneSample, BACKDROP_SCENES } from "./backdrop.js";
+import { backdropScrim, backdropWithScene, mergeBackdrop, parseBackdrop, sceneSample, BACKDROP_SCENES } from "./backdrop.js";
 
 describe("parseBackdrop", () => {
   it("keeps the valid fields and names each wrong one", () => {
@@ -41,6 +41,16 @@ describe("mergeBackdrop", () => {
   it("draws nothing for none, or when no layer names anything", () => {
     expect(mergeBackdrop("dark", { scene: "night" }, { scene: "none" })).toBeUndefined();
     expect(mergeBackdrop("dark", { dim: 0.5 }, undefined)).toBeUndefined();
+  });
+});
+
+describe("backdropWithScene", () => {
+  it("turns a backdrop off and on again without losing how it was tuned", () => {
+    const tuned = { image: "backdrops/sea.jpg", dim: 0.3, blur: 6, dark: { scene: "night" as const, opacity: 0.5 }, light: { scene: "paper" as const } };
+    const off = backdropWithScene(tuned, "none");
+    expect(off).toEqual({ scene: "none", dim: 0.3, blur: 6, dark: { opacity: 0.5 } });
+    expect(mergeBackdrop("dark", { scene: "mesh" }, off)).toBeUndefined();
+    expect(mergeBackdrop("dark", undefined, backdropWithScene(off, "dots"))).toEqual({ scene: "dots", fit: "cover", opacity: 0.5, blur: 6, dim: 0.3 });
   });
 });
 
