@@ -4,13 +4,13 @@ import path from "node:path";
 import type { GitDiffOptions, GitDiffScope, HunkApply, PatchApplication, ScopedDiff } from "@capsule/shared";
 import { git, inRepository } from "./git-process.js";
 import { CANONICAL_PATCH_FLAGS } from "./git-output.js";
-import { readGitDiff, readUntrackedPatches, REVIEW_DIFF_BYTES } from "./git.js";
+import { readFailure, readGitDiff, readUntrackedPatches, REVIEW_DIFF_BYTES } from "./git.js";
 
 const DIFF = ["--literal-pathspecs", "diff", "--no-ext-diff", "--no-textconv", ...CANONICAL_PATCH_FLAGS];
 
 async function diffText(cwd: string, args: string[], relative: string | undefined, what: string): Promise<string> {
   const result = await git(cwd, [...DIFF, ...args, "--", ...(relative ? [relative] : [])]);
-  if (!result.ok) throw new Error(result.stderr || `Could not read the ${what} diff.`);
+  if (!result.ok) throw new Error(await readFailure(cwd, result.stderr, `Could not read the ${what} diff.`));
   return result.stdout;
 }
 

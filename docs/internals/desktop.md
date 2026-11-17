@@ -207,7 +207,12 @@ from assistive tech.
 A toast replaced under the same key is an update and does not fade a copy.
 Slow requests share one `slow` notice that lists every request still waiting,
 named by what the person waits on (`requestLabel`: "the agent", "Git", "the
-conversation", "GitHub", …), never by bridge method.
+conversation", "GitHub", …), never by bridge method. Reads Capsule makes on
+its own are not watched (`BACKGROUND` in `slow-requests.ts`: `gitStatus`,
+which runs on focus, on `git-updated` and with Review). A failed background
+status read keeps the last good status and lands in `gitError`, shown under
+Changes in Conversation details with a dot on the list icon; it never becomes
+the thread's notice.
 
 Settings › General's Notifications card opens with **Notify me**, a preset
 select over `notifyRunComplete`, `notifyApprovals`, `notifyLongCommands`,
@@ -1664,7 +1669,22 @@ no time-based cache of Git status. A composite push/create-PR operation keeps
 its lock through both steps. External Git processes are not governed by this
 queue; Git's own locking and pre/post revision checks remain necessary.
 Git children disable optional locks; status line counts use `diff-index -M`
-rather than porcelain `diff`, which can refresh the real index. Required locks
+rather than porcelain `diff`, which can refresh the real index. Status and
+its counts run with `core.checkStat=minimal` (size, mode, whole-second
+mtime). A cloud-synced folder (iCloud's Desktop & Documents with Optimize
+Mac Storage) changes ctime and inode when it offloads a file, so Git's
+default check re-read and hashed every such file, each read waited on a
+download, and since these reads never write the index the next poll did it
+all again: a 21,000-file checkout went from a 30 s timeout to 0.3 s. Line
+counts are left out when a changed tracked file is offloaded (`isOffloaded`:
+macOS, size above zero, no allocated blocks), give up after 10 s, and never
+fail the status; untracked offloaded files are not read in-process, where a
+blocked read would hold a libuv thread. When status itself fails and the
+index or a pack is offloaded, the error says so (`OFFLOADED_DATABASE`). A
+Git child stopped at its time limit reports `` `git <op>` took longer than
+N seconds and was stopped `` instead of Node's bare command line. The branch
+list comes from `for-each-ref refs/heads`; `git branch` reads each branch's
+commit. Required locks
 for writes remain enabled. Polling must leave index bytes and staged content
 unchanged.
 
@@ -3143,6 +3163,14 @@ differs from the one for folders.
   and the page survive the git status polling that drives uncommitted reloads.
 - Decision: the old single-file raw diff in Review is gone; selecting a file
   narrows the parsed, paged view instead, so one renderer serves every scope.
+- Git read failures never carry a command line. `git()` and `gitExcerpt()` in
+  `@capsule/filesystem` name the subcommand (`gitOperation` skips `-c` pairs
+  and global flags): a timeout reads "`git diff` took longer than 30 seconds
+  and was stopped.", a silent failure "`git diff` failed with exit code N.",
+  and a missing binary says Git is not installed. `readFailure` puts
+  `OFFLOADED_DATABASE` ahead of Git's own words when the index or packs are
+  in iCloud and not downloaded; status, the combined diff, untracked listing
+  and every `readScopedDiff` scope go through it.
 
 ## Quote, scroll position, queued edit, folder drop
 

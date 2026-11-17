@@ -38,13 +38,14 @@ export async function readGitStatus(workingDirectory?: string): Promise<GitStatu
       (await git(workingDirectory, ["branch", "--show-current"])).stdout.trim() ||
       (await git(workingDirectory, ["rev-parse", "--abbrev-ref", "HEAD"])).stdout.trim() ||
       "HEAD";
-    const result = await git(workingDirectory, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]);
-    if (!result.ok) throw new Error(result.stderr || "Could not read Git status.");
+    const result = await git(workingDirectory, [...DISPLAY_READ, "status", "--porcelain=v1", "-z", "--untracked-files=all"]);
+    if (!result.ok) throw new Error(await readFailure(workingDirectory, result.stderr, "Could not read Git status."));
     const porcelain = result.stdout;
     const files = await applyLineStats(workingDirectory, parsePorcelain(porcelain));
     const added = sumStat(files, "added");
     const removed = sumStat(files, "removed");
-    const branches = (await git(workingDirectory, ["branch", "--format=%(refname:short)"]))
+    // `git branch` reads each branch's commit; for-each-ref reads only the refs.
+    const branches = (await git(workingDirectory, ["for-each-ref", "--format=%(refname:short)", "refs/heads"]))
       .stdout.split(/\r?\n/)
       .map((item) => item.trim())
       .filter(Boolean);
@@ -65,6 +66,21 @@ export async function readGitStatus(workingDirectory?: string): Promise<GitStatu
 }
 
 /*
+ * Status and line counts compare only size, mode and whole-second mtime.
+ * Git's default also checks ctime and inode, which cloud-synced folders
+ * (iCloud's Desktop & Documents) change when they offload a file; Git then
+ * re-reads every such file to hash it, each read waits on a download, and
+ * the status of an untouched repository outlasts the timeout. These reads
+ * never write the index (GIT_OPTIONAL_LOCKS=0), so nothing heals it.
+ */
+const DISPLAY_READ = ["-c", "core.checkStat=minimal"];
+
+/** A file the system has offloaded to the cloud: reading it waits on a download that may never come. */
+export function isOffloaded(info: { size: number; blocks: number; isFile(): boolean }, platform = process.platform): boolean {
+  return platform === "darwin" && info.isFile() && info.size > 0 && info.blocks === 0;
+}
+
+/*
  * `git status --porcelain` says which files changed but not by how much.
  * A single `--numstat` covering both staged and unstaged work is one extra
  * process for the whole tree, rather than a diff per file.
@@ -73,10 +89,10 @@ async function applyLineStats(workingDirectory: string, files: GitChange[]): Pro
   if (files.length === 0) return files;
   const stats = new Map<string, { added: number; removed: number; }>();
   const hasHead = (await git(workingDirectory, ["rev-parse", "--verify", "HEAD"])).ok;
-  if (hasHead) {
-    const out = await git(workingDirectory, ["diff-index", "-M", "--numstat", "-z", "--no-ext-diff", "--no-textconv", "HEAD", "--"]);
-    if (!out.ok) throw new Error(out.stderr || "Could not read changed-line counts.");
-    for (const entry of parseNumstat(out.stdout)) {
+  // Counts are a summary: an offloaded file or a slow read leaves them out rather than failing the status.
+  if (hasHead && !(await anyOffloaded(workingDirectory, files))) {
+    const out = await git(workingDirectory, [...DISPLAY_READ, "diff-index", "-M", "--numstat", "-z", "--no-ext-diff", "--no-textconv", "HEAD", "--"], process.env, 10_000);
+    for (const entry of out.ok ? parseNumstat(out.stdout) : []) {
       if (entry.added === undefined || entry.removed === undefined) continue;
       stats.set(entry.path, { added: entry.added, removed: entry.removed });
     }
@@ -88,7 +104,7 @@ async function applyLineStats(workingDirectory: string, files: GitChange[]): Pro
       try {
         const fullPath = path.join(workingDirectory, file.path);
         const info = await lstat(fullPath);
-        if (info.isFile() && info.size <= 1_000_000) {
+        if (info.isFile() && info.size <= 1_000_000 && !isOffloaded(info)) {
           const content = (await readBoundedFile(fullPath, 1_000_000, workingDirectory)).toString("utf8");
           if (content.includes("\0")) return file;
           const lineCount = content.length === 0 ? 0 : content.split("\n").length - (content.endsWith("\n") ? 1 : 0);
@@ -106,6 +122,59 @@ async function applyLineStats(workingDirectory: string, files: GitChange[]): Pro
     counted.push(...await Promise.all(files.slice(offset, offset + 8).map(countFile)));
   }
   return counted;
+}
+
+export const OFFLOADED_DATABASE = "This repository's Git data is in iCloud and not downloaded to this Mac, so Git cannot read it. In Finder, Control-click the folder and choose Download Now.";
+
+/*
+ * Git reads the index, its packs and loose objects; an offloaded one waits on
+ * an iCloud download. Loose objects are sampled, not walked: a few hundred
+ * lstat calls answer the question without stalling on a large store.
+ */
+export async function gitDataOffloaded(workingDirectory: string): Promise<boolean> {
+  if (await databaseOffloaded(workingDirectory)) return true;
+  const located = await git(workingDirectory, ["rev-parse", "--git-common-dir"]);
+  if (!located.ok) return false;
+  const objects = path.join(path.resolve(workingDirectory, located.stdout.trim()), "objects");
+  const folders = (await fs.promises.readdir(objects).catch(() => [] as string[])).filter((name) => /^[0-9a-f]{2}$/.test(name));
+  let checked = 0;
+  for (const folder of folders) {
+    for (const name of await fs.promises.readdir(path.join(objects, folder)).catch(() => [] as string[])) {
+      const info = await lstat(path.join(objects, folder, name)).catch(() => undefined);
+      if (info && isOffloaded(info)) return true;
+      if (++checked >= 300) return false;
+    }
+  }
+  return false;
+}
+
+/** Why a read failed: an offloaded repository says how to bring it back rather than that Git timed out. */
+export async function readFailure(workingDirectory: string, stderr: string, fallback: string): Promise<string> {
+  return await databaseOffloaded(workingDirectory) ? OFFLOADED_DATABASE : stderr || fallback;
+}
+
+/* Status reads the index and whichever packs hold HEAD's trees; an offloaded one waits on a download. */
+async function databaseOffloaded(workingDirectory: string): Promise<boolean> {
+  const located = await git(workingDirectory, ["rev-parse", "--git-path", "index", "--git-common-dir"]);
+  if (!located.ok) return false;
+  const [index, common] = located.stdout.split(/\r?\n/).map((line) => path.resolve(workingDirectory, line.trim()));
+  const packs = common ? path.join(common, "objects", "pack") : undefined;
+  const names = packs ? await fs.promises.readdir(packs).catch(() => [] as string[]) : [];
+  const candidates = [index, ...names.filter((name) => /\.(pack|idx)$/.test(name)).map((name) => path.join(packs!, name))];
+  for (const file of candidates) {
+    const info = file ? await lstat(file).catch(() => undefined) : undefined;
+    if (info && isOffloaded(info)) return true;
+  }
+  return false;
+}
+
+async function anyOffloaded(workingDirectory: string, files: GitChange[]): Promise<boolean> {
+  for (const file of files) {
+    if (file.code.includes("?") || file.code.includes("D")) continue;
+    const info = await lstat(path.join(workingDirectory, file.path)).catch(() => undefined);
+    if (info && isOffloaded(info)) return true;
+  }
+  return false;
 }
 
 function sumStat(files: GitChange[], key: "added" | "removed"): number | undefined {
@@ -140,7 +209,7 @@ export async function readGitDiff(workingDirectory: string, relative?: string, o
     const result = hasHead
       ? await git(workingDirectory, ["--literal-pathspecs", "diff", "--no-ext-diff", "--no-textconv", ...CANONICAL_PATCH_FLAGS, ...whitespace, "HEAD", ...paths])
       : { ok: true, stdout: "", stderr: "" };
-    if (!result.ok) throw new Error(result.stderr || "Could not read the combined working-tree diff.");
+    if (!result.ok) throw new Error(await readFailure(workingDirectory, result.stderr, "Could not read the combined working-tree diff."));
     return result.stdout + await readUntrackedPatches(workingDirectory, relative, !hasHead, REVIEW_DIFF_BYTES - Buffer.byteLength(result.stdout));
 
   }, JSON.stringify(["readGitDiff", workingDirectory, relative, Boolean(options.ignoreWhitespace)]));
@@ -153,7 +222,7 @@ export async function readGitDiff(workingDirectory: string, relative?: string, o
 export async function readUntrackedPatches(workingDirectory: string, relative: string | undefined, cached: boolean, budget: number): Promise<string> {
   const paths = relative ? ["--", relative] : [];
   const listing = await git(workingDirectory, ["--literal-pathspecs", "ls-files", "--others", "--exclude-standard", "-z", ...(cached ? ["--cached"] : []), ...paths]);
-  if (!listing.ok) throw new Error(listing.stderr || "Could not read untracked files.");
+  if (!listing.ok) throw new Error(await readFailure(workingDirectory, listing.stderr, "Could not read untracked files."));
   const names = [...new Set(listing.stdout.split("\0").filter(Boolean))];
   if (names.length > 200) throw new Error("More than 200 new files need review. Select individual files to inspect them before committing.");
   const patches: string[] = [];

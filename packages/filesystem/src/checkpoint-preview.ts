@@ -2,6 +2,7 @@ import type { TurnDiffOptions, TurnDiffResult } from "@capsule/shared";
 import { hasCheckpoint } from "./checkpoints.js";
 import { CANONICAL_PATCH_FLAGS, parseNumstat } from "./git-output.js";
 import { gitExcerpt, inRepository } from "./git-process.js";
+import { gitDataOffloaded, OFFLOADED_DATABASE } from "./git.js";
 
 export const CHECKPOINT_PATCH_BYTES = 512 * 1024;
 export const CHECKPOINT_SUMMARY_BYTES = 1024 * 1024;
@@ -14,6 +15,17 @@ function completeRecords(text: string, delimiter: string, truncated: boolean): s
 
 /** Summaries never depend on reading a potentially enormous patch. */
 export async function previewCheckpoint(cwd: string, to: string, from: string, options: TurnDiffOptions = {}): Promise<TurnDiffResult> {
+  try {
+    return await readCheckpoint(cwd, to, from, options);
+  } catch (error) {
+    // A stalled or failed read in a repository iCloud has offloaded is the
+    // offload, not the refs; say so instead of quoting git.
+    if (await gitDataOffloaded(cwd).catch(() => false)) throw new Error(OFFLOADED_DATABASE);
+    throw error;
+  }
+}
+
+function readCheckpoint(cwd: string, to: string, from: string, options: TurnDiffOptions): Promise<TurnDiffResult> {
   return inRepository(cwd, async () => {
     if (!(await hasCheckpoint(cwd, from)) || !(await hasCheckpoint(cwd, to))) {
       throw new Error("A recorded checkpoint could not be read. Check that the repository and its saved refs are available.");

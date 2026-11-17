@@ -11,6 +11,13 @@ const WAITS_ON_PERSON = new Set([
 ]);
 
 /*
+ * Reads Capsule makes on its own (on focus, after a turn) that nobody is
+ * waiting on. The last answer stays on screen meanwhile, and a failure is
+ * shown where the result lives.
+ */
+const BACKGROUND = new Set(["gitStatus"]);
+
+/*
  * What the person is waiting on, in their words. A bridge method name such as
  * "steer harness" names the plumbing; the notice names the thing behind it.
  * First match wins, so the narrower patterns come first.
@@ -36,7 +43,7 @@ export function requestLabel(name: string): string {
 }
 
 export function watchesRequest(name: string): boolean {
-  return !WAITS_ON_PERSON.has(name) && !name.startsWith("terminal");
+  return !WAITS_ON_PERSON.has(name) && !BACKGROUND.has(name) && !name.startsWith("terminal");
 }
 
 /**

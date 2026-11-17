@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { RepositoryQueue, git, inRepository } from "./git-process.js";
+import { RepositoryQueue, git, gitExcerpt, gitOperation, inRepository } from "./git-process.js";
 import { mkdtempSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
@@ -20,6 +20,22 @@ it("shares the repository lock with linked worktrees without blocking the event 
     expect(slow.ok).toBe(true); expect(ticks).toBeGreaterThan(0); expect(entered).toBe(false);
   } finally { clearInterval(timer); gate.resolve(); await Promise.all([first, second]); }
   expect(entered).toBe(true);
+});
+
+it("says a Git command was stopped at its time limit instead of repeating the command line", async () => {
+  const dir = realpathSync(mkdtempSync(path.join(tmpdir(), "capsule-timeout-")));
+  expect((await git(dir, ["init", "-q"])).ok).toBe(true);
+  const result = await git(dir, ["-c", "alias.wait=!sleep 3", "wait"], process.env, 1_000);
+  expect(result.ok).toBe(false);
+  expect(result.stderr).toBe("`git wait` took longer than 1 second and was stopped.");
+  expect(result.exitCode).toBeUndefined();
+});
+
+it("says a display read was stopped at its time limit instead of repeating the command line", async () => {
+  const dir = realpathSync(mkdtempSync(path.join(tmpdir(), "capsule-excerpt-timeout-")));
+  expect((await git(dir, ["init", "-q"])).ok).toBe(true);
+  await expect(gitExcerpt(dir, ["-c", "alias.wait=!sleep 3", "wait"], 1024, 1_000))
+    .rejects.toThrow("`git wait` took longer than 1 second and was stopped.");
 });
 
 function deferred() { let resolve!: () => void; const promise = new Promise<void>((done) => { resolve = done; }); return { promise, resolve }; }
@@ -52,4 +68,14 @@ describe("repository queue", () => {
     ]);
     expect(order).toEqual(["stage", "commit", "checkout"]);
   });
+});
+
+it("names the Git subcommand, not the command line, when a command fails silently", async () => {
+  const dir = realpathSync(mkdtempSync(path.join(tmpdir(), "capsule-silent-")));
+  expect((await git(dir, ["init", "-q"])).ok).toBe(true);
+  const result = await git(dir, ["--literal-pathspecs", "-c", "alias.quiet=!exit 3", "quiet"]);
+  expect(result.ok).toBe(false);
+  expect(result.stderr).toBe("`git quiet` failed with exit code 3.");
+  expect(result.stderr).not.toContain("Command failed");
+  expect(gitOperation(["-c", "core.checkStat=minimal", "--literal-pathspecs", "diff", "HEAD"])).toBe("diff");
 });

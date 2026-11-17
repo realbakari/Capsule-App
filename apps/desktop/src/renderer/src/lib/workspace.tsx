@@ -283,6 +283,8 @@ export interface WorkspaceValue {
   commands: CommandListState;
   createProject: () => Promise<void>;
   git?: GitStatus;
+  /** Why the last background status read failed. Shown in Conversation details, never in the thread. */
+  gitError?: string;
   files: FileEntry[];
   confirm?: ConfirmState;
   setConfirm: (value?: ConfirmState) => void;
@@ -633,6 +635,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     renderSteering((version) => version + 1);
   };
   const [git, setGit] = useScopedState<GitStatus | undefined>(scope, undefined);
+  const [gitError, setGitError] = useScopedState<string | undefined>(scope, undefined);
   const [files, setFiles] = useScopedState<FileEntry[]>(scope, []);
   const [confirm, setConfirm] = useScopedState<ConfirmState | undefined>(scope, undefined);
   /* On a narrow screen the sidebar is a drawer, so it starts closed whatever the desktop last chose. */
@@ -2785,6 +2788,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       steps,
       contextUsage,
       git,
+      gitError,
       files,
       confirm,
       setConfirm,
@@ -3008,6 +3012,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       connected,
       steps,
       git,
+      gitError,
       files,
       confirm,
       ready,

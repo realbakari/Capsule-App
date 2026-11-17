@@ -4,14 +4,18 @@ import { requestLabel, withSlowNotice } from "./slow-requests";
 afterEach(() => { vi.useRealTimers(); });
 
 describe("slow request notices", () => {
-  it("says a call is slow after the delay and clears when it settles", async () => {
+  it("says a call the person made is slow, never a background status read, and clears when it settles", async () => {
     vi.useFakeTimers();
     let finish!: () => void;
     const events: Array<[string, boolean]> = [];
-    const api = withSlowNotice({ gitPush: () => new Promise<void>((resolve) => { finish = resolve; }), pickFiles: () => new Promise(() => undefined) },
-      (name, waiting) => events.push([name, waiting]), 100);
+    const api = withSlowNotice({
+      gitPush: () => new Promise<void>((resolve) => { finish = resolve; }),
+      pickFiles: () => new Promise(() => undefined),
+      gitStatus: () => new Promise(() => undefined),
+    }, (name, waiting) => events.push([name, waiting]), 100);
     const push = api.gitPush();
     void api.pickFiles();
+    void api.gitStatus();
     await vi.advanceTimersByTimeAsync(150);
     expect(events).toEqual([["gitPush", true]]);
     finish(); await push; await Promise.resolve();

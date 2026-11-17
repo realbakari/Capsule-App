@@ -1,10 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, truncateSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, it } from "vitest";
 import { parseUnifiedDiff } from "@capsule/shared";
-import { readGitDiff, readGitStatus, stageFile } from "./git.js";
+import { isOffloaded, OFFLOADED_DATABASE, readGitDiff, readGitStatus, stageFile } from "./git.js";
+import { readScopedDiff } from "./git-hunks.js";
 import { parseNumstat, parsePorcelain } from "./git-output.js";
 
 it("polls changed files without refreshing the user's index or disturbing staging", async () => {
@@ -28,6 +29,38 @@ it("polls changed files without refreshing the user's index or disturbing stagin
     await stageFile(root, "changed.txt");
     expect(git("show", ":changed.txt").toString()).toBe("working\n");
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it("does not re-read files whose inode and change time moved but whose content did not", async () => {
+  // A cloud-synced folder changes ctime and inode when it offloads a file; re-reading it waits on a download.
+  const root = mkdtempSync(path.join(tmpdir(), "capsule-ctime-"));
+  const reads = path.join(root, "..", `${path.basename(root)}-reads`);
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: root, stdio: "pipe" });
+  try {
+    git("init", "-q"); git("config", "user.name", "Test"); git("config", "user.email", "test@example.test");
+    writeFileSync(path.join(root, "kept.txt"), "kept\n");
+    git("add", "."); git("commit", "-qm", "initial");
+    const old = new Date(Date.now() - 60_000);
+    utimesSync(path.join(root, "kept.txt"), old, old);
+    git("update-index", "--refresh");
+    git("config", "filter.spy.clean", `sh -c 'echo read >> "${reads}"; cat'`);
+    writeFileSync(path.join(root, ".git", "info", "attributes"), "* filter=spy\n");
+    const copy = path.join(root, "kept.copy");
+    copyFileSync(path.join(root, "kept.txt"), copy);
+    renameSync(copy, path.join(root, "kept.txt"));
+    utimesSync(path.join(root, "kept.txt"), old, old);
+    const status = await readGitStatus(root);
+    expect(status.files).toEqual([]);
+    expect(existsSync(reads)).toBe(false);
+  } finally { rmSync(root, { recursive: true, force: true }); rmSync(reads, { force: true }); }
+});
+
+it("treats a Mac file with content but no blocks on disk as offloaded to the cloud", () => {
+  const file = (size: number, blocks: number) => ({ size, blocks, isFile: () => true });
+  expect(isOffloaded(file(2522, 0), "darwin")).toBe(true);
+  expect(isOffloaded(file(2522, 8), "darwin")).toBe(false);
+  expect(isOffloaded(file(0, 0), "darwin")).toBe(false);
+  expect(isOffloaded(file(2522, 0), "linux")).toBe(false);
 });
 
 it("keeps NUL-delimited rename destinations and literal whitespace", () => {
@@ -89,5 +122,20 @@ it("preserves metadata paths for working-tree and untracked diffs under custom G
     const patch = await readGitDiff(root);
     expect(parseUnifiedDiff(patch).map((file) => file.path).sort()).toEqual(["binary.dat", "empty file.txt", "script.sh"]);
     expect(patch).not.toContain("\u001b[");
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it.skipIf(process.platform !== "darwin")("says a diff failed because the repository is in iCloud, not that Git timed out", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "capsule-offloaded-diff-"));
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: root, stdio: "pipe" });
+  try {
+    git("init", "-q"); git("config", "user.name", "Test"); git("config", "user.email", "test@example.test");
+    writeFileSync(path.join(root, "a.txt"), "a\n");
+    git("add", "."); git("commit", "-qm", "initial");
+    // A sparse index has a size and no blocks on disk, which is how an offloaded file looks.
+    const index = path.join(root, ".git", "index");
+    rmSync(index); writeFileSync(index, ""); truncateSync(index, 4096);
+    await expect(readGitDiff(root)).rejects.toThrow(OFFLOADED_DATABASE);
+    await expect(readScopedDiff(root, "staged")).rejects.toThrow(OFFLOADED_DATABASE);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
