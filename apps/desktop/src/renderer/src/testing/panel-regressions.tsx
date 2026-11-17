@@ -112,7 +112,8 @@ export async function runPanelRegressions(host: HTMLElement, base: Record<string
     assert(project.querySelector('.thread-status')?.textContent === "Approval", "Collapsed project hid a waiting approval behind working status");
     assert(project.querySelector('.project-hidden-count')?.textContent === "2", "Collapsed project did not say how many conversations it hides");
     const toolbar = document.querySelector<HTMLElement>('.sidebar-toolbar')!;
-    assert(["Search conversations", "Group conversations", "Add project", "New conversation (⌘N)"].every((label) => toolbar.querySelector(`[aria-label="${label}"]`)),
+    // The new-conversation label carries its shortcut, which reads ⌘N on macOS and Ctrl+N elsewhere.
+    assert(["Search conversations", "Group conversations", "Add project", "New conversation"].every((label) => toolbar.querySelector(`[aria-label^="${label}"]`)),
       "Search, grouping, add project and new conversation are not one row");
     const projectActions = Array.from(project.querySelectorAll<HTMLElement>('.project-actions > button'));
     const actionBoxes = projectActions.map((button) => button.getBoundingClientRect());

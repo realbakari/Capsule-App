@@ -15,6 +15,7 @@ import { BrowserControls } from "./BrowserControls";
 import "./browser-inspect.css";
 import { showNativeContextMenu } from "../../lib/bridge";
 import { registerSelectionReader, selectionContext, touchSelectionSurface } from "../../lib/selection-share";
+import { isMac } from "../../lib/keybindings";
 // Electron's custom element reads a string attribute. React drops boolean
 // `true` on this non-standard attribute despite WebViewHTMLAttributes' type.
 const guestAttributes: Record<string, string> = { allowpopups: "true" };
@@ -659,7 +660,7 @@ export function EmbeddedBrowser({
           {moreMenuOpen && (
             <div className="preview-more-menu" role="menu">
               <button type="button" className="preview-menu-item" disabled={!ready} onClick={() => { setFinding(true); setMoreMenuOpen(false); }}>
-                Find on page <kbd className="preview-menu-kbd">⌘F</kbd>
+                Find on page <kbd className="preview-menu-kbd">{isMac() ? "⌘F" : "Ctrl+F"}</kbd>
               </button>
               <button
                 type="button"

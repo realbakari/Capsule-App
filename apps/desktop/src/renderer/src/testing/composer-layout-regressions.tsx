@@ -2,6 +2,7 @@ import { createRoot } from "react-dom/client";
 import { Composer } from "../features/conversation/Composer";
 import { appearanceCssVars, DEFAULT_DARK_PALETTE, DEFAULT_LIGHT_PALETTE, PRESET_HARNESSES } from "@capsule/shared";
 import { openComposerControl } from "../lib/composer-controls";
+import { isMac } from "../lib/keybindings";
 
 function assert(value: unknown, message: string): asserts value {
   if (!value) throw new Error(message);
@@ -181,11 +182,11 @@ export async function runModelPickerRegressions(host: HTMLElement, base: Record<
     assert(picker()?.querySelector(".agent-model-reasoning header")?.textContent === "ReasoningReasoning model", "The Reasoning column does not name the current model");
     assert(effort("High")?.getAttribute("aria-checked") === "true" && effort("Low")?.getAttribute("aria-checked") === "false", "Effort rows do not check the current level");
     const rows = Array.from(picker()!.querySelectorAll(".agent-model-row"));
-    assert(rows[0]?.querySelector(".agent-model-jump")?.textContent === "⌘1" && rows[1]?.querySelector(".agent-model-jump")?.textContent === "⌘2", "Model rows lack their jump keys");
+    assert(rows[0]?.querySelector(".agent-model-jump")?.textContent === `${isMac() ? "⌘" : "Ctrl+"}1` && rows[1]?.querySelector(".agent-model-jump")?.textContent === `${isMac() ? "⌘" : "Ctrl+"}2`, "Model rows lack their jump keys");
     assert(!rows[0]?.querySelector("small"), "Model rows still carry an id line");
     effort("Low").click(); await settle();
     assert(JSON.stringify(writes[0]) === JSON.stringify(["picker-thread", "reasoning_effort", "low"]), "Effort row did not write the reported option");
-    key(picker()!, { key: "2", metaKey: true }); await settle();
+    key(picker()!, isMac() ? { key: "2", metaKey: true } : { key: "2", ctrlKey: true }); await settle();
     assert(options.includes("model=model-two") && !picker(), "⌘2 did not pick the second model and close");
     assert(document.activeElement === trigger(), "Jump key lost the trigger focus");
 

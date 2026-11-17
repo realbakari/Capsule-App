@@ -656,7 +656,7 @@ window.runRendererRegressions = async () => {
   guest.dispatchEvent(new Event("did-stop-loading"));
   document.querySelector<HTMLButtonElement>('button[title="More options"]')!.click();
   await until(() => document.querySelector('.preview-more-menu[role="menu"]'));
-  const menuItems = Array.from(document.querySelectorAll('.preview-more-menu[role="menu"] .preview-menu-item'), (item) => item.textContent?.replace(/⌘F$/, "").trim());
+  const menuItems = Array.from(document.querySelectorAll('.preview-more-menu[role="menu"] .preview-menu-item'), (item) => item.textContent?.replace(/(⌘|Ctrl\+)F$/, "").trim());
   assert(JSON.stringify(menuItems) === JSON.stringify(["Find on page", "Hard reload", "Open DevTools", "Clear cache", "Clear cookies and site data"]), `Browser menu repeats other controls: ${JSON.stringify(menuItems)}`);
   document.querySelector<HTMLButtonElement>('button[title="More options"]')!.click();
   // A new tab is the way home: the local-servers page.

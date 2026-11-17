@@ -6,6 +6,7 @@ import { AgentGlyph } from "../shell/AgentGlyph";
 import { CheckIcon, SearchIcon, StarIcon } from "../shell/icons";
 import { useAnchoredPopover } from "../../lib/anchored-popover";
 import { agentReadinessReason } from "../../lib/harness-preflight";
+import { isMac } from "../../lib/keybindings";
 
 /* ⌘1 to ⌘9 pick the first visible models while the picker is open. */
 const JUMP_KEYS = 9;
@@ -98,7 +99,8 @@ export function AgentModelPicker(props: {
     {open && createPortal(<div className="agent-model-picker" ref={panel} style={position} role="dialog" aria-label="Choose agent and model"
       onKeyDown={(event) => {
         if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); return; }
-        if (event.metaKey && !event.shiftKey && !event.altKey && !event.ctrlKey && /^[1-9]$/.test(event.key) && !choosingHarness) {
+        const jumpModifier = isMac() ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+        if (jumpModifier && !event.shiftKey && !event.altKey && /^[1-9]$/.test(event.key) && !choosingHarness) {
           const target = jumpable[Number(event.key) - 1];
           if (target) { event.preventDefault(); event.stopPropagation(); pick(target.modelId); }
           return;
@@ -187,7 +189,7 @@ export function AgentModelPicker(props: {
               <button type="button" className={`model-favorite${starred ? " is-chosen" : ""}`} aria-label={`${starred ? "Unfavorite" : "Favorite"} ${model.name}`} aria-pressed={starred}
                 disabled={!props.onToggleFavorite} title="Favorite. Cycle favorites (⌥⌘M)"
                 onClick={() => props.onToggleFavorite?.(model.modelId)}><StarIcon size={13} /></button>
-              {jump >= 0 ? <kbd className="agent-model-jump" aria-hidden="true">⌘{jump + 1}</kbd> : null}
+              {jump >= 0 ? <kbd className="agent-model-jump" aria-hidden="true">{isMac() ? "⌘" : "Ctrl+"}{jump + 1}</kbd> : null}
             </div>;
           })}
           {!filtered.length && <p className="agent-model-empty" role="status">{props.loading ? "Loading models…" : props.error ?? (models.length ? "No models found" : harness?.readiness === "missing_cli" ? harness.detail : props.liveHarnessId ? props.availability.detail : "This agent has not reported model choices. Its default will be used.")}</p>}
