@@ -31,6 +31,8 @@ export interface UsageRecord {
   at: number;
   model: string;
   sessionId: string;
+  /** The folder the CLI ran in, when its transcript says. Grouped by project, never shown. */
+  cwd?: string;
   totals: TokenTotals;
   /**
    * Identifies the billed request, for de-duplication. Claude Code writes one
@@ -72,6 +74,17 @@ function millis(value: unknown): number | undefined {
   if (typeof value !== "string") return undefined;
   const parsed = Date.parse(value);
   return Number.isNaN(parsed) ? undefined : parsed;
+}
+
+/* Every line of a session repeats its folder; keep one copy of each. */
+const folders = new Map<string, string>();
+function folder(value: unknown): string | undefined {
+  if (typeof value !== "string" || !value) return undefined;
+  const known = folders.get(value);
+  if (known) return known;
+  if (folders.size >= 4096) folders.clear();
+  folders.set(value, value);
+  return value;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -119,12 +132,14 @@ export function parseClaudeLine(line: string): UsageRecord | undefined {
 
   const messageId = typeof message?.id === "string" ? message.id : undefined;
   const requestId = typeof row.requestId === "string" ? row.requestId : undefined;
+  const cwd = folder(row.cwd);
 
   return {
     provider: "claude",
     at: millis(row.timestamp) ?? 0,
     model,
     sessionId: typeof row.sessionId === "string" ? row.sessionId : "",
+    ...(cwd ? { cwd } : {}),
     totals,
     dedupeKey: messageId ?? requestId,
   };
@@ -141,6 +156,8 @@ export function parseClaudeLine(line: string): UsageRecord | undefined {
 export interface CodexScanState {
   /** Model from the most recent turn_context line. */
   model?: string;
+  /** Folder from the session_meta or turn_context line before it. */
+  cwd?: string;
 }
 
 export function newCodexScanState(): CodexScanState {
@@ -171,6 +188,8 @@ export function parseCodexLine(
   if (payload && typeof payload.model === "string" && payload.model) {
     state.model = payload.model;
   }
+  const declaredFolder = folder(payload?.cwd);
+  if (declaredFolder) state.cwd = declaredFolder;
 
   const info = payload ? asRecord(payload.info) : undefined;
   const usage = info ? asRecord(info.last_token_usage) : undefined;
@@ -209,6 +228,7 @@ export function parseCodexLine(
     at: millis(row.timestamp) ?? 0,
     model,
     sessionId: typeof row.session_id === "string" ? row.session_id : sessionId,
+    ...(state.cwd ? { cwd: state.cwd } : {}),
     totals,
   };
 }

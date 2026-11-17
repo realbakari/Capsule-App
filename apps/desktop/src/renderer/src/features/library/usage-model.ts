@@ -15,6 +15,8 @@ export interface UsageSummary {
   byDay: UsageBucket[];
   byProvider: UsageBucket[];
   byModel: UsageBucket[];
+  /** Keyed by project id; "" is work in folders outside every project. Absent from an older host. */
+  byProject?: UsageBucket[];
   from?: number;
   to?: number;
 }
@@ -50,6 +52,27 @@ export function compactTokens(value: number): string {
 
 export function bucketTokens(totals: Record<string, number>): number {
   return Object.values(totals).reduce((acc, value) => acc + value, 0);
+}
+
+/**
+ * Projects by tokens, the largest few named and the rest summed, so a long
+ * project list cannot push the page's other sections out of view.
+ */
+export function projectRows(byProject: readonly UsageBucket[], names: ReadonlyMap<string, string>, limit = 6): Array<{ key: string; label: string; tokens: number; requests: number }> {
+  const named = byProject.map((bucket) => ({
+    key: bucket.key,
+    label: bucket.key === "" ? "Other folders" : names.get(bucket.key) ?? "Removed project",
+    tokens: bucketTokens(bucket.totals),
+    requests: bucket.requests,
+  }));
+  if (named.length <= limit) return named;
+  const rest = named.slice(limit - 1);
+  return [...named.slice(0, limit - 1), {
+    key: "more",
+    label: `${rest.length} more`,
+    tokens: rest.reduce((sum, row) => sum + row.tokens, 0),
+    requests: rest.reduce((sum, row) => sum + row.requests, 0),
+  }];
 }
 
 /** Never "0%" for something that happened: a sliver is not nothing. */

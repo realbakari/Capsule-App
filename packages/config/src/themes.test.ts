@@ -111,6 +111,28 @@ describe("themes", () => {
     expect(() => service.importTheme({ kind: "file", name: "a.json", text: JSON.stringify({ name: "A" }) })).toThrow(/appearance/);
   });
 
+  it("imports an editor colour theme written with comments and trailing commas", () => {
+    const { userDir, open } = fixture();
+    const service = open();
+    const text = `{
+      // exported from an editor
+      "name": "Harbor Night",
+      "type": "dark",
+      "colors": {
+        "editor.background": "#0b1622", /* the page */
+        "editor.foreground": "#d8e2ec",
+      },
+      "tokenColors": [
+        { "scope": "keyword", "settings": { "foreground": "#7fb4ff", }, },
+      ],
+    }`;
+    const result = service.importTheme({ kind: "file", name: "harbor-night-color-theme.json", text });
+    expect(result).toMatchObject({ id: "harbor-night-color-theme", name: "Harbor Night", appearance: "dark", problems: [] });
+    const saved = JSON.parse(readFileSync(path.join(userDir, "themes", `${result.id}.json`), "utf8"));
+    expect(saved).toMatchObject({ name: "Harbor Night", appearance: "dark", tokens: { base: "#0b1622", text: "#d8e2ec", "syntax-keyword": "#7fb4ff" } });
+    expect(service.themes().themes.find((theme) => theme.id === result.id)?.tokens.base).toBe("#0b1622");
+  });
+
   it("copies a chosen image into backdrops and draws it in place of the scene", () => {
     const { home, userDir, write, open, settings } = fixture();
     write(path.join(home, "Pictures", "My Sky.png"), PNG);

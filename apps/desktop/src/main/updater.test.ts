@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { Updater, mergeUpdateStatus, type AutoUpdaterLike, type UpdaterStatus } from "./updater";
+import { Updater, mergeUpdateStatus, notAppliedVersion, type AutoUpdaterLike, type UpdaterStatus } from "./updater";
 
 function fakeUpdater() {
   const handlers = new Map<string, (...args: never[]) => void>();
@@ -180,6 +180,57 @@ describe("what the sidebar is told", () => {
 
   it("says up to date when the feed says so", () => {
     expect(mergeUpdateStatus(base, undefined)).toMatchObject({ state: "up-to-date" });
+  });
+});
+
+describe("an install that did not apply", () => {
+  it("records the version being installed just before quitting", async () => {
+    const api = fakeUpdater();
+    const recorded: string[] = [];
+    vi.mocked(api.quitAndInstall).mockImplementation(() => expect(recorded).toEqual(["0.3.0"]));
+    const updater = new Updater({ updater: api, currentVersion: "0.2.0", canInstall: true, onStatus: () => undefined, recordInstall: (target) => recorded.push(target) });
+    api.emit("update-available", { version: "0.3.0" });
+    api.emit("update-downloaded", { version: "0.3.0" });
+    expect(await updater.install()).toBe(true);
+    expect(api.quitAndInstall).toHaveBeenCalledOnce();
+  });
+
+  it("records nothing when preparation stops the restart", async () => {
+    const api = fakeUpdater();
+    const recordInstall = vi.fn();
+    const updater = new Updater({ updater: api, currentVersion: "0.2.0", canInstall: true, onStatus: () => undefined, recordInstall,
+      prepareInstall: async () => { throw new Error("Close terminal sessions before restarting to install."); } });
+    api.emit("update-downloaded", { version: "0.3.0" });
+    expect(await updater.install()).toBe(false);
+    expect(recordInstall).not.toHaveBeenCalled();
+  });
+
+  it("tells a launch still on the old version that the update did not apply", () => {
+    expect(notAppliedVersion({ from: "0.2.0", target: "0.3.0" }, "0.2.0")).toBe("0.3.0");
+    expect(notAppliedVersion({ from: "0.2.0", target: "0.3.0" }, "0.3.0")).toBeUndefined();
+    // Installed by hand in between: the record is about another version, not a failure.
+    expect(notAppliedVersion({ from: "0.2.0", target: "0.3.0" }, "0.4.0")).toBeUndefined();
+    expect(notAppliedVersion({ from: "v0.2.0", target: "0.3.0" }, "0.2.0")).toBe("0.3.0");
+    expect(notAppliedVersion("garbage", "0.2.0")).toBeUndefined();
+    expect(notAppliedVersion({ from: 2, target: "0.3.0" }, "0.2.0")).toBeUndefined();
+  });
+
+  it("carries the failed version to the window until another install starts", async () => {
+    const api = fakeUpdater();
+    const updater = new Updater({ updater: api, currentVersion: "0.2.0", canInstall: true, notApplied: "0.3.0", onStatus: () => undefined });
+    expect(mergeUpdateStatus(updater.current())).toMatchObject({ state: "unknown", notApplied: "0.3.0" });
+    api.emit("update-available", { version: "0.3.0" });
+    expect(mergeUpdateStatus(updater.current())).toMatchObject({ state: "update-available", notApplied: "0.3.0" });
+    api.emit("update-downloaded", { version: "0.3.0" });
+    await updater.install();
+    expect(mergeUpdateStatus(updater.current()).notApplied).toBeUndefined();
+  });
+
+  it("links the notes for the version on offer", () => {
+    const releaseUrl = (version: string) => `https://example.test/releases/v${version}`;
+    expect(mergeUpdateStatus({ state: "ready", current: "0.2.0", latest: "0.3.0" }, undefined, releaseUrl).url).toBe("https://example.test/releases/v0.3.0");
+    expect(mergeUpdateStatus({ state: "available", current: "0.2.0", latest: "0.3.0" }, { state: "update-available", current: "0.2.0", url: "https://example.test/page" }, releaseUrl).url)
+      .toBe("https://example.test/page");
   });
 });
 

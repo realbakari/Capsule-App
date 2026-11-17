@@ -32,6 +32,12 @@ export interface UsageSummary {
   byDay: UsageBucket[];
   byProvider: UsageBucket[];
   byModel: UsageBucket[];
+  /**
+   * Keyed by Capsule project id, with "" for work in folders outside every
+   * project. Present only when the caller says how a folder maps to a project:
+   * folders themselves are never returned.
+   */
+  byProject?: UsageBucket[];
   /** Bounds of the data actually found, or undefined when there is none. */
   from?: number;
   to?: number;
@@ -57,7 +63,10 @@ export function dayKey(at: number): string {
   return `${date.getFullYear()}-${month}-${day}`;
 }
 
-export function summarise(input: Iterable<UsageRecord>, since?: number): UsageSummary {
+/** Which project a transcript's folder belongs to, or "" for none. */
+export type ProjectOfFolder = (cwd: string | undefined) => string;
+
+export function summarise(input: Iterable<UsageRecord>, since?: number, projectOf?: ProjectOfFolder): UsageSummary {
   const records = dedupe(input).filter((record) => (since ? record.at >= since : true));
 
   if (records.length === 0) {
@@ -68,6 +77,7 @@ export function summarise(input: Iterable<UsageRecord>, since?: number): UsageSu
       byDay: [],
       byProvider: [],
       byModel: [],
+      ...(projectOf ? { byProject: [] } : {}),
     };
   }
 
@@ -90,8 +100,29 @@ export function summarise(input: Iterable<UsageRecord>, since?: number): UsageSu
     byModel: group(records, (record) => record.model).sort(
       (a, b) => totalTokens(b.totals) - totalTokens(a.totals),
     ),
+    ...(projectOf ? {
+      byProject: group(records, (record) => projectOf(record.cwd)).sort(
+        (a, b) => totalTokens(b.totals) - totalTokens(a.totals),
+      ),
+    } : {}),
     from,
     to,
+  };
+}
+
+/**
+ * The project whose folder holds `cwd`, by the deepest matching folder, so a
+ * worktree inside one project's tree belongs to the conversation's project
+ * rather than to whichever folder contains it.
+ */
+export function projectOfFolders(folders: ReadonlyArray<{ folder: string; projectId: string }>): ProjectOfFolder {
+  const known = folders
+    .filter((entry) => entry.folder)
+    .map((entry) => ({ prefix: entry.folder.replace(/\/+$/u, ""), projectId: entry.projectId }))
+    .sort((a, b) => b.prefix.length - a.prefix.length);
+  return (cwd) => {
+    if (!cwd) return "";
+    return known.find(({ prefix }) => cwd === prefix || cwd.startsWith(`${prefix}/`))?.projectId ?? "";
   };
 }
 

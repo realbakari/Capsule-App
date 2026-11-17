@@ -1,5 +1,5 @@
 import { IpcArgumentError, type ArgParser } from "@capsule/contracts";
-import { type PluginOptionValue, type PluginsConfigureInput, type PluginsInspectInput, type PluginsInstallInput, AUTOMATION_TEMPLATES, type AutomationCreateInput, type AutomationEnabledInput, type AutomationKeyInput, type StatusLineRequest, KEYMAP_CONTEXTS, MAX_THEME_SHARE_BYTES, WRITABLE_SCOPES, type CommandExpandInput, type ConfigFileTarget, type McpEnabledInput, type McpTestInput, type ProfileCreateInput, type KeybindingEdit, type KeymapContext, type PermissionRuleEdit, type SetConfigValueInput, type ThemeImportInput, type WritableScope } from "@capsule/shared";
+import { type PluginOptionValue, type PluginsConfigureInput, type PluginsInspectInput, type PluginsInstallInput, type AutomationCreateInput, type AutomationEnabledInput, type AutomationKeyInput, type StatusLineRequest, KEYMAP_CONTEXTS, MAX_THEME_FILE_BYTES, MAX_THEME_SHARE_BYTES, WRITABLE_SCOPES, type CommandExpandInput, type ConfigFileTarget, type McpEnabledInput, type McpTestInput, type ProfileCreateInput, type KeybindingEdit, type KeymapContext, type PermissionRuleEdit, type SetConfigValueInput, type ThemeImportInput, type WritableScope } from "@capsule/shared";
 
 /*
  * Shapes for the settings-file channels, checked where they cross from the
@@ -85,10 +85,18 @@ export const automationEnabledInput: ArgParser<AutomationEnabledInput> = (value,
 
 export const automationCreateInput: ArgParser<AutomationCreateInput> = (value, channel, index) => {
   const input = record(value, channel, index);
-  if (!AUTOMATION_TEMPLATES.some((template) => template.id === input.template)) throw new IpcArgumentError(channel, index, "template must be a known automation template");
+  const draft = record(input.draft, channel, index);
+  for (const key of ["name", "schedule", "prompt"] as const) {
+    if (typeof draft[key] !== "string" || (draft[key] as string).length > 20_000) throw new IpcArgumentError(channel, index, `draft.${key} must be a string`);
+  }
+  if (draft.workspace !== undefined && draft.workspace !== "worktree") throw new IpcArgumentError(channel, index, "draft.workspace must be worktree");
   if (input.scope !== "user" && input.scope !== "local") throw new IpcArgumentError(channel, index, "scope must be user or local");
   if (input.scope === "local" && input.projectId === undefined) throw new IpcArgumentError(channel, index, "a project automation needs a projectId");
-  return { template: input.template as string, scope: input.scope, ...projectId(input.projectId, channel, index) };
+  return {
+    draft: { name: draft.name as string, schedule: draft.schedule as string, prompt: draft.prompt as string, ...(draft.workspace ? { workspace: "worktree" as const } : {}) },
+    scope: input.scope,
+    ...projectId(input.projectId, channel, index),
+  };
 };
 
 /** The facts stay unknown here; the engine keeps only the fields it knows. */
@@ -153,7 +161,14 @@ export const keybindingEdit: ArgParser<KeybindingEdit> = (value, channel, index)
 export const themeImportInput: ArgParser<ThemeImportInput> = (value, channel, index) => {
   const input = record(value, channel, index);
   if (input.from === "file") return { from: "file" };
-  if (input.from !== "share") throw new IpcArgumentError(channel, index, "from must be share or file");
+  if (input.from === "dropped") {
+    if (typeof input.text !== "string" || !input.text.trim() || input.text.length > MAX_THEME_FILE_BYTES) {
+      throw new IpcArgumentError(channel, index, "text must be a theme file of at most 256 KB");
+    }
+    if (typeof input.name !== "string" || !/^[^/\\]{1,255}\.jsonc?$/i.test(input.name)) throw new IpcArgumentError(channel, index, "name must be a .json file name");
+    return { from: "dropped", text: input.text, name: input.name };
+  }
+  if (input.from !== "share") throw new IpcArgumentError(channel, index, "from must be share, file or dropped");
   if (typeof input.text !== "string" || !input.text.trim() || input.text.length > MAX_THEME_SHARE_BYTES) {
     throw new IpcArgumentError(channel, index, "text must be a share string of at most 32 KB");
   }

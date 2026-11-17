@@ -83,9 +83,9 @@ one starts when its cards are marked done. An agent can only start cards it
 created, and only in its own project. Delete a card you do not want, like any
 other conversation.
 
-Which agents can create cards: agents running in direct mode that accept
-Capsule's tools. Claude Code, Codex and Muse Code in direct mode, and every
-conversation on the OpenClaw Gateway, do not get these tools yet.
+Which agents can create cards: only agents Capsule starts itself that accept
+its tools. Claude Code, Codex and Muse Code, and every conversation on the
+OpenClaw Gateway, cannot yet. The **Agent tasks** panel says the same.
 
 ## Keyboard
 

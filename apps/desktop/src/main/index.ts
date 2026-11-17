@@ -1,5 +1,6 @@
+import { trayMenuTemplate, type TrayAction, type TrayMenuInput, type TrayMenuItem } from "./tray-menu";
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import os from "node:os";
@@ -25,6 +26,7 @@ import { ProductAnalytics } from "./analytics";
 import { readPngBytes } from "./image-attachments";
 import { RemoteUploads, remoteControlArgs, UPLOAD_LIMIT_BYTES } from "./remote-control";
 import { hunkApplies, hunkApply } from "./hunk-args";
+import { commitScope } from "./git-args";
 import {
   app,
   autoUpdater as nativeAutoUpdater,
@@ -59,7 +61,7 @@ import { startBrowserMcpServer, type BrowserMcpServer } from "./browser-mcp";
 import { startSimulatorMcpServer, type SimulatorMcpServer } from "./simulator-mcp";
 import { startTasksMcpServer, type TaskTarget } from "./tasks-mcp";
 import type { LocalMcpServer } from "./local-mcp";
-import { Updater, mergeUpdateStatus } from "./updater";
+import { Updater, mergeUpdateStatus, notAppliedVersion, type InstallRecord } from "./updater";
 import { UpdateAdmission } from "./update-admission";
 import { NativeUpdateStager } from "./native-update-stager";
 import { WindowReference } from "./window-reference";
@@ -74,7 +76,6 @@ import {
   isNewerRelease,
   pickReleaseAsset,
   PRESET_HARNESSES,
-  type AttentionState,
   attentionLabel,
   summariseAttention,
   approvalNotice,
@@ -100,7 +101,9 @@ import {
   type Session,
   type SpawnHarnessInput,
   type GitPullRequestStackAction,
+  type GitCommitScope,
   type GitDiffScope,
+  type GitPullMode,
   type HunkApply,
   type UpdateProjectInput,
   isHarnessId,
@@ -109,6 +112,7 @@ import {
   parseGitRefName,
   parseStartPullRequestInput,
   type AgentLoginTerminal,
+  MAX_THEME_FILE_BYTES,
 } from "@capsule/shared";
 import { readAgentProcesses } from "@capsule/filesystem";
 import { loadOrCreateTlsIdentity, phonePortFile, phoneSessionFile, startRemoteServer, type RemoteServerHandle } from "@capsule/remote";
@@ -148,6 +152,22 @@ let analytics: ProductAnalytics | undefined;
  */
 let engineStarted: Promise<void> | undefined;
 let awakeBlocker: number | undefined;
+
+/*
+ * A run from the build folder has no package.json beside its entry, so
+ * Electron reports its own version. Every place that shows or sends the
+ * version (About, updates, paired phones) says Capsule's instead.
+ */
+const APP_VERSION = ((): string => {
+  if (app.isPackaged) return app.getVersion();
+  try {
+    const manifest = JSON.parse(readFileSync(path.join(__dirname, "../../package.json"), "utf8")) as { name?: string; version?: string };
+    if (manifest.name === "@capsule/desktop" && manifest.version) return manifest.version;
+  } catch {
+    // Fall back to Electron's own answer.
+  }
+  return app.getVersion();
+})();
 
 function loadLocalEnv(): void {
   const candidates = [
@@ -444,6 +464,30 @@ function applyDockIcon(): void {
  */
 let updater: Updater | undefined;
 const updateAdmission = new UpdateAdmission();
+const INSTALL_RECORD_FILE = "update-install.json";
+
+/*
+ * A restart-to-install that brings Capsule back on the old version fails
+ * silently otherwise. The record is read once per launch and removed, so a
+ * failed install is reported once rather than on every launch after it.
+ */
+function takeNotAppliedUpdate(): string | undefined {
+  const file = path.join(userDataDir(), INSTALL_RECORD_FILE);
+  let record: unknown;
+  try { record = JSON.parse(readFileSync(file, "utf8")); } catch { return undefined; }
+  rmSync(file, { force: true });
+  return notAppliedVersion(record, APP_VERSION);
+}
+
+function recordUpdateInstall(target: string): void {
+  const record: InstallRecord = { from: APP_VERSION, target };
+  try { writeFileSync(path.join(userDataDir(), INSTALL_RECORD_FILE), JSON.stringify(record)); }
+  catch (error) { console.warn("[capsule] could not record the update install", error); }
+}
+
+function releasePageUrl(version: string): string {
+  return `https://github.com/${UPDATE_REPO}/releases/tag/v${version.replace(/^v/i, "")}`;
+}
 
 function ensureUpdater(): Updater {
   if (updater) return updater;
@@ -453,8 +497,10 @@ function ensureUpdater(): Updater {
   const nativeStager = process.platform === "darwin" ? new NativeUpdateStager(nativeAutoUpdater) : undefined;
   updater = new Updater({
     updater: libraryUpdater,
-    currentVersion: app.getVersion(),
+    currentVersion: APP_VERSION,
     canInstall: app.isPackaged,
+    notApplied: app.isPackaged ? takeNotAppliedUpdate() : undefined,
+    recordInstall: recordUpdateInstall,
     autoDownload: () => engine?.getSettings().autoDownloadUpdates === true,
     reserveInstall: () => {
       const releaseWrites = updateAdmission.reserve();
@@ -490,7 +536,7 @@ let updateCheckPending: Promise<UpdateCheck> | undefined;
 let updateTimer: ReturnType<typeof setTimeout> | undefined;
 
 function currentUpdateStatus(): UpdateCheck {
-  return mergeUpdateStatus(ensureUpdater().current(), lastUpdateCheck);
+  return mergeUpdateStatus(ensureUpdater().current(), lastUpdateCheck, releasePageUrl);
 }
 
 function checkDesktopUpdates(): Promise<UpdateCheck> {
@@ -526,7 +572,7 @@ async function checkForUpdates(): Promise<UpdateCheck> {
 }
 
 async function fetchLatestRelease(): Promise<UpdateCheck> {
-  const current = app.getVersion();
+  const current = APP_VERSION;
   try {
     const response = await fetch(`https://api.github.com/repos/${UPDATE_REPO}/releases/latest`, {
       headers: { Accept: "application/vnd.github+json", "User-Agent": "capsule-desktop" },
@@ -731,6 +777,10 @@ function createWindow(): BrowserWindow {
   // Committed main-frame loads only: a navigation the guard refused must not cost the shells.
   window.webContents.on("did-navigate", () => stopAllTerminals());
   window.on("closed", stopAllTerminals);
+  /* macOS "swipe between pages" with three fingers: left goes back, as in a browser. Two-finger swipes stay wheel events for the sidebar. */
+  window.on("swipe", (_event, direction) => {
+    if (direction === "left" || direction === "right") window.webContents.send(IPC_EVENTS.state, { command: direction === "left" ? "history-back" : "history-forward" });
+  });
   window.webContents.on("console-message", (_event, ...payload) => {
     console.error("[renderer]", ...payload);
   });
@@ -805,7 +855,7 @@ function createWindow(): BrowserWindow {
       // The count too: a second window nobody asked for is a startup bug the
       // smoke test can catch as easily as a crash.
       console.log(`capsule: window ready (${BrowserWindow.getAllWindows().length})`);
-      console.log(`capsule: app version ${app.getVersion()}`);
+      console.log(`capsule: app version ${APP_VERSION}`);
     }
   });
 
@@ -1180,7 +1230,7 @@ const remoteAccess = new RemoteAccessLifecycle<RemoteServerHandle>(
       ...(process.env.CAPSULE_REMOTE_PUBLIC_URL ? {} : {
         tls: loadOrCreateTlsIdentity(path.join(app.getPath("userData"), "remote")),
         hostName: computerName(),
-        appVersion: app.getVersion(),
+        appVersion: APP_VERSION,
         phoneSessions: phoneSessionFile(path.join(app.getPath("userData"), "remote")),
         phonePortStore: phonePortFile(path.join(app.getPath("userData"), "remote")),
         advertise: advertisePhoneListener,
@@ -1522,10 +1572,10 @@ function registerIpc(): void {
     ),
   );
   handle(IPC_CHANNELS.sendMessage, (input) =>
-    requireEngine().sendMessage(input as Parameters<CapsuleEngine["sendMessage"]>[0]),
+    requireEngine().sendMessage(input as Parameters<CapsuleEngine["sendMessage"]>[0], "person"),
   );
   handle(IPC_CHANNELS.startRun, (input) =>
-    requireEngine().sendMessage(input as Parameters<CapsuleEngine["sendMessage"]>[0]),
+    requireEngine().sendMessage(input as Parameters<CapsuleEngine["sendMessage"]>[0], "person"),
   );
   handleArgs(IPC_CHANNELS.stopRun, [id], (runId: string) => requireEngine().stopRun(runId));
   handleArgs(IPC_CHANNELS.forceStopRun, [id], (runId: string) => requireEngine().forceStopRun(runId));
@@ -1623,13 +1673,8 @@ function registerIpc(): void {
     stopTerminal(String(id));
     return true;
   });
-  handle(IPC_CHANNELS.runProjectAction, (projectId, actionId, sessionId) =>
-    requireEngine().runProjectAction(
-      String(projectId),
-      String(actionId),
-      sessionId ? String(sessionId) : undefined,
-    ),
-  );
+  // A project action takes over its old tab only while that shell sits at its prompt.
+  handle(IPC_CHANNELS.terminalIdle, async (id) => await terminals.get(String(id))?.idle() ?? false);
   handle(IPC_CHANNELS.stopProjectAction, (projectId, actionId, sessionId) =>
     requireEngine().stopProjectAction(
       String(projectId),
@@ -1737,13 +1782,8 @@ function registerIpc(): void {
       sessionId ? String(sessionId) : undefined,
     ),
   );
-  handle(IPC_CHANNELS.gitCommit, (projectId, message, sessionId) =>
-    requireEngine().gitCommit(
-      String(projectId),
-      String(message),
-      sessionId ? String(sessionId) : undefined,
-    ),
-  );
+  handleArgs(IPC_CHANNELS.gitCommit, [id, str, optStr, commitScope], (projectId: string, message: string, sessionId: string | undefined, scope: GitCommitScope) =>
+    requireEngine().gitCommit(projectId, message, sessionId, scope));
   handle(IPC_CHANNELS.gitStage, (projectId, relative, sessionId) =>
     requireEngine().gitStage(
       String(projectId),
@@ -1762,12 +1802,18 @@ function registerIpc(): void {
     const channel = IPC_CHANNELS.gitScopedDiff;
     return requireEngine().gitScopedDiff(
       id(projectId, channel, 0),
-      oneOf("uncommitted", "staged", "unstaged", "branch")(scope, channel, 1) as GitDiffScope,
+      oneOf("uncommitted", "staged", "unstaged", "branch", "commit")(scope, channel, 1) as GitDiffScope,
       optStr(relative, channel, 2),
       optStr(sessionId, channel, 3),
-      { ignoreWhitespace: optBool((options as { ignoreWhitespace?: unknown } | undefined)?.ignoreWhitespace, channel, 4) },
+      {
+        ignoreWhitespace: optBool((options as { ignoreWhitespace?: unknown } | undefined)?.ignoreWhitespace, channel, 4),
+        base: optStr((options as { base?: unknown } | undefined)?.base, channel, 4),
+        commit: optStr((options as { commit?: unknown } | undefined)?.commit, channel, 4),
+      },
     );
   });
+  handleArgs(IPC_CHANNELS.gitReviewTargets, [id, optStr, optStr], (projectId: string, sessionId: string | undefined, base: string | undefined) =>
+    requireEngine().gitReviewTargets(projectId, sessionId, base));
   handleArgs(IPC_CHANNELS.gitCheckHunks, [id, hunkApplies, optStr], (projectId: string, applies: HunkApply[], sessionId?: string) =>
     requireEngine().gitCheckHunks(projectId, applies, sessionId));
   handleArgs(IPC_CHANNELS.gitApplyHunk, [id, hunkApply, optStr], (projectId: string, apply: HunkApply, sessionId?: string) =>
@@ -1779,9 +1825,12 @@ function registerIpc(): void {
       sessionId ? String(sessionId) : undefined,
     ),
   );
-  handle(IPC_CHANNELS.gitPush, (projectId, sessionId) =>
-    requireEngine().gitPush(String(projectId), sessionId ? String(sessionId) : undefined),
-  );
+  handleArgs(IPC_CHANNELS.gitPush, [id, optStr, optBool], (projectId: string, sessionId?: string, toDefaultBranch?: boolean) =>
+    requireEngine().gitPush(projectId, sessionId, { toDefaultBranch }));
+  handleArgs(IPC_CHANNELS.gitPull, [id, optStr, oneOf("ff-only", "rebase")], (projectId: string, sessionId: string | undefined, mode: string) =>
+    requireEngine().gitPull(projectId, sessionId, mode as GitPullMode));
+  handleArgs(IPC_CHANNELS.gitFetch, [id, optStr], (projectId: string, sessionId?: string) =>
+    requireEngine().gitFetch(projectId, sessionId));
   handle(IPC_CHANNELS.gitCreatePullRequest, (projectId, input) =>
     requireEngine().gitCreatePullRequest(
       String(projectId),
@@ -1855,6 +1904,10 @@ function registerIpc(): void {
     const { openInCatalog, openWithApp } = await import("./open-in.js");
     await openWithApp(await openInCatalog(engine.getSettings(), location), appId, location);
   });
+  // The same containment as Open in: only the conversation's folder or something inside the project's folders.
+  handleArgs(IPC_CHANNELS.revealInFolder, [id, optStr, optStr], (projectId: string, sessionId?: string, target?: string) => {
+    shell.showItemInFolder(requireEngine().resolveOpenTarget(projectId, sessionId, target));
+  });
   handle(IPC_CHANNELS.pickDirectory, async () => {
     const win = desktopWindow.current ?? BrowserWindow.getFocusedWindow();
     const options: Electron.OpenDialogOptions = {
@@ -1920,7 +1973,13 @@ function registerIpc(): void {
     if (focused && (!petWindow.isVisible() || !petWindow.isFocused())) throw new Error("Focus the companion to use voice.");
     return action();
   });
-  voiceHandler(IPC_CHANNELS.getPetVoiceStatus, () => petVoice.status());
+  /* A read of what the Mac supports, so Settings › Voice may ask too; it never opens the microphone. */
+  ipcMain.handle(IPC_CHANNELS.getPetVoiceStatus, (event) => {
+    const frames = [petWindow, desktopWindow.current].filter((window): window is BrowserWindow => Boolean(window && !window.isDestroyed()))
+      .map((window) => window.webContents.mainFrame);
+    if (shutdown.started || !event.senderFrame || !frames.includes(event.senderFrame)) throw new Error("Voice status is available only in Capsule's own windows.");
+    return petVoice.status();
+  });
   voiceHandler(IPC_CHANNELS.listenPetCommand, () => petVoice.listen(() => {
     if (petWindow && !petWindow.isDestroyed()) petWindow.webContents.send(IPC_EVENTS.petVoice, { phase: "listening" });
   }), true);
@@ -2093,6 +2152,8 @@ function registerIpc(): void {
     handle,
     emitProgress: (progress) => send(IPC_EVENTS.agentInstallProgress, progress),
     agentsDir: path.join(app.getPath("userData"), "agents"),
+    onWindowFocus: (listener) => app.on("browser-window-focus", listener),
+    windowFocused: () => BrowserWindow.getFocusedWindow() !== null,
   });
   registerAgentSignIn({ handle, engine: requireEngine, startLoginTerminal: startAgentLoginTerminal });
   handle(IPC_CHANNELS.dedicateHarness, (projectId, harnessId) =>
@@ -2126,12 +2187,8 @@ function registerIpc(): void {
   handle(IPC_CHANNELS.listHarnessSessions, (projectId) =>
     requireEngine().listHarnessSessions(projectId ? String(projectId) : undefined),
   );
-  handle(IPC_CHANNELS.listSkillPacks, () => requireEngine().listSkillPacks());
   handle(IPC_CHANNELS.installSkill, (skill) =>
     requireEngine().installSkill(skill as Parameters<CapsuleEngine["installSkill"]>[0]),
-  );
-  handle(IPC_CHANNELS.installSkillPack, (packId) =>
-    requireEngine().installSkillPack(String(packId)),
   );
   handle(IPC_CHANNELS.uninstallSkill, (skillId) =>
     requireEngine().uninstallSkill(String(skillId)),
@@ -2168,12 +2225,7 @@ function registerIpc(): void {
   handleArgs(IPC_CHANNELS.automationsRunNow, [automationKeyInput], (input: import("@capsule/shared").AutomationKeyInput) => requireEngine().runAutomationNow(input));
   handleArgs(IPC_CHANNELS.automationsSetEnabled, [automationEnabledInput], (input: import("@capsule/shared").AutomationEnabledInput) => requireEngine().setAutomationEnabled(input));
   handleArgs(IPC_CHANNELS.automationsDismissMissed, [automationKeyInput], (input: import("@capsule/shared").AutomationKeyInput) => requireEngine().dismissMissedAutomation(input));
-  handleArgs(IPC_CHANNELS.automationsCreate, [automationCreateInput], async (input: import("@capsule/shared").AutomationCreateInput) => {
-    const file = requireEngine().createAutomation(input);
-    const failure = await shell.openPath(file);
-    if (failure) throw new Error(failure);
-    return file;
-  });
+  handleArgs(IPC_CHANNELS.automationsCreate, [automationCreateInput], (input: import("@capsule/shared").AutomationCreateInput) => requireEngine().createAutomation(input));
   handleArgs(IPC_CHANNELS.sessionsMarkRead, [id], (sessionId: string) => requireEngine().markSessionRead(sessionId));
   // A folder or zip is picked here, so the renderer never names a path to read.
   handleArgs(IPC_CHANNELS.pluginsInspect, [pluginsInspectInput], async (input: import("@capsule/shared").PluginsInspectInput) => {
@@ -2201,12 +2253,13 @@ function registerIpc(): void {
   // A file pick happens here, so the renderer never names a path to read.
   handleArgs(IPC_CHANNELS.themesImport, [themeImportInput], async (input: import("@capsule/shared").ThemeImportInput): Promise<import("@capsule/shared").ThemeImportResult> => {
     if (input.from === "share") return requireEngine().importTheme({ kind: "share", text: input.text });
+    if (input.from === "dropped") return requireEngine().importTheme({ kind: "file", text: input.text, name: input.name });
     const win = desktopWindow.current ?? BrowserWindow.getFocusedWindow();
     const options: Electron.OpenDialogOptions = { title: "Import theme", buttonLabel: "Import", properties: ["openFile"], filters: [{ name: "Theme", extensions: ["json"] }] };
     const picked = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
     const file = picked.canceled ? undefined : picked.filePaths[0];
     if (!file) return { imported: false };
-    if (statSync(file).size > 256 * 1024) throw new Error("A theme file is at most 256 KB.");
+    if (statSync(file).size > MAX_THEME_FILE_BYTES) throw new Error("A theme file is at most 256 KB.");
     return requireEngine().importTheme({ kind: "file", text: readFileSync(file, "utf8"), name: path.basename(file) });
   });
   handle(IPC_CHANNELS.backdropChooseImage, async () => {
@@ -2278,6 +2331,7 @@ function registerIpc(): void {
   });
   handle(IPC_CHANNELS.remoteStatus, () => ({
     reach: remoteAccess.reach,
+    ...(remoteReachFromArgs(process.argv, process.env) !== undefined ? { heldByLaunch: true } : {}),
     controlAvailable: remoteAccess.handle?.controlAvailable ?? false,
     phoneAvailable: remoteAccess.handle?.phoneAvailable ?? false,
     ...(remoteAccess.handle ? { url: remoteAccess.handle.url } : {}),
@@ -2404,6 +2458,7 @@ function registerIpc(): void {
   });
   handleArgs(IPC_CHANNELS.forkBranches, [id], (sessionId: string) => requireEngine().forkBranches(sessionId));
   handleArgs(IPC_CHANNELS.listImportableSessions, [id], (projectId: string) => requireEngine().listImportableSessions(projectId));
+  handle(IPC_CHANNELS.suggestProjects, () => requireEngine().suggestProjects());
   handle(IPC_CHANNELS.importSession, (input) => {
     const channel = IPC_CHANNELS.importSession;
     const value = input && typeof input === "object" ? input as { projectId?: unknown; agent?: unknown; nativeSessionId?: unknown } : {};
@@ -2624,7 +2679,7 @@ function createMenu(): void {
           click: () => commandWindow({ command: "palette" }),
         },
         {
-          label: "Skills & Packs",
+          label: "Skills",
           accelerator: "CommandOrControl+Shift+S",
           click: () => commandWindow({ command: "skills" }),
         },
@@ -2685,60 +2740,59 @@ function createTray(): void {
  * decision without opening them. The threads waiting on a person go at the
  * top, most urgent first, and clicking one opens it.
  */
-const ATTENTION_MARK: Record<AttentionState, string> = {
-  "needs-input": "●",
-  blocked: "✕",
-  ready: "✓",
-  running: "○",
-};
-
-function attentionEntries(): Electron.MenuItemConstructorOptions[] {
-  if (!engine) return [];
-  try {
-    const summary = summariseAttention({
-      sessions: engine.listSessions(),
-      // Latest per thread, as the Dock counts: an old failed turn is history, not something waiting.
-      runs: engine.listLatestRunStates(),
-    });
-    if (summary.items.length === 0) return [];
-    // A menu is not a dashboard; the tail is reachable in the window.
-    const shown = summary.items.slice(0, 8);
-    return [
-      { label: attentionLabel(summary) ?? "Waiting", enabled: false },
-      ...shown.map((item) => ({
-        label: `${ATTENTION_MARK[item.state]}  ${item.title}`,
-        click: () => commandWindow({ command: "open-session", sessionId: item.sessionId }),
-      })),
-      { type: "separator" as const },
-    ];
-  } catch {
-    // The menu must open whatever the engine is doing.
-    return [];
+function trayAction(action: TrayAction): void {
+  switch (action.kind) {
+    case "open-session": commandWindow({ command: "open-session", sessionId: action.sessionId }); break;
+    case "new-conversation": commandWindow({ command: "new-task" }); break;
+    case "show": revealWindow(); break;
+    case "settings": commandWindow({ command: "settings" }); break;
+    case "quit": app.quit(); break;
+    case "companion":
+      if (action.open) openPetWindow();
+      else closePetWindow();
+      buildTrayMenu();
+      break;
   }
+}
+
+function toElectronMenu(items: TrayMenuItem[]): Electron.MenuItemConstructorOptions[] {
+  return items.map((item) => ({
+    label: item.label,
+    sublabel: item.sublabel,
+    type: item.type === "submenu" ? undefined : item.type,
+    checked: item.checked,
+    enabled: item.enabled,
+    accelerator: item.accelerator,
+    // The shortcuts belong to the window; the menu only shows them.
+    registerAccelerator: false,
+    submenu: item.submenu ? toElectronMenu(item.submenu) : undefined,
+    click: item.action ? () => trayAction(item.action!) : undefined,
+  }));
 }
 
 function buildTrayMenu(): void {
   if (!tray) return;
   try {
-    tray.setContextMenu(
-      Menu.buildFromTemplate([
-        ...attentionEntries(),
-        { label: "Open Capsule", click: revealWindow },
-        {
-          label: isPetOpen() ? "Hide pet" : "Show pet",
-          click: () => {
-            if (isPetOpen()) closePetWindow();
-            else openPetWindow();
-            buildTrayMenu();
-          },
-        },
-        { label: "About Capsule", click: () => commandWindow({ command: "about" }) },
-        { label: "Settings…", click: () => commandWindow({ command: "settings" }) },
-        { label: "Approvals", click: () => commandWindow({ command: "approvals" }) },
-        { type: "separator" },
-        { label: "Quit", click: () => app.quit() },
-      ]),
-    );
+    let input: TrayMenuInput = {
+      summary: { items: [], counts: { "needs-input": 0, blocked: 0, ready: 0, running: 0 } },
+      sessions: [], latestRuns: [], projectNames: new Map(), companionOpen: isPetOpen(), canOpenWindow: startup.canOpenWindow,
+    };
+    // The menu must open whatever the engine is doing.
+    try {
+      if (engine) {
+        const latestRuns = engine.listLatestRunStates();
+        const sessions = engine.listSessions();
+        input = {
+          ...input,
+          // Latest per thread, as the Dock counts: an old failed turn is history, not something waiting.
+          summary: summariseAttention({ sessions, runs: latestRuns }),
+          sessions,
+          latestRuns,
+          projectNames: new Map(engine.listProjects().map((project) => [project.id, project.name])),
+        };
+      }
+    } catch { /* an empty menu still quits and reopens */ }
+    tray.setContextMenu(Menu.buildFromTemplate(toElectronMenu(trayMenuTemplate(input))));
   } catch (error) {
     console.warn("Menu bar menu failed", error);
   }
@@ -2778,8 +2832,8 @@ async function startEngineOnce(): Promise<void> {
   engine = new CapsuleEngine({
     databasePath: path.join(userDataDir(), "capsule.sqlite"),
     userDataDir: userDataDir(),
-    capsuleVersion: app.getVersion(),
-    clientVersion: app.getVersion(),
+    capsuleVersion: APP_VERSION,
+    clientVersion: APP_VERSION,
     // CAPSULE_MOCK_RUNTIME=1 runs a development profile on the mock runtime, so
     // turns can be driven without a Gateway or an installed agent.
     ...(process.env.CAPSULE_SMOKE_TEST || process.env.CAPSULE_MOCK_RUNTIME === "1" ? { autoConnect: false } : {}),
@@ -2800,7 +2854,7 @@ async function startEngineOnce(): Promise<void> {
   });
   await engine.start();
   analytics = new ProductAnalytics({ identityPath: path.join(userDataDir(), "analytics-id"),
-    version: app.getVersion(), platform: process.platform,
+    version: APP_VERSION, platform: process.platform,
     disabled: Boolean(process.env.CAPSULE_SMOKE_TEST || process.env.CAPSULE_ANALYTICS_DISABLED === "1"),
   });
   if (shutdown.started) return;

@@ -62,7 +62,7 @@ export function ResultsLeaderboard({ compact = false }: { compact?: boolean }) {
                     <span className="results-leaderboard-agent">
                       <AgentGlyph id={row.harnessId} name={name(row.harnessId)} size={13} />
                       <span>{name(row.harnessId)}</span>
-                      <small>{row.model || "default model"}</small>
+                      <small>{row.model || "Default model"}</small>
                     </span>
                   </th>
                   <td>{row.compared ? `${row.kept} of ${row.compared}` : "–"}</td>

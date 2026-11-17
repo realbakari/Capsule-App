@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { IpcArgumentError } from "@capsule/contracts";
-import { pluginName, pluginsConfigureInput, pluginsEnabledInput, pluginsInspectInput, pluginsInstallInput, appRestartInput, commandExpandInput, configFileTarget, keybindingEdit, mcpEnabledInput, mcpTestInput, permissionRuleEdit, profileCreateInput, setConfigValueInput, themeImportInput } from "./config-args.js";
+import { automationCreateInput, pluginName, pluginsConfigureInput, pluginsEnabledInput, pluginsInspectInput, pluginsInstallInput, appRestartInput, commandExpandInput, configFileTarget, keybindingEdit, mcpEnabledInput, mcpTestInput, permissionRuleEdit, profileCreateInput, setConfigValueInput, themeImportInput } from "./config-args.js";
 
 /** The log line an argument error leaves; the message a person reads never names the channel. */
 function detailOf(call: () => unknown): string {
@@ -48,6 +48,17 @@ describe("settings-file channel arguments", () => {
   });
 });
 
+describe("automation arguments", () => {
+  it("takes a written draft and where it goes, keeping only the draft's fields", () => {
+    const draft = { name: "Triage", schedule: "RRULE:FREQ=DAILY;BYHOUR=9;BYMINUTE=0", prompt: "Go.", workspace: "worktree", extra: true };
+    expect(automationCreateInput({ draft, scope: "local", projectId: "proj_1" }, CHANNEL, 0))
+      .toEqual({ draft: { name: "Triage", schedule: draft.schedule, prompt: "Go.", workspace: "worktree" }, scope: "local", projectId: "proj_1" });
+    for (const bad of [{ template: "triage", scope: "user" }, { draft: { ...draft, prompt: 3 }, scope: "user" }, { draft: { ...draft, workspace: "local" }, scope: "user" }, { draft, scope: "local" }, { draft, scope: "project", projectId: "proj_1" }]) {
+      expect(detailOf(() => automationCreateInput(bad, CHANNEL, 0))).toMatch(CHANNEL);
+    }
+  });
+});
+
 describe("permission rule edits", () => {
   it("passes an add or remove to your own files and nothing else", () => {
     expect(permissionRuleEdit({ op: "add", list: "allow", rule: "execute(pnpm test *)", scope: "local", projectId: "proj_1" }, CHANNEL, 0))
@@ -76,7 +87,9 @@ describe("keybinding and theme import inputs", () => {
   it("accepts a share string or a file pick, never a path", () => {
     expect(themeImportInput({ from: "file", path: "/etc/passwd" }, CHANNEL, 0)).toEqual({ from: "file" });
     expect(themeImportInput({ from: "share", text: "capsule-theme:abc" }, CHANNEL, 0)).toEqual({ from: "share", text: "capsule-theme:abc" });
-    for (const bad of [{ from: "share", text: "" }, { from: "share", text: "x".repeat(33 * 1024) }, { from: "url", text: "https://x" }]) {
+    expect(themeImportInput({ from: "dropped", text: "{}", name: "dusk.json", path: "/etc/passwd" }, CHANNEL, 0)).toEqual({ from: "dropped", text: "{}", name: "dusk.json" });
+    for (const bad of [{ from: "share", text: "" }, { from: "share", text: "x".repeat(33 * 1024) }, { from: "url", text: "https://x" },
+      { from: "dropped", text: "{}", name: "../../theme.json" }, { from: "dropped", text: "{}", name: "theme.png" }, { from: "dropped", text: "x".repeat(257 * 1024), name: "a.json" }]) {
       expect(detailOf(() => themeImportInput(bad, CHANNEL, 0))).toMatch(CHANNEL);
     }
   });

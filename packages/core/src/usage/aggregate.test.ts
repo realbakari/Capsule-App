@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dayKey, sinceDaysAgo, summarise } from "./aggregate.js";
+import { dayKey, projectOfFolders, sinceDaysAgo, summarise } from "./aggregate.js";
 import { EMPTY_TOTALS, type UsageRecord } from "./transcripts.js";
 
 const at = (iso: string) => Date.parse(iso);
@@ -104,5 +104,40 @@ describe("sinceDaysAgo", () => {
     expect(new Date(sinceDaysAgo(1, now)).getDate()).toBe(10);
     expect(new Date(sinceDaysAgo(1, now)).getHours()).toBe(0);
     expect(new Date(sinceDaysAgo(7, now)).getDate()).toBe(4);
+  });
+});
+
+describe("usage by project", () => {
+  const projectOf = projectOfFolders([
+    { folder: "/work/app", projectId: "app" },
+    { folder: "/work/app/vendor/lib/", projectId: "lib" },
+    { folder: "/worktrees/app-fix", projectId: "app" },
+  ]);
+
+  it("gives a folder to the deepest project that holds it", () => {
+    expect(projectOf("/work/app")).toBe("app");
+    expect(projectOf("/work/app/src")).toBe("app");
+    expect(projectOf("/work/app/vendor/lib/src")).toBe("lib");
+    expect(projectOf("/worktrees/app-fix")).toBe("app");
+  });
+
+  it("does not match a folder that only shares a name prefix", () => {
+    expect(projectOf("/work/app-old")).toBe("");
+    expect(projectOf(undefined)).toBe("");
+  });
+
+  it("groups by project and keeps every other folder in one bucket", () => {
+    const summary = summarise([
+      record({ cwd: "/work/app", dedupeKey: "a" }),
+      record({ cwd: "/worktrees/app-fix", dedupeKey: "b" }),
+      record({ cwd: "/home/scratch", dedupeKey: "c" }),
+      record({ dedupeKey: "d" }),
+    ], undefined, projectOf);
+    expect(summary.byProject?.map((bucket) => [bucket.key, bucket.requests])).toEqual([["app", 2], ["", 2]]);
+    expect(JSON.stringify(summary)).not.toContain("/home/scratch");
+  });
+
+  it("omits the breakdown when no mapping is given", () => {
+    expect(summarise([record()]).byProject).toBeUndefined();
   });
 });

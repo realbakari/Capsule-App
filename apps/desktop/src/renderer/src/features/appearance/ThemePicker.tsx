@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
 import {
   encodeThemeShareString,
+  MAX_THEME_FILE_BYTES,
   resolveThemeTokens,
   type ThemeAppearance,
   type ThemeSelection,
@@ -45,6 +46,7 @@ export function ThemesCard() {
   const desktop = api.isDesktop === true;
   const [share, setShare] = useState("");
   const [message, setMessage] = useState<{ tone: "error" | "info"; text: string }>();
+  const [dropping, setDropping] = useState(false);
   useEffect(() => () => previewThemeId(undefined), []);
   if (!state) return null;
 
@@ -71,6 +73,30 @@ export function ThemesCard() {
     }
   };
 
+  /* A theme file dragged onto the window: Capsule's own format or an editor colour theme. */
+  const dropped = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setDropping(false);
+    if (!desktop) return;
+    const file = event.dataTransfer.files[0];
+    if (!file) return;
+    if (!/\.jsonc?$/i.test(file.name)) {
+      setMessage({ tone: "error", text: "Drop a theme file ending in .json." });
+      return;
+    }
+    if (file.size > MAX_THEME_FILE_BYTES) {
+      setMessage({ tone: "error", text: "A theme file is at most 256 KB." });
+      return;
+    }
+    void imported(async () => api.themesImport({ from: "dropped", text: await file.text(), name: file.name }));
+  };
+  const dragging = (event: DragEvent<HTMLDivElement>) => {
+    if (!desktop || !event.dataTransfer.types.includes("Files")) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    setDropping(true);
+  };
+
   return (
     <div className="card themes-card">
       <h3>Themes</h3>
@@ -91,7 +117,12 @@ export function ThemesCard() {
           />
         ))}
       </div>
-      <div className="theme-import">
+      <div
+        className={`theme-import${dropping ? " is-dropping" : ""}`}
+        onDragOver={dragging}
+        onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropping(false); }}
+        onDrop={dropped}
+      >
         <input
           className="field-select mono"
           value={share}
@@ -119,7 +150,9 @@ export function ThemesCard() {
           Open themes folder
         </button>
       </div>
-      {!desktop && <p className="muted theme-note">Importing a theme is available in the desktop app.</p>}
+      {desktop
+        ? <p className="muted theme-note">Import or drop a Capsule theme or an editor colour theme (.json). Editor themes are mapped to Capsule’s colours.</p>
+        : <p className="muted theme-note">Importing a theme is available in the desktop app.</p>}
       {message && <p className={`theme-message${message.tone === "error" ? " is-error" : ""}`} role={message.tone === "error" ? "alert" : "status"}>{message.text}</p>}
     </div>
   );

@@ -15,7 +15,7 @@ const READY = new Set<HarnessReadiness>(["ready", "dedicated", "running"]);
 const NOT_READY: Partial<Record<HarnessReadiness, string>> = {
   missing_cli: "Not installed",
   needs_login: "Needs sign-in",
-  missing_acpx: "Gateway bridge missing",
+  missing_acpx: "Not set up on the Gateway",
   gateway_offline: "Not connected to the Gateway",
 };
 

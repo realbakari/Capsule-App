@@ -6,9 +6,21 @@ run `/flaky-tests` in a worktree". Each run starts a new thread, which shows
 as unread once the run finishes, so the results wait for you like messages in
 an inbox.
 
-## Writing one
+## Making one
 
-Automations live under `automations` in a settings file. Your own file
+In Settings → Automations, choose **New automation**. Give it a name and the
+message to send (a `/command` works too), then pick when: weekdays, every
+day or every week at a time, every hour, or every 5, 10, 15 or 30 minutes.
+Choose whether its threads go to the Inbox or to the open project, and, in a
+Git project, whether each run gets its own worktree. The form reads the
+schedule back in words with the first run's time before you create it.
+**Create** saves it, on, in your own settings file or in the project's local
+settings file, which only you use.
+
+## Writing one by hand
+
+For a schedule the form does not offer, or a profile, write the automation in
+a settings file. Automations live under `automations` in a settings file. Your own file
 (`~/.capsule/settings.json`) holds yours; they run in the Inbox. A project's
 `.capsule/settings.json` or `.capsule/settings.local.json` holds that
 project's; they run in that project.
@@ -64,9 +76,8 @@ went, with a link to its thread.
   defines it. An automation from a project's shared settings file is paused
   in your local file, so your teammates are not affected.
 - **Run now** starts it straight away.
-- Pick a template and choose **Add to your settings**, or **Add to** the
-  open project, to add a ready-made automation. It is added paused and the
-  file opens, so you can read and change it before choosing to resume it.
+- **Edit** opens the file the automation is written in, to change or remove
+  it.
 
 The command palette (⌘K) has **Run automation** for each one, and
 **Automations**.

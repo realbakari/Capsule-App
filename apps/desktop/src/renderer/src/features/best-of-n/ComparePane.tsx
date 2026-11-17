@@ -157,9 +157,7 @@ function CandidateCard({ comparison, candidate }: { comparison: GroupComparison;
         <AgentGlyph id={candidate.harnessId} name={name} size={16} />
         <span className="compare-card-name">
           <strong>{name}</strong>
-          <small title={candidate.route === "direct" ? "Runs the agent's own CLI on this computer" : candidate.route === "gateway" ? "Runs through the OpenClaw Gateway" : undefined}>
-            {candidate.model || "default model"}{candidate.route ? ` · ${candidate.route === "direct" ? "Direct" : "Gateway"}` : ""}
-          </small>
+          <small>{candidate.model || "Default model"}</small>
         </span>
         {kept ? <span className="compare-badge kept"><CheckIcon size={11} />Kept</span>
           : candidate.archived ? <span className="compare-badge">Set aside</span>

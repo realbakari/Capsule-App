@@ -183,3 +183,17 @@ describe("Codex model, which is not on the usage line", () => {
     expect(parseCodexLine(codexLine(), "s", state)!.model).toBe("gpt-5.6-terra");
   });
 });
+
+describe("the folder a session ran in", () => {
+  it("reads Claude's folder from each line", () => {
+    const line = JSON.stringify({ ...JSON.parse(claudeLine()), cwd: "/work/app" });
+    expect(parseClaudeLine(line)!.cwd).toBe("/work/app");
+    expect(parseClaudeLine(claudeLine())!.cwd).toBeUndefined();
+  });
+
+  it("carries Codex's folder forward from the session_meta that declared it", () => {
+    const state = {};
+    expect(parseCodexLine(JSON.stringify({ type: "session_meta", payload: { id: "s", cwd: "/work/api" } }), "s", state)).toBeUndefined();
+    expect(parseCodexLine(codexLine(), "s", state)!.cwd).toBe("/work/api");
+  });
+});

@@ -64,3 +64,40 @@
   font-size: var(--text-2xs);
   line-height: 1.5;
 }
+
+/* New automation: a short form inside the card, not a dialog, so the list stays in view. */
+.automation-form {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  padding: 0.875rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+}
+.automation-form label { display: grid; gap: 0.3rem; font-size: var(--text-xs); color: var(--text-muted); }
+.automation-form input[type="text"],
+.automation-form textarea { width: 100%; box-sizing: border-box; font-size: var(--text-sm); color: var(--text); }
+.automation-form textarea { resize: vertical; min-height: 4.5rem; font-family: inherit; }
+.automation-form-row { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+.automation-form-row label { min-width: 8rem; }
+.automation-form .automation-form-check { display: inline-flex; align-items: center; gap: 0.45rem; color: var(--text); font-size: var(--text-sm); }
+.automation-form-preview { margin: 0; color: var(--text-muted); font-size: var(--text-xs); }
+.automation-form-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
+.automation-form input[type="time"] {
+  box-sizing: border-box;
+  min-height: 1.75rem;
+  padding: 0 0.55rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--control-radius);
+  background: color-mix(in srgb, var(--text) 3%, transparent);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-xs);
+  outline: none;
+}
+.automation-form input[type="time"]:focus {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 24%, transparent);
+}
+.automation-example { overflow-x: auto; font-size: var(--text-xs); }

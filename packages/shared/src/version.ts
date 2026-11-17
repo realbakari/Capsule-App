@@ -109,6 +109,8 @@ export interface UpdateCheck {
   /** 0-100 while the update is coming down. */
   percent?: number;
   retry?: "check" | "download" | "install";
+  /** The version the last restart-to-install was meant to bring, when Capsule came back on the old one. */
+  notApplied?: string;
 }
 
 /**

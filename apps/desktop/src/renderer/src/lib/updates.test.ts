@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { UpdateCheck } from "@capsule/shared";
-import { RELEASE_NOTES_URL, updateActionLabel, updateButtonView, updateDownloadedToast, updateOutcomeToast } from "./updates";
+import { RELEASE_NOTES_URL, releaseNotesUrl, updateActionLabel, updateButtonView, updateDownloadedToast, updateNotAppliedToast, updateOutcomeToast } from "./updates";
 
 const current = "0.13.0";
 const status = (patch: Partial<UpdateCheck>): UpdateCheck => ({ state: "unknown", current, ...patch });
@@ -69,10 +69,35 @@ describe("update toasts", () => {
     expect(updateOutcomeToast({ action: "check", status: status({ state: "ready-to-install", retry: "install", detail: "Close terminals" }) })).toBeUndefined();
   });
 
-  it("points a finished download at the changelog", () => {
-    const toast = updateDownloadedToast("0.14.0");
+  it("points a finished download at that version's notes, or the changelog when its page is unknown", () => {
+    const toast = updateDownloadedToast(status({ state: "ready-to-install", latest: "0.14.0" }));
     expect(toast).toMatchObject({ tone: "success", title: "Capsule 0.14.0 downloaded", detail: "Restart from the update button to install it." });
     expect(toast.action?.label).toBe("Release notes");
-    expect(RELEASE_NOTES_URL).toBe("https://cpcl.dev/updates");
+    expect(releaseNotesUrl(status({ latest: "0.14.0" }))).toBe(RELEASE_NOTES_URL);
+    expect(releaseNotesUrl(status({ latest: "0.14.0", url: "https://example.test/v0.14.0" }))).toBe("https://example.test/v0.14.0");
+  });
+});
+
+describe("an update that did not apply", () => {
+  const failed = (patch: Partial<UpdateCheck> = {}) => status({ notApplied: "0.14.0", ...patch });
+
+  it("says so on the button and offers to try again", () => {
+    expect(updateButtonView(failed())).toEqual({ icon: "available", action: "check", tooltip: "Capsule 0.14.0 didn’t install. Click to try again." });
+    expect(updateActionLabel(failed({ state: "up-to-date" }))).toBe("Retry update");
+  });
+
+  it("gives way once the retry is under way", () => {
+    expect(updateButtonView(failed({ state: "downloading", percent: 20 }))).toMatchObject({ icon: "downloading" });
+    expect(updateButtonView(failed({ state: "ready-to-install", latest: "0.14.0" }))).toMatchObject({ action: "install" });
+    expect(updateButtonView(failed(), true)).toMatchObject({ icon: "checking" });
+  });
+
+  it("tells the person which version stayed and runs the retry from the toast", () => {
+    let retried = 0;
+    const toast = updateNotAppliedToast(failed(), () => { retried++; });
+    expect(toast).toMatchObject({ tone: "error", title: "Capsule 0.14.0 didn’t install" });
+    expect(toast.detail).toContain(current);
+    void toast.action?.run();
+    expect(retried).toBe(1);
   });
 });

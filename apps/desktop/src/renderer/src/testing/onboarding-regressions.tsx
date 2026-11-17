@@ -141,6 +141,29 @@ export async function runOnboardingRegressions(host: HTMLElement) {
     assert(!host.querySelector("button"), "A paired device was offered a store action");
     root.render(null); await settle();
 
+    const userCopy = { path: "/opt/homebrew/bin/codex", version: "0.8.0", latest: "0.9.0", update: { via: "npm", command: "npm install -g @openai/codex@0.9.0", oneClick: true } };
+    const updates: string[] = [];
+    let confirm: { title: string; detail: string; onConfirm: () => void } | undefined;
+    const updatingApi = { ...bridge.api,
+      agentStoreList: async () => [{ harnessId: "codex", user: userCopy }],
+      agentStoreUpdateUserCopy: async (harness: string) => { updates.push(harness); return { harnessId: harness, user: { path: userCopy.path, version: "0.9.0", latest: "0.9.0" } }; },
+    };
+    resetAgentStore();
+    window.testWorkspace = { api: updatingApi, refresh: async () => {}, setConfirm: (value?: typeof confirm) => { confirm = value; } };
+    root.render(<AgentStoreControls harnessId="codex" name="Codex" />);
+    const update = await until(() => button(host, "Update to v0.9.0"), "A copy the user installed that is behind offered no update");
+    assert(host.textContent?.includes("Installed by you · v0.8.0"), "The installed version of the user's copy was not shown");
+    update.click(); await settle();
+    assert(updates.length === 0 && confirm?.detail.includes("npm install -g @openai/codex@0.9.0"), "Update ran without asking, or did not say what it runs");
+    confirm!.onConfirm();
+    await until(() => updates.join() === "codex" && host.textContent?.includes("Installed by you · v0.9.0"), "A confirmed update did not run and show the new version");
+    resetAgentStore();
+    window.testWorkspace = { api: { ...updatingApi, agentStoreList: async () => [{ harnessId: "codex", user: { ...userCopy, update: { ...userCopy.update, oneClick: false } } }] }, refresh: async () => {}, setConfirm: () => {} };
+    root.render(<AgentStoreControls harnessId="codex" name="Codex" />);
+    await until(() => host.textContent?.includes("Update with npm install -g @openai/codex@0.9.0"), "An update Capsule cannot run did not give the command to copy");
+    assert(!button(host, "Update to v0.9.0"), "An update Capsule cannot run itself was offered as one click");
+    root.render(null); await settle();
+
     const patches: Partial<CapsuleSettings>[] = [];
     const picked: string[] = [];
     const tasks: string[] = [];
@@ -171,6 +194,35 @@ export async function runOnboardingRegressions(host: HTMLElement) {
     assert(picked.length === 0, "First run switched agents with none ready");
     button(firstRun, "Set up later")!.click(); await settle();
     assert(!document.querySelector(".first-run") && patches.some((patch) => patch.firstRunDone === true), "Set up later did not record firstRunDone and leave");
+    root.render(null); await settle();
+
+    const created: Array<{ name: string; workingDirectory: string }> = [];
+    const imported: string[] = [];
+    const recent = new Date().toISOString();
+    const suggestingApi = { ...bridge.api,
+      suggestProjects: async () => [
+        { path: "/work/site", name: "site", sessions: 7, agents: ["claude"], lastActivity: recent },
+        { path: "/work/app", name: "app", sessions: 3, agents: ["codex"], lastActivity: recent },
+      ],
+      createProject: async (input: { name: string; workingDirectory: string }) => { created.push(input); return { id: `p-${input.name}`, ...input }; },
+      listImportableSessions: async () => ({ sources: [], sessions: [
+        { agent: "claude", nativeSessionId: "new", lastActivity: recent },
+        { agent: "claude", nativeSessionId: "old", lastActivity: "2020-01-01T00:00:00Z" },
+      ] }),
+      importSession: async (input: { nativeSessionId: string }) => { imported.push(input.nativeSessionId); return {}; },
+    };
+    window.testWorkspace = { ...firstRunBase, api: suggestingApi, settings: DEFAULT_CAPSULE_SETTINGS };
+    root.render(<FirstRunHost />);
+    const suggested = await until(() => document.querySelector<HTMLElement>(".first-run-suggestions"), "First run did not offer folders with recent sessions");
+    const boxes = Array.from(suggested.querySelectorAll<HTMLInputElement>(".first-run-suggestion input"));
+    assert(boxes.length === 2 && boxes.every((box) => box.checked), "Suggested folders were not all chosen to begin with");
+    assert(created.length === 0, "First run added a project before it was asked to");
+    boxes[1]!.click(); await settle();
+    suggested.querySelector<HTMLInputElement>(".first-run-suggestion-option input")!.click(); await settle();
+    button(suggested, "Add 1 project")!.click();
+    await until(() => created.length === 1, "Add did not create the chosen project");
+    assert(created[0]!.workingDirectory === "/work/site", "Add created a project that was unchosen");
+    await until(() => imported.join() === "new", "Bringing conversations did not import only the recent ones");
     root.render(null); await settle();
 
     patches.length = 0;

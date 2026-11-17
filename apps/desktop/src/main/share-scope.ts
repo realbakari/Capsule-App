@@ -135,7 +135,6 @@ const RULES: Record<string, Rule> = {
   getSettings: async (_grant, _args, deps) => sharedSettings(await deps.call("getSettings", []) as CapsuleSettings),
   // The page asks for these as it starts; a shared thread has none of them.
   listSkills: empty,
-  listSkillPacks: empty,
   listHarnesses: empty,
   listHarnessSessions: empty,
   forkBranches: empty,

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { ProviderSubscriptionUsage, ProviderUsageSnapshot, ProviderUsageSource, ReportedQuotaWindow } from "@capsule/shared";
+import { harnessDisplayName, type ProviderSubscriptionUsage, type ProviderUsageSnapshot, type ProviderUsageSource, type ReportedQuotaWindow } from "@capsule/shared";
 import { useWorkspace } from "../../lib/workspace";
 import { formatUserError } from "../../lib/errors";
 import { limitTone, pacePercent, resetText } from "./usage-model";
@@ -34,8 +34,9 @@ export function ProviderQuotaCard({ source, now, failed = false }: { source: Pro
   const ageMinutes = Math.floor(Math.max(0, now - report.observedAtMs) / 60_000);
   const duration = report.window.windowDurationMins;
   const windowLabel = duration % 60 === 0 ? `${duration / 60}-hour window` : `${duration}-minute window`;
-  return <article className="provider-quota-card" aria-label={`Muse Code subscription reported by ${source.title}`}>
-    <header><strong>Muse Code <span>· {report.tier}</span></strong><span>{quotaObservationLabel(report, now, failed)}</span></header>
+  const agent = harnessDisplayName(report.providerId);
+  return <article className="provider-quota-card" aria-label={`${agent} subscription reported by ${source.title}`}>
+    <header><strong>{agent} <span>· {report.tier}</span></strong><span>{quotaObservationLabel(report, now, failed)}</span></header>
     <p className="provider-quota-source">From {source.title}</p>
     <p className="provider-quota-observed">As of <time dateTime={new Date(report.observedAtMs).toISOString()}>{new Date(report.observedAtMs).toLocaleString()}</time>
       {report.observedAtMs <= now && ` · ${ageMinutes === 0 ? "less than a minute ago" : `${ageMinutes} min ago`}`}</p>
@@ -118,7 +119,7 @@ export function ProviderQuota({ refreshNonce = 0 }: { refreshNonce?: number }) {
     <header className="provider-quotas-heading"><h3>Limits</h3><span className="usage-source">Reported by running agents</span></header>
     {!available ? <p className="muted">Limit reports are unavailable in this connection. Reopen with an updated desktop app.</p>
       : loading && !snapshot ? <p role="status" className="muted">Reading reported limits…</p>
-      : !selected && !error ? <p className="muted">Not reported yet. Start a conversation with Muse Code and send a message; its limits appear here once that session reports them.</p> : null}
+      : !selected && !error ? <p className="muted">No limits reported. {harnessDisplayName("muse")} reports its plan’s limits while one of its conversations runs. Other agents don’t report limits to Capsule; when a turn stops on one, its conversation says when it resets.</p> : null}
     {error && <p role="alert" className="settings-keybind-error">Could not read limit reports: {error} Use Refresh to retry. Previous values may be out of date.</p>}
     {reports.length > 1 && <label className="provider-quota-select">Reported by conversation
       <select value={selected?.sessionId} onChange={(event) => setSelectedId(event.target.value)}>
@@ -128,6 +129,6 @@ export function ProviderQuota({ refreshNonce = 0 }: { refreshNonce?: number }) {
     </label>}
     {snapshot?.truncated && <p className="muted">Showing the latest 128 reported sources.</p>}
     {selected && <ProviderQuotaCard source={selected} now={now} failed={Boolean(error)} />}
-    <p className="provider-quota-others">A report is the agent's last observation, not a live balance. Other agents don't report limits to Capsule; when a turn stops on one, its conversation says when it resets.</p>
+    {selected && <p className="provider-quota-others">A report is the agent’s last observation, not a live balance. Other agents don’t report limits to Capsule; when a turn stops on one, its conversation says when it resets.</p>}
   </section>;
 }

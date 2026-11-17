@@ -110,7 +110,7 @@ leaves the queue, and the queue shows the reason.
 
 A `TurnEnd` hook can keep a conversation going, so Capsule limits it: at most
 three hook follow-ups in a row. After that, the next one is not queued until
-you send a message yourself, and the turn's **Run log** says so.
+you send a message yourself.
 
 ## Matchers
 

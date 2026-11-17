@@ -4,6 +4,7 @@ import { formatUserError } from "../../lib/errors";
 import { useModalFocus } from "../../lib/modal-focus";
 import { useWorkspace } from "../../lib/workspace";
 import { AlertTriangleIcon, CheckIcon, CopyIcon } from "../shell/icons";
+import { revealSetting } from "../settings/reveal";
 import { copyText } from "./copy-text";
 import { shareLinkTiming } from "./share-time";
 
@@ -31,7 +32,7 @@ export function useShareLinks(sessionId?: string) {
 }
 
 export function ShareDialog({ sessionId, onClose }: { sessionId: string; onClose: () => void }) {
-  const { api, sessions, updateSettings, setView } = useWorkspace();
+  const { api, sessions, updateSettings, setView, setSettingsTab } = useWorkspace();
   const dialog = useRef<HTMLDivElement>(null);
   const { status, links, error, setError, reload } = useShareLinks(sessionId);
   const [expiry, setExpiry] = useState<ShareLinkExpiry>("1d");
@@ -77,10 +78,10 @@ export function ShareDialog({ sessionId, onClose }: { sessionId: string; onClose
           <div className="share-notice" role="note">
             <AlertTriangleIcon size={14} />
             <div>
-              <p>Browser access is off, so nothing can open a link yet.</p>
+              <p>Remote access is off, so nothing can open a link yet.</p>
               <div className="share-notice-actions">
                 <button type="button" className="send" data-primary disabled={busy === "enable"} onClick={enable}>{busy === "enable" ? "Turning on…" : "Turn on for this computer"}</button>
-                <button type="button" className="ghost" onClick={() => { onClose(); setView("settings"); }}>Browser access settings</button>
+                <button type="button" className="ghost" onClick={() => { onClose(); revealSetting("Remote access"); setSettingsTab("devices"); setView("settings"); }}>Remote access settings</button>
               </div>
             </div>
           </div>
@@ -88,7 +89,7 @@ export function ShareDialog({ sessionId, onClose }: { sessionId: string; onClose
           <>
             <p className="share-reach">{status.reach === "network"
               ? "Devices on your network can open it while Capsule is running."
-              : "Opens on this computer only. To reach another device, choose This network in Browser access settings."}</p>
+              : "Opens on this computer only. To reach another device, choose This network in Remote access settings."}</p>
             <div className="share-expiry" role="radiogroup" aria-label="Link expires after">
               <span className="share-expiry-label">Expires after</span>
               {EXPIRIES.map((value) => (
@@ -108,7 +109,7 @@ export function ShareDialog({ sessionId, onClose }: { sessionId: string; onClose
             ) : null}
             <p className="share-hint">The link is shown once. Keep it private; revoke it here or in Settings.</p>
           </>
-        ) : <p className="share-reach">Checking remote access…</p>}
+        ) : error ? null : <p className="share-reach" role="status">Checking browser access…</p>}
 
         {error && <p className="share-error" role="alert">{error}</p>}
 

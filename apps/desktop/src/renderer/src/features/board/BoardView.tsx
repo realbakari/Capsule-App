@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject, 
 import { groupBoardCards, type BoardCard, type BoardCardOp, type BoardContext, type Run, type Session } from "@capsule/shared";
 
 import { useWorkspace } from "../../lib/workspace";
-import { compactRelativeTime, formatWorkingDurationLabel, isWorkingHarnessState, latestSidebarRuns } from "../../lib/sidebar";
+import { compactRelativeTime, formatWorkingDurationLabel, isWorkingHarnessState, latestSidebarRuns, threadActivityAt } from "../../lib/sidebar";
 import {
   BOARD_SCOPE_KEY,
   NEW_BOARD_CARD_EVENT,
@@ -249,7 +249,7 @@ function Card({
   const branch = session.workspaceMode === "worktree" ? session.worktreeBranch ?? "worktree" : undefined;
   const elapsed = state.column === "running" && run
     ? formatWorkingDurationLabel(now - Date.parse(run.createdAt))
-    : compactRelativeTime(session.updatedAt, now);
+    : compactRelativeTime(threadActivityAt(session, run), now);
   const preview = pending ? promptPreview(pending.prompt) : step;
   // A title taken from the prompt would only repeat itself.
   const line = preview === session.title ? undefined : preview;
@@ -277,7 +277,7 @@ function Card({
         {branch ? <span className="board-badge" title={`Own worktree on ${branch}`}><GitBranchIcon size={11} /><span>{branch}</span></span>
           : <span className="board-badge quiet">Local</span>}
         {project && <span className="board-badge quiet"><span>{project}</span></span>}
-        <time className="board-elapsed" dateTime={state.column === "running" && run ? run.createdAt : session.updatedAt}>{elapsed}</time>
+        <time className="board-elapsed" dateTime={state.column === "running" && run ? run.createdAt : threadActivityAt(session, run)}>{elapsed}</time>
       </div>
       {line ? <p className="board-card-step" title={line}>{line}</p>
         : !pending && STEP_COLUMNS.has(state.column) && step === undefined ? <p className="board-card-step loading" aria-label="Loading the latest step"><span className="skeleton skeleton-line medium" /></p> : null}

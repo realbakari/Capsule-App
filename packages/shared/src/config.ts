@@ -210,7 +210,11 @@ export type KeybindingEdit =
   /** Drop every line of the file about this action in this context, so its default returns. */
   | { op: "reset"; action: string; context: KeymapContext };
 
-export type ThemeImportInput = { from: "share"; text: string } | { from: "file" };
+/** `dropped` carries a file dragged onto the window: its text and name, never a path for main to read. */
+export type ThemeImportInput = { from: "share"; text: string } | { from: "file" } | { from: "dropped"; text: string; name: string };
+
+/** The largest theme file Capsule reads. */
+export const MAX_THEME_FILE_BYTES = 256 * 1024;
 
 export type ThemeImportResult =
   | { imported: true; id: string; name: string; appearance: ThemeAppearance; path: string; problems: ThemeProblem[] }

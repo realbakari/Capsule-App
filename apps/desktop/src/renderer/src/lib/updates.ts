@@ -7,6 +7,16 @@ import type { ToastInput } from "./toasts";
 /** Capsule's own changelog: what each release changed, in the product's words. */
 export const RELEASE_NOTES_URL = "https://cpcl.dev/updates";
 
+/** The notes for the version on offer when Capsule knows its page, else the changelog. */
+export function releaseNotesUrl(status?: UpdateCheck): string {
+  return status?.url ?? RELEASE_NOTES_URL;
+}
+
+/** An update that was installed but did not apply, while nothing newer is under way. */
+function failedInstall(status?: UpdateCheck): string | undefined {
+  return status?.notApplied && ["unknown", "up-to-date", "unreachable", "no-releases"].includes(status.state) ? status.notApplied : undefined;
+}
+
 export type UpdateAction = "check" | "download" | "install";
 
 /** What one action the user started ended in, read back from the canonical status. */
@@ -18,6 +28,7 @@ export interface UpdateOutcome {
 
 export function updateActionLabel(status?: UpdateCheck): string {
   if (status?.development) return "Check for updates";
+  if (failedInstall(status)) return "Retry update";
   switch (status?.state) {
     case "checking": return "Checking for updates…";
     case "downloading": return `Downloading update · ${status.percent ?? 0}%`;
@@ -70,6 +81,8 @@ export function updateButtonView(status: UpdateCheck | undefined, working = fals
     };
   }
   if (working || status?.state === "checking") return { icon: "checking", tooltip: "Checking for updates…" };
+  const failed = failedInstall(status);
+  if (failed) return { icon: "available", action: "check", tooltip: `Capsule ${failed} didn’t install. Click to try again.` };
   return { icon: "idle", action: "check", tooltip: "Check for updates" };
 }
 
@@ -89,11 +102,22 @@ export function updateOutcomeToast({ action, status, error }: UpdateOutcome): To
   return undefined;
 }
 
-export function updateDownloadedToast(latest?: string): ToastInput {
+export function updateDownloadedToast(status?: UpdateCheck): ToastInput {
+  const latest = status?.latest;
   return {
     key: "update", tone: "success", title: latest ? `Capsule ${latest} downloaded` : "Update downloaded",
     detail: "Restart from the update button to install it.",
-    action: { label: "Release notes", run: () => { window.open(RELEASE_NOTES_URL, "_blank", "noopener"); } },
+    action: { label: "Release notes", run: () => { window.open(releaseNotesUrl(status), "_blank", "noopener"); } },
+  };
+}
+
+/** Told once per launch: the restart to install came back on the old version. */
+export function updateNotAppliedToast(status: UpdateCheck, retry: () => void): ToastInput {
+  return {
+    key: "update", tone: "error", title: `Capsule ${status.notApplied} didn’t install`,
+    detail: `Capsule restarted on ${status.current}. Try the update again; it downloads before it asks to restart.`,
+    timeoutMs: 15_000,
+    action: { label: "Retry", run: retry },
   };
 }
 
@@ -127,8 +151,8 @@ export function useUpdates(onSettled?: (outcome: UpdateOutcome) => void) {
     return () => { disposed = true; off(); };
   }, [api, available]);
 
-  async function perform(kind: UpdateAction) {
-    if (action.current) return;
+  async function perform(kind: UpdateAction): Promise<UpdateOutcome | undefined> {
+    if (action.current) return undefined;
     action.current = true; setWorking(true); setError(undefined);
     ++revision.current;
     let outcome: UpdateOutcome = { action: kind };
@@ -147,6 +171,12 @@ export function useUpdates(onSettled?: (outcome: UpdateOutcome) => void) {
       outcome = { action: kind, error: message };
     } finally { action.current = false; setWorking(false); }
     settled.current?.(outcome);
+    return outcome;
+  }
+  /* A failed install starts over: check, then fetch the update again, then the usual restart offer. */
+  async function retryInstall() {
+    const checked = await perform("check");
+    if (checked?.status?.state === "update-available" && checked.status.canInstall) await perform("download");
   }
   function run() {
     if (busy || !available) return;
@@ -157,8 +187,9 @@ export function useUpdates(onSettled?: (outcome: UpdateOutcome) => void) {
         confirmLabel: "Restart & install",
         onConfirm: () => perform("install"),
       });
-    } else void perform(status?.state === "update-available" && status.canInstall ? "download" : "check");
+    } else if (failedInstall(status)) void retryInstall();
+    else void perform(status?.state === "update-available" && status.canInstall ? "download" : "check");
   }
   const busy = working || Boolean(status?.development) || ["checking", "downloading", "installing"].includes(status?.state ?? "");
-  return { available, status, error, run, working, busy, label: working ? "Updating…" : updateActionLabel(status) };
+  return { available, status, error, run, retryInstall: () => { if (!busy && available) void retryInstall(); }, working, busy, label: working ? "Updating…" : updateActionLabel(status) };
 }

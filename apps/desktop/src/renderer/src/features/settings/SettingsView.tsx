@@ -1,4 +1,3 @@
-import { isFeaturedHarness } from "../../lib/harness";
 import { useEffect, useState } from "react";
 import type { CapsuleSettings, WritableScope } from "@capsule/shared";
 import { routeSettingsPatch, sectionTakesProjectValues, settingsFileTarget, settingsLayerView, type SettingSourceChip } from "../../lib/config-view";
@@ -9,6 +8,8 @@ import { AppearanceSettings } from "./AppearanceSettings";
 import { KeybindingsSettings } from "./KeybindingsSettings";
 import { ProcessMonitor } from "./ProcessMonitor";
 import { PerformanceDiagnostics } from "./PerformanceDiagnostics";
+import { Troubleshooting } from "./Troubleshooting";
+import { VoiceSettings } from "./VoiceSettings";
 import { RuntimeModeRow } from "./RuntimeModeRow";
 import { useRevealSetting } from "./reveal";
 import { SourceControlTools } from "./SourceControlTools";
@@ -45,7 +46,7 @@ import { SavedPromptsSettings } from "./SavedPromptsSettings";
 import { TagsSettings } from "../threads/TagsSettings";
 import { AdvancedRows, SettingRow } from "./controls";
 import { PluginsPanel } from "../plugins/PluginsPanel";
-import { ChartIcon, CpuIcon, FileIcon, FolderIcon, GitBranchIcon, GridIcon, HistoryIcon, InfoIcon, KeyboardIcon, LinkIcon, SettingsIcon, SparkIcon, SunIcon, UndoIcon, WrenchIcon } from "../shell/icons";
+import { ChartIcon, CpuIcon, FileIcon, FolderIcon, GitBranchIcon, GridIcon, HistoryIcon, InfoIcon, KeyboardIcon, LinkIcon, SettingsIcon, SmartphoneIcon, SparkIcon, SunIcon, UndoIcon, WrenchIcon } from "../shell/icons";
 import { formatProjectRoot } from "../../lib/paths";
 import { useWorkspace } from "../../lib/workspace";
 
@@ -68,6 +69,7 @@ export const SETTINGS_TABS: Array<{ id: SettingsSectionId; label: string; icon: 
   { id: "automations", label: "Automations", icon: HistoryIcon },
   { id: "plugins", label: "Plugins", icon: GridIcon },
   { id: "shortcuts", label: "Shortcuts", icon: KeyboardIcon, group: "App" },
+  { id: "devices", label: "Devices & access", icon: SmartphoneIcon },
   { id: "diagnostics", label: "Diagnostics", icon: ChartIcon },
   { id: "about", label: "About", icon: InfoIcon },
 ];
@@ -76,15 +78,12 @@ export const SETTINGS_TABS: Array<{ id: SettingsSectionId; label: string; icon: 
 export function SettingsView() {
   const {
     status,
-    subsystems,
     harnesses: harnessList,
     api,
     newProjectName,
     setNewProjectName,
     createProject,
     createProjectFromFolder,
-    diagnostics,
-    exportDiagnostics,
     pickProjectDirectory,
     project,
     projects,
@@ -228,7 +227,7 @@ export function SettingsView() {
                       detail: `Every setting in ${SETTINGS_SECTION_LABELS[tab]} goes back to its default and is removed from your user settings file.${projectConfig ? " Values this project's files set still apply in it." : ""} Other sections, and any saved tokens, are left alone.`,
                       confirmLabel: "Restore defaults",
                       danger: true,
-                      onConfirm: () => void resetSection(tab),
+                      onConfirm: () => { setConfirm(undefined); void resetSection(tab); },
                     })
                   }
                 >
@@ -253,6 +252,7 @@ export function SettingsView() {
                 <ConversationsCard settings={settings} onPatch={(next) => void patch(next)} />
                 <ConfirmationsCard settings={settings} onPatch={(next) => void patch(next)} />
                 <DesktopCard settings={settings} onPatch={(next) => void patch(next)} />
+                <VoiceSettings />
                 <SavedPromptsSettings settings={settings} onPatch={(next) => void patch(next)} />
                 <TagsSettings />
                 <AnalyticsSettings settings={settings} patch={patch} />
@@ -380,17 +380,9 @@ export function SettingsView() {
                         {status?.agentCount ?? 0} agents · {status?.sessionCount ?? 0} sessions · {status?.activeRunCount ?? 0} running
                       </span>
                     </SettingRow>
-                    {(harnessList ?? [])
-                      .filter((harness) => isFeaturedHarness(harness) || Boolean(harness.binaryPath) || harness.readiness === "dedicated" || harness.readiness === "running")
-                      .map((harness) => (
-                        <SettingRow key={harness.id} label={harness.name} hint={harness.detail}>
-                          <span className={`readiness ${harness.readiness}`}>{harness.readiness.replaceAll("_", " ")}</span>
-                        </SettingRow>
-                      ))}
                     <GatewayApiKeysRow />
                   </AdvancedRows>
                 </div>
-                <RemoteAccessSettings settings={settings} patch={patch} />
               </>
             )}
 
@@ -542,25 +534,18 @@ export function SettingsView() {
               <KeybindingsSettings />
             )}
 
+            {tab === "devices" && (
+              <div className="appearance-page">
+                <RemoteAccessSettings settings={settings} patch={patch} />
+              </div>
+            )}
+
             {tab === "diagnostics" && (
               <div className="appearance-page">
+                <Troubleshooting />
                 <CustomizationDoctor />
                 <ProcessMonitor />
                 <PerformanceDiagnostics />
-              <div className="card">
-                <h3>Subsystems</h3>
-                <div className="muted">
-                  Capsule core {subsystems?.capsuleCore} · Gateway {subsystems?.openclawGateway} ·
-                  Channel {subsystems?.buzz} · Database {subsystems?.database} · Keychain{" "}
-                  {subsystems?.keychain}
-                </div>
-                <div className="actions">
-                  <button className="chip" onClick={() => void exportDiagnostics()}>
-                    Export sanitized diagnostics
-                  </button>
-                </div>
-                {diagnostics && <pre className="mono">{diagnostics}</pre>}
-              </div>
               </div>
             )}
 

@@ -11,6 +11,27 @@ import {
   type ProviderUsageSnapshot,
 } from "@capsule/shared";
 
+/*
+ * One native listener per event channel, fanned out here. Each panel that
+ * watches state subscribes on its own; registering each one with ipcRenderer
+ * would pass Node's listener warning as soon as there are more than ten.
+ */
+const subscribers = new Map<string, Set<(payload: unknown) => void>>();
+function subscribe(name: string, handler: (payload: unknown) => void): () => void {
+  let handlers = subscribers.get(name);
+  if (!handlers) {
+    const set = new Set<(payload: unknown) => void>();
+    handlers = set;
+    subscribers.set(name, set);
+    ipcRenderer.on(name, (_event, payload: unknown) => {
+      // A handler that unsubscribes others mid-delivery must not skip or repeat any.
+      for (const each of [...set]) each(payload);
+    });
+  }
+  handlers.add(handler);
+  return () => { handlers.delete(handler); };
+}
+
 const api = {
   isDesktop: true,
   relayStatus: (): Promise<import("@capsule/shared").RelayConnectionStatus> => ipcRenderer.invoke(IPC_CHANNELS.relayStatus),
@@ -54,9 +75,7 @@ const api = {
     ipcRenderer.invoke(IPC_CHANNELS.listSkillFiles, skillId, relative, projectId, sessionId),
   previewSkillFile: (skillId: string, relative: string, projectId?: string, sessionId?: string): Promise<FilePreview> =>
     ipcRenderer.invoke(IPC_CHANNELS.previewSkillFile, skillId, relative, projectId, sessionId),
-  listSkillPacks: () => ipcRenderer.invoke(IPC_CHANNELS.listSkillPacks),
   installSkill: (skill: unknown) => ipcRenderer.invoke(IPC_CHANNELS.installSkill, skill),
-  installSkillPack: (packId: string) => ipcRenderer.invoke(IPC_CHANNELS.installSkillPack, packId),
   uninstallSkill: (skillId: string) => ipcRenderer.invoke(IPC_CHANNELS.uninstallSkill, skillId),
   searchSkillCatalog: (query: string, refresh?: boolean) =>
     ipcRenderer.invoke(IPC_CHANNELS.searchSkillCatalog, query, refresh),
@@ -81,6 +100,7 @@ const api = {
   forkBranches: (sessionId: string): Promise<import("@capsule/shared").ForkBranchGroup[]> => ipcRenderer.invoke(IPC_CHANNELS.forkBranches, sessionId),
   listImportableSessions: (projectId: string): Promise<import("@capsule/shared").ImportListing> => ipcRenderer.invoke(IPC_CHANNELS.listImportableSessions, projectId),
   importSession: (input: import("@capsule/shared").ImportSessionInput): Promise<import("@capsule/shared").Session> => ipcRenderer.invoke(IPC_CHANNELS.importSession, input),
+  suggestProjects: (): Promise<import("@capsule/shared").SuggestedProject[]> => ipcRenderer.invoke(IPC_CHANNELS.suggestProjects),
   handoffDraft: (sessionId: string): Promise<{ summary: string }> => ipcRenderer.invoke(IPC_CHANNELS.handoffDraft, sessionId),
   handoffSession: (input: import("@capsule/shared").HandoffInput): Promise<import("@capsule/shared").Session> => ipcRenderer.invoke(IPC_CHANNELS.handoffSession, input),
   worktreeApplyStatus: (sessionId: string): Promise<import("@capsule/shared").WorktreeApplyStatus> => ipcRenderer.invoke(IPC_CHANNELS.worktreeApplyStatus, sessionId),
@@ -180,8 +200,7 @@ const api = {
   terminalResize: (id: string, cols: number, rows: number) =>
     ipcRenderer.invoke(IPC_CHANNELS.terminalResize, id, cols, rows),
   terminalStop: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.terminalStop, id),
-  runProjectAction: (projectId: string, actionId: string, sessionId?: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.runProjectAction, projectId, actionId, sessionId),
+  terminalIdle: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.terminalIdle, id) as Promise<boolean>,
   stopProjectAction: (projectId: string, actionId: string, sessionId?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.stopProjectAction, projectId, actionId, sessionId),
   listProjectActionRuns: (projectId: string, sessionId?: string) =>
@@ -265,22 +284,28 @@ const api = {
     ipcRenderer.invoke(IPC_CHANNELS.gitDiff, projectId, relative, sessionId, options),
   checkoutBranch: (projectId: string, branch: string, sessionId?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.checkoutBranch, projectId, branch, sessionId),
-  gitCommit: (projectId: string, message: string, sessionId?: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.gitCommit, projectId, message, sessionId),
+  gitCommit: (projectId: string, message: string, sessionId?: string, scope?: import("@capsule/shared").GitCommitScope): Promise<import("@capsule/shared").GitStatus> =>
+    ipcRenderer.invoke(IPC_CHANNELS.gitCommit, projectId, message, sessionId, scope),
   gitStage: (projectId: string, relative: string, sessionId?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.gitStage, projectId, relative, sessionId),
   gitDiscard: (projectId: string, relative: string, sessionId?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.gitDiscard, projectId, relative, sessionId),
   gitScopedDiff: (projectId: string, scope: import("@capsule/shared").GitDiffScope, relative?: string, sessionId?: string, options?: import("@capsule/shared").GitDiffOptions): Promise<import("@capsule/shared").ScopedDiff> =>
     ipcRenderer.invoke(IPC_CHANNELS.gitScopedDiff, projectId, scope, relative, sessionId, options),
+  gitReviewTargets: (projectId: string, sessionId?: string, base?: string): Promise<import("@capsule/shared").ReviewTargets> =>
+    ipcRenderer.invoke(IPC_CHANNELS.gitReviewTargets, projectId, sessionId, base),
   gitCheckHunks: (projectId: string, applies: import("@capsule/shared").HunkApply[], sessionId?: string): Promise<boolean[]> =>
     ipcRenderer.invoke(IPC_CHANNELS.gitCheckHunks, projectId, applies, sessionId),
   gitApplyHunk: (projectId: string, apply: import("@capsule/shared").HunkApply, sessionId?: string): Promise<import("@capsule/shared").GitStatus> =>
     ipcRenderer.invoke(IPC_CHANNELS.gitApplyHunk, projectId, apply, sessionId),
   gitCreateBranch: (projectId: string, branch: string, sessionId?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.gitCreateBranch, projectId, branch, sessionId),
-  gitPush: (projectId: string, sessionId?: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.gitPush, projectId, sessionId),
+  gitPush: (projectId: string, sessionId?: string, toDefaultBranch?: boolean): Promise<import("@capsule/shared").GitStatus> =>
+    ipcRenderer.invoke(IPC_CHANNELS.gitPush, projectId, sessionId, toDefaultBranch),
+  gitPull: (projectId: string, sessionId?: string, mode?: import("@capsule/shared").GitPullMode): Promise<import("@capsule/shared").GitStatus> =>
+    ipcRenderer.invoke(IPC_CHANNELS.gitPull, projectId, sessionId, mode ?? "ff-only"),
+  gitFetch: (projectId: string, sessionId?: string): Promise<boolean> =>
+    ipcRenderer.invoke(IPC_CHANNELS.gitFetch, projectId, sessionId),
   gitCreatePullRequest: (
     projectId: string,
     input?: { title?: string; body?: string; sessionId?: string; },
@@ -306,6 +331,8 @@ const api = {
   addOpenInApp: () => ipcRenderer.invoke(IPC_CHANNELS.addOpenInApp) as Promise<string | undefined>,
   openInApp: (appId: string, projectId: string, sessionId?: string, target?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.openInApp, appId, projectId, sessionId, target) as Promise<void>,
+  revealInFolder: (projectId: string, sessionId?: string, target?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.revealInFolder, projectId, sessionId, target) as Promise<void>,
   pickDirectory: () => ipcRenderer.invoke(IPC_CHANNELS.pickDirectory),
   pickFiles: () => ipcRenderer.invoke(IPC_CHANNELS.pickFiles),
   saveClipboardImage: () => ipcRenderer.invoke(IPC_CHANNELS.saveClipboardImage),
@@ -349,6 +376,7 @@ const api = {
   doctorHarness: (harnessId: string) => ipcRenderer.invoke(IPC_CHANNELS.doctorHarness, harnessId),
   agentStoreList: (refresh?: boolean): Promise<import("@capsule/shared").AgentStoreEntry[]> => ipcRenderer.invoke(IPC_CHANNELS.agentStoreList, refresh),
   agentStoreInstall: (harnessId: string): Promise<import("@capsule/shared").AgentStoreEntry> => ipcRenderer.invoke(IPC_CHANNELS.agentStoreInstall, harnessId),
+  agentStoreUpdateUserCopy: (harnessId: string): Promise<import("@capsule/shared").AgentStoreEntry> => ipcRenderer.invoke(IPC_CHANNELS.agentStoreUpdateUserCopy, harnessId),
   agentStoreUninstall: (harnessId: string): Promise<import("@capsule/shared").AgentStoreEntry> => ipcRenderer.invoke(IPC_CHANNELS.agentStoreUninstall, harnessId),
   agentSignInOptions: (harnessId: string): Promise<import("@capsule/shared").AgentSignInOptions> => ipcRenderer.invoke(IPC_CHANNELS.agentSignInOptions, harnessId),
   agentAuthenticate: (harnessId: string, methodId: string): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.agentAuthenticate, harnessId, methodId),
@@ -393,12 +421,7 @@ const api = {
     ipcRenderer.invoke(IPC_CHANNELS.setPermissionProfile, id, profile),
   showContextMenu: (request: PopupMenuRequest): Promise<string | null> =>
     ipcRenderer.invoke(IPC_CHANNELS.showContextMenu, request),
-  on: (channel: keyof typeof IPC_EVENTS, handler: (payload: unknown) => void) => {
-    const name = IPC_EVENTS[channel];
-    const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => handler(payload);
-    ipcRenderer.on(name, listener);
-    return () => ipcRenderer.removeListener(name, listener);
-  },
+  on: (channel: keyof typeof IPC_EVENTS, handler: (payload: unknown) => void) => subscribe(IPC_EVENTS[channel], handler),
 };
 
 contextBridge.exposeInMainWorld("capsule", api);

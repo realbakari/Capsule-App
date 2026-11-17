@@ -32,21 +32,6 @@
 .import-error, .dialog p.import-error { margin: 0.6rem 0 0; color: var(--red); font-size: var(--text-sm); }
 .import-dialog .actions { margin-top: 1rem; }
 
-.import-hint {
-  margin-top: 0.9rem;
-  padding: 0.35rem 0.75rem;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-full);
-  background: transparent;
-  color: var(--text-muted);
-  font: inherit;
-  font-size: var(--text-sm);
-  cursor: pointer;
-}
-.import-hint span { color: var(--text); }
-.import-hint:hover { background: var(--bg-hover); color: var(--text); }
-.import-hint:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
-
 .thread-origin {
   display: flex;
   align-items: flex-start;

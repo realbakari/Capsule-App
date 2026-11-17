@@ -63,6 +63,7 @@ const READ_CHANNELS: ChannelName[] = [
   "gitStatus",
   "gitDiff",
   "gitScopedDiff",
+  "gitReviewTargets",
   // `git apply --check` only: it reports whether a hunk applies and writes nothing.
   "gitCheckHunks",
   "listPullRequests",
@@ -72,7 +73,6 @@ const READ_CHANNELS: ChannelName[] = [
   "listHarnesses",
   "harnessStatus",
   "listHarnessSessions",
-  "listSkillPacks",
   "processMetrics",
   "processHistory",
   "hostState",

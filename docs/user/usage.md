@@ -1,8 +1,9 @@
 # Usage
 
-Open **Usage** from the chart icon at the foot of the sidebar. The page answers
+Open **Usage** from the chart icon at the foot of the sidebar, or choose
+**Usage** in the command palette. The page answers
 three questions in order: how close you are to your limits, how much you used,
-and which agents and models used it. Choose **Today**, **7 days**, **30 days**
+and which agents, projects and models used it. Choose **Today**, **7 days**, **30 days**
 or **90 days** at the top; Capsule remembers your choice. **Refresh** rereads
 everything on the page.
 
@@ -20,6 +21,8 @@ differs from this computer's, or a reset time that has passed. Values above
 100% stay visible.
 
 Today, native Muse Code conversations report their limits while they run.
+With no report, the card says **No limits reported** and which agent reports
+them.
 Other agents do not send limits to Capsule. When a turn stops on a limit, the
 conversation shows when it resets and offers **Resume at reset**, **Retry
 now** and **Continue with another agent**.
@@ -30,18 +33,22 @@ different accounts, so Capsule never adds their allowances together.
 ## Tokens
 
 Token figures come from the Claude Code and Codex transcripts on this computer,
-so they include sessions you ran outside Capsule. They are token counts, not a
+so they include sessions you ran outside Capsule. Other agents' transcripts are
+not read yet, and the page says so. They are token counts, not a
 bill. Prices are not in the transcripts, so **Cost** reads **Not reported**
-rather than an estimate. A conversation's run log shows a session cost when its
-agent reports one.
+rather than an estimate.
 
 - **Today** and the range total count every token the model processed: fresh
   input, cache reads, cache writes, output and reasoning.
 - **Tokens per day** draws every day in the range, including days with no
   activity. Today's bar is highlighted. Hover a bar for that day's exact
   figures, or open **Daily figures** for the same numbers as a table.
-- **By agent** and **By type** rank their parts on one scale with each part's
-  share. Cache reads are usually most of the total.
+- **By agent**, **By project** and **By type** rank their parts on one scale
+  with each part's share. Cache reads are usually most of the total.
+- **By project** counts work by the folder each session ran in: a project's
+  folders and its conversations' worktrees count toward that project, and work
+  anywhere else is summed as **Other folders**. The six largest are named; the
+  rest share one row. Folder paths are never shown.
 - **By model** lists the fifteen largest models and totals the rest in one
   row.
 

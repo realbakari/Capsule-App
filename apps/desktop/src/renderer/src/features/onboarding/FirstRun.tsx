@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { HarnessStatus } from "@capsule/shared";
+import type { HarnessStatus, SuggestedProject } from "@capsule/shared";
 import { harnessReadinessLabel, isFeaturedHarness } from "../../lib/harness";
 import { useModalFocus } from "../../lib/modal-focus";
 import { formatProjectRoot } from "../../lib/paths";
@@ -192,14 +192,95 @@ function FolderSection({ target, onClone }: { target?: { id: string; name: strin
       <button type="button" className="ghost first-run-change" onClick={() => void createProjectFromFolder()}>Choose another</button>
     </div>;
   }
-  return <div className="first-run-choices">
-    <button type="button" className="first-run-choice" onClick={() => void createProjectFromFolder()}>
-      <FolderOpenIcon size={18} aria-hidden />
-      <span><b>Open a folder</b><small>A project already on this computer</small></span>
-    </button>
-    <button type="button" className="first-run-choice" onClick={onClone}>
-      <GitBranchIcon size={18} aria-hidden />
-      <span><b>Clone a repository</b><small>From a Git URL or GitHub</small></span>
-    </button>
+  return <>
+    <SuggestedProjects />
+    <div className="first-run-choices">
+      <button type="button" className="first-run-choice" onClick={() => void createProjectFromFolder()}>
+        <FolderOpenIcon size={18} aria-hidden />
+        <span><b>Open a folder</b><small>A project already on this computer</small></span>
+      </button>
+      <button type="button" className="first-run-choice" onClick={onClone}>
+        <GitBranchIcon size={18} aria-hidden />
+        <span><b>Clone a repository</b><small>From a Git URL or GitHub</small></span>
+      </button>
+    </div>
+  </>;
+}
+
+/* What the importer brings with a project: its recent conversations, not years of them. */
+const IMPORT_WINDOW_MS = 30 * 86_400_000;
+const IMPORT_LIMIT = 10;
+
+/**
+ * Folders the agents' own histories show steady recent work in, offered as
+ * projects. Read from this computer only; all are chosen to begin with, and
+ * one press adds them, optionally with their recent conversations.
+ */
+function SuggestedProjects() {
+  const { api, refresh } = useWorkspace();
+  const [suggestions, setSuggestions] = useState<SuggestedProject[]>([]);
+  const [chosen, setChosen] = useState<ReadonlySet<string>>(new Set());
+  const [bringConversations, setBringConversations] = useState(false);
+  const [state, setState] = useState<"idle" | "adding" | { error: string }>("idle");
+  useEffect(() => {
+    if (api.isDesktop === false || typeof api.suggestProjects !== "function") return;
+    let live = true;
+    void api.suggestProjects().then((list) => {
+      if (!live) return;
+      setSuggestions(list);
+      setChosen(new Set(list.map((item) => item.path)));
+    }, () => undefined);
+    return () => { live = false; };
+  }, [api]);
+  if (!suggestions.length) return null;
+
+  const toggle = (folder: string) => setChosen((current) => {
+    const next = new Set(current);
+    if (next.has(folder)) next.delete(folder);
+    else next.add(folder);
+    return next;
+  });
+  const add = async () => {
+    setState("adding");
+    try {
+      for (const item of suggestions.filter((entry) => chosen.has(entry.path))) {
+        const created = await api.createProject({ name: item.name, workingDirectory: item.path }) as { id: string };
+        if (!bringConversations) continue;
+        const since = Date.now() - IMPORT_WINDOW_MS;
+        const listing = await api.listImportableSessions(created.id);
+        for (const session of listing.sessions.filter((entry) => !entry.importedAs && Date.parse(entry.lastActivity) >= since).slice(0, IMPORT_LIMIT)) {
+          await api.importSession({ projectId: created.id, agent: session.agent, nativeSessionId: session.nativeSessionId });
+        }
+      }
+      await refresh();
+      setState("idle");
+    } catch (error) {
+      setState({ error: error instanceof Error ? error.message : String(error) });
+    }
+  };
+  const count = chosen.size;
+  return <div className="first-run-suggestions">
+    <p className="first-run-hint">Folders with recent agent sessions on this computer</p>
+    <ul>
+      {suggestions.map((item) => <li key={item.path}>
+        <label className="first-run-suggestion">
+          <input type="checkbox" checked={chosen.has(item.path)} onChange={() => toggle(item.path)} />
+          <span className="first-run-agent-copy">
+            <b>{item.name}</b>
+            <small className="mono" title={item.path}>{formatProjectRoot(item.path, { home: api.homeDir })} · {item.sessions} sessions in 30 days</small>
+          </span>
+        </label>
+      </li>)}
+    </ul>
+    <div className="first-run-suggestions-footer">
+      <label className="first-run-suggestion-option">
+        <input type="checkbox" checked={bringConversations} onChange={(event) => setBringConversations(event.target.checked)} />
+        Bring in their recent conversations
+      </label>
+      <button type="button" className="chip" disabled={!count || state === "adding"} onClick={() => void add()}>
+        {state === "adding" ? "Adding…" : `Add ${count} ${count === 1 ? "project" : "projects"}`}
+      </button>
+    </div>
+    {typeof state === "object" ? <p className="first-run-hint first-run-error" role="alert">{state.error}</p> : null}
   </div>;
 }

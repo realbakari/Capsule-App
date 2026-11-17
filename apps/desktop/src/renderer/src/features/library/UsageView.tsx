@@ -10,6 +10,7 @@ import {
   dayKey,
   niceCeiling,
   PROVIDER_LABELS,
+  projectRows,
   share,
   shortDay,
   TOKEN_TYPES,
@@ -140,7 +141,7 @@ function DailyChart({ points, today }: { points: DayPoint[]; today: string }) {
 }
 
 export function UsageView() {
-  const { api } = useWorkspace();
+  const { api, projects } = useWorkspace();
   const [days, setDays] = useState<number>(() => {
     try {
       const saved = Number(localStorage.getItem(USAGE_WINDOW_KEY));
@@ -191,6 +192,7 @@ export function UsageView() {
   const range = USAGE_RANGES.find((option) => option.days === days)!;
   const todayTokens = points.at(-1)?.tokens ?? 0;
   const hiddenModels = summary ? summary.byModel.slice(MODEL_ROWS) : [];
+  const projectNames = useMemo(() => new Map((projects ?? []).map((project) => [project.id, project.name])), [projects]);
 
   return (
     <section className="panel">
@@ -228,7 +230,9 @@ export function UsageView() {
               From transcripts on this computer{readAt ? ` · read ${new Date(readAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}` : ""}
             </span>
           </header>
-          <p className="muted">Includes sessions run outside Capsule. Tokens, not a bill.</p>
+          <p className="muted">
+            Counts {Object.values(PROVIDER_LABELS).join(" and ")}, including sessions run outside Capsule. Other agents’ transcripts are not read yet. Tokens, not a bill.
+          </p>
 
           {loading && !summary && <p role="status" className="muted">Reading transcripts…</p>}
           {error && <p role="alert" className="settings-keybind-error">Could not read usage: {error}{summary ? " Showing the last figures read." : ""}</p>}
@@ -269,6 +273,21 @@ export function UsageView() {
                     })}
                   />
                 </section>
+                {summary.byProject && (
+                  <section aria-labelledby="usage-by-project">
+                    <h4 id="usage-by-project" className="usage-section">By project</h4>
+                    <RankedBars
+                      label="Tokens by project"
+                      total={total}
+                      rows={projectRows(summary.byProject, projectNames).map((row) => ({
+                        key: row.key,
+                        label: <span className="truncate">{row.label}</span>,
+                        value: row.tokens,
+                        detail: `${row.requests.toLocaleString()} requests`,
+                      }))}
+                    />
+                  </section>
+                )}
                 <section aria-labelledby="usage-by-type">
                   <h4 id="usage-by-type" className="usage-section">By type</h4>
                   <RankedBars

@@ -68,7 +68,23 @@ To set colours on top of any theme without editing its file, use
 text that starts with `capsule-theme:`. Paste one into the field under the lists
 and press **Import** to add it to your themes and choose it. **Import file…**
 adds a theme file from anywhere on your Mac, and **Open themes folder** shows
-the folder.
+the folder. You can also drag a `.json` theme file onto the import row.
+
+## Editor colour themes
+
+Capsule also imports a colour theme exported from a code editor: a `.json` file
+with a `colors` map and `tokenColors` rules. Comments and trailing commas are
+fine. Capsule maps the editor's colours to its own: the editor background
+becomes the page and code background, the sidebar and activity bar colours
+become the sidebar and window frame, the button colour becomes the accent, the
+terminal's sixteen colours become Capsule's terminal colours, and the syntax
+rules for keywords, strings, numbers, functions, types and attributes colour
+code the same way. The theme's `type` decides whether it is a light or dark
+theme; without one, Capsule reads the background. A colour the file does not set
+keeps Capsule's value for that appearance.
+
+The import writes an ordinary Capsule theme file to your themes folder, so you
+can open it and adjust any colour afterwards.
 
 A share string carries a backdrop's scene and its numbers, never an image, so it
 cannot point at a file on someone's disk. A theme file imported from elsewhere

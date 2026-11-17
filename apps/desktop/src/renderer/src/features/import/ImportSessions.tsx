@@ -9,19 +9,17 @@ import "./import.css";
 
 /*
  * Import from the agents' own histories. One provider owns the dialog and a
- * per-project listing, so the project menu, the empty-thread hint and the
- * command palette open the same thing and read the folder once.
+ * per-project listing, so the project menu and the command palette open the
+ * same thing.
  */
 
 interface ImportValue {
   /** Why importing is unavailable here, or undefined. */
   disabledReason?: string;
   openImport: (projectId: string) => void;
-  /** The project's listing, read once per open of the app or dialog. */
-  listing: (projectId: string) => ImportListing | undefined;
 }
 
-const ImportContext = createContext<ImportValue>({ openImport: () => undefined, listing: () => undefined });
+const ImportContext = createContext<ImportValue>({ openImport: () => undefined });
 
 export function useImportSessions(): ImportValue {
   return useContext(ImportContext);
@@ -32,49 +30,44 @@ export function agentName(agent: ImportAgentId): string {
 }
 
 export function ImportSessionsProvider({ children }: { children: ReactNode }) {
-  const { api, projects } = useWorkspace();
+  const { api } = useWorkspace();
   const [open, setOpen] = useState<string>();
-  const [listings, setListings] = useState<Record<string, ImportListing | undefined>>({});
-  const requested = useRef(new Set<string>());
+  const [listings, setListings] = useState<Record<string, ImportListing | { error: string } | undefined>>({});
   const disabledReason = api.isDesktop === false ? "Importing reads this computer's agent history. Use the desktop app." : undefined;
 
-  const load = useCallback((projectId: string, force = false) => {
-    if (!force && requested.current.has(projectId)) return;
-    requested.current.add(projectId);
+  const load = useCallback((projectId: string) => {
     void api.listImportableSessions(projectId).then(
       (listing) => setListings((current) => ({ ...current, [projectId]: listing })),
-      () => setListings((current) => ({ ...current, [projectId]: { sessions: [], sources: [] } })),
+      (reason: unknown) => setListings((current) => ({ ...current, [projectId]: { error: formatUserError(reason) } })),
     );
   }, [api]);
 
-  const listing = useCallback((projectId: string) => {
-    if (!disabledReason && projects.find((item) => item.id === projectId)?.workingDirectory) load(projectId);
-    return listings[projectId];
-  }, [disabledReason, listings, load, projects]);
-
   const openImport = useCallback((projectId: string) => {
     if (disabledReason) return;
-    load(projectId, true);
+    load(projectId);
     setOpen(projectId);
   }, [disabledReason, load]);
 
-  const value = useMemo(() => ({ disabledReason, openImport, listing }), [disabledReason, openImport, listing]);
+  const value = useMemo(() => ({ disabledReason, openImport }), [disabledReason, openImport]);
   return (
     <ImportContext.Provider value={value}>
       {children}
-      {open && <ImportDialog projectId={open} listing={listings[open]} onImported={() => load(open, true)} onClose={() => setOpen(undefined)} />}
+      {open && <ImportDialog projectId={open} read={listings[open]} onReload={() => load(open)} onClose={() => setOpen(undefined)} />}
     </ImportContext.Provider>
   );
 }
 
 type Filter = "all" | ImportAgentId;
 
-function ImportDialog({ projectId, listing, onImported, onClose }: {
+function ImportDialog({ projectId, read, onReload, onClose }: {
   projectId: string;
-  listing?: ImportListing;
-  onImported: () => void;
+  /** The listing, a reason it could not be read, or undefined while reading. */
+  read?: ImportListing | { error: string };
+  onReload: () => void;
   onClose: () => void;
 }) {
+  const listing = read && "sessions" in read ? read : undefined;
+  const readError = read && "error" in read ? read.error : undefined;
   const { api, projects, setProjectId, setView, refresh } = useWorkspace();
   const project = projects.find((item) => item.id === projectId);
   const dialog = useRef<HTMLDivElement>(null);
@@ -106,7 +99,7 @@ function ImportDialog({ projectId, listing, onImported, onClose }: {
     setError(undefined);
     try {
       const created = await api.importSession({ projectId, agent: session.agent, nativeSessionId: session.nativeSessionId });
-      onImported();
+      onReload();
       await refresh();
       open(created.id);
     } catch (reason) {
@@ -138,8 +131,10 @@ function ImportDialog({ projectId, listing, onImported, onClose }: {
               : `Imported threads open as history. Your next message starts a fresh agent session that is given the transcript as context. ${continuation.reason ?? ""}`}
           </p>
         )}
-        <div className="import-list" role="list" aria-busy={!listing}>
-          {!listing ? (
+        <div className="import-list" role="list" aria-busy={!read}>
+          {readError ? (
+            <p className="import-empty" role="alert">Could not read agent history: {readError} <button type="button" className="ghost" onClick={onReload}>Retry</button></p>
+          ) : !listing ? (
             <p className="import-empty">Reading agent history…</p>
           ) : shown.length === 0 ? (
             <p className="import-empty">No Claude Code or Codex sessions ran in this folder.</p>
@@ -169,19 +164,5 @@ function ImportDialog({ projectId, listing, onImported, onClose }: {
         </div>
       </div>
     </div>
-  );
-}
-
-/** The empty-thread line that says history exists for this folder. Shows nothing until there is some. */
-export function ImportHint({ projectId }: { projectId: string }) {
-  const { listing, openImport, disabledReason } = useImportSessions();
-  const found = listing(projectId)?.sessions.filter((session) => !session.importedAs);
-  if (disabledReason || !found?.length) return null;
-  const agents = [...new Set(found.map((session) => session.agent))];
-  const who = agents.map(agentName).join(" and ");
-  return (
-    <button type="button" className="import-hint" onClick={() => openImport(projectId)}>
-      Found {found.length} {who} {found.length === 1 ? "session" : "sessions"} in this folder. <span>Import…</span>
-    </button>
   );
 }

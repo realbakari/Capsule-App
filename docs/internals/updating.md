@@ -32,6 +32,14 @@ staged update; it does not start a second download just because a waiter timed
 out. Attempt identity prevents a stale preparation from installing or unlocking
 a later retry. The library still owns the feed, hashes and signature checks.
 
+Immediately before `quitAndInstall`, the attempt writes `update-install.json`
+(`{ from, target }`) to userData. The next packaged launch reads and removes it
+once; if Capsule is still on `from` and `target` differs, the status carries
+`notApplied` until another install starts, and the window reports the failed
+install once with a Retry that checks and downloads again. A record naming
+another version (a manual install in between) is dropped silently, and a
+failure to write the record never blocks the restart.
+
 The renderer's shared hook subscribes before reading current status, rejects
 out-of-order reads and uses the same actions in Sidebar and both About surfaces.
 It reports each action the user started to an optional `onSettled` callback
@@ -40,7 +48,9 @@ so background checks never raise one. A build that cannot install is
 `development` from the first status read, because `Updater` starts in the
 unavailable state rather than waiting for a check.
 No update control automatically navigates to a release page. The page remains
-an explicitly labelled secondary link for release notes and manual recovery.
+an explicitly labelled secondary link for release notes and manual recovery. The merged status's `url` names
+the release page for the version on offer (the GitHub check's page, or the
+tag page built from `latest`), so Release notes lands on that version.
 Status remains readable remotely; checking, downloading, installing and settings
 changes still require write scope.
 

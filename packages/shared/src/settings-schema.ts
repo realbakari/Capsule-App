@@ -1,6 +1,6 @@
 import { BACKDROP_JSON_SCHEMA } from "./backdrop.js";
 import { HOOK_EVENTS, STATUS_LINE_ITEMS, type ExtendedConfigKey, type FileSettingKey } from "./config.js";
-import { LONG_COMMAND_SECONDS, SETTINGS_SECTION_KEYS } from "./runtime.js";
+import { LONG_COMMAND_SECONDS, SETTINGS_SECTION_KEYS, TERMINAL_FONT_SIZES } from "./runtime.js";
 
 /** A JSON Schema fragment. Kept loose: it is data for editors and for validation. */
 export type JsonSchema = Record<string, unknown>;
@@ -72,6 +72,8 @@ export const SETTINGS_SCHEMA: Record<FileSettingKey, SettingSpec> = {
   transcriptSize: oneOf(["s", "m", "l"], "Text size in conversations."),
   transcriptWidth: oneOf(["narrow", "standard", "wide"], "Width of the conversation column."),
   customCodeFont: text("A font family put first in the code font stack.", "user", "live", { maxLength: 80 }),
+  codeTextSize: oneOf(["s", "m", "l"], "Text size in code blocks, diffs and file previews."),
+  terminalFontSize: { scope: "user", apply: "live", description: "Font size of the terminal, in pixels.", schema: { type: "number", enum: [...TERMINAL_FONT_SIZES] } },
   notifyRunComplete: bool("Notify when a turn finishes."),
   notifyApprovals: bool("Notify when an agent asks for approval."),
   agentSimulatorAccess: bool("Let direct agents use a simulator attached in the thread's panel."),
@@ -129,6 +131,19 @@ export const SETTINGS_SCHEMA: Record<FileSettingKey, SettingSpec> = {
   openInHidden: { scope: "user", apply: "live", description: "Apps you removed from Open in.", schema: stringList },
   openInFavorite: text("The app Open in uses first."),
   agentTaskAutoStart: { scope: "user", apply: "live", description: "Projects whose agents may start the board tasks they create.", schema: stringList },
+  agentOverrides: {
+    scope: "user",
+    apply: "next-thread",
+    description: "Per agent: enabled false hides it; binaryPath, args and env change how Capsule launches it in direct mode. The Gateway launches agents from its own configuration.",
+    schema: {
+      type: "object",
+      additionalProperties: {
+        type: "object",
+        additionalProperties: false,
+        properties: { enabled: { type: "boolean" }, binaryPath: { type: "string" }, args: stringList, env: stringMap },
+      },
+    },
+  },
 };
 
 const commandOrHttp: JsonSchema = {

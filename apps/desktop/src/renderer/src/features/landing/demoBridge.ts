@@ -360,7 +360,6 @@ export function createDemoBridge(): CapsuleApi {
     forkBranches: () => ok([]),
     runRatings: () => ok({}),
     listSkills: () => ok([]),
-    listSkillPacks: () => ok([]),
     listArtifacts: () => ok([]),
     listApprovals: () => ok([]),
     listProjectActionRuns: () => ok([]),

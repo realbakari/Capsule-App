@@ -1,6 +1,6 @@
-import { useState } from "react";
-import { AUTOMATION_TEMPLATES, type AutomationView } from "@capsule/shared";
-import { settingsFileTarget, sourceChip } from "../../lib/config-view";
+import { useEffect, useRef, useState } from "react";
+import { automationFromDraft, describeRRule, nextOccurrence, parseRRule, scheduleRule, WEEKDAYS, type AutomationView, type ScheduleChoice, type Weekday } from "@capsule/shared";
+import { settingsFileTarget, sourceChip, sourceFileTarget } from "../../lib/config-view";
 import { formatUserError } from "../../lib/errors";
 import { useWorkspace } from "../../lib/workspace";
 import { Switch } from "../settings/controls";
@@ -38,7 +38,7 @@ function lastRunText(view: AutomationView): string | undefined {
 export function AutomationsSettings() {
   const { api, project, projectId, config, configDiagnostics, sessions, setProjectId, setView } = useWorkspace();
   const [failure, setFailure] = useState<string>();
-  const [template, setTemplate] = useState(AUTOMATION_TEMPLATES[0]!.id);
+  const [writing, setWriting] = useState(false);
   const [busy, setBusy] = useState<string>();
   const desktop = api.isDesktop === true && !config?.safeMode;
   const automations = config?.automations ?? [];
@@ -59,27 +59,20 @@ export function AutomationsSettings() {
 
   return (
     <div className="card commands-card automations-card">
-      <h3>Automations</h3>
       <p className="muted">
         A prompt or command Capsule sends on a schedule while it is open. Each run starts a new thread, marked unread until you open it.
         Yours go to the Inbox; a project's go to that project.
       </p>
       <div className="commands-card-actions">
-        <select aria-label="Automation template" value={template} disabled={!desktop} onChange={(event) => setTemplate(event.target.value)}>
-          {AUTOMATION_TEMPLATES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-        </select>
-        <button type="button" className="ghost" disabled={!desktop || Boolean(busy)} title={desktop ? "Adds it paused to your settings file and opens the file" : DESKTOP_ONLY}
-          onClick={() => run("create", () => api.automationsCreate({ template, scope: "user" }))}>Add to your settings</button>
-        {here && <button type="button" className="ghost" disabled={!desktop || Boolean(busy)} title={desktop ? `Adds it paused to ${here.name}'s local settings, which only you use` : DESKTOP_ONLY}
-          onClick={() => run("create", () => api.automationsCreate({ template, scope: "local", projectId }))}>Add to {here.name}</button>}
+        <button type="button" className="chip" disabled={!desktop || writing} title={desktop ? undefined : DESKTOP_ONLY} onClick={() => setWriting(true)}>New automation</button>
         <button type="button" className="ghost" disabled={api.isDesktop !== true} onClick={() => run("open", () => api.configOpenFile(settingsFileTarget("user")))}>Open settings.json</button>
       </div>
+      {writing && <NewAutomation projectName={here?.name} projectId={here ? projectId : undefined} onClose={() => setWriting(false)} />}
       {failure && <p className="commands-card-error" role="alert">{failure}</p>}
       {config?.safeMode && <p className="muted">Safe mode is on, so no automation runs.</p>}
-      {automations.length === 0 && (
+      {automations.length === 0 && !writing && (
         <div className="commands-card-empty">
-          <p>No automations yet. Add one from a template above, or write it under <code>automations</code> in a settings file:</p>
-          <pre>{EXAMPLE}</pre>
+          <p>No automations yet. Choose <strong>New automation</strong> to send a prompt or command on a schedule.</p>
         </div>
       )}
       {automations.length > 0 && (
@@ -98,6 +91,10 @@ export function AutomationsSettings() {
                       <Switch label={`${view.name} on`} checked={view.enabled} disabled={!desktop || Boolean(busy)} title={desktop ? undefined : DESKTOP_ONLY}
                         onChange={(enabled) => run(view.key, () => api.automationsSetEnabled({ key: view.key, enabled, ...scoped }))} />
                     </label>
+                    {desktop && view.source.scope !== "plugin" && view.source.path && (
+                      <button type="button" className="ghost" title={`Opens ${view.source.path}, where you can change or remove it`}
+                        onClick={() => run("open", () => { const target = sourceFileTarget({ kind: "settings", scope: view.source.scope }, view.projectId); return target ? api.configOpenFile(target) : api.openPath(view.source.path!); })}>Edit</button>
+                    )}
                     <button type="button" className="chip" disabled={!desktop || view.running || Boolean(view.problem) || Boolean(busy)}
                       title={!desktop ? DESKTOP_ONLY : view.running ? "Still running" : view.problem}
                       onClick={() => run(view.key, () => api.automationsRunNow({ key: view.key, ...scoped }))}>{busy === view.key ? "Starting…" : "Run now"}</button>
@@ -139,6 +136,11 @@ export function AutomationsSettings() {
         </details>
       )}
       <details className="advanced">
+        <summary>Write one by hand</summary>
+        <p className="muted">For a schedule the form does not offer, or a profile, add an entry under <code>automations</code> in a settings file. <code>schedule</code> is a recurrence rule in your computer's local time.</p>
+        <pre className="automation-example">{EXAMPLE}</pre>
+      </details>
+      <details className="advanced">
         <summary>How automations run</summary>
         <ul className="automation-rules">
           <li>Capsule has to be open. An occurrence that passes while it is closed, or while the computer sleeps, is counted as missed and waits here. It never runs on its own later.</li>
@@ -148,5 +150,124 @@ export function AutomationsSettings() {
         </ul>
       </details>
     </div>
+  );
+}
+
+const DAY_NAMES: Record<Weekday, string> = { MO: "Monday", TU: "Tuesday", WE: "Wednesday", TH: "Thursday", FR: "Friday", SA: "Saturday", SU: "Sunday" };
+
+type When = ScheduleChoice["kind"];
+
+function choiceOf(when: When, time: string, day: Weekday, every: number): ScheduleChoice {
+  const [hour = 9, minute = 0] = time.split(":").map(Number);
+  switch (when) {
+    case "minutes": return { kind: "minutes", every };
+    case "hourly": return { kind: "hourly" };
+    case "weekly": return { kind: "weekly", day, hour, minute };
+    default: return { kind: when, hour, minute };
+  }
+}
+
+/** The form behind New automation: what to send, when, and where its threads go. It is on once created. */
+function NewAutomation({ projectName, projectId, onClose }: { projectName?: string; projectId?: string; onClose: () => void }) {
+  const { api, git } = useWorkspace();
+  const [name, setName] = useState("");
+  const [prompt, setPrompt] = useState("");
+  const [when, setWhen] = useState<When>("weekdays");
+  const [time, setTime] = useState("09:00");
+  const [day, setDay] = useState<Weekday>("MO");
+  const [every, setEvery] = useState(30);
+  const [where, setWhere] = useState<"user" | "local">(projectId ? "local" : "user");
+  const [worktree, setWorktree] = useState(false);
+  const [error, setError] = useState<string>();
+  const [busy, setBusy] = useState(false);
+  const first = useRef<HTMLInputElement>(null);
+  useEffect(() => { first.current?.focus(); }, []);
+
+  const schedule = scheduleRule(choiceOf(when, time, day, every));
+  const parsed = parseRRule(schedule);
+  const next = parsed.ok ? nextOccurrence(parsed.rule, new Date()) : undefined;
+  const offerWorktree = where === "local" && git?.isRepo === true;
+  const draft = { name, schedule, prompt, ...(offerWorktree && worktree ? { workspace: "worktree" as const } : {}) };
+
+  const submit = () => {
+    const read = automationFromDraft(draft);
+    if (!read.ok) { setError(read.message); return; }
+    setBusy(true);
+    setError(undefined);
+    void api.automationsCreate({ draft, scope: where, ...(where === "local" && projectId ? { projectId } : {}) })
+      .then(onClose, (caught: unknown) => setError(formatUserError(caught)))
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <form className="automation-form" aria-label="New automation" onSubmit={(event) => { event.preventDefault(); submit(); }}
+      onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } }}>
+      <label>
+        <span>Name</span>
+        <input ref={first} type="text" value={name} placeholder="Triage new issues" onChange={(event) => setName(event.target.value)} />
+      </label>
+      <label>
+        <span>Message</span>
+        <textarea className="field" rows={3} value={prompt} placeholder="Triage the issues opened since yesterday and list the ones that need me. A /command works too."
+          onChange={(event) => setPrompt(event.target.value)}
+          onKeyDown={(event) => { if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) { event.preventDefault(); submit(); } }} />
+      </label>
+      <div className="automation-form-row">
+        <label>
+          <span>When</span>
+          <select value={when} onChange={(event) => setWhen(event.target.value as When)}>
+            <option value="weekdays">Weekdays</option>
+            <option value="daily">Every day</option>
+            <option value="weekly">Every week</option>
+            <option value="hourly">Every hour</option>
+            <option value="minutes">Every few minutes</option>
+          </select>
+        </label>
+        {when === "weekly" && (
+          <label>
+            <span>On</span>
+            <select value={day} onChange={(event) => setDay(event.target.value as Weekday)}>
+              {WEEKDAYS.map((item) => <option key={item} value={item}>{DAY_NAMES[item]}</option>)}
+            </select>
+          </label>
+        )}
+        {(when === "weekdays" || when === "daily" || when === "weekly") && (
+          <label>
+            <span>At</span>
+            <input type="time" value={time} required onChange={(event) => setTime(event.target.value)} />
+          </label>
+        )}
+        {when === "minutes" && (
+          <label>
+            <span>Every</span>
+            <select value={every} onChange={(event) => setEvery(Number(event.target.value))}>
+              {[5, 10, 15, 30].map((value) => <option key={value} value={value}>{value} minutes</option>)}
+            </select>
+          </label>
+        )}
+        <label>
+          <span>Threads go to</span>
+          <select value={where} onChange={(event) => setWhere(event.target.value as "user" | "local")}>
+            <option value="user">Inbox</option>
+            {projectId && <option value="local">{projectName}</option>}
+          </select>
+        </label>
+      </div>
+      {offerWorktree && (
+        <label className="automation-form-check">
+          <input type="checkbox" checked={worktree} onChange={(event) => setWorktree(event.target.checked)} />
+          <span>Give each run its own worktree</span>
+        </label>
+      )}
+      <p className="automation-form-preview" role="status">
+        {parsed.ok ? `${describeRRule(parsed.rule)}${next ? `. First run ${automationWhen(next.toISOString())}` : ""}.` : parsed.message}
+        {" "}{where === "user" ? "Saved in your settings file." : `Saved in ${projectName}'s local settings, which only you use.`}
+      </p>
+      {error && <p className="commands-card-error" role="alert">{error}</p>}
+      <div className="automation-form-actions">
+        <button type="button" className="ghost" onClick={onClose} disabled={busy}>Cancel</button>
+        <button type="submit" className="send" disabled={busy}>{busy ? "Creating…" : "Create"}</button>
+      </div>
+    </form>
   );
 }

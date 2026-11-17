@@ -1,7 +1,16 @@
 # Diagnostics
 
-Settings → Diagnostics shows what Capsule is doing to your machine, and can
-export a sanitized report.
+Settings → Diagnostics shows what Capsule is doing to your machine, and what to
+send when something breaks.
+
+## Troubleshooting
+
+The first card shows the Capsule, Electron and macOS versions and whether the
+optional Gateway is connected. **Copy diagnostics** copies a report for a bug
+report: versions, connection state, timings, and Capsule's last 200 log lines.
+The log can name folders on this computer, so read it before you share it.
+**Recent log** shows the same lines on the page. A paired device sees the
+host's card and copies to its own clipboard.
 
 ## Customization
 

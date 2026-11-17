@@ -10,6 +10,9 @@ import {
   type CapsuleSettings,
   type ThemeSummary,
   type TranscriptSize,
+  type CodeTextSize,
+  TERMINAL_FONT_SIZES,
+  DEFAULT_CAPSULE_SETTINGS,
   type TranscriptWidth,
 } from "@capsule/shared";
 import {
@@ -75,6 +78,11 @@ const TRANSCRIPT_SIZES: Array<{ id: TranscriptSize; label: string }> = [
   { id: "m", label: "Default · 14 px" },
   { id: "l", label: "Large · 16 px" },
 ];
+const CODE_TEXT_SIZES: Array<{ id: CodeTextSize; label: string }> = [
+  { id: "s", label: "Small" },
+  { id: "m", label: "Default" },
+  { id: "l", label: "Large" },
+];
 const TRANSCRIPT_WIDTHS: Array<{ id: TranscriptWidth; label: string }> = [
   { id: "narrow", label: "Narrow" },
   { id: "standard", label: "Default" },
@@ -128,11 +136,37 @@ export function AppearanceSettings({
             ))}
           </select>
         </SettingRow>
+        <SettingRow
+          label="Code text size" setting="codeTextSize"
+          hint="Code blocks in replies, diffs and file previews."
+        >
+          <select
+            className="field-select"
+            value={settings.codeTextSize}
+            onChange={(event) => onPatch({ codeTextSize: event.target.value as CodeTextSize })}
+          >
+            {CODE_TEXT_SIZES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+          </select>
+        </SettingRow>
+        <SettingRow
+          label="Terminal font size" setting="terminalFontSize"
+          hint="Open terminals change at once."
+        >
+          <select
+            className="field-select"
+            value={settings.terminalFontSize}
+            onChange={(event) => onPatch({ terminalFontSize: Number(event.target.value) })}
+          >
+            {TERMINAL_FONT_SIZES.map((size) => (
+              <option key={size} value={size}>{size === DEFAULT_CAPSULE_SETTINGS.terminalFontSize ? `Default · ${size} px` : `${size} px`}</option>
+            ))}
+          </select>
+        </SettingRow>
         <div className="appearance-sample" aria-hidden="true">
           <div className="appearance-sample-label">Preview</div>
           <div className="appearance-sample-bubble">
-            <code>export async function verify(contract: Contract)</code>
-            <p>Runs the contract test suite against the changed files.</p>
+            <code>export function formatDate(date: Date): string</code>
+            <p>Formats a date for the activity list, in the reader’s own locale.</p>
           </div>
         </div>
         <SettingRow

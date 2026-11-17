@@ -2,7 +2,7 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { summarise, type UsageSummary } from "./aggregate.js";
+import { summarise, type ProjectOfFolder, type UsageSummary } from "./aggregate.js";
 import {
   newCodexScanState,
   parseClaudeLine,
@@ -322,8 +322,9 @@ export async function collectUsageRecordsAsync(
 export async function readUsageSummaryAsync(
   sinceMs?: number,
   roots = defaultUsageRoots(),
+  projectOf?: ProjectOfFolder,
 ): Promise<UsageSummary> {
   const unavailable = new Set<UsageProvider>();
   const records = await collectUsageRecordsAsync(roots, sinceMs, (provider) => unavailable.add(provider));
-  return { ...summarise(records, sinceMs), unavailableSources: [...unavailable] };
+  return { ...summarise(records, sinceMs, projectOf), unavailableSources: [...unavailable] };
 }

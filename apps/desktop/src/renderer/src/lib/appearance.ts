@@ -3,6 +3,7 @@ import {
   mergeBackdrop,
   sanitizeFontName,
   TRANSCRIPT_SIZE_CSS,
+  CODE_TEXT_SCALE,
   TRANSCRIPT_WIDTH_CSS,
   type AppearanceTheme,
   type BackdropScene,
@@ -182,6 +183,7 @@ export function applyAppearance(settings: CapsuleSettings | undefined, themes?: 
     vars["--mono"] = `"${customMono}", ${CODE_FONT_STACKS[palette.codeFont]}`;
   }
   vars["--transcript-size"] = TRANSCRIPT_SIZE_CSS[settings?.transcriptSize ?? "m"];
+  vars["--code-scale"] = CODE_TEXT_SCALE[settings?.codeTextSize ?? "m"];
   vars["--chat-max"] = TRANSCRIPT_WIDTH_CSS[settings?.transcriptWidth ?? "standard"];
   const page = pageColours(vars, shown.appearance);
   const images = typeof window !== "undefined" && window.capsule?.isDesktop === true;

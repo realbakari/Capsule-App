@@ -125,9 +125,15 @@ function followUpArgs(args: unknown[], uploads: RemoteUploads | undefined): unkn
       if (!op.prompt.content.trim() && !attachments.length) throw new Error("A queued message needs text.");
       return [sessionId, { type: "add", prompt: { content: op.prompt.content, attachments, ...(op.prompt.skillId ? { skillId: op.prompt.skillId } : {}) } }];
     }
+    case "replace": {
+      const attachments = uploadedAttachments(op.prompt.attachments, sessionId, uploads);
+      if (!op.prompt.content.trim() && !attachments.length) throw new Error("A queued message needs text.");
+      return [sessionId, { type: "replace", id: op.id, prompt: { content: op.prompt.content, attachments, ...(op.prompt.skillId ? { skillId: op.prompt.skillId } : {}) } }];
+    }
     case "remove":
     case "move":
     case "cancel-resume":
+    case "release":
       return [sessionId, op];
     case "schedule":
       throw new Error("Schedule a resume from the desktop app.");

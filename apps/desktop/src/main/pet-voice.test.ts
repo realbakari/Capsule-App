@@ -78,9 +78,11 @@ describe("companion voice process boundary", () => {
     const { voice } = fixture('console.log(JSON.stringify({type:"error",message:"Allow Microphone access.",settings:"microphone"}))');
     expect(await voice.dictate(() => {})).toEqual({ kind: "error", message: "Allow Microphone access.", settings: "microphone" });
   });
-  it("explains a helper macOS aborted before it could ask for access", async () => {
+  it("explains a helper macOS aborted before it could ask, without offering a setting that cannot fix it", async () => {
     const { voice } = fixture('process.kill(process.pid, "SIGABRT")');
-    expect(await voice.dictate(() => {})).toMatchObject({ kind: "error", settings: "speech" });
+    const outcome = await voice.dictate(() => {});
+    expect(outcome).toMatchObject({ kind: "error", message: expect.stringContaining("installed Capsule app") });
+    expect(outcome).not.toHaveProperty("settings");
   });
   it("ignores a settings pane it does not know", async () => {
     const { voice } = fixture('console.log(JSON.stringify({type:"error",message:"No.",settings:"../../etc"}))');

@@ -58,7 +58,8 @@ tray stops voice input and output. Spoken updates are at least 15 seconds apart.
 Recognition requires on-device US English support. If Talk is unavailable,
 check English Dictation in macOS Keyboard settings, then reopen the tray.
 If access is denied, check Microphone and Speech Recognition in Privacy &
-Security settings. Capsule does not fall back to online recognition or save
+Security settings; **Settings → General → Voice** opens both pages and says
+whether recognition is available. Capsule does not fall back to online recognition or save
 audio and transcripts. Spoken output uses the system voice. Companion voice
 is unavailable on Windows.
 

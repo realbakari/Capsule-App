@@ -122,20 +122,21 @@ to your files. Capsule does not provide always-on hosted agents.
 ## Run a channel message with Capsule
 
 Use **Run with Capsule** in a message's action bar, in either the channel or a
-thread. Choose a project and harness, then **Run selected message**. This uses
-Capsule's configured local or Gateway route, not the relay agent's runtime.
+thread. Choose a project and an agent, then **Run selected message**. The agent
+runs through Capsule, not on the relay agent's host.
 The selected text becomes a saved prompt in a new project conversation and is
 sent to the selected agent. Only that message is included, not the whole channel.
 
-The conversation starts in **Supervised** mode in the project folder. It does
-not inherit Full access or run worktree setup. Direct agents surface supported
-approval requests; Gateway agents refuse tools requiring a prompt. Use **Open
-conversation** to inspect execution, approvals and permissions. Missing adapters,
-login or model failures are shown through the normal harness diagnostics.
-**Stop run** remains available while a run is active.
+The conversation starts in **Supervised** mode in the project folder, asking
+before risky steps. It does not inherit Full access or run worktree setup.
+Agents Capsule starts itself bring their requests to the conversation; agents
+on the Gateway refuse any step that would need your approval. Use **Open
+conversation** to see what the agent did and answer its requests. Missing adapters,
+login or model failures are shown through the agent's usual checks.
+**Stop** remains available while a run is active.
 
 When the run completes, review and edit **Reply preview**, then choose **Share
-reply to thread**. Publication uses your connected identity with a harness label,
+reply to thread**. Publication uses your connected identity labelled with the agent's name,
 not a fabricated agent identity. Nothing is shared automatically. Check for
 private project information before sharing. A failed or uncertain publication
 is never automatically retried.
@@ -143,28 +144,28 @@ is never automatically retried.
 Reopening the action shows the existing run during the current connection.
 Its status stays below the source message after the dialog closes, including
 approval waits and replies ready to review. A failed or cancelled, unshared run
-offers **Retry** after you fix the harness. Retrying creates a new attempt and
+offers **Retry with** the same agent after you fix it. Retrying creates a new attempt and
 keeps the earlier conversation; it never retries uncertain publication.
 Disconnecting or restarting clears those links; the project conversation remains
 saved. A running agent can continue locally after disconnect, but its old channel
 action cannot publish under a new connection. Other channel members cannot
 start local work through this manual action. Automatic execution requires the
-separate channel route described below.
+channel agent described below.
 
-## Connect your Capsule harness to a channel
+## Connect an agent to a channel
 
-Above the message field, choose **Connect a Capsule harness**, select a project
-and harness, then **Enable harness and automatic replies**. With **Ask Capsule**
-selected, Send addresses the message to `@capsule`. Your installed Capsule
-harness runs it and posts its answer in that message's thread. There is no
-separate Share step. Answers are labelled with the harness and published as
+Above the message field, choose **Connect an agent**, select a project and an
+agent, then **Turn on agent and automatic replies**. With **Ask Capsule**
+selected, Send addresses the message to `@capsule`. Your agent runs it and
+posts its answer in that message's thread. There is no separate Share step.
+Answers are labelled with the agent's name and published as
 your connected identity, not as an impersonated hosted agent. They may contain
 project information: enable this only where you intend to share it.
 
 Use **Chat only** for ordinary conversation. When enabled, you can also type
 `@capsule` at the beginning of a message from another client using your same
 relay identity. Other people's messages cannot execute local code. Mentioning
-an existing hosted agent still uses that agent's host, not this route.
+an existing hosted agent still uses that agent's host, not yours.
 Your chosen destination stays with each draft when switching channels or
 closing and reopening threads. **Ask Capsule** includes selected mentions as
 text only; it does not notify hosted agents.
@@ -181,22 +182,23 @@ Reactions update together in the channel and thread, and reset on disconnect.
 Profiles show published descriptions and handles when available; this text is
 not proof of an agent's capabilities, ownership or runtime readiness.
 
-The project, harness and thread context are saved. Reply in the same thread to
+The project, agent and thread context are saved. Reply in the same thread to
 continue its local conversation; a new top-level message starts a new one.
 The composer shows progress, failures and approval waits. **Open conversation**
 provides permissions, model options, tool output and file review. New
-conversations start Supervised in the project folder. **Stop run** stops the
-agent; **Pause channel harness** stops future work and automatic publication
+conversations start Supervised in the project folder. **Stop** stops the
+agent; **Pause channel agent** stops future work and automatic publication
 but leaves a running agent available for inspection.
 
 Capsule must be open and connected. After restarting, open Channels to restore
 your saved connection. Already accepted work is never replayed automatically,
 and uncertain replies are never resent. Enabling skips existing messages.
-The route polls the most recent 100 messages; if that window has overtaken it,
-it pauses and asks you to review the missed messages. Each route supports ten
+The channel agent reads the most recent 100 messages; if that window has
+overtaken it, it pauses and asks you to review the missed messages. Each channel
+agent supports ten
 pending turns and 200 local turns; use a new channel after reaching that limit.
-Runtime or model failures pause the route with an error instead of leaving you
-waiting for a reply. Fix the harness in Capsule, then enable the route again.
+Runtime or model failures pause the channel agent with an error instead of
+leaving you waiting for a reply. Fix the agent in Capsule, then turn it on again.
 
 ## A message sends but the agent does not answer
 
@@ -206,7 +208,7 @@ must be fixed on the host that runs the agent; it is not a channel-delivery fail
 Some hosts bundle a different CLI version from the one in your terminal. A
 metadata or skills-description warning by itself does not mean delivery failed.
 Capsule does not silently change hosted models or restart agents.
-To bypass the relay agent host, connect a Capsule harness above the composer
+To bypass the relay agent host, connect an agent above the composer
 and address `@capsule`, or use **Run with Capsule** for a single reviewed reply.
 
 Overlapping reads wait for an available request slot. Temporary refresh failures

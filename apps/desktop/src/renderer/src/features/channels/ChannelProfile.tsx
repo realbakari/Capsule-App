@@ -20,7 +20,7 @@ export function ChannelProfile({ member, avatar, children, className = "" }: { m
         <dl className="channel-facts"><div><dt>Public key</dt><dd className="channel-id">{member.pubkey}</dd></div></dl>
         <button type="button" className="ghost" onClick={() => { void navigator.clipboard.writeText(member.pubkey).then(() => setCopied("Public key copied."), () => setCopied("Could not copy the public key.")); }}>Copy public key</button>
         {copied && <p role="status">{copied}</p>}
-        {member.role === "bot" && <div className="channel-agent-host"><strong>Runs outside Capsule</strong><p>Channel messages go to this agent’s separately configured host, not your local Capsule harness.</p><p>If it does not reply, check its host’s activity log, model support, and runtime version. Capsule cannot inspect or restart that host.</p></div>}
+        {member.role === "bot" && <div className="channel-agent-host"><strong>Runs outside Capsule</strong><p>Channel messages go to the computer or service that hosts this agent, not to an agent on this computer.</p><p>If it does not reply, check its host’s activity log. Capsule cannot inspect or restart that host.</p></div>}
       </section>
     </dialog>, document.body)}
   </>;

@@ -7,12 +7,10 @@ transcript is that session's prompts and final replies.
 
 ## Finding sessions
 
-There are three ways in:
+There are two ways in:
 
 - The project's menu in the sidebar: **Import sessions…**.
 - The command palette: **Import sessions from Claude Code or Codex…**.
-- An empty conversation in a project with sessions waiting says so, for
-  example "Found 12 Claude Code sessions in this folder. Import…".
 
 The dialog lists the newest sessions first, each with its title or first
 prompt, the agent, how many turns it has and when it was last active. Filter

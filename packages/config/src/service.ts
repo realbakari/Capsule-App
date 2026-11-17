@@ -11,6 +11,8 @@ import {
   DEFAULT_CAPSULE_SETTINGS,
   MAX_BACKDROP_IMAGE_BYTES,
   parseTheme,
+  isEditorTheme,
+  editorThemeToCapsule,
   stripBackdropImages,
   THEME_SCHEMA_URL,
   type KeybindingEdit,
@@ -552,8 +554,9 @@ export class ConfigService {
     } else {
       const read = parseJsonc(source.text);
       if (read.state !== "ok") throw new Error(read.state === "broken" ? `This file is not valid JSON: ${read.error.message} Line ${read.error.line}, column ${read.error.column}.` : "This file could not be read.");
-      const id = source.name.toLowerCase().replace(/\.json$/, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "imported-theme";
-      const parsed = parseTheme(read.value, id);
+      const id = source.name.toLowerCase().replace(/\.jsonc?$/, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "imported-theme";
+      const value = isEditorTheme(read.value) ? editorThemeToCapsule(read.value, source.name) : read.value;
+      const parsed = parseTheme(value, id);
       if (!parsed.theme) throw new Error(parsed.problems[0]?.message ?? "This file is not a theme.");
       theme = parsed.theme;
       problems = parsed.problems;

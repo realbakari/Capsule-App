@@ -23,6 +23,11 @@ export function ChannelJobs({ channelId, children }: { channelId: string; childr
     void poll();
     return () => { active = false; clearTimeout(timer); };
   }, [api, channelId]);
-  return <JobsContext.Provider value={jobs}>{error && <p className="channels-error" role="alert">Local run status unavailable: {error}</p>}{children}</JobsContext.Provider>;
+  return <JobsContext.Provider value={jobs}>{error && <p className="channels-error" role="alert">Could not read agent replies: {error}</p>}{children}</JobsContext.Provider>;
 }
+const JOB_STATUS: Record<ChannelHarnessJob["status"], string> = {
+  starting: "Starting", queued: "Queued", running: "Working", waiting: "Waiting", approval_required: "Needs your approval",
+  completed: "Done", failed: "Failed", cancelled: "Stopped", blocked: "Blocked",
+};
+export function channelJobStatus(job: ChannelHarnessJob): string { return JOB_STATUS[job.status]; }
 export function useChannelJob(messageId: string) { return useContext(JobsContext).find((job) => job.messageId === messageId); }

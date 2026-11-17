@@ -264,8 +264,8 @@ export function ChatCard({ settings, onPatch }: SectionProps) {
       <SettingRow
         label="Send key" setting="composerSendKey"
         hint={sendOnEnter
-          ? "Enter sends. Shift+Enter starts a new line. ⌘Enter starts another conversation."
-          : "⌘Enter sends. Enter starts a new line. ⌘⇧Enter starts another conversation."}
+          ? "Enter or ⌘Enter sends. Shift+Enter starts a new line. ⌘⇧Enter sends and starts another conversation."
+          : "⌘Enter sends. Enter starts a new line. ⌘⇧Enter sends and starts another conversation."}
       >
         <Choice
           label="Send key"
@@ -485,6 +485,15 @@ export function HarnessProvidersCard() {
       <SettingRow label="Agents on this computer" hint={total === 0 ? "No agents detected." : `${ready} of ${total} ready.`}>
         <button type="button" className="ghost" onClick={() => setView("runtimes")}>
           Open Agents
+        </button>
+      </SettingRow>
+      <SettingRow
+        label="Agent launch options"
+        setting="agentOverrides"
+        hint="Turn an agent off, or give it its own binary, arguments or environment, such as a config folder for a second account. Each agent's detail in Agents has them."
+      >
+        <button type="button" className="ghost" onClick={() => setView("runtimes")}>
+          Edit in Agents
         </button>
       </SettingRow>
     </div>

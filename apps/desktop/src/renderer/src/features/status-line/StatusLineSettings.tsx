@@ -13,7 +13,7 @@ const LABELS: Record<StatusLineItem, string> = {
   limits: "Usage limit and reset",
   pr: "Pull request",
   model: "Model",
-  harness: "Agent and route",
+  harness: "Agent",
   run: "Latest turn",
   cost: "Cost, when the agent reports it",
 };

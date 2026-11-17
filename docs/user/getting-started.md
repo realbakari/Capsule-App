@@ -16,7 +16,8 @@ keys. Double-click it to go back to the standard height. The drawer never
 covers more than three quarters of the window. The terminal keeps the last
 10,000 lines of output, uses your code font (including a custom one from
 **Settings → Appearance**), and follows the light or dark theme as soon as it
-changes.
+changes. **Settings → Appearance → Terminal font size** sets its size; open
+terminals change at once.
 
 Links in terminal output are underlined when you point at them, and a hint
 says what a click does. A click keeps you inside Capsule; `⌘`-click leaves it.
@@ -27,8 +28,9 @@ says what a click does. A click keeps you inside Capsule; `⌘`-click leaves it.
 - **Any other web address** needs `⌘`-click, which opens your default browser.
   A plain click does nothing, so selecting text never sends you away.
 - **A file**, such as `src/app.ts:12:3` from a compiler or test runner: click to
-  open it in **Files**. Paths are read from the shell's folder, and only files
-  inside this conversation's folders become links.
+  open it in **Files**, scrolled to that line with the line marked. Paths are
+  read from the shell's folder, and only files inside this conversation's
+  folders become links.
 
 A link that wraps onto the next row is still one link. On Windows and Linux,
 use `Ctrl` where these notes say `⌘`.
@@ -51,16 +53,21 @@ joins them on a Mac when the project is an iPhone or iPad app (an Xcode
 project, a Swift package, or a React Native, Flutter or Expo app) or a
 simulator is attached to the conversation. Click the icon that is showing to
 close the panel. The list icon shows this conversation's details: where it
-runs, its branch, how full its context is, what changed, and what is running.
+runs, its branch, how full its context is once the agent reports it, what
+changed, and what is running.
 A dot on it means Capsule could not read the folder's Git status; the reason
-is under **Changes**. **More** (⋯) holds **Agents**, **Side chat**, any panel
-not shown on the bar (Simulator for other projects, Review for a folder that
-is not a Git repository), and **Keep computer awake**.
+is under **Changes**. **More** (⋯) holds **Agents** and any panel not shown
+on the bar (Simulator for other projects, Review for a folder that is not a
+Git repository). **Keep computer awake** is in Settings.
 
 1. Pick an agent and a folder. On a new installation, Capsule opens one setup
    page with both. Under **Agent**, install any agent that is missing or sign
    in to one; under **Folder**, open a folder on this computer or clone a
-   repository. **Start a conversation** opens a conversation in that folder
+   repository. When your agents' own session history shows steady recent work
+   in some folders (three or more sessions in the last 30 days), those are
+   listed first, all chosen. **Add** makes each a project in one step, and
+   **Bring in their recent conversations** also imports the last month's
+   sessions into them. The list comes from files on this computer only. **Start a conversation** opens a conversation in that folder
    with the cursor in the message box. It says which agent the conversation
    starts with: the one you use when it is ready, otherwise the first ready
    one. If no agent is ready yet, you can still start, and the conversation
@@ -110,15 +117,27 @@ completed count, and an expandable list. After the turn finishes, everything
 between your prompt and the final answer folds under one row: the tool groups
 and the progress notes the agent wrote along the way. The row reads **Worked
 for…** with the time the turn ended, or **You stopped after…** when you stopped
-it. Expand it to read the progress again; the run log and checks sit at its
-foot. Missing tool completion is shown as unknown rather than inferred from the
-turn finishing. A turn that failed, or ended without an answer, keeps a **Turn
+it. Expand it to read the progress again; the turn's checks sit at its foot.
+The fold also keeps the agent's reasoning as closed **Thought** rows (open one
+to read it; Settings › reasoning set to hidden leaves them out), and a line for
+each approval you answered: **Allowed**, **Denied**, **Not answered**, or
+**Answered** with your answer. A secret answer is never written down. When the
+agent compacts its context on its own during a turn, a **Context compacted
+automatically** divider stays in view outside the fold. Missing tool completion is shown as unknown rather than inferred from the
+turn finishing.
+
+Expand a tool step for its command and output. Long output keeps its first
+and last lines, where errors usually are, and says how many it shows; the lines
+between are not kept. A command that failed shows its exit status, such as
+**exit 1**, when the agent reports one. A turn that failed, or ended without an answer, keeps a **Turn
 details** row of its own. Only recently loaded activity is shown inline in long
 histories.
 
 A message's time and its actions (copy, edit from here, branch, rate) appear
-when you hover it. A long prompt folds to its first lines; **Show full message**
-opens the rest.
+when you hover it. A time from an earlier day says which: **Yesterday 10:42**,
+the weekday within the past week, then a short date. Hover the time for the full
+date. A long prompt folds to its first lines, but only when that hides at least
+as much as it shows; **Show full message** opens the rest.
 
 Learn more: [Drafts and attachments](composer.md), [projects and previews](projects-and-previews.md),
 [checking a turn](verification.md), and [restoring a turn](checkpoints.md).
@@ -143,18 +162,36 @@ conversations into a custom order; switching views keeps project expansion state
 
 **Recent** lists every conversation across projects in activity order, each with
 its project's name, instead of the project tree. It highlights the selected
-conversation and offers the same hover actions. `⌃Tab` steps
-through the same order from anywhere.
+conversation and offers the same hover actions.
+
+Every list orders conversations by their latest turn. Renaming, pinning or
+generating a new title does not move a conversation up or make it read as new.
+`⌃Tab` steps through the conversations the sidebar shows, top to bottom, in
+whichever grouping you use; it skips folded projects and closed shelves. `⌘1` to
+`⌘9` open the first nine; hold `⌘` for a moment to see each row's number. However
+you reach a conversation (the palette, `⌃Tab`, Back, a notice), its project
+unfolds and its row scrolls into view.
+
+Folded projects and how far you opened each project's list with **Show more**
+are kept when Capsule restarts.
+
+Type in the sidebar search to filter. `↓` and `↑` move through the matching
+conversations and then **Messages**, conversations whose text contains your
+words. `Enter` opens the highlighted one (the first, if you have not moved), and
+`Esc` clears the search. Opening a message match starts **Find in conversation**
+on your words.
 
 Beside the sidebar search sit its other controls: **Group conversations**,
 **Add project**, and **New conversation** (`⌘N`). Right-click New conversation for
 a temporary conversation or one from a GitHub issue.
 
-Each conversation row shows its agent's mark and how long ago it last changed.
+Each conversation row shows its agent's mark and how long ago its latest turn ran.
 Hover over a conversation or focus it with the keyboard to reveal **Settle** (see
 [keeping track of conversations](staying-on-top.md)) and the **···** menu, which
 holds pin, archive and everything else. A pinned conversation's pin unpins it
-when clicked. A folded project shows how many conversations it holds and whether
+when clicked, with **Undo** in the notice that follows, which puts it back in the
+same place among your pins. Press `F2` on a focused conversation to rename it.
+An empty title is refused with a notice, and the old title stays. A folded project shows how many conversations it holds and whether
 one is working, failed, or waiting for your approval; hover it for its pull
 requests, **New conversation** in that project, and its **···** menu. Pause on the row to see its full title and project. A project
 preview shows its folder and conversation count. Press Escape to dismiss a preview.

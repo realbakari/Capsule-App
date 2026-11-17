@@ -107,12 +107,14 @@ export async function runChannelRegressions(host: HTMLElement) {
     const harnessDialog = document.querySelector<HTMLDialogElement>(".channel-harness-dialog")!;
     assert(harnessDialog.open && harnessDialog.contains(document.activeElement), "Harness dialog did not contain focus");
     fill(harnessDialog.querySelectorAll<HTMLSelectElement>("select")[1]!, "codex"); await settle();
+    assert(!Array.from(harnessDialog.querySelectorAll("option")).some((option) => /Local|Gateway|route/.test(option.textContent ?? "")), "Agent choices still name a route");
     test.fail(true); harnessDialog.querySelector("form")!.requestSubmit();
     await until(() => harnessDialog.querySelector('[role="alert"]'));
     assert(test.runs.length === 0 && harnessDialog.querySelectorAll<HTMLSelectElement>("select")[1]!.value === "codex", "Failed admission lost the harness selection");
     test.fail(false); harnessDialog.querySelector("form")!.requestSubmit();
     await until(() => harnessDialog.querySelector("textarea"));
     assert(Number(test.runs.length) === 1 && test.runs[0]!.projectId === "channel-project" && test.runs[0]!.messageId === parent && test.shares.length === 0, "Running a message changed its identity or published without consent");
+    assert(harnessDialog.querySelector('[role="status"]')?.textContent === "Codex · Done", "The run named its agent by id or its status in raw words");
     fill(harnessDialog.querySelector("textarea")!, "Reviewed safe reply"); await settle();
     Array.from(harnessDialog.querySelectorAll("button")).find((button) => button.textContent === "Share reply to thread")!.click();
     await until(() => harnessDialog.textContent?.includes("Reply shared"));
@@ -244,7 +246,7 @@ export async function runChannelRegressions(host: HTMLElement) {
     assert(host.querySelectorAll(".channel-members li").length === 1 && host.querySelector(".channel-members li")?.textContent?.includes("Reviewer"), "Member search did not filter profiles");
     host.querySelector<HTMLButtonElement>('.channel-members [aria-label="View Reviewer profile"]')!.click();
     await until(() => document.querySelector(".channel-profile-dialog[open]"));
-    assert(document.querySelector(".channel-profile-dialog")?.textContent?.includes("not your local Capsule harness"), "Agent profile implied local execution");
+    assert(document.querySelector(".channel-profile-dialog")?.textContent?.includes("not to an agent on this computer"), "Agent profile implied local execution");
     document.querySelector<HTMLButtonElement>('[aria-label="Close profile"]')!.click(); await settle();
     host.querySelector<HTMLButtonElement>('[aria-label="Close members"]')!.click(); await settle();
 
@@ -286,17 +288,17 @@ export async function runChannelRegressions(host: HTMLElement) {
     routeButton().click(); await settle();
     const routeSelectors = document.querySelectorAll<HTMLSelectElement>(".channel-route-settings select");
     const routeDialog = document.querySelector<HTMLDialogElement>(".channel-route-dialog")!;
-    assert(routeDialog.open && routeDialog.contains(document.activeElement), "Channel harness setup did not contain keyboard focus");
+    assert(routeDialog.open && routeDialog.contains(document.activeElement), "Channel agent setup did not contain keyboard focus");
     fill(routeSelectors[1]!, "codex"); await settle();
-    test.fail(true); routeAction("Enable harness and automatic replies").click();
+    test.fail(true); routeAction("Turn on agent and automatic replies").click();
     await until(() => host.querySelector(".channel-route-control [role=alert]"));
     assert(routeSelectors[1]!.value === "codex" && !host.querySelector('[aria-label="Channel message destination"]'), "Failed route setup lost selections or enabled execution");
-    test.fail(false); routeAction("Enable harness and automatic replies").click();
+    test.fail(false); routeAction("Turn on agent and automatic replies").click();
     await until(() => host.querySelector('[aria-label="Channel message destination"]'));
     await until(() => host.querySelector(".channel-thread .channel-route-heading")?.textContent?.includes("Capsule ·"));
     host.querySelector<HTMLButtonElement>(".channel-thread .channel-route-heading button")!.click(); await settle();
-    assert(document.querySelectorAll<HTMLSelectElement>(".channel-route-settings select")[1]?.value === "codex" && !routeAction("Pause channel harness").disabled, "Thread control did not synchronize enabled harness configuration");
-    document.querySelector<HTMLButtonElement>('[aria-label="Close channel harness setup"]')!.click(); await settle();
+    assert(document.querySelectorAll<HTMLSelectElement>(".channel-route-settings select")[1]?.value === "codex" && !routeAction("Pause channel agent").disabled, "Thread control did not synchronize enabled harness configuration");
+    document.querySelector<HTMLButtonElement>('[aria-label="Close channel agent setup"]')!.click(); await settle();
     host.querySelector<HTMLButtonElement>('[aria-label="Close thread"]')!.click(); await settle();
     const postsBeforeRoute = test.posts.length;
     fill(restoredDraft, "Run locally"); await settle();
@@ -317,7 +319,7 @@ export async function runChannelRegressions(host: HTMLElement) {
     await until(() => test.posts.length === postsBeforeRoute + 3);
     assert(test.posts.at(-1)!.content === "Still just chatting", "Restored chat draft started local execution");
     await until(() => !routeButton().disabled);
-    routeButton().click(); await until(() => routeAction("Pause channel harness")); routeAction("Pause channel harness").click();
+    routeButton().click(); await until(() => routeAction("Pause channel agent")); routeAction("Pause channel agent").click();
     await until(() => !host.querySelector('[aria-label="Channel message destination"]'));
 
     host.querySelector<HTMLElement>(".channel-connection-menu summary")!.click(); await settle();

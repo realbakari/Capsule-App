@@ -44,7 +44,12 @@ reports the result the same way. **About Capsule** in the palette shows the
 version you are running.
 
 A failed download or restart keeps the update in the app; the tooltip says
-what to retry, and pressing the button tries again. A check, download or
+what to retry, and pressing the button tries again.
+
+If Capsule restarts to install an update but comes back on the old version, it
+tells you once: a notice says the update didn't install and offers **Retry**,
+and the update button says the same until you try again. Retrying checks for
+the update, downloads it again, and then offers the usual restart. A check, download or
 restart you started that fails shows a notice with the reason. A check
 Capsule ran on its own in the background stays quiet when it fails and tries
 again later.
@@ -60,8 +65,9 @@ that computer.
 
 Development builds and incompatible signatures cannot update in place. In a
 development build the update button is dimmed and its tooltip says why.
-The **Release notes** link in About opens the release page, where a manual
-download remains available for recovery. Checking for an update does not open
+The **Release notes** link in About, and the one on the "downloaded" notice,
+open the release page for the version on offer, where a manual download
+remains available for recovery. Checking for an update does not open
 that page automatically. Do not disable system security checks to work around
 an unexplained signature warning.
 
@@ -77,4 +83,5 @@ an unexplained signature warning.
 | Download failed for X. Click to retry. | Retry download | The download failed; the update is still offered. |
 | Restart failed for X. Click to retry. | Retry restart & install | The restart was refused or failed; the download is kept. |
 | Check for updates | Retry update check | The last check failed; About shows why. |
+| Capsule X didn’t install. Click to try again. | Retry update | A restart to install came back on the old version. |
 | Updates unavailable | Check for updates (dimmed) | This build cannot update itself. |

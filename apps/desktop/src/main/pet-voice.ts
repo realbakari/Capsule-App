@@ -22,8 +22,8 @@ export class PetVoice {
   constructor(private readonly helper: string, private readonly platform = process.platform, private readonly start: Launch = launch) {}
 
   async status(): Promise<PetVoiceStatus> {
-    if (this.platform !== "darwin") return { inputAvailable: false, outputAvailable: false, detail: "Companion voice is available on macOS." };
-    if (!existsSync(this.helper)) return { inputAvailable: false, outputAvailable: true, detail: "The companion voice helper is missing. Rebuild or reinstall Capsule." };
+    if (this.platform !== "darwin") return { inputAvailable: false, outputAvailable: false, detail: "Voice is available on macOS." };
+    if (!existsSync(this.helper)) return { inputAvailable: false, outputAvailable: true, detail: "The speech helper is missing. Rebuild or reinstall Capsule." };
     try {
       const result = await this.capture("--check");
       const available = result === "available";
@@ -135,7 +135,8 @@ export class PetVoice {
         if (cancelled) resolve(undefined);
         else if (error) reject(error);
         // macOS aborts a process that asks for speech access from an app without a usage description.
-        else if (dictating && signal === "SIGABRT" && !listening) reject(new VoiceError("macOS stopped speech recognition for this copy of Capsule. Allow Speech Recognition in Privacy & Security settings, or dictate from the installed app.", "speech"));
+        // Only a build without the speech usage description is aborted; a privacy setting cannot fix that, so none is offered.
+        else if (dictating && signal === "SIGABRT" && !listening) reject(new VoiceError("Dictation works in the installed Capsule app. This build can't use macOS speech recognition."));
         else if (code !== 0 || !completed) reject(new Error(dictating ? "Dictation stopped unexpectedly." : "Companion voice stopped unexpectedly."));
         else resolve(result);
       });

@@ -25,6 +25,7 @@ export type SettingsSectionId =
   | "automations"
   | "plugins"
   | "shortcuts"
+  | "devices"
   | "diagnostics"
   | "about";
 
@@ -50,6 +51,7 @@ export const SETTINGS_SECTION_LABELS: Record<SettingsSectionId, string> = {
   automations: "Automations",
   plugins: "Plugins",
   shortcuts: "Shortcuts",
+  devices: "Devices & access",
   diagnostics: "Diagnostics",
   about: "About",
 };
@@ -68,9 +70,11 @@ export const SETTINGS_SEARCH_ITEMS: SettingsSearchItem[] = [
   { title: "Saved prompts", section: "general", key: "composerPrompts", keywords: ["template", "snippet", "slash", "variables"] },
   { title: "Tags", section: "general", keywords: ["label", "rename tag", "delete tag", "group by tag"] },
   { title: "Share usage reports", section: "general", key: "analyticsEnabled", keywords: ["analytics", "privacy", "telemetry", "consent"] },
-  { title: "Browser access", section: "gateway", key: "remoteAccess", keywords: ["remote", "pairing", "web", "control", "devices"] },
+  { title: "Remote access", section: "devices", key: "remoteAccess", keywords: ["browser access", "remote", "pairing", "web", "control", "phone", "qr", "network"] },
+  { title: "Paired devices", section: "devices", keywords: ["revoke", "sign out", "authorized", "clients", "phone", "browser"] },
   { title: "Menu bar", section: "general", key: "showMenuBarExtra", keywords: ["tray", "status bar", "extra"] },
   { title: "Desktop companion", section: "general", keywords: ["pet", "mascot", "capsule", "animation", "motion"] },
+  { title: "Voice", section: "general", keywords: ["dictation", "dictate", "microphone", "speech", "speech recognition", "talk", "language"] },
   { title: "Resume after usage limits", section: "general", key: "autoResumeOnLimit", keywords: ["usage limit", "rate limit", "reset", "resume", "quota", "auto-resume"] },
   { title: "Agent simulator access", section: "general", key: "agentSimulatorAccess", keywords: ["ios", "simulator", "device", "xcode", "touch", "attach"] },
   { title: "Local performance", section: "diagnostics", keywords: ["freeze", "timings", "slow", "git", "preview"] },
@@ -94,6 +98,8 @@ export const SETTINGS_SEARCH_ITEMS: SettingsSearchItem[] = [
 
   { title: "Theme", section: "appearance", key: "appearanceTheme", keywords: ["dark", "light", "system", "dark mode", "colour scheme"] },
   { title: "Text size", section: "appearance", key: "transcriptSize", keywords: ["font size", "type", "transcript", "zoom"] },
+  { title: "Code text size", section: "appearance", key: "codeTextSize", keywords: ["font size", "code", "monospace", "diff", "preview"] },
+  { title: "Terminal font size", section: "appearance", key: "terminalFontSize", keywords: ["font size", "terminal", "shell", "console"] },
   { title: "Conversation width", section: "appearance", key: "transcriptWidth", keywords: ["column", "measure", "transcript", "chat width"] },
   { title: "Time format", section: "appearance", key: "timeFormat", keywords: ["clock", "12-hour", "24-hour", "timestamp"] },
   { title: "Tool calls", section: "appearance", key: "toolCallDisplay", keywords: ["activity", "commands", "folded", "compact"] },
@@ -115,6 +121,7 @@ export const SETTINGS_SEARCH_ITEMS: SettingsSearchItem[] = [
   { title: "Plan and Act models", section: "agents", key: "modeModels", keywords: ["plan", "act", "model", "mode"] },
   { title: "Thinking", section: "agents", key: "reasoningSummary", keywords: ["reasoning", "reasoning summary", "chain of thought"] },
   { title: "Installed agents", section: "agents", keywords: ["harness", "providers", "doctor", "ready"] },
+  { title: "Agent launch options", section: "agents", key: "agentOverrides", keywords: ["binary path", "launch arguments", "args", "environment", "env", "config dir", "second account", "hide agent", "turn off", "disable", "enable"] },
 
   {
     title: "Where agents run",
@@ -149,7 +156,7 @@ export const SETTINGS_SEARCH_ITEMS: SettingsSearchItem[] = [
   { title: "Shortcuts", section: "shortcuts", keywords: ["keys", "bindings", "keyboard", "keybindings.json", "chord", "vim", "emacs"] },
   { title: "Themes", section: "appearance", keywords: ["theme", "colours", "colors", "import", "share string", "themes folder"] },
   { title: "Backdrop", section: "appearance", keywords: ["background", "wallpaper", "image", "scene", "dim"] },
-  { title: "Diagnostics", section: "diagnostics", keywords: ["logs", "support", "export"] },
+  { title: "Troubleshooting", section: "diagnostics", keywords: ["logs", "log", "support", "export", "bug report", "copy diagnostics", "version"] },
   { title: "Version", section: "about", keywords: ["build", "release"] },
 ];
 

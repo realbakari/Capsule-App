@@ -69,7 +69,7 @@ export async function runDictationRegressions(host: HTMLElement, base: Record<st
     host.querySelector<HTMLButtonElement>(".dictation-btn")!.click();
     await until(() => resolveStart, "third start missing");
     resolveStart!({ kind: "error", message: "Allow Microphone access for Capsule in macOS Privacy & Security settings.", settings: "microphone" });
-    await until(() => host.querySelector('.dictation-status[role="alert"]')?.textContent?.includes("Open Microphone settings"), "permission error had no way to the setting");
+    await until(() => host.querySelector('.dictation-status[role="alert"] button[aria-label="Open Microphone settings"]'), "permission error had no way to the setting");
     assert(field().value === "Fix the bug in the header.", "a failed start changed the draft");
 
     for (const [variant, expected] of [[{ isDesktop: false }, "runs on the Mac"], [{ isDesktop: true, platform: "win32" }, "unavailable"]] as const) {

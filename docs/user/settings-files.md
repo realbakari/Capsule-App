@@ -127,8 +127,8 @@ A rule is a kind, and optionally what it covers in parentheses:
 Deny wins over ask, and ask over allow. A deny or allow rule answers the
 request at once: the agent is refused or approved for that one request. An
 ask rule always shows you the request, even when an allow rule matches too.
-Each automatic answer is noted in the turn's **Run log**, such as "Allowed by
-execute(pnpm test *) in ~/.capsule/settings.json".
+When a turn fails, its **Turn details** note each automatic answer, such as
+"Allowed by execute(pnpm test *) in ~/.capsule/settings.json".
 
 An allow rule is strict: every path, and every part of a command joined with
 `&&`, `|` or `;`, must match it, and a command that substitutes another
@@ -214,7 +214,8 @@ in Settings → Appearance → Status line, or under `statusLine`.
 
 `items` picks from `branch`, `changes`, `context`, `limits` (the usage limit
 and when it resets, where the agent reports one), `pr`, `model`, `harness`
-(the agent and route), `run` (the latest turn) and `cost` (where the agent
+(the agent, with "Gateway" when the conversation goes through it), `run` (the
+latest turn, in words such as "working", "needs you" or "done") and `cost` (where the agent
 reports it), in the order you list them. An item without a value for the
 open thread is left out.
 

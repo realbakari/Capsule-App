@@ -56,6 +56,12 @@ function clockTime(iso: string): string | undefined {
   return `${date.getHours()}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
+/** The latest turn's status in words; the command still reads the raw status. */
+const TURN_WORDS: Record<string, string> = {
+  queued: "queued", running: "working", waiting: "working", approval_required: "needs you",
+  completed: "done", failed: "failed", cancelled: "stopped", blocked: "blocked",
+};
+
 const PR_CHECKS: Record<string, string> = { pending: "checks running", success: "checks pass", failure: "checks fail" };
 
 /** The no-code status line: each chosen item that has a value, in the chosen order. */
@@ -93,10 +99,11 @@ export function statusLineParts(items: readonly StatusLineItem[], facts: StatusL
         if (facts.model) parts.push({ item, text: facts.model, title: "Model" });
         break;
       case "harness":
-        if (facts.harness) parts.push({ item, text: facts.route ? `${facts.harness} · ${facts.route}` : facts.harness, title: "Agent and route" });
+        // On this computer is the usual case; only the Gateway is worth naming.
+        if (facts.harness) parts.push({ item, text: facts.route === "gateway" ? `${facts.harness} · Gateway` : facts.harness, title: "Agent" });
         break;
       case "run":
-        if (facts.run) parts.push({ item, text: facts.run, ...(facts.run === "failed" ? { tone: "critical" as const } : {}), title: "Latest turn" });
+        if (facts.run) parts.push({ item, text: TURN_WORDS[facts.run] ?? facts.run, ...(facts.run === "failed" ? { tone: "critical" as const } : {}), title: "Latest turn" });
         break;
       case "cost":
         if (facts.cost) parts.push({ item, text: formatCost(facts.cost), title: "Cost the agent reported for this conversation" });

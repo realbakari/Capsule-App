@@ -10,6 +10,7 @@ export interface UpdaterStatus {
   detail?: string;
   retry?: "check" | "download" | "install";
   checked?: boolean;
+  notApplied?: string;
 }
 
 /** The library owns downloads and signature verification; this owns UI state. */
@@ -33,6 +34,10 @@ export interface UpdaterOptions {
   reserveInstall?: () => () => void;
   /** macOS local staging, without registering a future automatic quit. */
   stageInstall?: (signal: AbortSignal) => Promise<void>;
+  /** The version the previous launch quit to install and did not come back on. */
+  notApplied?: string;
+  /** Remembers the version being installed, so the next launch can tell whether it applied. */
+  recordInstall?: (target: string) => void;
 }
 
 const DEVELOPMENT_BUILD = "This is a development build. Updates install in the released app.";
@@ -43,7 +48,7 @@ export class Updater {
   private installation?: { controller: AbortController; release?: () => void };
   constructor(private readonly options: UpdaterOptions) {
     // A build that cannot replace itself says so from the first read, before anyone presses check.
-    this.status = options.canInstall ? { state: "idle", current: options.currentVersion, checked: false }
+    this.status = options.canInstall ? { state: "idle", current: options.currentVersion, checked: false, notApplied: options.notApplied }
       : { state: "unavailable", current: options.currentVersion, detail: DEVELOPMENT_BUILD };
     const updater = options.updater;
     updater.autoDownload = false;
@@ -99,7 +104,7 @@ export class Updater {
     if (!this.options.canInstall || this.status.state !== "ready") return false;
     const attempt = { controller: new AbortController(), release: undefined as (() => void) | undefined };
     this.installation = attempt;
-    this.set({ state: "installing", detail: undefined, retry: undefined });
+    this.set({ state: "installing", detail: undefined, retry: undefined, notApplied: undefined });
     try {
       attempt.release = this.options.reserveInstall?.();
       await this.options.prepareInstall?.();
@@ -108,6 +113,7 @@ export class Updater {
       if (this.installation !== attempt) return false;
       await this.options.stageInstall?.(attempt.controller.signal);
       if (this.installation !== attempt) return false;
+      if (this.status.latest) this.options.recordInstall?.(this.status.latest);
       this.options.updater.quitAndInstall(false, true);
       return true;
     } catch (error) {
@@ -141,20 +147,49 @@ export class Updater {
   }
 }
 
-/** One answer for action replies, startup snapshots and broadcasts. */
-export function mergeUpdateStatus(updater: UpdaterStatus, fallback?: UpdateCheck): UpdateCheck {
-  const common = { current: updater.current, latest: updater.latest ?? fallback?.latest, detail: updater.detail, retry: updater.retry,
-    notes: updater.notes, ...(fallback?.url ? { url: fallback.url, download: fallback.download } : {}) };
+/**
+ * One answer for action replies, startup snapshots and broadcasts. `releaseUrl`
+ * names the page for a version, so "Release notes" opens the notes for the
+ * update on offer even when only the in-place updater has heard of it.
+ */
+export function mergeUpdateStatus(updater: UpdaterStatus, fallback?: UpdateCheck, releaseUrl?: (version: string) => string): UpdateCheck {
+  const latest = updater.latest ?? fallback?.latest;
+  const url = fallback?.url ?? (latest && releaseUrl ? releaseUrl(latest) : undefined);
+  const common = { current: updater.current, latest, detail: updater.detail, retry: updater.retry, notApplied: updater.notApplied,
+    notes: updater.notes, ...(url ? { url } : {}), ...(fallback?.download ? { download: fallback.download } : {}) };
   switch (updater.state) {
     case "available": return { ...common, state: "update-available", canInstall: true };
     case "downloading": return { ...common, state: "downloading", percent: updater.percent ?? 0 };
     case "ready": return { ...common, state: "ready-to-install" };
     case "installing": return { ...common, state: "installing" };
     case "checking": return { ...common, state: "checking" };
-    case "idle": return { current: updater.current, state: updater.checked === false ? "unknown" : "up-to-date" };
+    case "idle": return { current: updater.current, state: updater.checked === false ? "unknown" : "up-to-date",
+      ...(updater.notApplied ? { notApplied: updater.notApplied } : {}) };
     default: return updater.retry ? { ...common, state: "unreachable" }
       : { ...(fallback ?? { state: "unreachable", current: updater.current }),
         ...(updater.state === "unavailable" ? { development: true } : {}),
         detail: [fallback?.detail, updater.detail].filter(Boolean).join(" ") || undefined };
   }
+}
+
+/** The record left beside the settings just before Capsule quits to install an update. */
+export interface InstallRecord {
+  from: string;
+  target: string;
+}
+
+function sameVersion(a: string, b: string): boolean {
+  return a.replace(/^v/i, "") === b.replace(/^v/i, "");
+}
+
+/**
+ * The version an install attempt meant to bring, when Capsule restarted still
+ * on the version it tried to leave. A record from any other version (a manual
+ * install, a downgrade) says nothing about this launch.
+ */
+export function notAppliedVersion(record: unknown, appVersion: string): string | undefined {
+  if (typeof record !== "object" || record === null) return undefined;
+  const { from, target } = record as Partial<Record<keyof InstallRecord, unknown>>;
+  if (typeof from !== "string" || typeof target !== "string") return undefined;
+  return sameVersion(from, appVersion) && !sameVersion(target, appVersion) ? target : undefined;
 }

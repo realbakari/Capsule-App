@@ -35,7 +35,7 @@ export function AgentTasksSetting({ project }: { project: Project }) {
         <p>{allowed
           ? "A task an agent creates starts at once, or when the cards it waits for are done."
           : "A task an agent creates waits in Draft until you start it. Nothing runs without you."}</p>
-        <p className="muted">Agents in direct mode that accept Capsule's tools can create tasks. Claude Code, Codex and Muse Code in direct mode, and threads on the OpenClaw Gateway, do not get these tools yet.</p>
+        <p className="muted">Only agents Capsule starts itself, and that accept its tools, can create tasks. Claude Code, Codex and Muse Code, and every agent on the Gateway, cannot yet.</p>
       </div>
     </details>
   );

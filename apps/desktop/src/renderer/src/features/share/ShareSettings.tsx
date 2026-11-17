@@ -6,7 +6,7 @@ import { useShareLinks } from "./ShareDialog";
 import { shareLinkTiming, sinceLabel } from "./share-time";
 import "./share.css";
 
-/** Settings › Remote access: who is connected right now, and every working share link. */
+/** Settings › General › Browser access: who is connected right now, and every working share link. */
 export function ShareSettings() {
   const { api, sessions, setProjectId, setView } = useWorkspace();
   const { links, error, setError, reload } = useShareLinks();

@@ -39,6 +39,19 @@ for your decision is never hidden.
 
 Settle and snooze both offer **Undo** for a few seconds, also on `⌘Z`.
 
+Open a settled or snoozed conversation and a line under its last turn says so,
+with **Return to active** or **Wake now**, so you can tell even when you
+reached it from search or a link rather than the shelf.
+
+## Approvals
+
+**Approvals** in the sidebar collects every request waiting on you across your
+projects, grouped by the conversation that asked, with its project and **Open
+conversation**. The cards are the ones the conversation shows: **Approve once**,
+**Always allow…**, **Deny**, and **Deny and reply**, which denies and opens the
+conversation with the message box ready. A paired device that can only read
+sees the requests without the buttons.
+
 ## Notifications
 
 Capsule tells you about a conversation in one of three ways, depending on where
@@ -64,8 +77,10 @@ notification leaves Notification Center once you have opened its conversation.
 
 The Dock icon counts conversations waiting on you: a decision, a failure, or a
 finished turn you have not read. It goes down as you read. The menu bar extra
-counts only the decisions and failures, and lists the conversations waiting so
-you can open one. The window title shows the same count, for example
+counts only the decisions and failures. Its menu starts with what is waiting
+(or says nothing needs you), lists those conversations with their project, and
+then offers **New Conversation**, a **Recent** list, **Show Capsule**, the
+**Desktop Companion** switch, **Settings…** and **Quit Capsule**. The window title shows the same count, for example
 "Capsule (3)".
 
 Settings › General starts with **Notify me**, which sets what reaches you while
@@ -78,6 +93,17 @@ and Do Not Disturb still silence it. The individual switches, one for each kind
 of notification plus the Dock bounce and badge, are under **Advanced**. Change
 one yourself and Notify me reads **Custom**. On Windows, the taskbar button
 flashes where a Mac's Dock icon would bounce.
+
+A screen reader hears another conversation's news even when no notice appears,
+for example with **In-app notifications** off: Capsule announces it politely,
+after whatever is being read. Snoozed conversations stay silent.
+
+Notices in the corner wait while you are away. Their time runs only while the
+Capsule window is visible and in front, and while the pointer or keyboard is
+not on them. An error notice has a copy button for its text and **Show more**
+when the reason is longer than three lines. When the corner is full, a plain
+notice never pushes out one that offers **Undo** or another action; it waits
+for a free spot instead.
 
 ## When an agent asks you something
 

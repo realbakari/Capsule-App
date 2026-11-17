@@ -36,7 +36,7 @@ a thread's permissions from the desktop if you need a different policy.
 
 ## Turning it on
 
-**Settings → Gateway → Browser access.**
+**Settings → Devices & access → Remote access.**
 
 | Setting | What it does |
 | --- | --- |
@@ -46,6 +46,8 @@ a thread's permissions from the desktop if you need a different policy.
 
 Choosing an option starts or stops the listener immediately; there is no
 restart. Turning it off closes every socket and forgets every paired device.
+If Capsule was started with remote access on (see below), the choice is shown
+but locked until Capsule quits, and its description says so.
 
 ## Starting it from a terminal
 
@@ -115,9 +117,14 @@ row says to choose This network for a real device. See
 
 ## Taking access away
 
-Every paired device is listed under **Paired devices** with a **Revoke**
-beside it. Revoking immediately closes that device's live connections and stops
-event delivery. Replies still being read are not delivered after revocation.
+Every paired device is listed under **Paired devices**, named by its browser
+and system (for example **Safari on iPhone**), with what it may do (**Read
+only** or **Conversation control**, and **Phone, encrypted** for the mobile
+app), when it was last active, and when a browser pairing expires. **Revoke**
+beside a device ends that pairing; with two or more, **Revoke all** ends every
+one after a confirmation. Revoking immediately closes that device's live
+connections and stops event delivery. Replies still being read are not
+delivered after revocation.
 
 Setting the reach back to **Off** revokes everything at once.
 
@@ -141,7 +148,7 @@ settings. The holder cannot send messages or answer approvals.
 3. Press **Create link**. It is copied to your clipboard and shown once.
 
 The dialog lists the conversation's active links with a **Revoke** beside each.
-**Settings → Gateway → Browser access** lists every active link across all
+**Settings → Devices & access** lists every active link across all
 conversations.
 
 A share link uses the same listener as pairing, so it reaches whatever the
@@ -167,7 +174,7 @@ conversation's name: **Also open on iPhone**, **Open from a share link**, or
 **2 viewers** when there are several. Hover or focus it to see each device and
 when it connected. Nothing is shown while only this computer is viewing.
 
-**Settings → Gateway → Browser access** lists the devices connected right now
+**Settings → Devices & access** lists the devices connected right now
 and the conversation each one is reading. A paired device counts as viewing the
 conversation it opened last.
 

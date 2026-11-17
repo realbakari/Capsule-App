@@ -1,5 +1,5 @@
 import type { AutomationConfig, Provenance } from "./config.js";
-import { parseRRule, type RRule } from "./rrule.js";
+import { parseRRule, type RRule, type Weekday } from "./rrule.js";
 
 export type AutomationRunStatus = "running" | "completed" | "failed";
 
@@ -68,55 +68,53 @@ export function automationMessage(automation: AutomationConfig): string {
   return command.startsWith("/") ? command : `/${command}`;
 }
 
-export interface AutomationTemplate {
-  id: string;
-  label: string;
-  automation: AutomationConfig;
+/** What Settings → Automations → New automation fills in. The id comes from the name. */
+export interface AutomationDraft {
+  name: string;
+  /** An RRULE, usually built by `scheduleRule`. */
+  schedule: string;
+  /** Sent as if typed, so a leading `/command` expands as it would in the composer. */
+  prompt: string;
+  /** Only for a project's automation; the Inbox has no repository. */
+  workspace?: "worktree";
 }
 
-/** Written paused, so nothing runs until the person has read and resumed it. */
-export const AUTOMATION_TEMPLATES: readonly AutomationTemplate[] = [
-  {
-    id: "triage",
-    label: "Weekday issue triage",
-    automation: {
-      id: "triage-issues",
-      name: "Triage new issues",
-      schedule: "RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=9;BYMINUTE=0",
-      prompt: "Triage the issues opened since the last weekday: label each one, point out duplicates, and list the ones that need me.",
-      enabled: false,
-    },
-  },
-  {
-    id: "nightly-command",
-    label: "Nightly command in a worktree",
-    automation: {
-      id: "nightly-check",
-      name: "Nightly check",
-      schedule: "RRULE:FREQ=DAILY;BYHOUR=2;BYMINUTE=0",
-      command: "flaky-tests",
-      workspace: "worktree",
-      enabled: false,
-    },
-  },
-  {
-    id: "every-five",
-    label: "Every 5 minutes, for trying it out",
-    automation: {
-      id: "heartbeat",
-      name: "Heartbeat",
-      schedule: "RRULE:FREQ=MINUTELY;INTERVAL=5",
-      prompt: "Say the time, and nothing else.",
-      enabled: false,
-    },
-  },
-];
-
 export interface AutomationCreateInput {
-  template: string;
+  draft: AutomationDraft;
   /** `user` runs in the Inbox; `local` belongs to one project and is yours alone. */
   scope: "user" | "local";
   projectId?: string;
+}
+
+/** The entry a draft becomes, on, or the first thing wrong with it in a sentence. */
+export function automationFromDraft(draft: AutomationDraft): { ok: true; automation: AutomationConfig } | { ok: false; message: string } {
+  const name = draft.name.trim();
+  if (!name) return { ok: false, message: "Give it a name." };
+  const prompt = draft.prompt.trim();
+  if (!prompt) return { ok: false, message: "Write what it should send." };
+  const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "automation";
+  const automation: AutomationConfig = { id, name, schedule: draft.schedule.trim(), prompt, ...(draft.workspace ? { workspace: draft.workspace } : {}), enabled: true };
+  const read = readAutomation(automation);
+  return read.ok ? { ok: true, automation } : { ok: false, message: read.message };
+}
+
+/** The schedules the form offers. Anything else is written in the settings file. */
+export type ScheduleChoice =
+  | { kind: "minutes"; every: number }
+  | { kind: "hourly" }
+  | { kind: "daily"; hour: number; minute: number }
+  | { kind: "weekdays"; hour: number; minute: number }
+  | { kind: "weekly"; day: Weekday; hour: number; minute: number };
+
+export function scheduleRule(choice: ScheduleChoice): string {
+  const at = (hour: number, minute: number) => `BYHOUR=${hour};BYMINUTE=${minute}`;
+  switch (choice.kind) {
+    case "minutes": return `RRULE:FREQ=MINUTELY;INTERVAL=${choice.every}`;
+    case "hourly": return "RRULE:FREQ=HOURLY;BYMINUTE=0";
+    case "daily": return `RRULE:FREQ=DAILY;${at(choice.hour, choice.minute)}`;
+    case "weekdays": return `RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;${at(choice.hour, choice.minute)}`;
+    case "weekly": return `RRULE:FREQ=WEEKLY;BYDAY=${choice.day};${at(choice.hour, choice.minute)}`;
+  }
 }
 
 export interface AutomationEnabledInput {

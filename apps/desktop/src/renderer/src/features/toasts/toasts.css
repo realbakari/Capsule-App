@@ -34,6 +34,7 @@
 .toast-error .toast-icon { color: var(--red); }
 .toast-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .toast-title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.toast.is-expanded .toast-title { white-space: normal; overflow-wrap: anywhere; }
 .toast-detail {
   color: var(--text-muted);
   font-size: var(--text-xs);
@@ -41,7 +42,28 @@
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  overflow-wrap: anywhere;
 }
+/* Expanded, a long error reads in full and scrolls inside the toast rather than off the screen. */
+.toast.is-expanded { align-items: flex-start; }
+.toast.is-expanded .toast-text { max-height: 50vh; overflow-y: auto; }
+.toast.is-expanded .toast-detail { display: block; overflow: visible; white-space: pre-wrap; user-select: text; }
+.toast-more {
+  align-self: flex-start;
+  margin-top: 0.125rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-xs);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  cursor: pointer;
+}
+.toast-more:hover { color: var(--text); }
+.toast-more:focus-visible, .toast-copy:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
+.toast-copy { flex-shrink: 0; }
 .toast-action {
   flex-shrink: 0;
   height: var(--control-h-sm);
@@ -55,6 +77,8 @@
   cursor: pointer;
 }
 .toast-action:hover { background: var(--bg-hover); }
+.toast-action.is-secondary { border-color: transparent; background: transparent; color: var(--text-muted); }
+.toast-action.is-secondary:hover { background: var(--bg-hover); color: var(--text); }
 .toast-action:focus-visible, .toast-close:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
 .toast-close { flex-shrink: 0; }
 @keyframes toast-enter {

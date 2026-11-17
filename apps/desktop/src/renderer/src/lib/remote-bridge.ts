@@ -1,5 +1,6 @@
 import { IPC_EVENTS } from "@capsule/shared";
 import type { CapsuleApi } from "../../../preload/index";
+import { deviceLabel } from "./device-label";
 
 /*
  * The same app, driven from a paired browser.
@@ -31,7 +32,7 @@ async function exchange(token: string): Promise<string | undefined> {
   const response = await fetch("/pair", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ token, label: navigator.userAgent.slice(0, 60) }),
+    body: JSON.stringify({ token, label: deviceLabel(navigator.userAgent) }),
     signal: AbortSignal.timeout(10_000),
   });
   if (!response.ok) throw new Error("This pairing link expired or was already used. Create a new link in Capsule’s web access settings on the host computer.");

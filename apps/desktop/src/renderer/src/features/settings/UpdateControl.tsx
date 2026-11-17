@@ -1,4 +1,4 @@
-import { RELEASE_NOTES_URL, useUpdates } from "../../lib/updates";
+import { releaseNotesUrl, useUpdates } from "../../lib/updates";
 import type { ReactNode } from "react";
 
 export function UpdateControl({ update, children }: { update: ReturnType<typeof useUpdates>; children?: ReactNode }) {
@@ -8,8 +8,8 @@ export function UpdateControl({ update, children }: { update: ReturnType<typeof 
       {children}
       <button type="button" className="chip" disabled={update.busy} onClick={update.run}>{update.label}</button>
     </div>
-    <p className="meta" role="status">{update.error ?? status?.detail ?? (status?.state === "up-to-date" ? "You’re up to date." : status?.latest ? `Version ${status.latest}` : "")}</p>
+    <p className="meta" role="status">{update.error ?? status?.detail ?? (status?.notApplied && !["downloading", "ready-to-install", "installing"].includes(status.state) ? `Capsule ${status.notApplied} didn’t install. You’re still on ${status.current}.` : undefined) ?? (status?.state === "up-to-date" ? "You’re up to date." : status?.latest ? `Version ${status.latest}` : "")}</p>
     {status?.state === "downloading" && <progress max={100} value={status.percent ?? 0} aria-label="Update download progress" />}
-    {status?.latest && <a className="meta app-update-release-link" href={RELEASE_NOTES_URL} target="_blank" rel="noreferrer">Release notes</a>}
+    {status?.latest && <a className="meta app-update-release-link" href={releaseNotesUrl(status)} target="_blank" rel="noreferrer">Release notes</a>}
   </div>;
 }

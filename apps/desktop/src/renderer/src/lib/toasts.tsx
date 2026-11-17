@@ -24,6 +24,8 @@ export interface ToastInput {
   title: string;
   detail?: string;
   action?: ToastAction;
+  /** A lesser choice beside `action`, such as Release notes beside Retry. */
+  secondaryAction?: ToastAction;
   /** Milliseconds on screen; 0 keeps it until dismissed. Errors default to 8 s, the rest to 5 s, undo to 10 s. */
   timeoutMs?: number;
 }
@@ -33,18 +35,60 @@ export interface Toast extends Required<Pick<ToastInput, "tone" | "title">> {
   key: string;
   detail?: string;
   action?: ToastAction;
+  secondaryAction?: ToastAction;
   timeoutMs: number;
 }
 
-/** More than this and the oldest leave; a stack is a glance, not a log. */
+/** More than this on screen and one makes room; a stack is a glance, not a log. */
 export const TOAST_LIMIT = 3;
+
+/** On screen, and held back until a slot frees. */
+export interface ToastStack {
+  visible: Toast[];
+  waiting: Toast[];
+}
+
+export const EMPTY_TOAST_STACK: ToastStack = { visible: [], waiting: [] };
+
+/**
+ * What leaving early costs: an undo that cannot be taken back, an action not
+ * taken, a standing notice or an error not read, or a passing line of news.
+ */
+function stake(toast: Toast): number {
+  if (toast.action?.undo) return 3;
+  if (toast.action || toast.secondaryAction) return 2;
+  if (toast.tone === "error" || toast.timeoutMs === 0) return 1;
+  return 0;
+}
 
 type ToastEvent = { type: "show"; toast: Toast } | { type: "dismiss"; id: string };
 
-export function toastReducer(toasts: readonly Toast[], event: ToastEvent): Toast[] {
-  if (event.type === "dismiss") return toasts.filter((toast) => toast.id !== event.id);
-  const rest = toasts.filter((toast) => toast.key !== event.toast.key);
-  return [...rest, event.toast].slice(-TOAST_LIMIT);
+/**
+ * A full stack makes room by dropping its oldest toast with the least at
+ * stake. A newcomer with less at stake than everything on screen waits for a
+ * slot instead, so news never pushes an Undo off the screen.
+ */
+export function toastReducer(stack: ToastStack, event: ToastEvent): ToastStack {
+  if (event.type === "dismiss") {
+    return promote({
+      visible: stack.visible.filter((toast) => toast.id !== event.id),
+      waiting: stack.waiting.filter((toast) => toast.id !== event.id),
+    });
+  }
+  const incoming = event.toast;
+  const visible = stack.visible.filter((toast) => toast.key !== incoming.key);
+  const waiting = stack.waiting.filter((toast) => toast.key !== incoming.key);
+  if (visible.length < TOAST_LIMIT) return promote({ visible: [...visible, incoming], waiting });
+  const least = Math.min(...visible.map(stake));
+  if (stake(incoming) < least) return { visible, waiting: [...waiting, incoming].slice(-TOAST_LIMIT) };
+  const evicted = visible.findIndex((toast) => stake(toast) === least);
+  return { visible: [...visible.slice(0, evicted), ...visible.slice(evicted + 1), incoming], waiting };
+}
+
+function promote(stack: ToastStack): ToastStack {
+  const room = TOAST_LIMIT - stack.visible.length;
+  if (room <= 0 || stack.waiting.length === 0) return stack;
+  return { visible: [...stack.visible, ...stack.waiting.slice(0, room)], waiting: stack.waiting.slice(room) };
 }
 
 let counter = 0;
@@ -60,6 +104,7 @@ export function createToast(input: ToastInput): Toast {
     title: input.title,
     detail: input.detail,
     action: input.action,
+    secondaryAction: input.secondaryAction,
     timeoutMs: input.timeoutMs ?? fallback,
   };
 }
@@ -76,7 +121,7 @@ interface ToastsValue {
 const ToastContext = createContext<ToastsValue | null>(null);
 
 export function ToastProvider({ children }: { children: ReactNode }) {
-  const [toasts, dispatch] = useReducer(toastReducer, []);
+  const [stack, dispatch] = useReducer(toastReducer, EMPTY_TOAST_STACK);
   const show = useCallback((input: ToastInput) => {
     const toast = createToast(input);
     dispatch({ type: "show", toast });
@@ -84,14 +129,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   }, []);
   const dismiss = useCallback((id: string) => dispatch({ type: "dismiss", id }), []);
   const value = useMemo<ToastsValue>(() => ({
-    toasts,
+    toasts: stack.visible,
     show,
     dismiss,
     dismissKey: (key) => {
-      const found = toasts.find((toast) => toast.key === key);
+      const found = [...stack.visible, ...stack.waiting].find((toast) => toast.key === key);
       if (found) dispatch({ type: "dismiss", id: found.id });
     },
-  }), [toasts, show, dismiss]);
+  }), [stack, show, dismiss]);
   return <ToastContext.Provider value={value}>{children}</ToastContext.Provider>;
 }
 

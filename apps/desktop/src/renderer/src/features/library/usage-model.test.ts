@@ -1,5 +1,5 @@
-import { expect, it } from "vitest";
-import { compactTokens, countdown, dailySeries, dayKey, limitTone, niceCeiling, pacePercent, resetText, share, type UsageBucket } from "./usage-model";
+import { describe, expect, it } from "vitest";
+import { compactTokens, countdown, dailySeries, dayKey, limitTone, niceCeiling, pacePercent, projectRows, resetText, share, type UsageBucket } from "./usage-model";
 
 const now = new Date(2026, 10, 17, 15, 0).getTime();
 const DAY = 86_400_000;
@@ -51,4 +51,16 @@ it("keeps units compact without trailing zeros, and never rounds real use to 0%"
   expect(compactTokens(950)).toBe("950");
   expect(share(1, 10_000)).toBe("<0.1%");
   expect(share(0, 10)).toBe("0%");
+});
+
+describe("projectRows", () => {
+  const bucket = (key: string, input: number) => ({ key, totals: { input }, requests: 1 });
+  it("names projects, calls the rest Other folders, and folds a long tail", () => {
+    const names = new Map([["a", "App"], ["b", "Site"]]);
+    expect(projectRows([bucket("a", 50), bucket("", 30), bucket("gone", 10)], names).map((row) => row.label)).toEqual(["App", "Other folders", "Removed project"]);
+    const many = ["a", "b", "c", "d", "e", "f", "g"].map((key, index) => bucket(key, 70 - index));
+    const rows = projectRows(many, names, 4);
+    expect(rows.map((row) => row.label)).toEqual(["App", "Site", "Removed project", "4 more"]);
+    expect(rows.at(-1)).toMatchObject({ tokens: 67 + 66 + 65 + 64, requests: 4 });
+  });
 });

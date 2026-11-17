@@ -4,9 +4,10 @@ import type { SavedChannelRoute } from "@capsule/shared";
 import { useWorkspace } from "../../lib/workspace";
 import { formatUserError } from "../../lib/errors";
 import { XIcon } from "../shell/icons";
+import { harnessDisplayName } from "../../lib/harness";
 
 export function SavedChannelRoutes() {
-  const { api, projects } = useWorkspace();
+  const { api, projects, harnesses } = useWorkspace();
   const [open, setOpen] = useState(false);
   const [routes, setRoutes] = useState<SavedChannelRoute[]>();
   const [selected, setSelected] = useState<string>();
@@ -31,10 +32,10 @@ export function SavedChannelRoutes() {
       {!routes && !error ? <p role="status">Loading saved agents…</p> : null}
       {routes?.length === 0 && <p>No saved channel agents.</p>}
       <ul className="channel-saved-routes">{routes?.map((route) => <li key={route.id}>
-        <strong>{projects.find((project) => project.id === route.configuration.projectId)?.name ?? "Unavailable project"} · {route.configuration.harnessId}</strong>
+        <strong>{projects.find((project) => project.id === route.configuration.projectId)?.name ?? "Unavailable project"} · {harnessDisplayName(harnesses, route.configuration.harnessId)}</strong>
         <p>{route.url}</p><p className="channel-id">Channel {route.configuration.channelId}<br />Identity {route.identity.slice(0, 12)}…{route.identity.slice(-6)}</p>
         <p>{route.configuration.enabled ? "Enabled" : "Paused"}</p>
-        {!route.removable && <p className="channels-hint">Pause the route and finish or stop its active run before removing it.</p>}
+        {!route.removable && <p className="channels-hint">Pause this agent and let its reply finish, or stop it, before removing it.</p>}
         {selected === route.id ? <><p>Remove this local connection? Future messages will not run until you connect it again.</p><button className="ghost" disabled={busy} onClick={() => setSelected(undefined)}>Cancel</button><button className="ghost channel-destructive" disabled={busy} onClick={async () => {
           setBusy(true); setError(undefined);
           try { await api.removeChannelRoute(route.id); setRoutes(await api.listSavedChannelRoutes()); setSelected(undefined); }

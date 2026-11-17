@@ -2,17 +2,39 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CapsuleSettings, RemoteAccessStatus } from "@capsule/shared";
 import { encode } from "uqr";
 
+import { deviceLabel } from "../../lib/device-label";
 import { useWorkspace } from "../../lib/workspace";
 import { SettingRow } from "./controls";
 import { ShareSettings } from "../share/ShareSettings";
 
-function ago(timestamp: number): string {
-  const seconds = Math.max(0, Math.round((Date.now() - timestamp) / 1000));
-  if (seconds < 60) return "just now";
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  return `${Math.round(minutes / 60)}h ago`;
+type PairedDevice = RemoteAccessStatus["devices"][number];
+
+function span(ms: number): string {
+  const minutes = Math.round(ms / 60_000);
+  if (minutes < 60) return `${Math.max(1, minutes)}m`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours}h`;
+  return `${Math.round(hours / 24)} days`;
 }
+
+function ago(timestamp: number, now = Date.now()): string {
+  return now - timestamp < 60_000 ? "just now" : `${span(now - timestamp)} ago`;
+}
+
+/** What a device can do, in the words the pairing controls use. */
+export function deviceSummary(device: PairedDevice, now = Date.now()): string {
+  const access = device.scopes.includes("control") ? "Conversation control" : "Read only";
+  const parts = [device.transport === "phone" ? `Phone, encrypted · ${access}` : access, `last active ${ago(device.lastSeenAt, now)}`];
+  /* Phones stay paired until revoked; a browser link lasts twelve hours. */
+  if (device.expiresAt - now < 7 * 86_400_000) parts.push(device.expiresAt <= now ? "expired" : `expires in ${span(device.expiresAt - now)}`);
+  return parts.join(" · ");
+}
+
+const REACH_HINT: Record<CapsuleSettings["remoteAccess"], string> = {
+  network: "Anything on your network can load the page. Pairing is still required to see anything.",
+  loopback: "This computer only.",
+  off: "Off. Nothing is listening.",
+};
 
 export function RemoteAccessSettings({
   settings,
@@ -21,7 +43,7 @@ export function RemoteAccessSettings({
   settings: CapsuleSettings;
   patch: (input: Partial<CapsuleSettings>) => Promise<void>;
 }) {
-  const { api } = useWorkspace();
+  const { api, setConfirm } = useWorkspace();
   const [status, setStatus] = useState<RemoteAccessStatus>();
   const [error, setError] = useState<string>();
   const [access, setAccess] = useState<"read" | "control">("read");
@@ -47,29 +69,28 @@ export function RemoteAccessSettings({
     return () => { off(); };
   }, [api, load]);
 
-  if (!api.isDesktop) return <div className="card"><h3>Browser access</h3><p className="muted">Manage pairing and revoke devices on the host computer.</p></div>;
+  if (!api.isDesktop) return <div className="card"><h3>Remote access</h3><p className="muted">Manage pairing and revoke devices on the host computer.</p></div>;
 
   return (
+    <>
     <div className="card">
-      <h3>Browser access</h3>
+      <h3>Remote access</h3>
       <p className="muted">
-        Pair a browser with this workspace. Read-only access is the default. Conversation control
+        Use this workspace from a browser or the Capsule mobile app. Read-only access is the default. Conversation control
         can send work to this computer’s agents and answer approvals. This computer must stay awake with Capsule running.
       </p>
 
       <SettingRow
         label="Who can reach it" setting="remoteAccess"
-        hint={
-          settings.remoteAccess === "network"
-            ? "Anything on your network can load the page. Pairing is still required to see anything."
-            : settings.remoteAccess === "loopback"
-              ? "This computer only."
-              : "Off. Nothing is listening."
-        }
+        hint={status?.heldByLaunch
+          ? `${REACH_HINT[status.reach]} Capsule was started with remote access on, so this stays until Capsule quits.`
+          : REACH_HINT[settings.remoteAccess]}
       >
         <select
           className="field-select"
-          value={settings.remoteAccess}
+          aria-label="Who can reach it"
+          value={status?.heldByLaunch ? status.reach : settings.remoteAccess}
+          disabled={status?.heldByLaunch}
           onChange={(event) =>
             void patch({ remoteAccess: event.target.value as CapsuleSettings["remoteAccess"] })
           }
@@ -116,7 +137,7 @@ export function RemoteAccessSettings({
                   void (api.remotePair(access) as Promise<string>)
                     .then(async (url) => {
                       setStatus((current) => (current ? { ...current, pairingUrl: url } : current));
-                      await navigator.clipboard.writeText(url);
+                      await navigator.clipboard.writeText(url).catch(() => setError("The link is below. Copy it by hand."));
                     })
                     .catch((caught: unknown) =>
                       setError(caught instanceof Error ? caught.message : String(caught)),
@@ -132,40 +153,66 @@ export function RemoteAccessSettings({
             <p className="faint mono remote-pairing-url">
               {status.pairingUrl}
               <br />
-              It works once — create another for a second device.
+              It works once. Create another for a second device.
             </p>
           )}
 
-          <div className="nav-label" style={{ paddingLeft: 0, marginTop: "0.75rem" }}>
-            Paired devices
-          </div>
-          {status.devices.length === 0 ? (
-            <p className="faint">None yet.</p>
-          ) : (
-            status.devices.map((device) => (
-              <div className="row" key={device.id} style={{ marginTop: 6 }}>
-                <div>
-                  <b>{device.label}</b>
-                  <div className="faint">
-                    {device.transport === "phone" ? "phone, encrypted · " : ""}{device.scopes.join(", ")} · last seen {ago(device.lastSeenAt)}
-                  </div>
-                </div>
-                <button
-                  className="danger"
-                  type="button"
-                  onClick={() => {
-                    void api.remoteRevoke(device.id).then(load).catch(() => setError("Could not revoke this device. Try again."));
-                  }}
-                >
-                  Revoke
-                </button>
-              </div>
-            ))
-          )}
         </>
       )}
-      <ShareSettings />
     </div>
+    <div className="card">
+      <h3>Paired devices</h3>
+      {status?.url ? (
+        <PairedDevices
+          devices={status.devices}
+          revoke={(ids) => Promise.all(ids.map((id) => api.remoteRevoke(id))).then(load, () => setError("Could not revoke every device. Try again."))}
+          confirm={setConfirm}
+        />
+      ) : <p className="faint">Turn on remote access above to pair a device. Turning it off signs every device out.</p>}
+      <div className="remote-connections"><ShareSettings /></div>
+    </div>
+    </>
+  );
+}
+
+/*
+ * Every device holding a pairing, what it may do, and a way to end it. The
+ * list is the only place a pairing can be ended before it expires, so it
+ * also offers ending all of them at once.
+ */
+function PairedDevices({ devices, revoke, confirm }: {
+  devices: PairedDevice[];
+  revoke: (ids: string[]) => Promise<unknown>;
+  confirm?: ReturnType<typeof useWorkspace>["setConfirm"];
+}) {
+  const [busy, setBusy] = useState(false);
+  const end = (ids: string[]) => { setBusy(true); void revoke(ids).finally(() => setBusy(false)); };
+  const endAll = () => {
+    const ids = devices.map((device) => device.id);
+    if (!confirm) { end(ids); return; }
+    confirm({
+      title: `Revoke all ${ids.length} devices?`,
+      detail: "Each one is signed out at once and needs a new pairing link or code to come back.",
+      confirmLabel: "Revoke all",
+      danger: true,
+      onConfirm: () => { confirm(undefined); end(ids); },
+    });
+  };
+  if (devices.length === 0) return <p className="faint">None yet. A device appears here once it opens a pairing link or scans a code.</p>;
+  return (
+    <>
+      <div className="remote-devices-heading">
+        <span className="faint">{devices.length === 1 ? "1 device can reach this workspace." : `${devices.length} devices can reach this workspace.`}</span>
+        {devices.length > 1 && <button className="ghost" type="button" disabled={busy} onClick={endAll}>Revoke all</button>}
+      </div>
+      {devices.map((device) => (
+        <SettingRow key={device.id} label={deviceLabel(device.label)} hint={deviceSummary(device)}>
+          <button className="danger" type="button" disabled={busy} aria-label={`Revoke ${deviceLabel(device.label)}`} onClick={() => end([device.id])}>
+            Revoke
+          </button>
+        </SettingRow>
+      ))}
+    </>
   );
 }
 
