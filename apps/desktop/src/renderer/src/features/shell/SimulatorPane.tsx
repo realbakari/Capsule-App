@@ -53,6 +53,11 @@ function remembered(key: string): string | undefined {
   try { return localStorage.getItem(key) ?? undefined; } catch { return undefined; }
 }
 
+/** Whether this conversation has a simulator attached, for the icon bar. */
+export function simulatorAttachedTo(threadId: string | undefined): boolean {
+  return Boolean(remembered(`${ATTACHED_KEY}:${threadId ?? "inbox"}`));
+}
+
 function remember(key: string, value: string | undefined): void {
   try {
     if (value) localStorage.setItem(key, value);

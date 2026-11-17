@@ -12,8 +12,11 @@ install Xcode, download the iOS platform (with a button that copies
 `xcodebuild -downloadPlatform iOS`), and create a device. Each step ticks
 itself off as soon as it is done; there is nothing to reload.
 
-Open the inspector and choose **Simulator**, or pick **Open iOS Simulator**
-from the command palette. The device picker at the top lists every simulator
+Click **Simulator** in the title bar, or pick **Open iOS Simulator** from the
+command palette. The title bar shows Simulator for an iPhone or iPad project
+(an Xcode project or workspace, a Swift package, or a React Native, Flutter
+or Expo app) and for a conversation with a simulator attached; for any other
+project it is under **More** (⋯). The device picker at the top lists every simulator
 Xcode knows about with its runtime and whether it is running.
 
 The phone appears straight away with an attach card on its screen. Attaching

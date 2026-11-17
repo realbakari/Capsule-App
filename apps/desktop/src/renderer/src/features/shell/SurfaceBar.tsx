@@ -7,14 +7,16 @@ import { OPEN_IN_EVENT } from "../../lib/shortcuts-event";
 import { formatUserError } from "../../lib/errors";
 import { formatProjectRoot } from "../../lib/paths";
 import { useWorkspace } from "../../lib/workspace";
+import { shortcutLabel, withShortcut } from "../../lib/keybindings";
 import { BackgroundTasks } from "./BackgroundTasks";
 import { ApplyToLocalRow } from "../apply/ApplyToLocal";
 import { CommitControl } from "./CommitControl";
 import { ProjectActionsControl } from "./ProjectActionsControl";
 import { HeaderPopover } from "./HeaderPopover";
 import { MenuSelect } from "./MenuSelect";
-import { SURFACES, tabForTool, toolFromTab, type Surface } from "./surfaces";
-import { CoffeeIcon, DiffSquareIcon, FolderIcon, FolderOpenIcon, GitBranchIcon, ListIcon, LaptopIcon, MoreHorizontalIcon, TerminalIcon } from "./icons";
+import { SURFACES, onBar, tabForTool, toolFromTab, type Surface } from "./surfaces";
+import { simulatorAttachedTo } from "./SimulatorPane";
+import { AlertTriangleIcon, CheckIcon, ChevronDownIcon, CoffeeIcon, DiffSquareIcon, FolderIcon, FolderOpenIcon, GitBranchIcon, ListIcon, LaptopIcon, MoreHorizontalIcon, TerminalIcon } from "./icons";
 
 /**
  * The panel's surfaces, one icon each, in the titlebar. Clicking an icon shows
@@ -29,14 +31,18 @@ const ICON_PX = 32;
 const FIXED_BAR_PX = 3 * ICON_PX + 44;
 
 export function SurfaceBar() {
-  const { api, project, session, git, inspectorOpen, inspectorTab, openInspector, setInspectorOpen, terminalOpen, setTerminalOpen, settings, updateSettings, setNotice } = useWorkspace();
+  const { api, project, session, git, gitError, files, inspectorOpen, inspectorTab, openInspector, setInspectorOpen, terminalOpen, setTerminalOpen, settings, updateSettings, setNotice, keyBindings } = useWorkspace();
   const [details, setDetails] = useState(false);
   /* Bumped by the Open in shortcut when there is no favourite: details opens with the app list showing. */
   const [pickApp, setPickApp] = useState(0);
   const detailsAnchor = useRef<HTMLDivElement>(null);
   const openIn = useOpenIn();
   const active = inspectorOpen ? toolFromTab(inspectorTab) : undefined;
-  const state = { projectId: project?.id, git, desktop: api.isDesktop !== false, platform: api.platform, groupId: session?.groupId };
+  const desktop = api.isDesktop !== false;
+  const state = {
+    projectId: project?.id, git, desktop, platform: api.platform, groupId: session?.groupId,
+    folderNames: files.map((entry) => entry.name), simulatorAttached: desktop && simulatorAttachedTo(session?.id),
+  };
   const terminalCwd = session?.workingDirectory ?? project?.workingDirectory;
 
   useEffect(() => {
@@ -78,17 +84,17 @@ export function SurfaceBar() {
     observer.observe(header);
     return () => observer.disconnect();
   }, []);
-  const candidates = SURFACES.filter((surface) => surface.inBar && offered(surface));
+  const candidates = SURFACES.filter((surface) => offered(surface) && onBar(surface, state, active));
   const slots = Math.max(1, Math.floor((room - TITLE_ROOM_PX - FIXED_BAR_PX) / ICON_PX));
   const ordered = [...candidates].sort((a, b) => Number(b.tool === active) - Number(a.tool === active));
   const shown = new Set(ordered.slice(0, slots).map((surface) => surface.tool));
   const inBar = candidates.filter((surface) => shown.has(surface.tool));
-  const more = [...candidates.filter((surface) => !shown.has(surface.tool)), ...SURFACES.filter((surface) => !surface.inBar && offered(surface))];
+  const more = [...candidates.filter((surface) => !shown.has(surface.tool)), ...SURFACES.filter((surface) => offered(surface) && !onBar(surface, state, active))];
 
   return (
     <div className="surface-bar" role="toolbar" aria-label="Panels" ref={barRef}>
       <div ref={detailsAnchor} className="surface-bar-details">
-        <button type="button" className={`icon-btn${details ? " active" : ""}`} title="Conversation details" aria-label="Conversation details" aria-expanded={details} onClick={() => { setPickApp(0); setDetails((open) => !open); }}>
+        <button type="button" className={`icon-btn${details ? " active" : ""}${gitError ? " has-notice" : ""}`} title={gitError ? "Conversation details · Git status could not be read" : "Conversation details"} aria-label={gitError ? "Conversation details, Git status could not be read" : "Conversation details"} aria-expanded={details} onClick={() => { setPickApp(0); setDetails((open) => !open); }}>
           <ListIcon size={15} />
         </button>
         {details && (
@@ -97,22 +103,25 @@ export function SurfaceBar() {
           </HeaderPopover>
         )}
       </div>
-      {/* The real terminal under the conversation: a shell needs a folder, and a paired viewer has no machine. */}
-      <button
-        type="button"
-        className={`icon-btn${terminalOpen ? " active" : ""}`}
-        disabled={!terminalCwd || api.isDesktop === false}
-        title={api.isDesktop === false ? "Available in the desktop app" : terminalCwd ? "Toggle terminal (⌘J)" : "Open a folder to use the terminal"}
-        aria-label="Toggle terminal (⌘J)"
-        aria-pressed={terminalOpen}
-        onClick={() => setTerminalOpen(!terminalOpen)}
-      >
-        <TerminalIcon size={15} />
-      </button>
+      {/* The real terminal under the conversation: a shell needs a folder, and a paired viewer has no machine to run one on. */}
+      {desktop ? (
+        <button
+          type="button"
+          className={`icon-btn${terminalOpen ? " active" : ""}`}
+          disabled={!terminalCwd}
+          title={terminalCwd ? withShortcut("Toggle terminal", "toggle-terminal", keyBindings) : "Open a folder to use the terminal"}
+          aria-label="Toggle terminal"
+          aria-pressed={terminalOpen}
+          onClick={() => setTerminalOpen(!terminalOpen)}
+        >
+          <TerminalIcon size={15} />
+        </button>
+      ) : null}
       {inBar.map((surface) => {
         const Icon = surface.icon;
         const blocked = surface.blockedBy(state);
-        const title = blocked ?? `${surface.label}${surface.shortcut ? ` (${surface.shortcut})` : ""}`;
+        const keys = surface.command ? shortcutLabel(surface.command, keyBindings) : surface.shortcut;
+        const title = blocked ?? `${surface.label}${keys ? ` (${keys})` : ""}`;
         return (
           <button
             key={surface.tool}
@@ -152,7 +161,7 @@ export function SurfaceBar() {
 
 /** Where this conversation runs, how full its context is, what changed, and what is running. */
 function SessionDetails({ onReview, onClose, pickApp }: { onReview: () => void; onClose: () => void; pickApp: boolean }) {
-  const { api, project, session, git, contextUsage, openTerminal, initializeGit, setNotice } = useWorkspace();
+  const { api, project, session, git, gitError, contextUsage, openTerminal, initializeGit, setNotice } = useWorkspace();
   const folder = session?.workingDirectory ?? project?.workingDirectory;
   const reveal = async () => {
     if (!folder) return;
@@ -178,7 +187,7 @@ function SessionDetails({ onReview, onClose, pickApp }: { onReview: () => void; 
         {folder && project && api.isDesktop !== false ? (
           <OpenInControl target={{ projectId: project.id, sessionId: session?.id }} what="folder" variant="row" startOpen={pickApp} />
         ) : null}
-        {git?.branch && <p className="session-details-row"><GitBranchIcon size={14} /><span className="mono">{git.branch}</span></p>}
+        <BranchRow />
         <ApplyToLocalRow onApply={onClose} />
       </section>
       <ThreadDetailsRows />
@@ -202,7 +211,12 @@ function SessionDetails({ onReview, onClose, pickApp }: { onReview: () => void; 
           </span>
         )}
       </section>
-      {git?.isRepo && (
+      {gitError ? (
+        <section aria-label="Changes">
+          <h4>Changes</h4>
+          <p className="session-details-note" role="status"><AlertTriangleIcon size={14} /><span>{gitError}</span></p>
+        </section>
+      ) : git?.isRepo && (
         <section className="session-details-line">
           <h4>Changes</h4>
           <span className="session-details-changes">
@@ -213,6 +227,59 @@ function SessionDetails({ onReview, onClose, pickApp }: { onReview: () => void; 
         </section>
       )}
       <BackgroundTasks />
+    </div>
+  );
+}
+
+/*
+ * The checked-out branch, and switching it. The composer offers this only
+ * before the first message, so a started conversation switches here. A
+ * paired viewer that can only read sees the name without the menu.
+ */
+function BranchRow() {
+  const { api, git, checkoutBranch } = useWorkspace();
+  const anchor = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  if (!git?.branch) return null;
+  const readOnly = api.isDesktop === false && api.remoteMode !== "control";
+  if (readOnly || git.branches.length < 2) {
+    return <p className="session-details-row"><GitBranchIcon size={14} /><span className="mono">{git.branch}</span></p>;
+  }
+  const needle = query.trim().toLowerCase();
+  const shown = needle ? git.branches.filter((branch) => branch.toLowerCase().includes(needle)) : git.branches;
+  const choose = (branch: string) => {
+    setOpen(false);
+    setQuery("");
+    if (branch !== git.branch) void checkoutBranch(branch);
+  };
+  return (
+    <div className="session-details-anchor" ref={anchor}>
+      <button type="button" className="session-details-action" aria-haspopup="dialog" aria-expanded={open} title="Switch branch" onClick={() => setOpen((value) => !value)}>
+        <GitBranchIcon size={14} /><span className="mono">{git.branch}</span><ChevronDownIcon size={12} />
+      </button>
+      {open && (
+        <HeaderPopover anchor={anchor} label="Switch branch" className="branch-menu" onClose={() => { setOpen(false); setQuery(""); }}>
+          {git.branches.length > 8 ? (
+            <input
+              className="branch-menu-search"
+              type="search"
+              aria-label="Find a branch"
+              placeholder="Find a branch"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => { if (event.key === "Enter" && shown[0]) { event.preventDefault(); choose(shown[0]); } }}
+            />
+          ) : null}
+          {shown.map((branch) => (
+            <button key={branch} type="button" aria-current={branch === git.branch ? "true" : undefined} onClick={() => choose(branch)}>
+              {branch === git.branch ? <CheckIcon size={13} /> : <span className="branch-menu-spacer" aria-hidden />}
+              <span className="mono">{branch}</span>
+            </button>
+          ))}
+          {shown.length === 0 ? <p className="commit-menu-note">No branch matches.</p> : null}
+        </HeaderPopover>
+      )}
     </div>
   );
 }

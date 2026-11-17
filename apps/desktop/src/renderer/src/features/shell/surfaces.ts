@@ -17,6 +17,10 @@ export interface SurfaceState {
   /** The comparison the selected thread is a candidate in. */
   groupId?: string;
   platform?: string;
+  /** Top-level names in the conversation's folder, for telling an app the simulator can run. */
+  folderNames?: readonly string[];
+  /** A simulator is attached to this conversation. */
+  simulatorAttached?: boolean;
 }
 
 export interface Surface {
@@ -24,8 +28,11 @@ export interface Surface {
   label: string;
   detail: string;
   icon: typeof DiffSquareIcon;
-  /** On the icon bar itself; the rest sit in its More menu. */
-  inBar: boolean;
+  /** On the icon bar itself, always or when the state calls for it; the rest sit in its More menu. */
+  inBar: boolean | ((state: SurfaceState) => boolean);
+  /** A keymap command, so the shown keys follow the platform and any rebinding. */
+  command?: string;
+  /** Fixed keys for a surface the keymap does not own. */
   shortcut?: string;
   /** One key that opens it while the panel's launcher is showing. */
   key: string;
@@ -39,8 +46,9 @@ export const SURFACES: Surface[] = [
     label: "Review",
     detail: "Changed files and their diff.",
     icon: DiffSquareIcon,
-    inBar: true,
-    shortcut: "⇧⌘D",
+    // A folder known not to be a repository has nothing to review; Review waits in More.
+    inBar: ({ git }) => git?.isRepo !== false,
+    command: "open-review",
     // Unknown until the status loads; only a folder known not to be a repository is blocked.
     blockedBy: ({ git }) => (git?.isRepo === false ? "Available for Git repositories." : undefined),
   },
@@ -50,7 +58,7 @@ export const SURFACES: Surface[] = [
     detail: "Open a local app or URL.",
     icon: GlobeIcon,
     inBar: true,
-    shortcut: "⌘⇧B",
+    command: "open-browser",
     blockedBy: () => undefined,
   },
   {
@@ -58,7 +66,7 @@ export const SURFACES: Surface[] = [
     label: "Simulator",
     detail: "Watch and drive an iOS Simulator.",
     icon: SmartphoneIcon,
-    inBar: true,
+    inBar: ({ folderNames, simulatorAttached }) => Boolean(simulatorAttached) || looksLikeMobileApp(folderNames ?? []),
     blockedBy: ({ desktop, platform }) =>
       desktop === false ? "Available in the desktop app." : platform && platform !== "darwin" ? "Available on macOS with Xcode." : undefined,
   },
@@ -89,6 +97,23 @@ export const SURFACES: Surface[] = [
     blockedBy: ({ groupId }) => (groupId ? undefined : "Open a thread from a comparison."),
   },
 ];
+
+/*
+ * A folder the simulator can run: an Xcode project or workspace, a Swift
+ * package, XcodeGen or CocoaPods, an `ios` folder (React Native, Flutter,
+ * Capacitor, a prebuilt Expo app) or an EAS config. Read from top-level
+ * names only, so it costs nothing beyond the listing Files already has.
+ */
+const MOBILE_APP_MARKERS = [/\.xcodeproj$/, /\.xcworkspace$/, /^Package\.swift$/, /^project\.yml$/, /^Podfile$/, /^ios$/, /^eas\.json$/];
+
+export function looksLikeMobileApp(names: readonly string[]): boolean {
+  return names.some((name) => MOBILE_APP_MARKERS.some((marker) => marker.test(name)));
+}
+
+/** On the bar for this state. The surface on show always is, so closing it never means a trip to More. */
+export function onBar(surface: Surface, state: SurfaceState, active?: InspectorTool): boolean {
+  return surface.tool === active || (typeof surface.inBar === "function" ? surface.inBar(state) : surface.inBar);
+}
 
 export function surfaceFor(tool: InspectorTool): Surface | undefined {
   return SURFACES.find((surface) => surface.tool === tool);

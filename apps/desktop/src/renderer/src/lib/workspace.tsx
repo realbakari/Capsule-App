@@ -2687,8 +2687,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
         setPromptJump((open) => !open);
         break;
       case "open-review":
-        setInspectorTab("changes");
-        setInspectorOpen(true);
+      case "open-browser": {
+        const tab = name === "open-review" ? "changes" : "browser";
+        // Pressed again on its own surface, the key closes the panel.
+        if (inspectorOpen && inspectorTab === tab) setInspectorOpen(false);
+        else {
+          setInspectorTab(tab);
+          setInspectorOpen(true);
+        }
         break;
       case "open-browser":
         setInspectorTab("browser");

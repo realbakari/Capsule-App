@@ -2135,10 +2135,6 @@ textarea.composer-field--resting {
   gap: 0.75rem;
   padding: 0.375rem 0 0;
   font-size: var(--text-xs);
-  background: color-mix(in srgb, var(--surface-0) 65%, transparent);
-  border: 1px solid var(--border-color);
-  border-top: 0;
-  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
   color: var(--text-faint);
   overflow: visible;
   flex-wrap: wrap;
@@ -7170,6 +7166,10 @@ body:has(> #root .palette-backdrop > [role="alertdialog"]) > :is(.header-popover
 @container composer-row (max-width: 36rem) {
   .composer-controls { flex: 1; }
 }
+/* Compact or Keep, beside Send, only while the context is nearly full. */
+.composer-compact-toggle { height: 1.75rem; padding: 0 0.5rem; border: 1px solid transparent; border-radius: var(--control-radius); background: transparent; color: var(--text-muted); font-size: var(--text-ui); font-weight: 500; }
+.composer-compact-toggle:hover { background: var(--bg-hover); color: var(--text); }
+.composer-compact-toggle[aria-pressed="true"] { border-color: var(--border-strong); background: var(--surface-1); color: var(--text); }
 
 .context-meter-wrapper {
   position: relative;
@@ -10828,13 +10828,12 @@ fieldset.harness-options:disabled { opacity: .7; }
 .git-diffstat .removed { color: var(--red); }
 
 /* Queued follow-ups above the composer controls. */
-.queued-prompts { margin: 0 0.35rem 0.5rem; padding: 0.5rem 0.65rem; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--surface-0); font-size: var(--text-ui); }
-.queued-prompts-head { display: flex; gap: 0.5rem; align-items: baseline; margin-bottom: 0.35rem; }
-.queued-prompts-head strong { font-size: var(--text-xs); }
-.queued-prompts-head .faint { font-size: var(--text-2xs); }
+.queued-prompts { margin: 0 0 0.375rem; font-size: var(--text-ui); }
 .queued-prompts-blocked { margin: 0 0 0.35rem; color: var(--text-muted); font-size: var(--text-2xs); }
 .queued-prompts-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.25rem; }
-.queued-prompt { display: flex; align-items: center; gap: 0.4rem; min-width: 0; }
+.queued-prompt { display: flex; align-items: center; gap: 0.4rem; min-width: 0; min-height: 1.75rem; padding: 0 0.25rem 0 0.5rem; border-radius: var(--control-radius); background: var(--surface-1); }
+.queued-prompt-steer { height: 1.375rem; padding: 0 0.4rem; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-muted); font-size: var(--text-xs); }
+.queued-prompt-steer:hover { background: var(--bg-hover); color: var(--text); }
 .queued-prompt-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .queued-prompt-meta { color: var(--text-faint); font-size: var(--text-2xs); }
 .queued-prompt-actions { display: flex; gap: 0.1rem; align-items: center; flex-shrink: 0; }

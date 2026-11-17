@@ -1,3 +1,4 @@
+import { withShortcut } from "../../lib/keybindings";
 import { useWorkspace } from "../../lib/workspace";
 import { SidebarToggle } from "./SidebarControl";
 import { SurfaceBar } from "./SurfaceBar";
@@ -5,7 +6,7 @@ import { ThreadTitleMenu } from "./ThreadTitleMenu";
 import { PresenceIndicator } from "../share/Presence";
 import { ThreadProfileChip } from "../customization/ThreadProfileChip";
 import { gatewayConnectionLabel } from "../../lib/harness";
-import { ArrowLeftIcon, ArrowRightIcon, StopIcon } from "./icons";
+import { ArrowLeftIcon, ArrowRightIcon } from "./icons";
 
 /*
  * The titlebar names where you are and picks the panel. Opening the folder,
@@ -34,12 +35,11 @@ export function Titlebar() {
     project,
     session,
     sidebarCollapsed,
-    activeRun,
-    stopRun,
     canGoBack,
     canGoForward,
     goBack,
     goForward,
+    keyBindings,
   } = useWorkspace();
 
   const label = gatewayConnectionLabel(settings?.runtimeMode, connected, status?.state);
@@ -57,8 +57,8 @@ export function Titlebar() {
       {/* With the sidebar away, its back and forward arrows come here, beside the toggle that brings it back. */}
       {sidebarCollapsed ? (
         <span className="titlebar-history">
-          <button type="button" className="icon-btn" title="Back (⌘[)" aria-label="Back" disabled={!canGoBack} onClick={goBack}><ArrowLeftIcon size={14} /></button>
-          <button type="button" className="icon-btn" title="Forward (⌘])" aria-label="Forward" disabled={!canGoForward} onClick={goForward}><ArrowRightIcon size={14} /></button>
+          <button type="button" className="icon-btn" title={withShortcut("Back", "history-back", keyBindings)} aria-label="Back" disabled={!canGoBack} onClick={goBack}><ArrowLeftIcon size={14} /></button>
+          <button type="button" className="icon-btn" title={withShortcut("Forward", "history-forward", keyBindings)} aria-label="Forward" disabled={!canGoForward} onClick={goForward}><ArrowRightIcon size={14} /></button>
         </span>
       ) : null}
       <div className="header-actions header-lead">
@@ -83,13 +83,8 @@ export function Titlebar() {
         </div>
       </div>
 
+      {/* Stopping a turn belongs to the composer (Stop, or Esc) and the palette, beside what is running. */}
       <div className="header-actions">
-        {activeRun && (
-          <button className="icon-btn" title="Stop run" aria-label="Stop run" onClick={() => void stopRun()}>
-            <StopIcon size={14} />
-          </button>
-        )}
-
         {view === "chat" && <SurfaceBar />}
 
         {/* Only when something needs attention; a healthy connection shows in the sidebar footer. */}

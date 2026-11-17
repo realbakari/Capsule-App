@@ -1133,8 +1133,8 @@ keeps its choice in `draftApproval` and creates the thread with it. The chip is
 hidden for a read-only viewer and for an agent with no runtime route. An agent's
 own reported permission option keeps its own names under **Agent permissions**.
 Attach and send share the controls row in the expanded layout at both narrow
-and wide widths. In compact mode those actions share the prompt line; checkout
-controls remain entirely below the glass surface. Geometry is tested in the
+and wide widths. In compact mode those actions share the prompt line; the
+workspace row remains entirely below the glass surface. Geometry is tested in the
 real renderer rather than inferred from CSS selectors. A selected skill keeps
 the expanded composer visible so hidden context cannot be submitted unnoticed.
 Composer geometry is covered at 320, 360, 640 and 900 CSS pixels, in both themes
