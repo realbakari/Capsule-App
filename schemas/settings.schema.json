@@ -423,6 +423,10 @@
       "type": "boolean",
       "description": "Play the system sound with notifications. User settings only."
     },
+    "inAppNotifications": {
+      "type": "boolean",
+      "description": "Show a toast when another conversation finishes, fails or needs you while Capsule is in front. User settings only."
+    },
     "continueAfterRestart": {
       "type": "boolean",
       "description": "After a quit or crash mid-turn, send that turn's prompt again. User settings only."

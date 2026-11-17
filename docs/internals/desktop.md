@@ -219,12 +219,58 @@ Settings › General's Notifications card opens with **Notify me**, a preset
 select over `notifyRunComplete`, `notifyApprovals`, `notifyLongCommands`,
 `bounceDockOnAttention` and `dockBadge` (`NOTIFICATION_PRESETS` in
 `ConfigurationSettings.tsx`). No preset is stored: the select shows the preset
-the switches match, or a disabled **Custom**.
+the switches match, or a disabled **Custom**. Those five switches sit under
+the card's Advanced fold; In-app notifications
+(`inAppNotifications`) and Notification sound stay visible, outside the
+presets.
 
-The sidebar footer's update bubble appears only for something to act on: an
-update, its download and install, or an error; green marks a real update. A
-development build is flagged `development` on the merged update status; its
-note goes in the update button's tooltip and, after a manual check, one toast.
+Thread notices follow one table, `noticeChannels(kind, focus, settings, quiet)`
+in `@capsule/shared` (`notices.ts`). Focus is `thread` (that thread is in the
+chat view of a focused window), `app` (the window is focused, elsewhere) or
+`background`. `thread` gets nothing; `app` gets a toast if `inAppNotifications`
+is on; `background` gets a desktop notification if the kind's switch is on,
+with `silent` from `notificationSound` and a Dock bounce (macOS) or taskbar
+flash (Windows) from `bounceDockOnAttention`. The per-kind switches gate only
+the desktop notification, so "Only in the app" keeps toasts. `quiet` (a
+snoozed or settled thread) drops everything but a decision. Copy comes from
+`runNotice`, `approvalNotice` and `longCommandNotice`, shaped by `toastText`
+and `desktopText`: the thread title leads, then what happened and its detail
+(a failure's first line, a usage limit's reset time, the question, the action
+awaiting approval).
+
+The main process decides the desktop half (`notifyThread` in `main/index.ts`)
+and the renderer the toast half (`features/triage/BackgroundActivity.tsx`),
+each passing its own focus to the same table, so a focused window never gets
+both. The renderer hears of settled runs from run frames, of approvals from the
+pending list, and of long commands from a `long-command` state command main
+sends. Opening a thread dismisses its toast. `DesktopNotices`
+(`main/desktop-notices.ts`) holds desktop notifications for `BURST_MS` and
+sends a burst as one (`coalesceNotices`: latest notice per thread, most urgent
+first, click opens the most urgent), closes a thread's older notification when
+a newer one goes out, and closes one once every thread it names has
+`lastViewedAt` after it was sent. The Dock badge and the menu bar extra both
+read the latest run per thread (`listLatestRunStates`), so an old failed turn
+is not counted as waiting.
+
+The sidebar footer carries no update text. `UpdateButton` (in
+`features/shell/`) is one round icon button at the right end of the footer row,
+before the connection dot, and `updateButtonView` in `lib/updates.ts` maps the
+merged update status to its glyph, action and tooltip: idle refresh (spins while
+checking or preparing a restart), download arrow with a dot (available), a
+progress ring (downloading), and a circular arrow with a check badge
+(downloaded). The available, downloading and downloaded states sit on a filled
+round surface. A failed background check returns to idle; a failed download or
+restart keeps its offer and says "Click to retry". Toasts come only from
+`updateOutcomeToast`, for a check, download or restart the user started (an
+error, or "You're up to date"), and from `updateDownloadedToast` when the status
+moves into `ready-to-install`, with a **Release notes** action to
+https://cpcl.dev/updates. The restart confirm names the version. A development
+build is `development` on the merged status from the first read (main seeds
+`Updater` as unavailable when it cannot install): the button is
+`aria-disabled`, dimmed, and its tooltip reads "Updates unavailable" with the
+reason; About's button is disabled too. The button is not rendered on a paired
+device (`api.isDesktop === false`), since checking, downloading and installing
+are write channels that act on the host.
 
 `TooltipLayer`, mounted once in `App`, gives every element with a `title` a
 styled tooltip on hover or keyboard focus. It holds the `title` aside while
@@ -2365,13 +2411,24 @@ Close still works.
 
 **First run** (`features/onboarding/FirstRun.tsx`) opens when
 `settings.firstRunDone` is false, there are no projects, and the window is the
-desktop app. Steps: agents (featured presets with store controls and Sign in;
-Continue needs one ready agent), folder (the add-project flow or clone), and
-notifications (`NotificationsCard` with its presets). Finishing sets
-`firstRunDone`, creates a conversation in the chosen folder and focuses the
-composer. **Set up later** and Escape set `firstRunDone` and close. Profiles
-that already have projects never see it. **Set up Capsule** in the palette
-reopens it at any time.
+desktop app. It is one page, not a wizard: **Agent** (featured presets with
+store controls, Sign in and Check again) and **Folder** (Open a folder, Clone a
+repository, or the chosen folder with Choose another). Only a project with a
+folder counts; the Inbox does not. **Start a conversation** needs a folder and
+nothing else. A missing agent is finished from the composer's setup notice, so
+it never gates the first message. `firstRunAgent` (`setup-progress.ts`) picks
+the agent the conversation starts with: the selected agent if it is a ready
+preset, otherwise the first ready featured preset, then any ready one. A
+selected Gateway or mock agent is left alone. While first run is open the
+composer's agent follows that pick, and the footer says "Starts with X".
+Finishing sets `firstRunDone` and, when the pick differs, `defaultAgentId`.
+Without that, a restart would put the composer back on the catalog's first
+agent, which may not be installed. It then creates a conversation in the folder
+and focuses the composer. Picking a folder moves focus to Start. Notifications
+are not a step, since they default to on; one line points at Settings. **Set
+up later** and Escape set `firstRunDone` and close. Profiles that already have
+projects never see it. **Set up Capsule** in the palette reopens it at any
+time.
 
 **Setup checklist** (`SetupChecklist.tsx`) replaces the sidebar's bare "No
 projects yet": "Finish setup · n/3" for agent ready, folder added and

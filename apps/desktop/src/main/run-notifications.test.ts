@@ -8,4 +8,5 @@ it("alerts once per settled run, including when metadata arrives later", () => {
   expect(notifications.firstSettlement({ id: "one", status: "completed" })).toBe(false);
   expect(notifications.firstSettlement({ id: "two", status: "failed" })).toBe(true);
   expect(notifications.firstSettlement({ id: "three", status: "cancelled" })).toBe(true);
+  expect(notifications.firstSettlement({ id: "four", status: "blocked" })).toBe(true);
 });

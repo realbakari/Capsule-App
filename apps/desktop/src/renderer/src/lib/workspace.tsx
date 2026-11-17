@@ -1021,7 +1021,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       const result = await api.gitStatus(projectId, sessionId);
       if (current()) { setGit(result); setGitError(undefined); }
     } catch (error) {
-      if (current()) { setGit(undefined); setNotice(formatUserError(error)); }
+      // Nobody asked for this read: the last good status stays, and the reason waits in Conversation details.
+      if (current()) setGitError(formatUserError(error));
     }
   }, [api, scope, projectId, sessionId, selectionExists]);
 
@@ -2697,9 +2698,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
           setInspectorOpen(true);
         }
         break;
-      case "open-browser":
-        setInspectorTab("browser");
-        setInspectorOpen(true);
+      }
+      case "stop-turn":
+        if (!activeRun) setNotice("Nothing is running in this conversation.");
+        else if (api.isDesktop === false && api.remoteMode !== "control") setNotice("This device can only read.");
+        else void stopRun();
+        break;
+      case "focus-composer":
+        setView("chat");
+        requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>("textarea.composer-field")?.focus());
         break;
       case "next-conversation":
       case "previous-conversation":

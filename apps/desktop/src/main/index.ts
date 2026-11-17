@@ -52,6 +52,7 @@ import { readNavigableUrl, type BrowserTarget } from "./browser-tools";
 import { externalLinkTarget, isAppDocument } from "./app-navigation";
 import { BrowserAccess } from "./browser-access";
 import { RunNotifications } from "./run-notifications";
+import { DesktopNotices } from "./desktop-notices";
 import { observeBrowser } from "./browser-diagnostics";
 import { secureBrowserSession } from "./browser-security";
 import { startBrowserMcpServer, type BrowserMcpServer } from "./browser-mcp";
@@ -76,6 +77,12 @@ import {
   type AttentionState,
   attentionLabel,
   summariseAttention,
+  approvalNotice,
+  longCommandNotice,
+  noticeChannels,
+  runNotice,
+  threadShelf,
+  type Notice,
   parseThreadTriageAction,
   type MessageAttachment,
   type UpdateCheck,
@@ -256,11 +263,21 @@ const petVoice = new PetVoice(app.isPackaged ? path.join(process.resourcesPath, 
  * take focus so its tray can be operated with the keyboard; moving it uses a
  * separate drag handle rather than swallowing the mascot's click target.
  */
+let petPlace: { x: number; y: number } | undefined;
 function petBounds(): { x: number; y: number; width: number; height: number } {
   const width = 320;
   const height = 208;
+  // Where it was last put, while that spot is still on a display; else bottom right, a little in from the corner.
+  if (petPlace) {
+    const area = screen.getDisplayMatching({ ...petPlace, width, height }).workArea;
+    return {
+      width,
+      height,
+      x: Math.max(area.x, Math.min(petPlace.x, area.x + area.width - width)),
+      y: Math.max(area.y, Math.min(petPlace.y, area.y + area.height - height)),
+    };
+  }
   const area = screen.getPrimaryDisplay().workArea;
-  // Bottom right, a little in from the corner.
   return {
     width,
     height,
@@ -1008,68 +1025,65 @@ function windowFocused(): boolean {
   return Boolean(desktopWindow.current?.isFocused());
 }
 
-function bounceDock(): void {
-  if (process.platform !== "darwin" || !app.dock || windowFocused()) return;
-  app.dock.bounce("informational");
+/** The Dock bounces once on macOS; on Windows the taskbar button flashes until the window is focused. */
+function requestAttention(): void {
+  if (windowFocused()) return;
+  if (process.platform === "darwin" && app.dock) app.dock.bounce("informational");
+  const window = desktopWindow.current;
+  if (process.platform === "win32" && window && !window.isDestroyed()) {
+    window.flashFrame(true);
+    window.once("focus", () => { if (!window.isDestroyed()) window.flashFrame(false); });
+  }
 }
+
+const desktopNotices = new DesktopNotices({
+  show: ({ title, body, silent, sessionId }) => {
+    if (!Notification.isSupported()) return undefined;
+    const notification = new Notification({ title, body, silent });
+    if (sessionId) notification.on("click", () => commandWindow({ command: "open-session", sessionId }));
+    notification.show();
+    return notification;
+  },
+  schedule: (run, ms) => setTimeout(run, ms).unref?.(),
+});
 
 /*
- * A notification names the thread and opens it. "Response complete" with the
- * prompt as its body said neither which of a dozen threads finished nor took
- * you there.
+ * Every notice goes through the shared policy: the open window shows its own
+ * toast for another thread, and only a backgrounded app gets a desktop
+ * notification, which names the thread and opens it.
  */
-function notifyDesktop(title: string, body: string, sessionId?: string): void {
-  if (!Notification.isSupported()) return;
-  const notification = new Notification({ title, body, silent: engine?.getSettings().notificationSound === false });
-  if (sessionId) notification.on("click", () => commandWindow({ command: "open-session", sessionId }));
-  notification.show();
-}
-
-function threadLabel(sessionId: string | undefined): { title: string; project?: string; sessionId?: string } {
+function notifyThread(sessionId: string | undefined, notice: Pick<Notice, "kind" | "detail">): void {
+  const settings = engine?.getSettings();
   const session = sessionId ? engine?.repos.getSession(sessionId) : undefined;
-  const project = session ? engine?.repos.getProject(session.projectId)?.name : undefined;
-  return { title: session?.title ?? "Capsule", project, sessionId: session?.id };
+  if (!settings || !session || session.state === "archived") return;
+  const quiet = notice.kind !== "snooze-ended" && threadShelf(session) !== "active";
+  const channels = noticeChannels(notice.kind, windowFocused() ? "app" : "background", settings, quiet);
+  if (!channels.desktop) return;
+  const project = engine?.repos.getProject(session.projectId)?.name;
+  desktopNotices.push({ ...notice, sessionId: session.id, threadTitle: session.title, project }, channels.sound);
+  if (channels.attention) requestAttention();
 }
 
 function notifyApproval(approval: ApprovalRequest): void {
-  const settings = engine?.getSettings();
-  if ((settings && !settings.notifyApprovals) || windowFocused()) return;
-  const thread = threadLabel(engine?.getRun(approval.runId)?.sessionId);
-  const question = approval.details?.questions?.[0]?.question;
-  const what = question ? `Has a question: ${question}` : `Needs approval: ${approval.agentName} wants to ${approval.action} ${approval.target}`;
-  notifyDesktop(thread.title, thread.project ? `${thread.project} · ${what}` : what, thread.sessionId);
-  if (settings?.bounceDockOnAttention) bounceDock();
+  notifyThread(approval.sessionId ?? engine?.getRun(approval.runId)?.sessionId, approvalNotice(approval));
 }
 
-function notifyLongCommand(command: { title: string; seconds: number }): void {
-  const settings = engine?.getSettings();
-  if (!settings?.notifyLongCommands || windowFocused()) return;
-  notifyDesktop("Command still running", `${command.title.slice(0, 120)} has run for ${command.seconds} seconds.`);
-  if (settings.bounceDockOnAttention) bounceDock();
+function notifyLongCommand(command: { sessionId: string; title: string; seconds: number }): void {
+  const notice = longCommandNotice(command);
+  // The window has no other way to hear of it, so it gets the notice for its toast.
+  send(IPC_EVENTS.state, { command: "long-command", sessionId: command.sessionId, detail: notice.detail });
+  notifyThread(command.sessionId, notice);
 }
-
-const SETTLED_LABEL: Partial<Record<Run["status"], string>> = { completed: "Finished", failed: "Failed", cancelled: "Stopped" };
 
 const runNotifications = new RunNotifications();
 function notifyRunSettled(run: Run): void {
   if (!runNotifications.firstSettlement(run)) return;
-  const settings = engine?.getSettings();
-  if (!settings?.notifyRunComplete) return;
-  // In front of you, the window says it itself: an in-app toast for another thread.
-  if (windowFocused()) return;
-  // Stopping a turn yourself is not news.
-  if (run.status === "cancelled") return;
-  const thread = threadLabel(run.sessionId);
-  const status = SETTLED_LABEL[run.status] ?? "Finished";
-  notifyDesktop(thread.title, thread.project ? `${thread.project} · ${status}` : status, thread.sessionId);
-  if (settings.bounceDockOnAttention) bounceDock();
+  const notice = runNotice(run);
+  if (notice) notifyThread(run.sessionId, notice);
 }
 
 function notifySessionWoke(session: Session): void {
-  const settings = engine?.getSettings();
-  if (!settings?.notifyRunComplete || windowFocused()) return;
-  const project = engine?.repos.getProject(session.projectId)?.name;
-  notifyDesktop(session.title, project ? `${project} · Snooze ended` : "Snooze ended", session.id);
+  notifyThread(session.id, { kind: "snooze-ended" });
 }
 
 /**
@@ -2484,6 +2498,7 @@ function bindEngineEvents(): void {
     // Read, settle and snooze change what is waiting; settings may turn the badge off.
     const command = payload?.command;
     if (command === "sessions-updated" || command === "settings-updated" || command === "config-updated") { refreshDockBadge(); refreshTrayAttention(); }
+    if (command === "sessions-updated") desktopNotices.viewed((sessionId) => engine?.repos.getSession(sessionId)?.lastViewedAt);
     if (command === "config-updated") void applyDesktopSettings(engine?.getSettings());
   });
   engine.events.on("approval", (approval: ApprovalRequest) => {
@@ -2664,7 +2679,8 @@ function attentionEntries(): Electron.MenuItemConstructorOptions[] {
   try {
     const summary = summariseAttention({
       sessions: engine.listSessions(),
-      runs: engine.listRuns(),
+      // Latest per thread, as the Dock counts: an old failed turn is history, not something waiting.
+      runs: engine.listLatestRunStates(),
     });
     if (summary.items.length === 0) return [];
     // A menu is not a dashboard; the tail is reachable in the window.
@@ -2718,7 +2734,7 @@ function refreshTrayAttention(): void {
   if (!tray || !engine) return;
   buildTrayMenu();
   try {
-    const summary = summariseAttention({ sessions: engine.listSessions(), runs: engine.listRuns() });
+    const summary = summariseAttention({ sessions: engine.listSessions(), runs: engine.listLatestRunStates() });
     const label = attentionLabel(summary);
     tray.setToolTip(label ? `Capsule — ${label}` : "Capsule");
     /*

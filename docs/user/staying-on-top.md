@@ -19,6 +19,12 @@ visit** shows where you left off.
 still needs you. It comes back by itself as soon as its agent starts a new turn,
 or choose **Return to active**.
 
+Hover a conversation in the sidebar for a one-click **Settle** in place of its
+age. A settled conversation offers **Return to active** there instead, and a
+snoozed one **Wake now**. A conversation that is working or waiting for your
+decision offers none. Click the **Settled** or **Snoozed** shelf to open it; its
+count sits where the ages are.
+
 `⌘E` settles the conversation you are in and opens the next one waiting for
 you: a decision first, then anything that finished or failed while you were
 away. If nothing is waiting, you stay where you are.
@@ -35,20 +41,43 @@ Settle and snooze both offer **Undo** for a few seconds, also on `⌘Z`.
 
 ## Notifications
 
-When Capsule is in the background, a notification names the conversation and
-says what happened: finished, failed, needs approval, has a question, or a snooze
-ended. Click it to open that conversation. While you are in the app, the same
-news about other conversations appears in the corner with **Open**.
+Capsule tells you about a conversation in one of three ways, depending on where
+you are:
+
+- **Reading that conversation:** nothing. You can see it.
+- **Elsewhere in Capsule:** a notice in the corner names the conversation, says
+  what happened, and offers **Open**. It goes away when you open that
+  conversation.
+- **Capsule in the background:** a desktop notification names the conversation
+  and says what happened. Click it to open that conversation.
+
+What happened is one of: finished, failed (with the first line of the reason),
+hit a usage limit (with when it resets, if the agent said), needs your approval
+(with what it wants to do), has a question (with the question), is running a
+long command, or is back from snooze. Snoozed and settled conversations stay
+quiet unless they are waiting on your decision.
+
+When several conversations finish or need you at once, they arrive as one
+notification, such as "2 conversations need you", that opens the most urgent
+one. A conversation's newer notification replaces its older one, and a
+notification leaves Notification Center once you have opened its conversation.
 
 The Dock icon counts conversations waiting on you: a decision, a failure, or a
-finished turn you have not read. It goes down as you read.
+finished turn you have not read. It goes down as you read. The menu bar extra
+counts only the decisions and failures, and lists the conversations waiting so
+you can open one. The window title shows the same count, for example
+"Capsule (3)".
 
-Settings › General starts with **Notify me**, which sets the switches below it
-in one go: **Everything** (finished turns, approvals and long commands),
-**When I'm needed** (only when an agent waits on you), or **Only in the app**
-(nothing outside Capsule's window, and no Dock badge or bounce). Change a
-switch yourself and it reads **Custom**. The switches cover each kind of
-notification, the Dock badge and the notification sound.
+Settings › General starts with **Notify me**, which sets what reaches you while
+Capsule is in the background: **Everything** (finished turns, approvals and long
+commands), **When I'm needed** (only when an agent waits on you), or **Only in
+the app** (no desktop notifications, and no Dock badge or bounce). **In-app
+notifications** turns the notices in the corner on or off. **Notification
+sound** plays the system sound with each desktop notification; your Mac's Focus
+and Do Not Disturb still silence it. The individual switches, one for each kind
+of notification plus the Dock bounce and badge, are under **Advanced**. Change
+one yourself and Notify me reads **Custom**. On Windows, the taskbar button
+flashes where a Mac's Dock icon would bounce.
 
 ## When an agent asks you something
 

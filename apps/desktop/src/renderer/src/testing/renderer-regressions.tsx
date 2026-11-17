@@ -25,6 +25,7 @@ import { runRuntimeExtensionRegressions } from "./runtime-extension-regressions"
 import { runInterfaceRegressions } from "./interface-regressions";
 import { runPanelRegressions } from "./panel-regressions";
 import { runActivityRegressions, renderActivityPreview } from "./activity-regressions";
+import { runNoticeRegressions } from "./notice-regressions";
 import { runChannelRegressions, renderChannelPreview } from "./channel-regressions";
 import { runComposerLayoutRegressions, runModelPickerRegressions } from "./composer-layout-regressions";
 import { runDictationRegressions } from "./dictation-regressions";
@@ -1618,6 +1619,7 @@ window.runRendererRegressions = async () => {
   await runBestOfNRegressions(host, contextBase);
   phase("activity and startup");
   await runActivityRegressions(host);
+  await runNoticeRegressions(host);
   await runChannelRegressions(host);
   phase("composer layout matrix");
   await runComposerLayoutRegressions(host, contextBase);

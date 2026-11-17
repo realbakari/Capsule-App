@@ -107,6 +107,7 @@ export const SETTINGS_SCHEMA: Record<FileSettingKey, SettingSpec> = {
   longCommandSeconds: { scope: "user", apply: "live", description: "Seconds before a command counts as running long.", schema: { type: "number", enum: [...LONG_COMMAND_SECONDS] } },
   dockBadge: bool("Count conversations waiting on you on the Dock icon."),
   notificationSound: bool("Play the system sound with notifications."),
+  inAppNotifications: bool("Show a toast when another conversation finishes, fails or needs you while Capsule is in front."),
   continueAfterRestart: bool("After a quit or crash mid-turn, send that turn's prompt again."),
   followAgent: bool("While a turn runs, Files previews the file the agent is reading or editing."),
   autoSettleMerged: bool("Settle a conversation once the pull request it watches merges.", "both"),

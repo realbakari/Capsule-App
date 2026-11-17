@@ -126,6 +126,7 @@ export const DEFAULT_CAPSULE_SETTINGS: CapsuleSettings = {
   bounceDockOnAttention: true,
   dockBadge: true,
   notificationSound: true,
+  inAppNotifications: true,
   showMenuBarExtra: true,
   keepAwakeWhileRunning: false,
   autoDownloadUpdates: true,
@@ -185,6 +186,7 @@ export const SETTINGS_SECTION_KEYS: Record<string, ReadonlyArray<keyof CapsuleSe
     "bounceDockOnAttention",
     "dockBadge",
     "notificationSound",
+    "inAppNotifications",
     "autoClassifySessions",
     "agentSimulatorAccess",
     "autoResumeOnLimit",
@@ -306,6 +308,8 @@ export interface CapsuleSettings {
   dockBadge: boolean;
   /** Desktop notifications play the system sound. */
   notificationSound: boolean;
+  /** Another conversation's news shows as a toast while Capsule is in front. */
+  inAppNotifications: boolean;
   showMenuBarExtra: boolean;
   keepAwakeWhileRunning: boolean;
   autoDownloadUpdates: boolean;
@@ -587,6 +591,7 @@ export function normalizeCapsuleSettings(input: Partial<CapsuleSettings> = {}): 
     ),
     dockBadge: flag(input.dockBadge, DEFAULT_CAPSULE_SETTINGS.dockBadge),
     notificationSound: flag(input.notificationSound, DEFAULT_CAPSULE_SETTINGS.notificationSound),
+    inAppNotifications: flag(input.inAppNotifications, DEFAULT_CAPSULE_SETTINGS.inAppNotifications),
     showMenuBarExtra: flag(input.showMenuBarExtra, DEFAULT_CAPSULE_SETTINGS.showMenuBarExtra),
     autoDownloadUpdates: flag(input.autoDownloadUpdates, DEFAULT_CAPSULE_SETTINGS.autoDownloadUpdates),
     keepAwakeWhileRunning: flag(

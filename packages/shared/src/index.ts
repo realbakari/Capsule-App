@@ -44,6 +44,7 @@ export * from "./channels.js";
 export type { PetVoiceStatus, DictationSettingsPane, DictationOutcome, DictationEvent } from "./pet-voice.js";
 export { DICTATION_SETTINGS_PANES } from "./pet-voice.js";
 export * from "./usage-limit.js";
+export * from "./notices.js";
 export * from "./follow-ups.js";
 export * from "./board.js";
 export * from "./plan-mode.js";
