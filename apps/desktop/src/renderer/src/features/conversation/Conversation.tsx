@@ -681,6 +681,11 @@ export function Conversation() {
                 * use, so it reads as Capsule rather than as decoration.
                 */}
               <span className="empty-thread-mark" aria-hidden />
+              {/*
+                * A project with a folder and no thread selected is a draft:
+                * the composer below starts the thread on send, so the
+                * heading asks the same question either way.
+                */}
               <h1>
                 {project?.workingDirectory && project.name !== "Inbox" ? (
                   <>What should we build in <span>{project.name}</span>?</>

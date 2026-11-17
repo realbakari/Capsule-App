@@ -2,13 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import type { AcpConfigOption } from "@capsule/shared";
 import { useWorkspace } from "../../lib/workspace";
 import { formatUserError } from "../../lib/errors";
-import { MenuSelect } from "../shell/MenuSelect";
+import { ChoiceRows } from "../conversation/ChoiceRows";
 
-/* Agents name options in lowercase ("high"); menus use sentence case. Word by word would turn "iOS" into "IOS". */
-function sentenceCase(value: string): string {
-  return value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
-}
-
+/** A live agent setting as rows; the check moves only once the agent confirms the change. */
 export function AgentControl({ sessionId, option, label, disabled = false }: {
   sessionId: string; option: AcpConfigOption; label: string; disabled?: boolean;
 }) {
@@ -33,8 +29,8 @@ export function AgentControl({ sessionId, option, label, disabled = false }: {
       finally { if (scope.current === current) { saving.current = false; setPending(false); } }
     }
   }
-  return <MenuSelect ariaLabel={label} value={option.currentValue ?? ""} placeholder={`${label}: agent default`}
+  return <ChoiceRows label={label} current={option.currentValue}
     unavailableReason={api.isDesktop !== true ? "Change agent settings on the desktop." : pending ? "Applying setting…" : disabled ? "Wait for the current turn to finish." : undefined}
-    options={option.choices.map((choice) => ({ id: choice.value, label: sentenceCase(choice.name), detail: choice.description }))}
-    onChange={(value) => void change(value)} />;
+    choices={option.choices.map((choice) => ({ value: choice.value, name: choice.name, description: choice.description }))}
+    onPick={(value) => void change(value)} />;
 }

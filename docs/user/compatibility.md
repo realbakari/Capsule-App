@@ -2,7 +2,7 @@
 
 An available control describes what Capsule can request through the selected
 agent and runtime route. It is not a promise that every agent supports it or
-that an operation succeeded. Check **Capabilities** in the composer and inspect
+that an operation succeeded. Check **Capabilities** in Agents and inspect
 the result before relying on it.
 
 ## Agent connections

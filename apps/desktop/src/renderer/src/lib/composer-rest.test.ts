@@ -36,16 +36,11 @@ describe("follow latest", () => {
 });
 
 describe("composer placeholder", () => {
-  it("says what to write in a new thread", () => {
-    expect(composerPlaceholder({ running: false, hasMessages: false, sendOnEnter: true })).toBe("Ask anything. @ files, $ skills, / commands");
+  it("names what the composer understands whenever it is idle", () => {
+    expect(composerPlaceholder({ running: false })).toBe("Ask anything. @ files, $ skills, / commands");
   });
-  it("says Return queues while a turn runs", () => {
-    expect(composerPlaceholder({ running: true, hasMessages: true, sendOnEnter: true })).toBe("↵ to queue a follow-up for when this turn ends");
-    expect(composerPlaceholder({ running: true, hasMessages: true, sendOnEnter: false })).toMatch(/^⌘↵ to queue/);
-    expect(composerPlaceholder({ running: true, hasMessages: true, sendOnEnter: true, steer: true })).toBe("↵ to steer this turn");
-  });
-  it("teaches the send key that is actually set", () => {
-    expect(composerPlaceholder({ running: false, hasMessages: true, sendOnEnter: true, agent: "Codex" })).toBe("Reply to Codex · ↵ to send, ⇧↵ for a new line");
-    expect(composerPlaceholder({ running: false, hasMessages: true, sendOnEnter: false })).toBe("Reply · ⌘↵ to send");
+  it("says what a message does to a running turn, without key glyphs", () => {
+    expect(composerPlaceholder({ running: true })).toBe("Queue a follow-up");
+    expect(composerPlaceholder({ running: true, steer: true })).toBe("Steer this turn");
   });
 });

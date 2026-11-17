@@ -83,11 +83,17 @@ export async function runWorkspaceExtensionRegressions(host: HTMLElement, base: 
       availableCommands: names.map((name) => ({ name, description: `Run ${name}`, inputHint: "Optional input" })),
     } } });
     root.render(<PasteFixture base={{ ...commandBase, harnessStatuses: commandState(["compact", "review"]) }} />);
-    await until(() => document.querySelector('[aria-label="Conversation tools"]'));
-    document.querySelector<HTMLElement>('[aria-label="Conversation tools"]')!.click();
-    await until(() => document.querySelector('[role="listbox"]'));
-    Array.from(document.querySelectorAll<HTMLButtonElement>('[role="option"]')).find((item) => item.textContent?.includes("Agent commands"))!.click();
-    await until(() => document.querySelector<HTMLDetailsElement>(".agent-command-control")?.open);
+    await until(() => document.querySelector('[aria-label="Agent and model"]'));
+    assert(!document.querySelector('[aria-label="Conversation tools"]'), "The composer still carries a catch-all tools menu");
+    document.querySelector<HTMLElement>('[aria-label="Agent and model"]')!.click();
+    await until(() => document.querySelector('.agent-model-picker'));
+    assert(!button("Agent commands") && !button("Compact conversation"), "Agent commands and compact are still drawn inside the model picker");
+    document.querySelector('.agent-model-picker')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    await until(() => !document.querySelector('.agent-model-picker'));
+    /* The palette's Agent commands entry opens the same control. */
+    const openAgentCommands = () => (window.testWorkspace.setAgentCommandsOpen as (open: boolean) => void)(true);
+    openAgentCommands();
+    await until(() => document.querySelector<HTMLDetailsElement>(".agent-command-control")?.open && !document.querySelector('.agent-model-picker'));
     changeSelect('[aria-label="Select agent command"]', "review");
     await until(() => document.querySelector<HTMLSelectElement>('[aria-label="Select agent command"]')?.value === "review");
     const commandInput = document.querySelector<HTMLInputElement>('[aria-label="Command input"]')!;
@@ -101,9 +107,7 @@ export async function runWorkspaceExtensionRegressions(host: HTMLElement, base: 
     assert(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]')?.value === "Keep  here", "Command control consumed the prompt draft");
     assert(!document.querySelector('[aria-label="Add context"], .composer-stash-button'), "Secondary controls still crowd the main composer row");
     assert(document.querySelector('[aria-label="Attach files"]') && document.querySelector('[aria-label="Send message"]'), "Composer hid a primary action");
-    document.querySelector<HTMLElement>('[aria-label="Conversation tools"]')!.click();
-    await until(() => document.querySelector('[role="listbox"]'));
-    Array.from(document.querySelectorAll<HTMLButtonElement>('[role="option"]')).find((item) => item.textContent?.includes("Agent commands"))!.click();
+    openAgentCommands();
     await until(() => document.querySelector('.agent-command-popover'));
     const commandPanel = document.querySelector<HTMLElement>('.agent-command-popover')!;
     await until(() => getComputedStyle(commandPanel).visibility === "visible");
@@ -111,7 +115,7 @@ export async function runWorkspaceExtensionRegressions(host: HTMLElement, base: 
     assert(bounds.left >= 0 && bounds.top >= 0 && bounds.right <= innerWidth && bounds.bottom <= innerHeight, "Command panel escaped the viewport");
     commandPanel.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
     await until(() => !document.querySelector('.agent-command-popover'));
-    assert(document.activeElement?.getAttribute("aria-label") === "Conversation tools", "Command Escape did not restore its visible trigger");
+    assert(document.activeElement?.getAttribute("aria-label") === "Agent and model", "Command Escape did not restore its visible trigger");
 
     const latest = { id: "latest", sessionId: "history-thread", projectId: "history-project", status: "completed", agentId: "codex", prompt: "Latest" } as Run;
     const old = { ...latest, id: "old", prompt: "Earlier review" };

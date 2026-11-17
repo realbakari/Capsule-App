@@ -16,9 +16,9 @@
   --inspector-width: 32rem;
   --inspector-min-width: 22rem;
   --inspector-max-width: 60rem;
-  --chat-max: 48rem;
-  --control-radius: 0.375rem;
-  --composer-radius: 1.25rem;
+  --chat-max: 46rem;
+  --control-radius: 0.5rem;
+  --composer-radius: 1rem;
   --glass-blur: 16px;
   --glass-opacity: 80%;
   --glass-saturation: 1.08;

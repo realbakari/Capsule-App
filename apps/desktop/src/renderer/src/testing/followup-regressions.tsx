@@ -150,7 +150,8 @@ export async function runFollowupRegressions(host: HTMLElement, base: Record<str
   try {
     // The queue: counted, ordered, each row with its own controls and no steer when the route cannot.
     root.render(<ComposerFixture base={fixture} />);
-    await until(() => host.textContent?.includes("2 follow-ups queued"));
+    await until(() => host.querySelector('[role="region"][aria-label="2 queued follow-ups"]'));
+    assert(!host.querySelector(".queued-prompts")?.textContent?.includes("Sent in order"), "Queue explains itself in a paragraph again");
     assert(host.textContent?.includes("then run the tests") && host.textContent.includes("1 file"), "Queue rows missing text or attachment count");
     assert(!Array.from(host.querySelectorAll("button")).some((node) => node.textContent === "Steer"), "Steer offered without a steerable route");
     const rows = host.querySelectorAll<HTMLElement>(".queued-prompt");
@@ -221,8 +222,8 @@ export async function runFollowupRegressions(host: HTMLElement, base: Record<str
     // A paired device that can only read sees the queue and why it waits, but no controls that would change it.
     window.testWorkspace = { ...fixture, api: { ...(base.api as object), isDesktop: false, remoteMode: "read" }, followUpsBlocked: "Codex isn't signed in.", draft: "", setDraft: () => {} };
     root.render(<ComposerFixture base={window.testWorkspace as Record<string, unknown>} />);
-    await until(() => host.textContent?.includes("Queued messages are on hold: Codex isn't signed in."));
-    assert(host.textContent?.includes("This device can only read."), "Read-only queue did not say why its controls are missing");
+    await until(() => host.textContent?.includes("On hold: Codex isn't signed in."));
+    assert(host.querySelector<HTMLTextAreaElement>(".composer-field")?.placeholder === "Read only on this device", "Read-only composer did not say why its controls are missing");
     assert(!host.querySelector('.queued-prompt [aria-label="Remove from queue"]') && !host.querySelector('.queued-prompt [aria-label="Move down"]'), "Read-only queue offered write controls");
     window.testWorkspace = findWorkspace;
     root.render(null); await settle();

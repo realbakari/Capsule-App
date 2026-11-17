@@ -903,9 +903,9 @@ How the conversation behaves after the November review:
   Stop, Esc-to-stop and queue steering are likewise hidden or disabled on
   paired devices; Edit from here and the turn menu are hidden while a turn
   runs and on paired devices.
-- **Agent permissions chip.** The composer hides it when Capsule's approval
-  setting sets the agent's own mode (`approvalCarrier(...).agentMode`), so
-  the two cannot disagree.
+- **Agent permissions.** The Permissions popover hides this row when
+  Capsule's approval setting sets the agent's own mode
+  (`approvalCarrier(...).agentMode`), so the two cannot disagree.
 - **Uncommitted changes.** These are a small dot button beside the branch.
 
 Each run of consecutive tool calls inside a turn is one collapsible group.
@@ -1050,11 +1050,12 @@ is on screen and with the window closed. `getFollowUps` is a read channel and
 `updateFollowUps` (add, remove, move, schedule, cancel-resume) is a control
 channel; every change emits `follow-ups-updated`. A send that fails puts the
 prompt back first with a `blocked` reason and retries every 30 s, so nothing is
-dropped. `QueuedPrompts` above the steer row lists the queue with Steer now
-(route permitting), move, edit-back and remove, and the `blocked` reason inline
-("Queued messages are on hold: …"). A read-only paired device sees the rows
-without controls and "This device can only read."; a control pairing can tidy
-the queue but not steer. A queue an older build left in
+dropped. `QueuedPrompts` above the composer row lists the queue as compact
+rows, with no explanatory paragraph: Steer (route permitting), move,
+edit-back and remove, and the `blocked` reason inline ("On hold: …"). Its
+region label carries the count. A read-only paired device sees the rows
+without controls, and its placeholder already says it can only read; a
+control pairing can tidy the queue but not steer. A queue an older build left in
 `capsule.queue:<sessionId>` moves to the engine the first time its thread
 opens. `↑` in an empty or caret-at-start prompt recalls earlier user prompts
 (newest first, steers and repeats skipped); `↓` walks forward and restores
@@ -1111,7 +1112,9 @@ the expanded composer visible so hidden context cannot be submitted unnoticed.
 Composer geometry is covered at 320, 360, 640 and 900 CSS pixels, in both themes
 and at 16/20px root text sizes. The empty expanded field remains 3.5rem; its
 growth cap comes from CSS rather than a fixed pixel constant. Narrow docks
-reduce padding, not text size, and wrap supported agent controls.
+reduce padding, not text size, and drop the effort after the model name. The
+glass uses `--composer-radius` (1rem), resting or expanded, and its border
+does not change on focus.
 Reading older messages rests that box to a single prompt line (attach and
 send on the same row) so the dock shrinks instead of covering the
 transcript. Focus does not expand it; the live edge, a multiline draft,
@@ -1215,8 +1218,8 @@ Capability details use the current session key as well as the thread ID. A
 direct agent reporting false or no HTTP MCP support shows browser tools as
 unavailable, explains why they were not attached, and preserves manual browsing.
 Model configuration snapshots replace previous choices, including removals.
-**Agent settings** renders reported select and boolean options in both Composer
-Capabilities and Harnesses. Values wait for the transport's accepted state, and failure
+**Agent settings** renders reported select and boolean options in Harnesses;
+the composer's picker shows only effort and the permission-like options. Values wait for the transport's accepted state, and failure
 of either the setting or follow-up refresh must release the pending UI. Provider/
 process changes remount the controls. Restorable direct identities also govern
 composer readiness after restart, even if the new-thread default is Gateway.
@@ -1235,8 +1238,11 @@ Light and System-following-Light use identical elevation tokens. Recents reuses
 the project thread-row renderer, including selection, keyboard navigation and
 quick actions, with distinct preview IDs and no pinned drag reordering there.
 
-Git projects expose **Local / Worktree** in the composer. The selected
-conversation’s worktree branch appears in the reference strip.
+Git projects expose **Local / Worktree** in the composer's workspace row while
+the conversation is new (no messages, no run). The row is plain text on the
+page background: no tray, border or negative margin, and no changes dot. Once
+the conversation has started only the status line stays in it (`:empty` hides
+the row otherwise); Conversation details carries folder, branch and changes.
 
 The paperclip and file drop attach real local files, not only file mentions.
 The filesystem adapter revalidates up to eight files at 50 MB each. Message
@@ -1254,7 +1260,7 @@ a desktop-only error and cannot invoke the host file picker or send.
 
 Unsent composer text and attachment metadata are saved in renderer-local
 storage under a project/session-specific key. Prompt stash is also local: `⌘S`
-stores the current draft; **Conversation tools → Prompt stash** restores or removes one of the 20 most
+stores the current draft; `⌘S` on an empty composer or `/stash` restores or removes one of the 20 most
 recent entries, and sending clears only the active draft. Stale paths are
 reported by main-process validation when a restored draft is sent.
 
@@ -2515,8 +2521,9 @@ unavailable state too, with steps derived from the inventory poll.
 
 ## Picker shortcuts, context advice, instruction files
 
-⇧⌘M, ⇧⌘I and ⇧⌘E are registry commands that click the composer's own control,
-found by its accessible name (`lib/composer-controls.ts`), so both runtime
+⇧⌘P (Permissions), ⇧⌘M (model) and ⇧⌘E (effort) are registry commands that
+click the composer's own control, found by its accessible name or
+`data-setting` (`lib/composer-controls.ts`), so both runtime
 routes and every harness get the same behaviour as a click; a missing,
 disabled or off-screen control produces a notice instead of nothing. The model
 picker's failed state names the agent's `loginHint` and offers **Open Agents**
@@ -2665,17 +2672,19 @@ conversation. The home screen is unchanged.
 
 ## Plan mode chip, handoff and favorites
 
-The composer row holds `TurnModeChip` right after `AgentModelPicker`. It shows
-**Plan** or **Act** for the next turn, `aria-pressed` when planning, and its
+The composer row holds `TurnModeChip` just left of `AgentModelPicker`, and only
+while the next turn is a plan turn: Act is the unmarked default, so there is no
+permanent chip. The chip reads **Plan ×**, pressing it returns to Act, and its
 tooltip is the registry's label and detail (see `docs/internals/harness.md`).
 An unenforced plan turn draws the chip with a dashed border. Below a 28rem
-composer it keeps only its icon, as the approvals chip does. `⇧Tab` in the
-prompt toggles it, after the suggestion menu's Tab branch so Tab still picks a
+composer it keeps only its icon, as the permissions chip does. `⇧Tab` in the
+prompt and `/plan` toggle it;
+`⇧Tab` runs after the suggestion menu's Tab branch so Tab still picks a
 suggestion. A thread with no session keeps a draft mode in `lib/turn-mode.ts`
 and passes it to `createSession`. The palette offers **Switch to Plan mode** or
-**Switch to Act mode** and **Next favorite model**. The composer's agent-mode
-picker drops the plan choice (`withoutPlanChoice`), and disappears when the
-agent's only other choice is the act mode.
+**Switch to Act mode** and **Next favorite model**. The Permissions popover's
+Agent mode rows drop the plan choice (`withoutPlanChoice`), and disappear when
+the agent's only other choice is the act mode.
 
 `PlanHandoff` renders **Act on this plan** and **Keep planning** under the
 latest completed plan turn and, compact, at the foot of `ComposerTasks`. Act
@@ -3382,7 +3391,7 @@ device with conversation control can start a thread from a profile.
 ## Status line and automations
 
 **Status line.** `features/status-line/StatusLine.tsx` sits at the end of
-the composer's workspace strip (`.composer-context`), right-aligned and
+the composer's workspace row (`.composer-context`), right-aligned and
 shrinking before the folder and branch controls. With `statusLine.items` it
 shows each chosen item with a value, separated by dots, with warn and
 critical tones for context and limits over 75% and 90% and a failing PR or

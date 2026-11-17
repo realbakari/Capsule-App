@@ -29,15 +29,10 @@ export function shouldFollowLatest(input: {
 }
 
 /**
- * The empty composer teaches what its keys do in the state it is in: a new
- * thread says what to write, a thread in progress says how to send, and a
- * running turn says that Return queues rather than interrupts.
+ * One idle line that names what the composer understands, first message or
+ * not. While a turn runs it says what a message will do to that turn.
  */
-export function composerPlaceholder(input: { running: boolean; hasMessages: boolean; sendOnEnter: boolean; agent?: string; steer?: boolean }): string {
-  const send = input.sendOnEnter ? "↵" : "⌘↵";
-  if (input.running) return input.steer ? `${send} to steer this turn` : `${send} to queue a follow-up for when this turn ends`;
-  /* A new thread names what the composer understands: files, skills and commands. */
-  if (!input.hasMessages) return "Ask anything. @ files, $ skills, / commands";
-  const who = input.agent ? `Reply to ${input.agent}` : "Reply";
-  return input.sendOnEnter ? `${who} · ↵ to send, ⇧↵ for a new line` : `${who} · ⌘↵ to send`;
+export function composerPlaceholder(input: { running: boolean; steer?: boolean }): string {
+  if (input.running) return input.steer ? "Steer this turn" : "Queue a follow-up";
+  return "Ask anything. @ files, $ skills, / commands";
 }

@@ -1,6 +1,6 @@
 @import "@capsule/ui/tokens.css";
 
-.agent-model-picker, .menu-select-pop, .action-menu, .topbar-dropdown-menu, .composer-tools-popover,
+.agent-model-picker, .permissions-pop, .menu-select-pop, .action-menu, .topbar-dropdown-menu,
 .agent-command-popover, .context-card, .sidebar-thread-preview, .preview-more-menu, .pr-action-menu, .project-pulls-popover {
   background: var(--bg-elevated);
   color: var(--text);
@@ -16,33 +16,104 @@
   box-shadow: var(--shadow);
 }
 
-.composer-agent-controls { display: flex; flex-wrap: wrap; gap: 0.25rem; min-width: 0; }
-.composer-row:has(.composer-agent-controls) { flex-wrap: wrap; }
-.composer-controls:has(.composer-agent-controls) { flex-wrap: wrap; }
-.composer-row:has(.composer-agent-controls) .composer-prompt-actions { margin-left: auto; }
-.agent-model-picker { z-index: var(--z-menu); display: flex; flex-direction: column; overflow: hidden; font-size: var(--text-ui); }
-.agent-model-picker header { display: flex; align-items: center; padding: 0.625rem; border-bottom: 1px solid var(--border-color); gap: 0.25rem; }
-.agent-model-picker header input { background: transparent; border: 0; border-radius: var(--radius-xs); color: var(--text); min-width: 0; flex: 1; padding: 0.375rem; font: inherit; }
-.agent-model-picker header:focus-within { box-shadow: inset 0 -1px var(--text-muted); }
-.agent-model-picker header input:focus { outline: none; box-shadow: none; }
-.agent-model-picker-body { display: flex; min-height: 0; max-height: 20rem; overflow: auto; }
-.agent-model-picker nav { display: flex; flex-direction: column; flex: 0 0 3.25rem; padding: 0.375rem; gap: 0.25rem; border-right: 1px solid var(--border-color); }
-.agent-model-picker nav button { display: grid; place-items: center; min-height: 2rem; background: transparent; border: 0; border-radius: var(--radius-md); color: var(--text-muted); }
-.agent-model-picker nav button[aria-pressed="true"], .agent-model-row button[aria-pressed="true"], .agent-model-picker button:hover { background: var(--bg-hover); color: var(--text); }
+/* The model trigger carries effort after the model, quieter than the name. */
+.agent-model-trigger-detail { color: var(--text-muted); font-weight: 400; }
+@container composer (max-width: 28rem) { .agent-model-trigger-detail { display: none; } }
+/*
+ * The picker: an agent rail, the model list and the Reasoning column side by
+ * side, with Permissions in a row under all three. The search field and the
+ * Reasoning heading share one box height, so a single rule runs across the top.
+ */
+.agent-model-picker { z-index: var(--z-menu); display: flex; flex-direction: column; overflow: hidden; font-size: var(--text-sm); }
+/* Reasoning takes a third of the width, so on a narrow window model names keep the most room. */
+.agent-model-picker-body { display: grid; grid-template-columns: 2.75rem minmax(0, 1fr) minmax(7rem, 32%); flex: 0 1 21rem; min-height: 8rem; }
+.agent-model-picker button { font: inherit; }
 .agent-model-picker button:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset-inset); }
-.agent-model-picker section { min-width: 0; flex: 1; padding: 0.5rem; }
-.agent-model-heading { margin: 0.25rem 0.5rem 0.5rem; color: var(--text-muted); font-size: var(--text-xs); }
-.agent-model-row { display: flex; gap: 0.125rem; margin-bottom: 0.125rem; }
-.agent-model-row button { border: 0; border-radius: var(--radius-md); background: transparent; color: var(--text); padding: 0.625rem; }
-.agent-model-row button[data-model-choice] { flex: 1; min-width: 0; text-align: left; }
-.agent-model-row span, .agent-model-row small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.agent-model-row small { color: var(--text-muted); font-size: var(--text-2xs); margin-top: 0.25rem; }
-.agent-model-row .model-favorite { flex: 0 0 2rem; color: var(--text-muted); }
-.agent-model-empty, .agent-model-note { display: block; margin: 0.5rem; color: var(--text-muted); line-height: 1.5; overflow-wrap: anywhere; }
-/* Actions under an empty or failed list line up with its text, not with the panel edge. */
-.agent-model-actions { display: flex; flex-wrap: wrap; gap: 0.375rem; margin: 0.25rem 0.5rem 0.5rem; }
-.agent-model-note { font-size: var(--text-2xs); }
 .agent-model-picker button:disabled { opacity: 0.45; cursor: default; }
+.agent-model-rail { display: flex; flex-direction: column; gap: 0.25rem; padding: 0.25rem; overflow-y: auto; scrollbar-width: none; border-right: 1px solid var(--border-color); background: color-mix(in srgb, var(--bg-hover) 50%, transparent); }
+.agent-model-picker-body:not(:has(.agent-model-reasoning)) { grid-template-columns: 2.75rem minmax(0, 1fr); }
+.agent-harness-choice:hover:not(:disabled), .agent-model-manage:hover { background: var(--bg-hover); color: var(--text); }
+.agent-model-rail button { position: relative; display: grid; place-items: center; flex: none; height: 2.25rem; padding: 0; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--text-muted); }
+.agent-model-rail button:hover:not(:disabled) { background: var(--bg-hover); color: var(--text); }
+.agent-model-rail button[aria-pressed="true"] { color: var(--text); }
+.agent-model-rail button[aria-pressed="true"]::after { content: ""; position: absolute; right: 0; top: 50%; width: 3px; height: 1.25rem; margin-top: -0.625rem; border-radius: var(--radius-full); background: var(--accent); }
+.agent-model-rail-favorites { color: var(--text) !important; }
+.agent-model-rail-favorites svg { fill: currentColor; }
+.agent-model-rail-rule { flex: none; height: 1px; margin: 0 0.125rem; background: var(--border-color); }
+.agent-model-list { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.agent-model-search, .agent-model-reasoning > header { flex: none; display: flex; align-items: center; gap: 0.5rem; height: 2.0625rem; margin: 0.625rem 0.75rem 0; border-bottom: 1px solid var(--border-color); }
+.agent-model-search { color: var(--text-muted); }
+.agent-model-search:focus-within { border-bottom-color: var(--accent); }
+.agent-model-search input { flex: 1; min-width: 0; padding: 0 0 0.375rem; border: 0; background: transparent; color: var(--text); font: inherit; }
+.agent-model-search svg { margin-bottom: 0.375rem; }
+.agent-model-search input:focus { outline: none; box-shadow: none; }
+.agent-model-rows { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 0.125rem; padding: 0.625rem 0.5rem 0.375rem; }
+.agent-model-heading { margin: 0.25rem 0.5rem; color: var(--text-muted); font-size: var(--text-xs); }
+.agent-model-row { display: flex; align-items: center; gap: 0.25rem; min-height: 2rem; padding-right: 0.375rem; border-radius: var(--radius-sm); }
+.agent-model-row:hover, .agent-model-row:focus-within { background: var(--bg-hover); }
+.agent-model-row button { border: 0; background: transparent; color: var(--text); }
+.agent-model-row button[data-model-choice] { display: flex; align-items: center; gap: 0.5rem; flex: 1; min-width: 0; height: 2rem; padding: 0 0.5rem; border-radius: var(--radius-sm); text-align: left; }
+.agent-model-row button[data-model-choice] > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-model-row button[data-model-choice] > svg { flex: none; }
+/* The star and the Plan/Act buttons show on the row a pointer or focus is on, and stay once chosen. */
+.agent-model-row .model-favorite, .agent-model-row .model-mode-use { flex: none; display: grid; place-items: center; height: 1.5rem; border-radius: var(--radius-xs); color: var(--text-muted); opacity: 0; }
+.agent-model-row .model-favorite { width: 1.5rem; padding: 0; }
+.agent-model-row .model-mode-use { padding: 0 0.3rem; font-size: var(--text-2xs); }
+.agent-model-row:hover :is(.model-favorite, .model-mode-use), .agent-model-row:focus-within :is(.model-favorite, .model-mode-use), .agent-model-row .is-chosen { opacity: 1; }
+/* Plan and Act take no room until wanted, so a narrow list keeps the model's name. */
+.agent-model-row:not(:hover, :focus-within) .model-mode-use:not(.is-chosen) { display: none; }
+.agent-model-row .model-favorite.is-chosen { color: var(--yellow); }
+.agent-model-row .model-favorite.is-chosen svg { fill: currentColor; }
+.agent-model-row .model-mode-use.is-chosen { color: var(--text); background: var(--bg-hover); }
+.agent-model-row :is(.model-favorite, .model-mode-use):hover:not(:disabled) { color: var(--text); background: var(--bg-hover); }
+.agent-model-jump { flex: none; padding: 0.0625rem 0.3rem; border-radius: var(--radius-xs); background: var(--bg-hover); color: var(--text-muted); font: inherit; font-size: var(--text-2xs); line-height: 1.4; }
+.agent-model-more { align-self: flex-start; height: 2rem; padding: 0 0.5rem; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); }
+.agent-model-more:hover { color: var(--text); }
+.agent-model-empty { margin: 0.25rem 0.5rem; color: var(--text-muted); text-align: center; line-height: 1.5; overflow-wrap: anywhere; }
+.agent-model-note { display: block; margin: 0.5rem; color: var(--text-muted); font-size: var(--text-2xs); line-height: 1.5; overflow-wrap: anywhere; }
+/* Notes about this agent sit at the foot of the model column, under a rule. */
+.agent-model-footnote { flex: none; padding: 0.625rem 0.75rem; border-top: 1px solid var(--border-color); color: var(--text-muted); font-size: var(--text-xs); line-height: 1.5; }
+.agent-model-footnote p { margin: 0 0 0.375rem; overflow-wrap: anywhere; }
+.agent-model-actions { display: flex; flex-wrap: wrap; gap: 0.375rem; }
+.agent-model-actions:empty { display: none; }
+.agent-model-reasoning { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-left: 1px solid var(--border-color); }
+.agent-model-reasoning > header { justify-content: space-between; color: var(--text-muted); }
+.agent-model-reasoning-model { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); }
+.agent-model-reasoning-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0.625rem 0.5rem 0.375rem; }
+.agent-model-reasoning-note { margin: 0.375rem 0.5rem; color: var(--text-muted); font-size: var(--text-xs); line-height: 1.5; }
+.agent-model-picker-footer { flex: none; display: flex; justify-content: flex-end; padding: 0.5rem 0.75rem; border-top: 1px solid var(--border-color); background: color-mix(in srgb, var(--bg-hover) 60%, transparent); }
+/* One agent setting as rows with a check on the current one. */
+.choice-rows { display: flex; flex-direction: column; gap: 0.125rem; }
+.choice-row { display: flex; align-items: center; gap: 0.5rem; width: 100%; height: 2rem; padding: 0 0.5rem; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text); font: inherit; text-align: left; }
+.choice-row > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.choice-row > svg { flex: none; }
+.choice-row:hover, .choice-row:focus-visible { background: var(--bg-hover); }
+.choice-row:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset-inset); }
+.choice-row[aria-disabled="true"] { opacity: 0.64; cursor: not-allowed; }
+/* Permissions: the mode named with its icon, opening the presets as an icon toggle. */
+.permissions-menu { position: relative; flex-shrink: 0; min-width: 0; }
+.permissions-trigger { display: inline-flex; align-items: center; gap: 0.375rem; height: 1.75rem; padding: 0 0.5rem; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--text-muted); font: inherit; font-size: var(--text-xs); white-space: nowrap; }
+.permissions-trigger:hover, .permissions-trigger[aria-expanded="true"] { background: var(--bg-hover); color: var(--text); }
+.permissions-trigger:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset-inset); }
+.permissions-trigger svg { flex: none; }
+.composer-controls .permissions-trigger { font-size: var(--text-ui); font-weight: 500; }
+.permissions-pop { z-index: var(--z-menu); display: grid; gap: 0.375rem; padding: 0.5rem 0.625rem 0.625rem; overflow-y: auto; font-size: var(--text-sm); }
+.permissions-heading { margin: 0; color: var(--text-muted); font-size: var(--text-xs); font-weight: 500; }
+.permissions-segments { display: flex; padding: 0.125rem; border-radius: var(--radius-md); background: var(--bg-hover); }
+.permissions-segments button { flex: 1; display: grid; place-items: center; height: 1.5rem; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); }
+.permissions-segments button:hover:not([aria-checked="true"]) { background: var(--bg-hover); color: var(--text); }
+.permissions-segments button[aria-checked="true"] { background: color-mix(in srgb, var(--text) 14%, transparent); color: var(--text); }
+.permissions-segments button[aria-disabled="true"] { cursor: not-allowed; }
+.permissions-segments button:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset-inset); }
+/* All descriptions share one cell; only the shown one is visible, so the height never changes. */
+.permissions-shown { display: grid; }
+.permissions-shown > div { grid-area: 1 / 1; display: grid; align-content: start; gap: 0.125rem; visibility: hidden; }
+.permissions-shown > div[data-shown] { visibility: visible; }
+.permissions-shown span { color: var(--text-muted); }
+.permissions-shown span.is-current { color: var(--text); }
+.permissions-shown small { color: var(--text-muted); font-size: var(--text-xs); line-height: 1.45; }
+.permissions-agent { padding-top: 0.375rem; border-top: 1px solid var(--border-color); }
+.permissions-agent > p { margin: 0 0 0.25rem; color: var(--text-muted); font-size: var(--text-xs); font-weight: 500; }
 .agent-harness-choice { display: flex; width: 100%; align-items: center; gap: 0.625rem; padding: 0.5rem; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text); text-align: left; font: inherit; }
 .agent-harness-choice span { min-width: 0; }
 .agent-harness-choice small { display: block; color: var(--text-muted); font-size: var(--text-2xs); margin-top: 0.125rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1523,9 +1594,9 @@
   min-height: 2.35rem;
 }
 .composer.composer--resting .composer-controls,
-.composer.composer--resting .composer-tools,
+.composer.composer--resting .composer-attach,
 .composer.composer--resting .context-meter-wrapper,
-.composer.composer--resting .steer-row,
+.composer.composer--resting .composer-compact-toggle,
 .composer.composer--resting .composer-preflight,
 .composer.composer--resting .capability-hint,
 .composer.composer--resting .composer-stash,
@@ -1936,7 +2007,8 @@ textarea.composer-field--resting {
   /* Attach holds the left edge; the turn's settings sit beside mic and send. */
   margin-left: auto;
 }
-.composer-controls > .menu-select:first-child { flex-shrink: 1; }
+.composer-attach { flex-shrink: 0; }
+.composer-controls > .agent-model-select { flex-shrink: 1; }
 .menu-select {
   position: relative;
   flex-shrink: 0;
@@ -2052,6 +2124,7 @@ textarea.composer-field--resting {
 .composer-preflight .ghost { flex-shrink: 0; font-size: var(--text-2xs); }
 .workspace-mode-label { color: var(--green); }
 
+/* Plain text on the page under the composer, not a tray: where a new conversation will run. */
 .composer-context {
   position: relative;
   width: calc(100% - 1.75rem);
@@ -2070,6 +2143,7 @@ textarea.composer-field--resting {
   overflow: visible;
   flex-wrap: wrap;
 }
+.composer-context:empty { display: none; }
 .composer-context button {
   border: 0;
   background: transparent;
@@ -2084,10 +2158,6 @@ textarea.composer-field--resting {
   white-space: nowrap;
 }
 .composer-context > button:first-child { min-width: 0; display: block; text-align: left; }
-/* The branch has uncommitted changes: a small dot, not a bare asterisk, with a target big enough to press. */
-.composer-context .composer-dirty { display: inline-grid; place-items: center; width: 1.25rem; height: 1.25rem; border-radius: var(--radius-full); }
-.composer-context .composer-dirty > span { width: 0.375rem; height: 0.375rem; border-radius: var(--radius-full); background: var(--yellow); }
-.composer-context .composer-dirty:hover { background: var(--bg-hover); }
 .composer-context > button:first-child svg { margin-right: .3rem; vertical-align: -.1rem; }
 .composer-context button:hover {
   color: var(--text);
@@ -2109,11 +2179,13 @@ textarea.composer-field--resting {
   color: var(--yellow);
   font-weight: 600;
 }
-/* On a narrow composer the approvals chip keeps its shield; the preset name moves to its tooltip. */
+/* On a narrow composer the permissions chip keeps its icon; the preset name stays in its accessible name. */
 @container composer (max-width: 28rem) {
-  .composer-controls .menu-select-trigger[aria-label="Approvals"] > span,
-  .composer-controls .menu-select-trigger[aria-label="Approvals"] > svg:last-child { display: none; }
+  .composer-controls .permissions-trigger > span { display: none; }
 }
+.composer-context .permissions-trigger { height: auto; padding: 0; gap: 0.3rem; font-size: inherit; font-weight: inherit; }
+.composer-context .permissions-trigger:hover, .composer-context .permissions-trigger[aria-expanded="true"] { background: transparent; }
+.composer-context .permissions-trigger svg { width: 12px; height: 12px; }
 @container composer (max-width: 28rem) {
   .composer-context .menu-select-trigger > span { display: none; }
   .composer-context .menu-select-trigger { min-height: 1.5rem; }
@@ -2122,7 +2194,7 @@ textarea.composer-field--resting {
   .composer-glass { padding: 0.75rem 0.625rem 0.5rem; }
   .composer-row { gap: 0.25rem; }
   .composer-prompt-actions { gap: 0.125rem; }
-  .composer-context { width: calc(100% - 1rem); gap: 0.5rem; }
+  .composer-context { width: calc(100% - 1.25rem); gap: 0.5rem; }
 }
 .folder-chip-wrap {
   position: relative;
@@ -7089,22 +7161,14 @@ body:has(> #root .palette-backdrop > [role="alertdialog"]) > :is(.header-popover
   margin-left: auto;
   flex-shrink: 0;
 }
-.composer-tools { display: flex; align-items: center; }
-.composer-tools .agent-command-control { position: static; }
-.composer-tools .agent-command-control[hidden], .agent-command-control > summary[hidden] { display: none; }
-.composer-tools-popover, .agent-command-popover {
+.agent-command-control[hidden], .agent-command-control > summary[hidden] { display: none; }
+.agent-command-popover {
   z-index: var(--z-menu); overflow-y: auto; box-sizing: border-box;
   padding: 0.875rem;
   font-size: var(--text-ui);
 }
-.composer-tools-popover > header { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
-.composer-tools-popover .capability-details { margin: 0.5rem 0 0; }
 @container composer-row (max-width: 36rem) {
   .composer-controls { flex: 1; }
-  .composer-controls:has(.composer-agent-controls) { display: contents; }
-  .composer-agent-controls { flex: 1 0 auto; flex-wrap: nowrap; min-width: max-content; }
-  .composer-secondary-action { display: none; }
-  .composer-actions-right { gap: .15rem; }
 }
 
 .context-meter-wrapper {
@@ -10262,11 +10326,10 @@ fieldset.harness-options:disabled { opacity: .7; }
 .performance-diagnostics details { margin-top: .75rem; font-size: var(--text-ui); color: var(--text-muted); }
 .pet-setting-control .actions { margin: 0; }
 .composer-control-divider { width: 1px; height: 1rem; background: var(--border-color); margin: 0 .3rem; }
-.composer-branch { margin-left: auto; }
+.composer-context-end { display: inline-flex; align-items: center; gap: 0.75rem; min-width: 0; margin-left: auto; }
 .composer-controls .menu-select-trigger[aria-label="Agent and model"] { color: var(--text); }
 .composer-controls .menu-select-trigger[aria-label="Agent and model"] .agent-glyph { opacity: 1; }
 .composer-glass::after { box-shadow: none; }
-.composer-glass:focus-within::after { border-color: var(--border-strong); }
 .capability-details--compact { position: relative; margin: 0; flex-shrink: 0; }
 .capability-details--compact > summary { display: flex; align-items: center; justify-content: center; width: 1.75rem; height: 1.75rem; padding: 0; font-size: .9375rem; list-style: none; border-radius: var(--radius-sm); }
 .capability-details--compact > summary::-webkit-details-marker { display: none; }
@@ -10860,7 +10923,6 @@ fieldset.harness-options:disabled { opacity: .7; }
 .action-menu,
 .topbar-dropdown-menu,
 .agent-model-picker,
-.composer-tools-popover,
 .agent-command-popover,
 .project-pulls-popover {
   animation: overlay-in var(--motion-standard) var(--motion-ease);

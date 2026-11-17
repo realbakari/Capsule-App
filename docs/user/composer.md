@@ -9,7 +9,7 @@ open picker, a selected skill, or a file drop keeps it expanded. Focusing the fi
 reading history does not grow it back.
 
 Attachment and send controls stay beside the agent controls in the expanded
-composer. The compact prompt keeps the checkout controls entirely below it.
+composer. The compact prompt keeps the workspace row entirely below it.
 The prompt and toolbar use consistent spacing as the pane narrows or text size
 increases. Secondary settings move into named menus; text does not shrink to fit.
 Task lists reflect the agent's latest plan, including a cleared plan. After a
@@ -84,9 +84,14 @@ arrives, not the new-conversation welcome screen. A failed history read offers
 opens at the latest loaded messages; reading an older turn in one conversation
 does not change that behavior in another.
 
-`⌘F` finds text in the conversation's loaded messages. When older messages are
-not loaded yet, the find bar says **Searching loaded messages** and offers
-**Load older**.
+`⌘F` finds text in the conversation's loaded messages. It searches the text
+replies show, not their Markdown, counts every occurrence, and highlights each
+one, with the current match brighter. **Enter** goes to the next match and
+**Shift-Enter** to the previous one. The conversation scrolls to the match and
+opens what hides it: a folded older turn, a turn's **Worked for** section, or a
+long prompt. Diagrams, typeset math and images are not searched. When older
+messages are not loaded yet, the find bar says **Searching loaded messages**
+and offers **Load older**.
 
 Message and code copy buttons confirm **Copied** only after the clipboard accepts
 the text. If copying fails, the button offers a retry. Copy controls appear on
@@ -100,6 +105,12 @@ readable as plain text. Copying a code block copies its source, not its colors.
 Completed code blocks and open review disclosures stay in place as more text
 arrives. Unusually deep Markdown nesting is shown as readable source instead of
 preventing the conversation from opening.
+
+Web links in replies open in the browser panel. Option-click a link to open
+it in your system browser instead. Right-click a link for **Open**, **Open in
+system browser** and **Copy link**. On a paired device there is no browser
+panel, so a link opens in a new tab of that device's browser, and its menu
+offers **Open** and **Copy link**.
 
 Named file links in replies open Files while keeping the agent's descriptive
 label. Local file URLs and Windows drive paths are supported; the file must
@@ -171,8 +182,7 @@ reported models and settings. There is no separate Start button and your draft
 is not sent during discovery. Choose a model, reasoning effort, permissions, or
 agent mode before sending; those choices are applied before the first prompt.
 Unsupported controls stay hidden. Missing installations link to setup, and failed
-discovery offers Retry. Other settings remain in
-**Conversation tools → Agent settings and capabilities** and Agents.
+discovery offers Retry. Other settings remain in **Agents**.
 
 Changes apply to the next turn and leave the draft untouched. Once applied to an
 agent session, they are saved with the conversation for restart. Draft choices
@@ -193,8 +203,8 @@ new conversations** sets the starting choice. The command palette offers
   Commands, web requests and anything outside the folder ask.
 - **Full**: nothing asks.
 
-Each choice in the menu says how this agent and route carry it, because they
-differ:
+Point at or move to a mode to read how this agent and route carry it, because
+they differ:
 
 - **On this computer**, Capsule answers the agent's own permission requests from
   your choice and shows you the rest. A change applies to the next request, even
@@ -213,8 +223,8 @@ or "Allowed under Full". A paired read-only viewer sees the choice but cannot
 change it.
 
 Some agents also report their own permission or mode setting, such as Codex's
-sandbox. Those appear beside the chip as **Agent permissions** and **Agent
-mode**, with the agent's own names. Capsule does not translate them.
+sandbox. Those appear in the Permissions panel as **Agent permissions** and
+**Agent mode**, with the agent's own names. Capsule does not translate them.
 To inspect the session's raw status, open **Agents**, select the
 session with **Refresh**, and expand **Session diagnostics**. Diagnostics stay
 with that session and are collapsed by default.
@@ -222,9 +232,9 @@ with that session and are collapsed by default.
 Switching to a different harness starts it with its own default model. A model
 override from the previous harness is not carried across.
 
-Choose **Conversation tools → Agent settings and capabilities** to inspect the selected harness and runtime
-route's model, permission, steering and browser support. The same information
-is available in Agents, and Browser describes its agent-tool limitations.
+Open **Agents** and expand **Capabilities** to inspect the selected harness and
+runtime route's model, permission, steering and browser support. Browser
+describes its agent-tool limitations.
 Manual browsing is separate from an agent's ability to control that browser.
 
 Expand **Reported by agent** to inspect bounded, negotiated capability and option
@@ -268,13 +278,13 @@ When a plan turn finishes, **Act on this plan** switches to Act and asks the
 agent to implement the plan above. **Keep planning** stays in Plan and returns
 you to the prompt. Both appear under the latest plan and in the task list.
 
-In the model control, **Plan** and **Act** on a model's row save it for that
-mode. Switching mode then switches to that model too. Saved choices are listed,
+In the model control, point at a model's row and press **Plan** or **Act** to
+save it for that mode. Switching mode then switches to that model too. Saved choices are listed,
 and can be cleared, in **Settings → Agents → Plan mode → Plan and Act models**.
 When a conversation starts in Plan, the agent starts with the Plan model.
 
-A paired browser without conversation control sees the plan, not the chip or
-the buttons.
+A paired browser without conversation control sees the plan, not the chip,
+the switch or the buttons.
 
 ## When a turn doesn't finish
 
@@ -329,7 +339,7 @@ Use **Shift–⌘V** (or **Shift–Ctrl–V**) to keep a paste inline. Smaller, 
 unsupported pastes stay inline. If saving or validating the attachment fails,
 the pasted text goes to **Stash** and the existing draft stays untouched.
 
-Type `@` or choose **Conversation tools → Mention a project file** to search the current
+Type `@` to search the current
 conversation’s folder. Results show the file name and parent path. Enter or Tab
 attaches the selected file without sending your draft; Escape closes the picker.
 File paths with spaces are preserved. Search failures and empty results are
@@ -353,14 +363,22 @@ Pasting files uses the same attachment validation as dropping them. Pasted
 clipboard images are saved locally first. Attachments are desktop-only; a
 paired read-only viewer cannot attach files or send messages.
 
-When the context ring turns amber or red, its card says so and offers **New
-conversation** beside **Compact conversation**: compact to keep going on the same
-task, start fresh for something unrelated.
+The context ring appears beside Send only once the conversation's context is
+filling up, amber and then red. Its card says so and offers **New
+conversation** beside **Compact conversation**: compact to keep going on the
+same task, start fresh for something unrelated. When the context is nearly full
+and the agent can compact, a **Compact** toggle sits beside Send and Send reads
+**Compact and send**: the conversation is compacted first, then your message
+goes out. Press the toggle to **Keep** the whole conversation for that send.
+`/compact` compacts at any time.
 
-The empty composer says what its keys do right now: in a new conversation it
-names what it understands (`@` files, `$` skills, `/` commands), in a conversation already under way it shows the send
-key you chose in Settings, and while a turn is running it says that sending
-queues the message.
+The empty composer reads "Ask anything. @ files, $ skills, / commands". While a
+turn is running it says what sending does instead: "Queue a follow-up" or, when
+the next message will steer the turn, "Steer this turn".
+
+While a turn is running, Send stays Send as long as there is something in the
+prompt, and queues or steers that message. With an empty prompt it becomes
+**Stop**.
 
 **Settings › General › Follow-ups** decides what sending during a running turn
 does: queue it for after the turn (the default), or steer the running turn
@@ -387,18 +405,15 @@ One turn runs in a thread at a time, but you do not have to wait to send the
 next message. A prompt sent while a turn is running joins a queue above the
 composer and goes out, in order, as soon as the thread is free. Each queued
 follow-up can be edited back into the composer, moved up or down, removed,
-or, on routes that can steer, sent into the running turn with **Steer now**.
+or, on routes that can steer, sent into the running turn with **Steer**.
 The queue belongs to its conversation, holds up to twenty messages, and
 survives a restart. Queued messages go out when their conversation is free
 even if you have switched to another one or closed the window. While the
 thread cannot send, for example while the Gateway is disconnected or the
 agent needs a login, the next message waits at the front of the queue and the
-queue says why ("Queued messages are on hold: …"); it is tried again every
-thirty seconds. A paired device that can only read sees the queue without its
-controls. Gateway sessions also offer **Steer** during a live turn when
-supported. Press `↑` in an empty prompt to recall what you asked before.
-Steering drafts stay with their conversation. A pending steer cannot be sent
-twice, and a newer draft is not cleared when the earlier steer finishes.
+queue says why ("On hold: …"); it is tried again every thirty seconds. A
+paired device that can only read sees the queue without its controls. Press
+`↑` in an empty prompt to recall what you asked before.
 The first message in a new conversation opens that conversation straight
 away, so the message, the agent starting and **Stop** appear together. If that
 message is rejected you stay in the new conversation with your text back in
@@ -468,8 +483,7 @@ fetch a server on this computer. The request carries no cookies or sign-in.
 Select text in the terminal, in a file preview or on a page in the browser,
 then right-click and choose **Send selection to thread**, or choose it from the
 command palette. A file selection is quoted with its path and line range, such
-as `src/app.ts:12-30`. A page selection is quoted with the page's address. The
-browser's **More options** menu has the same command.
+as `src/app.ts:12-30`. A page selection is quoted with the page's address.
 
 ## Run a command with !
 
@@ -533,8 +547,8 @@ available.
 ## Stash a prompt
 
 Press `⌘S` while the composer contains text or attachments to move that draft
-into the prompt stash. Choose **Conversation tools → Prompt stash** to restore or
-delete a stash. When the composer is empty, `⌘S` opens the stash instead.
+into the prompt stash. Type `/stash` to restore or delete a stash. When the
+composer is empty, `⌘S` opens the stash instead.
 
 The most recent 20 stashes are kept locally. Restoring a stash removes it from
 the stash list and puts its text, attachments and selected skill back in the composer.
@@ -549,8 +563,8 @@ Historical activity is read only when selected; loading failures offer **Retry**
 
 This is not a complete roster of the agent’s internal subagents. Some harnesses
 and Gateway versions do not report delegation details or task token usage.
-Unknown values stay labelled **Not reported**. A completed delegation tool does
-not prove a background child agent has finished, and ending the parent turn
+A value the agent does not report is left out rather than guessed. A
+subagent marked **Started in the background** has been launched, not finished, and ending the parent turn
 does not mark every child complete. Task status is not verification.
 
 The panel uses a bounded recent event window and labels partial history. It
@@ -577,7 +591,7 @@ lifts. **Resume at reset** schedules that prompt to be sent again at that
 time; it joins the follow-up queue when the moment comes, and a line above
 the error shows the plan with **Cancel**. **Retry now** sends it again
 immediately. Both send the turn's attached files again too. Turn on
-**Auto-resume limited conversations** in Settings → General to schedule these stops
+**Resume after usage limits** in Settings → General to schedule these stops
 without asking; an automatic resume waits at least a minute, and after three
 limit stops in a row it stops and leaves the next try to you. Capsule must be
 running when the reset arrives. Limits that name no time offer only Retry now.
@@ -591,6 +605,10 @@ The context ring beside Send opens a card with the context window in use.
 when the agent offers that command; the card says when it does not. After
 five idle minutes the card notes that the prompt cache has likely expired, the
 cheapest moment to compact.
+
+A compaction shows in the conversation as one divider, **Compacting context**
+while it runs and **Context compacted** once done, rather than as a message and
+a reply. An agent that compacts on its own without being asked is not shown.
 
 ## Handing off to a new conversation
 

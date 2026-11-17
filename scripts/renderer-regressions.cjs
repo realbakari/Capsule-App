@@ -92,11 +92,12 @@ app.whenReady().then(async () => {
       fs.mkdirSync(controlScreenshots, { recursive: true });
       for (const [width, theme] of [[900, "dark"], [380, "light"]]) {
         window.setContentSize(width, 650);
-        for (const control of ["Agent and model", "Permissions"]) {
+        /* The picker, then the Permissions popover opened from its footer. */
+        for (const [name, clicks] of [["Agent and model", ['[aria-label="Agent and model"]']], ["Permissions", ['[aria-label="Agent and model"]', '.agent-model-picker [data-setting="Permissions"]']]]) {
           await window.webContents.executeJavaScript(`window.renderAgentControlsPreview(${JSON.stringify(theme)})`);
-          await window.webContents.executeJavaScript(`document.querySelector('[aria-label="${control}"]').click(); new Promise(resolve => setTimeout(resolve, 150))`);
-          fs.writeFileSync(path.join(controlScreenshots, `${width}-${control}.png`), (await window.webContents.capturePage()).toPNG());
-          await window.webContents.executeJavaScript(`document.querySelector('[aria-label="${control}"]').click()`);
+          for (const selector of clicks) await window.webContents.executeJavaScript(`document.querySelector(${JSON.stringify(selector)}).click(); new Promise(resolve => setTimeout(resolve, 150))`);
+          fs.writeFileSync(path.join(controlScreenshots, `${width}-${theme}-${name}.png`), (await window.webContents.capturePage()).toPNG());
+          for (let i = 0; i < clicks.length; i++) await window.webContents.executeJavaScript(`document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })); new Promise(resolve => setTimeout(resolve, 50))`);
         }
       }
     }

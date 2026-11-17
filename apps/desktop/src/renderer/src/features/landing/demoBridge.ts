@@ -351,7 +351,7 @@ export function createDemoBridge(): CapsuleApi {
     }))),
     harnessStatus: (sessionId: string) => {
       const sample = bySession(sessionId);
-      return ok(sample && { session: { id: sample.session.id, projectId: sample.project.id }, harnessId: sample.session.harnessId,
+      return ok(sample && { session: { id: sample.session.id, projectId: sample.project.id, openclawSessionKey: sample.session.openclawSessionKey }, harnessId: sample.session.harnessId,
         openclawSessionKey: sample.session.openclawSessionKey, state: sample.session.harnessState, parsed: {} });
     },
     listThreadGroups: () => ok([]),

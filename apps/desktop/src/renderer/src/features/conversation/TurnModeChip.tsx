@@ -1,27 +1,25 @@
-import type { PlanModeSupport, TurnMode } from "@capsule/shared";
-import { ListTodoIcon } from "../shell/icons";
+import type { PlanModeSupport } from "@capsule/shared";
+import { ListTodoIcon, XIcon } from "../shell/icons";
 
 /**
- * Plan or Act for the next turn. The tooltip says who enforces a plan turn:
- * the agent, a read-only sandbox, or only Capsule's request.
+ * Shown only while the next turn is a plan turn; Act is the unmarked default.
+ * The tooltip says who enforces it: the agent, a read-only sandbox, or only
+ * Capsule's request. Pressing it, or ⇧Tab, goes back to Act.
  */
-export function TurnModeChip({ mode, support, onToggle, disabledReason }: {
-  mode: TurnMode;
+export function TurnModeChip({ support, onTurnOff, disabledReason }: {
   support: PlanModeSupport;
-  onToggle: () => void;
+  onTurnOff: () => void;
   disabledReason?: string;
 }) {
-  const plan = mode === "plan";
-  const title = disabledReason ?? (plan
-    ? `Plan: ${support.label}. ${support.detail} (⇧Tab)`
-    : "Act: the agent can change files with this conversation's permissions. Switch to Plan to get a plan first (⇧Tab)");
+  const title = disabledReason ?? `Plan: ${support.label}. ${support.detail} Press to go back to Act (⇧Tab).`;
   return (
-    <button type="button" className={`turn-mode-chip${plan ? " is-plan" : ""}${plan && !support.enforced ? " is-asked" : ""}`}
-      aria-label="Plan mode" aria-pressed={plan} aria-description={plan ? support.label : undefined}
+    <button type="button" className={`turn-mode-chip is-plan${support.enforced ? "" : " is-asked"}`}
+      aria-label="Turn off plan mode" aria-description={support.label}
       aria-disabled={disabledReason ? true : undefined} title={title}
-      onClick={() => { if (!disabledReason) onToggle(); }}>
+      onClick={() => { if (!disabledReason) onTurnOff(); }}>
       <ListTodoIcon size={13} />
-      <span>{plan ? "Plan" : "Act"}</span>
+      <span>Plan</span>
+      <XIcon size={11} />
     </button>
   );
 }

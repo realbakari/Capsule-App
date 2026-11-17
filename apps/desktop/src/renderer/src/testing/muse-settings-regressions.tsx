@@ -1,7 +1,6 @@
 import { createRoot } from "react-dom/client";
 import { PRESET_HARNESSES, type AcpConfigOption, type HarnessLiveStatus, type HarnessStatus, type SessionRef } from "@capsule/shared";
 import { CapabilityDetails } from "../features/harness/CapabilityDetails";
-import { ComposerTools } from "../features/conversation/ComposerTools";
 
 function assert(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
 async function settle() { await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))); }
@@ -14,7 +13,8 @@ export async function runMuseSettingsRegressions(host: HTMLElement, base: Record
   const option: AcpConfigOption = { id: "reasoning_effort", name: "Reasoning effort", choices: [{ value: "none", name: "None" }, { value: "max", name: "Maximum" }] };
   const status = (selected: SessionRef, value?: string) => ({ session: selected, parsed: { reported: { configOptions: [{ ...option, currentValue: value }] } } }) as HarnessLiveStatus;
   try {
-    for (const surface of ["harness", "composer"] as const) {
+    /* Agent settings live in the Agents view; the composer picker draws only effort and permission rows. */
+    for (const surface of ["harness"] as const) {
       let accepted: (() => void) | undefined;
       let rejected: ((error: Error) => void) | undefined;
       const writes: unknown[][] = [];
@@ -24,15 +24,9 @@ export async function runMuseSettingsRegressions(host: HTMLElement, base: Record
       }, refreshHarnessStatus: async (id: string) => { refreshes.push(id); } };
       const render = (selected = session, value?: string) => {
         const liveStatus = status(selected, value);
-        root.render(surface === "harness"
-          ? <CapabilityDetails harness={harness} session={selected} status={liveStatus} initiallyOpen />
-          : <ComposerTools harness={harness} session={selected} status={liveStatus} stashCount={0} onContext={() => {}} onStash={() => {}} />);
+        root.render(<CapabilityDetails harness={harness} session={selected} status={liveStatus} initiallyOpen />);
       };
       render(); await settle();
-      if (surface === "composer") {
-        host.querySelector<HTMLButtonElement>('[aria-label="Conversation tools"]')!.click(); await settle();
-        Array.from(document.querySelectorAll<HTMLButtonElement>('[role="option"]')).find((button) => button.textContent?.includes("Agent settings and capabilities"))!.click(); await settle();
-      }
       const settings = () => document.querySelector<HTMLDetailsElement>(".agent-configuration")!;
       settings().open = true;
       const select = () => settings().querySelector<HTMLSelectElement>("select")!;
