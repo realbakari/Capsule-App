@@ -34,8 +34,11 @@ function effectiveBackground(element: Element): string {
     const alpha = parts.length > 3 ? parts[3]! : 1;
     if (alpha > 0) layers.push([parts[0]!, parts[1]!, parts[2]!, alpha]);
     if (alpha >= 1) break;
+    // The fixture stands for the conversation: its palette's canvas is what the code sits on,
+    // not the test page behind it (white on a light-mode machine, under a dark fixture).
+    if (node.hasAttribute("data-markdown-fixture")) break;
   }
-  // With no opaque layer in the stack (a transparent window), the page itself shows the theme's canvas.
+  // With no opaque layer down to the fixture, the theme's own canvas is the base.
   const canvas = () => {
     // Measured inside the element, so a theme set on a container (not on <html>) applies.
     const probe = element.appendChild(Object.assign(document.createElement("span"), { style: "display: block; background: var(--bg)" }));
