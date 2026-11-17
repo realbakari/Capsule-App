@@ -2,11 +2,15 @@ import Foundation
 import UserNotifications
 
 /*
- * Local notifications for the two moments worth interrupting someone for:
- * an agent is waiting on a decision, and a turn finished. They are posted by
- * this device from what the connection (or a background refresh) saw, so
- * nothing about a conversation passes through any server but the user's own
- * computer. Thread titles are shown; message contents are not.
+ * Local notifications for the moments worth interrupting someone for: an
+ * agent is waiting on a decision or a question, and a turn ended. They are
+ * posted by this device from what the connection (or a background refresh)
+ * saw, so nothing about a conversation passes through any server but the
+ * user's own computer. The wording follows the computer's own notices: the
+ * thread's name, then what happened and why. Replies are never shown.
+ *
+ * Turn endings that arrive together post as one notification. Approvals and
+ * questions post at once and alone: each carries its own answer.
  */
 final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     nonisolated static let threadKey = "threadID"
@@ -17,6 +21,10 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
 
     nonisolated static let approvalKey = "approvalID"
     nonisolated static let approvalCategory = "capsule.approval"
+    /// The agent offered no "allow once": only Deny is offered here.
+    nonisolated static let denyOnlyCategory = "capsule.approval.denyOnly"
+    /// A question is answered in the thread; the notification only opens it.
+    nonisolated static let questionCategory = "capsule.question"
     nonisolated static let allowAction = "capsule.approval.allow"
     nonisolated static let denyAction = "capsule.approval.deny"
 
@@ -32,8 +40,11 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
                                          options: [.authenticationRequired])
         let deny = UNNotificationAction(identifier: Self.denyAction, title: String(localized: "Deny"),
                                         options: [.authenticationRequired, .destructive])
-        center.setNotificationCategories([UNNotificationCategory(identifier: Self.approvalCategory, actions: [allow, deny],
-                                                                 intentIdentifiers: [], options: [])])
+        center.setNotificationCategories([
+            UNNotificationCategory(identifier: Self.approvalCategory, actions: [allow, deny], intentIdentifiers: [], options: []),
+            UNNotificationCategory(identifier: Self.denyOnlyCategory, actions: [deny], intentIdentifiers: [], options: []),
+            UNNotificationCategory(identifier: Self.questionCategory, actions: [], intentIdentifiers: [], options: []),
+        ])
     }
 
     var isEnabled: Bool {
@@ -63,31 +74,59 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
 
     func approvalRequested(_ approval: Approval, thread: ChatThread?, visible: Bool, hostID: UUID? = nil) {
         guard !visible, approvalsEnabled else { return }
-        var extra = [Self.approvalKey: approval.id]
+        let notice = Notice.approval(approval, threadID: thread?.id, threadTitle: Self.title(thread))
+        var extra: [String: String] = [:]
+        if !approval.isQuestion { extra[Self.approvalKey] = approval.id }
         if let hostID { extra[Self.hostKey] = hostID.uuidString }
-        post(id: "approval-\(approval.id)",
-             title: String(localized: "Needs your approval"),
-             subtitle: hostID.flatMap(hostName),
-             body: thread.map { String(localized: "\($0.title): \(approval.action)") } ?? approval.action,
+        post(id: "approval-\(approval.id)", title: notice.threadTitle, subtitle: hostID.flatMap(hostName), body: notice.body,
              threadID: thread?.id, timeSensitive: true,
-             category: Self.approvalCategory, extra: extra)
+             category: approval.isQuestion ? Self.questionCategory : approval.canApproveOnce ? Self.approvalCategory : Self.denyOnlyCategory,
+             extra: extra)
     }
 
     /// Names the other computer in its notifications, so you know which Mac is asking.
     var hostName: ((UUID) -> String?) = { _ in nil }
 
+    private struct Pending { var notice: Notice; var hostID: UUID?; var runID: String }
+    private var burst: [Pending] = []
+    private var burstTask: Task<Void, Never>?
+
     func runSettled(_ run: Run, thread: ChatThread?, visible: Bool, hostID: UUID? = nil) {
-        guard !visible, turns != .none, turns == .all || run.status != .completed else { return }
-        let title: String = switch run.status {
-        case .completed: String(localized: "Turn finished")
-        case .failed, .blocked: String(localized: "Turn failed")
-        case .cancelled: String(localized: "Turn stopped")
-        default: ""
+        guard !visible, turns != .none, turns == .all || run.status != .completed,
+              let notice = Notice.run(run, threadTitle: Self.title(thread)) else { return }
+        burst.append(Pending(notice: notice, hostID: hostID, runID: run.id))
+        guard burstTask == nil else { return }
+        // Turns that end within a second of each other are one thing to read.
+        burstTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled else { return }
+            self?.flushBurst()
         }
-        guard !title.isEmpty else { return }
-        post(id: "run-\(run.id)", title: title, subtitle: hostID.flatMap(hostName), body: thread?.title ?? "",
-             threadID: thread?.id ?? run.sessionId, timeSensitive: false,
-             extra: hostID.map { [Self.hostKey: $0.uuidString] } ?? [:])
+    }
+
+    /// Posts any turn endings still being gathered.
+    func flushTurns() {
+        burstTask?.cancel()
+        flushBurst()
+    }
+
+    private func flushBurst() {
+        guard !burst.isEmpty else { burstTask = nil; return }
+        let items = burst
+        burst = []
+        burstTask = nil
+        guard let summary = Notice.coalesce(items.map(\.notice)) else { return }
+        let lead = items.first { $0.notice.threadID == summary.threadID } ?? items[0]
+        let hosts = Set(items.map(\.hostID))
+        let subtitle = hosts.count == 1 ? lead.hostID.flatMap(hostName) : nil
+        post(id: items.count == 1 ? "run-\(lead.runID)" : "runs-\(UUID().uuidString)", title: summary.title, subtitle: subtitle,
+             body: summary.body, threadID: summary.threadID, timeSensitive: false,
+             extra: lead.hostID.map { [Self.hostKey: $0.uuidString] } ?? [:])
+    }
+
+    private static func title(_ thread: ChatThread?) -> String {
+        guard let title = thread?.title, !title.isEmpty else { return String(localized: "Untitled thread") }
+        return title
     }
 
     private func post(id: String, title: String, subtitle: String? = nil, body: String, threadID: String?, timeSensitive: Bool,

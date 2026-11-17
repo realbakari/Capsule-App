@@ -43,6 +43,8 @@ extension Workspace {
             let sessionID = latestRuns.values.first { $0.id == approval.runId }?.sessionId
             notifier.approvalRequested(approval, thread: sessionID.flatMap(thread), visible: false)
         }
+        // Background time may end before the burst timer fires.
+        notifier.flushTurns()
         await disconnect()
     }
 }

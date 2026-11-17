@@ -29,6 +29,8 @@ final class ThreadModel {
     var isLoading = false
     var isLoadingOlder = false
     var loadError: String?
+    /// Settled turns whose folded work is open.
+    var openFolds: Set<String> = []
 
     init(threadID: String) {
         self.threadID = threadID
@@ -90,6 +92,12 @@ final class ThreadModel {
         log(for: runID).replace(with: list)
     }
 
+    func setEvents(_ page: RunEventPage, for runID: String) {
+        let log = log(for: runID)
+        log.replace(with: page.events)
+        log.setEarlier(page)
+    }
+
     func apply(event: RunEvent) {
         if event.type == "assistant" {
             if let reply = replies[event.runId] {
@@ -121,6 +129,12 @@ final class RunLog {
     private(set) var loaded = false
     /// Why the steps couldn't be loaded, shown with a retry.
     private(set) var error: String?
+    /// The computer sends the newest steps first; this is where the older ones start.
+    private(set) var earlier: RunEventPage.Cursor?
+    /// True when older steps exist but the computer gave no way to page back to them.
+    private(set) var earlierUnreachable = false
+    var isLoadingEarlier = false
+    var hasEarlier: Bool { earlier != nil || earlierUnreachable }
 
     func fail(_ message: String) { error = message }
 
@@ -134,6 +148,17 @@ final class RunLog {
         if merged != events { events = merged }
         loaded = true
         error = nil
+    }
+
+    func setEarlier(_ page: RunEventPage) {
+        earlier = page.hasMore == true ? page.before : nil
+        earlierUnreachable = page.hasMore == true && page.before == nil
+    }
+
+    func prepend(_ page: RunEventPage) {
+        let ids = Set(events.map(\.id))
+        events = page.events.filter { !ids.contains($0.id) } + events
+        setEarlier(page)
     }
 
     func append(_ event: RunEvent) {

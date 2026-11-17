@@ -3,11 +3,13 @@ import SwiftUI
 /*
  * A decision an agent is waiting on.
  *
- * Allow once, or (over a pinned phone pairing) allow for the rest of this
- * thread's agent session — standing permissions are still changed on the
- * computer. A decision is sent exactly once: if the connection drops before
- * the answer comes back, the card says so and re-enables, leaving it to the
- * user to check rather than resending.
+ * One line says who wants what; the command or file follows, then where.
+ * Allow once, or (over a pinned phone pairing, on a thread whose agent keeps
+ * the answer) allow for the rest of this thread's agent session. Choices the
+ * computer would refuse aren't offered. Standing permissions are still
+ * changed on the computer. A decision is sent exactly once: if the
+ * connection drops before the answer comes back, the card says so and
+ * re-enables, leaving it to the user to check rather than resending.
  */
 struct ApprovalCard: View {
     @Environment(Workspace.self) private var workspace
@@ -18,22 +20,33 @@ struct ApprovalCard: View {
     @State private var error: String?
     @State private var showFull = false
 
+    /// "Claude wants to run a command"
+    static func headline(_ approval: Approval) -> String {
+        let who = approval.agentName ?? String(localized: "The agent")
+        return "\(who) \(String(localized: "wants to")) \(ApprovalWording.verbPhrase(approval.action))"
+    }
+
+    /// The reason, unless it only repeats the action.
+    static func reason(_ approval: Approval) -> String? {
+        let reason = approval.reason.trimmingCharacters(in: .whitespacesAndNewlines)
+        let action = approval.action.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !reason.isEmpty, reason.caseInsensitiveCompare(action) != .orderedSame,
+              reason.trimmingCharacters(in: CharacterSet(charactersIn: ".")).caseInsensitiveCompare(action) != .orderedSame else { return nil }
+        return reason
+    }
+
+    private var offersThread: Bool { workspace.offersAllowForThread(approval) }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 10) {
-                IconTile(symbol: symbol, tint: runIsLive ? .attention : .textMuted, size: 30,
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 8) {
+                IconTile(symbol: symbol, tint: runIsLive ? .attention : .textMuted, size: 26,
                          background: runIsLive ? .attentionBackground : .subtle)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(approval.action)
-                        .font(.headline)
-                        .foregroundStyle(Color.textPrimary)
-                    HStack(spacing: 5) {
-                        if let harness = Harness(approval.agentId) ?? Harness(name: approval.agentName) { HarnessMark(harness, size: 14) }
-                        Text(approval.agentName.map { String(localized: "\($0) is waiting for you") } ?? String(localized: "An agent is waiting for you"))
-                    }
-                    .font(.subheadline)
-                    .foregroundStyle(Color.textMuted)
-                }
+                if let harness = Harness(approval.agentId) ?? Harness(name: approval.agentName) { HarnessMark(harness, size: 14) }
+                Text(Self.headline(approval))
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.textPrimary)
+                    .lineLimit(2)
             }
             if let detail {
                 Button {
@@ -52,18 +65,20 @@ struct ApprovalCard: View {
                 .textSelection(.enabled)
                 .accessibilityHint(Text(showFull ? "Shows less." : "Shows the whole command."))
             }
-            if !approval.reason.isEmpty {
-                Text(approval.reason)
+            if !approval.target.isEmpty {
+                Label {
+                    Text(approval.target).lineLimit(1).truncationMode(.head)
+                } icon: {
+                    Image(systemName: "folder")
+                }
+                .font(.caption)
+                .foregroundStyle(Color.textTertiary)
+            }
+            if let reason = Self.reason(approval) {
+                Text(reason)
                     .font(.footnote)
                     .foregroundStyle(Color.textSecondary)
             }
-            Label {
-                Text(approval.target).lineLimit(1).truncationMode(.head)
-            } icon: {
-                Image(systemName: "folder")
-            }
-            .font(.caption)
-            .foregroundStyle(Color.textTertiary)
 
             if let error {
                 Text(error).font(.footnote).foregroundStyle(Color.failure)
@@ -72,7 +87,7 @@ struct ApprovalCard: View {
                 Label("This turn ended before it was answered.", systemImage: "clock.badge.xmark")
                     .font(.footnote)
                     .foregroundStyle(Color.textMuted)
-            } else if workspace.canControl {
+            } else if workspace.mayControl {
                 actions
             } else {
                 Label("Answer this on your computer. This device can read but not approve.", systemImage: "eye")
@@ -85,13 +100,13 @@ struct ApprovalCard: View {
         .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous)
             .strokeBorder(runIsLive ? Color.attention.opacity(0.35) : Color.hairline, lineWidth: 1))
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(Text("Approval needed: \(approval.action)"))
+        .accessibilityLabel(Text("Approval needed: \(Self.headline(approval))"))
         .accessibilityActions {
             if runIsLive && workspace.canControl && sending == nil {
-                Button("Allow once") { decide(.once) }
+                if approval.canApproveOnce { Button("Allow once") { decide(.once) } }
                 Button("Deny") { decide(.deny) }
                 Button("Deny and reply") { denyAndReply() }
-                if workspace.canAllowForThread { Button("Allow for this thread") { decide(.thread) } }
+                if offersThread { Button("Allow for this thread") { decide(.thread) } }
             }
         }
     }
@@ -100,7 +115,15 @@ struct ApprovalCard: View {
         VStack(spacing: 8) {
             HStack(spacing: 10) {
                 DecisionButton(title: "Deny", busy: sending == .deny, prominent: false) { decide(.deny) }
-                DecisionButton(title: "Allow once", busy: sending == .once, prominent: true) { decide(.once) }
+                DecisionButton(title: "Allow once", busy: sending == .once, prominent: approval.canApproveOnce) { decide(.once) }
+                    .disabled(!approval.canApproveOnce)
+                    .opacity(approval.canApproveOnce ? 1 : 0.5)
+            }
+            if !approval.canApproveOnce {
+                Text("This agent didn't offer Allow once. Deny, or change the agent's settings on your computer.")
+                    .font(.footnote)
+                    .foregroundStyle(Color.textMuted)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             HStack(spacing: 0) {
                 // Say no and steer: the agent hears why from your next message.
@@ -108,7 +131,7 @@ struct ApprovalCard: View {
                     Text("Deny and reply").frame(maxWidth: .infinity, minHeight: 36)
                 }
                 .accessibilityHint(Text("Denies this request, then lets you tell the agent what to do instead."))
-                if workspace.canAllowForThread {
+                if offersThread {
                     Rectangle().fill(Color.hairline).frame(width: 1, height: 18)
                     Button { decide(.thread) } label: {
                         HStack(spacing: 6) {
@@ -123,8 +146,13 @@ struct ApprovalCard: View {
             .buttonStyle(.plain)
             .font(.subheadline.weight(.medium))
             .foregroundStyle(Color.textSecondary)
+            if !workspace.isConnected {
+                Label("Waiting for your computer…", systemImage: "bolt.horizontal")
+                    .font(.footnote)
+                    .foregroundStyle(Color.textMuted)
+            }
         }
-        .disabled(sending != nil)
+        .disabled(sending != nil || !workspace.canControl)
     }
 
     private var kind: String? { approval.details?["kind"]?.string }

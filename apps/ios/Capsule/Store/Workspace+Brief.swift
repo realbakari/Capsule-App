@@ -83,7 +83,7 @@ extension Workspace {
             let title = thread.title.isEmpty ? String(localized: "Untitled thread") : thread.title
             if let approval = pendingApprovals.first(where: { $0.runId == run.id }) {
                 let at = Timestamp.date(approval.createdAt) ?? now
-                items.append(.init(threadID: threadID, title: title, outcome: .needsYou, line: approval.action, at: at))
+                items.append(.init(threadID: threadID, title: title, outcome: .needsYou, line: approval.headline, at: at))
                 continue
             }
             guard !run.status.isLive, let at = Timestamp.date(run.completedAt ?? run.updatedAt), at > since else { continue }

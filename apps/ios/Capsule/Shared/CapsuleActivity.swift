@@ -22,6 +22,10 @@ nonisolated struct CapsuleActivityAttributes: ActivityAttributes, Sendable {
         var approvalAction: String?
         /// The command or file the agent asked about.
         var approvalDetail: String?
+        /// A question is answered in the app: no buttons here, only a way in.
+        var isQuestion: Bool? = nil
+        /// The agent offered no "allow once"; only Deny is shown.
+        var denyOnly: Bool? = nil
     }
 
     var threadID: String

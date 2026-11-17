@@ -94,11 +94,14 @@ struct TurnBody: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text(state.approvalAction ?? String(localized: "The agent is asking to continue"))
                     .font(.footnote.weight(.medium))
-                    .lineLimit(1)
+                    .lineLimit(state.isQuestion == true ? 2 : 1)
                 if let detail = state.approvalDetail, !detail.isEmpty {
                     Text(detail).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(compact ? 1 : 2)
                 }
-                if let id = state.approvalID {
+                if state.isQuestion == true {
+                    // Answering takes the choices and maybe typing: that happens in the thread.
+                    Text("Open Capsule to answer").font(.caption).foregroundStyle(.secondary)
+                } else if let id = state.approvalID {
                     // Allow once is the filled one: on the Lock Screen it reads as the answer, Deny as the way out.
                     HStack(spacing: 8) {
                         Button(intent: DenyIntent(approvalID: id)) {
@@ -107,12 +110,14 @@ struct TurnBody: View {
                         .buttonStyle(.plain)
                         .foregroundStyle(.primary)
                         .background(.quaternary, in: .capsule)
-                        Button(intent: AllowOnceIntent(approvalID: id)) {
-                            Text("Allow once").frame(maxWidth: .infinity, minHeight: 32)
+                        if state.denyOnly != true {
+                            Button(intent: AllowOnceIntent(approvalID: id)) {
+                                Text("Allow once").frame(maxWidth: .infinity, minHeight: 32)
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.background)
+                            .background(.primary, in: .capsule)
                         }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.background)
-                        .background(.primary, in: .capsule)
                     }
                     .font(.footnote.weight(.semibold))
                 }

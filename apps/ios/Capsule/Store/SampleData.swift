@@ -23,11 +23,11 @@ nonisolated enum SampleData {
     static var threads: [ChatThread] {
         [
             ChatThread(id: weatherThread, projectId: projectID, agentId: "codex", title: "Show the hourly forecast as a chart",
-                       mode: "code", state: "active", harnessId: "codex", pinned: true, pinOrder: 0, createdAt: ago(40), updatedAt: ago(3)),
+                       state: "active", harnessId: "codex", pinned: true, pinOrder: 0, createdAt: ago(40), updatedAt: ago(3)),
             ChatThread(id: testsThread, projectId: projectID, agentId: "claude", title: "Fix the flaky date tests",
-                       mode: "code", state: "active", harnessId: "claude", pinned: false, pinOrder: nil, createdAt: ago(30), updatedAt: ago(1)),
+                       state: "active", harnessId: "claude", pinned: false, pinOrder: nil, createdAt: ago(30), updatedAt: ago(1)),
             ChatThread(id: docsThread, projectId: projectID, agentId: "claude", title: "Explain how caching works",
-                       mode: "research", state: "active", harnessId: "claude", pinned: false, pinOrder: nil, createdAt: ago(300), updatedAt: ago(240)),
+                       state: "active", harnessId: "claude", pinned: false, pinOrder: nil, createdAt: ago(300), updatedAt: ago(240)),
         ]
     }
 
@@ -48,8 +48,8 @@ nonisolated enum SampleData {
     ]
 
     static var approval: Approval {
-        Approval(id: approvalID, runId: "sample-run-tests", agentId: "claude", agentName: "Claude Code", action: "Allow this command?",
-                 target: "~/Projects/weather-app", reason: "The agent wants to run the test suite to confirm the fix.",
+        Approval(id: approvalID, runId: "sample-run-tests", agentId: "claude", agentName: "Claude Code", action: "Run a command",
+                 target: "~/Projects/weather-app", reason: "To run the test suite and confirm the fix.",
                  status: .pending, details: .object(["kind": .string("execute"), "rawInput": .object(["command": .string("npm test -- dates")])]),
                  createdAt: ago(1), resolvedAt: nil)
     }

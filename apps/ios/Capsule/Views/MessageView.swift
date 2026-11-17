@@ -1,7 +1,10 @@
+import AVFoundation
 import SwiftUI
 
 struct MessageView: View {
     let message: ChatMessage
+    /// A turn's final answer carries a quiet row of actions under it.
+    var actions = false
 
     var body: some View {
         switch message.role {
@@ -18,16 +21,7 @@ struct MessageView: View {
                             .foregroundStyle(Color.textTertiary)
                     }
                     if !message.content.isEmpty {
-                    Text(MarkdownBlock.inline(message.content, onBubble: true))
-                        .font(.callout)
-                        .lineSpacing(3)
-                        .foregroundStyle(Color.userBubbleText)
-                        .tint(Color.userBubbleText)
-                        .textSelection(.enabled)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .background(Color.userBubble, in: .rect(cornerRadius: 22, style: .continuous))
-                        .accessibilityLabel(Text("You: \(message.content)"))
+                        PromptBubble(text: message.content)
                     }
                 }
             }
@@ -45,6 +39,9 @@ struct MessageView: View {
                         .font(.caption)
                         .foregroundStyle(Color.textTertiary)
                 }
+                if actions, !message.content.isEmpty {
+                    ReplyActions(text: message.content)
+                }
             }
             .modifier(ReadingFont())
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -59,6 +56,127 @@ struct MessageView: View {
                 .frame(maxWidth: .infinity)
                 .multilineTextAlignment(.center)
         }
+    }
+}
+
+/*
+ * Your message, folded to its first lines when it is long. It folds only
+ * when that hides at least as much as it shows: a prompt one line too long
+ * isn't worth a tap.
+ */
+private struct PromptBubble: View {
+    let text: String
+    @State private var expanded = false
+    @State private var width: CGFloat = 0
+
+    var body: some View {
+        let fold = !expanded && LongPrompt.folds(lines: LongPrompt.lines(text, width: width - 28))
+        VStack(alignment: .leading, spacing: 6) {
+            Text(MarkdownBlock.inline(text, onBubble: true))
+                .font(.callout)
+                .lineSpacing(3)
+                .lineLimit(fold ? LongPrompt.shownLines : nil)
+                .foregroundStyle(Color.userBubbleText)
+                .tint(Color.userBubbleText)
+                .textSelection(.enabled)
+            if fold {
+                Button("Show full message") { expanded = true }
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color.userBubbleText.opacity(0.8))
+                    .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color.userBubble, in: .rect(cornerRadius: 22, style: .continuous))
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { if !expanded { width = $0 } }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text("You: \(text)"))
+    }
+}
+
+nonisolated enum LongPrompt {
+    static let shownLines = 8
+
+    /// Folding to eight lines has to hide at least eight more.
+    static func folds(lines: Int) -> Bool { lines >= shownLines * 2 }
+
+    /// Lines the text takes at this width, wrapped as the bubble's font wraps it.
+    static func lines(_ text: String, width: CGFloat) -> Int {
+        let font = UIFont.preferredFont(forTextStyle: .callout)
+        guard width > 40 else { return text.components(separatedBy: "\n").count }
+        let height = (text as NSString).boundingRect(with: CGSize(width: width, height: .greatestFiniteMagnitude),
+                                                     options: [.usesLineFragmentOrigin, .usesFontLeading],
+                                                     attributes: [.font: font], context: nil).height
+        return Int((height / font.lineHeight).rounded(.up))
+    }
+}
+
+/*
+ * Copy, read aloud and share, always visible under an answer. A long press
+ * still offers Copy, but nobody finds a menu they can't see.
+ */
+private struct ReplyActions: View {
+    let text: String
+    @State private var copied = false
+    @State private var voice = ReplyVoice.shared
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Button {
+                UIPasteboard.general.string = text
+                Haptics.tap()
+                copied = true
+                Task { try? await Task.sleep(for: .seconds(1.5)); copied = false }
+            } label: {
+                icon(copied ? "checkmark" : "doc.on.doc")
+            }
+            .accessibilityLabel(copied ? Text("Copied") : Text("Copy"))
+            Button {
+                voice.toggle(text)
+            } label: {
+                icon(voice.speakingText == text ? "stop.circle" : "speaker.wave.2")
+            }
+            .accessibilityLabel(voice.speakingText == text ? Text("Stop reading") : Text("Read aloud"))
+            ShareLink(item: text) { icon("square.and.arrow.up") }
+                .accessibilityLabel(Text("Share"))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Color.textTertiary)
+        .padding(.leading, -8)
+        .font(.subheadline)
+    }
+
+    private func icon(_ name: String) -> some View {
+        Image(systemName: name)
+            .contentTransition(.symbolEffect(.replace))
+            .frame(width: 36, height: 32)
+            .contentShape(.rect)
+    }
+}
+
+/// One voice for every reply: starting another stops the one reading.
+@MainActor @Observable final class ReplyVoice: NSObject, AVSpeechSynthesizerDelegate {
+    static let shared = ReplyVoice()
+    private let synthesizer = AVSpeechSynthesizer()
+    private(set) var speakingText: String?
+
+    override private init() {
+        super.init()
+        synthesizer.delegate = self
+    }
+
+    func toggle(_ text: String) {
+        let wasThis = speakingText == text
+        synthesizer.stopSpeaking(at: .immediate)
+        speakingText = nil
+        guard !wasThis else { return }
+        speakingText = text
+        synthesizer.speak(AVSpeechUtterance(string: text))
+    }
+
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        Task { @MainActor in self.speakingText = nil }
     }
 }
 
@@ -141,7 +259,7 @@ struct CodeBlock: View {
     private var content: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
-                Image(systemName: Icons.file("x.\(language ?? "")"))
+                Image(systemName: FileKind.of("x.\(language ?? "")").symbol)
                     .font(.caption2)
                     .foregroundStyle(Color.textTertiary)
                 Text(language?.isEmpty == false ? language! : String(localized: "code"))
@@ -206,6 +324,11 @@ nonisolated struct MarkdownBlock: Identifiable, Equatable {
             if run.inlinePresentationIntent?.contains(.code) == true {
                 result[run.range].font = .system(.footnote, design: .monospaced).weight(.medium)
                 result[run.range].backgroundColor = onBubble ? Color.subtleStrong : Color.codeBackground
+                // A file name opens the file; the transcript handles the link.
+                if run.link == nil, let url = FileRef.read(String(result[run.range].characters))?.url {
+                    result[run.range].link = url
+                    continue
+                }
             }
             if run.link != nil {
                 result[run.range].underlineStyle = .single
@@ -422,7 +545,7 @@ struct AttachmentStrip: View {
                         .accessibilityLabel(Text("Image \(file.name)"))
                         .accessibilityHint(Text("Opens a larger view."))
                     } else {
-                        Label(file.name, systemImage: Icons.file(file.name))
+                        Label(file.name, systemImage: FileKind.of(file.name).symbol)
                             .font(.caption)
                             .lineLimit(1)
                             .padding(.horizontal, 10)

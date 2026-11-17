@@ -47,8 +47,10 @@ extension Workspace {
             let state = CapsuleActivityAttributes.ContentState(
                 phase: approval != nil || run.status == .approvalRequired ? .approval : .working,
                 step: liveSteps[threadID], startedAt: started, finishedAt: nil,
-                approvalID: approval?.id, approvalAction: approval?.action,
-                approvalDetail: approval.map { Self.approvalDetail($0) })
+                approvalID: approval?.id, approvalAction: approval?.headline,
+                approvalDetail: approval.flatMap { $0.isQuestion ? nil : Self.approvalDetail($0) },
+                isQuestion: approval?.isQuestion == true ? true : nil,
+                denyOnly: approval.map { $0.canApproveOnce ? nil : true } ?? nil)
             liveActivities.show(threadID: threadID, title: thread?.title ?? "", project: project, state: state)
         } else {
             liveSteps[threadID] = nil

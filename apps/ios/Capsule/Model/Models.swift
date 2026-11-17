@@ -23,15 +23,21 @@ nonisolated struct ChatThread: Codable, Identifiable, Hashable, Sendable {
     var projectId: String
     var agentId: String?
     var title: String
-    var mode: String?
     var state: String?
     var harnessId: String?
+    /// The live agent session's id; `direct:` when Capsule runs the agent itself.
+    var openclawSessionKey: String?
+    /// "plan" or "act": how the computer sends the next message.
+    var turnMode: String?
     var pinned: Bool?
     var pinOrder: Double?
     var createdAt: String
     var updatedAt: String
 
     var isArchived: Bool { state == "archived" }
+    var isPlanning: Bool { turnMode == "plan" }
+    /// The direct route asks again for each request, so it can't allow for a whole thread.
+    var isDirect: Bool { openclawSessionKey?.hasPrefix("direct:") == true }
 }
 
 nonisolated struct ChatMessage: Codable, Identifiable, Hashable, Sendable {
@@ -105,8 +111,11 @@ nonisolated struct RunEvent: Codable, Identifiable, Hashable, Sendable {
 }
 
 nonisolated struct RunEventPage: Codable, Sendable {
+    nonisolated struct Cursor: Codable, Sendable, Equatable { var timestamp: String; var id: String }
     var events: [RunEvent]
     var hasMore: Bool?
+    /// Where the next page back starts, when there is one.
+    var before: Cursor?
 }
 
 nonisolated struct Approval: Codable, Identifiable, Hashable, Sendable {
@@ -135,6 +144,54 @@ extension Approval {
         if case .object(let input)? = details?["rawInput"], let command = input["command"]?.string { return command }
         if let title = details?["title"]?.string, !title.isEmpty { return title }
         return nil
+    }
+
+    /// Set when the agent stopped to ask rather than to be allowed something.
+    nonisolated var questions: [AgentQuestion] {
+        guard case .array(let list)? = details?["questions"] else { return [] }
+        return list.compactMap(AgentQuestion.init(json:))
+    }
+
+    nonisolated var isQuestion: Bool { !questions.isEmpty }
+
+    /// False when the agent offered no "allow once": the computer refuses it, so the phone doesn't offer it.
+    nonisolated var canApproveOnce: Bool { details?["canApproveOnce"]?.bool != false }
+
+    /// One line for a list or the Lock Screen: the question, or what it wants to do.
+    nonisolated var headline: String { questions.first?.question ?? action }
+}
+
+/// A question an agent stopped to ask, with the choices it offered.
+nonisolated struct AgentQuestion: Identifiable, Hashable, Sendable {
+    nonisolated struct Option: Hashable, Sendable {
+        var label: String
+        var description: String?
+    }
+    /// Answers are keyed by it.
+    var id: String
+    var header: String?
+    var question: String
+    var options: [Option]
+    var multiSelect: Bool
+    /// Free text is accepted alongside, or instead of, the options.
+    var allowOther: Bool
+    /// Masked while typed; the computer keeps it out of the transcript.
+    var secret: Bool
+
+    init(id: String, header: String? = nil, question: String, options: [Option] = [], multiSelect: Bool = false,
+         allowOther: Bool = true, secret: Bool = false) {
+        self.id = id; self.header = header; self.question = question; self.options = options
+        self.multiSelect = multiSelect; self.allowOther = allowOther; self.secret = secret
+    }
+
+    init?(json: JSONValue) {
+        guard let id = json["id"]?.string, let question = json["question"]?.string, !question.isEmpty else { return nil }
+        let options: [Option] = if case .array(let list)? = json["options"] {
+            list.compactMap { item in item["label"]?.string.map { Option(label: $0, description: item["description"]?.string) } }
+        } else { [] }
+        self.init(id: id, header: json["header"]?.string, question: question, options: options,
+                  multiSelect: json["multiSelect"]?.bool == true,
+                  allowOther: json["allowOther"]?.bool ?? options.isEmpty, secret: json["secret"]?.bool == true)
     }
 }
 
@@ -187,6 +244,11 @@ nonisolated enum JSONValue: Codable, Hashable, Sendable {
 
     var string: String? {
         if case .string(let s) = self { return s }
+        return nil
+    }
+
+    var bool: Bool? {
+        if case .bool(let b) = self { return b }
         return nil
     }
 }
@@ -322,43 +384,6 @@ nonisolated struct SkillInfo: Codable, Identifiable, Hashable, Sendable {
     var name: String
     var description: String?
     var status: String?
-}
-
-/// How a thread works. The computer sends the mode with each message and the
-/// thread keeps it.
-nonisolated enum ThreadMode: String, CaseIterable, Identifiable, Sendable {
-    case agent, code, plan, research, chat
-    var id: String { rawValue }
-
-    var title: LocalizedStringResource {
-        switch self {
-        case .agent: "Agent"
-        case .code: "Code"
-        case .plan: "Plan"
-        case .research: "Research"
-        case .chat: "Chat"
-        }
-    }
-
-    var symbol: String {
-        switch self {
-        case .agent: "sparkles"
-        case .code: "chevron.left.forwardslash.chevron.right"
-        case .plan: "list.bullet.clipboard"
-        case .research: "magnifyingglass"
-        case .chat: "bubble.left"
-        }
-    }
-
-    var detail: LocalizedStringResource {
-        switch self {
-        case .agent: "Works on its own, asking when it needs to"
-        case .code: "Writes and changes code in the project"
-        case .plan: "Plans first, without changing files"
-        case .research: "Reads and explains, without changing files"
-        case .chat: "Just answers"
-        }
-    }
 }
 
 // MARK: Usage limits (as reported by a running agent; observations, not balances)

@@ -65,7 +65,15 @@ final class Workspace {
 
     var activeHost: PairedHost? { hosts.first { $0.id == activeHostID } }
     var isConnected: Bool { if case .ready = connectionState { true } else { false } }
-    var canControl: Bool { isSample || (isConnected && (grantedScopes.contains("control") || grantedScopes.contains("write"))) }
+    /// Whether this pairing may send, stop and answer, connected or not. The
+    /// message box stays usable on it while the connection comes back.
+    var mayControl: Bool {
+        if isSample { return true }
+        if isConnected { return grantedScopes.contains("control") || grantedScopes.contains("write") }
+        return activeHost?.canControl == true
+    }
+    /// Whether a write can go out now.
+    var canControl: Bool { isSample || (isConnected && mayControl) }
 
     // MARK: Sample workspace
 
@@ -156,11 +164,12 @@ final class Workspace {
         switch run.status {
         case .approvalRequired: return .needsApproval
         case .queued, .running, .waiting: return .working
-        case .failed, .blocked: return .failed
         case .cancelled: return .stopped
-        case .completed:
+        case .failed, .blocked, .completed:
             let finished = run.completedAt ?? run.updatedAt
+            // A failure you've opened since has been seen; it no longer needs you.
             if let seen = lastViewed[thread.id], seen >= finished { return .idle }
+            if run.status != .completed { return .failed }
             // Work that finished before this device was paired isn't news.
             if let paired = activeHost?.pairedAt, let date = Timestamp.date(finished), date < paired { return .idle }
             return .unread
@@ -404,7 +413,8 @@ final class Workspace {
                 let sessionID = sessionID(forRun: approval.runId)
                 notifier.approvalRequested(approval, thread: sessionID.flatMap(thread), visible: isVisible(sessionID))
                 if isVisible(sessionID) {
-                    Self.announce(String(localized: "Approval needed: \(approval.action)"), urgent: true)
+                    Self.announce(approval.isQuestion ? String(localized: "The agent has a question: \(approval.headline)")
+                                                      : String(localized: "Approval needed: \(approval.action)"), urgent: true)
                 }
             }
         case .followUps(let sessionID, let value):
@@ -433,7 +443,7 @@ final class Workspace {
         }
     }
 
-    private func sessionID(forRun runID: String) -> String? {
+    func sessionID(forRun runID: String) -> String? {
         latestRuns.values.first { $0.id == runID }?.sessionId
             ?? threadModels.values.first { $0.runs[runID] != nil }?.threadID
     }
@@ -526,9 +536,23 @@ final class Workspace {
     func loadEvents(for runID: String, in model: ThreadModel) async {
         guard let connection, isConnected else { return }
         do {
-            model.setEvents(try await connection.call("listRunEventPage", [.string(runID)], as: RunEventPage.self).events, for: runID)
+            model.setEvents(try await connection.call("listRunEventPage", [.string(runID)], as: RunEventPage.self), for: runID)
         } catch {
             model.logs[runID]?.fail(error.localizedDescription)
+        }
+    }
+
+    /// The page of steps before the oldest one shown; the computer keeps the newest 200 per page.
+    func loadEarlierEvents(for runID: String, in model: ThreadModel) async {
+        guard let connection, isConnected, let log = model.logs[runID], let cursor = log.earlier, !log.isLoadingEarlier else { return }
+        log.isLoadingEarlier = true
+        defer { log.isLoadingEarlier = false }
+        do {
+            let page = try await connection.call("listRunEventPage", [.string(runID), .object(["timestamp": .string(cursor.timestamp), "id": .string(cursor.id)])],
+                                                 as: RunEventPage.self)
+            log.prepend(page)
+        } catch {
+            log.fail(error.localizedDescription)
         }
     }
 
@@ -539,11 +563,13 @@ final class Workspace {
         return try await connection.call("turnDiff", [.string(runID), .object(["summaryOnly": .bool(true)])], as: TurnDiff.self)
     }
 
-    /// One file's patch from a turn.
-    func turnDiff(runID: String, file: String) async throws -> TurnDiff {
+    /// One file's patch from a turn, optionally comparing lines with whitespace ignored.
+    func turnDiff(runID: String, file: String, ignoreWhitespace: Bool = false) async throws -> TurnDiff {
         if isSample { return TurnDiff(patch: SampleData.patch(for: file), files: [], patchTruncated: false, filesTruncated: false, available: true) }
         guard let connection, isConnected else { throw RemoteError.notConnected }
-        return try await connection.call("turnDiff", [.string(runID), .object(["relative": .string(file)])], as: TurnDiff.self, timeout: .seconds(45))
+        var options: [String: JSONValue] = ["relative": .string(file)]
+        if ignoreWhitespace { options["ignoreWhitespace"] = .bool(true) }
+        return try await connection.call("turnDiff", [.string(runID), .object(options)], as: TurnDiff.self, timeout: .seconds(45))
     }
 
     // MARK: Project inspection
@@ -561,6 +587,9 @@ final class Workspace {
 
     /// Text to drop into a thread's message box, from elsewhere in the app ("Ask about this file").
     var pendingInsert: (threadID: String, text: String)?
+
+    /// Notes left on diff lines, per thread, until they go to the message box.
+    var reviewComments: [String: [ReviewComment]] = [:]
 
     func listFiles(projectID: String, folder: String?) async throws -> [FileEntry] {
         var args: [JSONValue] = [.string(projectID)]
@@ -741,7 +770,7 @@ final class Workspace {
                                          as: MessageAttachment.self, timeout: .seconds(60))
     }
 
-    func send(_ text: String, to model: ThreadModel, mode: ThreadMode? = nil, skillID: String? = nil,
+    func send(_ text: String, to model: ThreadModel, skillID: String? = nil,
               attachments: [MessageAttachment] = []) async throws {
         if isSample {
             let now = Date.now.formatted(.iso8601)
@@ -754,7 +783,6 @@ final class Workspace {
         }
         guard let connection, canControl else { throw RemoteError.notConnected }
         var fields: [String: JSONValue] = ["sessionId": .string(model.threadID), "content": .string(text)]
-        if let mode { fields["mode"] = .string(mode.rawValue) }
         if let skillID { fields["skillId"] = .string(skillID) }
         if !attachments.isEmpty {
             fields["attachments"] = .array(attachments.compactMap { $0.path.map { .object(["path": .string($0)]) } })
@@ -792,10 +820,45 @@ final class Workspace {
     }
 
     func stop(_ run: Run) async throws {
+        try await stop(run, channel: "stopRun")
+    }
+
+    /// For an agent that ignores Stop: ends that turn's agent on the computer.
+    func forceStop(_ run: Run) async throws {
+        try await stop(run, channel: "forceStopRun")
+    }
+
+    private func stop(_ run: Run, channel: String) async throws {
+        if isSample {
+            var stopped = run
+            stopped.status = .cancelled
+            stopped.completedAt = Date.now.formatted(.iso8601)
+            threadModels[run.sessionId]?.apply(run: stopped)
+            latestRuns[run.sessionId] = stopped
+            return
+        }
         guard let connection, canControl else { throw RemoteError.notConnected }
-        let stopped = try await connection.call("stopRun", [.string(run.id)], as: Run.self)
+        let stopped = try await connection.call(channel, [.string(run.id)], as: Run.self)
         threadModels[run.sessionId]?.apply(run: stopped)
         latestRuns[run.sessionId] = stopped
+    }
+
+    /// Sends a failed turn's prompt again. Files sent with it stay on the computer and aren't re-attached.
+    func retry(_ run: Run, in model: ThreadModel) async throws {
+        guard let prompt = run.prompt?.trimmingCharacters(in: .whitespacesAndNewlines), !prompt.isEmpty else { return }
+        try await send(prompt, to: model)
+    }
+
+    /// Plan or Act for the thread's next message; the thread keeps it.
+    func setPlanning(_ planning: Bool, threadID: String) async throws -> String? {
+        guard let index = threads.firstIndex(where: { $0.id == threadID }) else { return nil }
+        if isSample { threads[index].turnMode = planning ? "plan" : "act"; return nil }
+        guard let connection, canControl else { throw RemoteError.notConnected }
+        nonisolated struct Result: Decodable, Sendable { let session: ChatThread; let detail: String? }
+        let result = try await connection.call("setSessionTurnMode", [.string(threadID), .string(planning ? "plan" : "act")], as: Result.self)
+        if let current = threads.firstIndex(where: { $0.id == result.session.id }) { threads[current] = result.session }
+        scheduleSave()
+        return result.detail
     }
 
     /// Allow once, allow for the rest of this agent session, or deny.
@@ -806,13 +869,29 @@ final class Workspace {
     }
 
     /// Whether this pairing may allow for a whole thread (pinned phones only).
-    var canAllowForThread: Bool { canControl && activeHost?.fingerprint != nil }
+    var canAllowForThread: Bool { mayControl && (isSample || activeHost?.fingerprint != nil) }
+
+    /// "Allow for this thread", where the computer would accept it: a pinned phone,
+    /// on a thread whose agent remembers the answer (the direct route asks every time).
+    func offersAllowForThread(_ approval: Approval) -> Bool {
+        guard canAllowForThread else { return false }
+        return sessionID(forRun: approval.runId).flatMap(thread)?.isDirect != true
+    }
 
     /// Uploads need the pinned phone channel (the desktop refuses them elsewhere).
     var canAttach: Bool { isSample || (canControl && activeHost?.fingerprint != nil) }
 
     func resolve(_ approval: Approval, _ decision: Decision) async throws {
         try await resolve(approvalID: approval.id, decision)
+    }
+
+    /// Answers an agent's question: question id to the chosen labels and any typed answer.
+    func answer(_ approval: Approval, _ answers: [String: [String]]) async throws {
+        if isSample { pendingApprovals.removeAll { $0.id == approval.id }; return }
+        guard let connection, canControl else { throw RemoteError.notConnected }
+        let payload = JSONValue.object(answers.mapValues { .array($0.map(JSONValue.string)) })
+        _ = try await connection.call("answerAgentQuestion", [.string(approval.id), payload])
+        pendingApprovals.removeAll { $0.id == approval.id }
     }
 
     func resolve(approvalID: String, _ decision: Decision) async throws {

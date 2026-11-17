@@ -6,8 +6,10 @@ import UniformTypeIdentifiers
  * The message box, floating over the transcript. With a control pairing it
  * sends; while a turn runs, a strip above the field says what the agent is
  * doing and for how long, with Stop beside it — the computer runs one turn
- * per thread, so the send button waits. Without control it says so plainly
- * instead of offering a box that would fail. Drafts are kept per thread.
+ * per thread, so the send button queues. The box stays editable while the
+ * connection comes back; only Send waits for it, and nothing typed is sent
+ * on its own once it returns. Without control it says so plainly instead of
+ * offering a box that would fail. Drafts are kept per thread.
  */
 struct ComposerView: View {
     @Environment(Workspace.self) private var workspace
@@ -16,7 +18,9 @@ struct ComposerView: View {
     @State private var sending = false
     @State private var stopping = false
     @State private var error: String?
-    @State private var mode: ThreadMode?
+    @State private var stopAsked: (runID: String, at: Date)?
+    @State private var confirmForceStop = false
+    @State private var changingPlan = false
     @State private var skill: SkillInfo?
     @State private var skills: [SkillInfo] = []
     @State private var attachments: [PendingAttachment] = []
@@ -37,9 +41,7 @@ struct ComposerView: View {
         workspace.thread(model.threadID).flatMap { Harness($0.harnessId ?? $0.agentId) }
     }
 
-    private var threadMode: ThreadMode? {
-        workspace.thread(model.threadID)?.mode.flatMap(ThreadMode.init(rawValue:))
-    }
+    private var planning: Bool { workspace.thread(model.threadID)?.isPlanning == true }
 
     /// Text after a leading "/", which searches skills instead of being sent.
     private var skillQuery: String? {
@@ -48,19 +50,7 @@ struct ComposerView: View {
     }
 
     private func matchingSkills(_ query: String) -> [SkillInfo] {
-        let q = query.lowercased()
-        // Name starts with it, then a word in the name does, then anywhere.
-        func rank(_ skill: SkillInfo) -> Int? {
-            let name = skill.name.lowercased()
-            if q.isEmpty || name.hasPrefix(q) { return 0 }
-            if name.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).contains(where: { $0.hasPrefix(q) }) { return 1 }
-            if name.contains(q) || skill.id.lowercased().contains(q) { return 2 }
-            return nil
-        }
-        return Array(skills.compactMap { skill in rank(skill).map { (skill, $0) } }
-            .sorted { $0.1 < $1.1 }
-            .map(\.0)
-            .prefix(6))
+        Array(SkillSearch.rank(skills, query: query, recent: RecentSkills.load()).prefix(6))
     }
 
     /// The agent's own commands that start with what follows "/".
@@ -75,15 +65,17 @@ struct ComposerView: View {
             if let error {
                 ErrorStrip(message: error) { self.error = nil }
             }
-            if workspace.canControl {
+            if workspace.mayControl {
                 VStack(spacing: 0) {
                     if let live = model.liveRun { workingStrip(live) }
+                    if !workspace.canControl { waitingStrip }
                     if !model.followUps.queue.isEmpty {
                         QueueStrip(model: model, error: $error)
                     }
                     if let query = skillQuery, !matchingSkills(query).isEmpty || !matchingCommands(query).isEmpty {
                         SkillSuggestions(skills: matchingSkills(query), commands: matchingCommands(query)) { picked in
                             skill = picked
+                            RecentSkills.record(picked.id)
                             text = ""
                             Haptics.selection()
                         } pickCommand: { command in
@@ -97,7 +89,8 @@ struct ComposerView: View {
                         PendingStrip(items: $attachments)
                     }
                     field
-                    ComposerControls(mode: $mode, skill: $skill, skills: skills, threadMode: threadMode, harness: harness,
+                    ComposerControls(planning: planning, changingPlan: changingPlan, togglePlan: { Task { await togglePlan() } },
+                                     skill: $skill, skills: skills, harness: harness, actions: AnyView(actions),
                                      attach: workspace.canAttach ? { kind in
                                          switch kind {
                                          case .photos: showPhotos = true
@@ -169,7 +162,7 @@ struct ComposerView: View {
                 .font(.body)
                 .lineLimit(1...8)
                 .focused($focused)
-                .padding(.leading, 16)
+                .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 .accessibilityLabel(Text("Message"))
             if dictation.isActive {
@@ -195,7 +188,13 @@ struct ComposerView: View {
                 .padding(.trailing, 7)
                 .padding(.bottom, 7)
                 .accessibilityLabel(Text("Done dictating"))
-            } else {
+            }
+        }
+    }
+
+    /// Mic and send sit on the controls row, so the message box keeps its whole width.
+    @ViewBuilder private var actions: some View {
+        if !dictation.isActive {
             Button {
                 dictationBase = text
                 focused = false
@@ -209,7 +208,6 @@ struct ComposerView: View {
             }
             .buttonStyle(.plain)
             .hoverEffect(.highlight)
-            .padding(.bottom, 7)
             .accessibilityLabel(Text("Dictate"))
             .accessibilityHint(Text("Transcribed on this device. The words go in the message box; nothing is sent."))
             Button {
@@ -231,18 +229,16 @@ struct ComposerView: View {
             .hoverEffect(.lift)
             .keyboardShortcut(.return, modifiers: .command)
             .disabled(!canSend)
-            .padding(.trailing, 7)
-            .padding(.bottom, 7)
             .accessibilityLabel(queues ? Text("Queue") : Text("Send"))
             .accessibilityHint(queues ? Text("Sends after the current turn finishes.") : Text(""))
-            }
         }
     }
 
     /// While a turn runs, the button queues the message behind it instead.
     private var queues: Bool { model.liveRun != nil }
     private var canSend: Bool {
-        (!trimmed.isEmpty || attachments.contains { $0.uploaded != nil }) && !sending && !attachments.contains { $0.uploaded == nil && $0.error == nil }
+        workspace.canControl && (!trimmed.isEmpty || attachments.contains { $0.uploaded != nil }) && !sending
+            && !attachments.contains { $0.uploaded == nil && $0.error == nil }
     }
 
     private var readyAttachments: [MessageAttachment] { attachments.compactMap(\.uploaded) }
@@ -278,36 +274,36 @@ struct ComposerView: View {
     private func workingStrip(_ run: Run) -> some View {
         HStack(spacing: 8) {
             WorkingPulse().foregroundStyle(run.status == .approvalRequired ? Color.attention : Color.textSecondary)
-            TimelineView(.periodic(from: .now, by: 1)) { _ in
-                HStack(spacing: 6) {
-                    Text(run.status == .approvalRequired ? String(localized: "Waiting for your approval") : String(localized: "Working"))
-                        .foregroundStyle(Color.textSecondary)
-                    if let elapsed = Self.elapsed(since: run.createdAt) {
-                        Text(elapsed).foregroundStyle(Color.textTertiary)
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                let ignored = ignoresStop(run, now: context.date)
+                HStack(spacing: 8) {
+                    HStack(spacing: 6) {
+                        Text(ignored ? String(localized: "Not responding to Stop")
+                             : run.status == .approvalRequired ? String(localized: "Waiting for you") : String(localized: "Working"))
+                            .foregroundStyle(ignored ? Color.attention : Color.textSecondary)
+                        if let elapsed = Self.elapsed(since: run.createdAt) {
+                            Text(elapsed).foregroundStyle(Color.textTertiary)
+                        }
+                    }
+                    .font(.subheadline.weight(.medium).monospacedDigit())
+                    Spacer()
+                    if ignored {
+                        stripButton(title: "Force stop", symbol: "xmark.octagon.fill", busy: stopping) { confirmForceStop = true }
+                            .accessibilityHint(Text("Ends the agent running this turn on your computer."))
+                    } else {
+                        stripButton(title: "Stop", symbol: "stop.fill", busy: stopping) { Task { await stop(run) } }
+                            .keyboardShortcut(".", modifiers: .command)
+                            .accessibilityLabel(Text("Stop the running turn"))
                     }
                 }
             }
-            .font(.subheadline.weight(.medium).monospacedDigit())
-            Spacer()
-            Button {
-                Task { await stop(run) }
-            } label: {
-                HStack(spacing: 5) {
-                    if stopping { ProgressView().controlSize(.mini) } else { Image(systemName: "stop.fill").font(.caption2).imageScale(.small) }
-                    Text("Stop")
-                }
-                .font(.subheadline.weight(.semibold))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(Color.subtleStrong, in: .capsule)
-                .contentShape(.capsule)
-            }
-            .buttonStyle(.plain)
-            .hoverEffect(.highlight)
-            .keyboardShortcut(".", modifiers: .command)
-            .foregroundStyle(Color.textPrimary)
-            .disabled(stopping)
-            .accessibilityLabel(Text("Stop the running turn"))
+        }
+        .confirmationDialog("Force stop this turn?", isPresented: $confirmForceStop, titleVisibility: .visible) {
+            Button("Force stop", role: .destructive) { Task { await forceStop(run) } }
+        } message: {
+            Text(workspace.thread(model.threadID)?.isDirect == true
+                 ? "The agent didn't stop when asked. Force stop ends the agent's process."
+                 : "The agent didn't stop when asked. Force stop closes the agent's session.")
         }
         .padding(.leading, 16)
         .padding(.trailing, 8)
@@ -317,13 +313,51 @@ struct ComposerView: View {
         .accessibilityElement(children: .contain)
     }
 
+    private func stripButton(title: LocalizedStringKey, symbol: String, busy: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                if busy { ProgressView().controlSize(.mini) } else { Image(systemName: symbol).font(.caption2).imageScale(.small) }
+                Text(title)
+            }
+            .font(.subheadline.weight(.semibold))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Color.subtleStrong, in: .capsule)
+            .contentShape(.capsule)
+        }
+        .buttonStyle(.plain)
+        .hoverEffect(.highlight)
+        .foregroundStyle(Color.textPrimary)
+        .disabled(busy || !workspace.canControl)
+    }
+
+    /// Stop was sent this long ago and the turn is still running.
+    nonisolated static let stopGrace: TimeInterval = 8
+
+    private func ignoresStop(_ run: Run, now: Date) -> Bool {
+        guard let asked = stopAsked, asked.runID == run.id else { return false }
+        return now.timeIntervalSince(asked.at) >= Self.stopGrace
+    }
+
+    /// The box stays; only sending waits.
+    private var waitingStrip: some View {
+        HStack(spacing: 8) {
+            ProgressView().controlSize(.mini)
+            Text("Waiting for your computer…")
+            Spacer()
+        }
+        .font(.footnote)
+        .foregroundStyle(Color.textMuted)
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+        .accessibilityElement(children: .combine)
+    }
+
     private var readOnly: some View {
         HStack(spacing: 10) {
-            Image(systemName: workspace.isConnected ? "eye" : "bolt.horizontal")
+            Image(systemName: "eye")
                 .foregroundStyle(Color.textMuted)
-            Text(workspace.isConnected
-                 ? "Read only. Pair with a phone code to send messages and approve."
-                 : "You can reply once your computer is connected.")
+            Text("Read only. Pair with a phone code to send messages and approve.")
                 .font(.footnote)
                 .foregroundStyle(Color.textMuted)
             Spacer(minLength: 0)
@@ -350,7 +384,7 @@ struct ComposerView: View {
             if queues {
                 try await workspace.queue(message, in: model, attachments: readyAttachments)
             } else {
-                try await workspace.send(message, to: model, mode: mode, skillID: skill?.id, attachments: readyAttachments)
+                try await workspace.send(message, to: model, skillID: skill?.id, attachments: readyAttachments)
                 skill = nil
             }
             attachments = []
@@ -369,7 +403,32 @@ struct ComposerView: View {
         defer { stopping = false }
         do {
             try await workspace.stop(run)
+            if model.runs[run.id]?.status.isLive != false { stopAsked = (run.id, .now) }
             Haptics.success()
+        } catch {
+            self.error = error.localizedDescription
+            Haptics.warning()
+        }
+    }
+
+    private func forceStop(_ run: Run) async {
+        stopping = true
+        defer { stopping = false }
+        do {
+            try await workspace.forceStop(run)
+            Haptics.success()
+        } catch {
+            self.error = error.localizedDescription
+            Haptics.warning()
+        }
+    }
+
+    private func togglePlan() async {
+        changingPlan = true
+        defer { changingPlan = false }
+        do {
+            if let detail = try await workspace.setPlanning(!planning, threadID: model.threadID) { error = detail }
+            Haptics.selection()
         } catch {
             self.error = error.localizedDescription
             Haptics.warning()
@@ -482,14 +541,17 @@ private struct QueueStrip: View {
 enum AttachKind { case photos, camera, file }
 
 private struct ComposerControls: View {
-    @Binding var mode: ThreadMode?
+    /// Plan: the agent plans before it changes anything. The thread keeps it.
+    let planning: Bool
+    let changingPlan: Bool
+    let togglePlan: () -> Void
     @Binding var skill: SkillInfo?
     let skills: [SkillInfo]
-    let threadMode: ThreadMode?
     var harness: Harness? = nil
+    /// Mic and send, at the trailing end of the row.
+    var actions: AnyView = AnyView(EmptyView())
     let attach: ((AttachKind) -> Void)?
-
-    private var shown: ThreadMode { mode ?? threadMode ?? .agent }
+    @State private var pickingSkill = false
 
     var body: some View {
         HStack(spacing: 8) {
@@ -510,22 +572,30 @@ private struct ComposerControls: View {
                 }
                 .accessibilityLabel(Text("Attach"))
             }
-            Menu {
-                Picker("Mode", selection: Binding(get: { shown }, set: { mode = $0; Haptics.selection() })) {
-                    ForEach(ThreadMode.allCases) { item in
-                        Label {
-                            Text(item.title)
-                            Text(item.detail)
-                        } icon: {
-                            Image(systemName: item.symbol)
-                        }
-                        .tag(item)
-                    }
+            if let harness {
+                // Which agent hears this message. A thread keeps its agent, so it's a label, not a control.
+                HStack(spacing: 5) {
+                    HarnessMark(harness, size: 14)
+                    Text(harness.name).font(.caption.weight(.medium)).lineLimit(1)
                 }
-            } label: {
-                Chip(symbol: shown.symbol, text: Text(shown.title), active: mode != nil && mode != threadMode)
+                .foregroundStyle(Color.textSecondary)
+                .padding(.horizontal, 10)
+                .frame(height: 28)
+                .background(Color.subtle, in: .capsule)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(Text("Agent: \(harness.name)"))
             }
-            .accessibilityLabel(Text("Mode: \(String(localized: shown.title))"))
+            // Plan shows only while it is on, as on the computer; asking the agent for a plan needs no switch.
+            if planning {
+                Button(action: togglePlan) {
+                    Chip(symbol: "list.bullet.clipboard", text: Text("Plan"), active: true)
+                }
+                .buttonStyle(.plain)
+                .disabled(changingPlan)
+                .accessibilityLabel(Text("Plan"))
+                .accessibilityValue(Text("On"))
+                .accessibilityHint(Text("The agent plans first, without changing files. Turns it off."))
+            }
             if let skill {
                 Button { self.skill = nil } label: {
                     Chip(symbol: "wand.and.stars", text: Text(skill.name), active: true, trailing: "xmark")
@@ -534,33 +604,18 @@ private struct ComposerControls: View {
                 .accessibilityLabel(Text("Skill: \(skill.name)"))
                 .accessibilityHint(Text("Removes the skill."))
             } else if !skills.isEmpty {
-                Menu {
-                    ForEach(skills) { item in
-                        Button { skill = item } label: {
-                            Text(item.name)
-                            if let detail = item.description { Text(detail) }
-                        }
-                    }
-                } label: {
+                Button { pickingSkill = true } label: {
                     Chip(symbol: "wand.and.stars", text: Text("Skill"), active: false)
                 }
+                .buttonStyle(.plain)
                 .accessibilityLabel(Text("Add a skill"))
             }
             Spacer(minLength: 0)
-            if let harness {
-                // Which agent hears this message. A thread keeps its agent, so it's a label, not a control.
-                HStack(spacing: 5) {
-                    HarnessMark(harness, size: 15)
-                    Text(harness.name).font(.caption.weight(.medium)).lineLimit(1)
-                }
-                .foregroundStyle(Color.textMuted)
-                .padding(.trailing, 4)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(Text("Agent: \(harness.name)"))
-            }
+            actions
         }
         .padding(.horizontal, 12)
         .padding(.bottom, 8)
+        .sheet(isPresented: $pickingSkill) { SkillPicker(skills: skills, selection: $skill) }
     }
 }
 
@@ -657,7 +712,7 @@ private struct PendingStrip: View {
                                 Image(uiImage: preview).resizable().scaledToFill()
                             } else {
                                 VStack(spacing: 4) {
-                                    Image(systemName: Icons.file(item.name)).font(.title3)
+                                    Image(systemName: FileKind.of(item.name).symbol).font(.title3)
                                     Text(item.name).font(.caption2).lineLimit(1)
                                 }
                                 .foregroundStyle(Color.textSecondary)
