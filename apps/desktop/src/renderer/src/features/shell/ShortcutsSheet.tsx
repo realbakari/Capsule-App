@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { parseChordSequence, takenByMenu } from "@capsule/shared";
-import { CONTEXT_LABELS, FIXED_SHORTCUTS, actionLabel, registryRows, sequenceSymbols } from "../../lib/keybindings";
+import { CONTEXT_LABELS, actionLabel, fixedShortcuts, isMac, registryRows, sequenceSymbols } from "../../lib/keybindings";
 import { useModalFocus } from "../../lib/modal-focus";
 import { SHOW_SHORTCUTS_EVENT } from "../../lib/shortcuts-event";
 import { useWorkspace } from "../../lib/workspace";
@@ -22,6 +22,7 @@ export function ShortcutsSheet() {
     return () => window.removeEventListener(SHOW_SHORTCUTS_EVENT, show);
   }, []);
   if (!open) return null;
+  const mac = isMac();
   const where = (context: string) => (context === "global" ? "" : ` (${CONTEXT_LABELS[context as keyof typeof CONTEXT_LABELS]})`);
   const rows: Array<{ id: string; label: string; keys: string[][] }> = [
     ...registryRows(keyBindings).flatMap(({ command, bindings }) => {
@@ -29,12 +30,12 @@ export function ShortcutsSheet() {
         const parsed = parseChordSequence(command.keys);
         return parsed.ok ? [{ id: command.id, label: command.label, keys: sequenceSymbols(parsed.sequence) }] : [];
       }
-      return bindings.filter((binding) => !takenByMenu(binding.sequence)).map((binding, index) => ({ id: `${command.id}-${index}`, label: `${command.label}${where(binding.context)}`, keys: sequenceSymbols(binding.sequence) }));
+      return bindings.filter((binding) => !takenByMenu(binding.sequence, mac)).map((binding, index) => ({ id: `${command.id}-${index}`, label: `${command.label}${where(binding.context)}`, keys: sequenceSymbols(binding.sequence) }));
     }),
     ...keyBindings
-      .filter((binding) => binding.action.includes(":") && !takenByMenu(binding.sequence))
+      .filter((binding) => binding.action.includes(":") && !takenByMenu(binding.sequence, mac))
       .map((binding, index) => ({ id: `custom-${index}`, label: `${actionLabel(binding.action, commands?.list?.commands)}${where(binding.context)}`, keys: sequenceSymbols(binding.sequence) })),
-    ...FIXED_SHORTCUTS.map((row) => ({ id: row.label, label: row.label, keys: [row.keys] })),
+    ...fixedShortcuts(mac).map((row) => ({ id: row.label, label: row.label, keys: sequenceSymbols(row.sequence, mac) })),
   ];
   return (
     <div className="palette-backdrop center" onClick={close}>

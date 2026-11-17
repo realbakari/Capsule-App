@@ -52,19 +52,37 @@ describe("parseChordSequence", () => {
 });
 
 describe("chordMatchesEvent", () => {
-  it("treats cmd as either Command or Control, matching modifiers exactly", () => {
+  it("reads cmd as ⌘ on macOS and Control elsewhere, matching modifiers exactly", () => {
     const [chord] = seq("cmd+b");
-    expect(chordMatchesEvent(chord!, press("b", { cmd: true }))).toBe(true);
-    expect(chordMatchesEvent(chord!, press("B", { ctrl: true }))).toBe(true);
-    expect(chordMatchesEvent(chord!, press("b", { cmd: true, shift: true }))).toBe(false);
-    expect(chordMatchesEvent(chord!, press("b"))).toBe(false);
+    expect(chordMatchesEvent(chord!, press("b", { cmd: true }), true)).toBe(true);
+    expect(chordMatchesEvent(chord!, press("B", { ctrl: true }), false)).toBe(true);
+    expect(chordMatchesEvent(chord!, press("b", { cmd: true, shift: true }), true)).toBe(false);
+    expect(chordMatchesEvent(chord!, press("b"), true)).toBe(false);
   });
 
-  it("treats ctrl as the physical Control key only", () => {
+  it("leaves Control's text editing keys alone on macOS", () => {
+    for (const key of ["a", "e", "f", "b", "p"]) {
+      expect(chordMatchesEvent(seq(`cmd+${key}`)[0]!, press(key, { ctrl: true }), true), key).toBe(false);
+    }
+  });
+
+  it("does not answer to the Windows key", () => {
+    expect(chordMatchesEvent(seq("cmd+b")[0]!, press("b", { cmd: true }), false)).toBe(false);
+  });
+
+  it("treats ctrl as the physical Control key, which off macOS is cmd too", () => {
     const [chord] = seq("ctrl+`");
-    expect(chordMatchesEvent(chord!, press("`", { ctrl: true }))).toBe(true);
-    expect(chordMatchesEvent(chord!, press("`", { cmd: true }))).toBe(false);
-    expect(chordMatchesEvent(seq("ctrl+cmd+f")[0]!, press("f", { ctrl: true, cmd: true }))).toBe(true);
+    expect(chordMatchesEvent(chord!, press("`", { ctrl: true }), true)).toBe(true);
+    expect(chordMatchesEvent(chord!, press("`", { cmd: true }), true)).toBe(false);
+    expect(chordMatchesEvent(chord!, press("`", { ctrl: true }), false)).toBe(true);
+    expect(chordMatchesEvent(seq("ctrl+cmd+f")[0]!, press("f", { ctrl: true, cmd: true }), true)).toBe(true);
+  });
+
+  it("reads Option chords by the physical key on macOS, and AltGr characters as typing elsewhere", () => {
+    const [chord] = seq("cmd+alt+o");
+    expect(chordMatchesEvent(chord!, { ...press("ø", { cmd: true, alt: true }), code: "KeyO" }, true)).toBe(true);
+    expect(chordMatchesEvent(chord!, { ...press("ó", { ctrl: true, alt: true }), code: "KeyO" }, false)).toBe(false);
+    expect(chordMatchesEvent(chord!, { ...press("o", { ctrl: true, alt: true }), code: "KeyO" }, false)).toBe(true);
   });
 });
 
@@ -159,10 +177,22 @@ describe("keymapConflicts", () => {
       ],
       [],
     );
-    expect(keymapConflicts(bindings)).toEqual([
+    expect(keymapConflicts(bindings, true)).toEqual([
       { context: "global", kind: "prefix", sequence: "cmd+k", actions: ["palette", "reload"] },
       { context: "review", kind: "duplicate", sequence: "j", actions: ["a", "b"] },
     ]);
+  });
+
+  it("counts cmd+k and ctrl+k as one key off macOS, and as two on macOS", () => {
+    const bindings = resolveKeymap(
+      [
+        { id: "a", context: "global", sequence: seq("cmd+k") },
+        { id: "b", context: "global", sequence: seq("ctrl+k") },
+      ],
+      [],
+    );
+    expect(keymapConflicts(bindings, true)).toEqual([]);
+    expect(keymapConflicts(bindings, false)).toEqual([{ context: "global", kind: "duplicate", sequence: "cmd+k", actions: ["a", "b"] }]);
   });
 });
 
@@ -178,32 +208,32 @@ describe("createChordMatcher", () => {
   );
 
   it("matches a single chord", () => {
-    expect(createChordMatcher(bindings).feed(press("b", { cmd: true }))).toMatchObject({ kind: "match", action: "toggle-sidebar" });
-    expect(createChordMatcher(bindings).feed(press("x", { cmd: true }))).toEqual({ kind: "none" });
+    expect(createChordMatcher(bindings, { mac: true }).feed(press("b", { cmd: true }))).toMatchObject({ kind: "match", action: "toggle-sidebar" });
+    expect(createChordMatcher(bindings, { mac: true }).feed(press("x", { cmd: true }))).toEqual({ kind: "none" });
   });
 
   it("completes a sequence inside the window, ignoring bare modifier presses", () => {
-    const matcher = createChordMatcher(bindings);
+    const matcher = createChordMatcher(bindings, { mac: true });
     expect(matcher.feed(press("k", { cmd: true }, 1000))).toEqual({ kind: "pending", prefix: { key: "k", meta: true } });
     expect(matcher.feed(press("Meta", { cmd: true }, 1200))).toMatchObject({ kind: "pending" });
     expect(matcher.feed(press("r", { cmd: true }, 2400))).toMatchObject({ kind: "match", action: "reload-config" });
   });
 
   it("drops the first chord after 1.5 seconds", () => {
-    const matcher = createChordMatcher(bindings);
+    const matcher = createChordMatcher(bindings, { mac: true });
     matcher.feed(press("k", { cmd: true }, 1000));
     expect(matcher.feed(press("r", { cmd: true }, 2600))).toEqual({ kind: "none" });
   });
 
   it("reads a wrong second chord as a fresh one", () => {
-    const matcher = createChordMatcher(bindings);
+    const matcher = createChordMatcher(bindings, { mac: true });
     matcher.feed(press("k", { cmd: true }, 0));
     expect(matcher.feed(press("b", { cmd: true }, 100))).toMatchObject({ kind: "match", action: "toggle-sidebar" });
     expect(matcher.feed(press("r", { cmd: true }, 200))).toEqual({ kind: "none" });
   });
 
   it("asks the focused context first and falls back to global", () => {
-    const matcher = createChordMatcher(bindings);
+    const matcher = createChordMatcher(bindings, { mac: true });
     matcher.setContexts(["composer"]);
     expect(matcher.feed(press("b", { cmd: true }))).toMatchObject({ kind: "match", action: "bold", context: "composer" });
     expect(matcher.feed(press("enter", { cmd: true }))).toMatchObject({ action: "send" });

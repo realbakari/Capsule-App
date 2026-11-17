@@ -22,7 +22,7 @@ export function readKeybindings(file: JsoncFile, path: string, commands?: readon
     entries,
     problems: [
       ...problems.map((problem): ConfigProblem => ({ severity: "error", path, ...(problem.key ? { key: problem.key } : {}), message: problem.message })),
-      ...keybindingWarnings(entries, { commands, profiles }).map((problem): ConfigProblem => ({ severity: "warning", path, key: problem.key, message: problem.message })),
+      ...keybindingWarnings(entries, { commands, profiles, mac: process.platform === "darwin" }).map((problem): ConfigProblem => ({ severity: "warning", path, key: problem.key, message: problem.message })),
     ],
   };
 }

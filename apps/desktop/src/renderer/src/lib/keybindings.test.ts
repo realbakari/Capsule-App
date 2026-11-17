@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createChordMatcher, KEY_COMMANDS, keymapConflicts, parseChordSequence, parseKeybindingsFile, takenByMenu, type ChordSequence } from "@capsule/shared";
-import { actionLabel, chordFromEvent, chordSymbols, effectiveKeymap, registryRows, sequenceStartsWith, shortcutLabel } from "./keybindings.js";
+import { actionLabel, chordFromEvent, chordSymbols, effectiveKeymap, fixedShortcuts, registryRows, sequenceLabel, sequenceStartsWith, shortcutLabel } from "./keybindings.js";
 
 const seq = (text: string): ChordSequence => {
   const parsed = parseChordSequence(text);
@@ -15,14 +15,14 @@ describe("the effective keymap", () => {
   it("keeps today's defaults when keybindings.json is empty", () => {
     const keys = Object.fromEntries(effectiveKeymap([]).map((b) => [b.action, b.sequence]));
     expect(keys["toggle-sidebar"]).toEqual(seq("cmd+b"));
-    expect(keys["next-conversation"]).toEqual(seq("cmd+tab"));
+    expect(keys["next-conversation"]).toEqual(seq("ctrl+tab"));
     expect(keys.palette).toBeUndefined();
   });
 
   it("lays a chord, a rebinding and an unbind from the file over the defaults", () => {
     const { entries } = parseKeybindingsFile([{ bindings: { "cmd+g cmd+t": "toggle-terminal", "cmd+j": "toggle-sidebar", "cmd+p": null } }]);
     const bindings = effectiveKeymap(entries);
-    const matcher = createChordMatcher(bindings);
+    const matcher = createChordMatcher(bindings, { mac: true });
     expect(matcher.feed({ ...press("g", { meta: true }), time: 0 })).toMatchObject({ kind: "pending" });
     expect(matcher.feed({ ...press("t", { meta: true }), time: 500 })).toMatchObject({ kind: "match", action: "toggle-terminal" });
     expect(matcher.feed({ ...press("j", { meta: true }), time: 600 })).toMatchObject({ kind: "match", action: "toggle-sidebar" });
@@ -51,9 +51,22 @@ describe("recording and display", () => {
     expect(sequenceStartsWith(seq("cmd+shift+g"), seq("cmd+g"))).toBe(false);
   });
 
-  it("shows symbols, and Tab with Control because ⌘Tab belongs to the system", () => {
-    expect(chordSymbols({ key: "k", meta: true, shift: true })).toEqual(["⇧", "⌘", "K"]);
-    expect(chordSymbols({ key: "tab", meta: true })).toEqual(["⌃", "Tab"]);
+  it("shows macOS symbols on a Mac and named keys elsewhere", () => {
+    expect(chordSymbols({ key: "k", meta: true, shift: true }, true)).toEqual(["⇧", "⌘", "K"]);
+    expect(chordSymbols({ key: "tab", ctrl: true, shift: true }, true)).toEqual(["⌃", "⇧", "Tab"]);
+    expect(chordSymbols({ key: "k", meta: true, shift: true }, false)).toEqual(["Ctrl", "Shift", "K"]);
+    expect(chordSymbols({ key: "o", meta: true, alt: true }, false)).toEqual(["Ctrl", "Alt", "O"]);
+    expect(chordSymbols({ key: "f6", shift: true }, false)).toEqual(["Shift", "F6"]);
+    expect(sequenceLabel(seq("cmd+shift+d"), true)).toBe("⇧⌘D");
+    expect(sequenceLabel(seq("cmd+shift+d"), false)).toBe("Ctrl+Shift+D");
+    expect(sequenceLabel(seq("cmd+g cmd+s"), false)).toBe("Ctrl+G Ctrl+S");
+  });
+
+  it("gives the fixed shortcuts each platform's keys", () => {
+    const keysFor = (mac: boolean) => fixedShortcuts(mac).find((row) => row.label.startsWith("Add terminal selection"))?.sequence;
+    expect(keysFor(true)).toEqual(seq("cmd+l"));
+    expect(keysFor(false)).toEqual(seq("ctrl+shift+l"));
+    expect(fixedShortcuts(true).length).toBeGreaterThan(10);
   });
 
   it("names actions of every kind", () => {
@@ -66,9 +79,9 @@ describe("recording and display", () => {
 
 describe("Option chords", () => {
   it("matches ⌥⌘M by its physical key although Option types µ", () => {
-    const matcher = createChordMatcher(effectiveKeymap([]));
+    const matcher = createChordMatcher(effectiveKeymap([]), { mac: true });
     expect(matcher.feed({ ...press("µ", { code: "KeyM", meta: true, alt: true }), time: 0 })).toMatchObject({ kind: "match", action: "cycle-favorite-model" });
-    expect(matcher.feed({ ...press("m", { code: "KeyM", meta: true, shift: true }), time: 10 })).toMatchObject({ kind: "match", action: "open-mode" });
+    expect(matcher.feed({ ...press("m", { code: "KeyM", meta: true, shift: true }), time: 10 })).toMatchObject({ kind: "match", action: "open-model" });
     expect(chordFromEvent(press("ø", { code: "KeyO", meta: true, alt: true }), true)).toEqual({ key: "o", meta: true, alt: true });
   });
 });
@@ -76,18 +89,24 @@ describe("Option chords", () => {
 describe("the default keys", () => {
   it("ships every registry command with no two defaults on one key and none under the menu", () => {
     const defaults = effectiveKeymap([]);
-    expect(keymapConflicts(defaults)).toEqual([]);
-    expect(defaults.filter((binding) => takenByMenu(binding.sequence)).map((binding) => binding.action)).toEqual([]);
+    for (const mac of [true, false]) {
+      expect(keymapConflicts(defaults, mac)).toEqual([]);
+      expect(defaults.filter((binding) => takenByMenu(binding.sequence, mac)).map((binding) => binding.action)).toEqual([]);
+    }
     expect(new Set(KEY_COMMANDS.map((command) => command.id)).size).toBe(KEY_COMMANDS.length);
-    for (const id of ["jump-to-prompt", "cycle-favorite-model", "settle-and-next", "mark-unread", "reopen-panel", "open-in-favorite", "dictation"]) {
+    for (const id of ["jump-to-prompt", "cycle-favorite-model", "settle-and-next", "mark-unread", "reopen-panel", "open-in-favorite", "dictation", "previous-turn", "next-turn", "stop-turn", "focus-composer"]) {
       expect(defaults.some((binding) => binding.action === id), id).toBe(true);
     }
   });
 
   it("labels a command by its effective keys, and a rebinding replaces them", () => {
-    expect(shortcutLabel("open-in-favorite", effectiveKeymap([]))).toBe("⌥⌘O");
+    expect(shortcutLabel("open-in-favorite", effectiveKeymap([]), true)).toBe("⌥⌘O");
+    expect(shortcutLabel("open-in-favorite", effectiveKeymap([]), false)).toBe("Ctrl+Alt+O");
+    expect(shortcutLabel("next-conversation", effectiveKeymap([]), true)).toBe("⌃Tab");
     const { entries } = parseKeybindingsFile([{ bindings: { "cmd+shift+l": "toggle-sidebar", "cmd+b": null } }]);
-    expect(shortcutLabel("toggle-sidebar", effectiveKeymap(entries))).toBe("⇧⌘L");
+    expect(shortcutLabel("toggle-sidebar", effectiveKeymap(entries), true)).toBe("⇧⌘L");
     expect(shortcutLabel("not-a-command", effectiveKeymap([]))).toBeUndefined();
+    expect(shortcutLabel("new-conversation", effectiveKeymap([]), true)).toBe("⌘N");
+    expect(shortcutLabel("settings", effectiveKeymap([]), false)).toBe("Ctrl+,");
   });
 });

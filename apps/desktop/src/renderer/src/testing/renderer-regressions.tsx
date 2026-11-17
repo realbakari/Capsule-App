@@ -34,6 +34,7 @@ import { runFollowupRegressions } from "./followup-regressions";
 import { runBoardRegressions } from "./board-regressions";
 import { runBestOfNRegressions } from "./best-of-n-regressions";
 import { runMuseSettingsRegressions } from "./muse-settings-regressions";
+import { runKeybindingsRegressions } from "./keybindings-regressions";
 import { runWebAccessRegressions } from "./web-access-regressions";
 import { runOnboardingRegressions } from "./onboarding-regressions";
 import { runWorktreeStorageRegressions } from "./worktree-storage-regressions";
@@ -1626,6 +1627,8 @@ window.runRendererRegressions = async () => {
   await runDictationRegressions(host, contextBase);
   phase("native settings");
   await runMuseSettingsRegressions(host, contextBase);
+  phase("keyboard shortcuts settings");
+  await runKeybindingsRegressions(host, contextBase);
   await runWebAccessRegressions(host);
   phase("agent store, sign-in and first run");
   await runOnboardingRegressions(host);

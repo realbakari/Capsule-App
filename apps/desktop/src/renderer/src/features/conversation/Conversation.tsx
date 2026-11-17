@@ -306,7 +306,6 @@ export function Conversation() {
     openFile,
     createTask,
     settings,
-    keyBindings,
     openPath,
     terminalOpen,
     setDraft,
@@ -518,7 +517,6 @@ export function Conversation() {
     const timer = window.setTimeout(() => setFocusTurn((current) => current === focusTurn ? undefined : current), 1800);
     return () => window.clearTimeout(timer);
   }, [focusTurn]);
-  const jumpShortcut = useMemo(() => shortcutLabel("jump-to-prompt", keyBindings), [keyBindings]);
   /*
    * Edit from here: the conversation is cut at this prompt. The dialog says
    * what is lost and offers the file restore as a second choice rather than a

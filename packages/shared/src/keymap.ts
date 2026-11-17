@@ -3,9 +3,9 @@ export const KEYMAP_CONTEXTS = ["global", "composer", "panel", "review", "termin
 export type KeymapContext = (typeof KEYMAP_CONTEXTS)[number];
 
 /**
- * The renderer's chord shape. `meta` is the primary modifier, ⌘ on macOS and
- * Control elsewhere, and matches either. `ctrl` is the physical Control key
- * and is set only when a binding writes `ctrl` or `control`.
+ * The renderer's chord shape. `meta` is the primary modifier: ⌘ on macOS and
+ * Control elsewhere. `ctrl` is the physical Control key and is set only when a
+ * binding writes `ctrl` or `control`; off macOS the two are the same key.
  */
 export interface KeyChord {
   /** Lower-case `KeyboardEvent.key`, or the literal for punctuation. */
@@ -96,23 +96,26 @@ export interface ChordEvent {
 }
 
 /**
- * Modifiers match exactly in both directions, as in the renderer's
- * `matchesChord`, so ⌘B does not also fire on ⌘⇧B. A chord without `ctrl`
- * behaves exactly as it does there.
+ * Modifiers match exactly in both directions, so ⌘B does not also fire on
+ * ⌘⇧B. On macOS ⌘ and Control are separate keys, which keeps Control's text
+ * editing keys (⌃A, ⌃E, ⌃F, ⌃P) for text fields. Elsewhere `cmd` and `ctrl`
+ * both mean Control, and the Windows key takes no part.
  */
-export function chordMatchesEvent(chord: KeyChord, event: ChordEvent): boolean {
-  if (chordKey(event) !== chord.key) return false;
+export function chordMatchesEvent(chord: KeyChord, event: ChordEvent, mac: boolean): boolean {
+  if (chordKey(event, mac) !== chord.key) return false;
   if (Boolean(chord.shift) !== event.shiftKey || Boolean(chord.alt) !== event.altKey) return false;
-  if (chord.ctrl) return event.ctrlKey && Boolean(chord.meta) === event.metaKey;
-  return Boolean(chord.meta) === (event.metaKey || event.ctrlKey);
+  if (mac) return Boolean(chord.meta) === event.metaKey && Boolean(chord.ctrl) === event.ctrlKey;
+  return Boolean(chord.meta || chord.ctrl) === event.ctrlKey && !event.metaKey;
 }
 
 /**
  * The key a chord names. Option changes the character on macOS (⌥O types
- * "ø"), so with Option held the physical letter or digit is the key.
+ * "ø"), so there the physical letter or digit is the key. Elsewhere Control
+ * with Alt is AltGr, which types characters (ó, @, €) that must stay typing,
+ * so the character is the key.
  */
-export function chordKey(event: Pick<ChordEvent, "key" | "code" | "altKey">): string {
-  const physical = event.altKey ? /^(?:Key([A-Z])|Digit([0-9]))$/.exec(event.code ?? "") : null;
+export function chordKey(event: Pick<ChordEvent, "key" | "code" | "altKey">, mac: boolean): string {
+  const physical = mac && event.altKey ? /^(?:Key([A-Z])|Digit([0-9]))$/.exec(event.code ?? "") : null;
   return (physical?.[1] ?? physical?.[2] ?? event.key).toLowerCase();
 }
 
@@ -228,21 +231,32 @@ export interface KeymapConflict {
   actions: string[];
 }
 
-export function keymapConflicts(bindings: readonly EffectiveBinding[]): KeymapConflict[] {
+/** Off macOS `cmd+k` and `ctrl+k` are one key press, so they compare as one. */
+function pressed(chord: KeyChord, mac: boolean): string {
+  return mac || !chord.ctrl ? formatChord(chord) : formatChord({ ...chord, ctrl: false, meta: true });
+}
+
+/** The keys a sequence takes on this platform, as text: two sequences that read the same are pressed the same. */
+export function pressedSequence(sequence: ChordSequence, mac: boolean): string {
+  return sequence.map((chord) => pressed(chord, mac)).join(" ");
+}
+
+export function keymapConflicts(bindings: readonly EffectiveBinding[], mac: boolean): KeymapConflict[] {
   const conflicts: KeymapConflict[] = [];
+  const spell = (sequence: ChordSequence) => pressedSequence(sequence, mac);
   for (const context of KEYMAP_CONTEXTS) {
     const inContext = bindings.filter((b) => b.context === context);
     const bySequence = new Map<string, string[]>();
     for (const b of inContext) {
-      const key = formatChordSequence(b.sequence);
+      const key = spell(b.sequence);
       bySequence.set(key, [...(bySequence.get(key) ?? []), b.action]);
     }
     for (const [sequence, actions] of bySequence) {
       if (actions.length > 1) conflicts.push({ context, kind: "duplicate", sequence, actions });
     }
     for (const single of inContext.filter((b) => b.sequence.length === 1)) {
-      const first = formatChord(single.sequence[0]!);
-      const shadowed = inContext.filter((b) => b.sequence.length > 1 && formatChord(b.sequence[0]!) === first);
+      const first = pressed(single.sequence[0]!, mac);
+      const shadowed = inContext.filter((b) => b.sequence.length > 1 && pressed(b.sequence[0]!, mac) === first);
       if (shadowed.length > 0) {
         conflicts.push({ context, kind: "prefix", sequence: first, actions: [single.action, ...shadowed.map((b) => b.action)] });
       }
@@ -273,7 +287,8 @@ export interface ChordMatcher {
  * to 1.5 s. The most specific active context answers first, and within one
  * context a single chord wins over a sequence it starts.
  */
-export function createChordMatcher(bindings: readonly EffectiveBinding[], timeoutMs = SEQUENCE_TIMEOUT_MS): ChordMatcher {
+export function createChordMatcher(bindings: readonly EffectiveBinding[], options: { mac: boolean; timeoutMs?: number }): ChordMatcher {
+  const { mac, timeoutMs = SEQUENCE_TIMEOUT_MS } = options;
   let contexts: KeymapContext[] = ["global"];
   let pending: { chord: KeyChord; time: number } | undefined;
 
@@ -282,7 +297,7 @@ export function createChordMatcher(bindings: readonly EffectiveBinding[], timeou
   const second = (event: ChordEvent, first: KeyChord): ChordMatch | undefined => {
     for (const group of inOrder()) {
       const hit = group.find(
-        (b) => b.sequence.length === 2 && formatChord(b.sequence[0]!) === formatChord(first) && chordMatchesEvent(b.sequence[1]!, event),
+        (b) => b.sequence.length === 2 && formatChord(b.sequence[0]!) === formatChord(first) && chordMatchesEvent(b.sequence[1]!, event, mac),
       );
       if (hit) return { kind: "match", action: hit.action, context: hit.context };
     }
@@ -307,9 +322,9 @@ export function createChordMatcher(bindings: readonly EffectiveBinding[], timeou
         if (hit) return hit;
       }
       for (const group of inOrder()) {
-        const single = group.find((b) => b.sequence.length === 1 && chordMatchesEvent(b.sequence[0]!, event));
+        const single = group.find((b) => b.sequence.length === 1 && chordMatchesEvent(b.sequence[0]!, event, mac));
         if (single) return { kind: "match", action: single.action, context: single.context };
-        const prefix = group.find((b) => b.sequence.length === 2 && chordMatchesEvent(b.sequence[0]!, event));
+        const prefix = group.find((b) => b.sequence.length === 2 && chordMatchesEvent(b.sequence[0]!, event, mac));
         if (prefix) {
           pending = { chord: prefix.sequence[0]!, time: event.time };
           return { kind: "pending", prefix: prefix.sequence[0]! };

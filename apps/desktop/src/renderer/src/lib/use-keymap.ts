@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createChordMatcher, SEQUENCE_TIMEOUT_MS, type ChordMatcher, type EffectiveBinding, type KeyChord, type KeymapContext } from "@capsule/shared";
-import { contextStack } from "./keybindings";
+import { contextStack, isMac } from "./keybindings";
 
 /*
  * Two matchers: one for every binding, and one without the global context
@@ -22,11 +22,14 @@ export function useKeymap(bindings: readonly EffectiveBinding[], run: (action: s
   const [pending, setPending] = useState<KeyChord>();
   const latest = useRef(run);
   latest.current = run;
-  const matchers = useMemo<Matchers>(() => ({
-    all: createChordMatcher(bindings),
-    field: createChordMatcher(bindings.filter((binding) => binding.context !== "global")),
-    contexts: new Map(),
-  }), [bindings]);
+  const matchers = useMemo<Matchers>(() => {
+    const mac = isMac();
+    return {
+      all: createChordMatcher(bindings, { mac }),
+      field: createChordMatcher(bindings.filter((binding) => binding.context !== "global"), { mac }),
+      contexts: new Map(),
+    };
+  }, [bindings]);
 
   useEffect(() => {
     let timer: number | undefined;
@@ -45,7 +48,7 @@ export function useKeymap(bindings: readonly EffectiveBinding[], run: (action: s
         matcher.setContexts(stack);
         matchers.contexts.set(matcher, key);
       }
-      const result = matcher.feed({ key: event.key, metaKey: event.metaKey, ctrlKey: event.ctrlKey, shiftKey: event.shiftKey, altKey: event.altKey, time: event.timeStamp });
+      const result = matcher.feed({ key: event.key, code: event.code, metaKey: event.metaKey, ctrlKey: event.ctrlKey, shiftKey: event.shiftKey, altKey: event.altKey, time: event.timeStamp });
       if (result.kind === "none") {
         if (!["Meta", "Control", "Shift", "Alt"].includes(event.key)) clear();
         return;

@@ -1,5 +1,9 @@
 # Keyboard shortcuts
 
+Keys are written the macOS way. On Windows and Linux, read `⌘` as `Ctrl`, `⌥`
+as `Alt` and `⇧` as `Shift`; Settings, the shortcuts sheet, the command palette
+and tooltips show your own platform's names.
+
 | Action | Keys |
 |--------|------|
 | Settings | `⌘,` |
@@ -13,8 +17,12 @@
 | Toggle the sidebar | `⌘B` |
 | Toggle the side panel | `⌘\` |
 | Reopen the side panel you closed, on the same surface | `⇧⌘T` |
-| Find in the current conversation | `⌘F` (in the browser panel: find on the page) |
+| Find in the current conversation | `⌘F` (in the browser panel: find on the page; in the Files tree: search files) |
+| Next or previous match in find | `Enter` / `⇧Enter` |
+| Open a reply link in your system browser | `⌥`-click the link |
 | Jump to an earlier prompt in this conversation | `⇧⌘J` |
+| Previous or next turn: scroll to the prompt before or after the one you are reading | `⌥⌘↑` / `⌥⌘↓` |
+| Move between turns from the ticks at the conversation's left edge | `↑` / `↓`, `Home` / `End`, then `Enter` |
 | Back to the previous conversation you visited | `⌘[` |
 | Forward again | `⌘]` |
 | Stash the current prompt | `⌘S` |
@@ -22,19 +30,21 @@
 | Settle this conversation and go to the next one waiting for you | `⌘E` |
 | Mark this conversation unread | `⇧⌘U` |
 | Send | `Enter`, or `⌘Enter` if you changed the send key |
-| Stop the running turn | `Esc` in the composer |
+| Stop the running turn | `⌘.` from anywhere, `Esc` in the composer, or **Stop the running turn** in the command palette |
+| Put the caret in the composer | `⇧Esc` |
 | Take the last queued follow-up back to edit | `⌥↑` in an empty composer |
 | Move focus to the next region (sidebar, conversation, composer, side panel) | `F6`, or `⇧F6` to go back |
 | Show every shortcut | `⌘/` |
 | Add the terminal selection to the message | `⌘L` in the terminal (`Ctrl+Shift+L` on Windows and Linux) |
 | Open a terminal link in your default browser | `⌘`-click |
-| Open Review | `⇧⌘D` |
-| Open the Browser | `⇧⌘B` |
-| Next conversation, by recent activity | `⌃Tab` |
+| Open Review; press again on Review to close the panel | `⇧⌘D` |
+| Open the Browser; press again to close the panel | `⇧⌘B` |
+| Next conversation, by recent activity | `⌃Tab` (`Ctrl+Tab` everywhere) |
 | Previous conversation | `⌃⇧Tab` |
-| Choose approvals (Ask, Auto, Full) | `⇧⌘M` |
-| Choose the model | `⇧⌘I` |
+| Choose the model | `⇧⌘M` |
+| Choose permissions (Ask, Auto, Full) | `⇧⌘P` |
 | Choose the reasoning effort | `⇧⌘E` |
+| Pick one of the first nine models while the model panel is open | `⌘1` to `⌘9` |
 | Next favorite model | `⌥⌘M` |
 | Switch between Plan and Act | `⇧Tab` in the prompt |
 | Start or finish dictation (macOS) | `⇧⌘L` |
@@ -51,28 +61,50 @@ says why.
 `⌘/` opens a sheet listing every shortcut, including any you have changed and
 any sequences. It is also in the command palette as **Keyboard shortcuts**.
 
+On a Mac, `⌘` shortcuts answer only to `⌘`, so Control keeps its text editing
+keys in the composer and other fields: `⌃A`, `⌃E`, `⌃F`, `⌃B`, `⌃P` and the
+rest move the caret as they do everywhere else on macOS. On Windows and Linux,
+a character typed with `AltGr` (such as `ó`, `@` or `€`) stays a character and
+never sets off an `Alt` shortcut.
+
 ## Changing a shortcut
 
 Your shortcuts live in `keybindings.json` in your settings folder
 (`~/.capsule/keybindings.json`), so they can travel with your dotfiles.
 Settings → Shortcuts reads and writes that file, and keeps any comments in it.
 
+Shortcuts are grouped into **General**, **Go to**, **Conversation**,
+**Composer** and **Workspace**, with any you added yourself under **Your
+bindings**. Each row names the command, says what it does when the name is not
+enough, and shows its keys on the right.
+
 - Click a shortcut and press the keys you want. Press one key, or two in a row
-  for a sequence such as `⌘G` then `⌘S`.
-- **Unbind** leaves a command with no keys. **Reset** puts its default back.
-- **Search by keys** finds a shortcut by pressing it. The list keeps the
-  shortcuts whose keys start with what you pressed.
+  for a sequence such as `⌘G` then `⌘S`. `Esc` cancels.
+- If the keys you pressed already run another command, the row says which and
+  waits: **Use it here** moves the keys, **Keep both as they are** leaves
+  everything alone. Keys the application menu owns are refused with the reason.
+- **Unbind** leaves a command with no keys. **Reset** puts its default back,
+  and appears on a row you changed, which is marked **Changed**.
+- Search by name, or by keys as you would write or see them: `cmd+shift+d`,
+  `⇧⌘D` or `Ctrl+Shift+D`. **Record keys to find** finds a shortcut by pressing
+  it; the list keeps the shortcuts whose keys start with what you pressed.
 - **Add a binding…** gives a key to a command of your own, a project action, or
   any shortcut, and lets you choose where it works.
 - **Open keybindings.json** opens the file.
 
-When two bindings get in each other's way, the screen lists them under
-**Conflicts**: a key that fires before a sequence starting with it can finish.
+When two bindings get in each other's way, the rows involved say so under their
+names: two commands on the same keys, or a key that fires before a sequence
+starting with it can finish.
 
-Shortcuts that belong to the application menu (`⌘K`, `⌘N`, `⌘O`, `⇧⌘O`, `⌘,`,
-and the standard ones such as `⌘W`, `⌘Q` and `⌘C`) are fixed. The menu receives
+Shortcuts that belong to the application menu are fixed: `⌘K`, `⌘N`, `⌘O`,
+`⇧⌘O`, `⌘,`, `⇧⌘N`, `⇧⌘S`, `⇧⌘R`, and the standard ones such as `⌘W`, `⌘Q`,
+`⌘C` and `⌘Z`. On Windows and Linux the menu also owns `Ctrl+Shift+I`
+(developer tools), `F11` (full screen) and `Ctrl+Y` (redo). The menu receives
 those keys before the window does, so a binding that starts with one never
-fires. Settings strikes it through and Diagnostics names it.
+fires. Settings explains it on the row and Diagnostics names it.
+
+In a paired browser, shortcuts are read only, and the browser may take some
+keys, such as `⌘T` or `⌘W`, before Capsule sees them.
 
 ## keybindings.json
 
@@ -101,11 +133,13 @@ keys to actions:
 
 - **Keys.** Modifiers and a key joined by `+`: `cmd`, `ctrl`, `alt` (or
   `option`), `shift`. `cmd` is `⌘` on a Mac and Control elsewhere; `ctrl` is the
-  Control key itself. Two chords separated by a space are a sequence; after the
+  Control key itself, which on Windows and Linux makes `cmd+k` and `ctrl+k` the
+  same keys. Two chords separated by a space are a sequence; after the
   first, Capsule waits 1.5 seconds for the second and shows
   "… waiting for the next key" near the bottom of the window.
 - **Actions.** A shortcut's id, such as `toggle-sidebar`, `search-files`,
-  `toggle-terminal`, `open-review` or `clear-backdrop`. `command:<name>` puts
+  `toggle-terminal`, `open-review`, `previous-turn`, `next-turn`, `stop-turn`,
+  `focus-composer` or `clear-backdrop`. `command:<name>` puts
   one of your commands in the composer, as picking it from the `/` menu does.
   `action:<name>` runs the open project's action of that name. `profile:<id>`
   is reserved for profiles, which are not available yet; Diagnostics says so.
@@ -122,7 +156,8 @@ Diagnostics; the rest of the file still applies.
 
 ## In the composer
 
-- `/` for commands, `/init` and saved prompts
+- `/` for commands: `/new`, `/init`, `/model`, `/plan`, `/compact`, `/stash`, saved prompts and skills
+- `Esc` stops the running turn; with text in the prompt, Send queues it (or steers the turn) instead of stopping
 - `@` to mention a file, or `@thread`, `@diff`, `@diagnostics` and `@url` to attach context
 - `!` at the start of the prompt, then `Enter`, to run a command and attach its output
 - `$` to attach a skill
@@ -144,8 +179,25 @@ Archiving a conversation offers **Undo** for ten seconds. After that, open
 **History** and choose **Restore** on an archived conversation. Messages and the
 agent's session identity are preserved. These actions are desktop-only.
 
-The command palette groups recent conversations, actions on the open
-conversation, actions, the theme, projects, and matching messages. File search
+Opened with nothing typed, the command palette lists what you can do right
+now: your five most recently active conversations (with how long ago each
+moved), then actions, actions on the open conversation, places to go, workspace
+controls, profiles and the theme. Each group appears once. Commands that cannot
+run here, such as **Fork conversation from last turn** with no conversation
+open, stay out of this list; type their name and they appear with the reason.
+Long lists (Review scopes, approval presets, settings files, plugins, agent
+commands, browser sizes, projects) also wait until you type.
+
+**New conversation in…** shows a chevron because it opens a second page. Go back
+with the arrow beside the search field or `⌫` in an empty field. **New
+conversation** names the project it will start in, and **Open folder** says
+whether the folder becomes a new project or replaces the current project's
+folder.
+
+Start your search with `>` to search commands only, leaving out conversations,
+projects and messages.
+
+File search
 shows names with their paths and searches the current conversation's checkout,
 including a worktree. Loading and failed searches are labelled separately from
 no matches; failed searches offer **Retry**.
@@ -154,10 +206,12 @@ You do not have to type a name in full. The letters you type only need to appear
 in order, starting at the beginning of a word: `nc` finds **New conversation**
 and `gtf` finds **Go to file…**. Matches at word starts and runs of consecutive
 letters rank first, a shorter name wins a tie, and the matched letters are
-underlined. Conversations that match equally well are ordered by recent activity,
-independently of sidebar pins, and message-body matches come last. With no
-query, the palette shows your five most recently active conversations. The
-palette keeps its size while you type, so results do not jump under the pointer.
+underlined. When a command and a conversation match equally well, the command
+comes first, so `new` then `Enter` starts a conversation. Conversations that
+match equally well are ordered by recent activity, independently of sidebar
+pins, and message-body matches come last. The palette keeps its size while you
+type, and "Searching messages…" waits in its footer, so results do not jump
+under the pointer.
 
 Each command shows its current keys, including keys you changed in Settings, so
 the palette doubles as a way to learn them.

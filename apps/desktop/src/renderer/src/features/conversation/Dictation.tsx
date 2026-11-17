@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import type { DictationEvent, DictationOutcome, DictationSettingsPane } from "@capsule/shared";
 import { anchorAt, dictationUnavailableReason, isDictating, recordingClock, spliceDictation, TOGGLE_DICTATION_EVENT, type DictationState } from "../../lib/dictation";
+import { shortcutLabel } from "../../lib/keybindings";
+import { useWorkspace } from "../../lib/workspace";
 import { MicIcon, StopIcon, XIcon } from "../shell/icons";
 import "./dictation.css";
 
@@ -143,8 +145,9 @@ export function useDictation({ api, draft, setDraft, field, scope }: {
 export function DictationButton({ state, unavailable, onToggle }: { state: DictationState; unavailable?: string; onToggle: () => void }) {
   const recording = state.phase === "listening" || state.phase === "starting";
   const label = state.phase === "finishing" ? "Finishing dictation" : recording ? "Finish dictation" : "Dictate";
+  const keys = shortcutLabel("dictation", useWorkspace().keyBindings);
   return <button type="button" className={`icon-btn dictation-btn${recording ? " is-recording" : ""}${unavailable ? " is-unavailable" : ""}`}
-    aria-label={label} aria-pressed={recording} title={unavailable ?? (recording ? "Finish dictation · ⇧⌘L · Esc cancels" : "Dictate · ⇧⌘L")}
+    aria-label={label} aria-pressed={recording} title={unavailable ?? [label, keys, recording ? "Esc cancels" : undefined].filter(Boolean).join(" · ")}
     disabled={state.phase === "finishing"}
     onMouseDown={(event) => event.preventDefault()} onClick={onToggle}>
     {recording ? <StopIcon size={11} /> : <MicIcon size={15} />}
