@@ -42,11 +42,35 @@ describe("chat markdown", () => {
     expect(html).toContain("projects-and-previews.md");
   });
 
+  it("keeps branch names, folders and owner/repo pairs as plain code", () => {
+    const html = renderToStaticMarkup(createElement(MarkdownBody, {
+      content: "Review `fix/claude-insight-fences`, write under `tmp/`, see `acme/widgets`.",
+      onOpenFile() {},
+    }));
+    expect(html).toContain("<code>fix/claude-insight-fences</code>");
+    expect(html).toContain("<code>tmp/</code>");
+    expect(html).toContain("<code>acme/widgets</code>");
+    expect(html).not.toContain("file-chip");
+  });
+
+  it("reads a line suffix and any extension inside a path, but not hosts, versions or product names", () => {
+    const html = renderToStaticMarkup(createElement(MarkdownBody, {
+      content: "Fix `src/parser.zig:42`, not `docs.rs/serde`, `v1.2.3`, `Node.js` or `README`.",
+      onOpenFile() {},
+    }));
+    expect(html).toContain('title="src/parser.zig:42"');
+    expect(html).toContain('parser.zig<span class="file-chip-line">:42</span>');
+    expect(html).toContain("<code>docs.rs/serde</code>");
+    expect(html).toContain("<code>v1.2.3</code>");
+    expect(html).toContain("<code>Node.js</code>");
+    expect(html).toContain("<code>README</code>");
+  });
+
   it("keeps ordinary inline code, italics, and a bold-only line as a heading", () => {
     const html = renderToStaticMarkup(createElement(MarkdownBody, {
       content: "**What you get**\n\nA `3/16` badge and *optional* ~~old~~ text.",
     }));
-    expect(html).toContain('class="md-h">What you get</h4>');
+    expect(html).toContain('class="md-h md-h-bold">What you get</h4>');
     expect(html).toContain("<code>3/16</code>");
     expect(html).not.toContain("file-chip");
     expect(html).toContain("<em>optional</em>");

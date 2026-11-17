@@ -41,6 +41,16 @@ function ToolKindIcon({ kind, size = 14 }: { kind: ToolKind; size?: number }) {
   return <Icon size={size} data-kind={kind} />;
 }
 
+/*
+ * A row says its state only when the state is news: running, waiting, stopped
+ * or failed. A finished tool is the normal case and needs no label, and "not
+ * reported" was noise on every row of an agent that never reports completion.
+ */
+const QUIET_STATES = new Set(["Completed", "Completion not reported", "Reported"]);
+function StateLabel({ state }: { state: string }) {
+  return QUIET_STATES.has(state) ? null : <span className="inline-activity-state">{state}</span>;
+}
+
 /** Compact observed work, never a claim that the turn was verified. */
 export function InlineActivity({ tools, run, stopping, onOpenFile }: { tools: ToolObservation[]; run: Run; stopping?: boolean; onOpenFile?: (path: string) => void }) {
   /* Settings › Appearance › Tool calls: folded to one line, or listed from the start. */
@@ -63,14 +73,14 @@ export function InlineActivity({ tools, run, stopping, onOpenFile }: { tools: To
       {kinds.length > 3 && <span className="inline-activity-overflow" title={`${kinds.length} tool categories`}>+{kinds.length - 3}</span>}
       <span className="inline-activity-summary">{summarizeToolRun(tools)}</span>
       {active && tools[0] ? <RunElapsed startedAt={tools[0].timestamp} className="inline-activity-elapsed" /> : null}
-      <span className="inline-activity-state">{state}</span>
+      <StateLabel state={state} />
       <ChevronRightIcon size={12} className={open ? "open" : ""} aria-hidden />
     </button>
     {!open && active && <div className="inline-activity-current">
       <button type="button" className="activity-step-toggle" aria-expanded={false}
         onClick={() => { setExpandedToolId(hasToolDetails(active) ? active.id : undefined); setOpen(true); }}>
         <ToolKindIcon kind={active.kind} /><span className="activity-step-title" title={active.title}>{active.title}</span>
-        <span className="inline-activity-state">{toolObservationState(active, run, stopping)}</span><ChevronRightIcon size={12} aria-hidden />
+        <StateLabel state={toolObservationState(active, run, stopping)} /><ChevronRightIcon size={12} aria-hidden />
       </button>
     </div>}
     {open && <ul className="inline-activity-tools">{tools.map((tool) => <li key={tool.id}>
@@ -90,7 +100,7 @@ function ToolStep({ tool, state, initiallyOpen = false, onOpenFile }: { tool: To
   const heading = <>
     <ToolKindIcon kind={tool.kind} size={14} />
     <span className="activity-step-title" title={tool.title}>{tool.title}</span>
-    <span className="inline-activity-state">{state}</span>
+    <StateLabel state={state} />
   </>;
   return <div className="activity-step" data-state={state}>
     {hasDetails ? <button type="button" className="activity-step-toggle" aria-expanded={open} onClick={() => setOpen((value) => !value)}>

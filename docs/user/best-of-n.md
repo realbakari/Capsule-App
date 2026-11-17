@@ -70,8 +70,8 @@ files as they were.
 
 ## Rate replies and see your results
 
-Every finished reply has a thumbs up and thumbs down. Press one again to clear
-it. Ratings and the comparisons you kept add up, per agent and model, in
+Hover a finished reply for its thumbs up and thumbs down. Press one again to
+clear it. Ratings and the comparisons you kept add up, per agent and model, in
 **Your results**, which you can find in **Usage**, and as a hint next to each
 agent in **Run on…**.
 

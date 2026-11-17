@@ -38,6 +38,8 @@ import { ApprovalDetails, APPROVE_ONCE_UNAVAILABLE } from "../harness/ApprovalDe
 import { AlwaysAllow } from "../customization/AlwaysAllow";
 import { TurnOutcome } from "./TurnOutcome";
 import { TurnVerification } from "./TurnVerification";
+import { LongPrompt } from "./LongPrompt";
+import { CompactionDivider, isCompactionTurn } from "./CompactionDivider";
 import { PlanHandoff } from "./PlanHandoff";
 import { useHandoff } from "../handoff/Handoff";
 import { ThreadOrigin } from "../import/ThreadOrigin";
@@ -97,7 +99,9 @@ const MessageRow = memo(function MessageRow({
       <h2 className="sr-only">
         {message.role === "user" ? (message.kind === "steer" ? "You, steering" : "You") : "Agent"}
       </h2>
-      {message.content ? <MessageBody content={message.content} threadImages /> : null}
+      {message.content ? message.role === "user"
+        ? <LongPrompt><MessageBody content={message.content} threadImages /></LongPrompt>
+        : <MessageBody content={message.content} threadImages /> : null}
       {message.contentTruncated ? <p className="faint">Display excerpt. The full message is retained in local history.</p> : null}
       <MessageAttachments message={message} onOpen={onOpenAttachment} />
       {/* Visual alignment carries authorship; the heading exposes it to
@@ -106,8 +110,8 @@ const MessageRow = memo(function MessageRow({
       <div className="who">
         {message.kind === "steer" && <span className="tag">Steer</span>}
         <span className="when">{formatTime(message.createdAt)}</span>
-        {ratingRunId && onRate ? <RatingButtons value={ratingValue} writable={ratingWritable} onRate={(value) => onRate(ratingRunId, value)} /> : null}
         <span className="msg-actions">
+          {ratingRunId && onRate ? <RatingButtons value={ratingValue} writable={ratingWritable} onRate={(value) => onRate(ratingRunId, value)} /> : null}
           <CopyButton text={message.content} />
           {message.role === "user" && message.kind !== "steer" && onRewind && !message.id.startsWith("local-") ? (
             <button type="button" className="icon-btn" title="Edit from here" aria-label="Edit from here" onClick={() => onRewind(message)}>
@@ -213,7 +217,7 @@ function TurnStatusLine({
       ) : null}
       {!asking && <>
         <span className="turn-status-dot" aria-hidden>·</span>
-        <span className="turn-status-state" title={state}>{activity?.trim() || `Waiting for ${agentName}`}</span>
+        <span className="turn-status-state" title={state}>{stuck ? force.detail : activity?.trim() || `Waiting for ${agentName}`}</span>
       </>}
     </div>
   );
@@ -274,8 +278,6 @@ export function Conversation() {
     setView,
     openFile,
     createTask,
-    createProjectFromFolder,
-    pickProjectDirectory,
     settings,
     keyBindings,
     openPath,
@@ -361,6 +363,7 @@ export function Conversation() {
   const historyPending = !ready || Boolean(session && historyLoad?.state === "loading");
   const historyError = session && historyLoad?.state === "error" ? historyLoad.detail : undefined;
   const retryHistory = () => { if (session) void loadSession(session.id).catch(() => { /* History owns its error state. */ }); };
+  const [errorExpanded, setErrorExpanded] = useState(false);
   const turnOutcomes = useMemo(() => outcomesByTurn(turns, runs, session?.id, project?.id), [turns, runs, session?.id, project?.id]);
   const summaryRun = [activeRun, ...(hasNewerMessages ? [] : runs)].find((run) => run && run.sessionId === session?.id && run.projectId === project?.id);
   const transcripts = useMemo(() => {
@@ -464,12 +467,18 @@ export function Conversation() {
   }, []);
   const openAttachment = useCallback((path: string) => void openPath(path), [openPath]);
   const [focusTurn, setFocusTurn] = useState<{ id: string; nonce: number; flash?: boolean }>();
+  // Following belongs to the selected thread. Reading an older turn must not
+  // leave the next thread stranded at an unrelated scroll offset.
+  const followingScope = useMemo(() => ({ sessionId: session?.id }), [session?.id]);
+  const [stick, setStick] = useScopedState(followingScope, true);
+  /* Going to a turn stops following the latest, or the next layout change pins the view back to the end. */
   const locateMessage = useCallback((messageId: string, flash = false) => {
     const turn = turns.find((item) => item.messages.some((message) => message.id === messageId));
     if (!turn) return;
     openTurn(turn.id);
+    setStick(false);
     setFocusTurn((current) => ({ id: turn.id, nonce: (current?.nonce ?? 0) + 1, flash }));
-  }, [openTurn, turns]);
+  }, [openTurn, setStick, turns]);
   const jumpToPrompt = useCallback((messageId: string) => locateMessage(messageId, true), [locateMessage]);
   useEffect(() => {
     if (!focusTurn?.flash) return;
@@ -545,10 +554,6 @@ export function Conversation() {
     seenMessages.current = { scope: historyPending ? undefined : session?.id, ids: new Set(messageOffsets.keys()) };
   }
   useEffect(() => { for (const id of messageOffsets.keys()) seenMessages.current.ids.add(id); });
-  // Following belongs to the selected thread. Reading an older turn must not
-  // leave the next thread stranded at an unrelated scroll offset.
-  const followingScope = useMemo(() => ({ sessionId: session?.id }), [session?.id]);
-  const [stick, setStick] = useScopedState(followingScope, true);
   const lastScrollTop = useRef(0);
   const historyNavigation = hasNewerMessages ? <div className="load-older" role="status">
     <span>You’re viewing older messages. Newer ones are saved.</span>
@@ -619,7 +624,7 @@ export function Conversation() {
         }}
       >
         {session && visibleMessageCount > 0 && <PromptJump messages={messages} open={promptJump} onOpenChange={setPromptJump} onLocate={jumpToPrompt}
-          shortcut={jumpShortcut} hasOlder={hasOlderMessages} loadingOlder={loadingOlder}
+          hasOlder={hasOlderMessages} loadingOlder={loadingOlder}
           onLoadOlder={() => { void loadOlderMessages().catch((error) => setNotice(formatUserError(error))); }} />}
         <div className="thread">
           {session && <ThreadOrigin session={session} />}
@@ -644,10 +649,8 @@ export function Conversation() {
                 */}
               <span className="empty-thread-mark" aria-hidden />
               <h1>
-                {project && session && project.name !== "Inbox" ? (
+                {project?.workingDirectory && project.name !== "Inbox" ? (
                   <>What should we build in <span>{project.name}</span>?</>
-                ) : project && !session ? (
-                  "Pick a conversation to continue"
                 ) : (
                   "What should we work on?"
                 )}
@@ -702,6 +705,11 @@ export function Conversation() {
                     <FoldedTurn turn={turn} onOpen={openTurn} />
                     {branchSwitcherFor(turn)}
                   </Fragment>
+                ) : isCompactionTurn(turn.prompt) ? (
+                  <Fragment key={turn.id}>
+                    <CompactionDivider run={transcripts.get(turn.id)?.run ?? turnOutcomes.get(turn.id)?.at(-1)} />
+                    {branchSwitcherFor(turn)}
+                  </Fragment>
                 ) : (
                   <Fragment key={turn.id}>
                   {turn.id === firstNewTurnId && <div className="thread-visit-rule" role="note">New since your last visit</div>}
@@ -709,7 +717,11 @@ export function Conversation() {
                     onOpenFile={openFile}
                     rows={transcripts.get(turn.id)?.rows ?? turn.messages.map((message) => ({ kind: "message" as const, id: message.id, message }))}
                     run={transcripts.get(turn.id)?.run} partial={transcripts.get(turn.id)?.partial} plan={transcripts.get(turn.id)?.plan}
-                    stopping={stoppingRunIds?.includes(transcripts.get(turn.id)?.run.id ?? "")}>
+                    stopping={stoppingRunIds?.includes(transcripts.get(turn.id)?.run.id ?? "")}
+                    details={(() => {
+                      const run = transcripts.get(turn.id)?.run;
+                      return run && (run.status === "completed" || run.status === "cancelled") && <><RunEventLog runId={run.id} /><TurnVerification run={run} /></>;
+                    })()}>
                     {(message) => {
                       const outcome = transcripts.get(turn.id)?.run;
                       const lastReply = turn.messages.findLast((item) => item.role === "assistant");
@@ -729,7 +741,7 @@ export function Conversation() {
                     }}
                   </TurnTranscript>
                     {(turnOutcomes.get(turn.id) ?? []).map((run) => <Fragment key={run.id}>
-                      {run.status === "completed" && !run.hasResult && !run.result?.trim() && !turn.messages.some((message) => message.role === "assistant") && <p className="muted turn-missing-reply" role="status">The agent finished without replying. Open Turn details to see what it did, or send the message again.{run.prompt && !readOnlyViewer ? <> <button type="button" className="chip" onClick={() => retryPrompt(run.prompt!, run.id)}>Send again</button></> : null}</p>}
+                      {run.status === "completed" && !run.hasResult && !run.result?.trim() && !turn.messages.some((message) => message.role === "assistant") && <p className="muted turn-missing-reply" role="status">The agent finished without replying. Turn details below show what it did.{run.prompt && !readOnlyViewer ? <> <button type="button" className="chip" onClick={() => retryPrompt(run.prompt!, run.id)}>Send again</button></> : null}</p>}
                       {/* A failure after part of a reply raises no banner (the reply is there), so say here that it stopped early. */}
                       {run.status === "failed" && (run.result?.trim() || turn.messages.some((message) => message.role === "assistant")) && <p className="muted turn-missing-reply" role="status">The agent stopped before finishing{run.error ? `: ${run.error.split("\n")[0]!.slice(0, 160)}` : "."}{run.prompt && !readOnlyViewer ? <> <button type="button" className="chip" onClick={() => retryPrompt(run.prompt!, run.id)}>Retry</button></> : null}</p>}
                       {/* Interrupted by Capsule quitting is not the same as a Stop you pressed: say so, and offer to send it again. */}
@@ -739,7 +751,10 @@ export function Conversation() {
                       {run.status === "completed" && session?.harnessId && (run.hasResult || run.result?.trim()) && !turn.messages.some((message) => message.role === "assistant") ? (
                         <div className="turn-rating"><RatingButtons value={ratings.ratings[run.id]} writable={ratings.writable} onRate={(value) => ratings.rate(run.id, value)} /></div>
                       ) : null}
-                      {run.id !== summaryRun?.id && <RunSummary run={run} label="Turn details">
+                      {/* The log of a normal turn sits inside its "Worked for" fold. It
+                          stays its own row only where the turn went wrong or left no
+                          answer, which is when someone needs it. */}
+                      {(run.status === "failed" || run.status === "blocked" || !turn.messages.some((message) => message.role === "assistant")) && run.id !== (activeRun ? summaryRun?.id : undefined) && <RunSummary run={run} label="Turn details">
                         <RunEventLog runId={run.id} failed={run.status === "failed" || run.status === "blocked"} />
                         <TurnVerification run={run} />
                       </RunSummary>}
@@ -755,8 +770,8 @@ export function Conversation() {
               the agent did — every command, every file — disappeared the
               instant the turn finished, and the only way back to it was to
               start another one. */}
-          {summaryRun && (
-            <div className={`msg active-run-msg${activeRun ? "" : " settled"}`}>
+          {summaryRun && activeRun && (
+            <div className="msg active-run-msg">
               {activeRun && !activeTurnId ? (
                 <TurnStatusLine
                   run={activeRun}
@@ -863,7 +878,10 @@ export function Conversation() {
           ) : failure && failureKey ? (
             <div className="thread-error" role="status">
               <AlertTriangleIcon size={13} aria-hidden />
-              <span className="thread-error-text" title={failure}>
+              {/* Long errors clamp to three lines; a click shows the whole text in place. */}
+              <span className={`thread-error-text${errorExpanded ? " expanded" : ""}`} role="button" tabIndex={0}
+                aria-expanded={errorExpanded} onClick={() => setErrorExpanded((value) => !value)}
+                onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setErrorExpanded((value) => !value); } }}>
                 {failure}
               </span>
               {failedRun?.signIn && !readOnlyViewer && (
@@ -886,14 +904,14 @@ export function Conversation() {
             </div>
           ) : null}
           {pendingApproval?.details?.questions?.length ? <QuestionCard approval={pendingApproval} /> : pendingApproval && (
-            <div className="conversation-approval">
-              <h3>Approval required</h3>
-              <div>
+            <div className="conversation-approval" role="group" aria-label="Approval required">
+              <div className="conversation-approval-ask">
                 {harnessDisplayName(harnesses, pendingApproval.agentName, pendingApproval.agentName)} wants to <b>{pendingApproval.action}</b>
               </div>
               {/* The target comes from the agent or a web page: one line, so it cannot draw its own fake card. */}
               <div className="mono conversation-approval-target" title={pendingApproval.target}>{pendingApproval.target.replace(/\s+/g, " ")}</div>
-              <div className="muted">{pendingApproval.reason}</div>
+              {pendingApproval.reason?.trim() && pendingApproval.reason.trim().toLowerCase() !== pendingApproval.action.trim().toLowerCase()
+                ? <div className="muted">{pendingApproval.reason}</div> : null}
               <ApprovalDetails approval={pendingApproval} />
               {readOnlyViewer ? <p className="faint">This device can only read. Answer on the computer running Capsule.</p> : <div className="actions">
                 <button
@@ -940,7 +958,8 @@ export function Conversation() {
               if (node) node.scrollTop = node.scrollHeight;
             }}
           >
-            Latest
+            <span>{pendingApproval?.details?.questions?.length ? "Question waiting" : pendingApproval ? "Approval waiting" : "Scroll to end"}</span>
+            <ChevronDownIcon size={14} aria-hidden />
           </button>
         )}
       </div>

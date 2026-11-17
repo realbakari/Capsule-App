@@ -86,6 +86,7 @@ declare global {
 window.runSurfaceRegressions = runSurfaceRegressions;
 window.runLandingRegressions = runLandingRegressions;
 
+const ANSI_NAMES_FOR_TEST = ["black", "red", "green", "yellow", "blue", "magenta", "cyan", "white", "brightBlack", "brightRed", "brightGreen", "brightYellow", "brightBlue", "brightMagenta", "brightCyan", "brightWhite"];
 function assert(condition: unknown, message: string): void {
   if (!condition) throw new Error(message);
 }
@@ -148,11 +149,24 @@ window.runPetRegressions = async (motion) => {
     const actual = getComputedStyle(element!).animationName;
     assert(actual === name, `${selector}: expected animation ${name}, got ${actual} (motion: ${motion})`);
   };
-  const still = () => {
-    for (const element of Array.from(document.querySelectorAll(".pet *"))) {
+  // Reduced motion stills everything in the window; Pause motion stills the mascot.
+  const still = (scope = ".pet *") => {
+    for (const element of Array.from(document.querySelectorAll(scope))) {
       assert(getComputedStyle(element).animationName === "none", `Companion part still animated: ${element.getAttribute("class")} (motion: ${motion})`);
     }
   };
+  const transformAt = (selector: string, time: number) => {
+    const part = document.querySelector(selector)!;
+    const track = part.getAnimations().find((item) => item instanceof CSSAnimation)!;
+    track.pause(); track.currentTime = time;
+    const value = getComputedStyle(part).transform;
+    return { value, resume: () => track.play() };
+  };
+  const armAngle = (side: "left" | "right") => {
+    const matrix = new DOMMatrix(getComputedStyle(document.querySelector(`.capsule-arm--${side}`)!).transform);
+    return Math.atan2(matrix.b, matrix.a) * 180 / Math.PI;
+  };
+  const move = (target: Element) => target.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, clientX: 10, clientY: 10 }));
   localStorage.removeItem("capsule.pet.paused");
   let petReadFails = true;
   let petFocus = "";
@@ -163,6 +177,7 @@ window.runPetRegressions = async (motion) => {
   let spokenStatuses = 0;
   let cancelledVoice = 0;
   const expandedPet: boolean[] = [];
+  const passthrough: boolean[] = [];
   window.capsule = {
     getPetState: async () => {
       if (petReadFails) throw new Error("offline");
@@ -193,6 +208,8 @@ window.runPetRegressions = async (motion) => {
     }
     if (reduced) still();
     assert(!document.querySelector(".pet-tail, .pet-ear, .pet-leg"), "Animal parts remain in the capsule mascot");
+    // Working has its own silhouette: arms in, a light band and a spinner.
+    await until(() => armAngle("left") > 30);
     if (!reduced) {
       const moving = document.querySelector(".capsule-motion")!;
       const track = moving.getAnimations()[0]!;
@@ -219,14 +236,16 @@ window.runPetRegressions = async (motion) => {
     if (blink) { blink.pause(); blink.currentTime = 1000; }
     button("Greet").click();
     await until(() => document.querySelector(".pet--greeting"));
-    animation(".capsule-reaction", reduced ? "none" : "capsuleGreet");
-    animation(".capsule-shadow-reaction", reduced ? "none" : "capsuleGreetShadow");
-    animation(".capsule-arm--right", reduced ? "none" : "capsuleWave");
+    animation(".capsule-reaction", reduced ? "none" : "petPlayGreet");
+    animation(".capsule-shadow-reaction", reduced ? "none" : "petPlayGreetShadow");
+    animation(".capsule-arm--right .capsule-arm-play", reduced ? "none" : "petPlayWave");
+    // A gesture is a layer over the idle rig, not a replacement for it.
+    animation(".capsule-breathe", reduced ? "none" : "petBreathe");
     if (reduced) still();
     button("Roll").click();
     await until(() => document.querySelector(".pet--roll"));
-    animation(".capsule-reaction", reduced ? "none" : "capsuleRoll");
-    animation(".capsule-shadow-reaction", reduced ? "none" : "capsuleRollShadow");
+    animation(".capsule-reaction", reduced ? "none" : "petPlayRoll");
+    animation(".capsule-shadow-reaction", reduced ? "none" : "petPlayRollShadow");
     const roll = document.querySelector(".capsule-reaction")!.getAnimations()[0];
     if (roll) roll.currentTime = 900;
     button("Roll").click();
@@ -234,34 +253,34 @@ window.runPetRegressions = async (motion) => {
     assert(document.querySelector(".pet-capsule") === originalMascot, "Replaying a gesture replaced the mascot");
     assert(document.querySelector(".capsule-eyes") === eyes, "Replaying a gesture replaced the eyes");
     if (blink) assert(eyes.getAnimations()[0] === blink && blink.currentTime === 1000, "Gesture reset the blink phase");
-    animation(".capsule-reaction", reduced ? "none" : "capsuleRoll");
+    animation(".capsule-reaction", reduced ? "none" : "petPlayRoll");
     if (reduced) still();
     button("Bounce").click();
     await until(() => document.querySelector(".pet--bounce"));
-    animation(".capsule-reaction", reduced ? "none" : "capsuleBounce");
-    animation(".capsule-shadow-reaction", reduced ? "none" : "capsuleBounceShadow");
+    animation(".capsule-reaction", reduced ? "none" : "petPlayHop");
+    animation(".capsule-shadow-reaction", reduced ? "none" : "petPlayHopShadow");
     if (!reduced) {
       const shadow = document.querySelector(".capsule-shadow-reaction")!;
       const track = shadow.getAnimations()[0]!;
-      track.pause(); track.currentTime = 396;
+      track.pause(); track.currentTime = 180;
       const grounded = Number(getComputedStyle(shadow).opacity);
-      track.currentTime = 836;
+      track.currentTime = 480;
       assert(Number(getComputedStyle(shadow).opacity) < grounded, "Jump shadow does not lighten at the apex");
       track.play();
     }
     if (reduced) still();
     button("Dance").click();
     await until(() => document.querySelector(".pet--dance"));
-    animation(".capsule-reaction", reduced ? "none" : "capsuleDance");
-    animation(".capsule-shadow-reaction", reduced ? "none" : "capsuleDanceShadow");
-    animation(".capsule-arm--left", reduced ? "none" : "capsuleDanceLeft");
-    animation(".capsule-arm--right", reduced ? "none" : "capsuleDanceRight");
+    animation(".capsule-reaction", reduced ? "none" : "petPlayDance");
+    animation(".capsule-shadow-reaction", reduced ? "none" : "petPlayDanceShadow");
+    animation(".capsule-arm--left .capsule-arm-play", reduced ? "none" : "petPlayDanceLeft");
+    animation(".capsule-arm--right .capsule-arm-play", reduced ? "none" : "petPlayDanceRight");
     if (!reduced) {
       const dancer = document.querySelector(".capsule-reaction")!;
       const track = dancer.getAnimations()[0]!;
-      track.pause(); track.currentTime = 504;
+      track.pause(); track.currentTime = 450;
       const left = getComputedStyle(dancer).transform;
-      track.currentTime = 1008;
+      track.currentTime = 900;
       assert(getComputedStyle(dancer).transform !== left, "Dance does not alternate its pose");
       track.play();
     } else still();
@@ -287,14 +306,19 @@ window.runPetRegressions = async (motion) => {
     assert(!document.querySelector(".pet--dance"), "A cancelled command still triggered a gesture");
     button("Pause motion").click();
     await until(() => document.querySelector(".pet--paused"));
-    still();
+    still(".pet-capsule, .pet-capsule *");
     button("Resume motion").click();
     await until(() => !document.querySelector(".pet--paused"));
-    animation(".capsule-core", reduced ? "none" : "capsuleSpin");
+    animation(".capsule-glyph--spin", reduced ? "none" : "petSpin");
     if (reduced) still();
     (document.querySelector(".pet-tray-title")?.closest("button") as HTMLButtonElement).click();
     await until(() => petFocus === "pet-thread" && expandedPet.at(-1) === false);
     await until(() => !document.querySelector(".pet--bounce"));
+    // With the tray closed, only the capsule and its controls take clicks.
+    move(document.querySelector(".pet")!);
+    await until(() => passthrough.at(-1) === true);
+    move(document.querySelector(".pet-body")!);
+    await until(() => passthrough.at(-1) === false);
     const expressions = new Set<string | null>();
     for (const state of [undefined, "running", "ready", "needs-input", "blocked"] as const) {
       petState = state; refreshPet();
@@ -305,9 +329,18 @@ window.runPetRegressions = async (motion) => {
       }
     }
     assert(expressions.size === 5, "Attention states have indistinguishable expressions");
+    // Needs you names the thread, and the caption opens it in one click.
+    petState = "needs-input"; refreshPet();
+    await until(() => document.querySelector(".pet--needs-input"));
+    await until(() => armAngle("right") < -120);
+    petFocus = "";
+    const caption = document.querySelector<HTMLButtonElement>("button.pet-caption")!;
+    assert(caption?.textContent?.includes("Needs you") && caption.textContent.includes("Example task"), "Needs you caption does not name the thread");
+    caption.click();
+    await until(() => petFocus === "pet-thread");
     const body = document.querySelector<HTMLButtonElement>(".pet-body")!;
     body.focus();
-    await until(() => getComputedStyle(button("Greet")).opacity === "1");
+    await until(() => getComputedStyle(document.querySelector(".pet-chrome")!).opacity === "1");
     assert(getComputedStyle(button("Greet")).pointerEvents === "auto", "Keyboard focus does not reveal controls");
     body.click();
     await until(() => document.querySelector(".pet--open"));
@@ -373,7 +406,8 @@ window.runRendererRegressions = async () => {
   document.querySelector('.agent-model-picker')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
   await until(() => !document.querySelector('.agent-model-picker'));
   assert(document.activeElement === pickerTrigger, "Escape did not restore picker focus");
-  const allHarnesses: HarnessStatus[] = PRESET_HARNESSES.map((preset) => ({ ...preset, runtimeRoute: "direct", readiness: "ready", binaryPath: "/fixture/agent", acpxEnabled: false, dedicatedProjectIds: [], liveSessionIds: [], detail: "Installed" }));
+  const signedOut = "Codex CLI is not authenticated. Run `codex login` and try again.";
+  const allHarnesses: HarnessStatus[] = PRESET_HARNESSES.map((preset) => ({ ...preset, runtimeRoute: "direct", readiness: preset.id === "codex" ? "needs_login" : "ready", binaryPath: "/fixture/agent", acpxEnabled: false, dedicatedProjectIds: [], liveSessionIds: [], detail: preset.id === "codex" ? signedOut : "Installed" }));
   root.render(<AgentModelPicker key="all-harnesses" {...pickerProps} agents={[]} harnesses={allHarnesses} models={undefined} liveHarnessId={undefined} availability={{ state: "unavailable", detail: "Start an agent" }} />);
   await until(() => document.querySelector('[aria-label="Agent and model"]') !== pickerTrigger);
   document.querySelector<HTMLButtonElement>('[aria-label="Agent and model"]')!.click();
@@ -392,25 +426,26 @@ window.runRendererRegressions = async () => {
     configCalls.push(args); return new Promise((_resolve, reject) => { rejectSetting = reject; });
   } }, refreshHarnessStatus: async () => { configRefreshes++; }, setNotice: (error: string) => { settingError = error; } };
   const effortOption = { id: "effort_wire_id", name: "Reasoning", currentValue: "medium", choices: [{ value: "medium", name: "Medium" }, { value: "high", name: "High" }] };
+  const effortRow = (name: string) => Array.from(document.querySelectorAll<HTMLButtonElement>('[aria-label="Reasoning effort"] [role="radio"]')).find((item) => item.textContent === name)!;
   root.render(<AgentControl sessionId="configured-thread" option={effortOption} label="Reasoning effort" />);
-  await until(() => document.querySelector('[aria-label="Reasoning effort"]'));
-  document.querySelector<HTMLButtonElement>('[aria-label="Reasoning effort"]')!.click();
-  await until(() => document.querySelector('[role="option"]'));
-  Array.from(document.querySelectorAll<HTMLButtonElement>('[role="option"]')).find((item) => item.textContent === "High")!.click();
+  await until(() => document.querySelector('[aria-label="Reasoning effort"] [role="radio"]'));
+  effortRow("High").click();
   await until(() => configCalls.length === 1);
   assert(JSON.stringify(configCalls[0]) === JSON.stringify(["configured-thread", "effort_wire_id", "high"]), "Composer did not use the reported setting ID");
-  assert(document.querySelector('[aria-label="Reasoning effort"]')?.textContent?.includes("Medium"), "Unconfirmed effort was shown as selected");
+  assert(effortRow("Medium").getAttribute("aria-checked") === "true" && effortRow("High").getAttribute("aria-checked") === "false", "Unconfirmed effort was shown as selected");
+  effortRow("High").click();
+  assert(configCalls.length === 1, "A pending setting allowed another write");
   rejectSetting(new Error("Agent rejected this effort"));
   await until(() => configRefreshes === 1 && settingError.includes("Agent rejected"));
   root.render(<AgentControl sessionId="configured-thread" option={{ ...effortOption, currentValue: "high" }} label="Reasoning effort" disabled />);
-  await until(() => document.querySelector('[aria-label="Reasoning effort"]')?.textContent?.includes("High"));
-  document.querySelector<HTMLButtonElement>('[aria-label="Reasoning effort"]')!.click();
-  assert(!document.querySelector('[role="listbox"]') && configCalls.length === 1, "Busy control allowed another mutation");
+  await until(() => effortRow("High")?.getAttribute("aria-checked") === "true");
+  effortRow("Medium").click();
+  assert(configCalls.length === 1 && effortRow("Medium").getAttribute("aria-disabled") === "true", "Busy control allowed another mutation");
   window.testWorkspace = { ...window.testWorkspace, api: { isDesktop: false } };
   root.render(<AgentControl sessionId="configured-thread" option={effortOption} label="Reasoning effort" />);
-  await until(() => document.querySelector('[aria-label="Reasoning effort"]')?.textContent?.includes("Medium"));
-  document.querySelector<HTMLButtonElement>('[aria-label="Reasoning effort"]')!.click();
-  assert(!document.querySelector('[role="listbox"]'), "Remote viewer exposed agent mutation");
+  await until(() => effortRow("Medium")?.getAttribute("aria-checked") === "true");
+  effortRow("High").click();
+  assert(configCalls.length === 1 && effortRow("High").title.includes("desktop"), "Remote viewer exposed agent mutation");
   window.testWorkspace = originalWorkspace;
   await runDiscoveryRegressions(root);
   let closes = 0;
@@ -590,7 +625,7 @@ window.runRendererRegressions = async () => {
   root.render(<BrowserFixture onOpenExternal={(url) => external.push(url)} />);
   await until(() => document.querySelector("webview"));
   const guest = document.querySelector("webview")!;
-  Object.assign(guest, { canGoBack: () => true, canGoForward: () => false, getURL: () => "https://example.test/committed", getTitle: () => "Fixture", getWebContentsId: () => 1, getZoomFactor: () => 1 });
+  Object.assign(guest, { canGoBack: () => true, canGoForward: () => false, getURL: () => "https://example.test/committed", getTitle: () => "Fixture", getWebContentsId: () => 1, getZoomFactor: () => 1, isDevToolsOpened: () => false });
   assert(document.querySelector<HTMLButtonElement>('button[aria-label="Capture screenshot"]')?.disabled, "Screenshot was enabled before guest readiness");
   guest.dispatchEvent(new Event("dom-ready"));
   await until(() => !document.querySelector<HTMLButtonElement>('button[aria-label="Capture screenshot"]')?.disabled);
@@ -817,6 +852,7 @@ window.runRendererRegressions = async () => {
   button("Newer events").click(); await until(() => document.body.textContent?.includes("Recent diagnostic"));
   root.unmount(); root = createRoot(host);
   const shells: string[] = [];
+  const shellIds: string[] = [];
   const stopped: string[] = [];
   window.testWorkspace = { api: {
     on: () => () => {}, terminalStart: async ({ cwd }: { cwd: string }) => { shells.push(cwd); return { id: cwd, cwd, pid: 1 }; },
@@ -1150,6 +1186,7 @@ window.runRendererRegressions = async () => {
     runs: [completed], steps: [{ id: "command-1", label: "Ran a command", status: "complete" }], events: [], messages: [
       // An older main process can still send SQLite's numeric false over IPC.
       { id: "details-prompt", runId: completed.id, sessionId: completed.sessionId, role: "user", content: completed.prompt, contentTruncated: 0 as unknown as boolean, createdAt: completed.createdAt },
+      { id: "details-progress", runId: completed.id, sessionId: completed.sessionId, role: "assistant", content: "Checking the build first", createdAt: completed.createdAt },
       { id: "details-reply", runId: completed.id, sessionId: completed.sessionId, role: "assistant", content: completed.result, createdAt: completed.updatedAt },
     ],
     api: { ...actualWorkspace.api,
@@ -1159,29 +1196,29 @@ window.runRendererRegressions = async () => {
     },
   };
   root.render(<Conversation />);
-  await until(() => document.querySelector('.gateway-recovery') && document.querySelector('.run-summary-header'));
+  await until(() => document.querySelector('.gateway-recovery') && document.querySelector('.turn-work-toggle'));
   const promptRow = document.querySelector('.msg.user')!;
   assert(!Array.from(promptRow.childNodes).some((node) => node.nodeType === Node.TEXT_NODE && node.textContent?.trim() === "0"), "A numeric display flag leaked a zero below the message");
   assert(!promptRow.textContent?.includes("Display excerpt"), "An untruncated message was labelled as an excerpt");
   assert(document.querySelectorAll('.gateway-recovery').length === 1 && !document.querySelector('.composer-preflight'), "Gateway warning is duplicated across chat and composer");
   assert(!document.querySelector('.turn-verification') && !document.querySelector('.run-event-log'), "Completed turn still stacks unopened diagnostics and verification cards");
-  const detailsToggle = document.querySelector<HTMLButtonElement>('.run-summary-header')!;
-  assert(detailsToggle.title.includes("not verified"), "Compact details falsely implied verified work");
-  assert(!detailsToggle.querySelector('.run-summary-state'), "Routine completion still adds a redundant status badge");
-  assert(detailsToggle.getBoundingClientRect().height <= 36 && detailsToggle.getBoundingClientRect().width < host.clientWidth, "Turn details is still a full-width oversized card");
+  assert(!document.querySelector('.run-summary-header'), "A completed turn that answered still adds a Turn details row");
+  assert(!document.body.textContent?.includes("Checking the build first"), "A progress note stayed open beside the answer");
+  const detailsToggle = document.querySelector<HTMLButtonElement>('.turn-work-toggle')!;
+  assert(detailsToggle.getBoundingClientRect().height <= 36, "The work fold row is oversized");
   button("Connect").click();
   await until(() => document.querySelector('.gateway-recovery-error'));
   assert(connectionCalls === 1 && !button("Retry connection").disabled, "Failed connection was not recoverable");
-  document.querySelector<HTMLButtonElement>('.run-summary-header')!.click();
-  await until(() => document.querySelector('.turn-verification') && document.querySelector('.run-event-log'));
+  detailsToggle.click();
+  await until(() => document.querySelector('.turn-work-body .turn-verification') && document.querySelector('.turn-work-body .run-event-log'));
   assert(document.querySelector('[data-verification-run]')?.getAttribute('data-verification-run') === completed.id, "Expanded checks belong to another turn");
   const beforeLog = detailReads;
   document.querySelector<HTMLElement>('.run-event-log summary')!.click();
   await until(() => detailReads > beforeLog && document.querySelector('.run-event-log')?.textContent?.includes("No recorded events"));
-  document.querySelector<HTMLButtonElement>('.run-summary-header')!.click();
-  await until(() => document.querySelector('.run-summary-body')?.hasAttribute("hidden"));
-  document.querySelector<HTMLButtonElement>('.run-summary-header')!.click();
-  await until(() => !document.querySelector('.run-summary-body')?.hasAttribute("hidden"));
+  detailsToggle.click();
+  await until(() => document.querySelector('.turn-work-body')?.hasAttribute("hidden"));
+  detailsToggle.click();
+  await until(() => !document.querySelector('.turn-work-body')?.hasAttribute("hidden"));
   assert(document.querySelector<HTMLDetailsElement>('.run-event-log')?.open && detailReads === beforeLog + 1, "Collapsing activity discarded diagnostic state or repeated its read");
   window.testWorkspace = { ...window.testWorkspace, sendBlockReason: undefined, harnesses: pickerHarnesses.map((item) => ({ ...item, runtimeRoute: "direct" })) };
   root.render(<Conversation />);
@@ -1208,7 +1245,7 @@ window.runRendererRegressions = async () => {
   await until(() => document.querySelector('.inline-activity-tools li'));
   window.testWorkspace = { ...window.testWorkspace, events: [timelineEvent, { ...timelineEvent, id: "timeline-complete", timestamp: at(3), data: { ...timelineEvent.data, status: "completed" } }] };
   root.render(<Conversation />);
-  await until(() => document.querySelector('.inline-activity-state')?.textContent === "Completed");
+  await until(() => document.querySelector('.activity-step')?.getAttribute("data-state") === "Completed" && !document.querySelector('.inline-activity-state'));
   assert(document.querySelectorAll('.inline-activity-tools li').length === 1, "Tool completion duplicated the invocation or lost expansion");
   window.testWorkspace = { ...window.testWorkspace, activeRun: undefined, runs: [{ ...completed, completedAt: at(5) }] };
   root.render(<Conversation />);
@@ -1401,7 +1438,7 @@ window.runRendererRegressions = async () => {
       ] } } } },
     };
     previewRoot!.render(<Composer key={`controls-${theme}-${innerWidth}`} />);
-    await until(() => document.querySelector('[aria-label="Reasoning effort"]'));
+    await until(() => document.querySelector('[aria-label="Agent and model"]')?.textContent?.includes("High"));
   };
   window.renderFilesPreview = async (width, openFile) => {
     (document.getElementById("composer-test-styles") as HTMLStyleElement).media = "all";
@@ -1435,11 +1472,7 @@ window.runRendererRegressions = async () => {
   composerInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
   await until(() => window.testWorkspace.skillId === "review-local" && window.testWorkspace.draft === "Please use ");
   assert(document.querySelector('.composer-skill-chip')?.textContent?.includes("Review code"), "Skill selection did not render a removable chip");
-  document.querySelector<HTMLButtonElement>('[aria-label="Remove selected skill"]')!.click();
-  await until(() => !window.testWorkspace.skillId);
-  document.querySelector<HTMLButtonElement>('[aria-label="Conversation tools"]')!.click();
-  await until(() => document.querySelector('[role="listbox"]'));
-  Array.from(document.querySelectorAll<HTMLButtonElement>('[role="option"]')).find((item) => item.textContent?.includes("Attach a skill"))!.click();
+  button("Change").click();
   await until(() => document.querySelector('input[aria-label="Search skills"]'));
   fill('input[aria-label="Search skills"]', "review code");
   await until(() => document.querySelectorAll('.suggest-menu [role="option"]').length === 2);
@@ -1457,15 +1490,18 @@ window.runRendererRegressions = async () => {
   document.querySelector<HTMLButtonElement>('.suggest-menu [role="option"]')!.click();
   await until(() => (window.testWorkspace.attachments as Array<{ path: string }>)[0]?.path === "/tmp/Example Project/src/with spaces.ts");
   assert(window.testWorkspace.draft === "Please use ", "Attaching a file overwrote the draft");
+  document.querySelector<HTMLButtonElement>('[aria-label="Remove selected skill"]')!.click();
+  await until(() => !window.testWorkspace.skillId);
   root.unmount(); root = createRoot(host);
   const taskRun = { id: "task-run", sessionId: "context-thread", projectId: "context-project", agentId: "general", status: "running", prompt: "Review the changes" } as Run;
   window.testWorkspace = { ...contextBase, runs: [taskRun], events: [], agents: [], harnesses: [], stoppingRunIds: [] };
   root.render(<ThreadAgents />);
-  await until(() => document.body.textContent?.includes("No delegated tasks reported"));
+  await until(() => document.body.textContent?.includes("No subagents in this turn"));
   assert(!document.body.textContent?.includes("Spawn"), "Agents panel still launches unrelated harness sessions");
   const taskEvent = { id: "task-event", runId: taskRun.id, sessionId: taskRun.sessionId, type: "tool", data: { toolCallId: "task", status: "in_progress", delegation: { role: "reviewer", title: "Review changes" } } };
   window.testWorkspace = { ...window.testWorkspace, events: [taskEvent] }; root.render(<ThreadAgents />);
-  await until(() => document.querySelector('[aria-label="Delegated task"]')?.textContent?.includes("Tokens not reported"));
+  await until(() => document.querySelector('[aria-label="Delegated task"]')?.textContent?.includes("Running"));
+  assert(!document.querySelector('[aria-label="Delegated task"]')?.textContent?.includes("not reported"), "A delegated task printed a not-reported placeholder");
   window.testWorkspace = { ...window.testWorkspace, runs: [{ ...taskRun, status: "completed" }] }; root.render(<ThreadAgents />);
   await until(() => document.querySelector('[aria-label="Delegated task"]')?.textContent?.includes("Last reported"));
   window.testWorkspace = { ...window.testWorkspace, session: { id: "other" } }; root.render(<ThreadAgents />);
@@ -1537,6 +1573,8 @@ window.runRendererRegressions = async () => {
   await runChannelRegressions(host);
   phase("composer layout matrix");
   await runComposerLayoutRegressions(host, contextBase);
+  phase("model picker");
+  await runModelPickerRegressions(host, contextBase);
   phase("dictation");
   await runDictationRegressions(host, contextBase);
   phase("native settings");

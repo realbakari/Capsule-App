@@ -45,17 +45,66 @@ describe("saved outcome placement", () => {
     expect(html).toContain('<h3 class="md-h">Result</h3>');
     expect(html).toContain('<h4 class="md-h">Details</h4>');
   });
-  it("keeps one collapsed activity and evidence entry per owning turn", () => {
+  it("adds no details row under a settled turn that answered", () => {
     workspace.value.events = [{ id: "e", runId: "r2", type: "tool", message: "read_file source.ts", timestamp: "2026-09-04T00:00:04Z" }];
     workspace.value.steps = [{ id: "work:read", label: "Read 1 file", count: 1, status: "complete" }];
     const html = renderToStaticMarkup(createElement(Conversation));
-    expect(html.indexOf('data-run-summary="r2"')).toBeGreaterThan(html.indexOf("Second reply"));
-    expect(html.indexOf('data-run-summary="r1"')).toBeLessThan(html.indexOf("Follow up"));
-    expect(html.match(/data-run-summary="r2"/g)).toHaveLength(1);
-    expect(html.match(/data-run-summary="r1"/g)).toHaveLength(1);
-    expect(html).not.toContain("data-verification-run");
+    expect(html).not.toContain("data-run-summary");
+    expect(html).not.toContain("Turn details");
     expect(html).not.toContain("run-event-log");
-    expect(html.match(/Completed · not verified/g)).toHaveLength(2);
+    expect(html).not.toContain("Completed · not verified");
+  });
+
+  it("keeps the details row for a turn that failed", () => {
+    workspace.value.runs = [
+      { id: "r2", sessionId: "s", projectId: "p", status: "failed", error: "Agent exited", createdAt: "2026-09-04T00:00:03Z" },
+      { id: "r1", sessionId: "s", projectId: "p", status: "completed", createdAt: "2026-09-04T00:00:01Z" },
+    ];
+    const html = renderToStaticMarkup(createElement(Conversation));
+    expect(html.match(/data-run-summary="r2"/g)).toHaveLength(1);
+    expect(html).not.toContain('data-run-summary="r1"');
+  });
+
+  it("folds the agent's progress notes under one row and leaves the answer open", () => {
+    workspace.value.messages = [
+      { id: "u1", sessionId: "s", runId: "r1", role: "user", content: "Check the PR", createdAt: "2026-09-04T00:00:01Z" },
+      { id: "n1", sessionId: "s", runId: "r1", role: "assistant", content: "Loading the diff.", createdAt: "2026-09-04T00:00:02Z" },
+      { id: "n2", sessionId: "s", runId: "r1", role: "assistant", content: "Reading the tests.", createdAt: "2026-09-04T00:01:02Z" },
+      { id: "a1", sessionId: "s", runId: "r1", role: "assistant", content: "No bugs found.", createdAt: "2026-09-04T00:02:31Z" },
+    ];
+    workspace.value.runs = [{ id: "r1", sessionId: "s", projectId: "p", status: "completed", createdAt: "2026-09-04T00:00:01Z", completedAt: "2026-09-04T00:02:31Z" }];
+    const html = renderToStaticMarkup(createElement(Conversation));
+    expect(html).toContain("Worked for 2m 30s");
+    expect(html).toContain("No bugs found.");
+    expect(html).not.toContain("Loading the diff.");
+    expect(html).not.toContain("Reading the tests.");
+  });
+
+  it("says you stopped a turn rather than that it worked", () => {
+    workspace.value.messages = [
+      { id: "u1", sessionId: "s", runId: "r1", role: "user", content: "Refactor", createdAt: "2026-09-04T00:00:01Z" },
+      { id: "n1", sessionId: "s", runId: "r1", role: "assistant", content: "Starting.", createdAt: "2026-09-04T00:00:02Z" },
+      { id: "a1", sessionId: "s", runId: "r1", role: "assistant", content: "Partial work.", createdAt: "2026-09-04T00:00:41Z" },
+    ];
+    workspace.value.runs = [{ id: "r1", sessionId: "s", projectId: "p", status: "cancelled", createdAt: "2026-09-04T00:00:01Z", completedAt: "2026-09-04T00:00:41Z" }];
+    const html = renderToStaticMarkup(createElement(Conversation));
+    expect(html).toContain("You stopped after 40s");
+  });
+
+  it("shows a compact request as one divider, not a prompt and a reply", () => {
+    workspace.value.messages = [
+      ...(workspace.value.messages as unknown[]),
+      { id: "u3", sessionId: "s", runId: "r3", role: "user", content: "/compact", createdAt: "2026-09-04T00:00:05Z" },
+      { id: "a3", sessionId: "s", runId: "r3", role: "assistant", content: "Compacted the conversation.", createdAt: "2026-09-04T00:00:06Z" },
+    ];
+    workspace.value.runs = [
+      { id: "r3", sessionId: "s", projectId: "p", status: "completed", createdAt: "2026-09-04T00:00:05Z" },
+      ...(workspace.value.runs as unknown[]),
+    ];
+    const html = renderToStaticMarkup(createElement(Conversation));
+    expect(html).toContain("Context compacted");
+    expect(html).not.toContain(">/compact<");
+    expect(html).not.toContain("Compacted the conversation.");
   });
 
   it("explains a missing reply without inventing an answer or a failed check", () => {

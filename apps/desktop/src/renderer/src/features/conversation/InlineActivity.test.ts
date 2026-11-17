@@ -30,6 +30,7 @@ describe("inline activity icons", () => {
     expect(html).toContain("Read 2 files, ran 2 commands (1 failed)");
     expect(html).not.toContain("pnpm test");
     expect(html).toContain('data-state="Completed"');
+    expect(html).not.toContain('class="inline-activity-state"');
   });
 
   it("calls the whole row failed only when every call in it failed", () => {

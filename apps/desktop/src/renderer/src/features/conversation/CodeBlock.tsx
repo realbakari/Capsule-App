@@ -9,7 +9,7 @@ export const CodeBlock = memo(function CodeBlock({ code, language }: { code: str
   return (
     <div className="msg-code-wrap">
       <div className="msg-code-bar">
-        <span className="msg-code-lang">{language || "code"}</span>
+        <span className="msg-code-lang">{language}</span>
         <span className="md-diagram-tools">
           {html && code.trim() && <HtmlPreviewButton html={code} />}
           <CopyButton text={code} label="Copy code" />

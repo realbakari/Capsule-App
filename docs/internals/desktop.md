@@ -245,8 +245,8 @@ colour, and on any rise in raw colour literals over the count recorded in
 ## Shell
 
 New profiles default to Direct execution and do not attempt a Gateway connection
-on startup. Settings → Agents owns the runtime selector (ACP and native session
-transports); Settings → Gateway presents the optional connection. Saved defaults
+on startup. Settings → Agents owns the runtime selector, **Where agents run**
+under New conversations → Advanced (ACP and native session transports); Settings → Gateway presents the optional connection. Saved defaults
 and existing conversation routes are preserved. The readiness display uses
 actual connection state, never just the presence of a Gateway adapter.
 Shell indicators describe the optional Gateway without calling local agents
@@ -262,7 +262,7 @@ their own styling and cannot inherit conversation-card spacing.
 Native Muse reasoning defaults appear in the shared Agent settings surface in
 the composer and Harnesses. Unknown, pending and rejected values remain
 distinct; accepted native settings apply to future turns. Paired viewers cannot
-write them. Usage displays separate provider subscription observations through
+write them. Usage's **Limits** section displays provider subscription observations through
 the read-only cached `providerUsage` channel. It labels stale/clock-skewed/reset
 observations, preserves failed reads with a warning, selects rather than merges
 conversation sources, and clears closed sources. Its one-minute timer ages the
@@ -331,7 +331,7 @@ attachment validation still receives the original native path.
   in that project (`createTask(projectId)`), expanding the project.
 - Unpinned worktree threads show a small branch glyph in the pin slot with the
   branch name in its tooltip.
-  New conversation has a text label. Search and project rows are flat by default;
+  Search and project rows are flat by default;
   the active thread has a muted background. Settled, unpinned threads have no glyph.
 - Hover or focus reveals pin, archive, and overflow actions without navigating.
   Delayed, portaled previews show full thread titles, project names, and recency;
@@ -368,12 +368,21 @@ attachment validation still receives the original native path.
   messages and runtime identity; paired devices cannot archive or restore.
 - Header popovers and model menus clamp to viewport edges and flip above their
   anchor when needed. Resize and scroll recompute placement without moving focus.
-- Turn details is a content-width, borderless disclosure, not a full-width
-  status card. Routine completed/unverified turns omit the redundant badge;
-  the tooltip and expanded Verification section retain that distinction. Failed,
-  blocked, stopped, pending and checked states remain visible. Logs scroll inside
-  a bounded region, pagination appears only when needed, and usage expands into
-  compact metrics without an extra bordered card.
+- A settled turn folds every row between its prompt and its last assistant
+  message (tool groups and interim progress messages alike) under one
+  `TurnTranscript` toggle: "Worked for {d}" or "You stopped after {d}", with the
+  end time right-aligned. The run log and Verification render at the foot of
+  that fold. No details row follows a turn that answered; `RunSummary` "Turn
+  details" stays as its own row only for failed or blocked runs and runs that
+  left no assistant message, and for the live run while it works.
+- A message's `.who` caption (time, copy, rate, edit, branch) is hover/focus
+  chrome, always shown on touch; a steer tag stays visible. User prompts taller
+  than 11rem fold behind "Show full message" (`LongPrompt`).
+- A turn whose prompt is `/compact` or `/context-compact` renders as a
+  `CompactionDivider` keyed to its run's status, never as a bubble and reply.
+  Agent-initiated compaction is not carried on either route yet.
+- Inline code becomes a file chip only when it ends in a known file extension.
+  Branch names, folders and owner/repo pairs stay plain code.
 - Pinned threads sort by `sessions.pin_order` (schema v9) and can be reordered
   with drag and drop. Unpinning clears the order value.
 - The folder-plus control adds a local project. The adjacent Git control opens
@@ -558,7 +567,7 @@ window) shows the chooser cards.
   `rawInput.file_path`/`path`; searches, commands and failed calls ignored)
   expands its parent folders and previews it. A path outside the open folder,
   or a preview being edited, is skipped. Any navigation by hand (tree click,
-  folder toggle, root switch, filter, a file opened from chat) pauses following
+  folder toggle, root switch, search, a file opened from chat) pauses following
   for that run; a status line offers **Pause** / **Follow again**, and the next
   turn follows again. It reads events, so it works the same on the Gateway and
   direct routes and for every harness that reports tool locations; a harness
@@ -584,7 +593,8 @@ window) shows the chooser cards.
   an "N of M viewed" count. Clicking a changed file narrows it to that file
   with an **All files** chip. States: loading, error with Retry, "no earlier
   checkpoint" for a first turn, and empty per scope ("No uncommitted changes",
-  "No changes besides whitespace", "This turn changed no files").
+  "No changes besides whitespace", "This turn changed no files"). Turn scope's
+  read-only wording lives in its banner only; Branch keeps its own note.
 - **Review** is git status, stage / discard / commit, diff, push, open-PR
   discovery, and PR creation via local `git` + `gh` when present. No GitHub
   OAuth. Selecting a pull request keeps the reader in Capsule and opens its
@@ -890,7 +900,7 @@ How the conversation behaves after the November review:
 - **Approval card.** It matches the question card's raised surface,
   disables its buttons while a decision is in flight, and on a read-only
   paired device shows "This device can only read" instead of buttons.
-  Stop, Esc-to-stop and the steer row are likewise hidden or disabled on
+  Stop, Esc-to-stop and queue steering are likewise hidden or disabled on
   paired devices; Edit from here and the turn menu are hidden while a turn
   runs and on paired devices.
 - **Agent permissions chip.** The composer hides it when Capsule's approval
@@ -1295,8 +1305,10 @@ or an open tray. Non-hover devices keep these controls visible. Captions follow
 the same rule, except attention, error and greeting captions remain visible.
 Hidden-renderer regressions explicitly emulate both reduced motion and no
 preference in Chromium's CSS engine, independent of the host's accessibility
-settings. They check actual transform changes, greet/roll/bounce reactions, pause/resume and
-tray navigation in both modes; reduced motion must keep every part still.
+settings. They check rendered transforms, that a gesture leaves breathing
+running, gesture replay without remounting, the jump shadow, pause/resume,
+tray navigation, click-through, the raised arm and named caption for Needs
+you, and that reduced motion keeps every part still.
 Activity reads coalesce at 250ms with only one outstanding request; tool-output
 frames do not trigger reads. An indexed lookup selects each non-archived thread's
 newest run state without loading historical prompts, results or verification JSON.
@@ -1307,7 +1319,7 @@ Companion idle behaviour is a bounded timer sequence: stretch at 45 seconds,
 yawn at 90 seconds, then rest at 120 seconds. Pointer entry and manual gestures
 restart the sequence. Only idle, visible, unpaused companions with a working
 status source schedule it. The tray and reduced motion suppress automatic
-gestures. A running-to-ready transition can trigger a four-second dance.
+gestures. A running-to-ready transition can trigger a 3.6-second dance.
 The saved `capsule.pet.autonomous` preference controls these local gestures,
 not agent execution.
 
@@ -1488,7 +1500,10 @@ resumes via `session/resume` or `session/load` when the agent offers one. It is
 disabled for a thread with no `harnessId`, while spawning, and in a paired
 viewer. Only the mock route was exercised end to end.
 
-In a paired viewer, write rows are disabled with a reason; copy rows stay live.
+In a paired viewer, write rows are disabled with a reason, so they are absent
+from the empty list and explained once typed; copy rows stay live. Starting a
+conversation uses the same `readOnly` reason as the rest of the workflow rows,
+so a device paired with control can start one.
 
 Adding commands: write a group builder returning `Entry[]` in `Palette.tsx` and
 spread it into the root list. Give it a keybinding `command` id when one exists.
@@ -2106,7 +2121,7 @@ its `alertdialog` role; it opens no menus of its own.
 
 ### Composer context and thread agents
 
-Conversation tools offers installed skills and project-file search. Its listbox uses
+The skill chip's **Change** opens a tabbed picker of installed skills and project files. Its listbox uses
 option IDs, active-descendant navigation and Escape dismissal. Explicit search
 supports multiword queries. Skill selection is a single structured draft field,
 scoped and persisted with draft/stash attachments, not duplicate `$name` prose.
@@ -2119,14 +2134,15 @@ events. A selector opens earlier loaded runs through `listRunEventPage`, retaini
 one bounded page with independent loading, error and partial-history states.
 Reads are scoped by project/thread/run and never replace the live event window.
 Only structured delegation inputs create task rows. Rows retain
-spawn order and label missing usage, partial history, and last-reported states
-after the parent ends. It is not a child-session orchestrator or workflow graph.
+spawn order, partial history and last-reported states after the parent ends;
+a value the agent did not report (usage, activity, status) is left out of the
+row rather than printed as "not reported". It is not a child-session orchestrator or workflow graph.
 At most 100 delegation rows are shown from the bounded event window. Internal
 subagents may be absent when a harness or route does not publish telemetry.
 The inspector has an Agents-specific icon and context strip. Scoped loading and
 error states distinguish missing telemetry from an empty report. Background
-tool completion is **Launch completed · child status unknown**, not proof that
-the child finished. Closed threads display their recorded runtime route rather
+tool completion reads **Started in the background**, not proof that the child
+finished. Closed threads display their recorded runtime route rather
 than the current harness default. Card borders and typography are explicitly
 scoped so generic inspector heading rules cannot restyle the empty state.
 
@@ -2443,7 +2459,8 @@ Disconnect action; host settings list devices with Revoke. Remote settings,
 terminals, local file attachments and channel identities remain host-only.
 
 Settings → General → Help improve Capsule offers an unchecked usage-report
-switch with exact data categories and US destination disclosure. Turning it off
+switch. The data categories and US destination are under the card's
+**What a report contains** fold, one click from the switch. Turning it off
 drops pending reports and removes the installation identifier. The card shows
 queue size, last delivery and sanitized errors. Browser clients cannot consent
 on behalf of the host. Settings search includes analytics/privacy and browser
@@ -2513,7 +2530,7 @@ Simulator, F Files, A Agents, S Side chat). While the panel's launcher shows,
 pressing it opens that surface unless the surface is blocked or the key was
 typed into a field; the card shows the letter, with the global shortcut in its
 tooltip. Settings sections carry an icon and sit under group headings (Runtime,
-Code, App); **Restore … defaults** carries the undo icon.
+Code, App); **Restore defaults** carries the undo icon.
 
 ## Display preferences and behaviour settings
 
@@ -2535,8 +2552,8 @@ less a docked sidebar. Surfaces in `HEAD_SLOT_TOOLS` (Simulator, Browser) draw
 their own controls into that header through `InspectorHeadSlot`.
 
 The Browser's header holds its tabs, a new-tab button and its actions; back,
-forward, reload and the address share one row below, and page width moved to
-the ⋮ menu. Tabs keep an address and title each and one live page: switching
+forward, reload and the address share one row below. Page width is the
+device-size button in the header. Tabs keep an address and title each and one live page: switching
 loads the tab's address, so in-page state does not survive a switch, and links
 that open a new window are not routed into tabs yet. Menus over the live page
 drop `backdrop-filter`, which composited wrongly with the webview layer.
@@ -2647,8 +2664,8 @@ window's `capsule.model-favorites` storage into `settings.favoriteModels`
 (`[agentId, modelId]` keys); the old key is imported once on the desktop and
 removed. `⌥⌘M` (`cycle-favorite-model`) dispatches `CYCLE_FAVORITE_MODEL_EVENT`;
 the composer, which knows the agent's reported models, moves to the next
-favorite in starred order, wrapping and skipping unreported ones. `⇧⌘M` was
-already Choose mode. Option chords match on `event.code` because Option changes
+favorite in starred order, wrapping and skipping unreported ones. `⇧⌘M` is
+Choose model. Option chords match on `event.code` because Option changes
 `event.key` (`⌥M` is `µ`).
 
 Settings → Agents → **Plan mode** has **Start in Plan mode** and **Plan and Act
@@ -2796,8 +2813,8 @@ Git project.
   out); one that cannot start is disabled with its readiness reason, except
   Gateway-offline under the test runtime. Picking adds a candidate row with an
   optional model field; the same agent may be picked twice. Two or more picks
-  turn send into **Run on N agents**, and the agent picker, Plan/Act chip, agent
-  controls and single-agent preflight give way to the picked agents' marks; the
+  turn send into **Run on N agents**, and the agent picker, Plan chip, approvals
+  chip and single-agent preflight give way to the picked agents' marks; the
   **×** beside the trigger clears them.
   Each agent row carries the leaderboard hint ("Kept 2 of 3 · 4 up"). The
   palette's **Run on several agents…** opens the picker in the untouched new
@@ -2873,8 +2890,9 @@ draft.
   ratio and screen mode with `enableDeviceEmulation`, or
   `disableDeviceEmulation` for Responsive. The view size must be passed
   explicitly: with an empty one the guest keeps the viewport it had before. It
-  is reapplied when the guest is replaced. The button shows the fixed size or,
-  for Responsive, the measured frame size. The user agent and touch input are not
+  is reapplied when the guest is replaced. The button shows the fixed size;
+  for Responsive it is the icon alone, and the tooltip names the measured
+  frame size. The user agent and touch input are not
   emulated.
 - **Palette.** "Inspect element in browser" and "Browser size: …" open the
   Browser panel and queue a `BrowserCommand` (`lib/browser-commands.ts`) that a
@@ -3268,7 +3286,7 @@ two file choices call `capsule:config:editPermissionRule` and then approve
 once. A request no rule can say exactly offers only the thread. The whole
 control is absent on a paired device, which approves once or denies.
 
-Settings → Agents ends with **Permission rules**
+Settings → Agents has **Permission rules**
 (`PermissionRulesCard.tsx`), a collapsed card: deny, ask and allow lists with
 each rule's file, allow rules waiting for trust, **Remove** for rules in the
 user or local file, and an add row (list, rule, save to) that checks the
@@ -3315,7 +3333,7 @@ the profile's dot and name, or its id if the file is gone.
 Profiles: a select over the snapshot's styles (built-ins, then files marked
 yours or project), writing `style` to the user file, and a **Personal
 instructions** path field writing `personalInstructions`. **Output detail**
-stays in Agent defaults; its hint says a style replaces it.
+sits under Replies → Advanced; its hint says a style replaces it.
 
 **Tools (MCP).** A Settings tab under Agents (`McpServersSettings.tsx`).
 Each configured server shows its name, Local command or HTTP, the file that

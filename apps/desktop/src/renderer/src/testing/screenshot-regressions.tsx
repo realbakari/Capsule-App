@@ -143,8 +143,8 @@ export async function runScreenshotRegressions(host: HTMLElement) {
     assert(getComputedStyle(host.querySelector(".thread-agent-heading .agent-glyph")!).marginLeft === "0px", "Fallback agent mark pushes its name to the right");
     window.testWorkspace = { ...window.testWorkspace, eventLoad: { runId: "r", state: "loaded" }, events: [{ runId: "r", type: "tool", data: { toolCallId: "child", status: "completed", delegation: { role: "reviewer", background: true, totalTokens: 0 } } }] };
     root.render(<Inspector />);
-    await until(() => host.textContent?.includes("Launch completed · child status unknown"));
-    assert(host.textContent?.includes("0 reported tokens"), "Reported zero usage became unknown");
+    await until(() => host.textContent?.includes("Started in the background"));
+    assert(host.textContent?.includes("0 tokens"), "Reported zero usage became unknown");
     for (const size of [16, 20]) {
       document.documentElement.style.fontSize = `${size}px`;
       await new Promise((resolve) => requestAnimationFrame(resolve));

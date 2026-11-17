@@ -26,6 +26,20 @@ function luminance(color: string): number {
   return values[0]! * 0.2126 + values[1]! * 0.7152 + values[2]! * 0.0722;
 }
 
+/* The colour behind an element: translucent fills composited down to the first opaque one. */
+function effectiveBackground(element: Element): string {
+  const layers: number[][] = [];
+  for (let node: Element | null = element; node; node = node.parentElement) {
+    const parts = getComputedStyle(node).backgroundColor.match(/[\d.]+/g)?.map(Number) ?? [];
+    const alpha = parts.length > 3 ? parts[3]! : 1;
+    if (alpha > 0) layers.push([parts[0]!, parts[1]!, parts[2]!, alpha]);
+    if (alpha >= 1) break;
+  }
+  let color = layers.at(-1)?.[3] === 1 ? layers.pop()!.slice(0, 3) : [255, 255, 255];
+  for (const [r, g, b, a] of layers.reverse()) color = [r! * a! + color[0]! * (1 - a!), g! * a! + color[1]! * (1 - a!), b! * a! + color[2]! * (1 - a!)];
+  return `rgb(${color.map((value) => Math.round(value)).join(", ")})`;
+}
+
 function assertContrast(foreground: string, background: string) {
   const a = luminance(foreground), b = luminance(background);
   const ratio = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
@@ -63,10 +77,10 @@ export async function runMarkdownRegressions(host: HTMLElement) {
             assert(parseFloat(styles.fontSize) >= size * 0.89, "Code does not follow the transcript size");
             assert(parseFloat(getComputedStyle(fixture.querySelector("h4.md-h")!).fontSize) >= size, "Inspector styles shrank a Markdown heading");
             for (const token of Array.from(code.querySelectorAll("span[class^=tok-]"))) {
-              assertContrast(getComputedStyle(token).color, styles.backgroundColor);
+              assertContrast(getComputedStyle(token).color, effectiveBackground(code));
             }
             const label = fixture.querySelector(".msg-code-lang")!;
-            assertContrast(getComputedStyle(label).color, getComputedStyle(label.parentElement!).backgroundColor);
+            assertContrast(getComputedStyle(label).color, effectiveBackground(label));
             const nested = fixture.querySelector("ol > li > ul")!;
             assert(nested.getBoundingClientRect().left > fixture.querySelector("ol")!.getBoundingClientRect().left, "Nested list did not indent");
             assert(fixture.textContent?.includes("alpha | beta | gamma"), "Following table text was lost");

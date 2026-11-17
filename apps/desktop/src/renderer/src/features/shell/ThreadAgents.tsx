@@ -7,24 +7,24 @@ import { AgentGlyph } from "./AgentGlyph";
 
 function taskStatusLabel(task: DelegatedTask, turnActive: boolean): string {
   const labels = {
-    running: "Tool running",
-    pending: "Tool pending",
-    completed: task.background ? "Launch completed · child status unknown" : "Tool completed",
-    failed: "Tool failed",
-    unknown: "Status not reported",
+    running: "Running",
+    pending: "Waiting",
+    completed: task.background ? "Started in the background" : "Done",
+    failed: "Failed",
+    unknown: "",
   };
   // A completed parent turn does not prove that a background child stopped.
   const historical = !turnActive && (task.status === "running" || task.status === "pending");
-  return `${historical ? "Last reported · " : ""}${labels[task.status]}`;
+  return [historical ? "Last reported" : "", labels[task.status]].filter(Boolean).join(" · ");
 }
 
 function DelegatedTaskCard({ task, turnActive }: { task: DelegatedTask; turnActive: boolean }) {
-  const usage = task.totalTokens === undefined ? "Tokens not reported" : `${task.totalTokens.toLocaleString()} reported tokens`;
+  const usage = task.totalTokens === undefined ? undefined : `${task.totalTokens.toLocaleString()} tokens`;
   return (
     <section className="thread-agent-card" aria-label="Delegated task">
       <div className="thread-agent-heading"><strong title={task.title}>{task.title}</strong></div>
-      <div className="thread-agent-status">{taskStatusLabel(task, turnActive)}</div>
-      <p className="truncate" title={task.activity}>{task.activity ?? "Activity not reported"}</p>
+      {taskStatusLabel(task, turnActive) && <div className="thread-agent-status">{taskStatusLabel(task, turnActive)}</div>}
+      {task.activity && <p className="truncate" title={task.activity}>{task.activity}</p>}
       <div className="meta">{[task.role, task.model, usage].filter(Boolean).join(" · ")}</div>
     </section>
   );
@@ -75,7 +75,7 @@ export function ThreadAgents() {
   }, [events, run?.id, session?.id]);
   const earlier = currentHistory?.partial || events.some((event) => event.runId === run?.id && event.data?.earlierEvents);
   const emptyHeading = report?.state === "loading" ? "Loading activity…"
-    : report?.state === "error" ? "Activity unavailable" : "No delegated tasks reported";
+    : report?.state === "error" ? "Activity unavailable" : "No subagents in this turn";
 
   function retryActivity() {
     if (historical) { setRetry((value) => value + 1); return; }
@@ -119,17 +119,12 @@ export function ThreadAgents() {
           <CpuIcon size={20} />
           <div>
             <h4>{emptyHeading}</h4>
-            <p>{session ? "Reported tasks and their activity will appear here." : "Start a conversation to see its agent activity."}</p>
+            <p>{session ? "When the agent hands work to a subagent, it shows here." : "Start a conversation to see its agent activity."}</p>
           </div>
         </div>
       ) : tasks.map((task) => <DelegatedTaskCard key={task.id} task={task} turnActive={active} />)}
       {earlier && <p className="meta" role="status">Earlier events are outside the loaded window. This is a partial task list.</p>}
       {tasks.length >= 100 && <p className="meta">Showing up to 100 delegated tasks from this turn.</p>}
-      <details className="thread-agents-details">
-        <summary>What this panel can show</summary>
-        <p>Choose an earlier loaded turn to inspect its recorded activity. Historical reads are bounded and never replace live activity. Task states describe reported delegation tool calls, not a complete child-agent roster. Workflow membership and child-session controls are not available on these routes.</p>
-        <p>Some agents or Gateway versions omit delegation details and per-task usage. Missing values stay unknown; usage is never estimated from text or assigned from the parent turn.</p>
-      </details>
       <footer>
         <button type="button" className="ghost" onClick={() => setView("runtimes")}>Manage agents</button>
       </footer>
