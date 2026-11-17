@@ -37,7 +37,8 @@ function effectiveBackground(element: Element): string {
   }
   // With no opaque layer in the stack (a transparent window), the page itself shows the theme's canvas.
   const canvas = () => {
-    const probe = document.body.appendChild(Object.assign(document.createElement("div"), { style: "background: var(--bg)" }));
+    // Measured inside the element, so a theme set on a container (not on <html>) applies.
+    const probe = element.appendChild(Object.assign(document.createElement("span"), { style: "display: block; background: var(--bg)" }));
     const parts = getComputedStyle(probe).backgroundColor.match(/[\d.]+/g)?.map(Number) ?? [255, 255, 255];
     probe.remove();
     return parts.slice(0, 3);
