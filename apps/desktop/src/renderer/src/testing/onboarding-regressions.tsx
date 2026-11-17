@@ -5,7 +5,9 @@ import { AgentStoreControls } from "../features/harness/AgentStoreControls";
 import { resetAgentStore } from "../features/harness/agent-store";
 import { FirstRunHost } from "../features/onboarding/FirstRun";
 import { SetupChecklist } from "../features/onboarding/SetupChecklist";
-import { updateSetupMarks } from "../features/onboarding/setup-progress";
+import { requestFirstRun, updateSetupMarks } from "../features/onboarding/setup-progress";
+import { EmptyThreadFolder } from "../features/conversation/EmptyThreadFolder";
+import { FOLDER_REQUIRED } from "../lib/harness-preflight";
 
 function assert(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
 async function settle() { await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))); }
@@ -16,6 +18,7 @@ async function until<T>(read: () => T | null | undefined | false, message: strin
 const button = (scope: ParentNode, text: string) => Array.from(scope.querySelectorAll<HTMLButtonElement>("button")).find((item) => item.textContent?.trim() === text);
 
 const claude = { ...PRESET_HARNESSES.find((item) => item.id === "claude")!, runtimeRoute: "direct", readiness: "needs_login", loginState: "logged_out", acpxEnabled: false, dedicatedProjectIds: [], liveSessionIds: [], detail: "" } as HarnessStatus;
+const codex = { ...PRESET_HARNESSES.find((item) => item.id === "codex")!, runtimeRoute: "direct", readiness: "ready", acpxEnabled: false, dedicatedProjectIds: [], liveSessionIds: [], detail: "" } as HarnessStatus;
 
 /** A bridge whose terminal events the test drives by hand. */
 function fakeApi(options: () => Promise<AgentSignInOptions>) {
@@ -139,10 +142,13 @@ export async function runOnboardingRegressions(host: HTMLElement) {
     root.render(null); await settle();
 
     const patches: Partial<CapsuleSettings>[] = [];
+    const picked: string[] = [];
+    const tasks: string[] = [];
     const firstRunBase = {
       api: bridge.api, harnesses: [claude], projects: [], refresh: async () => {}, setConfirm: () => {}, setTerminalOpen: () => {},
       updateSettings: async (patch: Partial<CapsuleSettings>) => { patches.push(patch); return { ...DEFAULT_CAPSULE_SETTINGS, ...patch }; },
-      createTask: async () => {}, createProjectFromFolder: async () => {},
+      createTask: async (projectId?: string) => { tasks.push(projectId ?? ""); }, createProjectFromFolder: async () => {},
+      agentId: "claude", setAgentId: (id: string) => { picked.push(id); },
     };
     window.testWorkspace = { ...firstRunBase, projects: [{ id: "p1", name: "Existing", workingDirectory: "/tmp/existing" }], settings: DEFAULT_CAPSULE_SETTINGS };
     root.render(<FirstRunHost />); await settle();
@@ -159,20 +165,53 @@ export async function runOnboardingRegressions(host: HTMLElement) {
     window.testWorkspace = { ...firstRunBase, settings: DEFAULT_CAPSULE_SETTINGS };
     root.render(<FirstRunHost />);
     const firstRun = await until(() => document.querySelector<HTMLElement>(".first-run"), "A new profile with no projects did not see first run");
-    assert(button(firstRun, "Continue")?.disabled, "Continue was enabled with no agent ready");
-    assert(button(firstRun, "Sign in"), "A signed-out agent had no Sign in in first run");
+    assert(button(firstRun, "Sign in") && firstRun.querySelector(".first-run-choice")?.textContent?.startsWith("Open a folder"), "First run did not show the agent and the folder on one page");
+    assert(!button(firstRun, "Continue") && !firstRun.textContent?.includes("Choose notifications"), "First run still walks through steps");
+    assert(button(firstRun, "Start a conversation")?.disabled && firstRun.textContent?.includes("Choose a folder to start."), "Start was offered with no folder, or did not say what it needs");
+    assert(picked.length === 0, "First run switched agents with none ready");
     button(firstRun, "Set up later")!.click(); await settle();
     assert(!document.querySelector(".first-run") && patches.some((patch) => patch.firstRunDone === true), "Set up later did not record firstRunDone and leave");
     root.render(null); await settle();
 
-    updateSetupMarks({ pending: true, notificationsChosen: false });
+    patches.length = 0;
+    const folder = { id: "p2", name: "app", workingDirectory: "/tmp/app" };
+    window.testWorkspace = { ...firstRunBase, harnesses: [{ ...claude, readiness: "missing_cli" }, codex], projects: [folder], project: folder, settings: { ...DEFAULT_CAPSULE_SETTINGS, firstRunDone: true } };
+    root.render(<FirstRunHost />); await settle();
+    requestFirstRun();
+    const ready = await until(() => document.querySelector<HTMLElement>(".first-run"), "Set up Capsule did not reopen first run");
+    await until(() => picked.includes("codex"), "First run left the composer on an agent that is not installed while another was ready");
+    assert(ready.textContent?.includes("Starts with Codex."), "First run did not say which agent the conversation starts with");
+    const startButton = button(ready, "Start a conversation")!;
+    assert(!startButton.disabled, "Start stayed disabled with a folder chosen");
+    startButton.click();
+    await until(() => tasks.includes("p2"), "Start a conversation did not open one in the chosen folder");
+    assert(patches.some((patch) => patch.firstRunDone === true && patch.defaultAgentId === "codex"), "Finishing did not keep the ready agent for new conversations");
+    root.render(null); await settle();
+
+    updateSetupMarks({ pending: true });
     window.testWorkspace = { ...firstRunBase, settings: { ...DEFAULT_CAPSULE_SETTINGS, firstRunDone: true } };
     root.render(<SetupChecklist fallback={<p>No projects yet</p>} />); await settle();
-    assert(host.textContent?.includes("Finish setup · 0/3"), "The setup checklist did not replace the empty state");
+    assert(host.textContent?.includes("Finish setup · 0/2"), "The setup checklist did not replace the empty state");
     host.querySelector<HTMLButtonElement>(".setup-checklist-dismiss")!.click(); await settle();
     assert(host.textContent?.includes("No projects yet") && !host.querySelector(".setup-checklist"), "Dismissing the checklist did not bring back the empty state");
+    root.render(null); await settle();
+
+    window.testWorkspace = { ...firstRunBase, sendBlockReason: FOLDER_REQUIRED };
+    root.render(<EmptyThreadFolder />); await settle();
+    assert(host.textContent?.includes("Agents work inside a folder") && button(host, "Open a folder") && button(host, "Clone a repository"), "An empty thread with no folder did not say the agent needs one and offer both ways in");
+    assert(!button(host, "Attach folder") && !button(host, "New project from folder"), "An empty thread offered two buttons that do the same thing");
+    button(host, "Clone a repository")!.click();
+    await until(() => document.querySelector(".clone-repository-dialog"), "Clone a repository did not open the clone dialog");
+    root.render(null); await settle();
+    window.testWorkspace = { ...firstRunBase, project: { id: "p3", name: "Notes" }, sendBlockReason: FOLDER_REQUIRED };
+    root.render(<EmptyThreadFolder />); await settle();
+    assert(button(host, "Attach folder") && !button(host, "Open a folder"), "A named project without a folder was not offered its own folder");
+    root.render(null); await settle();
+    window.testWorkspace = { ...firstRunBase, api: { ...bridge.api, isDesktop: false }, sendBlockReason: FOLDER_REQUIRED };
+    root.render(<EmptyThreadFolder />); await settle();
+    assert(host.textContent?.includes("Agents work inside a folder") && !host.querySelector("button"), "A paired device was offered a folder picker that opens on another computer");
   } finally {
-    updateSetupMarks({ pending: false, notificationsChosen: false });
+    updateSetupMarks({ pending: false });
     resetAgentStore();
     root.unmount();
     window.testWorkspace = previous;

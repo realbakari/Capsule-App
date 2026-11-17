@@ -45,6 +45,7 @@ import { PlanHandoff } from "./PlanHandoff";
 import { useHandoff } from "../handoff/Handoff";
 import { ThreadOrigin } from "../import/ThreadOrigin";
 import { ImportHint } from "../import/ImportSessions";
+import { EmptyThreadFolder } from "./EmptyThreadFolder";
 import { TurnFilesCard } from "./TurnFilesCard";
 import { MessageBody } from "./MessageBody";
 import { MessageAttachments } from "./MessageAttachments";
@@ -691,32 +692,7 @@ export function Conversation() {
                   "What should we work on?"
                 )}
               </h1>
-              {(!project || !session || !project.workingDirectory) && (
-                <p>
-                  {!project || !session
-                    ? "Start a conversation, or attach a folder when the work needs a repo."
-                    : project.name === "Inbox"
-                      ? "This chat isn't bound to a repo. Attach a folder or start a project from one."
-                      : "Attach a folder so Capsule can search files, run git, and start coding agents."}
-                </p>
-              )}
-              {(!project || !project.workingDirectory) && (
-                <div className="actions">
-                  <button className="send" onClick={() => void pickProjectDirectory()}>
-                    Attach folder
-                  </button>
-                  <button className="chip" onClick={() => void createProjectFromFolder()}>
-                    New project from folder
-                  </button>
-                </div>
-              )}
-              {project && !session && (
-                <div className="actions">
-                  <button className="send" onClick={() => void createTask()}>
-                    New conversation
-                  </button>
-                </div>
-              )}
+              {!project?.workingDirectory && <EmptyThreadFolder />}
               {project?.workingDirectory && !session?.origin && <ImportHint projectId={project.id} />}
             </div>
           ) : (

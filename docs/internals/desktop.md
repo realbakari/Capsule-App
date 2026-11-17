@@ -2431,12 +2431,22 @@ projects never see it. **Set up Capsule** in the palette reopens it at any
 time.
 
 **Setup checklist** (`SetupChecklist.tsx`) replaces the sidebar's bare "No
-projects yet": "Finish setup · n/3" for agent ready, folder added and
-notifications chosen, each reopening first run at that step. Its own marks
-(`pending`, notifications chosen) live in `localStorage`
-(`capsule.setupChecklist`), a per-device convenience; dismissing it clears them
-and sets `firstRunDone`. A paired viewer sees text only: install, sign-in and
-first run are write channels.
+projects yet". It reads "Finish setup · n/2", for an agent that is ready and
+a folder that is added, and each line reopens first run. Its one mark
+(`pending`) lives in `localStorage` (`capsule.setupChecklist`), a per-device
+convenience. Dismissing it clears the mark and sets `firstRunDone`. A paired
+viewer sees text only, because install, sign-in and first run are write
+channels.
+
+**Empty thread** (the `empty-thread` block in `Conversation.tsx`). A project
+with a folder asks "What should we build in X?", with or without a selected
+thread. With no thread, the composer is a draft and send creates the thread.
+With no folder it asks "What should we work on?", and `EmptyThreadFolder` says
+why a folder matters. A named project gets **Attach folder** for itself. With
+no project, or the Inbox, it gets **Open a folder** and **Clone a repository**,
+each becoming a new project. The copy reads `sendBlockReason`. When the picked
+agent needs a folder it says so, and when it does not (a Gateway agent) the
+folder is optional. A paired device gets the words without the buttons.
 
 ### Dialogs opened from a popover
 

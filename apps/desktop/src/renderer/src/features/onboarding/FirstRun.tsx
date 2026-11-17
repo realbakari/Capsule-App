@@ -8,37 +8,26 @@ import { useWorkspace } from "../../lib/workspace";
 import { AgentStoreControls } from "../harness/AgentStoreControls";
 import { useAgentStore } from "../harness/agent-store";
 import { SignInDialog } from "../harness/SignInDialog";
-import { NotificationsCard } from "../settings/ConfigurationSettings";
 import { AgentGlyph } from "../shell/AgentGlyph";
 import { CloneRepositoryDialog } from "../shell/CloneRepositoryDialog";
 import { CheckIcon, FolderIcon, FolderOpenIcon, GitBranchIcon, RefreshIcon } from "../shell/icons";
-import { agentIsReady, onFirstRunRequest, shouldOpenFirstRun, updateSetupMarks, type SetupItemId } from "./setup-progress";
+import { agentIsReady, firstRunAgent, onFirstRunRequest, shouldOpenFirstRun, updateSetupMarks } from "./setup-progress";
 import "./onboarding.css";
-
-type Step = "agents" | "folder" | "notifications";
-
-const STEPS: ReadonlyArray<{ id: Step; title: string; detail: string }> = [
-  { id: "agents", title: "Set up an agent", detail: "Capsule drives a coding agent that runs on this computer. Install one and sign in, and it is ready." },
-  { id: "folder", title: "Choose a folder", detail: "The agent works inside a folder you pick. Open one on this computer or clone a repository." },
-  { id: "notifications", title: "Choose notifications", detail: "Decide when Capsule should get your attention while it is in the background. Settings can change this later." },
-];
-
-const STEP_FOR_ITEM: Record<SetupItemId, Step> = { agent: "agents", folder: "folder", notifications: "notifications" };
 
 /** Opens first run for a new profile, and whenever the palette or the checklist asks. */
 export function FirstRunHost() {
   const { api, settings, projects } = useWorkspace();
   const desktop = api.isDesktop !== false;
-  const [open, setOpen] = useState<Step>();
+  const [open, setOpen] = useState(false);
   const opened = useRef(false);
   useEffect(() => {
     if (opened.current || !shouldOpenFirstRun({ desktop, settings, projectCount: projects.length })) return;
     opened.current = true;
-    setOpen("agents");
+    setOpen(true);
   }, [desktop, settings, projects.length]);
-  useEffect(() => onFirstRunRequest((at) => { if (desktop) setOpen(at ? STEP_FOR_ITEM[at] : "agents"); }), [desktop]);
+  useEffect(() => onFirstRunRequest(() => { if (desktop) setOpen(true); }), [desktop]);
   useEffect(() => { if (open) updateSetupMarks({ pending: true }); }, [open]);
-  return open ? <FirstRun key={open} initialStep={open} onClose={() => setOpen(undefined)} /> : null;
+  return open ? <FirstRun onClose={() => setOpen(false)} /> : null;
 }
 
 /** Puts the caret in the new conversation's composer once it is on screen. */
@@ -52,61 +41,79 @@ function focusComposer(): void {
   requestAnimationFrame(attempt);
 }
 
-function FirstRun({ initialStep, onClose }: { initialStep: Step; onClose: () => void }) {
-  const { harnesses, projects, project, projectId, settings, updateSettings, createTask } = useWorkspace();
-  const [step, setStep] = useState<Step>(initialStep);
+/*
+ * One page, not a wizard: the agent and the folder are independent, and
+ * notifications already default to on, so asking about them first only
+ * delayed the first message. Start needs a folder; an agent that is not ready
+ * yet is finished from the conversation, where the composer says how.
+ */
+function FirstRun({ onClose }: { onClose: () => void }) {
+  const { harnesses, projects, project, settings, updateSettings, createTask, agentId, setAgentId } = useWorkspace();
   const [signInId, setSignInId] = useState<string>();
   const [cloneOpen, setCloneOpen] = useState(false);
   const panel = useRef<HTMLDivElement>(null);
-  const index = STEPS.findIndex((item) => item.id === step);
-  const current = STEPS[index]!;
-  const anyReady = (harnesses ?? []).some(agentIsReady);
-  const target = project ?? projects.find((item) => item.id === projectId) ?? projects[0];
+  const startButton = useRef<HTMLButtonElement>(null);
+  /* A project without a folder (the Inbox) gives an agent nowhere to work, so it is not a start. */
+  const target = project?.workingDirectory ? project : projects.find((item) => item.workingDirectory);
+  const start = firstRunAgent(harnesses ?? [], agentId);
+
+  /* The composer's agent follows the ready one, so the first message reaches an agent that can answer it. */
+  useEffect(() => {
+    if (start && start.id !== agentId) setAgentId(start.id);
+  }, [start?.id, agentId, setAgentId]);
+
+  /* A folder picked here is the last thing asked for; Enter now starts. */
+  const hadTarget = useRef(Boolean(target));
+  useEffect(() => {
+    if (target && !hadTarget.current) startButton.current?.focus();
+    hadTarget.current = Boolean(target);
+  }, [target]);
 
   const later = useCallback(() => {
     void updateSettings({ firstRunDone: true }).catch(() => undefined);
     onClose();
   }, [onClose, updateSettings]);
-  /* A dialog opened from a step owns the keyboard until it closes. */
+  /* A dialog opened from here owns the keyboard until it closes. */
   useModalFocus(panel, !signInId && !cloneOpen, later);
 
   const finish = async () => {
-    updateSetupMarks({ pending: false, notificationsChosen: true });
-    void updateSettings({ firstRunDone: true }).catch(() => undefined);
+    updateSetupMarks({ pending: false });
+    const keepAgent = start && settings?.defaultAgentId !== start.id ? { defaultAgentId: start.id } : {};
+    void updateSettings({ firstRunDone: true, ...keepAgent }).catch(() => undefined);
     onClose();
     if (!target) return;
     await createTask(target.id).catch(() => undefined);
     focusComposer();
   };
 
-  const canContinue = step === "agents" ? anyReady : step === "folder" ? Boolean(target) : true;
   const signInHarness = (harnesses ?? []).find((item) => item.id === signInId);
+  const status = !target
+    ? "Choose a folder to start."
+    : start
+      ? `Starts with ${start.name}. You can switch in the composer.`
+      : "No agent is ready yet. The conversation shows how to finish setting one up.";
 
   return createPortal(
     <div className="first-run-backdrop">
       <div className="first-run" ref={panel} role="dialog" aria-modal="true" aria-labelledby="first-run-title" aria-describedby="first-run-detail" tabIndex={-1}>
-        <div className="first-run-progress" aria-label={`Step ${index + 1} of ${STEPS.length}`}>
-          {STEPS.map((item, position) => <span key={item.id} data-state={position < index ? "done" : position === index ? "current" : "todo"} />)}
-        </div>
-        <p className="first-run-eyebrow">{index === 0 ? "Welcome to Capsule" : `Step ${index + 1} of ${STEPS.length}`}</p>
-        <h2 id="first-run-title">{current.title}</h2>
-        <p id="first-run-detail" className="first-run-detail">{current.detail}</p>
+        <p className="first-run-eyebrow">Welcome to Capsule</p>
+        <h2 id="first-run-title">Choose an agent and a folder</h2>
+        <p id="first-run-detail" className="first-run-detail">Capsule drives a coding agent that runs on this computer, inside a folder you pick.</p>
 
-        <div className="first-run-body">
-          {step === "agents" ? <AgentsStep onSignIn={setSignInId} /> : null}
-          {step === "folder" ? <FolderStep target={target} onClone={() => setCloneOpen(true)} /> : null}
-          {step === "notifications" ? settings
-            ? <NotificationsCard settings={settings} onPatch={(next) => { updateSetupMarks({ notificationsChosen: true }); void updateSettings(next); }} />
-            : <p className="first-run-hint">Loading settings…</p> : null}
-        </div>
+        <section className="first-run-section" aria-labelledby="first-run-agents-title">
+          <h3 id="first-run-agents-title">Agent</h3>
+          <AgentsSection onSignIn={setSignInId} />
+        </section>
+        <section className="first-run-section" aria-labelledby="first-run-folder-title">
+          <h3 id="first-run-folder-title">Folder</h3>
+          <FolderSection target={target} onClone={() => setCloneOpen(true)} />
+        </section>
+        <p className="first-run-hint first-run-note">Capsule notifies you when a turn finishes or needs you. Change that in Settings, under General.</p>
 
         <div className="first-run-footer">
           <button type="button" className="ghost first-run-later" onClick={later}>Set up later</button>
-          {!canContinue ? <span className="first-run-hint">{step === "agents" ? "Continue once one agent is ready." : "Continue once a folder is added."}</span> : null}
-          {index > 0 ? <button type="button" className="ghost" onClick={() => setStep(STEPS[index - 1]!.id)}>Back</button> : null}
-          {step === "notifications"
-            ? <button type="button" className="send" disabled={!target} onClick={() => void finish()}>Start a conversation</button>
-            : <button type="button" className="send" disabled={!canContinue} onClick={() => setStep(STEPS[index + 1]!.id)}>Continue</button>}
+          <span className="first-run-hint first-run-status" role="status">{status}</span>
+          <button type="button" ref={startButton} className="send" disabled={!target} onClick={() => void finish()}>Start a conversation</button>
         </div>
       </div>
       {signInHarness ? <SignInDialog harness={signInHarness} onClose={() => setSignInId(undefined)} /> : null}
@@ -116,7 +123,7 @@ function FirstRun({ initialStep, onClose }: { initialStep: Step; onClose: () => 
   );
 }
 
-function AgentsStep({ onSignIn }: { onSignIn: (harnessId: string) => void }) {
+function AgentsSection({ onSignIn }: { onSignIn: (harnessId: string) => void }) {
   const { api, harnesses, refresh } = useWorkspace();
   const [checking, setChecking] = useState(false);
   const all = harnesses ?? [];
@@ -173,16 +180,16 @@ function FirstRunAgent({ harness, onSignIn }: { harness: HarnessStatus; onSignIn
   </li>;
 }
 
-function FolderStep({ target, onClone }: { target?: { id: string; name: string; workingDirectory?: string }; onClone: () => void }) {
+function FolderSection({ target, onClone }: { target?: { id: string; name: string; workingDirectory?: string }; onClone: () => void }) {
   const { api, createProjectFromFolder } = useWorkspace();
   if (target) {
     return <div className="first-run-folder">
       <FolderIcon size={16} aria-hidden />
       <span className="first-run-agent-copy">
         <b>{target.name}</b>
-        <small className="mono">{formatProjectRoot(target.workingDirectory, { home: api.homeDir, fallback: "No folder chosen" })}</small>
+        <small className="mono">{formatProjectRoot(target.workingDirectory, { home: api.homeDir })}</small>
       </span>
-      <span className="first-run-ready"><CheckIcon size={12} aria-hidden />Added</span>
+      <button type="button" className="ghost first-run-change" onClick={() => void createProjectFromFolder()}>Choose another</button>
     </div>;
   }
   return <div className="first-run-choices">

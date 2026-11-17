@@ -6,13 +6,13 @@ import "./onboarding.css";
 
 /**
  * What is left of setup after first run was put off, in the sidebar. Each
- * line reopens first run at its step. It goes away once everything is done or
- * it is dismissed; otherwise `fallback` (the plain empty state) shows.
+ * line reopens first run. It goes away once everything is done or it is
+ * dismissed; otherwise `fallback` (the plain empty state) shows.
  */
 export function SetupChecklist({ fallback = null }: { fallback?: ReactNode }) {
   const { api, harnesses, projects, updateSettings } = useWorkspace();
   const marks = useSetupMarks();
-  const items = setupChecklist({ harnesses: harnesses ?? [], projectCount: projects.length, notificationsChosen: marks.notificationsChosen });
+  const items = setupChecklist({ harnesses: harnesses ?? [], projectCount: projects.length });
   if (!checklistVisible({ desktop: api.isDesktop !== false, marks, items })) return <>{fallback}</>;
   const done = items.filter((item) => item.done).length;
   const dismiss = () => {
@@ -30,7 +30,7 @@ export function SetupChecklist({ fallback = null }: { fallback?: ReactNode }) {
     </div>
     <ul>
       {items.map((item) => <li key={item.id}>
-        <button type="button" data-done={item.done || undefined} onClick={() => requestFirstRun(item.id)}>
+        <button type="button" data-done={item.done || undefined} onClick={() => requestFirstRun()}>
           <span className="setup-checklist-mark" aria-hidden>{item.done ? <CheckIcon size={10} /> : null}</span>
           <span>{item.label}</span>
           <span className="sr-only">{item.done ? "Done" : "Not done"}</span>
