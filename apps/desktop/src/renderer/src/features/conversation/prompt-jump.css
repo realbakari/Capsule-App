@@ -1,4 +1,4 @@
-/* Jump to a prompt: a corner control over the conversation and its list. */
+/* Jump to a prompt: a searchable list pinned to the conversation's top corner. */
 .prompt-jump {
   position: sticky;
   top: 0;
@@ -8,18 +8,9 @@
   justify-content: flex-end;
   align-self: stretch;
 }
-.prompt-jump-trigger {
-  margin-top: -0.6rem;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-color);
-  box-shadow: var(--shadow-raised);
-  color: var(--text-muted);
-}
-.prompt-jump-trigger:hover,
-.prompt-jump-trigger[aria-expanded="true"] { color: var(--text); background: var(--bg-hover); }
 .prompt-jump-panel {
   position: absolute;
-  top: 1.6rem;
+  top: 0;
   right: 0;
   width: min(26rem, calc(100vw - 3rem));
   max-height: min(24rem, 60vh);
@@ -68,6 +59,3 @@
 @media (prefers-reduced-motion: reduce) {
   .turn-flash { animation: none; outline: 2px solid color-mix(in srgb, var(--text) 25%, transparent); outline-offset: 2px; }
 }
-
-/* In a pane too narrow for gutters, the column steps in so the trigger never sits on a message. */
-.conversation:has(> .prompt-jump) > .thread { width: min(var(--chat-max), calc(100% - 4rem)); }

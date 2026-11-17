@@ -11,7 +11,7 @@ import { RunElapsed } from "./RunElapsed";
 import { ThreadFind } from "./ThreadFind";
 import type { FindMatch } from "./thread-find";
 import { PromptJump } from "./PromptJump";
-import { shortcutLabel } from "../../lib/keybindings";
+import { TurnMinimap } from "./TurnMinimap";
 import { detectUsageLimit, formatResetTime, tasksFromRunEvents } from "@capsule/shared";
 import { useWorkspace } from "../../lib/workspace";
 import { useScopedState } from "../../lib/scoped-state";
@@ -982,6 +982,7 @@ export function Conversation() {
 
         </div>
       </div>
+      {session && <TurnMinimap turns={turns} scroller={scroller} onJump={(item) => jumpToPrompt(item.messageId)} />}
       {/* A zero-height anchor: the pill floats above the composer instead of taking room from the transcript. */}
       <div className="jump-latest-anchor">
         {!stick && messages.length > 0 && (

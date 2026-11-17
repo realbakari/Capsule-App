@@ -1,0 +1,86 @@
+/* The turn minimap: a tick per prompt in the transcript's left gutter. */
+.turn-minimap-anchor { position: relative; height: 0; z-index: var(--z-sticky); }
+.turn-minimap { position: absolute; bottom: 0; left: 0; width: 3rem; pointer-events: none; }
+.turn-minimap-rail {
+  position: absolute;
+  top: 50%;
+  left: 0.75rem;
+  width: 1.75rem;
+  transform: translateY(-50%);
+  pointer-events: auto;
+}
+.turn-minimap-tick {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  cursor: pointer;
+}
+.turn-minimap-tick::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 1.5rem;
+  height: 2px;
+  margin-top: -1px;
+  border-radius: var(--radius-full);
+  background: var(--text-muted);
+  opacity: 0.35;
+  transform: scaleX(0.333);
+  transform-origin: left;
+  transition: transform 150ms ease, opacity 150ms ease;
+}
+.turn-minimap-tick[data-in-view]::before { opacity: 0.9; }
+.turn-minimap-tick[aria-current]::before { transform: scaleX(0.667); }
+.turn-minimap-tick[data-reach="2"]::before { transform: scaleX(0.417); }
+.turn-minimap-tick[data-reach="1"]::before { transform: scaleX(0.667); }
+.turn-minimap-tick[data-reach="0"]::before { transform: scaleX(1); opacity: 1; background: var(--text); }
+.turn-minimap-tick:focus-visible { outline: var(--focus-ring); outline-offset: 0; border-radius: var(--radius-sm); }
+
+.turn-minimap-step {
+  position: absolute;
+  left: -0.35rem;
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+.turn-minimap-previous { bottom: calc(100% + 0.4rem); }
+.turn-minimap-next { top: calc(100% + 0.4rem); }
+.turn-minimap-rail:hover .turn-minimap-step,
+.turn-minimap-rail:focus-within .turn-minimap-step { opacity: 1; }
+.turn-minimap-rail:hover .turn-minimap-step:disabled,
+.turn-minimap-rail:focus-within .turn-minimap-step:disabled { opacity: 0.35; }
+
+/* Display only: the tick's label carries the prompt for assistive tech. */
+.turn-minimap-preview {
+  position: absolute;
+  left: 2.25rem;
+  width: min(20rem, 60vw);
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-raised);
+  font-size: var(--text-ui);
+  line-height: 1.4;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.turn-minimap-preview-prompt { overflow: hidden; color: var(--text); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.turn-minimap-preview-reply {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--text-muted);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .turn-minimap-tick::before,
+  .turn-minimap-step { transition: none; }
+}

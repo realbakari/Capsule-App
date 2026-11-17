@@ -37,6 +37,14 @@ export function VirtualTurns({ turns, folded, scroller, stick, focus, restoreKey
   /* Read once on mount; held until the parent has stopped following. */
   const restoring = useRef<TurnAnchor | undefined>(restoreKey ? recallTurnAnchor(restoreKey) : undefined);
   const previous = useRef<{ id: string; offset: number } | undefined>(restoring.current);
+  /*
+   * A jump holds its turn as the anchor until the reader scrolls. It aims at
+   * the turn in the same pass that unfolds it: keeping the old view still
+   * first would move the scroll down, which reads as a return to the latest.
+   * The rows it mounts are measured mid-scroll, so each pass re-aims.
+   */
+  const landing = useRef<TurnAnchor | undefined>(undefined);
+  const landed = useRef<typeof focus>(undefined);
   const previousLayout = useRef("");
   let total = 0;
   const rows = turns.map((turn) => {
@@ -59,15 +67,8 @@ export function VirtualTurns({ turns, folded, scroller, stick, focus, restoreKey
     };
   }, []);
   useEffect(() => {
-    if (!focus) return;
-    const root = scroller.current;
-    const list = container.current;
-    const row = live.current.rows.find((row) => row.turn.id === focus.id);
-    if (!root || !list || !row) return;
-    const offset = list.getBoundingClientRect().top - root.getBoundingClientRect().top + root.scrollTop;
-    root.scrollTo({ top: Math.max(0, offset + row.top - 48), behavior: "smooth" });
-    setPinned((current) => new Set(current).add(focus.id));
-  }, [focus, scroller]);
+    if (focus) setPinned((current) => new Set(current).add(focus.id));
+  }, [focus]);
 
   // Parent refs are attached after child layout effects. Subscribe after commit.
   useEffect(() => {
@@ -95,6 +96,9 @@ export function VirtualTurns({ turns, folded, scroller, stick, focus, restoreKey
         return row && list.contains(row) ? [row.dataset.virtualTurn!] : [];
       })));
     };
+    const release = () => { landing.current = undefined; };
+    const input = ["wheel", "touchstart", "pointerdown", "keydown"] as const;
+    for (const type of input) window.addEventListener(type, release, { capture: true, passive: true });
     const observer = new ResizeObserver(schedule);
     observer.observe(root);
     root.addEventListener("scroll", readViewport, { passive: true });
@@ -103,6 +107,7 @@ export function VirtualTurns({ turns, folded, scroller, stick, focus, restoreKey
     readViewport();
     return () => {
       cancelAnimationFrame(frame);
+      for (const type of input) window.removeEventListener(type, release, { capture: true });
       observer.disconnect();
       root.removeEventListener("scroll", readViewport);
       document.removeEventListener("selectionchange", preserveInteraction);
@@ -118,17 +123,23 @@ export function VirtualTurns({ turns, folded, scroller, stick, focus, restoreKey
     const ids = new Set(turns.map((turn) => turn.id));
     for (const id of heights.current.keys()) if (!ids.has(id)) heights.current.delete(id);
     if (restoring.current && !stick && rows.some((row) => row.turn.id === restoring.current!.id) && previousLayout.current) restoring.current = undefined;
-    const anchor = restoring.current ?? previous.current;
+    const aim = Boolean(focus && focus !== landed.current);
+    if (aim) {
+      landed.current = focus;
+      landing.current = { id: focus!.id, offset: -48 };
+    }
+    const anchor = restoring.current ?? landing.current ?? previous.current;
     const following = stick && !restoring.current;
     const row = anchor && rows.find((row) => row.turn.id === anchor.id);
     const layout = JSON.stringify(rows.map((row) => [row.turn.id, row.height]));
     // Viewport/focus updates must never pull a user's scroll back to an old anchor.
-    if (layout !== previousLayout.current) {
+    if (layout !== previousLayout.current || aim) {
       previousLayout.current = layout;
       if (following) root.scrollTop = root.scrollHeight;
       else if (row && anchor) {
         const offset = list.getBoundingClientRect().top - root.getBoundingClientRect().top + root.scrollTop;
-        root.scrollTop = offset + row.top + anchor.offset;
+        if (anchor === landing.current) root.scrollTo({ top: Math.max(0, offset + row.top + anchor.offset), behavior: "smooth" });
+        else root.scrollTop = offset + row.top + anchor.offset;
       }
     }
     const observer = new ResizeObserver((entries) => {

@@ -8,13 +8,13 @@ const prompt = (id: string, content: string): ChatMessage => ({ id, sessionId: "
 const props = { open: true, hasOlder: false, loadingOlder: false, onLoadOlder: () => {}, onOpenChange: () => {}, onLocate: () => {} };
 
 describe("PromptJump", () => {
-  it("stays out of a thread with one prompt", () => {
-    expect(renderToStaticMarkup(createElement(PromptJump, { ...props, messages: [prompt("a", "Only one")] }))).toBe("");
+  it("draws nothing until the shortcut or palette opens it", () => {
+    expect(renderToStaticMarkup(createElement(PromptJump, { ...props, open: false, messages: [prompt("a", "First ask"), prompt("b", "Second ask")] }))).toBe("");
   });
 
   it("lists prompts newest first with the first one active", () => {
-    const html = renderToStaticMarkup(createElement(PromptJump, { ...props, shortcut: "⇧⌘J", messages: [prompt("a", "First ask"), prompt("b", "Second ask")] }));
-    expect(html).toContain('title="Jump to a prompt (⇧⌘J)"');
+    const html = renderToStaticMarkup(createElement(PromptJump, { ...props, messages: [prompt("a", "First ask"), prompt("b", "Second ask")] }));
+    expect(html).toContain('role="dialog" aria-label="Jump to a prompt"');
     expect(html.indexOf("Second ask")).toBeLessThan(html.indexOf("First ask"));
     expect(html).toMatch(/aria-selected="true"[^>]*>.*?Second ask/u);
   });

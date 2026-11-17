@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { promptIndex, type ChatMessage } from "@capsule/shared";
-import { ListIcon } from "../shell/icons";
 import "./prompt-jump.css";
 
-/** A small list of this thread's prompts; Enter scrolls to the chosen turn. */
-export function PromptJump({ messages, open, shortcut, hasOlder, loadingOlder, onLoadOlder, onOpenChange, onLocate }: {
+/**
+ * A searchable list of this thread's prompts, opened from the shortcut or the
+ * palette; Enter scrolls to the chosen turn. The turn minimap is the visible
+ * way to move between prompts, so this has no button of its own.
+ */
+export function PromptJump({ messages, open, hasOlder, loadingOlder, onLoadOlder, onOpenChange, onLocate }: {
   messages: readonly ChatMessage[];
   open: boolean;
-  shortcut?: string;
   hasOlder: boolean;
   loadingOlder: boolean;
   onLoadOlder: () => void;
@@ -20,7 +22,6 @@ export function PromptJump({ messages, open, shortcut, hasOlder, loadingOlder, o
   const input = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLUListElement>(null);
   const entries = useMemo(() => promptIndex(messages, query), [messages, query]);
-  const promptCount = useMemo(() => messages.filter((message) => message.role === "user").length, [messages]);
   useEffect(() => { setActive(0); }, [query]);
   useEffect(() => {
     if (!open) { setQuery(""); return; }
@@ -32,18 +33,14 @@ export function PromptJump({ messages, open, shortcut, hasOlder, loadingOlder, o
   useEffect(() => {
     list.current?.querySelector<HTMLElement>(`[data-index="${active}"]`)?.scrollIntoView({ block: "nearest" });
   }, [active]);
-  if (promptCount < 2 && !hasOlder) return null;
+  if (!open) return null;
   const choose = (messageId: string | undefined) => {
     if (!messageId) return;
     onOpenChange(false);
     onLocate(messageId);
   };
   return <div className="prompt-jump" ref={root}>
-    <button type="button" className="icon-btn prompt-jump-trigger" aria-label="Jump to a prompt" aria-expanded={open} aria-haspopup="dialog"
-      title={`Jump to a prompt${shortcut ? ` (${shortcut})` : ""}`} onClick={() => onOpenChange(!open)}>
-      <ListIcon size={14} />
-    </button>
-    {open && <div className="prompt-jump-panel" role="dialog" aria-label="Jump to a prompt">
+    <div className="prompt-jump-panel" role="dialog" aria-label="Jump to a prompt">
       <input ref={input} type="search" value={query} placeholder="Filter prompts" aria-label="Filter prompts"
         aria-controls="prompt-jump-list" aria-activedescendant={entries[active] ? `prompt-jump-${entries[active].messageId}` : undefined}
         onChange={(event) => setQuery(event.target.value)}
@@ -66,6 +63,6 @@ export function PromptJump({ messages, open, shortcut, hasOlder, loadingOlder, o
       {hasOlder && <button type="button" className="ghost prompt-jump-older" disabled={loadingOlder} onClick={onLoadOlder}>
         {loadingOlder ? "Loading…" : "Load earlier prompts"}
       </button>}
-    </div>}
+    </div>
   </div>;
 }

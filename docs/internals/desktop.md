@@ -1088,6 +1088,34 @@ is enough. Arrows move, Enter or click scrolls through the same `focus` prop
 with `flash`, which outlines the turn for 1.6 s (`turn-flash`) and then clears.
 When older history is not loaded, the list offers **Load earlier prompts**.
 
+`TurnMinimap` is a `nav` ("Conversation turns") in the transcript's left
+gutter, vertically centred on the scroller and mounted beside it in a
+zero-height anchor like the jump-to-latest pill, so it never scrolls with the
+thread. Its model, `turnMinimap(turns)` in `turn-minimap.ts`, gives one tick
+per turn that opens with a prompt; a compaction turn renders as a divider, so
+it has no tick and counts toward the turn before it (`tickOf`). Ticks are
+buttons labelled "Turn N: <prompt>", spaced 8 px apart until the rail runs out
+of height, with a roving `tabIndex` so the rail is one tab stop. On scroll and
+resize, `minimapView` measures the mounted `[data-virtual-turn]` rows: a tick is
+lit (`data-in-view`) while any of its turn is on screen, and the current tick
+(`aria-current="location"`, a little wider) is the first prompt starting below
+the 24 px read line, else the turn crossing it. **Previous turn** and **Next
+turn** step from the current tick; Next is disabled at the very bottom. Hover or
+keyboard focus shows a preview of the prompt and the turn's last reply. A wheel
+over the rail scrolls the transcript. A click jumps through `jumpToPrompt`, so
+a folded or unmounted turn opens and is scrolled to like any other jump. The
+rail shows only with two or more ticks, a scroller that overflows, and a gutter
+of at least 48 px, which hides it in narrow panes and on phones. It reads
+nothing over IPC, so a paired viewer gets it unchanged.
+
+A jump ends following the latest (`locateMessage` sets `stick` false), and
+`VirtualTurns` aims at the focused turn in the same layout pass that unfolds
+it, then holds it as the anchor (`landing`) until the reader's own wheel,
+touch, pointer or key input. Keeping the old view still first would raise
+`scrollTop` near the bottom, which the follow rule reads as a return to the
+latest. Each later remeasure re-aims the smooth scroll instead of assigning
+`scrollTop`, which would cancel it.
+
 Conversation details shows `+added −removed` from Git status beside
 **Review** when the checkout is dirty; pull requests are created from Commit &
 push or from Review. The icon bar's More menu offers Agents, Side chat and the
@@ -2023,12 +2051,42 @@ The defaults are `KEY_COMMANDS` in `@capsule/shared`, which main also reads to
 check `keybindings.json`. The renderer lays the file's entries over them and
 matches presses, sequences included, with the shared chord matcher
 (`lib/use-keymap.ts`). Settings → Shortcuts reads and writes the file through
-`capsule:keybindings:set`, keeping comments: record one key or two in a row,
-Unbind (shown on hover or focus), Reset, search by name or by keystroke, a
-Conflicts box, Add a binding (an action, a `/command`, a project action, and a
-context), and Open keybindings.json. Commands marked *menu* are declared by the
-application menu, which receives the key before the web contents does, so they
-are shown fixed; a user binding that starts with a menu key is struck through.
+`capsule:keybindings:set`, keeping comments. The page is one card per
+`KEY_COMMAND_GROUPS` entry (General, Go to, Conversation, Composer, Workspace)
+plus Your bindings for `command:`/`action:`/`profile:` entries, each row a
+`.setting` with label, the command's optional `description`, its own conflict
+lines (from `keymapConflicts`) and its keys on the right. Recording one key or
+two in a row checks the result first: a key the menu owns is refused on the row,
+and keys another command holds in that context wait for **Use it here** or
+**Keep both as they are**, since a bind takes the sequence from its holder.
+Unbind shows on hover or focus; Reset shows on a row marked Changed. Search
+matches name, id, description and the keys as written (`cmd+shift+d`) or shown
+(`⇧⌘D`, `Ctrl+Shift+D`); Record keys to find matches by keystroke prefix. Add a
+binding takes an action, a `/command`, a project action, and a context. Commands
+marked *menu* are declared by the application menu, which receives the key
+before the web contents does, so they are shown fixed; a user binding that
+starts with a menu key is struck through and explained on its row.
+
+Matching is per platform (`chordMatchesEvent(chord, event, mac)`). On macOS
+`cmd` is ⌘ only and `ctrl` is Control only, so ⌃A, ⌃E, ⌃F and ⌃P stay text
+editing; before, `cmd` also matched Control and ⌃E settled the conversation from
+the composer. Elsewhere `cmd` and `ctrl` are both Control and the Windows key
+never matches. Option chords read `event.code` only on macOS, because Control
+with Alt is AltGr on Windows layouts and must keep typing (`ó`, `@`); the live
+matcher now receives `event.code`, which it did not before. `menuOwnedKeys(mac)`
+lists each platform's menu accelerators (Control+Shift+I, F11 and Control+Y
+are the menu's off macOS), and `keymapConflicts(bindings, mac)` treats
+`cmd+k` and `ctrl+k` as one key off macOS. Display goes through
+`chordSymbols(chord, mac)`: ⌃⌥⇧⌘ on macOS, `Ctrl+Alt+Shift+K` elsewhere.
+`shortcutLabel` falls back to a menu command's fixed keys, so the palette and
+tooltips show ⌘N, ⌘, and ⌘K too; `withShortcut(label, id, bindings)` builds a
+tooltip from the effective keys (sidebar toggle, back and forward, new
+conversation, dictation, the minimap's step buttons).
+
+The application menu does not list renderer commands. On macOS a menu item's
+accelerator always registers (Electron's `registerAccelerator: false` is
+Windows and Linux only), so a View menu entry for ⌘B would take the key from the
+renderer's context-aware matcher and from keybindings.json.
 While a sequence waits, a pill near the bottom of the window shows the first
 chord and "… waiting for the next key" for up to 1.5 s. The shortcuts sheet
 (`⌘/`) shows effective bindings, sequences and custom actions included, and
@@ -2050,6 +2108,12 @@ command palette (`palette`).
 | Search in files | `⇧⌘F` | rebindable |
 | Toggle sidebar | `⌘B` | rebindable |
 | Toggle inspector | `⌘\` | rebindable |
+| Toggle Review / Browser (`open-review`, `open-browser`; again on the same surface closes the panel) | `⇧⌘D` / `⇧⌘B` | rebindable |
+| Previous / next turn (`previous-turn`, `next-turn`, via `KEY_COMMAND_EVENT` to `TurnMinimap`, which steps from its current turn even when the rail is hidden) | `⌥⌘↑` / `⌥⌘↓` | rebindable |
+| Stop the running turn (`stop-turn`; a notice when nothing runs or the device only reads) | `⌘.` | rebindable |
+| Focus the composer (`focus-composer`; bare key, so never fires while typing in a field) | `⇧Esc` | rebindable |
+| Choose model / permissions / effort | `⇧⌘M` / `⇧⌘P` / `⇧⌘E` | rebindable |
+| Next / previous conversation | `⌃Tab` / `⌃⇧Tab` (written `ctrl+tab`) | rebindable |
 | Stash prompt | `⌘S` | composer-local |
 | Send | Enter or `⌘Enter` per Settings | |
 
